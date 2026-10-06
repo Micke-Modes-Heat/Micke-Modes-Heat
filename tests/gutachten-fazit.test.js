@@ -1,6 +1,6 @@
 // Vitest-Tests für lib/gutachten-fazit.js — Bewertung, Empfehlung, NT-Ertüchtigung, Fahrplan, Heizöltank.
 import { describe, it, expect } from 'vitest';
-import { faTextBewertung, faTextEmpfehlung, faJaz, faNtVergleich, faTextNt, faTextFahrplan, faHeizoeltank, faTextHeizoeltank } from '../src/lib/gutachten-fazit.js';
+import { faTextBewertung, faTextEmpfehlung, faJaz, faNtVergleich, faTextNt, faTextFahrplan, faHeizoeltank, faTextHeizoeltank, faNtKosten, FA_NT_KOSTEN } from '../src/lib/gutachten-fazit.js';
 import { wtKlartext } from '../src/lib/gutachten-waerme-texte.js';
 
 const text = abs => wtKlartext(abs);
@@ -54,5 +54,25 @@ describe('Fahrplan und Heizöl', () => {
     expect(r.m3).toBeCloseTo(14.4, 6);
     expect(r.reichweiteH).toBeCloseTo(180, 6);
     expect(text(faTextHeizoeltank({ maxKw: 2000, mittelKw: 800 }))).toContain('rund 14,4 m³');
+  });
+});
+
+describe('NT-Kostenschätzung', () => {
+  it('Posten je Gebäude aus Fläche, Zustand und TWW', () => {
+    const k = faNtKosten([{ name: 'A', bgfM2: 2000, zustand: 3, twwArt: 'speicher', twwKw: 100 }, { name: 'B', bgfM2: 1000, zustand: 1, twwArt: 'dle' }]);
+    const a = k.zeilen[0];
+    expect(a.ngf).toBe(1700);
+    expect(a.hk).toBe(85);
+    expect(a.tauschHk).toBe(34);
+    expect(a.posten.tww).toBe(8000 + 100 * 50);
+    expect(a.posten.abgleich).toBe(85 * FA_NT_KOSTEN.abgleichEurHk);
+    expect(k.zeilen[1].posten.tww).toBe(0);
+    expect(k.summe).toBeCloseTo(k.zeilen[0].summe + k.zeilen[1].summe, 6);
+  });
+  it('Text nennt die Posten', () => {
+    const kosten = faNtKosten([{ name: 'A', bgfM2: 2000, zustand: 2, twwArt: 'fws', twwKw: 50 }]);
+    const t = text(faTextNt({ waermeMwh: 9000, vlHtC: 75, vlNtC: 45, jazNt: 3.2, strompreisCt: 25, kosten }));
+    expect(t).toContain('gebäudescharf überschlägig geschätzt');
+    expect(t).toContain('hydraulischer Abgleich');
   });
 });

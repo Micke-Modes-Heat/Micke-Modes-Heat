@@ -86,7 +86,38 @@ export const FA_NT = Object.freeze({ gueteGrad: 0.45, quelleC: 2, jahre: 20, eur
 export const faJaz = (vlC, quelleC = FA_NT.quelleC, guete = FA_NT.gueteGrad) => guete * (vlC + 273.15) / Math.max(5, vlC - quelleC);
 
 /**
- * HT vs. NT bei gleicher WP-Wärme. o: { waermeMwh, vlHtC, vlNtC, jazNt (gemessen), strompreisCt, gebaeude, eurProGebaeude, jahre, efStrom, efStromLz }
+ * Kostenkennwerte der gebäudescharfen Schätzung (Annahmen, netto, Preisstand heute). NGF = 0,85 × BGF.
+ * Heizkörperzahl aus der Fläche; Tauschanteil nach Bauzustand (1 gut … 3 schlecht); TWW-Umstellung nach Erzeugungsart.
+ */
+export const FA_NT_KOSTEN = Object.freeze({
+  sockelEur: 2000, planungEurM2: 1.0, m2JeHeizkoerper: 20, abgleichEurHk: 120, tauschEurHk: 1100,
+  tauschAnteil: Object.freeze({ 1: 0.15, 2: 0.25, 3: 0.4, ohne: 0.25 }),
+  tww: Object.freeze({ speicher: [8000, 50], klein: [1500, 0], fws: [2000, 10], pwt: [2000, 10], dle: [0, 0], keine: [0, 0], ohne: [6000, 0] }),   // [Sockel €, € je kW]
+});
+
+/** Gebäudescharfe Kostenschätzung. gebaeude: [{ name, bgfM2, zustand (1–3), twwArt, twwKw }] */
+export function faNtKosten(gebaeude, k = FA_NT_KOSTEN) {
+  const zeilen = (gebaeude || []).filter(g => g.bgfM2 > 0).map(g => {
+    const ngf = g.bgfM2 * 0.85;
+    const hk = Math.max(1, Math.round(ngf / k.m2JeHeizkoerper));
+    const anteil = k.tauschAnteil[Math.round(Number(g.zustand))] ?? k.tauschAnteil.ohne;
+    const [twwSockel, twwJeKw] = k.tww[g.twwArt] || k.tww.ohne;
+    const posten = {
+      aufnahme: k.sockelEur + ngf * k.planungEurM2,
+      abgleich: hk * k.abgleichEurHk,
+      heizflaechen: Math.round(hk * anteil) * k.tauschEurHk,
+      tww: twwSockel + (Number(g.twwKw) || 0) * twwJeKw,
+    };
+    return { name: g.name, ngf, hk, tauschHk: Math.round(hk * anteil), posten, summe: Object.values(posten).reduce((a, b) => a + b, 0) };
+  });
+  const sum = key => zeilen.reduce((a, z) => a + z.posten[key], 0);
+  return { zeilen, anzahl: zeilen.length, ngf: zeilen.reduce((a, z) => a + z.ngf, 0), hk: zeilen.reduce((a, z) => a + z.hk, 0),
+    posten: { aufnahme: sum('aufnahme'), abgleich: sum('abgleich'), heizflaechen: sum('heizflaechen'), tww: sum('tww') },
+    summe: zeilen.reduce((a, z) => a + z.summe, 0) };
+}
+
+/**
+ * HT vs. NT bei gleicher WP-Wärme. o: { waermeMwh, vlHtC, vlNtC, jazNt (gemessen), strompreisCt, kosten (faNtKosten) oder gebaeude × eurProGebaeude, jahre, efStrom, efStromLz }
  * Ist eine stundenscharfe JAZ für den NT-Fall bekannt, wird die HT-JAZ im Carnot-Verhältnis daraus abgeleitet.
  */
 export function faNtVergleich(o) {
@@ -96,7 +127,7 @@ export function faNtVergleich(o) {
   const stromHt = o.waermeMwh / jazHt, stromNt = o.waermeMwh / jazNt;
   const kHt = stromHt * o.strompreisCt * 10, kNt = stromNt * o.strompreisCt * 10;
   const jahre = o.jahre || FA_NT.jahre;
-  const invest = (o.gebaeude || 0) * (o.eurProGebaeude || FA_NT.eurProGebaeude);
+  const invest = o.kosten?.summe > 0 ? o.kosten.summe : (o.gebaeude || 0) * (o.eurProGebaeude || FA_NT.eurProGebaeude);
   const ersparnis = kHt - kNt;
   return {
     jazHt, jazNt, stromHt, stromNt, kostenHt: kHt, kostenNt: kNt, ctHt: (kHt / (o.waermeMwh * 1000)) * 100, ctNt: (kNt / (o.waermeMwh * 1000)) * 100,
@@ -118,7 +149,11 @@ export function faTextNt(o = {}) {
       `Die Jahresarbeitszahl steigt von ${nf(r.jazHt, 2)} auf ${nf(r.jazNt, 2)}, der Stromverbrauch sinkt von ${nf(r.stromHt / 1000, 2)} auf ${nf(r.stromNt / 1000, 2)} GWh/a (−${pct((1 - r.stromNt / r.stromHt) * 100)}). `,
       `Das entspricht einer jährlichen Einsparung an Stromkosten von rund ${nf(r.ersparnis)} € bzw. rund ${nf(r.ersparnisJahre / 1e6, 1)} Mio. € über ${r.jahre} Jahre.`));
     if (r.invest > 0) {
-      out.push(absatz(`Dem stehen einmalige Ertüchtigungskosten gegenüber: Bei ${nf(o.gebaeude)} Gebäuden und rund ${nf(o.eurProGebaeude || FA_NT.eurProGebaeude)} € je Gebäude ergibt sich ein Investitionsaufwand von rund ${nf(r.invest / 1e6, 2)} Mio. €. `,
+      const kk = o.kosten;
+      out.push(absatz(kk?.summe > 0
+        ? `Dem stehen einmalige Ertüchtigungskosten gegenüber. Sie wurden gebäudescharf überschlägig geschätzt – aus Fläche, Bauzustand und Art der Trinkwarmwasserbereitung: Für ${nf(kk.anzahl)} Gebäude mit rund ${nf(kk.ngf)} m² Nettogrundfläche und etwa ${nf(kk.hk)} Heizkörpern ergeben sich rund ${nf(r.invest / 1e6, 2)} Mio. € `
+          + `(Bestandsaufnahme und Planung ${nf(kk.posten.aufnahme / 1000)} Tsd. €, hydraulischer Abgleich ${nf(kk.posten.abgleich / 1000)} Tsd. €, Heizflächenanpassung ${nf(kk.posten.heizflaechen / 1000)} Tsd. €, Trinkwarmwasser ${nf(kk.posten.tww / 1000)} Tsd. €). `
+        : `Dem stehen einmalige Ertüchtigungskosten gegenüber: Bei ${nf(o.gebaeude)} Gebäuden und rund ${nf(o.eurProGebaeude || FA_NT.eurProGebaeude)} € je Gebäude ergibt sich ein Investitionsaufwand von rund ${nf(r.invest / 1e6, 2)} Mio. €. `,
         ok(r.amortJahre) ? `Die Maßnahme amortisiert sich damit in etwa ${nf(r.amortJahre, 1)} Jahren; nach ${r.jahre} Jahren verbleibt ein Nettovorteil von rund ${nf(r.netto / 1e6, 1)} Mio. €. ` : '',
         'Die Ertüchtigungskosten sind in den übrigen Wirtschaftlichkeitsbetrachtungen nicht enthalten und als eigenständiger Investitionsblock zu berücksichtigen.'));
     }

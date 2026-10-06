@@ -29,8 +29,8 @@ import { vbTextDaten, vbTextBezug, vbTextCo2, vbTextReferenzjahr } from './lib/g
 import { lgTextWitterung, lgTextGrundlast, lgTextSpitzenlast, lgTextDeckung } from './lib/gutachten-lastgang.js';
 import { PT_NICHT, PT_GEO_ASPEKTE, PT_LWWP_VORNACH, PT_TA_LAERM, PT_BIO, PT_BIO_QUALITATIV, ptBioKennwerte, ptTextEinleitung, ptTextNicht, ptTextBeruecksichtigt,
   ptTextGeoGrundlagen, ptTextGeoBerechnung, ptTextTiefengeothermie, ptTextLwwp, ptTextSchall, ptTextBiomasse } from './lib/gutachten-potenzial.js';
-import { faTextBewertung, faTextEmpfehlung, faTextNt, faTextFahrplan, faTextHeizoeltank, faTextResilienzUebergang } from './lib/gutachten-fazit.js';
-import { vaRahmenZeilen, vaTextRahmen, vaTextResilienz, vaGegenueberstellung, vaTextKlima, vaTextKostenKomponenten, vaTextPv, vaSensitivitaet, vaTextSensitivitaet, VA_SZENARIEN } from './lib/gutachten-varianten.js';
+import { FA_NT_KOSTEN, faNtKosten, faTextBewertung, faTextEmpfehlung, faTextNt, faTextFahrplan, faTextHeizoeltank, faTextResilienzUebergang } from './lib/gutachten-fazit.js';
+import { VA_CO2_QUELLE, vaRahmenZeilen, vaTextRahmen, vaTextResilienz, vaGegenueberstellung, vaTextKlima, vaTextKostenKomponenten, vaTextPv, vaSensitivitaet, vaTextSensitivitaet, VA_SZENARIEN } from './lib/gutachten-varianten.js';
 import { atTextErzeuger, atTextHydraulik, atTextTww, atTextNetz, atLeistung } from './lib/gutachten-anlagentechnik.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1395,9 +1395,16 @@ function ggVariantenDaten() {
     varianten: d.varianten, pMaxKw: d.lastgang.pMaxKw, gesamtMwh: d.lastgang.gesamtMwh,
     preise: { strom: Number.isFinite(stromWp) ? stromWp : ggFeldZahl('wirt-p-strom'), gas: ggFeldZahl('wirt-p-gas'), oel: ggFeldZahl('wirt-p-hko'), pellets: ggFeldZahl('wirt-p-pk'), hhs: ggFeldZahl('wirt-p-hhs') },
     ef: { gas: num(ggLies(() => w.gasEmF)), oel: num(ggLies(() => w.heizoelEmF)), pellets: num(ggLies(() => w.pelletsEmF)), strom: num(ggLies(() => w.stromEmF)), stromLz: num(ggLies(() => w.stromEmFLZ)) },
-    co2PreisEurT: ggFeldZahl('wirt-p-co2'),
+    co2PreisEurT: ggFeldZahl('wirt-p-co2'), co2Quelle: VA_CO2_QUELLE,
     bestandCo2T: ggLies(() => ggVerbrauch().co2MittelT, NaN),
   };
+}
+/** Bestandsgebäude für die Kostenschätzung der NT-Ertüchtigung (BGF, Bauzustand, TWW). */
+function ggNtKosten() {
+  const w = window;
+  const geb = (w.gebaeude || []).filter(g => !(typeof w.isExcluded === 'function' && w.isExcluded(g.id)) && !(parseInt(g.baujahr, 10) >= 2026)
+    && !(parseInt(g.abrissjahr, 10) > 0 && parseInt(g.abrissjahr, 10) < 9999));
+  return faNtKosten(geb.map(g => ({ name: g.name || `Gebäude ${g.id}`, bgfM2: gbBgf(g), zustand: ({ A: 1, B: 2, C: 3 })[String(g.zustand || '').toUpperCase()] || Number(g.zustand) || '', twwArt: g.twwArt, twwKw: g.twwKw })));
 }
 function ggTwwBestand() {
   const w = window;
@@ -2617,7 +2624,7 @@ const GG_FIGUREN = [
     id: 'va-rahmen-text', istText: true, reihe: -30, kapitel: '2.4 Variantenvergleich',
     titel: 'Gutachtentext: Rahmenbedingungen Variantenvergleich', datei: 'va-rahmen-text',
     hinweis: 'Aufbau des Vergleichs, Strom-Emissionsfaktor heute statt GEG-Pauschalwert, mittlerer Faktor künftig, CO₂-Kostenansatz.',
-    render: () => { const d = ggVariantenDaten(); return ggWaermeTextBlatt(vaTextRahmen({ efStromGeg: 560, efStrom: d.ef.strom, efStromLz: d.ef.stromLz, co2PreisEurT: d.co2PreisEurT })); }, config: {},
+    render: () => { const d = ggVariantenDaten(); return ggWaermeTextBlatt(vaTextRahmen({ efStromGeg: 560, efStrom: d.ef.strom, efStromLz: d.ef.stromLz, co2PreisEurT: d.co2PreisEurT, co2Quelle: d.co2Quelle })); }, config: {},
   },
   {
     id: 'va-rahmen-tabelle', autoSync: true, reihe: -25, kapitel: '2.4 Variantenvergleich',
@@ -2630,7 +2637,7 @@ const GG_FIGUREN = [
       cfg.spalten = [{ label: 'Energieträger', weight: 1.6, align: 'left', mono: false }, { label: 'Preis (brutto)', weight: 1 }, { label: 'PEF', weight: 0.6 },
         { label: 'CO₂e heute', weight: 1 }, { label: 'Quelle', weight: 1.4, align: 'left', mono: false }, { label: 'CO₂e Ø künftig', weight: 1 }, { label: 'Quelle', weight: 1.2, align: 'left', mono: false }];
       cfg.zeilen = vaRahmenZeilen(d);
-      if (Number.isFinite(d.co2PreisEurT)) cfg.zeilen.push({ highlight: true, werte: ['CO₂-Kostenansatz', `${ggNum(d.co2PreisEurT)} €/t CO₂e`, '', '', '', '', ''] });
+      if (Number.isFinite(d.co2PreisEurT)) cfg.zeilen.push({ highlight: true, werte: ['CO₂-Kostenansatz', `${ggNum(d.co2PreisEurT)} €/t CO₂e`, '', '', d.co2Quelle || '', '', ''] });
       cfg.fussnote = 'PEF: nicht erneuerbarer Anteil nach GEG Anlage 4';
       return `✓ ${cfg.zeilen.length} Zeilen.`;
     },
@@ -2742,10 +2749,31 @@ const GG_FIGUREN = [
       const vl15 = ggFeldZahl('gl-vl15'), vl5 = ggFeldZahl('gl-vl5');
       return ggWaermeTextBlatt(faTextNt({
         waermeMwh: wp.w, jazNt: wp.e > 0 ? wp.w / wp.e : undefined, vlHtC: ggFeldZahl('netz-vl'), vlNtC: Number.isFinite(vl15) && Number.isFinite(vl5) ? (vl15 + vl5) / 2 : NaN,
-        strompreisCt: d.preise.strom, gebaeude: ggLies(() => ggGebaeudeAuswertung().ist.anzahl, 0), efStrom: d.ef.strom, efStromLz: d.ef.stromLz,
+        strompreisCt: d.preise.strom, kosten: ggNtKosten(), efStrom: d.ef.strom, efStromLz: d.ef.stromLz,
       }));
     },
     config: {},
+  },
+  {
+    id: 'fazit-nt-kosten', autoSync: true, reihe: 45, kapitel: '6.1 Wärmeversorgung',
+    titel: 'Kostenschätzung Niedertemperatur-Ertüchtigung', datei: 'fazit-nt-kosten',
+    hinweis: 'Gebäudescharf aus BGF, Bauzustand und TWW-Art; Kostenkennwerte als Annahmen in der Fußnote. Abriss geplanter Gebäude und Neubauten sind nicht enthalten.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: { eyebrow: 'Fazit Wärme', titel: 'Kostenschätzung Niedertemperatur-Ertüchtigung', leer: 'Keine Bestandsgebäude mit Fläche.', spalten: [{ label: 'Gebäude', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
+    ausProjekt(cfg) {
+      const k = ggNtKosten();
+      const T = v => ggNum(v / 1000, 1) + ' T€';
+      cfg.spalten = [{ label: 'Gebäude', weight: 2.2, align: 'left', mono: false }, { label: 'NGF', weight: 0.9 }, { label: 'Heizkörper (Tausch)', weight: 1.1 },
+        { label: 'Aufnahme', weight: 0.9 }, { label: 'Abgleich', weight: 0.9 }, { label: 'Heizflächen', weight: 0.9 }, { label: 'TWW', weight: 0.8 }, { label: 'Summe', weight: 0.9 }];
+      if (!k.anzahl) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Bestandsgebäude mit Fläche.'; }
+      const z = [...k.zeilen].sort((a, b) => b.summe - a.summe);
+      cfg.zeilen = z.slice(0, 25).map(g => ({ werte: [g.name, ggNum(g.ngf) + ' m²', `${ggNum(g.hk)} (${ggNum(g.tauschHk)})`, T(g.posten.aufnahme), T(g.posten.abgleich), T(g.posten.heizflaechen), T(g.posten.tww), T(g.summe)] }));
+      if (z.length > 25) cfg.zeilen.push({ werte: [`weitere ${z.length - 25} Gebäude`, '', '', '', '', '', '', T(z.slice(25).reduce((a, g) => a + g.summe, 0))] });
+      cfg.zeilen.push({ highlight: true, werte: [`Summe ${k.anzahl} Gebäude`, ggNum(k.ngf) + ' m²', ggNum(k.hk), T(k.posten.aufnahme), T(k.posten.abgleich), T(k.posten.heizflaechen), T(k.posten.tww), T(k.summe)] });
+      const K = FA_NT_KOSTEN;
+      cfg.fussnote = `Annahmen (netto): NGF = 0,85 × BGF · 1 Heizkörper je ${K.m2JeHeizkoerper} m² NGF · Abgleich ${K.abgleichEurHk} €/HK · Tausch ${ggNum(K.tauschEurHk)} €/HK für ${ggNum(K.tauschAnteil[1] * 100)}/${ggNum(K.tauschAnteil[2] * 100)}/${ggNum(K.tauschAnteil[3] * 100)} % der HK bei Zustand 1/2/3 · Aufnahme ${ggNum(K.sockelEur)} € + ${ggNum(K.planungEurM2, 2)} €/m² · TWW-Speicher ${ggNum(K.tww.speicher[0])} € + ${K.tww.speicher[1]} €/kW`;
+      return `✓ ${k.anzahl} Gebäude, ${ggNum(k.summe / 1e6, 2)} Mio. €.`;
+    },
   },
   {
     id: 'fazit-fahrplan-text', istText: true, reihe: 50, kapitel: '6.1 Wärmeversorgung',

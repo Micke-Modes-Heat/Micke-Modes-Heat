@@ -11,6 +11,12 @@ const L = kw => (kw >= 1000 ? `${nf(kw / 1000, 1)} MW` : `${nf(kw)} kW`);
 /** Primärenergiefaktoren nicht erneuerbar nach GEG Anlage 4. */
 export const VA_PEF = Object.freeze({ Erdgas: 1.1, Heizöl: 1.1, Strom: 1.8, Holz: 0.2, Fernwärme: 0.7 });
 
+/** Quelle des CO₂-Kostenansatzes (Vorgabe des Auftraggebers). */
+export const VA_CO2_QUELLE = 'gemäß EEFB';
+
+/** Bezugszeitraum und Quellen des Strom-Emissionsfaktors: heute (UBA, Strommix inkl. Vorketten), künftig Mittel 2030–2050 (IINAS). */
+export const VA_STROM_EF = Object.freeze({ quelleHeute: 'UBA, Strommix inkl. Vorketten', quelleLz: 'IINAS, Mittel 2030–2050', von: 2030, bis: 2050 });
+
 /** Brennstoff-Wirkungsgrade für die Aufteilung der Energiekosten nach Energieträger. */
 export const VA_ETA = Object.freeze({ gaskessel: 0.92, _autoGk: 0.92, heizoel: 0.92, pellets: 0.9, hhs: 0.85, bhkwTh: 0.5, stromkessel: 0.99, fernwaerme: 1 });
 
@@ -50,7 +56,7 @@ export function vaRahmenZeilen(o) {
   const zeile = (name, preis, pef, heute, quelleH, lz, quelleL) => z.push({ werte: [name, ok(preis) ? `${nf(preis, 1)} ct/kWh` : '—', nf(pef, 1), `${nf(heute)} g/kWh`, quelleH, `${nf(lz)} g/kWh`, quelleL] });
   if (ok(p.gas)) zeile('Erdgas', p.gas, VA_PEF.Erdgas, ef.gas, 'GEG Anl. 9', ef.gas, 'GEG Anl. 9');
   if (ok(p.oel)) zeile('Heizöl', p.oel, VA_PEF.Heizöl, ef.oel, 'GEG Anl. 9', ef.oel, 'GEG Anl. 9');
-  if (ok(p.strom)) zeile('Strom (Wärmepumpe)', p.strom, VA_PEF.Strom, ef.strom, 'UBA (Strommix inkl. Vorketten)', ef.stromLz, 'Prognose Ø Zeitraum');
+  if (ok(p.strom)) zeile('Strom (Wärmepumpe)', p.strom, VA_PEF.Strom, ef.strom, VA_STROM_EF.quelleHeute, ef.stromLz, VA_STROM_EF.quelleLz);
   if (ok(p.pellets)) zeile('Holzpellets', p.pellets, VA_PEF.Holz, ef.pellets, 'GEG Anl. 9', ef.pellets, 'GEG Anl. 9');
   return z;
 }
@@ -60,9 +66,9 @@ export function vaTextRahmen(o = {}) {
     absatz('Aufbauend auf der energetischen Analyse und der Potenzialbetrachtung werden im Variantenvergleich verschiedene Versorgungslösungen hinsichtlich ihrer klimarelevanten und ökonomischen Unterschiede untersucht. Der Vergleich beginnt mit der Klimarelevanz und schließt mit der Wirtschaftlichkeit; zunächst werden die für alle Varianten geltenden Rahmenbedingungen erläutert.'),
     absatz('Die verwendeten Primärenergie- und CO₂-Emissionsfaktoren sowie die Energiepreise sind in der folgenden Tabelle zusammengefasst. ',
       ok(o.efStromGeg) && ok(o.efStrom) && o.efStromGeg > o.efStrom
-        ? `Für den Strombezug wird abweichend vom pauschalen Wert des GEG (${nf(o.efStromGeg)} g CO₂e/kWh) der aktuelle Emissionsfaktor des Strommix (${nf(o.efStrom)} g CO₂e/kWh) angesetzt, da der GEG-Wert die tatsächlichen Emissionen des Netzstroms nicht mehr hinreichend abbildet. `
+        ? `Für den Strombezug wird abweichend vom pauschalen Wert des GEG (${nf(o.efStromGeg)} g CO₂e/kWh) der aktuelle Emissionsfaktor des Umweltbundesamtes für den Strommix inklusive Vorketten (${nf(o.efStrom)} g CO₂e/kWh) angesetzt, da der GEG-Wert die tatsächlichen Emissionen des Netzstroms nicht mehr hinreichend abbildet. `
         : '',
-      ok(o.efStromLz) ? `Für die künftige Entwicklung wird ergänzend der mittlere Emissionsfaktor über den Betrachtungszeitraum (${nf(o.efStromLz)} g CO₂e/kWh) berücksichtigt, um die fortschreitende Dekarbonisierung des Strommix abzubilden. ` : '',
+      ok(o.efStromLz) ? `Für die künftige Entwicklung wird ergänzend der mittlere Emissionsfaktor für den Zeitraum ${VA_STROM_EF.von} bis ${VA_STROM_EF.bis} nach IINAS (${nf(o.efStromLz)} g CO₂e/kWh) berücksichtigt, um die fortschreitende Dekarbonisierung des deutschen Strommix über die gesamte Betrachtungsperiode abzubilden. ` : '',
       ok(o.co2PreisEurT) ? `Für die CO₂-Kosten wird ein Ansatz von ${nf(o.co2PreisEurT)} €/t CO₂e verwendet${o.co2Quelle ? ` (${o.co2Quelle})` : ''}.` : ['Der CO₂-Kostenansatz beträgt ', F('CO₂-Preis in €/t und Quelle'), '.']),
   ];
 }
@@ -120,7 +126,7 @@ export function vaTextKlima(o = {}) {
   const en = new Map(V.map(v => [v, vaEnergie(v)]));
   const out = [];
   const alleStrom = V.every(v => en.get(v).strombasiertPct >= 50);
-  out.push(absatz(`Die Emissionsanalyse für ${jh} und den Mittelwert der künftigen Jahre verdeutlicht die unterschiedlichen Dynamiken der Versorgungskonzepte. `,
+  out.push(absatz(`Die Emissionsanalyse für heute und den Mittelwert ${VA_STROM_EF.von}–${VA_STROM_EF.bis} verdeutlicht die unterschiedlichen Dynamiken der Versorgungskonzepte. `,
     alleStrom ? 'Da alle Varianten überwiegend strombasiert sind, profitieren sie von der fortschreitenden Dekarbonisierung des Stromnetzes; ihre Emissionen gehen in jedem Fall deutlich zurück. ' : '',
     `Die stärkste relative Reduktion erzielt ${bestRed.name} (von ${nf(bestRed.co2T)} auf ${nf(bestRed.co2LzT)} t CO₂e/a, rund ${pct(red(bestRed))}); `,
     bestZiel === bestRed ? 'sie erreicht damit zugleich den ökologischen Bestwert. ' : `den ökologischen Bestwert erreicht ${bestZiel.name} mit ${nf(bestZiel.co2LzT)} t CO₂e/a. `,
@@ -136,7 +142,7 @@ export function vaTextKlima(o = {}) {
       'Gemessen daran erscheinen die Unterschiede zwischen den Konzepten verhältnismäßig klein; alle Varianten stellen eine erhebliche ökologische Verbesserung dar.'));
   }
   const kum = V.map(v => ({ v, t: v.co2LzT * n })).sort((a, b) => a.t - b.t);
-  out.push(absatz(`Über einen Zeitraum von ${n} Jahren (${jh}–${jh + n - 1}, mittlerer Emissionsfaktor des Zeitraums) ergeben sich kumuliert: ${kum.map(x => `${x.v.name} ${nf(x.t)} t CO₂e`).join(', ')}. `,
+  out.push(absatz(`Über den Zeitraum ${VA_STROM_EF.von} bis ${VA_STROM_EF.bis} (${n} Jahre, mittlerer Strom-Emissionsfaktor nach IINAS) ergeben sich kumuliert: ${kum.map(x => `${x.v.name} ${nf(x.t)} t CO₂e`).join(', ')}. `,
     kum.length >= 2 && kum[kum.length - 1].t > kum[0].t * 1.5
       ? `Die höchste Summe liegt um den Faktor ${nf(kum[kum.length - 1].t / kum[0].t, 1)} über der niedrigsten; bereits ein geringfügig höherer fossiler Anteil führt über die Jahre zu einer erheblichen Mehrbelastung.`
       : ''));
@@ -154,7 +160,7 @@ export function vaTextKostenKomponenten(o = {}) {
     absatz('• Energiekosten: Aufwendungen für die eingesetzten Energieträger (z. B. Strom, Gas, Pellets). Sie bilden Verbrauch und Bezugspreise ab und sind in der Regel der größte laufende Kostenblock,'),
     absatz('• Kapitalkosten: jährliche anteilige Investitionskosten, die über die Nutzungsdauer der Komponenten annuitätisch verteilt und verzinst werden,'),
     absatz('• Betriebskosten: wiederkehrende Ausgaben für Wartung, Instandhaltung, Bedienung und Reinigung sowie ggf. Entsorgung von Rückständen,'),
-    absatz(`• CO₂-Kosten: berechnete CO₂e-Emissionen aller Energieträger multipliziert mit dem Kostenansatz${ok(o.co2PreisEurT) ? ` von ${nf(o.co2PreisEurT)} €/t CO₂e` : ''}.`),
+    absatz(`• CO₂-Kosten${o.co2Quelle ? ` ${o.co2Quelle}` : ''}: berechnete CO₂e-Emissionen aller Energieträger multipliziert mit dem Kostenansatz${ok(o.co2PreisEurT) ? ` von ${nf(o.co2PreisEurT)} €/t CO₂e` : ''}.`),
   ];
 }
 
