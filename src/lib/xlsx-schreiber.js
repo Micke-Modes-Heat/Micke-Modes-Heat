@@ -46,6 +46,7 @@ export const XS = Object.freeze({
   beispiel:   10,   // gesperrte Beispielzelle: hellblau, umbrechend
   gut:        11,   // gesperrt, hellgrün: Anforderung heute erfüllt
   luecke:     12,   // gesperrt, hellorange: Lücke, Maßnahme nötig
+  info:       13,   // gesperrt, hellgrau: nur zur Information (wird nicht eingelesen)
 });
 
 const F_DUNKEL = 'FF266426';   // LKEBw dunkel
@@ -57,6 +58,7 @@ const F_LINIE  = 'FFD0D4CE';
 const F_BLAU   = 'FFDCEBF7';   // Beispielwerte
 const F_GUT    = 'FFE2F0D9';   // erfüllt
 const F_LUECKE = 'FFFCE4D6';   // Lücke
+const F_INFO   = 'FFF0F0F0';   // Infozellen
 
 const KOPF = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
@@ -75,7 +77,7 @@ function _stylesXml() {
   const fills = [
     '<fill><patternFill patternType="none"/></fill>',
     '<fill><patternFill patternType="gray125"/></fill>',
-    solid(F_DUNKEL), solid(F_GELB), solid(F_TINT), solid(F_HELL), solid(F_BLAU), solid(F_GUT), solid(F_LUECKE),
+    solid(F_DUNKEL), solid(F_GELB), solid(F_TINT), solid(F_HELL), solid(F_BLAU), solid(F_GUT), solid(F_LUECKE), solid(F_INFO),
   ];
   const kante = s => `<${s} style="thin"><color rgb="${F_LINIE}"/></${s}>`;
   const borders = [
@@ -107,6 +109,8 @@ function _stylesXml() {
       + '<alignment vertical="top" wrapText="1"/></xf>',
     '<xf numFmtId="0" fontId="0" fillId="8" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1">'
       + '<alignment vertical="top" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="3" fillId="9" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
+      + '<alignment vertical="top"/></xf>',
   ];
   return KOPF + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
     + `<fonts count="${fonts.length}">${fonts.join('')}</fonts>`
@@ -199,7 +203,7 @@ function _sheetXml(blatt, sst) {
       + (p.titel ? ` promptTitle="${xmlEsc(p.titel)}"` : '')
       + (p.hinweis ? ` prompt="${xmlEsc(p.hinweis)}"` : '')
       + ' errorTitle="Auswahlliste"'
-      + ' error="Bitte einen Wert aus der Liste wählen. Wenn nichts passt, ist &quot;unbekannt&quot; die richtige Antwort."'
+      + ` error="${xmlEsc(p.fehler || 'Bitte einen Wert aus der Liste wählen. Wenn nichts passt, ist "unbekannt" die richtige Antwort.')}"`
       + `><formula1>${xmlEsc(p.liste)}</formula1></dataValidation>`).join('') + '</dataValidations>'
     : '';
 
@@ -243,7 +247,7 @@ export function blattName(name) {
  *   schutz?: boolean,
  *   versteckt?: boolean,
  *   verbunden?: string[],
- *   pruefungen?: Array<{bereich:string, liste:string, titel?:string, hinweis?:string}>,
+ *   pruefungen?: Array<{bereich:string, liste:string, titel?:string, hinweis?:string, fehler?:string}>,
  * }>} mappe.blaetter
  * @param {Record<string,string>} [mappe.namen]  definierte Namen → Bezug, z. B. {L_JaNein:'Listen!$A$2:$A$4'}
  * @param {string} [mappe.titel]

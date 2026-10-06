@@ -1,9 +1,11 @@
 // ── lib/xlsx-abgleich.js — Zellwerte des Excel-Vollexports lesen und abgleichen ──
-// Reine Funktionen ohne DOM/App-Zustand (Export/Import selbst: 05a-export.js).
+// Reine Funktionen ohne DOM/App-Zustand (Export/Import selbst: 35-excel.js).
 //
 // Grundregel des Imports: Ein Wert wird nur übernommen, wenn die Zelle vom
 // Stand vor dem Import abweicht. Ein unverändert wieder eingelesener Export
 // ändert damit nichts — auch keine Merker wie autoSized oder waermeManual.
+
+import { XS, spalteZuBuchstabe } from './xlsx-schreiber.js';
 
 /** Leere Zelle (fehlt, null, nur Leerzeichen). */
 export function istLeer(v) {
@@ -82,6 +84,19 @@ export function zahlGeaendert(alt, neu, stellen = 6) {
   if (a == null || b == null) return true;
   const f = Math.pow(10, stellen);
   return Math.round(a * f) !== Math.round(b * f);
+}
+
+/**
+ * Wurde eine Zelle seit dem Export verändert? Vergleich mit dem Exportstand
+ * (verstecktes Zwillingsblatt). Zahlen tolerant gegen Gleitkomma-Rauschen,
+ * das Excel beim Speichern erzeugen kann; Zahl und Zahlentext gelten als gleich.
+ */
+export function zelleGeaendert(jetzt, beimExport) {
+  if (istLeer(jetzt) && istLeer(beimExport)) return false;
+  if (istLeer(jetzt) !== istLeer(beimExport)) return true;
+  const a = xNum(jetzt), b = xNum(beimExport);
+  if (a != null && b != null) return Math.abs(a - b) > 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+  return xStr(jetzt) !== xStr(beimExport);
 }
 
 /** Text verschieden? Leer und null gelten als gleich. */
@@ -232,3 +247,57 @@ export function geltungLesen(zelle, varianten) {
   const v = varianten.find(x => x.name.toLowerCase() === lc || String(x.key).toLowerCase() === lc);
   return v ? { aendern: true, wert: v.key } : { aendern: false, fehler: `Variante „${s}" unbekannt` };
 }
+
+// ── Blattbausteine für xlsxDateien() (lib/xlsx-schreiber.js) ─────────────────
+
+/**
+ * Auswahllisten auf einem versteckten Blatt, je Liste ein definierter Name.
+ * @param {Record<string, string[]>} listen  Name → Werte
+ */
+export function listenBlatt(listen) {
+  const eintraege = Object.entries(listen).filter(([, w]) => w.length);
+  const hoehe = Math.max(0, ...eintraege.map(([, w]) => w.length));
+  const zeilen = [eintraege.map(([n]) => n)];
+  for (let i = 0; i < hoehe; i++) zeilen.push(eintraege.map(([, w]) => w[i] ?? null));
+  const namen = {};
+  eintraege.forEach(([n, w], c) => {
+    const sp = spalteZuBuchstabe(c);
+    namen[n] = `Listen!$${sp}$2:$${sp}$${w.length + 1}`;
+  });
+  return { blatt: { name: 'Listen', zeilen, versteckt: true }, namen };
+}
+
+/**
+ * Tabellenblatt aus Spaltenbeschreibungen.
+ * Spalte: { kopf, wert:(obj)=>any, edit?: true|'neu', zahl?, liste?, breite? }
+ *   edit true  = gelbe Eingabezelle (wird eingelesen)
+ *   edit 'neu' = nur in den Leerzeilen am Ende (Schlüsselspalten neuer Zeilen)
+ *   sonst      = graue Infozelle
+ */
+export function tabellenBlatt(name, spalten, objekte, { leerzeilen = 0, fixSpalten = 0, namen = {} } = {}) {
+  const stil = (s, neu) => {
+    const edit = s.edit === true || (neu && s.edit === 'neu');
+    return !edit ? XS.info : s.zahl ? XS.eingabeZahl : XS.eingabe;
+  };
+  const wert = v => v === '' || v == null ? null : typeof v === 'boolean' ? janein(v) : v;
+  const zeilen = [spalten.map(s => ({ w: s.kopf, s: XS.kopf }))];
+  for (const o of objekte) zeilen.push(spalten.map(s => ({ w: wert(s.wert(o)), s: stil(s, false) })));
+  for (let i = 0; i < leerzeilen; i++) zeilen.push(spalten.map(s => ({ w: null, s: stil(s, true) })));
+
+  const ende = zeilen.length;
+  const pruefungen = [];
+  spalten.forEach((s, c) => {
+    if (!s.liste || !s.edit || !namen[s.liste]) return;
+    const von = s.edit === 'neu' ? objekte.length + 2 : 2;
+    if (von > ende) return;
+    const sp = spalteZuBuchstabe(c);
+    pruefungen.push({ bereich: `${sp}${von}:${sp}${ende}`, liste: s.liste, titel: s.kopf,
+      fehler: 'Dieser Wert steht nicht in der Auswahlliste — der Import wird ihn melden und nicht übernehmen.' });
+  });
+  return {
+    name, zeilen, pruefungen, fixZeilen: 1, fixSpalten,
+    zeilenHoehe: { 0: 32 },
+    spalten: spalten.map(s => ({ breite: s.breite ?? Math.min(36, Math.max(9, Math.round(s.kopf.length * 0.95) + 2)) })),
+  };
+}
+

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  xNum, xInt, xBool, kopfIndex, zahlGeaendert, textGeaendert, xAuswahl,
+  xNum, xInt, xBool, kopfIndex, zahlGeaendert, textGeaendert, xAuswahl, zelleGeaendert,
   propZuZelle, zelleZuProp, propGeaendert,
   zielParameterText, zielParameterLesen, zielParameterGleich,
   geltungText, geltungLesen, GILT_ALLE,
@@ -60,6 +60,19 @@ describe('Änderungserkennung (Rundreise ändert nichts)', () => {
     expect(xAuswahl('ost-west', w)).toBe('ostwest');
     expect(xAuswahl('', w)).toBeNull();
     expect(xAuswahl('Nord', w)).toBeUndefined();
+  });
+});
+
+describe('Exportstand (Dreiwege-Abgleich)', () => {
+  it('nur in Excel geänderte Zellen zählen', () => {
+    expect(zelleGeaendert(12.35, 12.350000000000001)).toBe(false);   // Excel-Rauschen
+    expect(zelleGeaendert('12,35', 12.35)).toBe(false);
+    expect(zelleGeaendert('', null)).toBe(false);
+    expect(zelleGeaendert('ja', 'ja ')).toBe(false);
+    expect(zelleGeaendert(3, 1)).toBe(true);
+    expect(zelleGeaendert('', 2040)).toBe(true);
+    expect(zelleGeaendert('Süd', 'Ost-West')).toBe(true);
+    expect(zelleGeaendert('neu', undefined)).toBe(true);        // Spalte gab es beim Export nicht
   });
 });
 
@@ -136,5 +149,55 @@ describe('Gilt für', () => {
     expect(geltungLesen('nur Ring', vars)).toEqual({ aendern: true, wert: 'v1' });
     expect(geltungLesen('Hauptplan', vars)).toEqual({ aendern: true, wert: 'base' });
     expect(geltungLesen('Gibtsnicht', vars).fehler).toBeTruthy();
+  });
+});
+
+describe('Blattbausteine (Schreiben → Lesen)', async () => {
+  const { listenBlatt, tabellenBlatt } = await import('../src/lib/xlsx-abgleich.js');
+  const { xlsxDateien, XS } = await import('../src/lib/xlsx-schreiber.js');
+  const { xlsxLesen } = await import('../src/lib/xlsx-leser.js');
+
+  const { blatt: listen, namen } = listenBlatt({ L_JaNein: ['ja', 'nein'], L_Leer: [], L_Typ: ['NAYY', 'NYY', 'NA2XS2Y'] });
+  const spalten = [
+    { kopf: 'ID', wert: o => o.id },
+    { kopf: 'Name', wert: o => o.name, edit: true },
+    { kopf: 'Von', wert: o => o.von, edit: 'neu', liste: 'L_Typ' },
+    { kopf: 'Aktiv', wert: o => o.aktiv, edit: true, liste: 'L_JaNein' },
+    { kopf: 'Wert', wert: o => o.wert, edit: true, zahl: true },
+  ];
+  const objekte = [{ id: 'a1', name: 'Trafo 1', von: 'x', aktiv: true, wert: 12.5 }, { id: 'a2', name: '', von: 'y', aktiv: false, wert: null }];
+  const blatt = tabellenBlatt('Test', spalten, objekte, { leerzeilen: 3, namen });
+
+  it('Listen: leere Listen entfallen, Namen zeigen auf die Spalten', () => {
+    expect(namen).toEqual({ L_JaNein: 'Listen!$A$2:$A$3', L_Typ: 'Listen!$B$2:$B$4' });
+    expect(listen.versteckt).toBe(true);
+  });
+
+  it('Stile: gelb = Eingabe, grau = Info, Schlüsselspalte nur in Leerzeilen gelb', () => {
+    expect(blatt.zeilen[0][0].s).toBe(XS.kopf);
+    expect(blatt.zeilen[1][0].s).toBe(XS.info);
+    expect(blatt.zeilen[1][1].s).toBe(XS.eingabe);
+    expect(blatt.zeilen[1][2].s).toBe(XS.info);          // Von in bestehender Zeile
+    expect(blatt.zeilen[3][2].s).toBe(XS.eingabe);       // Von in Leerzeile
+    expect(blatt.zeilen[1][4].s).toBe(XS.eingabeZahl);
+    expect(blatt.zeilen[1][3].w).toBe('ja');             // Wahrheitswert als ja/nein
+  });
+
+  it('Dropdowns: ganze Spalte bzw. nur Leerzeilen', () => {
+    expect(blatt.pruefungen.map(p => [p.bereich, p.liste])).toEqual([['C4:C6', 'L_Typ'], ['D2:D6', 'L_JaNein']]);
+  });
+
+  it('Rundreise über xlsxDateien und xlsxLesen', async () => {
+    const dateien = xlsxDateien({ blaetter: [blatt, listen], namen });
+    expect(dateien['xl/workbook.xml']).toContain('<definedName name="L_Typ">Listen!$B$2:$B$4</definedName>');
+    expect(dateien['xl/worksheets/sheet1.xml']).toContain('<dataValidation type="list"');
+    expect(dateien['xl/worksheets/sheet1.xml']).toContain('<sheetProtection');
+    const { blaetter } = await xlsxLesen(p => dateien[p] ?? null);
+    const rows = blaetter.Test;
+    expect(rows[0]).toEqual(['ID', 'Name', 'Von', 'Aktiv', 'Wert']);
+    expect(rows[1]).toEqual(['a1', 'Trafo 1', 'x', 'ja', 12.5]);
+    expect(rows[2].slice(0, 4)).toEqual(['a2', null, 'y', 'nein']);
+    const k = kopfIndex(rows[0]);
+    expect(zahlGeaendert(12.5, k.zelle(rows[1], 'Wert'), 2)).toBe(false);
   });
 });

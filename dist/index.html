@@ -15309,7 +15309,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-06';
   if (d.indexOf('__') === 0) d = '';
-  var c = '030fc1f';
+  var c = '4e21072';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -189270,345 +189270,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     toggleVormerkenAsset: toggleVormerkenAsset
   });
 
-  // @ts-check
-  // ── Kabelbeschriftungen von Bestandsplänen lesen ────────────────────────────
-  // Auf Papier-Einlinienplänen steht das Kabel als ein einziger String an der
-  // Leitung: "NYY-J 5x70", "NAYY-J 4x240", "3x NA2XS(F)2Y 1x185 12/20 kV". Daraus
-  // werden Typ, Querschnitt und Anzahl paralleler Systeme gelesen — die Felder,
-  // die eine stromEdge zur Auslegung braucht.
-  //
-  // DOM-frei gehalten, damit der Parser unabhängig vom Digitalisierer
-  // (15-plan-digitalisierer.js) getestet werden kann.
-
-
-  // Typkürzel = alle Katalogschlüssel plus ihre Schreibvarianten (NA2XS(F)2Y, NYBY, …).
-  // Längste zuerst, damit "NA2XS(F)2Y" nicht als "NA2XS…" angebissen wird. Statt
-  // Wortgrenzen begrenzen Lookarounds auf Nicht-Alphanumerik — eine Wortgrenze
-  // versagt an der Klammer in "(F)"; so trifft "NYY" weder in "NAYY" noch neben "-J".
-  const _TYP_NAMEN = [...Object.keys(KABEL_TYPEN), ...Object.keys(KABEL_ALIASE)]
-    .sort((a, b) => b.length - a.length)
-    .map(t => t.replace(/[()]/g, '\\$&'));
-  const TYP_RX = new RegExp(`(?<![A-Z0-9])(${_TYP_NAMEN.join('|')})(?![A-Z0-9])`, 'i');
-
-  // Spannungsangabe "12/20 kV", "0,6/1kV", "10 kV" — maßgeblich ist der größere Wert.
-  const KV_RX = /(?:(\d+(?:\.\d+)?)\s*\/\s*)?(\d+(?:\.\d+)?)\s*kV\b/i;
-
-  // Zahlengruppe: "5x70" (Adern × mm²) oder "3x1x185" (Systeme × Adern × mm²)
-  const GRUPPE_RX = /(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*[x×]\s*(\d+(?:\.\d+)?))?/i;
-
-  // Vorangestellter Systemzähler: "3x NA2XS2Y …" — nur wenn danach ein Buchstabe folgt,
-  // sonst wäre "5x70" fälschlich eine Systemangabe.
-  const LEAD_RX = /^\s*(\d+)\s*[x×]\s+(?=[A-Za-z])/;
-
-  /**
-   * @typedef {object} KabelLabel
-   * @property {string|null} cableType     Katalogschlüssel, z. B. 'NYY' (Schreibvarianten aufgelöst)
-   * @property {string|null} typText       Typkürzel wie auf dem Plan, z. B. 'NA2XS(F)2Y'
-   * @property {number} crossSection       Querschnitt je Ader in mm² (0 = unbekannt)
-   * @property {number} nParallel          Anzahl paralleler Systeme (≥ 1)
-   * @property {number|null} adern         Aderzahl laut Beschriftung
-   * @property {boolean} msLevel           Mittelspannung (MS-Kabeltyp oder Spannungsangabe ≥ 3 kV)
-   * @property {boolean} bekannt           Typ UND Querschnitt in KABEL_TYPEN vorhanden
-   */
-
-  /**
-   * Liest eine Kabelbeschriftung. Gibt null zurück, wenn weder Typ noch
-   * Querschnittsangabe erkennbar sind.
-   * @param {unknown} text
-   * @returns {KabelLabel|null}
-   */
-  function parseKabelLabel(text) {
-    const s = String(text ?? '').replace(/,/g, '.').trim();
-    if (!s) return null;
-
-    const tm = s.match(TYP_RX);
-    const typText = tm ? tm[1].toUpperCase() : null;
-    const aliase = /** @type {Record<string, string>} */ (KABEL_ALIASE);
-    const cableType = typText ? (aliase[typText] || typText) : null;
-
-    const kv = s.match(KV_RX);
-    const kvMax = kv ? parseFloat(kv[2]) : 0;
-
-    const lead = s.match(LEAD_RX);
-
-    // Typbezeichnung (und Spannungsangabe) entfernen, bevor nach Zahlen gesucht
-    // wird — sonst würden die Ziffern in "NA2XS2Y" als Querschnitt missverstanden.
-    let rest = tm ? s.replace(tm[0], ' ') : s;
-    if (kv) rest = rest.replace(kv[0], ' ');
-    const gm = rest.match(GRUPPE_RX);
-
-    if (!cableType && !gm) return null;
-
-    let nParallel = lead ? parseInt(lead[1], 10) : 1;
-    let adern = null;
-    let crossSection = 0;
-
-    if (gm) {
-      if (gm[3] != null) {
-        nParallel    = parseInt(gm[1], 10) || nParallel;
-        adern        = parseFloat(gm[2]);
-        crossSection = parseFloat(gm[3]);
-      } else {
-        adern        = parseFloat(gm[1]);
-        crossSection = parseFloat(gm[2]);
-      }
-    }
-
-    // KABEL_TYPEN ist ein Literal-Objekt; der Typschlüssel kommt aus dem Text.
-    const katalog = /** @type {Record<string, {sections: Array<{mm2: number}>, msKabel?: boolean}>} */ (KABEL_TYPEN);
-    const typCfg = cableType ? katalog[cableType] : null;
-    // Papier-Massekabel (NKBA, NAKBA) gibt es in NS und MS — dort entscheidet die Spannungsangabe.
-    const msLevel = !!typCfg?.msKabel || kvMax >= 3;
-
-    return {
-      cableType,
-      typText,
-      crossSection,
-      nParallel: Math.max(1, nParallel || 1),
-      adern,
-      msLevel,
-      bekannt: !!(typCfg && typCfg.sections.some(x => x.mm2 === crossSection)),
-    };
-  }
-
-  // ── lib/xlsx-abgleich.js — Zellwerte des Excel-Vollexports lesen und abgleichen ──
-  // Reine Funktionen ohne DOM/App-Zustand (Export/Import selbst: 05a-export.js).
-  //
-  // Grundregel des Imports: Ein Wert wird nur übernommen, wenn die Zelle vom
-  // Stand vor dem Import abweicht. Ein unverändert wieder eingelesener Export
-  // ändert damit nichts — auch keine Merker wie autoSized oder waermeManual.
-
-  /** Leere Zelle (fehlt, null, nur Leerzeichen). */
-  function istLeer(v) {
-    return v == null || (typeof v === 'string' && v.trim() === '');
-  }
-
-  /** Zahl aus einer Zelle; deutsche Dezimalkommas werden akzeptiert. Leer/ungültig → null. */
-  function xNum(v) {
-    if (istLeer(v)) return null;
-    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
-    if (typeof v === 'boolean') return null;
-    let s = String(v).trim().replace(/\s/g, '');
-    // „1.234,5" → 1234.5 ; „1,5" → 1.5
-    if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
-    const n = Number(s);
-    return Number.isFinite(n) ? n : null;
-  }
-
-  /** Ganzzahl (Jahre, Anzahlen). Leer/ungültig → null. */
-  function xInt(v) {
-    const n = xNum(v);
-    return n == null ? null : Math.round(n);
-  }
-
-  /** Text, getrimmt. Leer → ''. */
-  function xStr(v) {
-    return istLeer(v) ? '' : String(v).trim();
-  }
-
-  const _JA   = new Set(['ja', 'j', 'true', 'wahr', '1', 'x', 'yes']);
-  const _NEIN = new Set(['nein', 'n', 'false', 'falsch', '0', 'no']);
-  /** Ja/Nein-Zelle → true/false; leer oder unlesbar → null. */
-  function xBool(v) {
-    if (typeof v === 'boolean') return v;
-    if (typeof v === 'number') return v !== 0;
-    const s = xStr(v).toLowerCase();
-    if (_JA.has(s)) return true;
-    if (_NEIN.has(s)) return false;
-    return null;
-  }
-
-  /** Export-Darstellung eines Wahrheitswerts. */
-  function janein(v) {
-    return v === true ? 'ja' : v === false ? 'nein' : '';
-  }
-
-  /**
-   * Spaltenindex über die Kopfzeile. Mehrere Namen = Aliase (ältere Exporte).
-   * @param {any[]} header
-   */
-  function kopfIndex(header) {
-    const m = new Map();
-    (header || []).forEach((h, i) => {
-      const k = xStr(h);
-      if (k && !m.has(k)) m.set(k, i);
-    });
-    return {
-      /** @param {...string} namen */
-      hat: (...namen) => namen.some(n => m.has(n)),
-      /** @param {any[]} row @param {...string} namen */
-      zelle(row, ...namen) {
-        for (const n of namen) if (m.has(n)) return row?.[m.get(n)];
-        return undefined;
-      },
-    };
-  }
-
-  /**
-   * Weicht eine Zahl von der Zelle ab? Verglichen wird auf die Nachkommastellen,
-   * mit denen der Export schreibt — sonst gälte jeder gerundete Wert als „geändert".
-   * Leer und null/'' gelten als gleich.
-   */
-  function zahlGeaendert(alt, neu, stellen = 6) {
-    const a = xNum(alt), b = xNum(neu);
-    if (a == null && b == null) return false;
-    if (a == null || b == null) return true;
-    const f = Math.pow(10, stellen);
-    return Math.round(a * f) !== Math.round(b * f);
-  }
-
-  /** Text verschieden? Leer und null gelten als gleich. */
-  function textGeaendert(alt, neu) {
-    return xStr(alt) !== xStr(neu);
-  }
-
-  /**
-   * Auswahlwert lesen: Schlüssel oder Anzeigename, Groß-/Kleinschreibung egal.
-   * @param {Record<string,string>} werte  Schlüssel → Anzeigename
-   * @returns {string|null|undefined} Schlüssel; null = leer; undefined = unbekannt
-   */
-  function xAuswahl(v, werte) {
-    const s = xStr(v);
-    if (!s) return null;
-    const lc = s.toLowerCase();
-    for (const [k, l] of Object.entries(werte)) {
-      if (k.toLowerCase() === lc || String(l).toLowerCase() === lc) return k;
-    }
-    return undefined;
-  }
-
-  // ── Typ-Props der Assets ─────────────────────────────────────────────────────
-
-  /**
-   * Zellwert für eine Prop-Definition.
-   * @param {{art?:string, werte?:Record<string,string>}} def
-   */
-  function propZuZelle(def, v) {
-    if (v == null || v === '') return '';
-    if (def.art === 'janein') return janein(!!v);
-    if (def.art === 'auswahl' && def.werte) return def.werte[v] ?? v;
-    return v;
-  }
-
-  /**
-   * Zelle → Prop-Wert.
-   * @returns {{ok:true, wert:any} | {ok:false, fehler:string}}
-   *   wert null = Feld geleert (Inspektor speichert ebenfalls null)
-   */
-  function zelleZuProp(def, zelle) {
-    if (istLeer(zelle)) return { ok: true, wert: null };
-    switch (def.art) {
-      case 'janein': {
-        const b = xBool(zelle);
-        return b == null ? { ok: false, fehler: `„${zelle}" ist kein ja/nein` } : { ok: true, wert: b };
-      }
-      case 'auswahl': {
-        const k = xAuswahl(zelle, def.werte || {});
-        return k === undefined
-          ? { ok: false, fehler: `„${zelle}" ist nicht erlaubt (${Object.values(def.werte || {}).join(', ')})` }
-          : { ok: true, wert: k };
-      }
-      case 'text':
-        return { ok: true, wert: xStr(zelle) };
-      default: {
-        const n = xNum(zelle);
-        return n == null ? { ok: false, fehler: `„${zelle}" ist keine Zahl` } : { ok: true, wert: n };
-      }
-    }
-  }
-
-  /** Prop-Wert verschieden? null/undefined/'' gelten als gleich. */
-  function propGeaendert(def, alt, neu) {
-    const leerA = alt == null || alt === '', leerB = neu == null || neu === '';
-    if (leerA && leerB) return false;
-    if (leerA !== leerB) return true;
-    if (def.art === 'janein') return !!alt !== !!neu;
-    if (def.art === 'text' || def.art === 'auswahl') return String(alt) !== String(neu);
-    return zahlGeaendert(alt, neu);
-  }
-
-  // ── Ziel-Parameter einer Maßnahme ────────────────────────────────────────────
-
-  /**
-   * newProps → „Leistung (kVA)=1000; UK (%)=6". Bekannte Schlüssel erscheinen mit
-   * ihrem Anzeigenamen, unbekannte als Schlüssel.
-   * @param {Record<string,any>|null|undefined} newProps
-   * @param {{key:string,label:string}[]} defs
-   */
-  function zielParameterText(newProps, defs = []) {
-    if (!newProps) return '';
-    const label = new Map(defs.map(d => [d.key, d.label]));
-    return Object.entries(newProps)
-      .filter(([, v]) => v != null && v !== '')
-      .map(([k, v]) => `${label.get(k) || k}=${v}`)
-      .join('; ');
-  }
-
-  /**
-   * „Label=Wert; key=Wert" → newProps. Erlaubt sind Anzeigenamen und Schlüssel aus
-   * `defs` sowie Schlüssel, die die Maßnahme schon hat.
-   * @returns {{props:Record<string,any>, unbekannt:string[]}}
-   */
-  function zielParameterLesen(text, defs = [], vorhandeneKeys = []) {
-    const props = {}, unbekannt = [];
-    const s = xStr(text);
-    if (!s) return { props, unbekannt };
-    const nachLabel = new Map(defs.map(d => [d.label.toLowerCase(), d.key]));
-    const keys = new Set([...defs.map(d => d.key), ...vorhandeneKeys]);
-    for (const teil of s.split(';')) {
-      const i = teil.indexOf('=');
-      if (i < 0) { if (teil.trim()) unbekannt.push(teil.trim()); continue; }
-      const name = teil.slice(0, i).trim(), roh = teil.slice(i + 1).trim();
-      const key = nachLabel.get(name.toLowerCase()) ?? (keys.has(name) ? name : null);
-      if (!key) { unbekannt.push(name); continue; }
-      const n = xNum(roh);
-      props[key] = n != null ? n : roh;
-    }
-    return { props, unbekannt };
-  }
-
-  /** Zwei newProps-Objekte inhaltlich gleich? */
-  function zielParameterGleich(a, b) {
-    const ea = Object.entries(a || {}).filter(([, v]) => v != null && v !== '');
-    const eb = Object.entries(b || {}).filter(([, v]) => v != null && v !== '');
-    if (ea.length !== eb.length) return false;
-    const mb = new Map(eb);
-    return ea.every(([k, v]) => mb.has(k) && String(mb.get(k)) === String(v));
-  }
-
-  // ── „Gilt für" (Geltungsbereich einer Maßnahme) ─────────────────────────────
-
-  const GILT_ALLE = 'alle Varianten';
-
-  /**
-   * Export-Text. m.variante: fehlt = Standardregel (leer), null = alle Varianten,
-   * Schlüssel = nur diese Variante.
-   * @param {(key:string)=>string} nameVon
-   */
-  function geltungText(m, nameVon) {
-    if (!m || !('variante' in m) || m.variante === undefined) return '';
-    if (m.variante === null) return GILT_ALLE;
-    return nameVon(m.variante);
-  }
-
-  /**
-   * Zelle → Geltung.
-   * @param {{key:string,name:string}[]} varianten  inkl. Hauptplan (key 'base')
-   * @returns {{aendern:false} | {aendern:true, wert:string|null} | {aendern:false, fehler:string}}
-   *   leer = nicht ändern (die Standardregel bleibt bzw. der gespeicherte Wert)
-   */
-  function geltungLesen(zelle, varianten) {
-    const s = xStr(zelle);
-    if (!s) return { aendern: false };
-    const lc = s.toLowerCase().replace(/^nur\s+/, '');
-    if (lc === 'alle' || lc === GILT_ALLE.toLowerCase()) return { aendern: true, wert: null };
-    const v = varianten.find(x => x.name.toLowerCase() === lc || String(x.key).toLowerCase() === lc);
-    return v ? { aendern: true, wert: v.key } : { aendern: false, fehler: `Variante „${s}" unbekannt` };
-  }
-
   // ── 05a-export.js — CSV-Export, PDF-Report, Druckansicht ──
   // ── Export: Dispatch CSV ──────────────────────────────────────────────────
 
+  // Anzeigenamen je Asset-Typ — zugleich die Reiternamen des Excel-Vollexports (35-excel.js),
+  // darum stabil halten: ein umbenannter Reiter wird beim Import nicht mehr erkannt.
   const ASSET_LABELS = {
     NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
     NSHV: 'NSHV', UV: 'Unterverteilung', KVS: 'KVS', Verbraucher: 'Verbraucher',
@@ -190111,1115 +189777,6 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     setTimeout(() => printWin.print(), 800);
   }
 
-  // ── Hilfsfunktion: Verbindungen-Sheet + verstecktes AssetListe-Sheet ─────────
-  function _buildVerbindungenSheets(XLSXLib, allAssets, allEdges, assetMap) {
-    const assetNames  = allAssets.map(a => a.name || String(a.id));
-    const KABEL_TYPES = Object.keys(KABEL_TYPEN);
-    const MAX_ROWS    = 200;
-
-    const verbRows = [['Von', 'Nach', 'Kabeltyp', 'Querschnitt mm²', 'Länge m (auto)']];
-    for (const e of allEdges) {
-      const uName = assetMap.get(e.u)?.name || String(e.u);
-      const vName = assetMap.get(e.v)?.name || String(e.v);
-      verbRows.push([uName, vName, e.cableType || 'NAYY', e.crossSection || '', '']);
-    }
-    while (verbRows.length <= MAX_ROWS) verbRows.push(['', '', 'NAYY', '', '']);
-
-    const wsVerb = XLSXLib.utils.aoa_to_sheet(verbRows);
-    wsVerb['E1'] = { v: 'Länge m (auto)', t: 's',
-      c: [{ a: 'Tool', t: 'Leer lassen → wird beim Import aus Trassen-Routing berechnet.' }] };
-    wsVerb['!cols'] = [{ wch: 22 }, { wch: 22 }, { wch: 12 }, { wch: 18 }, { wch: 22 }];
-    wsVerb['!dataValidations'] = [
-      { type: 'list', sqref: `A2:A${MAX_ROWS + 1}`,
-        formula1: `AssetListe!$A$1:$A$${assetNames.length || 1}`, showDropDown: false },
-      { type: 'list', sqref: `B2:B${MAX_ROWS + 1}`,
-        formula1: `AssetListe!$A$1:$A$${assetNames.length || 1}`, showDropDown: false },
-      { type: 'list', sqref: `C2:C${MAX_ROWS + 1}`,
-        formula1: `”${KABEL_TYPES.join(',')}”`, showDropDown: false },
-    ];
-
-    const wsAssetList = XLSXLib.utils.aoa_to_sheet(assetNames.length ? assetNames.map(n => [n]) : [['']]);
-    wsAssetList['!cols'] = [{ wch: 25 }];
-
-    return { wsVerb, wsAssetList };
-  }
-
-  // ── Varianten-Mitgliedschaft pro Elektroasset/-kabel ermitteln ──────────────
-  // Liefert eine Map id → ['Basisdaten', 'Variante 1', ...] — für jede Variante
-  // (inkl. "Basisdaten") wird geprüft, ob das Asset/Kabel in deren Stromnetz-"Ast"
-  // vorkommt. Die aktuell aktive Variante liegt live in ASSETS/stromEdges vor,
-  // alle anderen in ihrem gespeicherten stromnetz-Snapshot (bzw. baseStromNetzSnapshot
-  // für "Basisdaten", wenn diese gerade nicht aktiv ist).
-  function _buildVariantMembershipMap() {
-    const BASE_NAME = 'Hauptplan';
-    const membership = new Map(); // id -> Set<variantName>
-    const add = (id, name) => {
-      if (id == null) return;
-      if (!membership.has(id)) membership.set(id, new Set());
-      membership.get(id).add(name);
-    };
-    const addLiveState = (name) => {
-      ASSETS.items.filter(a => a.domain === 'strom' || a.domain === 'hybrid').forEach(a => add(a.id, name));
-      (window.stromEdges || []).forEach(e => add(e.id, name));
-    };
-    const addSnapshot = (state, name) => {
-      if (!state) return;
-      (state.items || []).forEach(it => add(it.id, name));
-      (state.edges || []).forEach(e => add(e.id, name));
-    };
-
-    if (activeVariantId === null) addLiveState(BASE_NAME);
-    else addSnapshot(baseStromNetzSnapshot, BASE_NAME);
-
-    (varianten || []).forEach(v => {
-      if (v.id === activeVariantId) addLiveState(v.name);
-      else addSnapshot(v.stromnetz, v.name);
-    });
-
-    return membership;
-  }
-
-  function _variantMembershipLabel(membership, id) {
-    const set = membership.get(id);
-    if (!set || set.size === 0) return '';
-    return [...set].join(', ');
-  }
-
-  // ── Export: Elektro XLSX (Komponenten + Kabel) ──────────────────────────────
-  async function exportElektroXLSX() {
-    // SheetJS dynamisch laden falls noch nicht vorhanden
-    if (typeof window.XLSX === 'undefined') {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
-        s.onload = resolve;
-        s.onerror = () => reject(new Error('SheetJS konnte nicht geladen werden.'));
-        document.head.appendChild(s);
-      }).catch(e => { alert(e.message); throw e; });
-    }
-    const XLSXLib = window.XLSX;
-    const yr = globalYear ?? new Date().getFullYear();
-    const allAssets = ASSETS.items || [];
-    const allEdges = window.stromEdges || [];
-
-    const ASSET_LABELS = {
-      NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
-      NSHV: 'NSHV', UV: 'Unterverteilung', Verbraucher: 'Verbraucher',
-      WP: 'Wärmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher', H2: 'Wasserstoffspeicher',
-      Lade: 'Ladeinfrastruktur', Nsa: 'Nsa', KWK: 'KWK-Anlage', Wind: 'Windkraftanlage',
-    };
-
-    // Varianten-Mitgliedschaft je Asset/Kabel ermitteln (für zusätzliche Spalte)
-    const variantMembership = _buildVariantMembershipMap();
-
-    // Sheet 1: Komponenten
-    const kompRows = [['Name', 'Typ', 'Baujahr', 'Abrissjahr', 'Status ' + yr, 'Leistung kW/kVA', 'Maßnahmen (Anzahl)', 'Investition (€)', 'Varianten']];
-    for (const a of allAssets) {
-      const p = a.props || {};
-      const status = getAssetStatus(a, yr);
-      const statusTxt = status === 'active' ? 'Aktiv' : status === 'planned' ? 'Geplant' : 'Abgerissen';
-      let leistung = '';
-      if (a.type === 'Trafo') leistung = (p.leistungKVA || 630) + ' kVA';
-      else if (a.type === 'Verbraucher' || a.type === 'WP' || a.type === 'Nsa' || a.type === 'KWK' || a.type === 'Wind') leistung = (p.leistungKW || p.leistungElKW || 0) + ' kW';
-      else if (a.type === 'PV') leistung = (p.leistungKWp || 0) + ' kWp';
-      else if (a.type === 'Lade') leistung = ((p.anzahlPunkte || 4) * (p.leistungProPunktKW || 22)) + ' kW';
-      else if (a.type === 'NSHV' || a.type === 'UV') leistung = (p.nennstromA || 400) + ' A';
-      const totalKosten = (a.massnahmen || []).reduce((s, m) => s + (parseFloat(m.kosten) || 0), 0);
-      kompRows.push([a.name || a.id, ASSET_LABELS[a.type] || a.type, a.baujahr || '', a.abrissjahr || '', statusTxt, leistung, (a.massnahmen || []).length, totalKosten || '', _variantMembershipLabel(variantMembership, a.id)]);
-    }
-
-    // Sheet 2: Kabel
-    const kabelRows = [['Von', 'Nach', 'Typ', 'Querschnitt mm²', 'Länge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW', 'Varianten']];
-    const assetMap = new Map(allAssets.map(a => [a.id, a]));
-    for (const e of allEdges) {
-      const uName = assetMap.get(e.u)?.name || e.u;
-      const vName = assetMap.get(e.v)?.name || e.v;
-      kabelRows.push([
-        uName, vName, e.cableType || 'NAYY',
-        e.crossSection || '', Math.round(e.lengthM || 0),
-        e.nParallel || 1, e.fuseA || '',
-        e.peakCurrentA != null ? +e.peakCurrentA.toFixed(1) : '',
-        e.auslastungPct != null ? +e.auslastungPct.toFixed(1) : '',
-        e.deltaUPct != null ? +e.deltaUPct.toFixed(2) : '',
-        e.peakFlowKw != null ? +e.peakFlowKw.toFixed(1) : '',
-        _variantMembershipLabel(variantMembership, e.id),
-      ]);
-    }
-
-    // Sheet 3: Maßnahmen
-    const massnRows = [['Asset', 'Typ', 'Titel', 'Maßnahmentyp', 'Jahr', 'Status', 'Kosten €', 'Gilt für']];
-    for (const a of allAssets) {
-      for (const m of (a.massnahmen || [])) {
-        massnRows.push([a.name || a.id, ASSET_LABELS[a.type] || a.type, m.titel || '', _MASSN_TYP_WERTE.Asset[m.typ] ?? m.typ ?? '',
-          m.jahr || '', m.status || 'geplant', parseFloat(m.kosten) || 0, geltungText(m, variantenName)]);
-      }
-    }
-
-    const { wsVerb, wsAssetList } = _buildVerbindungenSheets(XLSXLib, allAssets, allEdges, assetMap);
-
-    const wb = XLSXLib.utils.book_new();
-    XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kompRows), 'Komponenten');
-    XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kabelRows), 'Kabel');
-    XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows), 'Maßnahmen');
-    XLSXLib.utils.book_append_sheet(wb, wsVerb, 'Verbindungen');
-    XLSXLib.utils.book_append_sheet(wb, wsAssetList, 'AssetListe');
-    wb.Workbook = wb.Workbook || { Sheets: [] };
-    while (wb.Workbook.Sheets.length < wb.SheetNames.length) wb.Workbook.Sheets.push({});
-    wb.Workbook.Sheets[wb.SheetNames.indexOf('AssetListe')].Hidden = 1;
-
-    const fname = 'Elektroplanung_' + new Date().toISOString().slice(0, 10) + '.xlsx';
-    XLSXLib.writeFile(wb, fname);
-  }
-
-  // ── Excel-Vollexport: Spalten und Wertebereiche ──────────────────────────────
-  // Der Import liest Spalten über die Kopfzeile (nicht über die Position) — ältere
-  // Exporte bleiben lesbar, neue Spalten verschieben nichts. Übernommen wird nur,
-  // was vom Stand vor dem Import abweicht (lib/xlsx-abgleich.js).
-
-  async function _ladeSheetJS() {
-    if (typeof window.XLSX !== 'undefined') return window.XLSX;
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
-      s.onload = resolve;
-      s.onerror = () => reject(new Error('SheetJS konnte nicht geladen werden.'));
-      document.head.appendChild(s);
-    });
-    return window.XLSX;
-  }
-
-  const _SCHICHT_WERTE       = Object.fromEntries(Object.entries(SCHICHT_META).map(([k, m]) => [k, m.label]));
-  const _ZUSTAND_WERTE       = { A: 'A', B: 'B', C: 'C' };
-  const _NOTSTROM_WERTE      = { A: 'A', B: 'B', C: 'C' };
-  const _DACHFORM_WERTE      = { flach: 'Flachdach', sattel: 'Satteldach', walm: 'Walmdach', pult: 'Pultdach' };
-  const _PV_MODUS_WERTE      = { pauschal: 'Pauschal', flaechen: 'Flächen' };
-  const _PV_AUSRICHTUNG      = { sued: 'Süd', ostwest: 'Ost-West' };
-  const _MASSN_STATUS_WERTE  = { geplant: 'geplant', umgesetzt: 'umgesetzt', abgelehnt: 'abgelehnt' };
-  const _MASSN_OBJEKT_WERTE  = { Asset: 'Asset', Kabel: 'Kabel', Gebaeude: 'Gebäude' };
-  // Maßnahmentypen wie in den Formularen von Asset- (13e) und Kabel-Inspektor (05b)
-  const _MASSN_TYP_WERTE = {
-    Asset: { Sanierung: 'Sanierung', Abriss: 'Abriss', Bau: 'Neubau/Bau', Ertuechtigung: 'Ertüchtigung' },
-    Kabel: { Verlegung: 'Neuverlegung', Ertuecht: 'Ertüchtigung', Austausch: 'Austausch', Rueckbau: 'Rückbau' },
-  };
-  // Ziel-Parameter von Kabel-Maßnahmen (Engpass-Ausbauplan, lib/engpass-core.js)
-  const _KABEL_ZIEL_DEFS = [
-    { key: 'cableType',    label: 'Typ' },
-    { key: 'crossSection', label: 'Querschnitt mm²' },
-    { key: 'nParallel',    label: 'Parallelkabel' },
-  ];
-
-  // Typ-Reiter: ASSET_PROPS_SCHEMA (13a) enthält die simulationsrelevanten Props
-  // und speist auch das „Ziel-Parameter"-Formular der Maßnahmen. Was nur der
-  // Inspektor (13e) zusätzlich pflegt, steht deshalb hier und nicht dort.
-  const _XLSX_PROPS_EXTRA = {
-    Trafo:       [{ key: 'netzart', label: 'Netzart' }],
-    NSHV:        [{ key: 'netzart', label: 'Netzart' }],
-    UV:          [{ key: 'netzart', label: 'Netzart' }],
-    Verbraucher: [{ key: 'slpTyp',  label: 'Lastprofil (SLP)' }],
-    TWW:         [{ key: 'kwhProPersonA', label: 'kWh/(Pers.·a)' },
-                  { key: 'copBooster',    label: 'COP Booster' },
-                  { key: 'zielTempC',     label: 'Zieltemperatur (°C)' },
-                  { key: 'vbhTww',        label: 'Vollbenutzungsstunden (h/a)' }],
-    KWK:         [{ key: 'wirkungsgradGes', label: 'Gesamtwirkungsgrad (%)' }],
-    Lade:        [{ key: 'rotation', label: 'Drehung (°)' }],
-    Wind:        [{ key: 'einschaltwindMs',        label: 'Einschaltwind (m/s)' },
-                  { key: 'nennwindMs',             label: 'Nennwind (m/s)' },
-                  { key: 'abschaltwindMs',         label: 'Abschaltwind (m/s)' },
-                  { key: 'mittlereWindMs',         label: 'Ø Windgeschw. Nabenhöhe (m/s)' },
-                  { key: 'weibullK',               label: 'Weibull-Formfaktor k' },
-                  { key: 'abstandMultiplikator',   label: 'Planungsabstand (x Rotordurchmesser)' },
-                  { key: 'windLwa',                label: 'Schallleistungspegel Lwa (dB(A))' },
-                  { key: 'abstandVisible',         label: 'Abstandsradius anzeigen' },
-                  { key: 'laermVisible',           label: 'Lärmringe anzeigen' },
-                  { key: 'eignungsflaecheVisible', label: 'Eignungsfläche anzeigen' }],
-  };
-  const _XLSX_AUSWAHL = {
-    netzart:       { verbrauch: 'Verbrauchsnetz', erzeugung: 'Erzeugungsnetz' },
-    ausrichtung:   { sued: 'Süd', ostwest: 'Ost-West' },
-    eingabeModus:  { personen: 'Personenzahl', energie: 'TWW-Energie' },
-    geraet:        { heizstab: 'Heizstab', booster: 'Booster-WP' },
-    betriebsmodus: { einspeisung: 'Einspeisung', verbraucher: 'Verbraucher' },
-    kraftstoff:    { Diesel: 'Diesel', Gas: 'Gas', HVO: 'HVO' },
-    brennstoff:    Object.fromEntries(['Erdgas', 'Biogas', 'Biomethan', 'HVO', 'Pflanzenöl', 'Wasserstoff', 'Heizöl'].map(b => [b, b])),
-  };
-  const _XLSX_JANEIN = new Set(['trennstelle', 'abstandVisible', 'laermVisible', 'eignungsflaecheVisible']);
-  // Vom Tool berechnet — nur zur Information exportiert (TWW: computeTwwKw beim Öffnen des Inspektors)
-  const _XLSX_BERECHNET = { TWW: new Set(['leistungKW']) };
-
-  /** Spalten des Typ-Reiters: {key, label, art, werte?}. */
-  function _xlsxPropDefs(type) {
-    return [...(ASSET_PROPS_SCHEMA[type] || []), ...(_XLSX_PROPS_EXTRA[type] || [])].map(d => {
-      if (_XLSX_BERECHNET[type]?.has(d.key)) return { ...d, label: d.label + ' (berechnet)', art: 'berechnet' };
-      if (d.key === 'slpTyp') return { ...d, art: 'auswahl', werte: Object.fromEntries(getElSlpProfiles().map(p => [p.id, p.id])) };
-      if (_XLSX_AUSWAHL[d.key]) return { ...d, art: 'auswahl', werte: _XLSX_AUSWAHL[d.key] };
-      return { ...d, art: _XLSX_JANEIN.has(d.key) ? 'janein' : 'zahl' };
-    });
-  }
-
-  function _typReiterName(type) { return (ASSET_LABELS[type] || type).slice(0, 31); }
-
-  function _statusText(item, yr) {
-    const s = getAssetStatus(item, yr);
-    return s === 'active' ? 'Aktiv' : s === 'planned' ? 'Geplant' : 'Abgerissen';
-  }
-
-  function _zahl(v, stellen) {
-    const n = parseFloat(v);
-    return (v == null || v === '' || !isFinite(n)) ? '' : +n.toFixed(stellen);
-  }
-
-  function _variantenListe() {
-    return [{ key: 'base', name: variantenName('base') }, ...(varianten || []).map(v => ({ key: v.id, name: v.name }))];
-  }
-
-  /** Alle Maßnahmen mit Objektbezug: Assets, Kabel, Gebäude (Cluster-Pakete). */
-  function _alleMassnahmen(allAssets, allEdges, allGebaeude, assetMap) {
-    const liste = [];
-    for (const a of allAssets) for (const m of (a.massnahmen || []))
-      liste.push({ m, art: 'Asset', obj: a, objId: a.id, objName: a.name || a.id, objTyp: ASSET_LABELS[a.type] || a.type, zielDefs: ASSET_PROPS_SCHEMA[a.type] || [] });
-    for (const e of allEdges) for (const m of (e.massnahmen || []))
-      liste.push({ m, art: 'Kabel', obj: e, objId: e.id, objName: `${assetMap.get(e.u)?.name || e.u} → ${assetMap.get(e.v)?.name || e.v}`, objTyp: e.cableType || 'NAYY', zielDefs: _KABEL_ZIEL_DEFS });
-    for (const g of allGebaeude) for (const m of (g.massnahmen || []))
-      liste.push({ m, art: 'Gebaeude', obj: g, objId: g.id, objName: g.name || '', objTyp: g.nutzung || '', zielDefs: [] });
-    return liste;
-  }
-
-  // ── Export: Vollständiger XLSX (Gebäude + Assets + Kabel + Maßnahmen + Beziehungen) ──
-  async function exportVollstaendigXLSX() {
-    let XLSXLib;
-    try { XLSXLib = await _ladeSheetJS(); } catch (e) { alert(e.message); throw e; }
-    const yr = globalYear ?? new Date().getFullYear();
-    const allGebaeude = window.gebaeude || [];
-    const allAssets = ASSETS.items || [];
-    const allEdges = window.stromEdges || [];
-
-    const gebMap = new Map(allGebaeude.map(g => [g.id, g]));
-    const assetMap = new Map(allAssets.map(a => [a.id, a]));
-
-    // Sheet: Gebäude
-    const gebRows = [['ID', 'Name', 'Gebäudenummer', 'Nutzung', 'Fläche (m²)', 'Stockwerke',
-      'Baujahr', 'Abrissjahr', 'Schicht', 'Zustand',
-      'Wärmebedarf (MWh/a)', 'Heizlast (kW)', 'Spez. Wärme (kWh/m²a)', 'Spez. Heizlast (W/m²)',
-      'Strom (MWh/a)', 'Spez. Strom (kWh/m²a)',
-      'PV aktiv', 'PV Dachanteil (%)', 'PV-Modus', 'PV-Ausrichtung', 'PV-Belegung (%)', 'PV-GCR (%)', 'PV-Baujahr',
-      'Dachform', 'Dachneigung (°)', 'Dachazimut (°)',
-      'Notstromklasse', 'Notstrom Last B (%)', 'Notstrom eigenes NEA']];
-    for (const g of allGebaeude) {
-      const ns = normalisiereNotstrom(g.notstrom);
-      gebRows.push([
-        g.id, g.name || '', g.gebaeudenummer || '', g.nutzung || '',
-        _zahl(g.flaeche, 0), g.stockwerke ?? 1,
-        g.baujahr || '', g.abrissjahr || '', _SCHICHT_WERTE[normSchicht(g.schicht)], g.zustand || '',
-        _zahl(g.waerme, 2), _zahl(g.heizlast, 1), _zahl(g.spez, 1), _zahl(g.spezHeizlast, 1),
-        _zahl(g.strom, 2), _zahl(g.spezStrom, 1),
-        janein(!!g.pvAktiv), g.pvDachanteil || 30,
-        _PV_MODUS_WERTE[g.pvModus || 'flaechen'] || g.pvModus, _PV_AUSRICHTUNG[g.pvFlAusrichtung || 'sued'] || g.pvFlAusrichtung,
-        g.pvFlBelegung ?? '', g.pvFlGcr ?? '', g.pvBaujahr ?? '',
-        _DACHFORM_WERTE[g.dachform || 'sattel'] || g.dachform, _zahl(g.dachNeigung, 1), _zahl(g.dachAzimut, 1),
-        ns?.klasse || '', ns?.lastPct ?? '', ns?.klasse === 'A' ? janein(ns.eigeneNea) : '',
-      ]);
-    }
-
-    // Sheet: Assets
-    const assetsRows = [['ID', 'Name', 'Typ', 'Gebäude', 'Baujahr', 'Abrissjahr', 'Schicht',
-      'Status ' + yr, 'Leistung kW/kVA', 'Maßnahmen (Anzahl)', 'Investition (€)']];
-    for (const a of allAssets) {
-      const p = a.props || {};
-      let leistung = '';
-      if (a.type === 'Trafo') leistung = (p.leistungKVA || 630) + ' kVA';
-      else if (['Verbraucher', 'WP', 'Nsa', 'KWK', 'Wind'].includes(a.type)) leistung = (p.leistungKW || p.leistungElKW || 0) + ' kW';
-      else if (a.type === 'PV') leistung = (p.leistungKWp || 0) + ' kWp';
-      else if (a.type === 'Lade') leistung = ((p.anzahlPunkte || 4) * (p.leistungProPunktKW || 22)) + ' kW';
-      else if (['NSHV', 'UV', 'KVS', 'Schaltanlage'].includes(a.type)) leistung = (p.nennstromA || 400) + ' A';
-      const totalKosten = (a.massnahmen || []).reduce((s, m) => s + (parseFloat(m.kosten) || 0), 0);
-      const gebName = a.buildingId != null ? (gebMap.get(a.buildingId)?.name || a.buildingId) : '';
-      assetsRows.push([a.id, a.name || a.id, ASSET_LABELS[a.type] || a.type, gebName,
-        a.baujahr || '', a.abrissjahr || '', _SCHICHT_WERTE[normSchicht(a.schicht)], _statusText(a, yr), leistung,
-        (a.massnahmen || []).length, totalKosten || '']);
-    }
-
-    // Sheet: Kabel
-    const kabelRows = [['Kabel-ID', 'Von-ID', 'Nach-ID', 'Von', 'Nach', 'Typ', 'Querschnitt mm²', 'Auto-Bemessung',
-      'Parallelkabel', 'Sicherung A', 'Trennstelle',
-      'Querschnitt geschätzt', 'Querschnitt-Quelle', 'MS-Ebene', 'Baujahr (abgeleitet)', 'Abrissjahr (abgeleitet)',
-      'Länge m', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW']];
-    for (const e of allEdges) {
-      kabelRows.push([
-        e.id ?? '', e.u, e.v, assetMap.get(e.u)?.name || e.u, assetMap.get(e.v)?.name || e.v,
-        e.cableType || 'NAYY', e.crossSection || '', janein(!!e.autoSized),
-        e.nParallel || 1, e.fuseA || '', janein(!!e.trennstelle),
-        janein(!!e.qsGeschaetzt), e.qsQuelle || '', janein(!!e.msLevel), e.baujahr ?? '', e.abrissjahr ?? '',
-        Math.round(e.lengthM || 0),
-        e.peakCurrentA != null ? +e.peakCurrentA.toFixed(1) : '',
-        e.auslastungPct != null ? +e.auslastungPct.toFixed(1) : '',
-        e.deltaUPct != null ? +e.deltaUPct.toFixed(2) : '',
-        e.peakFlowKw != null ? +e.peakFlowKw.toFixed(1) : '',
-      ]);
-    }
-
-    // Sheet: Maßnahmen (Assets, Kabel, Gebäude)
-    const alleMassn = _alleMassnahmen(allAssets, allEdges, allGebaeude, assetMap);
-    const massnRows = [['Maßnahmen-ID', 'Objekt', 'Objekt-ID', 'Objekt-Name', 'Objekttyp', 'Titel', 'Maßnahmentyp',
-      'Jahr', 'Status', 'Kosten €', 'Gilt für', 'Ziel-Parameter']];
-    for (const x of alleMassn) {
-      const m = x.m;
-      massnRows.push([m.id ?? '', _MASSN_OBJEKT_WERTE[x.art], x.objId, x.objName, x.objTyp,
-        m.titel || '', _MASSN_TYP_WERTE[x.art]?.[m.typ] ?? m.typ ?? '',
-        m.jahr ?? '', m.status || 'geplant', parseFloat(m.kosten) || 0,
-        geltungText(m, variantenName), zielParameterText(m.newProps, x.zielDefs)]);
-    }
-
-    // Sheet: Beziehungen (Übersicht, nur Referenz)
-    const bezRows = [['Asset-ID', 'Asset-Name', 'Typ', 'Gebäude-ID', 'Gebäude-Name', 'Verbunden mit (IDs)']];
-    for (const a of allAssets) {
-      const connectedIds = allEdges
-        .filter(e => e.u === a.id || e.v === a.id)
-        .map(e => e.u === a.id ? e.v : e.u)
-        .join(', ');
-      const gebName = a.buildingId != null ? (gebMap.get(a.buildingId)?.name || '') : '';
-      bezRows.push([a.id, a.name || a.id, ASSET_LABELS[a.type] || a.type,
-        a.buildingId || '', gebName, connectedIds]);
-    }
-
-    // ── Übersichtsblatt: Kennzahlen ──────────────────────────────────────────
-    const totalFlaeche  = allGebaeude.reduce((s, g) => s + (parseFloat(g.flaeche)  || 0), 0);
-    const totalWaerme   = allGebaeude.reduce((s, g) => s + (parseFloat(g.waerme)   || 0), 0);
-    const totalHeizlast = allGebaeude.reduce((s, g) => s + (parseFloat(g.heizlast) || 0), 0);
-    const totalStrom    = allGebaeude.reduce((s, g) => s + (parseFloat(g.strom)    || 0), 0);
-    const totalKabelLaenge = allEdges.reduce((s, e) => s + (e.lengthM || 0), 0);
-
-    // Assets: je Typ Anzahl + Investition
-    const typStats = {};
-    for (const a of allAssets) {
-      if (!typStats[a.type]) typStats[a.type] = { count: 0, invest: 0 };
-      typStats[a.type].count++;
-      typStats[a.type].invest += (a.massnahmen || []).reduce((s, m) => s + (parseFloat(m.kosten) || 0), 0);
-    }
-
-    // Maßnahmen (alle Objekte): je Status Anzahl + Kosten
-    const massnStats = { geplant: { n: 0, k: 0 }, umgesetzt: { n: 0, k: 0 }, abgelehnt: { n: 0, k: 0 } };
-    for (const { m } of alleMassn) {
-      const s = massnStats[m.status] || massnStats.geplant;
-      s.n++;
-      s.k += parseFloat(m.kosten) || 0;
-    }
-    const massnGesamt = { n: 0, k: 0 };
-    for (const s of Object.values(massnStats)) { massnGesamt.n += s.n; massnGesamt.k += s.k; }
-
-    const fmt1 = v => +v.toFixed(1);
-    const fmt0 = v => Math.round(v);
-
-    const ueRows = [
-      ['Energieplanung – Übersicht'],
-      [],
-      ['Exportiert am', new Date().toLocaleDateString('de-DE')],
-      ['Planungsjahr',  yr],
-      ['Variante',      aktiverVariantenName()],
-      [],
-      ['GEBÄUDE', '', ''],
-      ['Kenngröße', 'Wert', 'Einheit'],
-      ['Anzahl Gebäude',           allGebaeude.length,       ''],
-      ['Gesamtfläche',             fmt0(totalFlaeche),        'm²'],
-      ['Wärmebedarf gesamt',       fmt1(totalWaerme),         'MWh/a'],
-      ['Heizlast gesamt',          fmt1(totalHeizlast),       'kW'],
-      ['Strombedarf gesamt',       fmt1(totalStrom),          'MWh/a'],
-      [],
-      ['ELEKTRISCHE ANLAGEN', '', ''],
-      ['Typ', 'Anzahl', 'Investition (€)'],
-      ...Object.entries(typStats).map(([t, s]) => [ASSET_LABELS[t] || t, s.count, fmt0(s.invest)]),
-      ['Gesamt', allAssets.length, fmt0(Object.values(typStats).reduce((s, x) => s + x.invest, 0))],
-      [],
-      ['KABEL / LEITUNGEN', '', ''],
-      ['Kenngröße', 'Wert', 'Einheit'],
-      ['Anzahl Kabel',   allEdges.length,         ''],
-      ['Gesamtlänge',    fmt0(totalKabelLaenge),   'm'],
-      [],
-      ['MASSNAHMEN (Assets, Kabel, Gebäude)', '', ''],
-      ['Status', 'Anzahl', 'Kosten (€)'],
-      ['Geplant',     massnStats.geplant.n,     fmt0(massnStats.geplant.k)],
-      ['Umgesetzt',   massnStats.umgesetzt.n,   fmt0(massnStats.umgesetzt.k)],
-      ['Abgelehnt',   massnStats.abgelehnt.n,   fmt0(massnStats.abgelehnt.k)],
-      ['Gesamt',      massnGesamt.n,            fmt0(massnGesamt.k)],
-    ];
-
-    // ── Hinweise: was der Import liest und welche Werte erlaubt sind ──────────
-    const hinwRows = [
-      ['Excel-Import – Hinweise'],
-      [],
-      ['Allgemein', 'Der Import (📥 Excel) übernimmt nur Zellen, die sich gegenüber dem Stand im Tool geändert haben. Ein unverändert wieder eingelesener Export ändert nichts.'],
-      ['', 'Zugeordnet wird über die ID-Spalten. Spalten werden über ihre Überschrift erkannt – Reihenfolge egal, Überschriften nicht umbenennen.'],
-      ['', 'Leere Zelle = Wert löschen (z. B. Abrissjahr). Ausnahmen: Name, Nutzung, Fläche, Stockwerke, Schicht, Auswahlfelder ohne Leer-Option bleiben bei leerer Zelle unverändert.'],
-      ['', 'Gilt nur für die Variante, die beim Export aktiv war (siehe Übersicht).'],
-      ['Nur Information', 'Status, Leistung, Investition, Länge, Strom, Auslastung, Spannungsfall, Fluss, MS-Ebene, „Querschnitt geschätzt", Kabel-Baujahr/Abrissjahr (abgeleitet aus den Endpunkten), Werte mit „(berechnet)".'],
-      [],
-      ['Gebäude', ''],
-      ['Schicht', Object.values(_SCHICHT_WERTE).join(', ')],
-      ['Zustand', 'A, B, C oder leer'],
-      ['Wärmebedarf / Heizlast', 'Zahl = manueller Wert; leer = wieder automatisch berechnen'],
-      ['PV-Modus', Object.values(_PV_MODUS_WERTE).join(', ')],
-      ['PV-Ausrichtung', Object.values(_PV_AUSRICHTUNG).join(', ')],
-      ['Dachform', Object.values(_DACHFORM_WERTE).join(', ')],
-      ['Notstromklasse', 'A (kritisch), B (eingeschränkt), C (einspeisefähig) oder leer'],
-      ['Ja/Nein-Felder', 'ja / nein'],
-      [],
-      ['Kabel', ''],
-      ['Querschnitt mm²', 'Geänderter Wert schaltet die Auto-Bemessung für dieses Kabel aus'],
-      ['Auto-Bemessung', 'ja = Querschnitt automatisch auslegen'],
-      [],
-      ['Maßnahmen', ''],
-      ['Neue Maßnahme', 'Zeile ohne Maßnahmen-ID mit Objekt (Asset/Kabel), Objekt-ID und Titel'],
-      ['Maßnahmentyp Asset', Object.values(_MASSN_TYP_WERTE.Asset).join(', ')],
-      ['Maßnahmentyp Kabel', Object.values(_MASSN_TYP_WERTE.Kabel).join(', ')],
-      ['Status', Object.values(_MASSN_STATUS_WERTE).join(', ')],
-      ['Gilt für', `leer (Standardregel), ${GILT_ALLE}, ` + _variantenListe().map(v => v.name).join(', ')],
-      ['Ziel-Parameter', 'Name=Wert; Name=Wert … z. B. „Leistung (kVA)=1000; UK (%)=6" (Namen wie im Typ-Reiter)'],
-      [],
-      ['Typ-Reiter: Auswahlfelder', ''],
-      ...Object.entries(_XLSX_AUSWAHL).map(([k, w]) => [k, Object.values(w).join(', ')]),
-    ];
-
-    const wb = XLSXLib.utils.book_new();
-    XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(ueRows),     'Übersicht');
-    XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(gebRows),    'Gebäude');
-    XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(assetsRows), 'Assets');
-    XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kabelRows),  'Kabel');
-    XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows),  'Maßnahmen');
-    XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(bezRows),    'Beziehungen');
-
-    // ── Verbindungen-Sheet (Dropdown-Auswahl für Import) ──────────────────────
-    { const { wsVerb, wsAssetList } = _buildVerbindungenSheets(XLSXLib, allAssets, allEdges, assetMap);
-      XLSXLib.utils.book_append_sheet(wb, wsVerb, 'Verbindungen');
-      XLSXLib.utils.book_append_sheet(wb, wsAssetList, 'AssetListe');
-      wb.Workbook = wb.Workbook || { Sheets: [] };
-      while (wb.Workbook.Sheets.length < wb.SheetNames.length) wb.Workbook.Sheets.push({});
-      wb.Workbook.Sheets[wb.SheetNames.indexOf('AssetListe')].Hidden = 1;
-    }
-
-    // ── Typ-spezifische Reiter (nur wenn Assets dieses Typs vorhanden) ──────────
-    for (const type of Object.keys(ASSET_PROPS_SCHEMA)) {
-      const typeAssets = allAssets.filter(a => a.type === type);
-      const defs = _xlsxPropDefs(type);
-      if (!typeAssets.length || !defs.length) continue;
-      const rows = [['ID', 'Name', 'Gebäude', 'Baujahr', 'Abrissjahr', 'Schicht', 'Status ' + yr, ...defs.map(d => d.label)]];
-      for (const a of typeAssets) {
-        const p = a.props || {};
-        const gebName = a.buildingId != null ? (gebMap.get(a.buildingId)?.name || a.buildingId) : '';
-        rows.push([
-          a.id, a.name || a.id, gebName,
-          a.baujahr || '', a.abrissjahr || '', _SCHICHT_WERTE[normSchicht(a.schicht)], _statusText(a, yr),
-          ...defs.map(d => propZuZelle(d, p[d.key])),
-        ]);
-      }
-      XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(rows), _typReiterName(type));
-    }
-
-    XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(hinwRows), 'Hinweise');
-
-    const fname = 'Vollexport_' + new Date().toISOString().slice(0, 10) + '.xlsx';
-    XLSXLib.writeFile(wb, fname);
-  }
-
-  // ── Import: Vollständiger XLSX ──────────────────────────────────────────────
-  function importVollstaendigXLSX() {
-    let inp = document.getElementById('_xlsxImportInput');
-    if (!inp) {
-      inp = document.createElement('input');
-      inp.type = 'file';
-      inp.id = '_xlsxImportInput';
-      inp.accept = '.xlsx';
-      inp.style.display = 'none';
-      document.body.appendChild(inp);
-      inp.addEventListener('change', _handleXlsxImport);
-    }
-    inp.value = '';
-    inp.click();
-  }
-
-  async function _handleXlsxImport(event) {
-    const file = event.target.files[0];
-    event.target.value = '';
-    if (!file) return;
-    let XLSXLib;
-    try { XLSXLib = await _ladeSheetJS(); } catch (e) { alert(e.message); return; }
-    try {
-      const wb = XLSXLib.read(await file.arrayBuffer(), { type: 'array' });
-      const blatt = name => wb.Sheets[name] ? XLSXLib.utils.sheet_to_json(wb.Sheets[name], { header: 1 }) : null;
-
-      // Aus einer anderen Variante exportiert? Dann passen Assets/Kabel ggf. nicht.
-      const ueVariante = (blatt('Übersicht') || []).find(r => xStr(r?.[0]) === 'Variante')?.[1];
-      if (ueVariante != null && xStr(ueVariante) !== aktiverVariantenName()
-        && !confirm(`Die Datei wurde in der Variante „${xStr(ueVariante)}" exportiert, aktiv ist „${aktiverVariantenName()}".\n\nTrotzdem in die aktive Variante importieren?`)) return;
-
-      const ctx = _importKontext();
-      const mutate = () => {
-        const geb = blatt('Gebäude');        if (geb)   _importGebaeude(geb, ctx);
-        const ass = blatt('Assets');         if (ass)   _importAssetsBlatt(ass, ctx);
-        for (const type of Object.keys(ASSET_PROPS_SCHEMA)) {
-          const rows = blatt(_typReiterName(type));
-          if (rows) _importTypReiter(type, rows, ctx);
-        }
-        const kab = blatt('Kabel');          if (kab)   _importKabel(kab, ctx);
-        const mas = blatt('Maßnahmen');      if (mas)   _importMassnahmen(mas, ctx);
-      };
-      if (typeof window.runPlanningTransaction === 'function') window.runPlanningTransaction('Excel-Import', mutate);
-      else mutate();
-      _nachImportAktualisieren(ctx);
-
-      const a = ctx.anz;
-      const lines = [];
-      if (a.geb) lines.push(`${a.geb} Gebäude`);
-      if (ctx.assetsGeaendert.size) lines.push(`${ctx.assetsGeaendert.size} Assets`);
-      if (a.kabel) lines.push(`${a.kabel} Kabel`);
-      if (a.massn) lines.push(`${a.massn} Maßnahmen`);
-      let msg = lines.length
-        ? 'Import abgeschlossen: ' + lines.join(', ') + ' aktualisiert.'
-        : 'Import abgeschlossen – keine Änderungen erkannt.';
-      if (a.massnNeu) msg += `\n${a.massnNeu} Maßnahme(n) neu angelegt.`;
-      if (ctx.hinweise.length) {
-        msg += `\n\n${ctx.hinweise.length} Zelle(n) nicht übernommen:\n` + ctx.hinweise.slice(0, 12).join('\n')
-          + (ctx.hinweise.length > 12 ? `\n(+${ctx.hinweise.length - 12} weitere, siehe Konsole)` : '');
-        console.warn('Excel-Import – nicht übernommen:', ctx.hinweise);
-      }
-      alert(msg);
-    } catch (err) {
-      alert('Fehler beim Import: ' + err.message);
-      console.error(err);
-    }
-  }
-
-  /** Stand vor dem Import: Vergleichsbasis für jede Zelle (auch wenn ein Wert auf mehreren Blättern steht). */
-  function _importKontext() {
-    const kopie = o => ({ ...o, props: o.props ? { ...o.props } : o.props, newProps: o.newProps ? { ...o.newProps } : o.newProps });
-    const gebaeudeListe = window.gebaeude || [];
-    const assets = ASSETS.items || [];
-    const edges = window.stromEdges || [];
-    const massn = new Map();
-    for (const quelle of [...assets, ...edges, ...gebaeudeListe])
-      for (const m of (quelle.massnahmen || [])) massn.set(m, kopie(m));
-    return {
-      origGeb:   new Map(gebaeudeListe.map(g => [g, kopie(g)])),
-      origAsset: new Map(assets.map(a => [a, kopie(a)])),
-      origEdge:  new Map(edges.map(e => [e, kopie(e)])),
-      origMassn: massn,
-      anz: { geb: 0, kabel: 0, massn: 0, massnNeu: 0 },
-      assetsGeaendert: new Set(),
-      kabelGeaendert: false,
-      notstromGeaendert: false,
-      hinweise: [],
-      melde(blattName, r, text) { this.hinweise.push(`${blattName}, Zeile ${r + 1}: ${text}`); },
-    };
-  }
-
-  function _nachImportAktualisieren(ctx) {
-    if (ctx.anz.geb) {
-      renderList();
-      updateTotals();
-      updateVizDebounced();
-      recalcNetz();
-    }
-    if (ctx.notstromGeaendert && window.blackoutModusAktiv) window.blackoutModusMarkiereKarte?.();
-    if (ctx.assetsGeaendert.size || ctx.anz.massn) {
-      window.redrawAllAssets?.();
-      renderSidebarAssetList?.();
-    }
-    if (ctx.kabelGeaendert || ctx.assetsGeaendert.size) {
-      window.recalcStromNetz?.();
-      window.sldRefresh?.();
-    }
-    window.glBerechnen?.();
-  }
-
-  // ── Gebäude ──────────────────────────────────────────────────────────────────
-  function _importGebaeude(rows, ctx) {
-    const k = kopfIndex(rows[0]);
-    for (let r = 1; r < rows.length; r++) {
-      const row = rows[r];
-      if (!row) continue;
-      const id = xInt(k.zelle(row, 'ID'));
-      const g = (window.gebaeude || []).find(x => x.id === id);
-      const o = g && ctx.origGeb.get(g);
-      if (!g || !o) continue;
-      const z = spalte => k.zelle(row, spalte);
-      const meld = t => ctx.melde('Gebäude', r, t);
-      let n = 0;
-
-      // Zahlenfeld: nur bei Abweichung anwenden; leer → anwenden(null), wenn erlaubt
-      const zahl = (spalte, alt, stellen, anwenden, { ganz = false, leerErlaubt = true, min = -Infinity, max = Infinity } = {}) => {
-        if (!k.hat(spalte)) return false;
-        const zelle = z(spalte);
-        if (!zahlGeaendert(alt, zelle, stellen)) return false;
-        const v = ganz ? xInt(zelle) : xNum(zelle);
-        if (v == null) {
-          if (!istLeer(zelle)) { meld(`${spalte}: „${zelle}" ist keine Zahl`); return false; }
-          if (!leerErlaubt) return false;
-        } else if (v < min || v > max) { meld(`${spalte}: ${v} liegt außerhalb ${min}–${max}`); return false; }
-        anwenden(v); n++;
-        return true;
-      };
-      // Auswahlfeld: leer → anwenden(null), wenn erlaubt
-      const auswahl = (spalte, alt, werte, anwenden, { leerErlaubt = false } = {}) => {
-        if (!k.hat(spalte)) return;
-        const s = xAuswahl(z(spalte), werte);
-        if (s === undefined) { meld(`${spalte}: „${z(spalte)}" ist nicht erlaubt (${Object.values(werte).join(', ')})`); return; }
-        if (s === null && !leerErlaubt) return;
-        if ((s ?? '') === (alt ?? '')) return;
-        anwenden(s); n++;
-      };
-      const feld = (f, opts) => v => updateField(id, f, v == null ? '' : v, { defer: true, ...opts });
-
-      if (k.hat('Name')) {
-        const v = xStr(z('Name'));
-        if (v && v !== xStr(o.name)) {
-          if (typeof window.renameGebaeude === 'function') window.renameGebaeude(id, v); else g.name = v;
-          n++;
-        }
-      }
-      if (k.hat('Gebäudenummer') && textGeaendert(o.gebaeudenummer, z('Gebäudenummer'))) {
-        const nummer = xStr(z('Gebäudenummer'));
-        if (typeof window.setGebaeudenummer === 'function') window.setGebaeudenummer(id, nummer); else g.gebaeudenummer = nummer;
-        n++;
-      }
-      if (k.hat('Nutzung')) {
-        const v = xStr(z('Nutzung'));
-        if (v && v !== xStr(o.nutzung)) { feld('nutzung')(v); n++; }
-      }
-      // Über updateField wie im Gebäude-Panel: Jahre/Schicht wandern auf die Assets,
-      // Fläche/Baujahr/Stockwerke lösen die Auto-Energie aus (sofern nicht manuell).
-      zahl('Fläche (m²)', o.flaeche, 0, feld('flaeche'), { leerErlaubt: false, min: 0 });
-      zahl('Stockwerke', o.stockwerke ?? 1, 0, feld('stockwerke'), { ganz: true, leerErlaubt: false, min: 1, max: 50 });
-      zahl('Baujahr', o.baujahr, 0, feld('baujahr'), { ganz: true, min: 1800, max: 2100 });
-      zahl('Abrissjahr', o.abrissjahr, 0, feld('abrissjahr'), { ganz: true, min: 1800, max: 2100 });
-      auswahl('Schicht', normSchicht(o.schicht), _SCHICHT_WERTE, feld('schicht'));
-      auswahl('Zustand', o.zustand, _ZUSTAND_WERTE, feld('zustand'), { leerErlaubt: true });
-
-      // Spezifische Werte zuerst — ein ebenfalls geänderter Absolutwert gewinnt danach.
-      zahl('Spez. Wärme (kWh/m²a)', o.spez, 1, feld('spez'), { leerErlaubt: false, min: 0 });
-      zahl('Spez. Heizlast (W/m²)', o.spezHeizlast, 1, feld('spezHeizlast'), { leerErlaubt: false, min: 0 });
-      zahl('Spez. Strom (kWh/m²a)', o.spezStrom, 1, feld('spezStrom'), { min: 0 });
-      let autoNeu = false;
-      zahl('Wärmebedarf (MWh/a)', o.waerme, 2, v => { feld('waerme')(v); if (v == null) autoNeu = true; }, { min: 0 });
-      zahl('Heizlast (kW)', o.heizlast, 1, v => { feld('heizlast')(v); if (v == null) autoNeu = true; }, { min: 0 });
-      zahl('Strom (MWh/a)', o.strom, 2, feld('strom'), { min: 0 });
-      // Geleert = nicht mehr manuell → wieder automatisch berechnen
-      if (autoNeu && calcAutoEnergy(g)) recalcNetz();
-
-      if (k.hat('PV aktiv')) {
-        const b = xBool(z('PV aktiv'));
-        if (b == null && !istLeer(z('PV aktiv'))) meld(`PV aktiv: „${z('PV aktiv')}" ist kein ja/nein`);
-        else if (b != null && b !== !!o.pvAktiv) { updateGebPv(id, 'pvAktiv', b); n++; }
-      }
-      zahl('PV Dachanteil (%)', o.pvDachanteil || 30, 0, v => updateGebPv(id, 'pvDachanteil', v), { leerErlaubt: false, min: 1, max: 100 });
-      auswahl('PV-Modus', o.pvModus || 'flaechen', _PV_MODUS_WERTE, s => window.setGebPvModus?.(id, s));
-      auswahl('PV-Ausrichtung', o.pvFlAusrichtung || 'sued', _PV_AUSRICHTUNG, s => window.updateGebPvFl?.(id, 'ausrichtung', s));
-      zahl('PV-Belegung (%)', o.pvFlBelegung, 1, v => window.updateGebPvFl?.(id, 'belegung', v), { leerErlaubt: false, min: 0, max: 100 });
-      zahl('PV-GCR (%)', o.pvFlGcr, 1, v => window.updateGebPvFl?.(id, 'gcr', v), { leerErlaubt: false, min: 0 });
-      zahl('PV-Baujahr', o.pvBaujahr, 0, v => window.updateGebPvBaujahr?.(id, v ?? ''), { ganz: true, min: 1800, max: 2100 });
-      auswahl('Dachform', o.dachform || 'sattel', _DACHFORM_WERTE, s => window.updateGebDach?.(id, 'dachform', s));
-      zahl('Dachneigung (°)', o.dachNeigung, 1, v => window.updateGebDach?.(id, 'dachNeigung', v ?? ''), { min: 0, max: 90 });
-      zahl('Dachazimut (°)', o.dachAzimut, 1, v => window.updateGebDach?.(id, 'dachAzimut', v ?? ''), { min: 0, max: 360 });
-
-      // Notstrom (Blackout-Modus): Klasse, Lastanteil B, eigenes Aggregat bei A
-      if (k.hat('Notstromklasse')) {
-        const alt = normalisiereNotstrom(o.notstrom);
-        let klasse = alt?.klasse || null, lastPct = alt?.lastPct ?? null, nea = !!alt?.eigeneNea, geaendert = false;
-        const s = xAuswahl(z('Notstromklasse'), _NOTSTROM_WERTE);
-        if (s === undefined) meld(`Notstromklasse: „${z('Notstromklasse')}" ist nicht erlaubt (A, B, C oder leer)`);
-        else if (s !== klasse) { klasse = s; geaendert = true; }
-        if (k.hat('Notstrom Last B (%)') && zahlGeaendert(lastPct, z('Notstrom Last B (%)'), 0)) { lastPct = xNum(z('Notstrom Last B (%)')); geaendert = true; }
-        if (k.hat('Notstrom eigenes NEA')) { const b = xBool(z('Notstrom eigenes NEA')); if (b != null && b !== nea) { nea = b; geaendert = true; } }
-        if (geaendert) {
-          if (!klasse) delete g.notstrom;
-          else g.notstrom = normalisiereNotstrom({ klasse, lastPct, eigeneNea: nea });
-          ctx.notstromGeaendert = true;
-          n++;
-        }
-      }
-
-      if (n) ctx.anz.geb++;
-    }
-  }
-
-  // ── Assets (Blatt „Assets" + Typ-Reiter) ─────────────────────────────────────
-  function _assetBasisAbgleich(a, o, k, row, meld) {
-    let n = 0;
-    if (k.hat('Name')) {
-      const v = xStr(k.zelle(row, 'Name'));
-      if (v && v !== xStr(o.name)) { a.name = v; n++; }
-    }
-    for (const [spalte, feld] of [['Baujahr', 'baujahr'], ['Abrissjahr', 'abrissjahr']]) {
-      if (!k.hat(spalte)) continue;
-      const zelle = k.zelle(row, spalte);
-      if (!zahlGeaendert(o[feld], zelle, 0)) continue;
-      const v = xInt(zelle);
-      if (v == null && !istLeer(zelle)) { meld(`${spalte}: „${zelle}" ist keine Jahreszahl`); continue; }
-      a[feld] = v;
-      // Von Hand gesetzt: das automatische Baujahr der Erzeuger-Kopplung (13p) fasst es nicht mehr an
-      if (feld === 'baujahr' && a.linkedErzeuger) a.baujahrAuto = false;
-      n++;
-    }
-    if (k.hat('Schicht')) {
-      const s = xAuswahl(k.zelle(row, 'Schicht'), _SCHICHT_WERTE);
-      if (s === undefined) meld(`Schicht: „${k.zelle(row, 'Schicht')}" ist nicht erlaubt (${Object.values(_SCHICHT_WERTE).join(', ')})`);
-      else if (s && s !== normSchicht(o.schicht)) { a.schicht = s; n++; }
-    }
-    return n;
-  }
-
-  function _importAssetsBlatt(rows, ctx) {
-    const k = kopfIndex(rows[0]);
-    for (let r = 1; r < rows.length; r++) {
-      const row = rows[r];
-      const id = xStr(k.zelle(row, 'ID'));
-      if (!id) continue;
-      const a = (ASSETS.items || []).find(x => String(x.id) === id);
-      const o = a && ctx.origAsset.get(a);
-      if (!o) continue;
-      if (_assetBasisAbgleich(a, o, k, row, t => ctx.melde('Assets', r, t))) ctx.assetsGeaendert.add(a.id);
-    }
-  }
-
-  // Ohne Trennstelle ist auch kein Kabel der Station offen (wie im Inspektor, 13e).
-  // Station = MS-Betriebsmittel (NAP/Schaltanlage/Trafo) eines Gebäudes.
-  function _stationsTrennstellenAufheben(asset) {
-    const ms = new Set(['NAP', 'Schaltanlage', 'Trafo']);
-    const station = a => (a?.buildingId != null ? 'g' + a.buildingId : 'a' + a?.id);
-    const meine = station(asset);
-    const byId = new Map((ASSETS.items || []).map(a => [String(a.id), a]));
-    for (const e of (window.stromEdges || [])) {
-      const a = byId.get(String(e.u)), b = byId.get(String(e.v));
-      if (!a || !b || !ms.has(a.type) || !ms.has(b.type)) continue;
-      const sa = station(a), sb = station(b);
-      if (sa !== sb && (sa === meine || sb === meine)) e.trennstelle = false;
-    }
-  }
-
-  function _importTypReiter(type, rows, ctx) {
-    if (rows.length < 2) return;
-    const blattName = _typReiterName(type);
-    const k = kopfIndex(rows[0]);
-    const defs = _xlsxPropDefs(type).filter(d => d.art !== 'berechnet' && k.hat(d.label));
-    for (let r = 1; r < rows.length; r++) {
-      const row = rows[r];
-      const id = xStr(k.zelle(row, 'ID'));
-      if (!id) continue;
-      const a = (ASSETS.items || []).find(x => String(x.id) === id && x.type === type);
-      const o = a && ctx.origAsset.get(a);
-      if (!o) continue;
-      const meld = t => ctx.melde(blattName, r, t);
-      let n = _assetBasisAbgleich(a, o, k, row, meld);
-      if (!a.props) a.props = {};
-      for (const d of defs) {
-        const res = zelleZuProp(d, k.zelle(row, d.label));
-        if (!res.ok) { meld(`${d.label}: ${res.fehler}`); continue; }
-        if (!propGeaendert(d, o.props?.[d.key], res.wert)) continue;
-        a.props[d.key] = res.wert;
-        if (type === 'PV') a._pvProfile = null;   // Profil-Cache (wie im Inspektor)
-        if (type === 'Schaltanlage' && d.key === 'trennstelle' && !res.wert) { _stationsTrennstellenAufheben(a); ctx.kabelGeaendert = true; }
-        n++;
-      }
-      if (n) ctx.assetsGeaendert.add(a.id);
-    }
-  }
-
-  // ── Kabel ────────────────────────────────────────────────────────────────────
-  function _importKabel(rows, ctx) {
-    const k = kopfIndex(rows[0]);
-    const edgeArr = window.stromEdges || [];
-    for (let r = 1; r < rows.length; r++) {
-      const row = rows[r];
-      if (!row) continue;
-      const z = spalte => k.zelle(row, spalte);
-      const meld = t => ctx.melde('Kabel', r, t);
-      // Zuordnung über die Kabel-ID; ältere Exporte ohne ID über Von-/Nach-ID
-      const kid = xStr(z('Kabel-ID'));
-      let edge = kid ? edgeArr.find(e => String(e.id) === kid) : null;
-      if (!edge && !kid) {
-        const uId = xStr(z('Von-ID')), vId = xStr(z('Nach-ID'));
-        if (!uId || !vId) continue;
-        edge = edgeArr.find(e => String(e.u) === uId && String(e.v) === vId)
-            || edgeArr.find(e => String(e.u) === vId && String(e.v) === uId);
-      }
-      if (!edge && kid) { meld(`Kabel „${kid}" nicht gefunden`); continue; }
-      const o = edge && ctx.origEdge.get(edge);
-      if (!o) continue;
-      let n = 0, auslegung = false;
-
-      if (k.hat('Typ') && textGeaendert(o.cableType || 'NAYY', z('Typ')) && !istLeer(z('Typ'))) {
-        const typ = parseKabelLabel(z('Typ'))?.cableType;
-        if (typ && KABEL_TYPEN[typ]) { if (typ !== (o.cableType || 'NAYY')) { edge.cableType = typ; n++; auslegung = true; } }
-        else meld(`Typ: „${z('Typ')}" ist kein bekannter Kabeltyp`);
-      }
-      if (k.hat('Auto-Bemessung')) {
-        const b = xBool(z('Auto-Bemessung'));
-        if (b != null && b !== !!o.autoSized) {
-          edge.autoSized = b;
-          if (b) edge.crossSection = 0;
-          n++; auslegung = true;
-        }
-      }
-      // Ein geänderter Querschnitt ist eine feste Vorgabe → Auto-Bemessung aus
-      if (k.hat('Querschnitt mm²') && !istLeer(z('Querschnitt mm²')) && zahlGeaendert(o.crossSection, z('Querschnitt mm²'), 1)) {
-        const qs = xNum(z('Querschnitt mm²'));
-        if (qs == null || qs <= 0) meld(`Querschnitt: „${z('Querschnitt mm²')}" ist kein gültiger Querschnitt`);
-        else { edge.crossSection = qs; edge.autoSized = false; n++; auslegung = true; }
-      }
-      if (k.hat('Parallelkabel') && zahlGeaendert(o.nParallel || 1, z('Parallelkabel'), 0) && !istLeer(z('Parallelkabel'))) {
-        const np = xInt(z('Parallelkabel'));
-        if (np == null) meld(`Parallelkabel: „${z('Parallelkabel')}" ist keine Zahl`);
-        else { edge.nParallel = Math.max(1, np); n++; }
-      }
-      if (k.hat('Sicherung A') && zahlGeaendert(o.fuseA || null, z('Sicherung A'), 0)) {
-        const f = xNum(z('Sicherung A'));
-        if (f == null && !istLeer(z('Sicherung A'))) meld(`Sicherung: „${z('Sicherung A')}" ist keine Zahl`);
-        else { edge.fuseA = f ?? 0; n++; }
-      }
-      if (k.hat('Trennstelle')) {
-        const b = xBool(z('Trennstelle'));
-        if (b != null && b !== !!o.trennstelle) { edge.trennstelle = b; n++; }
-      }
-      // Von Hand ausgelegt ist nicht mehr geschätzt (wie im Kabel-Inspektor, 05b)
-      if (auslegung) edge.qsGeschaetzt = false;
-      if (n) { ctx.anz.kabel++; ctx.kabelGeaendert = true; }
-    }
-  }
-
-  // ── Maßnahmen ────────────────────────────────────────────────────────────────
-  function _importMassnahmen(rows, ctx) {
-    const k = kopfIndex(rows[0]);
-    const assets = ASSETS.items || [];
-    const edges = window.stromEdges || [];
-    const assetMap = new Map(assets.map(a => [a.id, a]));
-    const index = new Map(_alleMassnahmen(assets, edges, window.gebaeude || [], assetMap).map(x => [String(x.m.id), x]));
-    const varListe = _variantenListe();
-    const neuesFormat = k.hat('Maßnahmen-ID');
-
-    for (let r = 1; r < rows.length; r++) {
-      const row = rows[r];
-      if (!row) continue;
-      const z = spalte => k.zelle(row, spalte);
-      const meld = t => ctx.melde('Maßnahmen', r, t);
-
-      // Älterer Export ohne Maßnahmen-ID: Zuordnung über Asset + Titel + Jahr, nur Status/Kosten
-      if (!neuesFormat) {
-        const assetId = xStr(z('Asset-ID'));
-        const a = assets.find(x => String(x.id) === assetId);
-        if (!a) continue;
-        const titel = xStr(z('Titel')), jahr = xStr(z('Jahr'));
-        const m = (a.massnahmen || []).find(x => xStr(x.titel) === titel && xStr(x.jahr) === jahr);
-        const o = m && ctx.origMassn.get(m);
-        if (!o) continue;
-        let n = 0;
-        const s = xAuswahl(z('Status'), _MASSN_STATUS_WERTE);
-        if (s === undefined) meld(`Status: „${z('Status')}" ist nicht erlaubt`);
-        else if (s && s !== (o.status || 'geplant')) { m.status = s; n++; }
-        if (!istLeer(z('Kosten €')) && zahlGeaendert(xNum(o.kosten) ?? 0, z('Kosten €'), 2)) { m.kosten = xNum(z('Kosten €')) ?? 0; n++; }
-        if (n) { ctx.anz.massn++; ctx.assetsGeaendert.add(a.id); }
-        continue;
-      }
-
-      const mid = xStr(z('Maßnahmen-ID'));
-      if (!mid) { _massnahmeNeu(row, k, r, ctx, assets, edges, varListe); continue; }
-      const x = index.get(mid);
-      const o = x && ctx.origMassn.get(x.m);
-      if (!o) { meld(`Maßnahme „${mid}" nicht gefunden`); continue; }
-      const m = x.m;
-      let n = 0;
-
-      const titel = xStr(z('Titel'));
-      if (titel && titel !== xStr(o.titel)) { m.titel = titel; n++; }
-      if (k.hat('Jahr') && zahlGeaendert(o.jahr, z('Jahr'), 0)) {
-        const j = xInt(z('Jahr'));
-        if (j == null && !istLeer(z('Jahr'))) meld(`Jahr: „${z('Jahr')}" ist keine Jahreszahl`);
-        else { m.jahr = j; n++; }
-      }
-      if (k.hat('Kosten €') && zahlGeaendert(xNum(o.kosten) ?? 0, xNum(z('Kosten €')) ?? 0, 2)) {
-        const kosten = xNum(z('Kosten €'));
-        if (kosten == null && !istLeer(z('Kosten €'))) meld(`Kosten: „${z('Kosten €')}" ist keine Zahl`);
-        else { m.kosten = kosten ?? 0; n++; }
-      }
-      if (k.hat('Status')) {
-        const s = xAuswahl(z('Status'), _MASSN_STATUS_WERTE);
-        if (s === undefined) meld(`Status: „${z('Status')}" ist nicht erlaubt (${Object.values(_MASSN_STATUS_WERTE).join(', ')})`);
-        else if (s && s !== (o.status || 'geplant')) { m.status = s; n++; }
-      }
-      if (k.hat('Maßnahmentyp')) {
-        const werte = _MASSN_TYP_WERTE[x.art];
-        const zelle = z('Maßnahmentyp');
-        const s = werte ? xAuswahl(zelle, werte) : undefined;
-        if (s === undefined) {
-          if (textGeaendert(o.typ, zelle) && textGeaendert(werte?.[o.typ], zelle))
-            meld(werte ? `Maßnahmentyp: „${zelle}" ist nicht erlaubt (${Object.values(werte).join(', ')})`
-                       : 'Maßnahmentyp von Gebäude-Maßnahmen ist im Excel nicht änderbar');
-        } else if (s && s !== o.typ) { m.typ = s; n++; }
-      }
-      if (k.hat('Gilt für')) {
-        const res = geltungLesen(z('Gilt für'), varListe);
-        if (res.fehler) meld(`Gilt für: ${res.fehler}`);
-        else if (res.aendern && !('variante' in o && o.variante === res.wert)) { m.variante = res.wert; n++; }
-      }
-      if (k.hat('Ziel-Parameter')) {
-        const { props, unbekannt } = zielParameterLesen(z('Ziel-Parameter'), x.zielDefs, Object.keys(o.newProps || {}));
-        if (unbekannt.length) meld(`Ziel-Parameter: unbekannt ${unbekannt.map(u => `„${u}"`).join(', ')}`);
-        else if (!zielParameterGleich(props, o.newProps)) { m.newProps = props; n++; }
-      }
-      if (n) {
-        ctx.anz.massn++;
-        if (x.art === 'Asset') ctx.assetsGeaendert.add(x.obj.id);
-        if (x.art === 'Kabel') ctx.kabelGeaendert = true;
-      }
-    }
-  }
-
-  // Neue Maßnahme aus einer Zeile ohne Maßnahmen-ID — Felder wie in den Inspektor-Formularen
-  function _massnahmeNeu(row, k, r, ctx, assets, edges, varListe) {
-    const z = spalte => k.zelle(row, spalte);
-    const meld = t => ctx.melde('Maßnahmen', r, t);
-    const art = xAuswahl(z('Objekt'), _MASSN_OBJEKT_WERTE);
-    const oid = xStr(z('Objekt-ID')), titel = xStr(z('Titel'));
-    if (!art && !oid && !titel) return;   // Leerzeile
-    if (!art || !oid || !titel) { meld('neue Maßnahme braucht Objekt (Asset/Kabel), Objekt-ID und Titel'); return; }
-    if (art === 'Gebaeude') { meld('Gebäude-Maßnahmen entstehen über Cluster-Pakete und sind im Excel nicht anlegbar'); return; }
-    const obj = art === 'Asset' ? assets.find(a => String(a.id) === oid) : edges.find(e => String(e.id) === oid);
-    if (!obj) { meld(`${art} „${oid}" nicht gefunden`); return; }
-
-    const werte = _MASSN_TYP_WERTE[art];
-    const typ = xAuswahl(z('Maßnahmentyp'), werte);
-    if (typ === undefined) { meld(`Maßnahmentyp: „${z('Maßnahmentyp')}" ist nicht erlaubt (${Object.values(werte).join(', ')})`); return; }
-    const status = xAuswahl(z('Status'), _MASSN_STATUS_WERTE);
-    if (status === undefined) { meld(`Status: „${z('Status')}" ist nicht erlaubt`); return; }
-    const zielDefs = art === 'Asset' ? (ASSET_PROPS_SCHEMA[obj.type] || []) : _KABEL_ZIEL_DEFS;
-    const { props, unbekannt } = zielParameterLesen(z('Ziel-Parameter'), zielDefs);
-    if (unbekannt.length) { meld(`Ziel-Parameter: unbekannt ${unbekannt.map(u => `„${u}"`).join(', ')}`); return; }
-    const gilt = geltungLesen(z('Gilt für'), varListe);
-    if (gilt.fehler) { meld(`Gilt für: ${gilt.fehler}`); return; }
-
-    const m = {
-      id: createId(art === 'Asset' ? 'm' : 'cm'),
-      titel, jahr: xInt(z('Jahr')), kosten: xNum(z('Kosten €')) ?? 0,
-      typ: typ || Object.keys(werte)[0], status: status || 'geplant',
-    };
-    if (Object.keys(props).length) m.newProps = props;
-    if (art === 'Asset') {
-      m.newProps = m.newProps || {};
-      m.dependsOn = [];
-      m.phaseId = null;
-      // Ohne Angabe: dieselbe Vorbelegung wie im Formular (Standardregel nach Schicht/Typ)
-      if (gilt.aendern) m.variante = gilt.wert;
-      else if (typeof window.massnahmeGeltungWert === 'function') m.variante = window.massnahmeGeltungWert({ typ: m.typ }, obj) || null;
-      ctx.assetsGeaendert.add(obj.id);
-    } else {
-      if (gilt.aendern) m.variante = gilt.wert;
-      ctx.kabelGeaendert = true;
-    }
-    if (!obj.massnahmen) obj.massnahmen = [];
-    obj.massnahmen.push(m);
-    ctx.anz.massnNeu++;
-  }
-
-  // ── Import: Verbindungen aus Excel (Verbindungen-Sheet) ──────────────────────
-  async function importVerbindungenXLSX(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (typeof window.XLSX === 'undefined') {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
-        s.onload = resolve;
-        s.onerror = () => reject(new Error('SheetJS konnte nicht geladen werden.'));
-        document.head.appendChild(s);
-      }).catch(e => { alert(e.message); throw e; });
-    }
-    const XLSXLib = window.XLSX;
-
-    const reader = new FileReader();
-    reader.onload = function(ev) {
-      try {
-        const wb = XLSXLib.read(ev.target.result, { type: 'array' });
-        const ws = wb.Sheets['Verbindungen'];
-        if (!ws) { alert('Sheet “Verbindungen” nicht gefunden.'); return; }
-
-        const rows = XLSXLib.utils.sheet_to_json(ws, { header: 1 });
-        const header = rows[0] || [];
-        const iVon  = header.findIndex(h => String(h).toLowerCase().includes('von'));
-        const iNach = header.findIndex(h => String(h).toLowerCase().includes('nach'));
-        const iTyp  = header.findIndex(h => String(h).toLowerCase().includes('typ'));
-        const iQs   = header.findIndex(h => String(h).toLowerCase().includes('querschnitt'));
-        if (iVon < 0 || iNach < 0) { alert('Spalten “Von” und “Nach” nicht gefunden.'); return; }
-
-        // Asset-Name → ID Map (Assets + StromNodes)
-        const allAssets = window.ASSETS?.items || [];
-        const assetByName = new Map(allAssets.map(a => [
-          (a.name || String(a.id)).toLowerCase().trim(), a.id
-        ]));
-        const nodeByName = new Map((window.stromNodes || []).map(n => [
-          (n.label || n.name || String(n.id)).toLowerCase().trim(), n.id
-        ]));
-        const resolveId = name => {
-          const key = String(name || '').toLowerCase().trim();
-          return assetByName.get(key) ?? nodeByName.get(key) ?? null;
-        };
-
-        let added = 0, dupSkipped = 0, notFound = [];
-
-        for (let r = 1; r < rows.length; r++) {
-          const row = rows[r];
-          const vonName  = row[iVon]  != null ? String(row[iVon]).trim()  : '';
-          const nachName = row[iNach] != null ? String(row[iNach]).trim() : '';
-          if (!vonName || !nachName) continue;
-
-          const uId = resolveId(vonName);
-          const vId = resolveId(nachName);
-          if (!uId || !vId) {
-            notFound.push(`”${vonName}” → “${nachName}”`);
-            continue;
-          }
-
-          // Bereits vorhandene Verbindung überspringen
-          const exists = (window.stromEdges || []).some(
-            ex => (ex.u === uId && ex.v === vId) || (ex.u === vId && ex.v === uId)
-          );
-          if (exists) { dupSkipped++; continue; }
-
-          // addStromEdge: Trassen-Routing + Längenberechnung bereits eingebaut
-          const edge = window.addStromEdge?.(uId, vId);
-          if (!edge) { notFound.push(`”${vonName}” → “${nachName}” (Fehler)`); continue; }
-
-          // Kabeltyp
-          // Über den Plan-Parser, damit auch Schreibvarianten wie „NAYY-J" oder
-          // „NA2XS(F)2Y" ankommen.
-          const typVal = iTyp >= 0 && row[iTyp] ? parseKabelLabel(row[iTyp])?.cableType : null;
-          if (typVal && KABEL_TYPEN[typVal]) edge.cableType = typVal;
-
-          // Querschnitt: angegeben → fix; leer → Auto-Auslegung
-          const qsVal = iQs >= 0 ? parseFloat(row[iQs]) : NaN;
-          if (!isNaN(qsVal) && qsVal > 0) {
-            edge.crossSection = qsVal;
-            edge.autoSized = false;
-          } else {
-            edge.crossSection = 0;
-            edge.autoSized = true;
-          }
-          added++;
-        }
-
-        if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
-        if (typeof window.elCalcAssets    === 'function') window.elCalcAssets();
-
-        let msg = `${added} Verbindung(en) erstellt.`;
-        if (dupSkipped) msg += ` ${dupSkipped} bereits vorhanden.`;
-        if (notFound.length) msg += `\nNicht gefunden:\n${notFound.slice(0, 5).join('\n')}${notFound.length > 5 ? `\n(+${notFound.length - 5} weitere)` : ''}`;
-        alert(msg);
-
-      } catch (err) {
-        alert('Fehler beim Import: ' + err.message);
-        console.error(err);
-      }
-    };
-    reader.readAsArrayBuffer(file);
-    event.target.value = '';
-  }
-
   // ── Hook into existing recalc to update left panel ───────────────
   const _origRecalcNetz = typeof recalcNetz !== 'undefined' ? recalcNetz : null;
   // We'll hook updateLpNetzSummary after recalcNetz calls via a periodic check instead
@@ -191614,19 +190171,16 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
 
   var exportMod = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    ASSET_LABELS: ASSET_LABELS,
     _origRecalcNetz: _origRecalcNetz,
     closeFotoGalerie: closeFotoGalerie,
     closeGalerieLightbox: closeGalerieLightbox,
     exportDispatchCSV: exportDispatchCSV,
-    exportElektroXLSX: exportElektroXLSX,
     exportFeldapp: exportFeldapp,
     exportGebaeudeCSV: exportGebaeudeCSV,
     exportGutachtenDigest: exportGutachtenDigest,
     exportMassnahmenPDF: exportMassnahmenPDF,
-    exportVollstaendigXLSX: exportVollstaendigXLSX,
     importFelddaten: importFelddaten,
-    importVerbindungenXLSX: importVerbindungenXLSX,
-    importVollstaendigXLSX: importVollstaendigXLSX,
     openFotoGalerie: openFotoGalerie,
     openGalerieLightbox: openGalerieLightbox,
     openImageLightbox: openImageLightbox,
@@ -209139,6 +207693,107 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     toggleDrawCluster: toggleDrawCluster
   });
 
+  // @ts-check
+  // ── Kabelbeschriftungen von Bestandsplänen lesen ────────────────────────────
+  // Auf Papier-Einlinienplänen steht das Kabel als ein einziger String an der
+  // Leitung: "NYY-J 5x70", "NAYY-J 4x240", "3x NA2XS(F)2Y 1x185 12/20 kV". Daraus
+  // werden Typ, Querschnitt und Anzahl paralleler Systeme gelesen — die Felder,
+  // die eine stromEdge zur Auslegung braucht.
+  //
+  // DOM-frei gehalten, damit der Parser unabhängig vom Digitalisierer
+  // (15-plan-digitalisierer.js) getestet werden kann.
+
+
+  // Typkürzel = alle Katalogschlüssel plus ihre Schreibvarianten (NA2XS(F)2Y, NYBY, …).
+  // Längste zuerst, damit "NA2XS(F)2Y" nicht als "NA2XS…" angebissen wird. Statt
+  // Wortgrenzen begrenzen Lookarounds auf Nicht-Alphanumerik — eine Wortgrenze
+  // versagt an der Klammer in "(F)"; so trifft "NYY" weder in "NAYY" noch neben "-J".
+  const _TYP_NAMEN = [...Object.keys(KABEL_TYPEN), ...Object.keys(KABEL_ALIASE)]
+    .sort((a, b) => b.length - a.length)
+    .map(t => t.replace(/[()]/g, '\\$&'));
+  const TYP_RX = new RegExp(`(?<![A-Z0-9])(${_TYP_NAMEN.join('|')})(?![A-Z0-9])`, 'i');
+
+  // Spannungsangabe "12/20 kV", "0,6/1kV", "10 kV" — maßgeblich ist der größere Wert.
+  const KV_RX = /(?:(\d+(?:\.\d+)?)\s*\/\s*)?(\d+(?:\.\d+)?)\s*kV\b/i;
+
+  // Zahlengruppe: "5x70" (Adern × mm²) oder "3x1x185" (Systeme × Adern × mm²)
+  const GRUPPE_RX = /(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*[x×]\s*(\d+(?:\.\d+)?))?/i;
+
+  // Vorangestellter Systemzähler: "3x NA2XS2Y …" — nur wenn danach ein Buchstabe folgt,
+  // sonst wäre "5x70" fälschlich eine Systemangabe.
+  const LEAD_RX = /^\s*(\d+)\s*[x×]\s+(?=[A-Za-z])/;
+
+  /**
+   * @typedef {object} KabelLabel
+   * @property {string|null} cableType     Katalogschlüssel, z. B. 'NYY' (Schreibvarianten aufgelöst)
+   * @property {string|null} typText       Typkürzel wie auf dem Plan, z. B. 'NA2XS(F)2Y'
+   * @property {number} crossSection       Querschnitt je Ader in mm² (0 = unbekannt)
+   * @property {number} nParallel          Anzahl paralleler Systeme (≥ 1)
+   * @property {number|null} adern         Aderzahl laut Beschriftung
+   * @property {boolean} msLevel           Mittelspannung (MS-Kabeltyp oder Spannungsangabe ≥ 3 kV)
+   * @property {boolean} bekannt           Typ UND Querschnitt in KABEL_TYPEN vorhanden
+   */
+
+  /**
+   * Liest eine Kabelbeschriftung. Gibt null zurück, wenn weder Typ noch
+   * Querschnittsangabe erkennbar sind.
+   * @param {unknown} text
+   * @returns {KabelLabel|null}
+   */
+  function parseKabelLabel(text) {
+    const s = String(text ?? '').replace(/,/g, '.').trim();
+    if (!s) return null;
+
+    const tm = s.match(TYP_RX);
+    const typText = tm ? tm[1].toUpperCase() : null;
+    const aliase = /** @type {Record<string, string>} */ (KABEL_ALIASE);
+    const cableType = typText ? (aliase[typText] || typText) : null;
+
+    const kv = s.match(KV_RX);
+    const kvMax = kv ? parseFloat(kv[2]) : 0;
+
+    const lead = s.match(LEAD_RX);
+
+    // Typbezeichnung (und Spannungsangabe) entfernen, bevor nach Zahlen gesucht
+    // wird — sonst würden die Ziffern in "NA2XS2Y" als Querschnitt missverstanden.
+    let rest = tm ? s.replace(tm[0], ' ') : s;
+    if (kv) rest = rest.replace(kv[0], ' ');
+    const gm = rest.match(GRUPPE_RX);
+
+    if (!cableType && !gm) return null;
+
+    let nParallel = lead ? parseInt(lead[1], 10) : 1;
+    let adern = null;
+    let crossSection = 0;
+
+    if (gm) {
+      if (gm[3] != null) {
+        nParallel    = parseInt(gm[1], 10) || nParallel;
+        adern        = parseFloat(gm[2]);
+        crossSection = parseFloat(gm[3]);
+      } else {
+        adern        = parseFloat(gm[1]);
+        crossSection = parseFloat(gm[2]);
+      }
+    }
+
+    // KABEL_TYPEN ist ein Literal-Objekt; der Typschlüssel kommt aus dem Text.
+    const katalog = /** @type {Record<string, {sections: Array<{mm2: number}>, msKabel?: boolean}>} */ (KABEL_TYPEN);
+    const typCfg = cableType ? katalog[cableType] : null;
+    // Papier-Massekabel (NKBA, NAKBA) gibt es in NS und MS — dort entscheidet die Spannungsangabe.
+    const msLevel = !!typCfg?.msKabel || kvMax >= 3;
+
+    return {
+      cableType,
+      typText,
+      crossSection,
+      nParallel: Math.max(1, nParallel || 1),
+      adern,
+      msLevel,
+      bekannt: !!(typCfg && typCfg.sections.some(x => x.mm2 === crossSection)),
+    };
+  }
+
   // ── lib/planblaetter.js — Blätter und Stände eines Bestandsplanwerks ────────
   //
   // DOM-frei, damit sich die beiden Stellen prüfen lassen, an denen ein Fehler
@@ -215425,7 +214080,7 @@ ${teile.join('\n')}
       const ids = _nordAnwenden(g);
       if (ids.length) _verlaufMerken(ids.map(flId => ({ gId: g.id, flId })));
     }
-    _uebernehmen(g);
+    _uebernehmen$1(g);
     window._rerenderCard?.(gId);
     window._updateGebLabelPv?.(gId);
     window.calcStromPanel?.();
@@ -215453,7 +214108,7 @@ ${teile.join('\n')}
       redrawGebPvModules(g);
       if (v.nordSperr) nordIds = _nordAnwenden(g);
     }
-    _uebernehmen(g);
+    _uebernehmen$1(g);
     window._rerenderCard?.(g.id);
     window._updateGebLabelPv?.(g.id);
     return nordIds;
@@ -215468,7 +214123,7 @@ ${teile.join('\n')}
 
   // kWp ins PV-Asset schreiben; legt es an, wenn es noch keins gibt (pvuFixOne
   // aus 03c macht beides und rechnet das Stromnetz nach).
-  function _uebernehmen(g) {
+  function _uebernehmen$1(g) {
     if (!g || !_hasBelegung(g)) return;
     window.pvuFixOne?.(g.id);
   }
@@ -215504,7 +214159,7 @@ ${teile.join('\n')}
           pv.props.leistungKWp = assetVorher;
         }
       } else {
-        _uebernehmen(g);
+        _uebernehmen$1(g);
       }
       window._rerenderCard?.(gId);
       window._updateGebLabelPv?.(gId);
@@ -215935,7 +214590,7 @@ ${teile.join('\n')}
     const nachziehen = hatteNord || (_vorgabe().nordSperr && !g?._pvNordFrei);
     if (g && nachziehen && _hasBelegung(g) && (feld === 'dachAzimut' || feld === 'dachform')) {
       _nordAnwenden(g);
-      _uebernehmen(g);
+      _uebernehmen$1(g);
       window._rerenderCard?.(gId);
       window._updateGebLabelPv?.(gId);
       window.calcStromPanel?.();
@@ -215968,7 +214623,7 @@ ${teile.join('\n')}
     // Wer die automatische Nord-Sperrfläche löscht, will die Nordseite belegen.
     if (g && (g.pvFlaechen || []).some(f => f.id === flId && f.auto === 'nord')) g._pvNordFrei = true;
     window.removeGebPvFlaeche?.(gId, flId);
-    if (g && _hasBelegung(g)) _uebernehmen(g);
+    if (g && _hasBelegung(g)) _uebernehmen$1(g);
     pvModusRender();
     pvModusMarkiereKarte();
   }
@@ -216017,7 +214672,7 @@ ${teile.join('\n')}
       g.pvFlBelegung = v.belegung;
       if (v.neigung != null) g.dachNeigung = v.neigung;
       redrawGebPvModules(g);
-      _uebernehmen(g);
+      _uebernehmen$1(g);
       window._rerenderCard?.(g.id);
       window._updateGebLabelPv?.(g.id);
     }
@@ -217747,6 +216402,7 @@ ${teile.join('\n')}
     beispiel:   10,   // gesperrte Beispielzelle: hellblau, umbrechend
     gut:        11,   // gesperrt, hellgrün: Anforderung heute erfüllt
     luecke:     12,   // gesperrt, hellorange: Lücke, Maßnahme nötig
+    info:       13,   // gesperrt, hellgrau: nur zur Information (wird nicht eingelesen)
   });
 
   const F_DUNKEL = 'FF266426';   // LKEBw dunkel
@@ -217758,6 +216414,7 @@ ${teile.join('\n')}
   const F_BLAU   = 'FFDCEBF7';   // Beispielwerte
   const F_GUT    = 'FFE2F0D9';   // erfüllt
   const F_LUECKE = 'FFFCE4D6';   // Lücke
+  const F_INFO   = 'FFF0F0F0';   // Infozellen
 
   const KOPF = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
@@ -217776,7 +216433,7 @@ ${teile.join('\n')}
     const fills = [
       '<fill><patternFill patternType="none"/></fill>',
       '<fill><patternFill patternType="gray125"/></fill>',
-      solid(F_DUNKEL), solid(F_GELB), solid(F_TINT), solid(F_HELL), solid(F_BLAU), solid(F_GUT), solid(F_LUECKE),
+      solid(F_DUNKEL), solid(F_GELB), solid(F_TINT), solid(F_HELL), solid(F_BLAU), solid(F_GUT), solid(F_LUECKE), solid(F_INFO),
     ];
     const kante = s => `<${s} style="thin"><color rgb="${F_LINIE}"/></${s}>`;
     const borders = [
@@ -217808,6 +216465,8 @@ ${teile.join('\n')}
         + '<alignment vertical="top" wrapText="1"/></xf>',
       '<xf numFmtId="0" fontId="0" fillId="8" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1">'
         + '<alignment vertical="top" wrapText="1"/></xf>',
+      '<xf numFmtId="0" fontId="3" fillId="9" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
+        + '<alignment vertical="top"/></xf>',
     ];
     return KOPF + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
       + `<fonts count="${fonts.length}">${fonts.join('')}</fonts>`
@@ -217900,7 +216559,7 @@ ${teile.join('\n')}
         + (p.titel ? ` promptTitle="${xmlEsc(p.titel)}"` : '')
         + (p.hinweis ? ` prompt="${xmlEsc(p.hinweis)}"` : '')
         + ' errorTitle="Auswahlliste"'
-        + ' error="Bitte einen Wert aus der Liste wählen. Wenn nichts passt, ist &quot;unbekannt&quot; die richtige Antwort."'
+        + ` error="${xmlEsc(p.fehler || 'Bitte einen Wert aus der Liste wählen. Wenn nichts passt, ist "unbekannt" die richtige Antwort.')}"`
         + `><formula1>${xmlEsc(p.liste)}</formula1></dataValidation>`).join('') + '</dataValidations>'
       : '';
 
@@ -217944,7 +216603,7 @@ ${teile.join('\n')}
    *   schutz?: boolean,
    *   versteckt?: boolean,
    *   verbunden?: string[],
-   *   pruefungen?: Array<{bereich:string, liste:string, titel?:string, hinweis?:string}>,
+   *   pruefungen?: Array<{bereich:string, liste:string, titel?:string, hinweis?:string, fehler?:string}>,
    * }>} mappe.blaetter
    * @param {Record<string,string>} [mappe.namen]  definierte Namen → Bezug, z. B. {L_JaNein:'Listen!$A$2:$A$4'}
    * @param {string} [mappe.titel]
@@ -218042,6 +216701,20 @@ ${teile.join('\n')}
       + '</Types>';
 
     return dateien;
+  }
+
+  /**
+   * Entpackte Dateien mit JSZip zu einem Blob packen.
+   * JSZip wird übergeben, damit dieses Modul global-frei bleibt.
+   */
+  async function xlsxBlob(dateien, JSZipKlasse) {
+    const zip = new JSZipKlasse();
+    for (const [pfad, inhalt] of Object.entries(dateien)) zip.file(pfad, inhalt);
+    return zip.generateAsync({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      compression: 'DEFLATE',
+    });
   }
 
   // ── lib/xlsx-leser.js — Minimaler XLSX-Reader (OOXML von Hand) ──────────────
@@ -230719,6 +229392,1433 @@ ${ssSteckbriefHtml(blatt)}
     ssbZurKarte: ssbZurKarte
   });
 
+  // ── lib/xlsx-abgleich.js — Zellwerte des Excel-Vollexports lesen und abgleichen ──
+  // Reine Funktionen ohne DOM/App-Zustand (Export/Import selbst: 35-excel.js).
+  //
+  // Grundregel des Imports: Ein Wert wird nur übernommen, wenn die Zelle vom
+  // Stand vor dem Import abweicht. Ein unverändert wieder eingelesener Export
+  // ändert damit nichts — auch keine Merker wie autoSized oder waermeManual.
+
+
+  /** Leere Zelle (fehlt, null, nur Leerzeichen). */
+  function istLeer(v) {
+    return v == null || (typeof v === 'string' && v.trim() === '');
+  }
+
+  /** Zahl aus einer Zelle; deutsche Dezimalkommas werden akzeptiert. Leer/ungültig → null. */
+  function xNum(v) {
+    if (istLeer(v)) return null;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    if (typeof v === 'boolean') return null;
+    let s = String(v).trim().replace(/\s/g, '');
+    // „1.234,5" → 1234.5 ; „1,5" → 1.5
+    if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /** Ganzzahl (Jahre, Anzahlen). Leer/ungültig → null. */
+  function xInt(v) {
+    const n = xNum(v);
+    return n == null ? null : Math.round(n);
+  }
+
+  /** Text, getrimmt. Leer → ''. */
+  function xStr(v) {
+    return istLeer(v) ? '' : String(v).trim();
+  }
+
+  const _JA   = new Set(['ja', 'j', 'true', 'wahr', '1', 'x', 'yes']);
+  const _NEIN = new Set(['nein', 'n', 'false', 'falsch', '0', 'no']);
+  /** Ja/Nein-Zelle → true/false; leer oder unlesbar → null. */
+  function xBool(v) {
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'number') return v !== 0;
+    const s = xStr(v).toLowerCase();
+    if (_JA.has(s)) return true;
+    if (_NEIN.has(s)) return false;
+    return null;
+  }
+
+  /** Export-Darstellung eines Wahrheitswerts. */
+  function janein(v) {
+    return v === true ? 'ja' : v === false ? 'nein' : '';
+  }
+
+  /**
+   * Spaltenindex über die Kopfzeile. Mehrere Namen = Aliase (ältere Exporte).
+   * @param {any[]} header
+   */
+  function kopfIndex(header) {
+    const m = new Map();
+    (header || []).forEach((h, i) => {
+      const k = xStr(h);
+      if (k && !m.has(k)) m.set(k, i);
+    });
+    return {
+      /** @param {...string} namen */
+      hat: (...namen) => namen.some(n => m.has(n)),
+      /** @param {any[]} row @param {...string} namen */
+      zelle(row, ...namen) {
+        for (const n of namen) if (m.has(n)) return row?.[m.get(n)];
+        return undefined;
+      },
+    };
+  }
+
+  /**
+   * Weicht eine Zahl von der Zelle ab? Verglichen wird auf die Nachkommastellen,
+   * mit denen der Export schreibt — sonst gälte jeder gerundete Wert als „geändert".
+   * Leer und null/'' gelten als gleich.
+   */
+  function zahlGeaendert(alt, neu, stellen = 6) {
+    const a = xNum(alt), b = xNum(neu);
+    if (a == null && b == null) return false;
+    if (a == null || b == null) return true;
+    const f = Math.pow(10, stellen);
+    return Math.round(a * f) !== Math.round(b * f);
+  }
+
+  /**
+   * Wurde eine Zelle seit dem Export verändert? Vergleich mit dem Exportstand
+   * (verstecktes Zwillingsblatt). Zahlen tolerant gegen Gleitkomma-Rauschen,
+   * das Excel beim Speichern erzeugen kann; Zahl und Zahlentext gelten als gleich.
+   */
+  function zelleGeaendert(jetzt, beimExport) {
+    if (istLeer(jetzt) && istLeer(beimExport)) return false;
+    if (istLeer(jetzt) !== istLeer(beimExport)) return true;
+    const a = xNum(jetzt), b = xNum(beimExport);
+    if (a != null && b != null) return Math.abs(a - b) > 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+    return xStr(jetzt) !== xStr(beimExport);
+  }
+
+  /** Text verschieden? Leer und null gelten als gleich. */
+  function textGeaendert(alt, neu) {
+    return xStr(alt) !== xStr(neu);
+  }
+
+  /**
+   * Auswahlwert lesen: Schlüssel oder Anzeigename, Groß-/Kleinschreibung egal.
+   * @param {Record<string,string>} werte  Schlüssel → Anzeigename
+   * @returns {string|null|undefined} Schlüssel; null = leer; undefined = unbekannt
+   */
+  function xAuswahl(v, werte) {
+    const s = xStr(v);
+    if (!s) return null;
+    const lc = s.toLowerCase();
+    for (const [k, l] of Object.entries(werte)) {
+      if (k.toLowerCase() === lc || String(l).toLowerCase() === lc) return k;
+    }
+    return undefined;
+  }
+
+  // ── Typ-Props der Assets ─────────────────────────────────────────────────────
+
+  /**
+   * Zellwert für eine Prop-Definition.
+   * @param {{art?:string, werte?:Record<string,string>}} def
+   */
+  function propZuZelle(def, v) {
+    if (v == null || v === '') return '';
+    if (def.art === 'janein') return janein(!!v);
+    if (def.art === 'auswahl' && def.werte) return def.werte[v] ?? v;
+    return v;
+  }
+
+  /**
+   * Zelle → Prop-Wert.
+   * @returns {{ok:true, wert:any} | {ok:false, fehler:string}}
+   *   wert null = Feld geleert (Inspektor speichert ebenfalls null)
+   */
+  function zelleZuProp(def, zelle) {
+    if (istLeer(zelle)) return { ok: true, wert: null };
+    switch (def.art) {
+      case 'janein': {
+        const b = xBool(zelle);
+        return b == null ? { ok: false, fehler: `„${zelle}" ist kein ja/nein` } : { ok: true, wert: b };
+      }
+      case 'auswahl': {
+        const k = xAuswahl(zelle, def.werte || {});
+        return k === undefined
+          ? { ok: false, fehler: `„${zelle}" ist nicht erlaubt (${Object.values(def.werte || {}).join(', ')})` }
+          : { ok: true, wert: k };
+      }
+      case 'text':
+        return { ok: true, wert: xStr(zelle) };
+      default: {
+        const n = xNum(zelle);
+        return n == null ? { ok: false, fehler: `„${zelle}" ist keine Zahl` } : { ok: true, wert: n };
+      }
+    }
+  }
+
+  /** Prop-Wert verschieden? null/undefined/'' gelten als gleich. */
+  function propGeaendert(def, alt, neu) {
+    const leerA = alt == null || alt === '', leerB = neu == null || neu === '';
+    if (leerA && leerB) return false;
+    if (leerA !== leerB) return true;
+    if (def.art === 'janein') return !!alt !== !!neu;
+    if (def.art === 'text' || def.art === 'auswahl') return String(alt) !== String(neu);
+    return zahlGeaendert(alt, neu);
+  }
+
+  // ── Ziel-Parameter einer Maßnahme ────────────────────────────────────────────
+
+  /**
+   * newProps → „Leistung (kVA)=1000; UK (%)=6". Bekannte Schlüssel erscheinen mit
+   * ihrem Anzeigenamen, unbekannte als Schlüssel.
+   * @param {Record<string,any>|null|undefined} newProps
+   * @param {{key:string,label:string}[]} defs
+   */
+  function zielParameterText(newProps, defs = []) {
+    if (!newProps) return '';
+    const label = new Map(defs.map(d => [d.key, d.label]));
+    return Object.entries(newProps)
+      .filter(([, v]) => v != null && v !== '')
+      .map(([k, v]) => `${label.get(k) || k}=${v}`)
+      .join('; ');
+  }
+
+  /**
+   * „Label=Wert; key=Wert" → newProps. Erlaubt sind Anzeigenamen und Schlüssel aus
+   * `defs` sowie Schlüssel, die die Maßnahme schon hat.
+   * @returns {{props:Record<string,any>, unbekannt:string[]}}
+   */
+  function zielParameterLesen(text, defs = [], vorhandeneKeys = []) {
+    const props = {}, unbekannt = [];
+    const s = xStr(text);
+    if (!s) return { props, unbekannt };
+    const nachLabel = new Map(defs.map(d => [d.label.toLowerCase(), d.key]));
+    const keys = new Set([...defs.map(d => d.key), ...vorhandeneKeys]);
+    for (const teil of s.split(';')) {
+      const i = teil.indexOf('=');
+      if (i < 0) { if (teil.trim()) unbekannt.push(teil.trim()); continue; }
+      const name = teil.slice(0, i).trim(), roh = teil.slice(i + 1).trim();
+      const key = nachLabel.get(name.toLowerCase()) ?? (keys.has(name) ? name : null);
+      if (!key) { unbekannt.push(name); continue; }
+      const n = xNum(roh);
+      props[key] = n != null ? n : roh;
+    }
+    return { props, unbekannt };
+  }
+
+  /** Zwei newProps-Objekte inhaltlich gleich? */
+  function zielParameterGleich(a, b) {
+    const ea = Object.entries(a || {}).filter(([, v]) => v != null && v !== '');
+    const eb = Object.entries(b || {}).filter(([, v]) => v != null && v !== '');
+    if (ea.length !== eb.length) return false;
+    const mb = new Map(eb);
+    return ea.every(([k, v]) => mb.has(k) && String(mb.get(k)) === String(v));
+  }
+
+  // ── „Gilt für" (Geltungsbereich einer Maßnahme) ─────────────────────────────
+
+  const GILT_ALLE = 'alle Varianten';
+
+  /**
+   * Export-Text. m.variante: fehlt = Standardregel (leer), null = alle Varianten,
+   * Schlüssel = nur diese Variante.
+   * @param {(key:string)=>string} nameVon
+   */
+  function geltungText(m, nameVon) {
+    if (!m || !('variante' in m) || m.variante === undefined) return '';
+    if (m.variante === null) return GILT_ALLE;
+    return nameVon(m.variante);
+  }
+
+  /**
+   * Zelle → Geltung.
+   * @param {{key:string,name:string}[]} varianten  inkl. Hauptplan (key 'base')
+   * @returns {{aendern:false} | {aendern:true, wert:string|null} | {aendern:false, fehler:string}}
+   *   leer = nicht ändern (die Standardregel bleibt bzw. der gespeicherte Wert)
+   */
+  function geltungLesen(zelle, varianten) {
+    const s = xStr(zelle);
+    if (!s) return { aendern: false };
+    const lc = s.toLowerCase().replace(/^nur\s+/, '');
+    if (lc === 'alle' || lc === GILT_ALLE.toLowerCase()) return { aendern: true, wert: null };
+    const v = varianten.find(x => x.name.toLowerCase() === lc || String(x.key).toLowerCase() === lc);
+    return v ? { aendern: true, wert: v.key } : { aendern: false, fehler: `Variante „${s}" unbekannt` };
+  }
+
+  // ── Blattbausteine für xlsxDateien() (lib/xlsx-schreiber.js) ─────────────────
+
+  /**
+   * Auswahllisten auf einem versteckten Blatt, je Liste ein definierter Name.
+   * @param {Record<string, string[]>} listen  Name → Werte
+   */
+  function listenBlatt(listen) {
+    const eintraege = Object.entries(listen).filter(([, w]) => w.length);
+    const hoehe = Math.max(0, ...eintraege.map(([, w]) => w.length));
+    const zeilen = [eintraege.map(([n]) => n)];
+    for (let i = 0; i < hoehe; i++) zeilen.push(eintraege.map(([, w]) => w[i] ?? null));
+    const namen = {};
+    eintraege.forEach(([n, w], c) => {
+      const sp = spalteZuBuchstabe(c);
+      namen[n] = `Listen!$${sp}$2:$${sp}$${w.length + 1}`;
+    });
+    return { blatt: { name: 'Listen', zeilen, versteckt: true }, namen };
+  }
+
+  /**
+   * Tabellenblatt aus Spaltenbeschreibungen.
+   * Spalte: { kopf, wert:(obj)=>any, edit?: true|'neu', zahl?, liste?, breite? }
+   *   edit true  = gelbe Eingabezelle (wird eingelesen)
+   *   edit 'neu' = nur in den Leerzeilen am Ende (Schlüsselspalten neuer Zeilen)
+   *   sonst      = graue Infozelle
+   */
+  function tabellenBlatt(name, spalten, objekte, { leerzeilen = 0, fixSpalten = 0, namen = {} } = {}) {
+    const stil = (s, neu) => {
+      const edit = s.edit === true || (neu && s.edit === 'neu');
+      return !edit ? XS.info : s.zahl ? XS.eingabeZahl : XS.eingabe;
+    };
+    const wert = v => v === '' || v == null ? null : typeof v === 'boolean' ? janein(v) : v;
+    const zeilen = [spalten.map(s => ({ w: s.kopf, s: XS.kopf }))];
+    for (const o of objekte) zeilen.push(spalten.map(s => ({ w: wert(s.wert(o)), s: stil(s, false) })));
+    for (let i = 0; i < leerzeilen; i++) zeilen.push(spalten.map(s => ({ w: null, s: stil(s, true) })));
+
+    const ende = zeilen.length;
+    const pruefungen = [];
+    spalten.forEach((s, c) => {
+      if (!s.liste || !s.edit || !namen[s.liste]) return;
+      const von = s.edit === 'neu' ? objekte.length + 2 : 2;
+      if (von > ende) return;
+      const sp = spalteZuBuchstabe(c);
+      pruefungen.push({ bereich: `${sp}${von}:${sp}${ende}`, liste: s.liste, titel: s.kopf,
+        fehler: 'Dieser Wert steht nicht in der Auswahlliste — der Import wird ihn melden und nicht übernehmen.' });
+    });
+    return {
+      name, zeilen, pruefungen, fixZeilen: 1, fixSpalten,
+      zeilenHoehe: { 0: 32 },
+      spalten: spalten.map(s => ({ breite: s.breite ?? Math.min(36, Math.max(9, Math.round(s.kopf.length * 0.95) + 2)) })),
+    };
+  }
+
+  // ── 35-excel.js — Excel-Vollexport und -Import (📊/📥 Excel) ─────────────────
+  //
+  // Geschrieben und gelesen wird mit lib/xlsx-schreiber.js / lib/xlsx-leser.js
+  // (JSZip ist im Build eingebettet) — läuft also offline, ohne SheetJS vom CDN.
+  //
+  // Export: gelbe Zellen werden eingelesen, graue sind nur Information. Die Blätter
+  // sind ohne Passwort geschützt, damit Kopfzeilen und Schlüsselspalten nicht
+  // versehentlich überschrieben werden; Auswahlfelder haben Dropdowns.
+  //
+  // Import: Spalten werden über die Kopfzeile erkannt (ältere Exporte bleiben
+  // lesbar). Übernommen wird nur, was vom Stand vor dem Import abweicht
+  // (lib/xlsx-abgleich.js). Alle Änderungen werden erst gesammelt und in einer
+  // Vorschau angezeigt; angewendet wird erst nach Bestätigung.
+
+
+  // ── Wertebereiche ────────────────────────────────────────────────────────────
+
+  const _SCHICHT_WERTE       = Object.fromEntries(Object.entries(SCHICHT_META).map(([k, m]) => [k, m.label]));
+  const _ZUSTAND_WERTE       = { A: 'A', B: 'B', C: 'C' };
+  const _NOTSTROM_WERTE      = { A: 'A', B: 'B', C: 'C' };
+  const _DACHFORM_WERTE      = { flach: 'Flachdach', sattel: 'Satteldach', walm: 'Walmdach', pult: 'Pultdach' };
+  const _PV_MODUS_WERTE      = { pauschal: 'Pauschal', flaechen: 'Flächen' };
+  const _PV_AUSRICHTUNG      = { sued: 'Süd', ostwest: 'Ost-West' };
+  const _MASSN_STATUS_WERTE  = { geplant: 'geplant', umgesetzt: 'umgesetzt', abgelehnt: 'abgelehnt' };
+  const _MASSN_OBJEKT_WERTE  = { Asset: 'Asset', Kabel: 'Kabel', Gebaeude: 'Gebäude' };
+  // Maßnahmentypen wie in den Formularen von Asset- (13e) und Kabel-Inspektor (05b)
+  const _MASSN_TYP_WERTE = {
+    Asset: { Sanierung: 'Sanierung', Abriss: 'Abriss', Bau: 'Neubau/Bau', Ertuechtigung: 'Ertüchtigung' },
+    Kabel: { Verlegung: 'Neuverlegung', Ertuecht: 'Ertüchtigung', Austausch: 'Austausch', Rueckbau: 'Rückbau' },
+  };
+  // Ziel-Parameter von Kabel-Maßnahmen (Engpass-Ausbauplan, lib/engpass-core.js)
+  const _KABEL_ZIEL_DEFS = [
+    { key: 'cableType',    label: 'Typ' },
+    { key: 'crossSection', label: 'Querschnitt mm²' },
+    { key: 'nParallel',    label: 'Parallelkabel' },
+  ];
+
+  // Typ-Reiter: ASSET_PROPS_SCHEMA (13a) enthält die simulationsrelevanten Props
+  // und speist auch das „Ziel-Parameter"-Formular der Maßnahmen. Was nur der
+  // Inspektor (13e) zusätzlich pflegt, steht deshalb hier und nicht dort.
+  const _XLSX_PROPS_EXTRA = {
+    Trafo:       [{ key: 'netzart', label: 'Netzart' }],
+    NSHV:        [{ key: 'netzart', label: 'Netzart' }],
+    UV:          [{ key: 'netzart', label: 'Netzart' }],
+    Verbraucher: [{ key: 'slpTyp',  label: 'Lastprofil (SLP)' }],
+    TWW:         [{ key: 'kwhProPersonA', label: 'kWh/(Pers.·a)' },
+                  { key: 'copBooster',    label: 'COP Booster' },
+                  { key: 'zielTempC',     label: 'Zieltemperatur (°C)' },
+                  { key: 'vbhTww',        label: 'Vollbenutzungsstunden (h/a)' }],
+    KWK:         [{ key: 'wirkungsgradGes', label: 'Gesamtwirkungsgrad (%)' }],
+    Lade:        [{ key: 'rotation', label: 'Drehung (°)' }],
+    Wind:        [{ key: 'einschaltwindMs',        label: 'Einschaltwind (m/s)' },
+                  { key: 'nennwindMs',             label: 'Nennwind (m/s)' },
+                  { key: 'abschaltwindMs',         label: 'Abschaltwind (m/s)' },
+                  { key: 'mittlereWindMs',         label: 'Ø Windgeschw. Nabenhöhe (m/s)' },
+                  { key: 'weibullK',               label: 'Weibull-Formfaktor k' },
+                  { key: 'abstandMultiplikator',   label: 'Planungsabstand (x Rotordurchmesser)' },
+                  { key: 'windLwa',                label: 'Schallleistungspegel Lwa (dB(A))' },
+                  { key: 'abstandVisible',         label: 'Abstandsradius anzeigen' },
+                  { key: 'laermVisible',           label: 'Lärmringe anzeigen' },
+                  { key: 'eignungsflaecheVisible', label: 'Eignungsfläche anzeigen' }],
+  };
+  const _XLSX_AUSWAHL = {
+    netzart:       { verbrauch: 'Verbrauchsnetz', erzeugung: 'Erzeugungsnetz' },
+    ausrichtung:   { sued: 'Süd', ostwest: 'Ost-West' },
+    eingabeModus:  { personen: 'Personenzahl', energie: 'TWW-Energie' },
+    geraet:        { heizstab: 'Heizstab', booster: 'Booster-WP' },
+    betriebsmodus: { einspeisung: 'Einspeisung', verbraucher: 'Verbraucher' },
+    kraftstoff:    { Diesel: 'Diesel', Gas: 'Gas', HVO: 'HVO' },
+    brennstoff:    Object.fromEntries(['Erdgas', 'Biogas', 'Biomethan', 'HVO', 'Pflanzenöl', 'Wasserstoff', 'Heizöl'].map(b => [b, b])),
+  };
+  const _XLSX_JANEIN = new Set(['trennstelle', 'abstandVisible', 'laermVisible', 'eignungsflaecheVisible']);
+  // Vom Tool berechnet — nur zur Information exportiert (TWW: computeTwwKw beim Öffnen des Inspektors)
+  const _XLSX_BERECHNET = { TWW: new Set(['leistungKW']) };
+
+  /** Spalten des Typ-Reiters: {key, label, art, werte?}. */
+  function _xlsxPropDefs(type) {
+    return [...(ASSET_PROPS_SCHEMA[type] || []), ...(_XLSX_PROPS_EXTRA[type] || [])].map(d => {
+      if (_XLSX_BERECHNET[type]?.has(d.key)) return { ...d, label: d.label + ' (berechnet)', art: 'berechnet' };
+      if (d.key === 'slpTyp') return { ...d, art: 'auswahl', werte: Object.fromEntries(getElSlpProfiles().map(p => [p.id, p.id])) };
+      if (_XLSX_AUSWAHL[d.key]) return { ...d, art: 'auswahl', werte: _XLSX_AUSWAHL[d.key] };
+      return { ...d, art: _XLSX_JANEIN.has(d.key) ? 'janein' : 'zahl' };
+    });
+  }
+
+  function _typReiterName(type) { return (ASSET_LABELS[type] || type).slice(0, 31); }
+
+  function _statusText(item, yr) {
+    const s = getAssetStatus(item, yr);
+    return s === 'active' ? 'Aktiv' : s === 'planned' ? 'Geplant' : 'Abgerissen';
+  }
+
+  function _zahl(v, stellen) {
+    const n = parseFloat(v);
+    return (v == null || v === '' || !isFinite(n)) ? '' : +n.toFixed(stellen);
+  }
+
+  function _variantenListe() {
+    return [{ key: 'base', name: variantenName('base') }, ...(varianten || []).map(v => ({ key: v.id, name: v.name }))];
+  }
+
+  function _kabelLabel(e, assetMap) {
+    return `${assetMap.get(e.u)?.name || e.u} → ${assetMap.get(e.v)?.name || e.v}`;
+  }
+
+  /** Alle Maßnahmen mit Objektbezug: Assets, Kabel, Gebäude (Cluster-Pakete). */
+  function _alleMassnahmen(allAssets, allEdges, allGebaeude, assetMap) {
+    const liste = [];
+    for (const a of allAssets) for (const m of (a.massnahmen || []))
+      liste.push({ m, art: 'Asset', obj: a, objId: a.id, objName: a.name || a.id, objTyp: ASSET_LABELS[a.type] || a.type, zielDefs: ASSET_PROPS_SCHEMA[a.type] || [] });
+    for (const e of allEdges) for (const m of (e.massnahmen || []))
+      liste.push({ m, art: 'Kabel', obj: e, objId: e.id, objName: _kabelLabel(e, assetMap), objTyp: e.cableType || 'NAYY', zielDefs: _KABEL_ZIEL_DEFS });
+    for (const g of allGebaeude) for (const m of (g.massnahmen || []))
+      liste.push({ m, art: 'Gebaeude', obj: g, objId: g.id, objName: g.name || '', objTyp: g.nutzung || '', zielDefs: [] });
+    return liste;
+  }
+
+  // ── Export: Bausteine ────────────────────────────────────────────────────────
+
+  function _textBlatt(name, zeilen, breiten) {
+    return { name, zeilen, schutz: false, spalten: breiten.map(b => ({ breite: b })) };
+  }
+
+  // ── Export ───────────────────────────────────────────────────────────────────
+  async function exportVollstaendigXLSX() {
+    if (typeof window.JSZip !== 'function') { showHint('⚠ JSZip ist nicht geladen — bitte die Seite neu laden.', 6000); return; }
+    const yr = globalYear ?? new Date().getFullYear();
+    const allGebaeude = window.gebaeude || [];
+    const allAssets = ASSETS.items || [];
+    const allEdges = window.stromEdges || [];
+    const gebMap = new Map(allGebaeude.map(g => [g.id, g]));
+    const assetMap = new Map(allAssets.map(a => [a.id, a]));
+    const gebName = a => a.buildingId != null ? (gebMap.get(a.buildingId)?.name || a.buildingId) : '';
+    const alleMassn = _alleMassnahmen(allAssets, allEdges, allGebaeude, assetMap);
+    const S = (kopf, wert, opt = {}) => ({ kopf, wert, ...opt });
+    const E = { edit: true }, EZ = { edit: true, zahl: true };
+
+    // Auswahllisten
+    const propListen = {};
+    for (const type of Object.keys(ASSET_PROPS_SCHEMA)) for (const d of _xlsxPropDefs(type))
+      if (d.art === 'auswahl') propListen['L_P_' + d.key] = Object.values(d.werte);
+    const assetNamen = [...new Set(allAssets.map(a => a.name || String(a.id)))].sort((a, b) => a.localeCompare(b, 'de'));
+    const { blatt: listenTab, namen } = listenBlatt({
+      L_JaNein: ['ja', 'nein'],
+      L_Schicht: Object.values(_SCHICHT_WERTE),
+      L_Zustand: Object.values(_ZUSTAND_WERTE),
+      L_Notstrom: Object.values(_NOTSTROM_WERTE),
+      L_PvModus: Object.values(_PV_MODUS_WERTE),
+      L_PvAusr: Object.values(_PV_AUSRICHTUNG),
+      L_Dachform: Object.values(_DACHFORM_WERTE),
+      L_KabelTyp: Object.keys(KABEL_TYPEN),
+      L_MStatus: Object.values(_MASSN_STATUS_WERTE),
+      L_MTyp: [...new Set([...Object.values(_MASSN_TYP_WERTE.Asset), ...Object.values(_MASSN_TYP_WERTE.Kabel)])],
+      L_Objekt: ['Asset', 'Kabel'],
+      L_Gilt: [GILT_ALLE, ..._variantenListe().map(v => v.name)],
+      L_Assets: assetNamen,
+      L_MObjekte: [...assetNamen, ...allEdges.map(e => _kabelLabel(e, assetMap))],
+      ...propListen,
+    });
+    const T = (name, spalten, objekte, opt = {}) => tabellenBlatt(name, spalten, objekte, { namen, ...opt });
+
+    const gebBlatt = T('Gebäude', [
+      S('ID', g => g.id, { breite: 6 }),
+      S('Name', g => g.name, { ...E, breite: 24 }),
+      S('Gebäudenummer', g => g.gebaeudenummer, E),
+      S('Nutzung', g => g.nutzung, E),
+      S('Fläche (m²)', g => _zahl(g.flaeche, 0), EZ),
+      S('Stockwerke', g => g.stockwerke ?? 1, EZ),
+      S('Baujahr', g => g.baujahr, EZ),
+      S('Abrissjahr', g => g.abrissjahr, EZ),
+      S('Schicht', g => _SCHICHT_WERTE[normSchicht(g.schicht)], { ...E, liste: 'L_Schicht', breite: 13 }),
+      S('Zustand', g => g.zustand, { ...E, liste: 'L_Zustand' }),
+      S('Wärmebedarf (MWh/a)', g => _zahl(g.waerme, 2), EZ),
+      S('Heizlast (kW)', g => _zahl(g.heizlast, 1), EZ),
+      S('Spez. Wärme (kWh/m²a)', g => _zahl(g.spez, 1), EZ),
+      S('Spez. Heizlast (W/m²)', g => _zahl(g.spezHeizlast, 1), EZ),
+      S('Strom (MWh/a)', g => _zahl(g.strom, 2), EZ),
+      S('Spez. Strom (kWh/m²a)', g => _zahl(g.spezStrom, 1), EZ),
+      S('PV aktiv', g => janein(!!g.pvAktiv), { ...E, liste: 'L_JaNein' }),
+      S('PV Dachanteil (%)', g => g.pvDachanteil || 30, EZ),
+      S('PV-Modus', g => _PV_MODUS_WERTE[g.pvModus || 'flaechen'] || g.pvModus, { ...E, liste: 'L_PvModus' }),
+      S('PV-Ausrichtung', g => _PV_AUSRICHTUNG[g.pvFlAusrichtung || 'sued'] || g.pvFlAusrichtung, { ...E, liste: 'L_PvAusr' }),
+      S('PV-Belegung (%)', g => g.pvFlBelegung, EZ),
+      S('PV-GCR (%)', g => g.pvFlGcr, EZ),
+      S('PV-Baujahr', g => g.pvBaujahr, EZ),
+      S('Dachform', g => _DACHFORM_WERTE[g.dachform || 'sattel'] || g.dachform, { ...E, liste: 'L_Dachform' }),
+      S('Dachneigung (°)', g => _zahl(g.dachNeigung, 1), EZ),
+      S('Dachazimut (°)', g => _zahl(g.dachAzimut, 1), EZ),
+      S('Notstromklasse', g => normalisiereNotstrom(g.notstrom)?.klasse, { ...E, liste: 'L_Notstrom' }),
+      S('Notstrom Last B (%)', g => normalisiereNotstrom(g.notstrom)?.lastPct, EZ),
+      S('Notstrom eigenes NEA', g => { const n = normalisiereNotstrom(g.notstrom); return n?.klasse === 'A' ? janein(n.eigeneNea) : ''; }, { ...E, liste: 'L_JaNein' }),
+    ], allGebaeude, { fixSpalten: 2 });
+
+    const leistung = a => {
+      const p = a.props || {};
+      if (a.type === 'Trafo') return (p.leistungKVA || 630) + ' kVA';
+      if (['Verbraucher', 'WP', 'Nsa', 'KWK', 'Wind'].includes(a.type)) return (p.leistungKW || p.leistungElKW || 0) + ' kW';
+      if (a.type === 'PV') return (p.leistungKWp || 0) + ' kWp';
+      if (a.type === 'Lade') return ((p.anzahlPunkte || 4) * (p.leistungProPunktKW || 22)) + ' kW';
+      if (['NSHV', 'UV', 'KVS', 'Schaltanlage'].includes(a.type)) return (p.nennstromA || 400) + ' A';
+      return '';
+    };
+    const invest = a => (a.massnahmen || []).reduce((s, m) => s + (parseFloat(m.kosten) || 0), 0);
+    const assetBasis = [
+      S('ID', a => a.id, { breite: 14 }),
+      S('Name', a => a.name || a.id, { ...E, breite: 22 }),
+    ];
+    const assetJahre = [
+      S('Baujahr', a => a.baujahr, EZ),
+      S('Abrissjahr', a => a.abrissjahr, EZ),
+      S('Schicht', a => _SCHICHT_WERTE[normSchicht(a.schicht)], { ...E, liste: 'L_Schicht', breite: 13 }),
+      S('Status ' + yr, a => _statusText(a, yr)),
+    ];
+    const assetsBlatt = T('Assets', [
+      ...assetBasis,
+      S('Typ', a => ASSET_LABELS[a.type] || a.type, { breite: 16 }),
+      S('Gebäude', gebName, { breite: 18 }),
+      ...assetJahre,
+      S('Leistung kW/kVA', leistung),
+      S('Maßnahmen (Anzahl)', a => (a.massnahmen || []).length),
+      S('Investition (€)', a => invest(a) || ''),
+    ], allAssets, { fixSpalten: 2 });
+
+    const kabelBlatt = T('Kabel', [
+      S('Kabel-ID', e => e.id, { breite: 14 }),
+      S('Von-ID', e => e.u, { edit: 'neu', breite: 14 }),
+      S('Nach-ID', e => e.v, { edit: 'neu', breite: 14 }),
+      S('Von', e => assetMap.get(e.u)?.name || e.u, { edit: 'neu', liste: 'L_Assets', breite: 20 }),
+      S('Nach', e => assetMap.get(e.v)?.name || e.v, { edit: 'neu', liste: 'L_Assets', breite: 20 }),
+      S('Typ', e => e.cableType || 'NAYY', { ...E, liste: 'L_KabelTyp', breite: 12 }),
+      S('Querschnitt mm²', e => e.crossSection || '', EZ),
+      S('Auto-Bemessung', e => janein(!!e.autoSized), { ...E, liste: 'L_JaNein' }),
+      S('Parallelkabel', e => e.nParallel || 1, EZ),
+      S('Sicherung A', e => e.fuseA || '', EZ),
+      S('Trennstelle', e => janein(!!e.trennstelle), { ...E, liste: 'L_JaNein' }),
+      S('Querschnitt geschätzt', e => janein(!!e.qsGeschaetzt)),
+      S('Querschnitt-Quelle', e => e.qsQuelle || '', { breite: 28 }),
+      S('MS-Ebene', e => janein(!!e.msLevel)),
+      S('Baujahr (abgeleitet)', e => e.baujahr ?? ''),
+      S('Abrissjahr (abgeleitet)', e => e.abrissjahr ?? ''),
+      S('Länge m', e => Math.round(e.lengthM || 0)),
+      S('Strom A', e => e.peakCurrentA != null ? +e.peakCurrentA.toFixed(1) : ''),
+      S('Auslastung %', e => e.auslastungPct != null ? +e.auslastungPct.toFixed(1) : ''),
+      S('Spannungsfall %', e => e.deltaUPct != null ? +e.deltaUPct.toFixed(2) : ''),
+      S('Fluss kW', e => e.peakFlowKw != null ? +e.peakFlowKw.toFixed(1) : ''),
+    ], allEdges, { leerzeilen: 30 });
+
+    const massnBlatt = T('Maßnahmen', [
+      S('Maßnahmen-ID', x => x.m.id ?? '', { breite: 14 }),
+      S('Objekt', x => _MASSN_OBJEKT_WERTE[x.art], { edit: 'neu', liste: 'L_Objekt' }),
+      S('Objekt-ID', x => x.objId, { edit: 'neu', breite: 14 }),
+      S('Objekt-Name', x => x.objName, { edit: 'neu', liste: 'L_MObjekte', breite: 24 }),
+      S('Objekttyp', x => x.objTyp, { breite: 14 }),
+      S('Titel', x => x.m.titel || '', { ...E, breite: 26 }),
+      S('Maßnahmentyp', x => _MASSN_TYP_WERTE[x.art]?.[x.m.typ] ?? x.m.typ ?? '', { ...E, liste: 'L_MTyp', breite: 14 }),
+      S('Jahr', x => x.m.jahr ?? '', EZ),
+      S('Status', x => x.m.status || 'geplant', { ...E, liste: 'L_MStatus' }),
+      S('Kosten €', x => parseFloat(x.m.kosten) || 0, EZ),
+      S('Gilt für', x => geltungText(x.m, variantenName), { ...E, liste: 'L_Gilt', breite: 16 }),
+      S('Ziel-Parameter', x => zielParameterText(x.m.newProps, x.zielDefs), { ...E, breite: 36 }),
+    ], alleMassn, { leerzeilen: 30 });
+
+    const bezBlatt = T('Beziehungen', [
+      S('Asset-ID', a => a.id, { breite: 14 }),
+      S('Asset-Name', a => a.name || a.id, { breite: 22 }),
+      S('Typ', a => ASSET_LABELS[a.type] || a.type, { breite: 16 }),
+      S('Gebäude-ID', a => a.buildingId || ''),
+      S('Gebäude-Name', a => a.buildingId != null ? (gebMap.get(a.buildingId)?.name || '') : '', { breite: 18 }),
+      S('Verbunden mit (IDs)', a => allEdges.filter(e => e.u === a.id || e.v === a.id).map(e => e.u === a.id ? e.v : e.u).join(', '), { breite: 40 }),
+    ], allAssets);
+
+    // Typ-Reiter (nur für vorhandene Typen)
+    const typBlaetter = [];
+    for (const type of Object.keys(ASSET_PROPS_SCHEMA)) {
+      const typeAssets = allAssets.filter(a => a.type === type);
+      const defs = _xlsxPropDefs(type);
+      if (!typeAssets.length || !defs.length) continue;
+      typBlaetter.push(T(_typReiterName(type), [
+        ...assetBasis,
+        S('Gebäude', gebName, { breite: 18 }),
+        ...assetJahre,
+        ...defs.map(d => S(d.label, a => propZuZelle(d, (a.props || {})[d.key]), {
+          edit: d.art !== 'berechnet',
+          zahl: d.art === 'zahl',
+          liste: d.art === 'auswahl' ? 'L_P_' + d.key : d.art === 'janein' ? 'L_JaNein' : undefined,
+        })),
+      ], typeAssets, { fixSpalten: 2 }));
+    }
+
+    // Übersicht
+    const summe = (liste, f) => liste.reduce((s, x) => s + (parseFloat(f(x)) || 0), 0);
+    const typStats = {};
+    for (const a of allAssets) {
+      if (!typStats[a.type]) typStats[a.type] = { count: 0, invest: 0 };
+      typStats[a.type].count++;
+      typStats[a.type].invest += invest(a);
+    }
+    const massnStats = { geplant: { n: 0, k: 0 }, umgesetzt: { n: 0, k: 0 }, abgelehnt: { n: 0, k: 0 } };
+    for (const { m } of alleMassn) {
+      const s = massnStats[m.status] || massnStats.geplant;
+      s.n++; s.k += parseFloat(m.kosten) || 0;
+    }
+    const r0 = v => Math.round(v), r1 = v => +v.toFixed(1);
+    const ab = t => [{ w: t, s: XS.abschnitt }, { w: null, s: XS.abschnitt }, { w: null, s: XS.abschnitt }];
+    const kopf = (...t) => t.map(w => ({ w, s: XS.kopf }));
+    const ueBlatt = _textBlatt('Übersicht', [
+      [{ w: 'Energieplanung – Übersicht', s: XS.titel }],
+      [],
+      ['Exportiert am', new Date().toLocaleDateString('de-DE')],
+      ['Planungsjahr', yr],
+      ['Variante', aktiverVariantenName()],
+      [],
+      ab('GEBÄUDE'), kopf('Kenngröße', 'Wert', 'Einheit'),
+      ['Anzahl Gebäude', allGebaeude.length, ''],
+      ['Gesamtfläche', r0(summe(allGebaeude, g => g.flaeche)), 'm²'],
+      ['Wärmebedarf gesamt', r1(summe(allGebaeude, g => g.waerme)), 'MWh/a'],
+      ['Heizlast gesamt', r1(summe(allGebaeude, g => g.heizlast)), 'kW'],
+      ['Strombedarf gesamt', r1(summe(allGebaeude, g => g.strom)), 'MWh/a'],
+      [],
+      ab('ELEKTRISCHE ANLAGEN'), kopf('Typ', 'Anzahl', 'Investition (€)'),
+      ...Object.entries(typStats).map(([t, s]) => [ASSET_LABELS[t] || t, s.count, r0(s.invest)]),
+      [{ w: 'Gesamt', s: XS.fett }, allAssets.length, r0(Object.values(typStats).reduce((s, x) => s + x.invest, 0))],
+      [],
+      ab('KABEL / LEITUNGEN'), kopf('Kenngröße', 'Wert', 'Einheit'),
+      ['Anzahl Kabel', allEdges.length, ''],
+      ['Gesamtlänge', r0(summe(allEdges, e => e.lengthM)), 'm'],
+      [],
+      ab('MASSNAHMEN (Assets, Kabel, Gebäude)'), kopf('Status', 'Anzahl', 'Kosten (€)'),
+      ['Geplant', massnStats.geplant.n, r0(massnStats.geplant.k)],
+      ['Umgesetzt', massnStats.umgesetzt.n, r0(massnStats.umgesetzt.k)],
+      ['Abgelehnt', massnStats.abgelehnt.n, r0(massnStats.abgelehnt.k)],
+      [{ w: 'Gesamt', s: XS.fett }, alleMassn.length, r0(Object.values(massnStats).reduce((s, x) => s + x.k, 0))],
+    ], [30, 16, 16]);
+
+    const H = (a, b) => [{ w: a, s: XS.fett }, { w: b, s: XS.fliess }];
+    const hinwBlatt = _textBlatt('Hinweise', [
+      [{ w: 'Excel-Import – Hinweise', s: XS.titel }],
+      [],
+      H('Farben', 'Gelbe Zellen werden beim Import (📥 Excel) eingelesen. Graue Zellen sind nur Information. Die Blätter sind ohne Passwort geschützt (Überprüfen › Blattschutz aufheben), damit Kopfzeilen und IDs nicht versehentlich überschrieben werden.'),
+      H('Vorschau', 'Der Import zeigt zuerst alle erkannten Änderungen (bisher → neu). Erst nach „Übernehmen" wird etwas geändert.'),
+      H('Nur Änderungen', 'Übernommen werden nur Zellen, die in Excel geändert wurden und vom Stand im Tool abweichen. Ein unverändert wieder eingelesener Export ändert nichts.'),
+      H('Zuordnung', 'Über die ID-Spalten. Spalten werden an ihrer Überschrift erkannt — Überschriften nicht umbenennen.'),
+      H('Leere Zelle', 'Löscht den Wert (z. B. Abrissjahr). Bei Name, Nutzung, Fläche, Stockwerke, Schicht und Auswahlfeldern ohne Leer-Option bleibt der Wert dagegen unverändert.'),
+      H('Variante', 'Die Datei gilt für die Variante, die beim Export aktiv war (siehe Übersicht). Beim Import in eine andere Variante warnt die Vorschau.'),
+      H('Ältere Datei', 'Der Stand beim Export liegt in versteckten Blättern („_B_…"). Übernommen wird nur, was in Excel geändert wurde — was inzwischen im Tool geändert oder neu berechnet wurde, bleibt erhalten. Die versteckten Blätter deshalb nicht löschen.'),
+      [],
+      [{ w: 'Gebäude', s: XS.abschnitt }, { w: null, s: XS.abschnitt }],
+      H('Wärmebedarf / Heizlast', 'Zahl = manueller Wert; leer = wieder automatisch berechnen.'),
+      H('Notstromklasse', 'A (kritisch), B (eingeschränkt), C (einspeisefähig) oder leer.'),
+      [],
+      [{ w: 'Kabel', s: XS.abschnitt }, { w: null, s: XS.abschnitt }],
+      H('Neues Kabel', 'In einer der gelben Leerzeilen unten „Von" und „Nach" aus der Liste wählen (oder Von-ID/Nach-ID eintragen), dazu Typ und ggf. Querschnitt. Ohne Querschnitt wird automatisch ausgelegt. Länge und Trasse berechnet das Tool.'),
+      H('Querschnitt mm²', 'Ein geänderter Wert schaltet die Auto-Bemessung für dieses Kabel aus.'),
+      H('Auto-Bemessung', 'ja = Querschnitt automatisch auslegen.'),
+      [],
+      [{ w: 'Maßnahmen', s: XS.abschnitt }, { w: null, s: XS.abschnitt }],
+      H('Neue Maßnahme', 'In einer der gelben Leerzeilen unten das Objekt über „Objekt-Name" aus der Liste wählen (Asset oder Kabel), Titel und weitere Angaben eintragen. Gebäude-Maßnahmen entstehen über Cluster-Pakete und sind hier nicht anlegbar.'),
+      H('Maßnahmentyp', `Asset: ${Object.values(_MASSN_TYP_WERTE.Asset).join(', ')} · Kabel: ${Object.values(_MASSN_TYP_WERTE.Kabel).join(', ')}`),
+      H('Gilt für', `leer = Standardregel, „${GILT_ALLE}" oder der Name einer Variante.`),
+      H('Ziel-Parameter', 'Name=Wert; Name=Wert … z. B. „Leistung (kVA)=1000; UK (%)=6" (Namen wie im Typ-Reiter).'),
+    ], [26, 110]);
+
+    // Exportstand je importierbarem Blatt (versteckt) — Grundlage des Dreiwege-Abgleichs beim Import
+    const basisBlaetter = [gebBlatt, assetsBlatt, kabelBlatt, massnBlatt, ...typBlaetter].map(bl => ({
+      name: _basisName(bl.name), versteckt: true,
+      zeilen: bl.zeilen.map(z => z.map(c => c?.w ?? null)).filter(z => z.some(w => w != null)),
+    }));
+    const mappe = {
+      titel: 'Energieplanung – Vollexport',
+      blaetter: [ueBlatt, gebBlatt, assetsBlatt, kabelBlatt, massnBlatt, bezBlatt, ...typBlaetter, hinwBlatt, listenTab, ...basisBlaetter],
+      namen,
+    };
+    const blob = await xlsxBlob(xlsxDateien(mappe), window.JSZip);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'Vollexport_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // ── Import ───────────────────────────────────────────────────────────────────
+  function importVollstaendigXLSX() {
+    let inp = document.getElementById('_xlsxImportInput');
+    if (!inp) {
+      inp = document.createElement('input');
+      inp.type = 'file';
+      inp.id = '_xlsxImportInput';
+      inp.accept = '.xlsx';
+      inp.style.display = 'none';
+      document.body.appendChild(inp);
+      inp.addEventListener('change', _handleXlsxImport);
+    }
+    inp.value = '';
+    inp.click();
+  }
+
+  async function _handleXlsxImport(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+    if (typeof window.JSZip !== 'function') { showHint('⚠ JSZip ist nicht geladen — bitte die Seite neu laden.', 6000); return; }
+    try {
+      const { blaetter } = await xlsxAusBlob(await file.arrayBuffer(), window.JSZip);
+      const ctx = _importKontext();
+      const ueVariante = (blaetter['Übersicht'] || []).find(r => xStr(r?.[0]) === 'Variante')?.[1];
+      if (ueVariante != null && xStr(ueVariante) !== aktiverVariantenName())
+        ctx.warnung = `Die Datei wurde in der Variante „${xStr(ueVariante)}" exportiert, aktiv ist „${aktiverVariantenName()}". Die Änderungen gehen in die aktive Variante.`;
+
+      if (blaetter['Gebäude'])  _importGebaeude(blaetter['Gebäude'], ctx, _basis(blaetter, 'Gebäude', 'ID'));
+      if (blaetter['Assets'])   _importAssetsBlatt(blaetter['Assets'], ctx, _basis(blaetter, 'Assets', 'ID'));
+      for (const type of Object.keys(ASSET_PROPS_SCHEMA)) {
+        const rows = blaetter[_typReiterName(type)];
+        if (rows) _importTypReiter(type, rows, ctx, _basis(blaetter, _typReiterName(type), 'ID'));
+      }
+      if (blaetter['Kabel'])     _importKabel(blaetter['Kabel'], ctx, _basis(blaetter, 'Kabel', 'Kabel-ID'));
+      if (blaetter['Maßnahmen']) _importMassnahmen(blaetter['Maßnahmen'], ctx, _basis(blaetter, 'Maßnahmen', 'Maßnahmen-ID'));
+      _vorschauZeigen(ctx, file.name);
+    } catch (err) {
+      alert('Fehler beim Import: ' + err.message);
+      console.error(err);
+    }
+  }
+
+  /** Anzeige eines Werts in der Vorschau. */
+  function _anz(v) {
+    if (v == null || v === '') return '—';
+    if (typeof v === 'boolean') return janein(v);
+    // Tausenderpunkt erst ab fünf Stellen — sonst stünde da „1.975" statt des Baujahrs
+    if (typeof v === 'number') return v.toLocaleString('de-DE', { maximumFractionDigits: 3, useGrouping: Math.abs(v) >= 10000 });
+    return String(v);
+  }
+
+  /**
+   * Importkontext. Der Stand vor dem Import ist die Vergleichsbasis jeder Zelle —
+   * auch wenn ein Wert auf mehreren Blättern steht (Assets + Typ-Reiter).
+   */
+  function _importKontext() {
+    const kopie = o => ({ ...o, props: o.props ? { ...o.props } : o.props, newProps: o.newProps ? { ...o.newProps } : o.newProps });
+    const gebaeudeListe = window.gebaeude || [];
+    const assets = ASSETS.items || [];
+    const edges = window.stromEdges || [];
+    const massn = new Map();
+    for (const quelle of [...assets, ...edges, ...gebaeudeListe])
+      for (const m of (quelle.massnahmen || [])) massn.set(m, kopie(m));
+    const index = new Map();   // objKey|feld → Position in aenderungen
+    return {
+      origGeb:   new Map(gebaeudeListe.map(g => [g, kopie(g)])),
+      origAsset: new Map(assets.map(a => [a, kopie(a)])),
+      origEdge:  new Map(edges.map(e => [e, kopie(e)])),
+      origMassn: massn,
+      assetMap:  new Map(assets.map(a => [a.id, a])),
+      aenderungen: [],
+      neueMassnahmen: new Set(),
+      hinweise: [],
+      flags: { geb: false, assets: false, kabel: false, notstrom: false },
+      warnung: '',
+      melde(blattName, r, text) { this.hinweise.push(`${blattName}, Zeile ${r + 1}: ${text}`); },
+      /**
+       * Änderung vormerken. Steht dasselbe Feld auf zwei Blättern, gilt das spätere.
+       * @param {{kat:string, objKey:string, objekt:string, feld:string, alt?:any, neu?:any, neuAnlage?:boolean, tun:()=>void}} a
+       */
+      plan(a) {
+        const key = a.objKey + '|' + a.feld;
+        if (!a.neuAnlage && index.has(key)) this.aenderungen[index.get(key)] = a;
+        else { index.set(key, this.aenderungen.length); this.aenderungen.push(a); }
+      },
+    };
+  }
+
+  // ── Exportstand (Dreiwege-Abgleich) ──────────────────────────────────────────
+  // Der Export legt je importierbarem Blatt ein verstecktes Zwillingsblatt „_B_…"
+  // mit den exportierten Werten an. Übernommen wird dann nur, was in Excel
+  // geändert wurde — eine ältere Datei überschreibt keine Änderungen, die
+  // inzwischen im Tool gemacht oder neu berechnet wurden.
+
+  function _basisName(blatt) { return ('_B_' + blatt).slice(0, 31); }
+
+  /** Zeilen des Zwillingsblatts je ID (null, wenn die Datei keinen Exportstand hat). */
+  function _basis(blaetter, blatt, idSpalte) {
+    const rows = blaetter[_basisName(blatt)];
+    if (!rows || !rows.length) return null;
+    const k = kopfIndex(rows[0]);
+    const map = new Map();
+    for (let r = 1; r < rows.length; r++) { const id = xStr(k.zelle(rows[r], idSpalte)); if (id) map.set(id, rows[r]); }
+    return { k, map };
+  }
+
+  /** Sicht auf eine Zeile: „hat" nur für Spalten, die seit dem Export geändert wurden. */
+  function _zeilenSicht(k, row, basis, id) {
+    const b = basis && id ? basis.map.get(String(id)) : null;
+    if (!b) return k;
+    return {
+      hat: (...namen) => namen.some(n => k.hat(n) && zelleGeaendert(k.zelle(row, n), basis.k.zelle(b, n))),
+      zelle: k.zelle,
+    };
+  }
+
+  // ── Gebäude ──────────────────────────────────────────────────────────────────
+  function _importGebaeude(rows, ctx, basis) {
+    const k = kopfIndex(rows[0]);
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      const id = xInt(k.zelle(row, 'ID'));
+      const g = (window.gebaeude || []).find(x => x.id === id);
+      const o = g && ctx.origGeb.get(g);
+      if (!g || !o) continue;
+      const kr = _zeilenSicht(k, row, basis, id);
+      const z = spalte => k.zelle(row, spalte);
+      const meld = t => ctx.melde('Gebäude', r, t);
+      const plan = (feld, alt, neu, tun) => ctx.plan({
+        kat: 'Gebäude', objKey: 'g' + id, objekt: o.name || `Gebäude ${id}`, feld, alt: _anz(alt), neu: _anz(neu),
+        tun: () => { tun(); ctx.flags.geb = true; },
+      });
+
+      // Zahlenfeld: nur bei Abweichung; leer → anwenden(null), wenn erlaubt
+      const zahl = (spalte, alt, stellen, anwenden, { ganz = false, leerErlaubt = true, min = -Infinity, max = Infinity } = {}) => {
+        if (!kr.hat(spalte)) return;
+        const zelle = z(spalte);
+        if (!zahlGeaendert(alt, zelle, stellen)) return;
+        const v = ganz ? xInt(zelle) : xNum(zelle);
+        if (v == null) {
+          if (!istLeer(zelle)) { meld(`${spalte}: „${zelle}" ist keine Zahl`); return; }
+          if (!leerErlaubt) return;
+        } else if (v < min || v > max) { meld(`${spalte}: ${v} liegt außerhalb ${min}–${max}`); return; }
+        plan(spalte, xNum(alt), v, () => anwenden(v));
+      };
+      // Auswahlfeld: leer → anwenden(null), wenn erlaubt
+      const auswahl = (spalte, alt, werte, anwenden, { leerErlaubt = false } = {}) => {
+        if (!kr.hat(spalte)) return;
+        const s = xAuswahl(z(spalte), werte);
+        if (s === undefined) { meld(`${spalte}: „${z(spalte)}" ist nicht erlaubt (${Object.values(werte).join(', ')})`); return; }
+        if (s === null && !leerErlaubt) return;
+        if ((s ?? '') === (alt ?? '')) return;
+        plan(spalte, werte[alt] ?? alt, werte[s] ?? s, () => anwenden(s));
+      };
+      const feld = f => v => updateField(id, f, v == null ? '' : v, { defer: true });
+
+      if (kr.hat('Name')) {
+        const v = xStr(z('Name'));
+        if (v && v !== xStr(o.name))
+          plan('Name', o.name, v, () => { if (typeof window.renameGebaeude === 'function') window.renameGebaeude(id, v); else g.name = v; });
+      }
+      if (kr.hat('Gebäudenummer') && textGeaendert(o.gebaeudenummer, z('Gebäudenummer'))) {
+        const nummer = xStr(z('Gebäudenummer'));
+        plan('Gebäudenummer', o.gebaeudenummer, nummer, () => {
+          if (typeof window.setGebaeudenummer === 'function') window.setGebaeudenummer(id, nummer); else g.gebaeudenummer = nummer;
+        });
+      }
+      if (kr.hat('Nutzung')) {
+        const v = xStr(z('Nutzung'));
+        if (v && v !== xStr(o.nutzung)) plan('Nutzung', o.nutzung, v, () => feld('nutzung')(v));
+      }
+      // Über updateField wie im Gebäude-Panel: Jahre/Schicht wandern auf die Assets,
+      // Fläche/Baujahr/Stockwerke lösen die Auto-Energie aus (sofern nicht manuell).
+      zahl('Fläche (m²)', o.flaeche, 0, feld('flaeche'), { leerErlaubt: false, min: 0 });
+      zahl('Stockwerke', o.stockwerke ?? 1, 0, feld('stockwerke'), { ganz: true, leerErlaubt: false, min: 1, max: 50 });
+      zahl('Baujahr', o.baujahr, 0, feld('baujahr'), { ganz: true, min: 1800, max: 2100 });
+      zahl('Abrissjahr', o.abrissjahr, 0, feld('abrissjahr'), { ganz: true, min: 1800, max: 2100 });
+      auswahl('Schicht', normSchicht(o.schicht), _SCHICHT_WERTE, feld('schicht'));
+      auswahl('Zustand', o.zustand, _ZUSTAND_WERTE, feld('zustand'), { leerErlaubt: true });
+
+      // Spezifische Werte zuerst — ein ebenfalls geänderter Absolutwert gewinnt danach.
+      zahl('Spez. Wärme (kWh/m²a)', o.spez, 1, feld('spez'), { leerErlaubt: false, min: 0 });
+      zahl('Spez. Heizlast (W/m²)', o.spezHeizlast, 1, feld('spezHeizlast'), { leerErlaubt: false, min: 0 });
+      zahl('Spez. Strom (kWh/m²a)', o.spezStrom, 1, feld('spezStrom'), { min: 0 });
+      // Geleert = nicht mehr manuell → wieder automatisch berechnen
+      const mitAuto = f => v => { feld(f)(v); if (v == null && calcAutoEnergy(g)) recalcNetz(); };
+      zahl('Wärmebedarf (MWh/a)', o.waerme, 2, mitAuto('waerme'), { min: 0 });
+      zahl('Heizlast (kW)', o.heizlast, 1, mitAuto('heizlast'), { min: 0 });
+      zahl('Strom (MWh/a)', o.strom, 2, feld('strom'), { min: 0 });
+
+      if (kr.hat('PV aktiv')) {
+        const b = xBool(z('PV aktiv'));
+        if (b == null && !istLeer(z('PV aktiv'))) meld(`PV aktiv: „${z('PV aktiv')}" ist kein ja/nein`);
+        else if (b != null && b !== !!o.pvAktiv) plan('PV aktiv', !!o.pvAktiv, b, () => updateGebPv(id, 'pvAktiv', b));
+      }
+      zahl('PV Dachanteil (%)', o.pvDachanteil || 30, 0, v => updateGebPv(id, 'pvDachanteil', v), { leerErlaubt: false, min: 1, max: 100 });
+      auswahl('PV-Modus', o.pvModus || 'flaechen', _PV_MODUS_WERTE, s => window.setGebPvModus?.(id, s));
+      auswahl('PV-Ausrichtung', o.pvFlAusrichtung || 'sued', _PV_AUSRICHTUNG, s => window.updateGebPvFl?.(id, 'ausrichtung', s));
+      zahl('PV-Belegung (%)', o.pvFlBelegung, 1, v => window.updateGebPvFl?.(id, 'belegung', v), { leerErlaubt: false, min: 0, max: 100 });
+      zahl('PV-GCR (%)', o.pvFlGcr, 1, v => window.updateGebPvFl?.(id, 'gcr', v), { leerErlaubt: false, min: 0 });
+      zahl('PV-Baujahr', o.pvBaujahr, 0, v => window.updateGebPvBaujahr?.(id, v ?? ''), { ganz: true, min: 1800, max: 2100 });
+      auswahl('Dachform', o.dachform || 'sattel', _DACHFORM_WERTE, s => window.updateGebDach?.(id, 'dachform', s));
+      zahl('Dachneigung (°)', o.dachNeigung, 1, v => window.updateGebDach?.(id, 'dachNeigung', v ?? ''), { min: 0, max: 90 });
+      zahl('Dachazimut (°)', o.dachAzimut, 1, v => window.updateGebDach?.(id, 'dachAzimut', v ?? ''), { min: 0, max: 360 });
+
+      // Notstrom (Blackout-Modus): Klasse, Lastanteil B, eigenes Aggregat bei A
+      if (kr.hat('Notstromklasse', 'Notstrom Last B (%)', 'Notstrom eigenes NEA')) {
+        const alt = normalisiereNotstrom(o.notstrom);
+        let klasse = alt?.klasse || null, lastPct = alt?.lastPct ?? null, nea = !!alt?.eigeneNea, geaendert = false;
+        if (kr.hat('Notstromklasse')) {
+          const s = xAuswahl(z('Notstromklasse'), _NOTSTROM_WERTE);
+          if (s === undefined) meld(`Notstromklasse: „${z('Notstromklasse')}" ist nicht erlaubt (A, B, C oder leer)`);
+          else if (s !== klasse) { klasse = s; geaendert = true; }
+        }
+        if (kr.hat('Notstrom Last B (%)') && zahlGeaendert(lastPct, z('Notstrom Last B (%)'), 0)) { lastPct = xNum(z('Notstrom Last B (%)')); geaendert = true; }
+        if (kr.hat('Notstrom eigenes NEA')) { const b = xBool(z('Notstrom eigenes NEA')); if (b != null && b !== nea) { nea = b; geaendert = true; } }
+        if (geaendert) {
+          const neu = klasse ? normalisiereNotstrom({ klasse, lastPct, eigeneNea: nea }) : null;
+          const text = n => !n ? '' : n.klasse + (n.klasse === 'B' && n.lastPct != null ? ` (${n.lastPct} %)` : '') + (n.eigeneNea ? ' + eigenes NEA' : '');
+          plan('Notstrom', text(alt), text(neu), () => {
+            if (!neu) delete g.notstrom; else g.notstrom = neu;
+            ctx.flags.notstrom = true;
+          });
+        }
+      }
+    }
+  }
+
+  // ── Assets (Blatt „Assets" + Typ-Reiter) ─────────────────────────────────────
+  function _assetPlan(ctx, a, o) {
+    return (feld, alt, neu, tun) => ctx.plan({
+      kat: 'Asset', objKey: 'a' + a.id, objekt: `${o.name || a.id} (${ASSET_LABELS[a.type] || a.type})`, feld, alt: _anz(alt), neu: _anz(neu),
+      tun: () => { tun(); ctx.flags.assets = true; },
+    });
+  }
+
+  function _assetBasisAbgleich(a, o, k, row, meld, plan) {
+    if (k.hat('Name')) {
+      const v = xStr(k.zelle(row, 'Name'));
+      if (v && v !== xStr(o.name)) plan('Name', o.name, v, () => { a.name = v; });
+    }
+    for (const [spalte, feld] of [['Baujahr', 'baujahr'], ['Abrissjahr', 'abrissjahr']]) {
+      if (!k.hat(spalte)) continue;
+      const zelle = k.zelle(row, spalte);
+      if (!zahlGeaendert(o[feld], zelle, 0)) continue;
+      const v = xInt(zelle);
+      if (v == null && !istLeer(zelle)) { meld(`${spalte}: „${zelle}" ist keine Jahreszahl`); continue; }
+      plan(spalte, xInt(o[feld]), v, () => {
+        a[feld] = v;
+        // Von Hand gesetzt: das automatische Baujahr der Erzeuger-Kopplung (13p) fasst es nicht mehr an
+        if (feld === 'baujahr' && a.linkedErzeuger) a.baujahrAuto = false;
+      });
+    }
+    if (k.hat('Schicht')) {
+      const s = xAuswahl(k.zelle(row, 'Schicht'), _SCHICHT_WERTE);
+      if (s === undefined) meld(`Schicht: „${k.zelle(row, 'Schicht')}" ist nicht erlaubt (${Object.values(_SCHICHT_WERTE).join(', ')})`);
+      else if (s && s !== normSchicht(o.schicht)) plan('Schicht', _SCHICHT_WERTE[normSchicht(o.schicht)], _SCHICHT_WERTE[s], () => { a.schicht = s; });
+    }
+  }
+
+  function _importAssetsBlatt(rows, ctx, basis) {
+    const k = kopfIndex(rows[0]);
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      const id = xStr(k.zelle(row, 'ID'));
+      if (!id) continue;
+      const a = (ASSETS.items || []).find(x => String(x.id) === id);
+      const o = a && ctx.origAsset.get(a);
+      if (!o) continue;
+      _assetBasisAbgleich(a, o, _zeilenSicht(k, row, basis, id), row, t => ctx.melde('Assets', r, t), _assetPlan(ctx, a, o));
+    }
+  }
+
+  // Ohne Trennstelle ist auch kein Kabel der Station offen (wie im Inspektor, 13e).
+  // Station = MS-Betriebsmittel (NAP/Schaltanlage/Trafo) eines Gebäudes.
+  function _stationsTrennstellenAufheben(asset) {
+    const ms = new Set(['NAP', 'Schaltanlage', 'Trafo']);
+    const station = a => (a?.buildingId != null ? 'g' + a.buildingId : 'a' + a?.id);
+    const meine = station(asset);
+    const byId = new Map((ASSETS.items || []).map(a => [String(a.id), a]));
+    for (const e of (window.stromEdges || [])) {
+      const a = byId.get(String(e.u)), b = byId.get(String(e.v));
+      if (!a || !b || !ms.has(a.type) || !ms.has(b.type)) continue;
+      const sa = station(a), sb = station(b);
+      if (sa !== sb && (sa === meine || sb === meine)) e.trennstelle = false;
+    }
+  }
+
+  function _importTypReiter(type, rows, ctx, basis) {
+    if (rows.length < 2) return;
+    const blattName = _typReiterName(type);
+    const k = kopfIndex(rows[0]);
+    const defs = _xlsxPropDefs(type).filter(d => d.art !== 'berechnet' && k.hat(d.label));
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      const id = xStr(k.zelle(row, 'ID'));
+      if (!id) continue;
+      const a = (ASSETS.items || []).find(x => String(x.id) === id && x.type === type);
+      const o = a && ctx.origAsset.get(a);
+      if (!o) continue;
+      const meld = t => ctx.melde(blattName, r, t);
+      const plan = _assetPlan(ctx, a, o);
+      const kr = _zeilenSicht(k, row, basis, id);
+      _assetBasisAbgleich(a, o, kr, row, meld, plan);
+      for (const d of defs) {
+        if (!kr.hat(d.label)) continue;
+        const res = zelleZuProp(d, k.zelle(row, d.label));
+        if (!res.ok) { meld(`${d.label}: ${res.fehler}`); continue; }
+        const alt = o.props?.[d.key];
+        if (!propGeaendert(d, alt, res.wert)) continue;
+        plan(d.label, propZuZelle(d, alt), propZuZelle(d, res.wert), () => {
+          if (!a.props) a.props = {};
+          a.props[d.key] = res.wert;
+          if (type === 'PV') a._pvProfile = null;   // Profil-Cache (wie im Inspektor)
+          if (type === 'Schaltanlage' && d.key === 'trennstelle' && !res.wert) { _stationsTrennstellenAufheben(a); ctx.flags.kabel = true; }
+        });
+      }
+    }
+  }
+
+  // ── Kabel ────────────────────────────────────────────────────────────────────
+
+  /** Asset/Netzknoten über ID oder (eindeutigen) Namen finden. */
+  function _knotenFinden(id, name) {
+    const assets = ASSETS.items || [], knoten = window.stromNodes || [];
+    if (id) {
+      const t = assets.find(a => String(a.id) === id) || knoten.find(n => String(n.id) === id);
+      return t ? { id: t.id, name: t.name || t.label || id } : { fehler: `„${id}" nicht gefunden` };
+    }
+    const lc = name.toLowerCase();
+    const treffer = [
+      ...assets.filter(a => (a.name || '').trim().toLowerCase() === lc).map(a => ({ id: a.id, name: a.name })),
+      ...knoten.filter(n => !assets.some(a => a.id === n.id) && (n.label || n.name || '').trim().toLowerCase() === lc).map(n => ({ id: n.id, name: n.label || n.name })),
+    ];
+    if (!treffer.length) return { fehler: `„${name}" nicht gefunden` };
+    if (treffer.length > 1) return { fehler: `„${name}" ist mehrdeutig (${treffer.length}×) — bitte die ID eintragen` };
+    return treffer[0];
+  }
+
+  function _importKabel(rows, ctx, basis) {
+    const k = kopfIndex(rows[0]);
+    const edgeArr = window.stromEdges || [];
+    const mitId = k.hat('Kabel-ID');
+    const neuePaare = new Set();
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      const z = spalte => k.zelle(row, spalte);
+      const meld = t => ctx.melde('Kabel', r, t);
+      const kid = xStr(z('Kabel-ID'));
+
+      // Neue Zeile (aktuelles Format, ohne Kabel-ID) → neues Kabel
+      if (mitId && !kid) { _kabelNeu(row, k, r, ctx, neuePaare); continue; }
+
+      // Zuordnung über die Kabel-ID; ältere Exporte ohne ID über Von-/Nach-ID
+      let edge = null;
+      if (kid) edge = edgeArr.find(e => String(e.id) === kid);
+      else {
+        const uId = xStr(z('Von-ID')), vId = xStr(z('Nach-ID'));
+        if (!uId || !vId) continue;
+        edge = edgeArr.find(e => String(e.u) === uId && String(e.v) === vId)
+            || edgeArr.find(e => String(e.u) === vId && String(e.v) === uId);
+      }
+      if (!edge) { if (kid) meld(`Kabel „${kid}" nicht gefunden`); continue; }
+      const o = ctx.origEdge.get(edge);
+      if (!o) continue;
+      const kr = _zeilenSicht(k, row, basis, kid);
+      const plan = (feld, alt, neu, tun) => ctx.plan({
+        kat: 'Kabel', objKey: 'k' + (edge.id ?? `${edge.u}-${edge.v}`), objekt: _kabelLabel(edge, ctx.assetMap), feld, alt: _anz(alt), neu: _anz(neu),
+        tun: () => { tun(); ctx.flags.kabel = true; },
+      });
+
+      if (kr.hat('Typ') && !istLeer(z('Typ')) && textGeaendert(o.cableType || 'NAYY', z('Typ'))) {
+        const typ = parseKabelLabel(z('Typ'))?.cableType;
+        if (!typ || !KABEL_TYPEN[typ]) meld(`Typ: „${z('Typ')}" ist kein bekannter Kabeltyp`);
+        else if (typ !== (o.cableType || 'NAYY')) plan('Typ', o.cableType || 'NAYY', typ, () => { edge.cableType = typ; edge.qsGeschaetzt = false; });
+      }
+      if (kr.hat('Auto-Bemessung')) {
+        const b = xBool(z('Auto-Bemessung'));
+        if (b != null && b !== !!o.autoSized) plan('Auto-Bemessung', !!o.autoSized, b, () => {
+          edge.autoSized = b;
+          if (b) edge.crossSection = 0;
+          edge.qsGeschaetzt = false;
+        });
+      }
+      // Ein geänderter Querschnitt ist eine feste Vorgabe → Auto-Bemessung aus
+      if (kr.hat('Querschnitt mm²') && !istLeer(z('Querschnitt mm²')) && zahlGeaendert(o.crossSection, z('Querschnitt mm²'), 1)) {
+        const qs = xNum(z('Querschnitt mm²'));
+        if (qs == null || qs <= 0) meld(`Querschnitt: „${z('Querschnitt mm²')}" ist kein gültiger Querschnitt`);
+        else plan('Querschnitt mm²', o.crossSection || null, qs, () => {
+          edge.crossSection = qs; edge.autoSized = false;
+          edge.qsGeschaetzt = false;   // von Hand ausgelegt ist nicht mehr geschätzt (wie im Kabel-Inspektor, 05b)
+        });
+      }
+      if (kr.hat('Parallelkabel') && !istLeer(z('Parallelkabel')) && zahlGeaendert(o.nParallel || 1, z('Parallelkabel'), 0)) {
+        const np = xInt(z('Parallelkabel'));
+        if (np == null) meld(`Parallelkabel: „${z('Parallelkabel')}" ist keine Zahl`);
+        else plan('Parallelkabel', o.nParallel || 1, Math.max(1, np), () => { edge.nParallel = Math.max(1, np); });
+      }
+      if (kr.hat('Sicherung A') && zahlGeaendert(o.fuseA || null, z('Sicherung A'), 0)) {
+        const f = xNum(z('Sicherung A'));
+        if (f == null && !istLeer(z('Sicherung A'))) meld(`Sicherung: „${z('Sicherung A')}" ist keine Zahl`);
+        else plan('Sicherung A', o.fuseA || null, f, () => { edge.fuseA = f ?? 0; });
+      }
+      if (kr.hat('Trennstelle')) {
+        const b = xBool(z('Trennstelle'));
+        if (b != null && b !== !!o.trennstelle) plan('Trennstelle', !!o.trennstelle, b, () => { edge.trennstelle = b; });
+      }
+    }
+  }
+
+  // Neues Kabel aus einer Zeile ohne Kabel-ID — wie das Ziehen im Tool über addStromEdge
+  // (Trassen-Routing und Länge), danach Typ/Querschnitt wie im Kabel-Inspektor.
+  function _kabelNeu(row, k, r, ctx, neuePaare) {
+    const z = spalte => k.zelle(row, spalte);
+    const meld = t => ctx.melde('Kabel', r, t);
+    const uId = xStr(z('Von-ID')), vId = xStr(z('Nach-ID'));
+    const uName = xStr(z('Von')), vName = xStr(z('Nach'));
+    if (!uId && !vId && !uName && !vName) return;   // Leerzeile
+    if ((!uId && !uName) || (!vId && !vName)) { meld('neues Kabel braucht „Von" und „Nach"'); return; }
+    const u = _knotenFinden(uId, uName), v = _knotenFinden(vId, vName);
+    if (u.fehler || v.fehler) { meld(`neues Kabel: ${[u.fehler, v.fehler].filter(Boolean).join(', ')}`); return; }
+    if (u.id === v.id) { meld('neues Kabel: „Von" und „Nach" sind dasselbe Objekt'); return; }
+    const paar = [u.id, v.id].map(String).sort().join('|');
+    const gibts = (window.stromEdges || []).some(e => [e.u, e.v].map(String).sort().join('|') === paar);
+    if (gibts || neuePaare.has(paar)) { meld(`Kabel ${u.name} → ${v.name} gibt es schon`); return; }
+
+    let typ = null;
+    if (!istLeer(z('Typ'))) {
+      typ = parseKabelLabel(z('Typ'))?.cableType;
+      if (!typ || !KABEL_TYPEN[typ]) { meld(`Typ: „${z('Typ')}" ist kein bekannter Kabeltyp`); return; }
+    }
+    const qs = xNum(z('Querschnitt mm²'));
+    if (qs != null && qs <= 0) { meld(`Querschnitt: „${z('Querschnitt mm²')}" ist kein gültiger Querschnitt`); return; }
+    const auto = xBool(z('Auto-Bemessung'));
+    const np = xInt(z('Parallelkabel'));
+    const fuse = xNum(z('Sicherung A'));
+    const ts = xBool(z('Trennstelle'));
+    neuePaare.add(paar);
+
+    const fest = qs != null && auto !== true;
+    ctx.plan({
+      kat: 'Kabel', objKey: 'neuK' + r, objekt: `${u.name} → ${v.name}`, feld: 'neu angelegt', alt: '',
+      neu: `${typ || 'Standardtyp'} · ${fest ? qs + ' mm²' : 'automatisch ausgelegt'}${np > 1 ? ` · ${np}×` : ''}`,
+      neuAnlage: true,
+      tun: () => {
+        const edge = window.addStromEdge?.(u.id, v.id);
+        if (!edge) throw new Error(`Kabel ${u.name} → ${v.name} konnte nicht angelegt werden.`);
+        if (typ) edge.cableType = typ;
+        edge.autoSized = !fest;
+        edge.crossSection = fest ? qs : 0;
+        if (np != null) edge.nParallel = Math.max(1, np);
+        if (fuse != null) edge.fuseA = fuse;
+        if (ts != null) edge.trennstelle = ts;
+        ctx.flags.kabel = true;
+      },
+    });
+  }
+
+  // ── Maßnahmen ────────────────────────────────────────────────────────────────
+  function _importMassnahmen(rows, ctx, basis) {
+    const k = kopfIndex(rows[0]);
+    const assets = ASSETS.items || [];
+    const edges = window.stromEdges || [];
+    const index = new Map(_alleMassnahmen(assets, edges, window.gebaeude || [], ctx.assetMap).map(x => [String(x.m.id), x]));
+    const varListe = _variantenListe();
+    const neuesFormat = k.hat('Maßnahmen-ID');
+
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      const z = spalte => k.zelle(row, spalte);
+      const meld = t => ctx.melde('Maßnahmen', r, t);
+
+      // Älterer Export ohne Maßnahmen-ID: Zuordnung über Asset + Titel + Jahr, nur Status/Kosten
+      if (!neuesFormat) {
+        const assetId = xStr(z('Asset-ID'));
+        const a = assets.find(x => String(x.id) === assetId);
+        if (!a) continue;
+        const titel = xStr(z('Titel')), jahr = xStr(z('Jahr'));
+        const m = (a.massnahmen || []).find(x => xStr(x.titel) === titel && xStr(x.jahr) === jahr);
+        const o = m && ctx.origMassn.get(m);
+        if (!o) continue;
+        const plan = _massnPlan(ctx, { m, art: 'Asset', objName: a.name || a.id });
+        const s = xAuswahl(z('Status'), _MASSN_STATUS_WERTE);
+        if (s === undefined) meld(`Status: „${z('Status')}" ist nicht erlaubt`);
+        else if (s && s !== (o.status || 'geplant')) plan('Status', o.status || 'geplant', s, () => { m.status = s; });
+        if (!istLeer(z('Kosten €')) && zahlGeaendert(xNum(o.kosten) ?? 0, z('Kosten €'), 2)) {
+          const kosten = xNum(z('Kosten €')) ?? 0;
+          plan('Kosten €', xNum(o.kosten) ?? 0, kosten, () => { m.kosten = kosten; });
+        }
+        continue;
+      }
+
+      const mid = xStr(z('Maßnahmen-ID'));
+      if (!mid) { _massnahmeNeu(row, k, r, ctx, varListe); continue; }
+      const x = index.get(mid);
+      const o = x && ctx.origMassn.get(x.m);
+      if (!o) { meld(`Maßnahme „${mid}" nicht gefunden`); continue; }
+      const m = x.m;
+      const plan = _massnPlan(ctx, x);
+      const kr = _zeilenSicht(k, row, basis, mid);
+
+      const titel = xStr(z('Titel'));
+      if (kr.hat('Titel') && titel && titel !== xStr(o.titel)) plan('Titel', o.titel, titel, () => { m.titel = titel; });
+      if (kr.hat('Jahr') && zahlGeaendert(o.jahr, z('Jahr'), 0)) {
+        const j = xInt(z('Jahr'));
+        if (j == null && !istLeer(z('Jahr'))) meld(`Jahr: „${z('Jahr')}" ist keine Jahreszahl`);
+        else plan('Jahr', xInt(o.jahr), j, () => { m.jahr = j; });
+      }
+      if (kr.hat('Kosten €') && zahlGeaendert(xNum(o.kosten) ?? 0, xNum(z('Kosten €')) ?? 0, 2)) {
+        const kosten = xNum(z('Kosten €'));
+        if (kosten == null && !istLeer(z('Kosten €'))) meld(`Kosten: „${z('Kosten €')}" ist keine Zahl`);
+        else plan('Kosten €', xNum(o.kosten) ?? 0, kosten ?? 0, () => { m.kosten = kosten ?? 0; });
+      }
+      if (kr.hat('Status')) {
+        const s = xAuswahl(z('Status'), _MASSN_STATUS_WERTE);
+        if (s === undefined) meld(`Status: „${z('Status')}" ist nicht erlaubt (${Object.values(_MASSN_STATUS_WERTE).join(', ')})`);
+        else if (s && s !== (o.status || 'geplant')) plan('Status', o.status || 'geplant', s, () => { m.status = s; });
+      }
+      if (kr.hat('Maßnahmentyp')) {
+        const werte = _MASSN_TYP_WERTE[x.art];
+        const zelle = z('Maßnahmentyp');
+        const s = werte ? xAuswahl(zelle, werte) : undefined;
+        if (s === undefined) {
+          if (textGeaendert(o.typ, zelle) && textGeaendert(werte?.[o.typ], zelle))
+            meld(werte ? `Maßnahmentyp: „${zelle}" ist nicht erlaubt (${Object.values(werte).join(', ')})`
+                       : 'Maßnahmentyp von Gebäude-Maßnahmen ist im Excel nicht änderbar');
+        } else if (s && s !== o.typ) plan('Maßnahmentyp', werte[o.typ] ?? o.typ, werte[s], () => { m.typ = s; });
+      }
+      if (kr.hat('Gilt für')) {
+        const res = geltungLesen(z('Gilt für'), varListe);
+        if (res.fehler) meld(`Gilt für: ${res.fehler}`);
+        else if (res.aendern && !('variante' in o && o.variante === res.wert))
+          plan('Gilt für', geltungText(o, variantenName), res.wert === null ? GILT_ALLE : variantenName(res.wert), () => { m.variante = res.wert; });
+      }
+      if (kr.hat('Ziel-Parameter')) {
+        const { props, unbekannt } = zielParameterLesen(z('Ziel-Parameter'), x.zielDefs, Object.keys(o.newProps || {}));
+        if (unbekannt.length) meld(`Ziel-Parameter: unbekannt ${unbekannt.map(u => `„${u}"`).join(', ')}`);
+        else if (!zielParameterGleich(props, o.newProps))
+          plan('Ziel-Parameter', zielParameterText(o.newProps, x.zielDefs), zielParameterText(props, x.zielDefs), () => { m.newProps = props; });
+      }
+    }
+  }
+
+  function _massnPlan(ctx, x) {
+    return (feld, alt, neu, tun) => ctx.plan({
+      kat: 'Maßnahme', objKey: 'm' + x.m.id, objekt: `${x.objName} · ${x.m.titel || '—'}`, feld, alt: _anz(alt), neu: _anz(neu),
+      tun: () => { tun(); if (x.art === 'Kabel') ctx.flags.kabel = true; else ctx.flags.assets = true; },
+    });
+  }
+
+  // Neue Maßnahme aus einer Zeile ohne Maßnahmen-ID — Felder wie in den Inspektor-Formularen.
+  // Das Objekt kommt aus Objekt-ID oder Objekt-Name (Asset-Name bzw. „Von → Nach" eines Kabels).
+  function _massnahmeNeu(row, k, r, ctx, varListe) {
+    const z = spalte => k.zelle(row, spalte);
+    const meld = t => ctx.melde('Maßnahmen', r, t);
+    const artZelle = z('Objekt');
+    let art = xAuswahl(artZelle, _MASSN_OBJEKT_WERTE);
+    const oid = xStr(z('Objekt-ID')), oname = xStr(z('Objekt-Name')), titel = xStr(z('Titel'));
+    if (!oid && !oname && !titel) return;   // Leerzeile
+    if (art === undefined) { meld(`Objekt: „${artZelle}" ist nicht erlaubt (Asset, Kabel)`); return; }
+    if (art === 'Gebaeude') { meld('Gebäude-Maßnahmen entstehen über Cluster-Pakete und sind im Excel nicht anlegbar'); return; }
+    if (!titel) { meld('neue Maßnahme braucht einen Titel'); return; }
+    if (!oid && !oname) { meld('neue Maßnahme braucht ein Objekt (Objekt-Name aus der Liste wählen)'); return; }
+
+    const assets = ASSETS.items || [], edges = window.stromEdges || [];
+    let obj = null;
+    if (oid) {
+      if (art !== 'Kabel') { obj = assets.find(a => String(a.id) === oid); if (obj) art = 'Asset'; }
+      if (!obj && art !== 'Asset') { obj = edges.find(e => String(e.id) === oid); if (obj) art = 'Kabel'; }
+    } else {
+      const lc = oname.toLowerCase();
+      const treffer = [
+        ...(art !== 'Kabel' ? assets.filter(a => (a.name || String(a.id)).trim().toLowerCase() === lc).map(o => ({ o, art: 'Asset' })) : []),
+        ...(art !== 'Asset' ? edges.filter(e => _kabelLabel(e, ctx.assetMap).toLowerCase() === lc).map(o => ({ o, art: 'Kabel' })) : []),
+      ];
+      if (treffer.length > 1) { meld(`Objekt „${oname}" ist mehrdeutig (${treffer.length}×) — bitte die Objekt-ID eintragen`); return; }
+      if (treffer.length) ({ o: obj, art } = treffer[0]);
+    }
+    if (!obj) { meld(`Objekt „${oid || oname}" nicht gefunden`); return; }
+
+    const werte = _MASSN_TYP_WERTE[art];
+    const typ = xAuswahl(z('Maßnahmentyp'), werte);
+    if (typ === undefined) { meld(`Maßnahmentyp: „${z('Maßnahmentyp')}" ist für ${art === 'Asset' ? 'Assets' : 'Kabel'} nicht erlaubt (${Object.values(werte).join(', ')})`); return; }
+    const status = xAuswahl(z('Status'), _MASSN_STATUS_WERTE);
+    if (status === undefined) { meld(`Status: „${z('Status')}" ist nicht erlaubt`); return; }
+    const zielDefs = art === 'Asset' ? (ASSET_PROPS_SCHEMA[obj.type] || []) : _KABEL_ZIEL_DEFS;
+    const { props, unbekannt } = zielParameterLesen(z('Ziel-Parameter'), zielDefs);
+    if (unbekannt.length) { meld(`Ziel-Parameter: unbekannt ${unbekannt.map(u => `„${u}"`).join(', ')}`); return; }
+    const gilt = geltungLesen(z('Gilt für'), varListe);
+    if (gilt.fehler) { meld(`Gilt für: ${gilt.fehler}`); return; }
+    const jahr = xInt(z('Jahr')), kosten = xNum(z('Kosten €')) ?? 0;
+    const typWert = typ || Object.keys(werte)[0];
+    const objName = art === 'Asset' ? (obj.name || obj.id) : _kabelLabel(obj, ctx.assetMap);
+    // Dieselbe Datei zweimal eingelesen? Gleiches Objekt + Titel + Jahr gilt als vorhanden.
+    const schluessel = `${art}|${obj.id}|${titel.toLowerCase()}|${jahr ?? ''}`;
+    const vorhanden = (obj.massnahmen || []).some(m => xStr(m.titel).toLowerCase() === titel.toLowerCase() && (xInt(m.jahr) ?? '') === (jahr ?? ''));
+    if (vorhanden || ctx.neueMassnahmen.has(schluessel)) { meld(`Maßnahme „${titel}" an ${objName} gibt es schon`); return; }
+    ctx.neueMassnahmen.add(schluessel);
+
+    ctx.plan({
+      kat: 'Maßnahme', objKey: 'neuM' + r, objekt: `${objName} · ${titel}`, feld: 'neu angelegt', alt: '',
+      neu: [werte[typWert], jahr, kosten ? _anz(kosten) + ' €' : ''].filter(Boolean).join(' · '),
+      neuAnlage: true,
+      tun: () => {
+        const m = {
+          id: createId(art === 'Asset' ? 'm' : 'cm'),
+          titel, jahr, kosten, typ: typWert, status: status || 'geplant',
+        };
+        if (Object.keys(props).length) m.newProps = props;
+        if (art === 'Asset') {
+          m.newProps = m.newProps || {};
+          m.dependsOn = [];
+          m.phaseId = null;
+          // Ohne Angabe: dieselbe Vorbelegung wie im Formular (Standardregel nach Schicht/Typ)
+          if (gilt.aendern) m.variante = gilt.wert;
+          else if (typeof window.massnahmeGeltungWert === 'function') m.variante = window.massnahmeGeltungWert({ typ: m.typ }, obj) || null;
+          ctx.flags.assets = true;
+        } else {
+          if (gilt.aendern) m.variante = gilt.wert;
+          ctx.flags.kabel = true;
+        }
+        if (!obj.massnahmen) obj.massnahmen = [];
+        obj.massnahmen.push(m);
+      },
+    });
+  }
+
+  // ── Vorschau und Übernahme ───────────────────────────────────────────────────
+
+  const _KAT_REIHE = ['Gebäude', 'Asset', 'Kabel', 'Maßnahme'];
+  const _KAT_MEHRZAHL = { Gebäude: 'Gebäude', Asset: 'Assets', Kabel: 'Kabel', Maßnahme: 'Maßnahmen' };
+
+  /** „2 Gebäude, 3 Assets geändert · 1 Kabel neu" */
+  function _zusammenfassung(aenderungen) {
+    const geaendert = {}, neu = {};
+    for (const a of aenderungen) {
+      const ziel = a.neuAnlage ? neu : geaendert;
+      (ziel[a.kat] ||= new Set()).add(a.objKey);
+    }
+    const teil = (m, suffix) => {
+      const s = _KAT_REIHE.filter(kat => m[kat]).map(kat => `${m[kat].size} ${_KAT_MEHRZAHL[kat]}`).join(', ');
+      return s ? `${s} ${suffix}` : '';
+    };
+    return [teil(geaendert, 'geändert'), teil(neu, 'neu')].filter(Boolean).join(' · ');
+  }
+
+  function _vorschauZeigen(ctx, dateiname) {
+    document.querySelector('.xl-vorschau-bg')?.remove();
+    const n = ctx.aenderungen.length;
+    const esc = escHtml;
+    const MAX = 400;
+    const zeilen = [];
+    for (const kat of _KAT_REIHE) {
+      const liste = ctx.aenderungen.filter(a => a.kat === kat);
+      if (!liste.length) continue;
+      zeilen.push(`<tr><th colspan="4" style="text-align:left;padding:8px 4px 3px;color:var(--accent,#4fc3f7);font-size:11px;">${esc(_KAT_MEHRZAHL[kat])}</th></tr>`);
+      let letztes = null;
+      for (const a of liste) {
+        if (zeilen.length > MAX) break;
+        const obj = a.objKey === letztes ? '' : esc(a.objekt);
+        letztes = a.objKey;
+        zeilen.push(`<tr style="border-top:1px solid var(--border);">
+        <td style="padding:3px 4px;vertical-align:top;">${obj}</td>
+        <td style="padding:3px 4px;vertical-align:top;color:var(--muted);">${esc(a.feld)}</td>
+        <td style="padding:3px 4px;vertical-align:top;color:var(--muted);">${a.neuAnlage ? '' : esc(a.alt)}</td>
+        <td style="padding:3px 4px;vertical-align:top;font-weight:600;color:${a.neuAnlage ? '#66bb6a' : 'var(--text)'};">${a.neuAnlage ? '＋ ' : ''}${esc(a.neu)}</td>
+      </tr>`);
+      }
+    }
+    const abgeschnitten = zeilen.length > MAX ? `<div class="hinweis">… und weitere — die Liste ist auf ${MAX} Zeilen gekürzt.</div>` : '';
+    const hinweise = ctx.hinweise.length ? `
+    <details${n ? '' : ' open'} style="margin-top:4px;"><summary style="cursor:pointer;color:#f9a825;">⚠ ${ctx.hinweise.length} Zelle(n) werden nicht übernommen</summary>
+      <ul style="margin:6px 0 0 16px;padding:0;color:var(--muted);">${ctx.hinweise.slice(0, 200).map(h => `<li>${esc(h)}</li>`).join('')}</ul>
+      ${ctx.hinweise.length > 200 ? `<div class="hinweis">(+${ctx.hinweise.length - 200} weitere)</div>` : ''}
+    </details>` : '';
+
+    const bg = document.createElement('div');
+    bg.className = 'var-dialog-bg xl-vorschau-bg';
+    bg.innerHTML = `<div class="var-dialog" role="dialog" aria-modal="true" aria-labelledby="xl-titel" style="width:min(900px,100%);">
+    <header><b id="xl-titel">Excel-Import – Vorschau</b>
+      <div class="hinweis" style="margin-top:4px;">${esc(dateiname)} · ${n ? `${n} Änderung(en): ${esc(_zusammenfassung(ctx.aenderungen))}` : 'keine Änderungen gegenüber dem Stand im Tool'}</div></header>
+    <div class="body">
+      ${ctx.warnung ? `<div style="padding:6px 8px;border-left:3px solid #f9a825;background:rgba(249,168,37,.1);">${esc(ctx.warnung)}</div>` : ''}
+      ${n ? `<div style="max-height:52vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">
+        <thead><tr style="color:var(--muted);text-align:left;"><th style="padding:3px 4px;">Objekt</th><th style="padding:3px 4px;">Feld</th><th style="padding:3px 4px;">bisher</th><th style="padding:3px 4px;">neu</th></tr></thead>
+        <tbody>${zeilen.join('')}</tbody></table>${abgeschnitten}</div>` : ''}
+      ${hinweise}
+    </div>
+    <footer>
+      <button class="btn-secondary" id="xl-abbrechen">${n ? 'Abbrechen' : 'Schließen'}</button>
+      ${n ? `<button class="btn-confirm" id="xl-ok">${n} Änderung(en) übernehmen</button>` : ''}
+    </footer>
+  </div>`;
+    document.body.appendChild(bg);
+    const zu = () => bg.remove();
+    bg.addEventListener('click', e => { if (e.target === bg) zu(); });
+    bg.querySelector('#xl-abbrechen').addEventListener('click', zu);
+    bg.querySelector('#xl-ok')?.addEventListener('click', () => {
+      zu();
+      try {
+        _uebernehmen(ctx);
+        showHint(`Excel-Import übernommen: ${_zusammenfassung(ctx.aenderungen)}.`, 5000);
+      } catch (err) {
+        alert('Fehler beim Übernehmen: ' + err.message);
+        console.error(err);
+      }
+    });
+  }
+
+  function _uebernehmen(ctx) {
+    const mutate = () => { for (const a of ctx.aenderungen) a.tun(); };
+    // Planungstransaktion: Rückgängig für Assets, Kabel und Maßnahmen; bei einem Fehler rollt sie zurück.
+    if (typeof window.runPlanningTransaction === 'function') window.runPlanningTransaction('Excel-Import', mutate);
+    else mutate();
+
+    const f = ctx.flags;
+    if (f.geb) {
+      renderList();
+      updateTotals();
+      updateVizDebounced();
+      recalcNetz();
+    }
+    if (f.notstrom && window.blackoutModusAktiv) window.blackoutModusMarkiereKarte?.();
+    if (f.assets) {
+      window.redrawAllAssets?.();
+      renderSidebarAssetList?.();
+    }
+    if (f.kabel || f.assets) {
+      window.recalcStromNetz?.();
+      window.sldRefresh?.();
+    }
+    window.glBerechnen?.();
+  }
+
+  var excel = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    exportVollstaendigXLSX: exportVollstaendigXLSX,
+    importVollstaendigXLSX: importVollstaendigXLSX
+  });
+
   // ── main.js — ES Module entry point ────────────────────────────────────────
   // Imports all modules and exposes their exports on window for data-* handlers.
 
@@ -230739,7 +230839,7 @@ ${ssSteckbriefHtml(blatt)}
     napAnalyse, knotenAnalyse, windAnalyse,
     kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
     clusterCore, clusterMap, engpassSweep$1, engpassPanel,
-    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, variantenUi, stationsSteckbrief, variantenRegeln,
+    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, variantenUi, stationsSteckbrief, excel, variantenRegeln,
   ];
   window.pdfjsLib = pdfjsLib;
   appLifecycle.listen(window,'pagehide',()=>appLifecycle.dispose(),{once:true});
