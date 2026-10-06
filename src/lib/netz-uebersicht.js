@@ -33,6 +33,12 @@ function nuPlanJahre(massnahmen, jahrVon, zj) {
     .filter(j => Number.isFinite(j) && j <= zj);
 }
 
+/** Kleinstes gültiges Jahr (null, wenn keines) */
+const minJahr = (...j) => {
+  const ok = j.filter(Number.isFinite);
+  return ok.length ? Math.min(...ok) : null;
+};
+
 const zahl = v => {
   const n = parseFloat(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : null;
@@ -114,20 +120,29 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
 
   // ── Betriebsmittel des Betrachtungsstands ──
   const aktiv = [];
+  const entfallen = [];   // Zielnetz: Bestands-MS-Betriebsmittel mit Abrissjahr bis zum Zieljahr
+  const bestand = (obj, g) => !nuIstGeplant(obj, g, jahr) && !nuIstAbgerissen(obj, g, jahr);
   for (const a of assets) {
     if (!a || a.id == null) continue;
     const g = gebVon(a);
-    if (weg(a, g)) continue;
+    if (weg(a, g)) {
+      if (mitPlanung && MS_TYPEN.has(a.type) && bestand(a, g)) entfallen.push({ a, g });
+      continue;
+    }
     const geplant = nuIstGeplant(a, g, jahr);
     if (geplant && (!mitPlanung || zuSpaet(a, g))) continue;
     if (geplant && MS_TYPEN.has(a.type)) planJahre.push(ganz(a.baujahr ?? g?.baujahr));
     aktiv.push({ a, g, geplant });
   }
   const aktivMap = new Map(aktiv.map(x => [x.a.id, x]));
+  const kantenEntfallen = [];   // Zielnetz: Bestandskabel mit Abrissjahr, deren Stationen bleiben
   const kanten = edges.filter(e => {
     if (!e || !aktivMap.has(e.u) && !gebMap.has(String(e.u))) return false;
     if (!aktivMap.has(e.v) && !gebMap.has(String(e.v))) return false;
-    if (weg(e, null)) return false;
+    if (weg(e, null)) {
+      if (mitPlanung && bestand(e, null)) kantenEntfallen.push(e);
+      return false;
+    }
     return !nuIstGeplant(e, null, jahr) || (mitPlanung && !zuSpaet(e, null));
   });
   const kanteGeplant = e => nuIstGeplant(e, null, jahr) || !!aktivMap.get(e.u)?.geplant || !!aktivMap.get(e.v)?.geplant;
@@ -144,12 +159,13 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
         key, gebId: a.buildingId ?? null, gebName: g?.name || '', gebNummer: String(g?.gebaeudenummer || '').trim(),
         gebIdx: g ? gebaeude.indexOf(g) : 1e9,
         hatNap: false, napKV: null, trafos: [], schaltanlagen: 0, nshv: 0, trennstelle: false,
-        geplant: true, gebaeudeVersorgt: 0, erzeuger: {},
+        geplant: true, gebaeudeVersorgt: 0, erzeuger: {}, planJahr: null, trafosEntfallen: [],
       });
     }
     const st = stationen.get(key);
     stationVon.set(a.id, key);
     if (!geplant) st.geplant = false;
+    if (geplant) st.planJahr = minJahr(st.planJahr, ganz(a.baujahr ?? g?.baujahr));
     if (a.type === 'NAP') {
       st.hatNap = true;
       st.napKV = st.napKV ?? zahl(a.props?.spannungKV);
@@ -160,7 +176,9 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
       const ist = propsIst(a), ziel = propsZiel(a);
       const kva = zahl(ziel.leistungKVA), kvaIst = geplant ? null : zahl(ist.leistungKVA);
       st.trafos.push({ id: a.id, name: a.name || 'Trafo', kva, kvaIst, erzeugung: ziel.netzart === 'erzeugung', geplant,
-                       ertuechtigt: !geplant && kva !== kvaIst });
+                       ertuechtigt: !geplant && kva !== kvaIst,
+                       planJahr: geplant ? ganz(a.baujahr ?? g?.baujahr)
+                         : kva !== kvaIst ? minJahr(null, ...nuPlanJahre(a.massnahmen, massnahmeJahr, zj)) : null });
       if (mitPlanung && !geplant && kva !== kvaIst) planJahre.push(...nuPlanJahre(a.massnahmen, massnahmeJahr, zj));
     }
   }
@@ -222,7 +240,10 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
     if (!ka || !kb || ka === kb) continue;
     const [a, b] = ka < kb ? [ka, kb] : [kb, ka];
     const schl = a + '|' + b;
-    if (!verbindungen.has(schl)) verbindungen.set(schl, { a, b, anzahl: 0, kabel: [], trennstelle: false, laengeM: 0, geplant: true, ertuechtigt: false });
+    if (!verbindungen.has(schl)) {
+      verbindungen.set(schl, { a, b, anzahl: 0, kabel: [], trennstelle: false, laengeM: 0, geplant: true, ertuechtigt: false,
+                               baujahr: null, planJahr: null });
+    }
     const v = verbindungen.get(schl);
     // Kabeldaten stehen direkt an der Kante; Maßnahmen überschreiben crossSection/nParallel/cableType.
     const basis = { cableType: e.cableType, crossSection: e.crossSection, nParallel: e.nParallel };
@@ -230,12 +251,19 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
     const ziel = propsZiel({ props: basis, massnahmen: e.massnahmen });
     const neu = kanteGeplant(e);
     const geaendert = !neu && ['cableType', 'crossSection', 'nParallel'].some(f => String(ist[f] ?? '') !== String(ziel[f] ?? ''));
-    if (geaendert) { v.ertuechtigt = true; planJahre.push(...nuPlanJahre(e.massnahmen, massnahmeJahr, zj)); }
-    if (neu && mitPlanung) planJahre.push(ganz(e.baujahr));
+    if (geaendert) {
+      v.ertuechtigt = true;
+      const pj = nuPlanJahre(e.massnahmen, massnahmeJahr, zj);
+      planJahre.push(...pj);
+      v.planJahr = minJahr(v.planJahr, ...pj);
+    }
+    if (neu && mitPlanung) { planJahre.push(ganz(e.baujahr)); v.planJahr = minJahr(v.planJahr, ganz(e.baujahr)); }
+    if (!neu) v.baujahr = minJahr(v.baujahr, ganz(e.baujahr));
     // Systeme = modellierte Parallelkanten. nParallel taugt dafür nicht: bei MS-Einleiterkabeln
     // steht dort oft 3 (3×1×185 mm²) für EIN System.
     v.anzahl++;
-    v.kabel.push({ typ: String(ziel.cableType || '').trim(), qs: zahl(ziel.crossSection) || null, geschaetzt: !!e.qsGeschaetzt && !geaendert });
+    v.kabel.push({ typ: String(ziel.cableType || '').trim(), qs: zahl(ziel.crossSection) || null, geschaetzt: !!e.qsGeschaetzt && !geaendert,
+                   typIst: String(ist.cableType || '').trim(), qsIst: zahl(ist.crossSection) || null });
     if (wahr(e.trennstelle)) v.trennstelle = true;
     v.laengeM += zahl(e.lengthM) || 0;
     if (!neu) v.geplant = false;
@@ -545,6 +573,65 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
     ohneNap.push(abgangAus(keys, null));
   }
 
+  // ── Zielnetz: Rückbau und nummerierte Änderungen gegenüber dem Bestand ──
+  // Ganz entfallende Stationen stehen in `entfallen` (zum Zeichnen als „entfällt“); entfällt nur ein Trafo,
+  // bleibt die Station und merkt ihn sich. Neue Kabel an einer neuen Station gehören zu deren Neubau.
+  const entfalleneStationen = new Map();
+  for (const { a, g } of entfallen) {
+    const key = stationKey(a);
+    const ab = ganz(a.abrissjahr ?? g?.abrissjahr);
+    if (stationen.has(key)) {
+      if (a.type === 'Trafo') stationen.get(key).trafosEntfallen.push({ name: a.name || 'Trafo', kva: zahl(propsIst(a).leistungKVA), jahr: ab });
+      continue;
+    }
+    if (!entfalleneStationen.has(key)) {
+      entfalleneStationen.set(key, {
+        key, gebId: a.buildingId ?? null, gebName: g?.name || '', gebNummer: String(g?.gebaeudenummer || '').trim(),
+        gebIdx: g ? gebaeude.indexOf(g) : 1e9, hatNap: false, napKV: null, trafos: [], schaltanlagen: 0, nshv: 0,
+        trennstelle: false, geplant: false, gebaeudeVersorgt: 0, erzeuger: {}, entfaellt: true, jahr: null, trafosEntfallen: [],
+      });
+    }
+    const st = entfalleneStationen.get(key);
+    st.jahr = minJahr(st.jahr, ab);
+    if (a.type === 'NAP') st.hatNap = true;
+    else if (a.type === 'Schaltanlage') st.schaltanlagen++;
+    else st.trafos.push({ id: a.id, name: a.name || 'Trafo', kva: zahl(propsIst(a).leistungKVA), geplant: false });
+  }
+  const kabelEntfallen = [];
+  for (const e of kantenEntfallen) {
+    const ka = stationVon.get(e.u), kb = stationVon.get(e.v);
+    if (!ka || !kb || ka === kb) continue;
+    const [a, b] = ka < kb ? [ka, kb] : [kb, ka];
+    const bp = { cableType: e.cableType, crossSection: e.crossSection };
+    const ist = propsIst({ props: bp, massnahmen: e.massnahmen });
+    kabelEntfallen.push({ a, b, jahr: ganz(e.abrissjahr), typ: String(ist.cableType || '').trim(), qs: zahl(ist.crossSection) || null });
+  }
+  const aenderungen = [];
+  if (mitPlanung) {
+    for (const st of stationsListe) {
+      if (st.geplant) {
+        const anbindung = verbListe.filter(v => v.geplant && (v.a === st.key || v.b === st.key)).length;
+        aenderungen.push({ art: 'station-neu', station: st.key, jahr: st.planJahr, anbindung });
+        continue;
+      }
+      const tausch = st.trafos.filter(t => t.ertuechtigt), neu = st.trafos.filter(t => t.geplant);
+      if (tausch.length || neu.length || st.trafosEntfallen.length) {
+        aenderungen.push({ art: 'trafo', station: st.key, tausch, neu, weg: st.trafosEntfallen,
+          jahr: minJahr(null, ...tausch.map(t => t.planJahr), ...neu.map(t => t.planJahr), ...st.trafosEntfallen.map(t => t.jahr)) });
+      }
+    }
+    for (const v of verbListe) {
+      const anNeuerStation = stationen.get(v.a)?.geplant || stationen.get(v.b)?.geplant;
+      if (v.geplant && !anNeuerStation) aenderungen.push({ art: 'kabel-neu', kante: v, jahr: v.planJahr });
+      else if (v.ertuechtigt) aenderungen.push({ art: 'kabel-ertuechtigt', kante: v, jahr: v.planJahr });
+    }
+    for (const st of entfalleneStationen.values()) aenderungen.push({ art: 'station-weg', station: st.key, jahr: st.jahr });
+    for (const k of kabelEntfallen) aenderungen.push({ art: 'kabel-weg', a: k.a, b: k.b, kabel: k, jahr: k.jahr });
+    const artRang = { 'station-weg': 0, 'kabel-weg': 1, 'station-neu': 2, 'kabel-neu': 3, 'kabel-ertuechtigt': 4, trafo: 5 };
+    aenderungen.sort((p, q) => ((p.jahr ?? 1e4) - (q.jahr ?? 1e4)) || (artRang[p.art] - artRang[q.art]));
+    aenderungen.forEach((x, i) => { x.nr = i + 1; });
+  }
+
   // ── Hinweise auf Lücken im Modell ──
   const hinweise = [];
   if (!stationsListe.length) hinweise.push('Keine Mittelspannungsbetriebsmittel (NAP, Schaltanlage, Trafo) im Modell.');
@@ -601,5 +688,6 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
   };
   if (kennzahlen.zieljahr === -Infinity) kennzahlen.zieljahr = null;
 
-  return { stationen: Object.fromEntries(stationen), verbindungen: verbListe, wurzeln, linien, ohneNap, hinweise, kennzahlen };
+  return { stationen: Object.fromEntries(stationen), verbindungen: verbListe, wurzeln, linien, ohneNap, hinweise, kennzahlen,
+           entfallen: Object.fromEntries(entfalleneStationen), kabelEntfallen, aenderungen };
 }

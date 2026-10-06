@@ -427,3 +427,43 @@ describe('nuNetzUebersicht — Leiter mit Abzweigen, Querverbindung und Diagnose
     expect(r.hinweise.join(' ')).toMatch(/Stationen mit ≥ 3 MS-Verbindungen: .*Gebäude 5 \(4\)/);
   });
 });
+
+describe('nuNetzUebersicht — Änderungen im Zielnetz (Marken, Rückbau)', () => {
+  const geb = [1, 2, 3, 4, 5, 6].map(i => ({ id: i, name: `G${i}`, gebaeudenummer: String(i) }));
+  const as = [
+    A('nap', 'NAP', 1), A('sa1', 'Schaltanlage', 1),
+    A('t2', 'Trafo', 2, { leistungKVA: 630 }, { massnahmen: [{ status: 'geplant', jahr: 2030, newProps: { leistungKVA: 1000 } }] }),
+    A('t3', 'Trafo', 3, { leistungKVA: 400 }), A('t4', 'Trafo', 4, { leistungKVA: 250 }, { abrissjahr: 2029 }),
+    A('t5', 'Trafo', 5, { leistungKVA: 630 }, { baujahr: 2032 }),
+  ];
+  const es = [
+    E('x', 'nap', 'sa1'), E('a1', 'sa1', 't2', { crossSection: 150, baujahr: 1998 }),
+    E('a2', 't2', 't3', { crossSection: 150, massnahmen: [{ status: 'geplant', jahr: 2031, newProps: { crossSection: 240 } }] }),
+    E('a3', 't3', 'sa1', { baujahr: 2031 }), E('b1', 'sa1', 't4', { abrissjahr: 2029 }), E('c1', 't3', 't5', { baujahr: 2032 }),
+  ];
+  const ziel = () => nuNetzUebersicht({ assets: as, edges: es, gebaeude: geb, typeRank: RANG, heute: HEUTE, mitPlanung: true });
+
+  it('nummeriert die Änderungen nach Jahr; Kabel zur neuen Station gehören zu deren Neubau', () => {
+    const r = ziel();
+    expect(r.aenderungen.map(x => [x.nr, x.art, x.jahr])).toEqual([
+      [1, 'station-weg', 2029], [2, 'trafo', 2030], [3, 'kabel-neu', 2031], [4, 'kabel-ertuechtigt', 2031], [5, 'station-neu', 2032],
+    ]);
+    expect(r.aenderungen[4]).toMatchObject({ station: 'g5', anbindung: 1 });
+    expect(r.aenderungen[1].tausch.map(t => [t.kvaIst, t.kva])).toEqual([[630, 1000]]);
+  });
+
+  it('zurückgebaute Station bleibt als „entfällt“ erhalten, Kabel bekommen Baujahr und Ist-Querschnitt', () => {
+    const r = ziel();
+    expect(r.stationen.g4).toBeUndefined();
+    expect(r.entfallen.g4).toMatchObject({ entfaellt: true, jahr: 2029 });
+    const v = r.verbindungen.find(x => x.a === 'g2' && x.b === 'g3');
+    expect(v.kabel[0]).toMatchObject({ qs: 240, qsIst: 150 });
+    expect(r.verbindungen.find(x => x.a === 'g1' && x.b === 'g2').baujahr).toBe(1998);
+  });
+
+  it('Bestand ohne Planung: keine Änderungen, nichts entfällt', () => {
+    const r = nuNetzUebersicht({ assets: as, edges: es, gebaeude: geb, typeRank: RANG, heute: HEUTE });
+    expect(r.aenderungen).toEqual([]);
+    expect(r.entfallen).toEqual({});
+  });
+});
