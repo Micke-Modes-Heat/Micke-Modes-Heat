@@ -1473,7 +1473,9 @@ export function ggGebaeudeAuswertung() {
     nutzung: g.nutzung, waermeRef: ggLies(() => w.getNutzungstypById?.(g.nutzung)?.waermeRef, undefined), bgfM2: gbBgf(g),
     twwZentral: !['dle', 'keine'].includes(g.twwArt),
   })?.jeBgf ?? NaN;
-  return gbAuswertung(w.gebaeude || [], w.getComputedStats, { ausgeschlossen: id => typeof w.isExcluded === 'function' && w.isExcluded(id), referenzSpez,
+  // Ohne die Ausschlüsse der aktiven Variante: Bestand und bauliche Entwicklung sind allen Varianten gemeinsam (Kapitel 2 darf
+  // nicht davon abhängen, welche Variante beim Export gerade offen ist). Ausschlüsse beschreibt der Variantenvergleich.
+  return gbAuswertung(w.gebaeude || [], w.getComputedStats, { ausgeschlossen: () => false, referenzSpez,
     nutzungLabel: n => (typeof w.getNutzungstypById === 'function' && w.getNutzungstypById(n)?.label) || n });
 }
 
@@ -1540,13 +1542,13 @@ function ggVariantenDaten() {
 /** Bestandsgebäude für die Kostenschätzung der NT-Ertüchtigung (BGF, Bauzustand, TWW). */
 function ggNtKosten() {
   const w = window;
-  const geb = (w.gebaeude || []).filter(g => !(typeof w.isExcluded === 'function' && w.isExcluded(g.id)) && !(parseInt(g.baujahr, 10) >= 2026)
+  const geb = (w.gebaeude || []).filter(g => !(parseInt(g.baujahr, 10) >= 2026)
     && !(parseInt(g.abrissjahr, 10) > 0 && parseInt(g.abrissjahr, 10) < 9999));
   return faNtKosten(geb.map(g => ({ name: g.name || `Gebäude ${g.id}`, bgfM2: gbBgf(g), zustand: ({ A: 1, B: 2, C: 3 })[String(g.zustand || '').toUpperCase()] || Number(g.zustand) || '', twwArt: g.twwArt, twwKw: g.twwKw })));
 }
 function ggTwwBestand() {
   const w = window;
-  return baTwwAuswertung((w.gebaeude || []).filter(g => !(typeof w.isExcluded === 'function' && w.isExcluded(g.id)) && !(parseInt(g.baujahr, 10) >= 2026)));
+  return baTwwAuswertung((w.gebaeude || []).filter(g => !(parseInt(g.baujahr, 10) >= 2026)));
 }
 
 /** Wärmelastgang für Abbildungen: Import bevorzugt, sonst berechneter Basis-Lastgang. */
@@ -1671,6 +1673,14 @@ export function ggPlausiPruefung() {
       const ohneWgk = v.filter(x => !Number.isFinite(x.wgkCt));
       if (ohneWgk.length) add('warn', `${ohneWgk.length} Variante(n) ohne Wärmegestehungskosten: ${ohneWgk.map(x => x.name).join(', ')}.`);
       if (v.some(x => !x.wirtKomp)) add('info', 'Kostenaufteilung bzw. PV-Vergleich fehlt für einzelne Varianten – „↻ Alle aktualisieren“.');
+      const stempel = ggLies(() => window.gebaeudeStempel?.(), null);
+      const alt = v.filter(x => x.gebaeudeStempel && stempel && x.gebaeudeStempel !== stempel);
+      if (alt.length) add('warn', `Gebäudebestand wurde nach der Variantenberechnung geändert (${alt.map(x => x.name).join(', ')}) – im Variantenvergleich „↻ Alle aktualisieren“.`);
+    }
+    const aktiv = ggLies(() => (typeof window.getActiveVariantId === 'function' ? window.getActiveVariantId() : window.activeVariantId), null);
+    if (aktiv) {
+      const name = ggLies(() => window.varianten?.find(x => x.id === aktiv)?.name, aktiv);
+      add('warn', `Aktiv ist die Variante „${name}“ – Lastgang, Spitzenlast und Netz in den Kapiteln 3 und 4 stammen aus ihr. Für das Gutachten auf „Basisdaten“ wechseln.`);
     }
     const h = ggWaermeHerkunft();
     if (!ss?.pMaxKw) add('warn', 'Kein Wärmelastgang berechnet (🔥 Wärme-Grundlagen).');
@@ -1766,7 +1776,7 @@ export function ggWaermeDaten() {
   const w = window;
   const ss = w.systemState;
   const en = w._dispatchEnergy || {};
-  const aktivKey = w.activeVariantId || 'base';
+  const aktivKey = (typeof w.getActiveVariantId === 'function' ? w.getActiveVariantId() : w.activeVariantId) || 'base';
   const vr = ggLies(() => (typeof w.getVariantResults === 'function' ? w.getVariantResults() : w.variantResults), {}) || {};
 
   const lastgang = ss ? {
@@ -1818,6 +1828,7 @@ export function ggWaermeDaten() {
       name: id === 'base' ? 'Basisvariante' : (r.label || id), aktiv, erzeuger: detail,
       investEur: r.investGes || undefined, jahreskostenEur: r.jkGes || undefined, wgkCt: r.wgkNum || undefined,
       co2T: r.co2GesH, co2LzT: r.co2GesLZ, eeAnteilPct: r.eeAnteil ?? undefined, netzverlustPct: r.netzverlustePct, wirtKomp: r.wirtKomp || null,
+      gebaeudeStempel: r.gebaeudeStempel || null, bedarfMwh: r.gebäudebedarf, ausschluesse: r.ausschlüsse || 0,
     };
   });
 

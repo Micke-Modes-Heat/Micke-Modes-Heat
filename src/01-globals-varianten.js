@@ -250,6 +250,8 @@ export let verbindungsLayerGroup = null;
 export let variantResults = {};
 /** Aktueller Stand der Variantenergebnisse — `variantResults` wird beim Variantenwechsel neu zugewiesen, ein window-Wert wäre dann veraltet. */
 export function getVariantResults() { return variantResults; }
+/** Aktive Variante (null = Basisdaten) — wie bei variantResults wäre ein window-Wert nach dem Wechsel veraltet. */
+export function getActiveVariantId() { return activeVariantId; }
 export function toggleVergleich() {
   setViewMode(currentViewMode === 'vergleich' ? 'karte' : 'vergleich');
 }
@@ -258,6 +260,17 @@ export let _cacheVariantTimer = null;
 export function cacheVariantResultsDebounced() {
   clearTimeout(_cacheVariantTimer);
   _cacheVariantTimer = setTimeout(cacheVariantResults, 80);
+}
+
+/**
+ * Stempel des gemeinsamen Gebäudebestands (Anzahl, Bedarf, Heizlast, Baujahre, Abriss, Sanierungen). Ändert sich
+ * der Bestand nach „Alle aktualisieren“, passen gespeicherte Variantenergebnisse nicht mehr dazu.
+ */
+export function gebaeudeStempel() {
+  let h = 0;
+  const add = v => { const t = String(v ?? ''); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; };
+  for (const g of gebaeude) { add(g.id); add(g.waerme); add(g.heizlast); add(g.baujahr); add(g.abrissjahr); add(g.flaeche); add(JSON.stringify(g.sanierungen || [])); }
+  return `${gebaeude.length}:${h}`;
 }
 
 export function cacheVariantResults() {
@@ -370,6 +383,7 @@ export function cacheVariantResults() {
     erzeugung: totalErzeugung, lastgangBasis, vlTemp, rlTemp, erzeuger: erzeugerList, erzeugerDetail, ausschlüsse,
     investGes, jkGes, co2GesH, co2GesLZ, wgkText, wgkNum, eeAnteil, stromkostenWp,
     wirtKomp: window._lastWirtKomp ? { ...window._lastWirtKomp } : null,
+    gebaeudeStempel: gebaeudeStempel(),
   };
   if (typeof currentViewMode !== 'undefined' && currentViewMode === 'vergleich') renderVergleich();
 }
@@ -1174,7 +1188,9 @@ export function activateVariant(id, _transactionActive = false) {
   // Variantenwechsel ist eine synchrone Transaktion: erst alle Teilzustände
   // anwenden, dann genau einmal den Wärmegraphen und die Ergebnis-Caches erneuern.
   if (netzEdges.length > 0) recalcNetz();
-  variantResults = {};
+  // Nur das Ergebnis der Zielvariante verwerfen (es wird neu gerechnet) — die übrigen Varianten bleiben für
+  // Variantenvergleich und Gutachten erhalten. Veraltete Stände erkennt der Gebäudestempel (gebaeudeStempel).
+  { const neu = { ...variantResults }; delete neu[id === null ? 'base' : id]; variantResults = neu; }
   renderVariantenBar();
   updateVariantBanner();
   // Der Schicht-Umschalter zeigt im Planungsmodus die aktive Variante an —
