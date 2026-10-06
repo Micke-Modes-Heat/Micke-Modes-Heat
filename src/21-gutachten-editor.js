@@ -16,6 +16,7 @@ import {
 } from './17-gutachten-grafik.js';
 import {
   GUTACHTEN_DOK_VERSION, GUTACHTEN_MAX_EBENE, GUTACHTEN_STANDARD_GLIEDERUNG, gdNormalisieren, gdKapitelNummern, gdStandardDokument, gdMitStandardAbgleichen, gdLeeresDokument,
+  gdGliederungVersion, gdGliederungUmstellen,
   gdKapitelEinfuegen, gdKapitelLoeschen, gdKapitelVerschieben, gdKapitelEbene,
   gdNeuerTextBlock, gdNeuerFigurBlock, gdNeuerBildBlock, gdBlockEinfuegen, gdBlockLoeschen, gdBlockVerschieben,
   gdFindeBlock, gdBeschriftungen, gdFigurIds, gdNormDeckblatt, GUTACHTEN_DECKBLATT_VORGABEN,
@@ -441,7 +442,14 @@ function dokumentPanel() {
           + hinweis('Einfügen über das jeweilige Kapitel → „Inhalt einfügen“ oder alles auf einmal über „Mit Standardgliederung abgleichen“.')
         : '')
     + ueberschrift('Standardgliederung')
-    + (nFehlendK || nFehlendB || nUmbenannt
+    + (gdGliederungVersion(dok) < 2
+      ? `<div style="font-size:11px;color:${GUT_WARN};line-height:1.45;margin-bottom:6px;">Dieses Dokument folgt noch der alten Gliederung `
+        + '(Wärme komplett in Kapitel 2, Elektrotechnik 3). Neu: 2 Ist-Zustand Wärme (Hochbau), 3 Wärmeversorgung, 4 Potenzialanalyse, '
+        + '5 Elektrotechnik, 6 GA, 7 Variantenvergleich Wärme, 8 Resilienz, 9 Fazit.</div>'
+        + knopf('⇄ Auf neue Gliederung umstellen', 'gutGliederungUmstellen()', { primaer: true,
+            titel: 'Verschiebt Kapitel samt Freitexten, Lageplänen und Einstellungen an ihren neuen Platz. Eigene Kapitel bleiben hinter dem Kapitel, dem sie folgten.' })
+      : '')
+    + (gdGliederungVersion(dok) < 2 ? '' : nFehlendK || nFehlendB || nUmbenannt
         ? `<div style="font-size:11px;color:${GUT_WARN};line-height:1.45;margin-bottom:6px;">`
           + (nFehlendK || nFehlendB ? 'Gegenüber der aktuellen Vorlage fehlen '
             + [nFehlendK && `${nFehlendK} Kapitel`, nFehlendB && `${nFehlendB} Abbildungen/Textbausteine`].filter(Boolean).join(' und ') + '. ' : '')
@@ -450,7 +458,7 @@ function dokumentPanel() {
           + knopf('⇄ Mit Standardgliederung abgleichen', 'gutMitStandardAbgleichen()', { primaer: true,
               titel: 'Ergänzt fehlende Kapitel und Bausteine an der passenden Stelle. Vorhandene Kapitel, Texte und Einstellungen bleiben unverändert.' })
         : `<div style="font-size:11px;color:${GUT_AKZENT};">✓ Alle Kapitel und Bausteine der Standardgliederung sind vorhanden.</div>`)
-    + (abgleich.fremdeKapitel.length
+    + (gdGliederungVersion(dok) >= 2 && abgleich.fremdeKapitel.length
         ? hinweis(`${abgleich.fremdeKapitel.length} Kapitel ohne Gegenstück in der Standardgliederung, z. B. aus einer älteren Vorlage: `
             + abgleich.fremdeKapitel.slice(0, 6).map(k => esc(`${nrJetzt.get(k.id) || k.nr} ${k.titel.trim() || '[ohne Titel]'}`)).join(' · ')
             + (abgleich.fremdeKapitel.length > 6 ? ' · …' : '')
@@ -709,6 +717,7 @@ export function gutStandardAnlegen(ersetzen = false) {
  */
 export function gutMitStandardAbgleichen() {
   if (!_gut.dok) return;
+  if (gdGliederungVersion(_gut.dok) < 2) { gutSay('⚠ Das Dokument folgt noch der alten Gliederung — zuerst rechts „Auf neue Gliederung umstellen“.', true); return; }
   const erg = gdMitStandardAbgleichen(_gut.dok, ggFigurenKatalog());
   const nK = erg.neueKapitel.length, nB = erg.neueBloecke.length, nU = erg.umbenannt.length;
   if (!nK && !nB && !nU) {
@@ -729,6 +738,29 @@ export function gutMitStandardAbgleichen() {
     + (nU ? ` ${nU} Szenario-Kapitel neu nummeriert.` : '')
     + (erg.nichtZugeordnet.length ? ` ${erg.nichtZugeordnet.length} ohne passendes Kapitel.` : '')
     + (erg.fremdeKapitel.length ? ` ${erg.fremdeKapitel.length} ältere Kapitel ohne Gegenstück — rechts unter „Standardgliederung“ aufgeführt.` : ''));
+}
+
+/**
+ * Dokument der alten Gliederung (Wärme komplett in 2, Elektro 3) auf Variante B umstellen: Kapitel samt
+ * Freitexten, Lageplänen und Einstellungen wandern an ihren neuen Platz; nichts wird gelöscht.
+ */
+export function gutGliederungUmstellen() {
+  if (!_gut.dok || gdGliederungVersion(_gut.dok) >= 2) return;
+  if (!window.confirm('Gutachten auf die neue Gliederung umstellen?\n\n'
+      + '1 Einleitung · 2 Ist-Zustand Wärme (Hochbau) · 3 Wärmeversorgung · 4 Potenzialanalyse · 5 Elektrotechnik · '
+      + '6 GA · 7 Variantenvergleich Wärme · 8 Resilienz · 9 Fazit\n\n'
+      + 'Alle Kapitel wandern samt Freitexten, Lageplänen und Einstellungen an ihren neuen Platz; Elektrotechnik, GA, Resilienz und Fazit '
+      + 'ändern nur ihre Nummer. Eigene Kapitel bleiben hinter dem Kapitel, dem sie bisher folgten.')) return;
+  const erg = gdGliederungUmstellen(_gut.dok, ggFigurenKatalog());
+  if (!erg) return;
+  _gut.dok = erg.dok;
+  _gut.auswahl = null;
+  _gut.cache.clear();
+  gutRender();
+  gutSay(`✓ Auf die neue Gliederung umgestellt — ${erg.verschoben.length} Kapitel mit neuer Nummer`
+    + (erg.bausteine ? `, ${erg.bausteine} Bausteine in neue Unterkapitel` : '')
+    + (erg.eigene.length ? `, ${erg.eigene.length} eigene Kapitel beibehalten` : '')
+    + '. Neue Kapitel und Bausteine bei Bedarf über „Mit Standardgliederung abgleichen“ ergänzen.');
 }
 
 export function gutLeeresAnlegen() {
@@ -1195,6 +1227,8 @@ export function gutCaptureGutachten() {
     version: GUTACHTEN_DOK_VERSION,
     kapitel: _gut.dok ? structuredClone(_gut.dok.kapitel) : null,
     deckblatt: _gut.dok ? structuredClone(_gut.dok.deckblatt || gdNormDeckblatt()) : null,
+    ...(_gut.dok?.gliederung ? { gliederung: _gut.dok.gliederung } : {}),
+    ...(_gut.dok?.textVariante ? { textVariante: _gut.dok.textVariante } : {}),
     figurEinstellungen,
   };
 }

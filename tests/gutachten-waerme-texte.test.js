@@ -347,7 +347,7 @@ describe('2.4 Variantenvergleich — hier stehen die Versorgungssysteme', () => 
   it('mit einer Variante: beschreibt sie und fragt weitere ab', () => {
     const t = mit([A]);
     expect(t).toContain('Betrachtet wird eine Variante der Wärmeversorgung, „WP + Gaskessel“');
-    expect(t).toContain('Soll-Bedarf aus Kapitel 2.2 (29.000 MWh/a, Spitzenlast 10.000 kW)');
+    expect(t).toContain('Soll-Bedarf aus Kapitel 3.2 (29.000 MWh/a, Spitzenlast 10.000 kW)');
     expect(t).toContain('bivalent aus 2 Erzeugern');
     expect(t).toContain('[Weitere Varianten');
     expect(t).toContain('Wärmegestehungskosten von 11,0 ct/kWh');
@@ -364,7 +364,7 @@ describe('2.4 Variantenvergleich — hier stehen die Versorgungssysteme', () => 
   });
   it('Hinweise zur Technik stehen nur einmal, Zahlen je Variante', () => {
     const t = mit([A, B, C]);
-    expect(t.match(/Kapitel 3\.3\.2/g)).toHaveLength(1);
+    expect(t.match(/Kapitel 5\.3\.2/g)).toHaveLength(1);
     expect(t.match(/TA Lärm/g)).toHaveLength(1);
     expect(t.match(/Jahresarbeitszahl \(JAZ\) beträgt/g)).toHaveLength(3);
   });

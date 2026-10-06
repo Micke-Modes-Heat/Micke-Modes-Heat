@@ -28,7 +28,7 @@ export function setPdWeNummer(v) { pdWeNummer = v || ''; }
 export let pdLiegenschaftAdresse = '';
 export function setPdLiegenschaftAdresse(v) { pdLiegenschaftAdresse = v || ''; }
 
-// ── Netzanschluss-Stammdaten (Gutachtentext Kapitel 3.1.1 Liegenschaftsstromnetzanschluss) ──
+// ── Netzanschluss-Stammdaten (Gutachtentext Kapitel 5.1.1 Liegenschaftsstromnetzanschluss) ──
 // Manuell erfasste Vertrags-/Netzbetreiberangaben, die das Tool nicht selbst kennt
 // (das Netzmodell beginnt erst am Netzanknüpfungspunkt/NAP) — ergänzen dort, wo im
 // Elektromodell bereits Werte vorliegen (z. B. Spannungsebene aus dem NAP-Asset).

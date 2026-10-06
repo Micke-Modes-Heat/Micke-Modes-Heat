@@ -194,7 +194,7 @@ describe('Texte: 1.3.1 Gebäudebestand', () => {
   it('reiner Neubau: es gibt keinen Bestand', () => {
     const t = text(gbTextBestand(auswerten([D, E])));
     expect(t).toContain('Es besteht kein Gebäudebestand');
-    expect(t).toContain('Kapitel 1.3.2');
+    expect(t).toContain('Kapitel 2.2.1');
   });
 });
 
@@ -255,7 +255,7 @@ describe('Texte: 1.3.2 Bauliche Veränderungen', () => {
     expect(t).toContain('Neubau +110 MWh');
     expect(t).toContain('Abriss −200 MWh');
     expect(t).toContain('Sanierung −60 MWh');
-    expect(t).toContain('Kapitel 1.3.3');
+    expect(t).toContain('Kapitel 2.2.2');
   });
   it('reiner Neubau: besteht nur aus Neubauten', () => {
     const t = text(gbTextVeraenderung(auswerten([D, E])));
@@ -313,7 +313,7 @@ describe('Texte: 1.3.3 Entwicklung', () => {
   });
   it('nennt das Auslegungsjahr und die Annahmen', () => {
     const t = text(gbTextEntwicklung(auswerten(alle), { lastgangJahr: 2040 }));
-    expect(t).toContain('Für den Soll-Lastgang in Kapitel 2.2 ist das Jahr 2040 maßgebend');
+    expect(t).toContain('Für den Soll-Lastgang in Kapitel 3.2 ist das Jahr 2040 maßgebend');
     expect(t).toContain('Klimawandel');
   });
 });

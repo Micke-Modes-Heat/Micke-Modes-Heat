@@ -1,6 +1,6 @@
 // ── 22-netzanschluss-panel.js — Netzanschluss-Stammdaten unter ⚡ Strom-Grundlagen ──
 // Einzige Eingabestelle für Netzbetreiber, Spannungsebene, Übergabepunkt, Messverfahren, Messort
-// und Einspeisepunkte (Gutachtentext Kapitel 3.1.1).
+// und Einspeisepunkte (Gutachtentext Kapitel 5.1.1).
 //
 // Die vereinbarte Anschlussleistung und die Bezugsgrenze am NAP sind ein und derselbe
 // Wert (kVA, aus dem Netzanschlussvertrag) — er wird direkt im Feld „Max. Bezug" unter

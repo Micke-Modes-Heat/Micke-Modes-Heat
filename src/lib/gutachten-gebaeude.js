@@ -1,4 +1,4 @@
-// ── lib/gutachten-gebaeude.js — Gebäudebestand und bauliche Entwicklung für das Gutachten (Kapitel 1.3 Hochbau) ──
+// ── lib/gutachten-gebaeude.js — Gebäudebestand und bauliche Entwicklung für das Gutachten (Kapitel 2 Hochbau) ──
 // DOM- und importfrei (bis auf die Textwerkzeuge der Wärme-Lib), damit Auswertung und Fallunterscheidungen in
 // Vitest direkt prüfbar sind.
 //
@@ -221,13 +221,13 @@ export function gbTextBestand(a, o = {}) {
   const i = a.ist;
   const out = [];
   if (!i || i.anzahl === 0) {
-    out.push(absatz(`Es besteht kein Gebäudebestand: Gebäude mit Baujahr vor ${a.stichjahr} sind nicht vorhanden. Die Liegenschaft besteht ausschließlich aus geplanten Neubauten; sie sind in Kapitel 1.3.2 beschrieben.`));
+    out.push(absatz(`Es besteht kein Gebäudebestand: Gebäude mit Baujahr vor ${a.stichjahr} sind nicht vorhanden. Die Liegenschaft besteht ausschließlich aus geplanten Neubauten; sie sind in Kapitel 2.2.1 beschrieben.`));
     return out;
   }
   out.push(absatz(`Der Gebäudebestand (Baujahr vor ${a.stichjahr}) umfasst ${nf(i.anzahl)} ${kleinN(i.anzahl, 'Gebäude', 'Gebäude')}`
     + (i.flaecheM2 > 0 ? ` mit zusammen ${nf(i.flaecheM2)} m² Bruttogeschossfläche` : '')
     + `. Der Wärmebedarf beträgt ${nf(i.bedarfMwh)} MWh pro Jahr, die Summe der Einzelheizlasten ${nf(i.heizlastKw)} kW.`
-    + ' Die Summe der Einzelheizlasten ist nicht die Spitzenlast der Liegenschaft; diese liegt wegen der Gleichzeitigkeit niedriger (Kapitel 2.2).'));
+    + ' Die Summe der Einzelheizlasten ist nicht die Spitzenlast der Liegenschaft; diese liegt wegen der Gleichzeitigkeit niedriger (Kapitel 3.2).'));
 
   // Nutzung
   if (i.nutzung.length === 1) {
@@ -422,7 +422,7 @@ export function gbTextVeraenderung(a, o = {}) {
     if (ab.length) teile.push(`Abriss −${nf(Math.abs(mwh('abriss')))} MWh`);
     if (sa.length) teile.push(`Sanierung −${nf(Math.abs(mwh('sanierung')))} MWh`);
     out.push(absatz(`In der Bilanz ${netto > 0.5 ? 'steigt' : netto < -0.5 ? 'sinkt' : 'bleibt'} der Wärmebedarf bis ${j1b.jahr} ${Math.abs(netto) > 0.5 ? `um ${nf(Math.abs(netto))} MWh pro Jahr (${teile.join(', ')})` : 'nahezu unverändert'}. `,
-      'Die zeitliche Abfolge und die Auswirkungen auf Heizlast und spezifischen Bedarf zeigt Kapitel 1.3.3.'));
+      'Die zeitliche Abfolge und die Auswirkungen auf Heizlast und spezifischen Bedarf zeigt Kapitel 2.2.2.'));
   }
   return out;
 }
@@ -490,7 +490,7 @@ export function gbTextEntwicklung(a, o = {}) {
     }
     out.push(absatz(folge));
   }
-  if (ok(num(o.lastgangJahr))) out.push(absatz(`Für den Soll-Lastgang in Kapitel 2.2 ist das Jahr ${o.lastgangJahr} maßgebend.`));
+  if (ok(num(o.lastgangJahr))) out.push(absatz(`Für den Soll-Lastgang in Kapitel 3.2 ist das Jahr ${o.lastgangJahr} maßgebend.`));
   out.push(absatz('Die Entwicklung beruht ausschließlich auf den hinterlegten baulichen Veränderungen (Neubau, Abriss, energetische Sanierung). Änderungen des Nutzerverhaltens, der Witterung durch den Klimawandel, der Nutzung und weitere Nachverdichtung sind nicht berücksichtigt.'));
   return out;
 }

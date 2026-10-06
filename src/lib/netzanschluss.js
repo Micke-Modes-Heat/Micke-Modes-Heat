@@ -1,7 +1,7 @@
 // ── lib/netzanschluss.js — Netzanschluss-Stammdaten: Messverfahren-Vorschlag, kVA → kW ──
 // DOM- und importfrei, damit es in Vitest direkt prüfbar ist. Die Oberfläche liegt in
 // 22-netzanschluss-panel.js (⚡ Strom-Grundlagen › Netzanschluss), der Gutachtentext
-// in 17-gutachten-grafik.js (Kapitel 3.1.1).
+// in 17-gutachten-grafik.js (Kapitel 5.1.1).
 
 /** Auswahl Messverfahren — `wert` steht so im Gutachtentext („Die Messung erfolgt als …"). */
 export const NA_MESSVERFAHREN = [
