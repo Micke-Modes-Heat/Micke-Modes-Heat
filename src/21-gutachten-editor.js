@@ -445,7 +445,8 @@ function dokumentPanel() {
     + (gdGliederungVersion(dok) < 2
       ? `<div style="font-size:11px;color:${GUT_WARN};line-height:1.45;margin-bottom:6px;">Dieses Dokument folgt noch der alten Gliederung `
         + '(Wärme komplett in Kapitel 2, Elektrotechnik 3). Neu: 2 Ist-Zustand Wärme (Hochbau), 3 Wärmeversorgung, 4 Potenzialanalyse, '
-        + '5 Elektrotechnik, 6 GA, 7 Variantenvergleich Wärme, 8 Resilienz, 9 Fazit.</div>'
+        + '5 Elektrotechnik, 6 GA, 7 Variantenvergleich Wärme, 8 Resilienz, 9 Fazit.'
+        + (fehlend.length ? ` Außerdem fehlen ${fehlend.length} neuere Texte und Abbildungen; sie werden nach der Umstellung angeboten.` : '') + '</div>'
         + knopf('⇄ Auf neue Gliederung umstellen', 'gutGliederungUmstellen()', { primaer: true,
             titel: 'Verschiebt Kapitel samt Freitexten, Lageplänen und Einstellungen an ihren neuen Platz. Eigene Kapitel bleiben hinter dem Kapitel, dem sie folgten.' })
       : '')
@@ -755,12 +756,20 @@ export function gutGliederungUmstellen() {
   if (!erg) return;
   _gut.dok = erg.dok;
   _gut.auswahl = null;
+  let ergaenzt = 0;
+  // Bausteine, die nach dem Anlegen des Dokuments dazugekommen sind (z. B. die Texte der Potenzialanalyse), gleich mit anbieten
+  const abgl = gdMitStandardAbgleichen(_gut.dok, ggFigurenKatalog());
+  if (abgl.neueBloecke.length && window.confirm(`Umgestellt. Seit dem Anlegen dieses Dokuments sind ${abgl.neueBloecke.length} Texte und Abbildungen `
+      + 'dazugekommen (z. B. Potenzialanalyse, Variantenvergleich). Jetzt in ihre Kapitel einfügen?\n\nVorhandene Inhalte bleiben unverändert.')) {
+    _gut.dok = abgl.dok;
+    ergaenzt = abgl.neueBloecke.length;
+  }
   _gut.cache.clear();
   gutRender();
   gutSay(`✓ Auf die neue Gliederung umgestellt — ${erg.verschoben.length} Kapitel mit neuer Nummer`
     + (erg.bausteine ? `, ${erg.bausteine} Bausteine in neue Unterkapitel` : '')
     + (erg.eigene.length ? `, ${erg.eigene.length} eigene Kapitel beibehalten` : '')
-    + '. Neue Kapitel und Bausteine bei Bedarf über „Mit Standardgliederung abgleichen“ ergänzen.');
+    + (ergaenzt ? `, ${ergaenzt} neue Texte und Abbildungen ergänzt.` : '. Neue Bausteine bei Bedarf über „Mit Standardgliederung abgleichen“ ergänzen.'));
 }
 
 export function gutLeeresAnlegen() {
