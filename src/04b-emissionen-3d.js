@@ -1422,9 +1422,9 @@ export function renderAnalyseErzeugerTable() {
 }
 
 // ── Vergleich Center View ────────────────────────────────────────
-export function refreshVergleichView() {
+export async function refreshVergleichView() {
   // Reuse the existing refreshVergleich logic but render to the new container
-  if (typeof refreshVergleich === 'function') refreshVergleich();
+  if (typeof refreshVergleich === 'function') await refreshVergleich();
   // Copy the rendered table to the new view
   const oldWrap = document.getElementById('vergleich-table-wrap');
   const newWrap = document.getElementById('vergleich-view-table-wrap');

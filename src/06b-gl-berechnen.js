@@ -1,6 +1,6 @@
 // ── 06b-gl-berechnen.js — Hauptberechnung, Synthese, Skalierung, Solarthermie ──
 // ── Auto-Trigger ──────────────────────────────────────────────────────────
-import { gebaeude, globalYear, isExcluded } from './01-globals-varianten.js';
+import { ausschlussSchluessel, gebaeude, globalYear, isExcluded } from './01-globals-varianten.js';
 import { getComputedStats, map } from './02b-gebaeude.js';
 import { polygonAreaM2 } from './02c-karte-werkzeuge.js';
 import { redrawVerbindungslinien } from './03a-erzeuger.js';
@@ -36,6 +36,16 @@ export function glBerechnenDebounced(delay = 1000) {
   _glAutoTimer = setTimeout(async () => {
     if (!_glIsRunning) await glBerechnen();
   }, delay);
+}
+
+/**
+ * Sofort rechnen und auf das Ergebnis warten (Variantenvergleich: Gebäudeausschlüsse ändern den Lastgang).
+ * Wartet eine laufende Berechnung ab und verwirft einen ausstehenden verzögerten Auftrag.
+ */
+export async function glBerechnenJetzt() {
+  clearTimeout(_glAutoTimer);
+  while (_glIsRunning) await new Promise(res => setTimeout(res, 50));
+  if (glKannBerechnen()) await glBerechnen();
 }
 
 export function glBerechnenAuto() {
@@ -225,6 +235,8 @@ async function glBerechnen() {
 
     // systemState befüllen
     window.systemState = {
+      // Gebäudeausschlüsse der aktiven Variante, mit denen gerechnet wurde (Variantenwechsel prüft das)
+      ausschluesse: ausschlussSchluessel(),
       // Rohdaten
       lastgangKw,
       tempH: tempState.tempH,

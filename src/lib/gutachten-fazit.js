@@ -237,23 +237,84 @@ export function faTextNt(o = {}) {
  * Maßnahmenfahrplan
  * ═══════════════════════════════════════════════════════════════════════ */
 /** o: { start (Jahr), vorzug: ['V1', 'V3'], pv: { kwp, batKwh, eigenPct, autarkPct, einspeisungMwh }, zielJahr } */
+/**
+ * Technikprofil einer Variante für den Fahrplan: welche Erzeuger mit Leistung > 0 vorkommen.
+ * Ohne Variante gilt das bisherige Standardbild (Wärmepumpe mit fossilem Spitzenlastkessel).
+ */
+export function faFahrplanProfil(v) {
+  if (!v) return { wp: true, lwwp: true, geo: false, fg: false, biomasse: false, fossil: true, bhkw: false, fw: false, sk: false, speicher: false, standard: true };
+  const hat = k => (v.erzeuger || []).some(x => x.key === k && ((Number(x.leistungKw) || 0) > 0 || (Number(x.waermeMwh) || 0) > 0 || (Number(x.speicherM3) || 0) > 0));
+  const p = { lwwp: hat('lwwp'), geo: hat('geo'), fg: hat('fg'), biomasse: hat('pellets') || hat('hhs'), fossil: [...KESSEL].some(hat), bhkw: hat('bhkw'), fw: hat('fernwaerme'), sk: hat('stromkessel'), speicher: hat('_thermSpeicher') };
+  p.wp = p.lwwp || p.geo || p.fg;
+  return p;
+}
+
+/** Komponenten der Variante mit Leistung, z. B. „Luft-Wasser-Wärmepumpe 800 kW und Gaskessel 1,2 MW“. */
+const FA_NAMEN = { lwwp: 'Luft-Wasser-Wärmepumpe', geo: 'Erdwärmepumpe', fg: 'Fließgewässer-Wärmepumpe', gaskessel: 'Gaskessel', _autoGk: 'Spitzenlast-Gaskessel', heizoel: 'Heizölkessel',
+  bhkw: 'BHKW', pellets: 'Pelletkessel', hhs: 'Hackschnitzelkessel', stromkessel: 'Elektrodenkessel', fernwaerme: 'Fernwärmeanschluss' };
+function komponenten(v) {
+  return liste((v?.erzeuger || []).filter(x => FA_NAMEN[x.key] && (Number(x.leistungKw) || 0) > 0)
+    .sort((a, b) => (Number(b.waermeMwh) || 0) - (Number(a.waermeMwh) || 0)).map(x => `${FA_NAMEN[x.key]} ${L(x.leistungKw)}`));
+}
+
+/**
+ * Maßnahmenfahrplan für die Vorzugsvariante. o: { start, zielJahr, variante (Variantenobjekt), vorzug (Namen, Altform),
+ * pv: { kwp, batKwh, eigenPct, autarkPct }, ausbau: [{ name, von, bis, anzahl, kostenEur }] (Phasen aus dem Ausbauplaner) }
+ */
 export function faTextFahrplan(o = {}) {
   const s = Number(o.start) || new Date().getFullYear() + 1;
   const J = (a, b) => (b ? `${s + a}–${s + b}` : `${s + a}`);
   const pv = o.pv || {};
-  const vz = o.vorzug && o.vorzug.length ? liste(o.vorzug) : null;
-  return [
-    absatz('Aus der Gesamtbetrachtung ergibt sich eine empfohlene zeitliche Abfolge der Maßnahmen. Leitgedanke ist, dass die Niedertemperatur-Ertüchtigung des Wärmeverteilnetzes Voraussetzung für den effizienten Wärmepumpenbetrieb ist und der Inbetriebnahme der Erzeugeranlage vorausgehen muss.'),
-    absatz(`Sofortmaßnahmen (${J(0)}, Neubauten): Bei jedem Neubau sind geeignete Dachflächen mit Photovoltaik zu belegen`,
-      pv.kwp > 0 ? `; insgesamt ergibt sich eine installierbare Leistung von rund ${nf(pv.kwp)} kWp${pv.batKwh > 0 ? ` mit einem Batteriespeicher von ${nf(pv.batKwh)} kWh` : ''}${ok(pv.eigenPct) ? ` (Eigenverbrauch ${pct(pv.eigenPct, 1)}${ok(pv.autarkPct) ? `, Autarkie ${pct(pv.autarkPct, 1)}` : ''})` : ''}` : '',
-      '. Die endgültige Dimensionierung ist auf die gewählte Wärmeversorgung abzustimmen.'),
-    absatz(`Kurzfristig (${J(0, 1)}): elektrotechnische Bestandsaufnahme (Hauptverteilung, Trafostationen, Anschlussleistung) unter Berücksichtigung des künftigen Wärmepumpen- und PV-Betriebs sowie gebäudescharfe Bestandsaufnahme der Heizflächen und der Trinkwarmwasserbereitung als Grundlage der Niedertemperatur-Ertüchtigung.`),
-    absatz(`Mittelfristig (${J(1, 2)}): vertiefende Fachplanung der Vorzugsvariante${vz ? ` (${vz})` : ''} mit Wärmepumpenstandort (Schallschutz, Aufstellfläche), Ausführung des Spitzenlast- und Resilienzkessels einschließlich Kaskadierung sowie Klärung der Anschlussleistung mit dem Netzbetreiber.`),
-    absatz(`Niedertemperatur-Ertüchtigung (${J(2, 4)}): Anpassung der Heizflächen, Umstellung der Trinkwarmwasserbereitung und hydraulischer Abgleich – gebäudescharf, ohne umfassende Sanierung, innerhalb von rund zwei Jahren und vor Inbetriebnahme der Wärmepumpe abzuschließen.`),
-    absatz(`Umsetzung (${J(3, 5)}): Errichtung der Erzeugerkomponenten parallel zur Ertüchtigung; Inbetriebnahme der Wärmepumpe nach abgeschlossener Netzumstellung, modular geplant, sodass die Versorgung durchgängig gewährleistet bleibt.`),
-    absatz(`Langfristig (ab ${s + 10}): Prüfung des Ersatzes des fossilen Spitzenlastkessels durch einen Elektrokessel oder Wärmepumpen, sobald Strommix und Wirtschaftlichkeit dies zulassen, um die verbleibende fossile Spitzenlast bis ${o.zielJahr || 2045} zu substituieren.`),
-    absatz('Begleitend: fortlaufende Beobachtung der Energiepreise; bei deutlicher Abweichung von den angenommenen Szenarien ist die Variantenrangfolge neu zu bewerten.'),
-  ];
+  const v = o.variante || null;
+  const p = faFahrplanProfil(v);
+  const vz = v ? v.name : o.vorzug && o.vorzug.length ? liste(o.vorzug) : null;
+  const out = [];
+  if (v) {
+    const k = komponenten(v);
+    out.push(absatz(`Der Fahrplan bezieht sich auf die Vorzugsvariante ${v.name}${k ? ` (${k})` : ''}`,
+      ok(v.investEur) && v.investEur > 0 ? ` mit einer Gesamtinvestition von rund ${v.investEur >= 1e6 ? `${nf(v.investEur / 1e6, 2)} Mio. €` : `${nf(v.investEur / 1000)} Tsd. €`}` : '', '.'));
+  }
+  out.push(absatz(p.wp
+    ? 'Aus der Gesamtbetrachtung ergibt sich eine empfohlene zeitliche Abfolge der Maßnahmen. Leitgedanke ist, dass die Niedertemperatur-Ertüchtigung des Wärmeverteilnetzes Voraussetzung für den effizienten Wärmepumpenbetrieb ist und der Inbetriebnahme der Erzeugeranlage vorausgehen muss.'
+    : 'Aus der Gesamtbetrachtung ergibt sich eine empfohlene zeitliche Abfolge der Maßnahmen. Leitgedanke ist, die neue Erzeugung abschnittsweise so zu errichten, dass die Versorgung durchgängig gewährleistet bleibt.'));
+  out.push(absatz(`Sofortmaßnahmen (${J(0)}, Neubauten): Bei jedem Neubau sind geeignete Dachflächen mit Photovoltaik zu belegen`,
+    pv.kwp > 0 ? `; insgesamt ergibt sich eine installierbare Leistung von rund ${nf(pv.kwp)} kWp${pv.batKwh > 0 ? ` mit einem Batteriespeicher von ${nf(pv.batKwh)} kWh` : ''}${ok(pv.eigenPct) ? ` (Eigenverbrauch ${pct(pv.eigenPct, 1)}${ok(pv.autarkPct) ? `, Autarkie ${pct(pv.autarkPct, 1)}` : ''})` : ''}` : '',
+    '. Die endgültige Dimensionierung ist auf die gewählte Wärmeversorgung abzustimmen.'));
+  out.push(absatz(`Kurzfristig (${J(0, 1)}): elektrotechnische Bestandsaufnahme (Hauptverteilung, Trafostationen, Anschlussleistung)`,
+    p.wp || p.sk ? ' unter Berücksichtigung des künftigen Wärmepumpen- und PV-Betriebs' : ' unter Berücksichtigung des künftigen PV-Betriebs',
+    p.wp ? ' sowie gebäudescharfe Bestandsaufnahme der Heizflächen und der Trinkwarmwasserbereitung als Grundlage der Niedertemperatur-Ertüchtigung.' : ' sowie Bestandsaufnahme der Heizzentrale und der Hausstationen.'));
+  const planung = [];
+  if (p.lwwp) planung.push('Wärmepumpenstandort (Schallschutz, Aufstellfläche)');
+  if (p.geo) planung.push('Erdwärmesondenfeld mit Thermal Response Test und wasserrechtlicher Erlaubnis');
+  if (p.fg) planung.push('Entnahme- und Rückgabebauwerk mit wasserrechtlicher Erlaubnis');
+  if (p.biomasse) planung.push('Brennstofflager und Anlieferung');
+  if (p.bhkw) planung.push('BHKW-Einbindung und Stromabnahme');
+  if (p.fw) planung.push('Anschlussvertrag und Übergabestation mit dem Fernwärmeversorger');
+  if (p.speicher) planung.push('Wärmespeicher');
+  if (p.fossil) planung.push('Ausführung des Spitzenlast- und Resilienzkessels einschließlich Kaskadierung');
+  if (p.wp || p.sk) planung.push('Klärung der Anschlussleistung mit dem Netzbetreiber');
+  out.push(absatz(`Mittelfristig (${J(1, 2)}): vertiefende Fachplanung der Vorzugsvariante${vz ? ` (${vz})` : ''}`, planung.length ? ` mit ${liste(planung)}` : '', '.'));
+  if (p.wp) out.push(absatz(`Niedertemperatur-Ertüchtigung (${J(2, 4)}): Anpassung der Heizflächen, Umstellung der Trinkwarmwasserbereitung und hydraulischer Abgleich – gebäudescharf, ohne umfassende Sanierung, innerhalb von rund zwei Jahren und vor Inbetriebnahme der Wärmepumpe abzuschließen.`));
+  out.push(absatz(p.wp
+    ? `Umsetzung (${J(3, 5)}): Errichtung der Erzeugerkomponenten parallel zur Ertüchtigung; Inbetriebnahme der Wärmepumpe nach abgeschlossener Netzumstellung, modular geplant, sodass die Versorgung durchgängig gewährleistet bleibt.`
+    : `Umsetzung (${J(2, 4)}): Errichtung und Inbetriebnahme der Erzeugerkomponenten, modular geplant, sodass die Versorgung durchgängig gewährleistet bleibt.`));
+  const ausbau = (o.ausbau || []).filter(a => a && a.name);
+  if (ausbau.length) {
+    out.push(absatz('Ausbauplanung der Liegenschaft: Die im Ausbauplaner hinterlegten Ausbaustufen sind in den Fahrplan einzuordnen – ',
+      ausbau.map(a => `${a.name} (${a.von === a.bis ? a.von : `${a.von}–${a.bis}`}${a.anzahl ? `, ${a.anzahl} ${a.anzahl === 1 ? 'Maßnahme' : 'Maßnahmen'}` : ''}${a.kostenEur > 0 ? `, rund ${nf(a.kostenEur / 1000)} Tsd. €` : ''})`).join('; '), '.'));
+  }
+  if (p.fossil || p.bhkw) out.push(absatz(`Langfristig (ab ${s + 10}): Prüfung des Ersatzes des fossilen ${p.bhkw && !p.fossil ? 'BHKW' : 'Spitzenlastkessels'} durch einen Elektrokessel oder Wärmepumpen, sobald Strommix und Wirtschaftlichkeit dies zulassen, um die verbleibende fossile Erzeugung bis ${o.zielJahr || 2045} zu substituieren.`));
+  out.push(absatz('Begleitend: fortlaufende Beobachtung der Energiepreise; bei deutlicher Abweichung von den angenommenen Szenarien ist die Variantenrangfolge neu zu bewerten.'));
+  return out;
+}
+
+/** Vorzugsvariante: Vorgabe aus dem Fragebogen, sonst Rang 1 der Bewertungsmatrix, sonst niedrigste Wärmegestehungskosten. */
+export function faVorzugsvariante(o = {}, wahl) {
+  const V = o.varianten || [];
+  if (wahl && wahl !== 'auto') { const v = V.find(x => x.name === wahl); if (v) return v; }
+  const m = faBewertungsmatrix(o);
+  if (m) return m.zeilen[0].v;
+  return [...V].filter(v => ok(v.wgkCt)).sort((a, b) => a.wgkCt - b.wgkCt)[0] || V[0] || null;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

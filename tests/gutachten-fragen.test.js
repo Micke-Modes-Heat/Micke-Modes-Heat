@@ -88,3 +88,13 @@ describe('Umfang der Bestandsanalyse', () => {
     expect(t).toContain('die 40 geplanten Neubauten mit zusammen rund 4.000 MWh pro Jahr – das 4,0-Fache des Bestands');
   });
 });
+
+describe('Vorgaben passend zu den Varianten', () => {
+  it('Fernwärme und Solarthermie aus Varianten stehen nicht in 4.1', () => {
+    const ctx = { inVariante: { fernwaerme: true, solarthermie: true } };
+    expect(gfAntwort({}, 'pot-fernwaerme', ctx)).toBe('variante');
+    expect(gfAntwort({}, 'pot-fernwaerme', {})).toBe('keinNetz');
+    expect(gfAntwort({}, 'pot-nicht', ctx)).not.toContain('solarthermie');
+    expect(gfAntwort({}, 'pot-nicht', {})).toContain('solarthermie');
+  });
+});

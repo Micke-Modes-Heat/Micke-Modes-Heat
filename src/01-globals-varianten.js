@@ -376,6 +376,16 @@ export function cacheVariantResults() {
     key: k, leistungKw: _detailLeistung[k] || 0, waermeMwh: dispEn[k]?.waermeMwh || 0, elMwh: dispEn[k]?.elMwh || 0,
     speicherM3: k === '_thermSpeicher' ? (parseFloat(document.getElementById('ts-volumen')?.value) || undefined) : undefined,
   }));
+  // Netzkennwerte je Variante (Gutachten: Tabelle nur, wenn sich die Varianten unterscheiden)
+  const _kanten = netzEdges.filter(e => !e.pruned);
+  const _verbunden = new Set(_kanten.flatMap(e => [e.u, e.v]));
+  const netzKennwerte = _kanten.length ? {
+    laengeM: _kanten.reduce((s, e) => s + (e.length || 0), 0),
+    anschluesse: gebaeude.filter(g => _verbunden.has(g.id) && !isExcluded(g.id)).length,
+    verlusteMwh: totalLoss, verlustePct: totalErzeugung > 0 ? totalLoss / totalErzeugung * 100 : 0,
+    dnMax: _kanten.reduce((m, e) => Math.max(m, parseInt(e.dn, 10) || 0), 0), vlC: vlTemp, rlC: rlTemp,
+  } : null;
+  const ausschlussIds = activeVariantId ? [...(varianten.find(v => v.id === activeVariantId)?.gebaeudeAusschlüsse || [])] : [];
   variantResults[key] = {
     label: activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || '') : 'Basisdaten',
     gebäudebedarf: totalVerbrauch, netzverluste: totalLoss,
@@ -383,24 +393,34 @@ export function cacheVariantResults() {
     erzeugung: totalErzeugung, lastgangBasis, vlTemp, rlTemp, erzeuger: erzeugerList, erzeugerDetail, ausschlüsse,
     investGes, jkGes, co2GesH, co2GesLZ, wgkText, wgkNum, eeAnteil, stromkostenWp,
     wirtKomp: window._lastWirtKomp ? { ...window._lastWirtKomp } : null,
-    gebaeudeStempel: gebaeudeStempel(),
+    gebaeudeStempel: gebaeudeStempel(), netz: netzKennwerte, ausschlussIds,
   };
   if (typeof currentViewMode !== 'undefined' && currentViewMode === 'vergleich') renderVergleich();
 }
 
-export function refreshVergleich() {
+let _vergleichLaeuft = false;
+export async function refreshVergleich() {
+  if (_vergleichLaeuft) return;
+  _vergleichLaeuft = true;
   const originalId = activeVariantId;
   // Basis-Snapshot vor dem Durchlaufen retten, damit er nicht korrumpiert wird
   const savedBase = baseNetzSnapshot ? JSON.parse(JSON.stringify(baseNetzSnapshot)) : null;
   const savedBaseErz = baseErzeugerSnapshot ? JSON.parse(JSON.stringify(baseErzeugerSnapshot)) : null;
-  ['base', ...varianten.map(v => v.id)].forEach(id => {
-    activateVariant(id === 'base' ? null : id);
-    cacheVariantResults();
-  });
-  // Basis-Snapshot wiederherstellen
-  if (savedBase) baseNetzSnapshot = savedBase;
-  if (savedBaseErz) baseErzeugerSnapshot = savedBaseErz;
-  activateVariant(originalId);
+  try {
+    for (const id of ['base', ...varianten.map(v => v.id)]) {
+      activateVariant(id === 'base' ? null : id);
+      // Gebäudeausschlüsse der Variante: Lastgang und Einsatzplanung erst neu rechnen, dann zwischenspeichern
+      if (lastgangPasstNichtZurVariante() && typeof window.glBerechnenJetzt === 'function') await window.glBerechnenJetzt();
+      cacheVariantResults();
+    }
+  } finally {
+    // Basis-Snapshot wiederherstellen
+    if (savedBase) baseNetzSnapshot = savedBase;
+    if (savedBaseErz) baseErzeugerSnapshot = savedBaseErz;
+    activateVariant(originalId);
+    if (lastgangPasstNichtZurVariante() && typeof window.glBerechnenJetzt === 'function') await window.glBerechnenJetzt();
+    _vergleichLaeuft = false;
+  }
   renderVergleich();
 }
 
@@ -1199,6 +1219,8 @@ export function activateVariant(id, _transactionActive = false) {
   // nach einem Wechsel muss er nachziehen (defensiv, 13v lädt eigenständig).
   if (typeof window.schichtBarRender === 'function') window.schichtBarRender();
   updateAllDeckungen();
+  // Andere Gebäudeausschlüsse als beim letzten Lastgang → Grundlagen für diese Variante neu rechnen
+  if (lastgangPasstNichtZurVariante()) window.glBerechnenDebounced?.(50);
 }
 
 export function addVariante() {
@@ -1301,6 +1323,18 @@ export function updateVariantBanner() {
     banner.style.display = 'block';
   }
 }
+/** Gebäudeausschlüsse einer Variante als Schlüssel ('' für die Basis) — passt der Lastgang noch zur Variante? */
+export function ausschlussSchluessel(id = activeVariantId) {
+  if (id === null || id === 'base') return '';
+  return [...(varianten.find(x => x.id === id)?.gebaeudeAusschlüsse || [])].map(String).sort().join(',');
+}
+
+/** Wurden die Wärme-Grundlagen mit anderen Gebäudeausschlüssen gerechnet als die aktive Variante sie hat? */
+export function lastgangPasstNichtZurVariante() {
+  const ss = window.systemState;
+  return !!ss?.lastgangKw && (ss.ausschluesse ?? '') !== ausschlussSchluessel();
+}
+
 export function isExcluded(id) {
   if (activeVariantId === null) return false;
   const v = varianten.find(x => x.id === activeVariantId);
@@ -1316,4 +1350,6 @@ export function toggleAusschluss(id) {
   if (idx >= 0) v.gebaeudeAusschlüsse.splice(idx, 1);
   else v.gebaeudeAusschlüsse.push(id);
   renderList(); updateViz(); updateTotals(); recalcNetz();
+  // Der Lastgang der Variante enthält nur die angeschlossenen Gebäude → Grundlagen neu rechnen
+  if (lastgangPasstNichtZurVariante()) window.glBerechnenDebounced?.(300);
 }

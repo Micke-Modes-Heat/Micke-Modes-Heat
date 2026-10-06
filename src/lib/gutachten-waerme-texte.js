@@ -109,6 +109,20 @@ function ueberschrift(text) {
 /** Hilfen für verwandte Textmodule (Gebäudekapitel): gleiche Zahlenformate, Platzhalter und Absatzbildung. */
 export const wtHilfen = { num, ok, nf, pct, liste, summe, kleinN, absatz, ueberschrift };
 
+/** Netzkennwerte einer Variante, gerundet für den Vergleich (Länge auf 10 m, Verluste auf 0,1 %); ohne Netzdaten null. */
+export function wtNetzSchluessel(v) {
+  const n = v?.netz;
+  if (!n) return null;
+  return [Math.round((Number(n.laengeM) || 0) / 10), n.anschluesse || 0, Math.round((Number(n.verlustePct) || 0) * 10), n.dnMax || 0, n.vlC ?? '', n.rlC ?? ''].join('|');
+}
+
+/** Gleiches Netz und gleiche Gebäudeanschlüsse in allen Varianten? Varianten ohne Netzdaten zählen nicht mit. */
+export function wtNetzGleich(V = []) {
+  const netze = V.map(wtNetzSchluessel).filter(Boolean);
+  const aus = V.map(v => [...(v.ausschlussIds || [])].map(String).sort().join(','));
+  return new Set(netze).size <= 1 && new Set(aus).size <= 1;
+}
+
 /** Absätze als Klartext — Platzhalter als „[Feld]“ bzw. mit Wert. Für Tests und die Zwischenablage. */
 export function wtKlartext(absaetze) {
   return absaetze.map(a => (a.ueberschrift ? '## ' : '') + a.map(s => (typeof s === 'string' ? s : (s.wert || `[${s.feld}]`))).join('')).join('\n\n');
@@ -794,7 +808,9 @@ export function wtVariantenvergleich(d) {
   if (V.length === 1) {
     out.push(absatz(`Betrachtet wird eine Variante der Wärmeversorgung, „${nameV(V[0])}“.${bedarfsSatz} Weitere Varianten sind `, F('Weitere Varianten oder Begründung für die Betrachtung einer Variante'), '.'));
   } else {
-    out.push(absatz(`Verglichen werden ${V.length} Varianten der Wärmeversorgung: ${liste(V.map(nameV))}.${bedarfsSatz} Alle Varianten werden für denselben Wärmebedarf und dasselbe Netz gerechnet.`));
+    out.push(absatz(`Verglichen werden ${V.length} Varianten der Wärmeversorgung: ${liste(V.map(nameV))}.${bedarfsSatz} `
+      + (wtNetzGleich(V) ? 'Alle Varianten werden für denselben Gebäudebestand und dasselbe Wärmenetz gerechnet.'
+        : 'Der Gebäudebestand ist in allen Varianten gleich; Wärmenetz und Gebäudeanschlüsse unterscheiden sich teilweise.')));
   }
   const rahmen = [];
   if (ok(num(w.co2PreisEurT))) rahmen.push(`ein CO₂-Preis von ${nf(num(w.co2PreisEurT))} €/t`);

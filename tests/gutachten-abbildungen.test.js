@@ -151,5 +151,7 @@ describe('Wasserfall, Schall, Fahrplan', () => {
     const p = abFahrplanPhasen(2027);
     expect(p[0]).toMatchObject({ von: 2027, bis: 2027 });
     expect(p.at(-1)).toMatchObject({ von: 2037, bis: 2045 });
+    const q = abFahrplanPhasen(2027, 2045, { wp: false, fossil: false, name: 'Pellets' }, [{ name: 'Stufe 1', von: 2028, bis: 2030 }]);
+    expect(q.map(x => x.name)).toEqual(['Sofortmaßnahmen: PV auf Neubauten', 'Bestandsaufnahme Elektro und Heiztechnik', 'Fachplanung Pellets', 'Errichtung und Inbetriebnahme Erzeuger', 'Ausbaustufe: Stufe 1']);
   });
 });

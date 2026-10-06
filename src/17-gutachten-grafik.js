@@ -32,8 +32,8 @@ import { GF_TECHNIKEN, gfAntwort, gfQuoten } from './lib/gutachten-fragen.js';
 import { gdVerweiseErsetzen } from './lib/gutachten-dokument.js';
 import { ptTextNichtTechnik, PT_NICHT, PT_GEO_ASPEKTE, PT_LWWP_VORNACH, PT_TA_LAERM, PT_BIO, PT_BIO_QUALITATIV, ptBioKennwerte, ptTextEinleitung, ptTextNicht, ptTextBeruecksichtigt,
   ptTextGeoGrundlagen, ptTextGeoBerechnung, ptTextTiefengeothermie, ptTextLwwp, ptTextSchall, ptTextBiomasse } from './lib/gutachten-potenzial.js';
-import { FA_NT_KOSTEN, FA_KRITERIEN, faBewertungsmatrix, faNtKosten, faNtVergleich, faTextBewertung, faTextEmpfehlung, faTextNt, faTextFahrplan, faTextHeizoeltank, faTextResilienzUebergang } from './lib/gutachten-fazit.js';
-import { VA_CO2_QUELLE, VA_STROM_EF, vaRahmenZeilen, vaTextRahmen, vaTextResilienz, vaGegenueberstellung, vaTextKlima, vaTextKostenKomponenten, vaTextPv, vaSensitivitaet, vaTextSensitivitaet, VA_SZENARIEN } from './lib/gutachten-varianten.js';
+import { FA_NT_KOSTEN, FA_KRITERIEN, faBewertungsmatrix, faNtKosten, faNtVergleich, faTextBewertung, faTextEmpfehlung, faTextNt, faTextFahrplan, faFahrplanProfil, faVorzugsvariante, faTextHeizoeltank, faTextResilienzUebergang } from './lib/gutachten-fazit.js';
+import { VA_CO2_QUELLE, VA_STROM_EF, vaRahmenZeilen, vaTextRahmen, vaTextResilienz, vaGegenueberstellung, vaTextKlima, vaTextKostenKomponenten, vaTextPv, vaSensitivitaet, vaTextSensitivitaet, VA_SZENARIEN, vaEnergie, vaTextBestandNetz, vaTextSteckbriefe, vaNetzVergleich } from './lib/gutachten-varianten.js';
 import { atTextErzeuger, atTextHydraulik, atTextTww, atTextNetz, atLeistung } from './lib/gutachten-anlagentechnik.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1539,6 +1539,22 @@ function ggVariantenDaten() {
     bestandCo2T: ggLies(() => ggVerbrauch().co2MittelT, NaN),
   };
 }
+/** Fahrplan: Vorzugsvariante und Ausbaustufen des Ausbauplaners (projektweite und die der Vorzugsvariante, mit Maßnahmenzahl und Kosten). */
+function ggFahrplanDaten() {
+  const w = window;
+  const d = ggVariantenDaten();
+  const variante = faVorzugsvariante(d, ggFrage('empfehlung'));
+  const vid = variante && variante.id !== 'base' ? variante.id : null;
+  const massn = [...ggLies(() => (w.ASSETS?.items || []).flatMap(a => a.massnahmen || []), []),
+    ...ggLies(() => (w.gebaeude || []).flatMap(g => g.massnahmen || []), [])].filter(m => m && m.phaseId);
+  const ausbau = ggLies(() => (w.phasen || []), []).filter(p => p && (p.variantId == null || p.variantId === vid))
+    .map(p => {
+      const m = massn.filter(x => x.phaseId === p.id);
+      return { name: p.name || 'Ausbaustufe', von: parseInt(p.jahrVon, 10), bis: parseInt(p.jahrBis, 10), anzahl: m.length, kostenEur: m.reduce((a, x) => a + (Number(x.kosten) || 0), 0) };
+    })
+    .filter(p => Number.isFinite(p.von)).sort((a, b) => a.von - b.von);
+  return { variante, ausbau };
+}
 /** Bestandsgebäude für die Kostenschätzung der NT-Ertüchtigung (BGF, Bauzustand, TWW). */
 function ggNtKosten() {
   const w = window;
@@ -1598,6 +1614,10 @@ function ggFrageKontextNeu() {
   const keys = new Set(v.flatMap(x => (x.erzeuger || []).filter(e => (e.leistungKw || 0) > 0 || (e.waermeMwh || 0) > 0).map(e => e.key)));
   const inVariante = Object.fromEntries(Object.entries(GF_TECHNIKEN).map(([k, t]) => [k, t.erzeuger.some(e => keys.has(e))]));
   inVariante.eis = ggLies(() => ggEisDaten().aktiv, false);
+  // Punkte aus 4.1, die eine Variante tatsächlich nutzt, gehören nicht zu den „nicht berücksichtigten“ Potenzialen
+  inVariante.fernwaerme = keys.has('fernwaerme');
+  inVariante.solarthermie = keys.has('solarthermie');
+  inVariante.gasGrundlast = v.some(x => { const e = vaEnergie(x); return e.waerme > 0 && e.fossilPct > 50; });
   return { inVariante, varianten: v.map(x => x.name) };
 }
 /** Antwort auf eine Frage des Fragebogens oder ihre Vorgabe. */
@@ -1677,6 +1697,14 @@ export function ggPlausiPruefung() {
       const alt = v.filter(x => x.gebaeudeStempel && stempel && x.gebaeudeStempel !== stempel);
       if (alt.length) add('warn', `Gebäudebestand wurde nach der Variantenberechnung geändert (${alt.map(x => x.name).join(', ')}) – im Variantenvergleich „↻ Alle aktualisieren“.`);
     }
+    // Fragebogen gegen Varianten: was eine Variante nutzt, darf in 4.1 nicht als „nicht berücksichtigt“ stehen
+    const inV = ggFrageKontext().inVariante || {};
+    const nichtGewaehlt = (ggFrage('pot-nicht') || []).filter(k => inV[k]);
+    const NAMEN = { solarthermie: 'Solarthermie', gasGrundlast: 'Gas-Grundlast', fernwaerme: 'Fernwärme' };
+    if (nichtGewaehlt.length) add('warn', `${nichtGewaehlt.map(k => NAMEN[k] || k).join(', ')} steht in 4.1 als nicht berücksichtigt, wird aber in einer Variante genutzt (Fragebogen Kap. 4).`);
+    if (inV.fernwaerme && !['variante', 'weglassen'].includes(ggFrage('pot-fernwaerme'))) add('warn', 'Fernwärme steht in 4.1 als nicht berücksichtigt, eine Variante enthält aber einen Fernwärmeanschluss (Fragebogen Kap. 4).');
+    const techNicht = Object.keys(GF_TECHNIKEN).filter(k => inV[k] && ['nicht', 'weglassen'].includes(ggFrage(`pot-${k}`)));
+    if (techNicht.length) add('warn', `${techNicht.map(k => GF_TECHNIKEN[k].titel).join(', ')} wird in einer Variante genutzt, ist im Fragebogen Kap. 4 aber als nicht berücksichtigt bzw. „nicht erwähnen“ gesetzt.`);
     const aktiv = ggLies(() => (typeof window.getActiveVariantId === 'function' ? window.getActiveVariantId() : window.activeVariantId), null);
     if (aktiv) {
       const name = ggLies(() => window.varianten?.find(x => x.id === aktiv)?.name, aktiv);
@@ -1819,16 +1847,18 @@ export function ggWaermeDaten() {
     gaspreisCt: ggFeldZahl('wirt-p-gas'), fernwaermeCt: ggFeldZahl('wirt-p-fw'),
   };
 
+  const gebName = id => { const g = ggLies(() => (w.gebaeude || []).find(x => x.id === id), null); return g?.name || `Gebäude ${id}`; };
   const varianten = Object.entries(vr).filter(([, r]) => r && Array.isArray(r.erzeuger) && (r.erzeugerDetail?.length || r.erzeuger.length)).map(([id, r]) => {
     const aktiv = id === aktivKey;
     const detail = aktiv && erzeugerAktiv.length ? erzeugerAktiv
       : r.erzeugerDetail?.length ? r.erzeugerDetail
         : r.erzeuger.map(e => ({ key: GG_TYP_KEY[e.typ], name: GG_TYP_KEY[e.typ] ? undefined : e.typ, leistungKw: e.leistungKw, waermeMwh: e.waermeMwh }));
     return {
-      name: id === 'base' ? 'Basisvariante' : (r.label || id), aktiv, erzeuger: detail,
+      id, name: id === 'base' ? 'Basisvariante' : (r.label || id), aktiv, erzeuger: detail,
       investEur: r.investGes || undefined, jahreskostenEur: r.jkGes || undefined, wgkCt: r.wgkNum || undefined,
       co2T: r.co2GesH, co2LzT: r.co2GesLZ, eeAnteilPct: r.eeAnteil ?? undefined, netzverlustPct: r.netzverlustePct, wirtKomp: r.wirtKomp || null,
       gebaeudeStempel: r.gebaeudeStempel || null, bedarfMwh: r.gebäudebedarf, ausschluesse: r.ausschlüsse || 0,
+      netz: r.netz || null, ausschlussIds: r.ausschlussIds || [], ausschlussNamen: (r.ausschlussIds || []).map(gebName),
     };
   });
 
@@ -2859,7 +2889,7 @@ const GG_FIGUREN = [
     id: 'potenzial-nicht-fernwaerme', istText: true, reihe: -26, kapitel: '4.1 Nicht berücksichtigte Potenziale',
     titel: 'Gutachtentext: Nicht berücksichtigt – Fernwärme', datei: 'potenzial-nicht-fernwaerme',
     hinweis: 'Standardbegründung; Baustein entfernen, wenn das Potenzial in diesem Projekt betrachtet wird.',
-    sichtbar: () => ggFrage('pot-fernwaerme') !== 'weglassen',
+    sichtbar: () => (ggFrage('pot-fernwaerme') === 'variante' ? 'Fernwärme ist in einer Variante berücksichtigt' : ggFrage('pot-fernwaerme') !== 'weglassen'),
     render: () => ggWaermeTextBlatt(ptTextNicht('fernwaerme', { fernwaerme: ggFrage('pot-fernwaerme') })), config: {},
   },
   {
@@ -3049,6 +3079,28 @@ const GG_FIGUREN = [
     render: () => ggWaermeTextBlatt(vaTextResilienz({ ...ggVariantenDaten(), vorgabeZsb: ggLies(() => window.gutStandardtextDaten?.()?.vorgabeZsb, '') })), config: {},
   },
   {
+    id: 'va-steckbriefe', istText: true, reihe: 15, kapitel: '7 Variantenvergleich Wärme',
+    sichtbar: () => (ggLies(() => ggVariantenDaten().varianten.length, 0) ? true : 'keine berechneten Varianten'),
+    titel: 'Gutachtentext: Steckbriefe der Varianten', datei: 'va-steckbriefe',
+    hinweis: 'Gleicher Gebäudebestand in allen Varianten; nicht angeschlossene Gebäude je Variante; je Variante Erzeugung (Leistung, Wärmeanteil), Anschlüsse und Kennwerte.',
+    render: () => { const V = ggVariantenDaten().varianten; return ggWaermeTextBlatt([...vaTextBestandNetz(V), ...vaTextSteckbriefe(V)]); }, config: {},
+  },
+  {
+    id: 'va-netz-vergleich', autoSync: true, reihe: 16, kapitel: '7 Variantenvergleich Wärme',
+    sichtbar: () => (ggLies(() => vaNetzVergleich(ggVariantenDaten().varianten), null) ? true : 'Netz und Anschlüsse in allen Varianten gleich'),
+    titel: 'Netzkennwerte der Varianten', datei: 'va-netz-vergleich',
+    hinweis: 'Nur sichtbar, wenn sich Netz oder Gebäudeanschlüsse zwischen den Varianten unterscheiden; zeigt nur die abweichenden Kennwerte.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: { eyebrow: 'Variantenvergleich', titel: 'Netzkennwerte der Varianten', leer: 'Netz in allen Varianten gleich.', spalten: [{ label: 'Netzkennwert', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
+    ausProjekt(cfg) {
+      const g = vaNetzVergleich(ggVariantenDaten().varianten);
+      if (!g) { cfg.zeilen = []; return '✓ Netz in allen Varianten gleich.'; }
+      cfg.spalten = g.kopf.map((k, i) => (i ? { label: k, weight: 1 } : { label: k, weight: 1.6, align: 'left', mono: false }));
+      cfg.zeilen = g.zeilen;
+      return `✓ ${g.zeilen.length} abweichende Kennwerte.`;
+    },
+  },
+  {
     id: 'va-gegenueberstellung', autoSync: true, reihe: 20, kapitel: '7 Variantenvergleich Wärme',
     titel: 'Gegenüberstellung der Varianten', datei: 'va-gegenueberstellung',
     hinweis: 'Leistungen je Erzeugertyp, Deckungsanteile, strombasierter Anteil und Resilienz je Variante.',
@@ -3196,13 +3248,10 @@ const GG_FIGUREN = [
   {
     id: 'fazit-fahrplan-text', istText: true, reihe: 50, kapitel: '9.1 Wärmeversorgung',
     titel: 'Gutachtentext: Maßnahmenfahrplan', datei: 'fazit-fahrplan-text',
-    hinweis: 'Sofort, kurz-, mittel-, langfristig ab dem Folgejahr; Vorzugsvarianten aus der Kostenrangfolge; PV-Batterie aus dem PV-Modul.',
+    hinweis: 'Für die Vorzugsvariante (Fragebogen 9.1, sonst Rang 1 der Bewertungsmatrix): Schritte passend zur Technik, Ausbaustufen aus dem Ausbauplaner, PV-Batterie aus dem PV-Modul.',
     render: () => {
-      const d = ggVariantenDaten();
-      const w = d.varianten.filter(v => Number.isFinite(v.wgkCt)).sort((a, b) => a.wgkCt - b.wgkCt);
-      const wahl = ggFrage('empfehlung');
-      const vorzug = wahl && wahl !== 'auto' ? [wahl] : w.length >= 2 && (w[1].wgkCt - w[0].wgkCt) / w[0].wgkCt < 0.03 ? [w[0].name, w[1].name] : w.slice(0, 1).map(v => v.name);
-      return ggWaermeTextBlatt(faTextFahrplan({ vorzug, pv: { batKwh: ggLies(() => window._stromBatKapKwh, 0) } }));
+      const f = ggFahrplanDaten();
+      return ggWaermeTextBlatt(faTextFahrplan({ variante: f.variante, ausbau: f.ausbau, pv: { batKwh: ggLies(() => window._stromBatKapKwh, 0) } }));
     },
     config: {},
   },
@@ -3691,12 +3740,13 @@ const GG_FIGUREN = [
   {
     id: 'fazit-fahrplan-gantt', autoSync: true, reihe: 51, kapitel: '9.1 Wärmeversorgung',
     titel: 'Maßnahmenfahrplan', datei: 'fazit-fahrplan-gantt',
-    hinweis: 'Zeitliche Abfolge der Maßnahmen ab dem Folgejahr – gleiche Zeitspannen wie der Fahrplantext.',
+    hinweis: 'Zeitliche Abfolge der Maßnahmen für die Vorzugsvariante ab dem Folgejahr – gleiche Zeitspannen wie der Fahrplantext, ergänzt um die Ausbaustufen des Ausbauplaners.',
     render: cfg => ggRenderGantt(cfg),
     config: { eyebrow: 'Fazit Wärme', titel: 'Maßnahmenfahrplan', ort: '', meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' }, achseY: '', achseX: 'Jahr', leer: 'Keine Maßnahmen.', phasen: [] },
     ausProjekt(cfg) {
       ggGebKopf(cfg);
-      cfg.phasen = abFahrplanPhasen();
+      const f = ggFahrplanDaten();
+      cfg.phasen = abFahrplanPhasen(undefined, 2045, f.variante ? { ...faFahrplanProfil(f.variante), name: f.variante.name } : null, f.ausbau);
       return `✓ ${cfg.phasen.length} Maßnahmen.`;
     },
   },

@@ -1,6 +1,6 @@
 // Vitest-Tests für lib/gutachten-varianten.js — Rahmen, Resilienz, Gegenüberstellung, Klima, Sensitivität.
 import { describe, it, expect } from 'vitest';
-import { vaEnergie, vaGegenueberstellung, vaTextResilienz, vaTextKlima, vaSensitivitaet, vaTextSensitivitaet, vaRahmenZeilen, vaTextRahmen } from '../src/lib/gutachten-varianten.js';
+import { vaEnergie, vaGegenueberstellung, vaTextResilienz, vaTextKlima, vaSensitivitaet, vaTextSensitivitaet, vaRahmenZeilen, vaTextRahmen, vaTextBestandNetz, vaNetzVergleich, vaTextSteckbriefe } from '../src/lib/gutachten-varianten.js';
 import { wtKlartext } from '../src/lib/gutachten-waerme-texte.js';
 
 const text = abs => wtKlartext(abs);
@@ -62,5 +62,33 @@ describe('Sensitivität', () => {
     const t = text(vaTextSensitivitaet([V1, V2, V3], { strom: 25, gas: 10 }));
     expect(t).toContain('Energiekrise: Strom +20 %, Gas/Öl +80 %');
     expect(t).toMatch(/Rangfolge (verschiebt|bleibt)/);
+  });
+});
+
+describe('Steckbriefe, Anschlüsse und Netzkennwerte', () => {
+  const netz = { laengeM: 1234, anschluesse: 40, verlusteMwh: 900, verlustePct: 8.2, dnMax: 150, vlC: 80, rlC: 55 };
+  const A = { ...V1, investEur: 2_400_000, wgkCt: 14.2, eeAnteilPct: 95, netz, ausschlussIds: [], ausschlussNamen: [] };
+  const B = { ...V2, netz, ausschlussIds: [], ausschlussNamen: [] };
+  it('gleiches Netz: ein Satz mit Kennwerten, keine Tabelle', () => {
+    const t = text(vaTextBestandNetz([A, B]));
+    expect(t).toContain('Gebäudebestand ist in allen Varianten identisch');
+    expect(t).toContain('in allen Varianten gleich (Trassenlänge rund 1.230 m, 40 angeschlossene Gebäude');
+    expect(vaNetzVergleich([A, B])).toBeNull();
+  });
+  it('abweichende Anschlüsse: Gebäude genannt, Tabelle nur mit abweichenden Zeilen', () => {
+    const C = { ...B, netz: { ...netz, anschluesse: 38, laengeM: 1100 }, ausschlussIds: [7, 9], ausschlussNamen: ['Haus 7', 'Haus 9'] };
+    const t = text(vaTextBestandNetz([A, C]));
+    expect(t).toContain('und in den an das Wärmenetz angeschlossenen Gebäuden');
+    expect(t).toContain('In V2 LW-WP biv sind 2 Gebäude (Haus 7 und Haus 9) nicht an das Wärmenetz angeschlossen');
+    const g = vaNetzVergleich([A, C]);
+    expect(g.kopf).toEqual(['Netzkennwert', 'V1 LW-WP mono', 'V2 LW-WP biv']);
+    expect(g.zeilen.map(z => z.werte[0])).toEqual(['Trassenlänge', 'Angeschlossene Gebäude', 'Nicht angeschlossen']);
+  });
+  it('Steckbrief: Erzeugung nach Wärmeanteil, Anschlüsse, Kennwerte', () => {
+    const t = text(vaTextSteckbriefe([A]));
+    expect(t).toContain('## Steckbrief V1 LW-WP mono');
+    expect(t).toContain('Erzeugung: Luft-Wasser-Wärmepumpe (4,0 MW, 95 % der Wärme), Gaskessel (5,0 MW, 5 % der Wärme).');
+    expect(t).toContain('Anschlüsse: 40 Gebäude am Wärmenetz.');
+    expect(t).toContain('Investition 2,40 Mio. €, Wärmegestehungskosten 14,2 ct/kWh');
   });
 });

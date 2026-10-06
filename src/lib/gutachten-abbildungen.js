@@ -225,14 +225,20 @@ export function abSchallAbstaende(lwaDb) {
 }
 
 /** Phasen des Maßnahmenfahrplans (gleiche Zeitspannen wie faTextFahrplan), Jahre relativ zum Startjahr. */
-export function abFahrplanPhasen(start, zielJahr = 2045) {
+export function abFahrplanPhasen(start, zielJahr = 2045, profil = null, ausbau = []) {
   const s = Number(start) || new Date().getFullYear() + 1;
-  return [
+  const p = profil || { wp: true, fossil: true };
+  const out = [
     { name: 'Sofortmaßnahmen: PV auf Neubauten', von: s, bis: s, farbe: '#C9A227' },
-    { name: 'Bestandsaufnahme Elektro und Heizflächen', von: s, bis: s + 1, farbe: '#6B8E4E' },
-    { name: 'Fachplanung Vorzugsvariante', von: s + 1, bis: s + 2, farbe: '#4F7FA8' },
-    { name: 'Niedertemperatur-Ertüchtigung', von: s + 2, bis: s + 4, farbe: '#E0A126' },
-    { name: 'Errichtung und Inbetriebnahme Erzeuger', von: s + 3, bis: s + 5, farbe: '#C0392B' },
-    { name: 'Ersatz fossiler Spitzenlastkessel prüfen', von: s + 10, bis: Math.max(s + 10, zielJahr), farbe: '#7A6334' },
+    { name: p.wp ? 'Bestandsaufnahme Elektro und Heizflächen' : 'Bestandsaufnahme Elektro und Heiztechnik', von: s, bis: s + 1, farbe: '#6B8E4E' },
+    { name: p.name ? `Fachplanung ${p.name}` : 'Fachplanung Vorzugsvariante', von: s + 1, bis: s + 2, farbe: '#4F7FA8' },
   ];
+  if (p.wp) out.push({ name: 'Niedertemperatur-Ertüchtigung', von: s + 2, bis: s + 4, farbe: '#E0A126' });
+  out.push({ name: 'Errichtung und Inbetriebnahme Erzeuger', von: s + (p.wp ? 3 : 2), bis: s + (p.wp ? 5 : 4), farbe: '#C0392B' });
+  for (const a of ausbau || []) {
+    const von = Number(a.von), bis = Number(a.bis);
+    if (a.name && Number.isFinite(von)) out.push({ name: `Ausbaustufe: ${a.name}`, von, bis: Number.isFinite(bis) && bis >= von ? bis : von, farbe: '#7F8C8D' });
+  }
+  if (p.fossil || p.bhkw) out.push({ name: p.bhkw && !p.fossil ? 'Ersatz BHKW prüfen' : 'Ersatz fossiler Spitzenlastkessel prüfen', von: s + 10, bis: Math.max(s + 10, zielJahr), farbe: '#7A6334' });
+  return out;
 }

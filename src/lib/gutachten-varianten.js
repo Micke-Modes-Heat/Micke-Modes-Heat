@@ -3,9 +3,9 @@
 // der Varianten, Klimarelevanz heute/künftig/kumuliert mit Referenzszenarien, Kostenkomponenten, PV-Eigenstrom und
 // Energiepreissensitivität. DOM-frei; Variantendaten wie in wtNormalisiere (name, erzeuger[{key, leistungKw, waermeMwh, elMwh}],
 // co2T, co2LzT, jahreskostenEur, wgkCt).
-import { F, wtHilfen } from './gutachten-waerme-texte.js';
+import { F, wtHilfen, WT_ERZEUGER, wtNetzGleich, wtNetzSchluessel } from './gutachten-waerme-texte.js';
 
-const { ok, nf, pct, liste, absatz } = wtHilfen;
+const { ok, nf, pct, liste, absatz, ueberschrift } = wtHilfen;
 const L = kw => (kw >= 1000 ? `${nf(kw / 1000, 1)} MW` : `${nf(kw)} kW`);
 
 /** Primärenergiefaktoren nicht erneuerbar nach GEG Anlage 4. */
@@ -113,6 +113,90 @@ export function vaGegenueberstellung(V, pMaxKw) {
   anteil('Anteil strombasierte Wärmeerzeugung', e => e.strombasiertPct);
   if (ok(pMaxKw)) zeilen.push({ werte: ['Volle Resilienz durch fossilen Kessel', ...zsb.map(x => (x >= pMaxKw * 0.995 ? '✔' : '✘'))] });
   return { kopf, zeilen };
+}
+
+/* ── Steckbriefe, Gebäudeanschlüsse und Netzkennwerte je Variante ───────── */
+const euro = e => (e >= 1e6 ? `${nf(e / 1e6, 2)} Mio. €` : `${nf(e / 1000)} Tsd. €`);
+
+/** Namen der nicht angeschlossenen Gebäude, bei langen Listen gekürzt. */
+function ausschlussText(namen, max = 6) {
+  if (namen.length <= max) return liste(namen);
+  return `${namen.slice(0, max).join(', ')} und ${namen.length - max} weitere`;
+}
+
+/**
+ * Einleitung zu den Steckbriefen: Der Gebäudebestand ist in allen Varianten gleich; es variieren Erzeugung und Anschlüsse.
+ * Nennt nicht angeschlossene Gebäude je Variante und die Netzkennwerte, wenn sie überall gleich sind.
+ */
+export function vaTextBestandNetz(V = []) {
+  if (!V.length) return [];
+  const mitAus = V.filter(v => (v.ausschlussNamen || []).length);
+  const out = [absatz(`Der Gebäudebestand ist in allen Varianten identisch. Die Varianten unterscheiden sich ausschließlich in der Wärmeerzeugung${mitAus.length ? ' und in den an das Wärmenetz angeschlossenen Gebäuden' : ''}.`)];
+  if (mitAus.length) {
+    out.push(absatz(...mitAus.map(v => {
+      const n = v.ausschlussNamen.length;
+      return `In ${v.name} ${n === 1 ? `ist das Gebäude ${v.ausschlussNamen[0]}` : `sind ${n} Gebäude (${ausschlussText(v.ausschlussNamen)})`} nicht an das Wärmenetz angeschlossen. `;
+    }), 'Die Versorgung dieser Gebäude erfolgt ', F('Versorgung der nicht angeschlossenen Gebäude'), '.'));
+  }
+  const mitNetz = V.filter(v => v.netz && v.netz.laengeM > 0);
+  if (mitNetz.length && wtNetzGleich(V)) {
+    const n = mitNetz[0].netz;
+    const teile = [`Trassenlänge rund ${nf(Math.round(n.laengeM / 10) * 10)} m`];
+    if (n.anschluesse > 0) teile.push(`${nf(n.anschluesse)} angeschlossene Gebäude`);
+    if (ok(n.verlustePct) && n.verlustePct > 0) teile.push(`Netzverluste ${pct(n.verlustePct, 1)}`);
+    out.push(absatz(`Wärmenetz und Gebäudeanschlüsse sind in allen Varianten gleich (${teile.join(', ')}).`));
+  } else if (mitNetz.length >= 2) {
+    out.push(absatz('Wärmenetz und Gebäudeanschlüsse unterscheiden sich zwischen den Varianten; die Netzkennwerte sind in der folgenden Tabelle gegenübergestellt.'));
+  }
+  return out;
+}
+
+/** Netzkennwerte je Variante als Tabelle; null, wenn alle gleich sind oder weniger als zwei Varianten Netzdaten haben. */
+export function vaNetzVergleich(V = []) {
+  const mit = V.filter(v => wtNetzSchluessel(v));
+  if (mit.length < 2 || wtNetzGleich(V)) return null;
+  const kopf = ['Netzkennwert', ...mit.map(v => v.name)];
+  const zeile = (label, f) => ({ werte: [label, ...mit.map(v => f(v.netz, v))] });
+  const zeilen = [
+    zeile('Trassenlänge', n => (n.laengeM > 0 ? `${nf(Math.round(n.laengeM / 10) * 10)} m` : '–')),
+    zeile('Angeschlossene Gebäude', n => (n.anschluesse > 0 ? nf(n.anschluesse) : '–')),
+    zeile('Nicht angeschlossen', (n, v) => ((v.ausschlussNamen || []).length ? nf(v.ausschlussNamen.length) : '–')),
+    zeile('Netzverluste', n => (ok(n.verlusteMwh) && n.verlusteMwh > 0 ? `${nf(n.verlusteMwh)} MWh/a (${pct(n.verlustePct, 1)})` : '–')),
+    zeile('Größte Nennweite', n => (n.dnMax > 0 ? `DN ${n.dnMax}` : '–')),
+    zeile('Vorlauf / Rücklauf', n => (ok(n.vlC) && ok(n.rlC) ? `${nf(n.vlC)} / ${nf(n.rlC)} °C` : '–')),
+  ];
+  // Nur Zeilen, in denen sich die Varianten unterscheiden
+  return { kopf, zeilen: zeilen.filter(z => new Set(z.werte.slice(1)).size > 1) };
+}
+
+/** Kompakter Steckbrief je Variante: Erzeugung mit Leistung und Wärmeanteil, Anschlüsse, Kennwerte. */
+export function vaTextSteckbriefe(V = []) {
+  const out = [];
+  for (const v of V) {
+    const en = vaEnergie(v);
+    const erz = (v.erzeuger || []).filter(x => x.key !== '_thermSpeicher' && ((Number(x.leistungKw) || 0) > 0 || (Number(x.waermeMwh) || 0) > 0))
+      .sort((a, b) => (Number(b.waermeMwh) || 0) - (Number(a.waermeMwh) || 0))
+      .map(x => {
+        const anteil = en.waerme > 0 ? ((Number(x.waermeMwh) || 0) / en.waerme) * 100 : NaN;
+        const name = WT_ERZEUGER[x.key]?.name || x.name || x.key;
+        const zus = [x.leistungKw > 0 ? L(x.leistungKw) : '', ok(anteil) && anteil >= 0.5 ? `${pct(anteil)} der Wärme` : ''].filter(Boolean);
+        return zus.length ? `${name} (${zus.join(', ')})` : name;
+      });
+    const sp = (v.erzeuger || []).find(x => x.key === '_thermSpeicher' && x.speicherM3 > 0);
+    if (sp) erz.push(`Wärmespeicher (${nf(sp.speicherM3)} m³)`);
+    const aus = v.ausschlussNamen || [];
+    const an = v.netz?.anschluesse > 0 ? `${nf(v.netz.anschluesse)} Gebäude am Wärmenetz` : 'alle versorgten Gebäude des Bestands';
+    const kenn = [];
+    if (ok(v.investEur) && v.investEur > 0) kenn.push(`Investition ${euro(v.investEur)}`);
+    if (ok(v.wgkCt)) kenn.push(`Wärmegestehungskosten ${nf(v.wgkCt, 1)} ct/kWh`);
+    if (ok(v.co2T)) kenn.push(`Emissionen ${nf(v.co2T)} t CO₂e/a${ok(v.co2LzT) ? ` (künftig ${nf(v.co2LzT)} t)` : ''}`);
+    if (ok(v.eeAnteilPct)) kenn.push(`EE-Anteil ${pct(v.eeAnteilPct)}`);
+    out.push(ueberschrift(`Steckbrief ${v.name}`));
+    out.push(absatz(`Erzeugung: ${erz.length ? erz.join(', ') : '–'}.`));
+    out.push(absatz(`Anschlüsse: ${an}${aus.length ? `; nicht angeschlossen: ${ausschlussText(aus)}` : ''}.`));
+    if (kenn.length) out.push(absatz(`Kennwerte: ${kenn.join(', ')}.`));
+  }
+  return out;
 }
 
 /* ── Klimarelevanz ───────────────────────────────────────────────────────── */

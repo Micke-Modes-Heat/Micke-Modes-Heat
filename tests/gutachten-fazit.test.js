@@ -1,6 +1,6 @@
 // Vitest-Tests für lib/gutachten-fazit.js — Bewertung, Empfehlung, NT-Ertüchtigung, Fahrplan, Heizöltank.
 import { describe, it, expect } from 'vitest';
-import { faTextBewertung, faTextEmpfehlung, faJaz, faNtVergleich, faTextNt, faTextFahrplan, faHeizoeltank, faTextHeizoeltank, faNtKosten, FA_NT_KOSTEN, faBewertungsmatrix } from '../src/lib/gutachten-fazit.js';
+import { faTextBewertung, faTextEmpfehlung, faJaz, faNtVergleich, faTextNt, faTextFahrplan, faHeizoeltank, faTextHeizoeltank, faNtKosten, FA_NT_KOSTEN, faBewertungsmatrix, faVorzugsvariante, faFahrplanProfil } from '../src/lib/gutachten-fazit.js';
 import { wtKlartext } from '../src/lib/gutachten-waerme-texte.js';
 
 const text = abs => wtKlartext(abs);
@@ -83,5 +83,29 @@ describe('NT-Kostenschätzung', () => {
     const t = text(faTextNt({ waermeMwh: 9000, vlHtC: 75, vlNtC: 45, jazNt: 3.2, strompreisCt: 25, kosten }));
     expect(t).toContain('gebäudescharf überschlägig geschätzt');
     expect(t).toContain('hydraulischer Abgleich');
+  });
+});
+
+describe('Fahrplan für die Vorzugsvariante', () => {
+  it('Vorzugsvariante: Fragebogen vor Bewertungsmatrix', () => {
+    expect(faVorzugsvariante({ varianten: [V1, V2, V3] }, 'V3').name).toBe('V3');
+    const m = faBewertungsmatrix({ varianten: [V1, V2, V3] });
+    expect(faVorzugsvariante({ varianten: [V1, V2, V3] }, 'auto').name).toBe(m.zeilen[0].name);
+  });
+  it('Wärmepumpenvariante mit Kessel: NT-Ertüchtigung, Schallschutz, Kesselersatz, Ausbaustufen', () => {
+    const t = text(faTextFahrplan({ start: 2027, variante: { ...V1, investEur: 3e6 }, ausbau: [{ name: 'Stufe 1', von: 2028, bis: 2029, anzahl: 3, kostenEur: 450000 }] }));
+    expect(t).toContain('Vorzugsvariante V1 (Luft-Wasser-Wärmepumpe 4,0 MW und Gaskessel 5,0 MW) mit einer Gesamtinvestition von rund 3,00 Mio. €');
+    expect(t).toContain('Niedertemperatur-Ertüchtigung (2029–2031)');
+    expect(t).toContain('Schallschutz');
+    expect(t).toContain('Stufe 1 (2028–2029, 3 Maßnahmen, rund 450 Tsd. €)');
+    expect(t).toContain('Langfristig (ab 2037)');
+  });
+  it('Variante ohne Wärmepumpe und ohne fossilen Kessel', () => {
+    const v = { name: 'Pellets', erzeuger: [{ key: 'pellets', leistungKw: 3000, waermeMwh: 9000 }] };
+    const t = text(faTextFahrplan({ start: 2027, variante: v }));
+    expect(t).not.toContain('Niedertemperatur-Ertüchtigung (');
+    expect(t).not.toContain('Langfristig');
+    expect(t).toContain('Brennstofflager');
+    expect(faFahrplanProfil(v)).toMatchObject({ wp: false, fossil: false, biomasse: true });
   });
 });
