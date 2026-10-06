@@ -342,13 +342,13 @@ describe('2.1 Ergänzungen: BGF, Referenz, Bauzustand, Nutzungsart', () => {
     expect(t).toContain('konservative Untergrenze');
     expect(text(gbTextBestand(a, { beheizteFlaecheBelastbar: true }))).not.toContain('konservative Untergrenze');
   });
-  it('Vergleich mit dem Neubauniveau je Nutzung', () => {
+  it('Vergleich mit dem Vergleichswert Wärme je Nutzung', () => {
     const a = auswerten([C], { referenzSpez: () => 40 });
     expect(a.ist.referenzSpez).toBe(40);
-    const t = text(gbTextBestand(a, { standard: 'EGB 40' }));
-    expect(t).toContain('nach dem Standard EGB 40 errichtetes Gebäude');
+    const t = text(gbTextBestand(a));
+    expect(t).toContain('Vergleichswerte Wärme nach der Bekanntmachung');
+    expect(t).toContain('Vergleichswert von rund 40 kWh/(m²·a) bezogen auf die Bruttogeschossfläche (47 kWh/(m²·a) bezogen auf die Nettogrundfläche)');
     expect(t).toContain('beim 5,0-Fachen');
-    expect(text(gbTextBestand(a))).toContain('[Effizienzstandard Neubau');
   });
   it('Bauzustand: A/B/C und Zahlen, flächengewichtet, Sanierungsbedarf', () => {
     const a = auswerten([{ ...A, zustand: 'C', sanierungen: [] }, { ...C, zustand: '3' }, { ...F2, zustand: 1 }]);

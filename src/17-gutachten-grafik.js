@@ -20,7 +20,8 @@ import { nuNetzUebersicht } from './lib/netz-uebersicht.js';
 import {
   wtIstZustand, wtDimensionierungWea, wtWvn, wtHausstation, wtVariantenvergleich, wtWirtschaftlichkeit, wtEmpfehlung, wtFazit,
 } from './lib/gutachten-waerme-texte.js';
-import { gbAuswertung, gbTextBestand, gbTextVeraenderung, gbTextEntwicklung, GB_SPEZ_KLASSEN } from './lib/gutachten-gebaeude.js';
+import { gbAuswertung, gbBgf, gbTextBestand, gbTextVeraenderung, gbTextEntwicklung, GB_SPEZ_KLASSEN } from './lib/gutachten-gebaeude.js';
+import { nwgVergleichswert } from './lib/vergleichswerte-nwg.js';
 import { wtEisspeicher } from './lib/gutachten-eisspeicher-text.js';
 import { geTextZiele, geTextLiegenschaft, geTextIstEinstieg } from './lib/gutachten-einleitung.js';
 import { baAuswertung, baTwwAuswertung, baVerbrauchAuswertung } from './lib/bestandsanlage.js';
@@ -1329,8 +1330,12 @@ const GG_TYP_KEY = { LWWP: 'lwwp', Geothermie: 'geo', 'Fließgewässer-WP': 'fg'
 export function ggGebaeudeAuswertung() {
   const w = window;
   if (typeof w.getComputedStats !== 'function') return gbAuswertung([], () => ({}));
-  // Vergleichsmaßstab: Neubau-Kennwert der Nutzung (IWU-Tabelle, jüngste Klasse; je m² Nutzfläche) umgerechnet auf m² BGF (Nutzfläche = 0,8 × BGF)
-  const referenzSpez = g => (typeof w.getSpezNachBaujahr === 'function' ? w.getSpezNachBaujahr(9999, g.nutzung) * 0.8 : NaN);
+  // Vergleichsmaßstab: Vergleichswert Wärme nach der Bekanntmachung vom 15.04.2021 je m² BGF (lib/vergleichswerte-nwg.js);
+  // dezentral elektrische oder fehlende Warmwasserbereitung zählt nicht zum Vergleichswert Wärme
+  const referenzSpez = g => nwgVergleichswert({
+    nutzung: g.nutzung, waermeRef: ggLies(() => w.getNutzungstypById?.(g.nutzung)?.waermeRef, undefined), bgfM2: gbBgf(g),
+    twwZentral: !['dle', 'keine'].includes(g.twwArt),
+  })?.jeBgf ?? NaN;
   return gbAuswertung(w.gebaeude || [], w.getComputedStats, { ausgeschlossen: id => typeof w.isExcluded === 'function' && w.isExcluded(id), referenzSpez,
     nutzungLabel: n => (typeof w.getNutzungstypById === 'function' && w.getNutzungstypById(n)?.label) || n });
 }

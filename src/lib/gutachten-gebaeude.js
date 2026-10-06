@@ -10,6 +10,7 @@
 // { waerme (MWh/a), heizlast (kW), status: 'bestand' | 'saniert' | 'geplant' | 'abgerissen' }.
 
 import { F, wtHilfen } from './gutachten-waerme-texte.js';
+import { NWG_QUELLE, NWG_NGF_JE_BGF } from './vergleichswerte-nwg.js';
 
 const { num, ok, nf, pct, liste, summe, kleinN, absatz } = wtHilfen;
 
@@ -53,7 +54,7 @@ export function gbZustandZahl(z) {
  * Wertet die Gebäude aus.
  * opts: { stichjahr = 2026, bis = 2050, ausgeschlossen = id => false,
  *         nutzungLabel = id => id  (Anzeigename der Nutzung),
- *         referenzSpez = g => NaN  (spez. Wärmeverbrauch eines Neubaus gleicher Nutzung je m² BGF, Vergleichsmaßstab) }
+ *         referenzSpez = g => NaN  (Vergleichswert Wärme je m² BGF für Gebäude gleicher Nutzung, siehe lib/vergleichswerte-nwg.js) }
  * Ergebnis: { stichjahr, istJahr, endJahr, anzahl: { gesamt, bestand, neubau, abriss, saniert }, ist, jahre, ereignisse, ereignisseJahr }
  */
 export function gbAuswertung(gebaeude, statsFn, opts = {}) {
@@ -267,9 +268,10 @@ export function gbTextBestand(a, o = {}) {
   }
   if (ok(i.spezKwhM2) && ok(i.referenzSpez)) {
     const f = i.spezKwhM2 / i.referenzSpez;
-    out.push(absatz('Zum Vergleich: Ein nach dem Standard ', F('Effizienzstandard Neubau, z. B. EGB xx', o.standard),
-      ` errichtetes Gebäude gleicher Nutzung erreicht im flächengewichteten Mittel einen spezifischen Wärmeverbrauch von rund ${nf(i.referenzSpez)} kWh/(m²·a). `,
-      f >= 1.15 ? `Der Bestand liegt damit beim ${nf(f, 1)}-Fachen dieses Niveaus.` : 'Der Bestand liegt damit etwa auf diesem Niveau.'));
+    out.push(absatz(`Zum Vergleich: Die Vergleichswerte Wärme nach der ${NWG_QUELLE} (Teilenergiekennwerte für Heizung und Warmwasser je Gebäudekategorie, korrigiert um die Gebäudegröße) `,
+      'bilden einen energetischen Standard ab, der einer für einen Altbau guten Energieaufwandsklasse entspricht. ',
+      `Für die Gebäude der Liegenschaft ergibt sich daraus flächengewichtet ein Vergleichswert von rund ${nf(i.referenzSpez)} kWh/(m²·a) bezogen auf die Bruttogeschossfläche (${nf(i.referenzSpez / NWG_NGF_JE_BGF)} kWh/(m²·a) bezogen auf die Nettogrundfläche). `,
+      f >= 1.15 ? `Der Bestand liegt damit beim ${nf(f, 1)}-Fachen dieses Werts.` : f <= 0.85 ? 'Der Bestand liegt damit unter diesem Wert.' : 'Der Bestand liegt damit etwa auf diesem Niveau.'));
   }
   if (i.zustandAnzahl > 0) {
     const hoch = ok(i.spezKwhM2) && ['hoch', 'sehrHoch'].includes(spezKlasse(i.spezKwhM2));
@@ -284,7 +286,7 @@ export function gbTextBestand(a, o = {}) {
   }
   const auff = (i.nutzungFaktor || []).find(n => n.anzahl >= 2 && n.faktorMittel >= 2);
   if (auff) {
-    out.push(absatz(`Auffällig ist insbesondere die Nutzungsart ${auff.nutzung} mit spezifischen Verbräuchen zwischen ${nf(auff.spezMin)} und ${nf(auff.spezMax)} kWh/(m²·a), im Mittel dem ${nf(auff.faktorMittel, 1)}-Fachen des Neubauniveaus vergleichbarer Nutzung.`,
+    out.push(absatz(`Auffällig ist insbesondere die Nutzungsart ${auff.nutzung} mit spezifischen Verbräuchen zwischen ${nf(auff.spezMin)} und ${nf(auff.spezMax)} kWh/(m²·a), im Mittel dem ${nf(auff.faktorMittel, 1)}-Fachen des Vergleichswerts für Gebäude gleicher Nutzung.`,
       auff.anzahl >= 3 && auff.faktorMin >= 1.5 && Number.isFinite(auff.baujahrMin) && auff.baujahrMax - auff.baujahrMin >= 20
         ? ' Die Ursachen lassen sich anhand der vorliegenden Daten nicht zweifelsfrei bestimmen. Da dieser Gebäudetyp baujahrübergreifend durchgängig ungünstige Kennwerte aufweist, liegt ein maßgeblicher Einfluss des Nutzerverhaltens nahe, etwa dauerhaftes Heizen bei gekipptem oder geöffnetem Fenster.'
         : ''));
