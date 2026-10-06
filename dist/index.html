@@ -15226,7 +15226,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-06';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'd6ea228';
+  var c = '393f8d8';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -115458,6 +115458,8 @@ ${massTbl}
     function abgang(ab) {
       return {
         art: ab.art, abzweige: ab.abzweige || 0, stationen: ab.folge.map(sicht),
+        // Ring mit Abzweigen: Ringweg zuerst, die Stiche darunter (Lage wie bei Linien)
+        ...(ab.art === 'ring' && ab.abzweige ? { haupt: ab.folge.length - ab.abzweige } : {}),
         innen: ab.innen.map(x => ({ i: x.i, j: x.j, ...kante(x.kante) })),
         wurzel: ab.wurzel.map(x => ({ i: x.i, ...kante(x.kante) })),
         leiter: ab.leiter ? leiter(ab.leiter) : null,
@@ -115669,12 +115671,31 @@ ${massTbl}
       const K = L.K;
       const n = ab.stationen.length;
       const wegeL = ab.wege?.length ? ab.wege : ab.haupt != null ? [ab.haupt] : [];
-      const segs = [...wegeL, n - wegeL.reduce((a, b) => a + b, 0)];
+      const nWeg = wegeL.reduce((a, b) => a + b, 0);
       const posArr = [];
       let R = 0;
-      for (const len of segs) {
+      for (const len of [...wegeL, ...(wegeL.length ? [] : [n])]) {
         for (let j = 0; j < len; j++) posArr.push({ r: R + Math.floor(j / K), c: j % K });
         R += Math.ceil(len / K);
+      }
+      // Stiche (Abzweige) in Reihen unter den Wegen, in der Spalte der Station, an der sie hängen; ein Stich
+      // mit mehreren Stationen läuft nach rechts weiter, sonst nach unten.
+      const belegt = new Set(posArr.map(q => q.r + ':' + q.c));
+      const frei = (r, c) => c < K && !belegt.has(r + ':' + c);
+      if (wegeL.length && nWeg < n) {
+        const eltern = new Map();
+        (ab.innen || []).forEach(v => { if (v.j >= nWeg && v.i < v.j && !eltern.has(v.j)) eltern.set(v.j, v.i); });
+        const R0 = R;
+        for (let i = nWeg; i < n; i++) {
+          const e = eltern.get(i), pe = e != null ? posArr[e] : null;
+          let r = R0, c = pe ? pe.c : 0;
+          if (pe && e >= nWeg && frei(pe.r, pe.c + 1)) { r = pe.r; c = pe.c + 1; }
+          else if (pe && e >= nWeg) r = pe.r + 1;
+          while (!frei(r, c)) { if (pe) r++; else if (++c >= K) { c = 0; r++; } }
+          belegt.add(r + ':' + c);
+          posArr.push({ r, c });
+          R = Math.max(R, r + 1);
+        }
       }
       const pos = i => posArr[i];
       const rechtsAussen = new Map();   // Reihe → größte belegte Spalte
@@ -115696,8 +115717,10 @@ ${massTbl}
       if (ab.direkt) routen.push({ art: 'kupplung', w: ab.direkt });
       (ab.innen || []).forEach(v => {
         const pi = pos(v.i), pj = pos(v.j);
-        if (v.j === v.i + 1 && pi.r === pj.r) routen.push({ art: 'direkt', v });
-        else if (v.j === v.i + 1) routen.push({ art: 'umbruch', v, s: neu(pi.r) });
+        const zwischenFrei = () => { for (let r = pi.r + 1; r < pj.r; r++) if (belegt.has(r + ':' + pi.c)) return false; return true; };
+        if (v.j === v.i + 1 && pi.r === pj.r && pj.c === pi.c + 1) routen.push({ art: 'direkt', v });
+        else if (pi.c === pj.c && pj.r > pi.r && zwischenFrei()) routen.push({ art: 'senkrecht', v });
+        else if (v.j === v.i + 1 && pi.r !== pj.r) routen.push({ art: 'umbruch', v, s: neu(pi.r) });
         else if (pi.r === pj.r) routen.push({ art: 'spur', v, s: neu(pi.r) });
         else if (pj.r === pi.r + 1) routen.push({ art: 'runter', v, s: neu(pi.r) });
         else routen.push({ art: 'gasse', v, s: neu(pi.r), s2: neu(pj.r - 1), g: gasse++ });
@@ -115844,7 +115867,7 @@ ${massTbl}
       let o = txt(mx(xa), p.top + 14, kopf, { size: 11, weight: 600, fill: kopfFarbe, ...(spiegel ? { anchor: 'end' } : {}) });
       if (warn) o += txt(xa + ggEstW(kopf, 11) + 10, p.top + 14, warn, { size: 11, weight: 700, fill: rot });
       for (const rt of p.routen) {
-        const v = rt.v || rt.w;
+        let v = rt.v || rt.w;
         let d = '', tsX = null, tsY = null;
         if (rt.art === 'bus') {
           const g = geo(rt.w.i);
@@ -115880,6 +115903,10 @@ ${massTbl}
             d = `M${gR(a.kx + cw)} ${a.ya}H${gR(b.kx)}`;
             tsX = a.kx + cw + gap / 2; tsY = a.ya;
             o += systeme(mx(tsX), tsY, v);
+          } else if (rt.art === 'senkrecht') {   // Stich direkt unter seiner Station
+            d = `M${gR(a.cx)} ${a.unten}V${b.ky}`;
+            tsX = a.cx; tsY = (a.unten + b.ky) / 2;
+            if (v.ts) { tsm += `<g transform="rotate(90 ${gR(tsX)} ${gR(tsY)})">${tsMarke(tsX, tsY)}</g>`; v = { ...v, ts: false }; }
           } else if (rt.art === 'umbruch') {
             const ys = spurY(a.unten, rt.s), xr = a.kx + cw + 10;
             d = `M${gR(a.kx + cw)} ${a.ya}H${gR(xr)}V${ys}H${gR(b.cx + dxVon(rt.s))}V${b.ky}`;
