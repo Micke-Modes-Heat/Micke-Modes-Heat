@@ -167,8 +167,8 @@ export function vaTextPv(o = {}) {
 /* ── Energiepreissensitivität ────────────────────────────────────────────── */
 export const VA_SZENARIEN = Object.freeze([
   { name: 'Heute', strom: 0, fossil: 0, bio: 0 },
-  { name: 'Moderater Anstieg', strom: 10, fossil: 25, bio: 15 },
-  { name: 'Energiekrise', strom: 40, fossil: 100, bio: 50 },
+  { name: 'Moderater Anstieg', strom: 10, fossil: 30, bio: 15 },
+  { name: 'Energiekrise', strom: 20, fossil: 80, bio: 50 },
 ]);
 
 /** Mehrkosten je Variante und Szenario aus den Energiemengen und Preisen (ct/kWh). */

@@ -1001,6 +1001,11 @@ export function ggRenderBalken(cfg, T = GG_THEME) {
     let max = 0;
     for (const g of gruppen) for (const v of summeJe(g)) if (v > max) max = v;
     if (punkte) max /= 0.58;
+    else {
+      // Legende oben rechts: Kopfraum freihalten, damit sie keine Säulen oder Werte verdeckt
+      const nLeg = gruppen.reduce((n, g) => n + g.segmente.filter(seg => seg.label).length, 0);
+      if (nLeg) max /= Math.max(0.5, 1 - (10 + 8 + nLeg * 18 + 2 + 18) / plotH);
+    }
     // Zählwerte (Gebäude): ganzzahlige Schritte statt 2,5 mit gerundeter Beschriftung
     const yStepRoh = ggNiceStep(max / 8);
     const yStep = cfg.yGanzzahl ? ([1, 2, 5, 10, 20, 50, 100, 200, 500].find(x => x >= yStepRoh) || Math.ceil(yStepRoh)) : yStepRoh;
@@ -2675,6 +2680,28 @@ const GG_FIGUREN = [
     titel: 'Gutachtentext: Energiepreissensitivität', datei: 'va-sensitivitaet-text',
     hinweis: 'Drei Szenarien (heute, moderat, Krise) auf die Energiekosten je Energieträger der Varianten; prozentuale und absolute Mehrkosten, Rangfolge.',
     render: () => { const d = ggVariantenDaten(); return ggWaermeTextBlatt(vaTextSensitivitaet(d.varianten, d.preise)); }, config: {},
+  },
+  {
+    id: 'va-sensitivitaet-grafik', autoSync: true, reihe: 42, kapitel: '2.5 Wirtschaftlichkeit und Investitionskosten',
+    titel: 'Energiepreis-Sensitivität – drei Szenarien im Vergleich', datei: 'va-sensitivitaet-grafik',
+    hinweis: 'Jährliche Gesamtkosten je Variante in den drei Preisszenarien als gruppierte Säulen.',
+    render: cfg => ggRenderBalken(cfg),
+    config: ggGebVorlage('Energiepreis-Sensitivität – drei Szenarien im Vergleich', 'Jährliche Gesamtkosten in Tsd. €', 'Variante', 'Keine Varianten mit Jahreskosten.'),
+    ausProjekt(cfg) {
+      const d = ggVariantenDaten();
+      const r = vaSensitivitaet(d.varianten, d.preise);
+      ggGebKopf(cfg);
+      cfg.eyebrow = 'Variantenvergleich';
+      if (!r.length) { ggGebLeer(cfg); return '⚠ Keine Varianten mit Jahreskosten.'; }
+      const farben = ['#6B8E4E', '#C9A227', '#7A6334'];
+      cfg.kategorien = r.map(x => x.name);
+      cfg.gruppen = VA_SZENARIEN.map((s, i) => ({ label: s.name, segmente: [{ label: s.name, farbe: farben[i % farben.length], werte: r.map(x => x.sz[i].gesamt / 1000) }] }));
+      cfg.punkte = null;
+      cfg.summenLabel = true;
+      cfg.kpiLinks = [{ wert: `Strom ${ggNum(d.preise.strom, 1)} · Gas ${ggNum(d.preise.gas, 1)} ct/kWh`, label: 'Preise heute' }];
+      cfg.kpiRechts = VA_SZENARIEN.slice(1).map(s => ({ wert: `Strom +${s.strom} % · Gas/Öl +${s.fossil} %`, label: s.name }));
+      return `✓ ${r.length} Varianten, ${VA_SZENARIEN.length} Szenarien.`;
+    },
   },
   {
     id: 'va-sensitivitaet-tabelle', autoSync: true, reihe: 41, kapitel: '2.5 Wirtschaftlichkeit und Investitionskosten',
