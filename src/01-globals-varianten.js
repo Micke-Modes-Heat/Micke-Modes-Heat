@@ -878,8 +878,10 @@ export function applyNetzState(state) {
   document.getElementById('netz-rl').value = state.rl ?? 60;
   syncVLTemps('netz');
   document.getElementById('netz-v').value = state.v ?? 1.0;
+  // Die Norm-Außentemperatur kommt zentral aus den Wärme-Grundlagen; fehlt sie dort, gilt der gespeicherte Netzwert
+  // (auch eine legitime 0 °C), erst danach −12 °C.
   const klimaNormAt = document.getElementById('gl-norm-at')?.value;
-  document.getElementById('netz-t-aussen').value = klimaNormAt || -12;
+  document.getElementById('netz-t-aussen').value = klimaNormAt !== undefined && klimaNormAt !== '' ? klimaNormAt : (state.tAussen ?? -12);
   document.getElementById('netz-t-mittel').value = state.tMittel ?? 10;
   document.getElementById('netz-u-wert').value = state.uWert ?? 0.25;
   if (state.gzfMethode) {

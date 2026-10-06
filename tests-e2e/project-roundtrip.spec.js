@@ -121,6 +121,8 @@ test('dist: Projekt-Roundtrip erhält Trasse, Wärmegraph und legitime Nullwerte
       gzfManuell: 0,
       isLocked: false,
     };
+    // Die Norm-Außentemperatur des Netzes folgt den Wärme-Grundlagen — die legitime 0 °C steht deshalb dort
+    fixture.waermeGrundlagen = {...(fixture.waermeGrundlagen || {}), normAussentemp: '0', plz: ''};
     fixture.trasse = [
       {lat: 52.081, lng: 8.003},
       {lat: 52.082, lng: 8.004},
@@ -162,6 +164,7 @@ test('dist: Projekt-Roundtrip erhält Trasse, Wärmegraph und legitime Nullwerte
     document.getElementById('strom-preis-einsp').readOnly = false;
     document.getElementById('strom-preis-einsp').value = '4.44';
     onPvTariffManualInput();
+    const nachLaden = _buildProjectData().waermeNetzGraph.edges.map(e => e.waypoints);
     const editableEdge = window.netzEdges[0];
     editableEdge.midMarker.setLatLng(L.latLng(52.0828, 8.0047));
     editableEdge.midMarker.fire('dragend');
@@ -178,6 +181,8 @@ test('dist: Projekt-Roundtrip erhält Trasse, Wärmegraph und legitime Nullwerte
       trasse: restored.trasse,
       segments: restored.trasseSegments,
       graph: restored.waermeNetzGraph,
+      exportedEdges: exported.waermeNetzGraph.edges,
+      nachLaden,
       zeroValues: {
         v: restored.netz.v,
         tAussen: restored.netz.tAussen,
@@ -221,15 +226,18 @@ test('dist: Projekt-Roundtrip erhält Trasse, Wärmegraph und legitime Nullwerte
     {lat: 52.083, lng: 8.005},
   ]);
   expect(result.segments).toEqual([{start: 0, end: 2, domains: ['waerme']}]);
-  expect(result.graph.edges).toEqual([
-    {u: 10001, v: 10002, dn: 0, pruned: false, kostKlasse: null, kostOverride: false,
-      waypoints: [
-        {lat: 52.0817, lng: 8.0036},
-        {lat: 52.0824, lng: 8.0043},
-        {lat: 52.0828, lng: 8.0047},
-      ],
-      waypoint: {lat: 52.0817, lng: 8.0036}},
-  ]);
+  // Laden erhält die gespeicherten Wegpunkte unverändert
+  expect(result.nachLaden).toEqual([[{lat: 52.0817, lng: 8.0036}, {lat: 52.0824, lng: 8.0043}]]);
+  // Ziehen der Leitungsmitte setzt einen Zwangspunkt, der auf der Wärmetrasse einrastet (routingViaPoints);
+  // die Leitung folgt dann der Trasse bis dorthin
+  const kante = result.graph.edges[0];
+  expect(kante).toMatchObject({u: 10001, v: 10002, dn: 0, pruned: false, kostKlasse: null, kostOverride: false});
+  expect(kante.routingViaPoints).toHaveLength(1);
+  expect(kante.routingViaPoints[0].lat).toBeCloseTo(52.0828, 3);
+  expect(kante.routingViaPoints[0].lng).toBeCloseTo(8.0047, 3);
+  expect(kante.waypoints.at(-1)).toEqual(kante.routingViaPoints[0]);
+  // Speichern → Laden → Speichern liefert denselben Wärmegraphen
+  expect(result.graph.edges).toEqual(result.exportedEdges);
   expect(Object.values(result.zeroValues).map(Number)).toEqual([0, 0, 0, 0, 0]);
   expect(result.manifest.version).toBe(1);
   expect(result.manifest.appVersion).toMatch(/^(0\.1\.0|dev)$/);
