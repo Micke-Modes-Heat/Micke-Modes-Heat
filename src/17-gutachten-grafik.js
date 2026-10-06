@@ -28,6 +28,7 @@ import { vbTextDaten, vbTextBezug, vbTextCo2, vbTextReferenzjahr } from './lib/g
 import { lgTextWitterung, lgTextGrundlast, lgTextSpitzenlast, lgTextDeckung } from './lib/gutachten-lastgang.js';
 import { PT_NICHT, PT_GEO_ASPEKTE, PT_LWWP_VORNACH, PT_TA_LAERM, PT_BIO, PT_BIO_QUALITATIV, ptBioKennwerte, ptTextEinleitung, ptTextNicht, ptTextBeruecksichtigt,
   ptTextGeoGrundlagen, ptTextGeoBerechnung, ptTextTiefengeothermie, ptTextLwwp, ptTextSchall, ptTextBiomasse } from './lib/gutachten-potenzial.js';
+import { faTextBewertung, faTextEmpfehlung, faTextNt, faTextFahrplan, faTextHeizoeltank, faTextResilienzUebergang } from './lib/gutachten-fazit.js';
 import { vaRahmenZeilen, vaTextRahmen, vaTextResilienz, vaGegenueberstellung, vaTextKlima, vaTextKostenKomponenten, vaTextPv, vaSensitivitaet, vaTextSensitivitaet, VA_SZENARIEN } from './lib/gutachten-varianten.js';
 import { atTextErzeuger, atTextHydraulik, atTextTww, atTextNetz, atLeistung } from './lib/gutachten-anlagentechnik.js';
 
@@ -2684,6 +2685,64 @@ const GG_FIGUREN = [
       cfg.fussnote = VA_SZENARIEN.slice(1).map(s => `${s.name}: Strom +${s.strom} %, Gas/Öl +${s.fossil} %, Biomasse +${s.bio} %`).join(' · ');
       return r.length ? `✓ ${r.length} Varianten.` : '⚠ Keine Varianten mit Jahreskosten.';
     },
+  },
+  // ── Fazit Wärme, NT-Ertüchtigung, Fahrplan; Resilienz: Heizöl und Übergang (Logik: lib/gutachten-fazit.js) ──
+  {
+    id: 'fazit-bewertung-text', istText: true, reihe: 20, kapitel: '6.1 Wärmeversorgung',
+    titel: 'Gutachtentext: Bewertung der Varianten (Klima, Wirtschaft, Resilienz)', datei: 'fazit-bewertung-text',
+    hinweis: 'Fasst Emissionen (heute, künftig, kumuliert, Faktor zu reinem Erdgas), Kostenrangfolge mit Sensitivität und Resilienz zusammen.',
+    render: () => { const d = ggVariantenDaten(); return ggWaermeTextBlatt(faTextBewertung({ ...d, efGas: d.ef.gas })); }, config: {},
+  },
+  {
+    id: 'fazit-empfehlung-text', istText: true, reihe: 30, kapitel: '6.1 Wärmeversorgung',
+    titel: 'Gutachtentext: Empfehlung der Vorzugsvariante', datei: 'fazit-empfehlung-text',
+    hinweis: 'Eine oder zwei führende Varianten (Kostenabstand unter 3 %), Pfad zur Klimaneutralität, Einordnung von Stromkessel- und Erdwärmevarianten.',
+    render: () => ggWaermeTextBlatt(faTextEmpfehlung(ggVariantenDaten())), config: {},
+  },
+  {
+    id: 'fazit-nt-text', istText: true, reihe: 40, kapitel: '6.1 Wärmeversorgung',
+    titel: 'Gutachtentext: Niedertemperatur-Ertüchtigung', datei: 'fazit-nt-text',
+    hinweis: 'HT (Netz-Vorlauf) gegen NT (Mittel der Heizkurve) bei gleicher WP-Wärme: JAZ, Strom, Kosten, Invest (Bestandsgebäude × 25.000 €), Amortisation, CO₂; Phasen 1–3 und Fazit.',
+    render: () => {
+      const w = window, d = ggVariantenDaten();
+      const en = ggLies(() => w._dispatchEnergy, {}) || {};
+      const wp = ['lwwp', 'geo', 'fg'].reduce((a, k) => ({ w: a.w + (en[k]?.waermeMwh || 0), e: a.e + (en[k]?.elMwh || 0) }), { w: 0, e: 0 });
+      const vl15 = ggFeldZahl('gl-vl15'), vl5 = ggFeldZahl('gl-vl5');
+      return ggWaermeTextBlatt(faTextNt({
+        waermeMwh: wp.w, jazNt: wp.e > 0 ? wp.w / wp.e : undefined, vlHtC: ggFeldZahl('netz-vl'), vlNtC: Number.isFinite(vl15) && Number.isFinite(vl5) ? (vl15 + vl5) / 2 : NaN,
+        strompreisCt: d.preise.strom, gebaeude: ggLies(() => ggGebaeudeAuswertung().ist.anzahl, 0), efStrom: d.ef.strom, efStromLz: d.ef.stromLz,
+      }));
+    },
+    config: {},
+  },
+  {
+    id: 'fazit-fahrplan-text', istText: true, reihe: 50, kapitel: '6.1 Wärmeversorgung',
+    titel: 'Gutachtentext: Maßnahmenfahrplan', datei: 'fazit-fahrplan-text',
+    hinweis: 'Sofort, kurz-, mittel-, langfristig ab dem Folgejahr; Vorzugsvarianten aus der Kostenrangfolge; PV-Batterie aus dem PV-Modul.',
+    render: () => {
+      const d = ggVariantenDaten();
+      const w = d.varianten.filter(v => Number.isFinite(v.wgkCt)).sort((a, b) => a.wgkCt - b.wgkCt);
+      const vorzug = w.length >= 2 && (w[1].wgkCt - w[0].wgkCt) / w[0].wgkCt < 0.03 ? [w[0].name, w[1].name] : w.slice(0, 1).map(v => v.name);
+      return ggWaermeTextBlatt(faTextFahrplan({ vorzug, pv: { batKwh: ggLies(() => window._stromBatKapKwh, 0) } }));
+    },
+    config: {},
+  },
+  {
+    id: 'resilienz-heizoel-text', istText: true, reihe: 20, kapitel: '5.2.8 Langfristige Maßnahmen (Umsetzung der Empfehlung im Gutachten)',
+    titel: 'Gutachtentext: Heizölbevorratung', datei: 'resilienz-heizoel-text',
+    hinweis: 'Tankvolumen für 72 h bei Spitzenlast, Würfelkante, Reichweite bei mittlerer Last, 24-h-Bedarf, Kammern und Zuschläge.',
+    render: () => {
+      const ss = window.systemState;
+      const mittel = ss?.lastgangKw?.length ? ss.lastgangKw.reduce((a, b) => a + b, 0) / ss.lastgangKw.length : NaN;
+      return ggWaermeTextBlatt(faTextHeizoeltank({ maxKw: ss?.pMaxKw, mittelKw: mittel }));
+    },
+    config: {},
+  },
+  {
+    id: 'resilienz-uebergang-text', istText: true, reihe: 20, kapitel: '5.2.7 Kurzfristige Maßnahmen',
+    titel: 'Gutachtentext: Organisatorische Übergangsmaßnahmen', datei: 'resilienz-uebergang-text',
+    hinweis: 'Standardtext: Notfallorganisation, Personal für manuelle Umschaltung, Kraftstoff, Ersatzteile.',
+    render: () => ggWaermeTextBlatt(faTextResilienzUebergang()), config: {},
   },
   {
     id: 'waerme-wea-text',
