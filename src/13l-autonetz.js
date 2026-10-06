@@ -277,8 +277,30 @@ export function autoNetzAssets(opts = {}) {
 
   const nap = naps[0];
 
+  // Bereits (von Hand) verkabeltes MS-Netz: alles, was über die verbliebenen
+  // Kanten von NAP über Schaltanlagen/Trafos erreichbar ist, bekommt kein
+  // zusätzliches Auto-MS-Kabel. Nach dem Löschen oben (bei overwriteManual
+  // bleibt nichts übrig) — dann ist die Menge leer und alles wird neu gebaut.
+  const msTypes = new Set(['NAP', 'Schaltanlage', 'Trafo']);
+  const typeById = new Map(ASSETS.items.map(a => [a.id, a.type]));
+  const adj = new Map();
+  (window.stromEdges || []).forEach(e => {
+    if (!msTypes.has(typeById.get(e.u)) || !msTypes.has(typeById.get(e.v))) return;
+    if (!adj.has(e.u)) adj.set(e.u, []);
+    if (!adj.has(e.v)) adj.set(e.v, []);
+    adj.get(e.u).push(e.v);
+    adj.get(e.v).push(e.u);
+  });
+  const msVerbunden = new Set(naps.map(n => n.id));
+  const queue = [...msVerbunden];
+  while (queue.length) {
+    for (const nb of adj.get(queue.shift()) || []) {
+      if (!msVerbunden.has(nb)) { msVerbunden.add(nb); queue.push(nb); }
+    }
+  }
+
   // ── 1. NAP → Schaltanlage(n) ────────────────────────────────────────────
-  sas.forEach(s => _addAutoEdge(nap, s, { ms: true }));
+  sas.filter(s => !msVerbunden.has(s.id)).forEach(s => _addAutoEdge(nap, s, { ms: true }));
 
   // ── 2. Schaltanlage → Trafos (Zonen nach nächstgelegener SA) ────────────
   // Jeder Trafo wird der nächstgelegenen Schaltanlage zugeordnet — bei nur
@@ -286,7 +308,7 @@ export function autoNetzAssets(opts = {}) {
   // mehreren SAs verhindert das, dass alle Trafos an sas[0] hängen und die
   // übrigen Schaltanlagen ohne Anbindung nach unten bleiben.
   const saZones = new Map(sas.map(s => [s.id, { sa: s, trafos: [] }]));
-  trafos.forEach(t => {
+  trafos.filter(t => !msVerbunden.has(t.id)).forEach(t => {
     const nearestSa = _nearest(t, sas);
     saZones.get(nearestSa.id).trafos.push(t);
   });
