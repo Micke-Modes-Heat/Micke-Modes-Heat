@@ -65,8 +65,22 @@ describe('Luft-WP (B5)', () => {
     expect(t).toContain('Prozentpunkte mehr Deckung');
     expect(t).toContain('Nennleistung von rund');
   });
+  it('Standard 65/90/99/100 %: 100 % ohne Spitzenlasterzeuger, letzte Prozentpunkte gesondert', () => {
+    const s = abLwwpSweep(e);
+    expect(s.map(x => x.ziel)).toEqual([65, 90, 99, 100]);
+    expect(s.every(x => x.erreichbar)).toBe(true);
+    expect(s.slice(0, 3).map(x => Math.round(x.deckungPct * 10) / 10)).toEqual([65, 90, 99]);
+    expect(s[3].deckungPct).toBeCloseTo(100, 6);
+    expect(s[3].restMaxKw).toBeLessThan(1);
+    expect(s[3].nennKw).toBeGreaterThan(s[2].nennKw);
+    const t = text(ptTextLwwpSweep(s));
+    expect(t).toContain('4 Deckungsgrade');
+    expect(t).toContain('am letzten Prozentpunkt');
+    expect(t).toContain('ein Spitzenlasterzeuger ist rechnerisch nicht mehr erforderlich');
+    expect(t).toContain('Erst bei vollständiger Deckung entfällt der Spitzenlasterzeuger');
+  });
   it('nicht erreichbarer Deckungsgrad bei Sperre unter Mindest-COP', () => {
-    const s = abLwwpSweep({ ...e, minCop: 3.2 }, [99.9]);
+    const s = abLwwpSweep({ ...e, minCop: 3.2 }, [100]);
     expect(s[0].erreichbar).toBe(false);
     expect(text(ptTextLwwpSweep(s))).toContain('nicht erreichbar');
   });

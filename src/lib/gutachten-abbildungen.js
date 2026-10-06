@@ -137,15 +137,35 @@ export function abLwwpSimulation(o) {
   };
 }
 
-/** Nennleistung je Ziel-Deckungsgrad (Bisektion; Deckung steigt monoton mit der Nennleistung). */
-export function abLwwpSweep(o, quoten = [50, 65, 80]) {
-  const voll = abLwwpSimulation({ ...o, nennKw: 1e9 });
-  if (!voll) return [];
-  const pMax = Math.max(...Array.prototype.slice.call(o.lastgangKw, 0, 8760));
+/** Deckungsgrade des Vergleichs in % (Vorgabe Gutachten: GEG-Quote, weitgehend, nahezu und vollständig monovalent). */
+export const AB_WP_QUOTEN = Object.freeze([65, 90, 99, 100]);
+
+/**
+ * Nennleistung je Ziel-Deckungsgrad. 100 % direkt: die Nennleistung, bei der die WP in jeder Stunde den Bedarf
+ * liefert (größtes Bedarf · COP(A2/W35) / COP der Stunde); unerreichbar, wenn Stunden mit Bedarf unter dem
+ * Mindest-COP liegen. Übrige Quoten per Bisektion bis zu dieser Leistung (Deckung steigt monoton).
+ */
+export function abLwwpSweep(o, quoten = AB_WP_QUOTEN) {
+  const L = o.lastgangKw, T = o.tempH;
+  if (!L || !T || L.length < 8760 || T.length < 8760) return [];
+  const g = o.guete > 0 ? o.guete : AB_WP.guete;
+  const copRef = ((273.15 + AB_WP.refVl) / (AB_WP.refVl - AB_WP.refQuelle)) * g;
+  let nenn100 = 0, gesperrt = false;
+  for (let t = 0; t < 8760; t++) {
+    if (!(L[t] > 0)) continue;
+    const vl = o.vlH ? o.vlH[t] : (o.vlC || 55);
+    const cop = Math.min(((vl + 273.15) / Math.max(vl - T[t], 0.1)) * g, AB_WP.copMax);
+    if (o.minCop > 0 && cop < o.minCop) { gesperrt = true; continue; }
+    nenn100 = Math.max(nenn100, (L[t] * copRef) / cop);
+  }
+  const maxPct = abLwwpSimulation({ ...o, nennKw: nenn100 * 1.000001 }).deckungPct;
   return quoten.map(q => {
-    if (q >= voll.deckungPct - 0.05) return { ziel: q, erreichbar: false, maxPct: voll.deckungPct };
-    let lo = 0, hi = pMax * 4;
-    for (let i = 0; i < 32; i++) {
+    if (q >= 100) {
+      return gesperrt ? { ziel: q, erreichbar: false, maxPct } : { ziel: q, erreichbar: true, ...abLwwpSimulation({ ...o, nennKw: nenn100 * 1.000001 }) };
+    }
+    if (q > maxPct - 0.005) return { ziel: q, erreichbar: false, maxPct };
+    let lo = 0, hi = nenn100 * 1.000001;
+    for (let i = 0; i < 36; i++) {
       const m = (lo + hi) / 2;
       if (abLwwpSimulation({ ...o, nennKw: m }).deckungPct < q) lo = m; else hi = m;
     }

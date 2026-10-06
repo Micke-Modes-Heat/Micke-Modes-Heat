@@ -3320,7 +3320,7 @@ const GG_FIGUREN = [
   {
     id: 'potenzial-lwwp-sweep', autoSync: true, reihe: 42, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Luft-Wasser-Wärmepumpe: Vergleich der Deckungsgrade', datei: 'potenzial-lwwp-sweep',
-    hinweis: 'Stundensimulation mit Außentemperatur und Heizkurve für 50, 65 und 80 % Deckung: erforderliche Nennleistung, Leistung in der kältesten Stunde, JAZ, Umweltwärme, Strom und verbleibende Spitzenlast.',
+    hinweis: 'Stundensimulation mit Außentemperatur und Heizkurve für 65, 90, 99 und 100 % Deckung: erforderliche Nennleistung, Leistung in der kältesten Stunde, JAZ, Umweltwärme, Strom und verbleibende Spitzenlast.',
     render: cfg => ggRenderTabelle(cfg),
     config: { eyebrow: 'Potenzialanalyse', titel: 'Luft-Wasser-Wärmepumpe: Vergleich der Deckungsgrade', leer: 'Lastgang mit Außentemperatur nötig (Grundlage berechnen).', spalten: [{ label: 'Kennwert', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
     ausProjekt(cfg) {
@@ -3331,9 +3331,11 @@ const GG_FIGUREN = [
       cfg.zeilen = [
         z('Nennleistung (A2/W35)', x => `${ggNum(x.nennKw)} kW`), z(`Leistung in der kältesten Stunde (${ggNum(r[0].tKaltC, 1)} °C)`, x => `${ggNum(x.leistungKaltKw)} kW`),
         z('Jahresarbeitszahl', x => ggNum(x.jaz, 2)), z('Wärme aus Wärmepumpe', x => `${ggNum(x.waermeMwh)} MWh`), z('davon Umweltwärme', x => `${ggNum(x.umweltMwh)} MWh`),
-        z('Strombedarf', x => `${ggNum(x.stromMwh)} MWh`), z('Spitzenlasterzeuger Wärme', x => `${ggNum(x.spitzeMwh)} MWh`), { highlight: true, werte: ['Spitzenlasterzeuger Leistung', ...r.map(x => `${ggNum(x.restMaxKw)} kW`)] },
+        z('Strombedarf', x => `${ggNum(x.stromMwh)} MWh`), z('Spitzenlasterzeuger Wärme', x => `${ggNum(x.spitzeMwh)} MWh`), { highlight: true, werte: ['Spitzenlasterzeuger Leistung', ...r.map(x => (x.restMaxKw < 1 ? 'entfällt' : `${ggNum(x.restMaxKw)} kW`))] },
       ];
-      cfg.fussnote = 'COP = Gütegrad × T_VL/(T_VL − T_Luft), höchstens 8; Leistung = Nennleistung × COP/COP(A2/W35); Vorlauf aus der Heizkurve der Wärme-Grundlagen';
+      const nicht = ggLwwpSweep().filter(x => !x.erreichbar).map(x => `${x.ziel} %`);
+      cfg.fussnote = 'COP = Gütegrad × T_VL/(T_VL − T_Luft), höchstens 8; Leistung = Nennleistung × COP/COP(A2/W35); Vorlauf aus der Heizkurve der Wärme-Grundlagen'
+        + (nicht.length ? ` · nicht erreichbar (Mindest-COP): ${nicht.join(', ')}` : '');
       return `✓ ${r.length} Deckungsgrade.`;
     },
   },

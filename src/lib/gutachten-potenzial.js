@@ -182,18 +182,27 @@ export function ptTextLwwp(o = {}) {
 export function ptTextLwwpSweep(sweep) {
   const r = (sweep || []).filter(x => x.erreichbar);
   const out = [];
+  const spitze = x => (x.restMaxKw < 1 ? 'ein Spitzenlasterzeuger ist rechnerisch nicht mehr erforderlich' : `der Spitzenlasterzeuger muss noch bis zu ${L(x.restMaxKw)} bereitstellen`);
   if (r.length) out.push(absatz(`Um die Auswirkung der Wärmepumpengröße zu zeigen, wurden ${r.length === 1 ? 'ein Deckungsgrad' : `${r.length} Deckungsgrade`} mit derselben Stundensimulation berechnet: `,
-    r.map(x => `Für ${pct(x.ziel)} der Jahreswärme ist eine Nennleistung von rund ${L(x.nennKw)} (A2/W35) erforderlich; die Jahresarbeitszahl liegt dann bei ${nf(x.jaz, 2)}, der Strombedarf bei ${nf(x.stromMwh)} MWh/a, und der Spitzenlasterzeuger muss noch bis zu ${L(x.restMaxKw)} bereitstellen.`).join(' ')));
+    r.map(x => `Für ${pct(x.ziel)} der Jahreswärme ist eine Nennleistung von rund ${L(x.nennKw)} (A2/W35) erforderlich; die Jahresarbeitszahl liegt dann bei ${nf(x.jaz, 2)}, der Strombedarf bei ${nf(x.stromMwh)} MWh/a, und ${spitze(x)}.`).join(' ')));
   if (r.length >= 2) {
     const a = r[0], b = r.at(-1);
     out.push(absatz(`Mit steigendem Deckungsgrad wächst die erforderliche Wärmepumpenleistung überproportional: Für ${nf(b.ziel - a.ziel)} Prozentpunkte mehr Deckung ist die ${nf(b.nennKw / a.nennKw, 1)}-fache Leistung nötig, weil die zusätzlichen Betriebsstunden in die kalten Tage mit geringer Leistungszahl fallen. `,
-      b.jaz < a.jaz - 0.05 ? `Die Jahresarbeitszahl sinkt dabei von ${nf(a.jaz, 2)} auf ${nf(b.jaz, 2)}. ` : '',
-      b.restMaxKw > 0.85 * a.restMaxKw
+      b.jaz < a.jaz - 0.05 ? `Die Jahresarbeitszahl sinkt dabei von ${nf(a.jaz, 2)} auf ${nf(b.jaz, 2)}. ` : ''));
+    // die letzten Prozentpunkte gesondert: wenig Energie, viel Leistung
+    const [c, d] = r.slice(-2);
+    if (r.length >= 3 && d.ziel - c.ziel <= 1.0001) {
+      out.push(absatz(`Besonders deutlich zeigt sich das ${Math.abs(d.ziel - c.ziel - 1) < 1e-6 ? 'am letzten Prozentpunkt' : `an den letzten ${nf(d.ziel - c.ziel, 1)} Prozentpunkten`}: Für zusätzlich rund ${nf(d.waermeMwh - c.waermeMwh)} MWh/a sind weitere ${L(d.nennKw - c.nennKw)} Wärmepumpenleistung erforderlich `,
+        `(${nf(d.nennKw / c.nennKw, 2)}-fache Leistung gegenüber ${pct(c.ziel)}).`));
+    }
+    out.push(absatz(b.restMaxKw < 1
+      ? 'Erst bei vollständiger Deckung entfällt der Spitzenlasterzeuger rechnerisch; die Wärmepumpe muss dann auch in der kältesten Stunde bei höchster Vorlauftemperatur die volle Heizlast liefern. Für die Resilienz bleibt ein zweiter Wärmeerzeuger dennoch erforderlich.'
+      : b.restMaxKw > 0.85 * a.restMaxKw
         ? 'Die vom Spitzenlasterzeuger bereitzustellende Leistung bleibt dabei nahezu unverändert, da an den kältesten Tagen die Leistung der Luft-Wasser-Wärmepumpe am geringsten ist.'
         : `Die vom Spitzenlasterzeuger bereitzustellende Leistung sinkt dabei nur von ${L(a.restMaxKw)} auf ${L(b.restMaxKw)}, da an den kältesten Tagen die Leistung der Luft-Wasser-Wärmepumpe am geringsten ist.`));
   }
   const nicht = (sweep || []).find(x => !x.erreichbar);
-  if (nicht) out.push(absatz(`Ein Deckungsgrad von ${pct(nicht.ziel)} ist mit der Luft-Wasser-Wärmepumpe allein nicht erreichbar, da sie bei den angesetzten Vorlauftemperaturen in den kältesten Stunden${ok(nicht.maxPct) ? ` höchstens ${pct(nicht.maxPct)} decken kann` : ' gesperrt ist'}.`));
+  if (nicht) out.push(absatz(`Ein Deckungsgrad von ${pct(nicht.ziel)} ist mit der Luft-Wasser-Wärmepumpe allein nicht erreichbar, da sie bei den angesetzten Vorlauftemperaturen in den kältesten Stunden unter der Mindestleistungszahl liegt und abgeschaltet wird${ok(nicht.maxPct) ? `; höchstens ${pct(nicht.maxPct, 1)} sind möglich` : ''}.`));
   return out;
 }
 
