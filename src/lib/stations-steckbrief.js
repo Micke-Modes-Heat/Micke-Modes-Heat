@@ -17,7 +17,7 @@
 //
 // Rein und DOM-frei — die Oberfläche liegt in 34-stations-steckbrief.js.
 
-import { nuNetzUebersicht } from './netz-uebersicht.js';
+import { nuNetzUebersicht, nuIstGeplant, nuIstAbgerissen } from './netz-uebersicht.js';
 
 export const SS_STATIONS_TYPEN = new Set(['NAP', 'Schaltanlage', 'Trafo', 'NSHV']);
 const MS_TYPEN = new Set(['NAP', 'Schaltanlage', 'Trafo']);
@@ -186,11 +186,15 @@ function einspeisungAus(r, key) {
  * @param {object[]} p.assets, p.edges, p.gebaeude  wie im Projekt
  * @param {number}   [p.heute]    Bezugsjahr, wenn kein Begehungsdatum erfasst ist
  * @param {string}   [p.messort]  'ms' | 'ns' aus den Netzanschluss-Stammdaten (gilt für die Übergabestation)
+ * @param {boolean}  [p.nurBestand=false] nur bestehende Komponenten (keine Planung, nichts Abgerissenes)
  */
-export function ssStationModell({ gebaeudeId, assets = [], edges = [], gebaeude = [], heute, messort = '' } = {}) {
+export function ssStationModell({ gebaeudeId, assets = [], edges = [], gebaeude = [], heute, messort = '', nurBestand = false } = {}) {
   const geb = gebaeude.find(g => String(g.id) === String(gebaeudeId)) || null;
   const sb = geb?.stationSteckbrief || {};
-  const imGeb = assets.filter(a => String(a.buildingId) === String(gebaeudeId));
+  const jetzt = Number.isFinite(heute) ? heute : new Date().getFullYear();
+  // nurBestand (Gutachten-Anlage = Begehungsstand): geplante und abgerissene Komponenten bleiben weg
+  const imGeb = assets.filter(a => String(a.buildingId) === String(gebaeudeId)
+    && (!nurBestand || (!nuIstGeplant(a, geb, jetzt) && !nuIstAbgerissen(a, geb, jetzt))));
   const naps = imGeb.filter(a => a.type === 'NAP').sort(sortName);
   const schaltanlagen = imGeb.filter(a => a.type === 'Schaltanlage').sort(sortName);
   const trafos = imGeb.filter(a => a.type === 'Trafo').sort(sortName);
@@ -237,6 +241,7 @@ export function ssStationModell({ gebaeudeId, assets = [], edges = [], gebaeude 
 
   const modell = {
     geb: geb ? { id: geb.id, name: geb.name || '', nummer: String(geb.gebaeudenummer || '').trim(), baujahr: ganz(geb.baujahr) } : null,
+    gebFotos: geb?.feldFotos || [],
     steckbrief: sb,
     bezugsjahr,
     bezugAusBegehung: begehungJahr != null,
@@ -293,4 +298,160 @@ export function ssSetzeStationsfeld(geb, feld, wert) {
   if (wert === '' || wert == null) delete sb[feld];
   else sb[feld] = wert;
   if (!Object.keys(sb).length) delete geb.stationSteckbrief;
+}
+
+/**
+ * Bestehende Stationen für die Gutachten-Anlagen: Gebäude mit mindestens einem Trafo oder NAP im
+ * Bestand (keine Planungsschicht, kein Baujahr in der Zukunft, nicht abgerissen) — in Gebäudereihenfolge.
+ */
+export function ssBestandsStationen(assets = [], gebaeude = [], heute = new Date().getFullYear()) {
+  const gebMap = new Map(gebaeude.map(g => [String(g.id), g]));
+  const ids = new Set();
+  for (const a of assets) {
+    if ((a.type !== 'Trafo' && a.type !== 'NAP') || a.buildingId == null) continue;
+    const g = gebMap.get(String(a.buildingId));
+    if (!g || nuIstGeplant(a, g, heute) || nuIstAbgerissen(a, g, heute)) continue;
+    ids.add(String(g.id));
+  }
+  return gebaeude.filter(g => ids.has(String(g.id)));
+}
+
+// ── Blatt im Layout der Vorlage (gemeinsam für Druck, Gutachten-Vorschau und Word) ──
+//
+// Raster mit fünf Spalten wie die Vorlage: Bezeichnung | vier Angabespalten.
+// Zeile: { art: 'titel', text, rechts? } | { art: 'fotos', text, fotos: [{name, dataUrl}] }
+//      | { art: 'zeile', zellen: [{ t: string | string[], lbl?: true, span?: n, mut?: string }] }
+// t als Array = eine Zeile je Eintrag (Ankreuzfelder, Feldliste); mut = grauer Zusatz.
+
+export const SS_BLATT_SPALTEN = 5;
+const KB_AN = '☒', KB_AUS = '☐';
+const optLabel = (liste, wert) => SS_OPTIONEN[liste].find(o => o.wert === wert)?.label ?? '';
+const kreuze = (liste, wert) => SS_OPTIONEN[liste].map(o => `${o.wert === wert ? KB_AN : KB_AUS} ${o.label}`);
+const txt = v => (v == null ? '' : String(v));
+
+/**
+ * @param {object} m      Ergebnis von ssStationModell
+ * @param {object} stamm  { liegenschaft, adresse, weNummer }
+ * @returns {{ kopf: {liegenschaft, station, gebNummer, stationsart, begehung}, zeilen: object[] }}
+ */
+export function ssSteckbriefBlatt(m, stamm = {}) {
+  const st = m.station, sb = m.steckbrief || {};
+  const Z = (...zellen) => ({ art: 'zeile', zellen });
+  const L = (t, extra = {}) => ({ t, lbl: true, ...extra });
+  const W = (t, extra = {}) => ({ t, ...extra });
+  const T = (text, rechts) => ({ art: 'titel', text, ...(rechts ? { rechts } : {}) });
+  const F = (text, fotos) => ({ art: 'fotos', text, fotos: (fotos || []).filter(f => f?.dataUrl) });
+  const zeilen = [];
+  const lieg = txt(stamm.liegenschaft).trim();
+
+  zeilen.push(Z(L('Liegenschaft'), W([lieg, txt(stamm.adresse).trim()].filter(Boolean), { span: 2 }), W(txt(stamm.weNummer).trim(), { span: 2 })));
+  zeilen.push(Z(L(`Gebäude Nr. ${m.geb?.nummer || ''}`.trim()), W(optLabel('stationsart', st.stationsart.wert), { span: 4 })));
+
+  zeilen.push(T('1. MS-Station (inkl. Gebäude)'));
+  zeilen.push(F('Übersicht Trafostation, Gebäude, Stationstüren', m.gebFotos));
+  zeilen.push(Z(L('Baujahr'), W(txt(m.geb?.baujahr)), L('Umbau/Sanierung'), W(txt(st.umbauJahr), { span: 2 })));
+  zeilen.push(Z(L('MS-Ebene'), W(st.msKV ? `${String(st.msKV).replace('.', ',')} kV` : ''), L('Zählung VNB'),
+    W(st.zaehlungMoeglich ? kreuze('zaehlung', st.zaehlung) : '— (keine Übergabestation)', { span: 2 })));
+  zeilen.push(Z(L('Stationsart'), W(kreuze('stationsart', st.stationsart.wert)), W(kreuze('bauweise', st.bauweise.wert)),
+    W(kreuze('lage', st.lage.wert), { span: 2 })));
+  zeilen.push(Z(L('Anbindung an'), W(st.anbindung.length
+    ? st.anbindung.map(x => `${KB_AN} ${x.art === 'netz' ? 'Netz' : 'Stat. ' + x.label}${x.trennstelle ? ' (offene Trennstelle)' : ''}`)
+    : [`${KB_AUS} Netz`], { span: 4 })));
+  zeilen.push(Z(L('Einspeisung'), W(kreuze('einspeisung', st.einspeisung.wert).join('   '), { span: 4, mut: st.einspeisung.text })));
+  zeilen.push(Z(L('Bauart (wenn begehbar)'), W(kreuze('bauart', st.bauart.wert).join('   ') + (sb.bauartText ? ` – ${sb.bauartText}` : ''), { span: 4 })));
+
+  zeilen.push(T('2. MS-Schaltanlage'));
+  zeilen.push(F('Schaltanlage, Übersichtsplan', m.schaltanlagen.flatMap(s => s.asset.feldFotos || [])));
+  if (!m.schaltanlagen.length) zeilen.push(Z(W('', { span: 5, mut: 'keine MS-Schaltanlage erfasst' })));
+  for (const s of m.schaltanlagen) {
+    const p = s.asset.props || {};
+    const name = m.schaltanlagen.length > 1 ? s.asset.name : '';
+    zeilen.push(Z(L('Ausführung', { mut: name }), W(kreuze('saAusfuehrung', p.ausfuehrung)), L('Isolationsmedium Schaltanlage'),
+      W(kreuze('saIsolation', p.isolation), { span: 2 })));
+    zeilen.push(Z(L('Weitere Angaben'), W([`Baujahr: ${txt(s.asset.baujahr)}`, `Anz. Schaltfelder: ${txt(p.felder ?? s.felder.length)}`]),
+      W(s.felder.map(f => `Feld ${f.nr} – ${f.name || f.auto}`), { span: 3 })));
+  }
+
+  zeilen.push(T('3. Transformatoren'));
+  zeilen.push(F('Trafos, Typenschilder', m.trafos.flatMap(t => t.asset.feldFotos || [])));
+  zeilen.push(Z(L('Anzahl Trafos'), W(String(m.trafos.length), { span: 4 })));
+  // Bis zu vier Trafos nebeneinander wie in der Vorlage; darüber hinaus ein weiterer Block
+  for (let i = 0; i < Math.max(1, m.trafos.length); i += 4) {
+    const gruppe = m.trafos.slice(i, i + 4);
+    const sp = fn => [...gruppe.map(t => W(fn(t))), ...Array.from({ length: 4 - gruppe.length }, () => W(''))];
+    zeilen.push(Z(L('Bezeichnung Trafo'), ...sp(t => t.asset.name || 'Trafo')));
+    zeilen.push(Z(L('Leistungen Trafos'), ...sp(t => (t.kva ? `${t.kva} kVA` : ''))));
+    zeilen.push(Z(L('Baujahr Trafo'), ...sp(t => txt(t.asset.baujahr))));
+    zeilen.push(Z(L('Ausführung'), ...sp(t => kreuze('kuehlung', t.asset.props?.kuehlung))));
+    zeilen.push(Z(L(`rechn. wirtschaftliche Nutzungsdauer gem. VDI 2067 (${m.ndTrafo} a)`), ...sp(t => kreuze('ndStatus', t.nd?.status))));
+  }
+
+  zeilen.push(T('4. NSHV'));
+  zeilen.push(F('NSHV, Messgeräte, Abgänge', m.nshvs.flatMap(n => n.asset.feldFotos || [])));
+  if (!m.nshvs.length) zeilen.push(Z(W('', { span: 5, mut: 'keine NSHV erfasst' })));
+  for (const nv of m.nshvs) {
+    const name = m.nshvs.length > 1 ? nv.asset.name : '';
+    zeilen.push(Z(L('Baujahr:', { mut: name }), W(txt(nv.asset.baujahr)), L('Anzahl Abgänge:'), W(txt(nv.abgaenge), { span: 2 })));
+    zeilen.push(Z(L('Ausführung NS-Netz:'), W(optLabel('netzform', nv.asset.props?.netzform)), L('Anz. freie Abgänge:'), W(txt(nv.frei), { span: 2 })));
+  }
+
+  zeilen.push(T('weitere Betrachtung der Trafostation', 'Mängel, Anmerkungen'));
+  const ml = (m.maengel || []).filter(x => x && (x.feld || x.text));
+  if (ml.length) ml.forEach(x => zeilen.push(Z(W(txt(x.feld), { span: 2 }), W(txt(x.text).split('\n'), { span: 3 }))));
+  else zeilen.push(Z(W('', { span: 2, mut: 'Betrachtungsfeld (z. B. NSHV, Raumaufteilung, baulicher Zustand, Zugangsregelung)' }),
+    W('', { span: 3, mut: 'keine Feststellungen erfasst' })));
+
+  let begehung = '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(sb.begehung || ''))) {
+    const [j, mo, t] = sb.begehung.split('-');
+    begehung = `${t}.${mo}.${j}`;
+  }
+  return {
+    kopf: { liegenschaft: lieg, station: m.geb?.name || '', gebNummer: m.geb?.nummer || '',
+            stationsart: optLabel('stationsart', st.stationsart.wert), begehung },
+    zeilen,
+  };
+}
+
+/** Titel des Blatts bzw. der Anlage: „Steckbrief Trafostation Geb. 102 – Trafostation Nord" */
+export function ssSteckbriefTitel(blatt) {
+  const k = blatt.kopf;
+  const art = k.stationsart === 'Übergabestation' ? 'Übergabestation' : 'Trafostation';
+  const wer = [k.gebNummer ? `Geb. ${k.gebNummer}` : '', k.station].filter(Boolean).join(' – ');
+  return `Steckbrief ${art}${wer ? ' ' + wer : ''}`;
+}
+
+const escH = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/**
+ * Blatt als HTML-Tabelle mit Inline-Stilen (helles Papier) — für die Druckfassung (34) und die
+ * Seitenvorschau des Gutachten-Editors (21). fotos=false zeigt statt der Bilder nur deren Anzahl.
+ */
+export function ssSteckbriefHtml(blatt, { fotos = true, fussnote = true } = {}) {
+  const gruen = '#266426', rand = '1px solid #c5ccc4';
+  const zelle = z => {
+    const zeilen = (Array.isArray(z.t) ? z.t : [z.t]).map(txt);
+    const hatText = zeilen.some(Boolean);
+    const zusatz = z.mut ? `<span style="color:#7a807a;">${hatText ? ' (' + escH(z.mut) + ')' : escH(z.mut)}</span>` : '';
+    return `<td${z.span > 1 ? ` colspan="${z.span}"` : ''} style="border:${rand};padding:4px 6px;vertical-align:top;line-height:1.45;overflow-wrap:anywhere;hyphens:auto;`
+      + `${z.lbl ? 'font-weight:600;color:#333;' : ''}">${zeilen.map(escH).join('<br>') + zusatz || '&nbsp;'}</td>`;
+  };
+  const rows = blatt.zeilen.map(r => {
+    if (r.art === 'titel') {
+      const st = `background:${gruen};color:#fff;font-weight:700;padding:5px 7px;border:1px solid ${gruen};`;
+      return r.rechts ? `<tr><td colspan="2" style="${st}">${escH(r.text)}</td><td colspan="3" style="${st}">${escH(r.rechts)}</td></tr>`
+        : `<tr><td colspan="${SS_BLATT_SPALTEN}" style="${st}">${escH(r.text)}</td></tr>`;
+    }
+    if (r.art === 'fotos') {
+      const bilder = fotos && r.fotos.length
+        ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:3px;">${r.fotos.slice(0, 6).map(f =>
+            `<img src="${f.dataUrl}" style="height:110px;max-width:200px;object-fit:cover;border:1px solid #bbb;">`).join('')}</div>`
+        : `<span style="color:#7a807a;">${r.fotos.length ? r.fotos.length + ' Foto(s) aus der Begehung' : '—'}</span>`;
+      return `<tr><td colspan="${SS_BLATT_SPALTEN}" style="border:${rand};padding:4px 6px;"><b style="color:#333;">Fotos (${escH(r.text)})</b><br>${bilder}</td></tr>`;
+    }
+    return `<tr style="page-break-inside:avoid;">${r.zellen.map(zelle).join('')}</tr>`;
+  }).join('');
+  return `<table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:inherit;">`
+    + `<colgroup><col style="width:24%"><col style="width:19%"><col style="width:19%"><col style="width:19%"><col style="width:19%"></colgroup>${rows}</table>`
+    + (fussnote ? `<div style="margin-top:8px;font-size:.85em;color:#555;border-top:1px solid #c5ccc4;padding-top:4px;">Datum der Begehung: ${escH(blatt.kopf.begehung || '__.__.____')}</div>` : '');
 }

@@ -4,11 +4,17 @@
 // Word-Export lesen dasselbe Modell.
 //
 // Aufbau:
-//   dok     = { version, kapitel: [kapitel, …] }
+//   dok     = { version, kapitel: [kapitel, …], deckblatt, anlagen: [anlage, …] }
 //   kapitel = { id, ebene: 1..3, titel, bloecke: [block, …] }
 //   block   = { id, typ: 'text',  text }
 //           | { id, typ: 'figur', figurId, layout: 'reduziert'|'voll', kennzahlen, unterschrift }
 //           | { id, typ: 'bild',  svg, breite, hoehe, unterschrift, einstellungen }
+//   anlage  = { id, typ: 'stationssteckbrief', gebaeudeId }
+//
+// Anlagen stehen hinter dem letzten Kapitel, jede auf einer eigenen Seite, nummeriert
+// „Anlage I, II, …" in Listenreihenfolge (wie die Kapitelnummern nie gespeichert). Eine
+// Stations-Anlage trägt nur das Gebäude — den Inhalt liest der Editor beim Zeichnen bzw.
+// Exportieren live aus dem Netzmodell (lib/stations-steckbrief.js).
 //
 // 'bild' ist eine fertig gezeichnete, fremd erzeugte Grafik (z. B. der Vektor-Lageplan aus
 // 18-liegenschaftsbilder.js) — anders als 'figur' liest sie keine Live-Daten über einen
@@ -177,7 +183,73 @@ export function gdNormalisieren(input) {
     };
   });
   glaetteEbenen(kapitel);
-  return { version: GUTACHTEN_DOK_VERSION, kapitel, deckblatt: gdNormDeckblatt(input.deckblatt) };
+  return { version: GUTACHTEN_DOK_VERSION, kapitel, deckblatt: gdNormDeckblatt(input.deckblatt), anlagen: normAnlagen(input.anlagen, ids) };
+}
+
+export const GUTACHTEN_ANLAGEN_TYPEN = ['stationssteckbrief'];
+
+function normAnlagen(liste, ids = new Set()) {
+  const gebSchon = new Set();
+  return (Array.isArray(liste) ? liste : []).filter(istObjekt).map(a => {
+    if (!GUTACHTEN_ANLAGEN_TYPEN.includes(a.typ) || a.gebaeudeId == null || a.gebaeudeId === '') return null;
+    const geb = String(a.gebaeudeId);
+    if (gebSchon.has(geb)) return null;   // je Station höchstens eine Anlage
+    gebSchon.add(geb);
+    let id = alsText(a.id).replace(/[^\w-]/g, '');
+    if (!id || ids.has(id)) id = gdId('a');
+    ids.add(id);
+    return { id, typ: a.typ, gebaeudeId: a.gebaeudeId };
+  }).filter(Boolean);
+}
+
+/** Römische Ziffer (1 → I, 4 → IV, 12 → XII) — Anlagennummern wie in der Vorlage. */
+export function gdRoemisch(n) {
+  let x = Math.max(0, Math.floor(Number(n) || 0)), out = '';
+  for (const [w, z] of [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']]) {
+    while (x >= w) { out += z; x -= w; }
+  }
+  return out;
+}
+
+/** Anlagennummern ("I", "II", …) in Listenreihenfolge. */
+export function gdAnlagenNummern(anlagen) {
+  return (anlagen || []).map((_, i) => gdRoemisch(i + 1));
+}
+
+/**
+ * Stations-Steckbriefe für die übergebenen Gebäude anlegen, soweit noch keiner existiert.
+ * Neue kommen hinter den letzten vorhandenen Steckbrief (sonst ans Ende), in der Reihenfolge von
+ * gebaeudeIds. Ergebnis: die neu angelegten Anlagen.
+ */
+export function gdStationsAnlagenErgaenzen(dok, gebaeudeIds = []) {
+  if (!Array.isArray(dok.anlagen)) dok.anlagen = [];
+  const vorhanden = new Set(dok.anlagen.filter(a => a.typ === 'stationssteckbrief').map(a => String(a.gebaeudeId)));
+  const neu = [];
+  for (const g of gebaeudeIds) {
+    if (g == null || vorhanden.has(String(g))) continue;
+    vorhanden.add(String(g));
+    neu.push({ id: gdId('a'), typ: 'stationssteckbrief', gebaeudeId: g });
+  }
+  let pos = dok.anlagen.length;
+  for (let i = dok.anlagen.length - 1; i >= 0; i--) if (dok.anlagen[i].typ === 'stationssteckbrief') { pos = i + 1; break; }
+  dok.anlagen.splice(pos, 0, ...neu);
+  return neu;
+}
+
+export function gdAnlageLoeschen(dok, id) {
+  const i = (dok.anlagen || []).findIndex(a => a.id === id);
+  if (i < 0) return false;
+  dok.anlagen.splice(i, 1);
+  return true;
+}
+
+export function gdAnlageVerschieben(dok, id, richtung) {
+  const L = dok.anlagen || [];
+  const i = L.findIndex(a => a.id === id);
+  const j = i + (richtung < 0 ? -1 : 1);
+  if (i < 0 || j < 0 || j >= L.length) return false;
+  [L[i], L[j]] = [L[j], L[i]];
+  return true;
 }
 
 /** Automatische Kapitelnummern ("1", "1.2", "3.1.2") in Listenreihenfolge. */
@@ -239,7 +311,7 @@ export function gdStandardDokument(katalog = []) {
     if (idx < 0) { nichtZugeordnet.push(f.id); continue; }
     kapitel[idx].bloecke.push(gdNeuerFigurBlock(f.id));
   }
-  return { dok: { version: GUTACHTEN_DOK_VERSION, kapitel, deckblatt: gdNormDeckblatt() }, nichtZugeordnet };
+  return { dok: { version: GUTACHTEN_DOK_VERSION, kapitel, deckblatt: gdNormDeckblatt(), anlagen: [] }, nichtZugeordnet };
 }
 
 /**
@@ -259,7 +331,7 @@ export function gdStandardDokument(katalog = []) {
  * Die Eingabe bleibt unverändert.
  */
 export function gdMitStandardAbgleichen(dok, katalog = [], standard = GUTACHTEN_STANDARD_GLIEDERUNG) {
-  const basis = gdNormalisieren(dok) || { version: GUTACHTEN_DOK_VERSION, kapitel: [], deckblatt: gdNormDeckblatt() };
+  const basis = gdNormalisieren(dok) || { version: GUTACHTEN_DOK_VERSION, kapitel: [], deckblatt: gdNormDeckblatt(), anlagen: [] };
   const std = standard.map((s, idx) => ({ ebene: s.ebene, titel: s.titel, idx }));
   const stdNummern = gdKapitelNummern(std);
   const dokBaum = kapitelBaum(basis.kapitel);
@@ -339,7 +411,7 @@ export function gdMitStandardAbgleichen(dok, katalog = [], standard = GUTACHTEN_
 }
 
 export function gdLeeresDokument() {
-  return { version: GUTACHTEN_DOK_VERSION, kapitel: [{ id: gdId('k'), ebene: 1, titel: '', bloecke: [] }], deckblatt: gdNormDeckblatt() };
+  return { version: GUTACHTEN_DOK_VERSION, kapitel: [{ id: gdId('k'), ebene: 1, titel: '', bloecke: [] }], deckblatt: gdNormDeckblatt(), anlagen: [] };
 }
 
 /** Index-Bereich [start, ende) eines Kapitels samt aller Unterkapitel. */

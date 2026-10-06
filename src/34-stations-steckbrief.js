@@ -18,6 +18,7 @@ import { map } from './02b-gebaeude.js';
 import { showHint } from './03c-gebaeude-io.js';
 import {
   ssStationModell, ssStationsGebaeude, ssStationsLabel, ssSetzeStationsfeld,
+  ssSteckbriefBlatt, ssSteckbriefTitel, ssSteckbriefHtml,
   SS_OPTIONEN, SS_MS_EBENEN, SS_ND_TRAFO_VORGABE,
 } from './lib/stations-steckbrief.js';
 
@@ -533,106 +534,34 @@ function _weitere() {
 }
 
 // ── Druckfassung im Layout der Vorlage ───────────────────────────────────────
+// Zeilen aus lib/stations-steckbrief.js (ssSteckbriefBlatt) — dieselben, die das Gutachten als
+// Anlage zeigt und nach Word schreibt; hier nur Kopfzeile und Druckrahmen.
 
-const _kb = (liste, wert) => SS_OPTIONEN[liste].map(o => `${o.wert === wert ? '☒' : '☐'} ${_esc(o.label)}`).join('<br>');
-
-function _druckFotos(liste) {
-  const f = (liste || []).filter(x => x?.dataUrl).slice(0, 6);
-  return f.length ? `<div class="fotos">${f.map(x => `<img src="${x.dataUrl}">`).join('')}</div>` : '<div class="leer">—</div>';
-}
-
-function _druckHtml(m) {
-  const st = m.station;
-  const lieg = String(window.pdKaserneName || '').trim();
-  const adr = String(window.pdLiegenschaftAdresse || '').trim();
-  const we = String(window.pdWeNummer || '').trim();
-  const g = _geb();
-  const datum = m.steckbrief.begehung ? new Date(m.steckbrief.begehung).toLocaleDateString('de-DE') : '__.__.____';
-  const titel = (nr, t) => `<tr class="titel"><td colspan="5">${nr ? nr + '. ' : ''}${t}</td></tr>`;
-  const fotoZeile = (t, fotos) => `<tr><td colspan="5"><div class="lbl">Fotos (${t})</div>${_druckFotos(fotos)}</td></tr>`;
-  const anb = st.anbindung.map(x => `☒ ${_esc(x.art === 'netz' ? 'Netz' : 'Stat. ' + x.label)}`).join('<br>') || '☐ Netz';
-
-  let h = `<table class="kopf"><tr><td class="anl">Anlage ?</td><td><b>${_esc(lieg || 'Liegenschaftsbezeichnung')}</b></td>
-    <td><b>${_esc(m.geb.nummer ? 'Geb. ' + m.geb.nummer : '')}${m.geb.nummer && m.geb.name ? ' – ' : ''}${_esc(m.geb.name)}</b></td></tr></table>`;
-  h += `<table class="blatt">
-    <tr><td class="lbl">Liegenschaft</td><td colspan="2"><b>${_esc(lieg)}</b><br>${_esc(adr)}</td><td colspan="2">${_esc(we)}</td></tr>
-    <tr><td class="lbl">Gebäude Nr. ${_esc(m.geb.nummer)}</td><td colspan="4">${_esc(_label('stationsart', st.stationsart.wert) || '')}</td></tr>
-    ${titel(1, 'MS-Station (inkl. Gebäude)')}
-    ${fotoZeile('Übersicht Trafostation, Gebäude, Stationstüren', g?.feldFotos)}
-    <tr><td class="lbl">Baujahr</td><td>${_esc(m.geb.baujahr ?? '')}</td><td class="lbl">Umbau/Sanierung</td><td colspan="2">${_esc(st.umbauJahr ?? '')}</td></tr>
-    <tr><td class="lbl">MS-Ebene</td><td>${st.msKV ? st.msKV + ' kV' : ''}</td><td class="lbl">Zählung VNB</td><td colspan="2">${st.zaehlungMoeglich ? _kb('zaehlung', st.zaehlung) : '—'}</td></tr>
-    <tr><td class="lbl">Stationsart</td><td>${_kb('stationsart', st.stationsart.wert)}</td><td>${_kb('bauweise', st.bauweise.wert)}</td><td colspan="2">${_kb('lage', st.lage.wert)}</td></tr>
-    <tr><td class="lbl">Anbindung an</td><td colspan="4">${anb}</td></tr>
-    <tr><td class="lbl">Einspeisung</td><td colspan="4">${_kb('einspeisung', st.einspeisung.wert).replace(/<br>/g, ' &nbsp; ')}${st.einspeisung.text ? ` <span class="mut">(${_esc(st.einspeisung.text)})</span>` : ''}</td></tr>
-    <tr><td class="lbl">Bauart (wenn begehbar)</td><td colspan="4">${_kb('bauart', st.bauart.wert).replace(/<br>/g, ' &nbsp; ')}${m.steckbrief.bauartText ? ' – ' + _esc(m.steckbrief.bauartText) : ''}</td></tr>`;
-
-  h += titel(2, 'MS-Schaltanlage');
-  h += fotoZeile('Schaltanlage, Übersichtsplan', m.schaltanlagen.flatMap(s => s.asset.feldFotos || []));
-  if (!m.schaltanlagen.length) h += `<tr><td colspan="5" class="mut">keine MS-Schaltanlage erfasst</td></tr>`;
-  m.schaltanlagen.forEach(s => {
-    const p = s.asset.props || {};
-    h += `<tr><td class="lbl">Ausführung${m.schaltanlagen.length > 1 ? '<br><span class="mut">' + _esc(s.asset.name) + '</span>' : ''}</td><td>${_kb('saAusfuehrung', p.ausfuehrung)}</td>
-      <td class="lbl">Isolationsmedium Schaltanlage</td><td colspan="2">${_kb('saIsolation', p.isolation)}</td></tr>
-      <tr><td class="lbl">Weitere Angaben</td><td>Baujahr: ${_esc(s.asset.baujahr ?? '')}<br>Anz. Schaltfelder: ${_esc(p.felder ?? s.felder.length)}</td>
-      <td colspan="3">${s.felder.map(f => `Feld ${f.nr} – ${_esc(f.name || f.auto)}`).join('<br>')}</td></tr>`;
+function _blatt(m) {
+  return ssSteckbriefBlatt(m, {
+    liegenschaft: String(window.pdKaserneName || ''), adresse: String(window.pdLiegenschaftAdresse || ''),
+    weNummer: String(window.pdWeNummer || ''),
   });
-
-  h += titel(3, 'Transformatoren');
-  h += fotoZeile('Trafos, Typenschilder', m.trafos.flatMap(t => t.asset.feldFotos || []));
-  const tr = m.trafos.slice(0, 4);
-  const zelle = fn => tr.map(fn).map(x => `<td>${x}</td>`).join('') + '<td></td>'.repeat(Math.max(0, 4 - tr.length));
-  h += `<tr><td class="lbl">Anzahl Trafos</td><td colspan="4">${m.trafos.length}</td></tr>
-    <tr><td class="lbl">Bezeichnung Trafo</td>${zelle(t => _esc(t.asset.name))}</tr>
-    <tr><td class="lbl">Leistungen Trafos</td>${zelle(t => (t.kva ? t.kva + ' kVA' : ''))}</tr>
-    <tr><td class="lbl">Baujahr Trafo</td>${zelle(t => _esc(t.asset.baujahr ?? ''))}</tr>
-    <tr><td class="lbl">Ausführung</td>${zelle(t => _kb('kuehlung', t.asset.props?.kuehlung))}</tr>
-    <tr><td class="lbl">rechn. wirtschaftliche Nutzungsdauer gem. VDI 2067 (${m.ndTrafo} a)</td>${zelle(t => _kb('ndStatus', t.nd?.status))}</tr>`;
-  if (m.trafos.length > 4) h += `<tr><td colspan="5" class="mut">+ ${m.trafos.length - 4} weitere Trafos (siehe Tool)</td></tr>`;
-
-  h += titel(4, 'NSHV');
-  h += fotoZeile('NSHV, Messgeräte, Abgänge', m.nshvs.flatMap(n => n.asset.feldFotos || []));
-  if (!m.nshvs.length) h += `<tr><td colspan="5" class="mut">keine NSHV erfasst</td></tr>`;
-  m.nshvs.forEach(nv => {
-    const nf = SS_OPTIONEN.netzform.find(o => o.wert === nv.asset.props?.netzform)?.label || '';
-    h += `<tr><td class="lbl">Baujahr:${m.nshvs.length > 1 ? '<br><span class="mut">' + _esc(nv.asset.name) + '</span>' : ''}</td><td>${_esc(nv.asset.baujahr ?? '')}</td>
-      <td class="lbl">Anzahl Abgänge:</td><td colspan="2">${_esc(nv.abgaenge ?? '')}</td></tr>
-      <tr><td class="lbl">Ausführung NS-Netz:</td><td>${_esc(nf)}</td><td class="lbl">Anz. freie Abgänge:</td><td colspan="2">${_esc(nv.frei ?? '')}</td></tr>`;
-  });
-
-  h += `<tr class="titel"><td colspan="2">weitere Betrachtung der Trafostation</td><td colspan="3">Mängel, Anmerkungen</td></tr>`;
-  const ml = m.maengel.filter(x => x.feld || x.text);
-  h += ml.length
-    ? ml.map(x => `<tr><td colspan="2">${_esc(x.feld)}</td><td colspan="3" class="pre">${_esc(x.text)}</td></tr>`).join('')
-    : `<tr><td colspan="2" class="mut">Betrachtungsfeld (z.B. NSHV, Raumaufteilung, baulicher Zustand, Zugangsregelung usw.)</td><td colspan="3" class="mut">(Feststellungen)</td></tr>`;
-  h += `</table><div class="fuss">Datum der Begehung: ${_esc(datum)}</div>`;
-  return h;
 }
 
 export function ssbDrucken() {
   if (!_modell) return;
-  const m = _modell;
+  const blatt = _blatt(_modell);
+  const k = blatt.kopf;
   const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
-<title>Steckbrief ${_esc(m.geb.nummer ? 'Geb. ' + m.geb.nummer + ' ' : '')}${_esc(m.geb.name)}</title>
+<title>${_esc(ssSteckbriefTitel(blatt))}</title>
 <style>
   @page { size: A4 portrait; margin: 16mm 14mm 18mm; }
   body { font-family: Arial, "Segoe UI", sans-serif; font-size: 9pt; color: #1a1a1a; margin: 0; }
-  table { width: 100%; border-collapse: collapse; }
-  .kopf td { border-bottom: 1.5pt solid #3b8a3e; padding: 2mm 1mm; font-size: 9.5pt; }
-  .kopf .anl { width: 22mm; color: #3b8a3e; font-weight: 700; }
-  .blatt { margin-top: 4mm; table-layout: fixed; }
-  .blatt td { border: 0.6pt solid #9aa59a; padding: 1.4mm 1.8mm; vertical-align: top; line-height: 1.45; }
-  .blatt td.lbl, .lbl { color: #333; font-weight: 600; }
-  tr.titel td { background: #3b8a3e; color: #fff; font-weight: 700; font-size: 10pt; padding: 1.8mm; }
-  tr { page-break-inside: avoid; }
-  .fotos { display: flex; flex-wrap: wrap; gap: 2mm; margin-top: 1mm; }
-  .fotos img { height: 32mm; max-width: 58mm; object-fit: cover; border: 0.5pt solid #bbb; }
-  .leer, .mut { color: #777; }
-  .pre { white-space: pre-wrap; }
-  .fuss { margin-top: 5mm; font-size: 8.5pt; color: #333; border-top: 0.6pt solid #9aa59a; padding-top: 1.5mm; }
+  .kopf { width: 100%; border-collapse: collapse; margin-bottom: 4mm; }
+  .kopf td { border-bottom: 1.5pt solid #266426; padding: 2mm 1mm; font-size: 9.5pt; }
+  .kopf .anl { width: 22mm; color: #266426; font-weight: 700; }
   .druckleiste { margin: 0 0 4mm; } @media print { .druckleiste { display: none; } }
 </style></head><body>
 <div class="druckleiste"><button onclick="window.print()">🖨 Drucken / Als PDF speichern</button></div>
-${_druckHtml(m)}
+<table class="kopf"><tr><td class="anl">Anlage ?</td><td><b>${_esc(k.liegenschaft || 'Liegenschaftsbezeichnung')}</b></td>
+  <td><b>${_esc([k.gebNummer ? 'Geb. ' + k.gebNummer : '', k.station].filter(Boolean).join(' – '))}</b></td></tr></table>
+${ssSteckbriefHtml(blatt)}
 </body></html>`;
   const win = window.open('', '_blank');
   if (!win) { showHint('⚠ Popup blockiert — bitte für diese Seite erlauben.'); return; }
