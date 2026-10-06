@@ -11,6 +11,11 @@
 // Reihenfolge `folge` ist die Zeichenreihenfolge; Verbindungen zwischen nicht benachbarten
 // Stationen der Folge stehen in `innen` mit i < j, die Anbindung an die Übergabe in `wurzel`.
 //
+// Hängt eine Gruppe an ZWEI Übergabestationen, ist sie kein Abgang einer Übergabe, sondern eine Linie
+// zwischen beiden (`linien`): Hauptweg von Übergabe `von` nach `bis`, Anbindungen in `wurzel` bzw.
+// `wurzelB`. Die offene Trennstelle am Kabel teilt die Linie; `speisung` sagt je Station, über welche
+// Übergabe sie im Normalbetrieb versorgt wird ('A' | 'B' | 'beide' = gekoppelt | null).
+//
 // Rein und DOM-frei — der Renderer in 17-gutachten-grafik.js liest nur das Ergebnis.
 
 const MS_TYPEN = new Set(['NAP', 'Schaltanlage', 'Trafo']);
@@ -284,7 +289,7 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
     return weg[0] === von ? weg : [von];
   };
 
-  const abgangAus = (keys, wurzel) => {
+  const abgangAus = (keys, wurzel, { ohneLeiter = false } = {}) => {
     const set = new Set(keys);
     const innenV = verbListe.filter(v => set.has(v.a) && set.has(v.b));
     const grad = new Map(keys.map(k => [k, 0]));
@@ -333,9 +338,132 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
     const wurzelAnb = wurzelV.map(v => ({ i: idx.get(v.a === wurzel ? v.b : v.a), kante: v })).sort((p, q) => p.i - q.i);
     const trennstelleErfasst = innenV.some(v => v.trennstelle) || wurzelV.some(v => v.trennstelle)
       || folge.some(k => stationen.get(k).trennstelle);
-    return { art, folge, innen, wurzel: wurzelAnb, trennstelleErfasst, abzweige: ringWeg ? n - ringWeg.length : 0 };
+    // Leiter: die Felder oben bleiben als Rückfall (klassische Zeichnung, Zählungen) erhalten
+    const leiter = wurzel && !ohneLeiter && art === 'vermascht' ? leiterAus(keys, wurzel) : null;
+    return { art: leiter ? 'leiter' : art, folge, innen, wurzel: wurzelAnb, trennstelleErfasst,
+             abzweige: ringWeg ? n - ringWeg.length : 0, leiter };
   };
 
+  // Verbindungen zwischen einer Übergabestation und einer Stationsgruppe
+  const anbindungen = (r, set) => verbListe.filter(v => (v.a === r && set.has(v.b)) || (v.b === r && set.has(v.a)));
+  const andererEnde = (v, k) => (v.a === k ? v.b : v.a);
+  const wurzelnVon = keys => {
+    const set = new Set(keys);
+    return nachOrdnung(wurzelKeys.filter(r => anbindungen(r, set).length));
+  };
+
+  // Linie zwischen zwei Übergabestationen: Hauptweg von der ersten zur zweiten Anbindung, alles
+  // andere hängt als Abzweig daran. Mehr als eine Anbindung je Seite oder Maschen → vermascht.
+  const linieAus = (keys, ws) => {
+    const [A, B] = ws;
+    const set = new Set(keys);
+    const innenV = verbListe.filter(v => set.has(v.a) && set.has(v.b));
+    const vA = anbindungen(A, set), vB = anbindungen(B, set);
+    const anA = nachOrdnung([...new Set(vA.map(v => andererEnde(v, A)))]);
+    const anB = nachOrdnung([...new Set(vB.map(v => andererEnde(v, B)))]);
+    const n = keys.length;
+    const linie = ws.length === 2 && innenV.length === n - 1 && anA.length === 1 && anB.length === 1;
+    const haupt = baumWeg(anA[0], anB[0], set);
+
+    const folge = [...haupt];
+    const besucht = new Set(haupt);
+    const tiefe = k => {
+      besucht.add(k);
+      folge.push(k);
+      for (const nb of nachOrdnung(adj.get(k).map(x => x.nb).filter(x => set.has(x) && !besucht.has(x)))) {
+        if (!besucht.has(nb)) tiefe(nb);
+      }
+    };
+    for (const k of haupt) {
+      for (const nb of nachOrdnung(adj.get(k).map(x => x.nb).filter(x => set.has(x) && !besucht.has(x)))) {
+        if (!besucht.has(nb)) tiefe(nb);
+      }
+    }
+    for (const k of nachOrdnung([...keys])) if (!besucht.has(k)) tiefe(k);
+
+    // Speisung im Normalbetrieb: von jeder Übergabe aus, ohne offene Trennstellen am Kabel zu überqueren
+    const gespeist = (anb, r) => {
+      const seen = new Set(anb.filter(v => !v.trennstelle).map(v => andererEnde(v, r)));
+      const q = [...seen];
+      while (q.length) {
+        const k = q.shift();
+        for (const { nb, v } of adj.get(k)) {
+          if (!set.has(nb) || seen.has(nb) || v.trennstelle) continue;
+          seen.add(nb);
+          q.push(nb);
+        }
+      }
+      return seen;
+    };
+    const vonA = gespeist(vA, A), vonB = gespeist(vB, B);
+    const speisung = folge.map(k => (vonA.has(k) && vonB.has(k) ? 'beide' : vonA.has(k) ? 'A' : vonB.has(k) ? 'B' : null));
+
+    const idx = new Map(folge.map((k, i) => [k, i]));
+    const innen = innenV.map(v => {
+      const i = idx.get(v.a), j = idx.get(v.b);
+      return { i: Math.min(i, j), j: Math.max(i, j), kante: v };
+    }).sort((p, q) => (p.i - q.i) || (p.j - q.j));
+    const anb = (vs, r) => vs.map(v => ({ i: idx.get(andererEnde(v, r)), kante: v })).sort((p, q) => p.i - q.i);
+    const tsKabel = innenV.some(v => v.trennstelle) || vA.some(v => v.trennstelle) || vB.some(v => v.trennstelle);
+    const tsStation = folge.some(k => stationen.get(k).trennstelle);
+    return {
+      art: linie ? 'linie' : 'vermascht', von: A, bis: B, weitere: ws.slice(2),
+      folge, haupt: haupt.length, abzweige: n - haupt.length,
+      innen, wurzel: anb(vA, A), wurzelB: anb(vB, B),
+      speisung, gekoppelt: speisung.includes('beide'),
+      trennstelleErfasst: tsKabel || tsStation, trennstelleNurStation: !tsKabel && tsStation,
+    };
+  };
+
+  const kupplungAus = (v, A, B) => ({
+    art: 'kopplung', von: A, bis: B, weitere: [], folge: [], haupt: 0, abzweige: 0, innen: [], wurzel: [], wurzelB: [],
+    direkt: v, speisung: [], gekoppelt: !v.trennstelle, trennstelleErfasst: !!v.trennstelle, trennstelleNurStation: false,
+  });
+
+  // Leiter unter EINER Übergabe: zwei Knotenstationen (je ≥ 3 MS-Nachbarn, die Übergabe mitgezählt), zwischen denen
+  // mindestens zwei Linien verlaufen. Die Knoten hängen direkt an der Übergabe (Zubringer), oder die Übergabe ist
+  // selbst der linke Knoten. Gruppen, die nur an einem Knoten hängen, sind Stiche. Passt das Muster nicht → null.
+  const leiterAus = (keys, w) => {
+    const set = new Set(keys);
+    const nachbarnIn = k => new Set(adj.get(k).map(x => x.nb).filter(nb => set.has(nb) || nb === w));
+    const knoten = keys.filter(k => nachbarnIn(k).size >= 3);
+    const anW = new Set(adj.get(w).map(x => x.nb).filter(nb => set.has(nb)));
+    let A, B;
+    if (knoten.length === 2) {
+      [A, B] = nachOrdnung([...knoten]);
+      if (!anW.has(A) && anW.has(B)) [A, B] = [B, A];
+      if (!anW.has(A)) return null;
+    } else if (knoten.length === 1 && anW.size >= 2) {
+      A = w; B = knoten[0];
+    } else return null;
+
+    const restSet = new Set(keys.filter(k => k !== A && k !== B));
+    const gesehen = new Set();
+    const linienL = [], stiche = [];
+    for (const k of nachOrdnung([...restSet])) {
+      if (gesehen.has(k)) continue;
+      const grp = [k];
+      gesehen.add(k);
+      for (let i = 0; i < grp.length; i++) {
+        for (const { nb } of adj.get(grp[i])) if (restSet.has(nb) && !gesehen.has(nb)) { gesehen.add(nb); grp.push(nb); }
+      }
+      const gs = new Set(grp);
+      if (A !== w && anbindungen(w, gs).length) return null;   // Zubringer mit Stationen dazwischen
+      const nA = anbindungen(A, gs).length, nB = anbindungen(B, gs).length;
+      if (nA === 1 && nB === 1) linienL.push(linieAus(grp, [A, B]));
+      else if (nA + nB === 1) stiche.push({ seite: nA ? 'A' : 'B', ...abgangAus(grp, nA ? A : B, { ohneLeiter: true }) });
+      else return null;
+    }
+    // Direktes Kabel zwischen den Knoten = Kupplung; ist die Übergabe selbst der linke Knoten, ist es der Zubringer
+    if (A !== w) {
+      verbListe.filter(v => (v.a === A && v.b === B) || (v.a === B && v.b === A)).forEach(v => linienL.push(kupplungAus(v, A, B)));
+    }
+    if (linienL.length < 2) return null;
+    const zubringer = r => (r === w ? null : verbListe.find(v => (v.a === w && v.b === r) || (v.b === w && v.a === r)) || null);
+    return { links: A === w ? null : A, rechts: B, zubringer: [zubringer(A), zubringer(B)], linien: linienL, stiche };
+  };
+
+  const linien = [];
   const wurzeln = wurzelKeys.map(w => {
     const abgaenge = [];
     const nbs = nachOrdnung(adj.get(w).map(x => x.nb).filter(nb => !wurzelSet.has(nb)));
@@ -343,11 +471,22 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
       if (zugeordnet.has(nb)) continue;
       const keys = komponente(nb);
       keys.forEach(k => zugeordnet.add(k));
-      abgaenge.push(abgangAus(keys, w));
+      const ws = wurzelnVon(keys);
+      if (ws.length >= 2) linien.push(linieAus(keys, ws));
+      else abgaenge.push(abgangAus(keys, w));
     }
     const kopplungen = verbListe.filter(v => (v.a === w && wurzelSet.has(v.b)) || (v.b === w && wurzelSet.has(v.a)));
     return { key: w, abgaenge, kopplungen };
   });
+  // Direkte Kabel zwischen zwei Übergabestationen: Linie ohne Stationen
+  const rangW = new Map(wurzelKeys.map((k, i) => [k, i]));
+  for (const v of verbListe) {
+    if (!wurzelSet.has(v.a) || !wurzelSet.has(v.b)) continue;
+    const [A, B] = rangW.get(v.a) < rangW.get(v.b) ? [v.a, v.b] : [v.b, v.a];
+    linien.push(kupplungAus(v, A, B));
+  }
+  linien.sort((p, q) => (rangW.get(p.von) - rangW.get(q.von)) || (rangW.get(p.bis) - rangW.get(q.bis))
+    || ((p.art === 'kopplung' ? 1 : 0) - (q.art === 'kopplung' ? 1 : 0)));
 
   // Stationen ohne MS-Verbindung zu einer Übergabestation (Lücke im Modell oder eigener Anschluss)
   const ohneNap = [];
@@ -364,6 +503,22 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
   else if (!wurzelKeys.length) hinweise.push('Kein Netzanschlusspunkt (NAP) im Modell — die Übergabestation fehlt.');
   const ringeOhneTs = wurzeln.flatMap(w => w.abgaenge).filter(a => a.art === 'ring' && !a.trennstelleErfasst).length;
   if (ringeOhneTs) hinweise.push(`${ringeOhneTs === 1 ? 'Ein Ring' : ringeOhneTs + ' Ringe'} ohne erfasste offene Trennstelle.`);
+  const leiterLinien = wurzeln.flatMap(w => w.abgaenge).filter(a => a.leiter).flatMap(a => a.leiter.linien);
+  const leiterOhneTs = leiterLinien.filter(l => l.gekoppelt && l.art !== 'kopplung').length;
+  if (leiterOhneTs) {
+    hinweise.push(`${leiterOhneTs === 1 ? 'Eine Linie' : leiterOhneTs + ' Linien'} zwischen zwei Knotenstationen ohne erfasste offene Trennstelle am Kabel.`);
+  }
+  const nrW = k => wurzelKeys.indexOf(k) + 1;
+  let linieNr = 0;
+  linien.forEach(l => {
+    const wer = l.art === 'kopplung' ? `Die direkte Kupplung zwischen NAP ${nrW(l.von)} und NAP ${nrW(l.bis)}`
+      : `Linie ${++linieNr} zwischen NAP ${nrW(l.von)} und NAP ${nrW(l.bis)}`;
+    if (l.weitere.length) hinweise.push(`${wer} berührt noch ${l.weitere.length === 1 ? 'eine weitere Übergabestation' : l.weitere.length + ' weitere Übergabestationen'} — vereinfacht dargestellt.`);
+    if (!l.gekoppelt) return;
+    hinweise.push(l.trennstelleNurStation
+      ? `${wer}: Trennstelle nur an einer Schaltanlage erfasst — für die Speiserichtung am offenen Kabelabschnitt setzen.`
+      : `${wer} ohne offene Trennstelle — beide Netzanschlüsse wären über die Liegenschaft gekoppelt.`);
+  });
   const ohneNapN = ohneNap.reduce((s, a) => s + a.folge.length, 0);
   if (ohneNapN && wurzelKeys.length) {
     hinweise.push(`${ohneNapN === 1 ? 'Eine Station' : ohneNapN + ' Stationen'} ohne MS-Verbindung zum Netzanschlusspunkt.`);
@@ -380,11 +535,13 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
     kva: trafos.reduce((s, t) => s + (t.kva > 0 ? t.kva : 0), 0),
     ringe: wurzeln.reduce((s, w) => s + w.abgaenge.filter(a => a.art === 'ring').length, 0),
     abgaenge: wurzeln.reduce((s, w) => s + w.abgaenge.length, 0),
+    // Linien zwischen zwei NAP und zwischen den Knotenstationen einer Leiter
+    linien: [...linien, ...leiterLinien].filter(l => l.art !== 'kopplung').length,
     msLaengeM: verbListe.reduce((s, v) => s + v.laengeM, 0),
     napKV: stationsListe.find(s => s.hatNap && s.napKV > 0)?.napKV ?? null,
     zieljahr: mitPlanung ? (Number.isFinite(zj) ? zj : Math.max(...planJahre.filter(Number.isFinite), -Infinity)) : null,
   };
   if (kennzahlen.zieljahr === -Infinity) kennzahlen.zieljahr = null;
 
-  return { stationen: Object.fromEntries(stationen), verbindungen: verbListe, wurzeln, ohneNap, hinweise, kennzahlen };
+  return { stationen: Object.fromEntries(stationen), verbindungen: verbListe, wurzeln, linien, ohneNap, hinweise, kennzahlen };
 }
