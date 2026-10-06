@@ -34,6 +34,7 @@ import { getElSlpProfiles, getElSlpGruppen } from './13k-elslp-registry.js';
 import { computeWindYield, calcWindLwaAuto, computeWindScenarios, windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
 import { toggleDrawWindGebiet, clearWindGebiet } from './02c-karte-werkzeuge.js';
 import { SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
+import { SS_STATIONS_TYPEN, ssIstStationsGebaeude, ssStationsGebaeude, ssStationsLabel } from './lib/stations-steckbrief.js';
 
 // Inspector-Slot sitzt im Elektro-Tab der rechten Sidebar
 function getPanel() { return document.getElementById('sb-asset-inspector-slot'); }
@@ -96,6 +97,28 @@ export function renderSidebarAssetList() {
   );
 
   let html = '';
+  // Stationen (Gebäude mit NAP/Schaltanlage/Trafo) — öffnen den Stations-Steckbrief
+  const stationen = ssStationsGebaeude(items, window.gebaeude || []);
+  if (stationen.length) {
+    const collapsed = !!_groupCollapsed['_stationen'];
+    const rows = stationen.map(g => {
+      const n = items.filter(a => String(a.buildingId) === String(g.id) && a.type === 'Trafo').length;
+      return `<div class="sb-asset-row" data-station-geb="${esc(g.id)}" title="Stations-Steckbrief öffnen">
+        <span class="sb-asset-row-icon" style="background:#43a047;">📋</span>
+        <span class="sb-asset-row-name">${esc(ssStationsLabel(g))}</span>
+        <span style="margin-left:auto;font-size:9px;color:var(--muted);flex-shrink:0;">${n ? n + ' Trafo' + (n > 1 ? 's' : '') : ''}</span>
+      </div>`;
+    }).join('');
+    html += `<div class="sb-asset-group">
+      <div class="sb-asset-group-hdr${collapsed ? ' is-collapsed' : ''}" data-group-type="_stationen">
+        <span class="sb-asset-group-icon" style="color:#66bb6a;">📋</span>
+        <span class="sb-asset-group-label">Stationen</span>
+        <span class="sb-asset-group-count">${stationen.length}</span>
+        <span class="sb-asset-group-chevron">▾</span>
+      </div>
+      <div class="sb-asset-group-rows${collapsed ? ' is-collapsed' : ''}">${rows}</div>
+    </div>`;
+  }
   for (const type of sortedTypes) {
     const cfg = ASSET_CFG[type];
     const typeItems = byType.get(type);
@@ -178,6 +201,14 @@ export function renderSidebarAssetList() {
     row.addEventListener('click', () => {
       const a = ASSETS.items.find(x => x.id === row.dataset.assetId);
       if (a) openAssetInspector(a);
+    });
+  });
+
+  // Klick-Handler: Stationen → Stations-Steckbrief
+  container.querySelectorAll('.sb-asset-row[data-station-geb]').forEach(row => {
+    row.addEventListener('click', () => {
+      const g = (window.gebaeude || []).find(x => String(x.id) === row.dataset.stationGeb);
+      if (g && typeof window.openStationsSteckbrief === 'function') window.openStationsSteckbrief(g.id);
     });
   });
 
@@ -1439,6 +1470,9 @@ function renderInspector(asset) {
       <span class="asset-ins-icon">${cfg.icon}</span>
       <span class="asset-ins-title">${cfg.label}</span>
       <button onclick="toggleVormerkenAsset('${asset.id}')" title="${asset.feldVorgemerkt ? 'Vorgemerkt – klicken zum Entfernen' : 'Für Feldbegehung vormerken'}" style="background:none;border:none;cursor:pointer;margin-left:auto;font-size:${asset.feldVorgemerkt ? 16 : 13}px;color:${asset.feldVorgemerkt ? '#f59e0b' : '#888'};padding:0 6px;line-height:1;">★</button>
+      ${SS_STATIONS_TYPEN.has(asset.type) && ssIstStationsGebaeude(asset.buildingId, ASSETS.items) ? `<button data-click="openStationsSteckbriefFuerAsset('${asset.id}')" title="Stations-Steckbrief: die ganze Station (Schaltanlage, Trafos, NSHV) auf einem Blatt"
+        style="background:rgba(0,0,0,0.25);border:1px solid rgba(102,187,106,0.55);border-radius:4px;
+        cursor:pointer;color:#a5d6a7;padding:2px 7px;line-height:1;font-size:12px;margin-right:4px;">📋 Station</button>` : ''}
       <button onclick="openKnotenanalyseFor('${asset.id}')" title="Knotenpunkt-Analyse öffnen"
         style="background:rgba(0,0,0,0.25);border:1px solid rgba(79,195,247,0.45);border-radius:4px;
         cursor:pointer;color:#4fc3f7;padding:2px 7px;line-height:1;font-size:13px;margin-right:4px;">📈</button>

@@ -3144,6 +3144,7 @@ export function _buildProjectData() {
       pvModus: g.pvModus || 'flaechen', pvFlGcr: g.pvFlGcr ?? null, pvFlAusrichtung: g.pvFlAusrichtung || 'sued',
       pvFlBelegung: g.pvFlBelegung ?? null, pvBaujahr: g.pvBaujahr ?? null,
       notstrom: g.notstrom || null,
+      stationSteckbrief: g.stationSteckbrief || null,
       pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ...(f.auto ? { auto: f.auto } : {}) })),
       massnahmen: g.massnahmen || [],
       importSourceId: g.importSourceId || null,
@@ -3470,7 +3471,7 @@ function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
     'abrissjahr','stockwerke','waermeManual','heizlastManual','strom','spezStrom',
     'stromProfil','pvAktiv','pvDachanteil','zustand','dachform','dachAzimut',
     'dachNeigung','dachAutoAzimut','dachQuelle','pvRidgeOverride','pvModus','pvFlGcr',
-    'pvFlAusrichtung','pvFlBelegung','pvBaujahr','notstrom',
+    'pvFlAusrichtung','pvFlBelegung','pvBaujahr','notstrom','stationSteckbrief',
   ];
   fields.forEach(field => {
     if (source[field] !== undefined) target[field] = structuredClone(source[field]);
@@ -3747,6 +3748,8 @@ function _applyProjectData(project) {
             newG.pvFlBelegung   = g.pvFlBelegung ?? null;
             // Notstromklasse (26-blackout-modus.js)
             if (g.notstrom) newG.notstrom = normalisiereNotstrom(g.notstrom);
+            // Stations-Steckbrief (34-stations-steckbrief.js)
+            if (g.stationSteckbrief && typeof g.stationSteckbrief === 'object') newG.stationSteckbrief = structuredClone(g.stationSteckbrief);
             newG.pvFlaechen     = (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ...(f.auto ? { auto: f.auto } : {}), layer: null, svgLayer: null }));
             newG.pvFlaechen.forEach(f => {
               attachGebPvLayer(newG, f);

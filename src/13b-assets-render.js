@@ -7,6 +7,7 @@ import { globalYear } from './01-globals-varianten.js';
 import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 import { selectFromMap, lwWpSchallRadiusM } from './02c-karte-werkzeuge.js';
 import { SCHICHT, SCHICHT_META, normSchicht, schichtRang, schichtSichtbar } from './lib/schichten.js';
+import { ssIstStationsGebaeude } from './lib/stations-steckbrief.js';
 import { calcWindLwaAuto } from './13q-wind-ertrag.js';
 import { computeSuitabilityGrid } from './13s-wind-flaeche.js';
 
@@ -407,6 +408,12 @@ function _showAssetDeletePopup(buildingId, latlng) {
 function openBuildingAssetList(buildingId, marker) {
   const assets = getAssetsForBuilding(buildingId);
   if (assets.length === 0) return;
+  // Station (NAP/Schaltanlage/Trafo im Gebäude): Steckbrief statt Einzelliste — die Komponenten
+  // bleiben dort über „Inspector ↗" einzeln erreichbar (34-stations-steckbrief.js).
+  if (ssIstStationsGebaeude(buildingId, assets) && typeof window.openStationsSteckbrief === 'function') {
+    window.openStationsSteckbrief(buildingId);
+    return;
+  }
   if (assets.length === 1) {
     ASSETS.selectedId = assets[0].id;
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(assets[0]);
