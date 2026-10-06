@@ -3629,10 +3629,27 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
   const busXR = W - busX;           // zweite Übergabestation einer Leiter: gespiegelt am rechten Rand
   const xa = busX + 58;             // linke Kante der Stationskarten
   const mitZubau = alleSt.some(s => s.zubau);   // Zielnetz: eine Zeile mehr für Trafotausch/-zubau
-  const gap = 24, ch = mitZubau ? 114 : 100, ANSCHLUSS = 44, labelH = 24;
-  // Eine Übergabe: 5 Karten bis zum Rand. Zwei über Linien verbundene Übergaben: 4 Karten zwischen den Sammelschienen.
-  const L1 = { K: 5, cw: (x1 - xa - 4 * gap) / 5 };
-  const L2 = { K: 4, cw: (busXR - 58 - xa - 3 * gap) / 4 };
+  const ch = mitZubau ? 114 : 100, ANSCHLUSS = 44, labelH = 24;
+  // Stationen je Reihe: von Hand (Einzelansicht) oder automatisch — Abgänge einer Übergabe 5, Leitern so viele
+  // wie die längste Linie (4–8). Ab 5 Karten zwischen zwei Sammelschienen rücken diese an den Rand.
+  const leiterLinien = [...linien, ...bloecke.flatMap(b => b.abgaenge).flatMap(a => a.leiter?.linien || [])];
+  const laengste = Math.max(0, ...leiterLinien.flatMap(l => (l.wege?.length ? l.wege : [l.haupt ?? l.stationen.length])));
+  const wahl = parseInt(cfg.stationenJeReihe, 10);
+  const vonHand = Number.isFinite(wahl) && wahl >= 3 && wahl <= 10;
+  const raster = (K, busL, rand) => {
+    const busR = W - busL, kartenX = busL + rand;
+    const gap = K >= 6 ? 12 : K === 5 ? 16 : 24;
+    // Gassen für Verbindungen über mehrere Reihen liegen zwischen Sammelschiene und Karten
+    const gasse = g => busL + (rand >= 50 ? 18 + (g % 4) * 8 : 8 + (g % 4) * 4);
+    return { K, gap, busL, busR, xa: kartenX, rand, gasse };
+  };
+  const K1 = vonHand ? wahl : 5;
+  const L1 = raster(K1, busX, 58);
+  if (K1 <= 5) L1.gap = 24;   // bis 5 Karten bis zum Blattrand: Abstand wie bisher
+  L1.cw = (x1 - L1.xa - (K1 - 1) * L1.gap) / K1;
+  const K2 = vonHand ? wahl : Math.min(8, Math.max(4, laengste));
+  const L2 = K2 > 4 ? raster(K2, x0 + 30, 26) : raster(K2, busX, 58);
+  L2.cw = (L2.busR - L2.rand - L2.xa - (K2 - 1) * L2.gap) / K2;
   const uebW = 220, uebH = ch;
   const spurY = (unten, s) => unten + 14 + s * 10;
   const dxVon = s => ((s % 3) - 1) * 14;
@@ -3725,7 +3742,7 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
     const L = re != null ? L2 : L1;
     // Zwischen zwei NAP ist kein Platz für eine zweite Leiter → dort klassisch (vermascht)
     const planAbg = ab => (ab.leiter && re == null ? planeLeiter(ab) : plane(ab, L));
-    const gp = { li: bi, re: re ?? null, top: y, egY: y + 58, uebTop: y + 80 };
+    const gp = { li: bi, re: re ?? null, L, top: y, egY: y + 58, uebTop: y + 80 };
     gp.lin = re != null ? linien.filter(l => l.von === bi && l.bis === re).map(l => plane(l, L)) : [];
     gp.liAbg = eigene(bi).map(planAbg);
     gp.reAbg = re != null ? eigene(re).map(planAbg) : [];
@@ -3776,8 +3793,7 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
     const rand = o.ohneNap ? T.text.faint : st.geplant ? hell : st.uebergabe ? gruen : T.rule;
     let k = `<rect x="${gR(kx) + 0.5}" y="${gR(ky) + 0.5}" width="${gR(breite) - 1}" height="${ch - 1}" fill="${fill}" stroke="${rand}"
         stroke-width="${st.uebergabe ? 1.6 : 1.2}"${st.geplant || o.ohneNap ? ' stroke-dasharray="5 3"' : ''}/>`;
-    const maxT = Math.floor((breite - (st.ts ? 36 : 16)) / (12 * 0.52));
-    k += txt(kx + 10, ky + 18, ggResKuerzen(st.titel, maxT), { size: 12, weight: 700 });
+    k += passend(kx + 10, ky + 18, st.titel, breite - (st.ts ? 36 : 16), { size: 12, weight: 700 });
     if (st.ts) {
       k += `<rect x="${gR(kx + breite - 30)}" y="${gR(ky + 7)}" width="22" height="15" fill="${T.neutral.cardBg}" stroke="${rot}" stroke-width="1.2"/>`;
       k += txt(kx + breite - 19, ky + 18.5, 'TS', { anchor: 'middle', size: 9.5, weight: 700, fill: rot });
@@ -3809,7 +3825,7 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
     + (ab.abzweige ? ` mit ${ab.abzweige === 1 ? 'Abzweig' : ggNum(ab.abzweige) + ' Abzweigen'}` : '');
   const stationenTxt = n => `${ggNum(n)} ${n === 1 ? 'Station' : 'Stationen'}`;
   const zeichneAbgang = (p, { kopf, kopfFarbe, warn = '', mitBus = true, busYs = [], busYsR = [], spiegel = false }) => {
-    const ab = p.ab, L = p.L, cw = L.cw;
+    const ab = p.ab, L = p.L, cw = L.cw, gap = L.gap, xa = L.xa, busL = L.busL, busR = L.busR;
     const mx = x => (spiegel ? W - x : x);
     const rowTop = r => p.top + labelH + r * ch + p.spurH.slice(0, r).reduce((a, b) => a + b, 0);
     const geo = i => {
@@ -3817,7 +3833,7 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
       const kx = xa + c * (cw + gap), ky = rowTop(r);
       return { r, kx, ky, cx: kx + cw / 2, ya: ky + ANSCHLUSS, unten: ky + ch };
     };
-    let lin = '';
+    let lin = '', tsm = '';
     let o = txt(mx(xa), p.top + 14, kopf, { size: 11, weight: 600, fill: kopfFarbe, ...(spiegel ? { anchor: 'end' } : {}) });
     if (warn) o += txt(xa + ggEstW(kopf, 11) + 10, p.top + 14, warn, { size: 11, weight: 700, fill: rot });
     for (const rt of p.routen) {
@@ -3825,29 +3841,29 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
       let d = '', tsX = null, tsY = null;
       if (rt.art === 'bus') {
         const g = geo(rt.w.i);
-        d = `M${busX} ${g.ya}H${gR(g.kx)}`;
-        tsX = (busX + g.kx) / 2; tsY = g.ya;
+        d = `M${busL} ${g.ya}H${gR(g.kx)}`;
+        tsX = (busL + g.kx) / 2; tsY = g.ya;
         busYs.push(g.ya);
         o += systeme(mx(tsX), tsY, v);
       } else if (rt.art === 'busSpur') {
         const g = geo(rt.w.i), ys = spurY(g.unten, rt.s), ax = g.cx + dxVon(rt.s);
-        d = `M${gR(ax)} ${g.unten}V${ys}H${busX}`;
+        d = `M${gR(ax)} ${g.unten}V${ys}H${busL}`;
         tsX = (ax + xa) / 2; tsY = ys;
         busYs.push(ys);
       } else if (rt.art === 'busR') {
         const g = geo(rt.w.i);
-        d = `M${gR(g.kx + cw)} ${g.ya}H${busXR}`;
-        tsX = (g.kx + cw + busXR) / 2; tsY = g.ya;
+        d = `M${gR(g.kx + cw)} ${g.ya}H${busR}`;
+        tsX = (g.kx + cw + busR) / 2; tsY = g.ya;
         busYsR.push(g.ya);
         o += systeme(tsX, tsY, v);
       } else if (rt.art === 'busSpurR') {
         const g = geo(rt.w.i), ys = spurY(g.unten, rt.s), ax = g.cx + dxVon(rt.s);
-        d = `M${gR(ax)} ${g.unten}V${ys}H${busXR}`;
-        tsX = (ax + busXR - 58) / 2; tsY = ys;
+        d = `M${gR(ax)} ${g.unten}V${ys}H${busR}`;
+        tsX = (ax + busR - L.rand) / 2; tsY = ys;
         busYsR.push(ys);
       } else if (rt.art === 'kupplung') {
         const yy = p.top + labelH + 10;
-        d = `M${busX} ${yy}H${busXR}`;
+        d = `M${busL} ${yy}H${busR}`;
         tsX = W / 2; tsY = yy;
         busYs.push(yy); busYsR.push(yy);
         o += systeme(tsX, tsY, v);
@@ -3866,26 +3882,28 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
           d = `M${gR(a.cx + dx)} ${a.unten}V${ys}H${gR(b.cx + dx)}V${rt.art === 'spur' ? b.unten : b.ky}`;
           tsX = (a.cx + b.cx) / 2; tsY = ys;
         } else {   // gasse: über den Gang zwischen Sammelschiene und Karten in eine tiefere Reihe
-          const ys1 = spurY(a.unten, rt.s), xg = busX + 18 + (rt.g % 4) * 8;
+          const ys1 = spurY(a.unten, rt.s), xg = L.gasse(rt.g);
           const ys2 = spurY(rowTop(b.r - 1) + ch, rt.s2), dx = dxVon(rt.s);
           d = `M${gR(a.cx + dx)} ${a.unten}V${ys1}H${xg}V${ys2}H${gR(b.cx + dx)}V${b.ky}`;
           tsX = (a.cx + xg) / 2; tsY = ys1;
         }
       }
       lin += pfad(d, v.geplant, v.ertuechtigt);
-      if (v.ts) lin += tsMarke(tsX, tsY);
+      if (v.ts) tsm += tsMarke(tsX, tsY);
     }
     ab.stationen.forEach((st, i) => {
       const g = geo(i);
       o += karte(st, spiegel ? W - g.kx - cw : g.kx, g.ky, cw, { ohneNap: !mitBus });
     });
-    return (spiegel ? `<g transform="matrix(-1 0 0 1 ${W} 0)">${lin}</g>` : lin) + o;
+    // Trennstellen nach den Karten: in schmalen Kartenlücken sonst verdeckt
+    const spiegeln = x => (spiegel ? `<g transform="matrix(-1 0 0 1 ${W} 0)">${x}</g>` : x);
+    return spiegeln(lin) + o + spiegeln(tsm);
   };
   const abgangKopf = (p, nr) => `Abgang ${nr} · ${abgangArt(p.ab)} · ${stationenTxt(p.n)}`;
   // Linie zwischen zwei Übergaben bzw. Knotenstationen (Namen nA/nB): Kopf mit Speiserichtung im
   // Normalbetrieb, Warnung ohne offene Trennstelle. In der Leiter nennt schon der Abgangskopf die Enden.
   const linieKopf = (l, nr, nA, nB, { mitEnden = true } = {}) => {
-    const warn = !l.gekoppelt ? '' : l.tsNurStation ? 'Trennstelle nur an Schaltanlage erfasst' : 'ohne offene Trennstelle';
+    const warn = !l.gekoppelt ? '' : l.tsNurStation ? 'offenes Feld der Trennstelle fehlt' : 'ohne offene Trennstelle';
     if (l.art === 'kopplung') return { kopf: `Direkte Kupplung ${nA} ↔ ${nB}`, warn };
     const zA = l.speisung.filter(s => s === 'A').length, zB = l.speisung.filter(s => s === 'B').length;
     const nWege = Math.max(1, l.wege?.length || 0);
@@ -3922,7 +3940,8 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
     o += karte(lt.rechts, x1 - uebW, kTop, uebW);
     // Linien und Stiche an den Sammelschienen der Knotenstationen (ist die Übergabe selbst der linke
     // Knoten, hängen die Linien direkt an deren Sammelschiene)
-    const ysA = lt.links ? [] : busYs, ysB = [];
+    const L = p.lin[0]?.L || L2;
+    const ysA = [], ysB = [];
     let linNr = 1;
     p.lin.forEach(q => {
       const { kopf, warn } = linieKopf(q.ab, linNr, lt.knappL, lt.knappR, { mitEnden: false });
@@ -3932,8 +3951,14 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
     const stichKopf = (q, i) => `Stich ${i + 1} · ${abgangArt(q.ab)} · ${stationenTxt(q.n)}`;
     p.sA.forEach((q, i) => { o += zeichneAbgang(q, { kopf: stichKopf(q, i), kopfFarbe: gruen, busYs: ysA }); });
     p.sB.forEach((q, i) => { o += zeichneAbgang(q, { kopf: stichKopf(q, p.sA.length + i), kopfFarbe: gruen, busYs: ysB, spiegel: true }); });
-    if (lt.links) o += sammelschiene(busX, { uebTop: kTop }, ysA, false);
-    o += sammelschiene(busXR, { uebTop: kTop }, ysB, true);
+    if (lt.links) o += sammelschiene(L.busL, { uebTop: kTop }, ysA, false);
+    else {
+      // Übergabe selbst ist der linke Knoten: ihre Sammelschiene knickt auf die Linie der Leiter ab
+      busYs.push(railY);
+      if (L.busL !== busX) o += `<line x1="${busX}" y1="${railY}" x2="${L.busL}" y2="${railY}" stroke="${gruen}" stroke-width="5"/>`;
+      o += sammelschiene(L.busL, { uebTop: railY - uebH }, ysA, false, { ohneText: true });
+    }
+    o += sammelschiene(L.busR, { uebTop: kTop }, ysB, true);
     return o;
   };
 
@@ -3955,11 +3980,14 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
     o += `<circle cx="${bx}" cy="${gp.egY}" r="4.5" fill="${strich}"/>`;
     return o;
   };
-  const sammelschiene = (bx, gp, ys, rechts) => {
+  const sammelschiene = (bx, gp, ys, rechts, { ohneText = false } = {}) => {
     const busTop = gp.uebTop + uebH, busBot = Math.max(busTop + 18, ...ys);
     let o = `<line x1="${bx}" y1="${busTop}" x2="${bx}" y2="${gR(busBot)}" stroke="${gruen}" stroke-width="5"/>`;
     ys.forEach(yy => { o += `<circle cx="${bx}" cy="${gR(yy)}" r="4" fill="${gruen}"/>`; });
-    o += txt(rechts ? bx + 10 : bx - 10, busTop + 16, 'MS-Sammelschiene', { anchor: rechts ? 'start' : 'end', size: 10, fill: T.text.muted });
+    // Beschriftung außen; liegt die Schiene am Blattrand (dichte Leiter), innen daneben
+    const aussen = rechts ? x1 - bx > 100 : bx - x0 > 100;
+    const links = rechts ? !aussen : aussen;
+    if (!ohneText) o += txt(links ? bx - 10 : bx + 10, busTop + 16, 'MS-Sammelschiene', { anchor: links ? 'end' : 'start', size: 10, fill: T.text.muted });
     return o;
   };
 
@@ -4008,8 +4036,8 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
     gp.reAbg.forEach((p, i) => {
       out += zeichneAbgang(p, { kopf: abgangKopf(p, gp.liAbg.length + i + 1), kopfFarbe: gruen, busYs: busYsR, spiegel: true });
     });
-    out += sammelschiene(busX, gp, busYs, false);
-    if (bR) out += sammelschiene(busXR, gp, busYsR, true);
+    out += sammelschiene(gp.L.busL, gp, busYs, false);
+    if (bR) out += sammelschiene(gp.L.busR, gp, busYsR, true);
   });
 
   if (oPlan.length) {
@@ -4051,7 +4079,7 @@ GG_FIGUREN.push({
   render: cfg => ggRenderNetzUebersicht(cfg),
   config: {
     eyebrow: 'Stromnetz · Ist-Zustand', titel: 'Übersichtsschaltbild Mittelspannungsnetz',
-    netz: null, kenngroessen: [], fussnote: '',
+    netz: null, kenngroessen: [], fussnote: '', stationenJeReihe: 'auto',
     leer: 'Kein Netzmodell — im Elektro-Tab NAP, Schaltanlagen und Trafos anlegen.',
   },
   ausProjekt(cfg) {
@@ -4101,7 +4129,7 @@ GG_FIGUREN.push({
   render: cfg => ggRenderNetzUebersicht(cfg),
   config: {
     eyebrow: 'Stromnetz · Zielzustand', titel: 'Übersichtsschaltbild Zielnetz Mittelspannung',
-    netz: null, kenngroessen: [], fussnote: '',
+    netz: null, kenngroessen: [], fussnote: '', stationenJeReihe: 'auto',
     leer: 'Kein Netzmodell — im Elektro-Tab NAP, Schaltanlagen und Trafos anlegen.',
   },
   ausProjekt(cfg) {
@@ -10503,7 +10531,7 @@ GG_FIGUREN.push(
  * auch im Dokument. Die von Hand änderbaren Felder landen in der Projektdatei;
  * Datenreihen nicht, die kommen beim Zeichnen frisch aus dem Projekt.
  * ═══════════════════════════════════════════════════════════════════════ */
-const GG_EINSTELLUNG_TEXTFELDER = ['eyebrow', 'titel', 'tabelleTitel', 'ort'];
+const GG_EINSTELLUNG_TEXTFELDER = ['eyebrow', 'titel', 'tabelleTitel', 'ort', 'stationenJeReihe'];
 
 /** Von Hand änderbare Felder einer Figur-Config (ohne Datenreihen). */
 function ggEinstellungenVon(cfg) {
@@ -10848,6 +10876,10 @@ export function ggRenderPanel() {
             ? sel('ggSetLayout(this.value)', [['voll', 'Blatt: vollständig'],
                                               ['reduziert', 'Blatt: reduziert + Kennzahlentabelle']], _gg.layout)
             : '')
+        + (figur.config.stationenJeReihe !== undefined
+            ? sel('ggSetStationenJeReihe(this.value)', [['auto', 'Stationen je Reihe: automatisch'],
+                  ...[4, 5, 6, 7, 8].map(n => [String(n), `${n} Stationen je Reihe`])], figur.config.stationenJeReihe)
+            : '')
         + ((ggZeigtTabelle(figur) || ggIstTabellenFigur(figur))
             ? sel('ggSetZiel(this.value)', [['figur', 'Export: Abbildung'],
                   ['tabelle', ggIstTabellenFigur(figur) ? 'Export: Word-Tabelle' : 'Export: Kennzahlen']], _gg.ziel)
@@ -11046,6 +11078,14 @@ export function ggSyncFromProject() {
   }
   ggRenderPanel();
   ggSay(meldung || '✓ Aus dem Projektstand übernommen.');
+}
+
+/** Übersichtsschaltbild: Stationen je Reihe ('auto' = längste Linie, Abgänge 5). */
+export function ggSetStationenJeReihe(v) {
+  const fig = ggFigur();
+  fig.config.stationenJeReihe = /^[3-9]$|^10$/.test(String(v)) ? String(v) : 'auto';
+  ggMerkeManuell(fig.id, 'stationenJeReihe');
+  ggRenderPanel();
 }
 
 export function ggSetKopf(feld, wert) {

@@ -147,6 +147,12 @@ function _renderCableInspector(panel, edge) {
           Automatisch dimensionieren
         </label>
       </div>
+      <div class="ci-field" style="margin-bottom:6px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;" title="Kabel ist im Normalbetrieb offen (Trennstelle eines Rings bzw. einer Linie). Gleichwertig: an der Schaltanlage „Trennstelle“ anhaken und das offene Feld wählen.">
+          <input type="checkbox" id="ci-ts"${edge.trennstelle ? ' checked' : ''}>
+          Offene Trennstelle (Normalbetrieb)
+        </label>
+      </div>
       <div style="margin:4px 0 8px;padding:6px 8px;background:var(--surface2);border-radius:6px;">
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="width:8px;height:8px;border-radius:50%;background:${stMeta.c};flex-shrink:0;"></span>
@@ -195,6 +201,12 @@ function _renderCableInspector(panel, edge) {
   fuseEl.addEventListener('change', apply);
   parallelEl.addEventListener('change', apply);
   autoEl.addEventListener('change', () => { qsEl.disabled = autoEl.checked; apply(); });
+  // Eigener Weg statt apply(): die Trennstelle ändert nichts an Querschnitt/Schätzung
+  panel.querySelector('#ci-ts').addEventListener('change', ev => {
+    edge.trennstelle = ev.target.checked;
+    recalcStromNetz();
+    if (typeof window.sldRefresh === 'function') window.sldRefresh();
+  });
 
   _wireCableMassn(panel, edge);
 

@@ -363,6 +363,47 @@ function _windScenarioRow(s) {
   </div>`;
 }
 
+// ── Trennstelle: welches Kabelfeld der Station ist im Normalbetrieb offen? ──
+// Station = alle MS-Betriebsmittel (NAP/Schaltanlage/Trafo) eines Gebäudes, wie im Übersichtsschaltbild.
+// Das gewählte Kabel bekommt das Merkmal trennstelle — daraus liest das Schaltbild die Speiserichtung.
+const _MS_TYPEN = new Set(['NAP', 'Schaltanlage', 'Trafo']);
+function _stationsKabel(asset) {
+  const station = a => (a?.buildingId != null ? 'g' + a.buildingId : 'a' + a?.id);
+  const meine = station(asset);
+  const byId = new Map(ASSETS.items.map(a => [String(a.id), a]));
+  return (window.stromEdges || []).map(e => {
+    const a = byId.get(String(e.u)), b = byId.get(String(e.v));
+    if (!a || !b || !_MS_TYPEN.has(a.type) || !_MS_TYPEN.has(b.type)) return null;
+    const sa = station(a), sb = station(b);
+    if (sa === sb || (sa !== meine && sb !== meine)) return null;
+    return { e, gegen: sa === meine ? b : a };
+  }).filter(Boolean);
+}
+// Kabelstil (offene Trennstelle gestrichelt) und Einlinienschema auffrischen
+function _kabelNeuZeichnen() {
+  if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
+  if (typeof window.sldRefresh === 'function') window.sldRefresh();
+}
+function _stationsName(a) {
+  const g = a.buildingId != null ? (window.gebaeude || []).find(x => String(x.id) === String(a.buildingId)) : null;
+  const geb = g ? (g.gebaeudenummer ? `Gebäude ${g.gebaeudenummer}` : g.name || '') : '';
+  return [geb, a.name].filter(Boolean).join(' · ') || a.type;
+}
+function _trennstelleFeldHtml(asset) {
+  const kabel = _stationsKabel(asset);
+  if (!kabel.length) {
+    return `<div style="font-size:10px;color:var(--muted);margin:2px 0 6px;">Keine MS-Kabel zu anderen Stationen — offenes Feld nicht wählbar.</div>`;
+  }
+  const offen = kabel.find(k => k.e.trennstelle);
+  const opts = [`<option value="">— offenes Feld wählen —</option>`]
+    .concat(kabel.map((k, i) => `<option value="${i}"${k === offen ? ' selected' : ''}>Richtung ${esc(_stationsName(k.gegen))}</option>`))
+    .join('');
+  return `<div class="ins-field-group">
+      <label class="ins-field-label">Offenes Feld (Normalbetrieb)</label>
+      <select class="ins-field-input" data-ts-kabel="${asset.id}">${opts}</select>
+    </div>
+    <div style="font-size:9px;color:var(--muted);margin:-2px 0 6px;line-height:1.4;">Das Kabel in diese Richtung ist im Normalbetrieb offen — daraus ermittelt das Übersichtsschaltbild, welche Stationen über welche Seite versorgt werden.</div>`;
+}
 // ── Props-Formular je Typ ───────────────────────────────────────────────────
 function buildPropsForm(asset) {
   const id = asset.id;
@@ -376,7 +417,8 @@ function buildPropsForm(asset) {
       return row2(
         numField(id, 'felder',     'Anzahl Felder',  6,   {props:p, step:1, min:1}),
         numField(id, 'nennstromA', 'Nennstrom (A)',  630, {props:p, step:1})
-      ) + checkField(id, 'trennstelle', 'Trennstelle (Schutzkonzept)', !!p.trennstelle);
+      ) + checkField(id, 'trennstelle', 'Trennstelle (Schutzkonzept)', !!p.trennstelle)
+        + (p.trennstelle ? _trennstelleFeldHtml(asset) : '');
 
     case 'Trafo': {
       const kvaOpts = [50,100,160,200,250,315,400,500,630,800,1000,1250,1600,2000]
@@ -1604,8 +1646,23 @@ function wireEvents(panel, asset) {
       // Wind: Ertragsschätzung hängt von mehreren Feldern ab → Panel neu aufbauen;
       // Abstands-/Lärmringe auf der Karte ebenfalls aktualisieren
       if (asset.type === 'Wind') { drawAssetMarker(asset); renderInspector(asset); }
+      // Trennstelle: Auswahl des offenen Feldes ein-/ausblenden; ohne Trennstelle ist auch kein Kabel der Station offen
+      if (asset.type === 'Schaltanlage' && key === 'trennstelle') {
+        if (!el.checked) { _stationsKabel(asset).forEach(k => { k.e.trennstelle = false; }); _kabelNeuZeichnen(); }
+        renderInspector(asset);
+      }
     };
     el.addEventListener('change', handler);
+  });
+
+  // Trennstelle: offenes Feld = genau ein Kabel der Station mit Merkmal trennstelle
+  panel.querySelectorAll('[data-ts-kabel]').forEach(el => {
+    el.addEventListener('change', () => {
+      const kabel = _stationsKabel(asset);
+      const wahl = el.value === '' ? null : kabel[parseInt(el.value, 10)];
+      kabel.forEach(k => { k.e.trennstelle = k === wahl; });
+      _kabelNeuZeichnen();
+    });
   });
 
   // Toggle-Buttons (Batterie Betriebsmodus) — im floating panel: Panel neu rendern

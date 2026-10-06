@@ -557,9 +557,13 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
     hinweise.push(`Abgang ${i + 1}${wurzeln.length > 1 ? ` an NAP ${wi + 1}` : ''} ist vermascht (kein Ring, keine Linien erkennbar) — ${ab.diagnose}.`);
   }));
   const leiterLinien = wurzeln.flatMap(w => w.abgaenge).filter(a => a.leiter).flatMap(a => a.leiter.linien);
-  const leiterOhneTs = leiterLinien.filter(l => l.gekoppelt && l.art !== 'kopplung').length;
+  const ohneFeld = leiterLinien.filter(l => l.gekoppelt && l.art !== 'kopplung' && l.trennstelleNurStation).length;
+  const leiterOhneTs = leiterLinien.filter(l => l.gekoppelt && l.art !== 'kopplung' && !l.trennstelleNurStation).length;
   if (leiterOhneTs) {
-    hinweise.push(`${leiterOhneTs === 1 ? 'Eine Linie' : leiterOhneTs + ' Linien'} zwischen zwei Knotenstationen ohne erfasste offene Trennstelle am Kabel.`);
+    hinweise.push(`${leiterOhneTs === 1 ? 'Eine Linie' : leiterOhneTs + ' Linien'} zwischen zwei Knotenstationen ohne erfasste offene Trennstelle.`);
+  }
+  if (ohneFeld) {
+    hinweise.push(`${ohneFeld === 1 ? 'Eine Linie' : ohneFeld + ' Linien'}: Trennstelle an der Schaltanlage ohne offenes Feld — im Inspektor der Schaltanlage „Offenes Feld“ wählen.`);
   }
   const nrW = k => wurzelKeys.indexOf(k) + 1;
   let linieNr = 0;
@@ -569,7 +573,7 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
     if (l.weitere.length) hinweise.push(`${wer} berührt noch ${l.weitere.length === 1 ? 'eine weitere Übergabestation' : l.weitere.length + ' weitere Übergabestationen'} — vereinfacht dargestellt.`);
     if (!l.gekoppelt) return;
     hinweise.push(l.trennstelleNurStation
-      ? `${wer}: Trennstelle nur an einer Schaltanlage erfasst — für die Speiserichtung am offenen Kabelabschnitt setzen.`
+      ? `${wer}: Trennstelle an der Schaltanlage ohne offenes Feld — im Inspektor der Schaltanlage „Offenes Feld“ wählen.`
       : `${wer} ohne offene Trennstelle — beide Netzanschlüsse wären über die Liegenschaft gekoppelt.`);
   });
   const ohneNapN = ohneNap.reduce((s, a) => s + a.folge.length, 0);
