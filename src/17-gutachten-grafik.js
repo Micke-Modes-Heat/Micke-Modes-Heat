@@ -3435,7 +3435,7 @@ function ggNetzUebersichtDaten({ mitPlanung = false, zieljahr = null } = {}) {
   };
   const kante = v => ({ ts: v.trennstelle, geplant: v.geplant, ertuechtigt: v.ertuechtigt, anzahl: v.anzahl });
   const linieBasis = l => ({
-    ...abgang(l), haupt: l.haupt,
+    ...abgang(l), haupt: l.haupt, wege: l.wege || null,
     wurzelB: l.wurzelB.map(x => ({ i: x.i, ...kante(x.kante) })), direkt: l.direkt ? kante(l.direkt) : null,
     speisung: l.speisung, gekoppelt: l.gekoppelt, tsNurStation: l.trennstelleNurStation,
   });
@@ -3443,6 +3443,8 @@ function ggNetzUebersichtDaten({ mitPlanung = false, zieljahr = null } = {}) {
   const leiter = lt => ({
     links: lt.links ? sicht(lt.links) : null, rechts: sicht(lt.rechts),
     nameL: lt.links ? ggNuKurzName(sicht(lt.links)) : 'Übergabestation', nameR: ggNuKurzName(sicht(lt.rechts)),
+    knappL: lt.links ? ggNuKurzName(sicht(lt.links), { knapp: true }) : 'Übergabe',
+    knappR: ggNuKurzName(sicht(lt.rechts), { knapp: true }),
     zubringer: lt.zubringer.map(v => (v ? kante(v) : null)),
     linien: lt.linien.map(linieBasis), stiche: lt.stiche.map(s => ({ seite: s.seite, ...abgang(s) })),
   });
@@ -3527,7 +3529,10 @@ function ggNetzStrukturAbsaetze() {
     const nameR = ggNuKurzName(sicht(lt.rechts));
     const ll = lt.linien.filter(l => l.art !== 'kopplung');
     const nSt = ll.reduce((n, l) => n + l.folge.length, 0);
-    const linienTxt = `${ll.length === 1 ? 'verläuft eine Mittelspannungslinie' : `verlaufen ${ggNum(ll.length)} Mittelspannungslinien`}, `
+    const nL = ll.reduce((n, l) => n + Math.max(1, l.wege?.length || 0), 0);
+    const quer = ll.some(l => (l.wege?.length || 0) > 1);
+    const linienTxt = `${nL === 1 ? 'verläuft eine Mittelspannungslinie' : `verlaufen ${ggNum(nL)} Mittelspannungslinien`}`
+      + `${quer ? ' (teils untereinander querverbunden)' : ''}, `
       + `über die ${eine(nSt, 'weitere Station', 'weitere Stationen')} versorgt ${nSt === 1 ? 'wird' : 'werden'}.`;
     s.push(lt.links
       ? `Von der Übergabestation ${lt.zubringer[1] ? 'werden' : 'wird'} ${lt.zubringer[1] ? `die beiden Stationen ${nameL} und ${nameR}` : nameL} `
@@ -3578,11 +3583,15 @@ function ggNetzStrukturAbsaetze() {
   return [s.join(' ')];
 }
 
-/** Kurzname einer Station für Kopfzeilen und Text: „Trafostation 3“, bei Schaltstationen das Gebäude. */
-function ggNuKurzName(s) {
+/**
+ * Kurzname einer Station für Kopfzeilen und Text: „Trafostation 3“. Heißt die Station nur allgemein
+ * („Trafostation“ ohne Nummer, Schaltstation), unterscheidet erst das Gebäude: „Trafostation (Gebäude 5)“.
+ */
+function ggNuKurzName(s, { knapp = false } = {}) {
   if (!s) return '';
-  if (s.titel !== 'Schaltstation' && s.titel !== 'Übergabestation') return s.titel;
-  return s.zeile2 ? `${s.titel === 'Schaltstation' ? 'Schaltstation ' : ''}${s.zeile2}` : s.titel;
+  if (/\d/.test(s.titel) && s.titel !== 'Übergabestation') return s.titel;
+  if (!s.zeile2) return s.titel;
+  return knapp ? s.zeile2 : `${s.titel} (${s.zeile2})`;
 }
 
 /** Kabeltypen der MS-Verbindungen für die Fußnote: „NA2XS2Y 185 mm² (4) · NA2XS2Y 95 mm² (1)". */
@@ -3631,24 +3640,34 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
   // ── Planung je Abgang/Linie: Reihen, Routen, Spuren unter den Reihen ──
   // Bei einer Linie beginnen die Abzweige in einer neuen Reihe, damit der Hauptweg rechts frei an die
   // zweite Sammelschiene kommt.
+  // Mehrere Wege einer Linie (Querverbindung) stehen je in einer eigenen Zeile.
   const plane = (ab, L) => {
     const K = L.K;
     const n = ab.stationen.length;
-    const h = ab.haupt ?? n;
-    const hR = Math.ceil(h / K);
-    const pos = i => (i < h ? { r: Math.floor(i / K), c: i % K } : { r: hR + Math.floor((i - h) / K), c: (i - h) % K });
-    const R = n ? pos(n - 1).r + 1 : 0;
+    const wegeL = ab.wege?.length ? ab.wege : ab.haupt != null ? [ab.haupt] : [];
+    const segs = [...wegeL, n - wegeL.reduce((a, b) => a + b, 0)];
+    const posArr = [];
+    let R = 0;
+    for (const len of segs) {
+      for (let j = 0; j < len; j++) posArr.push({ r: R + Math.floor(j / K), c: j % K });
+      R += Math.ceil(len / K);
+    }
+    const pos = i => posArr[i];
+    const rechtsAussen = new Map();   // Reihe → größte belegte Spalte
+    posArr.forEach(p => rechtsAussen.set(p.r, Math.max(rechtsAussen.get(p.r) ?? -1, p.c)));
     const spuren = Array(Math.max(1, R)).fill(0);
     const neu = r => spuren[r]++;
     let gasse = 0;
     const routen = [];
+    const mitWegen = wegeL.length > 0;
     (ab.wurzel || []).forEach((w, k) => {
-      if (k === 0 && w.i === 0) routen.push({ art: 'bus', w });
+      if ((k === 0 && w.i === 0) || (mitWegen && pos(w.i).c === 0)) routen.push({ art: 'bus', w });
       else routen.push({ art: 'busSpur', w, s: neu(pos(w.i).r) });
     });
-    (ab.wurzelB || []).forEach((w, k) => {
-      if (k === 0 && w.i === h - 1) routen.push({ art: 'busR', w });
-      else routen.push({ art: 'busSpurR', w, s: neu(pos(w.i).r) });
+    (ab.wurzelB || []).forEach(w => {
+      const p = pos(w.i);
+      if (p.c === rechtsAussen.get(p.r)) routen.push({ art: 'busR', w });
+      else routen.push({ art: 'busSpurR', w, s: neu(p.r) });
     });
     if (ab.direkt) routen.push({ art: 'kupplung', w: ab.direkt });
     (ab.innen || []).forEach(v => {
@@ -3869,8 +3888,10 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
     const warn = !l.gekoppelt ? '' : l.tsNurStation ? 'Trennstelle nur an Schaltanlage erfasst' : 'ohne offene Trennstelle';
     if (l.art === 'kopplung') return { kopf: `Direkte Kupplung ${nA} ↔ ${nB}`, warn };
     const zA = l.speisung.filter(s => s === 'A').length, zB = l.speisung.filter(s => s === 'B').length;
-    const teile = [`Linie ${nr}${l.art === 'linie' ? '' : ' (vermascht)'}`
-      + (l.abzweige ? ` mit ${l.abzweige === 1 ? 'Abzweig' : ggNum(l.abzweige) + ' Abzweigen'}` : ''),
+    const nWege = Math.max(1, l.wege?.length || 0);
+    const titel = nWege > 1 ? `Linien ${nr}–${nr + nWege - 1} mit Querverbindung`
+      : `Linie ${nr}${l.art === 'linie' ? '' : ' (vermascht)'}`;
+    const teile = [titel + (l.abzweige ? ` · ${l.abzweige === 1 ? 'Abzweig' : ggNum(l.abzweige) + ' Abzweige'}` : ''),
       ...(mitEnden ? [`${nA} ↔ ${nB}`] : []), stationenTxt(l.stationen.length)];
     if (!l.gekoppelt && (zA || zB)) {
       teile.push(!zB ? `Normalbetrieb: alle über ${nA}` : !zA ? `Normalbetrieb: alle über ${nB}`
@@ -3882,7 +3903,7 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
   const zeichneLeiter = (p, nr, busYs) => {
     const lt = p.lt;
     const railY = p.top + p.railDy, kTop = p.top + p.kartenDy;
-    const nLin = lt.linien.filter(l => l.art !== 'kopplung').length;
+    const nLin = lt.linien.filter(l => l.art !== 'kopplung').reduce((s, l) => s + Math.max(1, l.wege?.length || 0), 0);
     let o = txt(xa, p.top + 14, `Abgang ${nr} · ${lt.nameL} ↔ ${lt.nameR} · ${ggNum(nLin)} ${nLin === 1 ? 'Linie' : 'Linien'} · `
       + stationenTxt(p.ab.stationen.length), { size: 11, weight: 600, fill: gruen });
     // Zubringer: senkrecht zur linken, über die Schiene zur rechten Knotenstation
@@ -3902,8 +3923,10 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
     // Linien und Stiche an den Sammelschienen der Knotenstationen (ist die Übergabe selbst der linke
     // Knoten, hängen die Linien direkt an deren Sammelschiene)
     const ysA = lt.links ? [] : busYs, ysB = [];
-    p.lin.forEach((q, i) => {
-      const { kopf, warn } = linieKopf(q.ab, i + 1, lt.nameL, lt.nameR, { mitEnden: false });
+    let linNr = 1;
+    p.lin.forEach(q => {
+      const { kopf, warn } = linieKopf(q.ab, linNr, lt.knappL, lt.knappR, { mitEnden: false });
+      linNr += Math.max(1, q.ab.wege?.length || 0);
       o += zeichneAbgang(q, { kopf, kopfFarbe: gruen, warn, busYs: ysA, busYsR: ysB });
     });
     const stichKopf = (q, i) => `Stich ${i + 1} · ${abgangArt(q.ab)} · ${stationenTxt(q.n)}`;
@@ -3973,8 +3996,10 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
     // Linien zwischen den Übergaben, dann die eigenen Abgänge (rechte Übergabe gespiegelt);
     // danach die Sammelschienen bis zum tiefsten Anschluss
     const busYs = [], busYsR = [];
-    gp.lin.forEach((p, i) => {
-      const { kopf, warn } = linieKopf(p.ab, i + 1, `NAP ${gp.li + 1}`, `NAP ${gp.re + 1}`);
+    let linNr = 1;
+    gp.lin.forEach(p => {
+      const { kopf, warn } = linieKopf(p.ab, linNr, `NAP ${gp.li + 1}`, `NAP ${gp.re + 1}`);
+      linNr += Math.max(1, p.ab.wege?.length || 0);
       out += zeichneAbgang(p, { kopf, kopfFarbe: gruen, warn, busYs, busYsR });
     });
     gp.liAbg.forEach((p, i) => {

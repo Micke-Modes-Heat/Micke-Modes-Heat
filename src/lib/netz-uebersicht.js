@@ -363,10 +363,31 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
     const anB = nachOrdnung([...new Set(vB.map(v => andererEnde(v, B)))]);
     const n = keys.length;
     const linie = ws.length === 2 && innenV.length === n - 1 && anA.length === 1 && anB.length === 1;
-    const haupt = baumWeg(anA[0], anB[0], set);
+    // Wege von A nach B, stationsdisjunkt, kürzester zuerst. Eine reine Linie hat genau einen; sind mehrere
+    // Linien über eine Querverbindung verbunden, liegt jede auf einem eigenen Weg (eigene Zeile im Bild).
+    const wege = [];
+    const frei = new Set(keys), zielB = new Set(anB);
+    for (;;) {
+      const vor = new Map();
+      const q = anA.filter(s => frei.has(s));
+      q.forEach(s => vor.set(s, null));
+      let ziel = null;
+      while (q.length) {
+        const k = q.shift();
+        if (zielB.has(k)) { ziel = k; break; }
+        for (const nb of nachOrdnung(adj.get(k).map(x => x.nb).filter(x => frei.has(x) && !vor.has(x)))) { vor.set(nb, k); q.push(nb); }
+      }
+      if (ziel == null) break;
+      const weg = [];
+      for (let k = ziel; k != null; k = vor.get(k)) weg.unshift(k);
+      weg.forEach(k => frei.delete(k));
+      wege.push(weg);
+    }
+    if (!wege.length) wege.push(baumWeg(anA[0], anB[0], set));
+    const haupt = wege[0];
 
-    const folge = [...haupt];
-    const besucht = new Set(haupt);
+    const folge = wege.flat();
+    const besucht = new Set(folge);
     const tiefe = k => {
       besucht.add(k);
       folge.push(k);
@@ -374,7 +395,7 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
         if (!besucht.has(nb)) tiefe(nb);
       }
     };
-    for (const k of haupt) {
+    for (const k of wege.flat()) {
       for (const nb of nachOrdnung(adj.get(k).map(x => x.nb).filter(x => set.has(x) && !besucht.has(x)))) {
         if (!besucht.has(nb)) tiefe(nb);
       }
@@ -408,7 +429,7 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
     const tsStation = folge.some(k => stationen.get(k).trennstelle);
     return {
       art: linie ? 'linie' : 'vermascht', von: A, bis: B, weitere: ws.slice(2),
-      folge, haupt: haupt.length, abzweige: n - haupt.length,
+      folge, haupt: haupt.length, wege: wege.map(x => x.length), abzweige: n - wege.flat().length,
       innen, wurzel: anb(vA, A), wurzelB: anb(vB, B),
       speisung, gekoppelt: speisung.includes('beide'),
       trennstelleErfasst: tsKabel || tsStation, trennstelleNurStation: !tsKabel && tsStation,
@@ -420,23 +441,30 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
     direkt: v, speisung: [], gekoppelt: !v.trennstelle, trennstelleErfasst: !!v.trennstelle, trennstelleNurStation: false,
   });
 
-  // Leiter unter EINER Übergabe: zwei Knotenstationen (je ≥ 3 MS-Nachbarn, die Übergabe mitgezählt), zwischen denen
-  // mindestens zwei Linien verlaufen. Die Knoten hängen direkt an der Übergabe (Zubringer), oder die Übergabe ist
-  // selbst der linke Knoten. Gruppen, die nur an einem Knoten hängen, sind Stiche. Passt das Muster nicht → null.
-  const leiterAus = (keys, w) => {
+  // Leiter unter EINER Übergabe: zwei Knotenstationen A und B, zwischen denen mindestens zwei Linien verlaufen.
+  // Kandidaten: (1) die Übergabe speist genau zwei Stationen → das sind die Knoten; (2) genau zwei Stationen mit
+  // ≥ 3 MS-Nachbarn (Übergabe mitgezählt), die eine davon an der Übergabe; (3) die Übergabe selbst ist der linke
+  // Knoten. Ohne A und B zerfällt der Rest in Gruppen: an A und B = Linie (mit Abzweigen oder Querverbindungen
+  // ggf. „vermascht“), nur an einer Seite = Stich (auch Ring). Passt kein Kandidat → null.
+  const nameVon = k => {
+    const st = stationen.get(k);
+    return st?.gebNummer ? `Gebäude ${st.gebNummer}` : st?.gebName || String(k);
+  };
+  const leiterKandidaten = (keys, w) => {
     const set = new Set(keys);
     const nachbarnIn = k => new Set(adj.get(k).map(x => x.nb).filter(nb => set.has(nb) || nb === w));
-    const knoten = keys.filter(k => nachbarnIn(k).size >= 3);
-    const anW = new Set(adj.get(w).map(x => x.nb).filter(nb => set.has(nb)));
-    let A, B;
+    const knoten = nachOrdnung(keys.filter(k => nachbarnIn(k).size >= 3));
+    const anW = nachOrdnung([...new Set(adj.get(w).map(x => x.nb).filter(nb => set.has(nb)))]);
+    const paare = [];
+    if (anW.length === 2) paare.push(anW);
     if (knoten.length === 2) {
-      [A, B] = nachOrdnung([...knoten]);
-      if (!anW.has(A) && anW.has(B)) [A, B] = [B, A];
-      if (!anW.has(A)) return null;
-    } else if (knoten.length === 1 && anW.size >= 2) {
-      A = w; B = knoten[0];
-    } else return null;
-
+      const [p, q] = knoten;
+      if (anW.includes(p)) paare.push([p, q]); else if (anW.includes(q)) paare.push([q, p]);
+    } else if (knoten.length === 1 && anW.length >= 2) paare.push([w, knoten[0]]);
+    return { paare, knoten, anW, nachbarnIn };
+  };
+  // Leiter zwischen A und B, sonst ein Text, warum nicht
+  const leiterMit = (keys, w, A, B) => {
     const restSet = new Set(keys.filter(k => k !== A && k !== B));
     const gesehen = new Set();
     const linienL = [], stiche = [];
@@ -448,19 +476,39 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
         for (const { nb } of adj.get(grp[i])) if (restSet.has(nb) && !gesehen.has(nb)) { gesehen.add(nb); grp.push(nb); }
       }
       const gs = new Set(grp);
-      if (A !== w && anbindungen(w, gs).length) return null;   // Zubringer mit Stationen dazwischen
+      const anUeb = A !== w ? anbindungen(w, gs) : [];
+      if (anUeb.length) {
+        return `${anUeb.map(v => nameVon(andererEnde(v, w))).join(', ')} hängt zusätzlich direkt an der Übergabestation`;
+      }
       const nA = anbindungen(A, gs).length, nB = anbindungen(B, gs).length;
-      if (nA === 1 && nB === 1) linienL.push(linieAus(grp, [A, B]));
-      else if (nA + nB === 1) stiche.push({ seite: nA ? 'A' : 'B', ...abgangAus(grp, nA ? A : B, { ohneLeiter: true }) });
-      else return null;
+      if (nA && nB) linienL.push(linieAus(grp, [A, B]));
+      else stiche.push({ seite: nA ? 'A' : 'B', ...abgangAus(grp, nA ? A : B, { ohneLeiter: true }) });
     }
     // Direktes Kabel zwischen den Knoten = Kupplung; ist die Übergabe selbst der linke Knoten, ist es der Zubringer
     if (A !== w) {
       verbListe.filter(v => (v.a === A && v.b === B) || (v.a === B && v.b === A)).forEach(v => linienL.push(kupplungAus(v, A, B)));
     }
-    if (linienL.length < 2) return null;
+    if (linienL.length < 2) {
+      return `zwischen ${A === w ? 'der Übergabestation' : nameVon(A)} und ${nameVon(B)} ${linienL.length === 1 ? 'nur eine Linie' : 'keine Linie'}`;
+    }
     const zubringer = r => (r === w ? null : verbListe.find(v => (v.a === w && v.b === r) || (v.b === w && v.a === r)) || null);
     return { links: A === w ? null : A, rechts: B, zubringer: [zubringer(A), zubringer(B)], linien: linienL, stiche };
+  };
+  const leiterAus = (keys, w) => {
+    for (const [A, B] of leiterKandidaten(keys, w).paare) {
+      const r = leiterMit(keys, w, A, B);
+      if (typeof r === 'object') return r;
+    }
+    return null;
+  };
+  // Warum ein vermaschter Abgang keine Leiter ist — für den Hinweis im Panel (das Netzmodell liegt nur beim Anwender)
+  const leiterDiagnose = (keys, w) => {
+    const { paare, knoten, anW, nachbarnIn } = leiterKandidaten(keys, w);
+    const teile = [`Übergabe speist ${anW.map(nameVon).join(', ') || '—'}`];
+    if (knoten.length) teile.push(`Stationen mit ≥ 3 MS-Verbindungen: ${knoten.map(k => `${nameVon(k)} (${nachbarnIn(k).size})`).join(', ')}`);
+    const gruende = [...new Set(paare.map(([A, B]) => leiterMit(keys, w, A, B)).filter(x => typeof x === 'string'))];
+    if (gruende.length) teile.push(gruende.join('; '));
+    return teile.join(' · ');
   };
 
   const linien = [];
@@ -503,6 +551,11 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
   else if (!wurzelKeys.length) hinweise.push('Kein Netzanschlusspunkt (NAP) im Modell — die Übergabestation fehlt.');
   const ringeOhneTs = wurzeln.flatMap(w => w.abgaenge).filter(a => a.art === 'ring' && !a.trennstelleErfasst).length;
   if (ringeOhneTs) hinweise.push(`${ringeOhneTs === 1 ? 'Ein Ring' : ringeOhneTs + ' Ringe'} ohne erfasste offene Trennstelle.`);
+  wurzeln.forEach((w, wi) => w.abgaenge.forEach((ab, i) => {
+    if (ab.art !== 'vermascht' || ab.folge.length < 4) return;
+    ab.diagnose = leiterDiagnose(ab.folge, w.key);
+    hinweise.push(`Abgang ${i + 1}${wurzeln.length > 1 ? ` an NAP ${wi + 1}` : ''} ist vermascht (kein Ring, keine Linien erkennbar) — ${ab.diagnose}.`);
+  }));
   const leiterLinien = wurzeln.flatMap(w => w.abgaenge).filter(a => a.leiter).flatMap(a => a.leiter.linien);
   const leiterOhneTs = leiterLinien.filter(l => l.gekoppelt && l.art !== 'kopplung').length;
   if (leiterOhneTs) {
@@ -536,7 +589,8 @@ export function nuNetzUebersicht({ assets = [], edges = [], gebaeude = [], typeR
     ringe: wurzeln.reduce((s, w) => s + w.abgaenge.filter(a => a.art === 'ring').length, 0),
     abgaenge: wurzeln.reduce((s, w) => s + w.abgaenge.length, 0),
     // Linien zwischen zwei NAP und zwischen den Knotenstationen einer Leiter
-    linien: [...linien, ...leiterLinien].filter(l => l.art !== 'kopplung').length,
+    // (mehrere Wege in einer Gruppe = mehrere Linien mit Querverbindung)
+    linien: [...linien, ...leiterLinien].filter(l => l.art !== 'kopplung').reduce((s, l) => s + Math.max(1, l.wege?.length || 0), 0),
     msLaengeM: verbListe.reduce((s, v) => s + v.laengeM, 0),
     napKV: stationsListe.find(s => s.hatNap && s.napKV > 0)?.napKV ?? null,
     zieljahr: mitPlanung ? (Number.isFinite(zj) ? zj : Math.max(...planJahre.filter(Number.isFinite), -Infinity)) : null,

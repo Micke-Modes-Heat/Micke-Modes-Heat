@@ -385,3 +385,45 @@ describe('nuNetzUebersicht — Leiter unter einer Übergabe', () => {
     expect(ab.leiter).toBeNull();
   });
 });
+
+describe('nuNetzUebersicht — Leiter mit Abzweigen, Querverbindung und Diagnose', () => {
+  const geb = [1, 5, 6, 11, 12, 13, 21, 22, 31, 32, 33, 50, 60].map(i => ({ id: i, name: `G${i}`, gebaeudenummer: String(i) }));
+  const T = (g, kva = 630) => A('t' + g, 'Trafo', g, { leistungKVA: kva });
+  const basis = () => {
+    const as = [A('nap', 'NAP', 1), A('sa0', 'Schaltanlage', 1), T(5), T(6), T(11), T(12), T(13), T(21), T(22), T(31), T(32), T(33), T(50)];
+    const es = [E('x', 'nap', 'sa0'), E('z5', 'sa0', 't5'), E('z6', 'sa0', 't6'),
+      E('a1', 't5', 't11'), E('a2', 't11', 't12'), E('a3', 't12', 't13'), E('a4', 't13', 't6'),
+      E('b1', 't5', 't21'), E('b2', 't21', 't22'), E('b3', 't22', 't6'),
+      E('c1', 't5', 't31'), E('c2', 't31', 't32'), E('c3', 't32', 't33'), E('c4', 't33', 't6'),
+      E('st', 't21', 't50')];   // Abzweig an einer Linienstation → dritte Station mit ≥ 3 Nachbarn
+    return { as, es };
+  };
+  const lauf2 = ({ as, es }) => nuNetzUebersicht({ assets: as, edges: es, gebaeude: geb, typeRank: RANG, heute: HEUTE });
+
+  it('Abzweig an einer Linienstation: Knoten = die beiden von der Übergabe gespeisten Stationen', () => {
+    const [ab] = lauf2(basis()).wurzeln[0].abgaenge;
+    expect(ab.art).toBe('leiter');
+    expect(ab.leiter).toMatchObject({ links: 'g5', rechts: 'g6' });
+    const l2 = ab.leiter.linien[1];
+    expect(l2).toMatchObject({ art: 'linie', folge: ['g21', 'g22', 'g50'], haupt: 2, abzweige: 1 });
+  });
+
+  it('Querverbindung zwischen zwei Linien: eine vermaschte Linie, weiter Leiter', () => {
+    const b = basis();
+    b.es.push(E('q', 't12', 't32'));
+    const [ab] = lauf2(b).wurzeln[0].abgaenge;
+    expect(ab.art).toBe('leiter');
+    expect(ab.leiter.linien.map(l => l.art)).toEqual(['vermascht', 'linie']);
+    expect(ab.leiter.linien[0].wege).toEqual([3, 3]);   // zwei Linien über die Querverbindung, je eigene Zeile
+    expect(lauf2(b).kennzahlen.linien).toBe(3);
+  });
+
+  it('kein Leitermuster → Hinweis nennt die störenden Stationen', () => {
+    const b = basis();
+    b.es.push(E('w', 'sa0', 't12'));   // Linienstation zusätzlich an der Übergabe
+    const r = lauf2(b);
+    expect(r.wurzeln[0].abgaenge[0].art).toBe('vermascht');
+    expect(r.hinweise.join(' ')).toMatch(/Abgang 1 ist vermascht.*Übergabe speist Gebäude 5, Gebäude 6, Gebäude 12/);
+    expect(r.hinweise.join(' ')).toMatch(/Stationen mit ≥ 3 MS-Verbindungen: .*Gebäude 5 \(4\)/);
+  });
+});

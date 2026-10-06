@@ -15224,9 +15224,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-10-05';
+  var d = '2026-10-06';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'a1523c9';
+  var c = 'bb1a5d5';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -110245,10 +110245,31 @@ ${massTbl}
       const anB = nachOrdnung([...new Set(vB.map(v => andererEnde(v, B)))]);
       const n = keys.length;
       const linie = ws.length === 2 && innenV.length === n - 1 && anA.length === 1 && anB.length === 1;
-      const haupt = baumWeg(anA[0], anB[0], set);
+      // Wege von A nach B, stationsdisjunkt, kürzester zuerst. Eine reine Linie hat genau einen; sind mehrere
+      // Linien über eine Querverbindung verbunden, liegt jede auf einem eigenen Weg (eigene Zeile im Bild).
+      const wege = [];
+      const frei = new Set(keys), zielB = new Set(anB);
+      for (;;) {
+        const vor = new Map();
+        const q = anA.filter(s => frei.has(s));
+        q.forEach(s => vor.set(s, null));
+        let ziel = null;
+        while (q.length) {
+          const k = q.shift();
+          if (zielB.has(k)) { ziel = k; break; }
+          for (const nb of nachOrdnung(adj.get(k).map(x => x.nb).filter(x => frei.has(x) && !vor.has(x)))) { vor.set(nb, k); q.push(nb); }
+        }
+        if (ziel == null) break;
+        const weg = [];
+        for (let k = ziel; k != null; k = vor.get(k)) weg.unshift(k);
+        weg.forEach(k => frei.delete(k));
+        wege.push(weg);
+      }
+      if (!wege.length) wege.push(baumWeg(anA[0], anB[0], set));
+      const haupt = wege[0];
 
-      const folge = [...haupt];
-      const besucht = new Set(haupt);
+      const folge = wege.flat();
+      const besucht = new Set(folge);
       const tiefe = k => {
         besucht.add(k);
         folge.push(k);
@@ -110256,7 +110277,7 @@ ${massTbl}
           if (!besucht.has(nb)) tiefe(nb);
         }
       };
-      for (const k of haupt) {
+      for (const k of wege.flat()) {
         for (const nb of nachOrdnung(adj.get(k).map(x => x.nb).filter(x => set.has(x) && !besucht.has(x)))) {
           if (!besucht.has(nb)) tiefe(nb);
         }
@@ -110290,7 +110311,7 @@ ${massTbl}
       const tsStation = folge.some(k => stationen.get(k).trennstelle);
       return {
         art: linie ? 'linie' : 'vermascht', von: A, bis: B, weitere: ws.slice(2),
-        folge, haupt: haupt.length, abzweige: n - haupt.length,
+        folge, haupt: haupt.length, wege: wege.map(x => x.length), abzweige: n - wege.flat().length,
         innen, wurzel: anb(vA, A), wurzelB: anb(vB, B),
         speisung, gekoppelt: speisung.includes('beide'),
         trennstelleErfasst: tsKabel || tsStation, trennstelleNurStation: !tsKabel && tsStation,
@@ -110302,23 +110323,30 @@ ${massTbl}
       direkt: v, speisung: [], gekoppelt: !v.trennstelle, trennstelleErfasst: !!v.trennstelle, trennstelleNurStation: false,
     });
 
-    // Leiter unter EINER Übergabe: zwei Knotenstationen (je ≥ 3 MS-Nachbarn, die Übergabe mitgezählt), zwischen denen
-    // mindestens zwei Linien verlaufen. Die Knoten hängen direkt an der Übergabe (Zubringer), oder die Übergabe ist
-    // selbst der linke Knoten. Gruppen, die nur an einem Knoten hängen, sind Stiche. Passt das Muster nicht → null.
-    const leiterAus = (keys, w) => {
+    // Leiter unter EINER Übergabe: zwei Knotenstationen A und B, zwischen denen mindestens zwei Linien verlaufen.
+    // Kandidaten: (1) die Übergabe speist genau zwei Stationen → das sind die Knoten; (2) genau zwei Stationen mit
+    // ≥ 3 MS-Nachbarn (Übergabe mitgezählt), die eine davon an der Übergabe; (3) die Übergabe selbst ist der linke
+    // Knoten. Ohne A und B zerfällt der Rest in Gruppen: an A und B = Linie (mit Abzweigen oder Querverbindungen
+    // ggf. „vermascht“), nur an einer Seite = Stich (auch Ring). Passt kein Kandidat → null.
+    const nameVon = k => {
+      const st = stationen.get(k);
+      return st?.gebNummer ? `Gebäude ${st.gebNummer}` : st?.gebName || String(k);
+    };
+    const leiterKandidaten = (keys, w) => {
       const set = new Set(keys);
       const nachbarnIn = k => new Set(adj.get(k).map(x => x.nb).filter(nb => set.has(nb) || nb === w));
-      const knoten = keys.filter(k => nachbarnIn(k).size >= 3);
-      const anW = new Set(adj.get(w).map(x => x.nb).filter(nb => set.has(nb)));
-      let A, B;
+      const knoten = nachOrdnung(keys.filter(k => nachbarnIn(k).size >= 3));
+      const anW = nachOrdnung([...new Set(adj.get(w).map(x => x.nb).filter(nb => set.has(nb)))]);
+      const paare = [];
+      if (anW.length === 2) paare.push(anW);
       if (knoten.length === 2) {
-        [A, B] = nachOrdnung([...knoten]);
-        if (!anW.has(A) && anW.has(B)) [A, B] = [B, A];
-        if (!anW.has(A)) return null;
-      } else if (knoten.length === 1 && anW.size >= 2) {
-        A = w; B = knoten[0];
-      } else return null;
-
+        const [p, q] = knoten;
+        if (anW.includes(p)) paare.push([p, q]); else if (anW.includes(q)) paare.push([q, p]);
+      } else if (knoten.length === 1 && anW.length >= 2) paare.push([w, knoten[0]]);
+      return { paare, knoten, anW, nachbarnIn };
+    };
+    // Leiter zwischen A und B, sonst ein Text, warum nicht
+    const leiterMit = (keys, w, A, B) => {
       const restSet = new Set(keys.filter(k => k !== A && k !== B));
       const gesehen = new Set();
       const linienL = [], stiche = [];
@@ -110330,19 +110358,39 @@ ${massTbl}
           for (const { nb } of adj.get(grp[i])) if (restSet.has(nb) && !gesehen.has(nb)) { gesehen.add(nb); grp.push(nb); }
         }
         const gs = new Set(grp);
-        if (A !== w && anbindungen(w, gs).length) return null;   // Zubringer mit Stationen dazwischen
+        const anUeb = A !== w ? anbindungen(w, gs) : [];
+        if (anUeb.length) {
+          return `${anUeb.map(v => nameVon(andererEnde(v, w))).join(', ')} hängt zusätzlich direkt an der Übergabestation`;
+        }
         const nA = anbindungen(A, gs).length, nB = anbindungen(B, gs).length;
-        if (nA === 1 && nB === 1) linienL.push(linieAus(grp, [A, B]));
-        else if (nA + nB === 1) stiche.push({ seite: nA ? 'A' : 'B', ...abgangAus(grp, nA ? A : B, { ohneLeiter: true }) });
-        else return null;
+        if (nA && nB) linienL.push(linieAus(grp, [A, B]));
+        else stiche.push({ seite: nA ? 'A' : 'B', ...abgangAus(grp, nA ? A : B, { ohneLeiter: true }) });
       }
       // Direktes Kabel zwischen den Knoten = Kupplung; ist die Übergabe selbst der linke Knoten, ist es der Zubringer
       if (A !== w) {
         verbListe.filter(v => (v.a === A && v.b === B) || (v.a === B && v.b === A)).forEach(v => linienL.push(kupplungAus(v, A, B)));
       }
-      if (linienL.length < 2) return null;
+      if (linienL.length < 2) {
+        return `zwischen ${A === w ? 'der Übergabestation' : nameVon(A)} und ${nameVon(B)} ${linienL.length === 1 ? 'nur eine Linie' : 'keine Linie'}`;
+      }
       const zubringer = r => (r === w ? null : verbListe.find(v => (v.a === w && v.b === r) || (v.b === w && v.a === r)) || null);
       return { links: A === w ? null : A, rechts: B, zubringer: [zubringer(A), zubringer(B)], linien: linienL, stiche };
+    };
+    const leiterAus = (keys, w) => {
+      for (const [A, B] of leiterKandidaten(keys, w).paare) {
+        const r = leiterMit(keys, w, A, B);
+        if (typeof r === 'object') return r;
+      }
+      return null;
+    };
+    // Warum ein vermaschter Abgang keine Leiter ist — für den Hinweis im Panel (das Netzmodell liegt nur beim Anwender)
+    const leiterDiagnose = (keys, w) => {
+      const { paare, knoten, anW, nachbarnIn } = leiterKandidaten(keys, w);
+      const teile = [`Übergabe speist ${anW.map(nameVon).join(', ') || '—'}`];
+      if (knoten.length) teile.push(`Stationen mit ≥ 3 MS-Verbindungen: ${knoten.map(k => `${nameVon(k)} (${nachbarnIn(k).size})`).join(', ')}`);
+      const gruende = [...new Set(paare.map(([A, B]) => leiterMit(keys, w, A, B)).filter(x => typeof x === 'string'))];
+      if (gruende.length) teile.push(gruende.join('; '));
+      return teile.join(' · ');
     };
 
     const linien = [];
@@ -110385,6 +110433,11 @@ ${massTbl}
     else if (!wurzelKeys.length) hinweise.push('Kein Netzanschlusspunkt (NAP) im Modell — die Übergabestation fehlt.');
     const ringeOhneTs = wurzeln.flatMap(w => w.abgaenge).filter(a => a.art === 'ring' && !a.trennstelleErfasst).length;
     if (ringeOhneTs) hinweise.push(`${ringeOhneTs === 1 ? 'Ein Ring' : ringeOhneTs + ' Ringe'} ohne erfasste offene Trennstelle.`);
+    wurzeln.forEach((w, wi) => w.abgaenge.forEach((ab, i) => {
+      if (ab.art !== 'vermascht' || ab.folge.length < 4) return;
+      ab.diagnose = leiterDiagnose(ab.folge, w.key);
+      hinweise.push(`Abgang ${i + 1}${wurzeln.length > 1 ? ` an NAP ${wi + 1}` : ''} ist vermascht (kein Ring, keine Linien erkennbar) — ${ab.diagnose}.`);
+    }));
     const leiterLinien = wurzeln.flatMap(w => w.abgaenge).filter(a => a.leiter).flatMap(a => a.leiter.linien);
     const leiterOhneTs = leiterLinien.filter(l => l.gekoppelt && l.art !== 'kopplung').length;
     if (leiterOhneTs) {
@@ -110418,7 +110471,8 @@ ${massTbl}
       ringe: wurzeln.reduce((s, w) => s + w.abgaenge.filter(a => a.art === 'ring').length, 0),
       abgaenge: wurzeln.reduce((s, w) => s + w.abgaenge.length, 0),
       // Linien zwischen zwei NAP und zwischen den Knotenstationen einer Leiter
-      linien: [...linien, ...leiterLinien].filter(l => l.art !== 'kopplung').length,
+      // (mehrere Wege in einer Gruppe = mehrere Linien mit Querverbindung)
+      linien: [...linien, ...leiterLinien].filter(l => l.art !== 'kopplung').reduce((s, l) => s + Math.max(1, l.wege?.length || 0), 0),
       msLaengeM: verbListe.reduce((s, v) => s + v.laengeM, 0),
       napKV: stationsListe.find(s => s.hatNap && s.napKV > 0)?.napKV ?? null,
       zieljahr: mitPlanung ? (Number.isFinite(zj) ? zj : Math.max(...planJahre.filter(Number.isFinite), -Infinity)) : null,
@@ -115372,7 +115426,7 @@ ${massTbl}
     };
     const kante = v => ({ ts: v.trennstelle, geplant: v.geplant, ertuechtigt: v.ertuechtigt, anzahl: v.anzahl });
     const linieBasis = l => ({
-      ...abgang(l), haupt: l.haupt,
+      ...abgang(l), haupt: l.haupt, wege: l.wege || null,
       wurzelB: l.wurzelB.map(x => ({ i: x.i, ...kante(x.kante) })), direkt: l.direkt ? kante(l.direkt) : null,
       speisung: l.speisung, gekoppelt: l.gekoppelt, tsNurStation: l.trennstelleNurStation,
     });
@@ -115380,6 +115434,8 @@ ${massTbl}
     const leiter = lt => ({
       links: lt.links ? sicht(lt.links) : null, rechts: sicht(lt.rechts),
       nameL: lt.links ? ggNuKurzName(sicht(lt.links)) : 'Übergabestation', nameR: ggNuKurzName(sicht(lt.rechts)),
+      knappL: lt.links ? ggNuKurzName(sicht(lt.links), { knapp: true }) : 'Übergabe',
+      knappR: ggNuKurzName(sicht(lt.rechts), { knapp: true }),
       zubringer: lt.zubringer.map(v => (v ? kante(v) : null)),
       linien: lt.linien.map(linieBasis), stiche: lt.stiche.map(s => ({ seite: s.seite, ...abgang(s) })),
     });
@@ -115464,7 +115520,10 @@ ${massTbl}
       const nameR = ggNuKurzName(sicht(lt.rechts));
       const ll = lt.linien.filter(l => l.art !== 'kopplung');
       const nSt = ll.reduce((n, l) => n + l.folge.length, 0);
-      const linienTxt = `${ll.length === 1 ? 'verläuft eine Mittelspannungslinie' : `verlaufen ${ggNum(ll.length)} Mittelspannungslinien`}, `
+      const nL = ll.reduce((n, l) => n + Math.max(1, l.wege?.length || 0), 0);
+      const quer = ll.some(l => (l.wege?.length || 0) > 1);
+      const linienTxt = `${nL === 1 ? 'verläuft eine Mittelspannungslinie' : `verlaufen ${ggNum(nL)} Mittelspannungslinien`}`
+        + `${quer ? ' (teils untereinander querverbunden)' : ''}, `
         + `über die ${eine(nSt, 'weitere Station', 'weitere Stationen')} versorgt ${nSt === 1 ? 'wird' : 'werden'}.`;
       s.push(lt.links
         ? `Von der Übergabestation ${lt.zubringer[1] ? 'werden' : 'wird'} ${lt.zubringer[1] ? `die beiden Stationen ${nameL} und ${nameR}` : nameL} `
@@ -115515,11 +115574,15 @@ ${massTbl}
     return [s.join(' ')];
   }
 
-  /** Kurzname einer Station für Kopfzeilen und Text: „Trafostation 3“, bei Schaltstationen das Gebäude. */
-  function ggNuKurzName(s) {
+  /**
+   * Kurzname einer Station für Kopfzeilen und Text: „Trafostation 3“. Heißt die Station nur allgemein
+   * („Trafostation“ ohne Nummer, Schaltstation), unterscheidet erst das Gebäude: „Trafostation (Gebäude 5)“.
+   */
+  function ggNuKurzName(s, { knapp = false } = {}) {
     if (!s) return '';
-    if (s.titel !== 'Schaltstation' && s.titel !== 'Übergabestation') return s.titel;
-    return s.zeile2 ? `${s.titel === 'Schaltstation' ? 'Schaltstation ' : ''}${s.zeile2}` : s.titel;
+    if (/\d/.test(s.titel) && s.titel !== 'Übergabestation') return s.titel;
+    if (!s.zeile2) return s.titel;
+    return knapp ? s.zeile2 : `${s.titel} (${s.zeile2})`;
   }
 
   /** Kabeltypen der MS-Verbindungen für die Fußnote: „NA2XS2Y 185 mm² (4) · NA2XS2Y 95 mm² (1)". */
@@ -115568,24 +115631,34 @@ ${massTbl}
     // ── Planung je Abgang/Linie: Reihen, Routen, Spuren unter den Reihen ──
     // Bei einer Linie beginnen die Abzweige in einer neuen Reihe, damit der Hauptweg rechts frei an die
     // zweite Sammelschiene kommt.
+    // Mehrere Wege einer Linie (Querverbindung) stehen je in einer eigenen Zeile.
     const plane = (ab, L) => {
       const K = L.K;
       const n = ab.stationen.length;
-      const h = ab.haupt ?? n;
-      const hR = Math.ceil(h / K);
-      const pos = i => (i < h ? { r: Math.floor(i / K), c: i % K } : { r: hR + Math.floor((i - h) / K), c: (i - h) % K });
-      const R = n ? pos(n - 1).r + 1 : 0;
+      const wegeL = ab.wege?.length ? ab.wege : ab.haupt != null ? [ab.haupt] : [];
+      const segs = [...wegeL, n - wegeL.reduce((a, b) => a + b, 0)];
+      const posArr = [];
+      let R = 0;
+      for (const len of segs) {
+        for (let j = 0; j < len; j++) posArr.push({ r: R + Math.floor(j / K), c: j % K });
+        R += Math.ceil(len / K);
+      }
+      const pos = i => posArr[i];
+      const rechtsAussen = new Map();   // Reihe → größte belegte Spalte
+      posArr.forEach(p => rechtsAussen.set(p.r, Math.max(rechtsAussen.get(p.r) ?? -1, p.c)));
       const spuren = Array(Math.max(1, R)).fill(0);
       const neu = r => spuren[r]++;
       let gasse = 0;
       const routen = [];
+      const mitWegen = wegeL.length > 0;
       (ab.wurzel || []).forEach((w, k) => {
-        if (k === 0 && w.i === 0) routen.push({ art: 'bus', w });
+        if ((k === 0 && w.i === 0) || (mitWegen && pos(w.i).c === 0)) routen.push({ art: 'bus', w });
         else routen.push({ art: 'busSpur', w, s: neu(pos(w.i).r) });
       });
-      (ab.wurzelB || []).forEach((w, k) => {
-        if (k === 0 && w.i === h - 1) routen.push({ art: 'busR', w });
-        else routen.push({ art: 'busSpurR', w, s: neu(pos(w.i).r) });
+      (ab.wurzelB || []).forEach(w => {
+        const p = pos(w.i);
+        if (p.c === rechtsAussen.get(p.r)) routen.push({ art: 'busR', w });
+        else routen.push({ art: 'busSpurR', w, s: neu(p.r) });
       });
       if (ab.direkt) routen.push({ art: 'kupplung', w: ab.direkt });
       (ab.innen || []).forEach(v => {
@@ -115806,8 +115879,10 @@ ${massTbl}
       const warn = !l.gekoppelt ? '' : l.tsNurStation ? 'Trennstelle nur an Schaltanlage erfasst' : 'ohne offene Trennstelle';
       if (l.art === 'kopplung') return { kopf: `Direkte Kupplung ${nA} ↔ ${nB}`, warn };
       const zA = l.speisung.filter(s => s === 'A').length, zB = l.speisung.filter(s => s === 'B').length;
-      const teile = [`Linie ${nr}${l.art === 'linie' ? '' : ' (vermascht)'}`
-        + (l.abzweige ? ` mit ${l.abzweige === 1 ? 'Abzweig' : ggNum(l.abzweige) + ' Abzweigen'}` : ''),
+      const nWege = Math.max(1, l.wege?.length || 0);
+      const titel = nWege > 1 ? `Linien ${nr}–${nr + nWege - 1} mit Querverbindung`
+        : `Linie ${nr}${l.art === 'linie' ? '' : ' (vermascht)'}`;
+      const teile = [titel + (l.abzweige ? ` · ${l.abzweige === 1 ? 'Abzweig' : ggNum(l.abzweige) + ' Abzweige'}` : ''),
         ...(mitEnden ? [`${nA} ↔ ${nB}`] : []), stationenTxt(l.stationen.length)];
       if (!l.gekoppelt && (zA || zB)) {
         teile.push(!zB ? `Normalbetrieb: alle über ${nA}` : !zA ? `Normalbetrieb: alle über ${nB}`
@@ -115819,7 +115894,7 @@ ${massTbl}
     const zeichneLeiter = (p, nr, busYs) => {
       const lt = p.lt;
       const railY = p.top + p.railDy, kTop = p.top + p.kartenDy;
-      const nLin = lt.linien.filter(l => l.art !== 'kopplung').length;
+      const nLin = lt.linien.filter(l => l.art !== 'kopplung').reduce((s, l) => s + Math.max(1, l.wege?.length || 0), 0);
       let o = txt(xa, p.top + 14, `Abgang ${nr} · ${lt.nameL} ↔ ${lt.nameR} · ${ggNum(nLin)} ${nLin === 1 ? 'Linie' : 'Linien'} · `
         + stationenTxt(p.ab.stationen.length), { size: 11, weight: 600, fill: gruen });
       // Zubringer: senkrecht zur linken, über die Schiene zur rechten Knotenstation
@@ -115839,8 +115914,10 @@ ${massTbl}
       // Linien und Stiche an den Sammelschienen der Knotenstationen (ist die Übergabe selbst der linke
       // Knoten, hängen die Linien direkt an deren Sammelschiene)
       const ysA = lt.links ? [] : busYs, ysB = [];
-      p.lin.forEach((q, i) => {
-        const { kopf, warn } = linieKopf(q.ab, i + 1, lt.nameL, lt.nameR, { mitEnden: false });
+      let linNr = 1;
+      p.lin.forEach(q => {
+        const { kopf, warn } = linieKopf(q.ab, linNr, lt.knappL, lt.knappR, { mitEnden: false });
+        linNr += Math.max(1, q.ab.wege?.length || 0);
         o += zeichneAbgang(q, { kopf, kopfFarbe: gruen, warn, busYs: ysA, busYsR: ysB });
       });
       const stichKopf = (q, i) => `Stich ${i + 1} · ${abgangArt(q.ab)} · ${stationenTxt(q.n)}`;
@@ -115910,8 +115987,10 @@ ${massTbl}
       // Linien zwischen den Übergaben, dann die eigenen Abgänge (rechte Übergabe gespiegelt);
       // danach die Sammelschienen bis zum tiefsten Anschluss
       const busYs = [], busYsR = [];
-      gp.lin.forEach((p, i) => {
-        const { kopf, warn } = linieKopf(p.ab, i + 1, `NAP ${gp.li + 1}`, `NAP ${gp.re + 1}`);
+      let linNr = 1;
+      gp.lin.forEach(p => {
+        const { kopf, warn } = linieKopf(p.ab, linNr, `NAP ${gp.li + 1}`, `NAP ${gp.re + 1}`);
+        linNr += Math.max(1, p.ab.wege?.length || 0);
         out += zeichneAbgang(p, { kopf, kopfFarbe: gruen, warn, busYs, busYsR });
       });
       gp.liAbg.forEach((p, i) => {
