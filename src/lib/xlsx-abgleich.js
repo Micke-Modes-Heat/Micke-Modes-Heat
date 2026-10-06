@@ -295,7 +295,7 @@ export function tabellenBlatt(name, spalten, objekte, { leerzeilen = 0, fixSpalt
       fehler: 'Dieser Wert steht nicht in der Auswahlliste — der Import wird ihn melden und nicht übernehmen.' });
   });
   return {
-    name, zeilen, pruefungen, fixZeilen: 1, fixSpalten,
+    name, zeilen, pruefungen, fixZeilen: 1, fixSpalten, filter: true,
     zeilenHoehe: { 0: 32 },
     spalten: spalten.map(s => ({ breite: s.breite ?? Math.min(36, Math.max(9, Math.round(s.kopf.length * 0.95) + 2)) })),
   };

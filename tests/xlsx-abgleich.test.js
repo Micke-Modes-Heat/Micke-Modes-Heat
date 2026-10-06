@@ -192,6 +192,10 @@ describe('Blattbausteine (Schreiben → Lesen)', async () => {
     expect(dateien['xl/workbook.xml']).toContain('<definedName name="L_Typ">Listen!$B$2:$B$4</definedName>');
     expect(dateien['xl/worksheets/sheet1.xml']).toContain('<dataValidation type="list"');
     expect(dateien['xl/worksheets/sheet1.xml']).toContain('<sheetProtection');
+    // Autofilter muss in der Datei stehen — auf geschütztem Blatt lässt Excel keinen neuen anlegen
+    expect(dateien['xl/worksheets/sheet1.xml']).toContain('<autoFilter ref="A1:E6"/>');
+    expect(dateien['xl/workbook.xml']).toContain('<definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">&apos;Test&apos;!$A$1:$E$6</definedName>');
+    expect(dateien['xl/worksheets/sheet2.xml']).not.toContain('<autoFilter');
     const { blaetter } = await xlsxLesen(p => dateien[p] ?? null);
     const rows = blaetter.Test;
     expect(rows[0]).toEqual(['ID', 'Name', 'Von', 'Aktiv', 'Wert']);

@@ -132,6 +132,20 @@ function _zelle(roh) {
 }
 
 /**
+ * Bereich des Autofilters (Kopfzeile bis letzte Zeile über alle Spalten) oder
+ * null. Auf einem geschützten Blatt lässt Excel keinen neuen Filter anlegen —
+ * er muss darum schon in der Datei stehen, dann ist er trotz Schutz benutzbar.
+ */
+function _filterBereich(blatt) {
+  if (!blatt.filter) return null;
+  const zeilen = blatt.zeilen || [];
+  let maxSpalte = 0;
+  for (const z of zeilen) if (z && z.length > maxSpalte) maxSpalte = z.length;
+  if (!maxSpalte || zeilen.length < 1) return null;
+  return `A1:${spalteZuBuchstabe(maxSpalte - 1)}${zeilen.length}`;
+}
+
+/**
  * Ein Arbeitsblatt als sheetN.xml.
  * @param {object} blatt          siehe xlsxDateien()
  * @param {(s:string)=>number} sst  Text → Index in der sharedStrings-Tabelle
@@ -190,6 +204,9 @@ function _sheetXml(blatt, sst) {
     : '<sheetProtection sheet="1" objects="1" scenarios="1" formatCells="0" formatColumns="0"'
       + ' formatRows="0" insertRows="0" deleteRows="0" sort="0" autoFilter="0"/>';
 
+  const filter = _filterBereich(blatt);
+  const filterXml = filter ? `<autoFilter ref="${filter}"/>` : '';
+
   const verbunden = (blatt.verbunden || []).length
     ? `<mergeCells count="${blatt.verbunden.length}">`
       + blatt.verbunden.map(b => `<mergeCell ref="${b}"/>`).join('') + '</mergeCells>'
@@ -218,7 +235,7 @@ function _sheetXml(blatt, sst) {
     + '<sheetFormatPr defaultRowHeight="15"/>'
     + (cols ? `<cols>${cols}</cols>` : '')
     + `<sheetData>${zeilenXml}</sheetData>`
-    + schutz + verbunden + pruefXml
+    + schutz + filterXml + verbunden + pruefXml
     + '<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>'
     + pageSetup + rowBreaks
     + '</worksheet>';
@@ -245,6 +262,7 @@ export function blattName(name) {
  *   quer?: boolean,             // Druck im Querformat auf eine Seitenbreite
  *   umbrueche?: number[],       // feste Seitenumbrüche vor diesen Zeilen (0-basiert)
  *   schutz?: boolean,
+ *   filter?: boolean,           // Autofilter auf der Kopfzeile (Zeile 1)
  *   versteckt?: boolean,
  *   verbunden?: string[],
  *   pruefungen?: Array<{bereich:string, liste:string, titel?:string, hinweis?:string, fehler?:string}>,
@@ -286,11 +304,18 @@ export function xlsxDateien(mappe) {
   dateien['xl/sharedStrings.xml'] = sstXml;
   dateien['xl/styles.xml'] = _stylesXml();
 
-  const namen = mappe?.namen && Object.keys(mappe.namen).length
-    ? '<definedNames>' + Object.entries(mappe.namen)
-      .map(([n, bezug]) => `<definedName name="${xmlEsc(n)}">${xmlEsc(bezug)}</definedName>`).join('')
-      + '</definedNames>'
-    : '';
+  // Excel führt den Filterbereich je Blatt als versteckten Namen _xlnm._FilterDatabase
+  const filterNamen = blaetter.map((b, i) => {
+    const bereich = _filterBereich(b);
+    if (!bereich) return '';
+    // „A1" → „$A$1" (absoluter Bezug, wie Excel ihn schreibt)
+    const [von, bis] = bereich.split(':').map(r => r.replace(/^([A-Z]+)(\d+)$/, '$$$1$$$2'));
+    const blattRef = "'" + blattNamen[i].replace(/'/g, "''") + "'";
+    return `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">${xmlEsc(`${blattRef}!${von}:${bis}`)}</definedName>`;
+  }).join('');
+  const eigene = Object.entries(mappe?.namen || {})
+    .map(([n, bezug]) => `<definedName name="${xmlEsc(n)}">${xmlEsc(bezug)}</definedName>`).join('');
+  const namen = filterNamen || eigene ? `<definedNames>${filterNamen}${eigene}</definedNames>` : '';
   dateien['xl/workbook.xml'] = KOPF
     + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
     + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
