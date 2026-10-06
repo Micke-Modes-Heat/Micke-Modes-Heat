@@ -14,6 +14,7 @@ import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js'
 import { KABEL_TYPEN, TRAFO_GROESSEN, MS_I_MAX_A, MS_SECTIONS, kabelTypOptionen } from './config/netz-kosten.js';
 import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
 import { nsKabelAuslegen } from './lib/ns-auslegung.js';
+import { anschlussWirksam } from './lib/anschlussleistung.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { createId } from './lib/util.js';
 import { mergeOsmElements, splitOsmBbox, subdivideOsmBbox } from './lib/osm-bbox-tiles.js';
@@ -2785,7 +2786,15 @@ export function elCalcAssets(opts = {}) {
     const rankA = TYPE_RANK[aAsset.type] ?? 6, rankB = TYPE_RANK[bAsset.type] ?? 6;
     const lengthM = e.lengthM || 0;
 
-    const P_v = bfsDownstream(e, assetVerbrauch, gebVerbrauch);
+    let P_v = bfsDownstream(e, assetVerbrauch, gebVerbrauch);
+    // Hausanschluss eines Verbrauchers (Blatt): das Kabel muss die Anschluss-
+    // leistung tragen (Handwert oder Klasse + 20 % Reserve), nicht nur die Last.
+    // Sammelleitungen bleiben beim Lastfluss — die Anschlussleistungen treten
+    // nie gleichzeitig auf.
+    const sinkA = rankA <= rankB ? bAsset : aAsset;
+    if (sinkA.type === 'Verbraucher' && (adjList.get(sinkA.id)?.length || 0) === 1) {
+      P_v = Math.max(P_v, anschlussWirksam(_p(sinkA)).kw);
+    }
     const P_g = bfsDownstream(e, assetErzeugung, () => 0); // Gebäude erzeugen nicht
     const P_net   = P_v - P_g;
     const P_worst = Math.max(P_v, P_g);

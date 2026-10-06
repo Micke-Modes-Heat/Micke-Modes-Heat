@@ -1,6 +1,7 @@
 // ── 13e-assets-inspector.js — Editor-Panel für selektiertes Asset ──────────
 
 import { createId } from './lib/util.js';
+import { anschlussWirksam } from './lib/anschlussleistung.js';
 
 // Persistiert den Einklapp-Zustand der Sektionen innerhalb einer Session
 const _sectionCollapsed = {};
@@ -503,11 +504,20 @@ function buildPropsForm(asset) {
           <select class="ins-field-input" data-prop="slpTyp" data-id="${id}">${optsHtml}</select>
         </div>`;
       })();
-      // Anschlussleistung: nur dokumentiert (z. B. aus dem Bestandsplan), die
-      // Last rechnet weiter mit der Leistung.
+      // Anschlussleistung: Handeingabe (z. B. aus dem Bestandsplan) hat Vorrang;
+      // leer = nächsthöhere Anschlussklasse zur Leistung + 20 % Reserve. Die Last
+      // rechnet weiter mit der Leistung, das Hausanschlusskabel mit der Anschlussleistung.
+      const anschl = anschlussWirksam({ leistungKW: p.leistungKW ?? 10, anschlussleistungKW: p.anschlussleistungKW });
+      const anschlField = `<div class="ins-field-group">
+          <label class="ins-field-label">Anschlussleistung (kW)</label>
+          <input class="ins-field-input" type="number" step="any" min="0"
+            value="${p.anschlussleistungKW ?? ''}" placeholder="auto ${anschl.kw}"
+            title="Leer = automatisch: nächsthöhere Anschlussklasse zu Leistung + 20 % Reserve (${anschl.kw} kW)"
+            data-prop="anschlussleistungKW" data-id="${id}">
+        </div>`;
       return row2(
-          numField(id, 'leistungKW',          'Leistung (kW)',          10, {props:p}),
-          numField(id, 'anschlussleistungKW', 'Anschlussleistung (kW)', '', {props:p, min:0})
+          numField(id, 'leistungKW', 'Leistung (kW)', 10, {props:p}),
+          anschlField
         )
         + slpSelectHtml
         + `<button class="ins-link-btn" data-slp-open="${curSlp}">Profil ansehen →</button>`;

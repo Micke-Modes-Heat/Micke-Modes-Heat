@@ -15309,7 +15309,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-06';
   if (d.indexOf('__') === 0) d = '';
-  var c = '4e21072';
+  var c = '8e2f964';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -75094,6 +75094,41 @@ window._isSingleFileBuild = true;
     };
   }
 
+  // Anschlussleistung eines Verbrauchers: nächsthöhere Anschlussklasse zur
+  // geschätzten Leistung inklusive Reserve. Ein von Hand eingetragener Wert hat
+  // immer Vorrang. Der automatische Wert wird NICHT in die Props geschrieben,
+  // sondern bei Bedarf aus der Leistung abgeleitet — so bleibt er bei geänderter
+  // Leistung aktuell und ist von einer Handeingabe unterscheidbar.
+
+  /** Übliche Anschlussgrößen in kW (NH-Sicherung 50…400 A bei 400 V), darüber kVA-Stufen. */
+  const ANSCHLUSS_STUFEN_KW = [30, 43, 55, 69, 86, 110, 138, 172, 215, 276, 400, 630, 1000];
+
+  /** Mindestreserve auf die geschätzte Leistung. */
+  const ANSCHLUSS_RESERVE = 0.20;
+
+  /** Nächsthöhere Stufe ≥ kw; oberhalb der Staffel auf 100 kW aufgerundet. */
+  function anschlussKlasse(kw) {
+    if (!(kw > 0)) return 0;
+    const s = ANSCHLUSS_STUFEN_KW.find(x => x >= kw);
+    return s ?? Math.ceil(kw / 100) * 100;
+  }
+
+  /** Automatische Anschlussleistung zur geschätzten Leistung (kW), 0 ohne Leistung. */
+  function anschlussAuto(leistungKW) {
+    const p = parseFloat(leistungKW);
+    return p > 0 ? anschlussKlasse(p * (1 + ANSCHLUSS_RESERVE)) : 0;
+  }
+
+  /**
+   * Wirksame Anschlussleistung eines Verbraucher-Props-Objekts.
+   * @returns {{kw:number, auto:boolean}} auto = aus der Leistung abgeleitet
+   */
+  function anschlussWirksam(props) {
+    const manuell = parseFloat(props?.anschlussleistungKW);
+    if (manuell > 0) return { kw: manuell, auto: false };
+    return { kw: anschlussAuto(props?.leistungKW), auto: true };
+  }
+
   // @ts-check
   // ── Allgemeine Hilfsfunktionen ────────────────────────────────────────────
 
@@ -80787,7 +80822,15 @@ window._isSingleFileBuild = true;
       const rankA = TYPE_RANK[aAsset.type] ?? 6, rankB = TYPE_RANK[bAsset.type] ?? 6;
       const lengthM = e.lengthM || 0;
 
-      const P_v = bfsDownstream(e, assetVerbrauch, gebVerbrauch);
+      let P_v = bfsDownstream(e, assetVerbrauch, gebVerbrauch);
+      // Hausanschluss eines Verbrauchers (Blatt): das Kabel muss die Anschluss-
+      // leistung tragen (Handwert oder Klasse + 20 % Reserve), nicht nur die Last.
+      // Sammelleitungen bleiben beim Lastfluss — die Anschlussleistungen treten
+      // nie gleichzeitig auf.
+      const sinkA = rankA <= rankB ? bAsset : aAsset;
+      if (sinkA.type === 'Verbraucher' && (adjList.get(sinkA.id)?.length || 0) === 1) {
+        P_v = Math.max(P_v, anschlussWirksam(_p(sinkA)).kw);
+      }
       const P_g = bfsDownstream(e, assetErzeugung, () => 0); // Gebäude erzeugen nicht
       const P_net   = P_v - P_g;
       const P_worst = Math.max(P_v, P_g);
@@ -187973,11 +188016,20 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           <select class="ins-field-input" data-prop="slpTyp" data-id="${id}">${optsHtml}</select>
         </div>`;
         })();
-        // Anschlussleistung: nur dokumentiert (z. B. aus dem Bestandsplan), die
-        // Last rechnet weiter mit der Leistung.
+        // Anschlussleistung: Handeingabe (z. B. aus dem Bestandsplan) hat Vorrang;
+        // leer = nächsthöhere Anschlussklasse zur Leistung + 20 % Reserve. Die Last
+        // rechnet weiter mit der Leistung, das Hausanschlusskabel mit der Anschlussleistung.
+        const anschl = anschlussWirksam({ leistungKW: p.leistungKW ?? 10, anschlussleistungKW: p.anschlussleistungKW });
+        const anschlField = `<div class="ins-field-group">
+          <label class="ins-field-label">Anschlussleistung (kW)</label>
+          <input class="ins-field-input" type="number" step="any" min="0"
+            value="${p.anschlussleistungKW ?? ''}" placeholder="auto ${anschl.kw}"
+            title="Leer = automatisch: nächsthöhere Anschlussklasse zu Leistung + 20 % Reserve (${anschl.kw} kW)"
+            data-prop="anschlussleistungKW" data-id="${id}">
+        </div>`;
         return row2(
-            numField(id, 'leistungKW',          'Leistung (kW)',          10, {props:p}),
-            numField(id, 'anschlussleistungKW', 'Anschlussleistung (kW)', '', {props:p, min:0})
+            numField(id, 'leistungKW', 'Leistung (kW)', 10, {props:p}),
+            anschlField
           )
           + slpSelectHtml
           + `<button class="ins-link-btn" data-slp-open="${curSlp}">Profil ansehen →</button>`;
