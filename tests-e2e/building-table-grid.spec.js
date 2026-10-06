@@ -2,7 +2,7 @@
 // Einfügen aus Excel, Kopieren, Rückgängig, Shift+Klick auf Haken, Enter springt nach unten.
 import { expect, test } from '@playwright/test';
 
-const SPALTEN = ['gebaeudenummer', 'name', 'nutzung', 'baujahr', 'stockwerke', 'flaeche', 'waerme', 'spez', 'heizlast'];
+const SPALTEN = ['gebaeudenummer', 'name', 'nutzung', 'baujahr', 'abrissjahr', 'stockwerke', 'flaeche', 'waerme', 'spez', 'heizlast'];
 
 test('dist: Gebäudetabelle lässt sich wie eine Tabellenkalkulation bearbeiten', async ({ page }) => {
   await page.route(/tile\.openstreetmap\.org/, route => route.abort());
@@ -56,7 +56,7 @@ test('dist: Gebäudetabelle lässt sich wie eine Tabellenkalkulation bearbeiten'
   await zelle(0, 'waerme').locator('input').click();
   await page.evaluate(() => {
     const dt = new DataTransfer(); dt.setData('text/plain', '100\n1.200,5\n300\n');
-    document.querySelector('#geb-table-body td.geb-zelle[data-gr="0"][data-gc="6"] input')
+    document.querySelector('#geb-table-body td.geb-zelle[data-gr="0"][data-gc="7"] input')
       .dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
   });
   expect(await spalte('waerme')).toEqual(['100', '1200.5', '300', '53', '54', '55']);
@@ -78,5 +78,5 @@ test('dist: Gebäudetabelle lässt sich wie eine Tabellenkalkulation bearbeiten'
   await zelle(0, 'flaeche').locator('input').fill('777');
   await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => gebaeude.find(g => g.id === 500).flaeche)).toBe(777);
-  await expect.poll(() => page.evaluate(() => { const td = document.activeElement?.closest('td.geb-zelle'); return td ? `${td.dataset.gr}/${td.dataset.gc}` : ''; })).toBe('1/5');
+  await expect.poll(() => page.evaluate(() => { const td = document.activeElement?.closest('td.geb-zelle'); return td ? `${td.dataset.gr}/${td.dataset.gc}` : ''; })).toBe(`1/${SPALTEN.indexOf('flaeche')}`);
 });

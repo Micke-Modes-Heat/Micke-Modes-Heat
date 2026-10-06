@@ -89,6 +89,18 @@ describe('Tabellen', () => {
     expect(xml).toContain('<w:gridSpan w:val="2"/>');
     expect(xml).toContain('Keine Trafos');
   });
+
+  it('schreibt einen Array-Wert als mehrzeilige Zelle (ein Absatz je Eintrag)', () => {
+    const xml = gdxTabelle({
+      spalten: [{ label: 'Station' }, { label: 'Trafos' }],
+      zeilen: [{ werte: ['Werkstatt', ['Trafo 1', 'Trafo 2']] }, { werte: ['Halle', []] }],
+    });
+    const zelle = xml.match(/<w:tc>(?:(?!<\/w:tc>).)*Trafo 1(?:(?!<\/w:tc>).)*<\/w:tc>/s)[0];
+    expect((zelle.match(/<w:p>|<w:p /g) || []).length).toBe(2);
+    expect(zelle).toContain('Trafo 2');
+    expect(xml).toContain('>–<');           // leeres Array = leere Zelle
+    expect(ausgewogen(xml)).toBe(true);
+  });
 });
 
 describe('Paket', () => {

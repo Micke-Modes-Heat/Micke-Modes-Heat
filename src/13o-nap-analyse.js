@@ -13,6 +13,7 @@ import { makePvProfile8760 } from './09a-pv-profile.js';
 import { getElSlpProfiles } from './13k-elslp-registry.js';
 import { windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
 import { escHtml } from './03c-gebaeude-io.js';
+import { SCHICHT, normSchicht } from './lib/schichten.js';
 import { BP_LEISTUNGS_TYPEN, bpAssetLeistung, bpMassnahmen, bpLastJahr, bpNormGzf, bpLadeLeistung, bpZieljahr, bpGzfFuer } from './lib/bedarfsprognose.js';
 
 // ── Modulzustand ─────────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ const _N = {
   selectedNapId:   null,   // ausgewählter NAP für synthetische Analyse
   gzf:             1.0,    // Gleichzeitigkeitsfaktor
   kalibrierFactors: null,  // Nutzungstyp-Faktoren für Kalibrierung (null = Defaults)
+  kalNurBestand: true,     // Kalibrierung nur auf Bestandsgebäude/-assets verteilen
 };
 
 // TYPE_RANK für BFS (niedriger = versorgungsseitig)
@@ -1080,7 +1082,7 @@ function _napRenderSidebar() {
     style="width:100%;padding:5px 8px;border:1px solid #7b1fa255;border-radius:4px;background:transparent;color:#ce93d8;cursor:pointer;font-size:10px;font-weight:600;text-align:left;">
     🔧 leistungKW aus NAP-Profil zurückrechnen
   </button>
-  <div style="font-size:9px;color:#444;margin-top:3px;line-height:1.4;">Verteilt NAP-Peak proportional nach Nutzfläche × Nutzungstyp-Faktor auf alle verknüpften Verbraucher.</div>
+  <div style="font-size:9px;color:#444;margin-top:3px;line-height:1.4;">Verteilt NAP-Peak proportional nach Nutzfläche × Nutzungstyp-Faktor auf die verknüpften Verbraucher (wahlweise nur Bestandsgebäude).</div>
 </div>` : '';
 
   sb.innerHTML = napBlock + importBlock + kpiBlock + napCapBlock + kalBlock + massBlock + pdfBlock;
@@ -1719,11 +1721,25 @@ function _napBuildKalibrierungEntries() {
   // Verbraucher-Typen downstream des NAP ermitteln
   const consumers = _napBfsDownstream(napId)
     .filter(a => ['Verbraucher', 'WP', 'Lade'].includes(a.type));
-  if (!consumers.length) return { napPeak, napId, entries: [], fixedEntries: [], fixedLoad: 0, availableKW: napPeak, totalWeight: 0 };
+  if (!consumers.length) return { napPeak, napId, entries: [], fixedEntries: [], excludedEntries: [], fixedLoad: 0, availableKW: napPeak, totalWeight: 0 };
 
   const gebs = window.gebaeude || [];
 
-  const all = consumers.map(asset => {
+  // Nur Bestand: die Messung enthält nur, was im Messjahr schon da war. Asset und
+  // (falls vorhanden) sein Gebäude müssen beide Schicht Bestand sein und dürfen
+  // kein Baujahr nach dem Messjahr haben — sonst bliebe leistungKW unverändert.
+  const messJahr  = _N.data.stats.year;
+  const istBest   = o => !o || (normSchicht(o.schicht) === SCHICHT.BESTAND && !(parseInt(o.baujahr) > messJahr));
+  const geb       = a => a.buildingId ? gebs.find(g => g.id === a.buildingId) : null;
+  const excluded  = _N.kalNurBestand ? consumers.filter(a => !(istBest(a) && istBest(geb(a)))) : [];
+  const excludedEntries = excluded.map(asset => ({
+    asset, building: geb(asset),
+    currentKW: asset.type === 'Lade'
+      ? (parseInt(asset.props?.anzahlPunkte) || 1) * (parseFloat(asset.props?.leistungProPunktKW) || 11)
+      : parseFloat(asset.props?.leistungKW) || 0,
+  }));
+
+  const all = consumers.filter(a => !excluded.includes(a)).map(asset => {
     const p = asset.props || {};
     const currentKW = asset.type === 'Lade'
       ? (parseInt(p.anzahlPunkte) || 1) * (parseFloat(p.leistungProPunktKW) || 11)
@@ -1754,11 +1770,11 @@ function _napBuildKalibrierungEntries() {
   }
   for (const e of fixedEntries) e.calibKW = e.currentKW; // unverändert
 
-  return { napPeak, napId, entries: calibEntries, fixedEntries, fixedLoad, availableKW, totalWeight };
+  return { napPeak, napId, entries: calibEntries, fixedEntries, excludedEntries, fixedLoad, availableKW, totalWeight };
 }
 
 // Hilfsfunktion: Tabellenzeilen für Dialog rendern
-function _napKalTableRows(entries, fixedEntries) {
+function _napKalTableRows(entries, fixedEntries, excludedEntries = []) {
   const r = entries.map(e => `
 <tr style="border-bottom:1px solid #1a1a28;">
   <td style="padding:3px 6px;font-size:10px;color:#ccc;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${e.asset.name}">${e.asset.name}</td>
@@ -1777,7 +1793,15 @@ function _napKalTableRows(entries, fixedEntries) {
   <td style="padding:3px 6px;text-align:right;font-size:10px;color:#555;">${e.currentKW.toFixed(0)}</td>
   <td style="padding:3px 6px;text-align:right;font-size:10px;color:#555;">${e.currentKW.toFixed(0)} kW</td>
 </tr>`).join('');
-  return r + f;
+  const x = excludedEntries.map(e => `
+<tr style="border-bottom:1px solid #1a1a28;opacity:.35;">
+  <td style="padding:3px 6px;font-size:10px;color:#888;" title="${e.asset.name}">${e.asset.name}</td>
+  <td style="padding:3px 6px;font-size:10px;color:#666;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${e.building?.name||'–'}">${e.building?.name||'–'}</td>
+  <td colspan="3" style="padding:3px 6px;font-size:9px;color:#555;font-style:italic;">nicht Bestand → nicht kalibriert</td>
+  <td style="padding:3px 6px;text-align:right;font-size:10px;color:#555;">${e.currentKW.toFixed(0)}</td>
+  <td style="padding:3px 6px;text-align:right;font-size:10px;color:#555;">–</td>
+</tr>`).join('');
+  return r + f + x;
 }
 
 export function napShowKalibrierungDialog() {
@@ -1791,10 +1815,11 @@ export function napShowKalibrierungDialog() {
 function _napRenderKalDialog(kal) {
   document.getElementById('nap-kal-overlay')?.remove();
   const { napPeak, entries, fixedEntries, fixedLoad } = kal;
+  const excludedEntries = kal.excludedEntries || [];
   const totalCalib  = entries.reduce((s, e) => s + e.calibKW, 0) + fixedLoad;
   const abw         = totalCalib - napPeak;
   const factors     = _kalGetFactors();
-  const hasRows     = entries.length + fixedEntries.length > 0;
+  const hasRows     = entries.length + fixedEntries.length + excludedEntries.length > 0;
 
   // Dynamisch: alle registrierten Profile + Fallback-Faktor 1,5 für zukünftige Profile
   const factorInputs = getElSlpProfiles().map(p => {
@@ -1854,6 +1879,12 @@ function _napRenderKalDialog(kal) {
         Methode: Nutzfläche (GF × SW × 0,8) × Nutzungstyp-Faktor.<br>
         ${fixedEntries.length>0?`${fixedLoad.toFixed(0)} kW Festlast (${fixedEntries.length} Assets ohne Gebäude) werden vorab abgezogen.`:'Alle Consumer sind einem Gebäude zugeordnet.'}
       </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:10px;color:#aaa;cursor:pointer;"
+        title="Neubauten und geplante Assets (Schicht Entwicklung/Planung oder Baujahr nach ${_N.data.stats.year}) sind nicht im gemessenen Lastgang enthalten und behalten ihren leistungKW-Wert.">
+        <input type="checkbox" ${_N.kalNurBestand ? 'checked' : ''} onchange="napKalToggleNurBestand(this.checked)">
+        Nur Bestandsgebäude kalibrieren
+        ${excludedEntries.length > 0 ? `<span style="color:#555;font-size:9px;">(${excludedEntries.length} ausgeschlossen)</span>` : ''}
+      </label>
     </div>
     <!-- Faktoren-Editor -->
     <div style="width:200px;padding:10px 12px;border-left:1px solid #1a1a28;flex-shrink:0;background:#141420;">
@@ -1880,7 +1911,7 @@ function _napRenderKalDialog(kal) {
             <th style="padding:4px 6px;text-align:right;font-size:9px;color:#ef9a9a;font-weight:normal;">→ Kalibriert</th>
           </tr>
         </thead>
-        <tbody id="nap-kal-tbody">${_napKalTableRows(entries, fixedEntries)}</tbody>
+        <tbody id="nap-kal-tbody">${_napKalTableRows(entries, fixedEntries, excludedEntries)}</tbody>
       </table>`}
   </div>
 
@@ -1918,13 +1949,21 @@ export function napKalUpdateFactor(nutzung, value) {
 
   // Tabelle und KPI aktualisieren — ohne Dialog neu zu rendern (Fokus bleibt im Input)
   const tbody = document.getElementById('nap-kal-tbody');
-  if (tbody) tbody.innerHTML = _napKalTableRows(kal.entries, kal.fixedEntries);
+  if (tbody) tbody.innerHTML = _napKalTableRows(kal.entries, kal.fixedEntries, kal.excludedEntries);
   const kpiEl = document.getElementById('nap-kal-kpi-sum');
   if (kpiEl) {
     const total = kal.entries.reduce((s, e) => s + e.calibKW, 0) + kal.fixedLoad;
     kpiEl.textContent  = total.toFixed(0) + ' kW';
     kpiEl.style.color  = Math.abs(total - kal.napPeak) < 2 ? '#66bb6a' : '#f9a825';
   }
+}
+
+export function napKalToggleNurBestand(an) {
+  _N.kalNurBestand = !!an;
+  const kal = _napBuildKalibrierungEntries();
+  if (!kal) return;
+  window._napLastKal = kal;
+  _napRenderKalDialog(kal);
 }
 
 export function napApplyKalibrierung() {
@@ -2026,6 +2065,7 @@ window.napShowKalibrierungDialog    = napShowKalibrierungDialog;
 window.napApplyKalibrierung         = napApplyKalibrierung;
 window.napApplyKalibrierungMitProfil = napApplyKalibrierungMitProfil;
 window.napKalUpdateFactor           = napKalUpdateFactor;
+window.napKalToggleNurBestand       = napKalToggleNurBestand;
 window.napGetEndausbauLastgang      = napGetEndausbauLastgang;
 window.napHasMeasuredData           = napHasMeasuredData;
 window.napBedarfsStand              = napBedarfsStand;

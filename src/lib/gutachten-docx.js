@@ -111,7 +111,9 @@ const zellAbstand = '<w:tcMar><w:top w:w="80" w:type="dxa"/><w:left w:w="100" w:
 function zelle(breite, text, { fill = '', jc = '', lauf = {}, spann = 1 } = {}) {
   return `<w:tc><w:tcPr><w:tcW w:w="${breite}" w:type="dxa"/>${spann > 1 ? `<w:gridSpan w:val="${spann}"/>` : ''}${zellRand}`
     + (fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>` : '') + `${zellAbstand}</w:tcPr>`
-    + gdxAbsatz(gdxLauf(text, lauf), { stil: 'Tabelleninhalt', jc }) + `</w:tc>`;
+    // Mehrzeilige Zelle (Array): ein Absatz je Eintrag, z. B. die Trafos einer Station
+    + (Array.isArray(text) ? text : [text]).map(t => gdxAbsatz(gdxLauf(String(t), lauf), { stil: 'Tabelleninhalt', jc })).join('')
+    + `</w:tc>`;
 }
 
 const KOPF_SZ = 18;   // 9 pt — etwas kleiner als der Rumpf, damit auch sechsspaltige Tabellen ohne Silbenbruch passen
@@ -144,7 +146,8 @@ export function gdxSpaltenBreiten(spalten, gesamt = GD_SEITE.breiteTw, kopfSz = 
  * Tabelle im Hausstil der Vorlage: grüner Kopf mit weißer Schrift (wiederholt sich
  * auf Folgeseiten), graue Haarlinien, jede zweite Zeile leicht getönt,
  * hervorgehobene Zeilen hellgrün und fett.
- * spalten: [{label, gewicht, align}], zeilen: [{werte: [...], highlight}]
+ * spalten: [{label, gewicht, align}], zeilen: [{werte: [...], highlight}] — ein Wert als Array
+ * wird zur mehrzeiligen Zelle.
  */
 export function gdxTabelle({ spalten = [], zeilen = [], fussnote = '', leer = 'Keine Daten vorhanden.' }) {
   const gesamt = GD_SEITE.breiteTw;
@@ -156,7 +159,7 @@ export function gdxTabelle({ spalten = [], zeilen = [], fussnote = '', leer = 'K
   const rumpf = zeilen.length
     ? zeilen.map((z, zi) => `<w:tr><w:trPr><w:cantSplit/></w:trPr>` + spalten.map((c, i) => {
         const v = z.werte?.[i];
-        const text = v == null || v === '' ? '–' : String(v);
+        const text = v == null || v === '' || (Array.isArray(v) && !v.length) ? '–' : Array.isArray(v) ? v : String(v);
         return zelle(breiten[i], text, {
           fill: z.highlight ? GD_FARBE.tint : zi % 2 ? GD_FARBE.band : '',
           jc: jc(c, i),

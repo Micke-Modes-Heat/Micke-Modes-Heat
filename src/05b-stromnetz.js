@@ -11,7 +11,7 @@ import { polygonAreaM2, polygonCenter, redrawTrasse } from './02c-karte-werkzeug
 import { setNetzVisible } from './03b-netz.js';
 import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js';
-import { KABEL_TYPEN, TRAFO_GROESSEN, MS_I_MAX_A, MS_SECTIONS } from './config/netz-kosten.js';
+import { KABEL_TYPEN, TRAFO_GROESSEN, MS_I_MAX_A, MS_SECTIONS, kabelTypOptionen } from './config/netz-kosten.js';
 import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
 import { nsKabelAuslegen } from './lib/ns-auslegung.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
@@ -91,9 +91,7 @@ export function openCableInspector(edge) {
 
 function _renderCableInspector(panel, edge) {
   const FUSE_SIZES = [0, 16, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250];
-  const typeOpts = Object.entries(KABEL_TYPEN)
-    .map(([k, v]) => `<option value="${k}"${k === edge.cableType ? ' selected' : ''}>${v.label}</option>`)
-    .join('');
+  const typeOpts = kabelTypOptionen(edge.cableType || 'NAYY');
   const fuseOpts = FUSE_SIZES
     .map(a => `<option value="${a}"${a === (edge.fuseA || 0) ? ' selected' : ''}>${a === 0 ? '— kein —' : a + ' A'}</option>`)
     .join('');
@@ -2822,7 +2820,11 @@ export function elCalcAssets(opts = {}) {
         csMs = MS_SECTIONS.find(s => MS_I_MAX_A[s] >= I_A) || MS_SECTIONS[MS_SECTIONS.length - 1];
         e.crossSection = csMs;
       }
-      const iMaxMs = MS_I_MAX_A[csMs] || MS_I_MAX_A[MS_SECTIONS[MS_SECTIONS.length - 1]];
+      // Erfasster MS-Typ mit eigener Tabelle (z. B. N2XS2Y Kupfer) → dessen Iz;
+      // sonst die Aluminium-Richtwerte MS_I_MAX_A.
+      const msTyp = KABEL_TYPEN[ep.cableType];
+      const izTyp = msTyp?.msKabel ? msTyp.sections.find(s => s.mm2 === csMs)?.Iz : null;
+      const iMaxMs = izTyp || MS_I_MAX_A[csMs] || MS_I_MAX_A[MS_SECTIONS[MS_SECTIONS.length - 1]];
       e._effCrossSection = csMs;
       e.ratedCurrentA = iMaxMs;
       e.auslastungPct = iMaxMs ? (I_A / iMaxMs) * 100 : 0;

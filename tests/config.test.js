@@ -57,6 +57,31 @@ describe('KABEL_TYPEN', () => {
     const nayyIz = KABEL_TYPEN.NAYY.sections.find(s => s.mm2 === 70).Iz;
     expect(nyyIz).toBeGreaterThan(nayyIz);
   });
+
+  it('jeder Typ hat eine bekannte Gruppe, jeder Alias ein Ziel im Katalog', () => {
+    for (const [name, kabel] of Object.entries(KABEL_TYPEN)) {
+      expect(KABEL_GRUPPEN[kabel.gruppe], `${name} gruppe`).toBeDefined();
+    }
+    for (const [alias, ziel] of Object.entries(KABEL_ALIASE)) {
+      expect(KABEL_TYPEN[ziel], `${alias} → ${ziel}`).toBeDefined();
+    }
+  });
+
+  it('Ausbau-Typen: Standardalternativen + eigener Typ nur, wenn heute verlegt', () => {
+    expect(Object.keys(kabelTypenFuerAusbau('NAYY')).sort()).toEqual(['NAYY', 'NYY']);
+    expect(Object.keys(kabelTypenFuerAusbau('NA2XY'))).toContain('NA2XY');
+    for (const t of ['NKBA', 'NFA2X', 'NYM', 'NA2XS2Y']) {
+      expect(Object.keys(kabelTypenFuerAusbau(t)), t).not.toContain(t);
+    }
+  });
+
+  it('Auswahlliste gliedert nach Gruppen und behält Typen außerhalb des Filters', () => {
+    const ns = kabelTypOptionen('NYY', ['ns']);
+    expect(ns).toContain('<optgroup label="NS-Erdkabel">');
+    expect(ns).toContain('value="NYY" selected');
+    expect(ns).not.toContain('NA2XS2Y');
+    expect(kabelTypOptionen('NKBA', ['ns'])).toContain('value="NKBA" selected');
+  });
 });
 
 describe('ERZEUGER_CFG', () => {

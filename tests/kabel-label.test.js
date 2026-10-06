@@ -66,6 +66,43 @@ describe('parseKabelLabel — Schreibweisen von Bestandsplänen', () => {
     expect(r.bekannt).toBe(false);
   });
 
+  it('weitere Katalogtypen werden erkannt', () => {
+    for (const [txt, typ] of [
+      ['NYCWY 4x95/50', 'NYCWY'], ['NAYCWY 3x150/70', 'NAYCWY'], ['N2XY-J 5x16', 'N2XY'],
+      ['NA2XY 4x120', 'NA2XY'], ['NKBA 4x70', 'NKBA'], ['NAKBA 3x95', 'NAKBA'],
+      ['NFA2X 4x35', 'NFA2X'], ['NYM-J 5x2,5', 'NYM'],
+    ]) {
+      const r = parseKabelLabel(txt);
+      expect(r.cableType, txt).toBe(typ);
+      expect(r.bekannt, txt).toBe(true);
+      expect(r.msLevel, txt).toBe(false);
+    }
+  });
+
+  it('Schreibvarianten werden auf den Katalogtyp abgebildet', () => {
+    const r = parseKabelLabel('3x NA2XS(F)2Y 1x185');
+    expect(r.cableType).toBe('NA2XS2Y');
+    expect(r.typText).toBe('NA2XS(F)2Y');
+    expect(r.nParallel).toBe(3);
+    expect(r.crossSection).toBe(185);
+    expect(r.msLevel).toBe(true);
+    expect(parseKabelLabel('nyby 4x50').cableType).toBe('NYY');
+    expect(parseKabelLabel('NYCY 4x50').cableType).toBe('NYCWY');
+    expect(parseKabelLabel('NHXMH-J 3x1,5').cableType).toBe('NYM');
+  });
+
+  it('kürzere Typen beißen längere nicht an', () => {
+    expect(parseKabelLabel('NAYY 4x150').cableType).toBe('NAYY');
+    expect(parseKabelLabel('NAYCWY 3x95/50').cableType).toBe('NAYCWY');
+  });
+
+  it('Spannungsangabe entscheidet über MS bei Papierkabeln', () => {
+    const ms = parseKabelLabel('NAKBA 3x95 6/10 kV');
+    expect(ms.msLevel).toBe(true);
+    expect(ms.crossSection).toBe(95);
+    expect(parseKabelLabel('NKBA 4x70 0,6/1 kV').msLevel).toBe(false);
+  });
+
   it('leere oder unbrauchbare Eingaben ergeben null', () => {
     expect(parseKabelLabel('')).toBeNull();
     expect(parseKabelLabel(null)).toBeNull();

@@ -598,7 +598,7 @@ function ggWordZelle(inhalt, o = {}) {
   return `<td style="padding:5px 10px;border:1px solid ${GG_WORD.border};background:${o.bg || GG_WORD.bandBg};
       ${o.akzent ? `border-left:4px solid ${o.akzent};` : ''}
       font-family:${GG_WORD.font};font-size:10.5px;font-weight:${o.bold ? 700 : 400};
-      color:#000000;text-align:center;">${gEsc(inhalt)}</td>`;
+      color:#000000;text-align:center;">${Array.isArray(inhalt) ? inhalt.map(gEsc).join('<br>') : gEsc(inhalt)}</td>`;
 }
 
 /**
@@ -615,7 +615,7 @@ export function ggTabelleHtmlTable(cfg) {
 
   const rows = zeilen.length ? zeilen.map(r => '<tr>' + cols.map((c, i) => {
     const val = r.werte?.[i];
-    const s = (val == null || val === '') ? '—' : String(val);
+    const s = ggZellLeer(val) ? '—' : Array.isArray(val) ? val : String(val);
     return ggWordZelle(s, {
       bg: r.highlight ? GG_WORD.highlightBg : undefined,
       bold: !!r.highlight,
@@ -642,7 +642,7 @@ function ggTabellePlainText(cfg) {
   const cols = cfg.spalten || [];
   const wert = (r, i) => {
     const v = r.werte?.[i];
-    return (v == null || v === '') ? '' : String(v);
+    return ggZellLeer(v) ? '' : Array.isArray(v) ? v.join(', ') : String(v);
   };
   return [cols.map(c => c.label || '').join('\t'),
           ...(cfg.zeilen || []).map(r => cols.map((c, i) => wert(r, i)).join('\t'))].join('\n');
@@ -1133,6 +1133,20 @@ function ggSpaltenDefaults(c, i) {
   return { align: c.align || (i === 0 ? 'left' : 'right'), mono: c.mono !== false && i > 0 };
 }
 
+/** Leere Tabellenzelle: null, '' oder leeres Array (mehrzeilige Zelle ohne Einträge). */
+function ggZellLeer(v) {
+  return v == null || v === '' || (Array.isArray(v) && !v.length);
+}
+
+// Zeilenabstand innerhalb einer mehrzeiligen Zelle (Wert als Array)
+const GG_TAB_ZEILENABSTAND = 18;
+
+/** Höhe einer Tabellenzeile: Grundhöhe plus je weiterer Textzeile der längsten Zelle. */
+function ggTabZeilenHoehe(r, S) {
+  const n = Math.max(1, ...(r.werte || []).map(v => (Array.isArray(v) ? v.length : 1)));
+  return S.tabRow + (n - 1) * GG_TAB_ZEILENABSTAND;
+}
+
 export function ggRenderTabelle(cfg, T = GG_THEME) {
   const S = T.sheet, W = T.width;
   const gruen = T.accents.gruenDunkel;
@@ -1140,9 +1154,9 @@ export function ggRenderTabelle(cfg, T = GG_THEME) {
   const zeilen  = cfg.zeilen  || [];
   const headH = S.headHSchmal;
   const tabTop = S.headBand + headH + S.tabTop;
-  const rowN  = Math.max(zeilen.length, 1);
+  const rumpfH = zeilen.length ? zeilen.reduce((s, r) => s + ggTabZeilenHoehe(r, S), 0) : S.tabRow;
   const fussH = cfg.fussnote ? 20 : 0;
-  const height = tabTop + S.tabHeadH + rowN * S.tabRow + fussH + S.footSpace + 10;
+  const height = tabTop + S.tabHeadH + rumpfH + fussH + S.footSpace + 10;
   const G = { S, W, headH, reduziert: true, height };
   const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
   let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.tabelleTitel || cfg.titel }, T, G);
@@ -1174,18 +1188,22 @@ export function ggRenderTabelle(cfg, T = GG_THEME) {
     y += S.tabRow;
   }
   for (const r of zeilen) {
-    if (r.highlight) out += `<rect x="${x0}" y="${gR(y)}" width="${gR(totalW)}" height="${S.tabRow}" fill="${T.tint}"/>`;
-    if (r.akzent) out += `<rect x="${x0}" y="${gR(y)}" width="4" height="${S.tabRow}" fill="${r.akzent}"/>`;
-    const ty = y + S.tabRow / 2 + S.fsTab * 0.36;
+    const rowH = ggTabZeilenHoehe(r, S);
+    if (r.highlight) out += `<rect x="${x0}" y="${gR(y)}" width="${gR(totalW)}" height="${rowH}" fill="${T.tint}"/>`;
+    if (r.akzent) out += `<rect x="${x0}" y="${gR(y)}" width="4" height="${rowH}" fill="${r.akzent}"/>`;
     cols.forEach((c, i) => {
       const val = r.werte?.[i];
-      const s = (val == null || val === '') ? '—' : String(val);
+      const teile = ggZellLeer(val) ? ['—'] : Array.isArray(val) ? val.map(String) : [String(val)];
+      // Zellinhalt senkrecht in der Zeile zentriert — einzeilige Zellen neben mehrzeiligen auch
+      const ty0 = y + rowH / 2 - (teile.length - 1) * GG_TAB_ZEILENABSTAND / 2 + S.fsTab * 0.36;
       const tx = c.align === 'right' ? c.x + c.w - P : c.x + P + (r.akzent && i === 0 ? 8 : 0);
-      out += txt(tx, ty, s, { mono: c.mono, size: i === 0 ? S.fsTab : S.fsTabWert,
-                 weight: r.highlight && i > 0 ? 600 : 500, fill: r.highlight && i > 0 ? gruen : T.text.strong,
-                 anchor: c.align === 'right' ? 'end' : 'start' });
+      teile.forEach((s, k) => {
+        out += txt(tx, ty0 + k * GG_TAB_ZEILENABSTAND, s, { mono: c.mono, size: i === 0 ? S.fsTab : S.fsTabWert,
+                   weight: r.highlight && i > 0 ? 600 : 500, fill: r.highlight && i > 0 ? gruen : T.text.strong,
+                   anchor: c.align === 'right' ? 'end' : 'start' });
+      });
     });
-    y += S.tabRow;
+    y += rowH;
     out += `<line x1="${x0}" y1="${gR(y) + 0.5}" x2="${x1}" y2="${gR(y) + 0.5}" stroke="${T.line}" stroke-width="1"/>`;
   }
 
@@ -2838,12 +2856,12 @@ function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
     return {
       gebIdx:      g ? gebListe.indexOf(g) : 1e9,
       gebLabel:    String(g?.gebaeudenummer || g?.name || '—').trim(),
+      gebNummer:   String(g?.gebaeudenummer || '').trim(),
       stationKey:  t.buildingId || 'einzeln:' + t.id,
-      // Heißt das Standortgebäude schon „Trafostation 3“ (oder „TST 3“, „Kompaktstation 3“),
-      // gewinnt dieser Name — auch wenn er dann in der Gebäudespalte noch einmal steht; sonst
-      // wird unten in Tabellenreihenfolge durchnummeriert. Tabelle, Übersichtsschaltbild und
+      // Die Station heißt wie ihr Standortgebäude; nur Stationen ohne benanntes Gebäude werden
+      // unten in Tabellenreihenfolge durchnummeriert. Tabelle, Übersichtsschaltbild und
       // Resilienz nennen die Station so gleich.
-      stationName: GG_STATION_NAME.test(g?.name || '') ? String(g.name).trim() : '',
+      stationName: String(g?.name || '').trim(),
       trafo:       t.name || 'Trafo',
       kva:         Number(t.props?.leistungKVA) || 0,
       bj:          Number.isFinite(bj) ? bj : null,
@@ -2858,10 +2876,12 @@ function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
                      || (a.gebIdx - b.gebIdx)
                      || a.trafo.localeCompare(b.trafo, 'de', { numeric: true }));
 
-  // Durchnummeriert werden nur Stationen ohne eigenen Namen, und zwar mit Nummern, die kein
-  // benanntes Standortgebäude schon trägt — sonst hieß „Trafostation 1“ zweimal. Benannte
-  // Stationen behalten ihren Namen; ihr Eintrag in `nr` zählt nur für die Stationsanzahl.
-  const belegt = new Set(zeilen.filter(z => z.stationName).map(z => ggNummerAusName(z.stationName)).filter(n => n != null));
+  // Durchnummeriert werden nur Stationen ohne Gebäudenamen, und zwar mit Nummern, die kein
+  // Standortgebäude namens „Trafostation 3“/„TST 3“ schon trägt — sonst hieß „Trafostation 1“
+  // zweimal. Benannte Stationen behalten ihren Namen; ihr Eintrag in `nr` zählt nur für die
+  // Stationsanzahl.
+  const belegt = new Set(zeilen.filter(z => GG_STATION_NAME.test(z.stationName))
+    .map(z => ggNummerAusName(z.stationName)).filter(n => n != null));
   const nr = new Map();
   let n = 0;
   for (const z of zeilen) {
@@ -2873,6 +2893,47 @@ function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
   for (const z of zeilen) z.station = z.stationName || 'Trafostation ' + nr.get(z.stationKey);
   return { zeilen, nr };
 }
+
+/**
+ * Trafo-Zeilen je Station zusammengefasst (Reihenfolge wie ggTrafoZeilen) — eine Tabellenzeile
+ * je Trafostation, darin die enthaltenen Trafos untereinander.
+ * @returns {{stationen: Array<{key:string, station:string, gebNummer:string, trafos:object[], kva:number, geplant:boolean}>, zeilen: object[]}}
+ */
+function ggTrafoStationen(trafos, opts) {
+  const { zeilen } = ggTrafoZeilen(trafos, opts);
+  const map = new Map();
+  for (const z of zeilen) {
+    if (!map.has(z.stationKey)) map.set(z.stationKey, { key: z.stationKey, station: z.station, gebNummer: z.gebNummer, trafos: [] });
+    map.get(z.stationKey).trafos.push(z);
+  }
+  const stationen = [...map.values()].map(s => ({
+    ...s,
+    kva: s.trafos.reduce((a, z) => a + z.kva, 0),
+    geplant: s.trafos.some(z => z.geplant),
+  }));
+  return { stationen, zeilen };
+}
+
+/** Tabellenwerte einer Station: Name · Gebäude-Nr. · Trafos · Leistung · Baujahr · Summe (Trafospalten mehrzeilig). */
+function ggTrafoStationWerte(s, { mitPlanung = false } = {}) {
+  return [
+    s.station,
+    s.gebNummer || '—',
+    s.trafos.map(z => z.trafo),
+    s.trafos.map(z => (z.kva > 0 ? ggNum(z.kva) + ' kVA' : '—')),
+    s.trafos.map(z => (mitPlanung && z.geplant ? 'geplant' : String(z.bj || '—'))),
+    s.kva > 0 ? ggNum(s.kva) + ' kVA' : '—',
+  ];
+}
+
+const GG_TRAFO_STATION_SPALTEN = [
+  { label: 'Station',  weight: 2.0, align: 'left', mono: false },
+  { label: 'Geb.-Nr.', weight: 0.9, align: 'left', mono: false },
+  { label: 'Trafos',   weight: 1.2, align: 'left', mono: false },
+  { label: 'Leistung', weight: 1.1 },
+  { label: 'Baujahr',  weight: 1.0 },
+  { label: 'Summe',    weight: 1.1 },
+];
 
 const GG_STATION_NAME = /station|^\s*(TST|TS|TrSt)\s*[-.]?\s*\d/i;
 /** Endnummer einer Stationsbezeichnung: „Trafostation 12“ → 12, „TST 4a“ → 4. */
@@ -2924,44 +2985,32 @@ GG_FIGUREN.push(
     kapitel: '3.1.2 Stromnetz intern (MS/NS)',
     titel: 'Übersicht Trafostationen',
     datei: 'trafostationen-ist',
-    hinweis: 'Alle bestehenden Transformatoren des Liegenschaftsnetzes mit Standortgebäude, Station, '
-           + 'Nennleistung und Baujahr — gelesen aus den Trafo-Assets des Elektro-Tabs. Trafos einer '
-           + 'Planungsschicht oder mit Baujahr in der Zukunft zählen hier nicht zum Bestand; sie stehen '
-           + 'bei der Variantenbildung (3.4.1).',
+    hinweis: 'Eine Zeile je bestehender Trafostation (benannt nach dem Standortgebäude) mit den darin '
+           + 'enthaltenen Transformatoren, Nennleistung und Baujahr — gelesen aus den Trafo-Assets des '
+           + 'Elektro-Tabs. Trafos einer Planungsschicht oder mit Baujahr in der Zukunft zählen hier nicht '
+           + 'zum Bestand; sie stehen bei der Variantenbildung (3.4.1).',
     render: cfg => ggRenderTabelle(cfg),
     config: {
       eyebrow: 'Elektrotechnisches Gutachten',
       titel: 'Übersicht Trafostationen',
       leer: 'Keine bestehenden Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.',
-      spalten: [
-        { label: 'Gebäude',       weight: 1.4, align: 'left', mono: false },
-        { label: 'Nr.',           weight: 1.6, align: 'left', mono: false },
-        { label: 'Trafo',         weight: 1.2, align: 'left', mono: false },
-        { label: 'Trafoleistung', weight: 1.3 },
-        { label: 'Baujahr',       weight: 1.1 },
-      ],
+      spalten: GG_TRAFO_STATION_SPALTEN.map(c => ({ ...c })),
       zeilen: [], fussnote: '',
     },
     ausProjekt(cfg) {
       let trafos = [];
       try { trafos = window.listAssets?.({ type: 'Trafo' }) || []; } catch (e) { void e; }
-      const { zeilen, nr } = ggTrafoZeilen(trafos, { nurBestand: true });
+      const { stationen, zeilen } = ggTrafoStationen(trafos, { nurBestand: true });
       if (!zeilen.length) {
         cfg.zeilen = []; cfg.fussnote = '';
         return '⚠ Keine bestehenden Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.';
       }
 
-      cfg.zeilen = zeilen.map(z => ({
-        werte: [z.gebLabel,
-                z.station,
-                z.trafo,
-                z.kva > 0 ? ggNum(z.kva) + ' kVA' : '—',
-                z.bj || '—'],
-      }));
+      cfg.zeilen = stationen.map(s => ({ werte: ggTrafoStationWerte(s) }));
 
       const summe = zeilen.reduce((s, z) => s + z.kva, 0);
-      cfg.fussnote = `${zeilen.length} Transformatoren in ${nr.size} Stationen · installierte Leistung ${ggNum(summe)} kVA`;
-      return `✓ ${zeilen.length} bestehende Trafos aus dem Elektromodell übernommen.`;
+      cfg.fussnote = `${zeilen.length} Transformatoren in ${stationen.length} Stationen · installierte Leistung ${ggNum(summe)} kVA`;
+      return `✓ ${stationen.length} bestehende Stationen mit ${zeilen.length} Trafos aus dem Elektromodell übernommen.`;
     },
   },
 
@@ -2973,21 +3022,15 @@ GG_FIGUREN.push(
     kapitel: '3.4.1 Netzanschluss und internes Stromnetz',
     titel: 'Übersicht Trafostationen',
     datei: 'trafostationen',
-    hinweis: 'Alle Transformatoren des Liegenschaftsnetzes mit Standortgebäude, Station, '
-           + 'Nennleistung und Baujahr — gelesen aus den Trafo-Assets des Elektro-Tabs. '
+    hinweis: 'Eine Zeile je Trafostation (benannt nach dem Standortgebäude) mit den darin enthaltenen '
+           + 'Transformatoren, Nennleistung und Baujahr — gelesen aus den Trafo-Assets des Elektro-Tabs. '
            + 'Trafos einer Planungsschicht oder mit Baujahr in der Zukunft stehen als „geplant“.',
     render: cfg => ggRenderTabelle(cfg),
     config: {
       eyebrow: 'Elektrotechnisches Gutachten',
       titel: 'Übersicht Trafostationen',
       leer: 'Keine Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.',
-      spalten: [
-        { label: 'Gebäude',       weight: 1.4, align: 'left', mono: false },
-        { label: 'Nr.',           weight: 1.6, align: 'left', mono: false },
-        { label: 'Trafo',         weight: 1.2, align: 'left', mono: false },
-        { label: 'Trafoleistung', weight: 1.3 },
-        { label: 'Baujahr',       weight: 1.1 },
-      ],
+      spalten: GG_TRAFO_STATION_SPALTEN.map(c => ({ ...c })),
       zeilen: [], fussnote: '',
     },
     ausProjekt(cfg) {
@@ -2998,22 +3041,19 @@ GG_FIGUREN.push(
         return '⚠ Keine Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.';
       }
 
-      const { zeilen, nr } = ggTrafoZeilen(trafos);
+      const { stationen, zeilen } = ggTrafoStationen(trafos);
 
-      cfg.zeilen = zeilen.map(z => ({
-        werte: [z.gebLabel,
-                z.station,
-                z.trafo,
-                z.kva > 0 ? ggNum(z.kva) + ' kVA' : '—',
-                z.geplant ? 'geplant' : (z.bj || '—')],
-        akzent: z.geplant ? GG_THEME.accents.gruen : undefined,
+      // Grüner Akzent, sobald die Station einen geplanten Trafo enthält (neue Station oder Zubau)
+      cfg.zeilen = stationen.map(s => ({
+        werte: ggTrafoStationWerte(s, { mitPlanung: true }),
+        akzent: s.geplant ? GG_THEME.accents.gruen : undefined,
       }));
 
       const summe = zeilen.reduce((s, z) => s + z.kva, 0);
       const nGeplant = zeilen.filter(z => z.geplant).length;
-      cfg.fussnote = `${zeilen.length} Transformatoren in ${nr.size} Stationen · installierte Leistung `
+      cfg.fussnote = `${zeilen.length} Transformatoren in ${stationen.length} Stationen · installierte Leistung `
                    + `${ggNum(summe)} kVA`
-                   + (nGeplant ? ` · davon ${nGeplant} geplant (grün markiert)` : '');
+                   + (nGeplant ? ` · davon ${nGeplant} geplant (Station grün markiert)` : '');
       return `✓ ${zeilen.length} Trafos aus dem Elektromodell übernommen`
            + (nGeplant ? `, davon ${nGeplant} geplant.` : '.');
     },
@@ -3418,9 +3458,9 @@ function ggNetzUebersichtDaten({ mitPlanung = false, zieljahr = null } = {}) {
 
   const sicht = key => {
     const st = r.stationen[key] || r.entfallen?.[key];
-    const stName = GG_STATION_NAME.test(st.gebName) ? st.gebName.trim() : '';
-    // Heißt das Gebäude schon wie die Station, steht darunter nur noch die Gebäudenummer.
-    const gebLabel = st.gebNummer ? `Gebäude ${st.gebNummer}` : stName ? '' : st.gebName;
+    // Die Station heißt wie ihr Gebäude (wie in der Tabelle); darunter steht nur noch die Gebäudenummer.
+    const stName = String(st.gebName || '').trim();
+    const gebLabel = st.gebNummer ? `Gebäude ${st.gebNummer}` : '';
     const tabKey = st.gebId != null ? st.gebId : st.trafos[0] ? 'einzeln:' + st.trafos[0].id : null;
     const station = stName || (st.trafos.length ? (nr.has(tabKey) ? `Trafostation ${nr.get(tabKey)}` : 'Trafostation') : '');
     const titel = st.hatNap ? 'Übergabestation' : station || 'Schaltstation';

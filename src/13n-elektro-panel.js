@@ -13,6 +13,7 @@
 import { isErzeugerAktiv } from './06c-dispatch-core.js';
 import { lwWp, bhkw, gebaeude } from './01-globals-varianten.js';
 import { getBatParams } from './09a-pv-profile.js';
+import { kabelTypOptionen } from './config/netz-kosten.js';
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
 
@@ -190,8 +191,7 @@ function _html() { return `
       <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Kabeltyp</div>
       <select id="strom-kabel-typ"
         style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;margin-bottom:6px;">
-        <option value="NAYY">NAYY (Aluminium)</option>
-        <option value="NYY" selected>NYY (Kupfer) — Standard</option>
+        ${kabelTypOptionen('NYY', ['ns'])}
       </select>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px;">
         ${_inp('strom-ns-cosphi', 'NS cos φ', '0.95',

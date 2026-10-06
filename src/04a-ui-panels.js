@@ -243,14 +243,16 @@ export function applyGebaeudeTableBulk() {
   if (!selected.length) return;
   const usage = document.getElementById('geb-bulk-nutzung')?.value || '';
   const constructionYear = document.getElementById('geb-bulk-baujahr')?.value || '';
+  const demolitionYear = document.getElementById('geb-bulk-abrissjahr')?.value || '';
   const floors = document.getElementById('geb-bulk-stockwerke')?.value || '';
-  if (!usage && !constructionYear && !floors) {
+  if (!usage && !constructionYear && !demolitionYear && !floors) {
     showHint('Bitte mindestens einen Wert für die Sammeländerung eingeben.',3500);
     return;
   }
   selected.forEach(g => {
     if (usage) g.nutzung = usage;
     if (constructionYear) window.updateField?.(g.id,'baujahr',constructionYear,{defer:true});
+    if (demolitionYear) window.updateField?.(g.id,'abrissjahr',demolitionYear,{defer:true});
     if (floors) window.updateField?.(g.id,'stockwerke',floors,{defer:true});
   });
   _invalidateStats();
@@ -415,6 +417,7 @@ export function renderGebaeudeOverview() {
     <th data-click="sortGebaeudeTable('name')">${sortLabel('name','Gebäude')}</th>
     <th data-click="sortGebaeudeTable('nutzung')">${sortLabel('nutzung','Nutzung')}</th>
     <th data-click="sortGebaeudeTable('baujahr')">${sortLabel('baujahr','Baujahr')}</th>
+    <th data-click="sortGebaeudeTable('abrissjahr')" title="Wie „Planung → Abriss planen“: ab diesem Jahr gilt das Gebäude samt seinen Elektro-Assets als abgerissen">${sortLabel('abrissjahr','Abrissjahr')}</th>
     <th data-click="sortGebaeudeTable('stockwerke')">${sortLabel('stockwerke','Geschosse')}</th>
     <th data-click="sortGebaeudeTable('flaeche')">${sortLabel('flaeche','Grundfläche m²')}</th>
     <th data-click="sortGebaeudeTable('nutzflaeche')">${sortLabel('nutzflaeche','Nutzfläche m²')}</th>
@@ -446,6 +449,7 @@ export function renderGebaeudeOverview() {
       ${zelle(r,'name',`<input class="geb-table-name" value="${_gebTableEsc(g.name)}" data-change="updateGebaeudeTableField(${g.id},'name',this.value)">`)}
       ${zelle(r,'nutzung',`<select data-change="updateGebaeudeTableField(${g.id},'nutzung',this.value)"><option value="">—</option>${options}</select>`)}
       ${zelle(r,'baujahr',`<input class="geb-table-num" type="number" value="${g.baujahr || ''}" data-change="updateGebaeudeTableField(${g.id},'baujahr',this.value)">`)}
+      ${zelle(r,'abrissjahr',`<input class="geb-table-num" type="number" min="1800" max="2100" placeholder="—" value="${g.abrissjahr || ''}" data-change="updateGebaeudeTableField(${g.id},'abrissjahr',this.value)">`)}
       ${zelle(r,'stockwerke',`<input class="geb-table-num" type="number" min="1" max="50" value="${g.stockwerke || 1}" data-change="updateGebaeudeTableField(${g.id},'stockwerke',this.value)">`)}
       ${zelle(r,'flaeche',`<input class="geb-table-num" type="number" min="0" value="${g.flaeche ? Math.round(g.flaeche) : ''}" data-change="updateGebaeudeTableField(${g.id},'flaeche',this.value)">`)}
       <td class="geb-table-num geb-table-readonly">${Math.round(netFloorArea).toLocaleString('de-DE')}</td>
@@ -471,6 +475,7 @@ export function renderGebaeudeOverview() {
       <select id="geb-bulk-nutzung"><option value="">Nutzung beibehalten</option>${usageTypes.map(type =>
         `<option value="${_gebTableEsc(type.id)}">${_gebTableEsc(type.label)}</option>`).join('')}</select>
       <input id="geb-bulk-baujahr" type="number" min="1800" max="2100" placeholder="Baujahr beibehalten">
+      <input id="geb-bulk-abrissjahr" type="number" min="1800" max="2100" placeholder="Abrissjahr beibehalten">
       <input id="geb-bulk-stockwerke" type="number" min="1" max="50" placeholder="Geschosse beibehalten">
       <button class="btn-secondary" data-click="applyGebaeudeTableBulk()">Auf Auswahl anwenden</button>
       <button class="btn-secondary" data-click="clearSelection()">Auswahl aufheben</button>` : '';
@@ -480,10 +485,10 @@ export function renderGebaeudeOverview() {
 // ── Gebäudetabelle wie eine Tabellenkalkulation ───────────────────────────
 // Markieren mit der Maus (ziehen, Shift+Klick), Ausfüllkästchen, Strg+C/V/D, Enter springt nach unten,
 // Rückgängig. Die reine Logik steckt in lib/tabellen-raster.js.
-const GEB_RASTER_SPALTEN = ['gebaeudenummer','name','nutzung','baujahr','stockwerke','flaeche','waerme','spez','heizlast'];
-const GEB_SPALTEN_NAMEN = { gebaeudenummer:'Nr.', name:'Name', nutzung:'Nutzung', baujahr:'Baujahr', stockwerke:'Geschosse', flaeche:'Grundfläche', waerme:'Wärme', spez:'spez. Wärme', heizlast:'Heizlast' };
-const GEB_ZAHL_SPALTEN = new Set(['baujahr','stockwerke','flaeche','waerme','spez','heizlast']);
-const GEB_UNDO_FELDER = ['gebaeudenummer','name','nutzung','baujahr','stockwerke','flaeche','waerme','spez','heizlast','spezHeizlast','waermeManual','heizlastManual'];
+const GEB_RASTER_SPALTEN = ['gebaeudenummer','name','nutzung','baujahr','abrissjahr','stockwerke','flaeche','waerme','spez','heizlast'];
+const GEB_SPALTEN_NAMEN = { gebaeudenummer:'Nr.', name:'Name', nutzung:'Nutzung', baujahr:'Baujahr', abrissjahr:'Abrissjahr', stockwerke:'Geschosse', flaeche:'Grundfläche', waerme:'Wärme', spez:'spez. Wärme', heizlast:'Heizlast' };
+const GEB_ZAHL_SPALTEN = new Set(['baujahr','abrissjahr','stockwerke','flaeche','waerme','spez','heizlast']);
+const GEB_UNDO_FELDER = ['gebaeudenummer','name','nutzung','baujahr','abrissjahr','stockwerke','flaeche','waerme','spez','heizlast','spezHeizlast','waermeManual','heizlastManual'];
 let _gebZeilen = [];          // sichtbare Reihenfolge der letzten Darstellung
 let _gebMark = null;          // { anker:{id,key}, ende:{id,key} }
 let _gebZieh = null;          // { art:'markieren'|'fuellen', bereich, ziel }
@@ -590,6 +595,8 @@ export function gebTabelleRueckgaengig() {
     Object.assign(g,felder);
     window.renameGebaeude?.(id,g.name);
     window.setGebaeudenummer?.(id,g.gebaeudenummer || '');
+    // Abrissjahr wieder auf die Elektro-Assets durchreichen (wie beim Setzen)
+    window.updateField?.(id,'abrissjahr',g.abrissjahr ?? '',{defer:true});
   }
   _gebNachAenderung(true);
   showHint(`↶ Rückgängig: ${schritt.text}`,2500);
