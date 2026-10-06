@@ -7,8 +7,8 @@ import { sommerMittel } from './witterung.js';
 const { ok, nf, pct, absatz } = wtHilfen;
 const L = kw => (kw >= 1000 ? `${nf(kw / 1000, 2)} MW` : `${nf(kw)} kW`);
 
-/** Heizgrenze für die Extrapolation der Heizlast (Tagesmittel), °C. */
-export const LG_HEIZGRENZE = 15;
+/** Bezugstemperatur der linearen Extrapolation (Innentemperatur, bei der die Heizlast null wird), °C. */
+export const LG_INNEN = 22;
 
 /** Witterungsbereinigung des Lastgangs (wb = window._wbInfo) oder Hinweis auf das Messjahr. */
 export function lgTextWitterung(wb, o = {}) {
@@ -57,9 +57,10 @@ export function lgSpitzenlast(lastgangKw, tageT, normAtC) {
   const tSpitze = Array.isArray(tageT) && tageT.length === 365 ? tageT[tag] : NaN;
   const tMin = Array.isArray(tageT) && tageT.length === 365 ? Math.min(...tageT) : NaN;
   const grund = sommerMittel(lastgangKw);
+  // Linear über die Temperaturdifferenz zur Innentemperatur: P(T_Norm) = P(T_Spitze) · (22 − T_Norm) / (22 − T_Spitze)
   let pNorm = NaN;
-  if (ok(tSpitze) && ok(normAtC) && tSpitze < LG_HEIZGRENZE) {
-    pNorm = normAtC < tSpitze ? grund + (pMax - grund) * (LG_HEIZGRENZE - normAtC) / (LG_HEIZGRENZE - tSpitze) : pMax;
+  if (ok(tSpitze) && ok(normAtC) && tSpitze < LG_INNEN) {
+    pNorm = normAtC < tSpitze ? pMax * (LG_INNEN - normAtC) / (LG_INNEN - tSpitze) : pMax;
   }
   return { pMax, tag, tSpitze, tMin, normAtC, pNorm, grund };
 }
@@ -73,7 +74,7 @@ export function lgTextSpitzenlast(o = {}) {
     out.push(absatz(`Die Auswertung der Jahresdauerlinie ergibt eine maximale thermische Spitzenlast von ${L(s.pMax)}. Sie trat am ${datum} bei einer Tagesmitteltemperatur von ${nf(s.tSpitze, 1)} °C auf`,
       ok(s.tMin) && s.tMin < s.tSpitze - 0.5 ? ` (tiefstes Tagesmittel des Jahres: ${nf(s.tMin, 1)} °C)` : '', '. ',
       s.normAtC < s.tSpitze
-        ? `Durch lineare Extrapolation des witterungsabhängigen Anteils auf die standortspezifische Norm-Außentemperatur von ${nf(s.normAtC, 1)} °C (Heizgrenze ${LG_HEIZGRENZE} °C) ergibt sich eine rechnerische Auslegungsheizlast von rund ${L(s.pNorm)}.`
+        ? `Durch lineare Extrapolation auf die standortspezifische Norm-Außentemperatur von ${nf(s.normAtC, 1)} °C – im Verhältnis der Temperaturdifferenzen zur Innentemperatur von ${LG_INNEN} °C (${nf(LG_INNEN - s.normAtC, 1)} K zu ${nf(LG_INNEN - s.tSpitze, 1)} K) – ergibt sich eine rechnerische Auslegungsheizlast von rund ${L(s.pNorm)}.`
         : `Da diese Temperatur bereits unter der Norm-Außentemperatur von ${nf(s.normAtC, 1)} °C liegt, wird die gemessene Spitzenlast unmittelbar als Auslegungsheizlast angesetzt.`));
   } else {
     out.push(absatz(`Die Auswertung der Jahresdauerlinie ergibt eine maximale thermische Spitzenlast von ${L(s.pMax)}. Die Extrapolation auf die Norm-Außentemperatur setzt die Tagestemperaturen des Messjahres voraus `,

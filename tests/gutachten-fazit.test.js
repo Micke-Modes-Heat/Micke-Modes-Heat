@@ -1,6 +1,6 @@
 // Vitest-Tests für lib/gutachten-fazit.js — Bewertung, Empfehlung, NT-Ertüchtigung, Fahrplan, Heizöltank.
 import { describe, it, expect } from 'vitest';
-import { faTextBewertung, faTextEmpfehlung, faJaz, faNtVergleich, faTextNt, faTextFahrplan, faHeizoeltank, faTextHeizoeltank, faNtKosten, FA_NT_KOSTEN } from '../src/lib/gutachten-fazit.js';
+import { faTextBewertung, faTextEmpfehlung, faJaz, faNtVergleich, faTextNt, faTextFahrplan, faHeizoeltank, faTextHeizoeltank, faNtKosten, FA_NT_KOSTEN, faBewertungsmatrix } from '../src/lib/gutachten-fazit.js';
 import { wtKlartext } from '../src/lib/gutachten-waerme-texte.js';
 
 const text = abs => wtKlartext(abs);
@@ -16,12 +16,21 @@ describe('Bewertung und Empfehlung', () => {
     expect(t).toContain('Wirtschaftlich ist V2 mit 14,00 ct/kWh die günstigste Variante');
     expect(t).toContain('In der Resilienz sind alle Varianten');
   });
-  it('zwei führende Varianten, Stromkessel-Referenz, Geothermie', () => {
-    const t = text(faTextEmpfehlung({ varianten: [V1, V2, V3, V4] }));
-    expect(t).toContain('eine der beiden Varianten V2 oder V1');
-    expect(t).toContain('V1 erreicht mit 5 % fossilem Anteil die höhere Emissionsfreiheit');
+  it('Gesamtbewertung nach vier Kriterien, Stromkessel-Referenz, Geothermie', () => {
+    const o = { varianten: [V1, V2, V3, V4], preise: { strom: 25, gas: 10 }, pMaxKw: 5000 };
+    const m = faBewertungsmatrix(o);
+    expect(m.zeilen).toHaveLength(4);
+    const v1 = m.zeilen.find(z => z.name === 'V1'), v2 = m.zeilen.find(z => z.name === 'V2');
+    expect(v2.punkte.kosten).toBe(100);           // günstigste Variante
+    expect(v1.punkte.klima).toBe(100);            // geringste künftige Emissionen
+    expect(v1.punkte.preis).toBeGreaterThan(v2.punkte.preis);   // weniger fossil, preisstabiler
+    expect(v2.punkte.kosten - v1.punkte.kosten).toBeLessThan(3);   // Verhältnispunkte: 14,0 vs. 14,2 ct/kWh liegen nah beieinander
+    expect(m.zeilen[0].name).not.toBe('V2');      // Klima, Preisstabilität und Resilienz überwiegen den kleinen Kostenvorteil von V2
+    const t = text(faTextEmpfehlung(o));
+    expect(t).toContain('nicht allein auf die Kosten');
+    expect(t).toContain('Wirtschaftlichkeit (35 %), Klimawirkung (30 %), Resilienz (20 %) und Preisstabilität (15 %)');
     expect(t).toContain('Klimaneutralität bis 2045');
-    expect(t).toContain('vollständig strombasierte Variante V3');
+    expect(t).toContain('V2 liegt in der Gesamtbewertung');
     expect(t).toContain('Erdwärmevariante V4 Geo');
   });
 });

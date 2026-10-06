@@ -29,7 +29,7 @@ import { vbTextDaten, vbTextBezug, vbTextCo2, vbTextReferenzjahr } from './lib/g
 import { lgTextWitterung, lgTextGrundlast, lgTextSpitzenlast, lgTextDeckung } from './lib/gutachten-lastgang.js';
 import { PT_NICHT, PT_GEO_ASPEKTE, PT_LWWP_VORNACH, PT_TA_LAERM, PT_BIO, PT_BIO_QUALITATIV, ptBioKennwerte, ptTextEinleitung, ptTextNicht, ptTextBeruecksichtigt,
   ptTextGeoGrundlagen, ptTextGeoBerechnung, ptTextTiefengeothermie, ptTextLwwp, ptTextSchall, ptTextBiomasse } from './lib/gutachten-potenzial.js';
-import { FA_NT_KOSTEN, faNtKosten, faTextBewertung, faTextEmpfehlung, faTextNt, faTextFahrplan, faTextHeizoeltank, faTextResilienzUebergang } from './lib/gutachten-fazit.js';
+import { FA_NT_KOSTEN, FA_KRITERIEN, faBewertungsmatrix, faNtKosten, faTextBewertung, faTextEmpfehlung, faTextNt, faTextFahrplan, faTextHeizoeltank, faTextResilienzUebergang } from './lib/gutachten-fazit.js';
 import { VA_CO2_QUELLE, vaRahmenZeilen, vaTextRahmen, vaTextResilienz, vaGegenueberstellung, vaTextKlima, vaTextKostenKomponenten, vaTextPv, vaSensitivitaet, vaTextSensitivitaet, VA_SZENARIEN } from './lib/gutachten-varianten.js';
 import { atTextErzeuger, atTextHydraulik, atTextTww, atTextNetz, atLeistung } from './lib/gutachten-anlagentechnik.js';
 
@@ -1391,8 +1391,14 @@ function ggVariantenDaten() {
   const d = ggWaermeDaten();
   const num = v => (Number.isFinite(Number(v)) ? Number(v) : NaN);
   const stromWp = ggFeldZahl('wirt-p-strom-wp');
+  // Wirkungsgrade aus den Erzeuger-Panels (in %, BHKW: Gesamtwirkungsgrad → thermisch über die Stromkennzahl)
+  const eta = {};
+  const pc = (k, id) => { const v = ggFeldZahl(id); if (Number.isFinite(v) && v > 0) eta[k] = v / 100; };
+  pc('gaskessel', 'gk-eta'); pc('_autoGk', 'gk-eta'); pc('heizoel', 'hko-eta'); pc('pellets', 'pk-eta'); pc('hhs', 'hhs-eta'); pc('stromkessel', 'sk-eta');
+  const bEta = ggFeldZahl('bhkw-eta'), bSkz = ggFeldZahl('bhkw-skz');
+  if (Number.isFinite(bEta) && bEta > 0) eta.bhkwTh = bEta / 100 / (1 + (Number.isFinite(bSkz) ? bSkz : 0.45));
   return {
-    varianten: d.varianten, pMaxKw: d.lastgang.pMaxKw, gesamtMwh: d.lastgang.gesamtMwh,
+    varianten: d.varianten.map(v => ({ ...v, eta })), eta, pMaxKw: d.lastgang.pMaxKw, gesamtMwh: d.lastgang.gesamtMwh,
     preise: { strom: Number.isFinite(stromWp) ? stromWp : ggFeldZahl('wirt-p-strom'), gas: ggFeldZahl('wirt-p-gas'), oel: ggFeldZahl('wirt-p-hko'), pellets: ggFeldZahl('wirt-p-pk'), hhs: ggFeldZahl('wirt-p-hhs') },
     ef: { gas: num(ggLies(() => w.gasEmF)), oel: num(ggLies(() => w.heizoelEmF)), pellets: num(ggLies(() => w.pelletsEmF)), strom: num(ggLies(() => w.stromEmF)), stromLz: num(ggLies(() => w.stromEmFLZ)) },
     co2PreisEurT: ggFeldZahl('wirt-p-co2'), co2Quelle: VA_CO2_QUELLE,
@@ -2435,6 +2441,24 @@ const GG_FIGUREN = [
     })), config: {},
   },
   {
+    id: 'lastgang-gradtage-tabelle', autoSync: true, reihe: 21, kapitel: '2.2.1 Dimensionierung WEA',
+    titel: 'Gradtagzahlen G20/15 und Bereinigungsfaktor', datei: 'lastgang-gradtage-tabelle',
+    hinweis: 'Gradtagzahl je Jahr des Vergleichszeitraums, Messjahr, Mittel und Faktor (aus 🔥 Wärme-Grundlagen → Lastgang → Gradtagzahlen laden).',
+    render: cfg => ggRenderTabelle(cfg),
+    config: { eyebrow: 'Wärmebedarf', titel: 'Gradtagzahlen G20/15 und Bereinigungsfaktor', leer: 'Keine Gradtagzahlen geladen.', spalten: [{ label: 'Jahr', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
+    ausProjekt(cfg) {
+      const wb = ggLies(() => window.getWitterung?.(), {}) || {};
+      const e = wb.ergebnis;
+      cfg.spalten = [{ label: 'Jahr', weight: 2, align: 'left', mono: false }, { label: 'G20/15', weight: 1 }];
+      if (!e || e.messjahr !== wb.messjahr || !Array.isArray(e.gJahre)) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Gradtagzahlen geladen.'; }
+      cfg.zeilen = e.gJahre.map(x => ({ highlight: x.jahr === e.messjahr, werte: [x.jahr === e.messjahr ? `${x.jahr} (Messjahr)` : String(x.jahr), ggNum(x.g) + ' Kd'] }));
+      cfg.zeilen.push({ highlight: true, werte: [`Mittel ${e.vonJahr}–${e.bisJahr}`, ggNum(e.gMittel) + ' Kd'] });
+      cfg.zeilen.push({ highlight: true, werte: ['Bereinigungsfaktor (Mittel ÷ Messjahr)', ggNum(e.faktor, 3)] });
+      cfg.fussnote = 'Gradtagzahl G20/15 nach VDI 3807 aus Tagesmitteltemperaturen (Open-Meteo-Archiv, ERA5-Reanalyse) am Standort der Liegenschaft';
+      return `✓ ${e.gJahre.length} Jahre, Faktor ${ggNum(e.faktor, 3)}.`;
+    },
+  },
+  {
     id: 'lastgang-grundlast-text', istText: true, reihe: 30, kapitel: '2.2.1 Dimensionierung WEA',
     titel: 'Gutachtentext: Sommergrundlast (TWW und Netzverluste)', datei: 'lastgang-grundlast-text',
     hinweis: 'Mittlere Leistung im Juli/August als Grundlast aus Warmwasser und Netzverlusten, aufs Jahr hochgerechnet und aufgeteilt.',
@@ -2495,7 +2519,7 @@ const GG_FIGUREN = [
     id: 'potenzial-nicht-gasGrundlast', istText: true, reihe: -27, kapitel: '2.3 Analyse möglicher Energiequellen und Technologien',
     titel: 'Gutachtentext: Nicht berücksichtigt – Gas-Grundlast', datei: 'potenzial-nicht-gasGrundlast',
     hinweis: 'Standardbegründung; Baustein entfernen, wenn das Potenzial in diesem Projekt betrachtet wird.',
-    render: () => ggWaermeTextBlatt(ptTextNicht('gasGrundlast')), config: {},
+    render: () => ggWaermeTextBlatt(ptTextNicht('gasGrundlast', { vorgabeZsb: ggLies(() => window.gutStandardtextDaten?.()?.vorgabeZsb, '') })), config: {},
   },
   {
     id: 'potenzial-nicht-fernwaerme', istText: true, reihe: -26, kapitel: '2.3 Analyse möglicher Energiequellen und Technologien',
@@ -2537,10 +2561,10 @@ const GG_FIGUREN = [
   {
     id: 'potenzial-geo-berechnung-text', istText: true, reihe: 22, kapitel: '2.3.1 Technologien',
     titel: 'Gutachtentext: Erdwärmesondenfeld', datei: 'potenzial-geo-berechnung-text',
-    hinweis: 'Aus dem Geothermie-Panel: Wärmeleitfähigkeit, Entzug je Sonde, Sondenzahl und Fläche nach Leistung und Wärmemenge für die Deckungsrate (Geothermie-Anteil der Einsatzplanung, sonst 65 %), Vergleich mit 200 m Bohrtiefe.',
+    hinweis: 'Aus dem Geothermie-Panel: Wärmeleitfähigkeit, Entzug je Sonde, Sondenzahl und Fläche nach Leistung und Wärmemenge für die Deckungsrate (Geothermie-Anteil der Einsatzplanung, sonst 65 %), Vergleich mit 400 m Bohrtiefe.',
     render: () => {
       const d = ggPotenzialDaten();
-      return ggWaermeTextBlatt(ptTextGeoBerechnung({ ...d.geo, tiefe2: d.geo.tiefe < 200 ? 200 : undefined, jdlKw: d.jdlKw, gesamtMwh: d.gesamtMwh }));
+      return ggWaermeTextBlatt(ptTextGeoBerechnung({ ...d.geo, tiefe2: d.geo.tiefe < 400 ? 400 : undefined, jdlKw: d.jdlKw, gesamtMwh: d.gesamtMwh }));
     },
     config: {},
   },
@@ -2646,7 +2670,7 @@ const GG_FIGUREN = [
     id: 'va-resilienz-text', istText: true, reihe: -20, kapitel: '2.4 Variantenvergleich',
     titel: 'Gutachtentext: Zweistoffbrenner als Resilienz- und Spitzenlasteinheit', datei: 'va-resilienz-text',
     hinweis: 'Prüft, ob alle Varianten einen fossilen Kessel auf voller Heizlast enthalten; Vorgabe als Platzhalter.',
-    render: () => ggWaermeTextBlatt(vaTextResilienz(ggVariantenDaten())), config: {},
+    render: () => ggWaermeTextBlatt(vaTextResilienz({ ...ggVariantenDaten(), vorgabeZsb: ggLies(() => window.gutStandardtextDaten?.()?.vorgabeZsb, '') })), config: {},
   },
   {
     id: 'va-gegenueberstellung', autoSync: true, reihe: 20, kapitel: '2.4 Variantenvergleich',
@@ -2668,7 +2692,7 @@ const GG_FIGUREN = [
     id: 'va-klima-text', istText: true, reihe: 40, kapitel: '2.4 Variantenvergleich',
     titel: 'Gutachtentext: Klimarelevanz heute, künftig und kumuliert', datei: 'va-klima-text',
     hinweis: 'Emissionen heute und mit mittlerem künftigem Strom-Emissionsfaktor, stärkste Reduktion, Bestwert, Referenz reines Erdgas und Bestand, Summe über 20 Jahre.',
-    render: () => { const d = ggVariantenDaten(); return ggWaermeTextBlatt(vaTextKlima({ varianten: d.varianten, gesamtMwh: d.gesamtMwh, efGas: d.ef.gas, bestandCo2T: d.bestandCo2T })); }, config: {},
+    render: () => { const d = ggVariantenDaten(); return ggWaermeTextBlatt(vaTextKlima({ varianten: d.varianten, gesamtMwh: d.gesamtMwh, efGas: d.ef.gas, bestandCo2T: d.bestandCo2T, eta: d.eta })); }, config: {},
   },
   {
     id: 'va-kosten-text', istText: true, reihe: -20, kapitel: '2.5 Wirtschaftlichkeit und Investitionskosten',
@@ -2726,6 +2750,24 @@ const GG_FIGUREN = [
     },
   },
   // ── Fazit Wärme, NT-Ertüchtigung, Fahrplan; Resilienz: Heizöl und Übergang (Logik: lib/gutachten-fazit.js) ──
+  {
+    id: 'va-bewertungsmatrix', autoSync: true, reihe: 10, kapitel: '2.6 Bewertungsmatrix',
+    titel: 'Bewertungsmatrix der Varianten', datei: 'va-bewertungsmatrix',
+    hinweis: 'Punkte 0–100 je Kriterium (bester Wert 100, übrige im Verhältnis) mit Rohwert, gewichtet zur Gesamtbewertung: Wirtschaftlichkeit 35 %, Klima 30 %, Resilienz 20 %, Preisstabilität 15 %.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: { eyebrow: 'Variantenvergleich', titel: 'Bewertungsmatrix der Varianten', leer: 'Mindestens zwei Varianten mit Wirtschaftlichkeit nötig.', spalten: [{ label: 'Kriterium', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
+    ausProjekt(cfg) {
+      const m = faBewertungsmatrix(ggVariantenDaten());
+      if (!m) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Mindestens zwei Varianten mit Wirtschaftlichkeit nötig.'; }
+      const Z = m.zeilen;
+      cfg.spalten = [{ label: 'Kriterium', weight: 1.8, align: 'left', mono: false }, { label: 'Gewicht', weight: 0.7 }, ...Z.map(z => ({ label: z.name, weight: 1.2 }))];
+      const roh = { kosten: r => `${ggNum(r.kosten, 2)} ct/kWh`, klima: r => `${ggNum(r.klima)} t/a`, resilienz: r => (Number.isFinite(r.resilienz) ? `${ggNum(r.resilienz * 100)} %` : '—'), preis: r => (Number.isFinite(r.preis) ? `+${ggNum(r.preis, 1)} %` : '—') };
+      cfg.zeilen = Object.keys(FA_KRITERIEN).map(k => ({ werte: [FA_KRITERIEN[k], `${ggNum(m.gewichte[k] * 100)} %`, ...Z.map(z => (Number.isFinite(z.punkte[k]) ? `${ggNum(z.punkte[k])} (${roh[k](z.roh)})` : '—'))] }));
+      cfg.zeilen.push({ highlight: true, werte: ['Gesamtbewertung', '100 %', ...Z.map(z => ggNum(z.gesamt))] });
+      cfg.fussnote = 'Punkte je Kriterium: bester Wert 100, übrige im Verhältnis bester ÷ eigener Wert; Resilienz als Erfüllungsgrad. Rohwerte: Wärmegestehungskosten · Emissionen Ø 2030–2050 · Resilienz (fossiler Kessel ≥ Spitzenlast, Anteil der Spitzenlast aus WP/Stromkessel) · Kostenanstieg im Krisenszenario';
+      return `✓ ${Z.length} Varianten bewertet.`;
+    },
+  },
   {
     id: 'fazit-bewertung-text', istText: true, reihe: 20, kapitel: '6.1 Wärmeversorgung',
     titel: 'Gutachtentext: Bewertung der Varianten (Klima, Wirtschaft, Resilienz)', datei: 'fazit-bewertung-text',

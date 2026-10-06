@@ -1016,6 +1016,15 @@ const GUT_VORGABEN_KEY = 'mmh-gutachten-vorgaben';   // nur lokal im Browser: Er
 function gutVorgabenLesen() {
   try { return localStorage.getItem(GUT_VORGABEN_KEY) || ''; } catch (e) { void e; return ''; }
 }
+const GUT_VORGABE_ZSB_KEY = 'mmh-gutachten-vorgabe-zsb';
+function gutVorgabeZsbLesen() {
+  try { return localStorage.getItem(GUT_VORGABE_ZSB_KEY) || ''; } catch (e) { void e; return ''; }
+}
+export function gutSetVorgabeZsb(text) {
+  try { localStorage.setItem(GUT_VORGABE_ZSB_KEY, String(text ?? '').trim()); } catch (e) { void e; }
+  _gut.cache.clear();
+  renderSeite();
+}
 export function gutSetVorgaben(text) {
   try { localStorage.setItem(GUT_VORGABEN_KEY, String(text ?? '').trim()); } catch (e) { void e; gutSay('⚠ Vorgaben konnten im Browser nicht gespeichert werden.'); }
   _gut.cache.clear();
@@ -1037,6 +1046,7 @@ export function gutStandardtextDaten() {
     ort: String(d.ort || '').trim() || v.ort,
     variante: _gut.dok?.textVariante || 0,
     vorgaben: gutVorgabenLesen(),
+    vorgabeZsb: gutVorgabeZsbLesen(),
   };
 }
 
@@ -1046,7 +1056,10 @@ function standardtextPanel() {
     + knopf('↻ Andere Formulierung', 'gutAndereFormulierung()', { titel: 'Wechselt die Formulierung der Standardtexte (z. B. 1.1 Ziele und Grundsätze).' })
     + feldLabel('Vorgaben des Auftraggebers (Erlasse)')
     + `<textarea rows="5" data-change="gutSetVorgaben(this.value)" placeholder="Kurzfassung der maßgeblichen Erlasse/Vorgaben; Absätze durch Leerzeile trennen" style="${EINGABE_STIL}width:100%;box-sizing:border-box;resize:vertical;">${esc(gutVorgabenLesen())}</textarea>`
-    + hinweis('Wird nur in diesem Browser gespeichert (nicht in der Projektdatei) und gilt für alle Gutachten. Erscheint in Kapitel 1.1.');
+    + hinweis('Wird nur in diesem Browser gespeichert (nicht in der Projektdatei) und gilt für alle Gutachten. Erscheint in Kapitel 1.1.')
+    + feldLabel('Vorgabe Zweistoffbrenner (Erlass/Schreiben, Kurzbezeichnung)')
+    + `<input type="text" value="${esc(gutVorgabeZsbLesen())}" placeholder="z. B. Schreiben … vom …" data-change="gutSetVorgabeZsb(this.value)" style="${EINGABE_STIL}">`
+    + hinweis('Wird in „Nicht berücksichtigt – Gas-Grundlast“ und im Abschnitt Zweistoffbrenner des Variantenvergleichs eingesetzt; ebenfalls nur lokal gespeichert.');
 }
 
 function deckblattPanel() {

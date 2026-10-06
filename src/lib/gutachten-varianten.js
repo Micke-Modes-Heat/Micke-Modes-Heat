@@ -26,18 +26,19 @@ const KESSEL_FOSSIL = new Set(['gaskessel', '_autoGk', 'heizoel']);
 /** Energiebilanz einer Variante je Energieträger (MWh Endenergie) und Anteile an der Wärme. */
 export function vaEnergie(v) {
   const e = {};
+  const eta = { ...VA_ETA, ...(v.eta || {}) };   // Wirkungsgrade aus den Erzeuger-Panels, sonst Standard
   let waerme = 0, wp = 0, sk = 0, fossil = 0, strom = 0, gas = 0, oel = 0, pellets = 0, hhs = 0, fw = 0;
   for (const x of v.erzeuger || []) {
     const w = Number(x.waermeMwh) || 0, el = Number(x.elMwh) || 0;
     if (x.key === '_thermSpeicher') continue;
     waerme += w;
     if (WP.has(x.key)) { wp += w; strom += el > 0 ? el : 0; }
-    else if (x.key === 'stromkessel') { sk += w; strom += el > 0 ? el : w / VA_ETA.stromkessel; }
-    else if (x.key === 'gaskessel' || x.key === '_autoGk') { fossil += w; gas += w / VA_ETA.gaskessel; }
-    else if (x.key === 'heizoel') { fossil += w; oel += w / VA_ETA.heizoel; }
-    else if (x.key === 'bhkw') { fossil += w; gas += w / VA_ETA.bhkwTh; }
-    else if (x.key === 'pellets') pellets += w / VA_ETA.pellets;
-    else if (x.key === 'hhs') hhs += w / VA_ETA.hhs;
+    else if (x.key === 'stromkessel') { sk += w; strom += el > 0 ? el : w / eta.stromkessel; }
+    else if (x.key === 'gaskessel' || x.key === '_autoGk') { fossil += w; gas += w / eta.gaskessel; }
+    else if (x.key === 'heizoel') { fossil += w; oel += w / eta.heizoel; }
+    else if (x.key === 'bhkw') { fossil += w; gas += w / eta.bhkwTh; }
+    else if (x.key === 'pellets') pellets += w / eta.pellets;
+    else if (x.key === 'hhs') hhs += w / eta.hhs;
     else if (x.key === 'fernwaerme') fw += w;
   }
   const p = x => (waerme > 0 ? (x / waerme) * 100 : NaN);
@@ -80,7 +81,7 @@ export function vaTextResilienz(o = {}) {
   if (!V.length) return [];
   const zsb = V.map(v => leistung(v, k => KESSEL_FOSSIL.has(k)));
   const alle = zsb.every(k => k > 0);
-  const volle = ok(o.pMaxKw) && zsb.every(k => k >= o.pMaxKw * 0.98);
+  const volle = ok(o.pMaxKw) && zsb.every(k => k >= o.pMaxKw * 0.995);
   const kw = Math.max(...zsb);
   if (!alle) {
     return [absatz('Nicht alle Varianten enthalten einen fossil betriebenen Spitzenlast- und Resilienzkessel. Die Absicherung bei Ausfall der Hauptwärmeerzeuger ist daher je Variante zu bewerten: ', F('Resilienzkonzept je Variante'), '.')];
@@ -110,7 +111,7 @@ export function vaGegenueberstellung(V, pMaxKw) {
   if (en.some(e => e.skPct > 0.05)) anteil('Deckungsanteil Stromdirektkessel', e => e.skPct);
   anteil('Deckungsanteil fossile Kessel', e => e.fossilPct);
   anteil('Anteil strombasierte Wärmeerzeugung', e => e.strombasiertPct);
-  if (ok(pMaxKw)) zeilen.push({ werte: ['Volle Resilienz durch fossilen Kessel', ...zsb.map(x => (x >= pMaxKw * 0.98 ? '✔' : '✘'))] });
+  if (ok(pMaxKw)) zeilen.push({ werte: ['Volle Resilienz durch fossilen Kessel', ...zsb.map(x => (x >= pMaxKw * 0.995 ? '✔' : '✘'))] });
   return { kopf, zeilen };
 }
 
@@ -133,7 +134,7 @@ export function vaTextKlima(o = {}) {
     `Den höchsten künftigen Wert weist ${schlechtZiel.name} mit ${nf(schlechtZiel.co2LzT)} t CO₂e/a auf`,
     en.get(schlechtZiel).fossilPct > 5 ? `, da der fossile Anteil von ${pct(en.get(schlechtZiel).fossilPct)} nicht von der Dekarbonisierung des Stromnetzes profitiert.` : '.'));
   const refs = [];
-  if (o.gesamtMwh > 0 && ok(o.efGas)) refs.push({ name: 'eine vollständig über Erdgas gedeckte Wärmeversorgung', t: (o.gesamtMwh / VA_ETA.gaskessel) * o.efGas / 1000 });
+  if (o.gesamtMwh > 0 && ok(o.efGas)) refs.push({ name: 'eine vollständig über Erdgas gedeckte Wärmeversorgung', t: (o.gesamtMwh / (o.eta?.gaskessel || VA_ETA.gaskessel)) * o.efGas / 1000 });
   if (o.bestandCo2T > 0) refs.push({ name: 'der gegenwärtige Bestand', t: o.bestandCo2T });
   if (refs.length) {
     const minV = Math.min(...V.map(v => v.co2LzT)), maxV = Math.max(...V.map(v => v.co2LzT));

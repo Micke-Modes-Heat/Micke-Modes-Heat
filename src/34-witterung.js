@@ -50,7 +50,8 @@ export async function wbLaden() {
     const tageT = zeit.map((t, i) => [t, temp[i]]).filter(([t]) => t.startsWith(`${mj}-`) && !t.endsWith('-02-29')).map(([, x]) => Math.round(x * 10) / 10);
     const f = wbFaktor(g, mj, _wb.jahre);
     if (!f) throw new Error('zu wenige vollständige Jahre');
-    _wb.ergebnis = { ...f, messjahr: mj, tageT: tageT.length === 365 ? tageT : null, lat: s.lat, lng: s.lng, quelle: 'Open-Meteo-Archiv (ERA5)', geladen: new Date().toISOString() };
+    const gJahre = Object.keys(g).map(Number).filter(j => j <= mj && j >= f.vonJahr).sort((a, b) => a - b).map(j => ({ jahr: j, g: Math.round(g[j]) }));
+    _wb.ergebnis = { ...f, messjahr: mj, gJahre, tageT: tageT.length === 365 ? tageT : null, lat: s.lat, lng: s.lng, quelle: 'Open-Meteo-Archiv (ERA5)', geladen: new Date().toISOString() };
     _wb.aktiv = true;
     wbRender();
     window.glBerechnenAuto?.();
@@ -83,7 +84,12 @@ export function wbRender() {
       <input type="checkbox" ${_wb.aktiv ? 'checked' : ''} ${passt ? '' : 'disabled'} data-change="wbFeld('aktiv',this.checked)"> Lastgang witterungsbereinigen</label>
     <div id="wb-info" style="font-size:9px;color:var(--muted);margin-top:2px;line-height:1.4;">${passt
       ? `G20/15 ${e.messjahr}: ${nf(e.gMess)} Kd · Mittel ${e.vonJahr}–${e.bisJahr}: ${nf(e.gMittel)} Kd → Faktor ${nf(e.faktor, 3)} (${e.faktor > 1 ? 'Messjahr wärmer als üblich' : 'Messjahr kälter als üblich'})`
-      : 'Ohne Bereinigung wird der Lastgang unverändert verwendet.'}</div>`;
+      : 'Ohne Bereinigung wird der Lastgang unverändert verwendet.'}</div>
+    ${passt && Array.isArray(e.gJahre) && e.gJahre.length ? `<details style="font-size:9px;color:var(--muted);margin-top:3px;"><summary style="cursor:pointer;">Gradtagzahlen je Jahr anzeigen</summary>
+      <table style="border-collapse:collapse;margin-top:3px;">${e.gJahre.map(x => `<tr${x.jahr === e.messjahr ? ' style="color:var(--text);font-weight:600;"' : ''}><td style="padding:0 8px 0 0;">${x.jahr}${x.jahr === e.messjahr ? ' (Messjahr)' : ''}</td><td style="text-align:right;">${nf(x.g)} Kd</td></tr>`).join('')}
+      <tr style="border-top:1px solid var(--border);"><td style="padding:0 8px 0 0;">Mittel ${e.vonJahr}–${e.bisJahr}</td><td style="text-align:right;">${nf(e.gMittel)} Kd</td></tr>
+      <tr><td style="padding:0 8px 0 0;">Faktor = Mittel ÷ Messjahr</td><td style="text-align:right;">${nf(e.faktor, 3)}</td></tr></table>
+      <div style="margin-top:2px;">Standort ${nf(e.lat, 3)}° N, ${nf(e.lng, 3)}° O · ${esc(e.quelle || '')}</div></details>` : ''}`;
 }
 
 setTimeout(() => wbRender(), 0);

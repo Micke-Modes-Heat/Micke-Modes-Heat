@@ -29,4 +29,6 @@ test('dist: Gradtagzahlen bereinigen den gemessenen Lastgang und erscheinen im G
   expect(r.text).toContain('Gradtagzahlen G20/15 des Messjahres 2023');
   expect(r.gesichert.messjahr).toBe(2023);
   expect(r.gesichert.ergebnis.tageT).toHaveLength(365);
+  expect(r.gesichert.ergebnis.gJahre.at(-1)).toMatchObject({ jahr: 2023 });
+  expect(r.gesichert.ergebnis.gJahre.length).toBe(21);
 });

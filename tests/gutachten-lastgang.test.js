@@ -42,7 +42,7 @@ describe('Spitzenlast', () => {
     const s = lgSpitzenlast(lg, tageT, -14);
     expect(s.tSpitze).toBe(-8);
     expect(s.pMax).toBeCloseTo(200 + 23 * 40, 3);
-    expect(s.pNorm).toBeGreaterThan(s.pMax);
+    expect(s.pNorm).toBeCloseTo(s.pMax * (22 + 14) / (22 + 8), 6);   // Methode des Gutachters: Verhältnis der Temperaturdifferenzen zu 22 °C
   });
   it('Text mit Reserve und Bestand', () => {
     const t = text(lgTextSpitzenlast({ lastgangKw: lg, tageT, normAtC: -14, auffaelligeNutzung: 'Unterkunft', bestandThermKw: 3000 }));
