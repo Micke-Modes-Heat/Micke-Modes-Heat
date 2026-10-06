@@ -27,6 +27,9 @@ export const GF_NICHT_PUNKTE = Object.freeze([
  *   standard: wert oder (ctx) => wert, hinweis }. Optionen dürfen eine Funktion (ctx) sein (z. B. Variantennamen).
  */
 export const GF_FRAGEN = Object.freeze([
+  { id: 'umfang-bestand', kapitel: '2.1', frage: 'Umfang der Bestandsanalyse', art: 'auswahl',
+    optionen: [['auto', 'automatisch nach Gebäudezahl und Neubauanteil'], ['ausfuehrlich', 'ausführlich'], ['kompakt', 'kompakt (Text und Übersicht)']], standard: 'auto',
+    hinweis: 'Automatisch kompakt bei höchstens 5 Bestandsgebäuden oder wenn die Neubauten überwiegen.' },
   { id: 'egb', kapitel: '2.2', frage: 'Energiestandard für Neubau und Sanierung (EEFB)', art: 'auswahl',
     optionen: [['auto', 'Neubau EGB 40, Sanierung EGB 55'], ['40', 'durchgängig EGB 40'], ['55', 'durchgängig EGB 55'], ['keiner', 'nicht erwähnen']], standard: 'auto',
     hinweis: 'Fügt einen Satz mit Bezug auf die Energieeffizienzfestlegungen des Bundes (EEFB) in die baulichen Veränderungen ein.' },

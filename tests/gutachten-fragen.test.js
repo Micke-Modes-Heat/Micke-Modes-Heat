@@ -71,3 +71,20 @@ describe('Texte nach Fragebogen', () => {
     expect(text(nt)).toContain('von heute rund 80 °C auf überwiegend rund 50 °C');
   });
 });
+
+describe('Umfang der Bestandsanalyse', () => {
+  it('kompakt bei wenigen Bestandsgebäuden oder überwiegenden Neubauten', async () => {
+    const { gbBestandUmfang, gbTextBestand } = await import('../src/lib/gutachten-gebaeude.js');
+    const ist = n => ({ anzahl: n, bedarfMwh: 1000, flaecheM2: 9000, nutzung: [{ label: 'Kaserne / Unterkunftsgebäude' }], baujahrMittel: 1965, ohneBaujahr: 0,
+      zeilen: Array.from({ length: n }, () => ({ baujahr: 1965 })), spezKwhM2: 140, referenzSpez: 90 });
+    const neubau = k => Array.from({ length: k }, () => ({ art: 'neubau', deltaMwh: 100 }));
+    expect(gbBestandUmfang({ ist: { anzahl: 0 } })).toBe('keiner');
+    expect(gbBestandUmfang({ ist: ist(3), ereignisse: [] })).toBe('kompakt');
+    expect(gbBestandUmfang({ ist: ist(10), ereignisse: neubau(25) })).toBe('kompakt');
+    expect(gbBestandUmfang({ ist: ist(10), ereignisse: neubau(3) })).toBe('ausfuehrlich');
+    const t = text(gbTextBestand({ stichjahr: 2026, ist: ist(3), ereignisse: neubau(40) }, { kompakt: true }));
+    expect(t).toContain('umfasst 3 Gebäude mit zusammen 9.000 m² Bruttogeschossfläche (Kaserne / Unterkunftsgebäude), errichtet 1965');
+    expect(t).toContain('das 1,6-Fache des Vergleichswerts');
+    expect(t).toContain('die 40 geplanten Neubauten mit zusammen rund 4.000 MWh pro Jahr – das 4,0-Fache des Bestands');
+  });
+});

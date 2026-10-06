@@ -12,7 +12,7 @@
 import {
   ggFigurenKatalog, ggFigurTeilArten, ggRenderFigurFuerDokument, ggCopyDokumentTeil, ggCopyForWord, ggFitLabels,
   ggMountEinzelansicht, ggShowSection, ggSelectFigur, ggFigurEinstellungenCapture, ggFigurEinstellungenRestore,
-  ggFigurWordDaten, ggSvgToPngBlob, ggTrafostationenIstListe, ggFigurSichtbar, ggFrageKontext, ggPlausiPruefung,
+  ggFigurWordDaten, ggSvgToPngBlob, ggTrafostationenIstListe, ggFigurSichtbar, ggFigurAusblendGrund, ggFrageKontext, ggPlausiPruefung,
 } from './17-gutachten-grafik.js';
 import { GF_FRAGEN, gfFragenZuKapitel, gfOptionen, gfStandard } from './lib/gutachten-fragen.js';
 import {
@@ -31,7 +31,7 @@ import { GV_LOGO_PNG, GV_WAPPEN_PNG, GV_NETZGRAFIK_PNG } from './config/gutachte
 
 const _gut = {
   dok: null,            // Gutachten-Dokument oder null, solange keins angelegt ist
-  modus: 'dokument',    // 'dokument' | 'einzel'
+  modus: 'dokument',    // 'dokument' | 'praes' | 'einzel'
   auswahl: null,        // { art: 'kapitel' | 'block', id }
   cache: new Map(),     // blockId → { schluessel, ergebnis } — gezeichnete Figuren, damit Auswahl/Verschieben nicht alles neu rechnet
   lpZiel: null,          // blockId eines 'bild'-Blocks, der gerade in 🗺️ Liegenschaftsbilder eingerichtet wird, oder null
@@ -117,6 +117,7 @@ export function gutBuildAnalyseSection() {
     <div id="gut-eigenschaften" style="width:300px;flex-shrink:0;overflow-y:auto;border-left:1px solid rgba(38,166,154,.15);padding:10px;"></div>
   </div>
   <div id="gut-einzel" style="flex:1;min-height:0;display:none;"></div>
+  <div id="gut-praes" style="flex:1;min-height:0;display:none;"></div>
 </div>`;
   document.getElementById('center-analyse-view')?.appendChild(wrap);
   ggMountEinzelansicht(document.getElementById('gut-einzel'));
@@ -135,11 +136,13 @@ export function gutShowSection(visible) {
 function zeigeModus() {
   const dokEl = document.getElementById('gut-dokument');
   const einzelEl = document.getElementById('gut-einzel');
+  const praesEl = document.getElementById('gut-praes');
   const leiste = document.getElementById('gut-modusleiste');
   if (!dokEl || !einzelEl) return false;
-  const einzel = _gut.modus === 'einzel';
-  dokEl.style.display = einzel ? 'none' : 'flex';
+  const einzel = _gut.modus === 'einzel', praes = _gut.modus === 'praes';
+  dokEl.style.display = einzel || praes ? 'none' : 'flex';
   einzelEl.style.display = einzel ? '' : 'none';
+  if (praesEl) praesEl.style.display = praes ? 'flex' : 'none';
   if (leiste) {
     const tab = (modus, label) => {
       const aktiv = _gut.modus === modus;
@@ -147,13 +150,13 @@ function zeigeModus() {
         border:1px solid ${aktiv ? 'rgba(38,166,154,.6)' : 'rgba(255,255,255,.1)'};background:${aktiv ? 'rgba(38,166,154,.18)' : 'transparent'};
         color:${aktiv ? GUT_AKZENT : 'var(--muted)'};">${label}</button>`;
     };
-    leiste.innerHTML = tab('dokument', '📄 Dokument') + tab('einzel', '🖼 Einzelgrafiken')
+    leiste.innerHTML = tab('dokument', '📄 Dokument') + tab('praes', '🖥 Präsentation') + tab('einzel', '🖼 Einzelgrafiken')
       + `<span id="gut-status" style="margin-left:12px;font-size:11px;color:${GUT_AKZENT};"></span>`
       + (!einzel && _gut.dok
           ? `<span style="margin-left:auto;display:flex;gap:6px;align-items:center;">${plausiKnopf()}${knopf('⟳ Daten aktualisieren', 'gutAktualisieren()', { titel: 'Alle Abbildungen neu aus dem Projektstand zeichnen.' })}`
-            + `${knopf('⤓ Word-Datei (.docx)', 'gutWordExport()', { primaer: true, titel: 'Komplettes Gutachten im LKEBw-Layout: Deckblatt, Verzeichnisse, Kapitel, Abbildungen und Tabellen.' })}`
-            + `${knopf('⤓ PowerPoint', 'gutPptxMenu()', { titel: 'Präsentation im Gutachtendesign: kurz (Entscheider) oder ausführlich (Fachrunde).' })}</span>`
-            + (_gut.pptxOffen ? pptxAuswahl() : '')
+            + (praes
+              ? `${knopf('⤓ PowerPoint (.pptx)', 'gutPptxExport()', { primaer: true, titel: 'Präsentation im Gutachtendesign mit den angehakten Folien.' })}</span>`
+              : `${knopf('⤓ Word-Datei (.docx)', 'gutWordExport()', { primaer: true, titel: 'Komplettes Gutachten im LKEBw-Layout: Deckblatt, Verzeichnisse, Kapitel, Abbildungen und Tabellen.' })}</span>`)
             + (_gut.plausiOffen ? plausiListe() : '')
           : '');
   }
@@ -186,15 +189,16 @@ export function gutPlausiUmschalten() { _gut.plausiOffen = !_gut.plausiOffen; ze
 
 export function gutRender() {
   if (!zeigeModus()) { ggShowSection(true); return; }
+  if (_gut.modus === 'praes') { renderPraes(); return; }
   renderSeite();
   renderGliederung();   // nach der Seite: zählt die offenen Platzhalter im gezeichneten Dokument
   renderEigenschaften();
 }
 
 export function gutSetModus(modus) {
-  _gut.modus = modus === 'einzel' ? 'einzel' : 'dokument';
-  // In der Einzelansicht geänderte Haken und Kopfzeilen sollen im Dokument ankommen
-  if (_gut.modus === 'dokument') _gut.cache.clear();
+  _gut.modus = modus === 'einzel' ? 'einzel' : modus === 'praes' ? 'praes' : 'dokument';
+  // In der Einzelansicht geänderte Haken und Kopfzeilen sollen im Dokument und in der Präsentation ankommen
+  if (_gut.modus !== 'einzel') _gut.cache.clear();
   gutRender();
 }
 
@@ -267,7 +271,7 @@ function beschriftungEl(nr, text) {
 function figurBlockInhalt(box, b, nummern, zuEinpassen) {
   if (!ggFigurSichtbar(b.figurId)) {
     const titel = ggFigurenKatalog().find(f => f.id === b.figurId)?.titel || b.figurId;
-    box.innerHTML = `<div style="font-size:11px;color:#9a9f9a;padding:2px 0;" title="Erscheint nicht im Export. Ändern über den Fragebogen des Kapitels (rechts).">⊘ ${esc(titel)} — über den Fragebogen ausgeblendet</div>`;
+    box.innerHTML = `<div style="font-size:11px;color:#9a9f9a;padding:2px 0;" title="Erscheint nicht im Export und nicht in der Präsentation. Ändern über den Fragebogen des Kapitels (rechts) bzw. die Projektdaten.">⊘ ${esc(titel)} — ${esc(ggFigurAusblendGrund(b.figurId))}</div>`;
     return;
   }
   const erg = figurErgebnis(b);
@@ -1344,69 +1348,218 @@ const PPTX_KURZ = new Set([
   'va-gegenueberstellung', 'va-emissionen', 'va-kostenstruktur', 'va-sensitivitaet-grafik', 'va-bewertungsmatrix', 'fazit-nt-grafik', 'fazit-fahrplan-gantt',
 ]);
 
-export function gutPptxMenu() { _gut.pptxOffen = !_gut.pptxOffen; zeigeModus(); }
-function pptxAuswahl() {
-  return `<div style="flex-basis:100%;display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:6px;font-size:11px;color:var(--muted);">Präsentation:
-    ${knopf('Kurzfassung (Kernabbildungen)', "gutPptxExport('kurz')", { primaer: true })}${knopf('Ausführlich (alle Abbildungen)', "gutPptxExport('lang')")}</div>`;
+/** Fassung der Präsentation und Folien-Einstellungen im Dokument (dok.praesentation, normalisiert in lib/gutachten-dokument.js). */
+const praesDaten = () => _gut.dok?.praesentation || {};
+function praesSetzen(aenderung) {
+  if (!_gut.dok) return;
+  _gut.dok.praesentation = { ...praesDaten(), ...aenderung };
+  renderPraes();
 }
 
-async function gutPptxPaket(art = 'kurz') {
-  if (!_gut.dok) throw new Error('Noch kein Gutachten angelegt.');
-  renderSeite();
+/**
+ * Folienmodell aus dem Dokument — gleiche Quelle für Vorschau und Export:
+ * [{ key, art: 'titel'|'kapitel'|'inhalt'|'punkte', nr, titel, unter, punkte, autoPunkte, svg, an, vorgabeAn }]
+ * Kandidaten sind alle sichtbaren Abbildungen und Tabellen; ob eine Folie dabei ist, folgt der Fassung (kurz: Kernabbildungen)
+ * oder dem Haken des Nutzers. Titel und Stichpunkte lassen sich je Folie überschreiben.
+ */
+function praesFolien() {
   const dok = _gut.dok;
+  if (!dok) return [];
+  const pd = praesDaten();
+  const kurz = (pd.fassung || 'kurz') === 'kurz';
+  const an = pd.an || {}, titelX = pd.titel || {}, punkteX = pd.punkte || {};
   const nummern = gdKapitelNummern(dok.kapitel);
   const d = deckblattFuerExport();
-  const folien = [{ art: 'titel', titel: 'Zukünftige Energieversorgung', untertitel: d.liegenschaft || '',
-    zeilen: [d.ort, d.auftraggeber, d.stand || new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })] }];
-  const kurz = art === 'kurz';
   const katalog = new Map(ggFigurenKatalog().map(f => [f.id, f]));
+  const mitWahl = (f, vorgabe) => {
+    const key = f.key;
+    const autoPunkte = f.punkte || [];
+    const eigene = typeof punkteX[key] === 'string' ? punkteX[key].split('\n').map(x => x.trim()).filter(Boolean) : null;
+    return { ...f, vorgabeAn: vorgabe, an: an[key] ?? vorgabe, autoPunkte, punkte: eigene ?? autoPunkte, eigenePunkte: !!eigene, titel: titelX[key] || f.titel, autoTitel: f.titel };
+  };
+  const folien = [mitWahl({ key: 'titel', art: 'titel', titel: 'Zukünftige Energieversorgung', unter: d.liegenschaft || '',
+    zeilen: [d.ort, d.auftraggeber, d.stand || new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })] }, true)];
   let kapitelFolie = null;
   for (let ki = 0; ki < dok.kapitel.length; ki++) {
     const k = dok.kapitel[ki];
     const nr = nummern[ki];
-    if (k.ebene === 1) kapitelFolie = { art: 'kapitel', nr, titel: k.titel, offen: true };
-    // Stichpunkte aus den Texten dieses Kapitels
+    if (k.ebene === 1) { kapitelFolie = mitWahl({ key: `kap:${k.id}`, art: 'kapitel', nr, titel: k.titel }, true); kapitelFolie.offen = true; }
     const absaetze = [];
     const bilder = [];
     for (const b of k.bloecke) {
       if (b.typ === 'text') { absaetze.push(...String(b.text || '').split(/\n\s*\n/).map(t => [{ text: t, offen: false }])); continue; }
-      if (b.typ === 'bild') { if (b.svg) bilder.push({ b, titel: b.unterschrift.trim() || 'Lageplan der Liegenschaft', svg: bildSvgElement(b) }); continue; }
+      if (b.typ === 'bild') { if (b.svg) bilder.push({ b, titel: b.unterschrift.trim() || 'Lageplan der Liegenschaft', svg: bildSvgElement(b), kern: true }); continue; }
       if (!ggFigurSichtbar(b.figurId)) continue;
       const f = katalog.get(b.figurId);
       if (f?.istText) { try { absaetze.push(...(ggFigurWordDaten(b.figurId)?.absaetze || [])); } catch (e) { void e; } continue; }
-      if (kurz && !PPTX_KURZ.has(b.figurId)) continue;
-      const erg = figurErgebnis(b);
-      if (erg.fehler || !erg.teile?.[0]?.el) continue;
-      bilder.push({ b, titel: b.unterschrift.trim() || erg.titel, svg: erg.teile[0].el });
+      bilder.push({ b, kern: PPTX_KURZ.has(b.figurId), titel: b.unterschrift.trim() || f?.titel || b.figurId });
     }
-    let punkte = gpxStichpunkte(absaetze, kurz ? 3 : 6);
-    if (!bilder.length && (kurz || punkte.length < 2)) continue;
-    if (kapitelFolie?.offen) { folien.push(kapitelFolie); kapitelFolie.offen = false; }
-    if (!bilder.length) { folien.push({ art: 'punkte', nr, titel: k.titel, punkte }); continue; }
+    if (!bilder.length && !absaetze.length) continue;
+    let punkte = gpxStichpunkte(absaetze, 9);
+    const kandidaten = [];
     for (const x of bilder) {
-      if (!x.svg || x.svg.tagName?.toLowerCase() !== 'svg') continue;
       const p = punkte.slice(0, 3);
       punkte = punkte.slice(3);
-      folien.push({ art: 'inhalt', nr, titel: k.titel, unter: x.titel, punkte: p,
-        bild: { daten: await pngDaten(x.svg), breite: +x.svg.getAttribute('width') || 1200, hoehe: +x.svg.getAttribute('height') || 800 } });
+      kandidaten.push(mitWahl({ key: `fig:${x.b.id}`, art: 'inhalt', nr, titel: k.titel, unter: x.titel || null, punkte: p, block: x.b }, kurz ? x.kern : true));
     }
+    if (!bilder.length && punkte.length >= 2) kandidaten.push(mitWahl({ key: `pkt:${k.id}`, art: 'punkte', nr, titel: k.titel, punkte: punkte.slice(0, 5) }, !kurz));
+    if (!kandidaten.length) continue;
+    if (kapitelFolie?.offen) { kapitelFolie.offen = false; folien.push(kapitelFolie); }
+    folien.push(...kandidaten);
   }
-  const titel = `Energieversorgung${d.liegenschaft ? ` ${d.liegenschaft}` : ''}`;
-  return { paket: gpxErzeugePaket(folien.map(({ offen, ...f }) => { void offen; return f; }), { titel, fusszeile: `LKEBw · ${d.liegenschaft || 'Gutachten zur zukünftigen Energieversorgung'}`, logo: GV_LOGO_PNG }), anzahl: folien.length };
+  // Kapitelfolien ohne aufgenommene Inhaltsfolie folgen ihrem Kapitel (an, solange der Nutzer nichts anderes gewählt hat)
+  for (let i = 0; i < folien.length; i++) {
+    const f = folien[i];
+    if (f.art !== 'kapitel' || an[f.key] !== undefined) continue;
+    let j = i + 1, inhalt = false;
+    while (j < folien.length && folien[j].art !== 'kapitel') { if (folien[j].an) inhalt = true; j++; }
+    f.an = inhalt;
+  }
+  return folien;
 }
 
-export async function gutPptxExport(art = 'kurz') {
+/** Bild und Untertitel einer Inhaltsfolie erst bei Bedarf zeichnen (Vorschau, Export). */
+function praesBild(f) {
+  if (f.art !== 'inhalt' || !f.block) return null;
+  if (f.block.typ === 'bild') return bildSvgElement(f.block);
+  const erg = figurErgebnis(f.block);
+  if (erg.fehler || !erg.teile?.[0]?.el) return null;
+  if (!f.block.unterschrift?.trim()) f.unter = erg.titel;   // Titel der gezeichneten Abbildung statt des Katalognamens
+  return erg.teile[0].el;
+}
+
+/* ── Reiter „Präsentation“: Folienliste, Vorschau im Gutachtendesign, Einstellungen der Folie ── */
+const PRAES_GRUEN = '#266426', PRAES_GRUEN_HELL = '#3F9C3F';
+function praesVorschau(f, nr) {
+  const box = document.createElement('div');
+  box.dataset.click = `gutPraesWaehle('${f.key}')`;
+  const gewaehlt = _gut.praesAuswahl === f.key;
+  box.style.cssText = `position:relative;width:100%;max-width:880px;aspect-ratio:16/9;margin:0 auto 18px;background:#fff;color:#1B1F1C;font-family:Tahoma,Arial,sans-serif;
+    box-shadow:0 2px 10px rgba(0,0,0,.35);overflow:hidden;cursor:pointer;opacity:${f.an ? 1 : 0.35};outline:${gewaehlt ? `3px solid ${GUT_AKZENT}` : 'none'};outline-offset:3px;`;
+  const logo = `<img src="data:image/png;base64,${GV_LOGO_PNG}" style="position:absolute;right:4%;top:3.4%;width:13%;">`;
+  const fuss = `<div style="position:absolute;left:4%;right:4%;bottom:7%;border-top:1px solid #E2E4DF;"></div>
+    <div style="position:absolute;left:4%;bottom:2.4%;font-size:1.1cqw;color:#5A5F5A;">${esc(`LKEBw · ${deckblattFuerExport().liegenschaft || 'Gutachten zur zukünftigen Energieversorgung'}`)}</div>
+    <div style="position:absolute;right:4%;bottom:2.4%;font-size:1.1cqw;color:#5A5F5A;">${nr}</div>`;
+  box.style.containerType = 'inline-size';
+  if (f.art === 'titel') {
+    box.innerHTML = `<div style="position:absolute;inset:0 0 38% 0;background:${PRAES_GRUEN};"></div><div style="position:absolute;left:0;right:0;top:62%;height:0.7%;background:${PRAES_GRUEN_HELL};"></div>
+      <div style="position:absolute;left:7.5%;right:7.5%;bottom:44%;color:#fff;"><div style="font-size:4.2cqw;font-weight:bold;">${esc(f.titel)}</div><div style="font-size:2.4cqw;margin-top:1%;">${esc(f.unter || '')}</div></div>
+      <div style="position:absolute;left:7.5%;top:68%;font-size:1.6cqw;color:#5A5F5A;line-height:1.5;">${(f.zeilen || []).filter(Boolean).map(esc).join('<br>')}</div>
+      <img src="data:image/png;base64,${GV_LOGO_PNG}" style="position:absolute;right:7.5%;top:70%;width:20%;">`;
+  } else if (f.art === 'kapitel') {
+    box.innerHTML = `<div style="position:absolute;inset:0 0 auto 0;height:1.3%;background:${PRAES_GRUEN};"></div>${logo}
+      <div style="position:absolute;left:0;top:38%;width:1.5%;height:24%;background:${PRAES_GRUEN_HELL};"></div>
+      <div style="position:absolute;left:7.5%;top:36%;"><div style="font-size:6.3cqw;font-weight:bold;color:${PRAES_GRUEN};line-height:1.1;">${esc(f.nr)}</div><div style="font-size:3.7cqw;font-weight:bold;">${esc(f.titel)}</div></div>
+      <div style="position:absolute;right:4%;bottom:2.4%;font-size:1.1cqw;color:#5A5F5A;">${nr}</div>`;
+  } else {
+    const punkte = (f.punkte || []).map(p => `<li style="margin:0 0 0.8em;">${esc(p)}</li>`).join('');
+    box.innerHTML = `<div style="position:absolute;inset:0 0 auto 0;height:1.3%;background:${PRAES_GRUEN};"></div>${logo}
+      <div style="position:absolute;left:4%;top:4.4%;right:20%;font-size:2.8cqw;font-weight:bold;"><span style="color:${PRAES_GRUEN};">${esc(f.nr)}</span>&nbsp; ${esc(f.titel)}</div>
+      <div data-praes-unter style="position:absolute;left:4%;top:12.4%;right:4%;font-size:1.6cqw;color:#5A5F5A;">${esc(f.unter || '')}</div>
+      <div data-praes-bild style="position:absolute;left:4%;top:18%;bottom:9%;width:${f.art === 'inhalt' && punkte ? '59%' : '92%'};display:flex;align-items:center;justify-content:center;"></div>
+      ${punkte ? `<div style="position:absolute;top:18%;bottom:12%;${f.art === 'inhalt' ? 'left:66%' : 'left:4%'};right:4%;border-left:${f.art === 'inhalt' ? `2px solid ${PRAES_GRUEN_HELL}` : 'none'};padding-left:2%;
+        font-size:1.75cqw;line-height:1.35;overflow:hidden;"><ul style="margin:0;padding-left:1.2em;">${punkte}</ul></div>` : ''}${fuss}`;
+    const el = praesBild(f);
+    const halter = box.querySelector('[data-praes-bild]');
+    if (el && halter) {
+      const c = el.cloneNode(true);
+      Object.assign(c.style, { maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', display: 'block' });
+      if (c.tagName?.toLowerCase() !== 'svg') { c.style.width = '100%'; c.style.overflow = 'hidden'; c.style.fontSize = '0.9cqw'; }
+      halter.appendChild(c);
+      box.querySelector('[data-praes-unter]').textContent = f.unter || '';
+    }
+  }
+  return box;
+}
+
+function renderPraes() {
+  const host = document.getElementById('gut-praes');
+  if (!host) return;
+  if (!_gut.dok) { host.innerHTML = '<div style="padding:30px;color:var(--muted);font-size:12px;">Zuerst unter „📄 Dokument“ ein Gutachten anlegen — die Präsentation entsteht daraus.</div>'; return; }
+  const folien = praesFolien();
+  if (!folien.some(f => f.key === _gut.praesAuswahl)) _gut.praesAuswahl = folien[0]?.key || null;
+  const aktive = folien.filter(f => f.an);
+  const nrVon = new Map(aktive.map((f, i) => [f.key, i + 1]));
+  const pd = praesDaten();
+  const scrollAlt = document.getElementById('gut-praes-scroll')?.scrollTop || 0;
+  const liste = folien.map(f => `<div data-click="gutPraesWaehle('${f.key}')" style="display:flex;gap:6px;align-items:flex-start;padding:4px 6px;border-radius:4px;cursor:pointer;font-size:11px;line-height:1.35;
+      margin-left:${f.art === 'kapitel' || f.art === 'titel' ? 0 : 12}px;color:${f.an ? 'var(--text,#e8eaed)' : 'var(--muted)'};background:${_gut.praesAuswahl === f.key ? 'rgba(38,166,154,.15)' : 'transparent'};">
+      <input type="checkbox" ${f.an ? 'checked' : ''} data-click="event.stopPropagation()" data-change="gutPraesFolieAn('${f.key}',this.checked)" style="margin-top:2px;">
+      <span><span style="color:${GUT_AKZENT};">${nrVon.get(f.key) || '–'}</span> ${f.art === 'kapitel' ? `<b>${esc(f.nr)} ${esc(f.titel)}</b>` : f.art === 'titel' ? '<b>Titelfolie</b>' : (f.art === 'punkte' ? `Stichpunkte: ${esc(f.titel)}` : esc(f.unter || f.titel))}</span></div>`).join('');
+  host.innerHTML = `<div style="width:290px;flex-shrink:0;overflow-y:auto;border-right:1px solid rgba(38,166,154,.15);padding:10px;">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Fassung</div>
+      <select data-change="gutPraesFassung(this.value)" style="${EINGABE_STIL}width:100%;box-sizing:border-box;">
+        <option value="kurz"${(pd.fassung || 'kurz') === 'kurz' ? ' selected' : ''}>Kurzfassung (Kernabbildungen)</option>
+        <option value="lang"${pd.fassung === 'lang' ? ' selected' : ''}>Ausführlich (alle Abbildungen)</option></select>
+      <div style="font-size:10px;color:var(--muted);margin:8px 0 10px;">${aktive.length} von ${folien.length} Folien · Haken = Folie ist dabei${Object.keys(pd.an || {}).length ? ` · <a href="#" data-click="event.preventDefault();gutPraesZuruecksetzen()" style="color:inherit;">Auswahl zurücksetzen</a>` : ''}</div>
+      ${liste}</div>
+    <div id="gut-praes-scroll" style="flex:1;min-width:0;overflow-y:auto;padding:20px;background:#161622;"></div>
+    <div style="width:300px;flex-shrink:0;overflow-y:auto;border-left:1px solid rgba(38,166,154,.15);padding:10px;">${praesPanel(folien.find(f => f.key === _gut.praesAuswahl))}</div>`;
+  const scroll = document.getElementById('gut-praes-scroll');
+  folien.forEach(f => scroll.appendChild(praesVorschau(f, nrVon.get(f.key) || '–')));
+  scroll.scrollTop = scrollAlt;
+}
+
+function praesPanel(f) {
+  if (!f) return '';
+  const titelFeld = f.art === 'titel' || f.art === 'kapitel' ? '' : feldLabel('Folientitel')
+    + `<input type="text" value="${esc(f.titel)}" placeholder="${esc(f.autoTitel)}" data-change="gutPraesTitel('${f.key}',this.value)" style="${EINGABE_STIL}width:100%;box-sizing:border-box;">`;
+  const punkte = f.art === 'titel' || f.art === 'kapitel' ? '' : feldLabel('Stichpunkte (eine Zeile je Punkt)')
+    + `<textarea rows="8" data-change="gutPraesPunkte('${f.key}',this.value)" style="${EINGABE_STIL}width:100%;box-sizing:border-box;resize:vertical;">${esc((f.punkte || []).join('\n'))}</textarea>`
+    + (f.eigenePunkte ? `<div style="margin-top:4px;">${knopf('↺ Stichpunkte aus dem Gutachtentext', `gutPraesPunkte('${f.key}',null)`, { klein: true })}</div>` : hinweis('Automatisch aus den Texten des Kapitels (Sätze mit Zahlen bevorzugt). Änderungen gelten nur für die Präsentation.'));
+  return `<div style="font-size:12px;font-weight:600;color:var(--text,#e8eaed);margin-bottom:8px;">${f.art === 'titel' ? 'Titelfolie' : f.art === 'kapitel' ? `Kapitelfolie ${esc(f.nr)}` : `Folie zu ${esc(f.nr)}`}</div>`
+    + `<label style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--muted);"><input type="checkbox" ${f.an ? 'checked' : ''} data-change="gutPraesFolieAn('${f.key}',this.checked)"> Folie in die Präsentation aufnehmen</label>`
+    + titelFeld + punkte
+    + (f.block?.typ === 'figur' ? hinweis('Die Abbildung ist dieselbe wie im Gutachten — Kopfzeile, Haken und Werte in „🖼 Einzelgrafiken“ ändern.') : '')
+    + hinweis('Titel und Liegenschaft der Titelfolie kommen aus dem Deckblatt des Gutachtens.');
+}
+
+export function gutPraesWaehle(key) { _gut.praesAuswahl = key; renderPraes(); }
+export function gutPraesFolieAn(key, an) { praesSetzen({ an: { ...(praesDaten().an || {}), [key]: !!an } }); }
+export function gutPraesFassung(f) { praesSetzen({ fassung: f === 'lang' ? 'lang' : 'kurz' }); }
+export function gutPraesZuruecksetzen() { praesSetzen({ an: {} }); }
+export function gutPraesTitel(key, t) {
+  const titel = { ...(praesDaten().titel || {}) };
+  if (String(t || '').trim()) titel[key] = String(t).trim().slice(0, 200); else delete titel[key];
+  praesSetzen({ titel });
+}
+export function gutPraesPunkte(key, text) {
+  const punkte = { ...(praesDaten().punkte || {}) };
+  if (text === null || text === undefined) delete punkte[key]; else punkte[key] = String(text).slice(0, 3000);
+  praesSetzen({ punkte });
+}
+
+async function gutPptxPaket() {
+  if (!_gut.dok) throw new Error('Noch kein Gutachten angelegt.');
+  renderSeite();
+  const d = deckblattFuerExport();
+  const folien = [];
+  for (const f of praesFolien().filter(x => x.an)) {
+    const x = { art: f.art, nr: f.nr, titel: f.titel, unter: f.unter, punkte: f.punkte, zeilen: f.zeilen, untertitel: f.art === 'titel' ? f.unter : undefined };
+    if (f.art === 'inhalt') {
+      const svg = praesBild(f);
+      x.unter = f.unter;
+      if (svg && svg.tagName?.toLowerCase() === 'svg') x.bild = { daten: await pngDaten(svg), breite: +svg.getAttribute('width') || 1200, hoehe: +svg.getAttribute('height') || 800 };
+      else if (!x.punkte?.length) continue;
+      else x.art = 'punkte';
+    }
+    folien.push(x);
+  }
+  const titel = `Energieversorgung${d.liegenschaft ? ` ${d.liegenschaft}` : ''}`;
+  return { paket: gpxErzeugePaket(folien, { titel, fusszeile: `LKEBw · ${d.liegenschaft || 'Gutachten zur zukünftigen Energieversorgung'}`, logo: GV_LOGO_PNG }), anzahl: folien.length };
+}
+
+export async function gutPptxExport() {
   if (_gutExportLaeuft) return;
   if (typeof window.JSZip !== 'function') { gutSay('⚠ JSZip ist nicht geladen — Seite neu laden.', true); return; }
   _gutExportLaeuft = true;
-  _gut.pptxOffen = false;
   gutSay('PowerPoint-Datei wird erstellt …');
   try {
-    const { paket, anzahl } = await gutPptxPaket(art);
+    const { paket, anzahl } = await gutPptxPaket();
     const zip = new window.JSZip();
     for (const t of paket) zip.file(t.pfad, t.inhalt, t.base64 ? { base64: true } : undefined);
     const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
-    const name = typeof window.projektExportFilename === 'function' ? window.projektExportFilename(art === 'kurz' ? 'praesentation-kurz' : 'praesentation', 'pptx') : 'praesentation.pptx';
+    const name = typeof window.projektExportFilename === 'function' ? window.projektExportFilename('praesentation', 'pptx') : 'praesentation.pptx';
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = name; a.click();
@@ -1417,7 +1570,6 @@ export async function gutPptxExport(art = 'kurz') {
     gutSay('⚠ PowerPoint-Export fehlgeschlagen: ' + e.message, true);
   } finally {
     _gutExportLaeuft = false;
-    zeigeModus();
   }
 }
 
@@ -1463,6 +1615,7 @@ export function gutCaptureGutachten() {
     ...(_gut.dok?.textVariante ? { textVariante: _gut.dok.textVariante } : {}),
     ...(_gut.dok?.fragen && Object.keys(_gut.dok.fragen).length ? { fragen: structuredClone(_gut.dok.fragen) } : {}),
     ...(_gut.dok?.platzhalter && Object.keys(_gut.dok.platzhalter).length ? { platzhalter: structuredClone(_gut.dok.platzhalter) } : {}),
+    ...(_gut.dok?.praesentation ? { praesentation: structuredClone(_gut.dok.praesentation) } : {}),
     figurEinstellungen,
   };
 }

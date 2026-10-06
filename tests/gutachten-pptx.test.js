@@ -37,3 +37,13 @@ describe('Stichpunkte', () => {
     expect(p).toEqual(['Der Bedarf beträgt 4.200 MWh/a', 'Die Spitzenlast liegt bei 2,1 MW']);
   });
 });
+
+describe('Stichpunkte: Abkürzungen und Länge', () => {
+  it('trennt nicht nach „bzw.“, „z. B.“ oder Datumsangaben und kürzt lange Sätze', () => {
+    const p = gpxStichpunkte([[{ text: 'Sein Wärmebedarf beträgt 990 MWh pro Jahr bzw. 138 kWh/(m²·a), z. B. nach der Bekanntmachung vom 15. April 2021. '
+      + 'Die Anlage hat 3 Kessel mit zusammen 2,4 MW und einer sehr langen Beschreibung, die weit über die zulässige Länge einer Folienzeile hinausgeht und daher gekürzt werden muss, damit sie passt.', offen: false }]]);
+    expect(p[0]).toBe('Sein Wärmebedarf beträgt 990 MWh pro Jahr bzw. 138 kWh/(m²·a), z. B. nach der Bekanntmachung vom 15. April 2021');
+    expect(p[1].length).toBeLessThanOrEqual(150);
+    expect(p[1].endsWith(' …')).toBe(true);
+  });
+});

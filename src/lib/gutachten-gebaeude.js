@@ -217,9 +217,24 @@ export { spezKlasse as gbSpezKlasse };
 const art = { neubau: 'Neubau', abriss: 'Abriss', sanierung: 'energetische Sanierung' };
 
 /** 1.3.1 Gebäudebestand (Ist). */
+/**
+ * Umfang der Bestandsanalyse aus den Daten: 'keiner' ohne Bestand; 'kompakt', wenn der Bestand klein ist
+ * (höchstens 5 Gebäude) oder neben den Neubauten kaum ins Gewicht fällt (Neubauten mehr als doppelt so viele Gebäude
+ * oder mehr Wärmebedarf als der Bestand); sonst 'ausfuehrlich'.
+ */
+export function gbBestandUmfang(a) {
+  const i = a?.ist;
+  if (!i || !(i.anzahl > 0)) return 'keiner';
+  const neu = (a.ereignisse || []).filter(e => e.art === 'neubau');
+  const neuMwh = neu.reduce((x, e) => x + (e.deltaMwh || 0), 0);
+  if (i.anzahl <= 5 || neu.length > 2 * i.anzahl || neuMwh > i.bedarfMwh) return 'kompakt';
+  return 'ausfuehrlich';
+}
+
 export function gbTextBestand(a, o = {}) {
   const i = a.ist;
   const out = [];
+  if (o.kompakt && i && i.anzahl > 0) return gbTextBestandKompakt(a);
   if (!i || i.anzahl === 0) {
     out.push(absatz(`Es besteht kein Gebäudebestand: Gebäude mit Baujahr vor ${a.stichjahr} sind nicht vorhanden. Die Liegenschaft besteht ausschließlich aus geplanten Neubauten; sie sind in Kapitel 2.2.1 beschrieben.`));
     return out;
@@ -510,4 +525,27 @@ export function gbTextEgb(a, egb = 'auto') {
   const teile = [nNeu ? `die ${nf(nNeu)} ${kleinN(nNeu, 'Neubau', 'Neubauten')} als EGB ${stufe('neubau')}` : '', nSan ? `die ${nf(nSan)} ${kleinN(nSan, 'Sanierung', 'Sanierungen')} als EGB ${stufe('sanierung')}` : ''].filter(Boolean);
   return [absatz('Nach den Energieeffizienzfestlegungen für klimaneutrale Neu-/Erweiterungsbauten und Gebäudesanierungen des Bundes (EEFB, Kabinettbeschluss vom 25.08.2021) gilt: ', satz,
     ` Für die weitere Planung sind demnach ${liste(teile)} vorzusehen.`)];
+}
+
+/** Kurzfassung des Bestands, wenn er neben den Neubauten kaum ins Gewicht fällt oder nur wenige Gebäude umfasst. */
+function gbTextBestandKompakt(a) {
+  const i = a.ist;
+  const neu = (a.ereignisse || []).filter(e => e.art === 'neubau');
+  const neuMwh = neu.reduce((x, e) => x + (e.deltaMwh || 0), 0);
+  const out = [absatz(`Der Gebäudebestand (Baujahr vor ${a.stichjahr}) umfasst ${nf(i.anzahl)} ${kleinN(i.anzahl, 'Gebäude', 'Gebäude')}`,
+    i.flaecheM2 > 0 ? ` mit zusammen ${nf(i.flaecheM2)} m² Bruttogeschossfläche` : '',
+    i.nutzung.length === 1 ? ` (${i.nutzung[0].label})` : '',
+    ok(i.baujahrMittel) ? (i.ohneBaujahr === 0 && a.ist.zeilen.every(z => z.baujahr === a.ist.zeilen[0].baujahr) ? `, errichtet ${a.ist.zeilen[0].baujahr}` : `, mittleres Baujahr ${Math.round(i.baujahrMittel)}`) : '',
+    `. Sein Wärmebedarf beträgt ${nf(i.bedarfMwh)} MWh pro Jahr`, ok(i.spezKwhM2) ? ` bzw. ${nf(i.spezKwhM2)} kWh/(m²·a)` : '',
+    ok(i.spezKwhM2) && ok(i.referenzSpez) ? (f => (f >= 1.15 ? `, das ${nf(f, 1)}-Fache des Vergleichswerts` : f <= 0.85 ? ', weniger als der Vergleichswert' : ', etwa der Vergleichswert'))(i.spezKwhM2 / i.referenzSpez)
+      + ` nach der ${NWG_QUELLE}` : '',
+    '.')];
+  if (neu.length) {
+    out.push(absatz(`Prägend für die künftige Wärmeversorgung sind die ${nf(neu.length)} geplanten ${kleinN(neu.length, 'Neubau', 'Neubauten')} mit zusammen rund ${nf(neuMwh)} MWh pro Jahr`,
+      i.bedarfMwh > 0 ? ` – das ${neuMwh >= i.bedarfMwh ? `${nf(neuMwh / i.bedarfMwh, 1)}-Fache` : `${pct((neuMwh / i.bedarfMwh) * 100)}`} des Bestands` : '',
+      '. Die Bestandsanalyse wird daher knapp gehalten; die bauliche Entwicklung ist in Kapitel 2.2 beschrieben.'));
+  } else {
+    out.push(absatz('Wegen der geringen Zahl an Gebäuden wird auf eine statistische Auswertung nach Baualter, Nutzung und Verbrauchsklassen verzichtet; die Einzelwerte zeigt die folgende Übersicht.'));
+  }
+  return out;
 }

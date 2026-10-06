@@ -242,6 +242,7 @@ export function gdNormalisieren(input) {
     ...(Number.isInteger(gl) && gl > 1 ? { gliederung: gl } : {}),   // Version der Standardgliederung, nach der das Dokument aufgebaut ist
     ...(istObjekt(input.fragen) && Object.keys(gfNormalisieren(input.fragen)).length ? { fragen: gfNormalisieren(input.fragen) } : {}),   // Fragebogen (lib/gutachten-fragen.js)
     ...(istObjekt(input.platzhalter) && Object.keys(normPlatzhalter(input.platzhalter)).length ? { platzhalter: normPlatzhalter(input.platzhalter) } : {}),   // im Editor ausgefüllte Platzhalter
+    ...(istObjekt(input.praesentation) ? { praesentation: normPraesentation(input.praesentation) } : {}),   // Präsentation: Fassung, Folienauswahl, eigene Titel/Stichpunkte
     ...(Number.isInteger(tv) && tv > 0 ? { textVariante: tv } : {}) };   // Formulierungsvariante der Standardtexte (lib/gutachten-einleitung.js)
 }
 
@@ -253,6 +254,18 @@ function normPlatzhalter(roh) {
     if (name && wert) out[name] = wert;
   }
   return out;
+}
+
+/** Präsentation: { fassung, an: {folienKey: bool}, titel: {folienKey: Text}, punkte: {folienKey: Text} } — Schlüssel wie 'fig:<blockId>'. */
+function normPraesentation(roh) {
+  const schluessel = k => /^(titel|(kap|fig|pkt):[\w-]{1,60})$/.test(k);
+  const map = (o, f) => Object.fromEntries(Object.entries(istObjekt(o) ? o : {}).filter(([k]) => schluessel(k)).slice(0, 800).map(([k, v]) => [k, f(v)]).filter(([, v]) => v !== undefined));
+  return {
+    fassung: roh.fassung === 'lang' ? 'lang' : 'kurz',
+    an: map(roh.an, v => (typeof v === 'boolean' ? v : undefined)),
+    titel: map(roh.titel, v => (typeof v === 'string' && v.trim() ? v.slice(0, 200) : undefined)),
+    punkte: map(roh.punkte, v => (typeof v === 'string' ? v.slice(0, 3000) : undefined)),
+  };
 }
 
 /** Automatische Kapitelnummern ("1", "1.2", "3.1.2") in Listenreihenfolge. */

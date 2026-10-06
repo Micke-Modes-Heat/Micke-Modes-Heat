@@ -235,13 +235,20 @@ export function gpxStichpunkte(absaetze, max = 4) {
     if (a.ueberschrift) continue;
     // Offene Platzhalter markieren: Sätze mit Lücke („beträgt [ ] Jahre“) gehören nicht auf eine Folie
     const t = a.map(x => (x.offen ? '\u0000' : x.text)).join('').replace(/\s+/g, ' ').replace(/\s*\((?:vgl\.\s*)?Kapitel[^)]*\)/g, '').trim();
-    for (const s of t.split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ0-9•])/)) {
-      const x = s.replace(/^[•\-–]\s*/, '').trim();
+    // Abkürzungen und Datumsangaben („bzw.“, „z. B.“, „15. April“) dürfen keinen Satz beenden
+    const P = '\uE001';
+    const geschuetzt = t.replace(/\b([zudo])\. ([BahäA])\./g, `$1${P} $2${P}`)
+      .replace(/\b(bzw|ca|vgl|inkl|ggf|evtl|Nr|max|min|bspw|usw|etc|Abs|Anl|Kap)\./g, `$1${P}`).replace(/\b(\d{1,2})\.(?=\s(?:Jan|Feb|Mär|Apr|Mai|Jun|Jul|Aug|Sep|Okt|Nov|Dez))/g, `$1${P}`);
+    for (const roh of geschuetzt.split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ•])/)) {
+      const x = roh.split(P).join('.').replace(/^[•\-–]\s*/, '').trim();
       if (x.length < 25 || x.includes('\u0000') || /\[|vgl\. Kapitel|siehe Kapitel/.test(x)) continue;
       saetze.push(x);
     }
   }
-  const mitZahl = saetze.filter(s => /\d/.test(s));
-  const wahl = (mitZahl.length >= 2 ? mitZahl : saetze).slice(0, max);
-  return wahl.map(s => (s.length > 180 ? s.slice(0, 177).replace(/\s+\S*$/, '') + ' …' : s).replace(/\.$/, ''));
+  // Folientauglich: kurze Sätze mit Zahlen zuerst, sehr lange nur, wenn nichts anderes da ist
+  const kurz = saetze.filter(x => x.length <= 200);
+  const basis = kurz.length >= 2 ? kurz : saetze;
+  const mitZahl = basis.filter(x => /\d/.test(x));
+  const wahl = (mitZahl.length >= 2 ? mitZahl : basis).slice(0, max);
+  return wahl.map(x => (x.length > 150 ? x.slice(0, 147).replace(/[\s,;]+\S*$/, '') + ' …' : x).replace(/\.$/, ''));
 }

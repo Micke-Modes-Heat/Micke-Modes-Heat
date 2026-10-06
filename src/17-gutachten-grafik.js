@@ -20,7 +20,7 @@ import { nuNetzUebersicht } from './lib/netz-uebersicht.js';
 import {
   wtIstZustand, wtDimensionierungWea, wtWvn, wtHausstation, wtVariantenvergleich, wtWirtschaftlichkeit, wtEmpfehlung, wtFazit, wtDeckungsleistung,
 } from './lib/gutachten-waerme-texte.js';
-import { gbAuswertung, gbBgf, gbTextBestand, gbTextVeraenderung, gbTextEntwicklung, gbTextEgb, GB_SPEZ_KLASSEN } from './lib/gutachten-gebaeude.js';
+import { gbAuswertung, gbBgf, gbTextBestand, gbTextVeraenderung, gbTextEntwicklung, gbTextEgb, gbBestandUmfang, GB_SPEZ_KLASSEN } from './lib/gutachten-gebaeude.js';
 import { nwgVergleichswert } from './lib/vergleichswerte-nwg.js';
 import { wtEisspeicher } from './lib/gutachten-eisspeicher-text.js';
 import { geTextZiele, geTextLiegenschaft, geTextIstEinstieg } from './lib/gutachten-einleitung.js';
@@ -1604,12 +1604,57 @@ export function ggFrage(id) {
 }
 /** Behandlung einer Technik der Potenzialanalyse: 'vertieft' | 'kurz' | 'nicht' | 'weglassen'. */
 const ggPot = k => ggFrage(`pot-${k}`);
-/** Ist ein Katalogbaustein nach dem Fragebogen sichtbar? Bausteine ohne Bedingung immer. */
-export function ggFigurSichtbar(id) {
+/**
+ * Sichtbarkeit eines Katalogbausteins: `sichtbar()` liefert true, false (über den Fragebogen ausgeblendet) oder einen
+ * Text mit dem Grund, warum der Baustein nach den Projektdaten nichts aussagt (automatisch ausgeblendet).
+ */
+function ggSichtbarRoh(id) {
   const f = GG_FIGUREN.find(x => x.id === id);
-  if (!f || typeof f.sichtbar !== 'function') return true;
-  try { return f.sichtbar() !== false; } catch (e) { void e; return true; }
+  const regel = f && (typeof f.sichtbar === 'function' ? f.sichtbar : GG_REGELN[id]);
+  if (!regel) return true;
+  try { const r = regel(); return r === undefined ? true : r; } catch (e) { void e; return true; }
 }
+export function ggFigurSichtbar(id) { return ggSichtbarRoh(id) === true; }
+/** Grund der Ausblendung für den Editor ('' = sichtbar). */
+export function ggFigurAusblendGrund(id) {
+  const r = ggSichtbarRoh(id);
+  return r === true ? '' : typeof r === 'string' && r ? `automatisch ausgeblendet: ${r}` : 'über den Fragebogen ausgeblendet';
+}
+/** Umfang der Bestandsanalyse: Fragebogen, sonst aus den Daten (lib/gutachten-gebaeude.js). */
+function ggBestandUmfang() {
+  const f = ggFrage('umfang-bestand');
+  const auto = ggLies(() => gbBestandUmfang(ggGebaeudeAuswertung()), 'ausfuehrlich');
+  return auto === 'keiner' ? 'keiner' : f === 'auto' ? auto : f;
+}
+/** Regeln für automatisches Ausblenden: true = sichtbar, sonst der Grund. */
+const ggWenn = (bedingung, grund) => (bedingung ? true : grund);
+const GG_REGELN = {
+  'gebaeude-baualter': () => { const u = ggBestandUmfang(); const a = ggGebaeudeAuswertung();
+    return u !== 'ausfuehrlich' ? (u === 'keiner' ? 'kein Gebäudebestand' : 'kompakte Bestandsanalyse (Fragebogen 2.1)')
+      : ggWenn(a.ist.baualter.filter(k => k.anzahl > 0).length > 1, 'alle Bestandsgebäude in einer Baualtersklasse'); },
+  'gebaeude-nutzung': () => { const u = ggBestandUmfang();
+    return u !== 'ausfuehrlich' ? (u === 'keiner' ? 'kein Gebäudebestand' : 'kompakte Bestandsanalyse (Fragebogen 2.1)')
+      : ggWenn(ggGebaeudeAuswertung().ist.nutzung.length > 1, 'nur eine Nutzungsart im Bestand'); },
+  'gebaeude-spezifisch': () => { const u = ggBestandUmfang();
+    return u !== 'ausfuehrlich' ? (u === 'keiner' ? 'kein Gebäudebestand' : 'kompakte Bestandsanalyse (Fragebogen 2.1)')
+      : ggWenn(ggGebaeudeAuswertung().ist.zeilen.filter(z => Number.isFinite(z.spezKwhM2)).length >= 6, 'weniger als 6 Gebäude – keine sinnvolle Verteilung'); },
+  'gebaeude-uebersicht': () => ggWenn(ggBestandUmfang() !== 'keiner', 'kein Gebäudebestand'),
+  'gebaeude-spez-vergleich': () => ggWenn(ggBestandUmfang() !== 'keiner', 'kein Gebäudebestand'),
+  'gebaeude-veraenderungen': () => ggWenn(ggGebaeudeAuswertung().ereignisseJahr.length > 0, 'keine baulichen Veränderungen hinterlegt'),
+  'gebaeude-neubau-tabelle': () => ggWenn(ggGebaeudeAuswertung().ereignisse.some(e => e.art === 'neubau'), 'keine Neubauten geplant'),
+  'gebaeude-bedarf-wasserfall': () => ggWenn(ggGebaeudeAuswertung().jahre.length > 1, 'keine baulichen Veränderungen hinterlegt'),
+  'gebaeude-bedarf-entwicklung': () => ggWenn(ggGebaeudeAuswertung().jahre.length > 1, 'keine baulichen Veränderungen hinterlegt'),
+  'gebaeude-heizlast-entwicklung': () => ggWenn(ggGebaeudeAuswertung().jahre.length > 1, 'keine baulichen Veränderungen hinterlegt'),
+  'gebaeude-spez-entwicklung': () => ggWenn(ggGebaeudeAuswertung().jahre.length > 1, 'keine baulichen Veränderungen hinterlegt'),
+  'gebaeude-kennwerte': () => ggWenn(ggGebaeudeAuswertung().jahre.length > 1, 'keine baulichen Veränderungen hinterlegt'),
+  'ist-erzeuger-tabelle': () => ggWenn((ggBestandsanlage().zeilen || []).length > 0, 'Bestandsanlage nicht erfasst (🔥 Bestandsanlage)'),
+  'ist-erzeuger-leistung': () => ggWenn((ggBestandsanlage().zeilen || []).length > 0, 'Bestandsanlage nicht erfasst (🔥 Bestandsanlage)'),
+  'verbrauch-bezug-grafik': () => ggWenn(ggVerbrauch().anzahlJahre > 0, 'keine Verbrauchsdaten erfasst'),
+  'lastgang-gradtage-tabelle': () => ggWenn(!!window._wbInfo, 'keine Witterungsbereinigung'),
+  'lastgang-korrelation': () => { const wb = ggLies(() => window.getWitterung?.(), {}) || {}; return ggWenn(String(ggLies(() => ggWaermeHerkunft().lastgang, '')).startsWith('import') && wb.ergebnis?.messjahr === wb.messjahr && !!wb.ergebnis?.tageT, 'kein gemessener Lastgang mit Tagestemperaturen'); },
+  'verbrauch-aufteilung-text': () => ggWenn(!!ggVerbrauchsaufteilung(), 'keine Messung oder keine Gebäudewerte'),
+  'verbrauch-aufteilung-tabelle': () => ggWenn(!!ggVerbrauchsaufteilung(), 'keine Messung oder keine Gebäudewerte'),
+};
 
 /**
  * Plausibilitätsprüfung vor dem Export (C3): Lücken und auffällige Werte im Projekt, die Texte und Abbildungen
@@ -2327,7 +2372,7 @@ const GG_FIGUREN = [
     id: 'gebaeude-bestand-text', istText: true, reihe: -10, kapitel: '2.1 Baulicher Ist-Zustand',
     titel: 'Gutachtentext: Gebäudebestand', datei: 'gebaeude-bestand-text',
     hinweis: 'Überblick über den Ist-Bestand (Baujahr vor 2026): Anzahl, Bruttogeschossfläche, Nutzung, Baualter, spezifischer Bedarf, Vergleich mit dem Neubauniveau, Bauzustand und Sanierungsbedarf, auffällige Nutzungsarten, Großverbraucher, geplanter Abriss, Herkunft der Gebäudewerte und Datenlücken.',
-    render: () => ggWaermeTextBlatt(gbTextBestand(ggGebaeudeAuswertung())), config: {},
+    render: () => ggWaermeTextBlatt(gbTextBestand(ggGebaeudeAuswertung(), { kompakt: ggBestandUmfang() === 'kompakt' })), config: {},
   },
   {
     id: 'gebaeude-baualter', autoSync: true, reihe: 10, kapitel: '2.1 Baulicher Ist-Zustand',
