@@ -23,6 +23,8 @@
 // Kapitelnummern entstehen immer automatisch aus Reihenfolge und Ebene — es wird
 // keine Nummer gespeichert, die beim Verschieben veralten könnte.
 
+import { gfNormalisieren } from './gutachten-fragen.js';
+
 export const GUTACHTEN_DOK_VERSION = 1;
 export const GUTACHTEN_MAX_EBENE = 3;
 
@@ -238,7 +240,19 @@ export function gdNormalisieren(input) {
   const gl = Number(input.gliederung);
   return { version: GUTACHTEN_DOK_VERSION, kapitel, deckblatt: gdNormDeckblatt(input.deckblatt),
     ...(Number.isInteger(gl) && gl > 1 ? { gliederung: gl } : {}),   // Version der Standardgliederung, nach der das Dokument aufgebaut ist
+    ...(istObjekt(input.fragen) && Object.keys(gfNormalisieren(input.fragen)).length ? { fragen: gfNormalisieren(input.fragen) } : {}),   // Fragebogen (lib/gutachten-fragen.js)
+    ...(istObjekt(input.platzhalter) && Object.keys(normPlatzhalter(input.platzhalter)).length ? { platzhalter: normPlatzhalter(input.platzhalter) } : {}),   // im Editor ausgefüllte Platzhalter
     ...(Number.isInteger(tv) && tv > 0 ? { textVariante: tv } : {}) };   // Formulierungsvariante der Standardtexte (lib/gutachten-einleitung.js)
+}
+
+/** Im Editor ausgefüllte Platzhalter { Feldname: Wert } — nur Text, begrenzte Länge und Anzahl. */
+function normPlatzhalter(roh) {
+  const out = {};
+  for (const [k, v] of Object.entries(roh).slice(0, 500)) {
+    const name = alsText(k).trim().slice(0, 300), wert = alsText(v).trim().slice(0, 2000);
+    if (name && wert) out[name] = wert;
+  }
+  return out;
 }
 
 /** Automatische Kapitelnummern ("1", "1.2", "3.1.2") in Listenreihenfolge. */
@@ -664,4 +678,36 @@ export function gdGliederungUmstellen(dok, katalog = []) {
   for (const o of offen) ergebnis.push(...o.liste);
   glaetteEbenen(ergebnis);
   return { dok: { ...basis, gliederung: GUTACHTEN_GLIEDERUNG_VERSION, kapitel: ergebnis }, verschoben, eigene, bausteine };
+}
+
+/**
+ * Automatische Querverweise (C5): Nummer jedes Standardkapitels → seine aktuelle Nummer im Dokument. Zugeordnet wird
+ * wie beim Abgleich über den Titel unter demselben Oberkapitel; Kapitel, die der Gutachter verschoben hat, behalten
+ * so ihren Verweis. Fehlt ein Kapitel, bleibt die Nummer unverändert (kein Eintrag). Nur für Dokumente der aktuellen Gliederung.
+ */
+export function gdVerweisNummern(dok) {
+  const m = new Map();
+  if (!dok || !Array.isArray(dok.kapitel) || gdGliederungVersion(dok) < GUTACHTEN_GLIEDERUNG_VERSION) return m;
+  const std = GUTACHTEN_STANDARD_GLIEDERUNG.map((s, idx) => ({ ebene: s.ebene, titel: s.titel, idx }));
+  const stdNr = gdKapitelNummern(std), dokNr = gdKapitelNummern(dok.kapitel);
+  const dokIdx = new Map(dok.kapitel.map((k, i) => [k, i]));
+  const vergeben = new Set();
+  const zuordnen = (sKnoten, dKnoten) => {
+    for (const sk of sKnoten.kinder) {
+      const s = titelSchluessel(sk.k.titel);
+      const ziel = dKnoten?.kinder.find(dk => !vergeben.has(dk.k) && titelSchluessel(dk.k.titel) === s) || null;
+      if (ziel) { vergeben.add(ziel.k); m.set(stdNr[sk.k.idx], dokNr[dokIdx.get(ziel.k)]); }
+      zuordnen(sk, ziel);
+    }
+  };
+  zuordnen(kapitelBaum(std), kapitelBaum(dok.kapitel));
+  return m;
+}
+
+/** Kapitelnummern in einem Text über die Verweistabelle umschreiben („Kapitel 3.2“, „Kapiteln 5.3.1 bis 5.3.3“, „vgl. Kapitel 7“). */
+export function gdVerweiseErsetzen(text, nrMap) {
+  if (!nrMap || !nrMap.size) return text;
+  const neu = n => nrMap.get(n) || n;
+  return String(text).replace(/\b(Kapiteln?|Kap\.)(\s+)(\d+(?:\.\d+)*)(?![\d.]*\d)((\s*(?:–|-|bis|und|sowie)\s*)(\d+(?:\.\d+)*))?/g,
+    (all, wort, ws, a, rest, verb, b) => `${wort}${ws}${neu(a)}${rest ? verb + neu(b) : ''}`);
 }

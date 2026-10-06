@@ -376,3 +376,21 @@ describe('Gliederung Version 2 (Variante B)', () => {
     expect(d.kapitel.length).toBe(GUTACHTEN_STANDARD_GLIEDERUNG.length + 2);
   });
 });
+
+describe('Automatische Querverweise', () => {
+  it('folgen verschobenen Kapiteln, unbekannte Nummern bleiben', async () => {
+    const { gdVerweisNummern, gdVerweiseErsetzen } = await import('../src/lib/gutachten-dokument.js');
+    const { dok } = gdStandardDokument();
+    expect(gdVerweisNummern(dok).get('3.2')).toBe('3.2');
+    // Kapitel 2 (Ist-Zustand Wärme) hinter Kapitel 3 verschieben → 3 wird 2
+    const nr = gdKapitelNummern(dok.kapitel);
+    const i2 = nr.indexOf('2'), i3 = nr.indexOf('3'), i4 = nr.indexOf('4');
+    const k = dok.kapitel;
+    const neu = { ...dok, kapitel: [...k.slice(0, i2), ...k.slice(i3, i4), ...k.slice(i2, i3), ...k.slice(i4)] };
+    const m = gdVerweisNummern(neu);
+    expect(m.get('3.2')).toBe('2.2');
+    expect(m.get('2.2.1')).toBe('3.2.1');
+    expect(gdVerweiseErsetzen('vgl. Kapitel 3.2 und Kapiteln 2.2.1 bis 2.2.2; Kapitel 6.1 der PV-Analyse; 3.2 kW', m))
+      .toBe('vgl. Kapitel 2.2 und Kapiteln 3.2.1 bis 3.2.2; Kapitel 6.1 der PV-Analyse; 3.2 kW');
+  });
+});

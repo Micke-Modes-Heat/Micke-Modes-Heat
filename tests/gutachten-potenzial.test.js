@@ -9,7 +9,7 @@ const gesamt = jdl.reduce((a, b) => a + b, 0) / 1000;
 
 describe('Nicht berücksichtigt', () => {
   it('alle Einträge mit Überschrift', () => {
-    for (const k of Object.keys(PT_NICHT)) expect(text(ptTextNicht(k)).split('\n')[0]).toBe(PT_NICHT[k].titel);
+    for (const k of Object.keys(PT_NICHT)) expect(text(ptTextNicht(k)).split('\n')[0]).toBe('## ' + PT_NICHT[k].titel);
     expect(text(ptTextNicht('gasGrundlast'))).toContain('[Vorgabe zum Zweistoffbrenner');
     expect(text(ptTextNicht('gasGrundlast', { vorgabeZsb: 'Schreiben X' }))).toContain('gemäß Schreiben X ein Zweistoffbrenner');
   });

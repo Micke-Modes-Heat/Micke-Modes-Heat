@@ -12,11 +12,12 @@
 import {
   ggFigurenKatalog, ggFigurTeilArten, ggRenderFigurFuerDokument, ggCopyDokumentTeil, ggCopyForWord, ggFitLabels,
   ggMountEinzelansicht, ggShowSection, ggSelectFigur, ggFigurEinstellungenCapture, ggFigurEinstellungenRestore,
-  ggFigurWordDaten, ggSvgToPngBlob, ggTrafostationenIstListe,
+  ggFigurWordDaten, ggSvgToPngBlob, ggTrafostationenIstListe, ggFigurSichtbar, ggFrageKontext, ggPlausiPruefung,
 } from './17-gutachten-grafik.js';
+import { GF_FRAGEN, gfFragenZuKapitel, gfOptionen, gfStandard } from './lib/gutachten-fragen.js';
 import {
   GUTACHTEN_DOK_VERSION, GUTACHTEN_MAX_EBENE, GUTACHTEN_STANDARD_GLIEDERUNG, gdNormalisieren, gdKapitelNummern, gdStandardDokument, gdMitStandardAbgleichen, gdLeeresDokument,
-  gdGliederungVersion, gdGliederungUmstellen,
+  gdGliederungVersion, gdGliederungUmstellen, gdVerweisNummern,
   gdKapitelEinfuegen, gdKapitelLoeschen, gdKapitelVerschieben, gdKapitelEbene,
   gdNeuerTextBlock, gdNeuerFigurBlock, gdNeuerBildBlock, gdBlockEinfuegen, gdBlockLoeschen, gdBlockVerschieben,
   gdFindeBlock, gdBeschriftungen, gdFigurIds, gdNormDeckblatt, GUTACHTEN_DECKBLATT_VORGABEN,
@@ -25,6 +26,7 @@ import {
   gdxKontext, gdxDeckblatt, gdxInhaltsverzeichnis, gdxVerzeichnis, gdxUeberschrift, gdxFreitext,
   gdxBausteinAbsaetze, gdxTabelle, gdxAbbildung, gdxBeschriftung, gdxErzeugePaket,
 } from './lib/gutachten-docx.js';
+import { gpxErzeugePaket, gpxStichpunkte } from './lib/gutachten-pptx.js';
 import { GV_LOGO_PNG, GV_WAPPEN_PNG, GV_NETZGRAFIK_PNG } from './config/gutachten-vorlage-assets.js';
 
 const _gut = {
@@ -82,7 +84,8 @@ function findeBlock(id) {
   const pos = _gut.dok ? gdFindeBlock(_gut.dok, id) : null;
   return pos ? _gut.dok.kapitel[pos.kapIdx].bloecke[pos.blockIdx] : null;
 }
-const teilArten = b => ggFigurTeilArten(b.figurId, { layout: b.layout, kennzahlen: b.kennzahlen });
+// Über den Fragebogen ausgeblendete Bausteine bekommen keine Abbildungs-/Tabellennummer
+const teilArten = b => (ggFigurSichtbar(b.figurId) ? ggFigurTeilArten(b.figurId, { layout: b.layout, kennzahlen: b.kennzahlen }) : []);
 const seitenElement = (art, id) => document.querySelector(`#gut-seite [data-gut-el="${art}:${id}"]`);
 const scrollZu = (art, id) => seitenElement(art, id)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
 
@@ -107,7 +110,7 @@ export function gutBuildAnalyseSection() {
   wrap.style.display = 'none';
   wrap.innerHTML = `
 <div style="display:flex;flex-direction:column;height:calc(100vh - 160px);min-height:420px;background:#0f0f1a;border-radius:8px;overflow:hidden;">
-  <div id="gut-modusleiste" style="display:flex;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid rgba(38,166,154,.15);flex-shrink:0;"></div>
+  <div id="gut-modusleiste" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid rgba(38,166,154,.15);flex-shrink:0;"></div>
   <div id="gut-dokument" style="flex:1;min-height:0;display:flex;">
     <div id="gut-gliederung" style="width:270px;flex-shrink:0;overflow-y:auto;border-right:1px solid rgba(38,166,154,.15);padding:10px;"></div>
     <div id="gut-seite-scroll" style="flex:1;min-width:0;overflow-y:auto;padding:20px;background:#161622;"><div id="gut-seite"></div></div>
@@ -147,12 +150,39 @@ function zeigeModus() {
     leiste.innerHTML = tab('dokument', '📄 Dokument') + tab('einzel', '🖼 Einzelgrafiken')
       + `<span id="gut-status" style="margin-left:12px;font-size:11px;color:${GUT_AKZENT};"></span>`
       + (!einzel && _gut.dok
-          ? `<span style="margin-left:auto;display:flex;gap:6px;">${knopf('⟳ Daten aktualisieren', 'gutAktualisieren()', { titel: 'Alle Abbildungen neu aus dem Projektstand zeichnen.' })}`
-            + `${knopf('⤓ Word-Datei (.docx)', 'gutWordExport()', { primaer: true, titel: 'Komplettes Gutachten im LKEBw-Layout: Deckblatt, Verzeichnisse, Kapitel, Abbildungen und Tabellen.' })}</span>`
+          ? `<span style="margin-left:auto;display:flex;gap:6px;align-items:center;">${plausiKnopf()}${knopf('⟳ Daten aktualisieren', 'gutAktualisieren()', { titel: 'Alle Abbildungen neu aus dem Projektstand zeichnen.' })}`
+            + `${knopf('⤓ Word-Datei (.docx)', 'gutWordExport()', { primaer: true, titel: 'Komplettes Gutachten im LKEBw-Layout: Deckblatt, Verzeichnisse, Kapitel, Abbildungen und Tabellen.' })}`
+            + `${knopf('⤓ PowerPoint', 'gutPptxMenu()', { titel: 'Präsentation im Gutachtendesign: kurz (Entscheider) oder ausführlich (Fachrunde).' })}</span>`
+            + (_gut.pptxOffen ? pptxAuswahl() : '')
+            + (_gut.plausiOffen ? plausiListe() : '')
           : '');
   }
   return !einzel;
 }
+
+/* ── Plausibilitätsprüfung (C3): nur eine kleine Zahl am Export, die Liste erst auf Klick ── */
+function plausiPunkte() {
+  const p = [...ggPlausiPruefung()];
+  if (gdGliederungVersion(_gut.dok) < 2) p.unshift({ stufe: 'warn', text: 'Dokument folgt der alten Gliederung – rechts „Auf neue Gliederung umstellen“.' });
+  const offen = [...offeneProKapitel().values()].reduce((a, n) => a + n, 0);
+  if (offen) p.push({ stufe: 'info', text: `${offen} offene Platzhalter im Text (gelb) – anklicken zum Ausfüllen.` });
+  return p;
+}
+function plausiKnopf() {
+  let p = [];
+  try { p = plausiPunkte(); } catch (e) { void e; }
+  if (!p.length) return `<span title="Plausibilitätsprüfung: keine Auffälligkeiten" style="font-size:11px;color:${GUT_AKZENT};">✓</span>`;
+  const warn = p.some(x => x.stufe === 'warn');
+  return `<button data-click="gutPlausiUmschalten()" title="Plausibilitätsprüfung — Hinweise anzeigen" style="font-family:inherit;font-size:11px;padding:4px 9px;border-radius:5px;cursor:pointer;
+    border:1px solid ${warn ? 'rgba(224,161,38,.6)' : 'rgba(255,255,255,.15)'};background:transparent;color:${warn ? GUT_WARN : 'var(--muted)'};">${warn ? '⚠' : 'ℹ'} ${p.length}</button>`;
+}
+function plausiListe() {
+  const p = plausiPunkte();
+  return `<div style="flex-basis:100%;margin-top:6px;padding:8px 10px;border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:11px;line-height:1.5;">
+    ${p.length ? p.map(x => `<div style="color:${x.stufe === 'warn' ? GUT_WARN : 'var(--muted)'};">${x.stufe === 'warn' ? '⚠' : 'ℹ'} ${esc(x.text)}</div>`).join('') : '✓ Keine Auffälligkeiten.'}
+    <div style="margin-top:4px;opacity:.6;">Nur Hinweise — der Export funktioniert trotzdem. <a href="#" data-click="event.preventDefault();gutPlausiUmschalten()" style="color:inherit;">schließen</a></div></div>`;
+}
+export function gutPlausiUmschalten() { _gut.plausiOffen = !_gut.plausiOffen; zeigeModus(); }
 
 export function gutRender() {
   if (!zeigeModus()) { ggShowSection(true); return; }
@@ -235,6 +265,11 @@ function beschriftungEl(nr, text) {
 }
 
 function figurBlockInhalt(box, b, nummern, zuEinpassen) {
+  if (!ggFigurSichtbar(b.figurId)) {
+    const titel = ggFigurenKatalog().find(f => f.id === b.figurId)?.titel || b.figurId;
+    box.innerHTML = `<div style="font-size:11px;color:#9a9f9a;padding:2px 0;" title="Erscheint nicht im Export. Ändern über den Fragebogen des Kapitels (rechts).">⊘ ${esc(titel)} — über den Fragebogen ausgeblendet</div>`;
+    return;
+  }
   const erg = figurErgebnis(b);
   if (erg.fehler) {
     box.innerHTML = `<div style="padding:14px;border:1px dashed ${GUT_WARN};color:#7a5b00;background:#fff8e1;font-size:12px;">
@@ -250,6 +285,12 @@ function figurBlockInhalt(box, b, nummern, zuEinpassen) {
       // Textbaustein: im Dokument ohne eigenen Blattrahmen, in der Schrift der Seite
       Object.assign(el.style, { background: 'transparent', border: 'none', padding: '0', maxWidth: 'none',
                                 fontFamily: 'inherit', fontSize: 'inherit', lineHeight: 'inherit', color: 'inherit' });
+      // Platzhalter direkt ausfüllen: Klick auf das gelbe (oder selbst ausgefüllte) Feld
+      el.querySelectorAll('[data-gg-name]').forEach(sp => {
+        sp.dataset.click = 'event.stopPropagation();gutPlatzhalterKlick(this.dataset.ggName)';
+        sp.style.cursor = 'text';
+        sp.title = 'Klicken zum Ausfüllen — gilt für alle gleichnamigen Platzhalter und wird in der Projektdatei gespeichert';
+      });
     } else {
       Object.assign(el.style, { width: '100%', height: 'auto', display: 'block' });
       if (el.tagName?.toLowerCase() === 'svg') zuEinpassen.push(el);
@@ -465,6 +506,8 @@ function dokumentPanel() {
             + (abgleich.fremdeKapitel.length > 6 ? ' · …' : '')
             + '. Inhalte bei Bedarf in die passenden Kapitel verschieben, leere Kapitel löschen.')
         : '')
+    + ueberschrift('Platzhalter') + platzhalterHtml()
+    + fragenHtml(GF_FRAGEN, 'Fragebogen (optional, alle Kapitel)')
     + standardtextPanel()
     + deckblattPanel()
     + ueberschrift('Zurücksetzen')
@@ -589,6 +632,7 @@ function kapitelPanel(k, idx) {
     + `${knopf('+ Platzhalter je Trafostation', `gutAddTrafoDummies('${id}')`, { titel: 'Legt für jede bestehende Trafostation (aus dem Elektro-Tab, eine je Gebäude/Station, nicht je Trafo) einen eigenen Freitext-Platzhalter an — zum Eintragen der Begehungsergebnisse.' })}`
     + `${figurAuswahl}</div>`
     + hinweis('Neuer Inhalt kommt ans Ende des Kapitels. ✓ = steht schon im Dokument.')
+    + fragenHtml(gfFragenZuKapitel(nr), 'Fragen zu diesem Kapitel (optional)', true)
     + ueberschrift('Entfernen')
     + knopf('🗑 Kapitel löschen', `gutKapitelLoeschen('${id}')`, { gefahr: true, titel: 'Unterkapitel rücken eine Ebene hoch' });
 }
@@ -1091,6 +1135,97 @@ export function gutStandardtextDaten() {
   };
 }
 
+/* ── Fragebogen (C1) und ausgefüllte Platzhalter (C2) ─────────────────────── */
+/** Antworten des Fragebogens — 17 liest sie über window.gutFragenLesen für Texte und Sichtbarkeit. */
+export function gutFragenLesen() { return _gut.dok?.fragen || {}; }
+/** Verweistabelle Standardnummer → Nummer im Dokument (C5); zwischengespeichert, solange sich die Gliederung nicht ändert. */
+let _verweisCache = { schluessel: '', map: new Map() };
+export function gutVerweisNummern() {
+  const k = _gut.dok?.kapitel || [];
+  const schluessel = k.map(x => `${x.ebene}:${x.titel}`).join('|') + '#' + (_gut.dok?.gliederung || '');
+  if (schluessel !== _verweisCache.schluessel) _verweisCache = { schluessel, map: gdVerweisNummern(_gut.dok) };
+  return _verweisCache.map;
+}
+/** Im Editor eingetragener Wert eines Platzhalters (Feldname wie im Text, ohne Klammern). */
+export function gutPlatzhalterWert(name) { return _gut.dok?.platzhalter?.[name] || ''; }
+
+function gutNachAenderung() { _gut.cache.clear(); gutRender(); }
+
+export function gutSetFrage(id, wert) {
+  if (!_gut.dok) return;
+  const f = GF_FRAGEN.find(x => x.id === id);
+  if (!f) return;
+  const fragen = { ...(_gut.dok.fragen || {}) };
+  if (wert === '' || wert == null) delete fragen[id]; else fragen[id] = String(wert);
+  _gut.dok.fragen = fragen;
+  gutNachAenderung();
+}
+export function gutSetFrageMehrfach(id, wert, an) {
+  if (!_gut.dok) return;
+  const f = GF_FRAGEN.find(x => x.id === id);
+  if (!f) return;
+  const jetzt = new Set(_gut.dok.fragen?.[id] ?? gfStandard(f, ggFrageKontext()));
+  if (an) jetzt.add(wert); else jetzt.delete(wert);
+  _gut.dok.fragen = { ...(_gut.dok.fragen || {}), [id]: f.optionen.map(o => o[0]).filter(k => jetzt.has(k)) };
+  gutNachAenderung();
+}
+export function gutSetPlatzhalter(name, wert) {
+  if (!_gut.dok || !name) return;
+  const p = { ...(_gut.dok.platzhalter || {}) };
+  const w = String(wert ?? '').trim();
+  if (w) p[name] = w.slice(0, 2000); else delete p[name];
+  _gut.dok.platzhalter = p;
+  gutNachAenderung();
+}
+export function gutPlatzhalterKlick(name) {
+  if (!_gut.dok || !name) return;
+  const w = window.prompt(`Platzhalter ausfüllen:\n${name}\n\nGilt für alle gleichnamigen Stellen; leer lassen = wieder offen.`, gutPlatzhalterWert(name));
+  if (w === null) return;
+  gutSetPlatzhalter(name, w);
+}
+
+/** Eine Frage als kompakte Zeile; „Vorgabe“ zeigt, was ohne Antwort gilt. */
+function frageHtml(f, ctx) {
+  const antworten = _gut.dok?.fragen || {};
+  const std = gfStandard(f, ctx);
+  const lbl = `<div style="font-size:11px;color:var(--text,#e8eaed);margin:8px 0 3px;">${esc(f.frage)}</div>`;
+  const hw = f.hinweis ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;line-height:1.35;">${esc(f.hinweis)}</div>` : '';
+  if (f.art === 'mehrfach') {
+    const an = new Set(antworten[f.id] ?? std);
+    return lbl + f.optionen.map(([w, l]) => `<label style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--muted);margin:2px 0;">
+      <input type="checkbox" ${an.has(w) ? 'checked' : ''} data-change="gutSetFrageMehrfach('${f.id}','${w}',this.checked)"> ${esc(l)}</label>`).join('') + hw;
+  }
+  if (f.art === 'text') {
+    return lbl + `<input type="text" value="${esc(antworten[f.id] ?? '')}" placeholder="${esc(std)}" data-change="gutSetFrage('${f.id}',this.value)" style="${EINGABE_STIL}width:100%;box-sizing:border-box;">` + hw;
+  }
+  const opt = gfOptionen(f, ctx);
+  const stdLabel = opt.find(o => o[0] === std)?.[1] || std;
+  const wert = antworten[f.id] ?? '';
+  return lbl + `<select data-change="gutSetFrage('${f.id}',this.value)" style="${EINGABE_STIL}width:100%;box-sizing:border-box;">
+      <option value=""${wert === '' ? ' selected' : ''}>Vorgabe: ${esc(stdLabel)}</option>
+      ${opt.map(([w, l]) => `<option value="${esc(w)}"${wert === w ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>` + hw;
+}
+
+/** Zugeklappter Fragebogen-Abschnitt — ohne Antwort gelten die Vorgaben, es gibt keine Warnungen. */
+function fragenHtml(fragen, titel, offen = false) {
+  if (!fragen.length) return '';
+  const ctx = ggFrageKontext();
+  const n = fragen.filter(f => (_gut.dok?.fragen || {})[f.id] !== undefined).length;
+  return `<details${offen ? ' open' : ''} style="margin-top:12px;"><summary style="cursor:pointer;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">${esc(titel)}${n ? ` · ${n} beantwortet` : ''}</summary>
+    ${fragen.map(f => frageHtml(f, ctx)).join('')}
+    <div style="font-size:10px;color:var(--muted);margin-top:6px;">Optional — ohne Antwort gilt die Vorgabe.</div></details>`;
+}
+
+/** Ausgefüllte Platzhalter zum Nachbearbeiten (Klick auf ein gelbes Feld im Text legt sie an). */
+function platzhalterHtml() {
+  const p = Object.entries(_gut.dok?.platzhalter || {});
+  if (!p.length) return hinweis('Gelbe Platzhalter im Text anklicken, um sie direkt auszufüllen — der Wert wird in der Projektdatei gespeichert.');
+  return `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:11px;color:var(--muted);">${p.length} ausgefüllte Platzhalter</summary>
+    ${p.map(([k, v]) => `<div style="font-size:10px;color:var(--muted);margin:6px 0 2px;">${esc(k)}</div>
+      <input type="text" value="${esc(v)}" data-change="gutSetPlatzhalter(this.dataset.name,this.value)" data-name="${esc(k)}" style="${EINGABE_STIL}width:100%;box-sizing:border-box;">`).join('')}
+    <div style="font-size:10px;color:var(--muted);margin-top:6px;">Leeren = Platzhalter wieder offen.</div></details>`;
+}
+
 function standardtextPanel() {
   return ueberschrift('Standardtexte')
     + hinweis('Einleitungstexte gibt es in mehreren gleichwertigen Formulierungen; die Wahl bleibt fest, bis Sie umschalten.')
@@ -1174,6 +1309,7 @@ export async function gutWordPaket() {
         if (nr) koerper += gdxBeschriftung(nr.art, nr.nr, titel);
         continue;
       }
+      if (!ggFigurSichtbar(b.figurId)) continue;   // über den Fragebogen ausgeblendet
       const erg = figurErgebnis(b);
       if (erg.fehler) { warnungen.push(`${b.figurId}: ${erg.fehler}`); continue; }
       const titel = b.unterschrift.trim() || erg.titel;
@@ -1196,6 +1332,93 @@ export async function gutWordPaket() {
   }
   const titel = 'Gutachten zur zukünftigen Energieversorgung' + (deckblatt.liegenschaft ? ` der ${deckblatt.liegenschaft}` : '');
   return { paket: gdxErzeugePaket(ctx, koerper, { titel }), warnungen };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * PowerPoint (lib/gutachten-pptx.js): gleicher Inhalt wie das Dokument, Abbildungen mit Stichpunkten
+ * ═══════════════════════════════════════════════════════════════════════ */
+/** Kurzfassung: die Kernabbildungen je Kapitel (Entscheiderrunde); ausführlich: alle sichtbaren Abbildungen und Tabellen. */
+const PPTX_KURZ = new Set([
+  'gebaeude-uebersicht', 'gebaeude-bedarf-wasserfall', 'ist-erzeuger-leistung', 'verbrauch-bezug-grafik', 'lastgang-waerme-jdl', 'lastgang-korrelation',
+  'traeger-quellen', 'potenzial-lwwp-sweep', 'bedarf-resultierend-wasserfall', 'pv-variantenvergleich', 'res-sz-vergleich', 'kosten-gruppen',
+  'va-gegenueberstellung', 'va-emissionen', 'va-kostenstruktur', 'va-sensitivitaet-grafik', 'va-bewertungsmatrix', 'fazit-nt-grafik', 'fazit-fahrplan-gantt',
+]);
+
+export function gutPptxMenu() { _gut.pptxOffen = !_gut.pptxOffen; zeigeModus(); }
+function pptxAuswahl() {
+  return `<div style="flex-basis:100%;display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:6px;font-size:11px;color:var(--muted);">Präsentation:
+    ${knopf('Kurzfassung (Kernabbildungen)', "gutPptxExport('kurz')", { primaer: true })}${knopf('Ausführlich (alle Abbildungen)', "gutPptxExport('lang')")}</div>`;
+}
+
+async function gutPptxPaket(art = 'kurz') {
+  if (!_gut.dok) throw new Error('Noch kein Gutachten angelegt.');
+  renderSeite();
+  const dok = _gut.dok;
+  const nummern = gdKapitelNummern(dok.kapitel);
+  const d = deckblattFuerExport();
+  const folien = [{ art: 'titel', titel: 'Zukünftige Energieversorgung', untertitel: d.liegenschaft || '',
+    zeilen: [d.ort, d.auftraggeber, d.stand || new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })] }];
+  const kurz = art === 'kurz';
+  const katalog = new Map(ggFigurenKatalog().map(f => [f.id, f]));
+  let kapitelFolie = null;
+  for (let ki = 0; ki < dok.kapitel.length; ki++) {
+    const k = dok.kapitel[ki];
+    const nr = nummern[ki];
+    if (k.ebene === 1) kapitelFolie = { art: 'kapitel', nr, titel: k.titel, offen: true };
+    // Stichpunkte aus den Texten dieses Kapitels
+    const absaetze = [];
+    const bilder = [];
+    for (const b of k.bloecke) {
+      if (b.typ === 'text') { absaetze.push(...String(b.text || '').split(/\n\s*\n/).map(t => [{ text: t, offen: false }])); continue; }
+      if (b.typ === 'bild') { if (b.svg) bilder.push({ b, titel: b.unterschrift.trim() || 'Lageplan der Liegenschaft', svg: bildSvgElement(b) }); continue; }
+      if (!ggFigurSichtbar(b.figurId)) continue;
+      const f = katalog.get(b.figurId);
+      if (f?.istText) { try { absaetze.push(...(ggFigurWordDaten(b.figurId)?.absaetze || [])); } catch (e) { void e; } continue; }
+      if (kurz && !PPTX_KURZ.has(b.figurId)) continue;
+      const erg = figurErgebnis(b);
+      if (erg.fehler || !erg.teile?.[0]?.el) continue;
+      bilder.push({ b, titel: b.unterschrift.trim() || erg.titel, svg: erg.teile[0].el });
+    }
+    let punkte = gpxStichpunkte(absaetze, kurz ? 3 : 6);
+    if (!bilder.length && (kurz || punkte.length < 2)) continue;
+    if (kapitelFolie?.offen) { folien.push(kapitelFolie); kapitelFolie.offen = false; }
+    if (!bilder.length) { folien.push({ art: 'punkte', nr, titel: k.titel, punkte }); continue; }
+    for (const x of bilder) {
+      if (!x.svg || x.svg.tagName?.toLowerCase() !== 'svg') continue;
+      const p = punkte.slice(0, 3);
+      punkte = punkte.slice(3);
+      folien.push({ art: 'inhalt', nr, titel: k.titel, unter: x.titel, punkte: p,
+        bild: { daten: await pngDaten(x.svg), breite: +x.svg.getAttribute('width') || 1200, hoehe: +x.svg.getAttribute('height') || 800 } });
+    }
+  }
+  const titel = `Energieversorgung${d.liegenschaft ? ` ${d.liegenschaft}` : ''}`;
+  return { paket: gpxErzeugePaket(folien.map(({ offen, ...f }) => { void offen; return f; }), { titel, fusszeile: `LKEBw · ${d.liegenschaft || 'Gutachten zur zukünftigen Energieversorgung'}`, logo: GV_LOGO_PNG }), anzahl: folien.length };
+}
+
+export async function gutPptxExport(art = 'kurz') {
+  if (_gutExportLaeuft) return;
+  if (typeof window.JSZip !== 'function') { gutSay('⚠ JSZip ist nicht geladen — Seite neu laden.', true); return; }
+  _gutExportLaeuft = true;
+  _gut.pptxOffen = false;
+  gutSay('PowerPoint-Datei wird erstellt …');
+  try {
+    const { paket, anzahl } = await gutPptxPaket(art);
+    const zip = new window.JSZip();
+    for (const t of paket) zip.file(t.pfad, t.inhalt, t.base64 ? { base64: true } : undefined);
+    const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+    const name = typeof window.projektExportFilename === 'function' ? window.projektExportFilename(art === 'kurz' ? 'praesentation-kurz' : 'praesentation', 'pptx') : 'praesentation.pptx';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    gutSay(`✓ ${name} erstellt — ${anzahl} Folien (${Math.round(blob.size / 1024)} KB).`);
+  } catch (e) {
+    console.error('Gutachten-Editor: PowerPoint-Export fehlgeschlagen', e);
+    gutSay('⚠ PowerPoint-Export fehlgeschlagen: ' + e.message, true);
+  } finally {
+    _gutExportLaeuft = false;
+    zeigeModus();
+  }
 }
 
 let _gutExportLaeuft = false;
@@ -1238,6 +1461,8 @@ export function gutCaptureGutachten() {
     deckblatt: _gut.dok ? structuredClone(_gut.dok.deckblatt || gdNormDeckblatt()) : null,
     ...(_gut.dok?.gliederung ? { gliederung: _gut.dok.gliederung } : {}),
     ...(_gut.dok?.textVariante ? { textVariante: _gut.dok.textVariante } : {}),
+    ...(_gut.dok?.fragen && Object.keys(_gut.dok.fragen).length ? { fragen: structuredClone(_gut.dok.fragen) } : {}),
+    ...(_gut.dok?.platzhalter && Object.keys(_gut.dok.platzhalter).length ? { platzhalter: structuredClone(_gut.dok.platzhalter) } : {}),
     figurEinstellungen,
   };
 }

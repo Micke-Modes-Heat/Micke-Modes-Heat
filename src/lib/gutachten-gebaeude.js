@@ -494,3 +494,20 @@ export function gbTextEntwicklung(a, o = {}) {
   out.push(absatz('Die Entwicklung beruht ausschließlich auf den hinterlegten baulichen Veränderungen (Neubau, Abriss, energetische Sanierung). Änderungen des Nutzerverhaltens, der Witterung durch den Klimawandel, der Nutzung und weitere Nachverdichtung sind nicht berücksichtigt.'));
   return out;
 }
+
+/**
+ * Energiestandard nach den Energieeffizienzfestlegungen des Bundes (EEFB, Kabinettbeschluss vom 25.08.2021).
+ * egb: 'auto' (Neubau EGB 40, Sanierung EGB 55) | '40' | '55'; a = gbAuswertung (Zahl der Neubauten/Sanierungen).
+ */
+export function gbTextEgb(a, egb = 'auto') {
+  if (!a || egb === 'keiner') return [];
+  const nNeu = a.anzahl?.neubau || 0, nSan = a.anzahl?.saniert || 0;
+  if (!nNeu && !nSan) return [];
+  const stufe = art => (egb === '40' || egb === '55' ? egb : art === 'neubau' ? '40' : '55');
+  const satz = egb === 'auto'
+    ? 'Neubauten des Bundes sind mindestens als Effizienzgebäude Bund 40 (EGB 40), Sanierungen mindestens als Effizienzgebäude Bund 55 (EGB 55) auszuführen. Der Jahres-Primärenergiebedarf darf dabei höchstens 40 % bzw. 55 % des nach dem Gebäudeenergiegesetz zulässigen Höchstwerts betragen; zusätzlich gelten verschärfte Anforderungen an den baulichen Wärmeschutz.'
+    : `Für die baulichen Maßnahmen wird durchgängig der Standard Effizienzgebäude Bund ${egb} (EGB ${egb}) angesetzt; der Jahres-Primärenergiebedarf darf dabei höchstens ${egb} % des nach dem Gebäudeenergiegesetz zulässigen Höchstwerts betragen, zusätzlich gelten verschärfte Anforderungen an den baulichen Wärmeschutz.`;
+  const teile = [nNeu ? `die ${nf(nNeu)} ${kleinN(nNeu, 'Neubau', 'Neubauten')} als EGB ${stufe('neubau')}` : '', nSan ? `die ${nf(nSan)} ${kleinN(nSan, 'Sanierung', 'Sanierungen')} als EGB ${stufe('sanierung')}` : ''].filter(Boolean);
+  return [absatz('Nach den Energieeffizienzfestlegungen für klimaneutrale Neu-/Erweiterungsbauten und Gebäudesanierungen des Bundes (EEFB, Kabinettbeschluss vom 25.08.2021) gilt: ', satz,
+    ` Für die weitere Planung sind demnach ${liste(teile)} vorzusehen.`)];
+}

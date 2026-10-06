@@ -5,7 +5,7 @@
 // (Wärmeleitfähigkeit, Zielhorizonte) kommen aus dem Projekt oder bleiben Platzhalter.
 import { F, wtHilfen, wtDeckungsleistung } from './gutachten-waerme-texte.js';
 
-const { ok, nf, pct, liste, absatz } = wtHilfen;
+const { ok, nf, pct, liste, absatz, ueberschrift } = wtHilfen;
 const L = kw => (kw >= 1000 ? `${nf(kw / 1000, 2)} MW` : `${nf(kw)} kW`);
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -22,8 +22,15 @@ export const PT_NICHT = Object.freeze({
   solarthermie: { titel: 'Solarthermie', text: () => [absatz('Wegen der begrenzten Flächen sowie der direkten Flächenkonkurrenz zur Photovoltaik wird die Solarthermie als Energiequelle nicht weiter berücksichtigt. Die Photovoltaik-Potenziale werden im Teil Elektrotechnik betrachtet.')] },
   wasserstoff: { titel: 'Wasserstoffverfeuerung', text: () => [absatz('Aufgrund der unsicheren Verfügbarkeit und Preisentwicklung wird Wasserstoff nicht als Option für die Grundlastversorgung der Liegenschaft herangezogen. Die aktuellen Marktprognosen bieten keine ausreichende Planungssicherheit bezüglich künftiger Preise und Verfügbarkeiten für die Gebäudebeheizung. Ohne verlässliche Perspektive zu Wirtschaftlichkeit und Verfügbarkeit erscheint die Einbindung in das Energiekonzept nicht sinnvoll.')] },
   gasGrundlast: { titel: 'Gasbrennwertkessel (Grundlast)', text: o => [absatz('Um eine klimafreundliche und nachhaltige Wärmeversorgung zu gewährleisten, wird eine primär auf fossilen Brennstoffen basierende Erzeugung nicht weiterverfolgt. ',
-    'Als Spitzenlast- bzw. Redundanzkessel wird ', o.vorgabeZsb ? `gemäß ${o.vorgabeZsb} ` : ['gemäß ', F('Vorgabe zum Zweistoffbrenner (Erlass/Schreiben)', ''), ' '], 'ein Zweistoffbrenner (Erdgas/Heizöl) berücksichtigt.')] },
-  fernwaerme: { titel: 'Fernwärme', text: () => [absatz('In der näheren Umgebung der Liegenschaft existiert kein Fernwärmenetz, sodass ein Anschluss an eine externe Wärmeversorgung keine Option ist.')] },
+    o.zsb === false ? '' : ['Als Spitzenlast- bzw. Redundanzkessel wird ', o.vorgabeZsb ? `gemäß ${o.vorgabeZsb} ` : ['gemäß ', F('Vorgabe zum Zweistoffbrenner (Erlass/Schreiben)', ''), ' '], 'ein Zweistoffbrenner (Erdgas/Heizöl) berücksichtigt.'])] },
+  fernwaerme: { titel: 'Fernwärme', text: o => [
+    o.fernwaerme === 'unwirtschaftlich'
+      ? absatz('In der Nähe der Liegenschaft besteht ein Fernwärmenetz', o.fwBetreiber ? ` (${o.fwBetreiber})` : ['', F('Betreiber', '')], '. Ein Anschluss wurde geprüft, ist jedoch aufgrund ',
+        F('Begründung, z. B. Entfernung, Anschlusskosten oder Preisstruktur', ''), ' wirtschaftlich nicht darstellbar und wird nicht weiter betrachtet.')
+      : o.fernwaerme === 'anfrage'
+        ? absatz('In der Nähe der Liegenschaft besteht ein Fernwärmenetz. Eine Anfrage beim Betreiber zu Anschlussmöglichkeit, verfügbarer Leistung und Konditionen läuft; ',
+          'das Ergebnis wird im weiteren Planungsverlauf berücksichtigt. Im Variantenvergleich wird die Fernwärme bis dahin nicht betrachtet.')
+        : absatz('In der näheren Umgebung der Liegenschaft existiert kein Fernwärmenetz, sodass ein Anschluss an eine externe Wärmeversorgung keine Option ist.')] },
   wind: { titel: 'Windkraft', text: () => [absatz('Die Nutzung von Windenergie wird für den betrachteten Standort nicht weiterverfolgt. Aufgrund der begrenzten verfügbaren Flächen und der geringen Abstände zu den Bestandsgebäuden sind die erforderlichen Abstands-, Immissionsschutz- und Sicherheitsanforderungen voraussichtlich nicht oder nur eingeschränkt erfüllbar.')] },
   bioFluessigGas: { titel: 'Flüssige und gasförmige Biomasse', text: () => [
     absatz('Flüssige Biomasse (z. B. Bio-Heizöl) oder gasförmige Biomasse (Biomethan) werden nicht als primäre Vor-Ort-Lösung in Betracht gezogen. Ihr Einsatz würde voraussichtlich nur bilanziell erfolgen, also über den Bezug aus dem öffentlichen Versorgungsnetz oder über entsprechende Zertifikate.'),
@@ -33,14 +40,42 @@ export const PT_NICHT = Object.freeze({
 
 export function ptTextNicht(key, o = {}) {
   const e = PT_NICHT[key];
-  return e ? [absatz(e.titel), ...e.text(o)] : [];
+  return e ? [ueberschrift(e.titel), ...e.text(o)] : [];
+}
+
+/** Techniken aus 4.2, die über den Fragebogen als „nicht berücksichtigt“ in 4.1 stehen — Standardbegründung mit Platzhalter. */
+export const PT_NICHT_TECHNIK = Object.freeze({
+  geo: { titel: 'Oberflächennahe Geothermie', text: 'Die Nutzung oberflächennaher Geothermie über Erdwärmesonden oder -kollektoren wird nicht weiter betrachtet, da ', feld: 'Begründung, z. B. Wasserschutzgebiet, unzureichende Flächen oder ungünstige Wärmeleitfähigkeit' },
+  eis: { titel: 'Eisspeicher', text: 'Ein Eisspeicher als Wärmequelle einer Sole-Wasser-Wärmepumpe wird nicht weiter betrachtet, da ', feld: 'Begründung, z. B. Platzbedarf für Speicher und Absorber oder Investition' },
+  lwwp: { titel: 'Luft-Wasser-Wärmepumpe', text: 'Eine Luft-Wasser-Wärmepumpe wird nicht weiter betrachtet, da ', feld: 'Begründung, z. B. Schallschutz zur Nachbarbebauung oder fehlende Aufstellfläche' },
+  tiefengeo: { titel: 'Tiefengeothermie', text: 'Die Tiefengeothermie wird nicht weiter betrachtet, da ', feld: 'Begründung, z. B. keine geeigneten Zielhorizonte, Fündigkeitsrisiko oder Investitionsvolumen' },
+  biomasse: { titel: 'Feste Biomasse', text: 'Holzpellets und Hackschnitzel werden nicht weiter betrachtet, da ', feld: 'Begründung, z. B. Lager- und Anlieferungsflächen, Emissionen oder Brennstoffverfügbarkeit' },
+});
+
+export function ptTextNichtTechnik(key) {
+  const e = PT_NICHT_TECHNIK[key];
+  return e ? [ueberschrift(e.titel), absatz(e.text, F(e.feld, ''), '.')] : [];
 }
 
 /** Berücksichtigte Potenziale: Einleitung zur Energieträger-Matrix. */
+/**
+ * Berücksichtigte Potenziale: Einleitung zu 4.2.
+ * o: { vertieft: [Quelle], kurz: [Quelle], zsb (Standard true): fossiler Zweistoffbrenner für Spitzenlast/Resilienz }
+ * Ohne Angaben die allgemeine Aufzählung (ältere Aufrufe).
+ */
 export function ptTextBeruecksichtigt(o = {}) {
-  const ee = o.ee && o.ee.length ? liste(o.ee) : 'Biomasse, Umweltwärme (Erdreich, Wasser und Luft) über Wärmepumpen sowie Photovoltaik';
-  return [absatz(`Als nutzbare Potenziale für die Deckung der Grundlast kommen ${ee} in Betracht. Erdgas und Heizöl werden für die Deckung der Spitzenlast bzw. zur Sicherstellung von Resilienz und Redundanz genutzt. `,
-    'Im Folgenden werden die erneuerbaren Potenziale genauer betrachtet; die fossilen Energieträger fließen in den Variantenvergleich ein, werden in der Potenzialanalyse aber nicht vertieft.')];
+  const v = o.vertieft || [], k = o.kurz || [];
+  const alle = [...v, ...k];
+  const ee = alle.length ? liste([...alle, 'Photovoltaik für den Strombedarf der Wärmeerzeugung'])
+    : o.ee && o.ee.length ? liste(o.ee) : 'Biomasse, Umweltwärme (Erdreich, Wasser und Luft) über Wärmepumpen sowie Photovoltaik';
+  const fossil = o.zsb === false
+    ? 'Fossile Energieträger sind nicht Bestandteil der Grundlastversorgung.'
+    : 'Erdgas und Heizöl werden für die Deckung der Spitzenlast bzw. zur Sicherstellung von Resilienz und Redundanz genutzt.';
+  const out = [absatz(`Als nutzbare Potenziale für die Deckung der Grundlast kommen ${ee} in Betracht. ${fossil} `,
+    v.length || !alle.length ? `Im Folgenden werden ${v.length ? liste(v) : 'die erneuerbaren Potenziale'} genauer betrachtet` : 'Sie werden im Variantenvergleich berücksichtigt',
+    o.zsb === false ? '.' : '; die fossilen Energieträger fließen in den Variantenvergleich ein, werden in der Potenzialanalyse aber nicht vertieft.')];
+  if (k.length && v.length) out.push(absatz(`${liste(k).replace(/^./, c => c.toUpperCase())} ${k.length === 1 ? 'wird' : 'werden'} nicht gesondert beschrieben, ${k.length === 1 ? 'fließt' : 'fließen'} aber in den Variantenvergleich ein.`));
+  return out;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -50,6 +85,7 @@ export const PT_GEO = Object.freeze({ vbh: 2100, flaecheProSondeFaktor: 1 });
 
 export function ptTextGeoGrundlagen() {
   return [
+    ueberschrift('Oberflächennahe Geothermie'),
     absatz('Oberflächennahe Geothermie nutzt die im Erdreich gespeicherte Wärme zur Beheizung von Gebäuden und zur Warmwasserbereitung. Eine Wärmepumpe entzieht dem Untergrund Wärme und hebt sie auf das für die Versorgung erforderliche Temperaturniveau an. Erschlossen wird das Erdreich über vertikale Erdwärmesonden in Tiefenbohrungen oder über horizontal verlegte Erdwärmekollektoren.'),
     absatz('Die technische und wirtschaftliche Eignung hängt wesentlich von den geologischen und hydrogeologischen Randbedingungen sowie vom erforderlichen Temperaturniveau des Versorgungssystems ab. Besonders effizient arbeitet eine geothermische Wärmepumpe bei niedrigen Vorlauftemperaturen; im Bestand können daher Anpassungen am Netz, an den Heizflächen oder an den Übergabesystemen erforderlich werden.'),
   ];
@@ -133,6 +169,7 @@ export function ptTextTiefengeothermie(o = {}) {
   const faelle = o.faelle || [[65, 35], [110, 50]];
   const p = o.leistungKw;
   const out = [
+    ueberschrift('Tiefengeothermie'),
     absatz('Für eine erste überschlägige Bewertung des hydrothermalen Potenzials werden die geologischen Vertikalschnitte des Standorts ', F('Quelle, z. B. GeoTIS', o.quelle), ' herangezogen. Im Mittelpunkt stehen tief liegende, wasserführende Gesteinshorizonte, aus denen Thermalwasser gefördert, energetisch genutzt und über eine Reinjektionsbohrung in den Untergrund zurückgeführt werden kann.'),
     absatz('Anhand der Schichtfolgen, Tiefenlagen und Isothermen lassen sich potenzielle Zielhorizonte nach ihrem Temperaturniveau einordnen. Ob ein Horizont tatsächlich nutzbar ist, hängt zusätzlich von seiner hydraulischen Ergiebigkeit ab, insbesondere von der nutzbaren Sandsteinmächtigkeit, der Porosität, der Permeabilität und der erreichbaren Förderrate.'),
     absatz(F('Zielhorizonte mit Tiefenlage und Temperaturniveau (Tabelle) und deren Einordnung', '')),
@@ -158,6 +195,7 @@ export const PT_LWWP_VORNACH = {
 /** o: { vl15, vlMinus5, wpKw, jaz, deckungPct, waermeMwh, stromMwh, platzM2, lastgangJahr } */
 export function ptTextLwwp(o = {}) {
   const out = [
+    ueberschrift('Luft-Wasser-Wärmepumpe'),
     absatz('Grundlage der Berechnung sind der Wärmelastgang der Liegenschaft', o.lastgangJahr ? ` (${o.lastgangJahr})` : '', ', die stundenscharfen Außentemperaturen am Standort, die außenluft- und vorlauftemperaturabhängigen Leistungs- und Effizienzkennwerte der Wärmepumpe sowie die angenommene Heizkurve. ',
       'Für jede Stunde wird aus der Außentemperatur die Vorlauftemperatur und daraus die Leistungszahl bestimmt; der elektrische Leistungsbedarf ergibt sich aus dem Wärmebedarf der Stunde geteilt durch die Leistungszahl.'),
     absatz('Aus energetischer Sicht ist ein Betrieb mit möglichst niedriger Vorlauftemperatur anzustreben. Die untere Grenze ergibt sich aus der Wärmeübertragung der Heizflächen bezogen auf den Leistungsbedarf und aus den Anforderungen der Trinkwarmwasserbereitung. Reicht die Wärmeabgabe bei der angestrebten Vorlauftemperatur nicht aus, sind eine Anhebung der Systemtemperatur oder bauliche Anpassungen erforderlich; eine höhere Systemtemperatur senkt jedoch die Jahresarbeitszahl.'),
@@ -215,7 +253,7 @@ export const PT_TA_LAERM = Object.freeze([
 export const ptSchallRadius = (lwa, ziel) => (lwa <= ziel ? 0 : 10 ** ((lwa - 11 - ziel) / 20));
 
 export function ptTextSchall(o = {}) {
-  const out = [absatz('In diesem Abschnitt erfolgt eine erste Beurteilung, ob der Betrieb der Luft-Wasser-Wärmepumpe zu schalltechnischen Konflikten führen kann. Bewertungsgrundlage sind die Immissionsrichtwerte der TA Lärm, insbesondere für allgemeine und reine Wohngebiete in der Nachtzeit. ',
+  const out = [ueberschrift('Schallemissionen der Luft-Wasser-Wärmepumpe'), absatz('In diesem Abschnitt erfolgt eine erste Beurteilung, ob der Betrieb der Luft-Wasser-Wärmepumpe zu schalltechnischen Konflikten führen kann. Bewertungsgrundlage sind die Immissionsrichtwerte der TA Lärm, insbesondere für allgemeine und reine Wohngebiete in der Nachtzeit. ',
     'Die Ausbreitungsberechnung ist bewusst konservativ: Schallmindernde Faktoren wie Einhausungen, Abschirmung durch Gebäude oder Vegetation bleiben unberücksichtigt.')];
   if (o.lwaDb > 0) {
     const r40 = ptSchallRadius(o.lwaDb, 40), r35 = ptSchallRadius(o.lwaDb, 35), r55 = ptSchallRadius(o.lwaDb, 55);
@@ -268,6 +306,7 @@ export function ptBioKennwerte(o) {
 
 export function ptTextBiomasse(o = {}) {
   const out = [
+    ueberschrift('Biomasse'),
     absatz('Ein potenzieller erneuerbarer Energieträger für die Wärmeversorgung ist Holz, insbesondere in Form von Holzpellets oder Holzhackschnitzeln. Beide erreichen die derzeit maximal gefahrene Vorlauftemperatur des Wärmenetzes zuverlässig, sodass keine Anpassungen am bestehenden Netz erforderlich sind – ein wesentlicher Vorteil gegenüber Wärmepumpen.'),
     absatz('Pellets verbrennen dank hoher Energiedichte und geringer Restfeuchte effizienter und emissionsärmer als Hackschnitzel. Das ermöglicht kompakte Kessel und Lager sowie eine einfache Anlieferung per Silowagen. Hackschnitzel sind günstiger und daher besonders für Großanlagen mit hohem Volllastanteil attraktiv; dem stehen ein hoher Platzbedarf, aufwändige Fördertechnik sowie höhere Staub- und Geräuschemissionen gegenüber.'),
   ];

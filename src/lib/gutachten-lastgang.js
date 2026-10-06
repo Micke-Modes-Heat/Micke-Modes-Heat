@@ -81,7 +81,11 @@ export function lgTextSpitzenlast(o = {}) {
       F('Gradtagzahlen unter 🔥 Wärme-Grundlagen → Lastgang laden'), '; ohne sie wird die Spitzenlast des Lastgangs als Auslegungsheizlast angesetzt.'));
   }
   const ausl = ok(s.pNorm) ? s.pNorm : s.pMax;
-  if (o.auffaelligeNutzung) {
+  const reserve = o.reserve || 'auto';
+  if (reserve === '10' || reserve === '20') {
+    const f = 1 + Number(reserve) / 100;
+    out.push(absatz(`Für die Dimensionierung der Wärmeerzeugung wird eine Leistungsreserve von ${reserve} % empfohlen; die Erzeugerleistung ist damit auf rund ${L(ausl * f)} auszulegen.`));
+  } else if (reserve === 'auto' && o.auffaelligeNutzung) {
     out.push(absatz(`Die Gebäudeauswertung deutet aufgrund der sehr hohen spezifischen Verbrauchswerte der Nutzungsart ${o.auffaelligeNutzung} auf mögliche Fehlbetriebszustände bzw. ungünstige Nutzungsweisen hin. `,
       'Die daraus resultierenden Leistungs- und Wärmebedarfe liegen teilweise über den auf Grundlage des Gebäudestandards zu erwartenden Werten. ',
       `Vor diesem Hintergrund sollte geprüft werden, ob die Wärmeerzeugung mit einer zusätzlichen Leistungsreserve dimensioniert und beispielsweise auf rund ${L(ausl * 1.1)} bis ${L(ausl * 1.2)} ausgelegt werden sollte.`));
@@ -89,7 +93,7 @@ export function lgTextSpitzenlast(o = {}) {
   if (o.bestandThermKw > 0) {
     out.push(absatz(`Der Abgleich mit der derzeit installierten thermischen Gesamtleistung von ${L(o.bestandThermKw)} zeigt, dass der bestehende Anlagenpark `,
       o.bestandThermKw >= ausl ? `über eine Leistungsreserve von rund ${L(o.bestandThermKw - ausl)} verfügt. ` : `die Auslegungsheizlast um rund ${L(ausl - o.bestandThermKw)} unterschreitet. `,
-      `Für die weiteren Berechnungen und die Dimensionierung der neuen Wärmeerzeuger wird die Auslegungsheizlast von ${L(ausl)} zugrunde gelegt${o.auffaelligeNutzung ? ' – vorbehaltlich einer optionalen zusätzlichen Reserve' : ''}.`));
+      `Für die weiteren Berechnungen und die Dimensionierung der neuen Wärmeerzeuger wird die Auslegungsheizlast von ${L(ausl)} zugrunde gelegt${reserve === '10' || reserve === '20' ? ` zuzüglich der Reserve von ${reserve} %` : reserve === 'auto' && o.auffaelligeNutzung ? ' – vorbehaltlich einer optionalen zusätzlichen Reserve' : ''}.`));
   }
   return out;
 }

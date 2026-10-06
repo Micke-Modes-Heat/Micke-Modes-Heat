@@ -83,7 +83,15 @@ export function faBewertungsmatrix(o = {}) {
 /** Empfehlung: Gesamtbewertung über Kosten, Klima, Resilienz und Preisstabilität; eine oder zwei führende Varianten. */
 export function faTextEmpfehlung(o = {}) {
   const m = faBewertungsmatrix(o);
-  if (!m) return [absatz('Empfohlen wird die Umsetzung der Variante ', F('Empfohlene Variante'), '.')];
+  if (!m) return [absatz('Empfohlen wird die Umsetzung der Variante ', F('Empfohlene Variante', o.vorzugName && o.vorzugName !== 'auto' ? o.vorzugName : ''), '.')];
+  // Vorgabe des Gutachters (Fragebogen): gewählte Variante an die Spitze, die Matrix bleibt als Begründungsrahmen
+  const wahl = o.vorzugName && o.vorzugName !== 'auto' ? m.zeilen.find(z => z.name === o.vorzugName) : null;
+  if (wahl && wahl !== m.zeilen[0]) {
+    const rang = m.zeilen.indexOf(wahl) + 1;
+    return [absatz(`Die gewichtete Bewertung nach ${liste(Object.keys(FA_GEWICHTE).map(k => `${FA_KRITERIEN[k]} (${pct(m.gewichte[k] * 100)})`))} sieht ${m.zeilen[0].name} mit ${nf(m.zeilen[0].gesamt)} Punkten vorn; `,
+      `${wahl.name} folgt mit ${nf(wahl.gesamt)} Punkten auf Rang ${rang}.`),
+    absatz(`Unter Abwägung der liegenschaftsspezifischen Randbedingungen wird dennoch ${wahl.name} als Vorzugsvariante empfohlen. Ausschlaggebend ist `, F('Begründung der Auswahl, z. B. Vorgabe des Nutzers, Flächenverfügbarkeit oder strategische Gewichtung', ''), '.')];
+  }
   const w = m.zeilen.map(z => z.v);
   const [a, b] = w;
   const eng = m.zeilen[1].gesamt >= m.zeilen[0].gesamt - 5;
@@ -185,6 +193,11 @@ export function faNtVergleich(o) {
 }
 
 export function faTextNt(o = {}) {
+  if (o.kurz) {
+    return [absatz('Alle untersuchten Varianten setzen ein Niedertemperaturnetz voraus oder profitieren erheblich davon. ',
+      ok(o.vlHtC) && ok(o.vlNtC) ? `Eine Absenkung der Vorlauftemperatur von heute rund ${nf(o.vlHtC)} °C auf überwiegend rund ${nf(o.vlNtC)} °C verbessert die Jahresarbeitszahl der Wärmepumpen deutlich. ` : '',
+      'Es wird empfohlen, die Niedertemperatur-Tauglichkeit der Gebäude (Heizflächen, Trinkwarmwasserbereitung, hydraulischer Abgleich) gebäudescharf zu prüfen und die Ertüchtigung vor Inbetriebnahme der Wärmepumpe abzuschließen.')];
+  }
   const out = [
     absatz('Da alle untersuchten Varianten ein Niedertemperaturnetz voraussetzen oder erheblich davon profitieren, wird im Folgenden ein Fahrplan für die schrittweise Umstellung skizziert.'),
     absatz(`Eine effiziente Wärmepumpennutzung setzt deutlich abgesenkte Vorlauftemperaturen voraus. ${ok(o.vlHtC) ? `Während das Wärmenetz heute mit rund ${nf(o.vlHtC)} °C betrieben wird, sinkt die Effizienz einer Wärmepumpe` : 'Die Effizienz einer Wärmepumpe sinkt'} mit jedem Kelvin zusätzlicher Vorlauftemperatur. `,

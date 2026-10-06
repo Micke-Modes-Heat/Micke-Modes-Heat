@@ -20,7 +20,7 @@ import { nuNetzUebersicht } from './lib/netz-uebersicht.js';
 import {
   wtIstZustand, wtDimensionierungWea, wtWvn, wtHausstation, wtVariantenvergleich, wtWirtschaftlichkeit, wtEmpfehlung, wtFazit, wtDeckungsleistung,
 } from './lib/gutachten-waerme-texte.js';
-import { gbAuswertung, gbBgf, gbTextBestand, gbTextVeraenderung, gbTextEntwicklung, GB_SPEZ_KLASSEN } from './lib/gutachten-gebaeude.js';
+import { gbAuswertung, gbBgf, gbTextBestand, gbTextVeraenderung, gbTextEntwicklung, gbTextEgb, GB_SPEZ_KLASSEN } from './lib/gutachten-gebaeude.js';
 import { nwgVergleichswert } from './lib/vergleichswerte-nwg.js';
 import { wtEisspeicher } from './lib/gutachten-eisspeicher-text.js';
 import { geTextZiele, geTextLiegenschaft, geTextIstEinstieg } from './lib/gutachten-einleitung.js';
@@ -28,7 +28,9 @@ import { baAuswertung, baTwwAuswertung, baVerbrauchAuswertung, baVerbrauchsaufte
 import { abMonatsMwh, abWoche, abKorrelation, abDeckungsKurve, abLwwpSimulation, abLwwpSweep, abKostenstruktur, abPvVergleich, abWasserfallBedarf, abSchallAbstaende, abFahrplanPhasen } from './lib/gutachten-abbildungen.js';
 import { vbTextDaten, vbTextBezug, vbTextCo2, vbTextReferenzjahr, vbTextAufteilung } from './lib/gutachten-verbrauch.js';
 import { LG_INNEN, lgTextWitterung, lgTextGrundlast, lgTextSpitzenlast, lgTextDeckung } from './lib/gutachten-lastgang.js';
-import { PT_NICHT, PT_GEO_ASPEKTE, PT_LWWP_VORNACH, PT_TA_LAERM, PT_BIO, PT_BIO_QUALITATIV, ptBioKennwerte, ptTextEinleitung, ptTextNicht, ptTextBeruecksichtigt,
+import { GF_TECHNIKEN, gfAntwort, gfQuoten } from './lib/gutachten-fragen.js';
+import { gdVerweiseErsetzen } from './lib/gutachten-dokument.js';
+import { ptTextNichtTechnik, PT_NICHT, PT_GEO_ASPEKTE, PT_LWWP_VORNACH, PT_TA_LAERM, PT_BIO, PT_BIO_QUALITATIV, ptBioKennwerte, ptTextEinleitung, ptTextNicht, ptTextBeruecksichtigt,
   ptTextGeoGrundlagen, ptTextGeoBerechnung, ptTextTiefengeothermie, ptTextLwwp, ptTextSchall, ptTextBiomasse } from './lib/gutachten-potenzial.js';
 import { FA_NT_KOSTEN, FA_KRITERIEN, faBewertungsmatrix, faNtKosten, faNtVergleich, faTextBewertung, faTextEmpfehlung, faTextNt, faTextFahrplan, faTextHeizoeltank, faTextResilienzUebergang } from './lib/gutachten-fazit.js';
 import { VA_CO2_QUELLE, VA_STROM_EF, vaRahmenZeilen, vaTextRahmen, vaTextResilienz, vaGegenueberstellung, vaTextKlima, vaTextKostenKomponenten, vaTextPv, vaSensitivitaet, vaTextSensitivitaet, VA_SZENARIEN } from './lib/gutachten-varianten.js';
@@ -1352,10 +1354,13 @@ const GG_TEXT_STIL_OFFEN = 'background:#fff3cd;border-bottom:1.5px solid #e0a126
 
 /** Ein Platzhalter im Fließtext — ausgefüllt grün, offen gelb mit Feldname in Klammern. */
 function ggTextFeld(wert, feldname) {
-  const gefuellt = !!String(wert ?? '').trim();
-  const inhalt = gefuellt ? String(wert).trim() : `[${feldname}]`;
-  // data-gg-feld: der Gutachten-Editor zählt darüber die offenen Platzhalter je Kapitel
-  return `<span data-gg-feld="${gefuellt ? 'gefuellt' : 'offen'}" style="${gefuellt ? GG_TEXT_STIL_AUSGEFUELLT : GG_TEXT_STIL_OFFEN}">${gEsc(inhalt)}</span>`;
+  // Ohne Wert aus dem Projekt gilt ein im Gutachten-Editor eingetragener Wert (Platzhalter ausfüllen)
+  const eigen = String(wert ?? '').trim() ? '' : String(ggLies(() => window.gutPlatzhalterWert?.(feldname), '') || '').trim();
+  const gefuellt = !!String(wert ?? '').trim() || !!eigen;
+  const inhalt = String(wert ?? '').trim() ? String(wert).trim() : eigen || `[${feldname}]`;
+  // data-gg-feld: der Gutachten-Editor zählt darüber die offenen Platzhalter je Kapitel; data-gg-name: dort ausfüllbar
+  const name = feldname && (!gefuellt || eigen) ? ` data-gg-name="${gEsc(feldname)}"` : '';
+  return `<span data-gg-feld="${gefuellt ? 'gefuellt' : 'offen'}"${name} style="${gefuellt ? GG_TEXT_STIL_AUSGEFUELLT : GG_TEXT_STIL_OFFEN}">${gEsc(inhalt)}</span>`;
 }
 
 /** Kapitel 5.1.1 Liegenschaftsstromnetzanschluss (Ist-Zustand) — Textbaustein aus den Netzanschluss-Stammdaten. */
@@ -1419,7 +1424,10 @@ function ggRenderTrafostationenText(cfg, T = GG_THEME) {
 
 /** Absätze der Wärme-Lib ({feld, wert}-Platzhalter) als Textblatt. */
 function ggWaermeTextBlatt(absaetze, T = GG_THEME) {
-  return ggTextBlatt(absaetze.map(a => a.map(s => (typeof s === 'string' ? gEsc(s) : ggTextFeld(s.wert, s.feld))).join('')), T);
+  return ggTextBlatt(absaetze.map(a => {
+    const html = a.map(s => (typeof s === 'string' ? gEsc(s) : ggTextFeld(s.wert, s.feld))).join('');
+    return a.ueberschrift ? { html, ueberschrift: true } : html;
+  }), T);
 }
 
 /** Ein Wert aus window, ohne dass ein Fehler beim Lesen den Baustein stoppt. */
@@ -1573,6 +1581,77 @@ function ggVerbrauchsaufteilung() {
   });
   return r ? { ...r, quelle } : null;
 }
+/* ── Fragebogen (lib/gutachten-fragen.js): Antworten aus dem Gutachten-Dokument, Vorgaben aus dem Projekt ── */
+/** Projektbezug der Vorgaben: welche Techniken in einer Variante stecken, Namen der Varianten. */
+let ggFrageKontextCache = null;
+export function ggFrageKontext() {
+  // Kurz zwischenspeichern: die Sichtbarkeit wird beim Zeichnen für jeden Baustein abgefragt
+  if (ggFrageKontextCache && Date.now() - ggFrageKontextCache.t < 1000) return ggFrageKontextCache.ctx;
+  const ctx = ggFrageKontextNeu();
+  ggFrageKontextCache = { t: Date.now(), ctx };
+  return ctx;
+}
+function ggFrageKontextNeu() {
+  const v = ggLies(() => ggWaermeDaten().varianten, []) || [];
+  const keys = new Set(v.flatMap(x => (x.erzeuger || []).filter(e => (e.leistungKw || 0) > 0 || (e.waermeMwh || 0) > 0).map(e => e.key)));
+  const inVariante = Object.fromEntries(Object.entries(GF_TECHNIKEN).map(([k, t]) => [k, t.erzeuger.some(e => keys.has(e))]));
+  inVariante.eis = ggLies(() => ggEisDaten().aktiv, false);
+  return { inVariante, varianten: v.map(x => x.name) };
+}
+/** Antwort auf eine Frage des Fragebogens oder ihre Vorgabe. */
+export function ggFrage(id) {
+  return gfAntwort(ggLies(() => window.gutFragenLesen?.(), {}) || {}, id, ggFrageKontext());
+}
+/** Behandlung einer Technik der Potenzialanalyse: 'vertieft' | 'kurz' | 'nicht' | 'weglassen'. */
+const ggPot = k => ggFrage(`pot-${k}`);
+/** Ist ein Katalogbaustein nach dem Fragebogen sichtbar? Bausteine ohne Bedingung immer. */
+export function ggFigurSichtbar(id) {
+  const f = GG_FIGUREN.find(x => x.id === id);
+  if (!f || typeof f.sichtbar !== 'function') return true;
+  try { return f.sichtbar() !== false; } catch (e) { void e; return true; }
+}
+
+/**
+ * Plausibilitätsprüfung vor dem Export (C3): Lücken und auffällige Werte im Projekt, die Texte und Abbildungen
+ * verfälschen würden. Ergebnis [{ stufe: 'warn'|'info', text }] — nur Hinweise, nichts blockiert.
+ */
+export function ggPlausiPruefung() {
+  const w = window, ss = w.systemState, out = [];
+  const add = (stufe, text) => out.push({ stufe, text });
+  try {
+    const d = ggWaermeDaten();
+    const v = d.varianten || [];
+    if (!v.length) add('warn', 'Keine berechneten Wärmevarianten – im Variantenvergleich „↻ Alle aktualisieren“.');
+    else {
+      const ohneWgk = v.filter(x => !Number.isFinite(x.wgkCt));
+      if (ohneWgk.length) add('warn', `${ohneWgk.length} Variante(n) ohne Wärmegestehungskosten: ${ohneWgk.map(x => x.name).join(', ')}.`);
+      if (v.some(x => !x.wirtKomp)) add('info', 'Kostenaufteilung bzw. PV-Vergleich fehlt für einzelne Varianten – „↻ Alle aktualisieren“.');
+    }
+    const h = ggWaermeHerkunft();
+    if (!ss?.pMaxKw) add('warn', 'Kein Wärmelastgang berechnet (🔥 Wärme-Grundlagen).');
+    if (String(h.lastgang || '').startsWith('import') && !h.witterung) add('info', 'Gemessener Lastgang ist nicht witterungsbereinigt (🔥 Wärme-Grundlagen → Witterung).');
+    if (!Number.isFinite(h.normAtC)) add('info', 'Norm-Außentemperatur fehlt – die Auslegungsheizlast wird nicht extrapoliert.');
+    const a = ggGebaeudeAuswertung();
+    if (a.ist.anzahl > 0 && !(ggBestandsanlage().zeilen || []).length) add('info', 'Bestandsanlage ist leer – Kapitel 3.1 bleibt mit Platzhaltern.');
+    if (a.ist.ohneFlaeche > 0) add('info', `${a.ist.ohneFlaeche} Bestandsgebäude ohne Fläche – fehlen in spezifischen Kennwerten und der NT-Kostenschätzung.`);
+    const sum = a.jahre[0]?.heizlastKw;
+    if (ss?.pMaxKw > 0 && sum > 0) {
+      const f = ss.pMaxKw / sum;
+      if (f > 1.1) add('warn', `Spitzenlast des Lastgangs (${ggNum(ss.pMaxKw)} kW) liegt über der Summe der Gebäudeheizlasten (${ggNum(sum)} kW) – Gebäudewerte prüfen.`);
+      else if (f < 0.4) add('info', `Spitzenlast des Lastgangs ist kleiner als 40 % der Summe der Gebäudeheizlasten – Gebäudewerte vermutlich zu hoch.`);
+    }
+    const lg = ss?.lastgangKw;
+    if (lg?.length >= 8760 && ss?.netzverlustMwh > 0) {
+      let so = 0; for (let t = 4344; t < 5832; t++) so += lg[t] || 0;
+      const sommerKw = so / 1488, nvKw = ss.netzverlustMwh * 1000 / 8760;
+      if (nvKw >= 0.95 * sommerKw) add('warn', `Netzverluste (${ggNum(nvKw)} kW Dauerleistung) erreichen die Sommergrundlast (${ggNum(sommerKw)} kW) – Netzverluste prüfen.`);
+    }
+    const auf = ggVerbrauchsaufteilung();
+    if (auf && (auf.faktor > 1.5 || auf.faktor < 0.67)) add('info', `Gebäudewerte weichen stark vom gemessenen Verbrauch ab (Faktor ${ggNum(auf.faktor, 2)}) – Typkennwerte oder Messpunkt prüfen.`);
+  } catch (e) { void e; }
+  return out;
+}
+
 /** Eingaben der Luft-WP-Stundensimulation aus Systemzustand und Panel. */
 function ggLwwpEingaben() {
   const ss = window.systemState || {};
@@ -1582,9 +1661,10 @@ let ggSweepCache = null;
 function ggLwwpSweep() {
   const e = ggLwwpEingaben();
   if (!e.lastgangKw || !e.tempH) return [];
-  const key = [e.lastgangKw, e.tempH, e.vlH, e.guete, e.minCop];
+  const quoten = gfQuoten(ggFrage('lwwp-quoten'));
+  const key = [e.lastgangKw, e.tempH, e.vlH, e.guete, e.minCop, quoten.join(',')];
   if (ggSweepCache && ggSweepCache.key.every((x, i) => x === key[i])) return ggSweepCache.r;
-  const r = abLwwpSweep(e);
+  const r = abLwwpSweep(e, quoten);
   ggSweepCache = { key, r };
   return r;
 }
@@ -1743,10 +1823,15 @@ function ggGebJahresSaeulen(cfg, wert, punkt, einheitPunkt, dezPunkt = 0, faktor
 
 /** Textbaustein-Blatt: Absätze (HTML mit ggTextFeld-Platzhaltern) im Stil der Gutachten-Grafiken. */
 function ggTextBlatt(absaetze, T = GG_THEME) {
+  // Querverweise „Kapitel 3.2“ auf die aktuelle Nummer im Gutachten-Dokument umschreiben (C5)
+  const nrMap = ggLies(() => window.gutVerweisNummern?.(), null);
+  if (nrMap && nrMap.size) absaetze = absaetze.map(a => (a && a.ueberschrift ? { ...a, html: gdVerweiseErsetzen(a.html, nrMap) } : gdVerweiseErsetzen(a, nrMap)));
   const wrap = document.createElement('div');
   wrap.innerHTML = `<div style="background:${T.bg};max-width:${T.width}px;padding:26px 30px;box-sizing:border-box;
       font-family:${T.font};font-size:13px;line-height:1.65;color:${T.text.strong};border:1px solid ${T.line};">
-    ${absaetze.map(a => `<p style="margin:0 0 12px;">${a}</p>`).join('')}
+    ${absaetze.map(a => (a && a.ueberschrift
+    ? `<p data-ueberschrift="1" style="margin:16px 0 6px;font-weight:700;color:${T.accents.gruenDunkel};">${a.html}</p>`
+    : `<p style="margin:0 0 12px;">${a}</p>`)).join('')}
   </div>`;
   return wrap.firstElementChild;
 }
@@ -2348,6 +2433,13 @@ const GG_FIGUREN = [
     render: () => ggWaermeTextBlatt(gbTextVeraenderung(ggGebaeudeAuswertung())), config: {},
   },
   {
+    id: 'gebaeude-egb-text', istText: true, reihe: -5, kapitel: '2.2.1 Bauliche Veränderungen',
+    titel: 'Gutachtentext: Energiestandard nach EEFB (EGB 40/55)', datei: 'gebaeude-egb-text',
+    hinweis: 'Satz zu den Energieeffizienzfestlegungen des Bundes; Standard Neubau EGB 40, Sanierung EGB 55 — im Fragebogen (Kapitel 2.2) änderbar.',
+    sichtbar: () => ggFrage('egb') !== 'keiner',
+    render: () => ggWaermeTextBlatt(gbTextEgb(ggGebaeudeAuswertung(), ggFrage('egb'))), config: {},
+  },
+  {
     id: 'gebaeude-veraenderungen', autoSync: true, reihe: 10, kapitel: '2.2.1 Bauliche Veränderungen',
     titel: 'Bauliche Veränderungen nach Jahr', datei: 'gebaeude-veraenderungen',
     hinweis: 'Je Jahr und Art (Neubau, Abriss, Sanierung) die betroffenen Gebäude mit Änderung von Wärmebedarf und Heizlast. Bis 40 Zeilen.',
@@ -2661,7 +2753,7 @@ const GG_FIGUREN = [
       const auff = ggLies(() => ggGebaeudeAuswertung().ist.nutzungFaktor.find(n => n.anzahl >= 2 && n.faktorMittel >= 2)?.nutzung, null);
       return ggWaermeTextBlatt(lgTextSpitzenlast({
         lastgangKw: ss?.lastgangKw, tageT: wb.ergebnis?.messjahr === wb.messjahr ? wb.ergebnis?.tageT : null,
-        normAtC: parseFloat(ggLies(() => w.captureWaermeGrundlagen?.()?.normAussentemp, NaN)), auffaelligeNutzung: auff, bestandThermKw: ggBestandsanlage().thermKw,
+        normAtC: parseFloat(ggLies(() => w.captureWaermeGrundlagen?.()?.normAussentemp, NaN)), auffaelligeNutzung: auff, bestandThermKw: ggBestandsanlage().thermKw, reserve: ggFrage('reserve'),
       }));
     },
     config: {},
@@ -2682,66 +2774,112 @@ const GG_FIGUREN = [
   {
     id: 'potenzial-nicht-abwaerme', istText: true, reihe: -30, kapitel: '4.1 Nicht berücksichtigte Potenziale',
     titel: 'Gutachtentext: Nicht berücksichtigt – Abwärme', datei: 'potenzial-nicht-abwaerme',
-    hinweis: 'Standardbegründung; Baustein entfernen, wenn das Potenzial in diesem Projekt betrachtet wird.',
+    hinweis: 'Standardbegründung; über den Fragebogen (Kapitel 4) ein- und ausblendbar.',
+    sichtbar: () => (ggFrage('pot-nicht') || []).includes('abwaerme'),
     render: () => ggWaermeTextBlatt(ptTextNicht('abwaerme')), config: {},
   },
   {
     id: 'potenzial-nicht-solarthermie', istText: true, reihe: -29, kapitel: '4.1 Nicht berücksichtigte Potenziale',
     titel: 'Gutachtentext: Nicht berücksichtigt – Solarthermie', datei: 'potenzial-nicht-solarthermie',
     hinweis: 'Standardbegründung; Baustein entfernen, wenn das Potenzial in diesem Projekt betrachtet wird.',
+    sichtbar: () => (ggFrage('pot-nicht') || []).includes('solarthermie'),
     render: () => ggWaermeTextBlatt(ptTextNicht('solarthermie')), config: {},
   },
   {
     id: 'potenzial-nicht-wasserstoff', istText: true, reihe: -28, kapitel: '4.1 Nicht berücksichtigte Potenziale',
     titel: 'Gutachtentext: Nicht berücksichtigt – Wasserstoff', datei: 'potenzial-nicht-wasserstoff',
     hinweis: 'Standardbegründung; Baustein entfernen, wenn das Potenzial in diesem Projekt betrachtet wird.',
+    sichtbar: () => (ggFrage('pot-nicht') || []).includes('wasserstoff'),
     render: () => ggWaermeTextBlatt(ptTextNicht('wasserstoff')), config: {},
   },
   {
     id: 'potenzial-nicht-gasGrundlast', istText: true, reihe: -27, kapitel: '4.1 Nicht berücksichtigte Potenziale',
     titel: 'Gutachtentext: Nicht berücksichtigt – Gas-Grundlast', datei: 'potenzial-nicht-gasGrundlast',
     hinweis: 'Standardbegründung; Baustein entfernen, wenn das Potenzial in diesem Projekt betrachtet wird.',
-    render: () => ggWaermeTextBlatt(ptTextNicht('gasGrundlast', { vorgabeZsb: ggLies(() => window.gutStandardtextDaten?.()?.vorgabeZsb, '') })), config: {},
+    sichtbar: () => (ggFrage('pot-nicht') || []).includes('gasGrundlast'),
+    render: () => ggWaermeTextBlatt(ptTextNicht('gasGrundlast', { vorgabeZsb: ggLies(() => window.gutStandardtextDaten?.()?.vorgabeZsb, ''), zsb: ggFrage('zsb') !== 'gilt-nicht' })), config: {},
   },
   {
     id: 'potenzial-nicht-fernwaerme', istText: true, reihe: -26, kapitel: '4.1 Nicht berücksichtigte Potenziale',
     titel: 'Gutachtentext: Nicht berücksichtigt – Fernwärme', datei: 'potenzial-nicht-fernwaerme',
     hinweis: 'Standardbegründung; Baustein entfernen, wenn das Potenzial in diesem Projekt betrachtet wird.',
-    render: () => ggWaermeTextBlatt(ptTextNicht('fernwaerme')), config: {},
+    sichtbar: () => ggFrage('pot-fernwaerme') !== 'weglassen',
+    render: () => ggWaermeTextBlatt(ptTextNicht('fernwaerme', { fernwaerme: ggFrage('pot-fernwaerme') })), config: {},
   },
   {
     id: 'potenzial-nicht-wind', istText: true, reihe: -25, kapitel: '4.1 Nicht berücksichtigte Potenziale',
     titel: 'Gutachtentext: Nicht berücksichtigt – Windkraft', datei: 'potenzial-nicht-wind',
     hinweis: 'Standardbegründung; Baustein entfernen, wenn das Potenzial in diesem Projekt betrachtet wird.',
+    sichtbar: () => (ggFrage('pot-nicht') || []).includes('wind'),
     render: () => ggWaermeTextBlatt(ptTextNicht('wind')), config: {},
   },
   {
     id: 'potenzial-nicht-bioFluessigGas', istText: true, reihe: -24, kapitel: '4.1 Nicht berücksichtigte Potenziale',
     titel: 'Gutachtentext: Nicht berücksichtigt – flüssige/gasförmige Biomasse', datei: 'potenzial-nicht-bioFluessigGas',
     hinweis: 'Standardbegründung; Baustein entfernen, wenn das Potenzial in diesem Projekt betrachtet wird.',
+    sichtbar: () => (ggFrage('pot-nicht') || []).includes('bioFluessigGas'),
     render: () => ggWaermeTextBlatt(ptTextNicht('bioFluessigGas')), config: {},
+  },
+  {
+    id: 'potenzial-nicht-tech-geo', istText: true, reihe: -20, kapitel: '4.1 Nicht berücksichtigte Potenziale',
+    titel: 'Gutachtentext: Nicht berücksichtigt – Oberflächennahe Geothermie', datei: 'potenzial-nicht-tech-geo',
+    hinweis: 'Erscheint nur, wenn diese Technik im Fragebogen (Kapitel 4) auf „nicht berücksichtigt“ steht; Begründung als Platzhalter.',
+    sichtbar: () => ggPot('geo') === 'nicht',
+    render: () => ggWaermeTextBlatt(ptTextNichtTechnik('geo')), config: {},
+  },
+  {
+    id: 'potenzial-nicht-tech-eis', istText: true, reihe: -19, kapitel: '4.1 Nicht berücksichtigte Potenziale',
+    titel: 'Gutachtentext: Nicht berücksichtigt – Eisspeicher', datei: 'potenzial-nicht-tech-eis',
+    hinweis: 'Erscheint nur, wenn diese Technik im Fragebogen (Kapitel 4) auf „nicht berücksichtigt“ steht; Begründung als Platzhalter.',
+    sichtbar: () => ggPot('eis') === 'nicht',
+    render: () => ggWaermeTextBlatt(ptTextNichtTechnik('eis')), config: {},
+  },
+  {
+    id: 'potenzial-nicht-tech-lwwp', istText: true, reihe: -18, kapitel: '4.1 Nicht berücksichtigte Potenziale',
+    titel: 'Gutachtentext: Nicht berücksichtigt – Luft-Wasser-Wärmepumpe', datei: 'potenzial-nicht-tech-lwwp',
+    hinweis: 'Erscheint nur, wenn diese Technik im Fragebogen (Kapitel 4) auf „nicht berücksichtigt“ steht; Begründung als Platzhalter.',
+    sichtbar: () => ggPot('lwwp') === 'nicht',
+    render: () => ggWaermeTextBlatt(ptTextNichtTechnik('lwwp')), config: {},
+  },
+  {
+    id: 'potenzial-nicht-tech-tiefengeo', istText: true, reihe: -17, kapitel: '4.1 Nicht berücksichtigte Potenziale',
+    titel: 'Gutachtentext: Nicht berücksichtigt – Tiefengeothermie', datei: 'potenzial-nicht-tech-tiefengeo',
+    hinweis: 'Erscheint nur, wenn diese Technik im Fragebogen (Kapitel 4) auf „nicht berücksichtigt“ steht; Begründung als Platzhalter.',
+    sichtbar: () => ggPot('tiefengeo') === 'nicht',
+    render: () => ggWaermeTextBlatt(ptTextNichtTechnik('tiefengeo')), config: {},
+  },
+  {
+    id: 'potenzial-nicht-tech-biomasse', istText: true, reihe: -16, kapitel: '4.1 Nicht berücksichtigte Potenziale',
+    titel: 'Gutachtentext: Nicht berücksichtigt – Feste Biomasse', datei: 'potenzial-nicht-tech-biomasse',
+    hinweis: 'Erscheint nur, wenn diese Technik im Fragebogen (Kapitel 4) auf „nicht berücksichtigt“ steht; Begründung als Platzhalter.',
+    sichtbar: () => ggPot('biomasse') === 'nicht',
+    render: () => ggWaermeTextBlatt(ptTextNichtTechnik('biomasse')), config: {},
   },
   {
     id: 'potenzial-beruecksichtigt-text', istText: true, reihe: -50, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Gutachtentext: Berücksichtigte Potenziale', datei: 'potenzial-beruecksichtigt-text',
     hinweis: 'Einleitung zur Matrix der Energieträger und -quellen.',
-    render: () => ggWaermeTextBlatt(ptTextBeruecksichtigt()), config: {},
+    render: () => {
+      const auswahl = art => Object.entries(GF_TECHNIKEN).filter(([k]) => ggPot(k) === art).map(([, t]) => t.quelle);
+      return ggWaermeTextBlatt(ptTextBeruecksichtigt({ vertieft: auswahl('vertieft'), kurz: auswahl('kurz'), zsb: ggFrage('zsb') !== 'gilt-nicht' }));
+    },
+    config: {},
   },
   {
-    id: 'potenzial-geo-text', istText: true, reihe: 20, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-geo-text', sichtbar: () => ggPot('geo') === 'vertieft', istText: true, reihe: 20, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Gutachtentext: Oberflächennahe Geothermie (Grundlagen)', datei: 'potenzial-geo-text',
     hinweis: 'Standardtext zu Funktionsweise und Eignung.',
     render: () => ggWaermeTextBlatt(ptTextGeoGrundlagen()), config: {},
   },
   {
-    id: 'potenzial-geo-aspekte', reihe: 21, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-geo-aspekte', sichtbar: () => ggPot('geo') === 'vertieft', reihe: 21, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Vor- und Nachteile der Geothermienutzung', datei: 'potenzial-geo-aspekte',
     hinweis: 'Statische Bewertungstabelle (im Gutachten anpassbar).',
     render: cfg => ggRenderTabelle(cfg),
     config: { eyebrow: 'Potenzialanalyse', titel: 'Vor- und Nachteile der Geothermienutzung', leer: '', spalten: [{ label: 'Aspekt', weight: 1, align: 'left', mono: false }, { label: 'Bewertung', weight: 4, align: 'left', mono: false }], zeilen: PT_GEO_ASPEKTE.map(z => ({ werte: z })), fussnote: '' },
   },
   {
-    id: 'potenzial-geo-berechnung-text', istText: true, reihe: 22, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-geo-berechnung-text', sichtbar: () => ggPot('geo') === 'vertieft', istText: true, reihe: 22, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Gutachtentext: Erdwärmesondenfeld', datei: 'potenzial-geo-berechnung-text',
     hinweis: 'Aus dem Geothermie-Panel: Wärmeleitfähigkeit, Entzug je Sonde, Sondenzahl und Fläche nach Leistung und Wärmemenge für die Deckungsrate (Geothermie-Anteil der Einsatzplanung, sonst 65 %), Vergleich mit 400 m Bohrtiefe.',
     render: () => {
@@ -2751,46 +2889,46 @@ const GG_FIGUREN = [
     config: {},
   },
   {
-    id: 'potenzial-tiefengeothermie-text', istText: true, reihe: 30, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-tiefengeothermie-text', sichtbar: () => ggPot('tiefengeo') === 'vertieft', istText: true, reihe: 30, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Gutachtentext: Tiefengeothermie', datei: 'potenzial-tiefengeothermie-text',
     hinweis: 'Standardtext mit Platzhalter für die Zielhorizonte und Fördermengen für die Spitzenlast bei 65→35 °C und 110→50 °C.',
     render: () => ggWaermeTextBlatt(ptTextTiefengeothermie({ leistungKw: ggPotenzialDaten().pMaxKw })), config: {},
   },
   {
-    id: 'potenzial-tiefengeothermie-horizonte', reihe: 31, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-tiefengeothermie-horizonte', sichtbar: () => ggPot('tiefengeo') === 'vertieft', reihe: 31, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Potenzielle Zielhorizonte Tiefengeothermie', datei: 'potenzial-tiefengeothermie-horizonte',
     hinweis: 'Zeilen in der Einzelansicht ausfüllen (Horizont, Tiefe, Temperatur).',
     render: cfg => ggRenderTabelle(cfg),
     config: { eyebrow: 'Potenzialanalyse', titel: 'Potenzielle Zielhorizonte Tiefengeothermie', leer: '', spalten: [{ label: 'Zielhorizont', weight: 2, align: 'left', mono: false }, { label: 'Tiefenlage', weight: 1 }, { label: 'Temperaturniveau', weight: 1 }], zeilen: [{ werte: ['[Horizont]', '[m]', '[°C]'] }], fussnote: '' },
   },
   {
-    id: 'potenzial-lwwp-text', istText: true, reihe: 40, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-lwwp-text', sichtbar: () => ggPot('lwwp') === 'vertieft', istText: true, reihe: 40, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Gutachtentext: Luft-Wasser-Wärmepumpe', datei: 'potenzial-lwwp-text',
     hinweis: 'Berechnungsgrundlagen, Heizkurve aus den Wärme-Grundlagen, bauliche Hinweise und Ergebnis der Einsatzplanung (Leistung, Deckung, JAZ, Anteile, Platzbedarf).',
     render: () => ggWaermeTextBlatt(ptTextLwwp({ ...ggPotenzialDaten().lwwp, sweep: ggLwwpSweep() })), config: {},
   },
   {
-    id: 'potenzial-lwwp-vornach', reihe: 41, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-lwwp-vornach', sichtbar: () => ggPot('lwwp') === 'vertieft', reihe: 41, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Vor- und Nachteile von Luft-Wasser-Wärmepumpen', datei: 'potenzial-lwwp-vornach',
     hinweis: 'Statische Tabelle.',
     render: cfg => ggRenderTabelle(cfg),
     config: { eyebrow: 'Potenzialanalyse', titel: 'Vor- und Nachteile von Luft-Wasser-Wärmepumpen', leer: '', spalten: [{ label: '', weight: 1, align: 'left', mono: false }, { label: 'Luft-Wasser-Wärmepumpe', weight: 4, align: 'left', mono: false }], zeilen: [...PT_LWWP_VORNACH.vorteile.map((v, i) => ({ werte: [i ? '' : 'Vorteile', v] })), ...PT_LWWP_VORNACH.nachteile.map((v, i) => ({ werte: [i ? '' : 'Nachteile', v] }))], fussnote: '' },
   },
   {
-    id: 'potenzial-schall-text', istText: true, reihe: 50, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-schall-text', sichtbar: () => ggPot('lwwp') === 'vertieft', istText: true, reihe: 50, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Gutachtentext: Schallemissionen Luft-WP', datei: 'potenzial-schall-text',
     hinweis: 'TA Lärm, konservative Freifeldausbreitung mit dem Schallleistungspegel aus dem Luft-WP-Panel, Abstände für 55/40/35 dB(A), Hinweis auf Schallgutachten.',
     render: () => ggWaermeTextBlatt(ptTextSchall(ggPotenzialDaten().lwwp)), config: {},
   },
   {
-    id: 'potenzial-schall-ta-laerm', reihe: 51, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-schall-ta-laerm', sichtbar: () => ggPot('lwwp') === 'vertieft', reihe: 51, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Immissionsrichtwerte nach TA Lärm', datei: 'potenzial-schall-ta-laerm',
     hinweis: 'Richtwerte außen in dB(A); Spalte für die Liegenschaft bei Bedarf ergänzen.',
     render: cfg => ggRenderTabelle(cfg),
     config: { eyebrow: 'Potenzialanalyse', titel: 'Immissionsrichtwerte nach TA Lärm', leer: '', spalten: [{ label: 'Gebiet', weight: 2.5, align: 'left', mono: false }, { label: 'Tag', weight: 1 }, { label: 'Nacht', weight: 1 }], zeilen: PT_TA_LAERM.map(([g, t, n]) => ({ werte: [g, t + ' dB(A)', n + ' dB(A)'] })), fussnote: '' },
   },
   {
-    id: 'potenzial-biomasse-text', istText: true, reihe: 60, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-biomasse-text', sichtbar: () => ggPot('biomasse') === 'vertieft', istText: true, reihe: 60, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Gutachtentext: Biomasse (Pellets/Hackschnitzel)', datei: 'potenzial-biomasse-text',
     hinweis: 'Pellets vs. Hackschnitzel, Kennwerte für monovalente Deckung, Nachhaltigkeit (ENplus A1), Beitrag eines vorhandenen Pelletkessels zur GEG-Quote.',
     render: () => {
@@ -2800,14 +2938,14 @@ const GG_FIGUREN = [
     config: {},
   },
   {
-    id: 'potenzial-biomasse-qualitativ', reihe: 61, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-biomasse-qualitativ', sichtbar: () => ggPot('biomasse') === 'vertieft', reihe: 61, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Qualitativer Vergleich Holzpellets und Hackschnitzel', datei: 'potenzial-biomasse-qualitativ',
     hinweis: 'Statische Tabelle.',
     render: cfg => ggRenderTabelle(cfg),
     config: { eyebrow: 'Potenzialanalyse', titel: 'Qualitativer Vergleich Holzpellets und Hackschnitzel', leer: '', spalten: [{ label: 'Kriterium', weight: 1.6, align: 'left', mono: false }, { label: 'Holzpellets', weight: 1.6, align: 'left', mono: false }, { label: 'Holzhackschnitzel', weight: 1.6, align: 'left', mono: false }], zeilen: PT_BIO_QUALITATIV.map(z => ({ werte: z })), fussnote: '' },
   },
   {
-    id: 'potenzial-biomasse-kennwerte', autoSync: true, reihe: 62, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-biomasse-kennwerte', sichtbar: () => ggPot('biomasse') === 'vertieft', autoSync: true, reihe: 62, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Kennwerte Pellets vs. Hackschnitzel', datei: 'potenzial-biomasse-kennwerte',
     hinweis: 'Für monovalente Deckung des Jahreswärmebedarfs mit Spitzenlast als Kesselleistung; Annahmen in der Fußnote.',
     render: cfg => ggRenderTabelle(cfg),
@@ -2849,7 +2987,7 @@ const GG_FIGUREN = [
     },
   },
   {
-    id: 'va-resilienz-text', istText: true, reihe: -20, kapitel: '7 Variantenvergleich Wärme',
+    id: 'va-resilienz-text', sichtbar: () => ggFrage('zsb') !== 'gilt-nicht', istText: true, reihe: -20, kapitel: '7 Variantenvergleich Wärme',
     titel: 'Gutachtentext: Zweistoffbrenner als Resilienz- und Spitzenlasteinheit', datei: 'va-resilienz-text',
     hinweis: 'Prüft, ob alle Varianten einen fossilen Kessel auf voller Heizlast enthalten; Vorgabe als Platzhalter.',
     render: () => ggWaermeTextBlatt(vaTextResilienz({ ...ggVariantenDaten(), vorgabeZsb: ggLies(() => window.gutStandardtextDaten?.()?.vorgabeZsb, '') })), config: {},
@@ -2960,10 +3098,10 @@ const GG_FIGUREN = [
     id: 'fazit-empfehlung-text', istText: true, reihe: 30, kapitel: '9.1 Wärmeversorgung',
     titel: 'Gutachtentext: Empfehlung der Vorzugsvariante', datei: 'fazit-empfehlung-text',
     hinweis: 'Eine oder zwei führende Varianten (Kostenabstand unter 3 %), Pfad zur Klimaneutralität, Einordnung von Stromkessel- und Erdwärmevarianten.',
-    render: () => ggWaermeTextBlatt(faTextEmpfehlung(ggVariantenDaten())), config: {},
+    render: () => ggWaermeTextBlatt(faTextEmpfehlung({ ...ggVariantenDaten(), vorzugName: ggFrage('empfehlung') })), config: {},
   },
   {
-    id: 'fazit-nt-text', istText: true, reihe: 40, kapitel: '9.1 Wärmeversorgung',
+    id: 'fazit-nt-text', sichtbar: () => ggFrage('nt') !== 'weglassen', istText: true, reihe: 40, kapitel: '9.1 Wärmeversorgung',
     titel: 'Gutachtentext: Niedertemperatur-Ertüchtigung', datei: 'fazit-nt-text',
     hinweis: 'HT (Netz-Vorlauf) gegen NT (Mittel der Heizkurve) bei gleicher WP-Wärme: JAZ, Strom, Kosten, Invest (Bestandsgebäude × 25.000 €), Amortisation, CO₂; Phasen 1–3 und Fazit.',
     render: () => {
@@ -2973,13 +3111,13 @@ const GG_FIGUREN = [
       const vl15 = ggFeldZahl('gl-vl15'), vl5 = ggFeldZahl('gl-vl5');
       return ggWaermeTextBlatt(faTextNt({
         waermeMwh: wp.w, jazNt: wp.e > 0 ? wp.w / wp.e : undefined, vlHtC: ggFeldZahl('netz-vl'), vlNtC: Number.isFinite(vl15) && Number.isFinite(vl5) ? (vl15 + vl5) / 2 : NaN,
-        strompreisCt: d.preise.strom, kosten: ggNtKosten(), efStrom: d.ef.strom, efStromLz: d.ef.stromLz,
+        strompreisCt: d.preise.strom, kosten: ggNtKosten(), efStrom: d.ef.strom, efStromLz: d.ef.stromLz, kurz: ggFrage('nt') === 'erwaehnen',
       }));
     },
     config: {},
   },
   {
-    id: 'fazit-nt-kosten', autoSync: true, reihe: 45, kapitel: '9.1 Wärmeversorgung',
+    id: 'fazit-nt-kosten', sichtbar: () => ggFrage('nt') === 'empfehlen', autoSync: true, reihe: 45, kapitel: '9.1 Wärmeversorgung',
     titel: 'Kostenschätzung Niedertemperatur-Ertüchtigung', datei: 'fazit-nt-kosten',
     hinweis: 'Gebäudescharf aus BGF, Bauzustand und TWW-Art; Kostenkennwerte als Annahmen in der Fußnote. Abriss geplanter Gebäude und Neubauten sind nicht enthalten.',
     render: cfg => ggRenderTabelle(cfg),
@@ -3006,7 +3144,8 @@ const GG_FIGUREN = [
     render: () => {
       const d = ggVariantenDaten();
       const w = d.varianten.filter(v => Number.isFinite(v.wgkCt)).sort((a, b) => a.wgkCt - b.wgkCt);
-      const vorzug = w.length >= 2 && (w[1].wgkCt - w[0].wgkCt) / w[0].wgkCt < 0.03 ? [w[0].name, w[1].name] : w.slice(0, 1).map(v => v.name);
+      const wahl = ggFrage('empfehlung');
+      const vorzug = wahl && wahl !== 'auto' ? [wahl] : w.length >= 2 && (w[1].wgkCt - w[0].wgkCt) / w[0].wgkCt < 0.03 ? [w[0].name, w[1].name] : w.slice(0, 1).map(v => v.name);
       return ggWaermeTextBlatt(faTextFahrplan({ vorzug, pv: { batKwh: ggLies(() => window._stromBatKapKwh, 0) } }));
     },
     config: {},
@@ -3062,7 +3201,7 @@ const GG_FIGUREN = [
     config: {},
   },
   {
-    id: 'waerme-eisspeicher-text',
+    id: 'waerme-eisspeicher-text', sichtbar: () => ggPot('eis') === 'vertieft',
     istText: true,
     reihe: 10,
     kapitel: '4.2 Berücksichtigte Potenziale',
@@ -3318,7 +3457,7 @@ const GG_FIGUREN = [
     },
   },
   {
-    id: 'potenzial-lwwp-sweep', autoSync: true, reihe: 42, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-lwwp-sweep', sichtbar: () => ggPot('lwwp') === 'vertieft', autoSync: true, reihe: 42, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Luft-Wasser-Wärmepumpe: Vergleich der Deckungsgrade', datei: 'potenzial-lwwp-sweep',
     hinweis: 'Stundensimulation mit Außentemperatur und Heizkurve für 65, 90, 99 und 100 % Deckung: erforderliche Nennleistung, Leistung in der kältesten Stunde, JAZ, Umweltwärme, Strom und verbleibende Spitzenlast.',
     render: cfg => ggRenderTabelle(cfg),
@@ -3340,7 +3479,7 @@ const GG_FIGUREN = [
     },
   },
   {
-    id: 'potenzial-lwwp-jdl', autoSync: true, reihe: 43, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-lwwp-jdl', sichtbar: () => ggPot('lwwp') === 'vertieft', autoSync: true, reihe: 43, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Luft-Wasser-Wärmepumpe: Grund- und Spitzenlast', datei: 'potenzial-lwwp-jdl',
     hinweis: 'Jahresdauerlinie des Wärmebedarfs mit dem Anteil der Luft-WP (aktuelle Leistung aus dem Luft-WP-Panel) und ihrer elektrischen Leistung, nach Wärmebedarf sortiert.',
     render: cfg => ggRenderGanglinie(cfg),
@@ -3365,7 +3504,7 @@ const GG_FIGUREN = [
     },
   },
   {
-    id: 'potenzial-schall-abstaende', autoSync: true, reihe: 52, kapitel: '4.2 Berücksichtigte Potenziale',
+    id: 'potenzial-schall-abstaende', sichtbar: () => ggPot('lwwp') === 'vertieft', autoSync: true, reihe: 52, kapitel: '4.2 Berücksichtigte Potenziale',
     titel: 'Mindestabstände Luft-WP nach TA Lärm', datei: 'potenzial-schall-abstaende',
     hinweis: 'Freifeldabstand (Halbkugel), in dem der Immissionsrichtwert tags und nachts eingehalten wird; Schallleistungspegel aus dem Luft-WP-Panel.',
     render: cfg => ggRenderBalken(cfg),
@@ -3473,7 +3612,7 @@ const GG_FIGUREN = [
     },
   },
   {
-    id: 'fazit-nt-grafik', autoSync: true, reihe: 46, kapitel: '9.1 Wärmeversorgung',
+    id: 'fazit-nt-grafik', sichtbar: () => ggFrage('nt') === 'empfehlen', autoSync: true, reihe: 46, kapitel: '9.1 Wärmeversorgung',
     titel: 'Hoch- und Niedertemperaturbetrieb im Vergleich', datei: 'fazit-nt-grafik',
     hinweis: 'Kumulierte Kosten über 20 Jahre: Stromkosten im HT-Betrieb gegenüber NT-Betrieb plus Ertüchtigungskosten; Schnittpunkt = Amortisation.',
     render: cfg => ggRenderXY(cfg),
@@ -11623,7 +11762,9 @@ function ggTextSegmente(el) {
       segs[0].text = segs[0].text.replace(/^\s+/, '');
       segs[segs.length - 1].text = segs[segs.length - 1].text.replace(/\s+$/, '');
     }
-    return segs.filter(s => s.text);
+    const out = segs.filter(s => s.text);
+    if (p.dataset.ueberschrift) out.ueberschrift = true;
+    return out;
   }).filter(segs => segs.length);
 }
 

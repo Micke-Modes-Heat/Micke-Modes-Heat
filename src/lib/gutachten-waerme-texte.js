@@ -91,7 +91,7 @@ const mitArtikel = (e, gross = false) => {
 /** Absatz aus Zeichenketten und Platzhaltern; benachbarte Zeichenketten werden verbunden. */
 function absatz(...teile) {
   const out = [];
-  for (const t of teile.flat()) {
+  for (const t of teile.flat(Infinity)) {
     if (t === '' || t == null || t === false) continue;
     if (typeof t === 'string' && typeof out[out.length - 1] === 'string') out[out.length - 1] += t;
     else out.push(t);
@@ -99,12 +99,19 @@ function absatz(...teile) {
   return out;
 }
 
+/** Zwischenüberschrift innerhalb eines Bausteins (LKEBw-Grün, fett) — ein Absatz mit Kennzeichen `ueberschrift`. */
+function ueberschrift(text) {
+  const a = absatz(text);
+  a.ueberschrift = true;
+  return a;
+}
+
 /** Hilfen für verwandte Textmodule (Gebäudekapitel): gleiche Zahlenformate, Platzhalter und Absatzbildung. */
-export const wtHilfen = { num, ok, nf, pct, liste, summe, kleinN, absatz };
+export const wtHilfen = { num, ok, nf, pct, liste, summe, kleinN, absatz, ueberschrift };
 
 /** Absätze als Klartext — Platzhalter als „[Feld]“ bzw. mit Wert. Für Tests und die Zwischenablage. */
 export function wtKlartext(absaetze) {
-  return absaetze.map(a => a.map(s => (typeof s === 'string' ? s : (s.wert || `[${s.feld}]`))).join('')).join('\n\n');
+  return absaetze.map(a => (a.ueberschrift ? '## ' : '') + a.map(s => (typeof s === 'string' ? s : (s.wert || `[${s.feld}]`))).join('')).join('\n\n');
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
