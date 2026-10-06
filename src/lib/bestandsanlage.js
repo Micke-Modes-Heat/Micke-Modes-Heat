@@ -47,8 +47,14 @@ const zahl = v => { const x = parseFloat(String(v ?? '').replace(',', '.')); ret
 const pos = v => { const x = zahl(v); return Number.isFinite(x) && x > 0 ? x : NaN; };
 const txt = v => (typeof v === 'string' ? v.trim() : v == null ? '' : String(v).trim());
 
+/** Wo der gemessene Gesamtverbrauch erfasst wird — bestimmt die Verluste vor der Aufteilung auf die Gebäude. */
+export const BA_MESSPUNKTE = Object.freeze({
+  einspeisung: 'WMZ Netzeinspeisung', brennstoff: 'Brennstoffzähler (Gas/Öl)', gebaeude: 'WMZ an den Gebäuden',
+});
+export const BA_KESSEL_ETA_STANDARD = 90;
+
 export function baLeer() {
-  return { erzeuger: [], pufferM3: '', heizzentrale: '', schemaJahr: '', netzDaten: 'plan', verbrauch: [] };
+  return { erzeuger: [], pufferM3: '', heizzentrale: '', schemaJahr: '', netzDaten: 'plan', messpunkt: 'einspeisung', kesselEtaPct: '', verbrauch: [] };
 }
 
 export function baNormalisiere(roh) {
@@ -63,6 +69,7 @@ export function baNormalisiere(roh) {
     })),
     pufferM3: txt(r.pufferM3), heizzentrale: txt(r.heizzentrale), schemaJahr: txt(r.schemaJahr),
     netzDaten: ['keine', 'plan', 'vollstaendig'].includes(r.netzDaten) ? r.netzDaten : 'plan',
+    messpunkt: BA_MESSPUNKTE[r.messpunkt] ? r.messpunkt : 'einspeisung', kesselEtaPct: txt(r.kesselEtaPct),
     // Jahresverbräuche (Endenergie, MWh) je Bestandserzeuger: [{ jahr, werte: { erzeugerId: MWh } }]
     verbrauch: (Array.isArray(r.verbrauch) ? r.verbrauch : []).filter(v => v && Number.isInteger(Number(v.jahr)) && Number(v.jahr) > 1990)
       .map(v => ({ jahr: Number(v.jahr), werte: Object.fromEntries(Object.entries(v.werte && typeof v.werte === 'object' ? v.werte : {}).map(([k, x]) => [k, txt(x)])) }))
@@ -224,4 +231,32 @@ export function baMixVerschiebung(v, schwellePp = 5) {
   const letzte = j[j.length - 1];
   const rueck = danach.length && letzte.fossilPct - j[best.idx].fossilPct >= 3 ? letzte : null;
   return { ...best, jahrDaten: j[best.idx], rueckJahr: rueck };
+}
+
+/**
+ * Aufteilung eines gemessenen Gesamtverbrauchs auf die Gebäude (ohne gebäudescharfe Zähler).
+ * Vom Messwert werden je nach Messpunkt die Kesselverluste (Brennstoffzähler: × Jahresnutzungsgrad)
+ * und die Netzverluste abgezogen; der Rest wird im Verhältnis der Modellwerte (Fläche × Typkennwert)
+ * auf die Gebäude verteilt.
+ * o: { messungMwh, messpunkt, kesselEtaPct, netzverlustMwh, gebaeude: [{ name, modellMwh, bgfM2, referenzSpez }] }
+ */
+export function baVerbrauchsaufteilung(o = {}) {
+  const mess = Number(o.messungMwh);
+  const geb = (o.gebaeude || []).filter(g => g && Number(g.modellMwh) > 0);
+  const modell = geb.reduce((a, g) => a + Number(g.modellMwh), 0);
+  if (!(mess > 0) || !(modell > 0)) return null;
+  const mp = BA_MESSPUNKTE[o.messpunkt] ? o.messpunkt : 'einspeisung';
+  const etaRoh = Number(o.kesselEtaPct);
+  const eta = mp === 'brennstoff' ? (etaRoh > 0 && etaRoh <= 110 ? etaRoh : BA_KESSEL_ETA_STANDARD) / 100 : 1;
+  const erzeugt = mess * eta;
+  const nv = mp === 'gebaeude' ? 0 : Math.max(0, Number(o.netzverlustMwh) || 0);
+  const nutz = erzeugt - nv;
+  if (!(nutz > 0)) return null;
+  const faktor = nutz / modell;
+  const zeilen = geb.map(g => {
+    const mwh = Number(g.modellMwh) * faktor;
+    const bgf = Number(g.bgfM2) || 0;
+    return { name: g.name, modellMwh: Number(g.modellMwh), mwh, bgfM2: bgf, spez: bgf > 0 ? (mwh * 1000) / bgf : NaN, referenzSpez: Number(g.referenzSpez) || NaN };
+  }).sort((a, b) => b.mwh - a.mwh);
+  return { messungMwh: mess, messpunkt: mp, eta, kesselverlustMwh: mess - erzeugt, erzeugtMwh: erzeugt, netzverlustMwh: nv, nutzMwh: nutz, modellMwh: modell, faktor, zeilen };
 }

@@ -369,6 +369,7 @@ export function cacheVariantResults() {
     netzverlustePct: totalErzeugung > 0 ? totalLoss / totalErzeugung * 100 : 0,
     erzeugung: totalErzeugung, lastgangBasis, vlTemp, rlTemp, erzeuger: erzeugerList, erzeugerDetail, ausschlüsse,
     investGes, jkGes, co2GesH, co2GesLZ, wgkText, wgkNum, eeAnteil, stromkostenWp,
+    wirtKomp: window._lastWirtKomp ? { ...window._lastWirtKomp } : null,
   };
   if (typeof currentViewMode !== 'undefined' && currentViewMode === 'vergleich') renderVergleich();
 }

@@ -173,8 +173,27 @@ export function ptTextLwwp(o = {}) {
       `${pct((1 - 1 / o.jaz) * o.deckungPct)} der Wärme stammen aus der Umgebungsluft und ${pct(o.deckungPct / o.jaz)} aus dem Strombezug, der Spitzenlasterzeuger übernimmt ${pct(100 - o.deckungPct)}.`,
       ok(o.stromMwh) ? ` Der Strombedarf der Wärmepumpe beträgt rund ${nf(o.stromMwh)} MWh/a.` : '',
       ok(o.platzM2) ? ` Für die Aufstellung der Verdampfereinheiten ist überschlägig eine Fläche von rund ${nf(o.platzM2)} m² vorzusehen.` : ''));
-    out.push(absatz(F('Vergleich weiterer Deckungsgrade (z. B. 65 %, 80 %, 95 %: WP-Leistung, Anteile, JAZ) – Varianten mit anderer WP-Leistung anlegen', '')));
   }
+  out.push(...ptTextLwwpSweep(o.sweep));
+  return out;
+}
+
+/** Vergleich mehrerer Deckungsgrade (sweep = abLwwpSweep aus lib/gutachten-abbildungen.js). */
+export function ptTextLwwpSweep(sweep) {
+  const r = (sweep || []).filter(x => x.erreichbar);
+  const out = [];
+  if (r.length) out.push(absatz(`Um die Auswirkung der Wärmepumpengröße zu zeigen, wurden ${r.length === 1 ? 'ein Deckungsgrad' : `${r.length} Deckungsgrade`} mit derselben Stundensimulation berechnet: `,
+    r.map(x => `Für ${pct(x.ziel)} der Jahreswärme ist eine Nennleistung von rund ${L(x.nennKw)} (A2/W35) erforderlich; die Jahresarbeitszahl liegt dann bei ${nf(x.jaz, 2)}, der Strombedarf bei ${nf(x.stromMwh)} MWh/a, und der Spitzenlasterzeuger muss noch bis zu ${L(x.restMaxKw)} bereitstellen.`).join(' ')));
+  if (r.length >= 2) {
+    const a = r[0], b = r.at(-1);
+    out.push(absatz(`Mit steigendem Deckungsgrad wächst die erforderliche Wärmepumpenleistung überproportional: Für ${nf(b.ziel - a.ziel)} Prozentpunkte mehr Deckung ist die ${nf(b.nennKw / a.nennKw, 1)}-fache Leistung nötig, weil die zusätzlichen Betriebsstunden in die kalten Tage mit geringer Leistungszahl fallen. `,
+      b.jaz < a.jaz - 0.05 ? `Die Jahresarbeitszahl sinkt dabei von ${nf(a.jaz, 2)} auf ${nf(b.jaz, 2)}. ` : '',
+      b.restMaxKw > 0.85 * a.restMaxKw
+        ? 'Die vom Spitzenlasterzeuger bereitzustellende Leistung bleibt dabei nahezu unverändert, da an den kältesten Tagen die Leistung der Luft-Wasser-Wärmepumpe am geringsten ist.'
+        : `Die vom Spitzenlasterzeuger bereitzustellende Leistung sinkt dabei nur von ${L(a.restMaxKw)} auf ${L(b.restMaxKw)}, da an den kältesten Tagen die Leistung der Luft-Wasser-Wärmepumpe am geringsten ist.`));
+  }
+  const nicht = (sweep || []).find(x => !x.erreichbar);
+  if (nicht) out.push(absatz(`Ein Deckungsgrad von ${pct(nicht.ziel)} ist mit der Luft-Wasser-Wärmepumpe allein nicht erreichbar, da sie bei den angesetzten Vorlauftemperaturen in den kältesten Stunden${ok(nicht.maxPct) ? ` höchstens ${pct(nicht.maxPct)} decken kann` : ' gesperrt ist'}.`));
   return out;
 }
 

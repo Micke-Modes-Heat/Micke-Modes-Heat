@@ -116,3 +116,23 @@ export function vbTextReferenzjahr(v, lastgangJahr) {
     gleich || !lastgangJahr ? `Dieses Jahr wird daher als Referenzzeitraum für die weitere Analyse herangezogen.`
       : `Für die weitere Analyse wird das Jahr ${lastgangJahr} herangezogen; die Abweichung zum repräsentativsten Jahr ist bei der Bewertung zu berücksichtigen.`)];
 }
+
+/** Aufteilung des gemessenen Gesamtverbrauchs auf die Gebäude (r = baVerbrauchsaufteilung). */
+export function vbTextAufteilung(r, o = {}) {
+  if (!r) return [];
+  const quelle = o.quelle ? ` (${o.quelle})` : '';
+  const abzug = [];
+  if (r.messpunkt === 'brennstoff') abzug.push(`die Erzeugungsverluste der Kessel bei einem angesetzten Jahresnutzungsgrad von ${pct(r.eta * 100)} (rund ${nf(r.kesselverlustMwh)} MWh)`);
+  if (r.netzverlustMwh > 0) abzug.push(`die Verluste des Wärmeversorgungsnetzes von rund ${nf(r.netzverlustMwh)} MWh`);
+  const abw = (r.modellMwh / r.nutzMwh - 1) * 100;   // Modell gegenüber der aus der Messung abgeleiteten Nutzwärme
+  return [
+    absatz(`Für die einzelnen Gebäude liegen keine Verbrauchsmessungen vor. Der gemessene Gesamtverbrauch von ${nf(r.messungMwh)} MWh${quelle} wurde daher rechnerisch auf die Gebäude verteilt. `,
+      r.messpunkt === 'gebaeude' ? 'Da die Messung an den Gebäuden erfolgt, sind keine Erzeugungs- und Netzverluste abzuziehen. '
+        : abzug.length ? `Zuvor wurden ${abzug.join(' sowie ')} abgezogen. ` : '',
+      `Die verbleibende Nutzwärme von ${nf(r.nutzMwh)} MWh wurde im Verhältnis der aus Fläche und Gebäudetyp ermittelten Bedarfswerte aufgeteilt.`),
+    absatz(Math.abs(abw) < 5
+      ? `Die Modellwerte stimmen mit der Messung gut überein (Abweichung ${abw >= 0 ? '+' : '−'}${pct(Math.abs(abw))}); die gebäudebezogenen Werte sind entsprechend belastbar.`
+      : `Die Summe der Modellwerte (${nf(r.modellMwh)} MWh) liegt rund ${pct(Math.abs(abw))} ${abw < 0 ? 'unter' : 'über'} der aus der Messung abgeleiteten Nutzwärme; die Gebäudewerte wurden mit dem Faktor ${nf(r.faktor, 2)} angeglichen. `
+        + 'Die so ermittelten Einzelwerte bilden die Verteilung nur näherungsweise ab und ersetzen keine gebäudescharfe Messung.'),
+  ];
+}

@@ -18,19 +18,20 @@ import { EK_GRUPPEN, EK_ARTEN, EK_VORGABEN, ekNormKennwerte, ekAuswertung } from
 import { resilienzZielMatrix, zielKraftstoffL } from './lib/resilienz-core.js';
 import { nuNetzUebersicht } from './lib/netz-uebersicht.js';
 import {
-  wtIstZustand, wtDimensionierungWea, wtWvn, wtHausstation, wtVariantenvergleich, wtWirtschaftlichkeit, wtEmpfehlung, wtFazit,
+  wtIstZustand, wtDimensionierungWea, wtWvn, wtHausstation, wtVariantenvergleich, wtWirtschaftlichkeit, wtEmpfehlung, wtFazit, wtDeckungsleistung,
 } from './lib/gutachten-waerme-texte.js';
 import { gbAuswertung, gbBgf, gbTextBestand, gbTextVeraenderung, gbTextEntwicklung, GB_SPEZ_KLASSEN } from './lib/gutachten-gebaeude.js';
 import { nwgVergleichswert } from './lib/vergleichswerte-nwg.js';
 import { wtEisspeicher } from './lib/gutachten-eisspeicher-text.js';
 import { geTextZiele, geTextLiegenschaft, geTextIstEinstieg } from './lib/gutachten-einleitung.js';
-import { baAuswertung, baTwwAuswertung, baVerbrauchAuswertung } from './lib/bestandsanlage.js';
-import { vbTextDaten, vbTextBezug, vbTextCo2, vbTextReferenzjahr } from './lib/gutachten-verbrauch.js';
-import { lgTextWitterung, lgTextGrundlast, lgTextSpitzenlast, lgTextDeckung } from './lib/gutachten-lastgang.js';
+import { baAuswertung, baTwwAuswertung, baVerbrauchAuswertung, baVerbrauchsaufteilung } from './lib/bestandsanlage.js';
+import { abMonatsMwh, abWoche, abKorrelation, abDeckungsKurve, abLwwpSimulation, abLwwpSweep, abKostenstruktur, abPvVergleich, abWasserfallBedarf, abSchallAbstaende, abFahrplanPhasen } from './lib/gutachten-abbildungen.js';
+import { vbTextDaten, vbTextBezug, vbTextCo2, vbTextReferenzjahr, vbTextAufteilung } from './lib/gutachten-verbrauch.js';
+import { LG_INNEN, lgTextWitterung, lgTextGrundlast, lgTextSpitzenlast, lgTextDeckung } from './lib/gutachten-lastgang.js';
 import { PT_NICHT, PT_GEO_ASPEKTE, PT_LWWP_VORNACH, PT_TA_LAERM, PT_BIO, PT_BIO_QUALITATIV, ptBioKennwerte, ptTextEinleitung, ptTextNicht, ptTextBeruecksichtigt,
   ptTextGeoGrundlagen, ptTextGeoBerechnung, ptTextTiefengeothermie, ptTextLwwp, ptTextSchall, ptTextBiomasse } from './lib/gutachten-potenzial.js';
-import { FA_NT_KOSTEN, FA_KRITERIEN, faBewertungsmatrix, faNtKosten, faTextBewertung, faTextEmpfehlung, faTextNt, faTextFahrplan, faTextHeizoeltank, faTextResilienzUebergang } from './lib/gutachten-fazit.js';
-import { VA_CO2_QUELLE, vaRahmenZeilen, vaTextRahmen, vaTextResilienz, vaGegenueberstellung, vaTextKlima, vaTextKostenKomponenten, vaTextPv, vaSensitivitaet, vaTextSensitivitaet, VA_SZENARIEN } from './lib/gutachten-varianten.js';
+import { FA_NT_KOSTEN, FA_KRITERIEN, faBewertungsmatrix, faNtKosten, faNtVergleich, faTextBewertung, faTextEmpfehlung, faTextNt, faTextFahrplan, faTextHeizoeltank, faTextResilienzUebergang } from './lib/gutachten-fazit.js';
+import { VA_CO2_QUELLE, VA_STROM_EF, vaRahmenZeilen, vaTextRahmen, vaTextResilienz, vaGegenueberstellung, vaTextKlima, vaTextKostenKomponenten, vaTextPv, vaSensitivitaet, vaTextSensitivitaet, VA_SZENARIEN } from './lib/gutachten-varianten.js';
 import { atTextErzeuger, atTextHydraulik, atTextTww, atTextNetz, atLeistung } from './lib/gutachten-anlagentechnik.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1128,6 +1129,129 @@ export function ggRenderBalken(cfg, T = GG_THEME) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * 3d2) RENDERER — „XY": Punkte und Linien über einer Zahlenachse (auch negative x, z. B. Außentemperatur)
+ *
+ * cfg.serien = [{ label, farbe, punkte: [{x,y}], art: 'punkte'|'linie', strich?, breite? }]
+ * cfg.marken = [{ x, y, label, farbe }] — hervorgehobene Einzelpunkte mit Fahne
+ * cfg.xMin/xMax/yMin/yMax optional, sonst aus den Daten; cfg.xDez/yDez Nachkommastellen der Achsen
+ * ═══════════════════════════════════════════════════════════════════════ */
+let ggXyZaehler = 0;
+export function ggRenderXY(cfg, T = GG_THEME) {
+  const clipId = `ggxy-clip-${++ggXyZaehler}`;
+  const G = ggSheetGeometry(T, cfg);
+  const S = G.S, W = G.W, plotX = G.plotX, plotW = G.plotW, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  let out = ggSheetHeader(cfg, T, G);
+  out += `<rect x="${gR(plotX)}" y="${plotY}" width="${gR(plotW)}" height="${plotH}" fill="${T.neutral.cardBg}"/>`;
+
+  const serien = (cfg.serien || []).filter(s => s && s.punkte && s.punkte.some(p => Number.isFinite(p.x) && Number.isFinite(p.y)));
+  const marken = (cfg.marken || []).filter(m => Number.isFinite(m.x) && Number.isFinite(m.y));
+  if (!serien.length) {
+    out += txt(plotX + plotW / 2, plotY + plotH / 2, cfg.leer || 'Keine Daten vorhanden', { anchor: 'middle', size: 13, fill: T.text.faint });
+  } else {
+    const alle = [...serien.flatMap(s => s.punkte), ...marken].filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+    const ext = (k, f) => f(...alle.map(p => p[k]));
+    const skala = (lo, hi, n) => {
+      const st = ggNiceStep(Math.max(hi - lo, 1e-9) / n);
+      return { st, lo: Math.floor(lo / st) * st, hi: Math.max(Math.ceil(hi / st) * st, Math.floor(lo / st) * st + st) };
+    };
+    const sx = skala(cfg.xMin ?? ext('x', Math.min), cfg.xMax ?? ext('x', Math.max), 10);
+    // Kopfraum für die Legende oben rechts
+    const nLeg = serien.filter(s => s.label).length + marken.filter(m => m.legende).length;
+    const yHiRoh = cfg.yMax ?? ext('y', Math.max) / Math.max(0.5, 1 - (nLeg ? (10 + 8 + nLeg * 18 + 20) / plotH : 0.05));
+    const sy = skala(cfg.yMin ?? Math.min(0, ext('y', Math.min)), yHiRoh, 8);
+    const xOf = x => plotX + ((x - sx.lo) / (sx.hi - sx.lo)) * plotW;
+    const yOf = y => plotB - ((y - sy.lo) / (sy.hi - sy.lo)) * plotH;
+
+    let gitter = '';
+    for (let v = sy.lo + sy.st; v < sy.hi - 1e-9; v += sy.st) gitter += `M${gR(plotX)} ${Math.round(yOf(v)) + 0.5}H${gR(plotX + plotW)}`;
+    for (let v = sx.lo + sx.st; v < sx.hi - 1e-9; v += sx.st) gitter += `M${Math.round(xOf(v)) + 0.5} ${plotY}V${gR(plotB)}`;
+    out += `<path d="${gitter}" fill="none" stroke="${T.line}" stroke-width="1"/>`;
+    if (sx.lo < 0 && sx.hi > 0) out += `<line x1="${gR(xOf(0))}" y1="${plotY}" x2="${gR(xOf(0))}" y2="${gR(plotB)}" stroke="${T.rule}" stroke-width="1.2"/>`;
+
+    out += `<clipPath id="${clipId}"><rect x="${gR(plotX)}" y="${plotY}" width="${gR(plotW)}" height="${plotH}"/></clipPath><g clip-path="url(#${clipId})">`;
+    for (const s of serien) {
+      const p = s.punkte.filter(q => Number.isFinite(q.x) && Number.isFinite(q.y));
+      if (s.art === 'punkte') {
+        for (const q of p) out += `<circle cx="${gR(xOf(q.x))}" cy="${gR(yOf(q.y))}" r="${s.radius || 2.6}" fill="${s.farbe}" fill-opacity="0.55"/>`;
+      } else {
+        out += `<path d="${p.map((q, i) => `${i ? 'L' : 'M'}${gR(xOf(q.x))} ${gR(yOf(q.y))}`).join('')}" fill="none" stroke="${s.farbe}"
+                  stroke-width="${s.breite || 2}"${s.strich ? ` stroke-dasharray="${s.strich}"` : ''} stroke-linejoin="round"/>`;
+      }
+    }
+    out += '</g>';
+    for (const m of marken) {
+      const mx = xOf(m.x), my = yOf(m.y), f = m.farbe || T.text.strong;
+      out += `<circle cx="${gR(mx)}" cy="${gR(my)}" r="5.5" fill="${T.bg}" stroke="${f}" stroke-width="2.5"/>`;
+      if (m.label) {
+        const rechts = mx < plotX + plotW * 0.6;
+        out += txt(mx + (rechts ? 10 : -10), my - 9, m.label, { anchor: rechts ? 'start' : 'end', size: S.fsLeg, weight: 700, fill: f });
+      }
+    }
+    const dez = st => (st < 1 ? (st < 0.1 ? 2 : 1) : 0);
+    for (let v = sy.lo; v <= sy.hi + 1e-9; v += sy.st) out += txt(plotX - 8, yOf(v) + S.fsAxis * 0.36, ggNum(v, cfg.yDez ?? dez(sy.st)), { anchor: 'end', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+    for (let v = sx.lo; v <= sx.hi + 1e-9; v += sx.st) out += txt(xOf(v), G.xLabelY, ggNum(v, cfg.xDez ?? dez(sx.st)), { anchor: 'middle', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+
+    const eintraege = [...serien.filter(s => s.label).map(s => ({ ...s, text: s.label })), ...marken.filter(m => m.legende).map(m => ({ farbe: m.farbe || T.text.strong, text: m.legende, marke: true }))];
+    if (eintraege.length) {
+      const lw = 12 + 26 + 9 + Math.max(...eintraege.map(e => ggEstW(e.text, S.fsLeg))) + 14;
+      const lh = 8 + eintraege.length * 18 + 2;
+      const lx = cfg.legendeLinks ? plotX + 12 : plotX + plotW - 12 - lw, ly = plotY + 10;
+      out += `<rect x="${gR(lx)}" y="${ly}" width="${gR(lw)}" height="${gR(lh)}" fill="${T.bg}" fill-opacity="0.92" stroke="${T.line}" stroke-width="1"/>`;
+      eintraege.forEach((e, i) => {
+        const ey = ly + 8 + i * 18 + 5.5;
+        out += e.art === 'punkte' ? `<circle cx="${gR(lx + 25)}" cy="${gR(ey)}" r="3.5" fill="${e.farbe}"/>`
+          : e.marke ? `<circle cx="${gR(lx + 25)}" cy="${gR(ey)}" r="4.5" fill="${T.bg}" stroke="${e.farbe}" stroke-width="2"/>`
+            : `<line x1="${gR(lx + 12)}" y1="${gR(ey)}" x2="${gR(lx + 38)}" y2="${gR(ey)}" stroke="${e.farbe}" stroke-width="${e.breite || 2}"${e.strich ? ` stroke-dasharray="${e.strich}"` : ''}/>`;
+        out += txt(lx + 47, ey + S.fsLeg * 0.36, e.text, { size: S.fsLeg });
+      });
+    }
+  }
+  out += `<rect x="${gR(plotX) + 0.5}" y="${plotY}.5" width="${gR(plotW) - 1}" height="${plotH - 1}" fill="none" stroke="${T.rule}" stroke-width="1"/>
+          <line x1="${gR(plotX)}" y1="${gR(plotB) - 1}" x2="${gR(plotX + plotW)}" y2="${gR(plotB) - 1}" stroke="${T.text.strong}" stroke-width="2"/>`;
+  out += ggAxisTitles(cfg, T, G);
+  out += ggSheetKpiFooter(cfg, T, G);
+  return ggFinishSvg(out, W, G.height);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3d3) RENDERER — „Gantt": Zeitbalken je Maßnahme über einer Jahresachse
+ *
+ * cfg.phasen = [{ name, von, bis, farbe }] (ganze Jahre, bis einschließlich)
+ * ═══════════════════════════════════════════════════════════════════════ */
+export function ggRenderGantt(cfg, T = GG_THEME) {
+  const phasen = (cfg.phasen || []).filter(p => Number.isFinite(p.von) && Number.isFinite(p.bis));
+  const G = ggSheetGeometry(T, { ...cfg, kennzahlen: false });
+  const S = G.S, W = G.W, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  let out = ggSheetHeader(cfg, T, { ...G });
+  const labelW = Math.min(360, Math.max(180, ...phasen.map(p => ggEstW(p.name, S.fsAxis + 1) + 24)));
+  const x0 = S.padX + labelW, x1 = W - S.padX;
+  out += `<rect x="${gR(x0)}" y="${plotY}" width="${gR(x1 - x0)}" height="${plotH}" fill="${T.neutral.cardBg}"/>`;
+  if (!phasen.length) {
+    out += txt((x0 + x1) / 2, plotY + plotH / 2, cfg.leer || 'Keine Maßnahmen', { anchor: 'middle', size: 13, fill: T.text.faint });
+  } else {
+    const jMin = Math.min(...phasen.map(p => p.von)), jMax = Math.max(...phasen.map(p => p.bis)) + 1;
+    const xOf = j => x0 + ((j - jMin) / (jMax - jMin)) * (x1 - x0);
+    const schritt = jMax - jMin > 14 ? 2 : 1;
+    let gitter = '';
+    for (let j = jMin; j <= jMax; j++) gitter += `M${Math.round(xOf(j)) + 0.5} ${plotY}V${gR(plotB)}`;
+    out += `<path d="${gitter}" fill="none" stroke="${T.line}" stroke-width="1"/>`;
+    for (let j = jMin; j < jMax; j += schritt) out += txt((xOf(j) + xOf(j + 1)) / 2, G.xLabelY, String(j), { anchor: 'middle', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+    const zeileH = plotH / phasen.length;
+    phasen.forEach((p, i) => {
+      const yM = plotY + zeileH * (i + 0.5), h = Math.min(30, zeileH * 0.56);
+      out += txt(x0 - 12, yM + S.fsAxis * 0.36, p.name, { anchor: 'end', size: S.fsAxis + 1, weight: 600 });
+      out += `<rect x="${gR(xOf(p.von) + 2)}" y="${gR(yM - h / 2)}" width="${gR(xOf(p.bis + 1) - xOf(p.von) - 4)}" height="${gR(h)}" fill="${p.farbe || T.energy.waerme}" rx="3"/>`;
+      if (i) out += `<line x1="${S.padX}" y1="${gR(plotY + zeileH * i) + 0.5}" x2="${x1}" y2="${gR(plotY + zeileH * i) + 0.5}" stroke="${T.line}" stroke-width="1" stroke-dasharray="2 4"/>`;
+    });
+  }
+  out += `<rect x="${gR(x0) + 0.5}" y="${plotY}.5" width="${gR(x1 - x0) - 1}" height="${plotH - 1}" fill="none" stroke="${T.rule}" stroke-width="1"/>`;
+  out += ggAxisTitles({ ...cfg, achseY: '' }, T, G);
+  return ggFinishSvg(out, W, G.height);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  * 3e) RENDERER — „Tabelle": mehrspaltige Datentabelle, selber Blatt-Stil
  *
  * Verallgemeinerung von ggRenderKennzahlen (dort fest auf Kennzahl/Wert/
@@ -1417,6 +1541,64 @@ function ggTwwBestand() {
   return baTwwAuswertung((w.gebaeude || []).filter(g => !(typeof w.isExcluded === 'function' && w.isExcluded(g.id)) && !(parseInt(g.baujahr, 10) >= 2026)));
 }
 
+/** Wärmelastgang für Abbildungen: Import bevorzugt, sonst berechneter Basis-Lastgang. */
+function ggLastgangWaerme() {
+  const gl = ggLies(() => window.captureWaermeGrundlagen?.(), null);
+  if (gl?.lastgangKw?.length >= 8760) return { daten: gl.lastgangKw, quelle: 'Import' };
+  const b = window._basisLastgangKw || window.systemState?.lastgangKw;
+  return b?.length >= 8760 ? { daten: b, quelle: 'berechnet' } : { daten: null, quelle: '' };
+}
+/** Verbrauchsaufteilung auf die Gebäude — nur mit Messung (importierter Lastgang oder Verbrauchsdaten der Bestandsanlage). */
+function ggVerbrauchsaufteilung() {
+  const w = window;
+  const herkunft = ggLies(() => ggWaermeHerkunft().lastgang, '');
+  const ba = ggLies(() => w.getBestandsanlage?.(), {}) || {};
+  const vb = ggLies(() => ggVerbrauch(), null);
+  let messungMwh = NaN, quelle = '', messpunkt = ba.messpunkt || 'einspeisung';
+  if (String(herkunft).startsWith('import')) {
+    const lg = ggLastgangWaerme();
+    messungMwh = lg.daten ? Array.prototype.reduce.call(lg.daten, (a, b) => a + (b || 0), 0) / 1000 : NaN;
+    quelle = `Lastgang ${ggLies(() => w.getWitterung?.()?.messjahr, '') || ''}`.trim();
+    if (messpunkt === 'brennstoff') messpunkt = 'einspeisung'; // ein Wärmelastgang ist immer Nutzwärme ab Erzeugung
+  } else if (vb?.referenzJahr) {
+    const j = vb.jahre?.find(x => x.jahr === vb.referenzJahr);
+    messungMwh = Number(j?.summe);
+    quelle = `Verbrauchsdaten ${vb.referenzJahr}`;
+  }
+  if (!(messungMwh > 0)) return null;
+  const a = ggGebaeudeAuswertung();
+  const r = baVerbrauchsaufteilung({
+    messungMwh, messpunkt, kesselEtaPct: ba.kesselEtaPct, netzverlustMwh: w.systemState?.netzverlustMwh,
+    gebaeude: a.ist.zeilen.map(z => ({ name: z.name, modellMwh: z.bedarfMwh, bgfM2: z.flaecheM2, referenzSpez: z.referenzSpez })),
+  });
+  return r ? { ...r, quelle } : null;
+}
+/** Eingaben der Luft-WP-Stundensimulation aus Systemzustand und Panel. */
+function ggLwwpEingaben() {
+  const ss = window.systemState || {};
+  return { lastgangKw: ss.lastgangKw, tempH: ss.tempH, vlH: ss.vlH, guete: ggFeldZahl('lwwp-guetegrad') || 0.42, minCop: ggFeldZahl('lwwp-min-cop') || 0 };
+}
+let ggSweepCache = null;
+function ggLwwpSweep() {
+  const e = ggLwwpEingaben();
+  if (!e.lastgangKw || !e.tempH) return [];
+  const key = [e.lastgangKw, e.tempH, e.vlH, e.guete, e.minCop];
+  if (ggSweepCache && ggSweepCache.key.every((x, i) => x === key[i])) return ggSweepCache.r;
+  const r = abLwwpSweep(e);
+  ggSweepCache = { key, r };
+  return r;
+}
+/** HT/NT-Gegenüberstellung wie im Text fazit-nt-text, oder null. */
+function ggNtVergleich() {
+  const w = window, d = ggVariantenDaten();
+  const en = ggLies(() => w._dispatchEnergy, {}) || {};
+  const wp = ['lwwp', 'geo', 'fg'].reduce((a, k) => ({ w: a.w + (en[k]?.waermeMwh || 0), e: a.e + (en[k]?.elMwh || 0) }), { w: 0, e: 0 });
+  const vl15 = ggFeldZahl('gl-vl15'), vl5 = ggFeldZahl('gl-vl5'), vlHt = ggFeldZahl('netz-vl');
+  const vlNt = Number.isFinite(vl15) && Number.isFinite(vl5) ? (vl15 + vl5) / 2 : NaN;
+  if (!(wp.w > 0) || !Number.isFinite(vlHt) || !Number.isFinite(vlNt) || !(d.preise.strom > 0)) return null;
+  return faNtVergleich({ waermeMwh: wp.w, jazNt: wp.e > 0 ? wp.w / wp.e : undefined, vlHtC: vlHt, vlNtC: vlNt, strompreisCt: d.preise.strom, kosten: ggNtKosten(), efStrom: d.ef.strom, efStromLz: d.ef.stromLz });
+}
+
 /** Bauliche Entwicklung im Format der Wärme-Textbausteine (aus ggGebaeudeAuswertung). */
 function ggBauProjekt() {
   const a = ggGebaeudeAuswertung();
@@ -1510,7 +1692,7 @@ export function ggWaermeDaten() {
     return {
       name: id === 'base' ? 'Basisvariante' : (r.label || id), aktiv, erzeuger: detail,
       investEur: r.investGes || undefined, jahreskostenEur: r.jkGes || undefined, wgkCt: r.wgkNum || undefined,
-      co2T: r.co2GesH, co2LzT: r.co2GesLZ, eeAnteilPct: r.eeAnteil ?? undefined, netzverlustPct: r.netzverlustePct,
+      co2T: r.co2GesH, co2LzT: r.co2GesLZ, eeAnteilPct: r.eeAnteil ?? undefined, netzverlustPct: r.netzverlustePct, wirtKomp: r.wirtKomp || null,
     };
   });
 
@@ -2585,7 +2767,7 @@ const GG_FIGUREN = [
     id: 'potenzial-lwwp-text', istText: true, reihe: 40, kapitel: '2.3.1 Technologien',
     titel: 'Gutachtentext: Luft-Wasser-Wärmepumpe', datei: 'potenzial-lwwp-text',
     hinweis: 'Berechnungsgrundlagen, Heizkurve aus den Wärme-Grundlagen, bauliche Hinweise und Ergebnis der Einsatzplanung (Leistung, Deckung, JAZ, Anteile, Platzbedarf).',
-    render: () => ggWaermeTextBlatt(ptTextLwwp(ggPotenzialDaten().lwwp)), config: {},
+    render: () => ggWaermeTextBlatt(ptTextLwwp({ ...ggPotenzialDaten().lwwp, sweep: ggLwwpSweep() })), config: {},
   },
   {
     id: 'potenzial-lwwp-vornach', reihe: 41, kapitel: '2.3.1 Technologien',
@@ -2703,8 +2885,8 @@ const GG_FIGUREN = [
   {
     id: 'va-pv-text', istText: true, reihe: 30, kapitel: '2.5 Wirtschaftlichkeit und Investitionskosten',
     titel: 'Gutachtentext: Wirtschaftlichkeit mit PV-Eigenstrom', datei: 'va-pv-text',
-    hinweis: 'Standardtext; die Werte je Variante mit/ohne PV-Eigenstrom sind noch als Platzhalter einzutragen.',
-    render: () => ggWaermeTextBlatt(vaTextPv()), config: {},
+    hinweis: 'Wärmegestehungskosten je Variante mit und ohne PV-Eigenstrom, größte und geringste Entlastung, Rangfolge. Ohne PV-Anlage Platzhalter.',
+    render: () => ggWaermeTextBlatt(vaTextPv({ vergleich: abPvVergleich(ggVariantenDaten().varianten) })), config: {},
   },
   {
     id: 'va-sensitivitaet-text', istText: true, reihe: 40, kapitel: '2.5 Wirtschaftlichkeit und Investitionskosten',
@@ -2933,6 +3115,393 @@ const GG_FIGUREN = [
     hinweis: 'Kurzfazit aus Bedarf, Konzept, EE-Anteil, Emissionen, Kosten und offenem Handlungsbedarf.',
     render: () => ggWaermeTextBlatt(wtFazit(ggWaermeDaten())),
     config: {},
+  },
+
+  // ── Abbildungen Wärme (Daten: lib/gutachten-abbildungen.js) ──────────────
+  {
+    id: 'gebaeude-spez-vergleich', autoSync: true, reihe: 35, kapitel: '1.3.1 Gebäudebestand (Ist)',
+    titel: 'Spezifischer Wärmebedarf je Gebäude mit Vergleichswert', datei: 'gebaeude-spez-vergleich',
+    hinweis: 'Die 15 Bestandsgebäude mit dem höchsten Wärmebedarf: spezifischer Bedarf je m² BGF neben dem Vergleichswert nach der Bekanntmachung vom 15.04.2021. Liegt eine Verbrauchsaufteilung vor, stehen die aus der Messung verteilten Werte daneben.',
+    render: cfg => ggRenderBalken(cfg),
+    config: ggGebVorlage('Spezifischer Wärmebedarf je Gebäude', 'kWh/(m²·a) bezogen auf die BGF', 'Gebäude', 'Keine Gebäude mit Fläche und Bedarf.'),
+    ausProjekt(cfg) {
+      const a = ggGebaeudeAuswertung();
+      ggGebKopf(cfg);
+      const z = a.ist.zeilen.filter(g => Number.isFinite(g.spezKwhM2)).slice(0, 15);
+      if (!z.length) { ggGebLeer(cfg); return '⚠ Keine Gebäude mit Fläche und Bedarf.'; }
+      const auf = ggVerbrauchsaufteilung();
+      const aufMap = new Map((auf?.zeilen || []).map(x => [x.name, x.spez]));
+      cfg.kategorien = z.map(g => (g.name.length > 14 ? g.name.slice(0, 13) + '…' : g.name));
+      cfg.gruppen = [
+        { label: '', segmente: [{ label: 'Gebäudewert (Fläche × Typ)', farbe: GG_SEG_FARBEN.unsaniert, werte: z.map(g => g.spezKwhM2) }] },
+        ...(auf ? [{ label: '', segmente: [{ label: 'aus Messung verteilt', farbe: '#E0A126', werte: z.map(g => aufMap.get(g.name) || 0) }] }] : []),
+        { label: '', segmente: [{ label: 'Vergleichswert (Bekanntmachung 2021)', farbe: '#8A8F8A', werte: z.map(g => (Number.isFinite(g.referenzSpez) ? g.referenzSpez : 0)) }] },
+      ];
+      cfg.punkte = null; cfg.summenLabel = false;
+      const ueber = z.filter(g => Number.isFinite(g.referenzSpez) && g.spezKwhM2 > g.referenzSpez).length;
+      cfg.kpiLinks = [{ wert: `${ggNum(a.ist.spezKwhM2)} kWh/m²`, label: 'Mittel Bestand (BGF)' }];
+      cfg.kpiRechts = [{ wert: `${ueber} von ${z.length}`, label: 'über dem Vergleichswert', highlight: ueber > 0 }];
+      return `✓ ${z.length} Gebäude.`;
+    },
+  },
+  {
+    id: 'gebaeude-neubau-tabelle', autoSync: true, reihe: 20, kapitel: '1.3.2 Bauliche Veränderungen',
+    titel: 'Geplante Neubauten', datei: 'gebaeude-neubau-tabelle',
+    hinweis: 'Je Neubau: Jahr, Nutzung, BGF, Wärmebedarf, Heizlast und spezifische Kennwerte.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: { eyebrow: 'Hochbau', titel: 'Geplante Neubauten', leer: 'Keine Neubauten hinterlegt.', spalten: [{ label: 'Gebäude', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
+    ausProjekt(cfg) {
+      const n = ggGebaeudeAuswertung().ereignisse.filter(e => e.art === 'neubau');
+      cfg.spalten = [{ label: 'Gebäude', weight: 2.2, align: 'left', mono: false }, { label: 'Jahr', weight: 0.7 }, { label: 'Nutzung', weight: 1.4, align: 'left', mono: false },
+        { label: 'BGF', weight: 1 }, { label: 'Wärmebedarf', weight: 1.1 }, { label: 'Heizlast', weight: 1 }, { label: 'spez. Bedarf', weight: 1.1 }, { label: 'spez. Heizlast', weight: 1.1 }];
+      if (!n.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Neubauten hinterlegt.'; }
+      const sp = (v, fl, e) => (fl > 0 ? `${ggNum((v * 1000) / fl)} ${e}` : '—');
+      cfg.zeilen = n.slice(0, 30).map(e => ({ werte: [e.name, String(e.jahr), e.nutzung || '—', e.flaecheM2 > 0 ? ggNum(e.flaecheM2) + ' m²' : '—', ggNum(e.deltaMwh) + ' MWh', ggNum(e.deltaKw) + ' kW', sp(e.deltaMwh, e.flaecheM2, 'kWh/m²'), sp(e.deltaKw, e.flaecheM2, 'W/m²')] }));
+      const S = k => n.reduce((x, e) => x + (e[k] || 0), 0);
+      cfg.zeilen.push({ highlight: true, werte: [`Summe ${n.length} Neubauten`, '', '', ggNum(S('flaecheM2')) + ' m²', ggNum(S('deltaMwh')) + ' MWh', ggNum(S('deltaKw')) + ' kW', sp(S('deltaMwh'), S('flaecheM2'), 'kWh/m²'), sp(S('deltaKw'), S('flaecheM2'), 'W/m²')] });
+      cfg.fussnote = 'Kennwerte aus Gebäudetyp und Fläche · BGF = Grundfläche × Geschosse';
+      return `✓ ${n.length} Neubauten.`;
+    },
+  },
+  {
+    id: 'gebaeude-bedarf-wasserfall', autoSync: true, reihe: 5, kapitel: '1.3.3 Entwicklung von Wärmebedarf und Heizlast',
+    titel: 'Wärmebedarf Ist → Soll', datei: 'gebaeude-bedarf-wasserfall',
+    hinweis: 'Wasserfall vom Wärmebedarf des Ist-Jahres über Abriss, Sanierung und Neubau zum Soll-Zustand.',
+    render: cfg => ggRenderWasserfall(cfg),
+    config: { eyebrow: 'Hochbau', titel: 'Wärmebedarf Ist → Soll', ort: '', meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' }, achseY: 'Wärmebedarf in MWh/a', achseX: '', leer: 'Keine baulichen Veränderungen hinterlegt.', balken: [], grenzen: [], kpiLinks: [], kpiRechts: [] },
+    ausProjekt(cfg) {
+      const a = ggGebaeudeAuswertung();
+      ggGebKopf(cfg);
+      cfg.balken = abWasserfallBedarf(a);
+      if (!cfg.balken.length) { cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Keine baulichen Veränderungen hinterlegt.'; }
+      const j0 = a.jahre[0], j1 = a.jahre.at(-1), d = j1.bedarfMwh - j0.bedarfMwh;
+      cfg.kpiLinks = [{ wert: `${ggNum(j0.bedarfMwh)} MWh`, label: `Wärmebedarf ${j0.jahr}` }, { wert: `${ggNum(j1.bedarfMwh)} MWh`, label: `Wärmebedarf ${j1.jahr}` }];
+      cfg.kpiRechts = [{ wert: `${d >= 0 ? '+' : '−'}${ggNum(Math.abs(d))} MWh`, prozent: j0.bedarfMwh > 0 ? `${d >= 0 ? '+' : '−'}${ggNum(Math.abs(d / j0.bedarfMwh) * 100)} %` : undefined, label: 'Veränderung', highlight: true }];
+      return `✓ ${cfg.balken.length} Stufen.`;
+    },
+  },
+  {
+    id: 'lastgang-monate', autoSync: true, reihe: 2, kapitel: '2.1 Ist-Zustand Wärme',
+    titel: 'Wärmeverbrauch je Monat', datei: 'lastgang-monate',
+    hinweis: 'Monatssummen des Wärmelastgangs (Messung bevorzugt), Sommermonate als Grundlast erkennbar.',
+    render: cfg => ggRenderBalken(cfg),
+    config: { ...ggGebVorlage('Wärmeverbrauch je Monat', 'Wärme in MWh', 'Monat', 'Kein Wärmelastgang vorhanden.'), eyebrow: 'Wärmetechnisches Gutachten' },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      const l = ggLastgangWaerme();
+      const m = abMonatsMwh(l.daten);
+      if (!m.length) { ggGebLeer(cfg); return '⚠ Kein Wärmelastgang vorhanden.'; }
+      cfg.kategorien = GG_MONATE.slice();
+      cfg.gruppen = [{ label: '', segmente: [{ label: l.quelle === 'Import' ? 'Messung' : 'berechnet', farbe: GG_THEME.energy.waerme, werte: m }] }];
+      cfg.punkte = null; cfg.summenLabel = true;
+      const sum = m.reduce((a, b) => a + b, 0), sommer = (m[6] + m[7]) / 2;
+      cfg.kpiLinks = [{ wert: `${ggNum(sum)} MWh`, label: 'Jahressumme' }];
+      cfg.kpiRechts = [{ wert: `${ggNum(sommer)} MWh`, label: 'Ø Juli/August (Grundlast)', prozent: `${ggNum((sommer * 12 / sum) * 100)} %`, highlight: true }];
+      return `✓ 12 Monate (${l.quelle}).`;
+    },
+  },
+  {
+    id: 'lastgang-sommerwoche', autoSync: true, reihe: 21, kapitel: '2.2.1 Dimensionierung WEA',
+    titel: 'Wärmelastgang einer Sommerwoche', datei: 'lastgang-sommerwoche',
+    hinweis: 'Erste volle Woche im August: Tagesgang von Trinkwarmwasser und Netzverlusten ohne Raumwärme.',
+    render: cfg => ggRenderGanglinie(cfg),
+    config: { eyebrow: 'Wärmetechnisches Gutachten', titel: 'Wärmelastgang einer Sommerwoche', ort: '', meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' }, achseY: 'Leistung in kW', achseX: 'Stunden der Woche', leer: 'Kein Wärmelastgang vorhanden.', serien: [], grundlastKw: 0, kpiLinks: [], kpiRechts: [] },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      const l = ggLastgangWaerme();
+      const w = abWoche(l.daten, ggLies(() => window.getWitterung?.()?.messjahr, null) || window.globalYear);
+      if (!w) { cfg.serien = []; cfg.daten = null; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Kein Wärmelastgang vorhanden.'; }
+      cfg.serien = [{ daten: w.daten, farbe: GG_THEME.energy.waerme, breite: 2, label: `Wärmeleistung ab ${w.start.split('-').reverse().join('.')}`, fill: true }];
+      cfg.xTicks = w.ticks; cfg.grundlastKw = 0;
+      cfg.kpiLinks = [{ wert: `${ggNum(w.mittelKw)} kW`, label: 'mittlere Leistung' }];
+      cfg.kpiRechts = [{ wert: `${ggNum(w.minKw)} – ${ggNum(w.maxKw)} kW`, label: 'Spanne', highlight: true }];
+      return `✓ Woche ab ${w.start}.`;
+    },
+  },
+  {
+    id: 'lastgang-waerme-jdl', autoSync: true, reihe: 30, kapitel: '2.2.1 Dimensionierung WEA',
+    titel: 'Jahresdauerlinie Wärme', datei: 'jahresdauerlinie-waerme',
+    hinweis: 'Sortierter Wärmelastgang mit Grenzlinien: installierte Bestandsleistung, Leistung für 65 % EE-Deckung.',
+    render: cfg => ggRenderGanglinie(cfg),
+    config: { eyebrow: 'Wärmetechnisches Gutachten', titel: 'Jahresdauerlinie Wärme', ort: '', meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' }, achseY: 'Leistung in kW', achseX: 'Stunden im Jahr, absteigend sortiert', reihe: 'Wärmeleistung', grundlastLabel: '', leer: 'Kein Wärmelastgang vorhanden.', daten: null, grundlastKw: 0, kpiLinks: [], kpiRechts: [] },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      cfg.kurveFarbe = GG_THEME.energy.waerme;
+      const jdl = window.systemState?.jahresdauerlinie;
+      if (!jdl?.length) { cfg.daten = null; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Keine Jahresdauerlinie berechnet.'; }
+      cfg.daten = Array.from(jdl);
+      const p65 = wtDeckungsleistung(jdl, 0.65), best = ggBestandsanlage().thermKw;
+      cfg.grenzen = [
+        ...(best > 0 ? [{ wert: best, label: `installierte Leistung Bestand ${ggNum(best)} kW`, farbe: '#8A8F8A' }] : []),
+        ...(Number.isFinite(p65) ? [{ wert: p65, label: `65 % der Jahreswärme: ${ggNum(p65)} kW`, farbe: GG_THEME.accents.gruen, strich: '6 4' }] : []),
+      ];
+      const ges = cfg.daten.reduce((a, b) => a + b, 0) / 1000, pMax = cfg.daten[0];
+      cfg.kpiLinks = [{ wert: `${ggNum(ges)} MWh`, label: 'Jahreswärme' }, { wert: `${ggNum(ges * 1000 / pMax)} h`, label: 'Vollbenutzungsstunden' }];
+      cfg.kpiRechts = [{ wert: `${ggNum(pMax)} kW`, label: 'Spitzenlast', highlight: true }];
+      return `✓ ${cfg.daten.length} Stunden.`;
+    },
+  },
+  {
+    id: 'lastgang-korrelation', autoSync: true, reihe: 41, kapitel: '2.2.1 Dimensionierung WEA',
+    titel: 'Wärmeleistung und Außentemperatur', datei: 'lastgang-korrelation',
+    hinweis: 'Tagesmittel der Leistung über der Tagesmitteltemperatur des Messjahres (Witterung laden), Regressionsgerade der Heiztage und die Extrapolation der Spitzenlast über 22 °C Innentemperatur auf die Norm-Außentemperatur.',
+    render: cfg => ggRenderXY(cfg),
+    config: { eyebrow: 'Wärmetechnisches Gutachten', titel: 'Wärmeleistung und Außentemperatur', ort: '', meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' }, achseY: 'Leistung in kW', achseX: 'Außentemperatur (Tagesmittel) in °C', leer: 'Gemessener Lastgang und Tagestemperaturen nötig (Witterung laden).', serien: [], marken: [], kpiLinks: [], kpiRechts: [] },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      const w = window, wb = ggLies(() => w.getWitterung?.(), {}) || {};
+      const tageT = wb.ergebnis?.messjahr === wb.messjahr ? wb.ergebnis?.tageT : null;
+      const norm = parseFloat(ggLies(() => w.captureWaermeGrundlagen?.()?.normAussentemp, NaN));
+      const k = abKorrelation(w.systemState?.lastgangKw, tageT, norm);
+      if (!k) { cfg.serien = []; cfg.marken = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Tagestemperaturen des Messjahres fehlen (🔥 Wärme-Grundlagen → Witterung laden).'; }
+      cfg.serien = [
+        { label: 'Tagesmittel', farbe: GG_THEME.energy.waerme, art: 'punkte', punkte: k.punkte },
+        ...(k.regLinie ? [{ label: 'Regression Heiztage', farbe: '#4F7FA8', punkte: k.regLinie, strich: '6 4' }] : []),
+        ...(k.spitzeLinie ? [{ label: `Extrapolation Spitzenlast (${LG_INNEN} °C)`, farbe: GG_THEME.text.strong, punkte: k.spitzeLinie, breite: 2.5 }] : []),
+      ];
+      const s = k.spitze;
+      cfg.marken = [
+        ...(s && Number.isFinite(s.tSpitze) ? [{ x: s.tSpitze, y: s.pMax, label: `Spitze ${ggNum(s.pMax)} kW`, farbe: GG_THEME.energy.waerme }] : []),
+        ...(s && Number.isFinite(s.pNorm) && norm < s.tSpitze ? [{ x: norm, y: s.pNorm, label: `${ggNum(s.pNorm)} kW bei ${ggNum(norm, 1)} °C`, farbe: GG_THEME.text.strong }] : []),
+      ];
+      cfg.kpiLinks = [{ wert: Number.isFinite(k.bestimmtheit) ? ggNum(k.bestimmtheit, 2) : '—', label: 'Bestimmtheitsmaß R² (Heiztage)' }];
+      cfg.kpiRechts = [{ wert: Number.isFinite(s?.pNorm) ? `${ggNum(s.pNorm)} kW` : '—', label: 'Auslegungsheizlast', highlight: true }];
+      return `✓ ${k.punkte.length} Tage.`;
+    },
+  },
+  {
+    id: 'lastgang-deckungskurve', autoSync: true, reihe: 51, kapitel: '2.2.1 Dimensionierung WEA',
+    titel: 'Erzeugerleistung und Deckungsanteil', datei: 'lastgang-deckungskurve',
+    hinweis: 'Aus der Jahresdauerlinie: Anteil der Jahreswärme, den eine Grundlastleistung abdeckt; Marken bei 65 % und 90 %.',
+    render: cfg => ggRenderXY(cfg),
+    config: { eyebrow: 'Wärmetechnisches Gutachten', titel: 'Erzeugerleistung und Deckungsanteil', ort: '', meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' }, achseY: 'Anteil an der Jahreswärme in %', achseX: 'installierte Grundlastleistung in kW', leer: 'Keine Jahresdauerlinie berechnet.', serien: [], marken: [], yMax: 100, kpiLinks: [], kpiRechts: [] },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      const jdl = window.systemState?.jahresdauerlinie;
+      const k = abDeckungsKurve(jdl);
+      if (!k.length) { cfg.serien = []; cfg.marken = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Keine Jahresdauerlinie berechnet.'; }
+      const pMax = k.at(-1).x;
+      cfg.serien = [{ label: 'Deckungsanteil', farbe: GG_THEME.energy.waerme, punkte: k, breite: 2.5 }];
+      cfg.legendeLinks = false;
+      const m = [65, 90].map(q => ({ q, kw: wtDeckungsleistung(jdl, q / 100) })).filter(x => Number.isFinite(x.kw));
+      cfg.marken = m.map(x => ({ x: x.kw, y: x.q, label: `${x.q} %: ${ggNum(x.kw)} kW (${ggNum((x.kw / pMax) * 100)} % der Spitze)`, farbe: GG_THEME.text.strong }));
+      cfg.legendeLinks = true;
+      cfg.kpiLinks = m.map(x => ({ wert: `${ggNum(x.kw)} kW`, label: `für ${x.q} % der Jahreswärme` }));
+      cfg.kpiRechts = [{ wert: `${ggNum(pMax)} kW`, label: 'Spitzenlast (100 %)', highlight: true }];
+      return '✓ Deckungskurve berechnet.';
+    },
+  },
+  {
+    id: 'verbrauch-aufteilung-text', istText: true, reihe: 50, kapitel: '2.1.7 Jahresvergleich der Daten',
+    titel: 'Gutachtentext: Aufteilung des Verbrauchs auf die Gebäude', datei: 'verbrauch-aufteilung-text',
+    hinweis: 'Nur mit Messung: gemessener Gesamtverbrauch abzüglich Kessel- (Brennstoffzähler) und Netzverlusten, verteilt im Verhältnis der Gebäudewerte. Messpunkt unter 🔥 Bestandsanlage.',
+    render: () => { const r = ggVerbrauchsaufteilung(); return ggWaermeTextBlatt(vbTextAufteilung(r, { quelle: r?.quelle })); }, config: {},
+  },
+  {
+    id: 'verbrauch-aufteilung-tabelle', autoSync: true, reihe: 51, kapitel: '2.1.7 Jahresvergleich der Daten',
+    titel: 'Aufteilung des gemessenen Verbrauchs auf die Gebäude', datei: 'verbrauch-aufteilung-tabelle',
+    hinweis: 'Gebäudewert, verteilter Verbrauch, spezifischer Wert und Vergleichswert; Bilanz Messung → Verluste → Nutzwärme in der Fußnote.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: { eyebrow: 'Wärmetechnisches Gutachten', titel: 'Aufteilung des gemessenen Verbrauchs auf die Gebäude', leer: 'Keine Messung oder keine Gebäudewerte.', spalten: [{ label: 'Gebäude', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
+    ausProjekt(cfg) {
+      const r = ggVerbrauchsaufteilung();
+      cfg.spalten = [{ label: 'Gebäude', weight: 2.4, align: 'left', mono: false }, { label: 'BGF', weight: 1 }, { label: 'Gebäudewert', weight: 1.1 }, { label: 'verteilt', weight: 1.1 }, { label: 'spez. verteilt', weight: 1.2 }, { label: 'Vergleichswert', weight: 1.2 }];
+      if (!r) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Messung (Lastgang oder Verbrauchsdaten) oder keine Gebäudewerte.'; }
+      const Z = 25, kw = v => (Number.isFinite(v) ? ggNum(v) + ' kWh/m²' : '—');
+      cfg.zeilen = r.zeilen.slice(0, Z).map(z => ({ werte: [z.name, z.bgfM2 > 0 ? ggNum(z.bgfM2) + ' m²' : '—', ggNum(z.modellMwh) + ' MWh', ggNum(z.mwh) + ' MWh', kw(z.spez), kw(z.referenzSpez)] }));
+      const rest = r.zeilen.slice(Z);
+      if (rest.length) cfg.zeilen.push({ werte: [`weitere ${rest.length} Gebäude`, '', ggNum(rest.reduce((a, z) => a + z.modellMwh, 0)) + ' MWh', ggNum(rest.reduce((a, z) => a + z.mwh, 0)) + ' MWh', '', ''] });
+      cfg.zeilen.push({ highlight: true, werte: [`Summe ${r.zeilen.length} Gebäude`, '', ggNum(r.modellMwh) + ' MWh', ggNum(r.nutzMwh) + ' MWh', `Faktor ${ggNum(r.faktor, 2)}`, ''] });
+      cfg.fussnote = `Messung ${ggNum(r.messungMwh)} MWh (${r.quelle})` + (r.kesselverlustMwh > 0 ? ` − Kesselverluste ${ggNum(r.kesselverlustMwh)} MWh (η ${ggNum(r.eta * 100)} %)` : '')
+        + (r.netzverlustMwh > 0 ? ` − Netzverluste ${ggNum(r.netzverlustMwh)} MWh` : '') + ` = Nutzwärme ${ggNum(r.nutzMwh)} MWh · Verteilung im Verhältnis der Gebäudewerte`;
+      return `✓ ${r.zeilen.length} Gebäude, Faktor ${ggNum(r.faktor, 2)}.`;
+    },
+  },
+  {
+    id: 'potenzial-lwwp-sweep', autoSync: true, reihe: 42, kapitel: '2.3.1 Technologien',
+    titel: 'Luft-Wasser-Wärmepumpe: Vergleich der Deckungsgrade', datei: 'potenzial-lwwp-sweep',
+    hinweis: 'Stundensimulation mit Außentemperatur und Heizkurve für 50, 65 und 80 % Deckung: erforderliche Nennleistung, Leistung in der kältesten Stunde, JAZ, Umweltwärme, Strom und verbleibende Spitzenlast.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: { eyebrow: 'Potenzialanalyse', titel: 'Luft-Wasser-Wärmepumpe: Vergleich der Deckungsgrade', leer: 'Lastgang mit Außentemperatur nötig (Grundlage berechnen).', spalten: [{ label: 'Kennwert', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
+    ausProjekt(cfg) {
+      const r = ggLwwpSweep().filter(x => x.erreichbar);
+      if (!r.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Lastgang mit Außentemperatur nötig.'; }
+      cfg.spalten = [{ label: 'Kennwert', weight: 2.2, align: 'left', mono: false }, ...r.map(x => ({ label: `${x.ziel} % Deckung`, weight: 1.2 }))];
+      const z = (l, f) => ({ werte: [l, ...r.map(f)] });
+      cfg.zeilen = [
+        z('Nennleistung (A2/W35)', x => `${ggNum(x.nennKw)} kW`), z(`Leistung in der kältesten Stunde (${ggNum(r[0].tKaltC, 1)} °C)`, x => `${ggNum(x.leistungKaltKw)} kW`),
+        z('Jahresarbeitszahl', x => ggNum(x.jaz, 2)), z('Wärme aus Wärmepumpe', x => `${ggNum(x.waermeMwh)} MWh`), z('davon Umweltwärme', x => `${ggNum(x.umweltMwh)} MWh`),
+        z('Strombedarf', x => `${ggNum(x.stromMwh)} MWh`), z('Spitzenlasterzeuger Wärme', x => `${ggNum(x.spitzeMwh)} MWh`), { highlight: true, werte: ['Spitzenlasterzeuger Leistung', ...r.map(x => `${ggNum(x.restMaxKw)} kW`)] },
+      ];
+      cfg.fussnote = 'COP = Gütegrad × T_VL/(T_VL − T_Luft), höchstens 8; Leistung = Nennleistung × COP/COP(A2/W35); Vorlauf aus der Heizkurve der Wärme-Grundlagen';
+      return `✓ ${r.length} Deckungsgrade.`;
+    },
+  },
+  {
+    id: 'potenzial-lwwp-jdl', autoSync: true, reihe: 43, kapitel: '2.3.1 Technologien',
+    titel: 'Luft-Wasser-Wärmepumpe: Grund- und Spitzenlast', datei: 'potenzial-lwwp-jdl',
+    hinweis: 'Jahresdauerlinie des Wärmebedarfs mit dem Anteil der Luft-WP (aktuelle Leistung aus dem Luft-WP-Panel) und ihrer elektrischen Leistung, nach Wärmebedarf sortiert.',
+    render: cfg => ggRenderGanglinie(cfg),
+    config: { eyebrow: 'Potenzialanalyse', titel: 'Luft-Wasser-Wärmepumpe: Grund- und Spitzenlast', ort: '', meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' }, achseY: 'Leistung in kW', achseX: 'Stunden im Jahr, nach Wärmebedarf sortiert', leer: 'Luft-WP und Lastgang mit Außentemperatur nötig.', serien: [], grundlastKw: 0, kpiLinks: [], kpiRechts: [] },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      const ss = window.systemState, kw = ggLies(() => window.lwWp?.leistungKw, 0);
+      const r = kw > 0 ? abLwwpSimulation({ ...ggLwwpEingaben(), nennKw: kw, stunden: true }) : null;
+      if (!r) { cfg.serien = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Luft-WP und Lastgang mit Außentemperatur nötig.'; }
+      const idx = Array.from({ length: 8760 }, (_, i) => i).sort((a, b) => ss.lastgangKw[b] - ss.lastgangKw[a]);
+      // Mittel über je 12 sortierte Stunden: 730 Stützstellen reichen für die Linie und halten das SVG klein
+      const zeige = arr => Array.from({ length: 730 }, (_, k) => { let x = 0; for (let j = k * 12; j < k * 12 + 12; j++) x += arr[idx[j]]; return x / 12; });
+      cfg.serien = [
+        { daten: zeige(ss.lastgangKw), farbe: GG_THEME.energy.waerme, breite: 1.5, label: 'Wärmebedarf (Spitzenlast = Differenz)' },
+        { daten: zeige(r.wpH), farbe: '#4F7FA8', breite: 1.2, label: 'Wärme aus Luft-WP', fill: true },
+        { daten: zeige(r.elH), farbe: '#C9A227', breite: 1.2, label: 'elektrische Leistung Luft-WP' },
+      ];
+      cfg.xTicks = [0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000].map(p => ({ pos: p / 12, label: ggNum(p) }));
+      cfg.kpiLinks = [{ wert: `${ggNum(r.deckungPct)} %`, label: `Deckung Luft-WP (${ggNum(kw)} kW)` }, { wert: ggNum(r.jaz, 2), label: 'Jahresarbeitszahl' }];
+      cfg.kpiRechts = [{ wert: `${ggNum(r.restMaxKw)} kW`, label: 'Spitzenlasterzeuger', highlight: true }];
+      return `✓ ${ggNum(kw)} kW Luft-WP simuliert.`;
+    },
+  },
+  {
+    id: 'potenzial-schall-abstaende', autoSync: true, reihe: 52, kapitel: '2.3.1 Technologien',
+    titel: 'Mindestabstände Luft-WP nach TA Lärm', datei: 'potenzial-schall-abstaende',
+    hinweis: 'Freifeldabstand (Halbkugel), in dem der Immissionsrichtwert tags und nachts eingehalten wird; Schallleistungspegel aus dem Luft-WP-Panel.',
+    render: cfg => ggRenderBalken(cfg),
+    config: { ...ggGebVorlage('Mindestabstände Luft-WP nach TA Lärm', 'Abstand in m', 'Gebietsart', 'Kein Schallleistungspegel eingetragen.'), eyebrow: 'Potenzialanalyse' },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      const lwa = ggPotenzialDaten().lwwp.lwaDb;
+      const r = abSchallAbstaende(lwa);
+      if (!r.length) { ggGebLeer(cfg); return '⚠ Kein Schallleistungspegel (Luft-WP-Panel).'; }
+      cfg.kategorien = r.map(x => x.gebiet.replace(' Wohngebiet', ' WG').replace('Kern-, Dorf-, Mischgebiet', 'Misch-/Dorfgebiet'));
+      cfg.gruppen = [{ label: '', segmente: [{ label: 'tags', farbe: '#C9A227', werte: r.map(x => x.rTag) }] }, { label: '', segmente: [{ label: 'nachts', farbe: '#2F4858', werte: r.map(x => x.rNacht) }] }];
+      cfg.punkte = null; cfg.summenLabel = true;
+      cfg.kpiLinks = [{ wert: `${ggNum(lwa)} dB(A)`, label: 'Schallleistungspegel' }];
+      cfg.kpiRechts = [{ wert: `${ggNum(r.find(x => x.nacht === 40)?.rNacht)} m`, label: 'allg. Wohngebiet nachts (40 dB(A))', highlight: true }];
+      return `✓ ${r.length} Gebietsarten.`;
+    },
+  },
+  {
+    id: 'va-emissionen', autoSync: true, reihe: 45, kapitel: '2.4 Variantenvergleich',
+    titel: 'CO₂e-Emissionen heute und künftig', datei: 'va-emissionen',
+    hinweis: 'Jährliche Emissionen je Variante mit heutigem und mittlerem künftigem Strom-Emissionsfaktor, Bestand als Referenz.',
+    render: cfg => ggRenderBalken(cfg),
+    config: { ...ggGebVorlage('CO₂e-Emissionen heute und künftig', 't CO₂e pro Jahr', 'Variante', 'Keine Varianten mit Emissionen.'), eyebrow: 'Variantenvergleich' },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      const d = ggVariantenDaten();
+      const v = d.varianten.filter(x => Number.isFinite(x.co2T));
+      if (!v.length) { ggGebLeer(cfg); return '⚠ Keine Varianten mit Emissionen.'; }
+      const best = Number.isFinite(d.bestandCo2T) && d.bestandCo2T > 0;
+      cfg.kategorien = [...(best ? ['Bestand'] : []), ...v.map(x => x.name)];
+      cfg.gruppen = [
+        { label: '', segmente: [{ label: 'heute', farbe: '#7A6334', werte: [...(best ? [d.bestandCo2T] : []), ...v.map(x => x.co2T)] }] },
+        { label: '', segmente: [{ label: `Ø ${VA_STROM_EF.von}–${VA_STROM_EF.bis}`, farbe: '#6B8E4E', werte: [...(best ? [0] : []), ...v.map(x => (Number.isFinite(x.co2LzT) ? x.co2LzT : 0))] }] },
+      ];
+      cfg.punkte = null; cfg.summenLabel = true;
+      const min = [...v].sort((a, b) => (a.co2LzT ?? a.co2T) - (b.co2LzT ?? b.co2T))[0];
+      cfg.kpiLinks = [{ wert: `${ggNum(d.ef.strom)} / ${ggNum(d.ef.stromLz)} g/kWh`, label: 'Strom-EF heute / künftig' }];
+      cfg.kpiRechts = [{ wert: `${min.name}: ${ggNum(min.co2LzT ?? min.co2T)} t/a`, label: 'geringste Emissionen künftig', highlight: true }];
+      return `✓ ${v.length} Varianten.`;
+    },
+  },
+  {
+    id: 'va-emissionen-kumuliert', autoSync: true, reihe: 46, kapitel: '2.4 Variantenvergleich',
+    titel: `Kumulierte Emissionen ${VA_STROM_EF.von}–${VA_STROM_EF.bis}`, datei: 'va-emissionen-kumuliert',
+    hinweis: 'Summe über 20 Jahre mit dem mittleren künftigen Strom-Emissionsfaktor; Referenz: Wärmebedarf vollständig aus Erdgas.',
+    render: cfg => ggRenderBalken(cfg),
+    config: { ...ggGebVorlage('Kumulierte Emissionen', 't CO₂e über 20 Jahre', 'Variante', 'Keine Varianten mit Emissionen.'), eyebrow: 'Variantenvergleich' },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      cfg.titel = `Kumulierte Emissionen ${VA_STROM_EF.von}–${VA_STROM_EF.bis}`;
+      const d = ggVariantenDaten();
+      const v = d.varianten.filter(x => Number.isFinite(x.co2LzT));
+      if (!v.length) { ggGebLeer(cfg); return '⚠ Keine Varianten mit künftigen Emissionen.'; }
+      const jahre = VA_STROM_EF.bis - VA_STROM_EF.von;
+      const gasRef = d.gesamtMwh > 0 && d.ef.gas > 0 ? (d.gesamtMwh / (d.eta.gaskessel || 0.92)) * d.ef.gas / 1000 * jahre : NaN;
+      cfg.kategorien = [...v.map(x => x.name), ...(Number.isFinite(gasRef) ? ['nur Erdgas'] : [])];
+      cfg.gruppen = [{ label: '', segmente: [
+        { label: 'Varianten', farbe: '#6B8E4E', werte: [...v.map(x => x.co2LzT * jahre), ...(Number.isFinite(gasRef) ? [0] : [])] },
+        ...(Number.isFinite(gasRef) ? [{ label: 'Referenz Erdgas', farbe: '#8A8F8A', werte: [...v.map(() => 0), gasRef] }] : []),
+      ] }];
+      cfg.punkte = null; cfg.summenLabel = true;
+      const min = [...v].sort((a, b) => a.co2LzT - b.co2LzT)[0];
+      cfg.kpiLinks = [{ wert: `${jahre} Jahre`, label: 'Betrachtungszeitraum' }];
+      cfg.kpiRechts = [{ wert: `${ggNum(min.co2LzT * jahre)} t`, label: `geringste Summe: ${min.name}`, highlight: true }];
+      return `✓ ${v.length} Varianten.`;
+    },
+  },
+  {
+    id: 'va-kostenstruktur', autoSync: true, reihe: 20, kapitel: '2.5 Wirtschaftlichkeit und Investitionskosten',
+    titel: 'Zusammensetzung der Wärmegestehungskosten', datei: 'va-kostenstruktur',
+    hinweis: 'Kapital-, Betriebs-, Energie- und CO₂-Kosten sowie PV/Batterie je Variante in ct/kWh. Nach einer Änderung im Variantenvergleich „Alle aktualisieren“.',
+    render: cfg => ggRenderBalken(cfg),
+    config: { ...ggGebVorlage('Zusammensetzung der Wärmegestehungskosten', 'ct/kWh', 'Variante', 'Keine Varianten mit Kostenaufteilung – Varianten aktualisieren.'), eyebrow: 'Variantenvergleich' },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      const r = abKostenstruktur(ggVariantenDaten().varianten);
+      if (!r.length) { ggGebLeer(cfg); return '⚠ Keine Kostenaufteilung – im Variantenvergleich „Alle aktualisieren“.'; }
+      cfg.kategorien = r.map(x => x.name);
+      const seg = (k, label, farbe) => ({ label, farbe, werte: r.map(x => Math.max(0, x[k])) });
+      cfg.gruppen = [{ label: '', segmente: [seg('kapital', 'Kapitalkosten', '#2F4858'), seg('betrieb', 'Betriebskosten', '#6B8E4E'), seg('energie', 'Energiekosten', '#C9A227'), seg('co2', 'CO₂-Kosten', '#7A6334'), seg('pv', 'PV/Batterie', '#E0A126')].filter(x => x.werte.some(v => v > 0.005)) }];
+      cfg.punkte = null; cfg.summenLabel = true; cfg.summenDez = 1;
+      const b = [...r].sort((a, c) => a.summe - c.summe)[0];
+      cfg.kpiLinks = [{ wert: `${r.length} Varianten`, label: 'verglichen' }];
+      cfg.kpiRechts = [{ wert: `${b.name}: ${ggNum(b.summe, 1)} ct/kWh`, label: 'geringste Wärmegestehungskosten', highlight: true }];
+      return `✓ ${r.length} Varianten.`;
+    },
+  },
+  {
+    id: 'va-pv-grafik', autoSync: true, reihe: 31, kapitel: '2.5 Wirtschaftlichkeit und Investitionskosten',
+    titel: 'Wärmegestehungskosten mit und ohne PV-Eigenstrom', datei: 'va-pv-grafik',
+    hinweis: 'Je Variante ohne PV (voller Netzbezug) und mit PV-Eigenstrom (inkl. PV-Annuität abzüglich Einspeisevergütung).',
+    render: cfg => ggRenderBalken(cfg),
+    config: { ...ggGebVorlage('Wärmegestehungskosten mit und ohne PV-Eigenstrom', 'ct/kWh', 'Variante', 'Keine Varianten mit Kostenaufteilung – Varianten aktualisieren.'), eyebrow: 'Variantenvergleich' },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      const r = abPvVergleich(ggVariantenDaten().varianten);
+      if (!r.length) { ggGebLeer(cfg); return '⚠ Keine Kostenaufteilung – im Variantenvergleich „Alle aktualisieren“.'; }
+      cfg.kategorien = r.map(x => x.name);
+      cfg.gruppen = [{ label: '', segmente: [{ label: 'ohne PV-Eigenstrom', farbe: '#8A8F8A', werte: r.map(x => x.ohneCt) }] }, { label: '', segmente: [{ label: 'mit PV-Eigenstrom', farbe: '#C9A227', werte: r.map(x => x.mitCt) }] }];
+      cfg.punkte = null; cfg.summenLabel = true; cfg.summenDez = 1;
+      const b = [...r].sort((a, c) => (c.ohneCt - c.mitCt) - (a.ohneCt - a.mitCt))[0];
+      cfg.kpiLinks = [{ wert: `${ggNum(ggLies(() => parseFloat(document.getElementById('pv-kwp')?.value), 0))} kWp`, label: 'PV-Leistung' }];
+      cfg.kpiRechts = [{ wert: `${b.name}: −${ggNum(b.ohneCt - b.mitCt, 2)} ct/kWh`, label: 'größte Entlastung', highlight: true }];
+      return `✓ ${r.length} Varianten.`;
+    },
+  },
+  {
+    id: 'fazit-nt-grafik', autoSync: true, reihe: 46, kapitel: '6.1 Wärmeversorgung',
+    titel: 'Hoch- und Niedertemperaturbetrieb im Vergleich', datei: 'fazit-nt-grafik',
+    hinweis: 'Kumulierte Kosten über 20 Jahre: Stromkosten im HT-Betrieb gegenüber NT-Betrieb plus Ertüchtigungskosten; Schnittpunkt = Amortisation.',
+    render: cfg => ggRenderXY(cfg),
+    config: { eyebrow: 'Fazit Wärme', titel: 'Hoch- und Niedertemperaturbetrieb im Vergleich', ort: '', meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' }, achseY: 'kumulierte Kosten in Mio. €', achseX: 'Betriebsjahre', leer: 'WP-Wärme, Vorlauftemperaturen und Strompreis nötig.', serien: [], marken: [], legendeLinks: true, kpiLinks: [], kpiRechts: [] },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      const r = ggNtVergleich();
+      if (!r) { cfg.serien = []; cfg.marken = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ WP-Wärme, Vorlauftemperaturen und Strompreis nötig.'; }
+      const J = Array.from({ length: r.jahre + 1 }, (_, j) => j);
+      cfg.serien = [
+        { label: `Hochtemperatur (JAZ ${ggNum(r.jazHt, 2)})`, farbe: '#C0392B', punkte: J.map(j => ({ x: j, y: (r.kostenHt * j) / 1e6 })), breite: 2.5 },
+        { label: `Niedertemperatur (JAZ ${ggNum(r.jazNt, 2)}) inkl. Ertüchtigung`, farbe: '#6B8E4E', punkte: J.map(j => ({ x: j, y: (r.invest + r.kostenNt * j) / 1e6 })), breite: 2.5 },
+      ];
+      cfg.marken = r.invest > 0 && Number.isFinite(r.amortJahre) && r.amortJahre <= r.jahre ? [{ x: r.amortJahre, y: (r.kostenHt * r.amortJahre) / 1e6, label: `Amortisation nach ${ggNum(r.amortJahre, 1)} Jahren`, farbe: GG_THEME.text.strong }] : [];
+      cfg.kpiLinks = [{ wert: `${ggNum(r.ersparnis / 1000)} T€/a`, label: 'Stromkosteneinsparung' }, { wert: `${ggNum(r.invest / 1e6, 2)} Mio. €`, label: 'Ertüchtigung' }];
+      cfg.kpiRechts = [{ wert: `${ggNum(r.netto / 1e6, 1)} Mio. €`, label: `Nettovorteil nach ${r.jahre} Jahren`, highlight: true }, ...(Number.isFinite(r.co2Kum) ? [{ wert: `${ggNum(r.co2Kum)} t`, label: 'vermiedene CO₂e (kumuliert)' }] : [])];
+      return '✓ HT/NT gegenübergestellt.';
+    },
+  },
+  {
+    id: 'fazit-fahrplan-gantt', autoSync: true, reihe: 51, kapitel: '6.1 Wärmeversorgung',
+    titel: 'Maßnahmenfahrplan', datei: 'fazit-fahrplan-gantt',
+    hinweis: 'Zeitliche Abfolge der Maßnahmen ab dem Folgejahr – gleiche Zeitspannen wie der Fahrplantext.',
+    render: cfg => ggRenderGantt(cfg),
+    config: { eyebrow: 'Fazit Wärme', titel: 'Maßnahmenfahrplan', ort: '', meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' }, achseY: '', achseX: 'Jahr', leer: 'Keine Maßnahmen.', phasen: [] },
+    ausProjekt(cfg) {
+      ggGebKopf(cfg);
+      cfg.phasen = abFahrplanPhasen();
+      return `✓ ${cfg.phasen.length} Maßnahmen.`;
+    },
   },
 
   // ── Jahresdauerlinie Strom ──────────────────────────────────────────────

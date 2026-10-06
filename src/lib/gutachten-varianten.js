@@ -165,10 +165,32 @@ export function vaTextKostenKomponenten(o = {}) {
   ];
 }
 
+/** o.vergleich = abPvVergleich (lib/gutachten-abbildungen.js): [{ name, mitCt, ohneCt, entlastungEur }] */
 export function vaTextPv(o = {}) {
-  return [absatz('Die vorstehenden Ergebnisse beruhen auf dem vollständigen Bezug des Wärmepumpenstroms aus dem öffentlichen Netz. Steht der Liegenschaft Strom aus einer Photovoltaikanlage zu geringeren Gestehungskosten zur Verfügung, sinken die Energiekosten der strombasierten Varianten anteilig; Kapital- und Betriebskosten bleiben unverändert. ',
-    'Die Entlastung je Variante beträgt ', F('Wärmegestehungskosten je Variante mit und ohne PV-Eigenstrom (Kapitel PV, Eigenverbrauch für Wärmepumpen)', o.pvText || ''), '. ',
-    'Die absolute Entlastung korreliert mit dem Strombedarf der jeweiligen Variante: Den größten Vorteil erzielen Varianten mit hohem strombasiertem Anteil, den geringsten Varianten mit hoher Jahresarbeitszahl oder fossilem Anteil.')];
+  const r = (o.vergleich || []).filter(x => ok(x.mitCt) && ok(x.ohneCt));
+  const mitPv = r.filter(x => x.entlastungEur > 1 || Math.abs(x.mitCt - x.ohneCt) > 0.005);
+  if (!r.length || !mitPv.length) {
+    return [absatz('Die vorstehenden Ergebnisse beruhen auf dem vollständigen Bezug des Wärmepumpenstroms aus dem öffentlichen Netz. Steht der Liegenschaft Strom aus einer Photovoltaikanlage zu geringeren Gestehungskosten zur Verfügung, sinken die Energiekosten der strombasierten Varianten anteilig; Kapital- und Betriebskosten bleiben unverändert. ',
+      'Die Entlastung je Variante beträgt ', F('Wärmegestehungskosten je Variante mit und ohne PV-Eigenstrom – PV-Anlage im Strom-Panel anlegen, dann Varianten aktualisieren', ''), '.')];
+  }
+  const sort = [...r].sort((a, b) => (b.ohneCt - b.mitCt) - (a.ohneCt - a.mitCt));
+  const best = sort[0], wenig = sort.at(-1);
+  const rangOhne = [...r].sort((a, b) => a.ohneCt - b.ohneCt).map(x => x.name), rangMit = [...r].sort((a, b) => a.mitCt - b.mitCt).map(x => x.name);
+  const gleich = rangOhne.every((n, i) => n === rangMit[i]);
+  const einleitung = absatz('Die Wirtschaftlichkeit wurde einmal mit und einmal ohne Eigenstrom aus der Photovoltaikanlage der Liegenschaft berechnet. Mit PV mindert der zeitgleich erzeugte Solarstrom den Netzbezug der Wärmepumpen und Stromkessel; die Kosten der PV-Anlage abzüglich der Einspeisevergütung sind dann in den Jahreskosten enthalten. Kapital- und Betriebskosten der Wärmeerzeuger bleiben unverändert.');
+  if (r.length === 1) {
+    const x = r[0], d = x.ohneCt - x.mitCt;
+    return [einleitung, absatz(`Die Wärmegestehungskosten betragen ${nf(x.ohneCt, 2)} ct/kWh ohne und ${nf(x.mitCt, 2)} ct/kWh mit PV-Eigenstrom; `,
+      d > 0.005 ? `der PV-Eigenstrom entlastet die Wärmeversorgung damit um ${nf(d, 2)} ct/kWh bzw. rund ${nf(x.entlastungEur / 1000)} T€/a.` : 'eine nennenswerte Entlastung ergibt sich nicht, da die PV-Kosten die Einsparung beim Netzbezug aufwiegen.')];
+  }
+  return [
+    einleitung,
+    absatz(r.map(x => `${x.name}: ${nf(x.ohneCt, 2)} ct/kWh ohne und ${nf(x.mitCt, 2)} ct/kWh mit PV-Eigenstrom`).join('; '), '. ',
+      best.ohneCt - best.mitCt > 0.005 ? `Den größten Vorteil erzielt ${best.name} mit ${nf(best.ohneCt - best.mitCt, 2)} ct/kWh (rund ${nf(best.entlastungEur / 1000)} T€/a)` : '',
+      wenig !== best && best.ohneCt - best.mitCt > 0.005 ? `, den geringsten ${wenig.name} mit ${nf(wenig.ohneCt - wenig.mitCt, 2)} ct/kWh` : '', best.ohneCt - best.mitCt > 0.005 ? '. ' : '',
+      'Die Entlastung korreliert mit dem Strombedarf der jeweiligen Variante: Varianten mit hohem strombasiertem Anteil profitieren am stärksten, Varianten mit hoher Jahresarbeitszahl oder fossilem Anteil am wenigsten.'),
+    absatz(gleich ? 'Die Rangfolge der Varianten ändert sich durch den PV-Eigenstrom nicht.' : `Durch den PV-Eigenstrom ändert sich die Rangfolge: ohne PV ${liste(rangOhne)}, mit PV ${liste(rangMit)}.`),
+  ];
 }
 
 /* ── Energiepreissensitivität ────────────────────────────────────────────── */

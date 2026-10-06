@@ -665,6 +665,8 @@ export function calcWirtschaftPanel() {
   const _gesamtStromMwh = _wpSkElMwh + _quartierStromMwh;
 
   const energyRows = [];
+  // PV-Eigenstrom-Entlastung getrennt mitführen — für den Gutachtenvergleich „mit / ohne PV-Eigenstrom“
+  let _pvEnergieEur = 0, _pvCo2Eur = 0;
   keys.forEach(k => {
     const e    = en[k] || {};
     const wMwh = e.waermeMwh || 0;
@@ -678,6 +680,7 @@ export function calcWirtschaftPanel() {
       const pvAbzug = _pvEigenMwh > 0 && _gesamtStromMwh > 0 ? _pvEigenMwh * (eMwh / _gesamtStromMwh) : 0;
       const netzbezugMwh = Math.max(0, eMwh - pvAbzug);
       kosten = netzbezugMwh * pStromWp * 10;
+      _pvEnergieEur += (eMwh - netzbezugMwh) * pStromWp * 10;
       detail = pvAbzug > 0.1
         ? `${eMwh.toFixed(0)} MWh Strom − ${pvAbzug.toFixed(0)} MWh PV = ${netzbezugMwh.toFixed(0)} MWh × ${pStromWp} ct/kWh`
         : `${eMwh.toFixed(0)} MWh Strom × ${pStromWp} ct/kWh`;
@@ -701,6 +704,7 @@ export function calcWirtschaftPanel() {
       const pvAbzugSk = _pvEigenMwh > 0 && _gesamtStromMwh > 0 ? _pvEigenMwh * (skElMwh / _gesamtStromMwh) : 0;
       const skNetzbezug = Math.max(0, skElMwh - pvAbzugSk);
       kosten = skNetzbezug * pStromWp * 10;
+      _pvEnergieEur += (skElMwh - skNetzbezug) * pStromWp * 10;
       detail = pvAbzugSk > 0.1
         ? `${skElMwh.toFixed(0)} MWh Strom − ${pvAbzugSk.toFixed(0)} MWh PV = ${skNetzbezug.toFixed(0)} MWh × ${pStromWp} ct/kWh`
         : `${wMwh.toFixed(0)} MWh Strom × ${pStromWp} ct/kWh`;
@@ -754,6 +758,7 @@ export function calcWirtschaftPanel() {
         const _pvAnteilCo2 = _pvEigenMwh > 0 && _gesamtStromMwh > 0 ? _pvEigenMwh * (eMwh / _gesamtStromMwh) : 0;
         const _netzbezugCo2 = Math.max(0, eMwh - _pvAnteilCo2);
         tCo2 = _netzbezugCo2 * (cfg.emf / 1e6) * 1e3;
+        _pvCo2Eur += (eMwh - _netzbezugCo2) * (cfg.emf / 1e6) * 1e3 * pCo2;
       }
       co2Kosten += tCo2 * pCo2;
     });
@@ -817,6 +822,11 @@ export function calcWirtschaftPanel() {
   window._lastWgk = wgk;
   window._lastInvestGes = gesamtInvest + pvInvestGes;
   window._lastJkGes = gesamtJk + gesamtEnergieMitCo2;
+  // Kostenbestandteile für die Gutachtengrafiken (Kostenstruktur, mit/ohne PV-Eigenstrom)
+  window._lastWirtKomp = {
+    kapitalEur: _sumAnn, betriebEur: _sumInst + _sumWart + _sumBed, jkAnlagenEur: gesamtJk,
+    energieEur: gesamtEnergie, co2Eur: co2Kosten, pvJkEur: pvJk, pvEnergieEur: _pvEnergieEur, pvCo2Eur: _pvCo2Eur, gesamtMwh,
+  };
   window._wirtPKw = pKw; // für Punkt-Marker im Kostenkurven-View
 
   // Erzeuger-WGKs aktualisieren (CO₂-Preis/Switch kann sich geändert haben)

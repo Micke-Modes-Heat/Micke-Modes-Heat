@@ -2,7 +2,7 @@
 // Erzeugerpark, Pufferspeicher, Heizzentrale, Stand des Hydraulikschemas und Datenlage zum Netz. Gespeichert wird der
 // Stand mit den Wärme-Grundlagen (captureWaermeGrundlagen/restoreWaermeGrundlagen in 06a-gbi-lastgang.js).
 // Auswertung und Texte: lib/bestandsanlage.js, lib/gutachten-anlagentechnik.js.
-import { BA_TYPEN, BA_AUFLOESUNG, baLeer, baNormalisiere } from './lib/bestandsanlage.js';
+import { BA_TYPEN, BA_AUFLOESUNG, BA_MESSPUNKTE, BA_KESSEL_ETA_STANDARD, baLeer, baNormalisiere } from './lib/bestandsanlage.js';
 
 let _ba = baLeer();
 
@@ -29,8 +29,9 @@ export function baErzeugerFeld(i, feld, wert) {
   else baSumme();
 }
 export function baFeld(feld, wert) {
-  if (!['pufferM3', 'heizzentrale', 'schemaJahr', 'netzDaten'].includes(feld)) return;
+  if (!['pufferM3', 'heizzentrale', 'schemaJahr', 'netzDaten', 'messpunkt', 'kesselEtaPct'].includes(feld)) return;
   _ba[feld] = String(wert ?? '');
+  if (feld === 'messpunkt') baRender();
 }
 
 export function baJahrHinzufuegen() {
@@ -109,6 +110,11 @@ export function baRender() {
       <select class="inp-field" style="width:110px;padding:3px;font-size:10px;" data-change="baFeld('netzDaten',this.value)">
         ${[['keine', 'keine Unterlagen'], ['plan', 'nur Lageplan'], ['vollstaendig', 'vollständig']].map(([k, l]) => `<option value="${k}"${_ba.netzDaten === k ? ' selected' : ''}>${l}</option>`).join('')}
       </select></label>
+    <label style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin-top:4px;" title="Wo der gemessene Gesamtverbrauch erfasst wird – bestimmt, welche Verluste vor der Aufteilung auf die Gebäude abgezogen werden">Messpunkt Verbrauch
+      <select class="inp-field" style="width:110px;padding:3px;font-size:10px;" data-change="baFeld('messpunkt',this.value)">
+        ${Object.entries(BA_MESSPUNKTE).map(([k, l]) => `<option value="${k}"${_ba.messpunkt === k ? ' selected' : ''}>${l}</option>`).join('')}
+      </select></label>
+    ${_ba.messpunkt === 'brennstoff' ? feld('kesselEtaPct', 'Jahresnutzungsgrad Kessel (%)', String(BA_KESSEL_ETA_STANDARD), 'number') : ''}
     ${baVerbrauchHtml()}`;
   baSumme();
 }
