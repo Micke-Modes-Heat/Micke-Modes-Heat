@@ -3926,7 +3926,7 @@ export function autoGenerateNetz(options = {}){
         buildingConflict:e.buildingConflict === true,
         waypoint: null, segLayers: [], warnMarker: null, midMarker: null
     };
-    hitLayer.on('mousedown', ev => _leitungGreifen(edgeObj, ev));
+    _leitungGreifbarMachen(edgeObj, hitLayer);
     hitLayer.on('click', (ev) => {
       // Beim Zeichnen der Trasse: Klick an die Karte durchreichen
       if (window.isDrawingEdge || window.isDrawingTrasse) return;
@@ -4472,7 +4472,7 @@ export function addNetzEdge(u, v, {force = false} = {}){
     waypoint: null, segLayers: [], warnMarker: null, midMarker: null
   };
 
-  hitLayer.on('mousedown', ev => _leitungGreifen(edgeObj, ev));
+  _leitungGreifbarMachen(edgeObj, hitLayer);
   hitLayer.on('click', (ev) => {
     // Beim Zeichnen der Trasse liegen die Leitungen über den Straßen: Klick an die Karte durchreichen (Trassenpunkt setzen)
     if (window.isDrawingEdge || window.isDrawingTrasse) return;
@@ -4527,7 +4527,7 @@ function _makeNetzEdge(uNode, vNode, dn){
     _straightLength: calcEdgeLength({layer}), length: calcEdgeLength({layer}),
     waypoint: null, segLayers: [], warnMarker: null, midMarker: null
   };
-  hitLayer.on('mousedown', ev => _leitungGreifen(edgeObj, ev));
+  _leitungGreifbarMachen(edgeObj, hitLayer);
   hitLayer.on('click', (ev) => {
     // Beim Zeichnen der Trasse liegen die Leitungen über den Straßen: Klick an die Karte durchreichen (Trassenpunkt setzen)
     if (window.isDrawingEdge || window.isDrawingTrasse) return;
@@ -4885,8 +4885,20 @@ export function setNetzMotionless(enabled) {
 // über den Punkt und, wenn er auf einer anderen Straße liegt, das Angebot, den Strang umzulegen.
 let _leitungGezogenUm = 0;
 
+/** Leitungen sind greifbar im Bearbeitungsmodus und überall im Netz-Reiter — außer während anderer Werkzeuge. */
+function _leitungGreifbar() {
+  if (netzPruningMode || netzRewireMode || window.isDrawingTrasse || window.isDrawingEdge) return false;
+  return netzEditMode || _netzWorkspaceSichtbar();
+}
+
+function _leitungGreifbarMachen(edgeObj, hitLayer) {
+  hitLayer.on('mousedown', ev => _leitungGreifen(edgeObj, ev));
+  // „Greifen“-Hand genau dann, wenn Ziehen möglich ist
+  hitLayer.on('mouseover', () => { const el = hitLayer.getElement?.(); if (el) el.style.cursor = _leitungGreifbar() ? 'grab' : ''; });
+}
+
 function _leitungGreifen(edgeObj, ev) {
-  if (!netzEditMode || netzPruningMode || window.isDrawingTrasse || window.isDrawingEdge) return;
+  if (!_leitungGreifbar()) return;
   if ((ev.originalEvent?.button ?? 0) !== 0 || !edgeObj.midMarker) return;
   L.DomEvent.stopPropagation(ev);
   ev.originalEvent?.preventDefault?.();
@@ -4950,7 +4962,6 @@ export function netzBearbeitungAktiv() { return { edit: netzEditMode, rewire: ne
 
 export function setNetzEditMode(enabled) {
   netzEditMode = !!enabled;
-  map.getContainer().classList.toggle('netz-bearbeiten', netzEditMode);   // Leitungen zeigen die „Greifen“-Hand
   if (netzEditMode) setNetzVisible(true);
   window.netzEdges.forEach(edge => {
     if (!netzEditMode) edge.editSelected = false;

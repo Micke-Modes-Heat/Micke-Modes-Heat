@@ -71,7 +71,7 @@ test('dist: Strang des Außenquartiers über eine andere Straße umlegen', async
   expect(fehler).toEqual([]);
 });
 
-test('dist: Leitung im Bearbeitungsmodus direkt greifen und auf eine andere Straße ziehen', async ({ page }) => {
+test('dist: Leitung im Netz-Reiter direkt greifen und auf eine andere Straße ziehen (ohne Bearbeitungsmodus)', async ({ page }) => {
   await page.route(/tile\.openstreetmap\.org|overpass/, route => route.abort());
   await page.goto('/');
   await page.waitForFunction(() => typeof window.netzStrangVorschlag === 'function');
@@ -93,7 +93,7 @@ test('dist: Leitung im Bearbeitungsmodus direkt greifen und auf eine andere Stra
     populateZentraleSelect();
     document.getElementById('netz-zentrale').value = '981';
     await createQuickWaermeNetz();
-    setNetzEditMode(true);
+    setNetzEditMode(false);   // z. B. nach dem Trassenzeichnen oder Laden eines Projekts
     map.fitBounds(L.latLngBounds([52.0795, 7.9995], [52.0850, 8.0065]), { animate: false });
     const r = map.getContainer().getBoundingClientRect();
     const px = ll => { const p = map.latLngToContainerPoint(L.latLng(...ll)); return { x: r.left + p.x, y: r.top + p.y }; };

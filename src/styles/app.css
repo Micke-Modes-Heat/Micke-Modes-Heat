@@ -2480,5 +2480,4 @@ textarea.ssb-in{resize:vertical;}
 .netz-strang-vorschlag .nsv-ja { background: #266426; color: #fff; border: 1px solid #266426; }
 
 /* Netz-Bearbeitungsmodus: Leitungen direkt greifen und ziehen */
-.netz-bearbeiten path.netz-hit.leaflet-interactive { cursor: grab; }
 .netz-zieht, .netz-zieht path.leaflet-interactive { cursor: grabbing !important; }
