@@ -11,6 +11,9 @@
 //      Netzrechnung wie die Netzaufnahme (28 pvnaModell + Core pvnaFuellen),
 //      beste Erträge zuerst, jedes Dach nur GANZ oder gar nicht
 //      (Nutzerentscheidung 06.10.2026). Schon geplante PV hat Vorrang (Vorlast).
+//      Grenze wahlweise „nur Trafo": NS-Kabel begrenzen dann weder Strom noch
+//      Spannung (Querschnitte oft unbekannt bzw. im Projekt leicht vergrößerbar);
+//      Gebäude ganz ohne Kabelanbindung hängen dann am nächstgelegenen Trafo.
 //      Gestuft: eine Gruppe (Neubauten · PV-Pflicht · Auswahl) wird immer voll
 //      belegt und zählt als Vorlast, der Rest des Umfangs nur, soweit das Netz
 //      es danach noch verträgt.
@@ -70,6 +73,7 @@ const _ab = {
   nutzungOffen: false,
   menge: 'max',               // 'max' | 'netz' | 'gestuft'
   vorrang: 'neubau',          // bei 'gestuft': diese Gruppe immer voll
+  grenze: 'kabel',            // 'kabel' = Trafo + NS-Kabel · 'trafo' = nur der Trafo begrenzt
   ohneNetzBelegen: false,
   /** @type {null | {zeilen:any[], sig:string, netz:any}} */
   vorschau: null,
@@ -85,6 +89,7 @@ const _flaeche = g => parseFloat(g.flaeche) || polygonAreaM2(g.polygon) || 0;
 /** Vorgaben + Auswahl, mit denen eine Vorschau gerechnet wurde. */
 const _sig = () => JSON.stringify([window.pvModusVorgabe || null, _ab.umfang, _ab.trafoId, _ab.minM2,
   [..._ab.ohneNutzung].sort(), _ab.menge, _ab.menge === 'gestuft' ? _ab.vorrang : null,
+  _ab.menge !== 'max' ? _ab.grenze : null,
   _ab.bereich ? _ab.bereich.toBBoxString() : null]);
 const _vorrangLabel = (w, stich) => w === 'neubau' ? `Neubauten (nach ${stich})` : (VORRANG.find(v => v[0] === w)?.[1] || w);
 
@@ -114,6 +119,27 @@ function _gebKnoten(gId, karte) {
   return null;
 }
 
+/** Grenze „nur Trafo" aktiv (nur beim Belegen mit Netzprüfung)? */
+const _nurTrafo = () => _ab.modus === 'belegen' && _ab.menge !== 'max' && _ab.grenze === 'trafo';
+
+function _gebMitte(g) {
+  if (!Array.isArray(g?.polygon) || !g.polygon.length) return null;
+  let la = 0, ln = 0;
+  for (const p of g.polygon) { la += +p.lat; ln += +p.lng; }
+  return { lat: la / g.polygon.length, lng: ln / g.polygon.length };
+}
+
+/** Nächstgelegener Trafo (Luftlinie) aus trafos = [{ pos, … }] → { …, m } | null */
+function _naechsterTrafo(pos, trafos) {
+  if (!pos) return null;
+  let best = null;
+  for (const t of trafos) {
+    const m = map.distance(pos, t.pos);
+    if (!best || m < best.m) best = { ...t, m };
+  }
+  return best;
+}
+
 function _trafoZuordnung() {
   if (_trafoCache) return _trafoCache;
   const ein = pvnaEinstellungen();
@@ -136,16 +162,18 @@ function _umfangFilter(umfang, stich) {
   if (umfang === 'bereich') {
     const b = _ab.bereich;
     // Gebäude zählt, wenn seine Mitte im Rahmen liegt — angeschnittene Randgebäude nicht
-    return g => {
-      if (!b || !Array.isArray(g.polygon) || !g.polygon.length) return false;
-      let la = 0, ln = 0;
-      for (const p of g.polygon) { la += +p.lat; ln += +p.lng; }
-      return b.contains([la / g.polygon.length, ln / g.polygon.length]);
-    };
+    return g => { const c = _gebMitte(g); return !!b && !!c && b.contains(c); };
   }
   if (umfang === 'trafo') {
     const zu = _ab.trafoId != null ? _trafoZuordnung() : null;
-    return g => !!zu && _gebKnoten(g.id, zu) === _ab.trafoId;
+    // „nur Trafo": Gebäude ohne Kabelanbindung gehören zum nächstgelegenen Trafo
+    const trafos = _nurTrafo() ? ASSETS.items.filter(a => a.type === 'Trafo'
+      && Number.isFinite(+a.lat) && Number.isFinite(+a.lng)).map(a => ({ id: a.id, pos: { lat: +a.lat, lng: +a.lng } })) : [];
+    return g => {
+      if (!zu) return false;
+      const t = _gebKnoten(g.id, zu) ?? _naechsterTrafo(_gebMitte(g), trafos)?.id;
+      return t === _ab.trafoId;
+    };
   }
   return () => true;
 }
@@ -234,8 +262,16 @@ function _netzPruefen(zeilen) {
   _trafoCache = m.info.knotenTrafo || null;
   const kandIds = new Set(zeilen.map(z => z.g.id));
   const gebById = new Map((window.gebaeude || []).map(g => [g.id, g]));
-  const elemente = m.eingabe.elemente.map(e => ({ ...e }));
+  // „nur Trafo": alle Kabel unter dem Trafo sind NS — ohne Strom- und Spannungsgrenze
+  const nurTrafo = _ab.grenze === 'trafo';
+  const elemente = m.eingabe.elemente.map(e => (nurTrafo && e.typ === 'kabel'
+    ? { ...e, kapKw: null, duProKwPct: 0 } : { ...e }));
   const elById = new Map(elemente.map(e => [e.id, e]));
+  // Ersatzanbindung „nur Trafo": ohne Kabel → nächstgelegener Trafo des Rechenjahres
+  const trafos = nurTrafo ? elemente.filter(e => e.typ === 'trafo' && m.info.elPos.get(e.id))
+    .map(e => ({ elementId: e.id, label: m.info.elInfo.get(e.id)?.label || e.id, pos: m.info.elPos.get(e.id) })) : [];
+  const ersatz = pos => _naechsterTrafo(pos, trafos);
+  const zugeordnet = [];
 
   // Bereits Geplantes hat Vorrang: PV-Assets und Gebäude mit aktiver PV → Vorlast
   let vorlastKwp = 0;
@@ -244,7 +280,8 @@ function _netzPruefen(zeilen) {
     if (inf?.gebId != null && kandIds.has(inf.gebId)) continue;
     if (String(d.id).startsWith('G:') && !gebById.get(inf?.gebId)?.pvAktiv) continue;   // nur Dachpotenzial
     // Neu angelegte PV-Assets haben oft kein eigenes Kabel → über ihr Gebäude
-    const el = elById.get(d.elementId) || (inf?.gebId != null ? elById.get(_gebKnoten(inf.gebId, knotenEl)) : null);
+    const el = elById.get(d.elementId) || (inf?.gebId != null ? elById.get(_gebKnoten(inf.gebId, knotenEl)) : null)
+      || elById.get(ersatz(inf?.pos)?.elementId);
     if (!el) continue;
     el.vorlastKw = (+el.vorlastKw || 0) + d.kwpMax * (d.einspFaktor || einspFaktor);
     vorlastKwp += d.kwpMax;
@@ -254,8 +291,16 @@ function _netzPruefen(zeilen) {
   const nachId = new Map();
   for (const z of zeilen) {
     if (z.status !== 'voll') continue;
-    const elementId = _gebKnoten(z.g.id, knotenEl);
-    const angebunden = elementId != null && elById.has(elementId);
+    let elementId = _gebKnoten(z.g.id, knotenEl);
+    let angebunden = elementId != null && elById.has(elementId);
+    if (!angebunden && nurTrafo) {
+      const t = ersatz(_gebMitte(z.g));
+      if (t) {
+        elementId = t.elementId; angebunden = true;
+        z.ersatzTrafo = `${t.label}, ${_fmt(t.m)} m`;
+        zugeordnet.push(t.m);
+      }
+    }
     if (z.vorrang) {
       z.status = 'vorrang';
       if (!angebunden) { z.grund = 'nicht ans Stromnetz angebunden — Netzgrenze unbekannt'; continue; }
@@ -284,9 +329,11 @@ function _netzPruefen(zeilen) {
     for (const d of r.daecher) {
       const z = nachId.get(d.id);
       if (z && !(d.kwp > 0)) { z.status = 'netz'; z.grund = _begrenzerText(d.begrenzer, m.info); }
+      if (z?.ersatzTrafo && z.status === 'netz') z.grund += ' (ohne Kabel zugeordnet)';
     }
   }
-  return { jahr, vorlastKwp, vorrangKwp, einspFaktor, duGrenzePct: m.eingabe.duGrenzePct,
+  return { jahr, vorlastKwp, vorrangKwp, einspFaktor, duGrenzePct: m.eingabe.duGrenzePct, nurTrafo,
+    zugeordnet: zugeordnet.length, zugeordnetMaxM: zugeordnet.length ? Math.max(...zugeordnet) : 0,
     unbekannteQs: m.info.unbekannteQs.length, ersatzQs: m.info.ersatzQs,
     ohneTrafo: !m.eingabe.elemente.some(e => e.typ === 'trafo') };
 }
@@ -633,6 +680,14 @@ function _belegenHtml() {
         </div>
         <div style="font-size:9px;color:var(--muted);line-height:1.4;margin-top:2px;">Der Rest aus ① nur, soweit das Netz danach noch reicht.</div>` : ''}
         ${_ab.menge !== 'max' ? `
+        <div style="display:flex;align-items:center;gap:5px;margin-top:4px;font-size:10px;">
+          <span style="color:var(--muted);white-space:nowrap;">Grenze:</span>
+          <select class="inp-field" style="flex:1;" data-change="pvabSet('grenze',this.value)"
+            title="„Nur Trafo“: Niederspannungskabel begrenzen weder Strom noch Spannung — für unbekannte Querschnitte oder Kabel, die im Projekt ohnehin vergrößert werden können.">
+            ${_opt('kabel', 'Trafo + NS-Kabel', _ab.grenze !== 'trafo')}
+            ${_opt('trafo', 'Nur Trafo (NS-Kabel ausgeblendet)', _ab.grenze === 'trafo')}
+          </select>
+        </div>
         <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:3px;"
           title="Gebäude ohne Verbindung zum erfassten Stromnetz — ihre Netzgrenze ist unbekannt">
           <input type="checkbox" ${_ab.ohneNetzBelegen ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
@@ -675,10 +730,11 @@ function _vorschauHtml(nKand, stich) {
   const vorrangName = escHtml(_vorrangLabel(_ab.vorrang, stich));
   const n = v.netz;
   const netzInfo = n ? `<div style="font-size:9px;color:var(--muted);line-height:1.4;margin-top:4px;">
-      Netzjahr ${n.jahr} · ${_fmt(n.einspFaktor, 1)} kW/kWp · ΔU ≤ ${_fmt(n.duGrenzePct, 1)} %${n.vorlastKwp > 0 ? ` · ${_fmt(n.vorlastKwp)} kWp schon geplant (Vorrang)` : ''}
+      Netzjahr ${n.jahr} · ${_fmt(n.einspFaktor, 1)} kW/kWp · ${n.nurTrafo ? 'nur Trafogrenze — NS-Kabel und ΔU ungeprüft' : `ΔU ≤ ${_fmt(n.duGrenzePct, 1)} %`}${n.vorlastKwp > 0 ? ` · ${_fmt(n.vorlastKwp)} kWp schon geplant (Vorrang)` : ''}
       ${n.ohneTrafo ? `<br><span style="color:${ROT};">Kein Trafo im Netzjahr — es gibt kein Netz zum Anschließen.</span>` : ''}
-      ${ueber.length ? `<br><span style="color:${ORANGE};">${ueber.length} Dächer der Gruppe „${vorrangName}“ passen nicht mehr ins Bestandsnetz — sie werden trotzdem belegt, dort ist Netzausbau nötig.</span>` : ''}
-      ${n.unbekannteQs && !n.ersatzQs ? `<br>⚠ ${n.unbekannteQs} Kabel ohne Querschnitt begrenzen nicht (Ersatzquerschnitt in der PV-Netzaufnahme).` : ''}
+      ${ueber.length ? `<br><span style="color:${ORANGE};">${ueber.length} Dächer der Gruppe „${vorrangName}“ passen nicht mehr ${n.nurTrafo ? 'unter die Trafogrenze' : 'ins Bestandsnetz'} — sie werden trotzdem belegt, dort ist Netzausbau nötig.</span>` : ''}
+      ${n.zugeordnet ? `<br>${n.zugeordnet} Gebäude ohne Kabelanbindung dem nächstgelegenen Trafo zugeordnet (Luftlinie, bis ${_fmt(n.zugeordnetMaxM)} m).` : ''}
+      ${n.unbekannteQs && !n.ersatzQs && !n.nurTrafo ? `<br>⚠ ${n.unbekannteQs} Kabel ohne Querschnitt begrenzen nicht (Ersatzquerschnitt in der PV-Netzaufnahme).` : ''}
     </div>` : '';
   return `
     <div style="margin-top:6px;padding:5px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
@@ -722,6 +778,7 @@ export function pvabSet(feld, wert) {
   else if (feld === 'bereich') _ab.bereich = null;
   else if (feld === 'minM2') _ab.minM2 = Math.max(0, parseFloat(wert) || 0);
   else if (feld === 'menge') _ab.menge = ['netz', 'gestuft'].includes(wert) ? wert : 'max';
+  else if (feld === 'grenze') _ab.grenze = wert === 'trafo' ? 'trafo' : 'kabel';
   else if (feld === 'vorrang') _ab.vorrang = VORRANG.some(v => v[0] === wert) ? wert : 'neubau';
   else if (feld === 'ohneNetzBelegen') { _ab.ohneNetzBelegen = !!wert; pvModusRender(); pvModusMarkiereKarte(); return; }
   else if (feld === 'nutzungOffen') { _ab.nutzungOffen = !_ab.nutzungOffen; pvModusRender(); return; }

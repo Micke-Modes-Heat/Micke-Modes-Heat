@@ -577,8 +577,12 @@ export function elPanelRefreshStatus() {
 
   if (tiles) {
     if (!_calcStamp && !edges.length) { if (tiles.innerHTML) tiles.innerHTML = ''; return; }
-    const trafos   = (window.stromNodes || []).filter(n => n.type === 'trafo');
-    const maxTrafo = trafos.reduce((m, t) => Math.max(m, t._auslastungPct || 0), 0);
+    // Ergebnis-Stempel von elCalcAssets (_calcPeakLoadPct, nur Trafos der letzten
+    // Rechnung) — derselbe Wert wie Karten-Hover, Ergebnisblatt und SLD.
+    // sn._auslastungPct taugt nicht: die Schnellberechnung (recalcStromNetz)
+    // überschreibt ihn mit einer anderen Formel (ohne cos φ).
+    const trafos   = assets.filter(a => a.type === 'Trafo' && a._calcVerbrauchKw !== undefined);
+    const maxTrafo = trafos.reduce((m, t) => Math.max(m, t._calcPeakLoadPct || 0), 0);
     const du       = window._stromNetzKpis?.maxDeltaU || 0;
     const lenM     = edges.reduce((sum, e) => sum + (e.lengthM || 0), 0);
 

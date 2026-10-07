@@ -20,7 +20,7 @@ import { createId } from './lib/util.js';
 import { baueTrassenGraph, routeEntlangTrassen } from './lib/trassen-routing.js';
 import { mergeOsmElements, splitOsmBbox, subdivideOsmBbox } from './lib/osm-bbox-tiles.js';
 import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus, getAssetPropsForYear } from './13a-assets-core.js';
-import { collapseAssetSpider, redrawAllAssets } from './13b-assets-render.js';
+import { collapseAssetSpider, redrawAllAssets, refreshTrafoAuslastung } from './13b-assets-render.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
 import { schichtAusEndpunkten, normSchicht, SCHICHT } from './lib/schichten.js';
 import { globalYear, stromEdges } from './01-globals-varianten.js';
@@ -2040,6 +2040,8 @@ export function updateStromEdgeVisuals() {
       if (map.hasLayer(e.arrowMarker)) map.removeLayer(e.arrowMarker);
     }
   });
+  // Trafo-Füllstandsbalken folgen dem Farbmodus (nur bei „Auslastung" sichtbar)
+  refreshTrafoAuslastung();
 }
 
 // ── Auto-Netz: Alle Gebäude mit nächstem Trafo/NSHV verbinden ──
@@ -2466,7 +2468,11 @@ export function elCalcAssets(opts = {}) {
   // Betriebsbedingungen wie im Lastflusspfad (Iz-Derating, Leitertemperatur).
   // Vorher ignorierte die Asset-Rechnung beides und legte dadurch optimistischer
   // aus als der Altpfad — bei identischem Netz kamen zwei Querschnitte heraus.
-  const _kIz     = _nsKIz();
+  // Ohne gerendertes Elektro-Panel fehlen die Iz-Felder und _nsKIz() liefert NaN;
+  // nsKabelAuslegen rechnet dann mit 1 — denselben Wert hier führen, damit
+  // Kante und Ergebnisblatt den tatsächlich verwendeten Faktor zeigen.
+  const _kIzRoh  = _nsKIz();
+  const _kIz     = _kIzRoh > 0 ? _kIzRoh : 1;
   const _tLeiter = _nsLeiterTemp();
   // Die Auto-Dimensionierung verteilt MAX_DELTA_U_PCT entlang des Pfades: je mehr
   // ΔU bereits auf vorgelagerten Abschnitten "verbraucht" wurde, desto enger ist
@@ -2541,7 +2547,9 @@ export function elCalcAssets(opts = {}) {
     adjList.get(e.v).push({ neighborId: e.u });
   }
 
-  function bfsDownstream(edge, loadFn, gebLoadFn) {
+  // stat (optional) zählt mit, WORAUS sich die Last zusammensetzt — nur für das
+  // Ergebnisblatt (Rechnung je Strecke), auf das Ergebnis hat es keinen Einfluss.
+  function bfsDownstream(edge, loadFn, gebLoadFn, stat = null) {
     const a = assetMap.get(edge.u), b = assetMap.get(edge.v);
     // Mindestens ein Asset-Endpunkt muss existieren
     if (!a && !b) return 0;
@@ -2557,10 +2565,14 @@ export function elCalcAssets(opts = {}) {
       visited.add(cur);
       const asset = assetMap.get(cur);
       if (asset) {
-        load += loadFn(asset);
+        const l = loadFn(asset);
+        load += l;
+        if (stat && l > 0) stat.nAnlagen++;
       } else {
         // Gebäude oder sonstiger Nicht-Asset-Knoten → Gebäude-Last addieren
-        load += (gebLoadFn ? gebLoadFn(cur) : gebVerbrauch(cur));
+        const l = gebLoadFn ? gebLoadFn(cur) : gebVerbrauch(cur);
+        load += l;
+        if (stat && l > 0) { stat.nGeb++; stat.gebKw += l; }
       }
       const curRank = TYPE_RANK[asset?.type] ?? 6;
       for (const { neighborId } of (adjList.get(cur) || [])) {
@@ -2593,22 +2605,36 @@ export function elCalcAssets(opts = {}) {
   // Schritt 1: Lastfluss, Richtung & Kabeltyp-Eckdaten je Kante (Reihenfolge-
   // unabhängig — bestimmt nur, WAS dimensioniert werden muss, nicht WIE).
   const edgeCalc = new Map();
+  // Herkunft der Last je Kante — wird erst im sichtbaren Lauf als Stempel
+  // _calcHinter geschrieben (s. Ergebnis-Stempel unten).
+  const _hinter = new Map();
   for (const e of activeE) {
     const aAsset = assetMap.get(e.u), bAsset = assetMap.get(e.v);
     if (!aAsset || !bAsset) continue;
     const rankA = TYPE_RANK[aAsset.type] ?? 6, rankB = TYPE_RANK[bAsset.type] ?? 6;
     const lengthM = e.lengthM || 0;
 
-    let P_v = bfsDownstream(e, assetVerbrauch, gebVerbrauch);
+    const statV = { nAnlagen: 0, nGeb: 0, gebKw: 0 };
+    const statG = { nAnlagen: 0, nGeb: 0, gebKw: 0 };
+    const P_vLast = bfsDownstream(e, assetVerbrauch, gebVerbrauch, statV);
+    let P_v = P_vLast;
     // Hausanschluss eines Verbrauchers (Blatt): das Kabel muss die Anschluss-
     // leistung tragen (Handwert oder Klasse + 20 % Reserve), nicht nur die Last.
     // Sammelleitungen bleiben beim Lastfluss — die Anschlussleistungen treten
     // nie gleichzeitig auf.
     const sinkA = rankA <= rankB ? bAsset : aAsset;
+    let anschlussKw = null;
     if (sinkA.type === 'Verbraucher' && (adjList.get(sinkA.id)?.length || 0) === 1) {
-      P_v = Math.max(P_v, anschlussWirksam(_p(sinkA)).kw);
+      anschlussKw = anschlussWirksam(_p(sinkA)).kw;
+      P_v = Math.max(P_v, anschlussKw);
     }
-    const P_g = bfsDownstream(e, assetErzeugung, () => 0); // Gebäude erzeugen nicht
+    const P_g = bfsDownstream(e, assetErzeugung, () => 0, statG); // Gebäude erzeugen nicht
+    _hinter.set(e, {
+      nVerbraucher: statV.nAnlagen, nGeb: statV.nGeb, gebKw: statV.gebKw,
+      nErzeuger: statG.nAnlagen, lastKw: P_vLast,
+      // Mindestwert am Hausanschluss nur ausweisen, wenn er die Last tatsächlich anhebt
+      anschlussKw: anschlussKw != null && anschlussKw > P_vLast ? anschlussKw : null,
+    });
     const P_net   = P_v - P_g;
     const P_worst = Math.max(P_v, P_g);
     // MS-Kabel: Strom mit MS-Spannung berechnen, keine NS-Kabelauslegung
@@ -2735,6 +2761,11 @@ export function elCalcAssets(opts = {}) {
   const bfsQ   = [...nodeVoltDrop.keys()];
   const bfsVis = new Set(bfsQ);
   const sizedEdges = new Set();
+  // Netzstruktur für das Ergebnisblatt: welche Station speist einen Knoten, über
+  // welchen Abgang (= erste Kante ab der Station), und in welcher Pfadfolge.
+  // Abgang = null, solange man noch an der Station selbst steht.
+  const _speis = new Map(bfsQ.map(id => [id, { speisId: id, abgangId: null }]));
+  const _pfad  = new Map();
   while (bfsQ.length) {
     const curId  = bfsQ.shift();
     const cumV   = nodeVoltDrop.get(curId) ?? 0;
@@ -2742,6 +2773,10 @@ export function elCalcAssets(opts = {}) {
     for (const { edge: e, nextId } of (dirAdj.get(curId) || [])) {
       if (bfsVis.has(nextId)) continue;
       bfsVis.add(nextId);
+      const sp = _speis.get(curId);
+      const abgangId = sp?.abgangId ?? e.id;
+      _speis.set(nextId, { speisId: sp?.speisId ?? null, abgangId });
+      _pfad.set(e, { von: curId, nach: nextId, speisId: sp?.speisId ?? null, abgangId, idx: _pfad.size });
       const calc = edgeCalc.get(e);
       let dU_V = 0;
       if (!calc.msLevel) {
@@ -2763,6 +2798,11 @@ export function elCalcAssets(opts = {}) {
       }
       sizedEdges.add(e);
       nodeVoltDrop.set(nextId, cumV + dU_V);
+      // Kumulierter Spannungsfall an beiden Enden — Strom-Knoten gibt es in
+      // reinen Anlagen-Netzen nicht, das Blatt braucht ihn trotzdem.
+      const pe = _pfad.get(e);
+      pe.duVonPct  = cumV / U_N * 100;
+      pe.duNachPct = (cumV + dU_V) / U_N * 100;
       bfsQ.push(nextId);
     }
   }
@@ -2788,8 +2828,11 @@ export function elCalcAssets(opts = {}) {
   // Richtungen; 800 kW Rückspeisung belasten ihn genauso wie 800 kW Bezug. Eine
   // Nettobildung (P_v − P_g) würde reine Einspeise-Stränge auf 0 % klemmen und
   // damit z. B. eine 1-MWp-PV an einem 630-kVA-Trafo unsichtbar machen.
+  const _trafoGeb = new Map();   // Gebäude ohne Anlage je Trafo (nur Ergebnisblatt)
   for (const trafoAsset of activeA.filter(a => a.type === 'Trafo')) {
     const ratedKVA = parseFloat(_p(trafoAsset).leistungKVA) || 630;
+    const geb = { n: 0, kw: 0 };
+    _trafoGeb.set(trafoAsset, geb);
     const trafoRank = TYPE_RANK[trafoAsset.type] ?? 6;
     const visited = new Set([trafoAsset.id]);
     const queue = [];
@@ -2808,7 +2851,9 @@ export function elCalcAssets(opts = {}) {
       } else {
         // Gebäude ohne eigenes Verbraucher-Asset — zählt mit und wird durchquert,
         // sonst fiele alles dahinter aus der Summe (identisch zu bfsDownstream).
-        P_v += gebVerbrauch(cur);
+        const l = gebVerbrauch(cur);
+        P_v += l;
+        if (l > 0) { geb.n++; geb.kw += l; }
       }
       const curRank = TYPE_RANK[curAsset?.type] ?? 6;
       for (const { neighborId } of (adjList.get(cur) || [])) {
@@ -2856,14 +2901,44 @@ export function elCalcAssets(opts = {}) {
     a._calcVerbrauchKw = assetVerbrauch(a);
     a._calcErzeugungKw = assetErzeugung(a);
   }
-  for (const e of (window.stromEdges || [])) delete e._calcJahr;
-  for (const e of activeE) e._calcJahr = yr;
+  for (const e of (window.stromEdges || [])) {
+    delete e._calcJahr; delete e._calcHinter; delete e._calcPfad;
+  }
+  for (const e of activeE) {
+    e._calcJahr = yr;
+    if (_hinter.has(e)) e._calcHinter = _hinter.get(e);
+    if (_pfad.has(e))   e._calcPfad   = _pfad.get(e);
+  }
+  // Netzstruktur je Anlage (speisende Station, Abgang) und Gebäudelast je Trafo
+  for (const a of ASSETS.items) {
+    delete a._calcSpeis; delete a._calcGebKw; delete a._calcNGeb; delete a._calcDuKumPct;
+  }
+  for (const a of activeA) {
+    if (_speis.has(a.id)) a._calcSpeis = _speis.get(a.id);
+    if (nodeVoltDrop.has(a.id)) a._calcDuKumPct = nodeVoltDrop.get(a.id) / U_N * 100;
+  }
+  for (const [t, geb] of _trafoGeb) { t._calcGebKw = geb.kw; t._calcNGeb = geb.n; }
+  // Gebäude ohne eigene Anlage, die über ein Kabel am Netz hängen — sie tragen
+  // zur Last bei, stehen aber in keiner Anlagensumme (Jahresstrom ÷ 1800 h).
+  let gebKw = 0, nGeb = 0;
+  for (const id of adjList.keys()) {
+    if (assetMap.has(id)) continue;
+    const l = gebVerbrauch(id);
+    if (l > 0) { gebKw += l; nGeb++; }
+  }
   window._elErgebnisStand = {
     jahr: yr, zeit: Date.now(),
     nAssets: activeA.length, nKabel: activeE.length,
     verbrauchKw: totalVerbrauch, erzeugungKw: totalErzeugung,
+    gebKw, nGeb,
+    // Rechenparameter dieses Laufs — das Blatt zeigt sie statt der aktuellen
+    // UI-Felder, damit Annahmen und Ergebnis nie auseinanderlaufen.
+    cosPhi: COS_PHI, kIz: _kIz, tLeiterC: _tLeiter, uMsV: U_MS,
     warnungen: [...warn],
   };
+  // Erst jetzt steht der Stempel (_calcVerbrauchKw) — der Aufruf aus
+  // updateStromEdgeVisuals oben sah noch den Stand der vorigen Rechnung.
+  refreshTrafoAuslastung();
 
   const summary = [
     `Verbraucher: ${totalVerbrauch.toFixed(1)} kW · Einspeisung: ${totalErzeugung.toFixed(1)} kW`,
