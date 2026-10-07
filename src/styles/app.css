@@ -2470,3 +2470,11 @@ textarea.ssb-in{resize:vertical;}
 .ssb-legende .lg-nd{border-radius:50%;border:2px solid;}
 .ssb-legende .lg-nd.ueberschritten{border-color:#e53935;}
 .ssb-legende .lg-nd.erreicht{border-color:#ffb74d;}
+
+/* Netz: Vorschlag „Strang über diesen Punkt anbinden" (Bearbeitungsmodus) */
+.netz-strang-vorschlag { font-size: 12px; line-height: 1.4; }
+.netz-strang-vorschlag strong { display: block; margin-bottom: 3px; }
+.netz-strang-vorschlag .nsv-delta { margin-top: 4px; opacity: .75; }
+.netz-strang-vorschlag .nsv-knoepfe { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.netz-strang-vorschlag .nsv-knoepfe button { font-size: 11px; padding: 4px 9px; border-radius: 4px; cursor: pointer; }
+.netz-strang-vorschlag .nsv-ja { background: #266426; color: #fff; border: 1px solid #266426; }

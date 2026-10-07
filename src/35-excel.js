@@ -553,9 +553,10 @@ function _importGebaeude(rows, ctx, basis) {
       plan(spalte, xNum(alt), v, () => anwenden(v));
     };
     // Auswahlfeld: leer → anwenden(null), wenn erlaubt
-    const auswahl = (spalte, alt, werte, anwenden, { leerErlaubt = false } = {}) => {
+    // wandle: Zellwert vorher vereinheitlichen (z. B. Bauzustand 1/2/3 → A/B/C)
+    const auswahl = (spalte, alt, werte, anwenden, { leerErlaubt = false, wandle = null } = {}) => {
       if (!kr.hat(spalte)) return;
-      const s = xAuswahl(z(spalte), werte);
+      const s = xAuswahl(wandle ? wandle(z(spalte)) : z(spalte), werte);
       if (s === undefined) { meld(`${spalte}: „${z(spalte)}" ist nicht erlaubt (${Object.values(werte).join(', ')})`); return; }
       if (s === null && !leerErlaubt) return;
       if ((s ?? '') === (alt ?? '')) return;
@@ -585,7 +586,7 @@ function _importGebaeude(rows, ctx, basis) {
     zahl('Baujahr', o.baujahr, 0, feld('baujahr'), { ganz: true, min: 1800, max: 2100 });
     zahl('Abrissjahr', o.abrissjahr, 0, feld('abrissjahr'), { ganz: true, min: 1800, max: 2100 });
     auswahl('Schicht', normSchicht(o.schicht), _SCHICHT_WERTE, feld('schicht'));
-    auswahl('Zustand', _zustandBuchstabe(o.zustand), _ZUSTAND_WERTE, feld('zustand'), { leerErlaubt: true });
+    auswahl('Zustand', _zustandBuchstabe(o.zustand), _ZUSTAND_WERTE, feld('zustand'), { leerErlaubt: true, wandle: v => _zustandBuchstabe(v) || v });
     auswahl('TWW-Art', o.twwArt || '', _TWW_WERTE, feld('twwArt'), { leerErlaubt: true });
     zahl('TWW-Leistung (kW)', o.twwKw, 1, feld('twwKw'), { min: 0 });
 

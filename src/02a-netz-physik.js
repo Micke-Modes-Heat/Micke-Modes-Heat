@@ -5,6 +5,7 @@ import { edgeKey, edgeWaypoints, netzVisible, selectedStrandId, trassePoints, tr
 import { map } from './02b-gebaeude.js';
 import { netzEditMode, recalcNetz } from './03b-netz.js';
 import { KMR_KOSTEN } from './config/netz-kosten.js';
+import { dijkstraBisZiel } from './lib/netz-strang.js';
 
 export let overlayLayer = null;
 
@@ -441,6 +442,68 @@ export function rerouteEdgeViaStreet(edgeObj,viaPoints = edgeObj.routingViaPoint
   return true;
 }
 
+/**
+ * Strang umlegen: Straßenwege vom gezogenen Punkt (via) zu mehreren Zielen. Ein Ziel { abstand(latlng) → m, punkt? }
+ * gilt als erreicht an der ersten Straßenstelle höchstens toleranzM von ihm entfernt; ein optionaler punkt (z. B. ein
+ * Gebäude abseits der Straße) wird auf die Straße gerastet und zählt selbst als Ziel. meiden(latlng): Stellen, die der
+ * Weg nicht betreten darf; getrennt: true — der Weg darf die Wege der vorherigen Ziele nicht mitbenutzen (wie eine Route
+ * durch ein Zwischenziel: hin und weiter nicht auf derselben Straße).
+ * Ergebnis: { viaPunkt, wege: [{ weg: [LatLng] von via bis Ziel, amPunkt }] } oder null (keine Straßen, Punkt abseits, kein Weg).
+ */
+export function strassenWegeAbPunkt(via, ziele, toleranzM = 8) {
+  const graph = _streetRoutingGraph();
+  if (!graph.legs.length) return null;
+  const snapVia = _snapToStreetLeg(via,graph.legs);
+  if (!snapVia || snapVia.distance > 35) return null;
+  // Straßenstücke fein unterteilen: eine Leitung mitten auf einem langen Stück wird so dort erkannt und nicht doppelt verlegt
+  const teile = new Map();
+  graph.legs.forEach(leg => {
+    const n = Math.max(1,Math.ceil(leg.distance / toleranzM));
+    const keys = [leg.aKey];
+    for (let i = 1; i < n; i++) {
+      const key = `${leg.id}#${i}`;
+      graph.positions.set(key,L.latLng(leg.a.lat + (leg.b.lat - leg.a.lat) * i / n,leg.a.lng + (leg.b.lng - leg.a.lng) * i / n));
+      keys.push(key);
+    }
+    keys.push(leg.bKey);
+    for (let i = 1; i < keys.length; i++) graph.connect(keys[i - 1],keys[i],leg.distance / n);
+    teile.set(leg.id,{keys,n});
+  });
+  const virtuell = [];
+  const einhaengen = (snap,key) => {
+    const {keys,n} = teile.get(snap.leg.id);
+    const i = Math.min(n - 1,Math.floor(snap.t * n));
+    graph.positions.set(key,snap.point);
+    graph.connect(key,keys[i],(snap.t * n - i) * snap.leg.distance / n);
+    graph.connect(key,keys[i + 1],(i + 1 - snap.t * n) * snap.leg.distance / n);
+    virtuell.forEach(other => {
+      if (other.snap.leg.id === snap.leg.id) graph.connect(key,other.key,Math.abs(other.snap.t - snap.t) * snap.leg.distance);
+    });
+    virtuell.push({key,snap});
+  };
+  einhaengen(snapVia,'@strang-via');
+  ziele.forEach((ziel,index) => {
+    const snap = ziel.punkt ? _snapToStreetLeg(ziel.punkt,graph.legs) : null;
+    if (snap) einhaengen(snap,`@strang-ziel-${index}`);
+  });
+  const wege = [];
+  const benutzt = new Set();
+  for (let index = 0; index < ziele.length; index++) {
+    const eigen = `@strang-ziel-${index}`;
+    const ziel = ziele[index];
+    const gesperrt = key => key !== eigen && ((ziel.getrennt && benutzt.has(key)) || (ziel.meiden ? ziel.meiden(graph.positions.get(key)) : false));
+    const r = dijkstraBisZiel(graph.adjacency,'@strang-via',
+      key => key === eigen || ziel.abstand(graph.positions.get(key)) <= toleranzM, gesperrt);
+    if (!r) return null;
+    r.weg.slice(1).forEach(key => benutzt.add(key));
+    const weg = r.weg.map(key => graph.positions.get(key)).filter(Boolean);
+    const amPunkt = r.ziel === eigen;
+    if (amPunkt) weg.push(ziele[index].punkt);
+    wege.push({weg:weg.filter((point,i,array) => i === 0 || point.distanceTo(array[i - 1]) > 0.15),amPunkt});
+  }
+  return {viaPunkt:snapVia.point,wege};
+}
+
 export function removeEdgeWaypointMarkers(edgeObj) {
   (edgeObj?.waypointMarkers || []).forEach(marker => map.removeLayer(marker));
   if (edgeObj) edgeObj.waypointMarkers = [];
@@ -462,6 +525,7 @@ function _renderEdgeWaypointMarkers(edgeObj) {
       edgeObj.hitLayer?.setLatLngs([edgeObj.uNode.pt,...preview,edgeObj.vNode.pt]);
     });
     marker.on('dragend', function() {
+      const verlaufVorher = getEdgePathPoints(edgeObj);
       const vias = [...edgeObj.routingViaPoints];
       vias[index] = this.getLatLng();
       if (!rerouteEdgeViaStreet(edgeObj,vias)) {
@@ -472,6 +536,8 @@ function _renderEdgeWaypointMarkers(edgeObj) {
         _renderEdgeWaypointMarkers(edgeObj);
       }
       recalcNetz();
+      // Liegt der Punkt auf einer anderen Straße: anbieten, den ganzen Strang dahinter dorthin umzulegen
+      window.netzStrangVorschlag?.(edgeObj,vias[index],verlaufVorher);
     });
     marker.on('dblclick', event => {
       L.DomEvent.stopPropagation(event);
@@ -534,6 +600,7 @@ export function addEdgeMidHandle(edgeObj) {
   _renderEdgeWaypointMarkers(edgeObj);
   edgeObj.midMarker.on('dragend', function() {
     const point = this.getLatLng();
+    const verlaufVorher = getEdgePathPoints(edgeObj);
     const vias = [...(edgeObj.routingViaPoints || []),point]
       .sort((a,b) => _positionAlongEdgePath(edgeObj,a) - _positionAlongEdgePath(edgeObj,b));
     if (!rerouteEdgeViaStreet(edgeObj,vias)) {
@@ -545,6 +612,7 @@ export function addEdgeMidHandle(edgeObj) {
     }
     this.setLatLng(getEdgeMidDisplayPt(edgeObj));
     recalcNetz();
+    window.netzStrangVorschlag?.(edgeObj,point,verlaufVorher);
   });
   edgeObj.midMarker.on('dblclick', function(ev) {
     L.DomEvent.stopPropagation(ev);

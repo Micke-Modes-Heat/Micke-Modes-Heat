@@ -26,7 +26,7 @@ import { validateRadialHeatGraph } from './lib/waerme-graph-validation.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
 import { areaEditMarkers, areaLatLngs, cacheVariantResults, currentMode, drawPoints, edgeKey, edgeWaypoints, fliessgewaesser, gasKessel, geoThermie, networkLocked, netzPruningMode, trassePoints, trasseSegments } from './01-globals-varianten.js';
-import { addEdgeMidHandle, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getEdgeWaypoints, getKostenProM, getUWertForDN, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, removeEdgeWaypointMarkers, standardDNs } from './02a-netz-physik.js';
+import { addEdgeMidHandle, strassenWegeAbPunkt, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getEdgeWaypoints, getKostenProM, getUWertForDN, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, removeEdgeWaypointMarkers, standardDNs } from './02a-netz-physik.js';
 import { OSM_SKIP_TYPES, addGebaeude, osmNutzung } from './02b-gebaeude.js';
 import { polygonCenter, redrawFliessgewaesser, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
@@ -38,6 +38,7 @@ import { setEdgeStartId, setNetzEdges, setNetworkLocked, setSelectedId, setSelec
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { selectedStrandId } from './01-globals-varianten.js';
 import { netzSignatur, netzAenderungText, erstelleNetzVerlauf } from './lib/netz-verlauf.js';
+import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen } from './lib/netz-strang.js';
 import { EIS, eisAuslegungVorschlag, eisBewertung, eisGeometrie, eisInvest } from './lib/eisspeicher.js';
 
 export function toggleGeoPanel() {
@@ -1032,6 +1033,7 @@ const _NETZ_MODUS_TEXT = {
   edit: {
     titel: 'Leitungsverläufe bearbeiten',
     schritte: ['Leitung anklicken – es erscheint ein blauer Ziehpunkt.', 'Punkt auf den gewünschten Verlauf ziehen; das Netz folgt der Straße.',
+      'Liegt der Punkt auf einer anderen Straße, kann der ganze Strang dahinter dorthin umgelegt werden.',
       'Doppelklick auf einen roten Punkt entfernt ihn. Rechtsklick auf eine Leitung löscht sie.'],
   },
 };
@@ -4995,6 +4997,171 @@ function _applySplitWaypoints(edge, points) {
   addEdgeMidHandle(edge);
 }
 
+/**
+ * Anschlussknoten auf einer Leitung: liegt der Punkt nahe an einem Ende, dieses Ende; sonst wird die Leitung
+ * an der nächstgelegenen Stelle mit einem neuen Abzweig geteilt (Verlauf, DN und Kostenklasse bleiben).
+ */
+function _knotenAufKante(targetEdge, targetPoint) {
+  const projection = _nearestPointOnNetzEdge(targetEdge,targetPoint);
+  const distanceU = projection.point.distanceTo(targetEdge.uNode.pt);
+  const distanceV = projection.point.distanceTo(targetEdge.vNode.pt);
+  if (distanceU < 5 || distanceV < 5) return distanceU <= distanceV ? targetEdge.uNode : targetEdge.vNode;
+  const dn = targetEdge.dn || 0;
+  const sourceProps = {kostKlasse:targetEdge.kostKlasse||null,kostOverride:targetEdge.kostOverride===true};
+  const junction = {id:_nextJunctionId(),type:'junction',pt:projection.point,load:0};
+  const leftWaypoints = projection.path.slice(1,projection.index+1);
+  const rightWaypoints = projection.path.slice(projection.index+1,-1);
+  _removeNetzEdge(targetEdge);
+  const left = _makeNetzEdge(targetEdge.uNode,junction,dn);
+  const right = _makeNetzEdge(junction,targetEdge.vNode,dn);
+  Object.assign(left,sourceProps); Object.assign(right,sourceProps);
+  _applySplitWaypoints(left,leftWaypoints);
+  _applySplitWaypoints(right,rightWaypoints);
+  return junction;
+}
+
+// ── Strang umlegen (Bearbeitungsmodus): wie ein Zwischenziel bei der Routenplanung ──
+// Ein auf eine andere Straße gezogener Leitungspunkt kann den ganzen Strang dahinter neu anbinden:
+// Teilnetz lösen, über den Punkt entlang der Straßen zum nächsten Punkt des übrigen Netzes führen,
+// verwaiste Abzweige entfernen. Logik der Struktur: lib/netz-strang.js.
+
+let _strangPlan = null;
+let _strangPopup = null;
+
+function _strangPlanen(edge, punkt, verlaufVorher = null) {
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const kanten = window.netzEdges.filter(e => !e.pruned);
+  if (!centralId || !kanten.includes(edge) || !punkt) return null;
+  const knoten = new Map();
+  kanten.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
+  // Abzweige (auch Trassenknoten des Aufbaus) dürfen wegfallen — Gebäude und Zentrale nie
+  const analyse = strangAnalyse(kanten,edge,centralId,id => !!knoten.get(id) && knoten.get(id).type !== 'geb');
+  if (!analyse) return null;
+  const gebaeudeDahinter = [...analyse.teilnetz].filter(id => knoten.get(id)?.type === 'geb').length;
+  if (!gebaeudeDahinter) return null;
+  const linie = e => e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt];
+  const entfaellt = new Set([edge,...analyse.totKanten]);
+  const imStrang = kanten.filter(e => e !== edge && analyse.teilnetz.has(e.u) && analyse.teilnetz.has(e.v)).map(e => ({edge:e,linie:linie(e)}));
+  const imNetz = kanten.filter(e => !entfaellt.has(e) && !analyse.teilnetz.has(e.u) && !analyse.teilnetz.has(e.v)).map(e => ({edge:e,linie:linie(e)}));
+  const abstandZu = liste => p => Math.min(Infinity,...liste.map(x => abstandZuLinie(p,x.linie)));
+  const unten = knoten.get(analyse.unten), zentrale = knoten.get(centralId);
+  // Vom Punkt aus in beide Richtungen: zum nächsten Punkt des Strangs und zum nächsten Punkt des übrigen Netzes
+  const route = strassenWegeAbPunkt(punkt,[
+    {abstand:abstandZu(imStrang),punkt:unten.pt},
+    // weiter zum Netz: nicht auf dem Weg zum Strang zurück und nicht durch den Strang hindurch
+    {abstand:abstandZu(imNetz),punkt:zentrale?.pt,getrennt:true,meiden:p => abstandZu(imStrang)(p) <= 8 && abstandZu(imNetz)(p) > 8},
+  ]);
+  if (!route) return null;
+  const [zumStrang,zumNetz] = route.wege;
+  const anschluss = (weg,liste,knotenAmPunkt) => {
+    const ende = weg.weg[weg.weg.length - 1];
+    if (weg.amPunkt || !liste.length) return {knoten:knotenAmPunkt,punkt:ende};
+    let best = null, d = Infinity;
+    liste.forEach(x => { const a = abstandZuLinie(ende,x.linie); if (a < d) { d = a; best = x.edge; } });
+    return {edge:best,punkt:ende};
+  };
+  const untenAnschluss = anschluss(zumStrang,imStrang,unten);
+  let obenAnschluss = anschluss(zumNetz,imNetz,zentrale);
+  let weg = [...zumStrang.weg].reverse().concat(zumNetz.weg.slice(1));   // vom Strang über den Punkt zum Netz
+  // Liegt der Punkt selbst auf einer Leitung des Netzes, nicht parallel zu ihr verlegen: am Ende der Überlappung anschließen
+  const amNetz = abstandZu(imNetz);
+  let k = zumStrang.weg.length - 1;
+  if (imNetz.length && amNetz(weg[k]) <= 8) {
+    while (k > 1 && amNetz(weg[k - 1]) <= 8) k--;
+    weg = weg.slice(0,k + 1);
+    obenAnschluss = anschluss({weg,amPunkt:false},imNetz,zentrale);
+  }
+  // Gleiche Anbindung wie bisher (an denselben Enden, nichts verwaist): nichts vorzuschlagen
+  const oben = knoten.get(analyse.oben);
+  if (!analyse.totKanten.length && oben && obenAnschluss.punkt.distanceTo(oben.pt) < 15 && untenAnschluss.punkt.distanceTo(unten.pt) < 15) return null;
+  // Neuer Weg liegt praktisch auf dem bisherigen (nur innerhalb derselben Straße verschoben): kein Vorschlag
+  const linieVorher = verlaufVorher?.length >= 2 ? verlaufVorher : linie(edge);
+  const bisher = [linieVorher,...analyse.totKanten.map(linie)];
+  if (weg.every(p => Math.min(...bisher.map(l => abstandZuLinie(p,l))) <= 10)) return null;
+  const laenge = e => linienLaenge(linie(e));
+  const delta = linienLaenge(weg) - linienLaenge(linieVorher) - analyse.totKanten.reduce((sum,e) => sum + laenge(e),0);
+  return {edge,analyse,unten,untenAnschluss,obenAnschluss,weg,viaPunkt:route.viaPunkt,delta,gebaeudeDahinter};
+}
+
+export function netzStrangVorschlagSchliessen() {
+  _strangPlan = null;
+  if (_strangPopup) { map.closePopup(_strangPopup); _strangPopup = null; }
+}
+
+/**
+ * Nach dem Ziehen eines Leitungspunkts: Ergibt die Anbindung über diesen Punkt eine andere Netzstruktur, wird sie angeboten.
+ * verlaufVorher: Verlauf der Leitung vor dem Ziehen (der Bearbeitungsmodus hat sie da schon über den Punkt geführt).
+ */
+export function netzStrangVorschlag(edge, punkt, verlaufVorher = null) {
+  netzStrangVorschlagSchliessen();
+  let plan = null;
+  try { plan = _strangPlanen(edge,punkt,verlaufVorher); } catch (error) { console.error('Strang umlegen:',error); }
+  if (!plan) return false;
+  _strangPlan = plan;
+  const delta = Math.round(plan.delta);
+  const n = plan.gebaeudeDahinter;
+  const inhalt = document.createElement('div');
+  inhalt.className = 'netz-strang-vorschlag';
+  inhalt.innerHTML = `<strong>Strang über diesen Punkt anbinden?</strong>`
+    + `<div>${n === 1 ? 'Das Gebäude dahinter wird' : `Die ${n} Gebäude dahinter werden`} über diese Straße an das Netz angeschlossen`
+    + `${plan.analyse.totKanten.length ? '; nicht mehr benötigte Leitungen entfallen' : ''}.</div>`
+    + `<div class="nsv-delta">Trassenlänge ca. ${delta > 0 ? '+' : delta < 0 ? '−' : '±'}${Math.abs(delta)} m</div>`
+    + '<div class="nsv-knoepfe"><button type="button" class="nsv-ja">Strang umlegen</button>'
+    + '<button type="button" class="btn-secondary nsv-nein">Nur Verlauf ändern</button></div>';
+  inhalt.querySelector('.nsv-ja').addEventListener('click',() => netzStrangUmlegen());
+  inhalt.querySelector('.nsv-nein').addEventListener('click',() => netzStrangVorschlagSchliessen());
+  _strangPopup = L.popup({closeButton:true,autoClose:true,className:'netz-strang-popup',maxWidth:260})
+    .setLatLng(plan.viaPunkt || punkt).setContent(inhalt).openOn(map);
+  _strangPopup.on('remove',() => { if (_strangPopup) { _strangPopup = null; _strangPlan = null; } });
+  return true;
+}
+
+/** Gesamte Trassenlänge der aktiven Leitungen (m). */
+function _netzTrassenLaenge() {
+  return window.netzEdges.filter(e => !e.pruned).reduce((sum,e) => sum + linienLaenge(e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt]),0);
+}
+
+/** Vorschlag übernehmen: Leitung und verwaiste Abzweige entfernen, Strang über den Punkt neu anschließen. */
+export function netzStrangUmlegen() {
+  const plan = _strangPlan;
+  netzStrangVorschlagSchliessen();
+  if (!plan || !window.netzEdges.includes(plan.edge)) return false;
+  const snapshot = captureWaermeNetzGraph();
+  const laengeVorher = _netzTrassenLaenge();
+  _removeNetzEdge(plan.edge);
+  plan.analyse.totKanten.forEach(_removeNetzEdge);
+  const knotenFuer = a => (a.edge && window.netzEdges.includes(a.edge) ? _knotenAufKante(a.edge,a.punkt) : a.knoten);
+  const untenKnoten = knotenFuer(plan.untenAnschluss);
+  const obenKnoten = knotenFuer(plan.obenAnschluss);
+  if (!untenKnoten || !obenKnoten) { applyWaermeNetzGraph(snapshot); return false; }
+  // Neue Leitung vom Netz (oben) zum Strang (unten), Verlauf entlang der Straßen über den gezogenen Punkt
+  const neu = _makeNetzEdge(obenKnoten,untenKnoten,0);
+  const verlauf = linieVereinfachen([obenKnoten.pt,...[...plan.weg].reverse(),untenKnoten.pt]).slice(1,-1)
+    .filter(p => p.distanceTo(obenKnoten.pt) > 1 && p.distanceTo(untenKnoten.pt) > 1);
+  neu.routingViaPoints = plan.viaPunkt ? [plan.viaPunkt] : [];
+  _applySplitWaypoints(neu,verlauf);
+  // Im Strang ins Leere laufende Abzweige (z. B. der alte Einspeisepunkt) entfernen
+  const teilnetz = plan.analyse.teilnetz;
+  for (let runde = 0; runde < 200; runde++) {
+    const grad = new Map();
+    window.netzEdges.filter(e => !e.pruned).forEach(e => { grad.set(e.u,(grad.get(e.u) || 0) + 1); grad.set(e.v,(grad.get(e.v) || 0) + 1); });
+    const blatt = window.netzEdges.find(e => !e.pruned && e !== neu && [[e.u,e.uNode],[e.v,e.vNode]].some(([id,n]) =>
+      n && n.type !== 'geb' && teilnetz.has(id) && grad.get(id) === 1));
+    if (!blatt) break;
+    _removeNetzEdge(blatt);
+  }
+  recalcNetz();
+  const v = window._waermeNetzValidation || {};
+  if ((v.cycleEdges || 0) > 0 || (v.disconnectedConsumerIds || []).some(id => teilnetz.has(id))) {
+    applyWaermeNetzGraph(snapshot);
+    showHint('Strang nicht umgelegt: Die neue Anbindung würde eine ungültige Netzstruktur erzeugen.',4500);
+    return false;
+  }
+  const delta = Math.round(_netzTrassenLaenge() - laengeVorher);
+  showHint(`✓ Strang umgelegt — Trassenlänge ${delta > 0 ? '+' : delta < 0 ? '−' : '±'}${Math.abs(delta)} m. Strg+Z macht es rückgängig.`,4000);
+  return true;
+}
+
 export function rewireBuildingConnection(buildingId, targetEdge, targetPoint) {
   const building = gebaeude.find(item => item.id === buildingId);
   const parentEdge = _parentEdgeForBuilding(buildingId);
@@ -5009,27 +5176,9 @@ export function rewireBuildingConnection(buildingId, targetEdge, targetPoint) {
   const buildingNode = parentEdge
     ? (parentEdge.u === buildingId ? parentEdge.uNode : parentEdge.vNode)
     : {id:building.id,type:'geb',pt:polygonCenter(building.polygon),load:stats.heizlast || 0};
-  const projection = _nearestPointOnNetzEdge(targetEdge,targetPoint);
-  if (!projection) return false;
-  const dn = targetEdge.dn || 0;
-  const sourceProps = {kostKlasse:targetEdge.kostKlasse||null,kostOverride:targetEdge.kostOverride===true};
+  if (!_nearestPointOnNetzEdge(targetEdge,targetPoint)) return false;
   if (parentEdge) _removeNetzEdge(parentEdge);
-  const distanceU = projection.point.distanceTo(targetEdge.uNode.pt);
-  const distanceV = projection.point.distanceTo(targetEdge.vNode.pt);
-  if (distanceU < 5 || distanceV < 5) {
-    _makeNetzEdge(distanceU <= distanceV ? targetEdge.uNode : targetEdge.vNode,buildingNode,0);
-  } else {
-    const junction = {id:_nextJunctionId(),type:'junction',pt:projection.point,load:0};
-    const leftWaypoints = projection.path.slice(1,projection.index+1);
-    const rightWaypoints = projection.path.slice(projection.index+1,-1);
-    _removeNetzEdge(targetEdge);
-    const left = _makeNetzEdge(targetEdge.uNode,junction,dn);
-    const right = _makeNetzEdge(junction,targetEdge.vNode,dn);
-    Object.assign(left,sourceProps); Object.assign(right,sourceProps);
-    _applySplitWaypoints(left,leftWaypoints);
-    _applySplitWaypoints(right,rightWaypoints);
-    _makeNetzEdge(junction,buildingNode,0);
-  }
+  _makeNetzEdge(_knotenAufKante(targetEdge,targetPoint),buildingNode,0);
   recalcNetz();
   if ((window._waermeNetzValidation?.cycleEdges || 0) > 0 ||
       (window._waermeNetzValidation?.disconnectedConsumerIds || []).includes(buildingId)) {

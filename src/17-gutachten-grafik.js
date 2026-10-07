@@ -8801,7 +8801,7 @@ function ggPvFiguren() {
         const mit = ggPvKanon().filter(v => v.batKwh > 0);
         if (!mit.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Auslegung mit Batteriespeicher.'; }
         const kurz = {
-          'ev-opt': 'wirtschaftlich', 'wirt-opt': 'mit PV optimiert', 'autarkie': 'Autarkie-Sättigung',
+          'ev-opt': 'wirtschaftlich', 'wirt-opt': 'mit PV optimiert',
           wirt: 'wirtschaftlich', autarkie: 'Autarkie-Sättigung', abregelung: 'gegen Abregelung', fest: 'vorgegeben',
         };
         const crate = window._pvAnalyse?.basis?.batCRate || 0.5;
