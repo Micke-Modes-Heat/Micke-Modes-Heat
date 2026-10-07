@@ -13,7 +13,7 @@ import { _gebLabelHtml, escHtml } from './03c-gebaeude-io.js';
 import { cancelDrawStromEdge } from './05b-stromnetz.js';
 import { beginInteraction, cancelInteraction, commitInteraction, getActiveInteraction } from './lib/interaction-state.js';
 import { createLifecycleScope } from './lib/lifecycle.js';
-import { wpAufstellungForm, rechteckEcken, WP_ABSTAENDE, WP_MODULE } from './lib/wp-aufstellung.js';
+import { wpAufstellungForm, rechteckEcken, WP_MODULE } from './lib/wp-aufstellung.js';
 
 /** @type {import('./lib/lifecycle.js').LifecycleScope|null} */
 let areaDrawLifecycle = null;
@@ -2272,7 +2272,7 @@ function _lwWpAufstellungZeichnen(pt, leistung) {
   const reihenY = [...new Set(auf.geraete.map(g => g.y))];
   for (const y of reihenY) {
     for (const s of [-1, 1]) {
-      const y0 = y + s * (auf.modul.b / 2 + 0.15), y1 = y + s * (auf.modul.b / 2 + Math.min(1.2, WP_ABSTAENDE.luft - 0.2));
+      const y0 = y + s * (auf.modul.b / 2 + 0.15), y1 = y + s * (auf.modul.b / 2 + Math.min(1.2, auf.abstaende.luft - 0.2));
       const [a, b] = [rechteckEcken(0, y0, 0, 0, drehung)[0], rechteckEcken(0, y1, 0, 0, drehung)[0]];
       L.polyline(zuLatLng([a, b]), { color: '#4fc3f7', weight: 2, opacity: 0.8, interactive: false, className: 'lwwp-luft' })
         .addTo(window.lwWpLayerGroup);

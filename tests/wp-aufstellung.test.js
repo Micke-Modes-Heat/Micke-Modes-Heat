@@ -17,9 +17,15 @@ describe('wpAufstellung', () => {
     expect(wpAufstellung(100).modul.kw).toBe(40);
     expect(wpAufstellung(100).anzahl).toBe(3);
     expect(wpAufstellung(500)).toMatchObject({ anzahl: 4, reihen: 1 });
-    expect(wpAufstellung(1500)).toMatchObject({ modul: { kw: 500 }, anzahl: 3, reihen: 1 });
-    expect(wpAufstellung(3000)).toMatchObject({ modul: { kw: 800 }, anzahl: 4, reihen: 1 });
-    expect(wpAufstellung(5000)).toMatchObject({ modul: { kw: 800 }, anzahl: 7, reihen: 2, jeReihe: 4 });
+    expect(wpAufstellung(1500)).toMatchObject({ modul: { kw: 515 }, anzahl: 3, reihen: 1 });
+    expect(wpAufstellung(3000)).toMatchObject({ modul: { kw: 810 }, anzahl: 4, reihen: 1 });
+    expect(wpAufstellung(5000)).toMatchObject({ modul: { kw: 810 }, anzahl: 7, reihen: 2, jeReihe: 4 });
+  });
+  it('Großgeräte mit Herstellerabständen (Längsseiten 1,0 m, Stirnseiten 1,0 + 1,5 m)', () => {
+    const a = wpAufstellung(810, { modulKw: 810 });
+    expect(a).toMatchObject({ anzahl: 1, abstaende: { luft: 1.0 } });
+    expect(a.laenge).toBeCloseTo(10.5 + 2.5, 6);
+    expect(a.breite).toBeCloseTo(2.3 + 2.0, 6);
   });
   it('feste Gerätegröße und Reihenzahl', () => {
     const a = wpAufstellung(640, { modulKw: 80, reihen: 2 });
@@ -53,7 +59,7 @@ describe('rechteckEcken', () => {
 import { wpAufstellungForm } from '../src/lib/wp-aufstellung.js';
 describe('wpAufstellungForm', () => {
   const abstaendeOk = r => {
-    const A = WP_ABSTAENDE;
+    const A = r.abstaende;
     for (const g of r.geraete) {
       expect(Math.abs(g.x) + g.l / 2).toBeLessThanOrEqual(r.laenge / 2 - A.wartung + 1e-6);
       expect(Math.abs(g.y) + g.b / 2).toBeLessThanOrEqual(r.breite / 2 - A.luft + 1e-6);

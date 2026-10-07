@@ -2,18 +2,27 @@
 // DOM-frei. Überschlägige Anordnung aus Gerätegröße, Luft- und Wartungsabständen, damit die
 // benötigte Fläche auf der Karte abgeschätzt werden kann. Richtwerte — Herstellerangaben sind maßgeblich.
 
-/** Typische Außengeräte (Monoblock bzw. Verdampfereinheit): Heizleistung, Länge × Tiefe × Höhe in m,
- *  Ventilatoren (Anzahl, Durchmesser in m, oben = nach oben ausblasend, sonst seitlich). */
+/** Typische Außengeräte (Monoblock bzw. Verdampfereinheit): Heizleistung (A7/W45), Länge × Tiefe × Höhe in m,
+ *  Ventilatoren (Anzahl, Durchmesser in m, oben = nach oben ausblasend, sonst seitlich; ventReihen = nebeneinander quer),
+ *  technikL = Länge des Technikteils ohne Ventilatoren an einer Stirnseite, abstaende = Mindestabstände des Geräts
+ *  (sonst WP_ABSTAENDE). Bis 300 kW Richtwerte; die Großgeräte nach Herstellerdatenblättern luftgekühlter
+ *  R290-Wärmepumpen mit V-Registern (Mindestabstand 1,0 m an den Längsseiten, 1,0 / 1,5 m an den Stirnseiten). */
+const GROSS_ABSTAENDE = { luft: 1.0, wartung: 1.25, geraet: 1.5, reihe: 2.0 };
 export const WP_MODULE = [
   { kw: 16, l: 1.3, b: 0.6, h: 1.4, ventilatoren: 1, dm: 0.6, oben: false },
   { kw: 40, l: 1.9, b: 1.0, h: 1.7, ventilatoren: 2, dm: 0.7, oben: true },
   { kw: 80, l: 2.8, b: 1.2, h: 2.0, ventilatoren: 3, dm: 0.8, oben: true },
   { kw: 160, l: 4.2, b: 2.2, h: 2.3, ventilatoren: 4, dm: 0.9, oben: true },
   { kw: 300, l: 6.5, b: 2.3, h: 2.5, ventilatoren: 6, dm: 0.9, oben: true },
-  // Großgeräte mit V-Register (z. B. R290-Baureihen bis ~800 kW); Maße überschlägig
-  { kw: 500, l: 9.5, b: 2.3, h: 2.6, ventilatoren: 8, dm: 1.0, oben: true },
-  { kw: 800, l: 13.5, b: 2.4, h: 2.7, ventilatoren: 12, dm: 1.0, oben: true },
+  { kw: 515, l: 7.9, b: 2.3, h: 2.45, ventilatoren: 8, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, abstaende: GROSS_ABSTAENDE },
+  { kw: 570, l: 7.9, b: 2.3, h: 2.45, ventilatoren: 8, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, abstaende: GROSS_ABSTAENDE },
+  { kw: 650, l: 7.9, b: 2.3, h: 2.45, ventilatoren: 8, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, abstaende: GROSS_ABSTAENDE },
+  { kw: 710, l: 10.5, b: 2.3, h: 2.45, ventilatoren: 12, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, abstaende: GROSS_ABSTAENDE },
+  { kw: 810, l: 10.5, b: 2.3, h: 2.45, ventilatoren: 12, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, abstaende: GROSS_ABSTAENDE },
 ];
+
+/** Mindestabstände eines Geräts: eigene Herstellerwerte oder die allgemeinen Richtwerte. */
+export function wpAbstaende(modul) { return { ...WP_ABSTAENDE, ...(modul?.abstaende || {}) }; }
 
 /** Abstände in m: Luftseite (Ansaugen/Ausblasen, vorn und hinten), Wartung an den Stirnseiten,
  *  zwischen Geräten einer Reihe und zwischen zwei Reihen (gegen Luftkurzschluss). */
@@ -43,7 +52,7 @@ export function wpAufstellung(leistungKw, o = {}) {
     ? Math.min(anzahl, Math.round(wunsch))
     : Math.ceil(anzahl / MAX_JE_REIHE);
   const jeReihe = Math.ceil(anzahl / reihen);
-  const a = WP_ABSTAENDE;
+  const a = wpAbstaende(modul);
   const laenge = 2 * a.wartung + jeReihe * modul.l + (jeReihe - 1) * a.geraet;
   const breite = 2 * a.luft + reihen * modul.b + (reihen - 1) * a.reihe;
   const geraete = [];
@@ -55,7 +64,7 @@ export function wpAufstellung(leistungKw, o = {}) {
       geraete.push({ x: -reiheL / 2 + modul.l / 2 + i * (modul.l + a.geraet), y, l: modul.l, b: modul.b });
     }
   }
-  return { modul, anzahl, reihen, jeReihe, laenge, breite, flaeche: laenge * breite, flaecheGeraete: anzahl * modul.l * modul.b, geraete };
+  return { modul, anzahl, reihen, jeReihe, laenge, breite, flaeche: laenge * breite, flaecheGeraete: anzahl * modul.l * modul.b, geraete, abstaende: a };
 }
 
 /**
@@ -71,7 +80,7 @@ export function wpAufstellungForm(leistungKw, o = {}) {
   const L0 = Number(o.laenge);
   if (!Number.isFinite(L0) || L0 <= 0) return { ...auto, passt: true, formFrei: false, flaecheAuto: auto.flaeche, mehrFlaeche: 0 };
   const { modul, anzahl } = auto;
-  const a = WP_ABSTAENDE;
+  const a = auto.abstaende;
   const ziel = auto.flaeche;
   const minL = modul.l + 2 * a.wartung;                                   // ein Gerät je Reihe
   const maxL = anzahl * modul.l + (anzahl - 1) * a.geraet + 2 * a.wartung; // alle in einer Reihe
@@ -143,15 +152,22 @@ export function wpGeraete3d(auf, drehungGrad = 0) {
   const mod = auf.modul;
   for (const g of auf.geraete) {
     const zOben = FUND + mod.h;
-    // Sockel/Rahmen unten hell, darüber Register an den Längsseiten
+    // Sockel/Rahmen unten hell, darüber Register an den Längsseiten; Großgeräte mit geschlossenem Technikteil an einer Stirnseite
+    const tl = Math.min(mod.technikL || 0, g.l * 0.5), rl = g.l - tl;
+    const rx = g.x - g.l / 2 + rl / 2;
     box(g.x, g.y, g.l, g.b, FUND, FUND + 0.25, { oben: 'gehaeuse', lang: 'gehaeuse', kurz: 'gehaeuse' });
-    box(g.x, g.y, g.l, g.b, FUND + 0.25, zOben, { oben: 'gehaeuse', lang: 'register', kurz: 'gehaeuse' });
+    box(rx, g.y, rl, g.b, FUND + 0.25, zOben, { oben: 'gehaeuse', lang: 'register', kurz: 'gehaeuse' });
+    if (tl > 0) box(g.x + g.l / 2 - tl / 2, g.y, tl, g.b, FUND + 0.25, zOben - 0.1, { oben: 'gehaeuse', lang: 'gehaeuse', kurz: 'gehaeuse' });
     const n = mod.ventilatoren || 1, dm = mod.dm || 0.6;
     if (mod.oben) {
-      for (let i = 0; i < n; i++) {
-        const fx = g.x - g.l / 2 + g.l * (i + 0.5) / n;
-        scheibe('luefter', [fx, g.y, zOben + 0.02], Math.min(dm / 2, g.l / n / 2 * 0.9, g.b / 2 * 0.9), 'z');
-        scheibe('nabe', [fx, g.y, zOben + 0.03], 0.08, 'z', 8);
+      const quer = Math.max(1, mod.ventReihen || 1), laengs = Math.ceil(n / quer);
+      for (let i = 0; i < laengs; i++) {
+        for (let j = 0; j < quer; j++) {
+          const fx = rx - rl / 2 + rl * (i + 0.5) / laengs;
+          const fy = g.y - g.b / 2 + g.b * (j + 0.5) / quer;
+          scheibe('luefter', [fx, fy, zOben + 0.02], Math.min(dm / 2, rl / laengs / 2 * 0.9, g.b / quer / 2 * 0.9), 'z');
+          scheibe('nabe', [fx, fy, zOben + 0.03], 0.08, 'z', 8);
+        }
       }
     } else {
       // kleiner Monoblock: Ventilator in der Längsseite (Ausblas nach vorn)
