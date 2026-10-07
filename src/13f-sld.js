@@ -301,7 +301,7 @@ export function sldSuche(q) {
     const cfg = ASSET_CFG[n.type] || {};
     const nr  = _gebNummer(n);
     const meta = n._chips ? `${n._chips.length} Anlagen` : (cfg.label || n.type);
-    return `<div class="sld-suche-row" data-click="sldSucheWahl('${_esc(String(n.id)).replace(/'/g, "\'")}')">
+    return `<div class="sld-suche-row" data-click="sldSucheWahl('${_esc(String(n.id)).replace(/'/g, "\\'")}')">
       <span class="sld-suche-nr">${_esc(nr || cfg.icon || '·')}</span>
       <span class="sld-suche-name">${_esc(n.name)}</span>
       <span class="sld-suche-meta">${_esc(meta)}</span>

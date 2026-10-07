@@ -5,6 +5,7 @@ import {
   gdKapitelEinfuegen, gdKapitelLoeschen, gdKapitelVerschieben, gdKapitelEbene,
   gdNeuerTextBlock, gdNeuerFigurBlock, gdBlockEinfuegen, gdBlockVerschieben, gdBlockLoeschen,
   gdBeschriftungen, gdFindeBlock, gdFigurIds, gdNormDeckblatt, gdMitStandardAbgleichen,
+  GUTACHTEN_GLIEDERUNG_V1, gdNummerV1ZuV2, gdGliederungVersion, gdGliederungUmstellen,
 } from '../src/lib/gutachten-dokument.js';
 
 /** Kleines Dokument aus [ebene, titel]-Paaren. */
@@ -19,8 +20,8 @@ describe('Abgleich mit der Standardgliederung', () => {
 
   it('meldet bei einem aktuellen Standarddokument nichts', () => {
     const katalog = [
-      { id: 'f-text', kapitel: '3.3.1 Bestandsbedarf und bauliche Entwicklung', istText: true, reihe: 5 },
-      { id: 'f-abb', kapitel: '3.3.1 Bestandsbedarf und bauliche Entwicklung', reihe: 10 },
+      { id: 'f-text', kapitel: '5.3.1 Bestandsbedarf und bauliche Entwicklung', istText: true, reihe: 5 },
+      { id: 'f-abb', kapitel: '5.3.1 Bestandsbedarf und bauliche Entwicklung', reihe: 10 },
     ];
     const { dok } = gdStandardDokument(katalog);
     const r = gdMitStandardAbgleichen(dok, katalog);
@@ -112,14 +113,19 @@ describe('Nummerierung', () => {
     const nr = gdKapitelNummern(dok.kapitel);
     const bei = n => dok.kapitel[nr.indexOf(n)]?.titel;
     expect(bei('1.2')).toBe('Liegenschaftsinformationen');
-    expect(bei('3.1.1')).toBe('Liegenschaftsstromnetzanschluss');
-    expect(bei('3.1.2')).toBe('Stromnetz intern (MS/NS)');
-    expect(bei('3.2')).toBe('Stromverbrauchsdaten');
-    expect(bei('3.4.2')).toBe('PV-Anlage und Batteriespeicher');
-    expect(bei('3.5')).toBe('Wirtschaftlichkeit und Investitionskosten');
-    expect(bei('5.2')).toBe('Bewertung Resilienz');
-    expect(bei('2.3')).toBe('Analyse möglicher Energiequellen und Technologien');
-    expect(bei('6.2')).toBe('Elektrotechnik');
+    expect(bei('5.1.1')).toBe('Liegenschaftsstromnetzanschluss');
+    expect(bei('3.1.1')).toBe('Erdgasanschluss');
+    expect(bei('5.1.2')).toBe('Stromnetz intern (MS/NS)');
+    expect(bei('5.2')).toBe('Stromverbrauchsdaten');
+    expect(bei('5.4.2')).toBe('PV-Anlage und Batteriespeicher');
+    expect(bei('5.5')).toBe('Wirtschaftlichkeit und Investitionskosten');
+    expect(bei('6')).toBe('Gebäudeautomation (GA)');
+    expect(bei('7.2.1')).toBe('Wirtschaftlichkeit mit PV-Eigenstrom');
+    expect(bei('8.2')).toBe('Bewertung Resilienz');
+    expect(bei('4')).toBe('Potenzialanalyse');
+    expect(bei('2.1')).toBe('Baulicher Ist-Zustand');
+    expect(bei('9.2')).toBe('Elektrotechnik');
+    expect(dok.gliederung).toBe(2);
     expect(dok.kapitel).toHaveLength(GUTACHTEN_STANDARD_GLIEDERUNG.length);
     expect(dok.kapitel.every(k => k.titel)).toBe(true);
   });
@@ -171,20 +177,20 @@ describe('Normalisieren', () => {
 describe('Standarddokument', () => {
   it('ordnet Figuren nach Kapitelnummer zu, Textbausteine zuerst', () => {
     const { dok, nichtZugeordnet } = gdStandardDokument([
-      { id: 'anschluss', kapitel: '3.1.1 Liegenschaftsstromnetzanschluss' },
-      { id: 'na-text', kapitel: '3.1.1 Liegenschaftsstromnetzanschluss', istText: true },
-      { id: 'lastgang', kapitel: '3.2 Stromverbrauchsdaten' },
+      { id: 'anschluss', kapitel: '5.1.1 Liegenschaftsstromnetzanschluss' },
+      { id: 'na-text', kapitel: '5.1.1 Liegenschaftsstromnetzanschluss', istText: true },
+      { id: 'lastgang', kapitel: '5.2 Stromverbrauchsdaten' },
       { id: 'ohne', kapitel: '' },
       { id: 'falsch', kapitel: '9.9 Gibt es nicht' },
     ]);
     const nr = gdKapitelNummern(dok.kapitel);
-    expect(dok.kapitel[nr.indexOf('3.1.1')].bloecke.map(b => b.figurId)).toEqual(['na-text', 'anschluss']);
-    expect(dok.kapitel[nr.indexOf('3.2')].bloecke.map(b => b.figurId)).toEqual(['lastgang']);
+    expect(dok.kapitel[nr.indexOf('5.1.1')].bloecke.map(b => b.figurId)).toEqual(['na-text', 'anschluss']);
+    expect(dok.kapitel[nr.indexOf('5.2')].bloecke.map(b => b.figurId)).toEqual(['lastgang']);
     expect(nichtZugeordnet).toEqual(['ohne', 'falsch']);
   });
 
   it('wechselt Texte und Abbildungen nach `reihe` ab', () => {
-    const kap = '3.4.2 PV-Anlage und Batteriespeicher';
+    const kap = '5.4.2 PV-Anlage und Batteriespeicher';
     const { dok } = gdStandardDokument([
       { id: 'tabelle', kapitel: kap, reihe: 40 },
       { id: 'text-b', kapitel: kap, istText: true, reihe: 30 },
@@ -193,7 +199,7 @@ describe('Standarddokument', () => {
       { id: 'text-a', kapitel: kap, istText: true, reihe: 10 },
     ]);
     const nr = gdKapitelNummern(dok.kapitel);
-    expect(dok.kapitel[nr.indexOf('3.4.2')].bloecke.map(b => b.figurId))
+    expect(dok.kapitel[nr.indexOf('5.4.2')].bloecke.map(b => b.figurId))
       .toEqual(['text-a', 'herleitung', 'text-b', 'tabelle', 'ohne-reihe']);
   });
 
@@ -296,5 +302,95 @@ describe('Blöcke', () => {
     expect(m.get(t.id)).toEqual([]);
     expect(m.get(b.id)).toEqual([{ art: 'Tabelle', nr: 2 }]);
     expect(m.get(c.id)).toEqual([null]);
+  });
+});
+
+describe('Gliederung Version 2 (Variante B)', () => {
+  /** Dokument nach der alten Standardgliederung, Kapitel-IDs = alte Nummer. */
+  const altDok = () => {
+    const nr = gdKapitelNummern(GUTACHTEN_GLIEDERUNG_V1);
+    return gdNormalisieren({ kapitel: GUTACHTEN_GLIEDERUNG_V1.map((k, i) => ({ id: 'v' + nr[i].replace(/\./g, '_'), ebene: k.ebene, titel: k.titel, bloecke: [] })) });
+  };
+  const kapNr = (dok, nr) => dok.kapitel[gdKapitelNummern(dok.kapitel).indexOf(nr)];
+
+  it('übersetzt Kapitelnummern der alten Gliederung', () => {
+    expect(['1.1', '1.3', '1.3.1', '1.3.3', '2.1.7', '2.2.1', '2.3.1', '2.4', '2.6', '3.4.1', '4', '5.2.4', '6.1', '9.9'].map(gdNummerV1ZuV2))
+      .toEqual(['1.1', '2', '2.1', '2.2.2', '3.2.4', '3.2.5', '4.2', '7', '7.4', '5.4.1', '6', '8.2.4', '9.1', '9.9']);
+  });
+
+  it('jedes alte Standardkapitel hat ein Gegenstück; Elektro, GA, Resilienz und Fazit behalten ihre Titel', () => {
+    const n1 = gdKapitelNummern(GUTACHTEN_GLIEDERUNG_V1), n2 = gdKapitelNummern(GUTACHTEN_STANDARD_GLIEDERUNG);
+    GUTACHTEN_GLIEDERUNG_V1.forEach((k, i) => {
+      const z = n2.indexOf(gdNummerV1ZuV2(n1[i]));
+      expect(z).toBeGreaterThanOrEqual(0);
+      if (/^[3-6]/.test(n1[i])) expect(GUTACHTEN_STANDARD_GLIEDERUNG[z].titel).toBe(k.titel);
+    });
+  });
+
+  it('erkennt alte Dokumente; neue und leere gelten als aktuell', () => {
+    expect(gdGliederungVersion(altDok())).toBe(1);
+    expect(gdGliederungVersion(gdStandardDokument().dok)).toBe(2);
+    expect(gdGliederungVersion(dokAus([[1, 'A'], [1, 'B']]))).toBe(2);
+    expect(gdNormalisieren({ kapitel: [], gliederung: 2 }).gliederung).toBe(2);
+  });
+
+  it('stellt um, ohne Inhalte zu verlieren', () => {
+    const alt = altDok();
+    const k = nr => kapNr(alt, nr);
+    k('1.3.1').bloecke.push({ id: 'b1', typ: 'text', text: 'Freitext Hochbau' }, gdNeuerFigurBlock('gebaeude-uebersicht'));
+    k('2.4').bloecke.push({ id: 'b2', typ: 'text', text: 'Freitext Varianten' }, gdNeuerFigurBlock('va-klima-text'), gdNeuerFigurBlock('va-gegenueberstellung'));
+    k('2.3').bloecke.push(gdNeuerFigurBlock('potenzial-nicht-wind'));
+    k('3.4.2').bloecke.push({ id: 'b3', typ: 'text', text: 'PV-Text' });
+    // eigenes Kapitel unter 2.4 mit Unterkapitel
+    const pos = alt.kapitel.indexOf(k('2.4')) + 1;
+    alt.kapitel.splice(pos, 0, { id: 'e1', ebene: 2, titel: 'Eigene Variante', bloecke: [{ id: 'b4', typ: 'text', text: 'eigen' }] },
+      { id: 'e2', ebene: 3, titel: 'Eigene Variante B', bloecke: [] });
+    alt.kapitel[0].bloecke.push({ id: 'b5', typ: 'text', text: 'Einleitung' });
+    const katalog = [
+      { id: 'gebaeude-uebersicht', kapitel: '2.1 Baulicher Ist-Zustand' }, { id: 'va-klima-text', kapitel: '7.1 Klimarelevanz' },
+      { id: 'va-gegenueberstellung', kapitel: '7 Variantenvergleich Wärme' }, { id: 'potenzial-nicht-wind', kapitel: '4.1 Nicht berücksichtigte Potenziale' },
+    ];
+    const r = gdGliederungUmstellen(alt, katalog);
+    const d = r.dok;
+    expect(d.gliederung).toBe(2);
+    expect(gdGliederungVersion(d)).toBe(2);
+    const bl = nr => kapNr(d, nr).bloecke.map(b => b.text || b.figurId);
+    expect(bl('2.1')).toEqual(['Freitext Hochbau', 'gebaeude-uebersicht']);
+    expect(bl('7')).toEqual(['Freitext Varianten', 'va-gegenueberstellung']);
+    expect(bl('7.1')).toEqual(['va-klima-text']);
+    expect(bl('4.1')).toEqual(['potenzial-nicht-wind']);
+    expect(bl('5.4.2')).toEqual(['PV-Text']);
+    expect(bl('1')).toEqual(['Einleitung']);
+    expect(kapNr(d, '2.1').id).toBe('v1_3_1');   // Kapitel-ID bleibt erhalten
+    // eigene Kapitel stehen hinter dem Teilbaum von 7 (vor 8), Inhalte und Ebenenabstand bleiben
+    const titel = d.kapitel.map(x => x.titel);
+    const iE = titel.indexOf('Eigene Variante');
+    expect(iE).toBeGreaterThan(titel.indexOf('Empfehlung', titel.indexOf('Variantenvergleich Wärme')));
+    expect(titel[iE + 1]).toBe('Eigene Variante B');
+    expect(d.kapitel[iE + 1].ebene).toBe(d.kapitel[iE].ebene + 1);
+    expect(titel[iE + 2]).toBe('Maßnahmen zur Steigerung der Resilienz');
+    expect(d.kapitel[iE].bloecke[0].text).toBe('eigen');
+    expect(r.eigene).toEqual(['Eigene Variante', 'Eigene Variante B']);
+    const zaehle = x => x.kapitel.reduce((a, kk) => a + kk.bloecke.length, 0);
+    expect(zaehle(d)).toBe(zaehle(alt));
+    expect(d.kapitel.length).toBe(GUTACHTEN_STANDARD_GLIEDERUNG.length + 2);
+  });
+});
+
+describe('Automatische Querverweise', () => {
+  it('folgen verschobenen Kapiteln, unbekannte Nummern bleiben', async () => {
+    const { gdVerweisNummern, gdVerweiseErsetzen } = await import('../src/lib/gutachten-dokument.js');
+    const { dok } = gdStandardDokument();
+    expect(gdVerweisNummern(dok).get('3.2')).toBe('3.2');
+    // Kapitel 2 (Ist-Zustand Wärme) hinter Kapitel 3 verschieben → 3 wird 2
+    const nr = gdKapitelNummern(dok.kapitel);
+    const i2 = nr.indexOf('2'), i3 = nr.indexOf('3'), i4 = nr.indexOf('4');
+    const k = dok.kapitel;
+    const neu = { ...dok, kapitel: [...k.slice(0, i2), ...k.slice(i3, i4), ...k.slice(i2, i3), ...k.slice(i4)] };
+    const m = gdVerweisNummern(neu);
+    expect(m.get('3.2')).toBe('2.2');
+    expect(m.get('2.2.1')).toBe('3.2.1');
+    expect(gdVerweiseErsetzen('vgl. Kapitel 3.2 und Kapiteln 2.2.1 bis 2.2.2; Kapitel 6.1 der PV-Analyse; 3.2 kW', m))
+      .toBe('vgl. Kapitel 2.2 und Kapiteln 3.2.1 bis 3.2.2; Kapitel 6.1 der PV-Analyse; 3.2 kW');
   });
 });

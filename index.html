@@ -54,7 +54,7 @@
     <button class="var-add-btn" data-click="addVariante()" style="font-size:10px;" title="Neue Variante anlegen: Name, Ausgangspunkt und Zweck">＋ Variante</button>
   </div>
   <div class="header-spacer" style="flex:1;"></div>
-  <button class="tool-btn" id="btn-gefuehrt" data-click="guideToggle()" style="border-color:#ff9800;color:#ffb74d;font-size:11px;padding:0 10px;gap:5px;" title="Geführter Modus: Schritt für Schritt durch ein Stromgutachten — blendet aus, was im aktuellen Schritt nicht gebraucht wird">🧭 Geführt</button>
+  <button class="tool-btn" id="btn-gefuehrt" data-click="guideToggle()" style="border-color:#ff9800;color:#ffb74d;font-size:11px;padding:0 10px;gap:5px;" title="Geführter Modus: Schritt für Schritt durch ein Stromgutachten — blendet aus, was im aktuellen Schritt nicht gebraucht wird">🧭<span class="btn-text"> Geführt</span></button>
   <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:#546e7a;color:#90a4ae;font-size:11px;padding:0 10px;gap:5px;" title="Ansicht: Einfärbung, Gebäude-Symbole und Karten­ebenen">⊞ Ansicht</button>
   <button class="tool-btn" id="btn-feedback-main" data-click="sendAppFeedback()" style="background:#e65100;border-color:#e65100;color:#fff;font-size:11px;padding:0 14px;font-weight:600;letter-spacing:0.2px;" title="Testversion: Feedback oder Fehler melden">✉ Feedback geben</button>
   <div style="position:relative;display:inline-block;">
@@ -1756,6 +1756,7 @@
       </div>
       <svg id="gl-preview-svg" width="100%" height="60" viewBox="0 0 400 60" preserveAspectRatio="none"></svg>
     </div>
+    <div id="wb-box" class="wb-box"></div>
   </div>
 
   <!-- 4. Lastprofil SigLinDe -->
@@ -1809,6 +1810,10 @@
   </div>
 
   <!-- 5. Energiesplit: Raumwärme / TWW / Netzverluste -->
+  <div class="gl-section" id="gl-bestandsanlage-section">
+    <div class="gl-section-title" title="Was heute steht: Grundlage für das Gutachtenkapitel Ist-Zustand Anlagentechnik. Unabhängig von den Erzeugern der Varianten.">Bestandsanlage (Ist)</div>
+    <div id="ba-editor"></div>
+  </div>
   <div class="gl-section" id="gl-split-section" style="display:none;">
     <div class="gl-section-title">Wärmebedarfs-Aufteilung</div>
     <div style="display:flex;gap:16px;align-items:center;margin-bottom:6px;font-size:10px;font-family:'DM Mono',monospace;">

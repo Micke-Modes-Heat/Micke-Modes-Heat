@@ -1572,7 +1572,7 @@ export function pvBerechneAlle() {
     e.pflicht = pflichtCheck(e.nennKwp, pflicht);
   }
 
-  // ── Speicherkennzahlen je Auslegung mit Batterie (Gutachten 3.4.2) ──
+  // ── Speicherkennzahlen je Auslegung mit Batterie (Gutachten 5.4.2) ──
   //     Vergleich mit derselben PV-Leistung ohne Speicher: was der Speicher
   //     tatsächlich bewirkt, statt nur seiner Größe.
   const bedarfGesamt = pvGesamtBedarfMwh();
@@ -7216,7 +7216,7 @@ function _pvBelegungenHtml() {
             <span style="font-size:10px;color:var(--muted);">kWh</span>` : ''}
         </div>
         <label data-ohne-stale style="display:flex;align-items:center;gap:5px;margin:3px 0 0 15px;font-size:10px;color:var(--muted);cursor:pointer;"
-          title="Im Gutachten (Kapitel 3.4.2 und 3.5) als weitere Auslegung neben den festen zeigen — mit eigenem Absatz, in Tabellen und Abbildungen">
+          title="Im Gutachten (Kapitel 5.4.2 und 5.5) als weitere Auslegung neben den festen zeigen — mit eigenem Absatz, in Tabellen und Abbildungen">
           <input type="checkbox" ${bv.gutachten ? 'checked' : ''} style="accent-color:${_pvBelegungFarbe(bv.nr)};"
             data-change="pvaBelegungSetze(${bv.nr},'gutachten',this.checked)"/>im Gutachten zeigen</label>
       </div>`;

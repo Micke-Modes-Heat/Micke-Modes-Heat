@@ -1235,14 +1235,22 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 }
 @media(max-width:1400px){
   #btn-feedback-main{display:none;}
+  header .ctx-label{display:none;}
+  .timeline-slider{width:96px!important;}
 }
 @media(max-width:1100px){
   #varianten-bar,#btn-ebenen{display:none;}
   .addr-search-wrap{width:78px;}
   .addr-search-input{width:100%;}
+  #btn-gefuehrt .btn-text{display:none;}
+  .timeline-slider{width:72px!important;}
+  .view-tab{padding:4px 7px;}
 }
 @media(max-width:900px){
-  header{padding-inline:8px;gap:5px;}
+  /* Kopfleiste waagerecht scrollbar statt aus dem Fenster geschoben; das ⋯-Menü ist fixiert und wird nicht abgeschnitten */
+  header{padding-inline:8px;gap:5px;overflow-x:auto;overflow-y:hidden;justify-content:flex-start;scrollbar-width:thin;}
+  header .ctx-sep{display:none;}
+  #mehr-menu{position:fixed!important;top:48px!important;right:8px!important;}
   .logo span{display:none;}
   .addr-search-wrap{display:none;}
   .header-right{max-width:calc(100vw - 55px);}

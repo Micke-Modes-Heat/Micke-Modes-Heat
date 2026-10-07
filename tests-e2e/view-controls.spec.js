@@ -46,9 +46,12 @@ test('dist: Ansicht steuert Beschriftung und zeitliche Wärmeentwicklung',async(
       min:document.getElementById('year-slider').min,
       value:document.getElementById('year-slider').value,
       display:document.getElementById('year-display').textContent,
+      heute:String(new Date().getFullYear()),
     };
   });
-  expect(immediateYear).toEqual({min:'1965',value:'1965',display:'1965'});
+  // Das älteste Baujahr ist nur die Untergrenze des Schiebers; der Wert bleibt das aktuelle Jahr
+  // (_initYearSliderFromBaujahr in 03c-gebaeude-io.js).
+  expect(immediateYear).toEqual({min:'1965',value:immediateYear.heute,display:immediateYear.heute,heute:immediateYear.heute});
 
   await page.evaluate(()=>toggleEbenenPanel());
   await page.locator('#el-labels-visible').check();

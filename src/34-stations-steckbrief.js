@@ -174,7 +174,7 @@ export function ssbSetMsKV(wert) {
   else ssbSetStation('msKV', wert === '' ? '' : parseFloat(wert));
 }
 
-/** Zählung des VNB = Messort der Netzanschluss-Stammdaten (eine Quelle für Gutachten 3.1.1 und Steckbrief). */
+/** Zählung des VNB = Messort der Netzanschluss-Stammdaten (eine Quelle für Gutachten 5.1.1 und Steckbrief). */
 export function ssbSetMessort(wert) {
   const neu = String(window.naMessort || '') === wert ? '' : wert;
   if (typeof window.sgNaSetMessort === 'function') window.sgNaSetMessort(neu);
@@ -390,7 +390,7 @@ function _sec1() {
     : st.msKVQuelle === 'netz' ? _autoBadge('aus Netz', 'Nennspannung des NAP im Netz — Eingabe hier gilt nur für diese Station') : '';
   const zaehlung = st.zaehlungMoeglich
     ? _wahl('zaehlung', st.zaehlung ? { wert: st.zaehlung, auto: false } : null, w => `ssbSetMessort(${w})`)
-      + ` <span class="ssb-mut" title="Steht in ⚡ Strom-Grundlagen › Netzanschluss (Messort) und fließt in Gutachten 3.1.1">= Messort Netzanschluss</span>`
+      + ` <span class="ssb-mut" title="Steht in ⚡ Strom-Grundlagen › Netzanschluss (Messort) und fließt in Gutachten 5.1.1">= Messort Netzanschluss</span>`
     : '<span class="ssb-mut">— (keine Übergabestation)</span>';
   const anb = st.anbindung.length
     ? st.anbindung.map(x => x.art === 'netz'

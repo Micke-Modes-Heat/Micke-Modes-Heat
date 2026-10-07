@@ -1220,7 +1220,7 @@ export function blackoutGutachtenStand() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// GUTACHTEN: DREI FESTE SZENARIEN (Kapitel 5.2.2–5.2.6)
+// GUTACHTEN: DREI FESTE SZENARIEN (Kapitel 8.2.2–8.2.6)
 // ══════════════════════════════════════════════════════════════════════════
 // Unabhängig von den frei definierten Schutzzielen stellt jedes Gutachten drei
 // Szenarien gegenüber: (1) nur die kritischen Gebäude (Klasse A) mit Aggregaten
@@ -1392,7 +1392,7 @@ function _zieleBlock() {
         ${st ? `<span style="font-size:9px;color:${st.farbe};white-space:nowrap;">${st.label}</span>` : ''}
         <button class="btn-xs" style="padding:0 5px;${e.empfehlung === z.id ? `border-color:#ffd54f;color:#ffd54f;background:#ffd54f26;` : ''}"
           data-click="blackoutZielEmpfehlen('${z.id}')"
-          title="${e.empfehlung === z.id ? 'Empfehlung des Gutachtens (Kapitel 5.2.8) — erneut klicken zum Entfernen' : 'Als Empfehlung des Gutachtens markieren (Kapitel 5.2.8)'}">${e.empfehlung === z.id ? '★' : '☆'}</button>
+          title="${e.empfehlung === z.id ? 'Empfehlung des Gutachtens (Kapitel 8.2.8) — erneut klicken zum Entfernen' : 'Als Empfehlung des Gutachtens markieren (Kapitel 8.2.8)'}">${e.empfehlung === z.id ? '★' : '☆'}</button>
         <button class="btn-xs" style="padding:0 5px;" data-click="blackoutZielWeg('${z.id}')" title="Ziel entfernen">✕</button>
       </div>
       <div style="display:flex;gap:4px;margin-top:4px;align-items:center;font-size:9.5px;">
@@ -1425,7 +1425,7 @@ function _zieleBlock() {
       <div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:9px;min-width:100%;">
         <thead><tr><th></th>${kopf}</tr></thead><tbody>${zeilen}</tbody></table></div>
       <div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.4;">
-        Tabelle und Text für Kapitel 5.2 stehen unter Analyse › Gutachten-Grafiken und im Gutachten-Editor.</div>`;
+        Tabelle und Text für Kapitel 8.2 stehen unter Analyse › Gutachten-Grafiken und im Gutachten-Editor.</div>`;
   }
 
   return `

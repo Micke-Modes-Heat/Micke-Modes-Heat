@@ -48,6 +48,8 @@ test('dist: PV-Pflicht bestimmt Land, erzeugt die Variante und prüft die übrig
     window.pvaBuildAnalyseSection?.();
     window.setAnalyseSection?.('pva');
     window.pvBerechneAlle();
+    // Die PV-Analyse zeichnet ihre Abschnitte erst, wenn sie ins Bild kommen — zur Tabelle springen wie ein Nutzer
+    window.pvaSetView('tabelle');
     const s = window._pvAnalyse;
     return {
       ids: s.ergebnisse.map(e => e.id),

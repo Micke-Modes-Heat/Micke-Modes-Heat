@@ -22,12 +22,14 @@ describe('netzSignatur', () => {
       edges: [kante(2, 10001, { dn: 80 }), kante(10001, 1, { dn: 25 })] };
     expect(netzSignatur(b)).toBe(netzSignatur(a));
   });
-  it('erkennt Verlauf, Abzweiglage, Kostenklasse und Zeitfenster', () => {
+  it('erkennt Verlauf, Abzweiglage, manuelle Kostenklasse und Zeitfenster', () => {
     const a = netz(kante(1, 10001), kante(10001, 2));
     const basis = netzSignatur(a);
     expect(netzSignatur(netz(kante(1, 10001, { waypoints: [{ lat: 52.1, lng: 8.1 }] }), kante(10001, 2)))).not.toBe(basis);
     expect(netzSignatur({ ...a, nodes: a.nodes.map(n => (n.id === 10001 ? { ...n, lat: 52.0006 } : n)) })).not.toBe(basis);
-    expect(netzSignatur(netz(kante(1, 10001, { kostKlasse: 'hoch' }), kante(10001, 2)))).not.toBe(basis);
+    expect(netzSignatur(netz(kante(1, 10001, { kostKlasse: 'hoch', kostOverride: true }), kante(10001, 2)))).not.toBe(basis);
+    // automatisch (verzögert) ermittelte Kostenklasse ist kein eigener Schritt
+    expect(netzSignatur(netz(kante(1, 10001, { kostKlasse: 'mittel' }), kante(10001, 2)))).toBe(basis);
     expect(netzSignatur(netz(kante(1, 10001, { visibleFromYear: 2030 }), kante(10001, 2)))).not.toBe(basis);
   });
 });

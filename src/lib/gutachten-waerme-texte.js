@@ -91,7 +91,7 @@ const mitArtikel = (e, gross = false) => {
 /** Absatz aus Zeichenketten und Platzhaltern; benachbarte Zeichenketten werden verbunden. */
 function absatz(...teile) {
   const out = [];
-  for (const t of teile.flat()) {
+  for (const t of teile.flat(Infinity)) {
     if (t === '' || t == null || t === false) continue;
     if (typeof t === 'string' && typeof out[out.length - 1] === 'string') out[out.length - 1] += t;
     else out.push(t);
@@ -99,12 +99,33 @@ function absatz(...teile) {
   return out;
 }
 
+/** Zwischenüberschrift innerhalb eines Bausteins (LKEBw-Grün, fett) — ein Absatz mit Kennzeichen `ueberschrift`. */
+function ueberschrift(text) {
+  const a = absatz(text);
+  a.ueberschrift = true;
+  return a;
+}
+
 /** Hilfen für verwandte Textmodule (Gebäudekapitel): gleiche Zahlenformate, Platzhalter und Absatzbildung. */
-export const wtHilfen = { num, ok, nf, pct, liste, summe, kleinN, absatz };
+export const wtHilfen = { num, ok, nf, pct, liste, summe, kleinN, absatz, ueberschrift };
+
+/** Netzkennwerte einer Variante, gerundet für den Vergleich (Länge auf 10 m, Verluste auf 0,1 %); ohne Netzdaten null. */
+export function wtNetzSchluessel(v) {
+  const n = v?.netz;
+  if (!n) return null;
+  return [Math.round((Number(n.laengeM) || 0) / 10), n.anschluesse || 0, Math.round((Number(n.verlustePct) || 0) * 10), n.dnMax || 0, n.vlC ?? '', n.rlC ?? ''].join('|');
+}
+
+/** Gleiches Netz und gleiche Gebäudeanschlüsse in allen Varianten? Varianten ohne Netzdaten zählen nicht mit. */
+export function wtNetzGleich(V = []) {
+  const netze = V.map(wtNetzSchluessel).filter(Boolean);
+  const aus = V.map(v => [...(v.ausschlussIds || [])].map(String).sort().join(','));
+  return new Set(netze).size <= 1 && new Set(aus).size <= 1;
+}
 
 /** Absätze als Klartext — Platzhalter als „[Feld]“ bzw. mit Wert. Für Tests und die Zwischenablage. */
 export function wtKlartext(absaetze) {
-  return absaetze.map(a => a.map(s => (typeof s === 'string' ? s : (s.wert || `[${s.feld}]`))).join('')).join('\n\n');
+  return absaetze.map(a => (a.ueberschrift ? '## ' : '') + a.map(s => (typeof s === 'string' ? s : (s.wert || `[${s.feld}]`))).join('')).join('\n\n');
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -226,7 +247,7 @@ export function wtNormalisiere(d = {}) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * Datenherkunft und bauliche Entwicklung (Grundlage von 2.1 und 2.2.1)
+ * Datenherkunft und bauliche Entwicklung (Grundlage von 3.1 und 3.2.5)
  * ═══════════════════════════════════════════════════════════════════════ */
 /** Klimadaten als Nominalphrase; `dativ` für „aus den …“, sonst Akkusativ („die …“). */
 const klimaText = (stadt, klimajahr, plz, dativ) => {
@@ -253,7 +274,10 @@ function herkunftLastgangAbsaetze(n) {
   if (art === 'import') {
     out.push(absatz(`Der Wärmelastgang beruht auf einer hochgeladenen Messreihe aus ${abtast}`, zr.quelle ? ` (Quelle: ${zr.quelle})` : '',
       zr.qualitaet === 'synthetic' ? ', die als synthetisch gekennzeichnet ist' : '',
-      '. Die Reihe enthält die Netzverluste bereits. Sie spiegelt die Witterung des Messjahres wider; die Klimabereinigung ist ', F('Klimabereinigung erfolgt / nicht erfolgt'), '.'));
+      '. Die Reihe enthält die Netzverluste bereits. ',
+      h.witterung && ok(num(h.witterung.faktor))
+        ? `Sie wurde über Gradtagzahlen witterungsbereinigt (Faktor ${nf(num(h.witterung.faktor), 3)}, Messjahr ${h.witterung.messjahr}).`
+        : ['Sie spiegelt die Witterung des Messjahres wider; die Klimabereinigung ist ', F('Klimabereinigung erfolgt / nicht erfolgt'), '.']));
   } else if (art === 'importMonate') {
     out.push(absatz(`Der Wärmelastgang beruht auf einer hochgeladenen Reihe aus ${abtast}, die monatsweise auf die vorgegebenen Monatsverbräuche skaliert wurde. Die Netzverluste sind bereits enthalten.`));
   } else if (art === 'monate' || art === 'monateGesamt') {
@@ -355,13 +379,13 @@ function entwicklungAbsaetze(n) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 2.1 Ist-Zustand Wärme
+ * 3.1 Ist-Anlagentechnik (früher Ist-Zustand Wärme)
  * ═══════════════════════════════════════════════════════════════════════ */
 export function wtIstZustand(d) {
   const n = wtNormalisiere(d);
   const out = [];
   if (n.typ === 'neubau') {
-    out.push(absatz('Für die Liegenschaft besteht kein Gebäudebestand. Ein Ist-Zustand der Wärmeversorgung liegt daher nicht vor; das Kapitel entfällt. Der Wärmebedarf der geplanten Neubauten wird im Soll-Zustand (Kapitel 2.2) auf Grundlage der Planungsdaten ermittelt.'));
+    out.push(absatz('Für die Liegenschaft besteht kein Gebäudebestand. Ein Ist-Zustand der Wärmeversorgung liegt daher nicht vor; das Kapitel entfällt. Der Wärmebedarf der geplanten Neubauten wird im Soll-Zustand (Kapitel 3.2) auf Grundlage der Planungsdaten ermittelt.'));
     const g = n.herkunft.gebaeude || {};
     if (num(g.gesamt) > 0) out.push(absatz('Datengrundlage sind die Gebäudedaten der Planung (Nutzung, Fläche, Baujahr und Wärmebedarf).'));
     return out;
@@ -380,7 +404,7 @@ export function wtIstZustand(d) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 2.2.1 Dimensionierung WEA — Bedarf und Auslegungsleistung (ohne Versorgungssystem)
+ * 3.2.5 Dimensionierung WEA — Bedarf und Auslegungsleistung (ohne Versorgungssystem)
  * ═══════════════════════════════════════════════════════════════════════ */
 export function wtDimensionierungWea(d) {
   const n = wtNormalisiere(d);
@@ -424,12 +448,12 @@ export function wtDimensionierungWea(d) {
 
   const bel = belastbarkeitAbsatz(n);
   if (bel.length) out.push(bel);
-  out.push(absatz('Die Auslegungsleistung der Wärmeerzeugungsanlage (WEA) richtet sich nach dieser Spitzenlast zuzüglich einer Reserve von ', F('Reserve in %'), ' %. Die Wahl des Versorgungssystems erfolgt erst im Variantenvergleich (Kapitel 2.4).'));
+  out.push(absatz('Die Auslegungsleistung der Wärmeerzeugungsanlage (WEA) richtet sich nach dieser Spitzenlast zuzüglich einer Reserve von ', F('Reserve in %'), ' %. Die Wahl des Versorgungssystems erfolgt erst im Variantenvergleich (Kapitel 7).'));
   return out;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 2.2.2 Wärmeversorgungsnetz (WVN), Soll-Zustand
+ * 3.3.1 Wärmeversorgungsnetz (WVN), Soll-Zustand
  * ═══════════════════════════════════════════════════════════════════════ */
 export function wtWvn(d) {
   const n = wtNormalisiere(d);
@@ -526,7 +550,7 @@ export function wtWvn(d) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 2.2.3 Wärmetechnische Hausstation (WH), Soll-Zustand
+ * 3.3.2 Wärmetechnische Hausstation (WH), Soll-Zustand
  * ═══════════════════════════════════════════════════════════════════════ */
 export function wtHausstation(d) {
   const n = wtNormalisiere(d);
@@ -678,7 +702,7 @@ function technikAbsaetze(v, gesehen) {
     } else if (w > 0) {
       p.push(` ${kleinN(wps.length, 'erzeugt', 'erzeugen')} rund ${nf(w)} MWh Wärme pro Jahr. Die Jahresarbeitszahl wird nach Abschluss der Dispatch-Berechnung ergänzt: JAZ `, F('Jahresarbeitszahl'), '.');
     } else p.push(' ist Teil der Variante.');
-    const hinweis = einmal('wp', ` Der zusätzliche Strombedarf ${kleinN(wps.length, 'der Wärmepumpe', 'der Wärmepumpen')} geht als Zusatzbedarf aus dem Wärmekonzept in die Bedarfsprognose Strom (Kapitel 3.3.2) ein und ist bei der Auslegung des Netzanschlusses zu berücksichtigen.`)
+    const hinweis = einmal('wp', ` Der zusätzliche Strombedarf ${kleinN(wps.length, 'der Wärmepumpe', 'der Wärmepumpen')} geht als Zusatzbedarf aus dem Wärmekonzept in die Bedarfsprognose Strom (Kapitel 5.3.2) ein und ist bei der Auslegung des Netzanschlusses zu berücksichtigen.`)
       + (wps.some(e => e.unterart === 'luft') ? einmal('luft', ' Bei Luft-Wasser-Wärmepumpen sind Schallemissionen (TA Lärm) sowie Platzbedarf und Aufstellung der Außengeräte im weiteren Planungsverlauf nachzuweisen.') : '')
       + (wps.some(e => e.unterart === 'erde') ? einmal('erde', ' Für die Erdwärmenutzung sind Flächenbedarf des Sondenfelds und die wasserrechtlichen Genehmigungsvoraussetzungen zu klären.') : '');
     out.push(absatz(...p, hinweis));
@@ -753,7 +777,7 @@ function variantenBeschreibung(v, pMax, gesehen) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 2.4 Variantenvergleich
+ * 7 Variantenvergleich
  * ═══════════════════════════════════════════════════════════════════════ */
 function extrem(varianten, feld, richtung) {
   const gueltig = varianten.filter(v => ok(v[feld]));
@@ -780,11 +804,13 @@ export function wtVariantenvergleich(d) {
   }
 
   // Einleitung
-  const bedarfsSatz = ok(n.gesamtMwh) ? ` Grundlage ist der Soll-Bedarf aus Kapitel 2.2 (${nf(n.gesamtMwh)} MWh/a${ok(n.pMaxKw) ? `, Spitzenlast ${nf(n.pMaxKw)} kW` : ''}).` : ' Grundlage ist der Soll-Bedarf aus Kapitel 2.2.';
+  const bedarfsSatz = ok(n.gesamtMwh) ? ` Grundlage ist der Soll-Bedarf aus Kapitel 3.2 (${nf(n.gesamtMwh)} MWh/a${ok(n.pMaxKw) ? `, Spitzenlast ${nf(n.pMaxKw)} kW` : ''}).` : ' Grundlage ist der Soll-Bedarf aus Kapitel 3.2.';
   if (V.length === 1) {
     out.push(absatz(`Betrachtet wird eine Variante der Wärmeversorgung, „${nameV(V[0])}“.${bedarfsSatz} Weitere Varianten sind `, F('Weitere Varianten oder Begründung für die Betrachtung einer Variante'), '.'));
   } else {
-    out.push(absatz(`Verglichen werden ${V.length} Varianten der Wärmeversorgung: ${liste(V.map(nameV))}.${bedarfsSatz} Alle Varianten werden für denselben Wärmebedarf und dasselbe Netz gerechnet.`));
+    out.push(absatz(`Verglichen werden ${V.length} Varianten der Wärmeversorgung: ${liste(V.map(nameV))}.${bedarfsSatz} `
+      + (wtNetzGleich(V) ? 'Alle Varianten werden für denselben Gebäudebestand und dasselbe Wärmenetz gerechnet.'
+        : 'Der Gebäudebestand ist in allen Varianten gleich; Wärmenetz und Gebäudeanschlüsse unterscheiden sich teilweise.')));
   }
   const rahmen = [];
   if (ok(num(w.co2PreisEurT))) rahmen.push(`ein CO₂-Preis von ${nf(num(w.co2PreisEurT))} €/t`);
@@ -858,7 +884,7 @@ export function wtVariantenvergleich(d) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 2.5 Wirtschaftlichkeit und Investitionskosten (variantenbezogen)
+ * 7.2 Wirtschaftlichkeit und Investitionskosten (variantenbezogen)
  * ═══════════════════════════════════════════════════════════════════════ */
 export function wtWirtschaftlichkeit(d) {
   const n = wtNormalisiere(d);
@@ -926,7 +952,7 @@ export function wtWirtschaftlichkeit(d) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 2.7 Empfehlung und 6.1 Fazit
+ * 7.5 Empfehlung und 9.1 Fazit
  * ═══════════════════════════════════════════════════════════════════════ */
 /** Folgeschritte; was nur ein Teil der Varianten enthält, steht bedingt („sofern die gewählte Variante …“). */
 function folgeschritte(n) {
@@ -935,7 +961,7 @@ function folgeschritte(n) {
   const schritte = [];
   const vl = num(n.netz.vlC);
   const add = (anz, text) => { if (anz > 0) schritte.push(anz === V.length ? text : `(sofern die gewählte Variante dies enthält) ${text}`); };
-  add(hat(e => e.art === 'wp'), 'der Netzanschlussantrag für den zusätzlichen Strombedarf der Wärmepumpen (Kapitel 3.4.1)');
+  add(hat(e => e.art === 'wp'), 'der Netzanschlussantrag für den zusätzlichen Strombedarf der Wärmepumpen (Kapitel 5.4.1)');
   add(hat(e => e.unterart === 'luft'), 'ein schalltechnisches Gutachten für die Luft-Wasser-Wärmepumpen (TA Lärm)');
   add(hat(e => e.unterart === 'erde'), 'die Klärung der wasserrechtlichen Genehmigung und des Flächenbedarfs der Erdwärmesonden');
   if (ok(vl) && vl >= WT_SCHWELLEN.vorlaufC.mittel) schritte.push('die Prüfung einer Absenkung der Netztemperaturen einschließlich der Heizflächen in den Gebäuden');
@@ -1008,7 +1034,7 @@ export function wtFazit(d) {
     out.push(absatz(...teile));
     out.push(absatz('Empfohlen wird die Variante ', F('Empfohlene Variante'), '.'));
   } else {
-    out.push(absatz('Die Wärmeversorgung wird in Kapitel 2.4 über einen Variantenvergleich festgelegt: ', F('Zusammenfassung des Variantenvergleichs'), '.'));
+    out.push(absatz('Die Wärmeversorgung wird in Kapitel 7 über einen Variantenvergleich festgelegt: ', F('Zusammenfassung des Variantenvergleichs'), '.'));
   }
 
   const offen = [];
