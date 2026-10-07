@@ -507,6 +507,12 @@ export function strassenWegeAbPunkt(via, ziele, toleranzM = 8) {
   return {viaPunkt:snapVia.point,wege};
 }
 
+/** Punkt abseits der Straßen (> 35 m): die Leitung verläuft dort frei — kurz erklären, wie man das wieder löst. */
+function _hinweisFreierVerlauf() {
+  if (!trasseSegments.some(seg => !seg.domains || seg.domains.includes('waerme'))) return;   // ohne Straßen ist frei der Normalfall
+  window.showHint?.('Punkt liegt abseits der Straßen – die Leitung verläuft hier frei. Ecke erneut greifen und an die Straße ziehen oder doppelt anklicken, um sie zu entfernen. Strg+Z macht es rückgängig.',6000);
+}
+
 export function removeEdgeWaypointMarkers(edgeObj) {
   (edgeObj?.waypointMarkers || []).forEach(marker => map.removeLayer(marker));
   if (edgeObj) edgeObj.waypointMarkers = [];
@@ -537,6 +543,7 @@ function _renderEdgeWaypointMarkers(edgeObj) {
         _persistEdgeWaypoints(edgeObj);
         _setEdgePath(edgeObj);
         _renderEdgeWaypointMarkers(edgeObj);
+        _hinweisFreierVerlauf();
       }
       recalcNetz();
       // Liegt der Punkt auf einer anderen Straße: anbieten, den ganzen Strang dahinter dorthin umzulegen
@@ -612,6 +619,7 @@ export function addEdgeMidHandle(edgeObj) {
       edgeObj.routingViaPoints = vias;
       _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
       _renderEdgeWaypointMarkers(edgeObj);
+      _hinweisFreierVerlauf();
     }
     this.setLatLng(getEdgeMidDisplayPt(edgeObj));
     recalcNetz();

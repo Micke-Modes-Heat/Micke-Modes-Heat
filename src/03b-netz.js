@@ -4976,8 +4976,24 @@ function _leitungGreifbar() {
   return netzEditMode || _netzWorkspaceSichtbar();
 }
 
+/** Index der Ecke (fester Zwischenpunkt) der Leitung, die höchstens 12 Pixel vom Bildschirmpunkt entfernt liegt, sonst -1. */
+function _eckeAmPunkt(edgeObj, px) {
+  return (edgeObj.routingViaPoints || []).findIndex(v => map.latLngToContainerPoint(v).distanceTo(px) <= 12);
+}
+
 function _leitungGreifbarMachen(edgeObj, hitLayer) {
   hitLayer.on('mousedown', ev => _leitungGreifen(edgeObj, ev));
+  // Doppelklick auf eine Ecke entfernt sie — die Leitung folgt dann wieder der Straße
+  hitLayer.on('dblclick', ev => {
+    if (!_leitungGreifbar()) return;
+    const i = _eckeAmPunkt(edgeObj,map.latLngToContainerPoint(ev.latlng));
+    const marker = i >= 0 ? edgeObj.waypointMarkers?.[i] : null;
+    if (!marker) return;
+    L.DomEvent.stop(ev);
+    marker.fire('dblclick',{originalEvent:ev.originalEvent});
+    closeEdgePopup();   // die beiden Einzelklicks hatten das Leitungsfenster geöffnet
+    showHint('Ecke entfernt.',2500);
+  });
   // „Greifen“-Hand genau dann, wenn Ziehen möglich ist
   hitLayer.on('mouseover', () => { const el = hitLayer.getElement?.(); if (el) el.style.cursor = _leitungGreifbar() ? 'grab' : ''; });
 }
@@ -4989,10 +5005,20 @@ function _leitungGreifen(edgeObj, ev) {
   ev.originalEvent?.preventDefault?.();
   const startPx = map.latLngToContainerPoint(ev.latlng);
   const pfad = getEdgePathPoints(edgeObj);
+  // Nahe an einer vorhandenen Ecke gegriffen: diese Ecke verschieben statt eine neue zu setzen
+  const ecke = _eckeAmPunkt(edgeObj,startPx);
   let bewegt = false;
   const kartenZiehen = map.dragging.enabled();
   if (kartenZiehen) map.dragging.disable();
   const vorschau = latlng => {
+    if (ecke >= 0) {
+      const vias = [...(edgeObj.routingViaPoints || [])];
+      vias[ecke] = latlng;
+      const punkte = [edgeObj.uNode.pt,...vias,edgeObj.vNode.pt];
+      edgeObj.layer?.setLatLngs(punkte);
+      edgeObj.hitLayer?.setLatLngs(punkte);
+      return;
+    }
     // eingefügt an der nächstgelegenen Stelle des bisherigen Verlaufs
     let best = 0, bestD = Infinity;
     for (let i = 0; i < pfad.length - 1; i++) {
@@ -5023,6 +5049,8 @@ function _leitungGreifen(edgeObj, ev) {
     container.addEventListener('click', schlucken, { capture: true, once: true });
     setTimeout(() => container.removeEventListener('click', schlucken, { capture: true }), 400);
     _selectNetzEditEdge(edgeObj);
+    const eckMarker = ecke >= 0 ? edgeObj.waypointMarkers?.[ecke] : null;
+    if (eckMarker) { eckMarker.setLatLng(e.latlng); eckMarker.fire('dragend'); return; }
     edgeObj.midMarker.setLatLng(e.latlng);
     edgeObj.midMarker.fire('dragend');
   };
