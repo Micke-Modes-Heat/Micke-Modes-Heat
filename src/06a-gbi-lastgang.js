@@ -1174,6 +1174,8 @@ export function glSetUploadError(msg) {
 
 // ── Vorschau-SVG ──────────────────────────────────────────────────────────
 export function glClearLastgang() {
+  const wb = document.getElementById('wb-box');
+  if (wb) wb.style.display = 'none';
   glRawCsv = null;
   glRawData = null;
   glLastgangKw = null;
@@ -1222,8 +1224,16 @@ export function glRenderPreview(arr, pMax) {
     <text x="${pad+iW-2}" y="${pad+iH-2}" fill="#7a8099" font-size="7" text-anchor="end">Grün: Dauerlinie · Grau: Zeitverlauf</text>`;
 
   document.getElementById('gl-preview-svg').innerHTML = svgContent;
-  document.getElementById('gl-preview-title').textContent =
-    `Vorschau: ${Math.round(arr.reduce((a,b)=>a+b,0)/1000).toLocaleString('de-DE')} MWh/a`;
+  // Hochgeladen oder aus den Gebäudedaten berechnet? Nur Hochgeladenes lässt sich entfernen und witterungsbereinigen.
+  const hochgeladen = !!glLastgangKw;
+  const mwh = Math.round(arr.reduce((a,b)=>a+b,0)/1000).toLocaleString('de-DE');
+  document.getElementById('gl-preview-title').textContent = hochgeladen
+    ? `Hochgeladener Lastgang: ${mwh} MWh/a`
+    : `Berechneter Lastgang (aus Gebäudedaten): ${mwh} MWh/a`;
+  const entfernen = document.getElementById('gl-preview-entfernen');
+  if (entfernen) entfernen.style.display = hochgeladen ? '' : 'none';
+  const wb = document.getElementById('wb-box');
+  if (wb) wb.style.display = hochgeladen ? '' : 'none';
   document.getElementById('gl-preview-wrap').style.display = 'block';
 }
 

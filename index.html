@@ -353,7 +353,8 @@
               </div>
               <div class="na-trasse-werkzeuge" id="na-trasse-werkzeuge">
                 <button type="button" class="btn-secondary trasse-draw-btn" id="btn-draw-trasse-waerme" data-click="startGuidedTrasseCreation()">✎ Haupttrasse zeichnen</button>
-                <button type="button" class="btn-secondary danger" data-netz-braucht="trasse" data-click="confirmClearTrasse()">Haupttrasse löschen</button>
+                <button type="button" class="btn-secondary" id="btn-trasse-loeschmodus" data-netz-braucht="trasse" data-click="trasseLoeschModusUmschalten()" title="Einzelne Trassenabschnitte durch Anklicken entfernen (auch per Rechtsklick auf einen Abschnitt). Rückgängig über den Hinweis unten.">🗑 Abschnitte löschen</button>
+                <button type="button" class="btn-secondary danger" data-netz-braucht="trasse" data-click="confirmClearTrasse()">Ganze Haupttrasse löschen</button>
               </div>
               <div class="na-struktur">
                 <span class="na-label">Hausanschlüsse</span>
@@ -1743,17 +1744,17 @@
     <div class="gl-preview-wrap" id="gl-preview-wrap" style="display:none;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
         <div class="gl-preview-title" id="gl-preview-title" style="margin-bottom:0;"></div>
-        <button data-click="glClearLastgang()" title="Lastgang entfernen"
+        <button id="gl-preview-entfernen" data-click="glClearLastgang()" title="Hochgeladenen Lastgang entfernen"
           style="font-size:9px;padding:2px 6px;background:#4a1a1a;border:1px solid #7a3030;border-radius:3px;color:#ef9a9a;cursor:pointer;">✕ entfernen</button>
       </div>
       <svg id="gl-preview-svg" width="100%" height="60" viewBox="0 0 400 60" preserveAspectRatio="none"></svg>
     </div>
-    <div id="wb-box" class="wb-box"></div>
+    <div id="wb-box" class="wb-box" style="display:none;"></div>
   </div>
 
   <!-- 4. Lastprofil SigLinDe -->
-  <div class="gl-section" id="gl-slp-section">
-    <div class="gl-section-title">Synthetisches Lastprofil (SigLinDe)</div>
+  <details class="gl-section gl-aufklapp" id="gl-slp-section">
+    <summary class="gl-section-title">Synthetisches Lastprofil (SigLinDe) <span style="font-size:9px;color:var(--muted);text-transform:none;letter-spacing:0;font-weight:400;">Ersatz, wenn keine Gebäudedaten vorliegen</span></summary>
     <div style="font-size:9px;color:var(--muted);line-height:1.45;margin-bottom:7px;">Fallback für Projekte ohne auswertbare Gebäudedaten. Sind Wärmebedarfe je Gebäude vorhanden, werden automatisch gebäudespezifische SigLinDe- und Nutzungsprofile summiert.</div>
     <div class="gl-grid2" style="margin-bottom:6px;">
       <div class="inp-group">
@@ -1777,18 +1778,19 @@
           data-input="document.getElementById('gl-gew1').value = Math.max(0, 100 - (parseInt(this.value)||0)); glBerechnenAuto()"/>
       </div>
     </div>
-  </div>
+  </details>
 
   <!-- 5. Netz & Heizkurve -->
   <div class="gl-section">
     <div class="gl-section-title">Netz &amp; Heizkurve</div>
     <div class="gl-grid3">
       <div class="inp-group">
-        <label class="inp-label" style="display:flex;justify-content:space-between;">
+        <label class="inp-label">
           Netzverluste (%)
-          <span id="gl-netzverlust-hint" style="color:var(--muted);font-size:9px;font-style:italic;"></span>
+          
         </label>
         <input class="inp-field" type="number" id="gl-netzverlust" value="10" min="0" max="40" step="1" style="text-align:right;" data-input="document.getElementById('gl-netzverlust-hint').textContent='';glBerechnenAuto()"/>
+        <span id="gl-netzverlust-hint" style="color:var(--muted);font-size:9px;font-style:italic;display:block;margin-top:2px;text-transform:none;letter-spacing:0;"></span>
       </div>
       <div class="inp-group">
         <label class="inp-label">VL bei −5°C</label>

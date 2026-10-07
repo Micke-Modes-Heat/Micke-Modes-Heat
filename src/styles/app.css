@@ -2662,3 +2662,14 @@ textarea.ssb-in{resize:vertical;}
 .lwwp-form-zeile .zu-klein,#lwwp-form-info.zu-klein{color:#ef5350;}
 .lwwp-griff{display:flex!important;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#fff;color:#1b5e20;border:2px solid #388e3c;font:700 11px/1 sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:grab;}
 .lwwp-griff.drehen{color:#0277bd;border-color:#0277bd;}
+.gl-aufklapp > summary{cursor:pointer;list-style:none;}
+.gl-aufklapp > summary::-webkit-details-marker{display:none;}
+.gl-aufklapp > summary::before{content:"▸ ";color:var(--muted);}
+.gl-aufklapp[open] > summary::before{content:"▾ ";}
+.trasse-menue .leaflet-popup-content{margin:8px 10px;}
+.trasse-menue-inhalt{display:flex;flex-direction:column;gap:5px;font-size:11px;min-width:150px;}
+.trasse-menue-inhalt span{color:var(--muted,#888);font-family:'DM Mono',monospace;}
+.trasse-menue-inhalt .btn-secondary{font-size:11px;padding:4px 8px;}
+body.trasse-loeschmodus .leaflet-interactive{cursor:not-allowed;}
+body.trasse-loeschmodus path.leaflet-interactive[stroke="#ff9800"],body.trasse-loeschmodus path.leaflet-interactive[stroke="#ab47bc"],body.trasse-loeschmodus path.leaflet-interactive[stroke="#42a5f5"]{cursor:pointer;}
+#btn-trasse-loeschmodus.active{background:#c62828;color:#fff;border-color:#c62828;}

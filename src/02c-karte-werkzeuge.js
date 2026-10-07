@@ -1668,11 +1668,18 @@ export function redrawTrasse() {
       const pl = L.polyline(pts, { color, weight: 14, opacity: 0.25, lineCap: 'round', lineJoin: 'round' }).addTo(map);
       pl._trasseSegment = seg;
       if (allSegIdx < window.trasseSegments.length) {
+        // Rechtsklick: kleines Menü mit Länge und „Abschnitt löschen“ (auch im Zeichenmodus)
         pl.on('contextmenu', (e) => {
           L.DomEvent.stop(e);
-          if (window.isDrawingTrasse) return;
-          deleteTrasse(allSegIdx);
+          _trasseAbschnittMenue(allSegIdx, e.latlng, pts);
         });
+        // Löschmodus: ein Klick entfernt den Abschnitt
+        pl.on('click', (e) => {
+          if (!window._trasseLoeschModus) return;
+          L.DomEvent.stop(e);
+          trasseAbschnittLoeschen(allSegIdx);
+        });
+        if (window._trasseLoeschModus) pl.bindTooltip('Klicken: Abschnitt löschen', { sticky: true });
       }
       window.trassePolyline.push(pl);
     }
@@ -1818,6 +1825,75 @@ export function deleteTrasse(segIdx) {
   }
   redrawTrasse();
   if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
+}
+
+// ── Einzelne Trassenabschnitte löschen (Rechtsklick-Menü oder Löschmodus), mit Rückgängig ──
+const _trasseLoeschStapel = [];
+function _trasseLaengeM(pts) {
+  let m = 0;
+  for (let i = 1; i < pts.length; i++) m += L.latLng(pts[i - 1]).distanceTo(L.latLng(pts[i]));
+  return m;
+}
+function _trasseAbschnittMenue(segIdx, latlng, pts) {
+  const laenge = Math.round(_trasseLaengeM(pts)).toLocaleString('de-DE');
+  L.popup({ closeButton: true, className: 'trasse-menue', offset: [0, -4] })
+    .setLatLng(latlng)
+    .setContent(`<div class="trasse-menue-inhalt"><b>Trassenabschnitt</b><span>${laenge} m</span>
+      <button type="button" class="btn-secondary danger" data-click="trasseAbschnittLoeschen(${segIdx})">🗑 Abschnitt löschen</button></div>`)
+    .openOn(map);
+}
+function _trasseToast(html, aktion = '') {
+  document.querySelector('.var-toast')?.remove();
+  const el = document.createElement('div');
+  el.className = 'var-toast';
+  el.setAttribute('role', 'status');
+  el.style.borderColor = '#ff9800';
+  el.innerHTML = `<span>${html}</span>${aktion}<button data-click="this.closest('.var-toast').remove()" aria-label="Schließen" style="text-decoration:none;color:var(--muted);">✕</button>`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 8000);
+}
+export function trasseAbschnittLoeschen(segIdx) {
+  const seg = window.trasseSegments[segIdx];
+  if (!seg) return false;
+  const pts = window.trassePoints.slice(seg.start, seg.end + 1);
+  const vorher = captureTrasseHistoryState();
+  recordTrasseHistory();   // im Zeichenmodus zusätzlich über ↶ rückgängig
+  deleteTrasse(segIdx);
+  _trasseLoeschStapel.push(vorher);
+  if (_trasseLoeschStapel.length > 30) _trasseLoeschStapel.shift();
+  map.closePopup();
+  _trasseToast(`🗑 Trassenabschnitt gelöscht (${Math.round(_trasseLaengeM(pts)).toLocaleString('de-DE')} m)`,
+    '<button data-click="trasseLoeschenRueckgaengig()">Rückgängig</button>');
+  return true;
+}
+export function trasseLoeschenRueckgaengig() {
+  const st = _trasseLoeschStapel.pop();
+  if (!st) return false;
+  restoreTrasseHistoryState(st);
+  if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
+  document.querySelector('.var-toast')?.remove();
+  showHint('Trassenabschnitt wiederhergestellt.', 2500);
+  return true;
+}
+/** Löschmodus: Trasse sichtbar, Klick auf einen Abschnitt löscht ihn. Esc beendet. */
+export function trasseLoeschModusUmschalten(an = !window._trasseLoeschModus) {
+  window._trasseLoeschModus = !!an;
+  document.getElementById('btn-trasse-loeschmodus')?.classList.toggle('active', window._trasseLoeschModus);
+  document.body.classList.toggle('trasse-loeschmodus', window._trasseLoeschModus);
+  if (window._trasseLoeschModus) {
+    window._trasseVorLoeschModus = !!window.trasseVisible;
+    window.trasseVisible = true;
+    if (!window.trasseSegments.some(sg => sg.source !== 'osm-street' && sg.end > sg.start)) showHint('Es gibt keine gezeichneten Trassenabschnitte.', 3500);
+    else showHint('Löschmodus: Trassenabschnitt anklicken · Esc oder erneut auf den Knopf zum Beenden', 0);
+    if (!window._trasseLoeschEsc) {
+      window._trasseLoeschEsc = true;
+      document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && window._trasseLoeschModus) trasseLoeschModusUmschalten(false); });
+    }
+  } else {
+    window.trasseVisible = window._trasseVorLoeschModus ?? window.trasseVisible;
+    hideHint();
+  }
+  redrawTrasse();
 }
 
 export function clearTrasse() {
