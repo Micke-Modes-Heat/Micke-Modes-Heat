@@ -1711,7 +1711,15 @@ export function redrawTrasse() {
     const m = L.marker(pt, { draggable, icon:pointIcon, zIndexOffset:isManualSelected ? 2300 : 2000 }).addTo(map);
     m._trassePointIndex=idx;
     m.on('click',event => {
-      if (!window._manualWaermeNetzDrawing) return;
+      if (!window._manualWaermeNetzDrawing) {
+        // Haupttrasse zeichnen: Klick auf einen orangen Punkt wirkt wie ein Klick genau dort —
+        // erster Punkt beginnt einen Abzweig, ein weiterer verbindet dorthin
+        if (window.isDrawingTrasse) {
+          if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
+          map.fire('click',{latlng:L.latLng(pt.lat,pt.lng),originalEvent:event?.originalEvent});
+        }
+        return;
+      }
       if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
       selectedManualTrassePointIndex=idx;
       redrawTrasse();
