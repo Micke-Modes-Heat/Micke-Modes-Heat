@@ -17,6 +17,7 @@ import { nsKabelAuslegen } from './lib/ns-auslegung.js';
 import { anschlussWirksam } from './lib/anschlussleistung.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { createId } from './lib/util.js';
+import { baueTrassenGraph, routeEntlangTrassen } from './lib/trassen-routing.js';
 import { mergeOsmElements, splitOsmBbox, subdivideOsmBbox } from './lib/osm-bbox-tiles.js';
 import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus, getAssetPropsForYear } from './13a-assets-core.js';
 import { collapseAssetSpider, redrawAllAssets } from './13b-assets-render.js';
@@ -521,225 +522,33 @@ function _getTrassenForRouting() {
     .filter(t => t.pts.length >= 2);
 }
 
-function _elPtDist(a, b) {
-  return L.latLng(a[0], a[1]).distanceTo(L.latLng(b[0], b[1]));
+// Graph wird je Trassenstand nur einmal gebaut (Kabel-Neuausrichtung routet jede Leitung einzeln)
+let _trassenGraphCache = { sig: null, graph: null };
+function _trassenGraph(trassen) {
+  const sig = JSON.stringify(trassen);
+  if (_trassenGraphCache.sig !== sig) _trassenGraphCache = { sig, graph: baueTrassenGraph(trassen) };
+  return _trassenGraphCache.graph;
 }
 
-function _elProjOnSeg(p, a, b) {
-  const ax = a[1], ay = a[0], bx = b[1], by = b[0], px = p[1], py = p[0];
-  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
-  if (len2 < 1e-18) return { t: 0, pt: a };
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
-  return { t, pt: [ay + t * dy, ax + t * dx] };
+function _routeMitGraph(graph, from, to) {
+  const route = routeEntlangTrassen(graph, [from.lat, from.lng], [to.lat, to.lng]);
+  return route ? route.map(p => L.latLng(p[0], p[1])) : null;
 }
 
-// Baut Graph aus Trassen-Segmenten mit Cross-Trassen-Verbindungen
-function _elBuildGraph(trassen) {
-  const SNAP_M = 20;
-  const nodeMap = new Map();
-  const key = pt => pt[0].toFixed(7) + ',' + pt[1].toFixed(7);
-
-  function getNode(pt) {
-    const k = key(pt);
-    if (!nodeMap.has(k)) nodeMap.set(k, { id: k, lat: pt[0], lng: pt[1], adj: [] });
-    return nodeMap.get(k);
-  }
-  function addEdge(nA, nB) {
-    const d = _elPtDist([nA.lat, nA.lng], [nB.lat, nB.lng]);
-    if (!nA.adj.some(a => a.toKey === nB.id)) nA.adj.push({ toKey: nB.id, dist: d });
-    if (!nB.adj.some(a => a.toKey === nA.id)) nB.adj.push({ toKey: nA.id, dist: d });
-  }
-
-  for (const tr of trassen) {
-    for (let i = 0; i < tr.pts.length - 1; i++) {
-      addEdge(getNode(tr.pts[i]), getNode(tr.pts[i + 1]));
-    }
-  }
-
-  // Cross-Trassen-Snapping: Enden nahe anderer Trassen verbinden
-  const snapsBySegment = new Map();
-  for (const tr of trassen) {
-    const endpoints = [tr.pts[0], tr.pts[tr.pts.length - 1]];
-    for (const ep of endpoints) {
-      const kEp = key(ep);
-      const nEp = nodeMap.get(kEp); if (!nEp) continue;
-      let best = null;
-      for (const other of trassen) {
-        if (other.id === tr.id) continue;
-        for (let i = 0; i < other.pts.length - 1; i++) {
-          const { pt: proj, t } = _elProjOnSeg(ep, other.pts[i], other.pts[i + 1]);
-          const d = _elPtDist(ep, proj);
-          if (d < SNAP_M && (!best || d < best.d))
-            best = { d, proj, t, ptA: other.pts[i], ptB: other.pts[i + 1], otherId: other.id, segIdx: i };
-        }
-      }
-      if (!best) continue;
-      const segKey = `${best.otherId}:${best.segIdx}`;
-      if (!snapsBySegment.has(segKey))
-        snapsBySegment.set(segKey, { ptA: best.ptA, ptB: best.ptB, snaps: [] });
-      snapsBySegment.get(segKey).snaps.push({ t: best.t, proj: best.proj, kEp, nEp });
-    }
-  }
-  for (const { ptA, ptB, snaps } of snapsBySegment.values()) {
-    const kA = key(ptA), kB = key(ptB);
-    const nA = nodeMap.get(kA), nB = nodeMap.get(kB);
-    if (!nA || !nB) continue;
-    nA.adj = nA.adj.filter(a => a.toKey !== kB);
-    nB.adj = nB.adj.filter(a => a.toKey !== kA);
-    const interior = [];
-    for (const { t, proj, kEp, nEp } of snaps) {
-      if (t < 1e-5) {
-        if (kEp !== kA) addEdge(nEp, nA);
-      } else if (t > 1 - 1e-5) {
-        if (kEp !== kB) addEdge(nEp, nB);
-      } else {
-        const kP = key(proj);
-        if (!nodeMap.has(kP)) nodeMap.set(kP, { id: kP, lat: proj[0], lng: proj[1], adj: [] });
-        const nP = nodeMap.get(kP);
-        if (kEp !== kP) addEdge(nEp, nP);
-        if (!interior.some(s => s.k === kP)) interior.push({ k: kP, n: nP, t });
-      }
-    }
-    interior.sort((a, b) => a.t - b.t);
-    let prevKey = kA, prevNode = nA;
-    for (const { k, n } of interior) {
-      if (prevKey !== k) addEdge(prevNode, n);
-      prevKey = k; prevNode = n;
-    }
-    if (prevKey !== kB) addEdge(prevNode, nB);
-  }
-  return nodeMap;
-}
-
-function _elClosestOnTrasse(trassen, lat, lng) {
-  const p = [lat, lng]; let best = null;
-  for (const tr of trassen) {
-    for (let i = 0; i < tr.pts.length - 1; i++) {
-      const { pt } = _elProjOnSeg(p, tr.pts[i], tr.pts[i + 1]);
-      const d = _elPtDist(p, pt);
-      if (!best || d < best.dist) best = { trasseId: tr.id, segIdx: i, pt, dist: d };
-    }
-  }
-  return best;
-}
-
-function _elDijkstra(nodeMap, startKey, endKey) {
-  if (startKey === endKey) return [[nodeMap.get(startKey).lat, nodeMap.get(startKey).lng]];
-  const dist = new Map(), prev = new Map(), vis = new Set();
-  dist.set(startKey, 0);
-  const q = [[0, startKey]];
-  while (q.length) {
-    q.sort((a, b) => a[0] - b[0]);
-    const [d, u] = q.shift();
-    if (vis.has(u)) continue;
-    vis.add(u);
-    if (u === endKey) break;
-    const node = nodeMap.get(u); if (!node) continue;
-    for (const { toKey, dist: ed } of node.adj) {
-      const nd = d + ed;
-      if (!dist.has(toKey) || nd < dist.get(toKey)) {
-        dist.set(toKey, nd); prev.set(toKey, { from: u }); q.push([nd, toKey]);
-      }
-    }
-  }
-  if (!dist.has(endKey)) return null;
-  const path = []; let cur = endKey;
-  while (cur) { const node = nodeMap.get(cur); if (node) path.unshift([node.lat, node.lng]); cur = prev.get(cur)?.from; }
-  return path;
-}
-
-// Fügt einen virtuellen Knoten für `proj` in nodeMap ein (idempotent per key)
-function _insertVirtualNode(nodeMap, trassen, proj) {
-  const key = pt => pt[0].toFixed(7) + ',' + pt[1].toFixed(7);
-  const tr = trassen.find(t => t.id === proj.trasseId); if (!tr) return null;
-  const ptPrev = tr.pts[proj.segIdx], ptNext = tr.pts[proj.segIdx + 1];
-  const kPrev = key(ptPrev), kNext = key(ptNext);
-  const kVirt = key(proj.pt);
-  if (nodeMap.has(kVirt)) return kVirt;
-  const { t: tVirt } = _elProjOnSeg(proj.pt, ptPrev, ptNext);
-  const segNodes = [{ k: kPrev, t: 0.0 }, { k: kNext, t: 1.0 }];
-  for (const [k, n] of nodeMap) {
-    if (k === kPrev || k === kNext) continue;
-    const { t, pt: onPt } = _elProjOnSeg([n.lat, n.lng], ptPrev, ptNext);
-    if (t > 1e-4 && t < 1 - 1e-4 && _elPtDist([n.lat, n.lng], onPt) < 2.0)
-      segNodes.push({ k, t });
-  }
-  segNodes.sort((a, b) => a.t - b.t);
-  const vn = { id: kVirt, lat: proj.pt[0], lng: proj.pt[1], adj: [] };
-  nodeMap.set(kVirt, vn);
-  const prevNb = [...segNodes].reverse().find(sn => sn.t <= tVirt + 1e-9);
-  const nextNb = segNodes.find(sn => sn.t >= tVirt - 1e-9);
-  [prevNb, nextNb].forEach(nb => {
-    if (!nb || nb.k === kVirt) return;
-    const nbNode = nodeMap.get(nb.k); if (!nbNode) return;
-    const d = _elPtDist(proj.pt, [nbNode.lat, nbNode.lng]);
-    if (!vn.adj.some(a => a.toKey === nb.k)) {
-      vn.adj.push({ toKey: nb.k, dist: d });
-      nbNode.adj.push({ toKey: kVirt, dist: d });
-    }
-  });
-  return kVirt;
-}
-
-// Routing-Kern: verwendet bereits gebauten nodeMap (mutiert ihn für virtuelle Knoten)
-function _routeWithGraph(trassen, nodeMap, from, to) {
-  const ptA = [from.lat, from.lng];
-  const ptB = [to.lat,   to.lng];
-  const projA = _elClosestOnTrasse(trassen, from.lat, from.lng);
-  const projB = _elClosestOnTrasse(trassen, to.lat,   to.lng);
-  if (!projA || !projB) return null;
-
-  const key = pt => pt[0].toFixed(7) + ',' + pt[1].toFixed(7);
-  const kA = _insertVirtualNode(nodeMap, trassen, projA);
-  const kB = _insertVirtualNode(nodeMap, trassen, projB);
-  if (!kA || !kB) return null;
-
-  if (kA !== kB && projA.trasseId === projB.trasseId && projA.segIdx === projB.segIdx) {
-    const dAB = _elPtDist(projA.pt, projB.pt);
-    nodeMap.get(kA)?.adj.push({ toKey: kB, dist: dAB });
-    nodeMap.get(kB)?.adj.push({ toKey: kA, dist: dAB });
-  }
-
-  const trassePth = _elDijkstra(nodeMap, kA, kB);
-  if (!trassePth || trassePth.length === 0) return null;
-
-  const route = [ptA];
-  if (_elPtDist(ptA, projA.pt) > 2) route.push(projA.pt);
-  for (const pt of trassePth) {
-    const last = route[route.length - 1];
-    if (!last || _elPtDist(last, pt) > 0.5) route.push(pt);
-  }
-  if (_elPtDist(ptB, projB.pt) > 2) {
-    const last = route[route.length - 1];
-    if (!last || _elPtDist(last, projB.pt) > 0.5) route.push(projB.pt);
-  }
-  route.push(ptB);
-
-  return route.map(p => L.latLng(p[0], p[1]));
-}
-
-// Vollständiges Routing: von Punkt A nach B entlang Trassen (mit virtuellem Knoteneinstieg)
+// Vollständiges Routing: von Punkt A nach B entlang der Elektro-Trassen
+// (rechtwinkliger Stich auf die Trasse, kürzester Weg im Trassennetz — siehe lib/trassen-routing.js)
 export function routeAlongTrasse(from, to) {
-  const trassen = _getTrassenForRouting();
-  if (trassen.length === 0) return null;
-  const nodeMap = _elBuildGraph(trassen);
-  if (nodeMap.size === 0) return null;
-  return _routeWithGraph(trassen, nodeMap, from, to);
+  return _routeMitGraph(_trassenGraph(_getTrassenForRouting()), from, to);
 }
 
 // Einmalig den Trassen-Graph bauen — für Batch-Routing in autoNetzAssets
 export function buildTrasseGraph() {
-  const trassen = _getTrassenForRouting();
-  if (!trassen.length) return null;
-  const nodeMap = _elBuildGraph(trassen);
-  if (nodeMap.size === 0) return null;
-  return { trassen, nodeMap };
+  return _trassenGraph(_getTrassenForRouting());
 }
 
-// Routing mit vorgebautem Graph (nodeMap wird wiederverwendet, virtuelle Knoten akkumulieren)
+// Routing mit vorgebautem Graph
 export function routeAlongTrasseWithGraph(ctx, from, to) {
-  if (!ctx) return null;
-  return _routeWithGraph(ctx.trassen, ctx.nodeMap, from, to);
+  return ctx ? _routeMitGraph(ctx, from, to) : null;
 }
 
 export function polylineLength(pts) {
