@@ -30,7 +30,7 @@ export function setPdWeNummer(v) { pdWeNummer = v || ''; }
 export let pdLiegenschaftAdresse = '';
 export function setPdLiegenschaftAdresse(v) { pdLiegenschaftAdresse = v || ''; }
 
-// ── Netzanschluss-Stammdaten (Gutachtentext Kapitel 3.1.1 Liegenschaftsstromnetzanschluss) ──
+// ── Netzanschluss-Stammdaten (Gutachtentext Kapitel 5.1.1 Liegenschaftsstromnetzanschluss) ──
 // Manuell erfasste Vertrags-/Netzbetreiberangaben, die das Tool nicht selbst kennt
 // (das Netzmodell beginnt erst am Netzanknüpfungspunkt/NAP) — ergänzen dort, wo im
 // Elektromodell bereits Werte vorliegen (z. B. Spannungsebene aus dem NAP-Asset).
@@ -252,6 +252,8 @@ export let verbindungsLayerGroup = null;
 export let variantResults = {};
 /** Aktueller Stand der Variantenergebnisse — `variantResults` wird beim Variantenwechsel neu zugewiesen, ein window-Wert wäre dann veraltet. */
 export function getVariantResults() { return variantResults; }
+/** Aktive Variante (null = Basisdaten) — wie bei variantResults wäre ein window-Wert nach dem Wechsel veraltet. */
+export function getActiveVariantId() { return activeVariantId; }
 export function toggleVergleich() {
   setViewMode(currentViewMode === 'vergleich' ? 'karte' : 'vergleich');
 }
@@ -260,6 +262,17 @@ export let _cacheVariantTimer = null;
 export function cacheVariantResultsDebounced() {
   clearTimeout(_cacheVariantTimer);
   _cacheVariantTimer = setTimeout(cacheVariantResults, 80);
+}
+
+/**
+ * Stempel des gemeinsamen Gebäudebestands (Anzahl, Bedarf, Heizlast, Baujahre, Abriss, Sanierungen). Ändert sich
+ * der Bestand nach „Alle aktualisieren“, passen gespeicherte Variantenergebnisse nicht mehr dazu.
+ */
+export function gebaeudeStempel() {
+  let h = 0;
+  const add = v => { const t = String(v ?? ''); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; };
+  for (const g of gebaeude) { add(g.id); add(g.waerme); add(g.heizlast); add(g.baujahr); add(g.abrissjahr); add(g.flaeche); add(JSON.stringify(g.sanierungen || [])); }
+  return `${gebaeude.length}:${h}`;
 }
 
 export function cacheVariantResults() {
@@ -365,12 +378,24 @@ export function cacheVariantResults() {
     key: k, leistungKw: _detailLeistung[k] || 0, waermeMwh: dispEn[k]?.waermeMwh || 0, elMwh: dispEn[k]?.elMwh || 0,
     speicherM3: k === '_thermSpeicher' ? (parseFloat(document.getElementById('ts-volumen')?.value) || undefined) : undefined,
   }));
+  // Netzkennwerte je Variante (Gutachten: Tabelle nur, wenn sich die Varianten unterscheiden)
+  const _kanten = netzEdges.filter(e => !e.pruned);
+  const _verbunden = new Set(_kanten.flatMap(e => [e.u, e.v]));
+  const netzKennwerte = _kanten.length ? {
+    laengeM: _kanten.reduce((s, e) => s + (e.length || 0), 0),
+    anschluesse: gebaeude.filter(g => _verbunden.has(g.id) && !isExcluded(g.id)).length,
+    verlusteMwh: totalLoss, verlustePct: totalErzeugung > 0 ? totalLoss / totalErzeugung * 100 : 0,
+    dnMax: _kanten.reduce((m, e) => Math.max(m, parseInt(e.dn, 10) || 0), 0), vlC: vlTemp, rlC: rlTemp,
+  } : null;
+  const ausschlussIds = [..._ausschlussListe()];
   variantResults[key] = {
-    label: activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || '') : 'Hauptplan',
+    label: variantenName(activeVariantId),
     gebäudebedarf: totalVerbrauch, netzverluste: totalLoss,
     netzverlustePct: totalErzeugung > 0 ? totalLoss / totalErzeugung * 100 : 0,
     erzeugung: totalErzeugung, lastgangBasis, vlTemp, rlTemp, erzeuger: erzeugerList, erzeugerDetail, ausschlüsse,
     investGes, jkGes, co2GesH, co2GesLZ, wgkText, wgkNum, eeAnteil, stromkostenWp,
+    wirtKomp: window._lastWirtKomp ? { ...window._lastWirtKomp } : null,
+    gebaeudeStempel: gebaeudeStempel(), netz: netzKennwerte, ausschlussIds,
     // Woraus gerechnet wurde — daran erkennt der Vergleich veraltete Spalten
     sig: stammSignatur(key), zeit: new Date().toISOString(),
   };
@@ -412,18 +437,36 @@ export function variantenKennzahlStatus(key) {
  * veraltet sind — jede davon muss dafür kurz aktiviert werden.
  * alle=true rechnet jede Variante neu.
  */
-export function refreshVergleich(alle = false) {
+let _vergleichLaeuft = false;
+export async function refreshVergleich(alle = false) {
+  if (_vergleichLaeuft) return;
+  _vergleichLaeuft = true;
+  try {
+    await _refreshVergleichIntern(alle);
+  } finally {
+    _vergleichLaeuft = false;
+  }
+  renderVergleich();
+  window.variantenUiAktualisieren?.();
+}
+
+/** Gebäudeausschlüsse der Variante: Lastgang und Einsatzplanung erst neu rechnen, dann zwischenspeichern. */
+async function _lastgangFuerVariante() {
+  if (lastgangPasstNichtZurVariante() && typeof window.glBerechnenJetzt === 'function') await window.glBerechnenJetzt();
+}
+
+async function _refreshVergleichIntern(alle) {
   const originalId = activeVariantId;
   const ids = [null, ...varianten.map(v => v.id)]
     .filter(id => alle || id === originalId || variantenKennzahlStatus(variantKey(id)) !== 'aktuell');
   for (const id of ids) {
     if (id !== activeVariantId) activateVariant(id);
+    await _lastgangFuerVariante();
     cacheVariantResults();
   }
   if (activeVariantId !== originalId) activateVariant(originalId);
+  await _lastgangFuerVariante();
   cacheVariantResults();
-  renderVergleich();
-  window.variantenUiAktualisieren?.();
 }
 
 export function renderVergleich() {
@@ -757,6 +800,8 @@ export function _getEtaMap() {
 export let varianten = [];
 // Setter macht window.varianten zum Live-Wert (main.js) — _deleteVariante weist neu zu.
 export function setVarianten(v) { varianten = Array.isArray(v) ? v : []; }
+// Eigener Name des Hauptplans (Variantenmenü „Umbenennen …“); leer = HAUPTPLAN_NAME.
+export let hauptplanName = '';
 export let activeVariantId = null;
 export function setActiveVariantId(v) { activeVariantId = v; }
 // Variante, die ins Gutachten geht: variantKey ('base' | 'v_…') oder null = keine markiert.
@@ -841,13 +886,14 @@ export function _restoreVariantenKernzustand({ varianten: v, activeVariantId: ai
 /** Zustand des Varianten-Modells jenseits der Snapshots (Projektdatei + Rückgängig). */
 export function _captureVariantenZusatz() {
   return {
-    gutachtenVariante, hauptplanZweck, baseGebaeudeAusschluesse: [...baseGebaeudeAusschluesse],
+    gutachtenVariante, hauptplanZweck, hauptplanName, baseGebaeudeAusschluesse: [...baseGebaeudeAusschluesse],
     baseGebaeudePv, waermeNetzGemeinsam, massnahmenAblage, variantenStand,
   };
 }
 export function _restoreVariantenZusatz(z = {}) {
   gutachtenVariante = z.gutachtenVariante ?? null;
   hauptplanZweck = z.hauptplanZweck || '';
+  hauptplanName = typeof z.hauptplanName === 'string' ? z.hauptplanName.slice(0, 80) : '';
   baseGebaeudeAusschluesse = Array.isArray(z.baseGebaeudeAusschluesse) ? [...z.baseGebaeudeAusschluesse] : [];
   baseGebaeudePv = z.baseGebaeudePv || null;
   waermeNetzGemeinsam = z.waermeNetzGemeinsam || null;
@@ -880,7 +926,7 @@ export function baujahrFuerNeuesObjekt() {
 // ── Hilfen rund um die aktive Variante ───────────────────────────────────────
 export function aktiverVariantKey() { return variantKey(activeVariantId); }
 export function variantenName(idOderKey) {
-  if (idOderKey == null || idOderKey === 'base') return HAUPTPLAN_NAME;
+  if (idOderKey == null || idOderKey === 'base') return hauptplanName || HAUPTPLAN_NAME;
   return varianten.find(v => v.id === idOderKey)?.name || 'Variante';
 }
 export function aktiverVariantenName() { return variantenName(activeVariantId); }
@@ -1061,8 +1107,10 @@ export function applyNetzState(state) {
   document.getElementById('netz-rl').value = state.rl ?? 60;
   syncVLTemps('netz');
   document.getElementById('netz-v').value = state.v ?? 1.0;
+  // Die Norm-Außentemperatur kommt zentral aus den Wärme-Grundlagen; fehlt sie dort, gilt der gespeicherte Netzwert
+  // (auch eine legitime 0 °C), erst danach −12 °C.
   const klimaNormAt = document.getElementById('gl-norm-at')?.value;
-  document.getElementById('netz-t-aussen').value = klimaNormAt || -12;
+  document.getElementById('netz-t-aussen').value = klimaNormAt !== undefined && klimaNormAt !== '' ? klimaNormAt : (state.tAussen ?? -12);
   document.getElementById('netz-t-mittel').value = state.tMittel ?? 10;
   document.getElementById('netz-u-wert').value = state.uWert ?? 0.25;
   if (state.gzfMethode) {
@@ -1414,13 +1462,16 @@ function _nachWechsel() {
   // Kennzahlen der jetzt aktiven Variante neu ablegen (nicht jede Konstellation
   // stößt das über die Erzeuger-Anzeigen an)
   cacheVariantResultsDebounced();
+  // Andere Gebäudeausschlüsse als beim letzten Lastgang → Grundlagen für diese Variante neu rechnen
+  if (lastgangPasstNichtZurVariante()) window.glBerechnenDebounced?.(50);
 }
 
 export function activateVariant(id, _transactionActive = false) {
+  // Unbekannte Variante: nichts tun — auch keinen leeren Rückgängig-Schritt anlegen
+  if (id !== null && !varianten.some(v => v.id === id)) return;
   if (!_transactionActive && typeof window.runPlanningTransaction === 'function') {
     return window.runPlanningTransaction('Variante wechseln', () => activateVariant(id, true));
   }
-  if (id !== null && !varianten.some(v => v.id === id)) return;
   sichereAktivenStand();
   activeVariantId = id;
   _ladeStand(id);
@@ -1539,9 +1590,13 @@ function _deleteVariante(id) {
 export function renameVariante(id, neuerName) {
   const v = id == null ? null : varianten.find(x => x.id === id);
   if (id != null && !v) return;
-  const name = neuerName ?? prompt('Neuer Name:', v.name);
+  const name = neuerName ?? prompt(v ? 'Neuer Name:' : 'Name des Hauptplans:', v ? v.name : variantenName(null));
   if (name) {
-    const apply = () => { v.name = name; renderVariantenBar(); window.variantenUiAktualisieren?.(); };
+    const apply = () => {
+      if (v) v.name = name;
+      else hauptplanName = name.trim() === HAUPTPLAN_NAME ? '' : name.trim().slice(0, 80);
+      renderVariantenBar(); window.variantenUiAktualisieren?.();
+    };
     if (typeof window.runPlanningTransaction === 'function') return window.runPlanningTransaction('Variante umbenennen', apply);
     apply();
   }
@@ -1615,7 +1670,7 @@ export function renderVariantenBar() {
   const pillHtml = v =>
     `<span class="var-pill ${activeVariantId === v.id ? 'active' : ''}" data-click="activateVariant('${v.id}')" title="${escHtml(v.name)}">${escHtml(v.name)}</span>`;
   let html =
-    `<span class="var-pill var-pill-base ${activeVariantId === null ? 'active' : ''}" data-click="activateVariant(null)">${HAUPTPLAN_NAME}</span>` +
+    `<span class="var-pill var-pill-base ${activeVariantId === null ? 'active' : ''}" data-click="activateVariant(null)" ondblclick="renameVariante(null)" title="Doppelklick zum Umbenennen">${escHtml(variantenName(null))}</span>` +
     shown.map(pillHtml).join('');
   if (hidden > 0) html += `<span class="var-pill var-pill-more" data-click="toggleVarPills()">…+${hidden}</span>`;
   pills.innerHTML = html;
@@ -1630,6 +1685,18 @@ export function updateVariantBanner() {
   window.variantenBannerAktualisieren?.();
   banner.style.display = 'block';
 }
+/** Gebäudeausschlüsse einer Variante als Schlüssel ('' für die Basis) — passt der Lastgang noch zur Variante? */
+export function ausschlussSchluessel(id = activeVariantId) {
+  const liste = id === null || id === 'base' ? baseGebaeudeAusschluesse : varianten.find(x => x.id === id)?.gebaeudeAusschlüsse;
+  return [...(liste || [])].map(String).sort().join(',');
+}
+
+/** Wurden die Wärme-Grundlagen mit anderen Gebäudeausschlüssen gerechnet als die aktive Variante sie hat? */
+export function lastgangPasstNichtZurVariante() {
+  const ss = window.systemState;
+  return !!ss?.lastgangKw && (ss.ausschluesse ?? '') !== ausschlussSchluessel();
+}
+
 
 function _ausschlussListe() {
   if (activeVariantId === null) return baseGebaeudeAusschluesse;
@@ -1650,4 +1717,6 @@ export function toggleAusschluss(id) {
   else liste.push(id);
   markiereVarianteGeaendert();
   renderList(); updateViz(); updateTotals(); recalcNetz();
+  // Der Lastgang der Variante enthält nur die angeschlossenen Gebäude → Grundlagen neu rechnen
+  if (lastgangPasstNichtZurVariante()) window.glBerechnenDebounced?.(300);
 }

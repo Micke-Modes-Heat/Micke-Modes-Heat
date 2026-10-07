@@ -1,5 +1,6 @@
 // ── 06a-gbi-lastgang.js — CSV-Import, Lastgang-UI, Klimadaten ──
 // ── Globaler Systemzustand ────────────────────────────────────────────────
+import { baTwwArtAusText, baZustandAusText } from './lib/bestandsanlage.js';
 import { gebaeude } from './01-globals-varianten.js';
 import { calcAutoEnergy, getNutzungstypen } from './02b-gebaeude.js';
 import { hidePanels, recalcNetz } from './03b-netz.js';
@@ -93,9 +94,15 @@ export function gbiFileSelected(file) {
 }
 
 export function gbiAutoMapColumns() {
-  gbiColumns = { name: -1, gebaeudenummer: -1, nutzung: -1, baujahr: -1, zustand: -1, flaeche: -1, stockwerke: -1, waerme: -1, heizlast: -1, strom: -1, abrissjahr: -1 };
+  gbiColumns = { name: -1, gebaeudenummer: -1, nutzung: -1, baujahr: -1, zustand: -1, flaeche: -1, stockwerke: -1, waerme: -1, heizlast: -1, strom: -1, abrissjahr: -1, twwArt: -1, twwKw: -1 };
   gbiHeaders.forEach(function(h, i) {
     var hl = h.toLowerCase();
+    // Trinkwarmwasser zuerst: „TWW-Art“ soll nicht als Nutzung, „TWW-Leistung“ nicht als Heizlast gelten
+    if (/(tww|warmwasser)/i.test(hl)) {
+      if (gbiColumns.twwKw === -1 && /(kw|leistung)/i.test(hl)) gbiColumns.twwKw = i;
+      else if (gbiColumns.twwArt === -1) gbiColumns.twwArt = i;
+      return;
+    }
     if (gbiColumns.gebaeudenummer === -1 && /(gebäudenummer|gebaeudenummer|geb\.?\s*-?\s*nr\.?|objektnummer|liegenschaftsnummer|\bnr\.?\b)/i.test(hl)) gbiColumns.gebaeudenummer = i;
     // Header, die bereits als Nummer erkannt wurden, nicht zusätzlich als Bezeichnung werten.
     if (gbiColumns.name === -1 && !/nummer|\bnr\.?\b/i.test(hl) && /(bezeichnung|name|gebäude|objekt|liegenschaft)/i.test(hl)) gbiColumns.name = i;
@@ -129,7 +136,9 @@ export function gbiShowMapping() {
     { key: 'gebaeudenummer', label: 'Gebäudenummer' },
     { key: 'nutzung', label: 'Nutzung' },
     { key: 'baujahr', label: 'Baujahr' },
-    { key: 'zustand', label: 'Zustand (A/B/C)' },
+    { key: 'zustand', label: 'Bauzustand (1–3 bzw. A/B/C)' },
+    { key: 'twwArt', label: 'TWW-Art (FWS, PWT, DLE, Speicher …)' },
+    { key: 'twwKw', label: 'TWW-Leistung kW' },
     { key: 'flaeche', label: 'Fläche m²' },
     { key: 'stockwerke', label: 'Stockwerke' },
     { key: 'waerme', label: 'Wärmeverbrauch MWh/a' },
@@ -172,7 +181,9 @@ export function gbiStartMatching() {
       waerme: gbiColumns.waerme >= 0 ? num(row[gbiColumns.waerme]) : 0,
       heizlast: gbiColumns.heizlast >= 0 ? num(row[gbiColumns.heizlast]) : 0,
       strom: gbiColumns.strom >= 0 ? num(row[gbiColumns.strom]) : 0,
-      abrissjahr: gbiColumns.abrissjahr >= 0 ? parseInt(row[gbiColumns.abrissjahr]) || 0 : 0
+      abrissjahr: gbiColumns.abrissjahr >= 0 ? parseInt(row[gbiColumns.abrissjahr]) || 0 : 0,
+      twwArt: gbiColumns.twwArt >= 0 ? (row[gbiColumns.twwArt] || '') : '',
+      twwKw: gbiColumns.twwKw >= 0 ? num(row[gbiColumns.twwKw]) : 0
     };
   }).filter(function(d) { return d.name || d.flaeche > 0; }); // filter empty rows
 
@@ -399,9 +410,14 @@ export function gbiApplyToGeb(csvRow, geb) {
   if (csvRow.baujahr > 1800) geb.baujahr = csvRow.baujahr;
   if (csvRow.flaeche > 0) geb.flaeche = csvRow.flaeche;
   if (csvRow.zustand) {
-    var z = csvRow.zustand.toUpperCase().trim();
-    if (z === 'A' || z === 'B' || z === 'C') geb.zustand = z;
+    var z = baZustandAusText(csvRow.zustand);
+    if (z) geb.zustand = z;
   }
+  if (csvRow.twwArt) {
+    var tww = baTwwArtAusText(csvRow.twwArt);
+    if (tww) geb.twwArt = tww;
+  }
+  if (csvRow.twwKw > 0) geb.twwKw = String(csvRow.twwKw);
   if (csvRow.stockwerke > 0) geb.stockwerke = csvRow.stockwerke;
   if (csvRow.abrissjahr > 1800) geb.abrissjahr = csvRow.abrissjahr;
   if (csvRow.strom > 0) geb.strom = csvRow.strom;
@@ -543,6 +559,8 @@ export function captureWaermeGrundlagen() {
     gewicht2:value('gl-gew2'),
     lastgangKw:glLastgangKw ? Array.from(glLastgangKw) : null,
     timeSeriesMeta:glTimeSeriesMeta ? structuredClone(glTimeSeriesMeta) : null,
+    bestandsanlage:window.getBestandsanlage?.() ?? null,
+    witterung:window.getWitterung?.() ?? null,
   };
 }
 
@@ -552,6 +570,8 @@ export function restoreWaermeGrundlagen(data) {
     const element=document.getElementById(id);
     if (element) element.value=value ?? fallback;
   };
+  window.setBestandsanlage?.(source.bestandsanlage);
+  window.setWitterung?.(source.witterung);
   set('gl-gesamt',source.gesamtMwh,'');
   for (let i=0;i<12;i++) set(`gl-m${i}`,source.monatswerte?.[i],'');
   set('gl-stadt',source.stadt,'Kassel');

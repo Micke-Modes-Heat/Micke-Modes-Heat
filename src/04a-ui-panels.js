@@ -36,6 +36,7 @@ import { loadLatestAutosave, saveAutosaveProject } from './lib/autosave-store.js
 import { appLifecycle } from './lib/lifecycle.js';
 import { beginInteraction, cancelInteraction } from './lib/interaction-state.js';
 import { getBuildingHeatProfileMeta } from './lib/building-heat-profiles.js';
+import { BA_TWW_ARTEN, BA_TWW_KURZ, baTwwArtAusText, baZustandAusText } from './lib/bestandsanlage.js';
 import { trBereich, trImBereich, trGroesse, trFuellen, trNachUnten, trZwischenablageLesen, trAlsText, trEinfuegen, trZahl, trNutzung } from './lib/tabellen-raster.js';
 
 export function setNutzung(id, nutzung) {
@@ -163,6 +164,8 @@ function _gebTableValue(g,key) {
   if (key === 'nutzflaeche') return (Number(g.flaeche) || 0) * (Number(g.stockwerke) || 1) * 0.8;
   if (key === 'quelle') return g.importSourceName || '';
   if (key === 'status') return getComputedStats(g,globalYear).status || '';
+  if (key === 'twwArt') return g.twwArt || '';
+  if (key === 'zustand') return Number(baZustandAusText(g.zustand)) || 0;
   return Number(g[key]) || 0;
 }
 
@@ -424,6 +427,9 @@ export function renderGebaeudeOverview() {
     <th data-click="sortGebaeudeTable('waerme')">${sortLabel('waerme','Wärme MWh/a')}</th>
     <th data-click="sortGebaeudeTable('spez')">${sortLabel('spez','kWh/m²a')}</th>
     <th data-click="sortGebaeudeTable('heizlast')">${sortLabel('heizlast','Heizlast kW')}</th>
+    <th data-click="sortGebaeudeTable('zustand')" title="Bauzustand 1 = gut, 2 = mittel, 3 = schlecht">${sortLabel('zustand','Zustand')}</th>
+    <th data-click="sortGebaeudeTable('twwArt')" title="Trinkwarmwasser-Erzeugung im Bestand">${sortLabel('twwArt','TWW-Art')}</th>
+    <th data-click="sortGebaeudeTable('twwKw')">${sortLabel('twwKw','TWW kW')}</th>
     <th class="no-sort">Lastprofil</th>
     <th data-click="sortGebaeudeTable('quelle')">${sortLabel('quelle','Quelle')}</th>
   </tr>`;
@@ -456,6 +462,9 @@ export function renderGebaeudeOverview() {
       ${zelle(r,'waerme',`<input class="geb-table-num" type="number" min="0" step="0.1" value="${g.waerme ?? ''}" data-change="updateGebaeudeTableField(${g.id},'waerme',this.value)">`)}
       ${zelle(r,'spez',`<input class="geb-table-num" type="number" min="0" step="0.1" value="${g.spez ?? ''}" data-change="updateGebaeudeTableField(${g.id},'spez',this.value)">`)}
       ${zelle(r,'heizlast',`<input class="geb-table-num" type="number" min="0" step="0.1" value="${g.heizlast ?? ''}" data-change="updateGebaeudeTableField(${g.id},'heizlast',this.value)">`)}
+      ${zelle(r,'zustand',`<select data-change="updateGebaeudeTableField(${g.id},'zustand',this.value)">${['','1','2','3'].map(v => `<option value="${v}" ${(baZustandAusText(g.zustand) || '') === v ? 'selected' : ''}>${v || '—'}</option>`).join('')}</select>`)}
+      ${zelle(r,'twwArt',`<select data-change="updateGebaeudeTableField(${g.id},'twwArt',this.value)"><option value="">—</option>${Object.entries(BA_TWW_ARTEN).map(([k,t]) => `<option value="${k}" ${g.twwArt === k ? 'selected' : ''} title="${_gebTableEsc(t.name)}">${_gebTableEsc(BA_TWW_KURZ[k])}</option>`).join('')}</select>`)}
+      ${zelle(r,'twwKw',`<input class="geb-table-num" type="number" min="0" value="${_gebTableEsc(g.twwKw ?? '')}" data-change="updateGebaeudeTableField(${g.id},'twwKw',this.value)">`)}
       <td><button class="geb-profile-btn" data-click="showGebaeudeHeatProfile(${g.id})">${_gebTableEsc(getBuildingHeatProfileMeta(g).label)}</button></td>
       <td class="geb-table-readonly" title="${_gebTableEsc(g.importSourceName || '')}">${_gebTableEsc(g.importSourceName || '—')}</td>
     </tr>`;
@@ -485,10 +494,10 @@ export function renderGebaeudeOverview() {
 // ── Gebäudetabelle wie eine Tabellenkalkulation ───────────────────────────
 // Markieren mit der Maus (ziehen, Shift+Klick), Ausfüllkästchen, Strg+C/V/D, Enter springt nach unten,
 // Rückgängig. Die reine Logik steckt in lib/tabellen-raster.js.
-const GEB_RASTER_SPALTEN = ['gebaeudenummer','name','nutzung','baujahr','abrissjahr','stockwerke','flaeche','waerme','spez','heizlast'];
-const GEB_SPALTEN_NAMEN = { gebaeudenummer:'Nr.', name:'Name', nutzung:'Nutzung', baujahr:'Baujahr', abrissjahr:'Abrissjahr', stockwerke:'Geschosse', flaeche:'Grundfläche', waerme:'Wärme', spez:'spez. Wärme', heizlast:'Heizlast' };
-const GEB_ZAHL_SPALTEN = new Set(['baujahr','abrissjahr','stockwerke','flaeche','waerme','spez','heizlast']);
-const GEB_UNDO_FELDER = ['gebaeudenummer','name','nutzung','baujahr','abrissjahr','stockwerke','flaeche','waerme','spez','heizlast','spezHeizlast','waermeManual','heizlastManual'];
+const GEB_RASTER_SPALTEN = ['gebaeudenummer','name','nutzung','baujahr','abrissjahr','stockwerke','flaeche','waerme','spez','heizlast','zustand','twwArt','twwKw'];
+const GEB_SPALTEN_NAMEN = { gebaeudenummer:'Nr.', name:'Name', nutzung:'Nutzung', baujahr:'Baujahr', abrissjahr:'Abrissjahr', stockwerke:'Geschosse', flaeche:'Grundfläche', waerme:'Wärme', spez:'spez. Wärme', heizlast:'Heizlast', zustand:'Bauzustand', twwArt:'TWW-Art', twwKw:'TWW-Leistung' };
+const GEB_ZAHL_SPALTEN = new Set(['baujahr','abrissjahr','stockwerke','flaeche','waerme','spez','heizlast','twwKw']);
+const GEB_UNDO_FELDER = ['gebaeudenummer','name','nutzung','baujahr','abrissjahr','stockwerke','flaeche','waerme','spez','heizlast','spezHeizlast','waermeManual','heizlastManual','zustand','twwArt','twwKw'];
 let _gebZeilen = [];          // sichtbare Reihenfolge der letzten Darstellung
 let _gebMark = null;          // { anker:{id,key}, ende:{id,key} }
 let _gebZieh = null;          // { art:'markieren'|'fuellen', bereich, ziel }
@@ -535,6 +544,8 @@ function _gebZellText(g,key) {
 /** Wert vor dem Setzen prüfen: Zahlen lesen (auch „1.234,5“), Nutzung über Kennung oder Bezeichnung finden. */
 function _gebWertNormieren(key,wert) {
   if (key === 'nutzung') return wert === '' ? '' : trNutzung(wert,getNutzungstypen());
+  if (key === 'zustand') return baZustandAusText(wert);
+  if (key === 'twwArt') return baTwwArtAusText(wert);
   if (GEB_ZAHL_SPALTEN.has(key)) {
     if (String(wert).trim() === '') return '';
     const z = trZahl(wert);

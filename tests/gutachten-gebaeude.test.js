@@ -135,7 +135,7 @@ describe('Texte: 1.3.1 Gebäudebestand', () => {
   const a = auswerten(alle);
   it('nennt Anzahl, Fläche, Bedarf und Heizlast', () => {
     const t = text(gbTextBestand(a));
-    expect(t).toContain('Der Gebäudebestand (Baujahr vor 2026) umfasst 4 Gebäude mit zusammen 6.500 m² Fläche');
+    expect(t).toContain('Der Gebäudebestand (Baujahr vor 2026) umfasst 4 Gebäude mit zusammen 6.500 m² Bruttogeschossfläche');
     expect(t).toContain('975 MWh pro Jahr');
     expect(t).toContain('392 kW');
     expect(t).toContain('nicht die Spitzenlast der Liegenschaft');
@@ -194,7 +194,7 @@ describe('Texte: 1.3.1 Gebäudebestand', () => {
   it('reiner Neubau: es gibt keinen Bestand', () => {
     const t = text(gbTextBestand(auswerten([D, E])));
     expect(t).toContain('Es besteht kein Gebäudebestand');
-    expect(t).toContain('Kapitel 1.3.2');
+    expect(t).toContain('Kapitel 2.2.1');
   });
 });
 
@@ -255,7 +255,7 @@ describe('Texte: 1.3.2 Bauliche Veränderungen', () => {
     expect(t).toContain('Neubau +110 MWh');
     expect(t).toContain('Abriss −200 MWh');
     expect(t).toContain('Sanierung −60 MWh');
-    expect(t).toContain('Kapitel 1.3.3');
+    expect(t).toContain('Kapitel 2.2.2');
   });
   it('reiner Neubau: besteht nur aus Neubauten', () => {
     const t = text(gbTextVeraenderung(auswerten([D, E])));
@@ -313,7 +313,7 @@ describe('Texte: 1.3.3 Entwicklung', () => {
   });
   it('nennt das Auslegungsjahr und die Annahmen', () => {
     const t = text(gbTextEntwicklung(auswerten(alle), { lastgangJahr: 2040 }));
-    expect(t).toContain('Für den Soll-Lastgang in Kapitel 2.2 ist das Jahr 2040 maßgebend');
+    expect(t).toContain('Für den Soll-Lastgang in Kapitel 3.2 ist das Jahr 2040 maßgebend');
     expect(t).toContain('Klimawandel');
   });
 });
@@ -330,4 +330,66 @@ describe('Alle Texte: keine ungültigen Zahlen', () => {
       }
     });
   }
+});
+
+describe('2.1 Ergänzungen: BGF, Referenz, Bauzustand, Nutzungsart', () => {
+  it('Bezugsfläche ist die BGF (Grundfläche × Geschosse)', () => {
+    const a = auswerten([{ ...C, stockwerke: 2 }]);
+    expect(a.ist.flaecheM2).toBe(6000);
+    expect(a.ist.spezKwhM2).toBeCloseTo(100, 6);
+    const t = text(gbTextBestand(a));
+    expect(t).toContain('Bezugsfläche der Kennwerte ist die Bruttogeschossfläche');
+    expect(t).toContain('konservative Untergrenze');
+    expect(text(gbTextBestand(a, { beheizteFlaecheBelastbar: true }))).not.toContain('konservative Untergrenze');
+  });
+  it('Vergleich mit dem Vergleichswert Wärme je Nutzung', () => {
+    const a = auswerten([C], { referenzSpez: () => 40 });
+    expect(a.ist.referenzSpez).toBe(40);
+    const t = text(gbTextBestand(a));
+    expect(t).toContain('Vergleichswerte Wärme nach der Bekanntmachung');
+    expect(t).toContain('Vergleichswert von rund 40 kWh/(m²·a) bezogen auf die Bruttogeschossfläche (47 kWh/(m²·a) bezogen auf die Nettogrundfläche)');
+    expect(t).toContain('beim 5,0-Fachen');
+  });
+  it('Bauzustand: A/B/C und Zahlen, flächengewichtet, Sanierungsbedarf', () => {
+    const a = auswerten([{ ...A, zustand: 'C', sanierungen: [] }, { ...C, zustand: '3' }, { ...F2, zustand: 1 }]);
+    expect(a.ist.zustandMittel).toBeCloseTo((3 * 1000 + 3 * 3000 + 1 * 500) / 4500, 6);
+    const t = text(gbTextBestand(a));
+    expect(t).toContain('flächengewichtete Zustandswert von 2,8');
+    expect(t).toContain('erheblichen Sanierungsbedarf');
+    expect(text(gbTextBestand(auswerten([C])))).not.toContain('Zustandswert');
+  });
+  it('Auffällige Nutzungsart und Hinweis auf Nutzerverhalten nur bei durchgängigem Muster', () => {
+    const u = (id, bj, spez) => ({ id, name: `Ukft ${id}`, nutzung: 'Unterkunft', flaeche: '1000', baujahr: String(bj), waerme: String(spez), spez: String(spez), heizlast: '50' });
+    const drei = auswerten([u(1, 1960, 300), u(2, 1985, 280), u(3, 2005, 260)], { referenzSpez: () => 50 });
+    const t = text(gbTextBestand(drei));
+    expect(t).toContain('Nutzungsart Unterkunft mit spezifischen Verbräuchen zwischen 260 und 300');
+    expect(t).toContain('Nutzerverhaltens');
+    const zwei = text(gbTextBestand(auswerten([u(1, 1960, 300), u(2, 1965, 280)], { referenzSpez: () => 50 })));
+    expect(zwei).toContain('Nutzungsart Unterkunft');
+    expect(zwei).not.toContain('Nutzerverhaltens');
+  });
+  it('geplanter Abriss wird erwähnt', () => {
+    expect(text(gbTextBestand(auswerten([A, B, C])))).toContain('Für 1 Gebäude ist ein Abriss geplant');
+  });
+});
+
+describe('2.2 Ergänzungen: Planungsgrundlage, Flächenbilanz, Sanierungsannahme, Zeitannahme', () => {
+  const a = auswerten(alle);
+  it('Planungsgrundlage als Feld', () => {
+    expect(text(gbTextVeraenderung(a))).toContain('[Planungsgrundlage');
+    expect(text(gbTextVeraenderung(a, { planungsgrundlage: 'der LNEP-Entwurf' }))).toContain('Soll-Betrachtungen ist der LNEP-Entwurf.');
+  });
+  it('Flächenbilanz', () => {
+    // Bestand 6.500 m², Abriss Büro Mitte 2.000 m², Neubau 2.500 m²
+    expect(text(gbTextVeraenderung(a))).toContain('Abriss von 2.000 m² ein Bestandserhalt von 4.500 m² und ein Neubau von 2.500 m²');
+    expect(text(gbTextVeraenderung(a))).toContain('zukünftige Bruttogeschossfläche von rund 7.000 m²');
+  });
+  it('Sanierungsannahme', () => {
+    expect(text(gbTextVeraenderung(a))).toContain('auf 90 kWh/(m²·a) verringert');
+  });
+  it('vereinfachte Zeitannahme nur bei gebündelten Jahren', () => {
+    expect(text(gbTextVeraenderung(a))).not.toContain('vereinfachend angenommen');
+    const geb = [{ ...A, sanierungen: [{ jahr: 2030, zielSpez: 90 }] }, { ...B, abrissjahr: '2031' }, { ...D, baujahr: '2032' }, { ...E, baujahr: '2032' }, C];
+    expect(text(gbTextVeraenderung(auswerten(geb)))).toContain('vereinfachend angenommen, dass alle Neubauten im Jahr 2032, alle Abrisse im Jahr 2031 und sämtliche Sanierungen im Jahr 2030 erfolgen');
+  });
 });

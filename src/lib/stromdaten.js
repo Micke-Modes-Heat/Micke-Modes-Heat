@@ -1,6 +1,6 @@
 // ── lib/stromdaten.js — Strom-Messjahre: Lastgänge einlesen, je Jahr auswerten, vergleichen ──
 // DOM-frei. Genutzt von 23-messjahre-panel.js (⚡ Strom-Grundlagen › Messjahre) und den
-// Gutachten-Figuren zu Kapitel 3.2 Stromverbrauchsdaten (17). Ein Messjahr trägt den
+// Gutachten-Figuren zu Kapitel 5.2 Stromverbrauchsdaten (17). Ein Messjahr trägt den
 // Bezugslastgang vom Netzbetreiber und optional den Erzeugungslastgang eines BHKW; ausgewertet
 // wird immer die Summe beider (= Stromverbrauch der Liegenschaft).
 //

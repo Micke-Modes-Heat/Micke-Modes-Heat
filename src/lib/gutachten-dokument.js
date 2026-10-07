@@ -29,13 +29,15 @@
 // Kapitelnummern entstehen immer automatisch aus Reihenfolge und Ebene — es wird
 // keine Nummer gespeichert, die beim Verschieben veralten könnte.
 
+import { gfNormalisieren } from './gutachten-fragen.js';
+
 export const GUTACHTEN_DOK_VERSION = 1;
 export const GUTACHTEN_MAX_EBENE = 3;
 
 /**
  * Standardgliederung = Inhaltsverzeichnis der Word-Vorlage
  * „Gutachten_Energieversorgung_LKEBw.docx" (Stand 09/2026). Die Kapitelnummern
- * der Gutachten-Grafiken (3.1.2, 3.4.2, …) beziehen sich auf diese Gliederung.
+ * der Gutachten-Grafiken (5.1.2, 5.4.2, …) beziehen sich auf diese Gliederung (Version 2, Variante B, seit 10/2026).
  *
  * Elektrotechnik (ab „Elektrotechnik“) folgt seit 09/2026 demselben Aufbau wie die
  * Wärmeversorgung: EIN Ist-Zustand, EINE Bedarfsprognose (Soll), dann Variantenbildung/
@@ -45,7 +47,7 @@ export const GUTACHTEN_MAX_EBENE = 3;
  * (Entscheidung 09/2026): im Strom sind Netzanschluss, PV, Speicher, NEA und Ladeinfrastruktur
  * Bausteine, keine Alternativen — entschieden wird über ihre Dimensionierung in der Variantenbildung.
  *
- * Resilienz (Kapitel 5.2) enthält seit 09/2026 immer drei feste Szenarien vom Gebäude über die Station
+ * Resilienz (Kapitel 8.2, bis 10/2026 5.2) enthält seit 09/2026 immer drei feste Szenarien vom Gebäude über die Station
  * zur Liegenschaft — nur die kritischen Gebäude (Notstromklasse A), je Trafostation eine NEA an der NSHV
  * für die Gebäude A/B und die Gesamtliegenschaft als Insel am NAP (Blackout-Modus, Reiter „Liegenschaft“) —,
  * ihre Gegenüberstellung und allgemeine Empfehlungen (Einspeisepunkte an den Trafostationen u. a.).
@@ -53,6 +55,40 @@ export const GUTACHTEN_MAX_EBENE = 3;
  */
 const G = (ebene, titel) => ({ ebene, titel });
 export const GUTACHTEN_STANDARD_GLIEDERUNG = [
+  G(1, 'Einleitung'), G(2, 'Ziele und Grundsätze'), G(2, 'Liegenschaftsinformationen'),
+  G(1, 'Ist-Zustand Wärme'), G(2, 'Baulicher Ist-Zustand'), G(2, 'Bauliche Entwicklung'), G(3, 'Bauliche Veränderungen'), G(3, 'Entwicklung von Wärmebedarf und Heizlast'),
+  G(1, 'Wärmeversorgung'),
+  G(2, 'Ist-Anlagentechnik'), G(3, 'Erdgasanschluss'), G(3, 'Wärmeversorgungsnetz (WVN)'), G(3, 'Wärmetechnische Hausstation (WH)'),
+  G(2, 'Ist- und Soll-Wärmeverbrauch'), G(3, 'Erdgasdaten'), G(3, 'Heizöl-EL-Daten'), G(3, 'Feste Biomasse'), G(3, 'Jahresvergleich der Daten'), G(3, 'Dimensionierung WEA'),
+  G(2, 'Soll-Zustand Netz und Hausstationen'), G(3, 'WVN'), G(3, 'WH'),
+  G(1, 'Potenzialanalyse'), G(2, 'Nicht berücksichtigte Potenziale'), G(2, 'Berücksichtigte Potenziale'),
+  G(1, 'Elektrotechnik'),
+  G(2, 'Ist-Zustand'), G(3, 'Liegenschaftsstromnetzanschluss'), G(3, 'Stromnetz intern (MS/NS)'),
+  G(3, 'Erzeugungsanlagen'), G(3, 'Notstromversorgung'),
+  G(2, 'Stromverbrauchsdaten'),
+  G(2, 'Bedarfsprognose Strom (Soll)'), G(3, 'Bestandsbedarf und bauliche Entwicklung'),
+  G(3, 'Zusatzbedarf aus Wärmekonzept'), G(3, 'Zusatzbedarf Ladeinfrastruktur'),
+  G(3, 'Resultierende Anschlussleistung und Lastgang'),
+  G(2, 'Variantenbildung und -vergleich'), G(3, 'Netzanschluss und internes Stromnetz'), G(3, 'PV-Anlage und Batteriespeicher'),
+  G(3, 'Notstromversorgung und Lastmanagement'), G(3, 'Ladeinfrastruktur'),
+  G(2, 'Wirtschaftlichkeit und Investitionskosten'), G(2, 'Bewertungsmatrix'), G(2, 'Empfehlung Elektrotechnik'),
+  G(1, 'Gebäudeautomation (GA)'),
+  G(1, 'Variantenvergleich Wärme'), G(2, 'Klimarelevanz'), G(2, 'Wirtschaftlichkeit und Investitionskosten'), G(3, 'Wirtschaftlichkeit mit PV-Eigenstrom'),
+  G(2, 'Energiepreissensitivität'), G(2, 'Bewertungsmatrix'), G(2, 'Empfehlung'),
+  G(1, 'Maßnahmen zur Steigerung der Resilienz'), G(2, 'Erläuterung Bewertungstool Resilienz'), G(2, 'Bewertung Resilienz'),
+  G(3, 'Ist-Zustand'), G(3, 'Szenario 1: Versorgung der kritischen Gebäude'), G(3, 'Szenario 2: Versorgung je Trafostation'),
+  G(3, 'Szenario 3: Versorgung der Gesamtliegenschaft'), G(3, 'Gegenüberstellung der Szenarien'), G(3, 'Allgemeine Empfehlungen'),
+  G(3, 'Kurzfristige Maßnahmen'), G(3, 'Langfristige Maßnahmen (Umsetzung der Empfehlung im Gutachten)'),
+  G(1, 'Fazit, Maßnahmenfahrplan'), G(2, 'Wärmeversorgung'), G(2, 'Elektrotechnik'),
+];
+
+/** Version der Standardgliederung: 1 = bis 10/2026 (Wärme komplett in Kapitel 2, Elektro 3), 2 = Variante B. */
+export const GUTACHTEN_GLIEDERUNG_VERSION = 2;
+
+/**
+ * Gliederung bis 10/2026 (Version 1) — nur noch zum Erkennen und Umstellen älterer Dokumente.
+ */
+export const GUTACHTEN_GLIEDERUNG_V1 = Object.freeze([
   G(1, 'Einleitung'), G(2, 'Ziele und Grundsätze'), G(2, 'Liegenschaftsinformationen'), G(2, 'Hochbau'), G(3, 'Gebäudebestand (Ist)'), G(3, 'Bauliche Veränderungen'), G(3, 'Entwicklung von Wärmebedarf und Heizlast'),
   G(1, 'Wärmeversorgung'),
   G(2, 'Ist-Zustand Wärme'), G(3, 'Erdgasanschluss'), G(3, 'Wärmeversorgungsnetz (WVN)'), G(3, 'Wärmetechnische Hausstation (WH)'),
@@ -76,7 +112,30 @@ export const GUTACHTEN_STANDARD_GLIEDERUNG = [
   G(3, 'Szenario 3: Versorgung der Gesamtliegenschaft'), G(3, 'Gegenüberstellung der Szenarien'), G(3, 'Allgemeine Empfehlungen'),
   G(3, 'Kurzfristige Maßnahmen'), G(3, 'Langfristige Maßnahmen (Umsetzung der Empfehlung im Gutachten)'),
   G(1, 'Fazit, Maßnahmenfahrplan'), G(2, 'Wärmeversorgung'), G(2, 'Elektrotechnik'),
-];
+]);
+
+/**
+ * Kapitelnummer Version 1 → Version 2 (Variante B): Hochbau wird Kapitel 2, Wärme-Ist/-Soll Kapitel 3,
+ * die Potenzialanalyse Kapitel 4, Elektrotechnik 5, GA 6, der Variantenvergleich Wärme 7, Resilienz 8, Fazit 9.
+ * Elektrotechnik, GA, Resilienz und Fazit behalten ihren Aufbau — nur die erste Ziffer ändert sich.
+ */
+const V1_ZU_V2 = Object.freeze({
+  1: '1', '1.1': '1.1', '1.2': '1.2', '1.3': '2', '1.3.1': '2.1', '1.3.2': '2.2.1', '1.3.3': '2.2.2',
+  2: '3', '2.1': '3.1', '2.1.1': '3.1.1', '2.1.2': '3.1.2', '2.1.3': '3.1.3', '2.1.4': '3.2.1', '2.1.5': '3.2.2', '2.1.6': '3.2.3', '2.1.7': '3.2.4',
+  '2.2': '3.2', '2.2.1': '3.2.5', '2.2.2': '3.3.1', '2.2.3': '3.3.2',
+  '2.3': '4', '2.3.1': '4.2', '2.4': '7', '2.5': '7.2', '2.6': '7.4', '2.7': '7.5',
+});
+const V1_HAUPT = Object.freeze({ 3: '5', 4: '6', 5: '8', 6: '9' });
+
+/** Kapitelnummer der Gliederung Version 1 in Version 2 („3.4.1“ → „5.4.1“, „2.2“ → „3.2“); unbekannt → unverändert. */
+export function gdNummerV1ZuV2(nr) {
+  const n = String(nr || '').trim();
+  if (V1_ZU_V2[n]) return V1_ZU_V2[n];
+  const [kopf, ...rest] = n.split('.');
+  if (V1_HAUPT[kopf]) return [V1_HAUPT[kopf], ...rest].join('.');
+  return n;
+}
+
 
 /** Deckblattfelder (alles Text); leere Felder füllt der Export aus den Projekt-Stammdaten bzw. den Vorgaben. */
 export const GUTACHTEN_DECKBLATT_FELDER = ['liegenschaft', 'ort', 'projekt', 'auftraggeber', 'auftrag', 'aufgestelltDurch', 'aufgestellt', 'standort', 'stand'];
@@ -183,7 +242,24 @@ export function gdNormalisieren(input) {
     };
   });
   glaetteEbenen(kapitel);
-  return { version: GUTACHTEN_DOK_VERSION, kapitel, deckblatt: gdNormDeckblatt(input.deckblatt), anlagen: normAnlagen(input.anlagen, ids) };
+  const tv = Number(input.textVariante);
+  const gl = Number(input.gliederung);
+  return { version: GUTACHTEN_DOK_VERSION, kapitel, deckblatt: gdNormDeckblatt(input.deckblatt), anlagen: normAnlagen(input.anlagen, ids),
+    ...(Number.isInteger(gl) && gl > 1 ? { gliederung: gl } : {}),   // Version der Standardgliederung, nach der das Dokument aufgebaut ist
+    ...(istObjekt(input.fragen) && Object.keys(gfNormalisieren(input.fragen)).length ? { fragen: gfNormalisieren(input.fragen) } : {}),   // Fragebogen (lib/gutachten-fragen.js)
+    ...(istObjekt(input.platzhalter) && Object.keys(normPlatzhalter(input.platzhalter)).length ? { platzhalter: normPlatzhalter(input.platzhalter) } : {}),   // im Editor ausgefüllte Platzhalter
+    ...(istObjekt(input.praesentation) ? { praesentation: normPraesentation(input.praesentation) } : {}),   // Präsentation: Fassung, Folienauswahl, eigene Titel/Stichpunkte
+    ...(Number.isInteger(tv) && tv > 0 ? { textVariante: tv } : {}) };   // Formulierungsvariante der Standardtexte (lib/gutachten-einleitung.js)
+}
+
+/** Im Editor ausgefüllte Platzhalter { Feldname: Wert } — nur Text, begrenzte Länge und Anzahl. */
+function normPlatzhalter(roh) {
+  const out = {};
+  for (const [k, v] of Object.entries(roh).slice(0, 500)) {
+    const name = alsText(k).trim().slice(0, 300), wert = alsText(v).trim().slice(0, 2000);
+    if (name && wert) out[name] = wert;
+  }
+  return out;
 }
 
 export const GUTACHTEN_ANLAGEN_TYPEN = ['stationssteckbrief'];
@@ -209,6 +285,18 @@ export function gdRoemisch(n) {
     while (x >= w) { out += z; x -= w; }
   }
   return out;
+}
+
+/** Präsentation: { fassung, an: {folienKey: bool}, titel: {folienKey: Text}, punkte: {folienKey: Text} } — Schlüssel wie 'fig:<blockId>'. */
+function normPraesentation(roh) {
+  const schluessel = k => /^(titel|(kap|fig|pkt):[\w-]{1,60})$/.test(k);
+  const map = (o, f) => Object.fromEntries(Object.entries(istObjekt(o) ? o : {}).filter(([k]) => schluessel(k)).slice(0, 800).map(([k, v]) => [k, f(v)]).filter(([, v]) => v !== undefined));
+  return {
+    fassung: roh.fassung === 'lang' ? 'lang' : 'kurz',
+    an: map(roh.an, v => (typeof v === 'boolean' ? v : undefined)),
+    titel: map(roh.titel, v => (typeof v === 'string' && v.trim() ? v.slice(0, 200) : undefined)),
+    punkte: map(roh.punkte, v => (typeof v === 'string' ? v.slice(0, 3000) : undefined)),
+  };
 }
 
 /** Anlagennummern ("I", "II", …) in Listenreihenfolge. */
@@ -311,7 +399,7 @@ export function gdStandardDokument(katalog = []) {
     if (idx < 0) { nichtZugeordnet.push(f.id); continue; }
     kapitel[idx].bloecke.push(gdNeuerFigurBlock(f.id));
   }
-  return { dok: { version: GUTACHTEN_DOK_VERSION, kapitel, deckblatt: gdNormDeckblatt(), anlagen: [] }, nichtZugeordnet };
+  return { dok: { version: GUTACHTEN_DOK_VERSION, gliederung: GUTACHTEN_GLIEDERUNG_VERSION, kapitel, deckblatt: gdNormDeckblatt(), anlagen: [] }, nichtZugeordnet };
 }
 
 /**
@@ -411,7 +499,7 @@ export function gdMitStandardAbgleichen(dok, katalog = [], standard = GUTACHTEN_
 }
 
 export function gdLeeresDokument() {
-  return { version: GUTACHTEN_DOK_VERSION, kapitel: [{ id: gdId('k'), ebene: 1, titel: '', bloecke: [] }], deckblatt: gdNormDeckblatt(), anlagen: [] };
+  return { version: GUTACHTEN_DOK_VERSION, gliederung: GUTACHTEN_GLIEDERUNG_VERSION, kapitel: [{ id: gdId('k'), ebene: 1, titel: '', bloecke: [] }], deckblatt: gdNormDeckblatt(), anlagen: [] };
 }
 
 /** Index-Bereich [start, ende) eines Kapitels samt aller Unterkapitel. */
@@ -563,4 +651,148 @@ export function gdFigurIds(dok) {
   const ids = new Set();
   for (const k of dok?.kapitel || []) for (const b of k.bloecke) if (b.typ === 'figur') ids.add(b.figurId);
   return ids;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Umstellung älterer Dokumente auf die Gliederung Version 2 (Variante B)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Kapitel eines Dokuments den Kapiteln der Gliederung Version 1 zuordnen: zuerst Titel unter demselben (bereits
+ * zugeordneten) Oberkapitel — so bleiben gleichnamige Kapitel wie „Wirtschaftlichkeit …“ bei Wärme und Strom
+ * auseinander, auch wenn eigene Kapitel die Nummern verschoben haben —, sonst ein im Ganzen eindeutiger Titel.
+ */
+function v1Zuordnung(kapitel) {
+  const n1 = gdKapitelNummern(GUTACHTEN_GLIEDERUNG_V1);
+  const eltern = nr => nr.split('.').slice(0, -1).join('.');
+  const v1 = GUTACHTEN_GLIEDERUNG_V1.map((k, i) => ({ nr: n1[i], eltern: eltern(n1[i]), schluessel: titelSchluessel(k.titel) }));
+  const vergeben = new Set();
+  const stapel = [];   // [{ ebene, nr (V1 oder null) }]
+  return kapitel.map(k => {
+    while (stapel.length && stapel[stapel.length - 1].ebene >= k.ebene) stapel.pop();
+    const oben = stapel.length ? stapel[stapel.length - 1].nr : '';
+    const s = titelSchluessel(k.titel);
+    const frei = x => x.schluessel === s && !vergeben.has(x.nr);
+    let t = oben !== null ? v1.find(x => frei(x) && x.eltern === oben) : null;
+    if (!t) {
+      const kand = v1.filter(frei);
+      if (kand.length === 1) t = kand[0];
+    }
+    if (t) vergeben.add(t.nr);
+    stapel.push({ ebene: k.ebene, nr: t ? t.nr : null });
+    return t ? t.nr : null;
+  });
+}
+
+/**
+ * Nach welcher Gliederung ist das Dokument aufgebaut? 2 = aktuell (gespeichert oder ohne Merkmale der alten
+ * Gliederung), 1 = ältere Gliederung (mindestens fünf Kapitel stimmen in Nummer und Titel mit Version 1 überein,
+ * darunter „Wärmeversorgung“ als Kapitel 2).
+ */
+export function gdGliederungVersion(dok) {
+  if (!dok || !Array.isArray(dok.kapitel)) return GUTACHTEN_GLIEDERUNG_VERSION;
+  if (Number(dok.gliederung) >= 2) return Number(dok.gliederung);
+  const nr = gdKapitelNummern(dok.kapitel);
+  const n1 = gdKapitelNummern(GUTACHTEN_GLIEDERUNG_V1);
+  const treffer = dok.kapitel.filter((k, i) => {
+    const j = n1.indexOf(nr[i]);
+    return j >= 0 && titelSchluessel(GUTACHTEN_GLIEDERUNG_V1[j].titel) === titelSchluessel(k.titel);
+  }).length;
+  const waerme2 = dok.kapitel.some((k, i) => nr[i] === '2' && titelSchluessel(k.titel) === 'wärmeversorgung');
+  return treffer >= 5 && waerme2 ? 1 : GUTACHTEN_GLIEDERUNG_VERSION;
+}
+
+/**
+ * Dokument der Gliederung Version 1 auf Version 2 umstellen — ohne Inhalte zu verlieren:
+ * - Jedes Kapitel der alten Standardgliederung wandert mit allen Blöcken (Freitexte, Lagepläne, Einstellungen)
+ *   in sein Gegenstück der neuen Gliederung (gdNummerV1ZuV2); Titel folgen der neuen Gliederung.
+ * - Bausteine aus dem Katalog, die im alten Kapitel an ihrem Standardplatz standen, kommen in ihr neues
+ *   Kapitel, sofern es im selben Hauptkapitel liegt (z. B. Klimarelevanz 7.1 statt 7).
+ * - Eigene Kapitel (ohne Gegenstück) bleiben samt Unterkapiteln hinter dem Kapitel, dem sie vorher folgten.
+ * Ergebnis: { dok, verschoben: [{von, nach, titel}], eigene: [titel], bausteine: Zahl }
+ */
+export function gdGliederungUmstellen(dok, katalog = []) {
+  const basis = gdNormalisieren(dok);
+  if (!basis) return null;
+  const n2 = gdKapitelNummern(GUTACHTEN_STANDARD_GLIEDERUNG);
+  const neu = GUTACHTEN_STANDARD_GLIEDERUNG.map((k, i) => ({ k: { id: gdId('k'), ebene: k.ebene, titel: k.titel, bloecke: [] }, nr: n2[i], nachher: [] }));
+  const nachNr = new Map(neu.map(x => [x.nr, x]));
+  const katalogNr = new Map(katalog.map(f => [f.id, katalogNummer(f)]));
+  const zuordnung = v1Zuordnung(basis.kapitel);
+  const nrAlt = gdKapitelNummern(basis.kapitel);
+  const verschoben = [], eigene = [];
+  let bausteine = 0;
+  let letztes = neu[0], eigeneBasis = null;
+  basis.kapitel.forEach((k, i) => {
+    const v1 = zuordnung[i];
+    const ziel = v1 ? nachNr.get(gdNummerV1ZuV2(v1)) : null;
+    if (ziel) {
+      if (!ziel.idUebernommen) { ziel.k.id = k.id; ziel.idUebernommen = true; }
+      const haupt = ziel.nr.split('.')[0];
+      for (const b of k.bloecke) {
+        const kn = b.typ === 'figur' ? katalogNr.get(b.figurId) : null;
+        const kz = kn && kn !== ziel.nr && kn.split('.')[0] === haupt ? nachNr.get(kn) : null;
+        (kz || ziel).k.bloecke.push(b);
+        if (kz) bausteine++;
+      }
+      if (nrAlt[i] !== ziel.nr) verschoben.push({ von: nrAlt[i], nach: ziel.nr, titel: ziel.k.titel });
+      letztes = ziel; eigeneBasis = null;
+    } else {
+      // eigenes Kapitel: relativ zum zuletzt zugeordneten Kapitel einhängen, Unterkapitel behalten ihren Abstand
+      if (!eigeneBasis) eigeneBasis = { altEbene: k.ebene, ebene: Math.max(1, Math.min(GUTACHTEN_MAX_EBENE, k.ebene, letztes.k.ebene + 1)) };
+      const ebene = Math.max(1, Math.min(GUTACHTEN_MAX_EBENE, eigeneBasis.ebene + k.ebene - eigeneBasis.altEbene));
+      letztes.nachher.push({ ...k, ebene });
+      eigene.push(k.titel || '[ohne Titel]');
+    }
+  });
+  // Eigene Kapitel stehen hinter dem Teilbaum ihres Bezugskapitels
+  neu.forEach((x, i) => {
+    let ende = i + 1;
+    while (ende < neu.length && neu[ende].k.ebene > x.k.ebene) ende++;
+    x.ende = ende;
+  });
+  const ergebnis = [];
+  const offen = [];
+  neu.forEach((x, i) => {
+    ergebnis.push(x.k);
+    if (x.nachher.length) offen.push({ ende: x.ende, liste: x.nachher });
+    for (let j = offen.length - 1; j >= 0; j--) {
+      if (offen[j].ende === i + 1) { ergebnis.push(...offen[j].liste); offen.splice(j, 1); }
+    }
+  });
+  for (const o of offen) ergebnis.push(...o.liste);
+  glaetteEbenen(ergebnis);
+  return { dok: { ...basis, gliederung: GUTACHTEN_GLIEDERUNG_VERSION, kapitel: ergebnis }, verschoben, eigene, bausteine };
+}
+
+/**
+ * Automatische Querverweise (C5): Nummer jedes Standardkapitels → seine aktuelle Nummer im Dokument. Zugeordnet wird
+ * wie beim Abgleich über den Titel unter demselben Oberkapitel; Kapitel, die der Gutachter verschoben hat, behalten
+ * so ihren Verweis. Fehlt ein Kapitel, bleibt die Nummer unverändert (kein Eintrag). Nur für Dokumente der aktuellen Gliederung.
+ */
+export function gdVerweisNummern(dok) {
+  const m = new Map();
+  if (!dok || !Array.isArray(dok.kapitel) || gdGliederungVersion(dok) < GUTACHTEN_GLIEDERUNG_VERSION) return m;
+  const std = GUTACHTEN_STANDARD_GLIEDERUNG.map((s, idx) => ({ ebene: s.ebene, titel: s.titel, idx }));
+  const stdNr = gdKapitelNummern(std), dokNr = gdKapitelNummern(dok.kapitel);
+  const dokIdx = new Map(dok.kapitel.map((k, i) => [k, i]));
+  const vergeben = new Set();
+  const zuordnen = (sKnoten, dKnoten) => {
+    for (const sk of sKnoten.kinder) {
+      const s = titelSchluessel(sk.k.titel);
+      const ziel = dKnoten?.kinder.find(dk => !vergeben.has(dk.k) && titelSchluessel(dk.k.titel) === s) || null;
+      if (ziel) { vergeben.add(ziel.k); m.set(stdNr[sk.k.idx], dokNr[dokIdx.get(ziel.k)]); }
+      zuordnen(sk, ziel);
+    }
+  };
+  zuordnen(kapitelBaum(std), kapitelBaum(dok.kapitel));
+  return m;
+}
+
+/** Kapitelnummern in einem Text über die Verweistabelle umschreiben („Kapitel 3.2“, „Kapiteln 5.3.1 bis 5.3.3“, „vgl. Kapitel 7“). */
+export function gdVerweiseErsetzen(text, nrMap) {
+  if (!nrMap || !nrMap.size) return text;
+  const neu = n => nrMap.get(n) || n;
+  return String(text).replace(/\b(Kapiteln?|Kap\.)(\s+)(\d+(?:\.\d+)*)(?![\d.]*\d)((\s*(?:–|-|bis|und|sowie)\s*)(\d+(?:\.\d+)*))?/g,
+    (all, wort, ws, a, rest, verb, b) => `${wort}${ws}${neu(a)}${rest ? verb + neu(b) : ''}`);
 }

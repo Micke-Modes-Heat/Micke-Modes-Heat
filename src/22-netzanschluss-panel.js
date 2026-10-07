@@ -1,6 +1,6 @@
 // ── 22-netzanschluss-panel.js — Netzanschluss-Stammdaten unter ⚡ Strom-Grundlagen ──
 // Einzige Eingabestelle für Netzbetreiber, Spannungsebene, Übergabepunkt, Messverfahren, Messort
-// und Einspeisepunkte (Gutachtentext Kapitel 3.1.1).
+// und Einspeisepunkte (Gutachtentext Kapitel 5.1.1).
 //
 // Die vereinbarte Anschlussleistung und die Bezugsgrenze am NAP sind ein und derselbe
 // Wert (kVA, aus dem Netzanschlussvertrag) — er wird direkt im Feld „Max. Bezug" unter
@@ -113,7 +113,7 @@ function einspeisungenHtml() {
 }
 
 function panelHtml() {
-  return `<div class="sa-section-title" style="margin-top:4px;">Netzanschluss <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">laut Netzanschlussvertrag · Gutachten 3.1.1 · vereinbarte Anschlussleistung = Max. Bezug unter NAP-Grenzen (kVA)</span>
+  return `<div class="sa-section-title" style="margin-top:4px;">Netzanschluss <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">laut Netzanschlussvertrag · Gutachten 5.1.1 · vereinbarte Anschlussleistung = Max. Bezug unter NAP-Grenzen (kVA)</span>
       <a href="https://www.vnbdigital.de/" target="_blank" rel="noopener"
         style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--accent);font-size:9px;margin-left:6px;text-decoration:none;" title="Netzbetreiber anhand der Adresse ermitteln">→ Netzbetreiber finden (VNB Digital)</a>
     </div>

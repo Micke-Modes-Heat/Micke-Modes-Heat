@@ -968,7 +968,7 @@ export function waermeBlackout(p) {
 // Gebäude der Klasse A, der Klassen A + B oder einen Anteil der ganzen
 // Liegenschaft (Insel am NAP), dazu optional die Wärme. Jedes Ziel wird mit den
 // Rechnungen der Schritte 2–4 bewertet; die Matrix stellt Maßnahmen und
-// Richtkosten der Ziele nebeneinander (Gutachten Kapitel 5.2).
+// Richtkosten der Ziele nebeneinander (Gutachten Kapitel 8.2).
 
 export const ZIEL_STROM_STUFEN = Object.freeze({
   keine: 'keine Stromversorgung',

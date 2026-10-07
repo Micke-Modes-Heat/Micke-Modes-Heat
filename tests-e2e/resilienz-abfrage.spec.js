@@ -26,7 +26,7 @@ test('Resilienz-Abfrage: erzeugen, einlesen, auswerten', async ({ page }, testIn
   await download.saveAs(pfad);
 
   const chooser = page.waitForEvent('filechooser');
-  await panel.getByRole('button', { name: /Ausgefüllte Abfragedatei einlesen/ }).click();
+  await panel.getByRole('button', { name: /Ausgefüllte Abfrage(datei)? einlesen/ }).click();
   await (await chooser).setFiles(pfad);
 
   await expect(panel).toContainText('Ergebnis der Auswertung');

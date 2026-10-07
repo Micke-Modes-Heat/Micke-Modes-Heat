@@ -1,7 +1,7 @@
 // ── lib/bedarfsprognose.js — Bedarfsprognose Strom: Maßnahmen und Leistungsstufen ──
 //
 // Gemeinsame Rechnung der NAP-Analyse (13o, Lastentwicklung) und der
-// Gutachten-Abbildungen für die Kapitel 3.3.1–3.3.3 (17). Beide lesen dieselbe
+// Gutachten-Abbildungen für die Kapitel 5.3.1–5.3.3 (17). Beide lesen dieselbe
 // Maßnahmenliste und denselben Gleichzeitigkeitsfaktor — Gutachten und Analyse
 // können deshalb nicht auseinanderlaufen.
 //

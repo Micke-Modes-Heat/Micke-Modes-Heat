@@ -46,7 +46,7 @@ const _assets = () => window.ASSETS?.items || [];
 /** Alle Varianten einschließlich Hauptplan, in Anzeigereihenfolge. */
 function _alle() {
   return [
-    { id: null, key: 'base', name: HAUPTPLAN_NAME, zweck: _hauptplanZweck(), herkunft: null, rec: null },
+    { id: null, key: 'base', name: variantenName(null), zweck: _hauptplanZweck(), herkunft: null, rec: null },
     ..._varianten().map(v => ({ id: v.id, key: v.id, name: v.name, zweck: v.zweck || '', herkunft: v.herkunft || null, rec: v })),
   ];
 }
@@ -186,8 +186,8 @@ function _menuHtml() {
         <div class="akt">
           <button data-click="event.stopPropagation();variantenSternSetzen('${v.key}')" title="Diese Variante geht ins Gutachten">${stern ? '★ Gutachten' : '☆ fürs Gutachten'}</button>
           <button data-click="event.stopPropagation();variantenZweckBearbeiten(${idArg(v.id)})">Zweck …</button>
-          ${v.id != null ? `<button data-click="event.stopPropagation();variantenUmbenennen(${idArg(v.id)})">Umbenennen …</button>
-          <button data-click="event.stopPropagation();variantenLoeschen(${idArg(v.id)})" style="color:#ef9a9a;">Löschen …</button>` : ''}
+          <button data-click="event.stopPropagation();variantenUmbenennen(${idArg(v.id)})">Umbenennen …</button>
+          ${v.id != null ? `<button data-click="event.stopPropagation();variantenLoeschen(${idArg(v.id)})" style="color:#ef9a9a;">Löschen …</button>` : ''}
         </div>
       </div>
       <span class="var-status ${st}" title="Stand der Wärme-Kennzahlen im Vergleich">${STATUS_TEXT[st]}</span>
@@ -307,7 +307,7 @@ export function variantenDialogNeu() {
     return `<label class="obj">
       <input type="checkbox" data-asset="${esc(a.id)}" ${gemeinsam ? 'checked' : ''} style="accent-color:#f9a825;">
       <span>${esc(a.name)} <span style="color:var(--muted);font-family:'DM Mono',monospace;font-size:10.5px;">${esc(a.baujahr ?? '')}</span></span>
-      <span class="vd-wo" style="font-size:10.5px;color:${gemeinsam ? '#f9a825' : '#66bb6a'};">${gemeinsam ? '📈 alle Varianten' : `🎯 nur ${esc(HAUPTPLAN_NAME)}`}</span>
+      <span class="vd-wo" style="font-size:10.5px;color:${gemeinsam ? '#f9a825' : '#66bb6a'};">${gemeinsam ? '📈 alle Varianten' : `🎯 nur ${esc(variantenName(null))}`}</span>
     </label>`;
   }).join('');
 
@@ -339,11 +339,11 @@ export function variantenDialogNeu() {
     const boxes = [...bg.querySelectorAll('#vd-liste input[type=checkbox]')];
     boxes.forEach(cb => {
       const wo = cb.closest('.obj')?.querySelector('.vd-wo');
-      if (wo) { wo.textContent = cb.checked ? '📈 alle Varianten' : `🎯 nur ${HAUPTPLAN_NAME}`; wo.style.color = cb.checked ? '#f9a825' : '#66bb6a'; }
+      if (wo) { wo.textContent = cb.checked ? '📈 alle Varianten' : `🎯 nur ${variantenName(null)}`; wo.style.color = cb.checked ? '#f9a825' : '#66bb6a'; }
     });
     const n = boxes.filter(b => b.checked).length;
     const s = bg.querySelector('#vd-summe');
-    if (s) s.textContent = boxes.length ? `${n} gemeinsam · ${boxes.length - n} nur ${HAUPTPLAN_NAME}` : '';
+    if (s) s.textContent = boxes.length ? `${n} gemeinsam · ${boxes.length - n} nur ${variantenName(null)}` : '';
   };
   bg.addEventListener('change', summe);
   summe();
@@ -370,7 +370,7 @@ export function variantenDialogAnlegen() {
   bg.remove();
   try {
     addVariante({ name, zweck, von, leer, schichtKorrektur });
-    _toast(`✓ Variante „${esc(name)}“ angelegt und aktiv. Der ${esc(HAUPTPLAN_NAME)} bleibt unverändert.`);
+    _toast(`✓ Variante „${esc(name)}“ angelegt und aktiv. „${esc(variantenName(null))}“ bleibt unverändert.`);
   } catch (err) {
     console.error('Variante anlegen:', err);
     _toast(`⚠ Variante konnte nicht angelegt werden: ${esc(err.message)}`, 7000, '#ef5350');

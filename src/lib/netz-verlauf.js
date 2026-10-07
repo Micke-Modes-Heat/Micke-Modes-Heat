@@ -6,8 +6,8 @@
 
 /**
  * Strukturschlüssel des Netzes. Enthält Knoten (Gebäudeknoten nur mit Kennung, da ihre Lage aus dem
- * Grundriss folgt), Kanten mit Verlauf, Kostenklasse, Sperren und Zeitfenstern. DN und Lasten fehlen
- * bewusst, weil die Hydraulik sie bei jedem Jahreswechsel neu setzt.
+ * Grundriss folgt), Kanten mit Verlauf, manuell gesetzter Kostenklasse, Sperren und Zeitfenstern. DN, Lasten
+ * und die automatisch (verzögert über OSM) ermittelte Kostenklasse fehlen bewusst, weil sie neu berechnet werden.
  */
 export function netzSignatur(graph) {
   if (!graph || !Array.isArray(graph.edges) || !graph.edges.length) return '';
@@ -20,7 +20,7 @@ export function netzSignatur(graph) {
     const [a, b] = Number(e.u) <= Number(e.v) ? [e.u, e.v] : [e.v, e.u];
     const wege = (e.waypoints || []).map(pt).join(';');
     const via = (e.routingViaPoints || []).map(pt).join(';');
-    return [a, b, wege, via, e.pruned ? 'p' : '', e.kostKlasse || '', e.kostOverride ? 'k' : '',
+    return [a, b, wege, via, e.pruned ? 'p' : '', e.kostOverride ? `k${e.kostKlasse || ''}` : '',
       e.visibleFromYear ?? '', e.visibleUntilYear ?? ''].join('|');
   }).sort();
   return `${knoten.join(' ')}#${kanten.join(' ')}`;

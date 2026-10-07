@@ -25,6 +25,7 @@ import { parseKabelLabel } from './lib/kabel-label.js';
 import { SCHICHT_META, normSchicht } from './lib/schichten.js';
 import { normalisiereNotstrom } from './lib/resilienz-core.js';
 import { createId } from './lib/util.js';
+import { BA_TWW_ARTEN, baZustandAusText } from './lib/bestandsanlage.js';
 import { xlsxDateien, xlsxBlob, XS } from './lib/xlsx-schreiber.js';
 import { xlsxAusBlob } from './lib/xlsx-leser.js';
 import { istLeer, xNum, xInt, xStr, xBool, janein, kopfIndex, zahlGeaendert, textGeaendert, xAuswahl,
@@ -35,6 +36,9 @@ import { istLeer, xNum, xInt, xStr, xBool, janein, kopfIndex, zahlGeaendert, tex
 
 const _SCHICHT_WERTE       = Object.fromEntries(Object.entries(SCHICHT_META).map(([k, m]) => [k, m.label]));
 const _ZUSTAND_WERTE       = { A: 'A', B: 'B', C: 'C' };
+// Bauzustand wird im Programm als 1/2/3 oder A/B/C geführt (lib/bestandsanlage.js) — in Excel einheitlich als Buchstabe
+const _zustandBuchstabe = z => ({ 1: 'A', 2: 'B', 3: 'C' })[baZustandAusText(z)] || '';
+const _TWW_WERTE = Object.fromEntries(Object.entries(BA_TWW_ARTEN).map(([k, t]) => [k, t.name]));
 const _NOTSTROM_WERTE      = { A: 'A', B: 'B', C: 'C' };
 const _DACHFORM_WERTE      = { flach: 'Flachdach', sattel: 'Satteldach', walm: 'Walmdach', pult: 'Pultdach' };
 const _PV_MODUS_WERTE      = { pauschal: 'Pauschal', flaechen: 'Flächen' };
@@ -162,6 +166,7 @@ export async function exportVollstaendigXLSX() {
     L_JaNein: ['ja', 'nein'],
     L_Schicht: Object.values(_SCHICHT_WERTE),
     L_Zustand: Object.values(_ZUSTAND_WERTE),
+    L_TwwArt: Object.values(_TWW_WERTE),
     L_Notstrom: Object.values(_NOTSTROM_WERTE),
     L_PvModus: Object.values(_PV_MODUS_WERTE),
     L_PvAusr: Object.values(_PV_AUSRICHTUNG),
@@ -187,7 +192,9 @@ export async function exportVollstaendigXLSX() {
     S('Baujahr', g => g.baujahr, EZ),
     S('Abrissjahr', g => g.abrissjahr, EZ),
     S('Schicht', g => _SCHICHT_WERTE[normSchicht(g.schicht)], { ...E, liste: 'L_Schicht', breite: 13 }),
-    S('Zustand', g => g.zustand, { ...E, liste: 'L_Zustand' }),
+    S('Zustand', g => _zustandBuchstabe(g.zustand), { ...E, liste: 'L_Zustand' }),
+    S('TWW-Art', g => _TWW_WERTE[g.twwArt] || '', { ...E, liste: 'L_TwwArt', breite: 22 }),
+    S('TWW-Leistung (kW)', g => _zahl(g.twwKw, 1), EZ),
     S('Wärmebedarf (MWh/a)', g => _zahl(g.waerme, 2), EZ),
     S('Heizlast (kW)', g => _zahl(g.heizlast, 1), EZ),
     S('Spez. Wärme (kWh/m²a)', g => _zahl(g.spez, 1), EZ),
@@ -577,7 +584,9 @@ function _importGebaeude(rows, ctx, basis) {
     zahl('Baujahr', o.baujahr, 0, feld('baujahr'), { ganz: true, min: 1800, max: 2100 });
     zahl('Abrissjahr', o.abrissjahr, 0, feld('abrissjahr'), { ganz: true, min: 1800, max: 2100 });
     auswahl('Schicht', normSchicht(o.schicht), _SCHICHT_WERTE, feld('schicht'));
-    auswahl('Zustand', o.zustand, _ZUSTAND_WERTE, feld('zustand'), { leerErlaubt: true });
+    auswahl('Zustand', _zustandBuchstabe(o.zustand), _ZUSTAND_WERTE, feld('zustand'), { leerErlaubt: true });
+    auswahl('TWW-Art', o.twwArt || '', _TWW_WERTE, feld('twwArt'), { leerErlaubt: true });
+    zahl('TWW-Leistung (kW)', o.twwKw, 1, feld('twwKw'), { min: 0 });
 
     // Spezifische Werte zuerst — ein ebenfalls geänderter Absolutwert gewinnt danach.
     zahl('Spez. Wärme (kWh/m²a)', o.spez, 1, feld('spez'), { leerErlaubt: false, min: 0 });

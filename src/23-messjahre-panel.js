@@ -1,7 +1,7 @@
 // ── 23-messjahre-panel.js — Strom-Messjahre unter ⚡ Strom-Grundlagen ──
 // Einzige Eingabestelle für gemessene Strom-Lastgänge: je Messjahr der Bezug vom Netzbetreiber
 // und optional die Erzeugung eines BHKW. Ausgewertet wird die Summe (Stromverbrauch der
-// Liegenschaft) — im Gutachten Kapitel 3.2 für alle Jahre (17), in PV-Analyse, NAP-Analyse und
+// Liegenschaft) — im Gutachten Kapitel 5.2 für alle Jahre (17), in PV-Analyse, NAP-Analyse und
 // Bedarfsprognose nur für das Referenzjahr. Das Referenzjahr wählt der Nutzer von Hand; es wird
 // nach window.elQuartierH/H15/… geschrieben, woraus die übrigen Module wie bisher lesen.
 // Ausnahmen ohne eigene Auswahl: Upload aus der PV-Analyse (Datei ist dort bewusst gewählt) und

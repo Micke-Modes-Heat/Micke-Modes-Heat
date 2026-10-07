@@ -107,6 +107,8 @@ import * as pvnaSchema from './29-pvna-schema.js';
 import * as netzStrategie from './30-netzstrategie.js';
 import * as autarkieZiel from './31-autarkieziel.js';
 import * as dreiDAnsicht from './32-3d-ansicht.js';
+import * as bestandsanlage from './33-bestandsanlage.js';
+import * as witterung from './34-witterung.js';
 import * as variantenUi from './33-varianten-ui.js';
 import * as stationsSteckbrief from './34-stations-steckbrief.js';
 import * as excel from './35-excel.js';
@@ -130,7 +132,7 @@ const modules = [
   napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap, engpassSweep, engpassPanel,
-  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, lod2Import, variantenRegeln,
+  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, lod2Import, variantenRegeln,
 ];
 window.pdfjsLib = pdfjsLib;
 lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});

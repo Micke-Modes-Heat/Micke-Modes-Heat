@@ -4,7 +4,7 @@
 import { wtHilfen, F } from './gutachten-waerme-texte.js';
 import { EIS, eisBewertung, eisGeometrie, eisInvest } from './eisspeicher.js';
 
-const { ok, nf, pct, liste, absatz } = wtHilfen;
+const { ok, nf, pct, liste, absatz, ueberschrift } = wtHilfen;
 
 const FOLGE_TEXT = {
   lwwp: 'eine Luft-Wasser-Wärmepumpe, die bei ausgeschöpftem Eisspeicher und in der Übergangszeit einspringt',
@@ -23,7 +23,7 @@ const FOLGE_TEXT = {
  *                      folgeErzeuger: ['lwwp', 'gaskessel', …], stat: Ergebnis der Stundensimulation oder null }
  */
 export function wtEisspeicher(e = {}) {
-  const abs = [];
+  const abs = [ueberschrift('Eisspeicher-Wärmepumpe')];
   abs.push(absatz(
     'Ein Eisspeicher ist ein erdverlegter, in der Regel ungedämmter Wasserbehälter, der einer Sole-Wasser-Wärmepumpe ',
     'als Wärmequelle dient. Die Wärmepumpe entzieht dem Wasser zunächst fühlbare Wärme, bis es auf 0 °C abgekühlt ist. ',

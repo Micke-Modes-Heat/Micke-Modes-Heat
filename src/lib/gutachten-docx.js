@@ -53,7 +53,9 @@ export function gdxFreitext(text) {
 
 /** Textbaustein aus Segmenten [{text, offen}] je Absatz — offene Platzhalter grau wie „[Text]" in der Vorlage. */
 export function gdxBausteinAbsaetze(absaetze) {
-  return absaetze.map(segs => gdxAbsatz(segs.map(s => (s.offen ? platzhalter(s.text) : gdxLauf(s.text))).join(''))).join('');
+  return absaetze.map(segs => (segs.ueberschrift
+    ? gdxAbsatz(segs.map(s => (s.offen ? platzhalter(s.text) : gdxLauf(s.text, { b: true, farbe: GD_FARBE.gruen }))).join(''), { keepNext: true, abstand: 'w:before="200" w:after="60"' })
+    : gdxAbsatz(segs.map(s => (s.offen ? platzhalter(s.text) : gdxLauf(s.text))).join('')))).join('');
 }
 
 /** Beschriftung mit SEQ-Feld — Grundlage fürs Abbildungs-/Tabellenverzeichnis. */
