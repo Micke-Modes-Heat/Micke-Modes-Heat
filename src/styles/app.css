@@ -2600,3 +2600,9 @@ textarea.ssb-in{resize:vertical;}
 .wirt-umfang button{border:none;background:transparent;color:var(--muted);font:inherit;font-size:10px;padding:4px 11px;border-radius:6px;cursor:pointer;}
 .wirt-umfang button:hover{color:var(--text);}
 .wirt-umfang button.active{background:var(--accent);color:#000;font-weight:600;}
+
+/* ── Quartier herauslösen ── */
+.qh-deckel{position:absolute;inset:0;z-index:650;cursor:crosshair;background:transparent;}
+.qh-info{font-size:12px;margin-bottom:8px;}
+.qh-hinweis{font-size:10px;color:var(--muted);line-height:1.45;margin-bottom:10px;}
+.qh-label{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;}
