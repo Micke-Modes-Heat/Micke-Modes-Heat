@@ -1876,29 +1876,14 @@ export function refreshAnalyseView() {
   const _eeKeys = ['lwwp','fg','geo','pellets','hhs'];
   const _den = window._dispatchEnergy || {};
   let _eeW = 0, _gesW = 0;
-  for (const k of Object.keys(_den)) { const w = _den[k]?.waermeMwh || 0; _gesW += w; if (_eeKeys.includes(k) || k === '_thermSpeicher') _eeW += w; }
+  for (const k of Object.keys(_den)) { if (k === '_thermSpeicher') continue; const w = _den[k]?.waermeMwh || 0; _gesW += w; if (_eeKeys.includes(k)) _eeW += w; }   // Speicher: nur weitergegebene Wärme
   const _eePct = _gesW > 0 ? _eeW / _gesW * 100 : null;
   setKpi('av-kpi-ee', _eePct != null ? _nf(_eePct) : '—');
   const _eeBar = document.getElementById('av-kpi-ee-bar');
   if (_eeBar) { _eeBar.style.width = (_eePct != null ? Math.min(100, _eePct) : 0) + '%'; _eeBar.classList.toggle('ok', _eePct != null && _eePct >= 65); }
 
-  // CO₂ direkt aus Dispatch-Daten berechnen
-  const _co2Eta = _getEtaMap();
-  const _co2Emf = { gaskessel:gasEmF, heizoel:heizoelEmF, pellets:pelletsEmF, hhs:hhsEmF,
-    _autoGk:gasEmF, fernwaerme:fernwaermeEmF, lwwp:stromEmF, fg:stromEmF, geo:stromEmF, stromkessel:stromEmF, bhkw:gasEmF };
-  let _co2Tot = 0;
-  for (const k of Object.keys(_den)) {
-    const e = _den[k]; if (!e) continue;
-    const emf = _co2Emf[k] || 0;
-    if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') {
-      _co2Tot += (e.elMwh || 0) * emf / 1e3;
-    } else if (k === 'bhkw') {
-      const etaTh = ((parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100) / (1 + (parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45));
-      _co2Tot += (e.waermeMwh || 0) / etaTh * emf / 1e3;
-    } else if (_co2Eta[k]) {
-      _co2Tot += (e.waermeMwh || 0) / _co2Eta[k] * emf / 1e3;
-    }
-  }
+  // CO₂: dieselbe Rechnung wie Variantenvergleich und Emissionen-Reiter (inkl. BHKW-Stromgutschrift)
+  const _co2Tot = Object.keys(_den).length && typeof window.co2EinsatzAktuell === 'function' ? window.co2EinsatzAktuell() : 0;
   setKpi('av-kpi-co2', _co2Tot > 0.01 ? _nf(_co2Tot, _co2Tot < 100 ? 1 : 0) : '—');
 
   // Render the active section
@@ -1958,6 +1943,7 @@ export function refreshAnalyseView() {
     const sp = document.getElementById('strom-panel');
     if (sp) sp.querySelectorAll('.float-panel-close, button[data-click="hidePanels()"]').forEach(b => b.style.display = 'none');
     if (typeof calcStromPanel === 'function') calcStromPanel();
+    _stromAnalyseTabs(sp);
   } else if (analyseCurrentSection === 'emissionen') {
     if (emWrap) { emWrap.style.display = 'block'; _renderEmissionenTab(); }
   } else if (analyseCurrentSection === 'nap') {
@@ -1975,6 +1961,33 @@ export function refreshAnalyseView() {
   } else if (analyseCurrentSection === 'ausbauplaner') {
     if (typeof ausbauShow === 'function') ausbauShow(true);
   }
+}
+
+// Strom in der Analyse: die Diagramme des Strom-Panels über eine eigene Reiterleiste erreichbar machen
+// (im schwebenden Strom-Grundlagen-Panel bleiben sie ausgeblendet)
+let _stromAnalyseTab = 'fluss';
+function _stromAnalyseTabs(sp) {
+  if (!sp) return;
+  const inhalt = sp.querySelector('#strom-content-jdl')?.parentElement;
+  if (!inhalt) return;
+  let leiste = sp.querySelector('.strom-ana-tabs');
+  if (!leiste) {
+    leiste = document.createElement('div');
+    leiste.className = 'analyse-sub-tabs strom-ana-tabs';
+    leiste.innerHTML = [['fluss', 'Energiefluss (Woche)'], ['lastgang', 'Jahreslastgang'], ['jdl', 'Dauerlinie'], ['sankey', 'Jahresbilanz (Sankey)']]
+      .map(([t, l]) => `<button class="analyse-sub-tab" data-tab="${t}" data-click="stromAnalyseTab('${t}')">${l}</button>`).join('');
+    inhalt.insertBefore(leiste, inhalt.firstChild);
+    const eingaben = document.createElement('div');
+    eingaben.className = 'strom-ana-eingaben-titel';
+    eingaben.textContent = 'Eingaben Strom-Grundlagen';
+    leiste.after(eingaben);
+  }
+  stromAnalyseTab(_stromAnalyseTab);
+}
+export function stromAnalyseTab(tab) {
+  _stromAnalyseTab = tab;
+  document.querySelectorAll('.strom-ana-tabs .analyse-sub-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  if (typeof window._stromSetTab === 'function') window._stromSetTab(tab);
 }
 
 // ── Ebenen-Panel ─────────────────────────────────────────────────────────────

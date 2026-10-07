@@ -211,7 +211,7 @@ export function _calcKostenShared(p) {
   }
 
   // ── CO₂-Kosten ──
-  var co2Jk = 0, co2ta = 0;
+  var co2Jk = 0, co2ta = 0, bhkwGutschriftT = 0;
   var pCo2 = co2p.pCo2 || 0;
   var emf = co2p.emf || {};
   for (var _c=0; _c<erzList.length; _c++) {
@@ -226,6 +226,8 @@ export function _calcKostenShared(p) {
     } else if (erz2.typ === 'kwk' || erz2.key === 'bhkw') {
       var etaThCo2 = (etas.bhkw||0.88) / (1 + (etas.bhkwSigma||0.45));
       tCo2 = wM / etaThCo2 * (emf.gas||240) / 1e3;
+      // Stromgutschrift (verdrängter Netzstrom) — unten von Emissionsbilanz und CO₂-Kostenansatz abgezogen
+      if (co2p.bhkwGutschrift) bhkwGutschriftT += wM * (etas.bhkwSigma||0.45) * (co2p.verdraengungEf || emf.strom || 420) / 1e3;
     } else if (erz2.key === 'heizoel') {
       tCo2 = wM / (etas.heizoel||0.90) * (emf.heizoel||310) / 1e3;
     } else if (erz2.key === 'pellets') {
@@ -240,6 +242,9 @@ export function _calcKostenShared(p) {
       co2Jk += tCo2 * pCo2;
     }
   }
+  co2ta = Math.max(0, co2ta - bhkwGutschriftT);
+  // wie die Wirtschaftlichkeitsrechnung: CO₂-Kostenansatz auf die Netto-Bilanz (inkl. BHKW-Gutschrift)
+  if (pCo2 > 0 && bhkwGutschriftT > 0) co2Jk = Math.max(0, co2Jk - bhkwGutschriftT * pCo2);
 
   // ── PV + Batterie ──
   var pvJk = 0, pvInvestGes = 0;

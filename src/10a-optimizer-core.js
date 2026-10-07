@@ -7,7 +7,7 @@
 // OPT_INVEST_DEFAULT, OPT_NUTZUNG, OPT_IH, OPT_EE_KEYS, OPT_MERIT_ORDER → src/config/optimizer-defaults.js
 
 // Mapping Optimizer-Key → CalcEngine INVEST_KURVEN Key
-import { sichereAktivenStand, _varianteAusLiveAnlegen, fernwaermeEmF, gasEmF, gebaeude, globalYear, heizoelEmF, hhsEmF, networkLocked, netzEdges, pelletsEmF, stromEmF, varianten } from './01-globals-varianten.js';
+import { sichereAktivenStand, _varianteAusLiveAnlegen, variantenKennzahlenSperren, variantenKennzahlenFreigeben, fernwaermeEmF, gasEmF, gebaeude, globalYear, heizoelEmF, hhsEmF, networkLocked, netzEdges, pelletsEmF, stromEmF, varianten } from './01-globals-varianten.js';
 import { getComputedStats, getGebStromMwh, map } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, polygonCenter, redrawFliessgewaesser, redrawLwWp } from './02c-karte-werkzeuge.js';
 import { clearBhkw, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons } from './03a-erzeuger.js';
@@ -22,7 +22,8 @@ import { CalcEngine } from './08-calc-engine.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { OPT_INVEST_DEFAULT } from './config/optimizer-defaults.js';
-import { activeVariantId } from './01-globals-varianten.js';
+import { activeVariantId, bhkwCo2Gutschrift } from './01-globals-varianten.js';
+import { calcVerdraengungEmF } from './03a-erzeuger.js';
 import { appLifecycle } from './lib/lifecycle.js';
 const optimizerLifecycle = typeof appLifecycle !== 'undefined' ? appLifecycle : {
   timeout: (callback, delay) => setTimeout(callback, delay),
@@ -232,7 +233,8 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
 
   // Quartier-Strom
   let quartierStromMwh = 0;
-  if (window.elQuartierH) { for (let t = 0; t < 8760; t++) quartierStromMwh += window.elQuartierH[t]; quartierStromMwh /= 1000; }
+  if (Number.isFinite(window._optQuartierStromMwh)) quartierStromMwh = window._optQuartierStromMwh;   // wie im Worker (10c)
+  else if (window.elQuartierH) { for (let t = 0; t < 8760; t++) quartierStromMwh += window.elQuartierH[t]; quartierStromMwh /= 1000; }
   else { const gebs = typeof gebaeude !== 'undefined' ? gebaeude : []; let s = 0; for (const g of gebs) s += parseFloat(g.stromJahr || g.stromkwh || 0); quartierStromMwh = s / 1000; }
 
   // PV-Daten
@@ -299,6 +301,8 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
     co2: {
       pCo2: parseFloat(document.getElementById('wirt-p-co2')?.value) || 0,
       alleET: document.getElementById('wirt-co2-alle')?.checked !== false,
+      bhkwGutschrift: !!bhkwCo2Gutschrift,
+      verdraengungEf: calcVerdraengungEmF(),
       emf: {
         gas: typeof gasEmF !== 'undefined' ? gasEmF : 240,
         heizoel: typeof heizoelEmF !== 'undefined' ? heizoelEmF : 310,
@@ -590,6 +594,9 @@ export function _collectOptDomParams() {
     fernwaermeEmF: typeof fernwaermeEmF !== 'undefined' ? fernwaermeEmF : 180,
     // CO2-Preis (€/t) für WGK-Berechnung
     pCo2: f('wirt-p-co2', 0),
+    co2Alle: document.getElementById('wirt-co2-alle')?.checked !== false,
+    bhkwGutschrift: !!bhkwCo2Gutschrift,
+    verdraengungEf: calcVerdraengungEmF(),
     // Konstanten
     OPT_INVEST_DEFAULT: { ...OPT_INVEST_DEFAULT },
     OPT_NUTZUNG: { ...OPT_NUTZUNG }, OPT_IH: { ...OPT_IH },
@@ -610,6 +617,8 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
     return window.runPlanningTransaction('Optimierung als Variante übernehmen', () => _optVarianteUebernehmen(result, btnEl, true));
   }
   if (!result) { console.warn('OptVariante: kein result'); return; }
+  let _gesperrt = false;
+  const _freigeben = () => { if (_gesperrt) { _gesperrt = false; variantenKennzahlenFreigeben(); } };
   try {
   const titel = result.keys.map(k => ERZEUGER_CFG[k]?.label || k).join('+');
   const varName = 'Opt: ' + titel;
@@ -619,6 +628,9 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
   // Stromnetz: Planungsobjekte seit dem letzten Wechsel wanderten in die neue
   // Variante und fehlten danach in der Ausgangsvariante.
   const vonKey = sichereAktivenStand();
+  // Die Kennzahlen der Ausgangsvariante bleiben unberührt, bis die neue Variante angelegt ist
+  variantenKennzahlenSperren();
+  _gesperrt = true;
 
   // Alle Erzeuger deaktivieren (saubere Basis für neue Variante)
   if (typeof clearLwWp === 'function') clearLwWp();
@@ -651,8 +663,10 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
 
   // Erzeuger der Kombination aktivieren und Leistung setzen
   // (ohne moBeiAktivierung in der Schleife — wird einmal am Ende aufgerufen)
-  for (const erz of result.config) {
-    const leist = Math.max(1, Math.round(erz.leistKw));
+  for (const [ci, erz] of result.config.entries()) {
+    // Bewertet wurde die Leistung nach dem Einsatz (der letzte Erzeuger deckt als Backup die Spitze) —
+    // genau diese übernehmen, sonst springt in der Variante der automatische Spitzenkessel ein
+    const leist = Math.max(1, Math.round(result.erzLeistKw?.[ci] ?? result.sim?.erzeugerList?.[ci]?.leistKw ?? erz.leistKw));
     const setBtn = (id) => { const el = document.getElementById(id); if (el) el.style.display = 'none'; };
     const showSec = (id) => { const el = document.getElementById(id); if (el) el.style.display = 'block'; };
     switch (erz.key) {
@@ -781,7 +795,8 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
   // Einmal am Ende: Icons aktualisieren
   if (typeof redrawErzeugerIcons === 'function') redrawErzeugerIcons();
 
-  // Variante mit diesem Zustand speichern
+  // Variante mit diesem Zustand speichern (ab hier gehören die Kennzahlen der neuen Variante)
+  _freigeben();
   _varianteAusLiveAnlegen({
     name: varName, herkunft: 'optimierer', vonKey,
     zweck: 'Aus der Optimierung übernommener Erzeugerpark: ' + titel,
@@ -803,6 +818,7 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
   }
 
   } catch(err) {
+    _freigeben();
     console.error('OptVariante Fehler:', err);
     showHint('Fehler beim Anlegen der Variante: ' + err.message);
   }

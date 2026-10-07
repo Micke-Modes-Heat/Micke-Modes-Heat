@@ -998,7 +998,7 @@
       </div>
 
       <!-- Spalte 3: Button -->
-      <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;">
+      <div style="display:flex;flex-direction:column;align-self:start;">
         <button class="btn-confirm" id="btn-opt-start" data-click="if(_optRunning){_optAbbrechen()}else{runOptimierung()}" style="width:100%;padding:10px 20px;font-size:12px;">&#x26A1; Beste Varianten suchen</button>
         <div style="margin-top:6px;padding:7px;border:1px solid rgba(255,152,0,.35);border-radius:5px;color:#ffb74d;font-size:9px;line-height:1.45;">Heuristische Raster- und Top-Kandidaten-Suche: Das Ergebnis ist die beste gefundene Variante im geprüften Suchraum, kein mathematischer Nachweis des globalen Optimums.</div>
       </div>
@@ -1102,7 +1102,7 @@
     <div class="vergleich-abschnitt">Wärme · Kennzahlen <span style="font-weight:400;text-transform:none;letter-spacing:0;">— beste Werte je Zeile <span style="color:#66bb6a;">grün</span></span></div>
     <div id="vergleich-view-table-wrap" style="overflow-x:auto;margin-bottom:14px;"></div>
     <div id="vergleich-pareto-wrap" style="margin-bottom:18px;">
-      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">CO₂ gegen Wärmegestehungskosten</div>
+      <div class="vergleich-abschnitt">CO₂ (Ø 2030–2050) gegen Wärmegestehungskosten <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted);">— links unten ist besser</span></div>
       <canvas id="vergleich-pareto-canvas" height="240" style="width:100%;display:block;background:var(--surface2);border-radius:6px;cursor:pointer;"></canvas>
       <div id="vergleich-pareto-legend" style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;margin-top:4px;"></div>
     </div>
@@ -1859,7 +1859,7 @@
     <div id="lg-wrap-8760">
       <div id="da-legend" style="display:flex;flex-wrap:wrap;gap:6px;font-size:10px;margin-bottom:4px;"></div>
       <div style="position:relative;">
-        <canvas id="da-canvas" height="220" style="width:100%;display:block;cursor:crosshair;border-radius:4px;user-select:none;"></canvas>
+        <canvas id="da-canvas" height="220" data-hoch="340" style="width:100%;display:block;cursor:crosshair;border-radius:4px;user-select:none;"></canvas>
         <div id="da-tooltip" style="display:none;position:absolute;background:rgba(20,22,30,0.95);border:1px solid var(--border);
              border-radius:4px;padding:6px 8px;font-size:10px;font-family:'DM Mono',monospace;pointer-events:none;z-index:10;white-space:nowrap;"></div>
       </div>
@@ -1879,25 +1879,25 @@
   <!-- ══ Tab: Jahresdauerlinie ════════════════════════════════════════ -->
   <div class="sa-tab-content" id="sa-tab-jdl">
     <div id="da-kpi-row" class="sa-kpi-row">
-      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-pmax">—</div><div class="sa-kpi-lbl">P<sub>max</sub> kW</div></div>
-      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-p65">—</div><div class="sa-kpi-lbl">P<sub>65%</sub> kW</div></div>
-      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-p90">—</div><div class="sa-kpi-lbl">P<sub>90%</sub> kW</div></div>
-      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-energie">—</div><div class="sa-kpi-lbl">MWh/a</div></div>
-      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-tmin">—</div><div class="sa-kpi-lbl">T<sub>min</sub> °C</div></div>
+      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-pmax">—</div><div class="sa-kpi-lbl">Spitzenlast kW</div></div>
+      <div class="sa-kpi" title="Leistung, die in 10 % der Jahresstunden überschritten wird — Richtwert für Spitzenlasterzeuger"><div class="sa-kpi-val" id="da-kpi-p90">—</div><div class="sa-kpi-lbl">an 876 h überschritten · kW</div></div>
+      <div class="sa-kpi" title="Leistung, die in 35 % der Jahresstunden überschritten wird — Richtwert für die Grundlast"><div class="sa-kpi-val" id="da-kpi-p65">—</div><div class="sa-kpi-lbl">an 3.066 h überschritten · kW</div></div>
+      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-energie">—</div><div class="sa-kpi-lbl">Wärmemenge MWh/a</div></div>
+      <div class="sa-kpi" title="Tiefste Stundentemperatur des gewählten Klimajahres"><div class="sa-kpi-val" id="da-kpi-tmin">—</div><div class="sa-kpi-lbl">tiefste Außentemp. °C</div></div>
     </div>
     <div class="sa-svg-wrap">
       <div class="sa-svg-title">Jahresdauerlinie — nach Erzeugern</div>
       <div id="da-legend-jdl" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;font-size:10px;"></div>
-      <canvas id="da-canvas-jdl" height="200" style="width:100%;display:block;border-radius:4px;"></canvas>
+      <canvas id="da-canvas-jdl" height="200" data-hoch="320" style="width:100%;display:block;border-radius:4px;"></canvas>
     </div>
   </div>
 
   <!-- ══ Tab: Kälteste Woche ══════════════════════════════════════════ -->
   <div class="sa-tab-content" id="sa-tab-woche">
     <div class="sa-svg-wrap">
-      <div class="sa-svg-title">Kälteste Woche (168 h) — nach Erzeugern</div>
+      <div class="sa-svg-title" id="da-woche-titel">Kälteste Woche (168 h) — nach Erzeugern</div>
       <div id="da-legend-woche" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;font-size:10px;"></div>
-      <canvas id="da-canvas-woche" height="200" style="width:100%;display:block;border-radius:4px;"></canvas>
+      <canvas id="da-canvas-woche" height="200" data-hoch="300" style="width:100%;display:block;border-radius:4px;"></canvas>
     </div>
     <div class="sa-svg-wrap" style="margin-bottom:0;">
       <div class="sa-svg-title">Außentemperatur kälteste Woche (°C)</div>
@@ -1919,7 +1919,7 @@
           </label>
         </div>
       </div>
-      <canvas id="da-canvas-tempvl" height="240" style="width:100%;display:block;border-radius:4px;cursor:crosshair;"></canvas>
+      <canvas id="da-canvas-tempvl" height="240" data-hoch="320" style="width:100%;display:block;border-radius:4px;cursor:crosshair;"></canvas>
       <div id="da-legend-tempvl" style="display:flex;gap:12px;font-size:9px;margin-top:4px;"></div>
     </div>
   </div>
@@ -1978,7 +1978,7 @@
     <div id="split-wrap-balken">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
         <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:10px;color:var(--muted);">KW</span>
+          <span style="font-size:10px;color:var(--muted);">Woche anzeigen</span>
           <input type="range" id="split-kw-slider" min="1" max="52" value="1" step="1"
                  style="width:120px;accent-color:#e53935;" data-input="splitOnKwSlider(+this.value)">
           <span id="split-kw-label" style="font-size:10px;font-family:'DM Mono',monospace;min-width:40px;">KW 1</span>

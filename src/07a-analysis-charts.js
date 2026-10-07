@@ -343,10 +343,25 @@ export function _daSetupCanvas(id) {
   if (!canvas) return null;
   const W = canvas.parentElement?.clientWidth || canvas.offsetWidth || 700;
   if (W < 10) return null;
+  // In der breiten Analyse-Ansicht höher zeichnen (data-hoch), im schwebenden Panel die Grundhöhe
+  if (!canvas.dataset.grundhoehe) canvas.dataset.grundhoehe = String(canvas.height);
+  const hoch = canvas.closest('.inline-mode') && canvas.dataset.hoch ? Number(canvas.dataset.hoch) : Number(canvas.dataset.grundhoehe);
+  if (hoch > 0 && canvas.height !== hoch) canvas.height = hoch;
   canvas.width  = W;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, W, canvas.height);
   return { canvas, ctx, W, H: canvas.height };
+}
+
+/** Achsenbeschriftung mit dunklem Hintergrund, innerhalb der Zeichenfläche gehalten. */
+export function _daAchsText(ctx, text, x, y, H) {
+  ctx.font = '10px "DM Mono", monospace';
+  const w = ctx.measureText(text).width + 8;
+  const yy = Math.min(Math.max(y, 12), H - 3);
+  ctx.fillStyle = 'rgba(15,17,23,0.72)';
+  ctx.fillRect(x - 3, yy - 10, w, 13);
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillText(text, x + 1, yy);
 }
 
 export function _daLegend(elId, keys, showResidual) {
@@ -497,15 +512,13 @@ export function daRenderLastgang() {
   // Monats-/Tageslinien je nach Zoom-Level
   _daZeitlinien(ctx, W, H, startH, endH, nVis);
 
-  // Y-Achsen-Hilfslinien
-  ctx.font = '9px monospace';
+  // Y-Achsen-Hilfslinien (Beschriftung mit Hintergrund; die 100-%-Linie unterhalb, sonst läge sie außerhalb)
   [25, 50, 75, 100].forEach(pct => {
     const y = H - (pct / 100) * H;
     ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.fillText(Math.round(pMax * pct / 100) + ' kW', 4, y - 2);
+    _daAchsText(ctx, Math.round(pMax * pct / 100).toLocaleString('de-DE') + ' kW', 4, pct === 100 ? y + 12 : y - 3, H);
   });
 
   _daLegend('da-legend', keys, false);
@@ -691,13 +704,11 @@ export function _daDrawChart(ctx, hourly, keys, lg, W, H, startH, endH, nVis, pM
     }
   }
   // Y-Hilfslinien
-  ctx.font = '9px monospace';
   [25,50,75,100].forEach(pct => {
     const y = H - (pct/100)*H;
     ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.fillText(Math.round(pMax*pct/100)+' kW', 4, y-2);
+    _daAchsText(ctx, Math.round(pMax*pct/100).toLocaleString('de-DE')+' kW', 4, pct === 100 ? y + 12 : y - 3, H);
   });
 }
 
@@ -728,6 +739,7 @@ export function daRenderJdl() {
   if (pMax < 1) pMax = 1;
 
   const hPerPx = n / W;
+  let resGesamt = 0;
 
   for (let x = 0; x < W; x++) {
     const i0  = Math.floor(x * hPerPx);
@@ -754,6 +766,7 @@ export function daRenderJdl() {
     });
     const res = Math.max(0, lgAvg - keys.reduce((s, k) => s + avg[k], 0));
     if (res > 0.1) {
+      resGesamt += res;
       const h = (res / pMax) * H;
       ctx.fillStyle = DA_COLORS_FALLBACK._residual;
       ctx.fillRect(x, Math.round(yBase - h), 1, Math.max(1, Math.ceil(h)));
@@ -761,14 +774,21 @@ export function daRenderJdl() {
   }
 
   // X-Achse: Stunden-Labels
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  ctx.font = '9px monospace';
+  ctx.font = '10px "DM Mono", monospace';
   [2000, 4000, 6000, 8000].forEach(h => {
     const x = Math.round(h / n * W);
-    ctx.fillText(h + 'h', x + 2, H - 3);
     ctx.strokeStyle = 'rgba(255,255,255,0.1)';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillText(h.toLocaleString('de-DE') + ' h', x + 3, H - 4);
+  });
+  // Y-Achse
+  [25, 50, 75, 100].forEach(pct => {
+    const y = H - (pct / 100) * H;
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    _daAchsText(ctx, Math.round(pMax * pct / 100).toLocaleString('de-DE') + ' kW', W - 90, pct === 100 ? y + 12 : y - 3, H);
   });
 
   // KPIs in individuelle Elemente schreiben
@@ -787,11 +807,11 @@ export function daRenderJdl() {
   if (_tempH && _tempH.length > 0) {
     let tMin = _tempH[0];
     for (let i = 1; i < _tempH.length; i++) { if (_tempH[i] < tMin) tMin = _tempH[i]; }
-    _kpi('da-kpi-tmin', tMin.toFixed(1));
+    _kpi('da-kpi-tmin', tMin.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
   }
 
-  // Legende
-  _daLegend('da-legend-jdl', keys, true);
+  // Legende („Nicht gedeckt“ nur, wenn es eine Unterdeckung gibt)
+  _daLegend('da-legend-jdl', keys, resGesamt > 0);
 }
 
 // ── Tab: Kälteste Woche ───────────────────────────────────────────────────
@@ -855,21 +875,29 @@ export function daRenderWoche() {
     }
   }
 
-  // Tages-Trennlinien + Labels
+  // Tages-Trennlinien + Datum (die Woche beginnt nicht zwingend montags — daher Datum statt Wochentag)
   ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
-  const TAGE = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+  const datum = tag => { const d = new Date(Date.UTC(2023, 0, 1 + tag)); return `${d.getUTCDate()}.${d.getUTCMonth() + 1}.`; };
+  const tag0 = Math.floor(startH / 24);
+  const titel = document.getElementById('da-woche-titel');
+  if (titel) titel.textContent = `Kälteste Woche ${datum(tag0)}–${datum((tag0 + 6) % 365)} — nach Erzeugern`;
   for (let d = 0; d <= 7; d++) {
     const x = Math.round(d * 24 * bw);
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-    if (d < 7) {
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
-      ctx.font = '9px sans-serif';
-      ctx.fillText(TAGE[d], x + 3, 10);
-    }
+    if (d < 7) _daAchsText(ctx, datum((tag0 + d) % 365), x + 3, 12, H);
   }
+  // Y-Achse
+  [50, 100].forEach(pct => {
+    const y = H - (pct / 100) * H;
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    _daAchsText(ctx, Math.round(pMax * pct / 100).toLocaleString('de-DE') + ' kW', W - 90, pct === 100 ? y + 26 : y - 3, H);
+  });
 
-  // Legende
-  _daLegend('da-legend-woche', keys, true);
+  // Legende („Nicht gedeckt“ nur bei Unterdeckung in dieser Woche)
+  let resWoche = 0;
+  for (let i = 0; i < LEN; i++) { const t = (startH + i) % n; resWoche += Math.max(0, (lg[t] || 0) - keys.reduce((s2, k) => s2 + (hourly[k]?.[t] || 0), 0)); }
+  _daLegend('da-legend-woche', keys, resWoche > 1);
 
   // Temperaturkurve (SVG)
   const svgEl = document.getElementById('da-svg-temp-woche');
@@ -887,8 +915,8 @@ export function daRenderWoche() {
     }).join(' ');
     svgEl.innerHTML =
       `<polyline points="${pts}" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.85"/>
-       <text x="3" y="12" fill="#4fc3f7" font-size="9">${tMax.toFixed(1)}°C</text>
-       <text x="3" y="${SH - 3}" fill="#4fc3f7" font-size="9">${tMin.toFixed(1)}°C</text>`;
+       <text x="3" y="12" fill="#4fc3f7" font-size="10">${tMax.toLocaleString('de-DE', { maximumFractionDigits: 1 })} °C</text>
+       <text x="3" y="${SH - 3}" fill="#4fc3f7" font-size="10">${tMin.toLocaleString('de-DE', { maximumFractionDigits: 1 })} °C</text>`;
   }
 
 }
@@ -1179,9 +1207,11 @@ export function dimRender() {
 export function dimDraw(pInst) {
   const canvas = document.getElementById('dim-canvas');
   if (!canvas || !_dimJdlSorted) return;
-  canvas.width = canvas.offsetWidth || 600;
+  canvas.width = canvas.parentElement?.clientWidth || canvas.offsetWidth || 600;
+  canvas.height = canvas.closest('.inline-mode') ? 320 : 240;   // breite Analyse-Ansicht: höher
   const W = canvas.width, H = canvas.height;
   const ctx = canvas.getContext('2d');
+  const de1 = v => v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
   const ML = 52, MB = 22, MT = 10; // Margins left/bottom/top
   const PW = W - ML, PH = H - MB - MT; // Plot-Breite/-Höhe
@@ -1203,14 +1233,17 @@ export function dimDraw(pInst) {
   ctx.font = '9px monospace';
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
   ctx.textAlign = 'right';
+  // Gitterlinien je 25 %; beschriftet nur 0 und Spitzenlast — die Kreuzlinien tragen ihre eigenen Werte
   [0, 25, 50, 75, 100].forEach(pct => {
     const p = pMax * pct / 100;
     const y = py(p);
     ctx.strokeStyle = 'rgba(255,255,255,0.07)';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(ML, y); ctx.lineTo(W, y); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillText(Math.round(p).toLocaleString('de-DE'), ML - 3, y + 3);
+    if (pct === 0 || pct === 100) {
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillText(Math.round(p).toLocaleString('de-DE') + (pct === 100 ? ' kW' : ''), ML - 3, y + 3);
+    }
   });
 
   // X-Gitter + Labels
@@ -1221,11 +1254,12 @@ export function dimDraw(pInst) {
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x, MT); ctx.lineTo(x, H - MB); ctx.stroke();
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.fillText(h + ' h', x, H - 5);
+    ctx.fillText(h.toLocaleString('de-DE') + ' h', x, H - 5);
   });
   ctx.fillStyle = 'rgba(255,255,255,0.3)';
   ctx.fillText('0', px(0), H - 5);
-  ctx.fillText('8760 h', px(n), H - 5);
+  ctx.textAlign = 'right';
+  ctx.fillText(n.toLocaleString('de-DE') + ' h', W - 2, H - 5);
 
   // Achsenlinien
   ctx.strokeStyle = 'rgba(255,255,255,0.2)';
@@ -1285,13 +1319,21 @@ export function dimDraw(pInst) {
     ctx.beginPath(); ctx.arc(xC, yC, r, 0, 2 * Math.PI); ctx.stroke();
 
     // Label rechts vom Schnittpunkt (oder links wenn zu nah am Rand)
+    // Beschriftung mit Hintergrund, damit sie nicht auf der Kurve verschwindet
+    const rechts = xC > W * 0.75;
+    const lx = rechts ? xC - 8 : xC + 8;
+    const zeile2 = `${de1(covPct)} % Energie · ${Math.round(vls).toLocaleString('de-DE')} Volllaststunden`;
+    ctx.font = '10px monospace';
+    const bw = Math.max(ctx.measureText(zeile2).width, ctx.measureText(label).width) + 8;
+    const bx = rechts ? lx - bw + 4 : lx - 4;
+    ctx.fillStyle = 'rgba(19,21,31,0.85)';
+    ctx.fillRect(bx, yC - 18, bw, 34);
     ctx.fillStyle = color;
-    ctx.font = 'bold 9px monospace';
-    ctx.textAlign = xC > W * 0.75 ? 'right' : 'left';
-    const lx = xC > W * 0.75 ? xC - 8 : xC + 8;
+    ctx.textAlign = rechts ? 'right' : 'left';
+    ctx.font = 'bold 10px monospace';
     ctx.fillText(label, lx, yC - 6);
-    ctx.font = '9px monospace';
-    ctx.fillText(`${covPct.toFixed(1)} % · ${Math.round(vls).toLocaleString('de-DE')} VLh`, lx, yC + 13);
+    ctx.font = '10px monospace';
+    ctx.fillText(zeile2, lx, yC + 10);
 
     // P-Label auf y-Achse
     ctx.textAlign = 'right';
@@ -1316,7 +1358,7 @@ export function dimDraw(pInst) {
   drawCrosshair(p90, '#ff8a65', '90 %', true);
 
   // Schieber-Linie (über den anderen gezeichnet)
-  const res = drawCrosshair(pInst, '#4fc3f7', 'P inst', false);
+  const res = drawCrosshair(pInst, '#4fc3f7', 'Gewählte Leistung', false);
 
   // KPI-Box aktualisieren
   const kpiBox = document.getElementById('dim-kpi-box');
@@ -1325,9 +1367,9 @@ export function dimDraw(pInst) {
     const covPct = _dimTotalEnergy > 0 ? eCov / _dimTotalEnergy * 100 : 0;
     kpiBox.innerHTML =
       `<div style="color:#4fc3f7;font-weight:bold;">${Math.round(pInst).toLocaleString('de-DE')} kW</div>` +
-      `<div>Deckung: <b style="color:#4fc3f7;">${covPct.toFixed(1)} %</b></div>` +
-      `<div>VLh: <b>${Math.round(res.vls).toLocaleString('de-DE')} h</b></div>` +
-      `<div style="color:var(--muted);font-size:9px;">Gesamt: ${(_dimTotalEnergy/1000).toFixed(0)} MWh/a</div>` +
+      `<div>Energiedeckung: <b style="color:#4fc3f7;">${de1(covPct)} %</b></div>` +
+      `<div>Volllaststunden: <b>${Math.round(res.vls).toLocaleString('de-DE')} h</b></div>` +
+      `<div style="color:var(--muted);font-size:9px;">Gesamt: ${Math.round(_dimTotalEnergy/1000).toLocaleString('de-DE')} MWh/a</div>` +
       `<div style="color:var(--muted);font-size:9px;">P<sub>max</sub>: ${Math.round(pMax).toLocaleString('de-DE')} kW</div>`;
   }
 }
@@ -1561,14 +1603,14 @@ export function splitDraw() {
   if (pMax <= 0) pMax = 1;
 
   // Y-Gitter + Labels
-  ctx.font = '8px monospace'; ctx.textAlign = 'right';
+  ctx.font = '9px monospace'; ctx.textAlign = 'right';
   [25,50,75,100].forEach(pct => {
     const p = pMax * pct / 100;
     const y = MT + PH - (p / pMax) * PH;
     ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(ML, y); ctx.lineTo(W, y); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.fillText(Math.round(p) + ' kW', ML - 2, y + 3);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillText(Math.round(p).toLocaleString('de-DE'), ML - 2, y + 3);
   });
 
   // Balken zeichnen

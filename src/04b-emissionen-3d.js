@@ -30,6 +30,9 @@ export function setEmissionenTab(tab) {
 }
 
 /* ── Stündliche CO₂-Daten berechnen (kgCO₂/h pro Erzeuger) ────────────── */
+/** Zahl in deutscher Schreibweise mit fester Nachkommazahl (statt toFixed). */
+function _de(v, d = 0) { return (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+
 export function _calcEmHourly() {
   const hourly = window._dispatchHourly || {};
   const keys   = window._dispatchActiveKeys || [];
@@ -158,12 +161,12 @@ export function _updateEmKpis() {
       for (let t = 0; t < 8760; t++) totalCo2 += h[t];
     }
     const tCo2 = totalCo2 / 1000; // t/a
-    setKpi('em-kpi-co2', tCo2.toFixed(1));
-    setKpi('em-kpi-spez', totalWaerme > 0 ? (totalCo2 / totalWaerme).toFixed(0) : '—');
+    setKpi('em-kpi-co2', tCo2.toLocaleString('de-DE', { maximumFractionDigits: tCo2 < 100 ? 1 : 0 }));
+    setKpi('em-kpi-spez', totalWaerme > 0 ? _de(totalCo2 / totalWaerme, 0) : '—');
     // Referenz: reiner Gaskessel (η=0.92, 240 g/kWh)
     const refCo2 = totalWaerme / 0.92 * gasEmF / 1e3; // tCO₂
     const red = refCo2 > 0 ? ((refCo2 - tCo2) / refCo2 * 100) : 0;
-    setKpi('em-kpi-red', red > 0.5 ? '−' + red.toFixed(0) + ' %' : (red < -0.5 ? '+' + Math.abs(red).toFixed(0) + ' %' : '≈ 0 %'));
+    setKpi('em-kpi-red', red > 0.5 ? '−' + _de(red, 0) + ' %' : (red < -0.5 ? '+' + _de(Math.abs(red), 0) + ' %' : '≈ 0 %'));
   } else {
     setKpi('em-kpi-co2', '—');
     setKpi('em-kpi-spez', '—');
@@ -171,7 +174,7 @@ export function _updateEmKpis() {
   }
 
   if (pefData) {
-    setKpi('em-kpi-pef', pefData.fpGes.toFixed(2));
+    setKpi('em-kpi-pef', pefData.fpGes.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   } else {
     setKpi('em-kpi-pef', '—');
   }
@@ -231,7 +234,7 @@ export function _renderEmStunden() {
     const yy = PAD.t + iH - iH * i / nGrid;
     ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(W - PAD.r, yy); ctx.stroke();
     ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'right';
-    ctx.fillText((maxV * i / nGrid).toFixed(0), PAD.l - 3, yy + 3);
+    ctx.fillText(_de(maxV * i / nGrid, 0), PAD.l - 3, yy + 3);
   }
 
   // Y-Achse Label
@@ -326,8 +329,8 @@ export function _emSetupHover(canvas, keys, hourly, startH, endH, PAD, iW, iH, m
     }
     let html = `<b>Stunde ${t}</b><br>`;
     let total = 0;
-    for (const k of keys) { const v = hourly[k][t]; total += v; html += `<span style="color:${_daColor(k)}">${DA_LABELS[k]||k}: ${v.toFixed(1)} kg</span><br>`; }
-    html += `<b>Σ ${total.toFixed(1)} kg CO₂/h</b>`;
+    for (const k of keys) { const v = hourly[k][t]; total += v; html += `<span style="color:${_daColor(k)}">${DA_LABELS[k]||k}: ${_de(v, 1)} kg</span><br>`; }
+    html += `<b>Σ ${_de(total, 1)} kg CO₂/h</b>`;
     if (tooltip) { tooltip.innerHTML = html; tooltip.style.display = ''; tooltip.style.left = Math.min(mx + 10, iW - 60) + 'px'; tooltip.style.top = '8px'; }
   });
   canvas.addEventListener('mouseleave', () => { if (tooltip) tooltip.style.display = 'none'; });
@@ -402,7 +405,7 @@ export function _renderEmDauerlinie() {
     const yy = PAD.t + iH - iH * i / 4;
     ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(W - PAD.r, yy); ctx.stroke();
     ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'right';
-    ctx.fillText((maxV * i / 4).toFixed(0), PAD.l - 3, yy + 3);
+    ctx.fillText(_de(maxV * i / 4, 0), PAD.l - 3, yy + 3);
   }
 
   // Y-Achse
@@ -450,7 +453,7 @@ export function _renderEmDauerlinie() {
     ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + iW, y); ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = color; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'left';
-    ctx.fillText(label + ': ' + val.toFixed(1) + ' kg/h', PAD.l + 4, y - 3);
+    ctx.fillText(label + ': ' + _de(val, 1) + ' kg/h', PAD.l + 4, y - 3);
   };
   drawDash(median, 'Median', '#ffd54f');
   drawDash(p90, 'P90', '#ff8a65');
@@ -458,7 +461,7 @@ export function _renderEmDauerlinie() {
   // Info
   const infoEl = document.getElementById('em-dl-info');
   const totalTCo2 = sorted.reduce((s, v) => s + v, 0) / 1000;
-  if (infoEl) infoEl.textContent = 'Σ ' + totalTCo2.toFixed(1) + ' t CO₂/a | Max ' + sorted[0].toFixed(1) + ' kg/h | Median ' + median.toFixed(1) + ' kg/h';
+  if (infoEl) infoEl.textContent = 'Σ ' + _de(totalTCo2, 1) + ' t CO₂/a | Max ' + _de(sorted[0], 1) + ' kg/h | Median ' + _de(median, 1) + ' kg/h';
 }
 
 /* ── Sub-Tab 3: Monatsübersicht ──────────────────────────────────────────── */
@@ -515,7 +518,7 @@ export function _renderEmMonat() {
     const yy = PAD.t + iH - iH * i / 4;
     ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(W - PAD.r, yy); ctx.stroke();
     ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'right';
-    ctx.fillText((maxM * i / 4).toFixed(1), PAD.l - 3, yy + 3);
+    ctx.fillText(_de(maxM * i / 4, 1), PAD.l - 3, yy + 3);
   }
 
   // Y-Achse
@@ -540,7 +543,7 @@ export function _renderEmMonat() {
     // Summe oben
     let mTotal = 0; for (const k of keys) mTotal += monatData[m][k] || 0;
     ctx.fillStyle = 'rgba(200,200,200,0.6)'; ctx.font = '7px "DM Mono", monospace';
-    ctx.fillText(mTotal.toFixed(1), bx + barW / 2, PAD.t + iH - cumY - 3);
+    ctx.fillText(_de(mTotal, 1), bx + barW / 2, PAD.t + iH - cumY - 3);
   }
 
   // Legende + Total
@@ -552,7 +555,7 @@ export function _renderEmMonat() {
   }
   const totalEl = document.getElementById('em-monat-total');
   let yearTotal = 0; monatData.forEach(m => { for (const k of keys) yearTotal += m[k] || 0; });
-  if (totalEl) totalEl.textContent = 'Σ ' + yearTotal.toFixed(1) + ' t CO₂/a';
+  if (totalEl) totalEl.textContent = 'Σ ' + _de(yearTotal, 1) + ' t CO₂/a';
 }
 
 /* ── Sub-Tab 4: Primärenergie ──────────────────────────────────────────── */
@@ -599,7 +602,7 @@ export function _renderEmPef() {
   for (let i = 0; i <= 4; i++) {
     const x = PAD.l + iW * i / 4;
     ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, H - PAD.b); ctx.stroke();
-    if (i > 0) ctx.fillText((maxPE * i / 4).toFixed(0) + ' MWh', x, H - PAD.b + 12);
+    if (i > 0) ctx.fillText(_de(maxPE * i / 4, 0) + ' MWh', x, H - PAD.b + 12);
   }
   // X-Achsen-Titel
   ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
@@ -631,9 +634,9 @@ export function _renderEmPef() {
 
     // Werte rechts vom Balken: PE MWh + fp
     ctx.fillStyle = 'rgba(230,230,230,0.8)'; ctx.font = '9px "DM Mono", monospace'; ctx.textAlign = 'left';
-    ctx.fillText(r.peMwh.toFixed(0) + ' MWh', PAD.l + barLen + 6, y + rowH / 2 + 1);
+    ctx.fillText(_de(r.peMwh, 0) + ' MWh', PAD.l + barLen + 6, y + rowH / 2 + 1);
     ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '8px "DM Mono", monospace';
-    ctx.fillText('fp ' + r.fp.toFixed(1), PAD.l + barLen + 6, y + rowH / 2 + 11);
+    ctx.fillText('fp ' + _de(r.fp, 1), PAD.l + barLen + 6, y + rowH / 2 + 11);
   });
 
   // Gesamt-Linie + Label
@@ -643,7 +646,7 @@ export function _renderEmPef() {
   ctx.beginPath(); ctx.moveTo(PAD.l + totalLen, PAD.t); ctx.lineTo(PAD.l + totalLen, totalY); ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle = 'var(--accent)'; ctx.font = 'bold 10px "DM Mono", monospace'; ctx.textAlign = 'left';
-  ctx.fillText('Σ ' + pefData.totalPE.toFixed(0) + ' MWh PE | fp,ges = ' + pefData.fpGes.toFixed(2), PAD.l, totalY + 12);
+  ctx.fillText('Σ ' + _de(pefData.totalPE, 0) + ' MWh PE | fp,ges = ' + _de(pefData.fpGes, 2), PAD.l, totalY + 12);
 
   // Legende
   const legendEl = document.getElementById('em-pef-legend');
@@ -664,18 +667,18 @@ export function _renderEmPef() {
     rows.forEach(r => {
       html += `<tr>
         <td style="color:${r.color}">${r.label}</td>
-        <td style="text-align:right">${r.wMwh.toFixed(0)} MWh</td>
-        <td style="text-align:right">${r.endenergieMwh.toFixed(0)} MWh</td>
-        <td style="text-align:right">${r.fp.toFixed(2)}</td>
-        <td style="text-align:right">${r.peMwh.toFixed(0)} MWh</td>
+        <td style="text-align:right">${_de(r.wMwh, 0)} MWh</td>
+        <td style="text-align:right">${_de(r.endenergieMwh, 0)} MWh</td>
+        <td style="text-align:right">${_de(r.fp, 2)}</td>
+        <td style="text-align:right">${_de(r.peMwh, 0)} MWh</td>
       </tr>`;
     });
     html += `<tr style="border-top:1px solid var(--border);font-weight:600;">
       <td>Gesamt</td>
-      <td style="text-align:right">${pefData.totalWaerme.toFixed(0)} MWh</td>
-      <td style="text-align:right">${pefData.totalEnd.toFixed(0)} MWh</td>
-      <td style="text-align:right">${pefData.fpGes.toFixed(2)}</td>
-      <td style="text-align:right">${pefData.totalPE.toFixed(0)} MWh</td>
+      <td style="text-align:right">${_de(pefData.totalWaerme, 0)} MWh</td>
+      <td style="text-align:right">${_de(pefData.totalEnd, 0)} MWh</td>
+      <td style="text-align:right">${_de(pefData.fpGes, 2)}</td>
+      <td style="text-align:right">${_de(pefData.totalPE, 0)} MWh</td>
     </tr>`;
     html += '</tbody></table>';
     html += '<div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.5;">Primärenergie = Endenergie × f<sub>p</sub> · f<sub>p</sub> = Primärenergiefaktor (nicht-erneuerbar) nach GEG Anlage 4<br>Wärmepumpen: Endenergie = Strombedarf · Kessel: Endenergie = Wärme ÷ Wirkungsgrad</div>';
@@ -826,7 +829,7 @@ export function renderAnalyseDispatch() {
   // Y-Achsen-Labels
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
   ctx.font = '10px "DM Mono", monospace';
-  ctx.fillText(maxP.toFixed(0) + ' kW', 4, 12);
+  ctx.fillText(_de(maxP, 0) + ' kW', 4, 12);
   [25, 50, 75].forEach(pct => {
     const y = H - (pct / 100) * H;
     ctx.strokeStyle = 'rgba(255,255,255,0.06)';
@@ -910,7 +913,7 @@ export function renderAnalyseDispatch() {
 
       jCtx.fillStyle = 'rgba(255,255,255,0.4)';
       jCtx.font = '10px "DM Mono", monospace';
-      jCtx.fillText(jdlMaxP.toFixed(0) + ' kW', 4, 12);
+      jCtx.fillText(_de(jdlMaxP, 0) + ' kW', 4, 12);
     } else {
       // Fallback: einfache sortierte Kurve
       const sorted = Float32Array.from(data).sort().reverse();
@@ -928,7 +931,7 @@ export function renderAnalyseDispatch() {
       jCtx.stroke();
       jCtx.fillStyle = 'rgba(255,255,255,0.4)';
       jCtx.font = '10px "DM Mono", monospace';
-      jCtx.fillText(maxP.toFixed(0) + ' kW', 4, 12);
+      jCtx.fillText(_de(maxP, 0) + ' kW', 4, 12);
     }
   }
 
@@ -1147,7 +1150,7 @@ export function _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, 
     ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(160,170,200,0.55)'; ctx.font = '8px sans-serif';
     const pB = proj(-1.06, 0, -0.6), pT = proj(-1.06, hScale, -0.6);
     ctx.fillText('0', pB.sx - 3, pB.sy);
-    ctx.fillText(maxKw >= 1000 ? (maxKw/1000).toFixed(1)+' MW' : Math.round(maxKw)+' kW', pT.sx - 3, pT.sy);
+    ctx.fillText(maxKw >= 1000 ? _de(maxKw/1000, 1)+' MW' : Math.round(maxKw)+' kW', pT.sx - 3, pT.sy);
     ctx.strokeStyle = 'rgba(160,170,200,0.25)'; ctx.lineWidth = 0.7;
     ctx.beginPath(); ctx.moveTo(pB.sx, pB.sy); ctx.lineTo(pT.sx, pT.sy); ctx.stroke();
 
@@ -1231,10 +1234,10 @@ export function _attachEkroneInteraction() {
       const v = hData2[k]?.[idx] || 0; totalH += v;
       if (v > 0.5) {
         const l = (typeof DA_LABELS !== 'undefined' && DA_LABELS[k]) || k;
-        parts.push('<span style="color:' + _daColor(k) + '">' + l + ': ' + v.toFixed(0) + ' kW</span>');
+        parts.push('<span style="color:' + _daColor(k) + '">' + l + ': ' + _de(v, 0) + ' kW</span>');
       }
     }
-    html += 'Gesamt: ' + totalH.toFixed(0) + ' kW<br>' + parts.join('<br>');
+    html += 'Gesamt: ' + _de(totalH, 0) + ' kW<br>' + parts.join('<br>');
     tip.innerHTML = html; tip.style.display = 'block';
     tip.style.left = (e.clientX + 12) + 'px'; tip.style.top = (e.clientY - 10) + 'px';
   });

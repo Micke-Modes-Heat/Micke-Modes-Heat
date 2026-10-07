@@ -1,5 +1,6 @@
 // ── 10c-optimizer-run.js — Optimierung starten/abbrechen, Worker-Orchestrierung, Ergebnis-Rendering ──
 
+import { euroKompakt } from './lib/euro-format.js';
 import { globalYear } from './01-globals-varianten.js';
 import { aggregateGebStrom } from './02b-gebaeude.js';
 import { escHtml } from './03c-gebaeude-io.js';
@@ -18,6 +19,7 @@ export function runOptimierung() {
   if (window._optRunning) { _optAbbrechen(); return; }
   window._optRunId = (window._optRunId || 0) + 1;
   window._optAborted = false;
+  window._optTop3Final = null;
   window._optRunning = true;
   const btn = document.getElementById('btn-opt-start');
   if (btn) {
@@ -104,27 +106,26 @@ export function _runOptWorker(resDiv) {
     zinssatz: (isNaN(_zinsRawOpt) ? 3.5 : _zinsRawOpt) / 100,
   };
 
-  // Quartier-Strom (gleiche Kaskade wie calcStromPanel)
+  // Quartier-Strom — gleiche Rangfolge wie die Strombilanz (09b): Upload, manuelle Jahressumme, Gebäudedaten
   const quartierH = new Float32Array(8760);
+  const qMwhManuell = parseFloat(document.getElementById('strom-quartier-mwh')?.value) || 0;
   if (window.elQuartierH) {
     for (let t = 0; t < 8760; t++) quartierH[t] = window.elQuartierH[t];
+  } else if (qMwhManuell > 0) {
+    quartierH.fill(qMwhManuell * 1000 / 8760);
   } else if (window._elQuartierFromGeb) {
     for (let t = 0; t < 8760; t++) quartierH[t] = window._elQuartierFromGeb[t];
-  } else {
-    // Fallback: Manuelle Eingabe oder SLP aus Gebäudedaten
-    const qMwh = parseFloat(document.getElementById('strom-quartier-mwh')?.value) || 0;
-    if (qMwh > 0) {
-      const perH = qMwh * 1000 / 8760;
-      for (let t = 0; t < 8760; t++) quartierH[t] = perH;
-    } else if (typeof aggregateGebStrom === 'function') {
-      const gebStrom = aggregateGebStrom();
-      if (gebStrom && gebStrom.totalMWh > 0) {
-        for (let t = 0; t < 8760; t++) quartierH[t] = gebStrom.hourly[t];
-      }
+  } else if (typeof aggregateGebStrom === 'function') {
+    const gebStrom = aggregateGebStrom();
+    if (gebStrom && gebStrom.totalMWh > 0) {
+      for (let t = 0; t < 8760; t++) quartierH[t] = gebStrom.hourly[t];
     }
   }
   // Kälte ist keine separate Nebenrechnung, sondern Teil derselben Stromnachfrage.
   addHourlyElectricLoad(quartierH, window._kaelteElHourly || null);
+  // Die Nachrechnung der Top-Varianten im Hauptthread (_optKennwerte2) muss denselben Bedarf verwenden
+  let _qSum = 0; for (let t = 0; t < 8760; t++) _qSum += quartierH[t];
+  window._optQuartierStromMwh = _qSum / 1000;
 
   // Anzahl paralleler Worker bestimmen (min 1, max 8, einen Kern für UI freilassen)
   const numWorkers = Math.max(1, Math.min((navigator.hardwareConcurrency || 4) - 1, 8));
@@ -400,6 +401,7 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
   // Re-sort nach Nachrechnung (Reihenfolge könnte sich ändern)
   const _reZiel = document.querySelector('input[name="opt-ziel"]:checked')?.value || 'min-wgk';
   top3.sort((a, b) => _optScore(a.kw, _reZiel) - _optScore(b.kw, _reZiel));
+  window._optTop3Final = top3;   // für die Markierung im Streudiagramm
 
   resDiv.innerHTML = '';
   // Jahr-Info im Ergebnis anzeigen
@@ -411,92 +413,63 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
   resDiv.appendChild(_optResYearDiv);
   top3.forEach((r, idx) => {
     const card = document.createElement('div');
-    card.style.cssText = 'background:var(--surface2);border-radius:8px;padding:12px 14px;margin-bottom:16px;border:1px solid rgba(255,255,255,0.12);box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+    card.className = 'opt-karte' + (idx === 0 ? ' opt-karte-erste' : '');
 
     const titel = r.keys.map(k => ERZEUGER_CFG[k]?.label || k).join(' + ')
       + (r.stM2 > 0 ? ' + ST ' + r.stM2 + ' m\u00b2' : '')
       + (r.tsVol > 0 ? ' + WS ' + r.tsVol + ' m\u00b3' : '')
-      + (r.pvKwp > 0 ? ' + PV ' + r.pvKwp.toFixed(0) + ' kWp' : '')
-      + (r.batKwh > 0 ? ' + Bat ' + r.batKwh.toFixed(0) + ' kWh' : '');
+      + (r.pvKwp > 0 ? ' + PV ' + Math.round(r.pvKwp).toLocaleString('de-DE') + ' kWp' : '')
+      + (r.batKwh > 0 ? ' + Batterie ' + Math.round(r.batKwh).toLocaleString('de-DE') + ' kWh' : '');
 
     const eeColor = r.kw.eeAnteil >= 65 ? '#81c784' : '#ef9a9a';
     const eeBadge = '<span style="background:' + eeColor + ';color:#000;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:600;">' + r.kw.eeAnteil.toFixed(0) + '% EE</span>';
 
     // ── Hauptzeile: WGK prominent + Sekundär-KPIs ──
     const totalInkST = (r.gesamtMwh || 0) + (r.stMwh || 0);
+    const nf = (v, d = 0) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
 
-    let kpiHtml = '<div style="display:flex;align-items:stretch;gap:6px;margin:6px 0;">';
-    // WGK groß links
-    kpiHtml += '<div style="background:rgba(253,216,53,0.08);border:1px solid rgba(253,216,53,0.25);border-radius:6px;padding:6px 12px;text-align:center;min-width:80px;">'
-      + '<div style="font-size:18px;font-weight:700;color:#fdd835;line-height:1.1;">' + r.kw.wgk.toFixed(1) + '</div>'
-      + '<div style="font-size:8px;color:var(--muted);margin-top:1px;">ct/kWh</div></div>';
-    // Sekundär-KPIs rechts
-    kpiHtml += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;flex:1;">';
+    let kpiHtml = '<div class="opt-karte-kpis">'
+      + '<div class="opt-karte-wgk"><b>' + nf(r.kw.wgk, 1) + '</b><span>ct/kWh WGK</span></div>'
+      + '<div class="opt-karte-werte">';
     const kpis2 = [
-      { val: (r.kw.investGesamt / 1000).toFixed(0) + ' k\u20ac', lbl: 'Invest', color: '#b0bec5' },
-      { val: r.kw.co2ta.toFixed(1) + ' t/a', lbl: 'CO\u2082', color: '#90a4ae' },
-      { val: r.kw.jahreskosten ? (r.kw.jahreskosten / 1000).toFixed(1) + ' k\u20ac/a' : '\u2014', lbl: 'Jahreskosten', color: '#ce93d8' },
-      { val: (r.kw.stromAutarkie || 0).toFixed(0) + '%', lbl: '\u26A1 Strom-Aut.', color: '#fdd835' },
-      { val: (r.kw.waermeAutarkie || 0).toFixed(0) + '%', lbl: '\uD83C\uDF21 W\u00e4rme-Aut.', color: '#e53935' },
-      { val: totalInkST.toFixed(0) + ' MWh', lbl: 'W\u00e4rme ges.', color: '#ff7043' },
+      { val: euroKompakt(r.kw.investGesamt), lbl: 'Investition' },
+      { val: r.kw.jahreskosten ? euroKompakt(r.kw.jahreskosten, true) : '\u2014', lbl: 'Jahreskosten' },
+      { val: nf(r.kw.co2ta) + ' t/a', lbl: 'CO\u2082' },
+      { val: nf(r.kw.stromAutarkie) + ' %', lbl: 'Strom-Autarkie' },
+      { val: nf(r.kw.waermeAutarkie) + ' %', lbl: 'W\u00e4rme-Autarkie' },
+      { val: nf(totalInkST) + ' MWh/a', lbl: 'W\u00e4rme gesamt' },
     ];
-    for (const k of kpis2) {
-      kpiHtml += '<div style="background:rgba(255,255,255,0.03);border-radius:3px;padding:2px 4px;text-align:center;">'
-        + '<div style="font-size:10px;font-weight:600;color:' + k.color + ';">' + k.val + '</div>'
-        + '<div style="font-size:7px;color:var(--muted);white-space:nowrap;">' + k.lbl + '</div></div>';
-    }
+    for (const k of kpis2) kpiHtml += '<div><b>' + k.val + '</b><span>' + k.lbl + '</span></div>';
     kpiHtml += '</div></div>';
 
-    // ── Erzeuger-Tabelle: Leistung, Energie, Anteil ──
-    let erzHtml = '<div style="display:grid;grid-template-columns:auto repeat(3,1fr);gap:0 8px;font-size:9px;margin:4px 0;padding:4px 0;border-top:1px solid var(--border);">';
-    // Header
-    erzHtml += '<div style="color:var(--muted);font-size:8px;">Erzeuger</div>'
-      + '<div style="color:var(--muted);font-size:8px;text-align:right;">Leistung</div>'
-      + '<div style="color:var(--muted);font-size:8px;text-align:right;">Energie</div>'
-      + '<div style="color:var(--muted);font-size:8px;text-align:right;">Anteil</div>';
-    // Solarthermie
+    // ── Erzeuger-Tabelle: Leistung, Energie, Anteil (mit Balken) ──
+    const zeile = (farbe, name, leistung, energie, pct) => '<div class="opt-erz-name"><i style="background:' + farbe + '"></i>' + name + '</div>'
+      + '<div>' + leistung + '</div><div>' + energie + '</div>'
+      + '<div class="opt-erz-anteil">' + (pct == null ? '\u2014' : '<span><em style="width:' + Math.min(100, pct) + '%;background:' + farbe + '"></em></span>' + nf(pct) + ' %') + '</div>';
+    let erzHtml = '<div class="opt-erz-tabelle"><div class="opt-erz-kopf">Erzeuger</div><div class="opt-erz-kopf">Leistung</div><div class="opt-erz-kopf">W\u00e4rme</div><div class="opt-erz-kopf">Anteil</div>';
     if (r.stM2 > 0 && r.stMwh > 0) {
-      const dckPct = totalInkST > 0 ? (r.stMwh / totalInkST * 100) : 0;
-      erzHtml += '<div><span style="color:#ef6c00;">\u25CF</span> ST ' + r.stM2 + ' m\u00b2</div>'
-        + '<div style="text-align:right;">\u2014</div>'
-        + '<div style="text-align:right;">' + r.stMwh.toFixed(0) + ' MWh</div>'
-        + '<div style="text-align:right;font-weight:600;">' + dckPct.toFixed(0) + '%</div>';
+      erzHtml += zeile('#ef6c00', 'Solarthermie ' + nf(r.stM2) + ' m\u00b2', '\u2014', nf(r.stMwh) + ' MWh', totalInkST > 0 ? r.stMwh / totalInkST * 100 : 0);
     }
     for (let ci = 0; ci < r.config.length; ci++) {
       const erz = r.config[ci];
       const waermeMwh = r.erzWaermeMwh ? r.erzWaermeMwh[ci] : 0;
-      const col = ERZEUGER_CFG[erz.key]?.color || '#aaa';
-      const dckPct = totalInkST > 0 ? (waermeMwh / totalInkST * 100) : 0;
       const displayKw = r.erzLeistKw ? r.erzLeistKw[ci] : erz.leistKw;
-      erzHtml += '<div><span style="color:' + col + ';">\u25CF</span> ' + (ERZEUGER_CFG[erz.key]?.label || erz.key) + '</div>'
-        + '<div style="text-align:right;">' + displayKw.toFixed(0) + ' kW</div>'
-        + '<div style="text-align:right;">' + waermeMwh.toFixed(0) + ' MWh</div>'
-        + '<div style="text-align:right;font-weight:600;">' + dckPct.toFixed(0) + '%</div>';
+      erzHtml += zeile(ERZEUGER_CFG[erz.key]?.color || '#aaa', escHtml(ERZEUGER_CFG[erz.key]?.label || erz.key), nf(displayKw) + ' kW', nf(waermeMwh) + ' MWh', totalInkST > 0 ? waermeMwh / totalInkST * 100 : 0);
     }
     if (r.autoGkMwh > 0) {
-      const dckPct = totalInkST > 0 ? (r.autoGkMwh / totalInkST * 100) : 0;
-      erzHtml += '<div><span style="color:#78909c;">\u25CF</span> Backup-GK</div>'
-        + '<div style="text-align:right;">\u2014</div>'
-        + '<div style="text-align:right;">' + r.autoGkMwh.toFixed(0) + ' MWh</div>'
-        + '<div style="text-align:right;font-weight:600;">' + dckPct.toFixed(0) + '%</div>';
+      erzHtml += zeile('#78909c', 'Spitzenlast-Gaskessel (automatisch)', r.autoGkPeakKw ? nf(r.autoGkPeakKw) + ' kW' : '\u2014', nf(r.autoGkMwh) + ' MWh', totalInkST > 0 ? r.autoGkMwh / totalInkST * 100 : 0);
     }
-    // PV/Batterie
     if (r.pvKwp > 0) {
-      erzHtml += '<div><span style="color:#fdd835;">\u25CF</span> PV' + (r.batKwh > 0 ? ' + Bat' : '') + '</div>'
-        + '<div style="text-align:right;">' + r.pvKwp.toFixed(0) + ' kWp' + (r.batKwh > 0 ? ' / ' + r.batKwh.toFixed(0) + ' kWh' : '') + '</div>'
-        + '<div style="text-align:right;color:var(--muted);">' + (r.kw.pvErtragMwh || 0).toFixed(0) + ' MWh</div>'
-        + '<div style="text-align:right;color:var(--muted);">\u2014</div>';
+      erzHtml += zeile('#fdd835', 'PV' + (r.batKwh > 0 ? ' + Batterie' : ''), nf(r.pvKwp) + ' kWp' + (r.batKwh > 0 ? ' / ' + nf(r.batKwh) + ' kWh' : ''), nf(r.kw.pvErtragMwh) + ' MWh Strom', null);
     }
     erzHtml += '</div>';
 
     card.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.08);">' +
-        '<span style="font-size:12px;font-weight:700;color:var(--text);">' + (idx + 1) + '. ' + escHtml(titel) + '</span>' +
-        eeBadge +
-      '</div>' +
+      '<div class="opt-karte-kopf"><span class="opt-karte-rang">' + (idx + 1) + '</span>' +
+        '<span class="opt-karte-titel">' + escHtml(titel) + '</span>' + eeBadge + '</div>' +
       kpiHtml +
       erzHtml +
-      '<div style="text-align:center;margin-top:6px;"><button class="btn-secondary" style="font-size:9px;padding:3px 12px;" data-click="_optVarianteUebernehmen(window._optLastResults[' + idx + '], this)">Als Variante \u00fcbernehmen</button></div>';
+      '<div class="opt-karte-fuss"><button class="btn-secondary" data-click="_optVarianteUebernehmen(window._optLastResults[' + idx + '], this)">Als Variante \u00fcbernehmen</button></div>';
     resDiv.appendChild(card);
   });
 
@@ -504,7 +477,7 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
   // Konvertiere Worker-Ergebnisse in das erwartete Format
   window._optLastResults = top3.map(r => ({
     keys: r.keys, config: r.config, pvKwp: r.pvKwp, batKwh: r.batKwh,
-    stM2: r.stM2, stMwh: r.stMwh, tsVol: r.tsVol, kw: r.kw,
+    stM2: r.stM2, stMwh: r.stMwh, tsVol: r.tsVol, kw: r.kw, erzLeistKw: r.erzLeistKw,
     sim: { gesamtMwh: r.gesamtMwh, autoGkMwh: r.autoGkMwh, autoGkPeakKw: r.autoGkPeakKw || 0,
       erzeugerList: r.config.map((c, i) => ({ ...c, waermeMwh: r.erzWaermeMwh?.[i] || 0,
         leistKw: r.erzLeistKw?.[i] || c.leistKw, elMwh: r.erzElMwh?.[i] || 0 })) },

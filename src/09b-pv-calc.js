@@ -338,7 +338,7 @@ export function calcStromPanel() {
     : 'Alterung wird nach der Strombilanz aus Kalender- und Vollzyklen geschätzt.';
 
   // Stromkosten — differenziert nach PV und BHKW
-  const preisB  = (parseFloat(document.getElementById('strom-preis-bezug')?.value) || 30) / 100;  // €/kWh
+  const preisB  = (parseFloat((document.getElementById('strom-preis-bezug') || document.getElementById('wirt-p-strom'))?.value) || 30) / 100;  // €/kWh
   const pvPreisE  = (parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8)  / 100;  // €/kWh PV-Einspeisung
   const bhkwPreisE = (parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8)  / 100;  // €/kWh BHKW-Einspeisung
   const bhkwKwkE   = (parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8)  / 100;  // €/kWh KWK-Zuschlag Einsp.
@@ -580,7 +580,7 @@ export function updateBatteryRecommendation(requestedCapacity) {
   const stepSize=Math.max(5,Math.round(maxCapacity/40/5)*5);
   slider.max=String(Math.ceil(maxCapacity/stepSize)*stepSize);
   slider.step=String(stepSize);
-  const buy=(parseFloat(document.getElementById('strom-preis-bezug')?.value)||35)/100;
+  const buy=(parseFloat((document.getElementById('strom-preis-bezug') || document.getElementById('wirt-p-strom'))?.value)||35)/100;
   const feed=(parseFloat(document.getElementById('strom-preis-einsp')?.value)||8)/100;
   const investPerKwh=parseFloat(document.getElementById('opt-bat-invest')?.value)||400;
   const life=parseFloat(document.getElementById('opt-bat-life')?.value)||15;

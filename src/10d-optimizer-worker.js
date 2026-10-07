@@ -284,7 +284,8 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
     },
     co2: {
       pCo2: D.pCo2 || 0,
-      alleET: true,
+      alleET: D.co2Alle !== false,
+      bhkwGutschrift: !!D.bhkwGutschrift, verdraengungEf: D.verdraengungEf,
       emf: { gas: D.gasEmF, heizoel: D.heizoelEmF, pellets: D.pelletsEmF, hhs: D.hhsEmF, fernwaerme: D.fernwaermeEmF, strom: D.stromEmF },
     },
     gesamtMwh: gesamtMwh,
@@ -1376,6 +1377,7 @@ export function _doRunOptimierung(resDiv) {
     });
 
     // Visualisierungen rendern
+    window._optTopFinal = top3; window._optTop3Final = top3;
     _optRenderBarChart(top3, resDiv);
     _optRenderRadar(top3, resDiv);
     _optRenderScatter(resDiv);
@@ -1607,8 +1609,8 @@ export function _optRenderRadar(results, container) {
     { label: 'WGK',       key: 'wgk',          inv: true,  unit: 'ct/kWh' },
     { label: 'CO₂',       key: 'co2ta',         inv: true,  unit: 't/a' },
     { label: 'EE-Anteil',  key: 'eeAnteil',     inv: false, unit: '%' },
-    { label: '\u26A1Autarkie', key: 'stromAutarkie', inv: false, unit: '%' },
-    { label: '\uD83D\uDD25Autarkie', key: 'waermeAutarkie', inv: false, unit: '%' },
+    { label: 'Strom-Autarkie', key: 'stromAutarkie', inv: false, unit: '%' },
+    { label: 'W\u00e4rme-Autarkie', key: 'waermeAutarkie', inv: false, unit: '%' },
     { label: 'Invest',     key: 'investGesamt', inv: true,  unit: 'k€' },
   ];
   const N = axes.length;
@@ -1790,8 +1792,10 @@ export function _optRenderScatter(container) {
   minInv -= invR * 0.05; maxInv += invR * 0.05;
 
   // Top 3
-  const top3 = allRes.slice().sort((a, b) => a.score - b.score).slice(0, 3);
-  const top3Set = new Set(top3.map(r => r.kombiKey + '|' + r.score));
+  // Hervorgehoben werden die endgültigen Plätze (nach Feinsuche und Nachrechnung), nicht die Grobsuche
+  const top3Final = Array.isArray(window._optTop3Final) && window._optTop3Final.length ? window._optTop3Final : null;
+  const top3 = top3Final || allRes.slice().sort((a, b) => a.score - b.score).slice(0, 3);
+  const top3Set = top3Final ? new Set() : new Set(top3.map(r => r.kombiKey + '|' + r.score));
 
   // Tooltip
   const tooltip = document.createElement('div');
@@ -1879,13 +1883,13 @@ export function _optRenderScatter(container) {
     for (let i = 0; i <= 5; i++) {
       const v = minWgk + (maxWgk - minWgk) * i / 5;
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillText(v.toFixed(1), xOf(v), PAD.t + ph + 5);
+      ctx.fillText(v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }), xOf(v), PAD.t + ph + 5);
     }
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     for (let i = 0; i <= 4; i++) {
       const v = minCo2 + (maxCo2 - minCo2) * i / 4;
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillText(v.toFixed(1), PAD.l - 5, yOf(v));
+      ctx.fillText(Math.round(v).toLocaleString('de-DE'), PAD.l - 5, yOf(v));
     }
 
     // Punkte
@@ -1904,16 +1908,29 @@ export function _optRenderScatter(container) {
     }
     ctx.globalAlpha = 1;
 
-    // Top-3 Labels
-    const top3sorted = top3.slice().sort((a, b) => a.kw.wgk - b.kw.wgk);
-    ctx.font = '8px "DM Sans",sans-serif'; ctx.textBaseline = 'bottom';
-    top3sorted.forEach((r, i) => {
+    // Top-3: Markierung mit Platzziffer (Platz = Reihenfolge der Ergebniskarten); Text versetzt, damit nahe Punkte lesbar bleiben
+    ctx.font = '10px "DM Sans",sans-serif'; ctx.textBaseline = 'middle';
+    top3.forEach((r, i) => {
       const x = xOf(r.kw.wgk), y = yOf(r.kw.co2ta);
-      const txt = '#' + (i + 1) + ' ' + r.keys.map(k => _fullName(k)).join('+');
-      const truncTxt = txt.length > 28 ? txt.slice(0, 26) + '\u2026' : txt;
-      ctx.textAlign = x > PAD.l + pw * 0.7 ? 'right' : 'left';
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.fillText(truncTxt, x + (ctx.textAlign === 'left' ? 8 : -8), y - 4);
+      if (top3Final) {
+        ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = pointColor(r); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = '#000'; ctx.textAlign = 'center'; ctx.font = 'bold 9px "DM Sans",sans-serif';
+        ctx.fillText(String(i + 1), x, y + 0.5);
+        ctx.font = '10px "DM Sans",sans-serif';
+      }
+      const txt = (i + 1) + '. ' + r.keys.map(k => _fullName(k)).join(' + ');
+      const truncTxt = txt.length > 34 ? txt.slice(0, 32) + '\u2026' : txt;
+      const rechts = x > PAD.l + pw * 0.7;
+      ctx.textAlign = rechts ? 'right' : 'left';
+      const ty = y - 14 - i * 13;
+      const tx = x + (rechts ? -12 : 12);
+      const tw = ctx.measureText(truncTxt).width;
+      ctx.fillStyle = 'rgba(15,17,23,0.8)';
+      ctx.fillRect(rechts ? tx - tw - 3 : tx - 3, ty - 7, tw + 6, 14);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillText(truncTxt, tx, ty);
     });
 
     canvas._proj = allRes.map(r => ({ x: xOf(r.kw.wgk), y: yOf(r.kw.co2ta), r }));

@@ -2606,3 +2606,55 @@ textarea.ssb-in{resize:vertical;}
 .qh-info{font-size:12px;margin-bottom:8px;}
 .qh-hinweis{font-size:10px;color:var(--muted);line-height:1.45;margin-bottom:10px;}
 .qh-label{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;}
+
+/* Strom in der Analyse: Diagramme oben, Eingaben darunter; im schwebenden Panel keine Diagramme */
+#strom-panel:not(.inline-mode) [id^="strom-content-"],#strom-panel:not(.inline-mode) .strom-ana-tabs,#strom-panel:not(.inline-mode) .strom-ana-eingaben-titel{display:none!important;}
+#strom-panel.inline-mode > div:has(> .strom-ana-tabs){display:flex;flex-direction:column;padding:0!important;}
+#strom-panel.inline-mode .strom-ana-tabs{order:-3;border-bottom:none;padding:4px;background:var(--bg);border:1px solid var(--border);border-radius:10px;width:fit-content;max-width:100%;flex-wrap:wrap;}
+#strom-panel.inline-mode .strom-ana-tabs .analyse-sub-tab{border-radius:7px;margin-bottom:0;border-bottom:none;padding:5px 11px;}
+#strom-panel.inline-mode .strom-ana-tabs .analyse-sub-tab.active{background:rgba(255,255,255,.08);color:var(--text);}
+#strom-panel.inline-mode [id^="strom-content-"]{order:-2;margin-bottom:14px;}
+#strom-panel.inline-mode .strom-ana-eingaben-titel{order:-1;font-size:11px;font-weight:600;color:var(--text);padding-top:12px;margin-bottom:8px;border-top:1px solid var(--border);}
+
+/* ── Optimierung: Einstellungen als drei Karten, Ergebniskarten ── */
+#center-optimierung-view > div:first-child span:first-child,#center-vergleich-view .vergleich-header h2,#center-analyse-view > div:first-child > span:first-child{font-size:18px!important;font-weight:600;color:var(--text)!important;letter-spacing:0!important;}
+#center-optimierung-view .opt-setup{grid-template-columns:minmax(330px,440px) minmax(230px,300px) minmax(260px,1fr);gap:14px;padding:0;background:none;border:none;}
+#center-optimierung-view .opt-setup > div{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;}
+#center-optimierung-view .opt-setup .inp-field{border-radius:5px;}
+@media(max-width:1100px){#center-optimierung-view .opt-setup{grid-template-columns:1fr 1fr;}}
+.opt-karte{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;}
+.opt-karte-erste{border-color:rgba(253,216,53,.45);box-shadow:0 0 0 1px rgba(253,216,53,.15) inset;}
+.opt-karte-kopf{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.opt-karte-rang{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);color:var(--text);font-weight:700;font-size:12px;flex-shrink:0;}
+.opt-karte-erste .opt-karte-rang{background:#fdd835;color:#000;}
+.opt-karte-titel{flex:1;font-size:13px;font-weight:600;color:var(--text);}
+.opt-karte-kpis{display:flex;gap:10px;align-items:stretch;margin-bottom:10px;}
+.opt-karte-wgk{background:rgba(253,216,53,.08);border:1px solid rgba(253,216,53,.3);border-radius:8px;padding:8px 14px;text-align:center;min-width:96px;display:flex;flex-direction:column;justify-content:center;}
+.opt-karte-wgk b{font:700 24px 'DM Mono',monospace;color:#fdd835;line-height:1.1;}
+.opt-karte-wgk span{font-size:9px;color:var(--muted);margin-top:2px;}
+.opt-karte-werte{flex:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;}
+.opt-karte-werte div{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;}
+.opt-karte-werte b{display:block;font:500 13px 'DM Mono',monospace;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.opt-karte-werte span{font-size:9px;color:var(--muted);}
+.opt-erz-tabelle{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(2,minmax(0,1fr)) minmax(0,1.4fr);gap:4px 12px;font-size:11px;align-items:center;padding-top:8px;border-top:1px solid var(--border);}
+.opt-erz-tabelle > div{text-align:right;font-family:'DM Mono',monospace;color:var(--text);}
+.opt-erz-tabelle > .opt-erz-name,.opt-erz-tabelle > .opt-erz-kopf:first-child{text-align:left;font-family:inherit;}
+.opt-erz-kopf{font-size:9px!important;color:var(--muted)!important;font-family:inherit!important;}
+.opt-erz-name i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;}
+.opt-erz-anteil{display:flex;align-items:center;justify-content:flex-end;gap:8px;}
+.opt-erz-anteil span{flex:1;max-width:120px;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;}
+.opt-erz-anteil em{display:block;height:100%;}
+.opt-karte-fuss{display:flex;justify-content:flex-end;margin-top:10px;}
+.opt-karte-fuss .btn-secondary{font-size:10px;padding:5px 14px;}
+.opt-karte{text-align:left;}
+
+/* ── Variantenvergleich: Abschnitte als Karten ── */
+#vergleich-uebersicht,#vergleich-view-table-wrap,#vergleich-pareto-wrap,#vergleich-strom-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:6px 8px;}
+#vergleich-pareto-wrap{padding:12px 14px;}
+#center-vergleich-view .vergleich-abschnitt{font-size:12px;font-weight:600;color:var(--text);text-transform:none;letter-spacing:0;margin:18px 0 8px;}
+#center-vergleich-view .vergleich-table{table-layout:fixed;}
+#center-vergleich-view .vergleich-table th:first-child,#center-vergleich-view .vergleich-table td:first-child{width:210px;}
+#center-vergleich-view .vergleich-table th,#center-vergleich-view .vergleich-table td{white-space:normal;}
+#center-vergleich-view .vergleich-table th{background:transparent!important;color:var(--muted)!important;font-size:11px;letter-spacing:0;border-bottom:2px solid var(--border);}
+#center-vergleich-view .vergleich-table th.clickable[style*="var(--accent)"],#center-vergleich-view .vergleich-table th.clickable[style*="#4caf50"]{color:var(--text)!important;border-bottom-color:var(--accent);}
+#center-vergleich-view .vergleich-table th.clickable:hover{background:rgba(255,255,255,.04)!important;}

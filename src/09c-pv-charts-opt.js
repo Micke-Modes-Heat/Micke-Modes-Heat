@@ -225,6 +225,18 @@ export function drawSankeyStrom() {
 }
 
 // ── Jahreslastgang: gestapelte Verbraucher + Erzeuger ────────────────────────
+// Stündlicher Strombedarf des Quartiers (Licht & Kraft) — dieselbe Rangfolge wie die Strombilanz (09b):
+// hochgeladener Lastgang, sonst manuelle Jahressumme (flach), sonst Gebäudedaten (SLP), sonst Bilanzwert flach.
+function _stromQuartierStunden() {
+  if (window.elQuartierH) return window.elQuartierH;
+  const manMwh = parseFloat(document.getElementById('strom-quartier-mwh')?.value) || 0;
+  const flach = mwh => { const a = new Float32Array(8760); a.fill(mwh * 1000 / 8760); return a; };
+  if (manMwh > 0) return flach(manMwh);
+  if (window._elQuartierFromGeb) return window._elQuartierFromGeb;
+  const mwh = window._sankeyData?.quartierMwh || 0;
+  return mwh > 0 ? flach(mwh) : null;
+}
+
 export function _stromRenderLastgang() {
   const canvas = document.getElementById('strom-lastgang-canvas');
   if (!canvas) return;
@@ -235,7 +247,7 @@ export function _stromRenderLastgang() {
   const DAYS   = 365;
   const wpH    = window._wpElHourly;
   const skH    = window._skElHourly;
-  const qH     = window.elQuartierH;
+  const qH     = _stromQuartierStunden();
   const pvH    = window._stromPvH;
   const bhkwH  = window._bhkwElHourly;
 
@@ -261,8 +273,8 @@ export function _stromRenderLastgang() {
   }
 
   const dpr = window.devicePixelRatio || 1;
-  const W   = canvas.offsetWidth || 460;
-  const H   = 210;
+  const W   = canvas.parentElement?.clientWidth || canvas.offsetWidth || 460;   // Container messen — style.width ist vom letzten Zeichnen fixiert
+  const H   = W > 900 ? 280 : 210;
   canvas.width        = W * dpr;
   canvas.height       = H * dpr;
   canvas.style.height = H + 'px';
@@ -375,7 +387,7 @@ export function _stromRenderJdl() {
   const wpH     = window._wpElHourly;
   const skH     = window._skElHourly;
   const bhkwH   = window._bhkwElHourly;
-  const qH      = window.elQuartierH;
+  const qH      = _stromQuartierStunden();
   const batSocH = window._stromBatSocH;
   const en      = window._dispatchEnergy || {};
   const WP_KEYS = ['lwwp','fg','geo'];
@@ -400,12 +412,12 @@ export function _stromRenderJdl() {
   const vollstd   = bezug.filter(v => v > 0.01).length;
   const einsStd   = einsp.filter(v => v > 0.01).length;
 
-  if (info) info.textContent = `Spitzenlast: ${spitze.toFixed(0)} kW · Volllaststunden Bezug: ${vollstd} h/a · Einspeisung: ${einsStd} h/a`;
+  if (info) info.textContent = `Spitzenlast Bezug: ${Math.round(spitze).toLocaleString('de-DE')} kW · Stunden mit Netzbezug: ${vollstd.toLocaleString('de-DE')} h/a · Stunden mit Einspeisung: ${einsStd.toLocaleString('de-DE')} h/a`;
 
   // Zeichnen
   const dpr = window.devicePixelRatio || 1;
-  const W   = canvas.offsetWidth || 460;
-  const H   = 130;
+  const W   = canvas.parentElement?.clientWidth || canvas.offsetWidth || 460;   // Container messen — style.width ist vom letzten Zeichnen fixiert
+  const H   = W > 900 ? 220 : 130;
   canvas.width  = W * dpr;
   canvas.height = H * dpr;
   canvas.style.height = H + 'px';
@@ -497,7 +509,7 @@ export function _stromRenderFlussChart(weekIdx) {
   const skH    = window._skElHourly;        // Float32Array[8760] kWh/h | null
   const bhkwH  = window._bhkwElHourly;      // Float32Array[8760] kWh/h | null
   const socH   = window._stromBatSocH;      // Float32Array[8760] kWh   | null
-  const qH     = window.elQuartierH;        // Float32Array[8760] kWh/h | null
+  const qH     = _stromQuartierStunden();   // Float32Array[8760] kWh/h | null
   const kH     = window._kaelteElHourly;    // Float32Array[8760] kWh/h | null
   const skMwhTotal = (window._dispatchEnergy?.stromkessel?.elMwh) || 0;
   const qPauschal  = parseFloat(document.getElementById('strom-quartier-mwh')?.value) || 0;
@@ -541,8 +553,8 @@ export function _stromRenderFlussChart(weekIdx) {
 
   // ── Canvas-Setup ──────────────────────────────────────────────────────────
   const dpr = window.devicePixelRatio || 1;
-  const W   = canvas.offsetWidth  || 600;
-  const HMain = SOC ? 160 : 180;
+  const W   = canvas.parentElement?.clientWidth || canvas.offsetWidth || 600;   // Container messen — style.width ist vom letzten Zeichnen fixiert
+  const HMain = (SOC ? 160 : 180) + (W > 900 ? 80 : 0);   // in der breiten Analyse-Ansicht höher
   const HSoc  = SOC ? 40  : 0;
   const H     = HMain + HSoc + (SOC ? 6 : 0);
 
@@ -688,10 +700,10 @@ export function _stromRenderFlussChart(weekIdx) {
     const x0  = xOf(h);
     const x1  = xOf(h + 1);
     if (dem > gen) {
-      // Netzbezug: rot über Generierungsbereich bis 0
-      const yTop  = yOfGen(gen);
-      const yBot  = zero;
-      ctx.fillStyle = 'rgba(239,83,80,0.30)';
+      // Netzbezug: die fehlende Menge oberhalb der Eigenerzeugung (Erzeugung + Bezug = Bedarf)
+      const yTop  = yOfGen(dem);
+      const yBot  = yOfGen(gen);
+      ctx.fillStyle = 'rgba(239,83,80,0.45)';
       ctx.fillRect(x0, yTop, x1 - x0, yBot - yTop);
     } else if (gen > dem) {
       // Einspeisung: grün über nicht verbrauchten Teil
@@ -816,7 +828,7 @@ export function _runPvBatOpt(resultDiv) {
   // ── Parameter ────────────────────────────────────────────────────────────
   const pvProfile = makePvProfile8760(); // normiert, Summe=1.0
   const spez      = parseFloat(document.getElementById('pv-spez')?.value) || 1000;
-  const preisB    = (parseFloat(document.getElementById('strom-preis-bezug')?.value) || 30) / 100; // €/kWh
+  const preisB    = (parseFloat((document.getElementById('strom-preis-bezug') || document.getElementById('wirt-p-strom'))?.value) || 30) / 100; // €/kWh
   const preisE    = (parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8)  / 100;
   const pvInvest  = parseFloat(document.getElementById('opt-pv-invest')?.value)  || 1200; // €/kWp
   const batInvest = parseFloat(document.getElementById('opt-bat-invest')?.value) || 400;  // €/kWh

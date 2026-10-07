@@ -314,7 +314,7 @@ export function updateBhkwDisplay() {
   const gasverbrauch = waerme > 0 ? waerme / etaTh : 0;
   const gaskosten    = gasverbrauch * gaspreis * 10;
   // BHKW Stromerlös differenziert: Eigenverbrauch (vermiedene Bezugskosten + KWK) + Einspeisung (Baseload + KWK)
-  const bezugspreis  = parseFloat(document.getElementById('strom-preis-bezug')?.value) || 35;
+  const bezugspreis  = parseFloat((document.getElementById('strom-preis-bezug') || document.getElementById('wirt-p-strom'))?.value) || 35;
   const bhkwPreisEinsp = parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8;
   const kwkEinsp     = parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8;
   const kwkEigen     = parseFloat(document.getElementById('bhkw-kwk-eigen')?.value) || 4;
