@@ -1350,8 +1350,10 @@ export function startDrag(e, panelId) {
   function onMove(ev) {
     let nx = ev.clientX - startX;
     let ny = ev.clientY - startY;
-    nx = Math.max(0, Math.min(window.innerWidth  - panel.offsetWidth,  nx));
-    ny = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, ny));
+    // Kopfzeile (Griff, ×) bleibt immer unterhalb der App-Kopfleiste und im Fenster erreichbar
+    const oben = _panelObergrenze();
+    nx = Math.max(Math.min(0, window.innerWidth - 120), Math.min(window.innerWidth - Math.min(panel.offsetWidth, 160), nx));
+    ny = Math.max(oben, Math.min(window.innerHeight - 40, ny));
     panel.style.left = nx + 'px';
     panel.style.top  = ny + 'px';
   }
@@ -1370,6 +1372,47 @@ setTimeout(() => {
   renderList();
   tryRestoreAutosave();
 }, 0);
+
+/** Unterkante der App-Kopfleiste: Panels dürfen mit ihrer Kopfzeile nicht darunter verschwinden. */
+function _panelObergrenze() {
+  const kopf = document.querySelector('header')?.getBoundingClientRect();
+  return Math.max(0, Math.round(kopf?.bottom || 0)) + 4;
+}
+
+/**
+ * Schwebende Fenster im Bild halten: Liegt die Kopfzeile (Griff, Minimieren, ×) über dem oberen Rand oder unter
+ * der App-Kopfleiste, wird das Fenster nach unten geschoben und in der Höhe begrenzt — beim Öffnen, wenn es wächst
+ * und wenn sich das Browserfenster ändert.
+ */
+function _panelImBild(panel) {
+  if (!panel.isConnected || panel.classList.contains('inline-mode') || getComputedStyle(panel).position === 'static') return;
+  const r = panel.getBoundingClientRect();
+  if (!r.height || !r.width) return;
+  if (r.top <= 0.5 && r.height >= window.innerHeight - 1) return;   // Vollbild-Fenster (z. B. Schaltbild)
+  const oben = _panelObergrenze();
+  const verfuegbar = window.innerHeight - oben - 8;
+  if (r.top >= oben - 0.5 && r.left > -r.width + 80 && r.left < window.innerWidth - 80) return;
+  panel.style.left = Math.max(0, Math.min(window.innerWidth - Math.min(r.width, window.innerWidth), r.left)) + 'px';
+  panel.style.top = Math.max(oben, r.top) + 'px';
+  panel.style.transform = 'none';
+  panel.classList.add('dragging');
+  if (r.height > verfuegbar) panel.style.maxHeight = verfuegbar + 'px';
+}
+let _panelPruefung = 0;
+function _panelsPruefen() {
+  if (_panelPruefung) return;
+  _panelPruefung = requestAnimationFrame(() => {
+    _panelPruefung = 0;
+    document.querySelectorAll('.panel-drag-handle').forEach(h => {
+      const panel = h.parentElement;
+      if (panel && panel.offsetParent !== null) _panelImBild(panel);
+    });
+  });
+}
+if (typeof MutationObserver === 'function' && document.body) {
+  new MutationObserver(_panelsPruefen).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  window.addEventListener('resize', _panelsPruefen);
+}
 
 export function toggleSidebar() {
   const sb = document.getElementById('sidebar');
