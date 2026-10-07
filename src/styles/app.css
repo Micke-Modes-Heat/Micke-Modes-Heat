@@ -2481,3 +2481,18 @@ textarea.ssb-in{resize:vertical;}
 
 /* Netz-Bearbeitungsmodus: Leitungen direkt greifen und ziehen */
 .netz-zieht, .netz-zieht path.leaflet-interactive { cursor: grabbing !important; }
+
+/* ── LW-WP: Aufstellung der Außengeräte ── */
+.lwwp-aufstellung{margin-bottom:10px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;}
+.lwwp-aufstellung-titel{font-size:10px;font-weight:600;color:var(--text);margin-bottom:6px;}
+.lwwp-aufstellung-grid{display:grid;grid-template-columns:auto 1fr;gap:5px 8px;align-items:center;}
+.lwwp-aufstellung-grid .inp-label{margin:0;}
+.lwwp-aufstellung-grid select{font-size:10px;padding:2px 4px;}
+.lwwp-aufstellung-grid input[type=range]{width:100%;accent-color:var(--accent);}
+#lwwp-drehung-wert{font-family:'DM Mono',monospace;color:var(--accent);}
+.lwwp-aufstellung-verfuegbar{display:grid;grid-template-columns:1fr auto 1fr;gap:4px;align-items:center;margin-top:7px;font-size:10px;color:var(--muted);}
+.lwwp-aufstellung-verfuegbar .inp-label{margin:0;grid-column:1/-1;}
+.lwwp-aufstellung-verfuegbar .inp-field{font-size:10px;padding:2px 4px;}
+.lwwp-flaeche-label{pointer-events:none;}
+.lwwp-flaeche-label span{display:inline-block;transform:translateX(-50%);white-space:nowrap;font:600 10px 'DM Mono',monospace;color:#1b5e20;background:rgba(255,255,255,.88);border:1px solid #388e3c;border-radius:4px;padding:1px 5px;}
+.lwwp-flaeche-label span.zu-klein{color:#b71c1c;border-color:#ef5350;}

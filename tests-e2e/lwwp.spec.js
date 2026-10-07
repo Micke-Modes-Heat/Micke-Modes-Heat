@@ -52,3 +52,35 @@ test('dist: Entfernen der Luft-Wärmepumpe entfernt Gerät und Schallringe',asyn
   });
   expect(pageErrors).toEqual([]);
 });
+
+test('dist: Aufstellfläche der Außengeräte — Geräte, Drehung und Speichern/Laden',async({page})=>{
+  const pageErrors=[];
+  page.on('pageerror',error=>pageErrors.push(String(error)));
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.placeLwWpAt==='function'&&typeof window.lwWpAufstellungSetzen==='function');
+
+  const result=await page.evaluate(()=>{
+    document.getElementById('lwwp-leistung').value=640;
+    placeLwWpAt(L.latLng(52.08,8));
+    lwWpAufstellungSetzen('modulKw','80');
+    lwWpAufstellungSetzen('reihen','2');
+    lwWpAufstellungSetzen('drehung','200');   // 200° ≙ 20° (Rechteck ist punktsymmetrisch)
+    const geraete=document.querySelectorAll('.lwwp-geraet').length;
+    const label=document.querySelector('.lwwp-flaeche-label')?.textContent;
+    const anzeige=document.getElementById('lwwp-geraete').textContent;
+    const gespeichert=_buildProjectData();
+    clearLwWp();
+    _loadProject(gespeichert);
+    return {geraete,label,anzeige,aufstellung:gespeichert.lwWp.aufstellung,nachLaden:window.lwWp.aufstellung,
+      geraeteNachLaden:document.querySelectorAll('.lwwp-geraet').length};
+  });
+
+  expect(result.geraete).toBe(8);
+  expect(result.anzeige).toBe('8 × ~80 kW · 2 Reihen');
+  expect(result.label).toMatch(/^8 × ~80 kW · \d+ m²$/);
+  expect(result.aufstellung).toEqual({modulKw:80,reihen:2,drehung:20});
+  expect(result.nachLaden).toEqual({modulKw:80,reihen:2,drehung:20});
+  expect(result.geraeteNachLaden).toBe(8);
+  expect(pageErrors).toEqual([]);
+});

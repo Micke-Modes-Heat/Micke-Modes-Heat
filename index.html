@@ -2179,17 +2179,29 @@
         <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Einsatzplanung</span></label>
         <input class="inp-field" type="number" id="lwwp-waerme" value="" placeholder="wird berechnet…" step="1" readonly/>
       </div>
-      <div class="inp-group">
-        <label class="inp-label" title="Überschreibt automatisch berechnete Länge">Länge manuell (m)</label>
-        <input class="inp-field" type="number" id="lwwp-man-laenge" placeholder="auto" step="0.5" min="0.5" data-input="redrawLwWp();updateLwWpDisplay();"/>
+    </div>
+    <div class="lwwp-aufstellung">
+      <div class="lwwp-aufstellung-titel">Aufstellung der Außengeräte <span class="htip" data-tip="Überschlägige Anordnung: typische Gerätegrößen mit Luftabstand vorn und hinten (1,5 m), Wartungsabstand an den Stirnseiten (0,8 m), 0,6 m zwischen Geräten und 2 m zwischen zwei Reihen. Auf der Karte: dunkle Rechtecke = Geräte, gestrichelt = benötigte Fläche, blaue Striche = Luftrichtung. Richtwerte — Herstellerangaben sind maßgeblich.">?</span></div>
+      <div class="lwwp-aufstellung-grid">
+        <label class="inp-label" for="lwwp-modul">Gerätegröße</label>
+        <select class="inp-field" id="lwwp-modul" data-change="lwWpAufstellungSetzen('modulKw', this.value)"></select>
+        <label class="inp-label" for="lwwp-reihen">Reihen</label>
+        <select class="inp-field" id="lwwp-reihen" data-change="lwWpAufstellungSetzen('reihen', this.value)">
+          <option value="auto">automatisch</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+        </select>
+        <label class="inp-label" for="lwwp-drehung">Drehung <span id="lwwp-drehung-wert">0°</span></label>
+        <input type="range" id="lwwp-drehung" min="0" max="179" step="1" value="0" data-input="lwWpAufstellungSetzen('drehung', this.value)"/>
       </div>
-      <div class="inp-group">
-        <label class="inp-label" title="Überschreibt automatisch berechnete Breite">Breite manuell (m)</label>
-        <input class="inp-field" type="number" id="lwwp-man-breite" placeholder="auto" step="0.5" min="0.5" data-input="redrawLwWp();updateLwWpDisplay();"/>
+      <div class="lwwp-aufstellung-verfuegbar">
+        <span class="inp-label" title="Optional: tatsächlich verfügbare Fläche. Ist sie kleiner als benötigt, wird sie rot.">Verfügbare Fläche (optional)</span>
+        <input class="inp-field" type="number" id="lwwp-man-laenge" placeholder="Länge m" step="0.5" min="0.5" title="Länge entlang der Gerätereihe" data-input="redrawLwWp();updateLwWpDisplay();"/>
+        <span>×</span>
+        <input class="inp-field" type="number" id="lwwp-man-breite" placeholder="Breite m" step="0.5" min="0.5" title="Breite quer zur Gerätereihe (Luftrichtung)" data-input="redrawLwWp();updateLwWpDisplay();"/>
       </div>
     </div>
     <button class="btn-secondary" data-click="lwwpUseNetworkValues()" style="width:100%;font-size:11px;margin-bottom:10px;">Aus Netzberechnung übernehmen</button>
     <div style="padding:7px 8px;background:var(--bg);border-radius:5px;border:1px solid var(--border);font-size:10px;font-family:'DM Mono',monospace;margin-bottom:10px;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;">
+      <span style="color:var(--muted)">Außengeräte</span><span id="lwwp-geraete" style="color:var(--text)">—</span>
       <span style="color:var(--muted)">Platzbedarf</span><span style="color:var(--accent)" id="lwwp-platz">— m²</span>
       <span style="color:var(--muted)">Abm. (L×B)</span><span id="lwwp-abm" style="color:var(--text)">—</span>
       <span style="color:var(--muted)" id="lwwp-strom-lbl" style="display:none">Stromverbrauch</span><span id="lwwp-strom" style="color:#f9a825;display:none">—</span>

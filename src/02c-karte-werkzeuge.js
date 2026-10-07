@@ -13,6 +13,7 @@ import { _gebLabelHtml, escHtml } from './03c-gebaeude-io.js';
 import { cancelDrawStromEdge } from './05b-stromnetz.js';
 import { beginInteraction, cancelInteraction, commitInteraction, getActiveInteraction } from './lib/interaction-state.js';
 import { createLifecycleScope } from './lib/lifecycle.js';
+import { wpAufstellung, rechteckEcken, WP_ABSTAENDE, WP_MODULE } from './lib/wp-aufstellung.js';
 
 /** @type {import('./lib/lifecycle.js').LifecycleScope|null} */
 let areaDrawLifecycle = null;
@@ -2136,8 +2137,65 @@ export function updateWirtDisplay(prefix, result) {
 }
 
 /* ── Luft-Wasser-Wärmepumpe: Platzbedarf + Schall Freifeld ───────────────── */
+// Aufstellfläche aus Gerätegröße, Luft- und Wartungsabständen (lib/wp-aufstellung.js);
+// Gerätegröße, Reihen und Drehung stehen in lwWp.aufstellung.
+export function lwWpAufstellungOpt() {
+  const a = window.lwWp?.aufstellung || {};
+  return { modulKw: a.modulKw ?? 'auto', reihen: a.reihen ?? 'auto', drehung: Number(a.drehung) || 0 };
+}
+export function lwWpAufstellung(leistungKw) {
+  return wpAufstellung(leistungKw, lwWpAufstellungOpt());
+}
 export function lwWpPlatzbedarfM2(leistungKw) {
-  return Math.max(2, 2 + leistungKw * 0.35);
+  return lwWpAufstellung(leistungKw).flaeche;
+}
+// Maße der gezeichneten Fläche: berechnet oder manuell (Länge entlang der Gerätereihe)
+function _lwWpFlaecheMasse(auf) {
+  const manL = parseFloat(document.getElementById('lwwp-man-laenge')?.value) || 0;
+  const manB = parseFloat(document.getElementById('lwwp-man-breite')?.value) || 0;
+  return { l: manL > 0 ? manL : auf.laenge, b: manB > 0 ? manB : auf.breite, manuell: manL > 0 || manB > 0 };
+}
+function _lwWpAufstellungZeichnen(pt, leistung) {
+  const auf = lwWpAufstellung(leistung);
+  const { drehung } = lwWpAufstellungOpt();
+  const m = _lwWpFlaecheMasse(auf);
+  const latPerM = 1 / 111320;
+  const lngPerM = 1 / (111320 * Math.cos(pt.lat * Math.PI / 180));
+  const zuLatLng = ecken => ecken.map(e => [pt.lat + e.nord * latPerM, pt.lng + e.ost * lngPerM]);
+  const zuKlein = m.l * m.b < auf.flaeche * 0.98 || m.l < auf.laenge - 0.05 || m.b < auf.breite - 0.05;
+  const farbe = zuKlein ? '#ef5350' : '#388e3c';
+  const nf = (v, d = 1) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const text = `${auf.anzahl} × Außengerät ~${auf.modul.kw} kW (${nf(auf.modul.l)} × ${nf(auf.modul.b)} m)`
+    + `<br>Fläche inkl. Abstände: ${nf(auf.laenge)} × ${nf(auf.breite)} m ≈ <b>${nf(auf.flaeche, 0)} m²</b>`
+    + (m.manuell ? `<br>verfügbar: ${nf(m.l)} × ${nf(m.b)} m${zuKlein ? ' — <b>zu klein</b>' : ''}` : '')
+    + '<br><span style="opacity:.7">Richtwerte, Herstellerangaben maßgeblich</span>';
+  // Fläche inkl. Abstände
+  L.polygon(zuLatLng(rechteckEcken(0, 0, m.l, m.b, drehung)), {
+    color: farbe, weight: 2, dashArray: '6 4', fillColor: farbe, fillOpacity: zuKlein ? 0.18 : 0.10, className: 'lwwp-flaeche',
+  }).bindTooltip(text, { sticky: true }).addTo(window.lwWpLayerGroup);
+  // Geräte
+  for (const g of auf.geraete) {
+    L.polygon(zuLatLng(rechteckEcken(g.x, g.y, g.l, g.b, drehung)), {
+      color: '#1b5e20', weight: 1, fillColor: '#66bb6a', fillOpacity: 0.85, className: 'lwwp-geraet',
+    }).bindTooltip(text, { sticky: true }).addTo(window.lwWpLayerGroup);
+  }
+  // Beschriftung unterhalb der Fläche, damit die Größe auf einen Blick abzulesen ist
+  const sued = Math.min(...rechteckEcken(0, 0, m.l, m.b, drehung).map(e => e.nord));
+  L.marker([pt.lat + (sued - 1) * latPerM, pt.lng], {
+    interactive: false, keyboard: false,
+    icon: L.divIcon({ className: 'lwwp-flaeche-label', iconSize: null, iconAnchor: [0, 0],
+      html: `<span${zuKlein ? ' class="zu-klein"' : ''}>${auf.anzahl} × ~${auf.modul.kw} kW · ${nf(auf.flaeche, 0)} m²</span>` }),
+  }).addTo(window.lwWpLayerGroup);
+  // Luftrichtung je Reihe: kurze Pfeile vor und hinter der Reihe
+  const reihenY = [...new Set(auf.geraete.map(g => g.y))];
+  for (const y of reihenY) {
+    for (const s of [-1, 1]) {
+      const y0 = y + s * (auf.modul.b / 2 + 0.15), y1 = y + s * (auf.modul.b / 2 + Math.min(1.2, WP_ABSTAENDE.luft - 0.2));
+      const [a, b] = [rechteckEcken(0, y0, 0, 0, drehung)[0], rechteckEcken(0, y1, 0, 0, drehung)[0]];
+      L.polyline(zuLatLng([a, b]), { color: '#4fc3f7', weight: 2, opacity: 0.8, interactive: false, className: 'lwwp-luft' })
+        .addTo(window.lwWpLayerGroup);
+    }
+  }
 }
 // Freifeld-Radius (ohne Gebäudedämpfung); Zusatzdämpfung wird punktbezogen bei der Tooltip-Berechnung berücksichtigt.
 export function lwWpSchallRadiusM(lwaDb, zielDb) {
@@ -2194,7 +2252,7 @@ export function togglePlaceLwWp() {
 export function placeLwWpAt(latlng) {
   const leistung = parseFloat(document.getElementById('lwwp-leistung').value) || 12;
   const lwa = parseFloat(document.getElementById('lwwp-lwa').value) || 80;
-  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible };
+  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible, ...(window.lwWp?.aufstellung ? { aufstellung: window.lwWp.aufstellung } : {}) };
   document.getElementById('lwwp-man-laenge').value = '';
   document.getElementById('lwwp-man-breite').value = '';
   window.isPlacingLwWp = false;
@@ -2230,30 +2288,7 @@ export function redrawLwWp() {
   const pt = L.latLng(window.lwWp.lat, window.lwWp.lng);
   const leistung = window.lwWp.leistungKw;
   const lwa = window.lwWp.lwaDb;
-  const platzM2 = lwWpPlatzbedarfM2(leistung);
-  const rwAuto = Math.sqrt(platzM2);   // Quadratisch als Startwert
-  const rlAuto = rwAuto;
-  const manL = parseFloat(document.getElementById('lwwp-man-laenge')?.value) || 0;
-  const manB = parseFloat(document.getElementById('lwwp-man-breite')?.value) || 0;
-  const rl = manL > 0 ? manL : rlAuto;
-  const rw = manB > 0 ? manB : rwAuto;
-  const latPerM = 1 / 111320;
-  const lngPerM = 1 / (111320 * Math.cos(pt.lat * Math.PI / 180));
-  // Mutable bounds für Seitengriffe
-  const sw = { lat: pt.lat - rl / 2 * latPerM, lng: pt.lng - rw / 2 * lngPerM };
-  const ne = { lat: pt.lat + rl / 2 * latPerM, lng: pt.lng + rw / 2 * lngPerM };
-  const reqF = platzM2;
-  const tol = 0.08;
-  function actF() { return ((ne.lat - sw.lat) / latPerM) * ((ne.lng - sw.lng) / lngPerM); }
-  function fb(aF) {
-    if (aF < reqF * (1 - tol)) return { c: '#ef5350', o: 0.30 };
-    if (aF > reqF * (1 + tol)) return { c: '#66bb6a', o: 0.22 };
-    return { c: '#388e3c', o: 0.20 };
-  }
-  const f0 = fb(actF());
-  const rect = L.rectangle([sw, ne], { color: '#388e3c', weight: 2, fillColor: f0.c, fillOpacity: f0.o })
-    .bindTooltip(`Platzbedarf: ${platzM2.toFixed(1)} m² min. · ${rl.toFixed(1)}×${rw.toFixed(1)} m`, {sticky:true})
-    .addTo(window.lwWpLayerGroup);
+  _lwWpAufstellungZeichnen(pt, leistung);
   window.lwWpSchallLayerGroup.clearLayers();
   const schallStufen = [55, 50, 45, 40, 35];
   const schallFarben = ['#b71c1c', '#e65100', '#f9a825', '#8bc34a', '#2e7d32'];
@@ -2296,24 +2331,20 @@ export function updateLwWpDisplay() {
   const lwa = window.lwWp.lwaDb;
   const jaz = parseFloat(document.getElementById('lwwp-jaz').value) || 3.0;
   const waermeJahr = parseFloat(document.getElementById('lwwp-waerme').value) || 0;
-  const platzM2 = lwWpPlatzbedarfM2(leistung);
-  const rwAuto = Math.sqrt(platzM2);
-  const rlAuto = rwAuto;
-  const manL = parseFloat(document.getElementById('lwwp-man-laenge')?.value) || 0;
-  const manB = parseFloat(document.getElementById('lwwp-man-breite')?.value) || 0;
-  const rl = manL > 0 ? manL : rlAuto;
-  const rw = manB > 0 ? manB : rwAuto;
-  const manArea = manL > 0 && manB > 0 ? manL * manB : 0;
-  document.getElementById('lwwp-platz').textContent = platzM2.toFixed(1) + ' m² (min.)';
-  document.getElementById('lwwp-abm').textContent = `${rl.toFixed(1)} × ${rw.toFixed(1)} m${manL>0||manB>0?' ✏':''}`;
+  const auf = lwWpAufstellung(leistung);
+  const platzM2 = auf.flaeche;
+  const m = _lwWpFlaecheMasse(auf);
+  const nf = (v, d = 1) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  document.getElementById('lwwp-platz').textContent = nf(platzM2, 0) + ' m²';
+  document.getElementById('lwwp-abm').textContent = `${nf(m.l)} × ${nf(m.b)} m${m.manuell ? ' ✏' : ''}`;
+  const geraeteEl = document.getElementById('lwwp-geraete');
+  if (geraeteEl) geraeteEl.textContent = `${auf.anzahl} × ~${auf.modul.kw} kW · ${auf.reihen} ${auf.reihen === 1 ? 'Reihe' : 'Reihen'}`;
+  _lwWpAufstellungUiSync();
   const warnEl = document.getElementById('lwwp-flaeche-warn');
   if (warnEl) {
-    if (manArea > 0 && manArea < platzM2) {
-      warnEl.style.display = '';
-      warnEl.textContent = `⚠ ${manArea.toFixed(0)} m² eingegeben, mind. ${platzM2.toFixed(0)} m² benötigt`;
-    } else {
-      warnEl.style.display = 'none';
-    }
+    const zuKlein = m.manuell && (m.l < auf.laenge - 0.05 || m.b < auf.breite - 0.05);
+    warnEl.style.display = zuKlein ? '' : 'none';
+    if (zuKlein) warnEl.textContent = `⚠ ${nf(m.l)} × ${nf(m.b)} m verfügbar, für die Geräte mit Abständen werden ${nf(auf.laenge)} × ${nf(auf.breite)} m benötigt`;
   }
   if (waermeJahr > 0) {
     const strom = waermeJahr / jaz;
@@ -2338,6 +2369,32 @@ export function updateLwWpDisplay() {
   });
   document.getElementById('lwwp-schall-tabelle').innerHTML = schallRows.join('<br>');
   updateErzeugerAssetProps('lwwp');
+}
+
+// Steuerung der Aufstellung im LW-WP-Panel (Gerätegröße, Reihen, Drehung)
+function _lwWpAufstellungUiSync() {
+  const o = lwWpAufstellungOpt();
+  const modul = document.getElementById('lwwp-modul');
+  if (modul && !modul.options.length) {
+    modul.innerHTML = '<option value="auto">automatisch</option>'
+      + WP_MODULE.map(x => `<option value="${x.kw}">~${x.kw} kW (${String(x.l).replace('.', ',')} × ${String(x.b).replace('.', ',')} m)</option>`).join('');
+  }
+  if (modul) modul.value = String(o.modulKw);
+  const reihen = document.getElementById('lwwp-reihen');
+  if (reihen) reihen.value = String(o.reihen);
+  const dreh = document.getElementById('lwwp-drehung');
+  if (dreh && document.activeElement !== dreh) dreh.value = String(o.drehung);
+  const drehWert = document.getElementById('lwwp-drehung-wert');
+  if (drehWert) drehWert.textContent = Math.round(o.drehung) + '°';
+}
+export function lwWpAufstellungSetzen(feld, wert) {
+  if (!window.lwWp) return;
+  const a = { ...lwWpAufstellungOpt() };
+  if (feld === 'drehung') a.drehung = ((Math.round(Number(wert) || 0) % 180) + 180) % 180;
+  else a[feld] = wert === 'auto' ? 'auto' : Number(wert);
+  window.lwWp.aufstellung = a;
+  redrawLwWp();
+  updateLwWpDisplay();
 }
 
 export function calcLwaAuto(kw) {

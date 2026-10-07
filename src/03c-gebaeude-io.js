@@ -3377,7 +3377,7 @@ export function _buildProjectData() {
     customEdges: netzEdges.filter(e => e.u < 10000 && e.v < 10000).map(e => ({u: e.u, v: e.v, pruned: e.pruned || false})),
     edgeWaypoints: edgeWaypoints,
     fliessgewaesser: fliessgewaesser ? { latlngs: fliessgewaesser.latlngs, durchflussLs: fliessgewaesser.durchflussLs, leistungKw: fliessgewaesser.leistungKw, jaz: fliessgewaesser.jaz, visible: fliessgewaesserVisible } : null,
-    lwWp: lwWp ? { lat: lwWp.lat, lng: lwWp.lng, leistungKw: lwWp.leistungKw, lwaDb: lwWp.lwaDb, jaz: _finiteNumberOr(document.getElementById('lwwp-jaz').value, 3.0), waerme: document.getElementById('lwwp-waerme').value, minCop: document.getElementById('lwwp-min-cop')?.value || '', visible: lwWpVisible } : null,
+    lwWp: lwWp ? { lat: lwWp.lat, lng: lwWp.lng, leistungKw: lwWp.leistungKw, lwaDb: lwWp.lwaDb, jaz: _finiteNumberOr(document.getElementById('lwwp-jaz').value, 3.0), waerme: document.getElementById('lwwp-waerme').value, minCop: document.getElementById('lwwp-min-cop')?.value || '', visible: lwWpVisible, ...(lwWp.aufstellung ? { aufstellung: lwWp.aufstellung } : {}) } : null,
     geoThermie: geoThermie ? { ...geoThermie, heizlast: document.getElementById('geo-heizlast').value, waerme: document.getElementById('geo-waerme').value, jaz: _finiteNumberOr(document.getElementById('geo-jaz').value, 4.5), tiefe: _finiteNumberOr(document.getElementById('geo-tiefe').value, 100), qPerM: _finiteNumberOr(document.getElementById('geo-q-perm').value, 50), abstand: _finiteNumberOr(document.getElementById('geo-abstand').value, 10), dtAbsenkung: _finiteNumberOr(document.getElementById('geo-dt-absenkung').value, 0) } : null,
     gasKessel: gasKessel ? { leistungKw: gasKessel.leistungKw, eta: document.getElementById('gk-eta').value, waerme: document.getElementById('gk-waerme').value } : null,
     heizoelKessel: heizoelKessel ? { leistungKw: heizoelKessel.leistungKw, eta: document.getElementById('hko-eta').value, waerme: document.getElementById('hko-waerme').value } : null,
@@ -4066,7 +4066,7 @@ function _applyProjectData(project) {
       }
 
     if (project.lwWp && project.lwWp.lat != null && project.lwWp.lng != null) {
-        window.lwWp = { lat: project.lwWp.lat, lng: project.lwWp.lng, leistungKw: project.lwWp.leistungKw ?? 12, lwaDb: project.lwWp.lwaDb ?? 80, visible: project.lwWp.visible !== false };
+        window.lwWp = { lat: project.lwWp.lat, lng: project.lwWp.lng, leistungKw: project.lwWp.leistungKw ?? 12, lwaDb: project.lwWp.lwaDb ?? 80, visible: project.lwWp.visible !== false, ...(project.lwWp.aufstellung ? { aufstellung: project.lwWp.aufstellung } : {}) };
         window.lwWpVisible = window.lwWp.visible !== false;
         document.getElementById('lwwp-visible').checked = lwWpVisible;
         document.getElementById('lwwp-leistung').value = lwWp.leistungKw;
