@@ -5872,7 +5872,7 @@ function _recalcNetzIntern(){
   // "Was kostet es zusätzlich zur Erzeugung, diesen Strang über das Netz zu versorgen?"
   // Bestand (networkLocked): nur laufende Verlustkosten (Rohre sind schon bezahlt)
   // Neubau (!networkLocked): Rohr-Annuität + Verlustkosten
-  const _netzZins = (parseFloat(document.getElementById('wirt-zins')?.value) || 2.7) / 100;
+  const _netzZins = (Number.isFinite(parseFloat(document.getElementById('wirt-zins')?.value)) ? parseFloat(document.getElementById('wirt-zins').value) : 2.7) / 100;
   const _netzN = 50;  // Nutzungsdauer Wärmenetz nach VDI 2067 (konsistent mit Wirtschaftlichkeits-Panel)
   const annFaktor = _netzZins > 0 ? _netzZins * Math.pow(1 + _netzZins, _netzN) / (Math.pow(1 + _netzZins, _netzN) - 1) : 1 / _netzN;
   // Erzeugungskosten an der Zentrale (€/MWh) – für Verlustbewertung

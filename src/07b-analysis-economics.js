@@ -1529,7 +1529,7 @@ export function calcJahresscheiben() {
 
   const laufzeit   = parseInt(document.getElementById('js-laufzeit')?.value) || 20;
   const eskalation = (parseFloat(document.getElementById('js-eskalation')?.value) || 2) / 100;
-  const zins  = parseFloat(document.getElementById('wirt-zins')?.value) || 2.7;
+  const zins  = Number.isFinite(parseFloat(document.getElementById('wirt-zins')?.value)) ? parseFloat(document.getElementById('wirt-zins').value) : 2.7;   // 0 % ist ein gültiger Zins
   const diskont    = zins / 100; // Synchron mit Kapitalzins (VDI 2067)
   const dSync = document.getElementById('js-diskont-sync');
   if (dSync) dSync.textContent = zins.toFixed(1);

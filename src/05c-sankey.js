@@ -70,7 +70,7 @@ export function _buildSankeyData(perBuilding) {
   let twwMwh = 0, rwMwh = 0;
   const ss = window.systemState;
   if (ss && ss.lastgangKw && ss.lastgangKw.length >= 8760) {
-    const vf = (parseFloat(document.getElementById('gl-netzverlust')?.value) || 10) / 100;
+    const vf = (Number.isFinite(parseFloat(document.getElementById('gl-netzverlust')?.value)) ? parseFloat(document.getElementById('gl-netzverlust').value) : 10) / 100;
     const twwKw = _splitTwwFloor(ss.lastgangKw, vf);
     twwMwh = twwKw * HOURS_PER_YEAR / 1000;  // Konstante TWW-Last übers Jahr
     const nutzMwh = (ss.nutzwaermeMwh || ss.gesamtMwhMitNV || totalWaerme);

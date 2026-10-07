@@ -1355,7 +1355,7 @@ export function _splitTwwFloor(lastgangKw, vf) {
 export function _splitGetData() {
   const lg = window.systemState?.lastgangKw;
   if (!lg || lg.length < 8760) return null;
-  const vf  = (parseFloat(document.getElementById('gl-netzverlust')?.value) || 10) / 100;
+  const vf  = (Number.isFinite(parseFloat(document.getElementById('gl-netzverlust')?.value)) ? parseFloat(document.getElementById('gl-netzverlust').value) : 10) / 100;
   const tww = _splitTwwFloor(lg, vf);
   return { lg, vf, tww };
 }
