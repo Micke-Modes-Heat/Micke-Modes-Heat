@@ -17,7 +17,9 @@ describe('wpAufstellung', () => {
     expect(wpAufstellung(100).modul.kw).toBe(40);
     expect(wpAufstellung(100).anzahl).toBe(3);
     expect(wpAufstellung(500)).toMatchObject({ anzahl: 4, reihen: 1 });
-    expect(wpAufstellung(1500)).toMatchObject({ anzahl: 5, reihen: 2, jeReihe: 3 });
+    expect(wpAufstellung(1500)).toMatchObject({ modul: { kw: 500 }, anzahl: 3, reihen: 1 });
+    expect(wpAufstellung(3000)).toMatchObject({ modul: { kw: 800 }, anzahl: 4, reihen: 1 });
+    expect(wpAufstellung(5000)).toMatchObject({ modul: { kw: 800 }, anzahl: 7, reihen: 2, jeReihe: 4 });
   });
   it('feste Gerätegröße und Reihenzahl', () => {
     const a = wpAufstellung(640, { modulKw: 80, reihen: 2 });

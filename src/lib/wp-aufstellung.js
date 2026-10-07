@@ -10,6 +10,9 @@ export const WP_MODULE = [
   { kw: 80, l: 2.8, b: 1.2, h: 2.0, ventilatoren: 3, dm: 0.8, oben: true },
   { kw: 160, l: 4.2, b: 2.2, h: 2.3, ventilatoren: 4, dm: 0.9, oben: true },
   { kw: 300, l: 6.5, b: 2.3, h: 2.5, ventilatoren: 6, dm: 0.9, oben: true },
+  // Großgeräte mit V-Register (z. B. R290-Baureihen bis ~800 kW); Maße überschlägig
+  { kw: 500, l: 9.5, b: 2.3, h: 2.6, ventilatoren: 8, dm: 1.0, oben: true },
+  { kw: 800, l: 13.5, b: 2.4, h: 2.7, ventilatoren: 12, dm: 1.0, oben: true },
 ];
 
 /** Abstände in m: Luftseite (Ansaugen/Ausblasen, vorn und hinten), Wartung an den Stirnseiten,
