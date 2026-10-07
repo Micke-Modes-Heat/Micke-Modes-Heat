@@ -663,10 +663,38 @@ function _verlaufMerken(eintraege) {
   if (_verlauf.length > 50) _verlauf.shift();
 }
 
+/**
+ * Einen Schritt merken, der als Planungstransaktion lief (36 „Belegungen
+ * entfernen"): Strg+Z nimmt ihn über die Transaktionshistorie zurück — die
+ * stellt Flächen, PV-Assets und Kabel gemeinsam wieder her.
+ */
+export function pvmPlanungsSchrittMerken() {
+  const at = window._lastPlanningTransaction?.at;
+  if (at) _verlaufMerken({ planung: at });
+}
+
+function _planungsSchrittZurueck(at) {
+  const letzte = window.getPlanningTransactionHistory?.().at(-1);
+  if (letzte?.at !== at) {
+    window.showHint?.('Zwischendurch wurde anderes geändert — das Entfernen lässt sich nicht mehr zurücknehmen.', 5000);
+    return;
+  }
+  try { window.undoLastPlanningTransaction?.(); }
+  catch (err) { console.error(err); window.showHint?.('Zurücknehmen fehlgeschlagen: ' + err.message, 6000); return; }
+  if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
+  if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+  window.calcStromPanel?.();
+  window.renderList?.();
+  window.showHint?.('↶ Entfernte Belegungen wiederhergestellt.', 3000);
+  pvModusMarkiereKarte();
+  pvModusRender();
+}
+
 /** Letzten Schritt zurücknehmen (Strg+Z) — auch einen ganzen Grundriss-Stapel. */
 export function pvmUndo() {
   const schritt = _verlauf.pop();
   if (!schritt) { window.showHint?.('Nichts mehr zurückzunehmen.', 3000); return; }
+  if (!Array.isArray(schritt)) { _planungsSchrittZurueck(schritt.planung); return; }
   for (const { gId, flId, assetVorher } of schritt) {
     const g = _geb(gId);
     if (!g) continue;

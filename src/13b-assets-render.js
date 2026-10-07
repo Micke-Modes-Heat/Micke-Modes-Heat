@@ -368,7 +368,7 @@ function _showAssetDeletePopup(buildingId, latlng) {
   const assets = getAssetsForBuilding(buildingId);
   if (assets.length === 0) return;
   if (assets.length === 1) {
-    deleteAsset(assets[0].id);
+    deleteAsset(assets[0].id, false, { nutzer: true });
     redrawAllAssets();
     return;
   }
@@ -397,7 +397,7 @@ function _showAssetDeletePopup(buildingId, latlng) {
       row.addEventListener('mouseenter', () => row.style.background = 'rgba(239,83,80,0.12)');
       row.addEventListener('mouseleave', () => row.style.background = '');
       row.addEventListener('click', () => {
-        deleteAsset(row.dataset.id);
+        deleteAsset(row.dataset.id, false, { nutzer: true });
         map.closePopup(popup);
         redrawAllAssets();
       });
@@ -507,7 +507,7 @@ function spiderfyBuilding(buildingId, centerLatLng) {
     sm.on('contextmenu', ev => {
       L.DomEvent.stopPropagation(ev);
       collapseAssetSpider();
-      deleteAsset(a.id);
+      deleteAsset(a.id, false, { nutzer: true });
       redrawAllAssets();
     });
   });
@@ -784,7 +784,7 @@ function drawSingleMarker(asset) {
   });
   m.on('contextmenu', e => {
     L.DomEvent.stopPropagation(e);
-    deleteAsset(asset.id);
+    deleteAsset(asset.id, false, { nutzer: true });
     redrawAllAssets();
   });
 
@@ -817,18 +817,9 @@ function drawSingleMarker(asset) {
       if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
     }
   });
-
-  m.on('contextmenu', e => {
-    L.DomEvent.stopPropagation(e);
-    // Strom-Knoten und angeschlossene Kabel mitentfernen
-    if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
-    else if (window.stromNodes) {
-      const idx = window.stromNodes.findIndex(n => n.id === asset.id);
-      if (idx >= 0) window.stromNodes.splice(idx, 1);
-    }
-    deleteAsset(asset.id);
-    redrawAllAssets();
-  });
+  // Rechtsklick-Löschen hängt schon oben am Marker; deleteAsset entfernt dabei
+  // auch Strom-Knoten und angeschlossene Kabel. Ein zweiter Handler hier hat
+  // früher die Kabel schon vor der Rückfrage gekappt.
 
   m.addTo(standaloneLayer);
   asset._marker = m;

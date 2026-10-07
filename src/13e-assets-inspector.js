@@ -26,7 +26,7 @@ function wireSectionToggles(panel) {
   });
 }
 
-import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAsset, deleteAsset, computeTwwKw, TWW_DEFAULTS } from './13a-assets-core.js';
+import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAsset, deleteAsset, pvFlaechenZumAsset, computeTwwKw, TWW_DEFAULTS } from './13a-assets-core.js';
 import { drawAssetMarker, redrawAllAssets, updateLadeParking, zoomToWindEignungsflaeche } from './13b-assets-render.js';
 import { openSlpEditor } from './13i-slp-editor.js';
 import { globalYear } from './01-globals-varianten.js';
@@ -1629,9 +1629,11 @@ export function renderAssetSidebar(filterText) {
     btn.addEventListener('click', () => {
       const asset = (ASSETS.items || []).find(a => a.id === btn.dataset.asid);
       if (!asset) return;
-      if (!confirm(`Anlage/Komponente „${asset.name}“ wirklich löschen?`)) return;
+      const nFl = pvFlaechenZumAsset(asset);
+      if (!confirm(`Anlage/Komponente „${asset.name}“ wirklich löschen?`
+        + (nFl ? `\n\nDie ${nFl} Belegungsfläche(n) auf dem Dach werden mit gelöscht.` : ''))) return;
       if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
-      deleteAsset(asset.id);
+      deleteAsset(asset.id, false, { nutzer: true, rueckfrage: false });
       redrawAllAssets();
       ASSETS.selectedId = null;
       renderAssetSidebar();
@@ -1731,8 +1733,8 @@ function wireEvents(panel, asset) {
 
   panel.querySelectorAll('[data-action="delete"]').forEach(b =>
     b.addEventListener('click', () => {
-      if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
-      deleteAsset(asset.id);
+      // deleteAsset kappt Knoten und Kabel selbst — erst nach seiner Rückfrage
+      if (deleteAsset(asset.id, false, { nutzer: true }) === false) return;
       redrawAllAssets();
       closeAssetInspector();
     }));

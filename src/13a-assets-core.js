@@ -226,9 +226,22 @@ export function createAsset(type, lat, lng, opts = {}) {
   return asset;
 }
 
-export function deleteAsset(id, _transactionActive = false) {
+/**
+ * @param {object} [opts]
+ * @param {boolean} [opts.nutzer] vom Nutzer gelöscht (Inspektor, Kontextmenü,
+ *   Mehrfachauswahl): fachliche Folgen mitnehmen — ein Dach-PV-Asset nimmt die
+ *   Belegungsflächen seines Gebäudes mit. Interne Abräumer (Variantenwechsel,
+ *   Netz-Neuaufbau, Projekt laden) lassen das weg, sonst verschwänden dabei alle Flächen.
+ * @param {boolean} [opts.rueckfrage] false = der Aufrufer hat schon gefragt
+ */
+export function deleteAsset(id, _transactionActive = false, opts = {}) {
+  if (opts.nutzer && opts.rueckfrage !== false) {
+    const a = ASSETS.items.find(x => x.id === id);
+    const n = a ? pvFlaechenZumAsset(a) : 0;
+    if (n && !confirm(`„${a.name}“ löschen?\n\nDie ${n} Belegungsfläche(n) auf dem Dach werden mit gelöscht.`)) return false;
+  }
   if (!_transactionActive && typeof window !== 'undefined' && typeof window.runPlanningTransaction === 'function') {
-    return window.runPlanningTransaction('Asset löschen', () => deleteAsset(id, true));
+    return window.runPlanningTransaction('Asset löschen', () => deleteAsset(id, true, opts));
   }
   const i = ASSETS.items.findIndex(a => a.id === id);
   if (i < 0) return false;
@@ -252,7 +265,22 @@ export function deleteAsset(id, _transactionActive = false) {
     }
   }
   if (ASSETS.selectedId === id) ASSETS.selectedId = null;
+  if (opts.nutzer && a.type === 'PV' && a.buildingId != null && typeof window !== 'undefined'
+      && !ASSETS.items.some(x => x.type === 'PV' && x.buildingId === a.buildingId)) {
+    window.pvBelegungEntfernen?.([a.buildingId]);
+  }
   return true;
+}
+
+/**
+ * Belegungsflächen, die mit diesem Asset verschwinden würden: nur beim letzten
+ * Dach-PV-Asset eines Gebäudes, sonst 0.
+ */
+export function pvFlaechenZumAsset(a) {
+  if (!a || a.type !== 'PV' || a.buildingId == null || typeof window === 'undefined') return 0;
+  if (ASSETS.items.some(x => x !== a && x.type === 'PV' && x.buildingId === a.buildingId)) return 0;
+  const g = (window.gebaeude || []).find(x => x.id === a.buildingId);
+  return (g?.pvFlaechen || []).filter(f => f.typ === 'belegung').length;
 }
 
 export function getAsset(id) {

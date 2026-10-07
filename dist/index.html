@@ -15311,7 +15311,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-07';
   if (d.indexOf('__') === 0) d = '';
-  var c = '7d8965e';
+  var c = 'ec13ab3';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -77640,7 +77640,7 @@ window._isSingleFileBuild = true;
     const assets = getAssetsForBuilding(buildingId);
     if (assets.length === 0) return;
     if (assets.length === 1) {
-      deleteAsset(assets[0].id);
+      deleteAsset(assets[0].id, false, { nutzer: true });
       redrawAllAssets();
       return;
     }
@@ -77669,7 +77669,7 @@ window._isSingleFileBuild = true;
         row.addEventListener('mouseenter', () => row.style.background = 'rgba(239,83,80,0.12)');
         row.addEventListener('mouseleave', () => row.style.background = '');
         row.addEventListener('click', () => {
-          deleteAsset(row.dataset.id);
+          deleteAsset(row.dataset.id, false, { nutzer: true });
           map.closePopup(popup);
           redrawAllAssets();
         });
@@ -77779,7 +77779,7 @@ window._isSingleFileBuild = true;
       sm.on('contextmenu', ev => {
         L.DomEvent.stopPropagation(ev);
         collapseAssetSpider();
-        deleteAsset(a.id);
+        deleteAsset(a.id, false, { nutzer: true });
         redrawAllAssets();
       });
     });
@@ -78056,7 +78056,7 @@ window._isSingleFileBuild = true;
     });
     m.on('contextmenu', e => {
       L.DomEvent.stopPropagation(e);
-      deleteAsset(asset.id);
+      deleteAsset(asset.id, false, { nutzer: true });
       redrawAllAssets();
     });
 
@@ -78089,18 +78089,9 @@ window._isSingleFileBuild = true;
         if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
       }
     });
-
-    m.on('contextmenu', e => {
-      L.DomEvent.stopPropagation(e);
-      // Strom-Knoten und angeschlossene Kabel mitentfernen
-      if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
-      else if (window.stromNodes) {
-        const idx = window.stromNodes.findIndex(n => n.id === asset.id);
-        if (idx >= 0) window.stromNodes.splice(idx, 1);
-      }
-      deleteAsset(asset.id);
-      redrawAllAssets();
-    });
+    // Rechtsklick-Löschen hängt schon oben am Marker; deleteAsset entfernt dabei
+    // auch Strom-Knoten und angeschlossene Kabel. Ein zweiter Handler hier hat
+    // früher die Kabel schon vor der Rückfrage gekappt.
 
     m.addTo(standaloneLayer);
     asset._marker = m;
@@ -81650,6 +81641,9 @@ window._isSingleFileBuild = true;
   function clearStromNetz() {
     if (typeof window.stopAnimStrom === 'function') window.stopAnimStrom();
     window.stromEdges.forEach(e => {
+      // Auch die dunkle Kontur entfernen — sonst bleibt nach jedem Variantenwechsel
+      // das Netz der vorigen Variante als schwarze Strichlinie auf der Karte stehen.
+      if (e.outlineLayer && map.hasLayer(e.outlineLayer)) map.removeLayer(e.outlineLayer);
       if (e.layer && map.hasLayer(e.layer)) map.removeLayer(e.layer);
       if (e.hitLayer && map.hasLayer(e.hitLayer)) map.removeLayer(e.hitLayer);
       if (e.arrowMarker && map.hasLayer(e.arrowMarker)) map.removeLayer(e.arrowMarker);
@@ -100021,6 +100015,92 @@ ${massTbl}
     napToggleMassnahme: napToggleMassnahme
   });
 
+  // ── lib/slp-kalender.js — Tagtypen-Kalender für die Standardlastprofile ──────
+  //
+  // Liefert für jeden Tag eines Jahres den Tagtyp, mit dem ein SLP-Tagesgang
+  // gewählt wird: 'WT' (Werktag), 'Fr' (Freitag), 'Sa', 'So'.
+  //
+  // Regeln (Stand 10/2026):
+  // • Wochentag aus dem Kalenderjahr (statt fest verdrahtetem Versatz).
+  // • Bundeseinheitliche Feiertage zählen wie Sonntag (BDEW-Konvention).
+  //   Landesfeiertage (Fronleichnam, Allerheiligen, …) sind bewusst nicht
+  //   enthalten — die Profile werden vor dem Laden eines Projekts aufgebaut.
+  // • 24.12. und 31.12. zählen wie Samstag (BDEW), sofern nicht ohnehin Sonntag.
+  // • Bundeswehr-Profile (bw=true): Weihnachtsdienstbefreiung 24.12.–31.12.
+  //   zählt wie Sonntag.
+  // • Der Freitag ist nur ein eigener Tagtyp, wenn das Profil einen Freitags-
+  //   gang besitzt (mitFreitag=true) — sonst gilt er als Werktag.
+
+  /** Ostersonntag (gregorianisch, Anonymer Algorithmus) als [Monat 1–12, Tag]. */
+  function ostersonntag(jahr) {
+    const a = jahr % 19, b = Math.floor(jahr / 100), c = jahr % 100;
+    const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4), k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const monat = Math.floor((h + l - 7 * m + 114) / 31);
+    const tag = ((h + l - 7 * m + 114) % 31) + 1;
+    return [monat, tag];
+  }
+
+  /** Tag des Jahres (0 = 1. Januar) für Monat 1–12 und Tag. */
+  function tagImJahr(jahr, monat, tag) {
+    return Math.round((Date.UTC(jahr, monat - 1, tag) - Date.UTC(jahr, 0, 1)) / 86400000);
+  }
+
+  /** Bundeseinheitliche gesetzliche Feiertage als Set von Tagen im Jahr (0-basiert). */
+  function bundesFeiertage(jahr) {
+    const [om, ot] = ostersonntag(jahr);
+    const ostern = tagImJahr(jahr, om, ot);
+    return new Set([
+      tagImJahr(jahr, 1, 1),     // Neujahr
+      ostern - 2,                // Karfreitag
+      ostern + 1,                // Ostermontag
+      tagImJahr(jahr, 5, 1),     // Tag der Arbeit
+      ostern + 39,               // Christi Himmelfahrt
+      ostern + 50,               // Pfingstmontag
+      tagImJahr(jahr, 10, 3),    // Tag der Deutschen Einheit
+      tagImJahr(jahr, 12, 25),   // 1. Weihnachtstag
+      tagImJahr(jahr, 12, 26),   // 2. Weihnachtstag
+    ]);
+  }
+
+  /** Wochentag 0 = Montag … 6 = Sonntag. */
+  function wochentag(jahr, doy) {
+    return (new Date(Date.UTC(jahr, 0, 1 + doy)).getUTCDay() + 6) % 7;
+  }
+
+  const _cache$1 = new Map();
+
+  /**
+   * Tagtypen für 365 Tage eines Jahres.
+   * @param {number} jahr
+   * @param {{bw?:boolean, mitFreitag?:boolean}} [opt]
+   * @returns {string[]} 'WT' | 'Fr' | 'Sa' | 'So' je Tag
+   */
+  function slpTagtypen(jahr, opt = {}) {
+    const bw = !!opt.bw, mitFr = !!opt.mitFreitag;
+    const key = `${jahr}|${bw ? 1 : 0}|${mitFr ? 1 : 0}`;
+    if (_cache$1.has(key)) return _cache$1.get(key);
+    const feiertage = bundesFeiertage(jahr);
+    const heiligabend = tagImJahr(jahr, 12, 24), silvester = tagImJahr(jahr, 12, 31);
+    const out = new Array(365);
+    for (let doy = 0; doy < 365; doy++) {
+      const wd = wochentag(jahr, doy);
+      let dt = wd === 6 ? 'So' : wd === 5 ? 'Sa' : (wd === 4 && mitFr) ? 'Fr' : 'WT';
+      if (feiertage.has(doy)) dt = 'So';
+      else if (doy >= heiligabend && doy <= silvester) {
+        if (bw) dt = 'So';
+        else if ((doy === heiligabend || doy === silvester) && dt !== 'So') dt = 'Sa';
+      }
+      out[doy] = dt;
+    }
+    _cache$1.set(key, out);
+    return out;
+  }
+
   // ── 13i-slp-editor.js — BDEW/VDEW Standard Load Profile Editor  v2 ──────────
   // • BDEW-Tabellendaten H0/G0–G6/L0–L2 (Relativfaktoren, Stundenwerte)
   // • Interaktives Drag-Editing direkt im SVG-Chart
@@ -100028,6 +100108,10 @@ ${massTbl}
   // • Eigene Vorlagen in localStorage persistieren
   // Source: VDEW "Repräsentative Lastprofile" 1999/2000, BDEW 2006
 
+
+  // Bezugsjahr der 8760-h-Achse (Wochentage, Feiertage). 2026 ist das Jahr,
+  // auf das die übrigen Zeitreihen des Tools ausgerichtet sind.
+  const SLP_BEZUGSJAHR = 2026;
 
   // ── Profil-Metadaten ─────────────────────────────────────────────────────────
   const SLP_INFO = {
@@ -100050,6 +100134,7 @@ ${massTbl}
 
   // ── BDEW-Tageslastgangformen (24h, Relativfaktoren bezogen auf Jahresmittel) ─
   // BASE[Typ][Tagtyp] = [h0..h23]  ·  Saison-Skalierung über SEASON_SCALE
+  // Tagtypen WT/Sa/So; hat ein Profil zusätzlich 'Fr', gilt WT nur Mo–Do.
   const BASE = {
     H0: {
       WT: [0.46,0.42,0.38,0.36,0.37,0.46,0.63,0.93,1.15,1.07,0.94,0.89,0.92,0.90,0.88,0.93,1.07,1.35,1.54,1.53,1.43,1.18,0.85,0.60],
@@ -100106,30 +100191,48 @@ ${massTbl}
       Sa: [0.74,0.72,0.71,0.72,0.76,0.89,1.04,1.14,1.17,1.12,1.07,1.04,1.01,1.01,1.04,1.07,1.09,1.07,1.01,0.95,0.89,0.84,0.79,0.76],
       So: [0.74,0.72,0.71,0.72,0.76,0.89,1.04,1.14,1.17,1.12,1.07,1.04,1.01,1.01,1.04,1.07,1.09,1.07,1.01,0.95,0.89,0.84,0.79,0.76],
     },
-    // ── Bundeswehr-spezifische Profile ──────────────────────────────────────────
+    // ── Bundeswehr-spezifische Profile (überarbeitet 10/2026) ────────────────────
+    // WT = Montag–Donnerstag. Eigener Freitagsgang: Dienstschluss gegen Mittag,
+    // danach Heimfahrt der Wochenendpendler. Samstag/Sonntag ohne Dienstbetrieb;
+    // Feiertage und die Weihnachtsdienstbefreiung (24.–31.12.) zählen wie Sonntag.
+    // Die Formen sind Erfahrungswerte, nicht aus Messungen abgeleitet — mit
+    // gemessenen Liegenschafts-Lastgängen (15-min-CSV-Import) überprüfen.
     BW0: {
-      // Allgemeine Verwaltung / Mischnutzung: früher Dienstbeginn (5–6 Uhr), Bürobetrieb 7–16 Uhr
-      WT: [0.34,0.32,0.31,0.30,0.38,0.68,1.05,1.35,1.52,1.58,1.58,1.50,1.38,1.50,1.56,1.52,1.28,0.90,0.58,0.45,0.38,0.35,0.34,0.34],
-      Sa: [0.34,0.32,0.31,0.30,0.37,0.62,0.92,1.18,1.35,1.42,1.42,1.35,1.25,1.18,1.05,0.88,0.70,0.52,0.42,0.37,0.35,0.34,0.33,0.33],
-      So: [0.33,0.31,0.30,0.30,0.32,0.46,0.65,0.83,0.98,1.06,1.09,1.06,1.01,0.99,0.96,0.90,0.78,0.66,0.55,0.46,0.42,0.39,0.37,0.35],
+      // Liegenschaft gemischt (Stab/Verwaltung, Unterkunft, Technik, Küche, Wache):
+      // hohe Grundlast rund um die Uhr (Wache, Zaun-/Sicherheitsbeleuchtung, IT,
+      // Kühlung, Lüftung), Dienstbetrieb 7–16 Uhr, abends Unterkunftsanteil.
+      WT: [0.60,0.59,0.58,0.58,0.60,0.70,0.94,1.26,1.46,1.52,1.52,1.50,1.40,1.46,1.48,1.40,1.18,0.98,0.90,0.84,0.78,0.72,0.66,0.62],
+      Fr: [0.60,0.59,0.58,0.58,0.60,0.70,0.94,1.26,1.44,1.48,1.46,1.40,1.26,1.04,0.88,0.78,0.71,0.67,0.65,0.63,0.62,0.61,0.60,0.59],
+      Sa: [0.58,0.57,0.57,0.56,0.56,0.57,0.59,0.62,0.65,0.67,0.68,0.69,0.68,0.66,0.65,0.64,0.64,0.65,0.66,0.65,0.63,0.61,0.59,0.58],
+      So: [0.58,0.57,0.56,0.56,0.56,0.57,0.58,0.61,0.63,0.65,0.66,0.66,0.66,0.65,0.64,0.64,0.66,0.70,0.76,0.80,0.80,0.75,0.68,0.62],
     },
     BW1: {
-      // Unterkunft / Kaserne: Wecken 5 Uhr, Mittagstief (Ausbildung), Abendspitze 17–22 Uhr
-      WT: [0.50,0.46,0.42,0.42,0.58,1.18,1.62,1.42,0.92,0.70,0.68,0.76,0.90,0.72,0.68,0.82,1.18,1.58,1.68,1.60,1.36,1.02,0.76,0.58],
-      Sa: [0.54,0.50,0.46,0.46,0.55,0.95,1.28,1.40,1.42,1.36,1.30,1.28,1.32,1.30,1.26,1.24,1.28,1.40,1.42,1.30,1.08,0.86,0.68,0.58],
-      So: [0.58,0.52,0.48,0.47,0.53,0.85,1.15,1.32,1.42,1.45,1.44,1.41,1.38,1.36,1.32,1.32,1.36,1.42,1.40,1.25,1.02,0.83,0.70,0.62],
+      // Unterkunft / Kaserne: Wecken 5–6 Uhr, tagsüber leer (Dienst), kleine
+      // Mittagsspitze, Abendspitze 17–22 Uhr. Freitag Heimfahrt ab Mittag,
+      // Wochenende weitgehend leer, Sonntagabend Rückkehr der Pendler.
+      WT: [0.48,0.45,0.43,0.43,0.50,0.98,1.55,1.20,0.70,0.60,0.58,0.62,0.78,0.64,0.58,0.62,0.95,1.45,1.70,1.72,1.66,1.42,1.00,0.66],
+      Fr: [0.50,0.46,0.44,0.43,0.50,0.98,1.52,1.18,0.70,0.60,0.58,0.64,0.74,0.58,0.50,0.48,0.50,0.56,0.62,0.64,0.62,0.56,0.48,0.44],
+      Sa: [0.42,0.40,0.39,0.39,0.39,0.40,0.42,0.45,0.48,0.50,0.51,0.51,0.51,0.50,0.49,0.49,0.51,0.56,0.61,0.63,0.61,0.56,0.49,0.45],
+      So: [0.43,0.41,0.40,0.39,0.39,0.40,0.42,0.44,0.47,0.49,0.50,0.50,0.50,0.49,0.49,0.50,0.56,0.68,0.88,1.10,1.25,1.20,0.92,0.62],
     },
     BW2: {
-      // Werkstatt / Instandhaltung: Frühschicht 6–15 Uhr, Samstag Bereitschaftsbetrieb
-      WT: [0.22,0.22,0.22,0.22,0.28,0.72,1.38,1.75,1.78,1.72,1.68,1.55,1.30,1.55,1.70,1.55,1.08,0.52,0.30,0.25,0.22,0.22,0.22,0.22],
-      Sa: [0.22,0.22,0.22,0.22,0.24,0.52,1.08,1.50,1.62,1.60,1.54,1.38,1.10,0.82,0.48,0.30,0.24,0.22,0.22,0.22,0.22,0.22,0.22,0.22],
-      So: [0.22,0.22,0.22,0.22,0.22,0.24,0.27,0.31,0.36,0.36,0.34,0.31,0.28,0.26,0.24,0.22,0.22,0.22,0.22,0.22,0.22,0.22,0.22,0.22],
+      // Werkstatt / Instandhaltung: Arbeitsbeginn 6:30, Mittagspause, Ende ~16 Uhr,
+      // Freitag Ende gegen Mittag; Grundlast durch Batterie-Erhaltungsladung,
+      // Kompressor-Bereitschaft, Lüftung, Sicherheitsbeleuchtung. Kein Wochenendbetrieb.
+      WT: [0.28,0.28,0.28,0.28,0.30,0.48,1.10,1.62,1.75,1.72,1.66,1.55,1.18,1.52,1.62,1.45,1.02,0.55,0.38,0.33,0.31,0.30,0.29,0.28],
+      Fr: [0.28,0.28,0.28,0.28,0.30,0.48,1.10,1.60,1.72,1.68,1.58,1.28,0.80,0.52,0.40,0.35,0.32,0.30,0.29,0.29,0.28,0.28,0.28,0.28],
+      Sa: [0.28,0.28,0.28,0.28,0.28,0.28,0.29,0.30,0.32,0.33,0.33,0.33,0.32,0.31,0.30,0.29,0.29,0.28,0.28,0.28,0.28,0.28,0.28,0.28],
+      So: [0.28,0.28,0.28,0.28,0.28,0.28,0.28,0.28,0.29,0.29,0.29,0.29,0.29,0.29,0.28,0.28,0.28,0.28,0.28,0.28,0.28,0.28,0.28,0.28],
     },
     BW3: {
-      // Kantine / Truppenverpflegung: Frühstück 5–7 Uhr, Mittag 11–13 Uhr, Abendessen 17–18 Uhr
-      WT: [0.22,0.22,0.22,0.26,0.58,1.32,1.70,1.46,0.88,0.86,0.92,1.62,1.75,1.28,0.72,0.72,1.22,1.45,1.05,0.52,0.34,0.27,0.24,0.22],
-      Sa: [0.22,0.22,0.22,0.24,0.48,1.08,1.50,1.40,1.00,0.86,0.86,1.50,1.62,1.26,0.72,0.72,1.15,1.35,0.92,0.50,0.32,0.27,0.24,0.22],
-      So: [0.22,0.22,0.22,0.23,0.40,0.86,1.28,1.36,1.02,0.83,0.86,1.43,1.57,1.22,0.72,0.71,1.10,1.28,0.86,0.50,0.32,0.27,0.24,0.22],
+      // Kantine / Truppenküche: Grundlast Kühl-/Tiefkühlzellen rund um die Uhr.
+      // Höchstlast beim Kochen VOR der Ausgabe (Mittag 9–11:30 Uhr), Spülstraße
+      // nach den Mahlzeiten, Abendessen 17–18:30 Uhr. Freitag ohne Abendessen,
+      // Wochenende reduzierte Verpflegung (Wache, Bereitschaft).
+      WT: [0.35,0.34,0.34,0.36,0.62,1.20,1.42,1.22,1.05,1.40,1.72,1.78,1.52,1.38,1.05,0.92,1.18,1.30,1.10,0.78,0.48,0.40,0.37,0.36],
+      Fr: [0.35,0.34,0.34,0.36,0.62,1.18,1.38,1.18,1.02,1.32,1.62,1.65,1.38,1.20,0.82,0.58,0.45,0.42,0.40,0.38,0.37,0.36,0.35,0.35],
+      Sa: [0.35,0.34,0.34,0.35,0.38,0.48,0.56,0.55,0.50,0.56,0.66,0.70,0.62,0.52,0.44,0.42,0.50,0.56,0.50,0.42,0.38,0.37,0.36,0.35],
+      So: [0.35,0.34,0.34,0.35,0.38,0.48,0.56,0.55,0.50,0.56,0.66,0.70,0.62,0.52,0.44,0.42,0.50,0.56,0.50,0.42,0.38,0.37,0.36,0.35],
     },
   };
 
@@ -100145,10 +100248,10 @@ ${massTbl}
     L0:  { W:1.15, U:1.00, S:0.88 },
     L1:  { W:1.20, U:1.00, S:0.82 },
     L2:  { W:1.10, U:1.00, S:0.87 },
-    BW0: { W:1.12, U:1.00, S:0.92 },
-    BW1: { W:1.22, U:1.00, S:0.83 },
-    BW2: { W:1.06, U:1.00, S:0.96 },
-    BW3: { W:1.10, U:1.00, S:0.93 },
+    BW0: { W:1.10, U:1.00, S:0.93 },
+    BW1: { W:1.20, U:1.00, S:0.82 },   // Beleuchtung; Sommer zusätzlich Urlaubszeit
+    BW2: { W:1.10, U:1.00, S:0.94 },   // Beleuchtung, Torluftschleier, Motorvorwärmung
+    BW3: { W:1.04, U:1.00, S:0.97 },   // Kühlung im Sommer gleicht Urlaubszeit teils aus
   };
 
   // ── Hilfsfunktionen ──────────────────────────────────────────────────────────
@@ -100157,10 +100260,14 @@ ${massTbl}
     if (doy >= 134 && doy <= 256) return 'S';  // 15. Mai – 14. Sep
     return 'U';
   }
-  function getDaytype(dow) {
-    if (dow === 5) return 'Sa';
-    if (dow === 6) return 'So';
-    return 'WT';
+  // Bundeswehr-Profile: Weihnachtsdienstbefreiung zählt wie Sonntag (lib/slp-kalender.js)
+  const _isBw = type => /^BW\d/.test(type);
+  function _hasFr(type) {
+    if (_custom[type]) return !!_custom[type].base?.W?.Fr;
+    return !!BASE[type]?.Fr;
+  }
+  function _tagtypen(type) {
+    return slpTagtypen(SLP_BEZUGSJAHR, { bw: _isBw(type), mitFreitag: _hasFr(type) });
   }
 
   // ── Zustandsspeicher ─────────────────────────────────────────────────────────
@@ -100177,6 +100284,7 @@ ${massTbl}
 
   // ── 24h-Werte für Typ/Saison/Tagtyp (berücksichtigt Edits + Custom) ──────────
   function _getVals(type, s, dt) {
+    if (dt === 'Fr' && !_hasFr(type)) dt = 'WT';   // ohne eigenen Freitagsgang
     if (_custom[type]) return _custom[type].base[s]?.[dt] ?? Array(24).fill(1);
     if (_edited[type]?.[s]?.[dt]) return _edited[type][s][dt];
     const bd = BASE[type]; const sc = SEASON_SCALE[type];
@@ -100187,9 +100295,10 @@ ${massTbl}
   // ── 8760h-Profil aufbauen (normiert, Summe = 1.0) ───────────────────────────
   function buildSlpProfile8760(type) {
     const result = new Float32Array(8760);
+    const tage = _tagtypen(type);
     for (let h = 0; h < 8760; h++) {
       const doy = Math.floor(h / 24);
-      result[h] = _getVals(type, getSeason(doy), getDaytype((doy + 3) % 7))[h % 24];
+      result[h] = _getVals(type, getSeason(doy), tage[doy])[h % 24];
     }
     let sum = 0;
     for (let i = 0; i < 8760; i++) sum += result[i];
@@ -100228,8 +100337,10 @@ ${massTbl}
 
   // ── Panel komplett rendern ────────────────────────────────────────────────────
   function _render$3() {
+    if (_st$1.daytype === 'Fr' && !_hasFr(_st$1.type)) _st$1.daytype = 'WT';
     const { type, season, daytype, editMode } = _st$1;
     const isCustom = !!_custom[type];
+    const hasFr = _hasFr(type);
     const isEdited = !isCustom && !!_edited[type]?.[season]?.[daytype];
 
     const stdOpts = Object.keys(SLP_INFO).map(t =>
@@ -100271,7 +100382,7 @@ ${massTbl}
     <div style="display:flex;gap:4px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
       ${sb('W','Winter')}${sb('U','Übergang')}${sb('S','Sommer')}
       <span style="flex:1;min-width:8px;"></span>
-      ${db('WT','Werktag')}${db('Sa','Samstag')}${db('So','Sonntag')}
+      ${db('WT', hasFr ? 'Mo–Do' : 'Werktag')}${hasFr ? db('Fr','Freitag') : ''}${db('Sa','Samstag')}${db('So','So / Feiertag')}
     </div>
 
     <!-- Chart -->
@@ -100379,7 +100490,7 @@ ${massTbl}
     const base = {};
     for (const s of ['W','U','S']) {
       base[s] = {};
-      for (const dt of ['WT','Sa','So']) base[s][dt] = _getVals(_st$1.type, s, dt).slice();
+      for (const dt of _hasFr(_st$1.type) ? ['WT','Fr','Sa','So'] : ['WT','Sa','So']) base[s][dt] = _getVals(_st$1.type, s, dt).slice();
     }
     _custom[name] = { base, desc: `Erstellt aus: ${_st$1.type}` };
     _saveCustom();
@@ -100400,11 +100511,15 @@ ${massTbl}
       alert(`Zu wenige Werte (${values.length}). Erwartet: 35.040 × 15-min.`); return;
     }
 
-    // Aggregation: Summen + Zähler pro (Saison, Tagtyp, Stunde)
+    // Aggregation: Summen + Zähler pro (Saison, Tagtyp, Stunde). Freitag wird
+    // getrennt erfasst (gemessene Liegenschaften haben oft einen kurzen Freitag),
+    // Feiertage zählen wie Sonntag — gleicher Kalender wie beim Profilaufbau.
+    const DTS = ['WT','Fr','Sa','So'];
+    const tage = slpTagtypen(SLP_BEZUGSJAHR, { mitFreitag: true });
     const sums = {}, cnts = {};
     for (const s of ['W','U','S']) {
       sums[s] = {}; cnts[s] = {};
-      for (const dt of ['WT','Sa','So']) {
+      for (const dt of DTS) {
         sums[s][dt] = new Array(24).fill(0);
         cnts[s][dt] = new Array(24).fill(0);
       }
@@ -100414,7 +100529,7 @@ ${massTbl}
       const doy = Math.floor(q / 96);
       const hod = Math.floor((q % 96) / 4);
       const s   = getSeason(doy);
-      const dt  = getDaytype((doy + 3) % 7);
+      const dt  = tage[doy] ?? 'WT';
       sums[s][dt][hod] += values[q];
       cnts[s][dt][hod]++;
     }
@@ -100424,16 +100539,18 @@ ${massTbl}
     const avgs = {};
     for (const s of ['W','U','S']) {
       avgs[s] = {};
-      for (const dt of ['WT','Sa','So']) {
+      for (const dt of DTS) {
         avgs[s][dt] = sums[s][dt].map((v, h) => cnts[s][dt][h] > 0 ? v / cnts[s][dt][h] : 0);
-        grandSum   += avgs[s][dt].reduce((a, b) => a + b, 0);
+        // Kurze Messreihe ohne Freitag in dieser Saison → Werktagsgang übernehmen
+        if (dt === 'Fr' && cnts[s].Fr.every(c => c === 0)) avgs[s].Fr = avgs[s].WT.slice();
+        grandSum  += avgs[s][dt].reduce((a, b) => a + b, 0);
         grandCount += 24;
       }
     }
     const mean = grandCount > 0 ? grandSum / grandCount : 1;
     if (mean > 0) {
       for (const s of ['W','U','S'])
-        for (const dt of ['WT','Sa','So'])
+        for (const dt of DTS)
           avgs[s][dt] = avgs[s][dt].map(v => v / mean);
     }
 
@@ -100584,6 +100701,7 @@ ${massTbl}
 
   var slpEditor = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    SLP_BEZUGSJAHR: SLP_BEZUGSJAHR,
     SLP_INFO: SLP_INFO,
     buildSlpProfile8760: buildSlpProfile8760,
     closeSlpEditor: closeSlpEditor,
@@ -135842,6 +135960,11 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
           data-input="updateField(${g.id},'baujahr',this.value)"/>
       </div>
       <div class="inp-group">
+        <div class="inp-label" title="Wie „Planung → Abriss planen“: ab diesem Jahr gilt das Gebäude samt seinen Elektro-Assets als abgerissen">Abrissjahr</div>
+        <input class="inp-field" type="number" min="1800" max="2100" placeholder="—" value="${escVal(g.abrissjahr)}"
+          data-change="setAbrissjahr(${g.id},this.value)"/>
+      </div>
+      <div class="inp-group">
         <div class="inp-label">Stockwerke</div>
         <input class="inp-field" type="number" placeholder="1" value="${g.stockwerke || 1}"
           data-input="updateField(${g.id},'stockwerke',this.value)"/>
@@ -150456,6 +150579,7 @@ out body;>;out skel qt;`;
       const uN = window.stromNodes.find(n => n.id === e.u);
       const vN = window.stromNodes.find(n => n.id === e.v);
       if ((uN && uN.type === 'geb' && uN.gebId === id) || (vN && vN.type === 'geb' && vN.gebId === id)) {
+        if(e.outlineLayer) map.removeLayer(e.outlineLayer);
         if(e.layer) map.removeLayer(e.layer);
         if(e.hitLayer) map.removeLayer(e.hitLayer);
         if(e.arrowMarker) map.removeLayer(e.arrowMarker);
@@ -150495,6 +150619,7 @@ out body;>;out skel qt;`;
       const uN = window.stromNodes.find(n => n.id === e.u);
       const vN = window.stromNodes.find(n => n.id === e.v);
       if ((uN && uN.type === 'geb' && osmIds.has(uN.gebId)) || (vN && vN.type === 'geb' && osmIds.has(vN.gebId))) {
+        if(e.outlineLayer) map.removeLayer(e.outlineLayer);
         if(e.layer) map.removeLayer(e.layer);
         if(e.hitLayer) map.removeLayer(e.hitLayer);
         if(e.arrowMarker) map.removeLayer(e.arrowMarker);
@@ -151112,6 +151237,15 @@ out body;>;out skel qt;`;
     renderList(); updateViz(); updateTotals(); recalcNetz();
   }
 
+  // Abrissjahr direkt aus dem Eigenschaften-Feld (neben dem Baujahr) — wirkt wie
+  // „Planung → Abriss planen“; leeres Feld nimmt den Abriss wieder heraus.
+  function setAbrissjahr(id, val) {
+    const g = window.gebaeude.find(x => x.id === id);
+    if (!g) return;
+    updateField(id, 'abrissjahr', val, { defer: true });
+    renderList(); updateViz(); updateTotals(); recalcNetz();
+  }
+
   function clearPlan(id, type, idx) {
     const g = window.gebaeude.find(x => x.id === id);
     if(!g) return;
@@ -151181,6 +151315,7 @@ out body;>;out skel qt;`;
     renameGebaeude: renameGebaeude,
     rgbToHex: rgbToHex,
     savePlan: savePlan,
+    setAbrissjahr: setAbrissjahr,
     setGebaeudeSchicht: setGebaeudeSchicht,
     setGebaeudenummer: setGebaeudenummer,
     setGlobalYear: setGlobalYear,
@@ -153896,9 +154031,22 @@ out body;>;out skel qt;`;
     return asset;
   }
 
-  function deleteAsset(id, _transactionActive = false) {
+  /**
+   * @param {object} [opts]
+   * @param {boolean} [opts.nutzer] vom Nutzer gelöscht (Inspektor, Kontextmenü,
+   *   Mehrfachauswahl): fachliche Folgen mitnehmen — ein Dach-PV-Asset nimmt die
+   *   Belegungsflächen seines Gebäudes mit. Interne Abräumer (Variantenwechsel,
+   *   Netz-Neuaufbau, Projekt laden) lassen das weg, sonst verschwänden dabei alle Flächen.
+   * @param {boolean} [opts.rueckfrage] false = der Aufrufer hat schon gefragt
+   */
+  function deleteAsset(id, _transactionActive = false, opts = {}) {
+    if (opts.nutzer && opts.rueckfrage !== false) {
+      const a = ASSETS.items.find(x => x.id === id);
+      const n = a ? pvFlaechenZumAsset(a) : 0;
+      if (n && !confirm(`„${a.name}“ löschen?\n\nDie ${n} Belegungsfläche(n) auf dem Dach werden mit gelöscht.`)) return false;
+    }
     if (!_transactionActive && typeof window !== 'undefined' && typeof window.runPlanningTransaction === 'function') {
-      return window.runPlanningTransaction('Asset löschen', () => deleteAsset(id, true));
+      return window.runPlanningTransaction('Asset löschen', () => deleteAsset(id, true, opts));
     }
     const i = ASSETS.items.findIndex(a => a.id === id);
     if (i < 0) return false;
@@ -153922,7 +154070,22 @@ out body;>;out skel qt;`;
       }
     }
     if (ASSETS.selectedId === id) ASSETS.selectedId = null;
+    if (opts.nutzer && a.type === 'PV' && a.buildingId != null && typeof window !== 'undefined'
+        && !ASSETS.items.some(x => x.type === 'PV' && x.buildingId === a.buildingId)) {
+      window.pvBelegungEntfernen?.([a.buildingId]);
+    }
     return true;
+  }
+
+  /**
+   * Belegungsflächen, die mit diesem Asset verschwinden würden: nur beim letzten
+   * Dach-PV-Asset eines Gebäudes, sonst 0.
+   */
+  function pvFlaechenZumAsset(a) {
+    if (!a || a.type !== 'PV' || a.buildingId == null || typeof window === 'undefined') return 0;
+    if (ASSETS.items.some(x => x !== a && x.type === 'PV' && x.buildingId === a.buildingId)) return 0;
+    const g = (window.gebaeude || []).find(x => x.id === a.buildingId);
+    return (g?.pvFlaechen || []).filter(f => f.typ === 'belegung').length;
   }
 
   function getAsset(id) {
@@ -154031,7 +154194,8 @@ out body;>;out skel qt;`;
     getAssetsForBuilding: getAssetsForBuilding,
     getCanonicalAssetEdges: getCanonicalAssetEdges,
     getGebVlTemp: getGebVlTemp,
-    listAssets: listAssets
+    listAssets: listAssets,
+    pvFlaechenZumAsset: pvFlaechenZumAsset
   });
 
   // @ts-check
@@ -189610,9 +189774,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       btn.addEventListener('click', () => {
         const asset = (ASSETS.items || []).find(a => a.id === btn.dataset.asid);
         if (!asset) return;
-        if (!confirm(`Anlage/Komponente „${asset.name}“ wirklich löschen?`)) return;
+        const nFl = pvFlaechenZumAsset(asset);
+        if (!confirm(`Anlage/Komponente „${asset.name}“ wirklich löschen?`
+          + (nFl ? `\n\nDie ${nFl} Belegungsfläche(n) auf dem Dach werden mit gelöscht.` : ''))) return;
         if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
-        deleteAsset(asset.id);
+        deleteAsset(asset.id, false, { nutzer: true, rueckfrage: false });
         redrawAllAssets();
         ASSETS.selectedId = null;
         renderAssetSidebar();
@@ -189712,8 +189878,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
 
     panel.querySelectorAll('[data-action="delete"]').forEach(b =>
       b.addEventListener('click', () => {
-        if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
-        deleteAsset(asset.id);
+        // deleteAsset kappt Knoten und Kabel selbst — erst nach seiner Rückfrage
+        if (deleteAsset(asset.id, false, { nutzer: true }) === false) return;
         redrawAllAssets();
         closeAssetInspector();
       }));
@@ -207516,12 +207682,14 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     if (n === 0) return;
     const namen = assets.slice(0, 8).map(a => '• ' + (a.name || a.type)).join('\n')
       + (n > 8 ? `\n… und ${n - 8} weitere` : '');
-    if (!confirm(`${n} ${n === 1 ? 'Anlage' : 'Anlagen'} wirklich löschen?\n\n${namen}\n\nAngeschlossene Kabel werden mit entfernt.`)) return;
+    const nFl = assets.reduce((s, a) => s + pvFlaechenZumAsset(a), 0);
+    if (!confirm(`${n} ${n === 1 ? 'Anlage' : 'Anlagen'} wirklich löschen?\n\n${namen}\n\nAngeschlossene Kabel werden mit entfernt.`
+      + (nFl ? `\nDie ${nFl} Belegungsfläche(n) auf den Dächern der PV-Anlagen ebenfalls.` : ''))) return;
 
     const inspektorBetroffen = assets.some(a => a.id === ASSETS.selectedId);
     const ids = assets.map(a => a.id);
     const committed = _selectionChange(`${n} Assets löschen`, () => {
-      for (const id of ids) deleteAsset(id, true);
+      for (const id of ids) deleteAsset(id, true, { nutzer: true, rueckfrage: false });
     });
     if (committed === null) return;
 
@@ -214685,10 +214853,38 @@ ${teile.join('\n')}
     if (_verlauf.length > 50) _verlauf.shift();
   }
 
+  /**
+   * Einen Schritt merken, der als Planungstransaktion lief (36 „Belegungen
+   * entfernen"): Strg+Z nimmt ihn über die Transaktionshistorie zurück — die
+   * stellt Flächen, PV-Assets und Kabel gemeinsam wieder her.
+   */
+  function pvmPlanungsSchrittMerken() {
+    const at = window._lastPlanningTransaction?.at;
+    if (at) _verlaufMerken({ planung: at });
+  }
+
+  function _planungsSchrittZurueck(at) {
+    const letzte = window.getPlanningTransactionHistory?.().at(-1);
+    if (letzte?.at !== at) {
+      window.showHint?.('Zwischendurch wurde anderes geändert — das Entfernen lässt sich nicht mehr zurücknehmen.', 5000);
+      return;
+    }
+    try { window.undoLastPlanningTransaction?.(); }
+    catch (err) { console.error(err); window.showHint?.('Zurücknehmen fehlgeschlagen: ' + err.message, 6000); return; }
+    if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
+    if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+    window.calcStromPanel?.();
+    window.renderList?.();
+    window.showHint?.('↶ Entfernte Belegungen wiederhergestellt.', 3000);
+    pvModusMarkiereKarte();
+    pvModusRender();
+  }
+
   /** Letzten Schritt zurücknehmen (Strg+Z) — auch einen ganzen Grundriss-Stapel. */
   function pvmUndo() {
     const schritt = _verlauf.pop();
     if (!schritt) { window.showHint?.('Nichts mehr zurückzunehmen.', 3000); return; }
+    if (!Array.isArray(schritt)) { _planungsSchrittZurueck(schritt.planung); return; }
     for (const { gId, flId, assetVorher } of schritt) {
       const g = _geb$2(gId);
       if (!g) continue;
@@ -215383,6 +215579,7 @@ ${teile.join('\n')}
     pvmNaechstesOffenes: pvmNaechstesOffenes,
     pvmNordAussparen: pvmNordAussparen,
     pvmNordNachziehen: pvmNordNachziehen,
+    pvmPlanungsSchrittMerken: pvmPlanungsSchrittMerken,
     pvmProbe: pvmProbe,
     pvmSetForm: pvmSetForm,
     pvmStapelBelegen: pvmStapelBelegen,
@@ -226453,7 +226650,7 @@ ${teile.join('\n')}
     if (!_erg.best) return `<div class="ah2-karte" style="border-left:3px solid #ffb74d;font-size:11px;line-height:1.5;">
     <b>Ziel nicht erreichbar.</b> ${escHtml(_erg.grund || '')}
     <div style="font-size:10px;color:var(--muted);margin-top:4px;">Hebel: Ziel senken, zulässige Stunden erhöhen, BHKW zulassen, Tank-Obergrenze anheben, mehr PV-Fläche (Dachpotenzial / Freifläche) oder Wind einbeziehen.</div></div>`;
-    return `<div id="ah2-kopf">${_kopfHtml()}</div>
+    return `<div id="ah2-kopf">${_kopfHtml$1()}</div>
   ${_schieberHtml()}
   <div id="ah2-tabs" style="display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid var(--border);margin-bottom:0;">${_tabsLeisteHtml()}</div>
   <div id="ah2-inhalt" class="ah2-karte" style="border-top:none;border-radius:0 0 7px 7px;padding:14px 16px;">${_tabInhaltHtml()}</div>`;
@@ -226515,7 +226712,7 @@ ${teile.join('\n')}
 
   // ── Kopf: Kernaussage + Kennzahlen ───────────────────────────────────────────
 
-  function _kopfHtml() {
+  function _kopfHtml$1() {
     const r = _erg.best, a = r.ausl, bil = r.bilanz, k = r.kosten, opt = _erg.opt;
     const kpi = (w, t, farbe = '') => `<div class="ah2-kpi"><div class="w" ${farbe ? `style="color:${farbe};"` : ''}>${w}</div><div class="t">${t}</div></div>`;
     const anlagen = [
@@ -226614,7 +226811,7 @@ ${teile.join('\n')}
   /** Nur Kopf, Reiterleiste und Reiterinhalt neu zeichnen — die Schieber bleiben beim Ziehen stehen */
   function _teilAktualisieren() {
     const k = document.getElementById('ah2-kopf'), t = document.getElementById('ah2-tabs'), i = document.getElementById('ah2-inhalt');
-    if (k) k.innerHTML = _kopfHtml();
+    if (k) k.innerHTML = _kopfHtml$1();
     if (t) t.innerHTML = _tabsLeisteHtml();
     if (i) i.innerHTML = _tabInhaltHtml();
     _heatmapZeichnen();
@@ -231654,8 +231851,16 @@ ${ssSteckbriefHtml(blatt)}
   //      Netzrechnung wie die Netzaufnahme (28 pvnaModell + Core pvnaFuellen),
   //      beste Erträge zuerst, jedes Dach nur GANZ oder gar nicht
   //      (Nutzerentscheidung 06.10.2026). Schon geplante PV hat Vorrang (Vorlast).
+  //      Gestuft: eine Gruppe (Neubauten · PV-Pflicht · Auswahl) wird immer voll
+  //      belegt und zählt als Vorlast, der Rest des Umfangs nur, soweit das Netz
+  //      es danach noch verträgt.
   //
   // Die Vorschau ändert nichts am Projekt; „Übernehmen" ist ein Strg+Z-Schritt.
+  //
+  // Daneben „Belegungen entfernen": dieselben Umfänge, alle Flächen der Dächer
+  // samt PV-Asset weg, als Planungstransaktion (Strg+Z im PV-Modus).
+  // pvBelegungEntfernen ist auch der Weg, auf dem ein gelöschtes Dach-PV-Asset
+  // seine Flächen mitnimmt (13a deleteAsset, opts.nutzer).
   // Nichts importiert dieses Modul — Panel und Karte rufen es über window.*
   // (pvabBlockHtml / pvabMarkiereKarte), damit 25 kein Rückimport braucht.
 
@@ -231665,6 +231870,8 @@ ${ssSteckbriefHtml(blatt)}
   const ROT   = '#ef5350';
   const GRAU  = '#9e9e9e';
   const GELB  = '#ffd54f';
+  const HELLGRUEN = '#c5e1a5';
+  const ORANGE = '#ffa726';
 
   const UMFAENGE = [
     ['alle',    'Alle Dächer'],
@@ -231675,8 +231882,16 @@ ${ssSteckbriefHtml(blatt)}
     ['trafo',   'Netzgebiet eines Trafos'],
   ];
 
+  /** Gruppen, die gestuft immer voll belegt werden. */
+  const VORRANG = [
+    ['neubau',  'Neubauten'],
+    ['pflicht', 'PV-Pflicht-Fälle'],
+    ['auswahl', 'Ausgewählte Gebäude'],
+  ];
+
   const _ab = {
-    offen: false,
+    /** @type {null | 'belegen' | 'entfernen'} offener Block */
+    modus: null,
     umfang: 'alle',
     trafoId: null,
     /** @type {any} L.LatLngBounds */
@@ -231685,7 +231900,8 @@ ${ssSteckbriefHtml(blatt)}
     /** ausgeschlossene Nutzungstyp-IDs ('' = ohne Typ) */
     ohneNutzung: new Set(),
     nutzungOffen: false,
-    menge: 'max',               // 'max' | 'netz'
+    menge: 'max',               // 'max' | 'netz' | 'gestuft'
+    vorrang: 'neubau',          // bei 'gestuft': diese Gruppe immer voll
     ohneNetzBelegen: false,
     /** @type {null | {zeilen:any[], sig:string, netz:any}} */
     vorschau: null,
@@ -231700,7 +231916,9 @@ ${ssSteckbriefHtml(blatt)}
   const _flaeche = g => parseFloat(g.flaeche) || polygonAreaM2(g.polygon) || 0;
   /** Vorgaben + Auswahl, mit denen eine Vorschau gerechnet wurde. */
   const _sig = () => JSON.stringify([window.pvModusVorgabe || null, _ab.umfang, _ab.trafoId, _ab.minM2,
-    [..._ab.ohneNutzung].sort(), _ab.menge, _ab.bereich ? _ab.bereich.toBBoxString() : null]);
+    [..._ab.ohneNutzung].sort(), _ab.menge, _ab.menge === 'gestuft' ? _ab.vorrang : null,
+    _ab.bereich ? _ab.bereich.toBBoxString() : null]);
+  const _vorrangLabel = (w, stich) => w === 'neubau' ? `Neubauten (nach ${stich})` : (VORRANG.find(v => v[0] === w)?.[1] || w);
 
   const _nordSektor = () => window.pvModusVorgabe?.nordSektor ?? 45;
 
@@ -231742,6 +231960,28 @@ ${ssSteckbriefHtml(blatt)}
       || (f.pflichtFall !== 'keine' && (f.neubau || f.dachsanierung))).map(f => f.id));
   }
 
+  /** Prüffunktion „gehört das Gebäude zum Umfang?" — gemeinsam für Belegen und Entfernen. */
+  function _umfangFilter(umfang, stich) {
+    if (umfang === 'neubau') return g => pvnaIstNeubau(g, stich);
+    if (umfang === 'pflicht') { const ids = _pflichtIds(); return g => ids.has(g.id); }
+    if (umfang === 'auswahl') return g => !!g.selected;
+    if (umfang === 'bereich') {
+      const b = _ab.bereich;
+      // Gebäude zählt, wenn seine Mitte im Rahmen liegt — angeschnittene Randgebäude nicht
+      return g => {
+        if (!b || !Array.isArray(g.polygon) || !g.polygon.length) return false;
+        let la = 0, ln = 0;
+        for (const p of g.polygon) { la += +p.lat; ln += +p.lng; }
+        return b.contains([la / g.polygon.length, ln / g.polygon.length]);
+      };
+    }
+    if (umfang === 'trafo') {
+      const zu = _ab.trafoId != null ? _trafoZuordnung() : null;
+      return g => !!zu && _gebKnoten(g.id, zu) === _ab.trafoId;
+    }
+    return () => true;
+  }
+
   /**
    * Kandidaten nach Umfang und Eignung. `vorNutzung` = alle, die nur noch am
    * Nutzungstyp scheitern könnten (für die Auswahlliste der Typen).
@@ -231750,23 +231990,7 @@ ${ssSteckbriefHtml(blatt)}
     const { stich, ziel } = pvnaJahre(pvnaEinstellungen());
     const jahr = Math.max(ziel, new Date().getFullYear());
     const raus = { belegt: 0, klein: 0, nutzung: 0, weg: 0 };
-    let umfangOk;
-    if (_ab.umfang === 'neubau') umfangOk = g => pvnaIstNeubau(g, stich);
-    else if (_ab.umfang === 'pflicht') { const ids = _pflichtIds(); umfangOk = g => ids.has(g.id); }
-    else if (_ab.umfang === 'auswahl') umfangOk = g => !!g.selected;
-    else if (_ab.umfang === 'bereich') {
-      const b = _ab.bereich;
-      // Gebäude zählt, wenn seine Mitte im Rahmen liegt — angeschnittene Randgebäude nicht
-      umfangOk = g => {
-        if (!b) return false;
-        let la = 0, ln = 0;
-        for (const p of g.polygon) { la += +p.lat; ln += +p.lng; }
-        return b.contains([la / g.polygon.length, ln / g.polygon.length]);
-      };
-    } else if (_ab.umfang === 'trafo') {
-      const zu = _ab.trafoId != null ? _trafoZuordnung() : null;
-      umfangOk = g => !!zu && _gebKnoten(g.id, zu) === _ab.trafoId;
-    } else umfangOk = () => true;
+    const umfangOk = _umfangFilter(_ab.umfang, stich);
 
     const vorNutzung = [], liste = [];
     for (const g of (window.gebaeude || [])) {
@@ -231790,18 +232014,20 @@ ${ssSteckbriefHtml(blatt)}
   const _naechsterFrame = () => new Promise(r => setTimeout(r, 30));
 
   async function pvabVorschau() {
-    const { liste } = _kandidaten();
+    const { liste, stich } = _kandidaten();
     if (!liste.length) { alert('Keine passenden Dächer — Umfang oder Mindestgröße anpassen.'); return; }
     window.showHint?.(`⏳ Probebelegung von ${liste.length} Dächern …`, 0);
     await _naechsterFrame();
     try {
+      const vorrangOk = _ab.menge === 'gestuft' ? _umfangFilter(_ab.vorrang, stich) : null;
       const zeilen = [];
       for (const g of liste) {
         const p = pvmProbe(g);
-        if (!p || !(p.kwp > 0)) zeilen.push({ g, kwp: 0, kwpKorr: 0, status: 'leer', grund: 'kein Modul passt' });
-        else zeilen.push({ g, kwp: p.kwp, kwpKorr: p.kwpKorr, module: p.module, status: 'voll', grund: '' });
+        const vorrang = !!vorrangOk?.(g);
+        if (!p || !(p.kwp > 0)) zeilen.push({ g, vorrang, kwp: 0, kwpKorr: 0, status: 'leer', grund: 'kein Modul passt' });
+        else zeilen.push({ g, vorrang, kwp: p.kwp, kwpKorr: p.kwpKorr, module: p.module, status: 'voll', grund: '' });
       }
-      const netz = _ab.menge === 'netz' ? _netzPruefen(zeilen) : null;
+      const netz = _ab.menge !== 'max' ? _netzPruefen(zeilen) : null;
       _ab.vorschau = { zeilen, sig: _sig(), netz };
       window.hideHint?.();
     } catch (err) {
@@ -231826,6 +232052,9 @@ ${ssSteckbriefHtml(blatt)}
    * Netzprüfung wie die Netzaufnahme: radiales Modell im Rechenjahr, alle schon
    * geplanten PV-Anlagen/-Dächer als Vorlast, die Kandidaten gierig nach Ertrag
    * — jedes nur ganz. Setzt status 'netz' bzw. 'ohneNetz' an den Zeilen.
+   * Gestuft: Vorrang-Zeilen werden immer belegt ('vorrang'); erst wird geprüft,
+   * ob sie selbst noch ins Bestandsnetz passen ('vorrangUeber' wenn nicht), dann
+   * gehen sie als Vorlast in die Füllung der übrigen.
    */
   function _netzPruefen(zeilen) {
     const ein = pvnaEinstellungen();
@@ -231853,22 +232082,43 @@ ${ssSteckbriefHtml(blatt)}
       vorlastKwp += d.kwpMax;
     }
 
-    const daecher = [];
+    const daecher = [], vorrang = [];
     const nachId = new Map();
     for (const z of zeilen) {
       if (z.status !== 'voll') continue;
       const elementId = _gebKnoten(z.g.id, knotenEl);
-      if (elementId == null || !elById.has(elementId)) { z.status = 'ohneNetz'; z.grund = 'nicht ans Stromnetz angebunden'; continue; }
-      daecher.push({ id: z.g.id, elementId, kwpMax: z.kwp, ertragFaktor: z.kwpKorr / z.kwp, einspFaktor });
+      const angebunden = elementId != null && elById.has(elementId);
+      if (z.vorrang) {
+        z.status = 'vorrang';
+        if (!angebunden) { z.grund = 'nicht ans Stromnetz angebunden — Netzgrenze unbekannt'; continue; }
+      } else if (!angebunden) { z.status = 'ohneNetz'; z.grund = 'nicht ans Stromnetz angebunden'; continue; }
+      (z.vorrang ? vorrang : daecher).push({ id: z.g.id, elementId, kwpMax: z.kwp, ertragFaktor: z.kwpKorr / z.kwp, einspFaktor });
       nachId.set(z.g.id, z);
     }
-    const r = pvnaFuellen({ elemente, daecher, pruefpunkte: m.eingabe.pruefpunkte,
+    const fuellen = (els, ds) => pvnaFuellen({ elemente: els, daecher: ds, pruefpunkte: m.eingabe.pruefpunkte,
       duGrenzePct: m.eingabe.duGrenzePct, ganzOderGar: true });
-    for (const d of r.daecher) {
-      const z = nachId.get(d.id);
-      if (z && !(d.kwp > 0)) { z.status = 'netz'; z.grund = _begrenzerText(d.begrenzer, m.info); }
+    let vorrangKwp = 0;
+    if (vorrang.length) {
+      // Passt die Vorrang-Gruppe selbst noch ins Bestandsnetz? Belegt wird sie so oder so.
+      const rv = fuellen(elemente.map(e => ({ ...e })), vorrang);
+      for (const d of rv.daecher) {
+        const z = nachId.get(d.id);
+        if (z && !(d.kwp > 0)) { z.status = 'vorrangUeber'; z.grund = _begrenzerText(d.begrenzer, m.info); }
+      }
+      for (const d of vorrang) {
+        const el = elById.get(d.elementId);
+        el.vorlastKw = (+el.vorlastKw || 0) + d.kwpMax * einspFaktor;
+        vorrangKwp += d.kwpMax;
+      }
     }
-    return { jahr, vorlastKwp, einspFaktor, duGrenzePct: m.eingabe.duGrenzePct,
+    if (daecher.length) {
+      const r = fuellen(elemente, daecher);
+      for (const d of r.daecher) {
+        const z = nachId.get(d.id);
+        if (z && !(d.kwp > 0)) { z.status = 'netz'; z.grund = _begrenzerText(d.begrenzer, m.info); }
+      }
+    }
+    return { jahr, vorlastKwp, vorrangKwp, einspFaktor, duGrenzePct: m.eingabe.duGrenzePct,
       unbekannteQs: m.info.unbekannteQs.length, ersatzQs: m.info.ersatzQs,
       ohneTrafo: !m.eingabe.elemente.some(e => e.typ === 'trafo') };
   }
@@ -231876,7 +232126,7 @@ ${ssSteckbriefHtml(blatt)}
   async function pvabUebernehmen() {
     const v = _ab.vorschau;
     if (!v) return;
-    const ziele = v.zeilen.filter(z => z.status === 'voll' || (z.status === 'ohneNetz' && _ab.ohneNetzBelegen)).map(z => z.g);
+    const ziele = v.zeilen.filter(_wirdBelegt).map(z => z.g);
     if (!ziele.length) { alert('Kein Dach zum Belegen.'); return; }
     window.showHint?.(`⏳ ${ziele.length} Dächer werden belegt …`, 0);
     await _naechsterFrame();
@@ -231884,6 +232134,12 @@ ${ssSteckbriefHtml(blatt)}
     _trafoCache = null;
     const { anzahl, summe } = pvmStapelBelegen(ziele);
     window.showHint?.(`✓ ${anzahl} Dächer belegt · Σ ${_fmt(summe)} kWp. Strg+Z nimmt den ganzen Schritt zurück.`, 8000);
+  }
+
+  /** Wird diese Vorschauzeile beim Übernehmen belegt? */
+  function _wirdBelegt(z) {
+    return z.status === 'voll' || z.status === 'vorrang' || z.status === 'vorrangUeber'
+      || (z.status === 'ohneNetz' && _ab.ohneNetzBelegen);
   }
 
   function pvabVerwerfen() {
@@ -231897,7 +232153,7 @@ ${ssSteckbriefHtml(blatt)}
   // ══════════════════════════════════════════════════════════════════════════
 
   function _bereichZeigen() {
-    const soll = _ab.offen && _ab.umfang === 'bereich' && _ab.bereich && window.pvModusAktiv;
+    const soll = _ab.modus && _ab.umfang === 'bereich' && _ab.bereich && window.pvModusAktiv;
     if (!soll) { if (_bereichLayer) { map.removeLayer(_bereichLayer); _bereichLayer = null; } return; }
     if (!_bereichLayer) {
       _bereichLayer = L.rectangle(_ab.bereich, { color: CYAN, weight: 2, dashArray: '6 4', fillOpacity: 0.05, interactive: false }).addTo(map);
@@ -231959,34 +232215,116 @@ ${ssSteckbriefHtml(blatt)}
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // BELEGUNGEN ENTFERNEN
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /** Dächer im Umfang, die überhaupt Flächen haben (Belegung oder Sperrfläche). */
+  function _entfernKandidaten() {
+    const { stich } = pvnaJahre(pvnaEinstellungen());
+    const ok = _umfangFilter(_ab.umfang, stich);
+    const liste = (window.gebaeude || []).filter(g => g.pvFlaechen?.length && ok(g));
+    return { liste, stich };
+  }
+
+  /**
+   * Alle PV-Flächen (Belegung + Sperrflächen) der Gebäude entfernen und neu
+   * zeichnen. Die PV-Assets fasst diese Funktion nicht an — das macht der
+   * Aufrufer (Sammel-Entfernen hier, Einzel-Löschen in 13a deleteAsset).
+   * @param {any[]} gIds
+   * @returns {number} Zahl der geräumten Dächer
+   */
+  function pvBelegungEntfernen(gIds) {
+    const ids = new Set(gIds);
+    const geaendert = [], vorher = new Map();
+    for (const g of (window.gebaeude || [])) {
+      if (!ids.has(g.id) || !g.pvFlaechen?.length) continue;
+      vorher.set(g.id, { pvFlaechen: g.pvFlaechen });
+      g.pvFlaechen = [];
+      g.pvAktiv = false;
+      geaendert.push(g);
+    }
+    if (!geaendert.length) return 0;
+    // Gleicher Weg wie beim Variantenwechsel: alte Layer weg, Module neu
+    window.variantenPvNeuZeichnen?.(geaendert, vorher);
+    for (const g of geaendert) window._rerenderCard?.(g.id);
+    if (window.pvModusAktiv) pvModusMarkiereKarte();
+    return geaendert.length;
+  }
+
+  function pvabEntfernen() {
+    const { liste } = _entfernKandidaten();
+    if (!liste.length) return;
+    const ids = new Set(liste.map(g => g.id));
+    const pv = ASSETS.items.filter(a => a.type === 'PV' && ids.has(a.buildingId));
+    const geteilt = pv.filter(a => normSchicht(a.schicht) !== SCHICHT.ENTSCHEIDUNG).length;
+    const kwp = liste.reduce((s, g) => s + (calcGebKwpKorr(g) || 0), 0);
+    if (!confirm(`Auf ${liste.length} Dächern alle Belegungs- und Sperrflächen entfernen (Σ ${_fmt(kwp)} kWp)?\n\n`
+      + (pv.length ? `${pv.length} PV-Asset(s) werden mit gelöscht.` : 'Es hängen keine PV-Assets daran.')
+      + (geteilt ? `\n${geteilt} davon gehören zu Bestand/Entwicklung — sie verschwinden in allen Varianten.` : '')
+      + `\n\nStrg+Z im PV-Modus nimmt den ganzen Schritt zurück.`)) return;
+    const lauf = () => {
+      for (const a of pv) deleteAsset(a.id, true);
+      pvBelegungEntfernen([...ids]);
+    };
+    try {
+      if (typeof window.runPlanningTransaction === 'function') window.runPlanningTransaction('PV-Belegung entfernen', lauf);
+      else lauf();
+    } catch (err) {
+      console.error(err);
+      alert('Entfernen fehlgeschlagen: ' + err.message);
+      return;
+    }
+    pvmPlanungsSchrittMerken();
+    _trafoCache = null;
+    window.recalcStromNetz?.();
+    window.redrawAllAssets?.();
+    window.calcStromPanel?.();
+    window.renderList?.();
+    window.showHint?.(`🗑 ${liste.length} Dächer geräumt · ${_fmt(kwp)} kWp. Strg+Z nimmt den Schritt zurück.`, 7000);
+    pvModusRender();
+    pvModusMarkiereKarte();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // KARTE
   // ══════════════════════════════════════════════════════════════════════════
 
+  function _stilNeutral(g) {
+    if (_hasBelegung(g)) g.polygonLayer.setStyle({ color: '#ffb300', weight: 1.5, dashArray: '', fillColor: GELB, fillOpacity: 0.08 });
+    else g.polygonLayer.setStyle({ color: 'rgba(255,255,255,.35)', weight: 1, dashArray: '3 4', fillColor: '#ffffff', fillOpacity: 0.02 });
+  }
+
   /**
-   * Färbt die Dächer, solange der Block offen ist: Kandidaten cyan, in der
-   * Vorschau grün (wird belegt) / rot (Netz zu knapp) / grau (ohne Netz,
-   * kein Modul); schon belegte Dächer wie im PV-Modus.
+   * Färbt die Dächer, solange ein Block offen ist. Belegen: Kandidaten cyan, in
+   * der Vorschau grün (wird belegt) / hellgrün (Vorrang) / orange (Vorrang über
+   * der Netzgrenze) / rot (Netz zu knapp) / grau (ohne Netz, kein Modul).
+   * Entfernen: betroffene Dächer rot. Übrige Dächer wie im PV-Modus.
    * @returns {boolean} true = Karte ist gefärbt (PV-Modus färbt dann nicht selbst)
    */
   function pvabMarkiereKarte() {
     _bereichZeigen();
-    if (!_ab.offen || !window.pvModusAktiv) return false;
+    if (!_ab.modus || !window.pvModusAktiv) return false;
+    if (_ab.modus === 'entfernen') {
+      const weg = new Set(_entfernKandidaten().liste.map(g => g.id));
+      for (const g of (window.gebaeude || [])) {
+        if (!g.polygonLayer) continue;
+        if (weg.has(g.id)) g.polygonLayer.setStyle({ color: ROT, weight: 2, dashArray: '', fillColor: ROT, fillOpacity: 0.3 });
+        else _stilNeutral(g);
+      }
+      return true;
+    }
     const status = new Map();
     if (_ab.vorschau) for (const z of _ab.vorschau.zeilen) status.set(z.g.id, z.status);
     else for (const g of _kandidaten().liste) status.set(g.id, 'kandidat');
-    const farbe = { kandidat: CYAN, voll: GRUEN, netz: ROT, ohneNetz: _ab.ohneNetzBelegen ? GRUEN : GRAU, leer: GRAU };
+    const farbe = { kandidat: CYAN, voll: GRUEN, vorrang: HELLGRUEN, vorrangUeber: ORANGE, netz: ROT,
+      ohneNetz: _ab.ohneNetzBelegen ? GRUEN : GRAU, leer: GRAU };
     for (const g of (window.gebaeude || [])) {
       if (!g.polygonLayer) continue;
       const st = status.get(g.id);
-      if (st) {
-        const f = farbe[st];
-        g.polygonLayer.setStyle({ color: f, weight: 2, dashArray: st === 'ohneNetz' || st === 'leer' ? '4 4' : '',
-          fillColor: f, fillOpacity: st === 'kandidat' ? 0.12 : 0.28 });
-      } else if (_hasBelegung(g)) {
-        g.polygonLayer.setStyle({ color: '#ffb300', weight: 1.5, dashArray: '', fillColor: GELB, fillOpacity: 0.08 });
-      } else {
-        g.polygonLayer.setStyle({ color: 'rgba(255,255,255,.35)', weight: 1, dashArray: '3 4', fillColor: '#ffffff', fillOpacity: 0.02 });
-      }
+      if (!st) { _stilNeutral(g); continue; }
+      const f = farbe[st];
+      g.polygonLayer.setStyle({ color: f, weight: 2, dashArray: st === 'ohneNetz' || st === 'leer' ? '4 4' : '',
+        fillColor: f, fillOpacity: st === 'kandidat' ? 0.12 : 0.28 });
     }
     return true;
   }
@@ -231995,32 +232333,77 @@ ${ssSteckbriefHtml(blatt)}
   // PANEL-BLOCK (in 25 _html über window.pvabBlockHtml)
   // ══════════════════════════════════════════════════════════════════════════
 
-  function pvabBlockHtml() {
-    if (!_ab.offen) {
-      return `<button class="btn-xs" style="width:100%;margin-top:6px;border-color:${CYAN};color:${CYAN};"
-        data-click="pvabToggle()" title="Viele Dächer auf einmal belegen — alle, Neubauten, PV-Pflicht, ein Bereich oder ein Trafo-Netzgebiet, wahlweise netzverträglich">
-        ⚡ Dächer automatisch belegen …</button>`;
-    }
-    const { liste, vorNutzung, raus, stich } = _kandidaten();
-    const opt = (w, l, an) => `<option value="${w}"${an ? ' selected' : ''}>${escHtml(l)}</option>`;
-    const umfangLabel = w => w === 'neubau' ? `Nur Neubauten (nach ${stich})` : UMFAENGE.find(u => u[0] === w)[1];
+  const _opt = (w, l, an) => `<option value="${w}"${an ? ' selected' : ''}>${escHtml(l)}</option>`;
 
-    let umfangZusatz = '';
+  function _kopfHtml(farbe, titel, modus) {
+    return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
+      <span style="flex:1;color:${farbe};font-weight:600;font-size:11px;">${titel}</span>
+      <button class="btn-xs" data-click="pvabToggle('${modus}')" title="Schließen">✕</button>
+    </div>`;
+  }
+
+  /** Umfang-Auswahl samt Bereich-/Trafo-Zusatz — gemeinsam für Belegen und Entfernen. */
+  function _umfangHtml(stich, alleLabel) {
+    const label = w => w === 'alle' ? alleLabel : w === 'neubau' ? `Nur Neubauten (nach ${stich})` : UMFAENGE.find(u => u[0] === w)[1];
+    let zusatz = '';
     if (_ab.umfang === 'bereich') {
-      umfangZusatz = `<div style="display:flex;gap:4px;margin-top:4px;">
+      zusatz = `<div style="display:flex;gap:4px;margin-top:4px;">
         <button class="btn-xs" style="flex:1;${_ab.bereich ? '' : `border-color:${CYAN};color:${CYAN};`}" data-click="pvabBereichZiehen()"
           title="Mit gedrückter Maustaste ein Rechteck auf der Karte aufziehen">▭ ${_ab.bereich ? 'Neu aufziehen' : 'Bereich aufziehen'}</button>
         ${_ab.bereich ? `<button class="btn-xs" data-click="pvabSet('bereich','')" title="Bereich entfernen">✕</button>` : ''}
       </div>`;
     } else if (_ab.umfang === 'trafo') {
       const tr = _trafos();
-      umfangZusatz = tr.length
+      zusatz = tr.length
         ? `<select class="inp-field" style="margin-top:4px;" data-change="pvabSet('trafoId',this.value)">
-          ${opt('', '— Trafo wählen —', _ab.trafoId == null)}
-          ${tr.map(t => opt(String(t.id), `${t.name}${t.kva ? ` (${t.kva} kVA)` : ''}`, String(_ab.trafoId) === String(t.id))).join('')}
+          ${_opt('', '— Trafo wählen —', _ab.trafoId == null)}
+          ${tr.map(t => _opt(String(t.id), `${t.name}${t.kva ? ` (${t.kva} kVA)` : ''}`, String(_ab.trafoId) === String(t.id))).join('')}
         </select>`
         : `<div style="font-size:9px;color:var(--muted);margin-top:3px;">Im Projekt gibt es noch keinen Trafo.</div>`;
     }
+    return `<div class="inp-group">
+      <div class="inp-label">① Welche Dächer?</div>
+      <select class="inp-field" data-change="pvabSet('umfang',this.value)">
+        ${UMFAENGE.map(([w]) => _opt(w, label(w), _ab.umfang === w)).join('')}
+      </select>
+      ${zusatz}
+    </div>`;
+  }
+
+  function pvabBlockHtml() {
+    if (!_ab.modus) {
+      return `<div style="display:flex;gap:4px;margin-top:6px;">
+        <button class="btn-xs" style="flex:1;border-color:${CYAN};color:${CYAN};"
+          data-click="pvabToggle('belegen')" title="Viele Dächer auf einmal belegen — alle, Neubauten, PV-Pflicht, ein Bereich oder ein Trafo-Netzgebiet, wahlweise netzverträglich oder gestuft">
+          ⚡ Dächer automatisch belegen …</button>
+        <button class="btn-xs" style="border-color:${ROT}99;color:${ROT};"
+          data-click="pvabToggle('entfernen')" title="Belegungen vieler Dächer auf einmal entfernen — samt Sperrflächen und PV-Assets">
+          🗑 Entfernen …</button>
+      </div>`;
+    }
+    return _ab.modus === 'entfernen' ? _entfernHtml() : _belegenHtml();
+  }
+
+  function _entfernHtml() {
+    const { liste, stich } = _entfernKandidaten();
+    const ids = new Set(liste.map(g => g.id));
+    const nPv = ASSETS.items.filter(a => a.type === 'PV' && ids.has(a.buildingId)).length;
+    const kwp = liste.reduce((s, g) => s + (calcGebKwpKorr(g) || 0), 0);
+    return `
+    <div style="margin-top:6px;border:1px solid ${ROT}66;border-radius:5px;padding:6px 7px;background:${ROT}0d;">
+      ${_kopfHtml(ROT, '🗑 Belegungen entfernen', 'entfernen')}
+      ${_umfangHtml(stich, 'Alle belegten Dächer')}
+      <div style="font-size:10px;margin-top:6px;padding-top:5px;border-top:1px solid var(--border);">
+        <b style="color:${ROT};">${liste.length}</b> Dächer mit Flächen${liste.length ? ` · <span style="font-family:'DM Mono',monospace;">${_fmt(kwp)} kWp</span>` : ''}
+        <div style="font-size:9px;color:var(--muted);line-height:1.4;">Belegungs- und Sperrflächen samt ${nPv} PV-Asset(s). Strg+Z nimmt den Schritt zurück.</div>
+      </div>
+      <button class="btn-xs" style="width:100%;margin-top:5px;border-color:${ROT};color:${ROT};" ${liste.length ? '' : 'disabled'}
+        data-click="pvabEntfernen()" title="Fragt vorher noch einmal nach">🗑 ${liste.length} Belegungen entfernen</button>
+    </div>`;
+  }
+
+  function _belegenHtml() {
+    const { liste, vorNutzung, raus, stich } = _kandidaten();
 
     // Nutzungstypen, die unter den Kandidaten vorkommen
     const typen = new Map();
@@ -232043,17 +232426,8 @@ ${ssSteckbriefHtml(blatt)}
 
     return `
     <div style="margin-top:6px;border:1px solid ${CYAN}66;border-radius:5px;padding:6px 7px;background:${CYAN}0d;">
-      <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
-        <span style="flex:1;color:${CYAN};font-weight:600;font-size:11px;">⚡ Dächer automatisch belegen</span>
-        <button class="btn-xs" data-click="pvabToggle()" title="Schließen">✕</button>
-      </div>
-      <div class="inp-group">
-        <div class="inp-label">① Welche Dächer?</div>
-        <select class="inp-field" data-change="pvabSet('umfang',this.value)">
-          ${UMFAENGE.map(([w]) => opt(w, umfangLabel(w), _ab.umfang === w)).join('')}
-        </select>
-        ${umfangZusatz}
-      </div>
+      ${_kopfHtml(CYAN, '⚡ Dächer automatisch belegen', 'belegen')}
+      ${_umfangHtml(stich, 'Alle Dächer')}
       <div style="display:flex;align-items:center;gap:5px;margin-top:5px;font-size:10px;">
         <span style="flex:1;color:var(--muted);" title="Kleinere Gebäude (Garagen, Schuppen) bleiben frei">Mindestgröße</span>
         <input class="inp-field" type="number" min="0" step="10" value="${_ab.minM2}" style="width:58px;padding:2px 4px;"
@@ -232080,8 +232454,17 @@ ${ssSteckbriefHtml(blatt)}
         <div style="display:flex;flex-direction:column;gap:2px;">
           ${radio('max', 'Maximal — jedes Dach voll', 'Netzgrenzen werden nicht geprüft')}
           ${radio('netz', 'Netzverträglich (Bestandsnetz)', 'Wie die PV-Netzaufnahme: ohne Kabel- oder Trafo-Ertüchtigung. Beste Erträge zuerst, jedes Dach ganz oder gar nicht; bereits geplante PV hat Vorrang.')}
+          ${radio('gestuft', 'Gestuft — Gruppe voll, Rest netzverträglich', 'Erst eine Gruppe aus ① immer voll belegen (z. B. alle Neubauten oder die PV-Pflicht-Fälle), danach die übrigen Dächer nur, soweit das Bestandsnetz es noch verträgt.')}
         </div>
-        ${_ab.menge === 'netz' ? `
+        ${_ab.menge === 'gestuft' ? `
+        <div style="display:flex;align-items:center;gap:5px;margin-top:4px;font-size:10px;">
+          <span style="color:var(--muted);white-space:nowrap;">Immer voll:</span>
+          <select class="inp-field" style="flex:1;" data-change="pvabSet('vorrang',this.value)">
+            ${VORRANG.map(([w]) => _opt(w, _vorrangLabel(w, stich), _ab.vorrang === w)).join('')}
+          </select>
+        </div>
+        <div style="font-size:9px;color:var(--muted);line-height:1.4;margin-top:2px;">Der Rest aus ① nur, soweit das Netz danach noch reicht.</div>` : ''}
+        ${_ab.menge !== 'max' ? `
         <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:3px;"
           title="Gebäude ohne Verbindung zum erfassten Stromnetz — ihre Netzgrenze ist unbekannt">
           <input type="checkbox" ${_ab.ohneNetzBelegen ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
@@ -232091,11 +232474,11 @@ ${ssSteckbriefHtml(blatt)}
       <div style="font-size:10px;margin-top:6px;padding-top:5px;border-top:1px solid var(--border);">
         <b style="color:${CYAN};">${liste.length}</b> Dächer kommen in Frage${ausgelassen ? `<div style="font-size:9px;color:var(--muted);">ausgelassen: ${ausgelassen}</div>` : ''}
       </div>
-      ${_vorschauHtml(liste.length)}
+      ${_vorschauHtml(liste.length, stich)}
     </div>`;
   }
 
-  function _vorschauHtml(nKand) {
+  function _vorschauHtml(nKand, stich) {
     const v = _ab.vorschau;
     if (!v) {
       return `<button class="btn-xs" style="width:100%;margin-top:5px;border-color:${CYAN};color:${CYAN};"
@@ -232103,29 +232486,39 @@ ${ssSteckbriefHtml(blatt)}
         title="Probebelegung rechnen und auf der Karte zeigen — ändert noch nichts">🔍 Vorschau berechnen</button>`;
     }
     const veraltet = v.sig !== _sig();
-    const gruppe = st => v.zeilen.filter(z => z.status === st);
+    const gruppe = (...st) => v.zeilen.filter(z => st.includes(z.status));
     const sum = zs => zs.reduce((s, z) => s + z.kwpKorr, 0);
+    const vorrang = gruppe('vorrang', 'vorrangUeber'), ueber = gruppe('vorrangUeber');
     const voll = gruppe('voll'), netz = gruppe('netz'), ohne = gruppe('ohneNetz'), leer = gruppe('leer');
-    const belegen = _ab.ohneNetzBelegen ? voll.concat(ohne) : voll;
-    const zeile = (farbe, n, text, kwp) => n ? `<div style="display:flex;align-items:center;gap:5px;font-size:10px;">
+    const belegen = v.zeilen.filter(_wirdBelegt);
+    const gestuft = vorrang.length > 0;
+    const zusatz = voll.concat(_ab.ohneNetzBelegen ? ohne : []);
+    const zeile = (farbe, n, text, kwp, einzug) => n ? `<div style="display:flex;align-items:center;gap:5px;font-size:10px;${einzug ? 'padding-left:12px;' : ''}">
       <span style="width:9px;height:9px;border-radius:2px;background:${farbe};flex:none;"></span>
       <span style="flex:1;">${n} ${text}</span>
       ${kwp != null ? `<span style="font-family:'DM Mono',monospace;">${_fmt(kwp)} kWp</span>` : ''}</div>` : '';
-    const gruende = netz.concat(_ab.ohneNetzBelegen ? [] : ohne).slice(0, 8).map(z => `
+    const mitGrund = v.zeilen.filter(z => z.status === 'vorrangUeber' || z.status === 'netz'
+      || (z.status === 'vorrang' && z.grund) || (z.status === 'ohneNetz' && !_ab.ohneNetzBelegen));
+    const gruende = mitGrund.slice(0, 10).map(z => `
       <div style="font-size:9px;color:var(--muted);display:flex;gap:4px;cursor:pointer;" data-click="pvmWaehle(${z.g.id})" title="${escHtml(z.grund)}">
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(_name(z.g))}</span>
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%;">${escHtml(z.grund)}</span>
       </div>`).join('');
+    const vorrangName = escHtml(_vorrangLabel(_ab.vorrang, stich));
     const n = v.netz;
     const netzInfo = n ? `<div style="font-size:9px;color:var(--muted);line-height:1.4;margin-top:4px;">
       Netzjahr ${n.jahr} · ${_fmt(n.einspFaktor, 1)} kW/kWp · ΔU ≤ ${_fmt(n.duGrenzePct, 1)} %${n.vorlastKwp > 0 ? ` · ${_fmt(n.vorlastKwp)} kWp schon geplant (Vorrang)` : ''}
       ${n.ohneTrafo ? `<br><span style="color:${ROT};">Kein Trafo im Netzjahr — es gibt kein Netz zum Anschließen.</span>` : ''}
+      ${ueber.length ? `<br><span style="color:${ORANGE};">${ueber.length} Dächer der Gruppe „${vorrangName}“ passen nicht mehr ins Bestandsnetz — sie werden trotzdem belegt, dort ist Netzausbau nötig.</span>` : ''}
       ${n.unbekannteQs && !n.ersatzQs ? `<br>⚠ ${n.unbekannteQs} Kabel ohne Querschnitt begrenzen nicht (Ersatzquerschnitt in der PV-Netzaufnahme).` : ''}
     </div>` : '';
     return `
     <div style="margin-top:6px;padding:5px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
       ${veraltet ? `<div style="font-size:9px;color:${GELB};margin-bottom:3px;">Auswahl oder Vorgaben geändert — Vorschau neu berechnen.</div>` : ''}
-      ${zeile(GRUEN, belegen.length, 'werden belegt', sum(belegen))}
+      ${zeile(HELLGRUEN, vorrang.length, `${vorrangName} — immer voll`, sum(vorrang))}
+      ${zeile(ORANGE, ueber.length, 'davon über der Netzgrenze', sum(ueber), true)}
+      ${gestuft ? zeile(GRUEN, zusatz.length, 'zusätzlich, netzverträglich', sum(zusatz))
+                : zeile(GRUEN, belegen.length, 'werden belegt', sum(belegen))}
       ${zeile(ROT, netz.length, 'Netz zu knapp', sum(netz))}
       ${_ab.ohneNetzBelegen ? '' : zeile(GRAU, ohne.length, 'ohne Netzanbindung', sum(ohne))}
       ${zeile(GRAU, leer.length, 'kein Modul passt', null)}
@@ -232133,7 +232526,7 @@ ${ssSteckbriefHtml(blatt)}
       ${netzInfo}
       <div style="display:flex;gap:4px;margin-top:6px;">
         <button class="btn-xs" style="flex:1;border-color:${GRUEN};color:${GRUEN};" ${belegen.length && !veraltet ? '' : 'disabled'}
-          data-click="pvabUebernehmen()" title="Belegungsflächen anlegen, kWp in die PV-Assets — ein Strg+Z-Schritt">✓ ${belegen.length} Dächer belegen</button>
+          data-click="pvabUebernehmen()" title="Belegungsflächen anlegen, kWp in die PV-Assets — ein Strg+Z-Schritt">✓ ${belegen.length} Dächer belegen · ${_fmt(sum(belegen))} kWp</button>
         <button class="btn-xs" data-click="${veraltet ? 'pvabVorschau()' : 'pvabVerwerfen()'}" title="${veraltet ? 'Neu berechnen' : 'Vorschau verwerfen'}">${veraltet ? '↻' : '✕'}</button>
       </div>
     </div>`;
@@ -232143,9 +232536,10 @@ ${ssSteckbriefHtml(blatt)}
   // HANDLER
   // ══════════════════════════════════════════════════════════════════════════
 
-  function pvabToggle() {
-    _ab.offen = !_ab.offen;
-    if (!_ab.offen) _ab.vorschau = null;
+  /** Block öffnen/schließen — 'belegen' oder 'entfernen'; der andere schließt dabei. */
+  function pvabToggle(modus = 'belegen') {
+    _ab.modus = _ab.modus === modus ? null : (modus === 'entfernen' ? 'entfernen' : 'belegen');
+    _ab.vorschau = null;
     pvModusRender();
     pvModusMarkiereKarte();
   }
@@ -232159,7 +232553,8 @@ ${ssSteckbriefHtml(blatt)}
     }
     else if (feld === 'bereich') _ab.bereich = null;
     else if (feld === 'minM2') _ab.minM2 = Math.max(0, parseFloat(wert) || 0);
-    else if (feld === 'menge') _ab.menge = wert === 'netz' ? 'netz' : 'max';
+    else if (feld === 'menge') _ab.menge = ['netz', 'gestuft'].includes(wert) ? wert : 'max';
+    else if (feld === 'vorrang') _ab.vorrang = VORRANG.some(v => v[0] === wert) ? wert : 'neubau';
     else if (feld === 'ohneNetzBelegen') { _ab.ohneNetzBelegen = !!wert; pvModusRender(); pvModusMarkiereKarte(); return; }
     else if (feld === 'nutzungOffen') { _ab.nutzungOffen = !_ab.nutzungOffen; pvModusRender(); return; }
     _ab.vorschau = null;                     // andere Auswahl → Karte zeigt gleich die neuen Kandidaten
@@ -232178,16 +232573,18 @@ ${ssSteckbriefHtml(blatt)}
   /** PV-Modus endet (25 pvModusStop): Vorschau und Bereichsrahmen weg. */
   function pvabBeenden() {
     _ab.vorschau = null;
-    _ab.offen = false;
+    _ab.modus = null;
     _trafoCache = null;
     _bereichZeigen();
   }
 
   var pvAutoBelegung = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    pvBelegungEntfernen: pvBelegungEntfernen,
     pvabBeenden: pvabBeenden,
     pvabBereichZiehen: pvabBereichZiehen,
     pvabBlockHtml: pvabBlockHtml,
+    pvabEntfernen: pvabEntfernen,
     pvabMarkiereKarte: pvabMarkiereKarte,
     pvabNutzung: pvabNutzung,
     pvabSet: pvabSet,

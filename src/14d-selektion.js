@@ -2,7 +2,7 @@
 // M5: assetSelection-State; Shift+Click + Box-Selektion auf Karte;
 //     Checkboxen in Sidebar; schwebende Bulk-Bar mit Sammelaktionen.
 
-import { ASSETS, ASSET_CFG, TYPE_RANK, deleteAsset } from './13a-assets-core.js';
+import { ASSETS, ASSET_CFG, TYPE_RANK, deleteAsset, pvFlaechenZumAsset } from './13a-assets-core.js';
 import { phasen, massnahmeJahr, setPhasen } from './01-globals-varianten.js';
 import { MASSN_VORLAGEN, MASSN_VORLAGEN_REIHENFOLGE } from './config/massnahmen-vorlagen.js';
 import { redrawAllAssets } from './13b-assets-render.js';
@@ -635,12 +635,14 @@ export function selBulkDelete() {
   if (n === 0) return;
   const namen = assets.slice(0, 8).map(a => '• ' + (a.name || a.type)).join('\n')
     + (n > 8 ? `\n… und ${n - 8} weitere` : '');
-  if (!confirm(`${n} ${n === 1 ? 'Anlage' : 'Anlagen'} wirklich löschen?\n\n${namen}\n\nAngeschlossene Kabel werden mit entfernt.`)) return;
+  const nFl = assets.reduce((s, a) => s + pvFlaechenZumAsset(a), 0);
+  if (!confirm(`${n} ${n === 1 ? 'Anlage' : 'Anlagen'} wirklich löschen?\n\n${namen}\n\nAngeschlossene Kabel werden mit entfernt.`
+    + (nFl ? `\nDie ${nFl} Belegungsfläche(n) auf den Dächern der PV-Anlagen ebenfalls.` : ''))) return;
 
   const inspektorBetroffen = assets.some(a => a.id === ASSETS.selectedId);
   const ids = assets.map(a => a.id);
   const committed = _selectionChange(`${n} Assets löschen`, () => {
-    for (const id of ids) deleteAsset(id, true);
+    for (const id of ids) deleteAsset(id, true, { nutzer: true, rueckfrage: false });
   });
   if (committed === null) return;
 

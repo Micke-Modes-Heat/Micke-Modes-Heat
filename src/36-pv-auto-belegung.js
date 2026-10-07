@@ -11,16 +11,25 @@
 //      Netzrechnung wie die Netzaufnahme (28 pvnaModell + Core pvnaFuellen),
 //      beste Erträge zuerst, jedes Dach nur GANZ oder gar nicht
 //      (Nutzerentscheidung 06.10.2026). Schon geplante PV hat Vorrang (Vorlast).
+//      Gestuft: eine Gruppe (Neubauten · PV-Pflicht · Auswahl) wird immer voll
+//      belegt und zählt als Vorlast, der Rest des Umfangs nur, soweit das Netz
+//      es danach noch verträgt.
 //
 // Die Vorschau ändert nichts am Projekt; „Übernehmen" ist ein Strg+Z-Schritt.
+//
+// Daneben „Belegungen entfernen": dieselben Umfänge, alle Flächen der Dächer
+// samt PV-Asset weg, als Planungstransaktion (Strg+Z im PV-Modus).
+// pvBelegungEntfernen ist auch der Weg, auf dem ein gelöschtes Dach-PV-Asset
+// seine Flächen mitnimmt (13a deleteAsset, opts.nutzer).
 // Nichts importiert dieses Modul — Panel und Karte rufen es über window.*
 // (pvabBlockHtml / pvabMarkiereKarte), damit 25 kein Rückimport braucht.
 
 import { map } from './02b-gebaeude.js';
 import { polygonAreaM2 } from './02c-karte-werkzeuge.js';
-import { _hasBelegung, escHtml } from './03c-gebaeude-io.js';
-import { ASSETS, TYPE_RANK } from './13a-assets-core.js';
-import { pvmProbe, pvmStapelBelegen, pvModusMarkiereKarte, pvModusRender } from './25-pv-modus.js';
+import { _hasBelegung, calcGebKwpKorr, escHtml } from './03c-gebaeude-io.js';
+import { ASSETS, TYPE_RANK, deleteAsset } from './13a-assets-core.js';
+import { pvmPlanungsSchrittMerken, pvmProbe, pvmStapelBelegen, pvModusMarkiereKarte, pvModusRender } from './25-pv-modus.js';
+import { normSchicht, SCHICHT } from './lib/schichten.js';
 import { pvnaEinstellungen, pvnaIstNeubau, pvnaJahre, pvnaModell } from './28-pv-netzaufnahme.js';
 import { pvnaFuellen } from './lib/pv-netzaufnahme-core.js';
 
@@ -29,6 +38,8 @@ const GRUEN = '#66bb6a';
 const ROT   = '#ef5350';
 const GRAU  = '#9e9e9e';
 const GELB  = '#ffd54f';
+const HELLGRUEN = '#c5e1a5';
+const ORANGE = '#ffa726';
 
 const UMFAENGE = [
   ['alle',    'Alle Dächer'],
@@ -39,8 +50,16 @@ const UMFAENGE = [
   ['trafo',   'Netzgebiet eines Trafos'],
 ];
 
+/** Gruppen, die gestuft immer voll belegt werden. */
+const VORRANG = [
+  ['neubau',  'Neubauten'],
+  ['pflicht', 'PV-Pflicht-Fälle'],
+  ['auswahl', 'Ausgewählte Gebäude'],
+];
+
 const _ab = {
-  offen: false,
+  /** @type {null | 'belegen' | 'entfernen'} offener Block */
+  modus: null,
   umfang: 'alle',
   trafoId: null,
   /** @type {any} L.LatLngBounds */
@@ -49,7 +68,8 @@ const _ab = {
   /** ausgeschlossene Nutzungstyp-IDs ('' = ohne Typ) */
   ohneNutzung: new Set(),
   nutzungOffen: false,
-  menge: 'max',               // 'max' | 'netz'
+  menge: 'max',               // 'max' | 'netz' | 'gestuft'
+  vorrang: 'neubau',          // bei 'gestuft': diese Gruppe immer voll
   ohneNetzBelegen: false,
   /** @type {null | {zeilen:any[], sig:string, netz:any}} */
   vorschau: null,
@@ -64,7 +84,9 @@ const _int = v => { const n = parseInt(v); return Number.isFinite(n) ? n : null;
 const _flaeche = g => parseFloat(g.flaeche) || polygonAreaM2(g.polygon) || 0;
 /** Vorgaben + Auswahl, mit denen eine Vorschau gerechnet wurde. */
 const _sig = () => JSON.stringify([window.pvModusVorgabe || null, _ab.umfang, _ab.trafoId, _ab.minM2,
-  [..._ab.ohneNutzung].sort(), _ab.menge, _ab.bereich ? _ab.bereich.toBBoxString() : null]);
+  [..._ab.ohneNutzung].sort(), _ab.menge, _ab.menge === 'gestuft' ? _ab.vorrang : null,
+  _ab.bereich ? _ab.bereich.toBBoxString() : null]);
+const _vorrangLabel = (w, stich) => w === 'neubau' ? `Neubauten (nach ${stich})` : (VORRANG.find(v => v[0] === w)?.[1] || w);
 
 const _nordSektor = () => window.pvModusVorgabe?.nordSektor ?? 45;
 
@@ -106,6 +128,28 @@ function _pflichtIds() {
     || (f.pflichtFall !== 'keine' && (f.neubau || f.dachsanierung))).map(f => f.id));
 }
 
+/** Prüffunktion „gehört das Gebäude zum Umfang?" — gemeinsam für Belegen und Entfernen. */
+function _umfangFilter(umfang, stich) {
+  if (umfang === 'neubau') return g => pvnaIstNeubau(g, stich);
+  if (umfang === 'pflicht') { const ids = _pflichtIds(); return g => ids.has(g.id); }
+  if (umfang === 'auswahl') return g => !!g.selected;
+  if (umfang === 'bereich') {
+    const b = _ab.bereich;
+    // Gebäude zählt, wenn seine Mitte im Rahmen liegt — angeschnittene Randgebäude nicht
+    return g => {
+      if (!b || !Array.isArray(g.polygon) || !g.polygon.length) return false;
+      let la = 0, ln = 0;
+      for (const p of g.polygon) { la += +p.lat; ln += +p.lng; }
+      return b.contains([la / g.polygon.length, ln / g.polygon.length]);
+    };
+  }
+  if (umfang === 'trafo') {
+    const zu = _ab.trafoId != null ? _trafoZuordnung() : null;
+    return g => !!zu && _gebKnoten(g.id, zu) === _ab.trafoId;
+  }
+  return () => true;
+}
+
 /**
  * Kandidaten nach Umfang und Eignung. `vorNutzung` = alle, die nur noch am
  * Nutzungstyp scheitern könnten (für die Auswahlliste der Typen).
@@ -114,23 +158,7 @@ function _kandidaten() {
   const { stich, ziel } = pvnaJahre(pvnaEinstellungen());
   const jahr = Math.max(ziel, new Date().getFullYear());
   const raus = { belegt: 0, klein: 0, nutzung: 0, weg: 0 };
-  let umfangOk;
-  if (_ab.umfang === 'neubau') umfangOk = g => pvnaIstNeubau(g, stich);
-  else if (_ab.umfang === 'pflicht') { const ids = _pflichtIds(); umfangOk = g => ids.has(g.id); }
-  else if (_ab.umfang === 'auswahl') umfangOk = g => !!g.selected;
-  else if (_ab.umfang === 'bereich') {
-    const b = _ab.bereich;
-    // Gebäude zählt, wenn seine Mitte im Rahmen liegt — angeschnittene Randgebäude nicht
-    umfangOk = g => {
-      if (!b) return false;
-      let la = 0, ln = 0;
-      for (const p of g.polygon) { la += +p.lat; ln += +p.lng; }
-      return b.contains([la / g.polygon.length, ln / g.polygon.length]);
-    };
-  } else if (_ab.umfang === 'trafo') {
-    const zu = _ab.trafoId != null ? _trafoZuordnung() : null;
-    umfangOk = g => !!zu && _gebKnoten(g.id, zu) === _ab.trafoId;
-  } else umfangOk = () => true;
+  const umfangOk = _umfangFilter(_ab.umfang, stich);
 
   const vorNutzung = [], liste = [];
   for (const g of (window.gebaeude || [])) {
@@ -154,18 +182,20 @@ function _kandidaten() {
 const _naechsterFrame = () => new Promise(r => setTimeout(r, 30));
 
 export async function pvabVorschau() {
-  const { liste } = _kandidaten();
+  const { liste, stich } = _kandidaten();
   if (!liste.length) { alert('Keine passenden Dächer — Umfang oder Mindestgröße anpassen.'); return; }
   window.showHint?.(`⏳ Probebelegung von ${liste.length} Dächern …`, 0);
   await _naechsterFrame();
   try {
+    const vorrangOk = _ab.menge === 'gestuft' ? _umfangFilter(_ab.vorrang, stich) : null;
     const zeilen = [];
     for (const g of liste) {
       const p = pvmProbe(g);
-      if (!p || !(p.kwp > 0)) zeilen.push({ g, kwp: 0, kwpKorr: 0, status: 'leer', grund: 'kein Modul passt' });
-      else zeilen.push({ g, kwp: p.kwp, kwpKorr: p.kwpKorr, module: p.module, status: 'voll', grund: '' });
+      const vorrang = !!vorrangOk?.(g);
+      if (!p || !(p.kwp > 0)) zeilen.push({ g, vorrang, kwp: 0, kwpKorr: 0, status: 'leer', grund: 'kein Modul passt' });
+      else zeilen.push({ g, vorrang, kwp: p.kwp, kwpKorr: p.kwpKorr, module: p.module, status: 'voll', grund: '' });
     }
-    const netz = _ab.menge === 'netz' ? _netzPruefen(zeilen) : null;
+    const netz = _ab.menge !== 'max' ? _netzPruefen(zeilen) : null;
     _ab.vorschau = { zeilen, sig: _sig(), netz };
     window.hideHint?.();
   } catch (err) {
@@ -190,6 +220,9 @@ function _begrenzerText(b, info) {
  * Netzprüfung wie die Netzaufnahme: radiales Modell im Rechenjahr, alle schon
  * geplanten PV-Anlagen/-Dächer als Vorlast, die Kandidaten gierig nach Ertrag
  * — jedes nur ganz. Setzt status 'netz' bzw. 'ohneNetz' an den Zeilen.
+ * Gestuft: Vorrang-Zeilen werden immer belegt ('vorrang'); erst wird geprüft,
+ * ob sie selbst noch ins Bestandsnetz passen ('vorrangUeber' wenn nicht), dann
+ * gehen sie als Vorlast in die Füllung der übrigen.
  */
 function _netzPruefen(zeilen) {
   const ein = pvnaEinstellungen();
@@ -217,22 +250,43 @@ function _netzPruefen(zeilen) {
     vorlastKwp += d.kwpMax;
   }
 
-  const daecher = [];
+  const daecher = [], vorrang = [];
   const nachId = new Map();
   for (const z of zeilen) {
     if (z.status !== 'voll') continue;
     const elementId = _gebKnoten(z.g.id, knotenEl);
-    if (elementId == null || !elById.has(elementId)) { z.status = 'ohneNetz'; z.grund = 'nicht ans Stromnetz angebunden'; continue; }
-    daecher.push({ id: z.g.id, elementId, kwpMax: z.kwp, ertragFaktor: z.kwpKorr / z.kwp, einspFaktor });
+    const angebunden = elementId != null && elById.has(elementId);
+    if (z.vorrang) {
+      z.status = 'vorrang';
+      if (!angebunden) { z.grund = 'nicht ans Stromnetz angebunden — Netzgrenze unbekannt'; continue; }
+    } else if (!angebunden) { z.status = 'ohneNetz'; z.grund = 'nicht ans Stromnetz angebunden'; continue; }
+    (z.vorrang ? vorrang : daecher).push({ id: z.g.id, elementId, kwpMax: z.kwp, ertragFaktor: z.kwpKorr / z.kwp, einspFaktor });
     nachId.set(z.g.id, z);
   }
-  const r = pvnaFuellen({ elemente, daecher, pruefpunkte: m.eingabe.pruefpunkte,
+  const fuellen = (els, ds) => pvnaFuellen({ elemente: els, daecher: ds, pruefpunkte: m.eingabe.pruefpunkte,
     duGrenzePct: m.eingabe.duGrenzePct, ganzOderGar: true });
-  for (const d of r.daecher) {
-    const z = nachId.get(d.id);
-    if (z && !(d.kwp > 0)) { z.status = 'netz'; z.grund = _begrenzerText(d.begrenzer, m.info); }
+  let vorrangKwp = 0;
+  if (vorrang.length) {
+    // Passt die Vorrang-Gruppe selbst noch ins Bestandsnetz? Belegt wird sie so oder so.
+    const rv = fuellen(elemente.map(e => ({ ...e })), vorrang);
+    for (const d of rv.daecher) {
+      const z = nachId.get(d.id);
+      if (z && !(d.kwp > 0)) { z.status = 'vorrangUeber'; z.grund = _begrenzerText(d.begrenzer, m.info); }
+    }
+    for (const d of vorrang) {
+      const el = elById.get(d.elementId);
+      el.vorlastKw = (+el.vorlastKw || 0) + d.kwpMax * einspFaktor;
+      vorrangKwp += d.kwpMax;
+    }
   }
-  return { jahr, vorlastKwp, einspFaktor, duGrenzePct: m.eingabe.duGrenzePct,
+  if (daecher.length) {
+    const r = fuellen(elemente, daecher);
+    for (const d of r.daecher) {
+      const z = nachId.get(d.id);
+      if (z && !(d.kwp > 0)) { z.status = 'netz'; z.grund = _begrenzerText(d.begrenzer, m.info); }
+    }
+  }
+  return { jahr, vorlastKwp, vorrangKwp, einspFaktor, duGrenzePct: m.eingabe.duGrenzePct,
     unbekannteQs: m.info.unbekannteQs.length, ersatzQs: m.info.ersatzQs,
     ohneTrafo: !m.eingabe.elemente.some(e => e.typ === 'trafo') };
 }
@@ -240,7 +294,7 @@ function _netzPruefen(zeilen) {
 export async function pvabUebernehmen() {
   const v = _ab.vorschau;
   if (!v) return;
-  const ziele = v.zeilen.filter(z => z.status === 'voll' || (z.status === 'ohneNetz' && _ab.ohneNetzBelegen)).map(z => z.g);
+  const ziele = v.zeilen.filter(_wirdBelegt).map(z => z.g);
   if (!ziele.length) { alert('Kein Dach zum Belegen.'); return; }
   window.showHint?.(`⏳ ${ziele.length} Dächer werden belegt …`, 0);
   await _naechsterFrame();
@@ -248,6 +302,12 @@ export async function pvabUebernehmen() {
   _trafoCache = null;
   const { anzahl, summe } = pvmStapelBelegen(ziele);
   window.showHint?.(`✓ ${anzahl} Dächer belegt · Σ ${_fmt(summe)} kWp. Strg+Z nimmt den ganzen Schritt zurück.`, 8000);
+}
+
+/** Wird diese Vorschauzeile beim Übernehmen belegt? */
+function _wirdBelegt(z) {
+  return z.status === 'voll' || z.status === 'vorrang' || z.status === 'vorrangUeber'
+    || (z.status === 'ohneNetz' && _ab.ohneNetzBelegen);
 }
 
 export function pvabVerwerfen() {
@@ -261,7 +321,7 @@ export function pvabVerwerfen() {
 // ══════════════════════════════════════════════════════════════════════════
 
 function _bereichZeigen() {
-  const soll = _ab.offen && _ab.umfang === 'bereich' && _ab.bereich && window.pvModusAktiv;
+  const soll = _ab.modus && _ab.umfang === 'bereich' && _ab.bereich && window.pvModusAktiv;
   if (!soll) { if (_bereichLayer) { map.removeLayer(_bereichLayer); _bereichLayer = null; } return; }
   if (!_bereichLayer) {
     _bereichLayer = L.rectangle(_ab.bereich, { color: CYAN, weight: 2, dashArray: '6 4', fillOpacity: 0.05, interactive: false }).addTo(map);
@@ -323,34 +383,116 @@ export function pvabBereichZiehen() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// BELEGUNGEN ENTFERNEN
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Dächer im Umfang, die überhaupt Flächen haben (Belegung oder Sperrfläche). */
+function _entfernKandidaten() {
+  const { stich } = pvnaJahre(pvnaEinstellungen());
+  const ok = _umfangFilter(_ab.umfang, stich);
+  const liste = (window.gebaeude || []).filter(g => g.pvFlaechen?.length && ok(g));
+  return { liste, stich };
+}
+
+/**
+ * Alle PV-Flächen (Belegung + Sperrflächen) der Gebäude entfernen und neu
+ * zeichnen. Die PV-Assets fasst diese Funktion nicht an — das macht der
+ * Aufrufer (Sammel-Entfernen hier, Einzel-Löschen in 13a deleteAsset).
+ * @param {any[]} gIds
+ * @returns {number} Zahl der geräumten Dächer
+ */
+export function pvBelegungEntfernen(gIds) {
+  const ids = new Set(gIds);
+  const geaendert = [], vorher = new Map();
+  for (const g of (window.gebaeude || [])) {
+    if (!ids.has(g.id) || !g.pvFlaechen?.length) continue;
+    vorher.set(g.id, { pvFlaechen: g.pvFlaechen });
+    g.pvFlaechen = [];
+    g.pvAktiv = false;
+    geaendert.push(g);
+  }
+  if (!geaendert.length) return 0;
+  // Gleicher Weg wie beim Variantenwechsel: alte Layer weg, Module neu
+  window.variantenPvNeuZeichnen?.(geaendert, vorher);
+  for (const g of geaendert) window._rerenderCard?.(g.id);
+  if (window.pvModusAktiv) pvModusMarkiereKarte();
+  return geaendert.length;
+}
+
+export function pvabEntfernen() {
+  const { liste } = _entfernKandidaten();
+  if (!liste.length) return;
+  const ids = new Set(liste.map(g => g.id));
+  const pv = ASSETS.items.filter(a => a.type === 'PV' && ids.has(a.buildingId));
+  const geteilt = pv.filter(a => normSchicht(a.schicht) !== SCHICHT.ENTSCHEIDUNG).length;
+  const kwp = liste.reduce((s, g) => s + (calcGebKwpKorr(g) || 0), 0);
+  if (!confirm(`Auf ${liste.length} Dächern alle Belegungs- und Sperrflächen entfernen (Σ ${_fmt(kwp)} kWp)?\n\n`
+    + (pv.length ? `${pv.length} PV-Asset(s) werden mit gelöscht.` : 'Es hängen keine PV-Assets daran.')
+    + (geteilt ? `\n${geteilt} davon gehören zu Bestand/Entwicklung — sie verschwinden in allen Varianten.` : '')
+    + `\n\nStrg+Z im PV-Modus nimmt den ganzen Schritt zurück.`)) return;
+  const lauf = () => {
+    for (const a of pv) deleteAsset(a.id, true);
+    pvBelegungEntfernen([...ids]);
+  };
+  try {
+    if (typeof window.runPlanningTransaction === 'function') window.runPlanningTransaction('PV-Belegung entfernen', lauf);
+    else lauf();
+  } catch (err) {
+    console.error(err);
+    alert('Entfernen fehlgeschlagen: ' + err.message);
+    return;
+  }
+  pvmPlanungsSchrittMerken();
+  _trafoCache = null;
+  window.recalcStromNetz?.();
+  window.redrawAllAssets?.();
+  window.calcStromPanel?.();
+  window.renderList?.();
+  window.showHint?.(`🗑 ${liste.length} Dächer geräumt · ${_fmt(kwp)} kWp. Strg+Z nimmt den Schritt zurück.`, 7000);
+  pvModusRender();
+  pvModusMarkiereKarte();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // KARTE
 // ══════════════════════════════════════════════════════════════════════════
 
+function _stilNeutral(g) {
+  if (_hasBelegung(g)) g.polygonLayer.setStyle({ color: '#ffb300', weight: 1.5, dashArray: '', fillColor: GELB, fillOpacity: 0.08 });
+  else g.polygonLayer.setStyle({ color: 'rgba(255,255,255,.35)', weight: 1, dashArray: '3 4', fillColor: '#ffffff', fillOpacity: 0.02 });
+}
+
 /**
- * Färbt die Dächer, solange der Block offen ist: Kandidaten cyan, in der
- * Vorschau grün (wird belegt) / rot (Netz zu knapp) / grau (ohne Netz,
- * kein Modul); schon belegte Dächer wie im PV-Modus.
+ * Färbt die Dächer, solange ein Block offen ist. Belegen: Kandidaten cyan, in
+ * der Vorschau grün (wird belegt) / hellgrün (Vorrang) / orange (Vorrang über
+ * der Netzgrenze) / rot (Netz zu knapp) / grau (ohne Netz, kein Modul).
+ * Entfernen: betroffene Dächer rot. Übrige Dächer wie im PV-Modus.
  * @returns {boolean} true = Karte ist gefärbt (PV-Modus färbt dann nicht selbst)
  */
 export function pvabMarkiereKarte() {
   _bereichZeigen();
-  if (!_ab.offen || !window.pvModusAktiv) return false;
+  if (!_ab.modus || !window.pvModusAktiv) return false;
+  if (_ab.modus === 'entfernen') {
+    const weg = new Set(_entfernKandidaten().liste.map(g => g.id));
+    for (const g of (window.gebaeude || [])) {
+      if (!g.polygonLayer) continue;
+      if (weg.has(g.id)) g.polygonLayer.setStyle({ color: ROT, weight: 2, dashArray: '', fillColor: ROT, fillOpacity: 0.3 });
+      else _stilNeutral(g);
+    }
+    return true;
+  }
   const status = new Map();
   if (_ab.vorschau) for (const z of _ab.vorschau.zeilen) status.set(z.g.id, z.status);
   else for (const g of _kandidaten().liste) status.set(g.id, 'kandidat');
-  const farbe = { kandidat: CYAN, voll: GRUEN, netz: ROT, ohneNetz: _ab.ohneNetzBelegen ? GRUEN : GRAU, leer: GRAU };
+  const farbe = { kandidat: CYAN, voll: GRUEN, vorrang: HELLGRUEN, vorrangUeber: ORANGE, netz: ROT,
+    ohneNetz: _ab.ohneNetzBelegen ? GRUEN : GRAU, leer: GRAU };
   for (const g of (window.gebaeude || [])) {
     if (!g.polygonLayer) continue;
     const st = status.get(g.id);
-    if (st) {
-      const f = farbe[st];
-      g.polygonLayer.setStyle({ color: f, weight: 2, dashArray: st === 'ohneNetz' || st === 'leer' ? '4 4' : '',
-        fillColor: f, fillOpacity: st === 'kandidat' ? 0.12 : 0.28 });
-    } else if (_hasBelegung(g)) {
-      g.polygonLayer.setStyle({ color: '#ffb300', weight: 1.5, dashArray: '', fillColor: GELB, fillOpacity: 0.08 });
-    } else {
-      g.polygonLayer.setStyle({ color: 'rgba(255,255,255,.35)', weight: 1, dashArray: '3 4', fillColor: '#ffffff', fillOpacity: 0.02 });
-    }
+    if (!st) { _stilNeutral(g); continue; }
+    const f = farbe[st];
+    g.polygonLayer.setStyle({ color: f, weight: 2, dashArray: st === 'ohneNetz' || st === 'leer' ? '4 4' : '',
+      fillColor: f, fillOpacity: st === 'kandidat' ? 0.12 : 0.28 });
   }
   return true;
 }
@@ -359,32 +501,77 @@ export function pvabMarkiereKarte() {
 // PANEL-BLOCK (in 25 _html über window.pvabBlockHtml)
 // ══════════════════════════════════════════════════════════════════════════
 
-export function pvabBlockHtml() {
-  if (!_ab.offen) {
-    return `<button class="btn-xs" style="width:100%;margin-top:6px;border-color:${CYAN};color:${CYAN};"
-        data-click="pvabToggle()" title="Viele Dächer auf einmal belegen — alle, Neubauten, PV-Pflicht, ein Bereich oder ein Trafo-Netzgebiet, wahlweise netzverträglich">
-        ⚡ Dächer automatisch belegen …</button>`;
-  }
-  const { liste, vorNutzung, raus, stich } = _kandidaten();
-  const opt = (w, l, an) => `<option value="${w}"${an ? ' selected' : ''}>${escHtml(l)}</option>`;
-  const umfangLabel = w => w === 'neubau' ? `Nur Neubauten (nach ${stich})` : UMFAENGE.find(u => u[0] === w)[1];
+const _opt = (w, l, an) => `<option value="${w}"${an ? ' selected' : ''}>${escHtml(l)}</option>`;
 
-  let umfangZusatz = '';
+function _kopfHtml(farbe, titel, modus) {
+  return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
+      <span style="flex:1;color:${farbe};font-weight:600;font-size:11px;">${titel}</span>
+      <button class="btn-xs" data-click="pvabToggle('${modus}')" title="Schließen">✕</button>
+    </div>`;
+}
+
+/** Umfang-Auswahl samt Bereich-/Trafo-Zusatz — gemeinsam für Belegen und Entfernen. */
+function _umfangHtml(stich, alleLabel) {
+  const label = w => w === 'alle' ? alleLabel : w === 'neubau' ? `Nur Neubauten (nach ${stich})` : UMFAENGE.find(u => u[0] === w)[1];
+  let zusatz = '';
   if (_ab.umfang === 'bereich') {
-    umfangZusatz = `<div style="display:flex;gap:4px;margin-top:4px;">
+    zusatz = `<div style="display:flex;gap:4px;margin-top:4px;">
         <button class="btn-xs" style="flex:1;${_ab.bereich ? '' : `border-color:${CYAN};color:${CYAN};`}" data-click="pvabBereichZiehen()"
           title="Mit gedrückter Maustaste ein Rechteck auf der Karte aufziehen">▭ ${_ab.bereich ? 'Neu aufziehen' : 'Bereich aufziehen'}</button>
         ${_ab.bereich ? `<button class="btn-xs" data-click="pvabSet('bereich','')" title="Bereich entfernen">✕</button>` : ''}
       </div>`;
   } else if (_ab.umfang === 'trafo') {
     const tr = _trafos();
-    umfangZusatz = tr.length
+    zusatz = tr.length
       ? `<select class="inp-field" style="margin-top:4px;" data-change="pvabSet('trafoId',this.value)">
-          ${opt('', '— Trafo wählen —', _ab.trafoId == null)}
-          ${tr.map(t => opt(String(t.id), `${t.name}${t.kva ? ` (${t.kva} kVA)` : ''}`, String(_ab.trafoId) === String(t.id))).join('')}
+          ${_opt('', '— Trafo wählen —', _ab.trafoId == null)}
+          ${tr.map(t => _opt(String(t.id), `${t.name}${t.kva ? ` (${t.kva} kVA)` : ''}`, String(_ab.trafoId) === String(t.id))).join('')}
         </select>`
       : `<div style="font-size:9px;color:var(--muted);margin-top:3px;">Im Projekt gibt es noch keinen Trafo.</div>`;
   }
+  return `<div class="inp-group">
+      <div class="inp-label">① Welche Dächer?</div>
+      <select class="inp-field" data-change="pvabSet('umfang',this.value)">
+        ${UMFAENGE.map(([w]) => _opt(w, label(w), _ab.umfang === w)).join('')}
+      </select>
+      ${zusatz}
+    </div>`;
+}
+
+export function pvabBlockHtml() {
+  if (!_ab.modus) {
+    return `<div style="display:flex;gap:4px;margin-top:6px;">
+        <button class="btn-xs" style="flex:1;border-color:${CYAN};color:${CYAN};"
+          data-click="pvabToggle('belegen')" title="Viele Dächer auf einmal belegen — alle, Neubauten, PV-Pflicht, ein Bereich oder ein Trafo-Netzgebiet, wahlweise netzverträglich oder gestuft">
+          ⚡ Dächer automatisch belegen …</button>
+        <button class="btn-xs" style="border-color:${ROT}99;color:${ROT};"
+          data-click="pvabToggle('entfernen')" title="Belegungen vieler Dächer auf einmal entfernen — samt Sperrflächen und PV-Assets">
+          🗑 Entfernen …</button>
+      </div>`;
+  }
+  return _ab.modus === 'entfernen' ? _entfernHtml() : _belegenHtml();
+}
+
+function _entfernHtml() {
+  const { liste, stich } = _entfernKandidaten();
+  const ids = new Set(liste.map(g => g.id));
+  const nPv = ASSETS.items.filter(a => a.type === 'PV' && ids.has(a.buildingId)).length;
+  const kwp = liste.reduce((s, g) => s + (calcGebKwpKorr(g) || 0), 0);
+  return `
+    <div style="margin-top:6px;border:1px solid ${ROT}66;border-radius:5px;padding:6px 7px;background:${ROT}0d;">
+      ${_kopfHtml(ROT, '🗑 Belegungen entfernen', 'entfernen')}
+      ${_umfangHtml(stich, 'Alle belegten Dächer')}
+      <div style="font-size:10px;margin-top:6px;padding-top:5px;border-top:1px solid var(--border);">
+        <b style="color:${ROT};">${liste.length}</b> Dächer mit Flächen${liste.length ? ` · <span style="font-family:'DM Mono',monospace;">${_fmt(kwp)} kWp</span>` : ''}
+        <div style="font-size:9px;color:var(--muted);line-height:1.4;">Belegungs- und Sperrflächen samt ${nPv} PV-Asset(s). Strg+Z nimmt den Schritt zurück.</div>
+      </div>
+      <button class="btn-xs" style="width:100%;margin-top:5px;border-color:${ROT};color:${ROT};" ${liste.length ? '' : 'disabled'}
+        data-click="pvabEntfernen()" title="Fragt vorher noch einmal nach">🗑 ${liste.length} Belegungen entfernen</button>
+    </div>`;
+}
+
+function _belegenHtml() {
+  const { liste, vorNutzung, raus, stich } = _kandidaten();
 
   // Nutzungstypen, die unter den Kandidaten vorkommen
   const typen = new Map();
@@ -407,17 +594,8 @@ export function pvabBlockHtml() {
 
   return `
     <div style="margin-top:6px;border:1px solid ${CYAN}66;border-radius:5px;padding:6px 7px;background:${CYAN}0d;">
-      <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
-        <span style="flex:1;color:${CYAN};font-weight:600;font-size:11px;">⚡ Dächer automatisch belegen</span>
-        <button class="btn-xs" data-click="pvabToggle()" title="Schließen">✕</button>
-      </div>
-      <div class="inp-group">
-        <div class="inp-label">① Welche Dächer?</div>
-        <select class="inp-field" data-change="pvabSet('umfang',this.value)">
-          ${UMFAENGE.map(([w]) => opt(w, umfangLabel(w), _ab.umfang === w)).join('')}
-        </select>
-        ${umfangZusatz}
-      </div>
+      ${_kopfHtml(CYAN, '⚡ Dächer automatisch belegen', 'belegen')}
+      ${_umfangHtml(stich, 'Alle Dächer')}
       <div style="display:flex;align-items:center;gap:5px;margin-top:5px;font-size:10px;">
         <span style="flex:1;color:var(--muted);" title="Kleinere Gebäude (Garagen, Schuppen) bleiben frei">Mindestgröße</span>
         <input class="inp-field" type="number" min="0" step="10" value="${_ab.minM2}" style="width:58px;padding:2px 4px;"
@@ -444,8 +622,17 @@ export function pvabBlockHtml() {
         <div style="display:flex;flex-direction:column;gap:2px;">
           ${radio('max', 'Maximal — jedes Dach voll', 'Netzgrenzen werden nicht geprüft')}
           ${radio('netz', 'Netzverträglich (Bestandsnetz)', 'Wie die PV-Netzaufnahme: ohne Kabel- oder Trafo-Ertüchtigung. Beste Erträge zuerst, jedes Dach ganz oder gar nicht; bereits geplante PV hat Vorrang.')}
+          ${radio('gestuft', 'Gestuft — Gruppe voll, Rest netzverträglich', 'Erst eine Gruppe aus ① immer voll belegen (z. B. alle Neubauten oder die PV-Pflicht-Fälle), danach die übrigen Dächer nur, soweit das Bestandsnetz es noch verträgt.')}
         </div>
-        ${_ab.menge === 'netz' ? `
+        ${_ab.menge === 'gestuft' ? `
+        <div style="display:flex;align-items:center;gap:5px;margin-top:4px;font-size:10px;">
+          <span style="color:var(--muted);white-space:nowrap;">Immer voll:</span>
+          <select class="inp-field" style="flex:1;" data-change="pvabSet('vorrang',this.value)">
+            ${VORRANG.map(([w]) => _opt(w, _vorrangLabel(w, stich), _ab.vorrang === w)).join('')}
+          </select>
+        </div>
+        <div style="font-size:9px;color:var(--muted);line-height:1.4;margin-top:2px;">Der Rest aus ① nur, soweit das Netz danach noch reicht.</div>` : ''}
+        ${_ab.menge !== 'max' ? `
         <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:3px;"
           title="Gebäude ohne Verbindung zum erfassten Stromnetz — ihre Netzgrenze ist unbekannt">
           <input type="checkbox" ${_ab.ohneNetzBelegen ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
@@ -455,11 +642,11 @@ export function pvabBlockHtml() {
       <div style="font-size:10px;margin-top:6px;padding-top:5px;border-top:1px solid var(--border);">
         <b style="color:${CYAN};">${liste.length}</b> Dächer kommen in Frage${ausgelassen ? `<div style="font-size:9px;color:var(--muted);">ausgelassen: ${ausgelassen}</div>` : ''}
       </div>
-      ${_vorschauHtml(liste.length)}
+      ${_vorschauHtml(liste.length, stich)}
     </div>`;
 }
 
-function _vorschauHtml(nKand) {
+function _vorschauHtml(nKand, stich) {
   const v = _ab.vorschau;
   if (!v) {
     return `<button class="btn-xs" style="width:100%;margin-top:5px;border-color:${CYAN};color:${CYAN};"
@@ -467,29 +654,39 @@ function _vorschauHtml(nKand) {
         title="Probebelegung rechnen und auf der Karte zeigen — ändert noch nichts">🔍 Vorschau berechnen</button>`;
   }
   const veraltet = v.sig !== _sig();
-  const gruppe = st => v.zeilen.filter(z => z.status === st);
+  const gruppe = (...st) => v.zeilen.filter(z => st.includes(z.status));
   const sum = zs => zs.reduce((s, z) => s + z.kwpKorr, 0);
+  const vorrang = gruppe('vorrang', 'vorrangUeber'), ueber = gruppe('vorrangUeber');
   const voll = gruppe('voll'), netz = gruppe('netz'), ohne = gruppe('ohneNetz'), leer = gruppe('leer');
-  const belegen = _ab.ohneNetzBelegen ? voll.concat(ohne) : voll;
-  const zeile = (farbe, n, text, kwp) => n ? `<div style="display:flex;align-items:center;gap:5px;font-size:10px;">
+  const belegen = v.zeilen.filter(_wirdBelegt);
+  const gestuft = vorrang.length > 0;
+  const zusatz = voll.concat(_ab.ohneNetzBelegen ? ohne : []);
+  const zeile = (farbe, n, text, kwp, einzug) => n ? `<div style="display:flex;align-items:center;gap:5px;font-size:10px;${einzug ? 'padding-left:12px;' : ''}">
       <span style="width:9px;height:9px;border-radius:2px;background:${farbe};flex:none;"></span>
       <span style="flex:1;">${n} ${text}</span>
       ${kwp != null ? `<span style="font-family:'DM Mono',monospace;">${_fmt(kwp)} kWp</span>` : ''}</div>` : '';
-  const gruende = netz.concat(_ab.ohneNetzBelegen ? [] : ohne).slice(0, 8).map(z => `
+  const mitGrund = v.zeilen.filter(z => z.status === 'vorrangUeber' || z.status === 'netz'
+    || (z.status === 'vorrang' && z.grund) || (z.status === 'ohneNetz' && !_ab.ohneNetzBelegen));
+  const gruende = mitGrund.slice(0, 10).map(z => `
       <div style="font-size:9px;color:var(--muted);display:flex;gap:4px;cursor:pointer;" data-click="pvmWaehle(${z.g.id})" title="${escHtml(z.grund)}">
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(_name(z.g))}</span>
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%;">${escHtml(z.grund)}</span>
       </div>`).join('');
+  const vorrangName = escHtml(_vorrangLabel(_ab.vorrang, stich));
   const n = v.netz;
   const netzInfo = n ? `<div style="font-size:9px;color:var(--muted);line-height:1.4;margin-top:4px;">
       Netzjahr ${n.jahr} · ${_fmt(n.einspFaktor, 1)} kW/kWp · ΔU ≤ ${_fmt(n.duGrenzePct, 1)} %${n.vorlastKwp > 0 ? ` · ${_fmt(n.vorlastKwp)} kWp schon geplant (Vorrang)` : ''}
       ${n.ohneTrafo ? `<br><span style="color:${ROT};">Kein Trafo im Netzjahr — es gibt kein Netz zum Anschließen.</span>` : ''}
+      ${ueber.length ? `<br><span style="color:${ORANGE};">${ueber.length} Dächer der Gruppe „${vorrangName}“ passen nicht mehr ins Bestandsnetz — sie werden trotzdem belegt, dort ist Netzausbau nötig.</span>` : ''}
       ${n.unbekannteQs && !n.ersatzQs ? `<br>⚠ ${n.unbekannteQs} Kabel ohne Querschnitt begrenzen nicht (Ersatzquerschnitt in der PV-Netzaufnahme).` : ''}
     </div>` : '';
   return `
     <div style="margin-top:6px;padding:5px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
       ${veraltet ? `<div style="font-size:9px;color:${GELB};margin-bottom:3px;">Auswahl oder Vorgaben geändert — Vorschau neu berechnen.</div>` : ''}
-      ${zeile(GRUEN, belegen.length, 'werden belegt', sum(belegen))}
+      ${zeile(HELLGRUEN, vorrang.length, `${vorrangName} — immer voll`, sum(vorrang))}
+      ${zeile(ORANGE, ueber.length, 'davon über der Netzgrenze', sum(ueber), true)}
+      ${gestuft ? zeile(GRUEN, zusatz.length, 'zusätzlich, netzverträglich', sum(zusatz))
+                : zeile(GRUEN, belegen.length, 'werden belegt', sum(belegen))}
       ${zeile(ROT, netz.length, 'Netz zu knapp', sum(netz))}
       ${_ab.ohneNetzBelegen ? '' : zeile(GRAU, ohne.length, 'ohne Netzanbindung', sum(ohne))}
       ${zeile(GRAU, leer.length, 'kein Modul passt', null)}
@@ -497,7 +694,7 @@ function _vorschauHtml(nKand) {
       ${netzInfo}
       <div style="display:flex;gap:4px;margin-top:6px;">
         <button class="btn-xs" style="flex:1;border-color:${GRUEN};color:${GRUEN};" ${belegen.length && !veraltet ? '' : 'disabled'}
-          data-click="pvabUebernehmen()" title="Belegungsflächen anlegen, kWp in die PV-Assets — ein Strg+Z-Schritt">✓ ${belegen.length} Dächer belegen</button>
+          data-click="pvabUebernehmen()" title="Belegungsflächen anlegen, kWp in die PV-Assets — ein Strg+Z-Schritt">✓ ${belegen.length} Dächer belegen · ${_fmt(sum(belegen))} kWp</button>
         <button class="btn-xs" data-click="${veraltet ? 'pvabVorschau()' : 'pvabVerwerfen()'}" title="${veraltet ? 'Neu berechnen' : 'Vorschau verwerfen'}">${veraltet ? '↻' : '✕'}</button>
       </div>
     </div>`;
@@ -507,9 +704,10 @@ function _vorschauHtml(nKand) {
 // HANDLER
 // ══════════════════════════════════════════════════════════════════════════
 
-export function pvabToggle() {
-  _ab.offen = !_ab.offen;
-  if (!_ab.offen) _ab.vorschau = null;
+/** Block öffnen/schließen — 'belegen' oder 'entfernen'; der andere schließt dabei. */
+export function pvabToggle(modus = 'belegen') {
+  _ab.modus = _ab.modus === modus ? null : (modus === 'entfernen' ? 'entfernen' : 'belegen');
+  _ab.vorschau = null;
   pvModusRender();
   pvModusMarkiereKarte();
 }
@@ -523,7 +721,8 @@ export function pvabSet(feld, wert) {
   }
   else if (feld === 'bereich') _ab.bereich = null;
   else if (feld === 'minM2') _ab.minM2 = Math.max(0, parseFloat(wert) || 0);
-  else if (feld === 'menge') _ab.menge = wert === 'netz' ? 'netz' : 'max';
+  else if (feld === 'menge') _ab.menge = ['netz', 'gestuft'].includes(wert) ? wert : 'max';
+  else if (feld === 'vorrang') _ab.vorrang = VORRANG.some(v => v[0] === wert) ? wert : 'neubau';
   else if (feld === 'ohneNetzBelegen') { _ab.ohneNetzBelegen = !!wert; pvModusRender(); pvModusMarkiereKarte(); return; }
   else if (feld === 'nutzungOffen') { _ab.nutzungOffen = !_ab.nutzungOffen; pvModusRender(); return; }
   _ab.vorschau = null;                     // andere Auswahl → Karte zeigt gleich die neuen Kandidaten
@@ -542,7 +741,7 @@ export function pvabNutzung(id, an) {
 /** PV-Modus endet (25 pvModusStop): Vorschau und Bereichsrahmen weg. */
 export function pvabBeenden() {
   _ab.vorschau = null;
-  _ab.offen = false;
+  _ab.modus = null;
   _trafoCache = null;
   _bereichZeigen();
 }
