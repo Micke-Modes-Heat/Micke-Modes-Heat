@@ -1,34 +1,36 @@
-// ── 10d-optimizer-worker.js — Worker-Code-Template, _doRunOptimierung (Fallback), Ergebnis-Charts ──
-import { globalYear } from './01-globals-varianten.js';
-import { aggregateGebStrom } from './02b-gebaeude.js';
-import { escHtml } from './03c-gebaeude-io.js';
-import { _autoSpeicherVolumen, makeStProfile8760 } from './06b-gl-berechnen.js';
-import { makePvProfile8760 } from './09a-pv-profile.js';
-import { _findOptPvBatMain, _optDispatch8760, _optGetScaledLastgang, _optKennwerte2, _optPvBatSim8760, _optScore, _readGuetegrad } from './10a-optimizer-core.js';
-import { _optAborted } from './10b-hourly-live.js';
-import { _optFinished } from './10e-optimizer-session.js';
+// ── 10d-optimizer-worker.js — Worker-Code der Optimierung, Ergebnis-Charts ──
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
-import { OPT_MERIT_ORDER } from './config/optimizer-defaults.js';
 import { _dispatchCore } from './06c-dispatch-core.js';
 import { _calcKostenShared } from './07b-analysis-economics.js';
 import { pvBatteryStep } from './lib/pv-battery-core.js';
 import { estimateBatteryAging } from './lib/battery-aging.js';
+import { optEinspeiseCt, optKonzeptSchluessel, optMusterSuche } from './lib/optimierer-suche.js';
 
+/**
+ * Quelltext des Optimierer-Workers. Die Rechenkerne (Dispatch, Kosten, PV/Batterie,
+ * Suchbausteine) werden per .toString() eingebettet — dieselben Funktionen wie im
+ * Hauptthread, damit Optimierer und Wirtschaftlichkeit identisch rechnen.
+ *
+ * Nachrichten (mode):
+ *   'grob' — eigener Anteil der Grobsuche (Leistungsstufen × ST × Speicher, PV/Batterie
+ *            je Punkt nach Zielfunktion), Antwort 'grob_done' mit kompakten Punkten
+ *   'fein' — Mustersuche je Startpunkt über alle Größen gemeinsam, Antwort 'done'
+ *   'full' — beides in einem Worker (ein Kern)
+ */
 export function _buildOptWorkerCode() {
   return `
 'use strict';
 // ═══ Web Worker: Optimierungsberechnung (DOM-frei) ═══
 
-let D; // DOM-Parameter (wird via postMessage empfangen)
-let QH = null; // Quartier-Stromlastgang — von onmessage gesetzt, von kennwerte() gelesen
+let D; // DOM-Parameter (via postMessage)
+let QH = null; // Quartier-Stromlastgang
+let QH_MWH = 0;
 
 ${pvBatteryStep.toString()}
 ${estimateBatteryAging.toString()}
-
-function _annF(z, n) {
-  if (z <= 0 || n <= 0) return n > 0 ? 1 / n : 1;
-  return z * Math.pow(1 + z, n) / (Math.pow(1 + z, n) - 1);
-}
+${optEinspeiseCt.toString()}
+${optKonzeptSchluessel.toString()}
+${optMusterSuche.toString()}
 
 function _defaultGuetegrad(key) {
   if (key === 'lwwp') return 0.42;
@@ -47,35 +49,35 @@ function _quelleTemp(key, tAussen, t) {
   return 10 + 2 * Math.sin(2 * Math.PI * (d2 - 75) / 365) - D.geoDtAbsenkung;
 }
 
+// Lineare Interpolation in einer Tabelle [{x, y}] (sortiert); außerhalb Randwert
+function _tabelle(pts, x) {
+  if (!pts || !pts.length) return 0;
+  if (x <= pts[0].x) return pts[0].y;
+  const n = pts.length;
+  if (x >= pts[n - 1].x) return pts[n - 1].y;
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (pts[m].x <= x) lo = m; else hi = m; }
+  const t = (x - pts[lo].x) / (pts[hi].x - pts[lo].x);
+  return pts[lo].y + t * (pts[hi].y - pts[lo].y);
+}
+
 function _investProKw(key, kw) {
-  const pts = D.investKurven[key];
-  if (pts && pts.length > 0) {
-    // Lineare Interpolation aus vorberechneten Punkten
-    if (kw <= pts[0].kw) return pts[0].eurKw > 0 ? pts[0].eurKw : D.OPT_INVEST_DEFAULT[key] || 200;
-    for (let i = 0; i < pts.length - 1; i++) {
-      if (kw >= pts[i].kw && kw <= pts[i+1].kw) {
-        const t = (kw - pts[i].kw) / (pts[i+1].kw - pts[i].kw);
-        const v = pts[i].eurKw + t * (pts[i+1].eurKw - pts[i].eurKw);
-        return v > 0 ? v : D.OPT_INVEST_DEFAULT[key] || 200;
-      }
-    }
-    const last = pts[pts.length-1];
-    return last.eurKw > 0 ? last.eurKw : D.OPT_INVEST_DEFAULT[key] || 200;
-  }
-  return D.OPT_INVEST_DEFAULT[key] || 200;
+  const v = _tabelle(D.investKurven[key], kw);
+  return v > 0 ? v : (D.OPT_INVEST_DEFAULT[key] || 200);
 }
 
 function _pvInvestPerKwp(kwp) {
+  if (D.pvInvestMode !== 'auto') return D.pvInvestManual;
   const tab = D.pvInvestTabelle;
-  if (kwp <= 0 || kwp <= tab[0].kwp) return tab[0].eurKwp;
-  if (kwp >= tab[tab.length-1].kwp) return tab[tab.length-1].eurKwp;
+  if (kwp <= tab[0].kwp) return tab[0].eurKwp;
+  if (kwp >= tab[tab.length - 1].kwp) return tab[tab.length - 1].eurKwp;
   for (let i = 0; i < tab.length - 1; i++) {
-    if (kwp >= tab[i].kwp && kwp <= tab[i+1].kwp) {
-      const t = (kwp - tab[i].kwp) / (tab[i+1].kwp - tab[i].kwp);
-      return Math.round(tab[i].eurKwp + t * (tab[i+1].eurKwp - tab[i].eurKwp));
+    if (kwp >= tab[i].kwp && kwp <= tab[i + 1].kwp) {
+      const t = (kwp - tab[i].kwp) / (tab[i + 1].kwp - tab[i].kwp);
+      return Math.round(tab[i].eurKwp + t * (tab[i + 1].eurKwp - tab[i].eurKwp));
     }
   }
-  return tab[tab.length-1].eurKwp;
+  return tab[tab.length - 1].eurKwp;
 }
 
 // ── Gemeinsame Kostenberechnung (eingebettet aus Main-Thread) ──
@@ -84,20 +86,15 @@ function _pvInvestPerKwp(kwp) {
 // ── Dispatch-Kern (eingebettet aus Main-Thread) ──
 ` + _dispatchCore.toString() + `
 
-function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stExcessH) {
-  // Speicher-Parameter aus Worker-Config aufbauen
+function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stExcessH, backupMode) {
   let thSp = null;
   if (typeof optSpeicherVol === 'number' && optSpeicherVol > 0) {
     thSp = { kapKwh: optSpeicherVol * 1.16 * D.tsDt, verlustRate: D.tsVerlust / 100, entladeKw: D.tsEntladeKw, ladeKw: D.tsLadeKw ?? D.tsEntladeKw };
   }
-
-  // Typ + Gütegrad sicherstellen (makeErzObj setzt typ, aber Sicherheit)
   for (const erz of erzeugerList) {
     if (!erz.typ) erz.typ = D.ERZEUGER_TYP[erz.key] || 'fix';
-    if (!erz.guetegrad) erz.guetegrad = _defaultGuetegrad(erz.key);
+    if (!erz.guetegrad) erz.guetegrad = D.guetegrade[erz.key] || _defaultGuetegrad(erz.key);
   }
-
-  // Einheitlichen Dispatch-Kern aufrufen
   const r = _dispatchCore({
     lastgangKw, tempH, vlH,
     erzList: erzeugerList,
@@ -107,20 +104,15 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
     bhkwSigma: D.bhkwSkz, skEta: D.skEta, lwwpMinCop: D.lwwpMinCop,
     quelleTemp: _quelleTemp,
     recordHourly: false,
-    backupMode: true,
+    backupMode: !!backupMode,
   });
-
-  // Ergebnisse in Erzeuger-Objekte übertragen
   for (const erz of erzeugerList) {
     erz.waermeMwh = (r.thKwh[erz.key] || 0) / 1000;
     erz.elMwh = (r.elKwh[erz.key] || 0) / 1000;
   }
-  // Backup-Kessel: leistKw auf tatsächlichen Peak anheben
-  const _backupErz = erzeugerList.length > 0 ? erzeugerList[erzeugerList.length - 1] : null;
-  if (_backupErz && r.backupPeakKw > _backupErz.leistKw) {
-    _backupErz.leistKw = Math.ceil(r.backupPeakKw);
-  }
-
+  // Backup-Kessel: Leistung = tatsächliche Spitze seines Einsatzes
+  const _backupErz = backupMode && erzeugerList.length > 0 ? erzeugerList[erzeugerList.length - 1] : null;
+  if (_backupErz && r.backupPeakKw > _backupErz.leistKw) _backupErz.leistKw = Math.ceil(r.backupPeakKw);
   return {
     erzeugerList,
     autoGkMwh: r.autoGkKwh / 1000,
@@ -140,7 +132,7 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
     let sumDem = 0;
     for (let t = 0; t < 8760; t++) sumDem += demandH[t];
     return { eigenMwh: 0, einspeiseMwh: 0, netzbezugMwh: sumDem / 1000,
-             pvEigenMwh: 0, pvEinspMwh: 0, bhkwEigenMwh: 0, bhkwEinspMwh: 0 };
+             pvEigenMwh: 0, pvEinspMwh: 0, bhkwEigenMwh: 0, bhkwEinspMwh: 0, batDischargeMwh: 0 };
   }
   const spez = D.pvSpez;
   const batLeistKw = batKwh > 0 ? batKwh / 2 : 0;
@@ -192,65 +184,39 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
   }
   return { eigenMwh: sv / 1000 + pvWpSpGes, einspeiseMwh: ins / 1000, netzbezugMwh: bez / 1000,
            pvEigenMwh: pvEig, pvEinspMwh: pvEinsp, bhkwEigenMwh: bhkwEig, bhkwEinspMwh: bhkwEinsp,
-           pvWpSpeicherMwh: pvWpSpGes, batDischargeMwh:batDischargeKwh/1000 };
+           pvWpSpeicherMwh: pvWpSpGes, batDischargeMwh: batDischargeKwh / 1000 };
 }
 
-// _calcBausteinKostenW ENTFERNT — nutzt jetzt _calcKostenShared
-
 function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeicherVol) {
-  const { erzeugerList, autoGkMwh, autoGkPeakKw, gesamtMwh } = dispR;
-  const { pStrom, pStromWp, pGas, pPk, pHhs, pHko, pFw, pEinsp, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz } = params;
+  const { erzeugerList, gesamtMwh } = dispR;
+  const { pStrom, pStromWp, pGas, pPk, pHhs, pHko, pFw, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz } = params;
 
-  // pKw aus erzeugerList
   const _bPKw = {};
   for (const erz of erzeugerList) _bPKw[erz.key] = erz.leistKw;
-  // Auto-Spitzenlastkessel (Rest, den die gewählten Erzeuger nicht decken) wie in der normalen Wirtschaftlichkeit
+  // Spitzenlastkessel (Rest, den die gewählten Erzeuger nicht decken) wie in der Wirtschaftlichkeit
   const _agkMwh = dispR.autoGkMwh || 0, _agkKw = dispR.autoGkPeakKw || 0;
   if (_agkMwh > 0.05 && _agkKw > 0.1) _bPKw._autoGk = Math.ceil(_agkKw);
-
-  // erzList mit typ-Info für _calcKostenShared
-  const erzListTyped = erzeugerList.map(erz => ({
-    key: erz.key, waermeMwh: erz.waermeMwh, elMwh: erz.elMwh,
-    typ: D.ERZEUGER_TYP[erz.key]
-  }));
+  const erzListTyped = erzeugerList.map(erz => ({ key: erz.key, waermeMwh: erz.waermeMwh, elMwh: erz.elMwh, typ: D.ERZEUGER_TYP[erz.key] }));
   if (_bPKw._autoGk) erzListTyped.push({ key: '_autoGk', waermeMwh: _agkMwh, elMwh: 0, typ: 'fix' });
 
-  // Quartier-Strom
-  let quartierStromMwh = 0;
-  if (QH) { for (let t = 0; t < 8760; t++) quartierStromMwh += QH[t]; quartierStromMwh /= 1000; }
-
-  // PV-Daten
   const pvEigenMwh = pvBatR ? (pvBatR.pvEigenMwh != null ? pvBatR.pvEigenMwh : pvBatR.eigenMwh) : 0;
   const pvEinspMwh = pvBatR ? (pvBatR.pvEinspMwh != null ? pvBatR.pvEinspMwh : pvBatR.einspeiseMwh) : 0;
   const gesamtEigenMwh = pvBatR ? (pvBatR.eigenMwh || 0) : 0;
-
-  // BHKW-Erlös-Daten
   const bhkwEigMwh = pvBatR ? (pvBatR.bhkwEigenMwh || 0) : 0;
   const bhkwEinspMwh = pvBatR ? (pvBatR.bhkwEinspMwh || 0) : 0;
-  const bhkwStromErloes = bhkwEigMwh * (pStrom + (pBhkwKwkEig || 4)) * 10
-    + bhkwEinspMwh * ((pBhkwEinsp || 8) + (pBhkwKwkE || 8)) * 10;
 
-  // Dynamische Bohrmeter für Geo
+  // Erdsonden nach Leistung und Jahresentzug der Geo-WP dieser Variante
   let _dynBohrMeter = D.bohrMeter || 0;
   const _geoErz = erzeugerList.find(e => e.key === 'geo');
-  if (_geoErz && _geoErz.leistKw > 0) {
+  if (_geoErz && _geoErz.leistKw > 0 && _dynBohrMeter < 1) {
     const _geoJaz = (_geoErz.elMwh > 0) ? _geoErz.waermeMwh / _geoErz.elMwh : 4.0;
-    const _geoTiefe = D.geoTiefe || 100;
-    const _geoQPerM = D.geoQPerM || 31;
-    const _erdwaermeKw = _geoErz.leistKw * (_geoJaz - 1) / _geoJaz;
-    const _proSondeKw = _geoQPerM * _geoTiefe / 1000;
-    const _nLeistung = Math.max(1, Math.ceil(_erdwaermeKw / _proSondeKw));
+    const _proSondeKw = D.geoQPerM * D.geoTiefe / 1000;
+    const _nLeistung = Math.max(1, Math.ceil(_geoErz.leistKw * (_geoJaz - 1) / _geoJaz / _proSondeKw));
     let _nEnergie = 1;
-    if (_geoErz.waermeMwh > 0) {
-      const _maxEntzugProSondeKwh = _proSondeKw * 2100;
-      const _erdwaermeKwh = _geoErz.waermeMwh * 1000 * (_geoJaz - 1) / _geoJaz;
-      _nEnergie = Math.max(1, Math.ceil(_erdwaermeKwh / _maxEntzugProSondeKwh));
-    }
-    _dynBohrMeter = Math.max(_nLeistung, _nEnergie) * _geoTiefe;
+    if (_geoErz.waermeMwh > 0) _nEnergie = Math.max(1, Math.ceil(_geoErz.waermeMwh * 1000 * (_geoJaz - 1) / _geoJaz / (_proSondeKw * 2100)));
+    _dynBohrMeter = Math.max(_nLeistung, _nEnergie) * D.geoTiefe;
   }
 
-  // PV-Invest
-  const pvInvPerKwp = D.pvInvestMode === 'auto' ? _pvInvestPerKwp(pvKwp) : D.pvInvestManual;
   const batAging = batKwh > 0 ? estimateBatteryAging({capacityKwh:batKwh,annualDischargeKwh:(pvBatR?.batDischargeMwh||0)*1000,
     calendarFadePctPerYear:D.batCalendarFade,cycleLife:D.batCycleLife,eolCapacityPct:D.batEolPct,studyYears:20}) : null;
 
@@ -266,6 +232,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
       bohrMeter: _dynBohrMeter,
       nGeb: D.nGeb || 0,
       netzInvest: D.netzInvest || 0,
+      ohneNetz: !!D.ohneNetz,
       stM2: (stMwh || 0) > 0 ? (stM2 || 0) : 0,
       optSpeicherVol: optSpeicherVol || 0,
       tsTyp: D.tsTyp, tsDt: D.tsDt,
@@ -274,16 +241,14 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
       kwp: pvKwp, batKwh: batKwh,
       eigenMwh: pvEigenMwh, einspMwh: pvEinspMwh,
       gesamtEigenMwh: gesamtEigenMwh,
-      invPerKwp: pvInvPerKwp,
+      invPerKwp: _pvInvestPerKwp(pvKwp),
       batInvPerKwh: D.batInvest,
-      batLifeYears: batAging && Number.isFinite(batAging.expectedLifeYears) ? Math.max(1,batAging.expectedLifeYears) : 15,
-      vergModell: D.pvVergModell || 'teil',
-      pEinsp: pEinsp,
+      batLifeYears: batAging && Number.isFinite(batAging.expectedLifeYears) ? Math.max(1, batAging.expectedLifeYears) : 15,
+      pEinsp: optEinspeiseCt(D.pvEinsp, pvKwp),
     },
     strom: {
-      quartierMwh: quartierStromMwh,
+      quartierMwh: QH_MWH,
       bhkwEigenMwh: bhkwEigMwh, bhkwEinspMwh: bhkwEinspMwh,
-      bhkwStromErloes: bhkwStromErloes,
       pBhkwEinsp: pBhkwEinsp, pBhkwKwkE: pBhkwKwkE, pBhkwKwkEig: pBhkwKwkEig,
     },
     co2: {
@@ -296,186 +261,41 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
     stMwh: stMwh || 0,
   });
 
-  const pvErtragMwh = pvKwp * D.pvSpez / 1000;
-
   return { wgk: result.wgk, co2ta: result.co2ta, eeAnteil: result.eeAnteil,
     stromAutarkie: result.stromAutarkie, waermeAutarkie: result.waermeAutarkie,
     investGesamt: result.investGesamt, jahreskosten: result.jahreskosten,
-    pvEigenMwh: pvEigenMwh, pvErtragMwh: pvErtragMwh,
-    _dbg: { kapitalJk: result.kapitalJk, energieJk: result.energieJk, totalWaerme: result.totalWaerme,
-      gesamtMwh, stMwh: stMwh || 0, nGeb: D.nGeb, netzInvest: D.netzInvest,
-      basisInvest: result.investGesamt, autoGkMwh, autoGkPeakKw,
-      erzList: erzeugerList.map(e => e.key + ':' + e.leistKw.toFixed(0) + 'kW/' + e.waermeMwh.toFixed(1) + 'MWh').join(', ') } };
+    pvEigenMwh: pvEigenMwh, pvErtragMwh: pvKwp * D.pvSpez / 1000 };
 }
 
 function score(kw, ziel) {
-  if (ziel === 'min-wgk') return kw.wgk;
   if (ziel === 'min-co2') return kw.co2ta;
   if (ziel === 'max-autarkie') return -(kw.stromAutarkie + kw.waermeAutarkie);
-  if (ziel === 'min-kosten-ee') return kw.eeAnteil >= 65 ? kw.wgk : 1e9 + kw.wgk;
+  // ≥ 65 % EE: unzulässige Varianten bleiben vergleichbar (näher an 65 % = besser), damit die Suche hinfindet
+  if (ziel === 'min-kosten-ee') return kw.eeAnteil >= 65 ? kw.wgk : 1e9 + (65 - kw.eeAnteil) * 1e3 + kw.wgk;
   return kw.wgk;
-}
-
-// ── PV+Bat Dimensionierung per marginaler Amortisation ──
-// Für jede Bat-Stufe: PV schrittweise vergrößern, bis Amortisation > Schwellwert.
-// Dann beste PV+Bat-Kombi per Score auswählen.
-function _findOptPvBat(pvSteps, batSteps, demandH, bhkwElH, pvProfile, disp,
-                       params, stMwh, stM2, tsVol, ziel, maxAmortJ, simFn, kwFn) {
-  const pStrom = params.pStrom;
-  // Einspeisevergütung effektiv (abhängig von PV-Größe + Modell)
-  function einspeiseCtKwh(pvKwp) {
-    const mod = D.pvVergModell || 'teil';
-    if (mod === 'teil') return pvKwp <= 0 ? 8.1 : (Math.min(pvKwp,10)*8.1 + Math.max(0,Math.min(pvKwp,40)-10)*7.0 + Math.max(0,pvKwp-40)*5.7) / pvKwp;
-    if (mod === 'voll') return pvKwp <= 0 ? 12.9 : (Math.min(pvKwp,10)*12.9 + Math.max(0,pvKwp-10)*10.8) / pvKwp;
-    return params.pEinsp || 8;
-  }
-  function pvInvPerKwp(kwp) {
-    if (typeof _pvInvestPerKwp === 'function') return _pvInvestPerKwp(kwp);
-    return D.pvInvestManual || 1200;
-  }
-
-  let bestPv = 0, bestBat = 0, bestScore = Infinity, bestKw = null;
-
-  // Immer PV=0 testen (Variante ohne PV)
-  const pvBat0 = simFn(0, 0, demandH, bhkwElH, pvProfile, disp);
-  const kw0 = kwFn(disp, 0, 0, pvBat0, params, stMwh, stM2, tsVol);
-  const sc0 = score(kw0, ziel);
-  if (sc0 < bestScore) { bestScore = sc0; bestPv = 0; bestBat = 0; bestKw = kw0; }
-
-  for (const batK of batSteps) {
-    // Cache: PV-Ergebnisse für diese Bat-Stufe, aufsteigend nach PV-Größe
-    let prevEigen = 0, prevEinsp = 0, prevPvK = 0;
-    for (let pi = 0; pi < pvSteps.length; pi++) {
-      const pvK = pvSteps[pi];
-      if (pvK <= 0) continue;
-
-      const pvBat = simFn(pvK, batK, demandH, bhkwElH, pvProfile, disp);
-      const curEigen = pvBat.pvEigenMwh || 0;  // MWh
-      const curEinsp = pvBat.pvEinspMwh || 0;  // MWh
-
-      // Marginale Amortisation dieses PV-Inkrements
-      const deltaInvest = pvK * pvInvPerKwp(pvK) - prevPvK * pvInvPerKwp(prevPvK);
-
-      const deltaEigen = curEigen - prevEigen;  // MWh zusätzlicher Eigenverbrauch
-      // Jährliche Ersparnis: Eigenverbrauch spart Netzbezug. Bei gestaffelter
-      // Vergütung zählt die Differenz der gesamten Einspeiseerlöse, nicht der
-      // neue Durchschnittssatz multipliziert mit dem marginalen Ertrag.
-      const deltaFeedRevenue = curEinsp * einspeiseCtKwh(pvK) * 10
-        - prevEinsp * einspeiseCtKwh(prevPvK) * 10;
-      const deltaSavings = deltaEigen * pStrom * 10 + deltaFeedRevenue;
-
-      if (deltaSavings <= 0 || deltaInvest / deltaSavings > maxAmortJ) {
-        // Dieses Inkrement lohnt sich nicht mehr → Stopp für diese Bat-Stufe
-        break;
-      }
-
-      // Inkrement OK → kennwerte berechnen und als Kandidat merken
-      const kw = kwFn(disp, pvK, batK, pvBat, params, stMwh, stM2, tsVol);
-      const sc = score(kw, ziel);
-      if (sc < bestScore) { bestScore = sc; bestPv = pvK; bestBat = batK; bestKw = kw; }
-
-      prevEigen = curEigen; prevEinsp = curEinsp; prevPvK = pvK;
-    }
-  }
-  return { pvKwp: bestPv, batKwh: bestBat, kw: bestKw, score: bestScore };
 }
 
 // ═══ Hauptlogik ═══
 self.onmessage = function(e) {
   const data = e.data;
   D = data.dom;
-  const { lastgangKw, tempH, vlH, pvProfile, stNormProfile, quartierH,
-    params, aktiv, constraints, ziel, quality, pvAktiv, batAktiv, stAktiv, tsAktiv, globalYear } = data;
+  const { lastgangKw, tempH, vlH, pvProfile, stNormProfile, quartierH, params, ziel } = data;
+  const S = data.suche;
   QH = quartierH;
+  QH_MWH = 0;
+  for (let t = 0; t < 8760; t++) QH_MWH += QH[t];
+  QH_MWH /= 1000;
+  const mode = data.mode || 'full';
+  const workerIdx = data.workerIdx || 0;
+  const numWorkers = data.numWorkers || 1;
 
-  let peak = 0;
-  for (let i = 0; i < lastgangKw.length; i++) if (lastgangKw[i] > peak) peak = lastgangKw[i];
-  if (peak < 1) peak = 1;
-
-  // Kombinationen
-  const _allKombis = [];
-  for (let i = 0; i < aktiv.length; i++) _allKombis.push([aktiv[i]]);
-  for (let i = 0; i < aktiv.length; i++)
-    for (let j = i + 1; j < aktiv.length; j++) _allKombis.push([aktiv[i], aktiv[j]]);
-  for (let i = 0; i < aktiv.length; i++)
-    for (let j = i + 1; j < aktiv.length; j++)
-      for (let k2 = j + 1; k2 < aktiv.length; k2++) _allKombis.push([aktiv[i], aktiv[j], aktiv[k2]]);
-
-  // Gaskessel/Heizöl werden als reguläre Spitzenlastkessel in Kombinationen berücksichtigt
-  const kombis = _allKombis;
-
-  const Q = { schnell: { n: 5, pv: 2, bat: 1 }, standard: { n: 7, pv: 3, bat: 2 }, gruendlich: { n: 11, pv: 5, bat: 3 } }[quality];
-  const nKand = aktiv.length;
-  const GROB_N = Q.n;
-  const grobPvN = nKand <= 4 ? Q.pv : nKand <= 6 ? Math.max(1, Q.pv - 1) : 1;
-  const grobBatN = nKand <= 4 ? Q.bat : nKand <= 6 ? Math.max(1, Q.bat - 1) : 1;
-  const GROB_STUFEN = Array.from({length: GROB_N}, (_, i) => Math.round(i / (GROB_N - 1) * 100) / 100);
-
-  // PV/Bat Steps — dynamische Limits basierend auf Projektgröße
-  const hatWP = aktiv.some(k => D.ERZEUGER_TYP[k] === 'wp');
-  let gesamtStromSchaetz = 0;
-  for (let t = 0; t < 8760; t++) gesamtStromSchaetz += quartierH[t];
-  if (hatWP) gesamtStromSchaetz += peak * 0.25 * 8760 / 3.5;
-  const gesamtStromSchaetzMwh = gesamtStromSchaetz / 1000;
-  const pvMaxConstr = constraints.pv?.maxKw || 0;
-  const pvMinConstr = constraints.pv?.minKw || 0;
-  const batMaxConstr = constraints.bat?.maxKw || 0;
-  // Dynamisch: 150% Strombedarf, min 100 kWp, max 2000 kWp (ohne explizite Obergrenze)
-  let pvMaxSinnvoll = pvMaxConstr > 0 ? pvMaxConstr : Math.min(2000, Math.max(100, gesamtStromSchaetzMwh * 1000 / D.pvSpez * 1.5));
-  // Dynamisch: 2 kWh/kWp oder Tages-Strombedarf, was größer ist
-  const tagesStromKwh = gesamtStromSchaetzMwh * 1000 / 365;
-  let batMax = batMaxConstr > 0 ? batMaxConstr : Math.max(Math.round(pvMaxSinnvoll * 2), Math.round(tagesStromKwh));
-
-  let pvStepsGrob, batStepsGrob;
-  if (grobPvN <= 1 || !pvAktiv) {
-    const pvEst = pvAktiv ? Math.round(gesamtStromSchaetzMwh * 1000 / D.pvSpez * 0.7) : 0;
-    pvStepsGrob = [pvEst];
-    batStepsGrob = [pvEst > 0 && batAktiv ? Math.round(Math.min(pvEst * 0.3, batMax)) : 0];
-  } else {
-    pvStepsGrob = pvAktiv ? Array.from({length: grobPvN}, (_, i) => Math.round(pvMaxSinnvoll * i / (grobPvN - 1))) : [0];
-    if (pvMinConstr > 0 && pvAktiv) pvStepsGrob = pvStepsGrob.filter(v => v >= pvMinConstr);
-    batStepsGrob = batAktiv ? Array.from({length: grobBatN}, (_, i) => Math.round(batMax * i / Math.max(1, grobBatN - 1))) : [0];
-  }
-
-  // ST Steps
-  let gesamtWaermeMwh = 0;
-  for (let t = 0; t < 8760; t++) gesamtWaermeMwh += lastgangKw[t];
-  gesamtWaermeMwh /= 1000;
-  const stMinConstr = constraints.st?.minKw || 0;
-  const stMaxConstr = constraints.st?.maxKw || 0;
-  const stMaxSinnvoll = stMaxConstr > 0 ? stMaxConstr : Math.round(gesamtWaermeMwh * 0.4 * 1000 / D.stSpez);
-  const grobStN = !stAktiv ? 1 : (nKand <= 4 ? 5 : nKand <= 6 ? 3 : 2);
-  let stStepsGrob = stAktiv ? Array.from({length: grobStN}, (_, i) => Math.round(stMaxSinnvoll * i / (grobStN - 1))) : [0];
-  if (stMinConstr > 0 && stAktiv) stStepsGrob = stStepsGrob.filter(v => v >= stMinConstr || v === 0);
-  if (!stAktiv) stStepsGrob = [0];
-
-  // TS Steps
-  const tsMinConstr = constraints.ts?.minKw || 0;
-  const tsMaxConstr = constraints.ts?.maxKw || 0;
-  let tsStepsGrob;
-  if (!tsAktiv) {
-    tsStepsGrob = [0];
-  } else {
-    // Einfache Auto-Sizing im Worker (ohne DOM-Leistungswerte — verwende Peak-basierte Schätzung)
-    const wpFrac = aktiv.filter(k => D.ERZEUGER_TYP[k] === 'wp').length > 0 ? 0.5 : 0;
-    const estWpKw = peak * wpFrac;
-    const tsAutoVol = estWpKw > 0 ? Math.round(estWpKw * 3 / (1.16 * D.tsDt)) : 50;
-    const tsMaxVol = tsMaxConstr > 0 ? tsMaxConstr : Math.round(tsAutoVol * 3);
-    const tsMinVol = tsMinConstr > 0 ? tsMinConstr : 0;
-    const grobTsN = nKand <= 4 ? 5 : 3;
-    tsStepsGrob = [0];
-    for (let i = 1; i < grobTsN; i++) {
-      const vol = Math.round(tsMinVol + (tsMaxVol - tsMinVol) * i / (grobTsN - 1));
-      if (vol > 0 && !tsStepsGrob.includes(vol)) tsStepsGrob.push(vol);
-    }
-    if (tsMinConstr > 0) tsStepsGrob = tsStepsGrob.filter(v => v >= tsMinConstr || v === 0);
-  }
-
-  // ST Reduced Lastgang Helper — gibt auch ST-Überschuss zurück für Speicherbeladung
-  function stReducedLastgang(stM2) {
+  // ── Solarthermie: Lastgang um den direkt genutzten Ertrag reduzieren (Cache je Fläche) ──
+  const stCache = new Map();
+  function stReduziert(stM2) {
     if (stM2 <= 0 || !stNormProfile) return { lastgang: lastgangKw, waermeMwh: 0, stExcessH: null };
-    const reduced = new Float32Array(8760);
-    const stExcessH = new Float32Array(8760);
+    const c = stCache.get(stM2);
+    if (c) return c;
+    const reduced = new Float32Array(8760), stExcessH = new Float32Array(8760);
     let sumKwh = 0;
     for (let t = 0; t < 8760; t++) {
       const stKw = stNormProfile[t] * stM2;
@@ -484,921 +304,165 @@ self.onmessage = function(e) {
       stExcessH[t] = stKw - used;
       sumKwh += used;
     }
-    return { lastgang: reduced, waermeMwh: sumKwh / 1000, stExcessH };
+    const r = { lastgang: reduced, waermeMwh: sumKwh / 1000, stExcessH };
+    if (stCache.size > 24) stCache.delete(stCache.keys().next().value);
+    stCache.set(stM2, r);
+    return r;
   }
 
-  // Config Batches aufbauen
-  const configBatches = [];
-  function makeErzObj(key, frac) {
-    const con = constraints[key] || {};
-    let kw = Math.round(frac * peak);
-    if (con.minKw > 0 && (!con.bisJahr || con.bisJahr >= globalYear)) kw = Math.max(kw, con.minKw);
-    if (con.maxKw > 0) kw = Math.min(kw, con.maxKw);
-    kw = Math.max(1, kw);
-    return { key, leistKw: kw, typ: D.ERZEUGER_TYP[key] || 'fix', guetegrad: D.guetegrade[key] || _defaultGuetegrad(key) };
-  }
-  function getConstrainedFracs(key) {
-    const con = constraints[key] || {};
-    const minFrac = con.minKw > 0 && (!con.bisJahr || con.bisJahr >= globalYear) ? con.minKw / peak : 0;
-    const maxFrac = con.maxKw > 0 ? con.maxKw / peak : 1.5;
-    const fracs = [];
-    for (const f of GROB_STUFEN) {
-      if (f < minFrac - 0.02 || f > maxFrac + 0.02) continue;
-      fracs.push(f);
-    }
-    if (fracs.length === 0) fracs.push(Math.max(minFrac, 0.08));
-    return fracs;
+  // ── Einsatzplanung je Erzeugerpark (Cache: PV/Batterie-Schritte brauchen keinen neuen Dispatch) ──
+  const dispCache = new Map();
+  function einsatz(keys, gens, stM2, tsVol) {
+    const ck = keys.join(',') + '|' + gens.join(',') + '|' + stM2 + '|' + tsVol;
+    const c = dispCache.get(ck);
+    if (c) return c;
+    const st = stReduziert(stM2);
+    const config = keys.map((k, i) => ({ key: k, leistKw: gens[i], typ: D.ERZEUGER_TYP[k] || 'fix', guetegrad: D.guetegrade[k] || _defaultGuetegrad(k) }));
+    const disp = dispatch8760(st.lastgang, tempH, vlH, config, tsVol, st.stExcessH, S.backupMode);
+    const demandH = new Float32Array(8760);
+    for (let t = 0; t < 8760; t++) demandH[t] = disp.wpElH[t] + disp.skElH[t] + quartierH[t];
+    const r = { disp, demandH, stMwh: st.waermeMwh };
+    if (dispCache.size > 48) dispCache.delete(dispCache.keys().next().value);
+    dispCache.set(ck, r);
+    return r;
   }
 
-  for (const keys of kombis) {
-    const sortedKeys = keys.slice().sort((a, b) => {
-      const ia = D.OPT_MERIT_ORDER.indexOf(a);
-      const ib = D.OPT_MERIT_ORDER.indexOf(b);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-    });
-    const kombiKey = keys.slice().sort().join('+');
-    const configs = [];
-    if (sortedKeys.length === 1) {
-      for (const f0 of getConstrainedFracs(sortedKeys[0])) { if (f0 < 0.01) continue; configs.push([makeErzObj(sortedKeys[0], f0)]); }
-    } else if (sortedKeys.length === 2) {
-      const fr0 = getConstrainedFracs(sortedKeys[0]), fr1 = getConstrainedFracs(sortedKeys[1]);
-      for (const f0 of fr0) for (const f1 of fr1) { if (f0 + f1 < 0.05) continue; configs.push([makeErzObj(sortedKeys[0], f0), makeErzObj(sortedKeys[1], f1)]); }
-    } else if (sortedKeys.length === 3) {
-      const fr0 = getConstrainedFracs(sortedKeys[0]), fr1 = getConstrainedFracs(sortedKeys[1]), fr2 = getConstrainedFracs(sortedKeys[2]);
-      for (const f0 of fr0) for (const f1 of fr1) for (const f2 of fr2) { if (f0 + f1 + f2 < 0.05) continue; configs.push([makeErzObj(sortedKeys[0], f0), makeErzObj(sortedKeys[1], f1), makeErzObj(sortedKeys[2], f2)]); }
-    }
-    configBatches.push({ kombiKey, keys: sortedKeys, sortedKeys, configs });
+  // ── Vollständige Bewertung eines Punktes x = [Erzeuger…, PV kWp, Batterie kWh, ST m², Speicher m³] ──
+  function bewerte(keys, x) {
+    const n = keys.length;
+    const gens = x.slice(0, n);
+    const pvKwp = x[n], batKwh = x[n + 1], stM2 = x[n + 2], tsVol = x[n + 3];
+    const E = einsatz(keys, gens, stM2, tsVol);
+    const pvBat = pvBatSim8760(pvKwp, batKwh, E.demandH, E.disp.bhkwElH, pvProfile, E.disp);
+    const kw = kennwerte(E.disp, pvKwp, batKwh, pvBat, params, E.stMwh, stM2, tsVol);
+    const kanon = optKonzeptSchluessel(keys, E.disp.autoGkMwh, E.disp.autoGkPeakKw);
+    let sc = score(kw, ziel);
+    // Höchstleistung des Gaskessels gilt auch für den Spitzenlastkessel
+    if (S.gasMaxKw > 0 && E.disp.autoGkMwh > 0.05 && E.disp.autoGkPeakKw > S.gasMaxKw + 0.5) sc = Infinity;
+    return { score: sc, kw, kanon, E, pvBat, x };
   }
 
-  // ═══ Multi-Worker Modus: nur Grobsuche oder nur Feinsuche ═══
-  const _mode = data.mode || 'full';
-  const _workerIdx = data.workerIdx || 0;
-  const _numWorkers = data.numWorkers || 1;
-
-  // ═══ GROBSUCHE (wird im 'fein'-Modus übersprungen) ═══
-  const grobResults = [];
-  let _topNGrob = [];
-
-  if (_mode !== 'fein') {
-    // Arbeitspakete aufbauen (alle Kombinationen aus configs × ST × TS)
-    let allWorkItems = [];
-    for (const batch of configBatches) {
-      for (const config of batch.configs) {
-        for (const stM2 of stStepsGrob) {
-          for (const tsVol of tsStepsGrob) {
-            allWorkItems.push({ batch, config, stM2, tsVol });
-          }
-        }
-      }
-    }
-
-    // Multi-Worker: nur eigenen Anteil bearbeiten
-    if (_numWorkers > 1) {
-      allWorkItems = allWorkItems.filter((_, i) => i % _numWorkers === _workerIdx);
-    }
-    const totalConfigs = allWorkItems.length;
-
-    let doneConfigs = 0;
-    let lastProgressAt = 0;
-
-    for (const { batch, config, stM2, tsVol } of allWorkItems) {
-      doneConfigs++;
-      const { lastgang: lgForDisp, waermeMwh: stMwh, stExcessH } = stReducedLastgang(stM2);
-      const disp = dispatch8760(lgForDisp, tempH, vlH, config.map(c => ({...c})), tsVol, stExcessH);
-
-      // Mindestleistung: Jeder Erzeuger muss ≥10% der Spitzenleistung liefern
-      const minKw = peak * 0.1;
-      if (config.length > 1 && disp.erzeugerList.some(e => e.leistKw < minKw)) continue;
-
-      const demandH = new Float32Array(8760);
-      for (let t = 0; t < 8760; t++) demandH[t] = disp.wpElH[t] + disp.skElH[t] + quartierH[t];
-
-      const pvBatRes = _findOptPvBat(pvStepsGrob, batStepsGrob, demandH, disp.bhkwElH, pvProfile, disp,
-        params, stMwh, stM2, tsVol, ziel, D.pvMaxAmort || 10, pvBatSim8760, kennwerte);
-      if (pvBatRes.kw) {
-        grobResults.push({ kombiKey: batch.kombiKey, keys: batch.keys, config,
-          pvKwp: pvBatRes.pvKwp, batKwh: pvBatRes.batKwh, stM2, stMwh, tsVol, kw: pvBatRes.kw, score: pvBatRes.score });
-      }
-
-      const now = Date.now();
-      if (now - lastProgressAt > 500) {
-        lastProgressAt = now;
-        const pct = Math.round(doneConfigs / totalConfigs * 100);
-        // Aktuell beste 3 Varianten mitschicken (O(n)-Auswahl alle 500 ms)
-        const best3 = [];
-        for (const r of grobResults) {
-          if (best3.length < 3) { best3.push(r); best3.sort((a, b) => a.score - b.score); }
-          else if (r.score < best3[2].score) { best3[2] = r; best3.sort((a, b) => a.score - b.score); }
-        }
-        const best3Min = best3.map(r => ({
-          kombiKey: r.kombiKey, score: r.score,
-          wgk: r.kw ? r.kw.wgk : null,
-          config: (r.config || []).map(c => ({ key: c.key, leistKw: c.leistKw })),
-          pvKwp: r.pvKwp, batKwh: r.batKwh, stM2: r.stM2, tsVol: r.tsVol,
-        }));
-      self.postMessage({ type: 'progress', phase: 'Grobsuche', pct, done: doneConfigs, total: totalConfigs, workerIdx: _workerIdx, best3: best3Min });
-    }
-  }
-
-    // Modus 'grob': nur Grobsuche, Ergebnisse zurücksenden und fertig
-    if (_mode === 'grob') {
-      self.postMessage({ type: 'grob_done', grobResults, workerIdx: _workerIdx });
-      return;
-    }
-
-    // Deduplizierung (für 'full'-Modus)
-    grobResults.sort((a, b) => a.score - b.score);
-    const seen = new Set();
-    const grobTop = [];
-    for (const r of grobResults) {
-      if (!seen.has(r.kombiKey)) { seen.add(r.kombiKey); grobTop.push(r); }
-    }
-    _topNGrob = grobTop.slice(0, 5);
-  } // Ende: if (_mode !== 'fein')
-
-  // topNGrob bestimmen: aus Grobsuche oder aus Message (fein-Modus)
-  const topNGrob = (_mode === 'fein') ? (data.topNGrob || []) : _topNGrob;
-
-  // ═══ FEINSUCHE ═══
-  const FEIN_STEP = Math.max(1, Math.round(peak / 200));
-  const topFein = [];
-
-  for (let fi = 0; fi < topNGrob.length; fi++) {
-    self.postMessage({ type: 'progress', phase: 'Feinsuche', pct: Math.round(fi / topNGrob.length * 100), done: fi, total: topNGrob.length });
-    const grob = topNGrob[fi];
-    let currentConfig = grob.config.map(c => ({...c}));
-    let currentStM2 = grob.stM2 || 0;
-    let currentTsVol = grob.tsVol || 0;
-    const feinRange = Math.round(peak * 0.10);
-
-    for (let runde = 0; runde < 2; runde++) {
-      let changed = false;
-      const { lastgang: lgFein, waermeMwh: stMwhFein, stExcessH: stExFein } = stReducedLastgang(currentStM2);
-
-      for (let ei = 0; ei < currentConfig.length; ei++) {
-        const erz = currentConfig[ei];
-        const con = constraints[erz.key] || {};
-        const minKwCon = con.minKw > 0 && (!con.bisJahr || con.bisJahr >= globalYear) ? con.minKw : 1;
-        const maxKwCon = con.maxKw > 0 ? con.maxKw : Math.round(peak * 1.2);
-        const _minKwFein = currentConfig.length > 1 ? Math.round(peak * 0.1) : 1;
-        const lo = Math.max(_minKwFein, minKwCon, erz.leistKw - feinRange);
-        const hi = Math.min(maxKwCon, erz.leistKw + feinRange);
-        let bestKwVal = erz.leistKw, bestScoreVal = Infinity;
-        for (let kw = lo; kw <= hi; kw += FEIN_STEP) {
-          const tc = currentConfig.map(c => ({...c}));
-          tc[ei] = { ...erz, leistKw: kw };
-          const disp = dispatch8760(lgFein, tempH, vlH, tc, currentTsVol, stExFein);
-          const demH = new Float32Array(8760);
-          for (let t = 0; t < 8760; t++) demH[t] = disp.wpElH[t] + disp.skElH[t] + quartierH[t];
-          const pvBat = pvBatSim8760(grob.pvKwp, grob.batKwh, demH, disp.bhkwElH, pvProfile, disp);
-          const kwR = kennwerte(disp, grob.pvKwp, grob.batKwh, pvBat, params, stMwhFein, currentStM2, currentTsVol);
-          const sc = score(kwR, ziel);
-          if (sc < bestScoreVal) { bestScoreVal = sc; bestKwVal = kw; }
-        }
-        if (bestKwVal !== erz.leistKw) changed = true;
-        currentConfig[ei] = { ...erz, leistKw: bestKwVal };
-      }
-
-      // ST fein
-      if (stAktiv && currentStM2 > 0) {
-        const stLo = Math.max(stMinConstr, Math.round(currentStM2 * 0.8));
-        const stHi = stMaxConstr > 0 ? Math.min(stMaxConstr, Math.round(currentStM2 * 1.2)) : Math.round(currentStM2 * 1.2);
-        const stStep = Math.max(1, Math.round((stHi - stLo) / 10));
-        let bestSt = currentStM2, bestStSc = Infinity;
-        for (let sm2 = stLo; sm2 <= stHi; sm2 += stStep) {
-          const { lastgang: lgSt, waermeMwh: mwh, stExcessH: stExSt } = stReducedLastgang(sm2);
-          const disp = dispatch8760(lgSt, tempH, vlH, currentConfig.map(c => ({...c})), currentTsVol, stExSt);
-          const demH = new Float32Array(8760);
-          for (let t = 0; t < 8760; t++) demH[t] = disp.wpElH[t] + disp.skElH[t] + quartierH[t];
-          const pvBat = pvBatSim8760(grob.pvKwp, grob.batKwh, demH, disp.bhkwElH, pvProfile, disp);
-          const kwR = kennwerte(disp, grob.pvKwp, grob.batKwh, pvBat, params, mwh, sm2, currentTsVol);
-          const sc = score(kwR, ziel);
-          if (sc < bestStSc) { bestStSc = sc; bestSt = sm2; }
-        }
-        if (bestSt !== currentStM2) { changed = true; currentStM2 = bestSt; }
-      }
-
-      // TS fein
-      if (tsAktiv && currentTsVol > 0) {
-        const tsLo = Math.max(tsMinConstr, Math.round(currentTsVol * 0.7));
-        const tsHi = tsMaxConstr > 0 ? Math.min(tsMaxConstr, Math.round(currentTsVol * 1.3)) : Math.round(currentTsVol * 1.3);
-        const tsStep = Math.max(1, Math.round((tsHi - tsLo) / 8));
-        let bestTs = currentTsVol, bestTsSc = Infinity;
-        const { lastgang: lgTs, waermeMwh: mwhTs, stExcessH: stExTs } = stReducedLastgang(currentStM2);
-        for (let tv = tsLo; tv <= tsHi; tv += tsStep) {
-          const disp = dispatch8760(lgTs, tempH, vlH, currentConfig.map(c => ({...c})), tv, stExTs);
-          const demH = new Float32Array(8760);
-          for (let t = 0; t < 8760; t++) demH[t] = disp.wpElH[t] + disp.skElH[t] + quartierH[t];
-          const pvBat = pvBatSim8760(grob.pvKwp, grob.batKwh, demH, disp.bhkwElH, pvProfile, disp);
-          const kwR = kennwerte(disp, grob.pvKwp, grob.batKwh, pvBat, params, mwhTs, currentStM2, tv);
-          const sc = score(kwR, ziel);
-          if (sc < bestTsSc) { bestTsSc = sc; bestTs = tv; }
-        }
-        if (bestTs !== currentTsVol) { changed = true; currentTsVol = bestTs; }
-      }
-
-      if (!changed) break;
-    }
-
-    // PV/Bat Volloptimierung mit Auto-Expand bei Rand-Optimum
-    const { lastgang: lgFinal, waermeMwh: stMwhFinal, stExcessH: stExFinal } = stReducedLastgang(currentStM2);
-    const finalDisp = dispatch8760(lgFinal, tempH, vlH, currentConfig.map(c => ({...c})), currentTsVol, stExFinal);
-    const demFinal = new Float32Array(8760);
-    for (let t = 0; t < 8760; t++) demFinal[t] = finalDisp.wpElH[t] + finalDisp.skElH[t] + quartierH[t];
-
-    // PV/Bat Feinoptimierung per marginaler Amortisation (feinere Steps als Grobphase)
-    const pvStepsFein = pvAktiv ? Array.from({length: 15}, (_, i) => Math.round(pvMaxSinnvoll * i / 14)) : [0];
-    if (pvMinConstr > 0 && pvAktiv) { const f = pvStepsFein.filter(v => v >= pvMinConstr || v === 0); if (f.length > 0) { pvStepsFein.length = 0; f.forEach(v => pvStepsFein.push(v)); } }
-    const batStepsFein = batAktiv ? Array.from({length: 8}, (_, i) => Math.round(batMax * i / 7)) : [0];
-
-    const pvBatFein = _findOptPvBat(pvStepsFein, batStepsFein, demFinal, finalDisp.bhkwElH, pvProfile, finalDisp,
-      params, stMwhFinal, currentStM2, currentTsVol, ziel, D.pvMaxAmort || 10, pvBatSim8760, kennwerte);
-    const bestPv = pvBatFein.pvKwp, bestBat = pvBatFein.batKwh, bestScF = pvBatFein.score;
-
-    const finalPvBat = pvBatSim8760(bestPv, bestBat, demFinal, finalDisp.bhkwElH, pvProfile, finalDisp);
-    const finalKw = kennwerte(finalDisp, bestPv, bestBat, finalPvBat, params, stMwhFinal, currentStM2, currentTsVol);
-
-    topFein.push({
-      keys: grob.keys, config: currentConfig, pvKwp: bestPv, batKwh: bestBat,
-      stM2: currentStM2, stMwh: stMwhFinal, tsVol: currentTsVol,
-      kw: finalKw, gesamtMwh: finalDisp.gesamtMwh, autoGkMwh: finalDisp.autoGkMwh,
-      autoGkPeakKw: finalDisp.autoGkPeakKw,
-      erzWaermeMwh: finalDisp.erzeugerList.map(e => e.waermeMwh),
-      erzLeistKw: finalDisp.erzeugerList.map(e => e.leistKw),
-      erzElMwh: finalDisp.erzeugerList.map(e => e.elMwh),
-      speicherEntladenMwh: finalDisp.speicherEntladenMwh || 0,
-      pvBatData: finalPvBat ? { eigenMwh: finalPvBat.eigenMwh, einspeiseMwh: finalPvBat.einspeiseMwh,
-        pvEigenMwh: finalPvBat.pvEigenMwh, pvEinspMwh: finalPvBat.pvEinspMwh,
-        bhkwEigenMwh: finalPvBat.bhkwEigenMwh, bhkwEinspMwh: finalPvBat.bhkwEinspMwh,
-        netzbezugMwh: finalPvBat.netzbezugMwh } : null,
-      score: bestScF,
-    });
-  }
-
-  // Ergebnisse zurücksenden
-  self.postMessage({ type: 'done', topFein, grobResults: grobResults.map(r => ({
-    kombiKey: r.kombiKey, keys: r.keys, kw: r.kw, score: r.score,
-    stM2: r.stM2, tsVol: r.tsVol, pvKwp: r.pvKwp, batKwh: r.batKwh
-  })) });
-};
-`;
-}
-
-export function _doRunOptimierung(resDiv) {
-  // PV-Profil einmal cachen (ändert sich nicht während Optimierung)
-  window._optCachedPvProfile = (typeof makePvProfile8760 === 'function') ? makePvProfile8760() : null;
-  // 1. Lastgang holen — für gewähltes Betrachtungsjahr skaliert
-  const ss = window.systemState;
-  const optYear = parseInt(document.getElementById('opt-year')?.value) || (typeof globalYear !== 'undefined' ? globalYear : 2026);
-  const lastgangKw = _optGetScaledLastgang(optYear) || ss?.lastgangKw;
-  const tempH = ss?.tempH;
-  const vlH = ss?.vlH;
-
-  if (!lastgangKw || lastgangKw.length < 8760 || !tempH || !vlH) {
-    resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Kein stundenscharfer Lastgang verfügbar. Bitte zuerst Grundlagen berechnen (8760h Lastgang + Temperatur + Vorlauftemperatur erforderlich).</div>';
-    return;
-  }
-
-  // Peak-Last bestimmen
-  let peak = 0;
-  for (let i = 0; i < lastgangKw.length; i++) { if (lastgangKw[i] > peak) peak = lastgangKw[i]; }
-  if (peak < 1) peak = 1;
-
-  // 2. Wirtschaftsparameter
-  // Fallbacks = HTML-Defaults der wirt-p-* Felder (einheitlich in allen Modulen)
-  const pStrom   = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
-  const _pWpRaw  = parseFloat(document.getElementById('wirt-p-strom-wp')?.value);
-  const pStromWp = isNaN(_pWpRaw) ? pStrom : _pWpRaw; // optionaler WP-Sondervertragspreis
-  const pGas     = parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10;
-  const pPk      = parseFloat(document.getElementById('wirt-p-pk')?.value)    || 8;
-  const pHhs     = parseFloat(document.getElementById('wirt-p-hhs')?.value)   || 6;
-  const pHko     = parseFloat(document.getElementById('wirt-p-hko')?.value)   || 10;
-  const pFw      = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 17;
-  const pEinsp   = parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8;
-  const pBhkwEinsp = parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8;
-  const pBhkwKwkE  = parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8;
-  const pBhkwKwkEig = parseFloat(document.getElementById('bhkw-kwk-eigen')?.value) || 4;
-  const _zRaw    = parseFloat(document.getElementById('wirt-zins')?.value);
-  const zins     = (isNaN(_zRaw) ? 3.5 : _zRaw) / 100;
-  const params = { pStrom, pStromWp, pGas, pPk, pHhs, pHko, pFw, pEinsp, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz: zins };
-
-  // 3. Aktive Kandidaten + Constraints
-  const allKeys = ['lwwp','fg','geo','gaskessel','bhkw','stromkessel','pellets','hhs','fernwaerme','heizoel'];
-  const aktiv = allKeys.filter(k => document.getElementById('opt-cand-' + k)?.checked);
-  if (aktiv.length === 0) {
-    resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Bitte mindestens einen Kandidaten w\u00e4hlen.</div>';
-    return;
-  }
-  const pvAktiv  = document.getElementById('opt-cand-pv')?.checked;
-  const batAktiv = document.getElementById('opt-cand-bat')?.checked;
-  const stAktiv  = document.getElementById('opt-cand-st')?.checked;
-  const tsAktiv  = document.getElementById('opt-cand-ts')?.checked;
-
-  const constraints = {};
-  for (const k of [...allKeys, 'pv', 'bat', 'ts']) {
-    constraints[k] = {
-      minKw:    parseFloat(document.getElementById('opt-min-' + k)?.value)  || 0,
-      maxKw:    parseFloat(document.getElementById('opt-max-' + k)?.value)  || 0,
-      bisJahr:  parseInt(document.getElementById('opt-bis-' + k)?.value)    || 0,
+  function detail(keys, b) {
+    const n = keys.length, d = b.E.disp;
+    return {
+      keys, kanon: b.kanon, x: b.x,
+      config: d.erzeugerList.map(e => ({ key: e.key, leistKw: e.leistKw })),
+      pvKwp: b.x[n], batKwh: b.x[n + 1], stM2: b.x[n + 2], stMwh: b.E.stMwh, tsVol: b.x[n + 3],
+      kw: b.kw, score: b.score,
+      gesamtMwh: d.gesamtMwh, autoGkMwh: d.autoGkMwh, autoGkPeakKw: d.autoGkPeakKw,
+      erzWaermeMwh: d.erzeugerList.map(e => e.waermeMwh),
+      erzLeistKw: d.erzeugerList.map(e => e.leistKw),
+      erzElMwh: d.erzeugerList.map(e => e.elMwh),
+      speicherEntladenMwh: d.speicherEntladenMwh || 0,
+      pvBatData: { eigenMwh: b.pvBat.eigenMwh, einspeiseMwh: b.pvBat.einspeiseMwh,
+        pvEigenMwh: b.pvBat.pvEigenMwh, pvEinspMwh: b.pvBat.pvEinspMwh,
+        bhkwEigenMwh: b.pvBat.bhkwEigenMwh, bhkwEinspMwh: b.pvBat.bhkwEinspMwh,
+        netzbezugMwh: b.pvBat.netzbezugMwh, batDischargeMwh: b.pvBat.batDischargeMwh },
     };
   }
 
-  // 4. Optimierungsziel
-  const ziel = document.querySelector('input[name="opt-ziel"]:checked')?.value || 'min-wgk';
-
-  // 5. Kombinationen generieren (Einzeln + Paare + ggf. Tripel)
-  const _allKombis = [];
-  for (let i = 0; i < aktiv.length; i++) _allKombis.push([aktiv[i]]);
-  for (let i = 0; i < aktiv.length; i++)
-    for (let j = i + 1; j < aktiv.length; j++)
-      _allKombis.push([aktiv[i], aktiv[j]]);
-  for (let i = 0; i < aktiv.length; i++)
-    for (let j = i + 1; j < aktiv.length; j++)
-      for (let k2 = j + 1; k2 < aktiv.length; k2++)
-        _allKombis.push([aktiv[i], aktiv[j], aktiv[k2]]);
-
-  // Gaskessel/Heizöl werden als reguläre Spitzenlastkessel in Kombinationen berücksichtigt
-  const kombis = _allKombis;
-
-  // 6. Quartier-Stromprofil vorbereiten (gleiche Kaskade wie calcStromPanel)
-  const quartierH = new Float32Array(8760);
-  if (window.elQuartierH) {
-    for (let t = 0; t < 8760; t++) quartierH[t] = window.elQuartierH[t];
-  } else if (window._elQuartierFromGeb) {
-    for (let t = 0; t < 8760; t++) quartierH[t] = window._elQuartierFromGeb[t];
-  } else {
-    const qMwh = parseFloat(document.getElementById('strom-quartier-mwh')?.value) || 0;
-    if (qMwh > 0) {
-      const perH = qMwh * 1000 / 8760;
-      for (let t = 0; t < 8760; t++) quartierH[t] = perH;
-    } else if (typeof aggregateGebStrom === 'function') {
-      const gebStrom = aggregateGebStrom();
-      if (gebStrom && gebStrom.totalMWh > 0) {
-        for (let t = 0; t < 8760; t++) quartierH[t] = gebStrom.hourly[t];
-      }
-    }
+  function kompakt(keys, b) {
+    const n = keys.length;
+    return { kombiKey: b.kanon, kanon: b.kanon, keys, x: b.x, score: b.score,
+      kw: { wgk: b.kw.wgk, co2ta: b.kw.co2ta, investGesamt: b.kw.investGesamt, eeAnteil: b.kw.eeAnteil,
+        stromAutarkie: b.kw.stromAutarkie, waermeAutarkie: b.kw.waermeAutarkie, jahreskosten: b.kw.jahreskosten },
+      config: b.E.disp.erzeugerList.map(e => ({ key: e.key, leistKw: e.leistKw })),
+      pvKwp: b.x[n], batKwh: b.x[n + 1], stM2: b.x[n + 2], tsVol: b.x[n + 3] };
   }
 
-  // Quartier-Strom Check
-
-  // 7. PV/Bat Vorbereitung
-  const spez = parseFloat(document.getElementById('pv-spez')?.value) || 1000;
-  const pvMaxConstr = constraints.pv?.maxKw || 0;
-  const pvMinConstr = constraints.pv?.minKw || 0;
-  const batMaxConstr = constraints.bat?.maxKw || 0;
-
-  // Gesamt-Strombedarf schätzen (für PV-Sizing)
-  let gesamtStromSchaetz = 0;
-  for (let t = 0; t < 8760; t++) gesamtStromSchaetz += quartierH[t];
-  const hatWP = aktiv.some(k => ERZEUGER_CFG[k]?.typ === 'wp');
-  if (hatWP) gesamtStromSchaetz += peak * 0.25 * 8760 / 3.5;
-  const gesamtStromSchaetzMwh = gesamtStromSchaetz / 1000;
-  // Dynamisch: 300% Strombedarf, min 200 kWp
-  let pvMaxSinnvoll = pvMaxConstr > 0 ? pvMaxConstr : Math.min(2000, Math.max(100, gesamtStromSchaetzMwh * 1000 / spez * 1.5));
-  // Dynamisch: 2 kWh/kWp oder Tages-Strombedarf, was größer ist
-  const tagesStromKwh = gesamtStromSchaetzMwh * 1000 / 365;
-  let batMax = batMaxConstr > 0 ? batMaxConstr : Math.max(Math.round(pvMaxSinnvoll * 2), Math.round(tagesStromKwh));
-
-  // 8. ADAPTIVE GROBSUCHE — Auflösung abhängig von Genauigkeits-Setting + Kandidatenanzahl
-  const nKand = aktiv.length;
-  const optQuality = document.getElementById('opt-quality')?.value || 'standard';
-  // Basis-Auflösungen pro Quality-Stufe
-  const Q = { schnell: { n: 5, pv: 2, bat: 1 }, standard: { n: 7, pv: 3, bat: 2 }, gruendlich: { n: 11, pv: 5, bat: 3 } }[optQuality];
-  // Bei vielen Kandidaten: PV/Bat reduzieren um kombinatorische Explosion zu begrenzen
-  let GROB_N = Q.n;
-  let grobPvN = nKand <= 4 ? Q.pv : nKand <= 6 ? Math.max(1, Q.pv - 1) : 1;
-  let grobBatN = nKand <= 4 ? Q.bat : nKand <= 6 ? Math.max(1, Q.bat - 1) : 1;
-
-  // Leistungsstufen generieren (gleichmäßig verteilt inkl. 0 und 1)
-  const GROB_STUFEN = Array.from({length: GROB_N}, (_, i) => Math.round(i / (GROB_N - 1) * 100) / 100);
-
-  // PV/Bat Stufen für Grobsuche
-  let pvStepsGrob, batStepsGrob;
-  if (grobPvN <= 1 || !pvAktiv) {
-    // Nur 1 geschätzte PV-Größe (basierend auf geschätztem Strombedarf)
-    const pvEst = pvAktiv ? Math.round(gesamtStromSchaetzMwh * 1000 / spez * 0.7) : 0;
-    pvStepsGrob = [pvEst];
-    batStepsGrob = [pvEst > 0 && batAktiv ? Math.round(Math.min(pvEst * 0.3, batMax)) : 0];
-  } else {
-    pvStepsGrob = pvAktiv ? Array.from({length: grobPvN}, (_, i) => Math.round(pvMaxSinnvoll * i / (grobPvN - 1))) : [0];
-    if (pvMinConstr > 0 && pvAktiv) pvStepsGrob = pvStepsGrob.filter(v => v >= pvMinConstr);
-    batStepsGrob = batAktiv ? Array.from({length: grobBatN}, (_, i) => Math.round(batMax * i / Math.max(1, grobBatN - 1))) : [0];
+  // ═══ GROBSUCHE ═══
+  // Je Startpunkt: PV und Batterie nach Zielfunktion aus wenigen Stufen (Dispatch einmal)
+  function grobPunkt(keys, gens, stM2, tsVol) {
+    const pv = S.pv, bat = S.bat;
+    const pvStufen = pv.hi > pv.lo ? [pv.lo, Math.round((pv.lo + pv.hi) / 2), pv.hi] : [pv.lo];
+    let best = null;
+    for (const p of pvStufen) {
+      const b = bewerte(keys, gens.concat([p, bat.lo, stM2, tsVol]));
+      if (!best || b.score < best.score) best = b;
+    }
+    if (bat.hi > bat.lo && best.x[keys.length] > 0) {
+      const b = bewerte(keys, gens.concat([best.x[keys.length], Math.round((bat.lo + bat.hi) / 2), stM2, tsVol]));
+      if (b.score < best.score) best = b;
+    }
+    return best;
   }
 
   const grobResults = [];
-
-  // Konfigurationen für Dispatch vorbauen
-  const configBatches = [];
-
-  function _makeErzObj(key, frac) {
-    const con = constraints[key] || {};
-    let kw = Math.round(frac * peak);
-    if (con.minKw > 0 && (!con.bisJahr || con.bisJahr >= (typeof globalYear !== 'undefined' ? globalYear : 2026))) {
-      kw = Math.max(kw, con.minKw);
+  if (mode !== 'fein') {
+    const stStufen = S.st.hi > S.st.lo ? [S.st.lo, Math.round((S.st.lo + S.st.hi) / 2)] : [S.st.lo];
+    const tsStufen = S.ts.hi > S.ts.lo ? [S.ts.lo, Math.round((S.ts.lo + S.ts.hi) / 2)] : [S.ts.lo];
+    let items = [];
+    for (const k of S.kombis) {
+      for (const gens of k.punkte) for (const st of stStufen) for (const ts of tsStufen) items.push({ keys: k.keys, gens, st, ts });
     }
-    if (con.maxKw > 0) kw = Math.min(kw, con.maxKw);
-    kw = Math.max(1, kw);
-    return { key, leistKw: kw, typ: ERZEUGER_CFG[key]?.typ || 'fix', guetegrad: _readGuetegrad(key) };
-  }
-
-  function _getConstrainedFracs(key) {
-    const con = constraints[key] || {};
-    const curYear = (typeof globalYear !== 'undefined' ? globalYear : 2026);
-    const minFrac = con.minKw > 0 && (!con.bisJahr || con.bisJahr >= curYear) ? con.minKw / peak : 0;
-    const maxFrac = con.maxKw > 0 ? con.maxKw / peak : 1.5;
-    const fracs = [];
-    for (const f of GROB_STUFEN) {
-      if (f < minFrac - 0.02) continue;
-      if (f > maxFrac + 0.02) continue;
-      fracs.push(f);
-    }
-    if (fracs.length === 0) fracs.push(Math.max(minFrac, 0.08));
-    return fracs;
-  }
-
-  for (const keys of kombis) {
-    const sortedKeys = keys.slice().sort((a, b) => {
-      const ia = OPT_MERIT_ORDER.indexOf(a);
-      const ib = OPT_MERIT_ORDER.indexOf(b);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-    });
-    const kombiKey = keys.slice().sort().join('+');
-    const configs = [];
-
-    if (sortedKeys.length === 1) {
-      for (const f0 of _getConstrainedFracs(sortedKeys[0])) {
-        if (f0 < 0.01) continue;
-        configs.push([_makeErzObj(sortedKeys[0], f0)]);
-      }
-    } else if (sortedKeys.length === 2) {
-      const fr0 = _getConstrainedFracs(sortedKeys[0]), fr1 = _getConstrainedFracs(sortedKeys[1]);
-      for (const f0 of fr0) for (const f1 of fr1) {
-        if (f0 + f1 < 0.05) continue;
-        configs.push([_makeErzObj(sortedKeys[0], f0), _makeErzObj(sortedKeys[1], f1)]);
-      }
-    } else if (sortedKeys.length === 3) {
-      const fr0 = _getConstrainedFracs(sortedKeys[0]), fr1 = _getConstrainedFracs(sortedKeys[1]), fr2 = _getConstrainedFracs(sortedKeys[2]);
-      for (const f0 of fr0) for (const f1 of fr1) for (const f2 of fr2) {
-        if (f0 + f1 + f2 < 0.05) continue;
-        configs.push([_makeErzObj(sortedKeys[0], f0), _makeErzObj(sortedKeys[1], f1), _makeErzObj(sortedKeys[2], f2)]);
+    if (numWorkers > 1) items = items.filter((_, i) => i % numWorkers === workerIdx);
+    let done = 0, lastProgressAt = 0;
+    for (const it of items) {
+      done++;
+      const b = grobPunkt(it.keys, it.gens, it.st, it.ts);
+      if (b && Number.isFinite(b.score)) grobResults.push(kompakt(it.keys, b));
+      const now = Date.now();
+      if (now - lastProgressAt > 500) {
+        lastProgressAt = now;
+        const best3 = [];
+        for (const r of grobResults) {
+          if (best3.length < 3) { best3.push(r); best3.sort((a, c) => a.score - c.score); }
+          else if (r.score < best3[2].score) { best3[2] = r; best3.sort((a, c) => a.score - c.score); }
+        }
+        self.postMessage({ type: 'progress', phase: 'Grobsuche', pct: Math.round(done / items.length * 100), done, total: items.length, workerIdx,
+          best3: best3.map(r => ({ kombiKey: r.kanon, score: r.score, wgk: r.kw.wgk, config: r.config, pvKwp: r.pvKwp, batKwh: r.batKwh, stM2: r.stM2, tsVol: r.tsVol })) });
       }
     }
-    configBatches.push({ kombiKey, keys: sortedKeys, sortedKeys, configs });
-  }
-
-  // Solarthermie-Stufen vorbereiten (variable Kollektorfläche in m²)
-  const stSpez = parseFloat(document.getElementById('st-spez')?.value) || 400;
-  const stMinConstr = parseFloat(document.getElementById('opt-min-st')?.value) || 0;
-  const stMaxConstr = parseFloat(document.getElementById('opt-max-st')?.value) || 0;
-  // Normiertes Solarprofil einmal berechnen (1 m² Basis)
-  const stNormProfile = stAktiv ? makeStProfile8760(1) : null; // kW pro m² pro Stunde
-  // Gesamt-Wärmebedarf in MWh für Obergrenze
-  let gesamtWaermeMwh = 0;
-  for (let t = 0; t < 8760; t++) gesamtWaermeMwh += lastgangKw[t];
-  gesamtWaermeMwh /= 1000;
-  // Sinnvolle Max-Fläche: ST soll max. ~40% der Jahreswärme liefern können
-  const stMaxSinnvoll = stMaxConstr > 0 ? stMaxConstr : Math.round(gesamtWaermeMwh * 0.4 * 1000 / stSpez);
-  // ST-Stufen adaptiv: bei vielen Kandidaten weniger ST-Varianten
-  const grobStN = !stAktiv ? 1 : (nKand <= 4 ? 5 : nKand <= 6 ? 3 : 2);
-  let stStepsGrob = stAktiv
-    ? Array.from({length: grobStN}, (_, i) => Math.round(stMaxSinnvoll * i / (grobStN - 1)))
-    : [0];
-  if (stMinConstr > 0 && stAktiv) stStepsGrob = stStepsGrob.filter(v => v >= stMinConstr || v === 0);
-  if (!stAktiv) stStepsGrob = [0];
-
-  // Wärmespeicher-Stufen vorbereiten (variable Volumen in m³)
-  const tsTyp = document.getElementById('ts-typ')?.value || 'puffer';
-  const tsMinConstr = parseFloat(document.getElementById('opt-min-ts')?.value) || 0;
-  const tsMaxConstr = parseFloat(document.getElementById('opt-max-ts')?.value) || 0;
-  let tsStepsGrob;
-  if (!tsAktiv) {
-    tsStepsGrob = [0];
-  } else {
-    // Auto-Sizing als Basis: berechne empfohlenes Volumen aus WP-Kapazität
-    const tsAutoVol = _autoSpeicherVolumen(tsTyp, parseFloat(document.getElementById('ts-dt')?.value) || 40);
-    const tsMaxVol = tsMaxConstr > 0 ? tsMaxConstr : Math.round(tsAutoVol * 3);
-    const tsMinVol = tsMinConstr > 0 ? tsMinConstr : 0;
-    const grobTsN = nKand <= 4 ? 5 : 3;
-    tsStepsGrob = [0]; // immer auch ohne Speicher testen
-    for (let i = 1; i < grobTsN; i++) {
-      const vol = Math.round(tsMinVol + (tsMaxVol - tsMinVol) * i / (grobTsN - 1));
-      if (vol > 0 && !tsStepsGrob.includes(vol)) tsStepsGrob.push(vol);
-    }
-    if (tsMinConstr > 0) tsStepsGrob = tsStepsGrob.filter(v => v >= tsMinConstr || v === 0);
-  }
-
-  // Hilfsfunktion: Lastgang mit ST-Abzug und Wärme-Summe + Überschuss für Speicher
-  function _stReducedLastgang(stM2) {
-    if (stM2 <= 0 || !stNormProfile) return { lastgang: lastgangKw, waermeMwh: 0, stExcessH: null };
-    const reduced = new Float32Array(8760);
-    const stExcessH = new Float32Array(8760);
-    let sumKwh = 0;
-    for (let t = 0; t < 8760; t++) {
-      const stKw = stNormProfile[t] * stM2;
-      const used = Math.min(stKw, lastgangKw[t]);
-      reduced[t] = lastgangKw[t] - used;
-      stExcessH[t] = stKw - used;
-      sumKwh += used;
-    }
-    return { lastgang: reduced, waermeMwh: sumKwh / 1000, stExcessH };
-  }
-
-
-  let totalConfigs = 0;
-  for (const batch of configBatches) totalConfigs += batch.configs.length * stStepsGrob.length * tsStepsGrob.length;
-  let doneConfigs = 0;
-
-  // Asynchrone Batch-Verarbeitung für UI-Responsivität
-  let batchIdx = 0;
-  let configIdx = 0;
-  let stIdx = 0;
-  let tsIdx = 0;
-
-  const _optStartTime = Date.now();
-
-  function processBatch() {
-    if (_optAborted) {
-      const elapsed = ((Date.now() - _optStartTime) / 1000).toFixed(0);
-      resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Abgebrochen nach ' + elapsed + 's. ' + doneConfigs + '/' + totalConfigs + ' Konfigurationen berechnet.</div>';
-      if (grobResults.length > 0) { finishOptimierung(); } else { _optFinished(); }
+    if (mode === 'grob') {
+      self.postMessage({ type: 'grob_done', grobResults, workerIdx });
       return;
     }
-    const startTime = Date.now();
-    const BATCH_TIME_MS = 200; // 200ms pro Batch — reduziert yields gegen Browser-Throttling
-
-    while (batchIdx < configBatches.length) {
-      const batch = configBatches[batchIdx];
-
-      while (configIdx < batch.configs.length) {
-        const config = batch.configs[configIdx];
-
-        while (stIdx < stStepsGrob.length) {
-          const stM2 = stStepsGrob[stIdx];
-
-          while (tsIdx < tsStepsGrob.length) {
-            const tsVol = tsStepsGrob[tsIdx];
-            tsIdx++;
-            doneConfigs++;
-
-            // ST vom Lastgang abziehen
-            const { lastgang: lgForDisp, waermeMwh: stMwh, stExcessH } = _stReducedLastgang(stM2);
-
-            // Dispatch (mit optionalem Speichervolumen + ST-Überschuss → Speicher)
-            const disp = _optDispatch8760(lgForDisp, tempH, vlH, config.map(c => ({...c})), tsVol, stExcessH);
-
-            // Mindestleistung: Jeder Erzeuger muss ≥10% der Spitzenleistung liefern
-            const minKw = peak * 0.1;
-            if (config.length > 1 && disp.erzeugerList.some(e => e.leistKw < minKw)) continue;
-
-            // Stromprofil: WP + SK + Quartier
-            const demandH = new Float32Array(8760);
-            for (let t = 0; t < 8760; t++) {
-              demandH[t] = disp.wpElH[t] + disp.skElH[t] + quartierH[t];
-            }
-
-            // PV/Bat Suche per marginaler Amortisation
-            const pvMaxAmort = parseFloat(document.getElementById('opt-pv-max-amort')?.value) || 10;
-            const pvBatRes = _findOptPvBatMain(pvStepsGrob, batStepsGrob, demandH, disp.bhkwElH, disp,
-              params, stMwh, stM2, tsVol, ziel, pvMaxAmort);
-
-            if (pvBatRes.kw) {
-              grobResults.push({
-                kombiKey: batch.kombiKey,
-                keys: batch.keys,
-                config: config,
-                pvKwp: pvBatRes.pvKwp,
-                batKwh: pvBatRes.batKwh,
-                stM2: stM2,
-                stMwh: stMwh,
-                tsVol: tsVol,
-                kw: pvBatRes.kw,
-                score: pvBatRes.score
-              });
-            }
-
-            // UI-Update check
-            if (Date.now() - startTime > BATCH_TIME_MS) {
-              const pct = Math.round(doneConfigs / totalConfigs * 100);
-              const elapsed = ((Date.now() - _optStartTime) / 1000).toFixed(0);
-              resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;font-size:10px;">Grobsuche (' + GROB_N + ' Stufen, ' + nKand + ' Kand.' + (stAktiv ? ', ST variabel' : '') + (tsAktiv ? ', TS variabel' : '') + '): ' + pct + '% \u00b7 ' + doneConfigs + '/' + totalConfigs + ' \u00b7 ' + elapsed + 's</div>';
-              setTimeout(processBatch, 0);
-              return;
-            }
-          }
-
-          tsIdx = 0;
-          stIdx++;
-        }
-
-        stIdx = 0;
-        configIdx++;
-      }
-
-      configIdx = 0;
-      batchIdx++;
-    }
-
-    // Grobsuche fertig — weiter mit Deduplizierung und Feinsuche
-    finishOptimierung();
   }
 
-  function finishOptimierung() {
-    if (grobResults.length === 0) {
-      resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine Ergebnisse. Bitte Lastgang berechnen.</div>';
-      _optFinished();
-      return;
-    }
-    // Grob-Ergebnisse für Scatter-Plot aufheben
-    window._optGrobResults = grobResults.slice();
-
-    // Dedupliziere: pro kombiKey nur bestes Ergebnis, Top 5 weiterreichen
-    grobResults.sort((a, b) => a.score - b.score);
-    const seen = new Set();
-    const grobTop = [];
-    for (const r of grobResults) {
-      if (!seen.has(r.kombiKey)) { seen.add(r.kombiKey); grobTop.push(r); }
-    }
-    const topNGrob = grobTop.slice(0, 5); // Top 5 für Feinsuche
-
-    resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;font-size:10px;">Feinsuche l\u00e4uft\u2026</div>';
-
-    // Feinsuche asynchron — 5-kW-Schritte statt 1-kW für Performanz
-    let feinIdx = 0;
-    const topFein = [];
-    const FEIN_STEP = Math.max(1, Math.round(peak / 200)); // ~5 kW bei peak=1000
-
-    function processFein() {
-      if (_optAborted || feinIdx >= topNGrob.length) {
-        // Top 3 an Renderer übergeben (auch bei Abbruch, falls Teilergebnisse da)
-        const pool = topFein.length > 0 ? topFein : topNGrob;
-        pool.sort((a, b) => a.score - b.score);
-        renderResults(pool.slice(0, 3));
-        return;
-      }
-
-      const grob = topNGrob[feinIdx];
-      feinIdx++;
-
-      // Sequentielle Feinsuche pro Erzeuger-Achse, 2 Runden
-      let currentConfig = grob.config.map(c => ({...c}));
-      let currentStM2 = grob.stM2 || 0;
-      let currentTsVol = grob.tsVol || 0;
-      const feinRange = Math.round(peak * 0.10);
-
-      for (let runde = 0; runde < 2; runde++) {
-        let changed = false;
-        // ST vom Lastgang abziehen mit aktueller ST-Fläche
-        const { lastgang: lgFein, waermeMwh: stMwhFein, stExcessH: stExFein } = _stReducedLastgang(currentStM2);
-
-        for (let ei = 0; ei < currentConfig.length; ei++) {
-          const erz = currentConfig[ei];
-          const con = constraints[erz.key] || {};
-          const curYear = (typeof globalYear !== 'undefined' ? globalYear : 2026);
-          const minKwCon = con.minKw > 0 && (!con.bisJahr || con.bisJahr >= curYear) ? con.minKw : 1;
-          const maxKwCon = con.maxKw > 0 ? con.maxKw : Math.round(peak * 1.2);
-          const _minKwFein = currentConfig.length > 1 ? Math.round(peak * 0.1) : 1;
-          const lo = Math.max(_minKwFein, minKwCon, erz.leistKw - feinRange);
-          const hi = Math.min(maxKwCon, erz.leistKw + feinRange);
-
-          let bestKwVal = erz.leistKw, bestScoreVal = Infinity;
-          for (let kw = lo; kw <= hi; kw += FEIN_STEP) {
-            const testConfig = currentConfig.map(c => ({...c}));
-            testConfig[ei] = { ...erz, leistKw: kw };
-            const disp = _optDispatch8760(lgFein, tempH, vlH, testConfig.map(c => ({...c})), currentTsVol, stExFein);
-            const demandH = new Float32Array(8760);
-            for (let t = 0; t < 8760; t++) demandH[t] = disp.wpElH[t] + disp.skElH[t] + quartierH[t];
-            const pvBat = _optPvBatSim8760(grob.pvKwp, grob.batKwh, demandH, disp.bhkwElH, disp);
-            const kwRes = _optKennwerte2(disp, grob.pvKwp, grob.batKwh, pvBat, params, stMwhFein, currentStM2, currentTsVol);
-            const score = _optScore(kwRes, ziel);
-            if (score < bestScoreVal) { bestScoreVal = score; bestKwVal = kw; }
-          }
-          if (bestKwVal !== erz.leistKw) { changed = true; }
-          currentConfig[ei] = { ...erz, leistKw: bestKwVal };
-        }
-
-        // ST-Fläche feinoptimieren (±20% vom Grobwert, 10 Stufen)
-        if (stAktiv && currentStM2 > 0) {
-          const stLoFein = Math.max(stMinConstr, Math.round(currentStM2 * 0.8));
-          const stHiFein = stMaxConstr > 0 ? Math.min(stMaxConstr, Math.round(currentStM2 * 1.2)) : Math.round(currentStM2 * 1.2);
-          const stFeinStep = Math.max(1, Math.round((stHiFein - stLoFein) / 10));
-          let bestStVal = currentStM2, bestStScore = Infinity;
-          for (let sm2 = stLoFein; sm2 <= stHiFein; sm2 += stFeinStep) {
-            const { lastgang: lgSt, waermeMwh: stMwhSt, stExcessH: stExSt } = _stReducedLastgang(sm2);
-            const disp = _optDispatch8760(lgSt, tempH, vlH, currentConfig.map(c => ({...c})), currentTsVol, stExSt);
-            const demandH = new Float32Array(8760);
-            for (let t = 0; t < 8760; t++) demandH[t] = disp.wpElH[t] + disp.skElH[t] + quartierH[t];
-            const pvBat = _optPvBatSim8760(grob.pvKwp, grob.batKwh, demandH, disp.bhkwElH, disp);
-            const kwRes = _optKennwerte2(disp, grob.pvKwp, grob.batKwh, pvBat, params, stMwhSt, sm2, currentTsVol);
-            const score = _optScore(kwRes, ziel);
-            if (score < bestStScore) { bestStScore = score; bestStVal = sm2; }
-          }
-          if (bestStVal !== currentStM2) { changed = true; currentStM2 = bestStVal; }
-        }
-
-        // Wärmespeicher-Volumen feinoptimieren (±30% vom Grobwert, 8 Stufen)
-        if (tsAktiv && currentTsVol > 0) {
-          const tsLoFein = Math.max(tsMinConstr, Math.round(currentTsVol * 0.7));
-          const tsHiFein = tsMaxConstr > 0 ? Math.min(tsMaxConstr, Math.round(currentTsVol * 1.3)) : Math.round(currentTsVol * 1.3);
-          const tsFeinStep = Math.max(1, Math.round((tsHiFein - tsLoFein) / 8));
-          let bestTsVal = currentTsVol, bestTsScore = Infinity;
-          const { lastgang: lgTs, waermeMwh: stMwhTs, stExcessH: stExTs } = _stReducedLastgang(currentStM2);
-          for (let tv = tsLoFein; tv <= tsHiFein; tv += tsFeinStep) {
-            const disp = _optDispatch8760(lgTs, tempH, vlH, currentConfig.map(c => ({...c})), tv, stExTs);
-            const demandH = new Float32Array(8760);
-            for (let t = 0; t < 8760; t++) demandH[t] = disp.wpElH[t] + disp.skElH[t] + quartierH[t];
-            const pvBat = _optPvBatSim8760(grob.pvKwp, grob.batKwh, demandH, disp.bhkwElH, disp);
-            const kwRes = _optKennwerte2(disp, grob.pvKwp, grob.batKwh, pvBat, params, stMwhTs, currentStM2, tv);
-            const score = _optScore(kwRes, ziel);
-            if (score < bestTsScore) { bestTsScore = score; bestTsVal = tv; }
-          }
-          if (bestTsVal !== currentTsVol) { changed = true; currentTsVol = bestTsVal; }
-        }
-
-        if (!changed) break;
-      }
-
-      // PV/Bat Volloptimierung (breites Grid)
-      const { lastgang: lgFinal, waermeMwh: stMwhFinal, stExcessH: stExFinal } = _stReducedLastgang(currentStM2);
-      const finalDisp = _optDispatch8760(lgFinal, tempH, vlH, currentConfig.map(c => ({...c})), currentTsVol, stExFinal);
-      const demandHFinal = new Float32Array(8760);
-      for (let t = 0; t < 8760; t++) demandHFinal[t] = finalDisp.wpElH[t] + finalDisp.skElH[t] + quartierH[t];
-
-      // PV/Bat Feinoptimierung per marginaler Amortisation
-      const pvStepsFein = pvAktiv ? Array.from({length: 15}, (_, i) => Math.round(pvMaxSinnvoll * i / 14)) : [0];
-      if (pvMinConstr > 0 && pvAktiv) {
-        const filtered = pvStepsFein.filter(v => v >= pvMinConstr || v === 0);
-        if (filtered.length > 0) { pvStepsFein.length = 0; filtered.forEach(v => pvStepsFein.push(v)); }
-      }
-      const batStepsFein = batAktiv ? Array.from({length: 8}, (_, i) => Math.round(batMax * i / 7)) : [0];
-      const pvMaxAmortFein = parseFloat(document.getElementById('opt-pv-max-amort')?.value) || 10;
-      const pvBatFein = _findOptPvBatMain(pvStepsFein, batStepsFein, demandHFinal, finalDisp.bhkwElH, finalDisp,
-        params, stMwhFinal, currentStM2, currentTsVol, ziel, pvMaxAmortFein);
-      const bestPv = pvBatFein.pvKwp, bestBat = pvBatFein.batKwh, bestScoreFinal = pvBatFein.score;
-
-      // Finales Ergebnis
-      const finalPvBat = _optPvBatSim8760(bestPv, bestBat, demandHFinal, finalDisp.bhkwElH, finalDisp);
-      const finalKw = _optKennwerte2(finalDisp, bestPv, bestBat, finalPvBat, params, stMwhFinal, currentStM2, currentTsVol);
-
-      topFein.push({
-        keys: grob.keys,
-        config: currentConfig,
-        pvKwp: bestPv,
-        batKwh: bestBat,
-        stM2: currentStM2,
-        stMwh: stMwhFinal,
-        tsVol: currentTsVol,
-        kw: finalKw,
-        sim: finalDisp,
-        score: bestScoreFinal,
-      });
-
-      const elapsedFein = ((Date.now() - _optStartTime) / 1000).toFixed(0);
-      resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;font-size:10px;">Feinsuche: ' + feinIdx + '/' + topNGrob.length + ' Konstellationen \u00b7 ' + elapsedFein + 's</div>';
-      setTimeout(processFein, 0);
-    }
-
-    processFein();
+  // ═══ FEINSUCHE: Mustersuche über alle Größen gemeinsam ═══
+  let seeds = data.seeds || [];
+  if (mode === 'full') {
+    // Bestes Ergebnis je Anlagenkonzept als Startpunkt
+    const besteJe = new Map();
+    for (const r of grobResults) { const b = besteJe.get(r.kanon); if (!b || r.score < b.score) besteJe.set(r.kanon, r); }
+    seeds = [...besteJe.values()].sort((a, c) => a.score - c.score).slice(0, S.anzahlFein).map(r => ({ keys: r.keys, x: r.x, kanon: r.kanon }));
+    for (const s of (data.zusatzSeeds || [])) seeds.push(s);
   }
 
-  function renderResults(top3) {
-    if (top3.length === 0) {
-      resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine Ergebnisse.</div>';
-      return;
+  const topFein = [];
+  for (let si = 0; si < seeds.length; si++) {
+    self.postMessage({ type: 'progress', phase: 'Feinsuche', pct: Math.round(si / seeds.length * 100), done: si, total: seeds.length, workerIdx });
+    const seed = seeds[si];
+    const keys = seed.keys;
+    const k = S.kombis.find(kk => kk.keys.join(',') === keys.join(','));
+    if (!k) continue;
+    const dims = k.grenzen.map(g => ({ lo: g.lo, hi: g.hi, schritt: Math.max(1, Math.round(S.peak * 0.15)), minSchritt: S.minSchrittErz, gruppe: 'erz' }));
+    for (const ach of [S.pv, S.bat, S.st, S.ts]) {
+      dims.push({ lo: ach.lo, hi: ach.hi, schritt: Math.max(1, Math.round((ach.hi - ach.lo) / 4)), minSchritt: Math.max(1, Math.round((ach.hi - ach.lo) / 100)) });
     }
-
-    top3.sort((a, b) => a.score - b.score);
-
-    resDiv.innerHTML = '';
-    // Jahr-Info im Ergebnis anzeigen
-    const _optResYear2 = parseInt(document.getElementById('opt-year')?.value) || globalYear;
-    const _optResYearDiv2 = document.createElement('div');
-    _optResYearDiv2.style.cssText = 'font-size:10px;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;';
-    _optResYearDiv2.innerHTML = '<span style="color:var(--accent);font-weight:600;">Betrachtungsjahr: ' + _optResYear2 + '</span>'
-      + (window._basisYear && _optResYear2 !== window._basisYear ? ' <span style="color:#78909c;font-size:9px;">(Lastgang skaliert)</span>' : '');
-    resDiv.appendChild(_optResYearDiv2);
-    top3.forEach((r, idx) => {
-      const card = document.createElement('div');
-      card.style.cssText = 'background:var(--surface2);border-radius:8px;padding:12px 14px;margin-bottom:16px;border:1px solid rgba(255,255,255,0.12);box-shadow:0 2px 8px rgba(0,0,0,0.3);';
-
-      const titel = r.keys.map(k => ERZEUGER_CFG[k]?.label || k).join(' + ')
-        + (r.stM2 > 0 ? ' + ST ' + r.stM2 + ' m\u00b2' : '')
-        + (r.tsVol > 0 ? ' + WS ' + r.tsVol + ' m\u00b3' : '')
-        + (r.pvKwp > 0 ? ' + PV ' + r.pvKwp.toFixed(0) + ' kWp' : '')
-        + (r.batKwh > 0 ? ' + Bat ' + r.batKwh.toFixed(0) + ' kWh' : '');
-
-      const eeColor = r.kw.eeAnteil >= 65 ? '#81c784' : '#ef9a9a';
-      const eeBadge = '<span style="background:' + eeColor + ';color:#000;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:600;">' + r.kw.eeAnteil.toFixed(0) + '% EE</span>';
-
-      const totalInkST = (r.sim.gesamtMwh || 0) + (r.stMwh || 0);
-
-      // ── Hauptzeile: WGK prominent + Sekundär-KPIs ──
-      let kpiHtml = '<div style="display:flex;align-items:stretch;gap:6px;margin:6px 0;">';
-      kpiHtml += '<div style="background:rgba(253,216,53,0.08);border:1px solid rgba(253,216,53,0.25);border-radius:6px;padding:6px 12px;text-align:center;min-width:80px;">'
-        + '<div style="font-size:18px;font-weight:700;color:#fdd835;line-height:1.1;">' + r.kw.wgk.toFixed(1) + '</div>'
-        + '<div style="font-size:8px;color:var(--muted);margin-top:1px;">ct/kWh</div></div>';
-      kpiHtml += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;flex:1;">';
-      const kpis2 = [
-        { val: (r.kw.investGesamt / 1000).toFixed(0) + ' k\u20ac', lbl: 'Invest', color: '#b0bec5' },
-        { val: r.kw.co2ta.toFixed(1) + ' t/a', lbl: 'CO\u2082', color: '#90a4ae' },
-        { val: r.kw.jahreskosten ? (r.kw.jahreskosten / 1000).toFixed(1) + ' k\u20ac/a' : '\u2014', lbl: 'Jahreskosten', color: '#ce93d8' },
-        { val: (r.kw.stromAutarkie || 0).toFixed(0) + '%', lbl: '\u26A1 Strom-Aut.', color: '#fdd835' },
-        { val: (r.kw.waermeAutarkie || 0).toFixed(0) + '%', lbl: '\uD83C\uDF21 W\u00e4rme-Aut.', color: '#e53935' },
-        { val: totalInkST.toFixed(0) + ' MWh', lbl: 'W\u00e4rme ges.', color: '#ff7043' },
-      ];
-      for (const k of kpis2) {
-        kpiHtml += '<div style="background:rgba(255,255,255,0.03);border-radius:3px;padding:2px 4px;text-align:center;">'
-          + '<div style="font-size:10px;font-weight:600;color:' + k.color + ';">' + k.val + '</div>'
-          + '<div style="font-size:7px;color:var(--muted);white-space:nowrap;">' + k.lbl + '</div></div>';
-      }
-      kpiHtml += '</div></div>';
-
-      // ── Erzeuger-Tabelle ──
-      let erzHtml = '<div style="display:grid;grid-template-columns:auto repeat(3,1fr);gap:0 8px;font-size:9px;margin:4px 0;padding:4px 0;border-top:1px solid var(--border);">';
-      erzHtml += '<div style="color:var(--muted);font-size:8px;">Erzeuger</div>'
-        + '<div style="color:var(--muted);font-size:8px;text-align:right;">Leistung</div>'
-        + '<div style="color:var(--muted);font-size:8px;text-align:right;">Energie</div>'
-        + '<div style="color:var(--muted);font-size:8px;text-align:right;">Anteil</div>';
-      if (r.stM2 > 0 && r.stMwh > 0) {
-        const dckPct = totalInkST > 0 ? (r.stMwh / totalInkST * 100) : 0;
-        erzHtml += '<div><span style="color:#ef6c00;">\u25CF</span> ST ' + r.stM2 + ' m\u00b2</div>'
-          + '<div style="text-align:right;">\u2014</div>'
-          + '<div style="text-align:right;">' + r.stMwh.toFixed(0) + ' MWh</div>'
-          + '<div style="text-align:right;font-weight:600;">' + dckPct.toFixed(0) + '%</div>';
-      }
-      for (let ci = 0; ci < r.config.length; ci++) {
-        const erz = r.config[ci];
-        const simErz = r.sim.erzeugerList ? r.sim.erzeugerList[ci] : null;
-        const waermeMwh = simErz ? (simErz.waermeMwh || 0) : 0;
-        const col = ERZEUGER_CFG[erz.key]?.color || '#aaa';
-        const dckPct = totalInkST > 0 ? (waermeMwh / totalInkST * 100) : 0;
-        const displayKw = simErz ? simErz.leistKw : erz.leistKw;
-        erzHtml += '<div><span style="color:' + col + ';">\u25CF</span> ' + (ERZEUGER_CFG[erz.key]?.label || erz.key) + '</div>'
-          + '<div style="text-align:right;">' + displayKw.toFixed(0) + ' kW</div>'
-          + '<div style="text-align:right;">' + waermeMwh.toFixed(0) + ' MWh</div>'
-          + '<div style="text-align:right;font-weight:600;">' + dckPct.toFixed(0) + '%</div>';
-      }
-      if (r.sim.autoGkMwh > 0) {
-        const dckPct = totalInkST > 0 ? (r.sim.autoGkMwh / totalInkST * 100) : 0;
-        erzHtml += '<div><span style="color:#78909c;">\u25CF</span> Backup-GK</div>'
-          + '<div style="text-align:right;">\u2014</div>'
-          + '<div style="text-align:right;">' + r.sim.autoGkMwh.toFixed(0) + ' MWh</div>'
-          + '<div style="text-align:right;font-weight:600;">' + dckPct.toFixed(0) + '%</div>';
-      }
-      if (r.pvKwp > 0) {
-        erzHtml += '<div><span style="color:#fdd835;">\u25CF</span> PV' + (r.batKwh > 0 ? ' + Bat' : '') + '</div>'
-          + '<div style="text-align:right;">' + r.pvKwp.toFixed(0) + ' kWp' + (r.batKwh > 0 ? ' / ' + r.batKwh.toFixed(0) + ' kWh' : '') + '</div>'
-          + '<div style="text-align:right;color:var(--muted);">' + (r.kw.pvErtragMwh || 0).toFixed(0) + ' MWh</div>'
-          + '<div style="text-align:right;color:var(--muted);">\u2014</div>';
-      }
-      erzHtml += '</div>';
-
-      card.innerHTML =
-        '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.08);">' +
-          '<span style="font-size:12px;font-weight:700;color:var(--text);">' + (idx + 1) + '. ' + escHtml(titel) + '</span>' +
-          eeBadge +
-        '</div>' +
-        kpiHtml +
-        erzHtml +
-        '<div style="text-align:center;margin-top:6px;"><button class="btn-secondary" style="font-size:9px;padding:3px 12px;" data-click="_optVarianteUebernehmen(window._optLastResults[' + idx + '], this)">Als Variante \u00fcbernehmen</button></div>';
-      resDiv.appendChild(card);
-    });
-
-    window._optLastResults = top3;
-
-    // Debug: WGK-Aufschlüsselung der Top-Varianten loggen
-    top3.forEach((r, i) => {
-      const d = r.kw._dbg;
-      if (d) console.log('[OPT-WGK] #' + (i+1), r.keys.join('+'),
-        '| WGK:', r.kw.wgk.toFixed(1), 'ct/kWh',
-        '| Kapital:', Math.round(d.kapitalJk), '€/a',
-        '| Energie:', Math.round(d.energieJk), '€/a',
-        '| JK ges:', Math.round(r.kw.jahreskosten), '€/a',
-        '| Wärme:', d.totalWaerme.toFixed(1), 'MWh',
-        '| Invest:', Math.round(d.basisInvest), '€',
-        '| nGeb:', d.nGeb, '| NetzInv:', d.netzInvest,
-        '| AutoGK:', d.autoGkMwh.toFixed(1), 'MWh/' + (d.autoGkPeakKw||0).toFixed(0) + 'kW',
-        '| Erz:', d.erzList);
-    });
-
-    // Visualisierungen rendern
-    window._optTopFinal = top3; window._optTop3Final = top3;
-    _optRenderBarChart(top3, resDiv);
-    _optRenderRadar(top3, resDiv);
-    _optRenderScatter(resDiv);
-    // Gesamtdauer anzeigen
-    const totalElapsed = ((Date.now() - _optStartTime) / 1000);
-    const timeLabel = totalElapsed < 60 ? totalElapsed.toFixed(1) + 's' : (totalElapsed / 60).toFixed(1) + ' min';
-    const infoDiv = document.createElement('div');
-    infoDiv.style.cssText = 'font-size:9px;color:var(--muted);text-align:center;margin-top:8px;';
-    infoDiv.textContent = 'Berechnung abgeschlossen in ' + timeLabel + ' (' + (window._optGrobResults?.length || 0) + ' Konfigurationen getestet)';
-    resDiv.appendChild(infoDiv);
-    // PV-Cache aufräumen
-    window._optCachedPvProfile = null;
-    _optFinished();
+    const start = seed.x.map((v, i) => Math.round(Math.min(dims[i].hi, Math.max(dims[i].lo, v))));
+    const startB = bewerte(keys, start);
+    // Das Anlagenkonzept bleibt während der Suche gleich (sonst wandert z. B. „Pellets“ in „Pellets + Gaskessel“)
+    const kanonSoll = seed.kanon || startB.kanon;
+    let besterB = startB.kanon === kanonSoll ? startB : null;
+    const res = optMusterSuche(start, dims, x => {
+      const b = bewerte(keys, x);
+      if (b.kanon !== kanonSoll) return Infinity;
+      if (!besterB || b.score < besterB.score) besterB = b;
+      return b.score;
+    }, S.maxEvalFein);
+    if (!besterB || !Number.isFinite(besterB.score)) continue;
+    const out = detail(keys, besterB);
+    out.evals = res.evals;
+    out.ausgangsplanung = !!seed.ausgangsplanung;
+    // Ausgangsplanung exakt (ohne Suchgrenzen) als Vergleichswert
+    if (seed.ausgangsplanung) out.start = detail(keys, bewerte(keys, seed.x));
+    topFein.push(out);
   }
 
-  // Start der asynchronen Grobsuche
-  processBatch();
+  self.postMessage({ type: 'done', topFein, grobResults: mode === 'full' ? grobResults : [], workerIdx });
+};
+`;
 }
 
 // ── Gestapeltes Balkendiagramm: Energie- und Leistungsanteile Top-Varianten ──
@@ -1440,7 +504,7 @@ export function _optRenderBarChart(results, container) {
   ctx.font = '10px "DM Sans", sans-serif';
   let maxLabelW = 0;
   const varLabels = results.map((r, idx) => {
-    const txt = (idx + 1) + '. ' + r.keys.map(k => _fullName(k)).join(' + ');
+    const txt = (idx + 1) + '. ' + (r.anzeigeKeys || r.keys).map(k => _fullName(k)).join(' + ');
     const w = ctx.measureText(txt).width;
     if (w > maxLabelW) maxLabelW = w;
     return txt;
@@ -1585,7 +649,7 @@ export function _optRenderRadar(results, container) {
   legendDiv.style.cssText = 'display:flex;gap:12px;margin-top:4px;flex-wrap:wrap;';
   const varColors = ['#66bb6a','#29b6f6','#ff7043'];
   top3.forEach((r, i) => {
-    const name = r.keys.map(k => ERZEUGER_CFG[k]?.label || k).join('+');
+    const name = (r.anzeigeKeys || r.keys).map(k => ERZEUGER_CFG[k]?.label || k).join('+');
     const sp = document.createElement('span');
     sp.style.cssText = 'font-size:9px;color:var(--muted);font-family:"DM Sans",sans-serif;display:flex;align-items:center;gap:3px;';
     sp.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + varColors[i] + ';opacity:0.7;"></span>' + (i + 1) + '. ' + name;
@@ -1924,7 +988,7 @@ export function _optRenderScatter(container) {
         ctx.fillText(String(i + 1), x, y + 0.5);
         ctx.font = '10px "DM Sans",sans-serif';
       }
-      const txt = (i + 1) + '. ' + r.keys.map(k => _fullName(k)).join(' + ');
+      const txt = (i + 1) + '. ' + (r.anzeigeKeys || r.keys).map(k => _fullName(k)).join(' + ');
       const truncTxt = txt.length > 34 ? txt.slice(0, 32) + '\u2026' : txt;
       const rechts = x > PAD.l + pw * 0.7;
       ctx.textAlign = rechts ? 'right' : 'left';

@@ -117,9 +117,10 @@ export function _calcKostenShared(p) {
   // Nebenkomponenten
   var combustKw = (pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw._autoGk||0)+(pKw.bhkw||0);
   if (combustKw > 0.1)     add('schornstein', Math.round(combustKw*60), {n:40,inst:1.0,wart:2.0,bedien:0});
-  // Pufferspeicher nur, wenn kein eigener Wärmespeicher konfiguriert ist
-  // (sonst doppelt: der große Speicher übernimmt die hydraulische Entkopplung)
-  if (sumKw > 0 && !((extra.optSpeicherVol||0) > 0)) add('puffer', Math.round(sumKw*25*7/1000)*1000, {n:20,inst:1.0,wart:1.0,bedien:0});
+  // Pufferspeicher (~25 l/kW), soweit ihn kein eigener Wärmespeicher ersetzt — der übernimmt die
+  // hydraulische Entkopplung nur mit seinem Volumen (ein 1-m³-Speicher ersetzt keinen 30-m³-Puffer)
+  var pufferRestL = sumKw * 25 - (extra.optSpeicherVol || 0) * 1000;
+  if (sumKw > 0 && pufferRestL > 0) add('puffer', Math.round(pufferRestL*7/1000)*1000, {n:20,inst:1.0,wart:1.0,bedien:0});
   var schallKw = (pKw.lwwp||0)+(pKw.bhkw||0);
   if (schallKw > 0.1)      add('schallschutz', Math.round(schallKw*75), {n:25,inst:0.5,wart:0.5,bedien:0});
   var bioKw = (pKw.pellets||0)+(pKw.hhs||0);
@@ -127,7 +128,8 @@ export function _calcKostenShared(p) {
   var nGeb = extra.nGeb || 0;
   if (nGeb > 1) {
     var avgKw = sumKw > 0 ? sumKw / nGeb : 50;
-    add('huest', nGeb * (avgKw<30?5000:avgKw<100?8000:avgKw<300?12000:15000), {n:25,inst:1.0,wart:1.0,bedien:0});
+    // „Nur Wärmeerzeugung“: Hausübergabestationen gehören zum Netz (wie WIRT_NETZ_BAUSTEINE)
+    if (!extra.ohneNetz) add('huest', nGeb * (avgKw<30?5000:avgKw<100?8000:avgKw<300?12000:15000), {n:25,inst:1.0,wart:1.0,bedien:0});
     // Heizzentrale/Technikgebäude — bei Netzprojekten eigener Posten,
     // die 5 % Bauteil-Zuschlag decken kein eigenes Gebäude
     if (sumKw > 0) add('heizzentrale', Math.round(sumKw * (sumKw<500?300:sumKw<2000?225:150)), {n:50,inst:1.0,wart:0.5,bedien:0});
@@ -136,7 +138,7 @@ export function _calcKostenShared(p) {
   if (elKw > 500)           add('netzanschluss', Math.round(elKw*40), {n:40,inst:0.5,wart:0,bedien:0});
   if (aktiv('fg'))          add('fg_entnahme', Math.round((pKw.fg||0)*300), {n:30,inst:2.0,wart:1.0,bedien:100});
   // Netz-Betriebskosten: VDI 2067 Erdleitungen ≈ 1 %/a Instandsetzung, keine Wartung
-  if ((extra.netzInvest||0) > 0) add('waermenetz', extra.netzInvest, {n:50,inst:1.0,wart:0,bedien:40});
+  if ((extra.netzInvest||0) > 0 && !extra.ohneNetz) add('waermenetz', extra.netzInvest, {n:50,inst:1.0,wart:0,bedien:40});
 
   // Prozentuale Zuschläge auf Basisinvestition der Erzeugungsanlagen.
   // Netz, Erdsonden und HÜST sind Vollkosten-Sätze (inkl. Tiefbau/Montage) —
@@ -374,6 +376,8 @@ export function wirtUmfangSetzen(ohneNetz) {
   _wirtUmfangUiSync();
   calcWirtschaftPanel();
   if (typeof window.cacheVariantResults === 'function') window.cacheVariantResults();
+  // Optimierungsergebnisse im selben Umfang neu bewerten
+  if (typeof window._optUmfangGeaendert === 'function') window._optUmfangGeaendert();
 }
 export function _wirtUmfangUiSync() {
   const ohne = wirtOhneNetz();
@@ -438,7 +442,10 @@ export function calcWirtschaftPanel() {
   });
 
   const aktiv = k => keys.includes(k) && (pKw[k] || 0) > 0.1;
-  const sumKw  = keys.reduce((s, k) => s + (pKw[k] || 0), 0);
+  // installierte Erzeugerleistung — Speicher-Entladung und Solarthermie sind keine Erzeuger (wie im Optimierer)
+  const sumKw  = keys.reduce((s, k) => s + (k === '_thermSpeicher' || k === 'solarthermie' ? 0 : (pKw[k] || 0)), 0);
+  // Puffervolumen (~25 l/kW), soweit es der Wärmespeicher nicht ersetzt — wie _calcKostenShared
+  const _pufferRestL = () => sumKw * 25 - (thermSpeicherAktiv ? (getThermSpeicherParams()?.vol || 0) * 1000 : 0);
   const bohrm  = _parseGeoBohrMeter();
 
   const iKW = (tech, kw) => {
@@ -552,9 +559,9 @@ export function calcWirtschaftPanel() {
       auto:()=>Math.round(((pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw._autoGk||0)+(pKw.bhkw||0))*60),
       tooltip:'Schornstein für alle Feuerungsanlagen (inkl. BHKW und Spitzenlast-Kessel), 60 €/kW' },
     { id:'puffer',     label:'Pufferspeicher',           vdi:{n:20,inst:1.0,wart:1.0,bedien:0},
-      aktiv:()=>sumKw > 0 && !thermSpeicherAktiv,
-      auto:()=>Math.round(sumKw * 25 * 7 / 1000) * 1000,
-      tooltip:'~25 L/kW à 7 €/L Speichervolumen (Stahl-Pufferspeicher, inkl. Dämmung + Aufstellung). Entfällt, wenn ein eigener Wärmespeicher konfiguriert ist (der übernimmt die hydraulische Entkopplung)' },
+      aktiv:()=>sumKw > 0 && _pufferRestL() > 0,
+      auto:()=>Math.round(_pufferRestL() * 7 / 1000) * 1000,
+      tooltip:'~25 L/kW à 7 €/L Speichervolumen (Stahl-Pufferspeicher, inkl. Dämmung + Aufstellung). Ein eigener Wärmespeicher ersetzt den Puffer im Umfang seines Volumens' },
     { id:'schallschutz',label:'Schallschutz/Einhausung', vdi:{n:25,inst:0.5,wart:0.5,bedien:0},
       aktiv:()=>aktiv('lwwp')||aktiv('bhkw'),
       auto:()=>Math.round(((pKw.lwwp||0)+(pKw.bhkw||0))*75),
@@ -690,8 +697,11 @@ export function calcWirtschaftPanel() {
     const e = en[k] || {};
     if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') _wpSkElMwh += (e.elMwh || 0);
   });
+  // Übriger Strombedarf wie in der Strombilanz (Upload, Jahressumme, Gebäudedaten, Kälte) — früher fehlten
+  // hier die Gebäudedaten, dann ging der ganze PV-Eigenverbrauch rechnerisch an die Wärmepumpe
   let _quartierStromMwh = 0;
-  if (window.elQuartierH) { for (let t = 0; t < 8760; t++) _quartierStromMwh += window.elQuartierH[t]; _quartierStromMwh /= 1000; }
+  if (Number.isFinite(_bil.quartierMwh)) _quartierStromMwh = _bil.quartierMwh;
+  else if (window.elQuartierH) { for (let t = 0; t < 8760; t++) _quartierStromMwh += window.elQuartierH[t]; _quartierStromMwh /= 1000; }
   else { const _gebs = typeof gebaeude !== 'undefined' ? gebaeude : []; let _sK = 0; for (const g of _gebs) _sK += parseFloat(g.stromJahr || g.stromkwh || 0); _quartierStromMwh = _sK / 1000; }
   const _gesamtStromMwh = _wpSkElMwh + _quartierStromMwh;
 
@@ -1671,7 +1681,8 @@ export function calcJahresscheiben() {
     else { const cfg = ERZEUGER_CFG[k]; pKw[k] = cfg?.leistungId ? (parseFloat(document.getElementById(cfg.leistungId)?.value) || 0) : 0; }
   });
   const aktiv = k => keys.includes(k) && (pKw[k] || 0) > 0.1;
-  const sumKw = keys.reduce((s, k) => s + (pKw[k] || 0), 0);
+  const sumKw = keys.reduce((s, k) => s + (k === '_thermSpeicher' || k === 'solarthermie' ? 0 : (pKw[k] || 0)), 0);
+  const pufferRestL = sumKw * 25 - (thermSpeicherAktiv ? (getThermSpeicherParams()?.vol || 0) * 1000 : 0);
   const bohrm = _parseGeoBohrMeter();
   const iKW = (tech, kw) => typeof CalcEngine !== 'undefined' ? Math.round(kw * CalcEngine.investEurProKw(tech, kw)) : 0;
 
@@ -1695,7 +1706,7 @@ export function calcJahresscheiben() {
     { id:'fw_pumpe', aktiv:()=>aktiv('fernwaerme'), auto:()=>Math.round((pKw.fernwaerme||0)*80), vdi:{n:18,inst:2.0,wart:1.0,bedien:0} },
     { id:'schornstein', aktiv:()=>aktiv('pellets')||aktiv('hhs')||aktiv('heizoel')||aktiv('gaskessel')||aktiv('bhkw')||(pKw._autoGk||0)>0.1,
       auto:()=>Math.round(((pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw._autoGk||0)+(pKw.bhkw||0))*60), vdi:{n:40,inst:1.0,wart:2.0,bedien:0} },
-    { id:'puffer', aktiv:()=>sumKw>0, auto:()=>Math.round(sumKw*25*7/1000)*1000, vdi:{n:20,inst:1.0,wart:1.0,bedien:0} },
+    { id:'puffer', aktiv:()=>sumKw>0 && pufferRestL>0, auto:()=>Math.round(pufferRestL*7/1000)*1000, vdi:{n:20,inst:1.0,wart:1.0,bedien:0} },
     { id:'schallschutz', aktiv:()=>aktiv('lwwp')||aktiv('bhkw'), auto:()=>Math.round(((pKw.lwwp||0)+(pKw.bhkw||0))*75), vdi:{n:25,inst:0.5,wart:0.5,bedien:0} },
     { id:'entstaubung', aktiv:()=>(pKw.pellets||0)+(pKw.hhs||0)>200,
       auto:()=>{const p=(pKw.pellets||0)+(pKw.hhs||0);return p<=500?20000:p<=1000?30000:40000;}, vdi:{n:15,inst:2.0,wart:3.0,bedien:100} },

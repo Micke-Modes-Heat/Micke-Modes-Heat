@@ -358,7 +358,9 @@ export function calcStromPanel() {
   window._pvStromErloes = pvEinspeisungserloes + pvEigenverbrauchErloes;
   window._stromBilanz = { pvEigenMwh, pvEinspMwh, bhkwEigenMwh, bhkwEinspMwh,
     pvToWp, pvToSk, pvToQuartier, bhkwToWp, bhkwToSk, bhkwToQuartier,
-    netzToWp, netzToSk, netzToQuartier, pvToKaelte, bhkwToKaelte, netzToKaelte };
+    netzToWp, netzToSk, netzToQuartier, pvToKaelte, bhkwToKaelte, netzToKaelte,
+    // übriger Strombedarf (Quartier + Kälte) — Bezugsgröße für die anteilige PV-Zuordnung in der Wirtschaftlichkeit
+    quartierMwh: quartierMwh + kaelteMwh };
   // CO₂-Bilanz Strom (inkl. optionaler PV-Einspeisung-Gutschrift)
   const vEmF = calcVerdraengungEmF();
   const pvCo2GutschriftT = pvCo2Gutschrift && einspeisungMwh > 0 ? einspeisungMwh * vEmF / 1e3 : 0; // t CO₂/a — Einspeisung verdrängt Marginalstrom

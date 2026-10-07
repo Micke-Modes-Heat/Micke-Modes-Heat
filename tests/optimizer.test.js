@@ -25,6 +25,7 @@ beforeAll(() => {
   loadScript('09a-pv-profile.js');
   loadScript('lib/pv-battery-core.js');
   loadScript('lib/battery-aging.js');
+  loadScript('lib/optimierer-suche.js');
   loadScript('10a-optimizer-core.js');
   loadScript('10d-optimizer-worker.js');
 });
@@ -589,7 +590,8 @@ describe('Ansatz 5: Worker-Code Struktur', () => {
     expect(code).toContain('function pvBatSim8760');
     expect(code).toContain('function kennwerte');
     expect(code).toContain('function score');
-    expect(code).toContain('function _findOptPvBat');
+    expect(code).toContain('function optMusterSuche');
+    expect(code).toContain('function optEinspeiseCt');
     expect(code).toContain('function _calcKostenShared');
     expect(code).toContain(_dispatchCore.toString());
     expect(code).toContain(pvBatteryStep.toString());
@@ -598,7 +600,6 @@ describe('Ansatz 5: Worker-Code Struktur', () => {
 
   it('Worker-Code enthält alle nötigen Hilfsfunktionen', () => {
     const code = _buildOptWorkerCode();
-    expect(code).toContain('function _annF');
     expect(code).toContain('function _defaultGuetegrad');
     expect(code).toContain('function _quelleTemp');
     expect(code).toContain('function _investProKw');

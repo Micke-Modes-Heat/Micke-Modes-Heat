@@ -2664,6 +2664,10 @@ textarea.ssb-in{resize:vertical;}
 .opt-karte-fuss{display:flex;justify-content:flex-end;margin-top:10px;}
 .opt-karte-fuss .btn-secondary{font-size:10px;padding:5px 14px;}
 .opt-karte{text-align:left;}
+.opt-ergebnis-kopf{font-size:10px;color:var(--muted);margin-bottom:8px;text-align:left;}
+.opt-umfang-hinweis{margin-left:8px;padding:1px 7px;border:1px solid var(--border);border-radius:9px;font-size:9px;}
+.opt-ausgang{margin-top:4px;font-size:10px;color:var(--text);}
+.opt-karte-hinweis{margin-top:8px;padding:5px 8px;border-left:2px solid #ffb74d;background:var(--surface2);font-size:9.5px;color:#ffcc80;line-height:1.45;}
 
 /* ── Variantenvergleich: Abschnitte als Karten ── */
 #vergleich-uebersicht,#vergleich-view-table-wrap,#vergleich-pareto-wrap,#vergleich-strom-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:6px 8px;}

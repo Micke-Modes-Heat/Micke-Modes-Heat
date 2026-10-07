@@ -998,17 +998,17 @@
           <option value="gruendlich">Gr&#x00fc;ndlich</option>
         </select>
         <span id="opt-estimate" style="display:block;margin-top:4px;font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);"></span>
-        <div style="font-size:10px;font-weight:600;color:var(--text);margin-top:10px;margin-bottom:4px;">Max. Amortisation PV+Bat <span class="htip" data-tip="Maximale Amortisationszeit f&#x00fc;r jedes zus&#x00e4;tzliche PV-Inkrement. Wenn sich das n&#x00e4;chste St&#x00fc;ck PV-Anlage nicht mehr innerhalb dieser Zeit amortisiert, wird die PV nicht weiter vergr&#x00f6;&#x00df;ert. Verhindert unrealistisch gro&#x00df;e PV-Anlagen.">?</span></div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <input type="number" class="inp-field" id="opt-pv-max-amort" value="10" min="3" max="25" step="1" style="font-size:10px;padding:2px 4px;width:55px;">
-          <span style="font-size:9px;color:var(--muted);">Jahre</span>
+        <div style="font-size:10px;font-weight:600;color:var(--text);margin-top:10px;margin-bottom:4px;">Betrachtungsumfang <span class="htip" data-tip="Nur Wärmeerzeugung: Wärmenetz (Leitungen) und Hausübergabestationen bleiben in den Wärmegestehungskosten unberücksichtigt. Gilt wie in der Wirtschaftlichkeit für alle Varianten; bestehende Ergebnisse werden sofort neu bewertet.">?</span></div>
+        <div class="wirt-umfang" role="group" aria-label="Betrachtungsumfang der Optimierung">
+          <button type="button" class="active" data-umfang="gesamt" data-click="wirtUmfangSetzen(false)">Gesamtsystem</button>
+          <button type="button" data-umfang="erzeugung" data-click="wirtUmfangSetzen(true)">Nur Wärmeerzeugung</button>
         </div>
       </div>
 
       <!-- Spalte 3: Button -->
       <div style="display:flex;flex-direction:column;align-self:start;">
         <button class="btn-confirm" id="btn-opt-start" data-click="if(_optRunning){_optAbbrechen()}else{runOptimierung()}" style="width:100%;padding:10px 20px;font-size:12px;">&#x26A1; Beste Varianten suchen</button>
-        <div style="margin-top:6px;padding:7px;border:1px solid rgba(255,152,0,.35);border-radius:5px;color:#ffb74d;font-size:9px;line-height:1.45;">Heuristische Raster- und Top-Kandidaten-Suche: Das Ergebnis ist die beste gefundene Variante im geprüften Suchraum, kein mathematischer Nachweis des globalen Optimums.</div>
+        <div style="margin-top:6px;padding:7px;border:1px solid rgba(255,152,0,.35);border-radius:5px;color:#ffb74d;font-size:9px;line-height:1.45;">Rastersuche mit anschließender Mustersuche je Anlagenkonzept: Das Ergebnis ist die beste gefundene Variante im Suchraum, kein mathematischer Nachweis des globalen Optimums. Die aktuelle Planung dient als zusätzlicher Startpunkt.</div>
       </div>
     </div>
 
@@ -1049,29 +1049,17 @@
 
         <div style="margin-bottom:12px;">
           <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x2778; PV + Batterie dimensionieren</div>
-          <div>F&#x00fc;r jede W&#x00e4;rme-Variante wird die <b>optimale PV-Anlagengr&#x00f6;&#x00df;e</b> ermittelt. Dazu wird die PV schrittweise vergr&#x00f6;&#x00df;ert und gepr&#x00fc;ft: <b>Amortisiert sich das n&#x00e4;chste St&#x00fc;ck PV noch</b> innerhalb der eingestellten Frist (Standard: 12&thinsp;Jahre)? Sobald nein &rarr; Stopp. Dies wird f&#x00fc;r verschiedene Batterie-Gr&#x00f6;&#x00df;en wiederholt, da eine Batterie den nutzbaren PV-Eigenverbrauch erh&#x00f6;ht.
-            <ul style="margin:4px 0 4px 16px;padding:0;">
-              <li><b>Kleine PV:</b> Fast der gesamte Strom wird selbst verbraucht &rarr; schnelle Amortisation.</li>
-              <li><b>Gr&#x00f6;&#x00df;ere PV:</b> Immer mehr Strom wird eingespeist (weniger Eigenverbrauch) &rarr; Amortisation wird schlechter.</li>
-              <li><b>Mit Batterie:</b> &#x00dc;bersch&#x00fc;sse werden gespeichert statt eingespeist &rarr; mehr Eigenverbrauch &rarr; gr&#x00f6;&#x00df;ere PV sinnvoll.</li>
-            </ul>
-          </div>
+          <div>PV und Batterie werden nach demselben Ziel bewertet wie die Wärmeerzeuger &mdash; es gibt keine eigene Amortisationsregel. Die Einspeisevergütung richtet sich nach der Anlagengröße (EEG-Staffel des eingestellten Tarifs, ab 100&thinsp;kWp Direktvermarktung). Obergrenze ist der Max-Wert oder das <b>PV-Potenzial des Projekts</b> aus dem PV-Modus; liegt das Ergebnis an dieser Grenze, steht das auf der Ergebniskarte.</div>
         </div>
 
         <div style="margin-bottom:12px;">
-          <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x2779; Ranking &amp; Top-Kandidaten</div>
-          <div>Alle Varianten werden nach dem gew&#x00e4;hlten Optimierungsziel sortiert (z.B. niedrigste W&#x00e4;rmegestehungskosten). Die <b>besten 3&ndash;5 Varianten</b> kommen in die Feinphase.</div>
+          <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x2779; Anlagenkonzepte</div>
+          <div>Ist der Gaskessel Kandidat, deckt er als Spitzenlastkessel genau den Rest &mdash; wie der automatische Kessel der Einsatzplanung. &bdquo;Luft-WP + Gaskessel&ldquo; erscheint daher nur einmal. Je Anlagenkonzept wird nur die beste Variante gezeigt.</div>
         </div>
 
         <div style="margin-bottom:12px;">
-          <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x277A; Feinphase &mdash; Verfeinern</div>
-          <div>Die Top-Kandidaten werden nochmals genauer optimiert:
-            <ul style="margin:4px 0 4px 16px;padding:0;">
-              <li><b>Solarthermie:</b> Verschiedene Kollektorfl&#x00e4;chen testen</li>
-              <li><b>Thermischer Speicher:</b> Verschiedene Speichervolumen testen</li>
-              <li><b>PV + Batterie:</b> Feinere Abstufungen, gleiches Amortisationsprinzip</li>
-            </ul>
-          </div>
+          <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x277A; Feinphase &mdash; Mustersuche</div>
+          <div>Die besten Konzepte (4/6/10 je nach Genauigkeit) und die <b>aktuelle Planung</b> werden weiter optimiert: Leistungen aller Erzeuger, PV, Batterie, Solarthermie und Wärmespeicher werden gemeinsam schrittweise verändert, solange das Ziel besser wird, dann mit halber Schrittweite (bis 0,5&thinsp;% der Spitzenlast). Alle Ergebnisse werden danach mit demselben Code wie die Wirtschaftlichkeit nachgerechnet.</div>
         </div>
 
         <div style="margin-bottom:4px;">
