@@ -3732,6 +3732,7 @@ function _applyProjectData(project) {
       // Varianten wiederherstellen (immer mit Basisdaten starten beim Laden)
       _restoreVariantenKernzustand({
         varianten: project.varianten || [],
+        basisName: project.basisName || '',
         activeVariantId: null,
         baseNetzSnapshot: project.baseNetzSnapshot || null,
         baseErzeugerSnapshot: project.baseErzeugerSnapshot || null,

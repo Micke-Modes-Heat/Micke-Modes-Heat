@@ -387,7 +387,7 @@ export function cacheVariantResults() {
   } : null;
   const ausschlussIds = activeVariantId ? [...(varianten.find(v => v.id === activeVariantId)?.gebaeudeAusschlüsse || [])] : [];
   variantResults[key] = {
-    label: activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || '') : 'Basisdaten',
+    label: activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || '') : (basisName || 'Basisdaten'),
     gebäudebedarf: totalVerbrauch, netzverluste: totalLoss,
     netzverlustePct: totalErzeugung > 0 ? totalLoss / totalErzeugung * 100 : 0,
     erzeugung: totalErzeugung, lastgangBasis, vlTemp, rlTemp, erzeuger: erzeugerList, erzeugerDetail, ausschlüsse,
@@ -521,7 +521,7 @@ export function renderVergleich() {
   let html = `<table class="vergleich-table"><thead><tr><th style="background:var(--surface2);">Kennwert</th>`;
   cols.forEach(id => {
     const r = variantResults[id];
-    const lbl = r ? escHtml(r.label) : (id === 'base' ? 'Basisdaten' : '—');
+    const lbl = id === 'base' ? escHtml(basisName || 'Basisdaten') : r ? escHtml(r.label) : '—';
     html += `<th class="clickable" data-variant-id="${id}" ${onClick(id)} style="background:${thBg(id)};color:${thFg(id)};" title="Klicken zum Aktivieren">${lbl}</th>`;
   });
   html += `</tr></thead><tbody>`;
@@ -752,6 +752,10 @@ export function _getEtaMap() {
 
 // ── Varianten ────────────────────────────────────────────────────────────────
 export let varianten = [];
+/** Eigener Name der Basisdaten als Variante (Doppelklick auf „Basisdaten“); leer = Standardname. */
+export let basisName = '';
+/** Name der Basis in Variantenvergleich und Gutachten. */
+export function getBasisName(standard = 'Basisvariante') { return basisName || standard; }
 export let activeVariantId = null;
 export function setActiveVariantId(v) { activeVariantId = v; }
 export let baseNetzSnapshot = null;
@@ -797,10 +801,11 @@ export function massnahmeJahr(m) {
 // Binding) und spätere Reassignments hier sonst dort nicht ankämen (stale).
 // Stattdessen über diese Helfer lesen/schreiben:
 export function _captureVariantenKernzustand() {
-  return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot, stromNetzGemeinsam, ..._capturePhasenZustand() };
+  return { varianten, basisName, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot, stromNetzGemeinsam, ..._capturePhasenZustand() };
 }
-export function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs, stromNetzGemeinsam: sg, phasen: ps } = {}) {
+export function _restoreVariantenKernzustand({ varianten: v, basisName: bname, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs, stromNetzGemeinsam: sg, phasen: ps } = {}) {
   varianten = v || [];
+  basisName = typeof bname === 'string' ? bname.slice(0, 80) : '';
   activeVariantId = (aid === undefined) ? null : aid;
   baseNetzSnapshot = bn || null;
   baseErzeugerSnapshot = be || null;
@@ -1268,6 +1273,14 @@ function _deleteVariante(id) {
   renderVariantenBar();
 }
 
+export function renameBasis() {
+  const name = prompt('Name der Basisvariante (leer = „Basisvariante“):', basisName || 'Basisvariante');
+  if (name === null) return;
+  const apply = () => { basisName = name.trim() === 'Basisvariante' ? '' : name.trim().slice(0, 80); renderVariantenBar(); };
+  if (typeof window.runPlanningTransaction === 'function') return window.runPlanningTransaction('Basisvariante umbenennen', apply);
+  apply();
+}
+
 export function renameVariante(id) {
   const v = varianten.find(x => x.id === id);
   if (!v) return;
@@ -1302,7 +1315,7 @@ export function renderVariantenBar() {
     `<span class="var-pill ${activeVariantId === v.id ? 'active' : ''}" data-click="activateVariant('${v.id}')" ondblclick="renameVariante('${v.id}')" title="Doppelklick zum Umbenennen">${escHtml(v.name)}</span>` +
     `<span class="var-del-btn" data-click="deleteVariante('${v.id}')" title="Variante löschen">✕</span>`;
   let html =
-    `<span class="var-pill var-pill-base ${activeVariantId === null ? 'active' : ''}" data-click="activateVariant(null)">Basisdaten</span>` +
+    `<span class="var-pill var-pill-base ${activeVariantId === null ? 'active' : ''}" data-click="activateVariant(null)" ondblclick="renameBasis()" title="Doppelklick zum Umbenennen">${escHtml(basisName || 'Basisdaten')}</span>` +
     shown.map(pillHtml).join('');
   if (hidden > 0) {
     html += `<span class="var-pill var-pill-more" data-click="toggleVarPills()" title="Alle ${varianten.length} Varianten anzeigen">…+${hidden}</span>`;

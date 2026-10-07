@@ -1854,7 +1854,7 @@ export function ggWaermeDaten() {
       : r.erzeugerDetail?.length ? r.erzeugerDetail
         : r.erzeuger.map(e => ({ key: GG_TYP_KEY[e.typ], name: GG_TYP_KEY[e.typ] ? undefined : e.typ, leistungKw: e.leistungKw, waermeMwh: e.waermeMwh }));
     return {
-      id, name: id === 'base' ? 'Basisvariante' : (r.label || id), aktiv, erzeuger: detail,
+      id, name: id === 'base' ? ggLies(() => w.getBasisName?.(), '') || 'Basisvariante' : (r.label || id), aktiv, erzeuger: detail,
       investEur: r.investGes || undefined, jahreskostenEur: r.jkGes || undefined, wgkCt: r.wgkNum || undefined,
       co2T: r.co2GesH, co2LzT: r.co2GesLZ, eeAnteilPct: r.eeAnteil ?? undefined, netzverlustPct: r.netzverlustePct, wirtKomp: r.wirtKomp || null,
       gebaeudeStempel: r.gebaeudeStempel || null, bedarfMwh: r.gebäudebedarf, ausschluesse: r.ausschlüsse || 0,
