@@ -6367,13 +6367,23 @@ export function ggRenderRueckAmpel(cfg, T = GG_THEME) {
   return ggFinishSvg(out, W, G.height);
 }
 
-/** Kanonische Varianten (mit Lesehilfe-Info) aus der PV-Analyse, sonst leer.
- *  Dachbelegungen aus dem PV-Modus ('belegung-<nr>') sind Arbeitsstände der Analyse, nicht des Gutachtens. */
+/** Dachbelegung aus dem PV-Modus zur Varianten-ID 'belegung-<nr>' (sonst null) —
+ *  mit Verweis auf einen Belegungsstand dessen aktuelle Daten (09d pvaBelegungDaten). */
+function ggPvBelegung(id) {
+  const nr = +(/^belegung-(\d+)$/.exec(id || '')?.[1] || 0);
+  const bv = nr ? (window._pvAnalyse?.belegungsVarianten || []).find(b => b.nr === nr) || null : null;
+  return bv ? (window.pvaBelegungDaten?.(bv) || bv) : null;
+}
+/** Gehört die Auslegung ins Gutachten? Dachbelegungen nur mit Haken „im Gutachten zeigen“ (PV-Analyse, Karte 04). */
+function ggPvImGutachten(id) {
+  return !/^belegung-/.test(id || '') || !!ggPvBelegung(id)?.gutachten;
+}
+/** Kanonische Varianten (mit Lesehilfe-Info) aus der PV-Analyse, sonst leer. */
 function ggPvKanon() {
-  return (window._pvAnalyse?.ergebnisse || []).filter(v => v.info && v.info.frage && !/^belegung-/.test(v.id));
+  return (window._pvAnalyse?.ergebnisse || []).filter(v => v.info && v.info.frage && ggPvImGutachten(v.id));
 }
 /** Kurzform der Variantenlabel für Achsen/Kategorien (voller Name steht in Tabellen). */
-const GG_PV_KURZ = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'netz-eigen': 'Bestandsnetz (eigen)', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
+const GG_PV_KURZ = { 'gesetzlich': 'PV-Pflicht', 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'netz-eigen': 'Bestandsnetz (eigen)', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
                       'autarkie': 'Autarkie', 'max-pv': 'Max. PV-Ausbau' };
 const GG_RES_MODE_LBL = { 'gen': 'Nur Notstrom', 'bat-gen': 'Speicher + Notstrom',
                            'pv-bat-gen': 'PV + Speicher + Notstrom', 'pv-bat': 'Nur PV + Speicher' };
@@ -6396,7 +6406,7 @@ function ggPvTagLabel(stundenIdx) {
  * window._pvAnalyse), nie aus den aktuellen Eingabefeldern — sonst zeigten Text
  * und Abbildungen verschiedene Stände. Wie die Abbildungen bewusst ohne Euro-Werte
  * und ohne „beste" Variante: bewertet wird in 3.5. */
-const GG_PV_LANG = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'netz-eigen': 'Bestandsnetz, eigene Belegung', 'ev-opt': 'Eigenverbrauchs-optimiert', 'wirt-opt': 'Wirtschaftlich optimiert',
+const GG_PV_LANG = { 'gesetzlich': 'Gesetzliche Pflicht', 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'netz-eigen': 'Bestandsnetz, eigene Belegung', 'ev-opt': 'Eigenverbrauchs-optimiert', 'wirt-opt': 'Wirtschaftlich optimiert',
                      'autarkie': 'Autarkie-optimiert', 'max-pv': 'Maximaler PV-Ausbau' };
 const GG_PV_KAPITEL = '3.4.2 PV-Anlage und Batteriespeicher';
 const GG_ZAHLWORT = ['keine', 'eine', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht'];
@@ -6418,6 +6428,43 @@ function ggAufzaehlung(teile) {
 function ggPvSpanne(kanon, wert) {
   if (!kanon.length) return [null, null];
   return kanon.reduce(([lo, hi], v) => [wert(v) < wert(lo) ? v : lo, wert(v) > wert(hi) ? v : hi], [kanon[0], kanon[0]]);
+}
+
+/**
+ * Wie der Speicher einer Auslegung bemessen ist — ein Satzteil im Gutachtenstil.
+ * Feste Auslegungen nach ihrer Optimierung, Dachbelegungen nach der gewählten Regel.
+ */
+function ggPvSpeicherRegelText(v) {
+  const regel = v.id === 'ev-opt' ? 'wirt' : v.id === 'wirt-opt' ? 'gemeinsam' : v.id === 'autarkie' ? 'autarkie'
+    : ggPvBelegung(v.id)?.speicher;
+  return {
+    gemeinsam:  'zusammen mit der PV-Größe auf den höchsten Jahresüberschuss optimiert',
+    wirt:       'wirtschaftlich bemessen — so groß, wie jede weitere Kilowattstunde Kapazität noch mehr einbringt, als sie kostet',
+    autarkie:   'vergrößert, bis jede weitere MWh Kapazität die Autarkie um weniger als 0,3 Prozentpunkte erhöht',
+    abregelung: 'so bemessen, dass am Einspeiselimit des Netzanschlusspunktes (nahezu) nicht mehr abgeregelt wird',
+    fest:       'planerisch vorgegeben',
+  }[regel] || 'vorgegeben';
+}
+
+/** Ein Absatz je Dachbelegung im Gutachten: welche Dächer, wie viel PV, welcher Speicher, Netzbezug. */
+function ggPvBelegungAbsatz(v) {
+  const bv = ggPvBelegung(v.id) || {};
+  const d = v.dachbelegung || {};
+  const n = bv.netz || {};
+  const netz = !n.geprueft
+    ? 'Die Netzaufnahme dieser Belegung wurde nicht geprüft.'
+    : n.vertraeglich
+      ? `Das bestehende Netz nimmt sie im Jahr ${ggTextFeld(n.jahr, 'Netzjahr')} ohne Ertüchtigung auf`
+        + (n.nurTrafo ? '; geprüft wurde dabei die Belastbarkeit der Transformatoren, die Niederspannungskabel werden in der weiteren Planung bemessen.' : '.')
+      : 'Sie überschreitet an einzelnen Stellen die Aufnahmefähigkeit des bestehenden Netzes; dort ist eine Ertüchtigung vorauszusetzen.';
+  return `${ggPvName(v)}: ${ggPvFeld(d.daecher, 'Anzahl Dächer')} Dächer mit zusammen ${ggPvFeld(d.neuKwp, 'kWp Belegung')} kWp`
+    + (d.geplantKwp > 0.5 ? `, dazu ${ggPvFeld(d.geplantKwp, 'kWp geplant')} kWp bereits geplante PV, insgesamt ${ggPvFeld(v.pvKwp, 'kWp gesamt')} kWp` : '')
+    + '. '
+    + (bv.beschreibung ? `Auswahl: ${gEsc(bv.beschreibung)}. ` : '')
+    + (v.batKwh > 0
+      ? `Der Speicher ist ${ggPvSpeicherRegelText(v)} und hat ${ggPvFeld(v.batKwh, 'kWh Speicher')} kWh.`
+      : bv.speicher === 'ohne' ? 'Ein Speicher ist nicht vorgesehen.' : 'Ein Speicher bringt bei dieser Belegung keinen Vorteil und entfällt.')
+    + ` ${netz}`;
 }
 
 /** 3.4.2 Teil 1 — Datenbasis, PV-Potenzial und die fünf Auslegungen. */
@@ -6442,7 +6489,8 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
 
   const q = b && !b.potenzialOverride ? b.quellen || {} : {};
   const teile = [
-    q.assetKwp > 0 && `${ggPvFeld(q.assetKwp, 'kWp Einzelanlagen')} kWp auf ${ggPvFeld(q.assetN, 'Anzahl Anlagen')} einzeln erfasste Anlagen`,
+    q.stand?.kwp > 0 && `${ggPvFeld(q.stand.kwp, 'kWp Dachflächen')} kWp auf ${ggPvFeld(q.stand.daecher, 'Anzahl Dächer')} Dächer`,
+    q.assetKwp > 0 && `${ggPvFeld(q.assetKwp, 'kWp Einzelanlagen')} kWp auf ${ggPvFeld(q.assetN, 'Anzahl Anlagen')} ${q.stand ? 'weitere ' : ''}einzeln erfasste Anlagen`,
     q.gebKwp > 0 && `${ggPvFeld(q.gebKwp, 'kWp Gebäude-PV')} kWp auf weitere Dachflächen`,
     q.ffKwp > 0 && `${ggPvFeld(q.ffKwp, 'kWp Freifläche')} kWp auf Freiflächen`,
     q.manual > 0 && `${ggPvFeld(q.manual, 'kWp pauschal')} kWp auf pauschal angesetzte Flächen`,
@@ -6456,20 +6504,33 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
       ? `Für die Untersuchung wurde ein PV-Potenzial von insgesamt ${ggPvFeld(b.potenzialKwp, 'Gesamtpotenzial')} kWp vorgegeben.`
       : `Nach den erfassten Dach- und Freiflächen lassen sich auf der Liegenschaft PV-Anlagen mit insgesamt `
         + `${ggPvFeld(b?.potenzialKwp, 'Gesamtpotenzial')} kWp errichten.`
-        + (teile.length > 1 ? ` Davon entfallen ${ggAufzaehlung(teile)}.` : ''))
+        + (teile.length > 1 ? ` Davon entfallen ${ggAufzaehlung(teile)}.` : '')
+        + (q.stand ? ` Das Dachpotenzial beruht auf einer rechnerischen Belegung der geeigneten Dachflächen`
+          + (q.stand.beschreibung ? ` (${gEsc(q.stand.beschreibung)})` : '') + '.' : ''))
     + ` Bei einem mittleren spezifischen Ertrag von ${ggPvFeld(b?.spezKwhKwp, 'spez. Ertrag')} kWh/kWp·a ergibt das eine `
     + `mögliche Stromerzeugung von rund ${ggPvFeld(b ? b.potenzialKwp * b.spezKwhKwp / 1000 : null, 'Ertrag Max-PV')} MWh/a. `
     + `Die Erzeugung wurde auf Basis ${profil || ggTextFeld('', 'Erzeugungsprofil')} für jeden Zeitschritt des Jahres `
     + `berechnet und dem Lastgang gegenübergestellt. Die statische Eignung der Dachflächen ist im Zuge der weiteren `
     + `Planung nachzuweisen.`);
 
-  const anzahl = b ? kanon.length : 5;
+  const belegungen = kanon.filter(v => /^belegung-/.test(v.id));
+  const anzahl = b ? kanon.length - belegungen.length : 5;
   absaetze.push(`Auftraggeber, Nutzer und Betreiber verfolgen unterschiedliche Ziele. Deshalb wurden `
     + `${GG_ZAHLWORT[anzahl] || anzahl} Auslegungen gebildet, von denen jede genau eine Frage beantwortet:`);
 
   const zeige = id => !b || !!ggPvVariante(id);
   const label = id => gEsc(ggPvVariante(id)?.label || GG_PV_LANG[id]);
   const kwp = (id, feld) => ggPvFeld(ggPvVariante(id)?.pvKwp, feld);
+
+  if (b && zeige('gesetzlich')) {             // nur wenn das Land eine bezifferbare Pflicht kennt und ein Gebäude sie auslöst
+    const pf = window._pvAnalyse.pflicht || {};
+    const n = pf.faelle?.length || 0;
+    absaetze.push(`${label('gesetzlich')}: ${kwp('gesetzlich', 'kWp Pflicht')} kWp ohne Speicher. Das ist die Mindestbelegung `
+      + `nach ${ggTextFeld(pf.norm, 'Rechtsgrundlage PV-Pflicht')}`
+      + (n ? ` für ${n === 1 ? 'das Gebäude, das' : `die ${GG_ZAHLWORT[n] || n} Gebäude, die`} die Pflicht `
+        + `${n === 1 ? 'auslöst' : 'auslösen'} (Neubau oder grundlegende Dachsanierung)` : '')
+      + `. Sie ist kein Optimum, sondern die Untergrenze: Eine Auslegung darunter ist nicht genehmigungsfähig.`);
+  }
 
   if (zeige('minimal')) {
     absaetze.push(`${label('minimal')}: ${kwp('minimal', 'kWp Minimal')} kWp ohne Speicher. Die Anlage bleibt unter `
@@ -6530,6 +6591,12 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
   }
   if (zeige('max-pv')) {
     absaetze.push(`${label('max-pv')}: volles Potenzial von ${kwp('max-pv', 'kWp Max-PV')} kWp, bewusst ohne Speicher.`);
+  }
+  if (belegungen.length) {
+    absaetze.push(`Ergänzend ${belegungen.length === 1 ? 'wurde eine konkrete Dachbelegung' : `wurden ${GG_ZAHLWORT[belegungen.length] || belegungen.length} konkrete Dachbelegungen`} `
+      + `untersucht. Anders als bei den Auslegungen oben ist hier gebäudescharf festgelegt, welche Dächer belegt werden; `
+      + `der Speicher wird zur jeweiligen PV-Leistung bemessen:`);
+    for (const v of belegungen) absaetze.push(ggPvBelegungAbsatz(v));
   }
   if (!b || H.evOpt || H.wirtOpt || H.autarkie) {
     absaetze.push('Die folgende Abbildung zeigt für die optimierten Auslegungen, wie sich die jeweilige Größe aus dem '
@@ -6597,6 +6664,31 @@ function ggRenderPvSpeicherText(cfg, T = GG_THEME) {
   }
   const eta = b?.batEta, crate = b?.batCRate;
   const absaetze = [];
+
+  // Überblick: welche Auslegungen einen Speicher haben, wie groß, was er bewirkt
+  const mit = kanon.filter(v => v.batKwh > 0);
+  if (b && mit.length) {
+    const [klein, gross] = ggPvSpanne(mit, v => v.batKwh);
+    const kenn = mit.filter(v => v.speicherKenn);
+    const satz = [`Einen Batteriespeicher ${mit.length === 1 ? 'enthält die Auslegung' : 'enthalten die Auslegungen'} `
+      + `${ggAufzaehlung(mit.map(ggPvName))}`
+      + (mit.length === 1 ? ` mit ${ggPvFeld(klein.batKwh, 'kWh Speicher')} kWh.`
+        : ` mit ${ggPvFeld(klein.batKwh, 'kWh min')} bis ${ggPvFeld(gross.batKwh, 'kWh max')} kWh.`)];
+    if (kenn.length) {
+      const gewinn = v => v.wirt.autarkie - v.speicherKenn.ohne.autarkie;
+      const [, best] = ggPvSpanne(kenn, gewinn);
+      satz.push(`Gegenüber derselben PV-Leistung ohne Speicher hebt er die Autarkie um bis zu `
+        + `${ggPvFeld(gewinn(best), 'Autarkiegewinn')} Prozentpunkte (${ggPvName(best)}).`);
+      const [traege, fleissig] = ggPvSpanne(kenn, v => v.speicherKenn.vollzyklen);
+      if (kenn.length > 1 && fleissig.speicherKenn.vollzyklen > 1.5 * traege.speicherKenn.vollzyklen) {
+        satz.push(`Wie gut ein Speicher genutzt wird, zeigen seine Vollzyklen: von ${ggPvFeld(fleissig.speicherKenn.vollzyklen, 'Vollzyklen max')} `
+          + `im Jahr (${ggPvName(fleissig)}) bis ${ggPvFeld(traege.speicherKenn.vollzyklen, 'Vollzyklen min')} (${ggPvName(traege)}). `
+          + `Ein großer Speicher füllt sich nur an sonnigen Tagen ganz; jede zusätzliche Kilowattstunde Kapazität wird seltener gebraucht.`);
+      }
+    }
+    absaetze.push(satz.join(' '));
+  }
+
   absaetze.push(`Für die Batteriespeicher wurde ein ${ggTextFeld('', 'Speichertechnologie')}-System angesetzt. Beim Laden `
     + `und beim Entladen gehen jeweils ${ggPvFeld(eta != null ? (1 - eta) * 100 : null, 'Verlust je Vorgang')} % verloren `
     + `(Gesamtwirkungsgrad rund ${ggPvFeld(eta != null ? eta * eta * 100 : null, 'Gesamtwirkungsgrad')} %). Die maximale `
@@ -6614,6 +6706,9 @@ function ggRenderPvSpeicherText(cfg, T = GG_THEME) {
   absaetze.push(`Als Aufstellort ist ${ggTextFeld('', 'Aufstellort Batteriespeicher')} vorgesehen. Die Brandschutzanforderungen `
     + `sind in der Planung abzustimmen. Wie gut die Speicher Netzausfälle überbrücken, wird in Kapitel 5.2 bewertet. `
     + `Die Notstromversorgung beschreibt Kapitel 3.4.3.`);
+  if (!b || mit.length) {
+    absaetze.push('Die folgende Tabelle zeigt je Auslegung, wie der Speicher bemessen ist, wie stark er genutzt wird und was er bewirkt.');
+  }
   return ggTextBlatt(absaetze, T);
 }
 
@@ -6687,6 +6782,13 @@ function ggRenderPvNetzText(cfg, T = GG_THEME) {
   }
   ergebnis.push('Diese Abschätzung ersetzt keine Netzverträglichkeitsprüfung durch den Netzbetreiber.');
   absaetze.push(ergebnis.join(' '));
+  // Überleitung zum Einlinienschema (reihe 82), das nach der Rückspeise-Abbildung folgt
+  if (!b || ggPvVariante('bestandsnetz')) {
+    absaetze.push('Innerhalb der Liegenschaft begrenzen zusätzlich die Kabel und Transformatoren des eigenen Netzes, '
+      + 'wie viel PV an welcher Stelle angeschlossen werden kann. Das Einlinienschema im Anschluss an die Rückspeise-Abbildung '
+      + `zeigt dies für die Auslegung ${b ? ggPvName(ggPvVariante('bestandsnetz')) : '„Bestandsnetz“'}: Auslastung der `
+      + 'Betriebsmittel, Spannungsanhebung an den Knoten und die begrenzenden Engpässe.');
+  }
   return ggTextBlatt(absaetze, T);
 }
 
@@ -7051,7 +7153,8 @@ function ggPvFiguren() {
   return [
     // ── Gutachtentexte 3.4.2 — `reihe` verzahnt sie im Standarddokument mit den Abbildungen ──
     pvText('pv-grundlagen-text', 10, 'Gutachtentext: PV-Datenbasis und Auslegungen',
-      'Einleitung zu 3.4.2: Lastgang, Erzeugungsprofil, PV-Potenzial und die fünf Auslegungen mit ihren Größen. '
+      'Einleitung zu 3.4.2: Lastgang, Erzeugungsprofil, PV-Potenzial und die Auslegungen mit ihren Größen — samt der '
+      + 'Dachbelegungen, die in der PV-Analyse den Haken „im Gutachten zeigen“ haben. '
       + 'Steht vor der Herleitungs-Abbildung. Der Satz zur 100-kWp-Schwelle gibt einen EEG-Stand wieder — vor Abgabe prüfen.',
       cfg => ggRenderPvGrundlagenText(cfg)),
     pvText('pv-energiebilanz-text', 30, 'Gutachtentext: PV-Energiebilanz',
@@ -7165,6 +7268,58 @@ function ggPvFiguren() {
                         : 'Ohne gesetzte Einspeisegrenze wird keine Abregelung ausgewiesen. ')
                      + 'Wirtschaftliche Bewertung siehe Kapitel 3.5.';
         return `✓ ${kanon.length} PV-Varianten aus der PV-Analyse übernommen.`;
+      },
+    },
+
+    // ── Batteriespeicher je Auslegung (nach dem Speichertext) ───────────
+    {
+      id: 'pv-speicher-tabelle',
+      autoSync: true,
+      reihe: 65,
+      kapitel: GG_PV_KAPITEL,
+      titel: 'Batteriespeicher je Auslegung',
+      datei: 'pv-speicher-tabelle',
+      hinweis: 'Alle Auslegungen mit Speicher: Kapazität, Leistung, Bemessungsregel, abgegebene Energie, Vollzyklen '
+             + 'und die Autarkie ohne und mit Speicher bei derselben PV-Leistung. Grundlage: „Auslegungen berechnen" in der PV-Analyse.',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel: 'Batteriespeicher je Auslegung',
+        leer: 'Keine Auslegung mit Batteriespeicher — oder noch nicht berechnet (☀ PV-Analyse › „Auslegungen berechnen").',
+        spalten: [
+          { label: 'Auslegung', weight: 2.3 },
+          { label: 'Kapazität', weight: 1.05 },
+          { label: 'Leistung', weight: 0.95 },
+          { label: 'Bemessung', weight: 1.6 },
+          { label: 'Abgabe', weight: 1.05 },
+          { label: 'Vollzyklen', weight: 0.95 },
+          { label: 'Autarkie ohne → mit', weight: 1.45 },
+        ],
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const mit = ggPvKanon().filter(v => v.batKwh > 0);
+        if (!mit.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Auslegung mit Batteriespeicher.'; }
+        const kurz = {
+          'ev-opt': 'wirtschaftlich', 'wirt-opt': 'mit PV optimiert', 'autarkie': 'Autarkie-Sättigung',
+          wirt: 'wirtschaftlich', autarkie: 'Autarkie-Sättigung', abregelung: 'gegen Abregelung', fest: 'vorgegeben',
+        };
+        const crate = window._pvAnalyse?.basis?.batCRate || 0.5;
+        cfg.zeilen = mit.map(v => {
+          const k = v.speicherKenn;
+          return {
+            werte: [v.label, ggNum(v.batKwh) + ' kWh', ggNum(k?.leistungKw ?? v.batKwh * crate) + ' kW',
+                    kurz[v.id] || kurz[ggPvBelegung(v.id)?.speicher] || 'vorgegeben',
+                    k ? ggNum(k.entladenMwh, 1) + ' MWh/a' : '—',
+                    k ? ggNum(k.vollzyklen) : '—',
+                    k ? `${ggNum(k.ohne.autarkie)} → ${ggNum(v.wirt.autarkie)} %` : ggNum(v.wirt.autarkie) + ' %'],
+            akzent: v.farbe,
+          };
+        });
+        cfg.fussnote = `Leistung = maximale Lade- und Entladeleistung (${ggNum(crate, 1)} C). Abgabe = im Jahr aus dem Speicher `
+                     + 'abgegebene Energie; Vollzyklen = Abgabe ÷ Kapazität. Autarkie ohne → mit: dieselbe PV-Leistung '
+                     + 'einmal ohne und einmal mit Speicher gerechnet. Wirtschaftliche Bewertung siehe Kapitel 3.5.';
+        return `✓ ${mit.length} Auslegung${mit.length > 1 ? 'en' : ''} mit Speicher übernommen.`
+          + (mit.some(v => !v.speicherKenn) ? ' Für Kennzahlen „Auslegungen berechnen" erneut ausführen.' : '');
       },
     },
 
@@ -7382,11 +7537,12 @@ function ggPvFiguren() {
     },
 
     // ── Einlinienschema Bestandsnetz (Kapitel 3.4.2) ──────────────────────
-    ggEinlinienFigur('pv-einlinienschema', 25, 'variante', 'Einlinienschema Bestandsnetz',
+    // Netzintegration: nach der Rückspeisung am NAP (80) die Verteilung im eigenen Netz, vor der EZA-Skizze (85)
+    ggEinlinienFigur('pv-einlinienschema', 82, 'variante', 'Einlinienschema Bestandsnetz',
       'Wie viel PV das bestehende Netz ohne Ertüchtigung aufnimmt und wo es begrenzt: Auslastung der Kabel und '
       + 'Transformatoren, Spannungsanhebung an den Knoten, Engpässe markiert. Belegung der Variante „Bestandsnetz". '
       + 'Grundlage: ☀ PV-Analyse › Netzaufnahme (Bestand) / Einlinienschema.'),
-    ggEinlinienFigur('pv-einlinienschema-eigen', 26, 'eigene', 'Einlinienschema Bestandsnetz — eigene Belegung',
+    ggEinlinienFigur('pv-einlinienschema-eigen', 83, 'eigene', 'Einlinienschema Bestandsnetz — eigene Belegung',
       'Wie oben, aber mit der im Einlinienschema übernommenen eigenen Belegung (samt gewählter Ertüchtigungen). '
       + 'Nur sinnvoll, wenn dort „Als Variante übernehmen" genutzt wurde.'),
 
@@ -7591,9 +7747,9 @@ function ggPvFiguren() {
         cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
         ggMetaDefaults(cfg, 'pdBearbeiterStrom');
 
-        // Dachbelegungen aus dem PV-Modus gehören nicht ins Gutachten (wie ggPvKanon)
+        // Dachbelegungen aus dem PV-Modus nur mit Haken „im Gutachten zeigen“ (wie ggPvKanon)
         const vRoh = window._pvResVarianten;
-        const v = vRoh ? { ...vRoh, zeilen: (vRoh.zeilen || []).filter(z => !/^belegung-/.test(z.id)) } : null;
+        const v = vRoh ? { ...vRoh, zeilen: (vRoh.zeilen || []).filter(z => ggPvImGutachten(z.id)) } : null;
         if (!v?.zeilen?.length) { cfg.kategorien = []; cfg.gruppen = []; return '⚠ Noch kein Variantenvergleich vorhanden.'; }
 
         const durH = v.durH;

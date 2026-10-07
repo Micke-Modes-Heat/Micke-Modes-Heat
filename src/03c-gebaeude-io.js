@@ -3380,6 +3380,8 @@ export function _buildProjectData() {
     napGrenzen: typeof window.sgNaCaptureNapGrenzen === 'function' ? window.sgNaCaptureNapGrenzen() : null,
     // PV-Analyse (09d): Eingaben, letzter Berechnungsstand und Resilienz-Auslegung (Gutachten 3.4.2–3.5, 5.2)
     pvAnalyse: typeof window.pvCaptureState === 'function' ? window.pvCaptureState() : null,
+    // PV-Belegungsstände (38): benannte Fassungen der Dachbelegung (Potenzial, Auslegungen der PV-Analyse)
+    pvBelegungsStaende: typeof window.pvbsCapture === 'function' ? window.pvbsCapture() : null,
     // Blackout-Modus (26): Projekteinstellungen; die Notstromklassen liegen an den Gebäuden
     blackout: typeof window.blackoutCaptureState === 'function' ? window.blackoutCaptureState() : null,
     // Resilienz-Abfrage (27): Metadaten und die eingelesene, ausgefüllte Abfrage
@@ -4205,6 +4207,8 @@ function _applyProjectData(project) {
       if (typeof window.sgMjRestore === 'function') window.sgMjRestore(project.stromMessjahre || null, project.quartierProfile || null);
       // NAP-Grenzen vor der PV-Analyse — sie übernimmt die Grenzen in ihren Zustand
       if (typeof window.sgNaRestoreNapGrenzen === 'function') window.sgNaRestoreNapGrenzen(project.napGrenzen || null);
+      // Belegungsstände vor der PV-Analyse — deren Potenzial und Auslegungen verweisen darauf
+      if (typeof window.pvbsRestore === 'function') window.pvbsRestore(project.pvBelegungsStaende || null);
       if (typeof window.pvRestoreState === 'function') window.pvRestoreState(project.pvAnalyse || null);
       if (typeof window.blackoutRestoreState === 'function') window.blackoutRestoreState(project.blackout || null);
       if (typeof window.raRestoreState === 'function') window.raRestoreState(project.resilienzAbfrage || null);

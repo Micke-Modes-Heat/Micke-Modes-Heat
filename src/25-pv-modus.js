@@ -876,9 +876,13 @@ export function pvmStapelBelegen(ziele) {
  * den aktuellen Vorgaben ergäbe (Dachform/Neigung/Belegungsgrad, Azimut aus dem
  * Grundriss, Nordseite ausgespart — wie _erstbelegung + _nordAnwenden), auf
  * einer flachen Kopie gerechnet. Grundlage der Vorschau in 36.
- * @returns {{kwp:number, kwpKorr:number, module:number}|null}
+ * Mit opts.mitKopie liegt die Rechenkopie bei (kopie) — 38 speichert daraus
+ * einen Belegungsstand, ohne das Dach zu belegen.
+ * @returns {{kwp:number, kwpKorr:number, module:number, kopie?:any}|null}
  */
-export function pvmProbe(g) {
+export function pvmProbe(g, opts = {}) {
+  const erg = t => ({ kwp: calcGebKwp(t) || 0, kwpKorr: calcGebKwpKorr(t) || 0, module: getGebPvModules(t).count || 0,
+    ...(opts.mitKopie ? { kopie: t } : {}) });
   if (!g || !Array.isArray(g.polygon) || g.polygon.length < 3) return null;
   const v = _vorgabe();
   if (g.dachFlaechen?.length) {
@@ -889,7 +893,7 @@ export function pvmProbe(g) {
       }) };
     if (v.belegung != null) t.pvFlBelegung = v.belegung;
     if (!t.pvFlaechen.length) return { kwp: 0, kwpKorr: 0, module: 0 };
-    return { kwp: calcGebKwp(t) || 0, kwpKorr: calcGebKwpKorr(t) || 0, module: getGebPvModules(t).count || 0 };
+    return erg(t);
   }
   const poly = g.polygon.map(p => ({ lat: p.lat, lng: p.lng }));
   const t = { ...g, pvModus: 'flaechen', _pvModCache: null, _pvModSig: null,
@@ -909,7 +913,7 @@ export function pvmProbe(g) {
     const haelfte = _clipPolyHalfPlane(poly, C, t.dachAzimut ?? 180, cosL, nordVorne);
     if (haelfte.length >= 3) t.pvFlaechen.push({ id: -2, typ: 'sperr', auto: 'nord', polygon: haelfte, flaeche: polygonAreaM2(haelfte) || 0 });
   }
-  return { kwp: calcGebKwp(t) || 0, kwpKorr: calcGebKwpKorr(t) || 0, module: getGebPvModules(t).count || 0 };
+  return erg(t);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1240,6 +1244,7 @@ function _html() {
              Stapelweise: Gebäude in der Liste oder Gebäudetabelle ankreuzen (dort filtern) — dann erscheint hier „Grundriss für die Auswahl".
            </div>`}
       ${window.pvabBlockHtml?.() || ''}
+      ${window.pvbsBlockHtml?.() || ''}
       <div style="margin-top:8px;">${_aktivBlock(g)}</div>
       ${_vorgabeBlock()}
       ${_listenBlock()}
