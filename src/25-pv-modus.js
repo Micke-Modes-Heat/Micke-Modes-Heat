@@ -32,6 +32,7 @@ import {
   attachGebPvLayer, redrawGebPvModules, _clipPolyHalfPlane, _firstMitteLL, FLACH_BIS_GRAD, pvFlaecheDachZuordnen,
 } from './03c-gebaeude-io.js';
 import { getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
+import { pvnaAbrissGeplant } from './28-pv-netzaufnahme.js';
 
 const PANEL_ID    = 'pv-modus-panel';
 const INTERAKTION = 'pv-modus';
@@ -68,7 +69,12 @@ const _assetVorher = gId => (_assetStand.has(gId) ? _assetStand.get(gId) : undef
 
 const _name = g => g?.name || ('Gebäude ' + g?.id);
 const _geb  = gId => (window.gebaeude || []).find(x => x.id === gId) || null;
-const _mitPolygon = () => (window.gebaeude || []).filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3);
+// Abgerissene Gebäude und solche mit geplantem Abriss (jedes Abrissjahr) sind
+// für den Modus nicht da: kein Klickziel, keine Zuordnung, nicht in Listen und
+// Stapeln. Ihr Grundriss liegt oft unter dem Neubau und schluckte sonst Klicks
+// und Flächen.
+const _mitPolygon = () => (window.gebaeude || [])
+  .filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3 && !pvnaAbrissGeplant(g));
 
 function _vorgabe() {
   if (!window.pvModusVorgabe) {
@@ -231,9 +237,18 @@ export function pvModusBuildingClick(gId, event) {
   // Läuft bereits eine Polygonzeichnung, ist der Klick eine weitere Ecke — der
   // reguläre Weg (selectFromMap → forwardClickToMap) erledigt das.
   if (window.gebPvDraw || window.gebFirstDraw) return false;
-  const g = _geb(gId);
+  let g = _geb(gId);
   if (!g) return false;
   const latlng = _klickLatLng(event);
+  // Abgerissenes Gebäude getroffen: steht dort ein Neubau, gilt der Klick ihm
+  if (pvnaAbrissGeplant(g)) {
+    const neu = latlng && _gebaeudeUnter(latlng);
+    if (!neu) {
+      window.showHint?.(`„${_name(g)}" hat ein Abrissjahr (${g.abrissjahr}) — keine PV-Fläche.`, 4000);
+      return true;
+    }
+    g = neu; gId = neu.id;
+  }
   if (window.pvModusForm === 'rechteck') {
     if (latlng) _rechteckKlick(latlng, gId);
     return true;
@@ -793,6 +808,7 @@ function _grundriss(g) {
 export function pvmGrundriss(gId) {
   const g = _geb(gId);
   if (!g) return;
+  if (pvnaAbrissGeplant(g)) { alert(`„${_name(g)}" hat ein Abrissjahr (${g.abrissjahr}) — keine PV.`); return; }
   if (_hasBelegung(g) &&
       !confirm(`„${_name(g)}" hat bereits eine Belegungsfläche.\nGrundriss zusätzlich übernehmen?`)) return;
   _assetStandErfassen();
@@ -850,7 +866,7 @@ export function pvmStapelBelegen(ziele) {
   _stapelLaeuft = true;
   try {
     for (const g of ziele) {
-      if (!g || _hasBelegung(g)) continue;
+      if (!g || _hasBelegung(g) || pvnaAbrissGeplant(g)) continue;   // Abriss: keine PV
       const vorher = _assetVorher(g.id);
       const fls = _grundriss(g);
       if (!fls.length) continue;
@@ -956,6 +972,11 @@ export function pvModusMarkiereKarte() {
   const aktiv = window.pvModusGeb;
   (window.gebaeude || []).forEach(g => {
     if (!g.polygonLayer) return;
+    if (pvnaAbrissGeplant(g)) {   // kein PV-Dach: grau, nicht als „offenes Dach"
+      g.polygonLayer.setStyle({ color: '#555', weight: 1, dashArray: '4 4', fillColor: '#555', fillOpacity: 0.1 });
+      g.polygonLayer.bringToBack();
+      return;
+    }
     const hat = _hasBelegung(g);
     const ist = g.id === aktiv;
     g.polygonLayer.setStyle({
@@ -1246,6 +1267,7 @@ function _html() {
            </div>`}
       ${window.pvabBlockHtml?.() || ''}
       ${window.pvbsBlockHtml?.() || ''}
+      ${window.pvAnschlussHinweisHtml?.() || ''}
       <div style="margin-top:8px;">${_aktivBlock(g)}</div>
       ${_vorgabeBlock()}
       ${_listenBlock()}

@@ -148,8 +148,10 @@ export function engpassSweep(opts = {}) {
         if (!reihenTrafo.has(a.id)) reihenTrafo.set(a.id, []);
         reihenTrafo.get(a.id).push({ jahr, auslastungPct: pct, deltaUKumPct: 0 });
         if (pct > ENGPASS_GRENZEN.trafoPct) nUeberlast++;
-        bezugKw  += a._calcPeakLoadKwV || 0;
-        rueckKw  += a._calcPeakLoadKwG || 0;
+        // Anteil im Normalbetrieb — bei N-1 trüge sonst jeder Trafo einer
+        // Zweiergruppe die volle Last und der Bezug zählte doppelt.
+        bezugKw  += a._calcAnteilKwV ?? a._calcPeakLoadKwV ?? 0;
+        rueckKw  += a._calcAnteilKwG ?? a._calcPeakLoadKwG ?? 0;
         trafoKVA += parseFloat(a.props?.leistungKVA) || 630;
       }
 

@@ -57,6 +57,12 @@ export function pvnaGebaeudeSteht(g, yr) {
   const bj = _int(g?.baujahr), aj = _int(g?.abrissjahr);
   return !(bj != null && yr < bj) && !(aj != null && yr >= aj);
 }
+/**
+ * Kein Dach für PV: abgerissen oder Abriss geplant — jedes eingetragene
+ * Abrissjahr schließt das Gebäude aus, unabhängig von Jahresschieber und Zieljahr
+ * (PV auf einem Gebäude, das weg ist oder wegkommt, ist keine Planung).
+ */
+export const pvnaAbrissGeplant = g => _int(g?.abrissjahr) != null;
 /** Neubau im Sinne der Netzstrategie: nach dem Stichjahr gebaut. */
 export const pvnaIstNeubau = (g, stich) => { const bj = _int(g?.baujahr); return bj != null && bj > stich; };
 /** Spätestes Baujahr nach dem Stichjahr (Vorschlag fürs Zieljahr), sonst null. */
@@ -188,6 +194,25 @@ export function pvnaModell(opts = {}) {
   }
   const elById = new Map(elemente.map(e => [e.id, e]));
 
+  // Anlage ohne eigenes Kabel (z. B. Dach-PV vor dem automatischen Anschluss, 39):
+  // über ihr Gebäude anbinden — das Gebäude selbst oder seine Assets, das tiefste
+  // zuerst (wie 36 _gebKnoten). Sonst zählte sie still mit 0 kWp.
+  const assetsJeGeb = new Map();
+  for (const a of aktiveA) if (a.buildingId != null) {
+    if (!assetsJeGeb.has(a.buildingId)) assetsJeGeb.set(a.buildingId, []);
+    assetsJeGeb.get(a.buildingId).push(a);
+  }
+  for (const liste of assetsJeGeb.values()) liste.sort((x, y) => (TYPE_RANK[y.type] ?? 6) - (TYPE_RANK[x.type] ?? 6));
+  let ueberGebaeude = 0;
+  const knotenVon = a => {
+    if (knotenEl.has(a.id)) return knotenEl.get(a.id);
+    if (a.buildingId == null) return null;
+    let el = knotenEl.get(a.buildingId) ?? null;
+    if (el == null) for (const x of assetsJeGeb.get(a.buildingId) || []) if (x.id !== a.id && knotenEl.has(x.id)) { el = knotenEl.get(x.id); break; }
+    if (el != null) ueberGebaeude++;
+    return el;
+  };
+
   // Vorhandene Einspeisung, die nicht zur Disposition steht (Vorlast):
   // Wind, KWK und PV-Anlagen der Bestandsschicht.
   let bestandPvKwp = 0;
@@ -202,7 +227,7 @@ export function pvnaModell(opts = {}) {
       kw = kwp * einspFaktor;
     }
     if (kw <= 0) continue;
-    const el = elById.get(knotenEl.get(a.id));
+    const el = elById.get(knotenVon(a));
     if (el) el.vorlastKw += kw;
     else hinweise.push(`${escHtml(a.name || a.type)} (${_fmt(kw)} kW) ist an keinen Trafo angebunden und bleibt unberücksichtigt.`);
   }
@@ -223,8 +248,12 @@ export function pvnaModell(opts = {}) {
     if (kwp <= 0) continue;
     const ertrag = p.pvSpez ? (parseFloat(p.pvSpez) / 950) : (p.ausrichtung === 'ostwest' ? 0.9 : 1.0);
     const id = 'A:' + a.id;
-    daecher.push({ id, elementId: knotenEl.get(a.id) ?? null, kwpMax: kwp, ertragFaktor: ertrag, einspFaktor });
-    dachInfo.set(id, { name: a.name || ('PV ' + a.id), gebId: a.buildingId, trafoId: knotenTrafo.get(a.id), art: 'PV-Anlage',
+    const elId = knotenVon(a);
+    daecher.push({ id, elementId: elId, kwpMax: kwp, ertragFaktor: ertrag, einspFaktor });
+    dachInfo.set(id, { name: a.name || ('PV ' + a.id), gebId: a.buildingId,
+      trafoId: knotenTrafo.get(a.id) ?? (a.buildingId != null ? knotenTrafo.get(a.buildingId)
+        ?? (assetsJeGeb.get(a.buildingId) || []).map(x => knotenTrafo.get(x.id)).find(t => t != null) : undefined),
+      ohneKabel: !knotenEl.has(a.id) && elId != null, art: 'PV-Anlage',
       ostwest: p.ausrichtung === 'ostwest', neu, pos: knotenPos(a.id) || (g ? gebMitte(g) : null) });
   }
   for (const g of gebArr) {
@@ -247,6 +276,7 @@ export function pvnaModell(opts = {}) {
     .filter(([id]) => !assetMap.has(id) || assetMap.get(id).type !== 'Trafo')
     .map(([id, elementId]) => ({ id: 'k:' + id, elementId }));
 
+  if (ueberGebaeude) hinweise.push(`${ueberGebaeude} Anlage${ueberGebaeude > 1 ? 'n' : ''} ohne eigenes Kabel über ihr Gebäude angebunden — im PV-Modus lassen sie sich an UV/NSHV anschließen.`);
   if (!aktiveA.some(a => a.type === 'Trafo')) hinweise.push('Kein aktiver Trafo im Rechenjahr — ohne Trafo gibt es kein Netz, an das angeschlossen werden kann.');
 
   const eingabe = { elemente, daecher, pruefpunkte, duGrenzePct };

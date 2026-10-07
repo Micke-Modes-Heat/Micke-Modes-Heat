@@ -240,6 +240,10 @@ function _sammle() {
       ukPct: parseFloat(a.props?.ukPct) || null,
       bezugKw: a._calcPeakLoadKwV || 0,
       einspKw: a._calcPeakLoadKwG || 0,
+      // Anteil im Normalbetrieb — nur der lässt sich über Trafos summieren
+      anteilBezugKw: a._calcAnteilKwV ?? a._calcPeakLoadKwV ?? 0,
+      anteilEinspKw: a._calcAnteilKwG ?? a._calcPeakLoadKwG ?? 0,
+      parallel: a._calcParallel || null,
       gebKw: a._calcGebKw || 0, nGeb: a._calcNGeb || 0,
       massgebendKw: kw,
       richtung: a._calcFlowDirection === -1 ? 'Rückspeisung' : 'Bezug',
@@ -455,10 +459,13 @@ function _sammle() {
     massnahmen.push({
       stufe, wert: t.auslastung, id: t.id, art: 'asset',
       titel: `${t.name}: ${_num(t.auslastung, 0)} % Auslastung`,
-      gruende: [`${t.richtung} maßgebend`, `${_num(t.massgebendKw, 0)} kW an ${_num(t.kva, 0)} kVA`],
-      kontext: '',
-      rat: stufe === 2 ? 'Größeren Trafo oder zweite Station vorsehen; bei Rückspeisung auch Einspeisebegrenzung prüfen.'
-                       : 'Reserve für weitere Anschlüsse wird knapp.',
+      gruende: [`${t.richtung} maßgebend`, `${_num(t.massgebendKw, 0)} kW an ${_num(t.kva, 0)} kVA`,
+        ...(t.parallel ? [_betriebsartText(t.parallel)] : [])],
+      kontext: t.parallel ? _gegenfallText(t.parallel) : '',
+      rat: t.parallel && t.parallel.betriebsart !== 'parallel' && t.parallel.normalPct <= 100
+        ? 'Im Normalbetrieb ausreichend, aber ohne volle Reserve für den Ausfall eines Trafos — größere Trafos oder Lastabwurf im Störfall vorsehen.'
+        : stufe === 2 ? 'Größeren Trafo oder zweite Station vorsehen; bei Rückspeisung auch Einspeisebegrenzung prüfen.'
+                      : 'Reserve für weitere Anschlüsse wird knapp.',
       ort: t.name,
     });
   }
@@ -862,8 +869,8 @@ function _kapLast() {
   // Abgleich mit den Trafos: was dort ankommt, sollte der Bilanz entsprechen
   let abgleich = '';
   if (m.trafos.length) {
-    const tB = m.trafos.reduce((s, t) => s + t.bezugKw, 0);
-    const tE = m.trafos.reduce((s, t) => s + t.einspKw, 0);
+    const tB = m.trafos.reduce((s, t) => s + t.anteilBezugKw, 0);
+    const tE = m.trafos.reduce((s, t) => s + t.anteilEinspKw, 0);
     const passt = Math.abs(tB - sumB) < 1 && Math.abs(tE - sumE) < 1;
     abgleich = `
       <div class="eb-abgleich">
@@ -883,6 +890,19 @@ function _kapLast() {
       das liegt auf der sicheren Seite. Nur Ladeparks bringen ihren eigenen Faktor mit. Bezug und Einspeisung
       werden nicht verrechnet: je Trafo und je Kabel zählt die größere der beiden Richtungen (Kapitel 3).</div>`;
   return { sub: 'Was die Betriebsmittel tragen müssen', html };
+}
+
+// Trafogruppe (mehrere Trafos auf einem NS-Netz): welcher Lastfall gilt …
+function _betriebsartText(p) {
+  return p.betriebsart === 'parallel'
+    ? `Parallelbetrieb mit ${p.ids.length} Trafos, Anteil ${_num(p.anteil * 100, 0)} %`
+    : `redundant (N-1) mit ${p.ids.length} Trafos, Wert bei Ausfall eines anderen`;
+}
+// … und was der jeweils andere Lastfall ergäbe
+function _gegenfallText(p) {
+  return p.betriebsart === 'parallel'
+    ? `bei Ausfall eines Trafos ${_num(p.n1Pct, 0)} %`
+    : `im Normalbetrieb ${_num(p.normalPct, 0)} %`;
 }
 
 // ── 3 Netz je Station ────────────────────────────────────────────────────────
@@ -929,6 +949,7 @@ function _station(st, druck, krit) {
       <div class="eb-st-bar-t"><span>Bezug ${_num(t.bezugKw, 0)} kW · Einsp. ${_num(t.einspKw, 0)} kW → ${t.richtung} maßgebend · Reserve ${_num(t.reserveKw, 0)} kW</span>
         <span class="eb-${AMPEL[t.stufe]}">${_num(t.auslastung, 0)} %</span></div>
       ${_balken(t.auslastung, 100, t.stufe)}
+      ${t.parallel ? `<div class="eb-mut">${_esc(_betriebsartText(t.parallel))} · ${_esc(_gegenfallText(t.parallel))}</div>` : ''}
     </div>` : '<div></div>';
 
   const kopf = `
@@ -1018,7 +1039,8 @@ function _rechnung(k) {
   const teile = [];
   if (h.nVerbraucher) teile.push(`${h.nVerbraucher} ${h.nVerbraucher === 1 ? 'Anlage' : 'Anlagen'}`);
   if (h.nGeb) teile.push(`${h.nGeb} Gebäude ohne Anlage (${_num(h.gebKw, 1)} kW)`);
-  zeile('Bezug hinter dem Kabel', `${teile.join(' + ') || 'keine Last'}, voll addiert`, `${_num(h.lastKw, 1)} kW`);
+  zeile('Bezug hinter dem Kabel', `${teile.join(' + ') || 'keine Last'}, voll addiert`
+    + (h.trafoAnteil != null ? `, davon ${_num(h.trafoAnteil * 100, 0)} % über diesen Trafo (Trafogruppe)` : ''), `${_num(h.lastKw, 1)} kW`);
   if (h.anschlussKw != null) {
     zeile('Hausanschluss', `Anschlussleistung + 20 % Reserve liegt über der Last`, `${_num(h.anschlussKw, 1)} kW`);
   }
@@ -1345,10 +1367,14 @@ export function ebCsvExport() {
   csv += '\n';
 
   csv += _csvZeile(['TRANSFORMATOREN']);
-  csv += _csvZeile(['Name', 'Sr (kVA)', 'uk (%)', 'Bezug (kW)', 'davon Gebäude ohne Anlage (kW)', 'Einspeisung (kW)', 'maßgebend (kW)', 'Richtung', 'Auslastung (%)', 'Reserve (kW)']);
+  csv += _csvZeile(['Name', 'Sr (kVA)', 'uk (%)', 'Bezug (kW)', 'davon Gebäude ohne Anlage (kW)', 'Einspeisung (kW)', 'maßgebend (kW)', 'Richtung', 'Auslastung (%)', 'Reserve (kW)',
+    'Betriebsart', 'Trafos in Gruppe', 'Auslastung Normalbetrieb (%)', 'Auslastung N-1 (%)']);
   for (const t of m.trafos) {
+    const p = t.parallel;
     csv += _csvZeile([t.name, _csvZahl(t.kva, 0), _csvZahl(t.ukPct, 1), _csvZahl(t.bezugKw, 1), _csvZahl(t.gebKw, 1),
-      _csvZahl(t.einspKw, 1), _csvZahl(t.massgebendKw, 1), t.richtung, _csvZahl(t.auslastung, 1), _csvZahl(t.reserveKw, 1)]);
+      _csvZahl(t.einspKw, 1), _csvZahl(t.massgebendKw, 1), t.richtung, _csvZahl(t.auslastung, 1), _csvZahl(t.reserveKw, 1),
+      p ? (p.betriebsart === 'parallel' ? 'Parallelbetrieb' : 'redundant (N-1)') : 'Einzeltrafo', p ? p.ids.length : 1,
+      _csvZahl(p ? p.normalPct : t.auslastung, 1), p ? _csvZahl(p.n1Pct, 1) : '']);
   }
   csv += '\n';
 

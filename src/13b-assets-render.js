@@ -164,13 +164,24 @@ function _trafoAusl(a) {
     rueck:   a._calcFlowDirection === -1,
     // Reserve auf der Wirkleistungsseite (kVA × 0,9, wie elCalcAssets/Ergebnisblatt)
     reserveKw: kva * 0.9 - kw,
+    parallel: a._calcParallel || null,   // Gruppe mehrerer Trafos auf einem NS-Netz
   };
+}
+// Zeile für Trafos einer Gruppe: welcher Lastfall gilt, und der jeweils andere
+function _trafoGruppeKv(p) {
+  if (!p) return '';
+  const n = p.ids.length;
+  const istN1 = p.betriebsart !== 'parallel';
+  return _attKv('Betrieb', istN1 ? `redundant (N-1), ${n} Trafos` : `parallel, ${n} Trafos`)
+    + _attKv(istN1 ? 'Normalbetrieb' : 'N-1-Fall',
+      `${(istN1 ? p.normalPct : p.n1Pct).toFixed(0)} %`, _auslAmpel(istN1 ? p.normalPct : p.n1Pct));
 }
 function _trafoAuslTooltip(t) {
   const col = _auslAmpel(t.pct);
   const bar = `<div style="height:5px;background:#263238;border-radius:3px;overflow:hidden;margin:2px 0 3px;">` +
     `<div style="width:${Math.min(100, t.pct).toFixed(0)}%;height:100%;background:${col};"></div></div>`;
   let h = _attKv('Auslastung', `${t.pct.toFixed(0)} % von ${t.kva} kVA`, col) + bar;
+  h += _trafoGruppeKv(t.parallel);
   h += _attKv('↑ Bezug', t.bezugKw.toFixed(1) + ' kW', '#90caf9');
   h += _attKv('↓ Rückspeisung', t.einspKw.toFixed(1) + ' kW', '#ef9a9a');
   h += _attKv('Maßgebend', t.rueck ? 'Rückspeisung' : 'Bezug');

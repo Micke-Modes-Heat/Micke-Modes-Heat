@@ -692,8 +692,11 @@ function _pvuEnsurePvAsset(g) {
   let pv = getAssetsForBuilding(g.id).find(a => a.type === 'PV');
   if (!pv && g.polygon && g.polygon.length >= 3) {
     const c = polygonCenter(g.polygon);
-    pv = createAsset('PV', c.lat, c.lng, { buildingId: g.id, name: 'PV ' + (g.name || g.id), props: {} });
+    pv = createAsset('PV', c.lat, c.lng, { buildingId: g.id, props: {} });
   }
+  // Dach-PV an UV/NSHV des Gebäudes hängen, falls noch ohne Kabel (39) — sonst sehen
+  // Stromnetz-Berechnung und PV-Netzaufnahme die Anlage nicht
+  if (pv) window.pvAssetAnschliessen?.(pv);
   return pv;
 }
 
@@ -1897,6 +1900,11 @@ window.setGebPvModus = function(gId, modus) {
 window.startGebPvDraw = function(gId, typ, opts = {}) {
   const g = window.gebaeude?.find(x => x.id === gId);
   if (!g) return;
+  // Abgerissen oder Abriss geplant: keine PV (Sperrflächen bleiben zeichenbar)
+  if (typ !== 'sperr' && Number.isFinite(parseInt(g.abrissjahr))) {
+    showHint(`„${g.name || 'Gebäude ' + g.id}" hat ein Abrissjahr (${g.abrissjahr}) — keine PV-Fläche.`, 4000);
+    return;
+  }
   window.cancelGebPvDraw();
   // Aufs Gebäude zoomen + Satellitenansicht einschalten
   ensureSatellite();
@@ -3441,6 +3449,7 @@ export function _buildProjectData() {
           id: a.id, type: a.type, domain: a.domain,
           lat: a.lat, lng: a.lng, name: a.name,
           buildingId: a.buildingId, _movedByUser: a._movedByUser || false,
+          nameAuto: a.nameAuto, nameZusatz: a.nameZusatz || '',
           linkedErzeuger: a.linkedErzeuger || null,
           linkedFF:       a.linkedFF       || null,
           props: { ...a.props },
@@ -4320,6 +4329,7 @@ function _applyProjectData(project) {
           const loaded = createAsset(data.type, data.lat, data.lng, {
             id: data.id, name: data.name, buildingId: data.buildingId,
             _movedByUser: data._movedByUser || false,
+            nameAuto: data.nameAuto, nameZusatz: data.nameZusatz,
             props: data.props || {}, baujahr: data.baujahr,
             abrissjahr: data.abrissjahr, schicht: schichtBackfill(data),
             massnahmen: data.massnahmen || []

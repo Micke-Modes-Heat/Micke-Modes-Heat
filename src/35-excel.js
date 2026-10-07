@@ -61,7 +61,8 @@ const _KABEL_ZIEL_DEFS = [
 // und speist auch das „Ziel-Parameter"-Formular der Maßnahmen. Was nur der
 // Inspektor (13e) zusätzlich pflegt, steht deshalb hier und nicht dort.
 const _XLSX_PROPS_EXTRA = {
-  Trafo:       [{ key: 'netzart', label: 'Netzart' }],
+  Trafo:       [{ key: 'netzart', label: 'Netzart' },
+                { key: 'betriebsart', label: 'Betriebsart (n1/parallel)' }],
   NSHV:        [{ key: 'netzart', label: 'Netzart' }],
   UV:          [{ key: 'netzart', label: 'Netzart' }],
   Verbraucher: [{ key: 'slpTyp',  label: 'Lastprofil (SLP)' }],

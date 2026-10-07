@@ -35,6 +35,7 @@ import { getElSlpProfiles, getElSlpGruppen } from './13k-elslp-registry.js';
 import { computeWindYield, calcWindLwaAuto, computeWindScenarios, windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
 import { toggleDrawWindGebiet, clearWindGebiet } from './02c-karte-werkzeuge.js';
 import { SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
+import { BETRIEBSARTEN, gruppenBetriebsart } from './lib/trafo-parallel.js';
 import { SS_STATIONS_TYPEN, ssIstStationsGebaeude, ssStationsGebaeude, ssStationsLabel } from './lib/stations-steckbrief.js';
 
 // Inspector-Slot sitzt im Elektro-Tab der rechten Sidebar
@@ -436,6 +437,45 @@ function _trennstelleFeldHtml(asset) {
     </div>
     <div style="font-size:9px;color:var(--muted);margin:-2px 0 6px;line-height:1.4;">Das Kabel in diese Richtung ist im Normalbetrieb offen — daraus ermittelt das Übersichtsschaltbild, welche Stationen über welche Seite versorgt werden.</div>`;
 }
+// ── Betriebsart mehrerer Trafos auf einem NS-Netz (lib/trafo-parallel.js) ────
+// Gruppe aus der letzten Elektroberechnung; vorher als Näherung: Trafos mit
+// einem gemeinsamen NS-seitigen Nachbarn (typisch: dieselbe NSHV).
+function _trafoGruppe(asset) {
+  const ids = asset._calcParallel?.ids;
+  if (ids) return ids.map(id => getAsset(id)).filter(Boolean);
+  const byId = new Map(ASSETS.items.map(a => [String(a.id), a]));
+  const nb = id => (window.stromEdges || [])
+    .filter(e => String(e.u) === String(id) || String(e.v) === String(id))
+    .map(e => String(String(e.u) === String(id) ? e.v : e.u));
+  const nsSeite = new Set(nb(asset.id).filter(n => (TYPE_RANK[byId.get(n)?.type] ?? 6) > TYPE_RANK.Trafo));
+  const gruppe = ASSETS.items.filter(a => a.type === 'Trafo'
+    && (a === asset || nb(a.id).some(n => nsSeite.has(n))));
+  return gruppe.length > 1 ? gruppe : null;
+}
+function _trafoBetriebsartHtml(asset) {
+  const gruppe = _trafoGruppe(asset);
+  if (!gruppe) return '';
+  const art = gruppenBetriebsart(gruppe.map(t => t.props?.betriebsart));
+  const opts = BETRIEBSARTEN.map(o =>
+    `<option value="${o.value}"${o.value === art ? ' selected' : ''}>${o.label}</option>`).join('');
+  const p = asset._calcVerbrauchKw !== undefined ? asset._calcParallel : null;
+  const pct = v => `${Math.round(v)} %`;
+  const farbe = v => v > 100 ? '#e53935' : v > 80 ? '#fdd835' : '#4caf50';
+  const werte = p ? `<div style="display:grid;grid-template-columns:1fr auto;gap:1px 8px;font-size:10px;margin:2px 0 4px;">
+      <span style="color:var(--muted);">Normalbetrieb (Anteil ${pct(p.anteil * 100)})</span>
+      <b style="color:${farbe(p.normalPct)};">${pct(p.normalPct)}${art === 'parallel' ? ' ◂' : ''}</b>
+      <span style="color:var(--muted);">Ausfall eines anderen Trafos (N-1)</span>
+      <b style="color:${farbe(p.n1Pct)};">${pct(p.n1Pct)}${art !== 'parallel' ? ' ◂' : ''}</b>
+    </div>` : '';
+  return `<div class="ins-field-group">
+      <label class="ins-field-label">Betriebsart (${gruppe.length} Trafos auf einem NS-Netz)</label>
+      <select class="ins-field-input" data-trafo-betriebsart="${asset.id}">${opts}</select>
+    </div>
+    ${werte}
+    <div style="font-size:9px;color:var(--muted);margin:-2px 0 6px;line-height:1.4;">Gilt für alle Trafos der Gruppe.
+      ◂ = Wert, der als Auslastung zählt (Karte, Ergebnisblatt, Engpässe). Parallelbetrieb teilt nach Sr/uk auf.</div>`;
+}
+
 // ── Props-Formular je Typ ───────────────────────────────────────────────────
 function buildPropsForm(asset) {
   const id = asset.id;
@@ -466,7 +506,7 @@ function buildPropsForm(asset) {
       ) + row2(
         selectField(id, 'netzart', 'Netzart', netzartOpts, p.netzart || 'verbrauch'),
         ''
-      );
+      ) + _trafoBetriebsartHtml(asset);
     }
 
     case 'NSHV':
@@ -1444,8 +1484,8 @@ function _wireZeitprofil(panel, asset) {
 function buildBodyHtml(asset) {
   return `
     <div class="ins-field-group">
-      <label class="ins-field-label">Name</label>
-      <input class="ins-field-input" type="text" data-field="name" value="${esc(asset.name)}">
+      <label class="ins-field-label">Name${asset.nameAuto && asset.buildingId ? ' <span style="color:var(--muted);font-weight:normal;" title="Automatisch: Typ · Gebäudenummer · Gebäudename, folgt dem Gebäude. Eigener Text dahinter bleibt als Zusatz; ein anderer Name ersetzt es dauerhaft, leeren schaltet zurück.">(auto)</span>' : ''}</label>
+      <input class="ins-field-input" type="text" data-field="name" value="${esc(asset.name)}" placeholder="leer = automatisch">
     </div>
     ${buildBuildingSelect(asset)}
     <div class="ins-row-2">
@@ -1489,8 +1529,8 @@ function renderInspector(asset) {
     </div>
     <div class="asset-ins-body">
       <div class="ins-field-group">
-        <label class="ins-field-label">Name</label>
-        <input class="ins-field-input" type="text" data-field="name" value="${esc(asset.name)}">
+        <label class="ins-field-label">Name${asset.nameAuto && asset.buildingId ? ' <span style="color:var(--muted);font-weight:normal;" title="Automatisch: Typ · Gebäudenummer · Gebäudename, folgt dem Gebäude. Eigener Text dahinter bleibt als Zusatz; ein anderer Name ersetzt es dauerhaft, leeren schaltet zurück.">(auto)</span>' : ''}</label>
+        <input class="ins-field-input" type="text" data-field="name" value="${esc(asset.name)}" placeholder="leer = automatisch">
       </div>
       ${buildBuildingSelect(asset)}
       <div class="ins-row-2">
@@ -1651,7 +1691,8 @@ function wireEvents(panel, asset) {
     inp.addEventListener('change', () => {
       const f = inp.dataset.field;
       if (f === 'name') {
-        asset.name = inp.value;
+        asset.name = inp.value;   // Setter entscheidet automatisch/fest (13a)
+        renderInspector(asset);
       } else if (f === 'baujahr' || f === 'abrissjahr') {
         asset[f] = inp.value === '' ? null : parseInt(inp.value);
         // Von Hand gesetzt: das automatische Baujahr der Erzeuger-Kopplung (13p) fasst es nicht mehr an
@@ -1659,6 +1700,7 @@ function wireEvents(panel, asset) {
         drawAssetMarker(asset);
       } else if (f === 'buildingId') {
         asset.buildingId = inp.value || null;
+        renderInspector(asset);   // automatischer Name folgt dem neuen Gebäude
         redrawAllAssets();
       } else if (f === 'schicht') {
         asset.schicht = normSchicht(inp.value);
@@ -1708,6 +1750,20 @@ function wireEvents(panel, asset) {
       const wahl = el.value === '' ? null : kabel[parseInt(el.value, 10)];
       kabel.forEach(k => { k.e.trennstelle = k === wahl; });
       _kabelNeuZeichnen();
+    });
+  });
+
+  // Betriebsart einer Trafogruppe: an alle Trafos der Gruppe, dann neu rechnen,
+  // damit Auslastung, Karte und Ergebnisblatt sofort zur Wahl passen
+  panel.querySelectorAll('[data-trafo-betriebsart]').forEach(el => {
+    el.addEventListener('change', () => {
+      for (const t of _trafoGruppe(asset) || [asset]) {
+        if (!t.props) t.props = {};
+        t.props.betriebsart = el.value;
+      }
+      window.markiereVarianteGeaendert?.();
+      if (typeof window.elCalcAssets === 'function') window.elCalcAssets();
+      renderInspector(asset);
     });
   });
 

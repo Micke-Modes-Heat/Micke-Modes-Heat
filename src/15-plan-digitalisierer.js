@@ -2942,7 +2942,7 @@ export function pdApply() {
       const c = polygonCenter(g.polygon);
       const asset = createAsset(n.assetType, c.lat, c.lng, {
         buildingId: g.id,
-        name: n.label || `${ASSET_CFG[n.assetType]?.label || n.assetType} ${g.name}`,
+        ...(n.label ? { name: n.label } : {}),   // ohne Planbeschriftung: Name live aus dem Gebäude
       });
       if (!asset) { bericht.offeneKnoten++; continue; }
       drawAssetMarker(asset);

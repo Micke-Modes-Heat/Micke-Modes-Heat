@@ -17,6 +17,8 @@ import { nsKabelAuslegen } from './lib/ns-auslegung.js';
 import { anschlussWirksam } from './lib/anschlussleistung.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { createId } from './lib/util.js';
+import { msSpannungen } from './lib/ms-spannung.js';
+import { trafoGruppen, trafoAufteilung, gruppenBetriebsart } from './lib/trafo-parallel.js';
 import { baueTrassenGraph, routeEntlangTrassen } from './lib/trassen-routing.js';
 import { mergeOsmElements, splitOsmBbox, subdivideOsmBbox } from './lib/osm-bbox-tiles.js';
 import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus, getAssetPropsForYear } from './13a-assets-core.js';
@@ -1726,6 +1728,10 @@ export function _recalcStromNetzInner() {
   const tLeiter = _nsLeiterTemp();
   const kIz     = _nsKIz();
   const defaultType = document.getElementById('strom-kabel-typ')?.value || 'NAYY';
+  // MS-Spannung je Kabel aus dem speisenden NAP — wie elCalcAssets (lib/ms-spannung.js)
+  const _napsSchnell = ASSETS.items.filter(a => a.type === 'NAP')
+    .sort((a, b) => (getAssetStatus(a, yr) === 'active' ? 0 : 1) - (getAssetStatus(b, yr) === 'active' ? 0 : 1));
+  const _msSchnell = msSpannungen(_napsSchnell, window.stromEdges, a => getAssetPropsForYear(a, yr).spannungKV);
 
   window.stromEdges.forEach(e => {
     // Kabel außerhalb ihrer Lebensdauer: keine Auslegung. Ohne diese Sperre
@@ -1742,10 +1748,8 @@ export function _recalcStromNetzInner() {
 
     // MS-Kabel: Strom und Auslastung mit MS-Spannung — keine NS-Kabelauslegung
     if (e.msLevel) {
-      const napNode = window.stromNodes.find(n => n.type === 'nap');
-      const uMs = (parseFloat(
-        (typeof ASSETS !== 'undefined' ? ASSETS.items : []).find(a => a.type === 'NAP')?.props?.spannungKV
-      ) || 20) * 1000;
+      const uMs = _msSchnell.kanteV(e);
+      e._uMsKv = uMs / 1000;
       e.peakCurrentA = calcStrom(absKw, uMs, cosPhi);
       e.flowDirection = (e.peakFlowKw_V ?? 1) >= (e.peakFlowKw_G ?? 0) ? 1 : -1;
       e.ratedCurrentA = 0; e.auslastungPct = 0; e.deltaUPct = 0;
@@ -2547,6 +2551,80 @@ export function elCalcAssets(opts = {}) {
     adjList.get(e.v).push({ neighborId: e.u });
   }
 
+  // ── Trafo-Last: Gruppen an einem gemeinsamen NS-Netz ──
+  // Je Trafo alles NS-seitig Nachgelagerte (Assets UND Gebäude). Bewertet wird —
+  // wie bei der Kabelauslegung — der WORST CASE aus beiden Lastflussrichtungen:
+  // max(Verbrauch, Erzeugung). Ein Trafo überträgt in beide Richtungen; 800 kW
+  // Rückspeisung belasten ihn genauso wie 800 kW Bezug. Eine Nettobildung
+  // (P_v − P_g) würde reine Einspeise-Stränge auf 0 % klemmen und damit z. B.
+  // eine 1-MWp-PV an einem 630-kVA-Trafo unsichtbar machen.
+  // Trafos, deren NS-Seiten zusammenhängen (zwei Trafos auf einer NSHV), teilen
+  // sich die Last — einmal gezählt, aufgeteilt nach Betriebsart (N-1 oder
+  // Parallelbetrieb, lib/trafo-parallel.js).
+  function _trafoBfs(startIds) {
+    const geb = { n: 0, kw: 0 };   // Gebäude ohne Anlage (nur Ergebnisblatt)
+    const visited = new Set(startIds);
+    const queue = [];
+    for (const id of startIds) {
+      const rank = TYPE_RANK[assetMap.get(id)?.type] ?? 6;
+      for (const { neighborId } of (adjList.get(id) || [])) {
+        if ((TYPE_RANK[assetMap.get(neighborId)?.type] ?? 6) > rank) queue.push(neighborId);
+      }
+    }
+    let P_v = 0, P_g = 0;
+    const erreicht = new Set();
+    while (queue.length) {
+      const cur = queue.shift();
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      erreicht.add(cur);
+      const curAsset = assetMap.get(cur);
+      if (curAsset) {
+        P_v += assetVerbrauch(curAsset);
+        P_g += assetErzeugung(curAsset);
+      } else {
+        // Gebäude ohne eigenes Verbraucher-Asset — zählt mit und wird durchquert,
+        // sonst fiele alles dahinter aus der Summe (identisch zu bfsDownstream).
+        const l = gebVerbrauch(cur);
+        P_v += l;
+        if (l > 0) { geb.n++; geb.kw += l; }
+      }
+      const curRank = TYPE_RANK[curAsset?.type] ?? 6;
+      for (const { neighborId } of (adjList.get(cur) || [])) {
+        if (visited.has(neighborId)) continue;
+        const neighborAsset = assetMap.get(neighborId);
+        if (!neighborAsset || (TYPE_RANK[neighborAsset.type] ?? 6) >= curRank) {
+          queue.push(neighborId);
+        }
+      }
+    }
+    return { P_v, P_g, geb, erreicht };
+  }
+  const _trafoGeb  = new Map();   // Trafo-Asset → Gebäude ohne Anlage seiner Gruppe
+  const _trafoLast = new Map();   // Trafo-ID → { ids, P_v, P_g, r: trafoAufteilung-Eintrag }
+  {
+    const trafos = activeA.filter(a => a.type === 'Trafo');
+    const reich = new Map(trafos.map(t => [t.id, _trafoBfs([t.id]).erreicht]));
+    for (const ids of trafoGruppen(reich)) {
+      const gr = ids.map(id => assetMap.get(id));
+      const { P_v, P_g, geb } = _trafoBfs(ids);
+      const art = gruppenBetriebsart(gr.map(t => _p(t).betriebsart));
+      const auf = trafoAufteilung(
+        gr.map(t => ({ id: t.id, kva: _p(t).leistungKVA, ukPct: _p(t).ukProzent })),
+        { kwV: P_v, kwG: P_g }, art, PF_TRAFO);
+      for (const t of gr) {
+        _trafoGeb.set(t, geb);
+        _trafoLast.set(t.id, { ids, P_v, P_g, r: auf.get(t.id) });
+      }
+    }
+  }
+  // Anteil der Gruppenlast, der über einen Trafo fließt — für Kabel, die direkt
+  // an ihm hängen (MS-Zuleitung, Verbindung zur NSHV). 1 bei Einzeltrafos.
+  const _trafoFaktor = id => {
+    const tl = _trafoLast.get(id);
+    return tl && tl.ids.length > 1 ? tl.r.faktor : 1;
+  };
+
   // stat (optional) zählt mit, WORAUS sich die Last zusammensetzt — nur für das
   // Ergebnisblatt (Rechnung je Strecke), auf das Ergebnis hat es keinen Einfluss.
   function bfsDownstream(edge, loadFn, gebLoadFn, stat = null) {
@@ -2598,9 +2676,13 @@ export function elCalcAssets(opts = {}) {
   //     hätte ausschöpfen können.
   const dirAdj = new Map(activeA.map(a => [a.id, []]));
 
-  // MS-Nennspannung aus NAP-Asset (default 20 kV)
-  const napAsset = activeA.find(a => a.type === 'NAP');
-  const U_MS = (parseFloat(napAsset ? _p(napAsset).spannungKV : null) || 20) * 1000;
+  // MS-Nennspannung je Kabel aus dem speisenden NAP (lib/ms-spannung.js). Aktive
+  // NAPs zuerst; ein noch nicht/nicht mehr aktiver NAP liefert seine Spannung
+  // trotzdem, statt dass stillschweigend 20 kV gelten.
+  const _naps = [...activeA.filter(a => a.type === 'NAP'),
+    ...ASSETS.items.filter(a => a.type === 'NAP' && !activeA.includes(a))];
+  const _ms  = msSpannungen(_naps, activeE, a => _p(a).spannungKV);
+  const U_MS = _ms.standardV;
 
   // Schritt 1: Lastfluss, Richtung & Kabeltyp-Eckdaten je Kante (Reihenfolge-
   // unabhängig — bestimmt nur, WAS dimensioniert werden muss, nicht WIE).
@@ -2616,7 +2698,10 @@ export function elCalcAssets(opts = {}) {
 
     const statV = { nAnlagen: 0, nGeb: 0, gebKw: 0 };
     const statG = { nAnlagen: 0, nGeb: 0, gebKw: 0 };
-    const P_vLast = bfsDownstream(e, assetVerbrauch, gebVerbrauch, statV);
+    // Kabel direkt an einem Trafo einer Gruppe trägt nur dessen Anteil
+    const trafoFaktor = aAsset.type === 'Trafo' ? _trafoFaktor(aAsset.id)
+      : bAsset.type === 'Trafo' ? _trafoFaktor(bAsset.id) : 1;
+    const P_vLast = bfsDownstream(e, assetVerbrauch, gebVerbrauch, statV) * trafoFaktor;
     let P_v = P_vLast;
     // Hausanschluss eines Verbrauchers (Blatt): das Kabel muss die Anschluss-
     // leistung tragen (Handwert oder Klasse + 20 % Reserve), nicht nur die Last.
@@ -2628,17 +2713,19 @@ export function elCalcAssets(opts = {}) {
       anschlussKw = anschlussWirksam(_p(sinkA)).kw;
       P_v = Math.max(P_v, anschlussKw);
     }
-    const P_g = bfsDownstream(e, assetErzeugung, () => 0, statG); // Gebäude erzeugen nicht
+    const P_g = bfsDownstream(e, assetErzeugung, () => 0, statG) * trafoFaktor; // Gebäude erzeugen nicht
     _hinter.set(e, {
       nVerbraucher: statV.nAnlagen, nGeb: statV.nGeb, gebKw: statV.gebKw,
       nErzeuger: statG.nAnlagen, lastKw: P_vLast,
+      trafoAnteil: trafoFaktor < 1 ? trafoFaktor : null,
       // Mindestwert am Hausanschluss nur ausweisen, wenn er die Last tatsächlich anhebt
       anschlussKw: anschlussKw != null && anschlussKw > P_vLast ? anschlussKw : null,
     });
     const P_net   = P_v - P_g;
     const P_worst = Math.max(P_v, P_g);
     // MS-Kabel: Strom mit MS-Spannung berechnen, keine NS-Kabelauslegung
-    const U_eff    = e.msLevel ? U_MS : U_N;
+    const U_eff    = e.msLevel ? _ms.kanteV(e) : U_N;
+    if (e.msLevel) e._uMsKv = U_eff / 1000;
     const I_A      = P_worst * 1000 / (Math.sqrt(3) * U_eff * COS_PHI);
     const I_A_sign = P_net   * 1000 / (Math.sqrt(3) * U_eff * COS_PHI);
 
@@ -2822,58 +2909,29 @@ export function elCalcAssets(opts = {}) {
     }
   });
 
-  // Trafo-Auslastung: Gesamtlast aller nachgelagerten Assets UND Gebäude per BFS.
-  // Bewertet wird — wie bei der Kabelauslegung — der WORST CASE aus beiden
-  // Lastflussrichtungen: max(Verbrauch, Erzeugung). Ein Trafo überträgt in beide
-  // Richtungen; 800 kW Rückspeisung belasten ihn genauso wie 800 kW Bezug. Eine
-  // Nettobildung (P_v − P_g) würde reine Einspeise-Stränge auf 0 % klemmen und
-  // damit z. B. eine 1-MWp-PV an einem 630-kVA-Trafo unsichtbar machen.
-  const _trafoGeb = new Map();   // Gebäude ohne Anlage je Trafo (nur Ergebnisblatt)
+  // Trafo-Auslastung — Last je Gruppe und Aufteilung stehen oben (_trafoLast).
+  // _calcPeakLoad* = Last in der gewählten Betriebsart (bei N-1 trägt jeder
+  // Trafo einer Zweiergruppe alles); _calcAnteilKw* = Anteil im Normalbetrieb —
+  // nur dieser darf über mehrere Trafos aufsummiert werden.
   for (const trafoAsset of activeA.filter(a => a.type === 'Trafo')) {
-    const ratedKVA = parseFloat(_p(trafoAsset).leistungKVA) || 630;
-    const geb = { n: 0, kw: 0 };
-    _trafoGeb.set(trafoAsset, geb);
-    const trafoRank = TYPE_RANK[trafoAsset.type] ?? 6;
-    const visited = new Set([trafoAsset.id]);
-    const queue = [];
-    for (const { neighborId } of (adjList.get(trafoAsset.id) || [])) {
-      if ((TYPE_RANK[assetMap.get(neighborId)?.type] ?? 6) > trafoRank) queue.push(neighborId);
-    }
-    let P_v = 0, P_g = 0;
-    while (queue.length) {
-      const cur = queue.shift();
-      if (visited.has(cur)) continue;
-      visited.add(cur);
-      const curAsset = assetMap.get(cur);
-      if (curAsset) {
-        P_v += assetVerbrauch(curAsset);
-        P_g += assetErzeugung(curAsset);
-      } else {
-        // Gebäude ohne eigenes Verbraucher-Asset — zählt mit und wird durchquert,
-        // sonst fiele alles dahinter aus der Summe (identisch zu bfsDownstream).
-        const l = gebVerbrauch(cur);
-        P_v += l;
-        if (l > 0) { geb.n++; geb.kw += l; }
-      }
-      const curRank = TYPE_RANK[curAsset?.type] ?? 6;
-      for (const { neighborId } of (adjList.get(cur) || [])) {
-        if (visited.has(neighborId)) continue;
-        const neighborAsset = assetMap.get(neighborId);
-        if (!neighborAsset || (TYPE_RANK[neighborAsset.type] ?? 6) >= curRank) {
-          queue.push(neighborId);
-        }
-      }
-    }
-    const P_worst = Math.max(P_v, P_g);
-    trafoAsset._calcPeakLoadKw = P_worst;
-    trafoAsset._calcPeakLoadKwV = P_v;
-    trafoAsset._calcPeakLoadKwG = P_g;
-    trafoAsset._calcFlowDirection = P_v >= P_g ? 1 : -1; // -1 = Rückspeisung maßgebend
-    trafoAsset._calcPeakLoadPct = ratedKVA > 0 ? (P_worst / (ratedKVA * PF_TRAFO)) * 100 : 0;
+    const { ids, P_v: grV, P_g: grG, r } = _trafoLast.get(trafoAsset.id);
+    trafoAsset._calcPeakLoadKw = r.kw;
+    trafoAsset._calcPeakLoadKwV = r.kwV;
+    trafoAsset._calcPeakLoadKwG = r.kwG;
+    trafoAsset._calcFlowDirection = r.kwV >= r.kwG ? 1 : -1; // -1 = Rückspeisung maßgebend
+    trafoAsset._calcPeakLoadPct = r.pct;
+    trafoAsset._calcAnteilKwV = r.normal.kwV;
+    trafoAsset._calcAnteilKwG = r.normal.kwG;
+    trafoAsset._calcParallel = ids.length > 1 ? {
+      ids, betriebsart: r.betriebsart, anteil: r.anteil,
+      gruppeKwV: grV, gruppeKwG: grG,
+      normalKw: r.normal.kw, normalPct: r.normal.pct,
+      n1Kw: r.n1.kw, n1Pct: r.n1.pct,
+    } : null;
     const trafoSn = (window.stromNodes || []).find(n => n.id === trafoAsset.id);
     if (trafoSn) {
       trafoSn._auslastungPct = trafoAsset._calcPeakLoadPct;
-      trafoSn.peakLoadKw = P_worst;
+      trafoSn.peakLoadKw = r.kw;
     }
   }
 
@@ -3411,6 +3469,7 @@ export function captureStromNetzState() {
     items: elAssets.map(a => ({
       id: a.id, type: a.type, domain: a.domain, lat: a.lat, lng: a.lng, name: a.name,
       buildingId: a.buildingId, _movedByUser: a._movedByUser || false,
+      nameAuto: a.nameAuto, nameZusatz: a.nameZusatz || '',
       linkedErzeuger: a.linkedErzeuger || null, linkedFF: a.linkedFF || null,
       props: a.props ? { ...a.props } : {}, baujahr: a.baujahr, abrissjahr: a.abrissjahr,
       baujahrAuto: a.baujahrAuto ?? null,
@@ -3459,6 +3518,7 @@ export function applyStromNetzState(state) {
     const loaded = createAsset(data.type, data.lat, data.lng, {
       id: data.id, name: data.name, buildingId: data.buildingId,
       _movedByUser: data._movedByUser || false,
+      nameAuto: data.nameAuto, nameZusatz: data.nameZusatz,
       props: data.props || {}, baujahr: data.baujahr,
       abrissjahr: data.abrissjahr, schicht: data.schicht,
       massnahmen: data.massnahmen || []

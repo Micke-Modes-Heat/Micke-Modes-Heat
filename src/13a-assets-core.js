@@ -4,6 +4,7 @@
 
 import { globalYear, massnahmeJahr, schichtFuerNeuesObjekt, baujahrFuerNeuesObjekt, activeVariantId } from './01-globals-varianten.js';
 import { createId } from './lib/util.js';
+import { bildeAssetName, deuteAltenNamen, deuteNamensEingabe } from './lib/asset-namen.js';
 import { istSchicht, SCHICHT } from './lib/schichten.js';
 import { kategorieFuerAsset, massnahmeGiltIn, variantKey } from './lib/varianten-regeln.js';
 
@@ -173,6 +174,54 @@ export function getAssetPropsForYear(asset, year, opts = {}) {
   return props;
 }
 
+// ── Asset-Namen ────────────────────────────────────────────────────────────
+// Ein Asset an einem Gebäude heißt „Typ Gebäudenummer Gebäudename" — LIVE aus
+// dem Gebäude gelesen (Getter auf asset.name), Regeln in lib/asset-namen.js.
+// Wer asset.name setzt, entscheidet damit: leer oder der gebildete Name (+ Zusatz)
+// → automatisch; alles andere → fest (nameAuto = false).
+let _gebIndex = null, _gebIndexArr = null, _gebIndexLen = -1;
+function _gebaeudeZu(id) {
+  const arr = (typeof window !== 'undefined' && window.gebaeude) || null;
+  if (!arr || id == null) return null;
+  const key = String(id);
+  if (arr !== _gebIndexArr || arr.length !== _gebIndexLen) {
+    _gebIndex = new Map(arr.map(g => [String(g.id), g]));
+    _gebIndexArr = arr; _gebIndexLen = arr.length;
+  }
+  const g = _gebIndex.get(key);
+  if (g && String(g.id) === key) return g;
+  // Id am Gebäude geändert o. Ä. → Index beim nächsten Mal neu
+  _gebIndexArr = null;
+  return arr.find(x => String(x.id) === key) || null;
+}
+
+/** Gebildeter Name „Typ Nr Gebäudename" — null, wenn das Asset an keinem Gebäude hängt. */
+export function assetAutoName(asset) {
+  if (!asset) return null;
+  return bildeAssetName(ASSET_CFG[asset.type]?.label || asset.type, _gebaeudeZu(asset.buildingId));
+}
+
+function _nameAlsEigenschaft(asset, startName) {
+  let fest = String(startName ?? '');
+  Object.defineProperty(asset, 'name', {
+    enumerable: true,
+    configurable: true,
+    get() {
+      const auto = this.nameAuto ? assetAutoName(this) : null;
+      if (!auto) return fest;
+      return this.nameZusatz ? `${auto} ${this.nameZusatz}` : auto;
+    },
+    set(v) {
+      const gebildet = assetAutoName(this);
+      const { auto, zusatz } = deuteNamensEingabe(v, gebildet);
+      this.nameAuto = auto;
+      this.nameZusatz = zusatz;
+      // Rückfall, falls das Gebäude später verschwindet
+      fest = String(v ?? '').trim() || gebildet || '';
+    },
+  });
+}
+
 // ── CRUD ───────────────────────────────────────────────────────────────────
 export function createAsset(type, lat, lng, opts = {}) {
   const cfg = ASSET_CFG[type];
@@ -210,7 +259,6 @@ export function createAsset(type, lat, lng, opts = {}) {
     type,
     domain:     cfg.domain,
     lat, lng,
-    name:       opts.name       || `${cfg.label} ${idx}`,
     buildingId: opts.buildingId || null,
     props:      opts.props      || {},
     baujahr,
@@ -219,6 +267,18 @@ export function createAsset(type, lat, lng, opts = {}) {
     massnahmen: opts.massnahmen || [],
     _marker:    null,
   };
+  // Namensart: gespeichert > ohne Namen = automatisch > Wiederherstellung eines
+  // Altbestands = aus dem Namen gedeutet > sonst vom Aufrufer bewusst vergeben.
+  let nameAuto = typeof opts.nameAuto === 'boolean' ? opts.nameAuto : null;
+  let nameZusatz = typeof opts.nameZusatz === 'string' ? opts.nameZusatz : '';
+  if (nameAuto === null) {
+    if (!opts.name) nameAuto = true;
+    else if (opts.id) ({ auto: nameAuto, zusatz: nameZusatz } = deuteAltenNamen(opts.name, [type, cfg.label]));
+    else nameAuto = false;
+  }
+  asset.nameAuto = nameAuto;
+  asset.nameZusatz = nameZusatz;
+  _nameAlsEigenschaft(asset, opts.name || `${cfg.label} ${idx}`);
 
   ASSETS.items.push(asset);
   // Rückmeldung „wo ist das gelandet?“ — nur für frisch angelegte Objekte.

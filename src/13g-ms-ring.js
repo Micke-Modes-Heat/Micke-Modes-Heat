@@ -245,8 +245,9 @@ export function elCalcMSRing(ring) {
   if (!napId) return null;
 
   const entryId  = ring.napEntryId || napId;
-  const napAsset = activeA.find(a => a.id === napId);
-  const U_kV     = parseFloat(napAsset?.props?.spannungKV) || 20;
+  // Spannung auch von einem (noch) nicht aktiven NAP — sonst gälten still 20 kV
+  const napAsset = activeA.find(a => a.id === napId) || ASSETS.items.find(a => a.id === napId);
+  const U_kV     = parseFloat(String(napAsset?.props?.spannungKV ?? '').replace(',', '.')) || 20;
   const U_N      = U_kV * 1000;
   const cosPhi   = parseFloat(document.getElementById('strom-ms-cosphi')?.value) || 0.9;
 

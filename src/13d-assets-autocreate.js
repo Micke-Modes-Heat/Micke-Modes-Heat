@@ -64,10 +64,8 @@ export function autoCreateBuildingAssets(g, opts = {}) {
   for (let i = 0; i < DEFAULT_TYPES.length; i++) {
     const type = DEFAULT_TYPES[i];
     const pos  = positions[i];
-    const asset = createAsset(type, pos.lat, pos.lng, {
-      ...base,
-      name: `${type} ${g.name || g.id}`,
-    });
+    // Name bildet createAsset live aus dem Gebäude (Typ · Nummer · Name)
+    const asset = createAsset(type, pos.lat, pos.lng, base);
     if (asset) created.push(asset);
   }
   // Marker nur zeichnen wenn Layer sichtbar — sonst erscheinen sie beim Tab-Wechsel

@@ -35,8 +35,8 @@ import { _hasBelegung, calcGebKwpKorr, escHtml } from './03c-gebaeude-io.js';
 import { ASSETS, TYPE_RANK, deleteAsset } from './13a-assets-core.js';
 import { pvmPlanungsSchrittMerken, pvmProbe, pvmStapelBelegen, pvModusMarkiereKarte, pvModusRender } from './25-pv-modus.js';
 import { normSchicht, SCHICHT } from './lib/schichten.js';
-import { pvnaEinstellungen, pvnaIstNeubau, pvnaJahre, pvnaMassnahmenErmitteln, pvnaModell } from './28-pv-netzaufnahme.js';
-import { pvnaFuellen, pvnaTreppe } from './lib/pv-netzaufnahme-core.js';
+import { pvnaAbrissGeplant, pvnaEinstellungen, pvnaIstNeubau, pvnaJahre, pvnaMassnahmenErmitteln, pvnaModell } from './28-pv-netzaufnahme.js';
+import { pvnaFuellen, pvnaTreppe, pvnaVollausbau } from './lib/pv-netzaufnahme-core.js';
 
 const CYAN  = '#4dd0e1';
 const GRUEN = '#66bb6a';
@@ -191,16 +191,15 @@ function _umfangFilter(umfang, stich) {
  * Nutzungstyp scheitern könnten (für die Auswahlliste der Typen).
  */
 function _kandidaten() {
-  const { stich, ziel } = pvnaJahre(pvnaEinstellungen());
-  const jahr = Math.max(ziel, new Date().getFullYear());
+  const { stich } = pvnaJahre(pvnaEinstellungen());
   const raus = { belegt: 0, klein: 0, nutzung: 0, weg: 0 };
   const umfangOk = _umfangFilter(_ab.umfang, stich);
 
   const vorNutzung = [], liste = [];
   for (const g of (window.gebaeude || [])) {
     if (!Array.isArray(g.polygon) || g.polygon.length < 3 || !umfangOk(g)) continue;
-    const aj = _int(g.abrissjahr);
-    if (window.isExcluded?.(g.id) || (aj != null && aj <= jahr)) { raus.weg++; continue; }
+    // abgerissen oder Abriss geplant: generell keine PV, egal in welchem Jahr
+    if (window.isExcluded?.(g.id) || pvnaAbrissGeplant(g)) { raus.weg++; continue; }
     if (_hasBelegung(g)) { raus.belegt++; continue; }
     if (_flaeche(g) < _ab.minM2) { raus.klein++; continue; }
     vorNutzung.push(g);
@@ -250,6 +249,93 @@ function _begrenzerText(b, info) {
   if (b.art === 'spannung') return 'Spannungsanhebung > Grenze (' + label + ')';
   if (b.art === 'vorbelastet') return 'schon ausgelastet: ' + label;
   return label;
+}
+
+/**
+ * Gruppe, die voll gebaut werden MUSS (Neubauten · PV-Pflicht · Auswahl) — gestuft
+ * die Vorrang-Gruppe, netzverträglich der Umfang selbst. Für sie listet die
+ * Vorschau die Engstellen. null = keine solche Gruppe.
+ */
+function _pflichtGruppe() {
+  if (_ab.menge === 'gestuft') return _ab.vorrang;
+  if (_ab.menge === 'netz' && VORRANG.some(v => v[0] === _ab.umfang)) return _ab.umfang;
+  return null;
+}
+
+/**
+ * Engstellen der Pflichtgruppe (Nutzerwunsch 07.10.2026): Was verhindert, dass ALLE
+ * Dächer der Gruppe voll gebaut werden? Gerechnet wird der Vollausbau der Gruppe im
+ * gewählten Netz (Netzjahr, schon geplante PV als Vorlast, gewählte Ertüchtigung) —
+ * anders als der Begrenzer je Dach (gierige Füllung, nur das ERSTE volle Element)
+ * zeigt das alle Elemente, die überlastet wären, auch hintereinanderliegende.
+ *   Strom:    Fluss > Kapazität (Trafo bzw. NS-Kabel)
+ *   Spannung: ΔU an einem Dach > Grenze → dem Kabel mit dem größten Beitrag auf
+ *             seinem Pfad zugeschrieben
+ * Abhilfe: Maßnahme wie in der Ausbautreppe, bemessen auf genau diese Gruppe.
+ */
+function _engstellen(els, gruppe, m, nurTrafo, nachId) {
+  const eing = { elemente: els.map(e => ({ ...e })), daecher: gruppe,
+    pruefpunkte: m.eingabe.pruefpunkte, duGrenzePct: m.eingabe.duGrenzePct };
+  const voll = pvnaVollausbau(eing);
+  const nurVorlast = pvnaVollausbau({ ...eing, daecher: [] }).flussKw;
+  const elById = new Map(eing.elemente.map(e => [e.id, e]));
+  const pfad = id => {
+    const p = [], ges = new Set();
+    for (let c = id; c != null && elById.has(c) && !ges.has(c); c = elById.get(c).parentId) { ges.add(c); p.push(c); }
+    return p;
+  };
+  const grenze = eing.duGrenzePct;
+  const treffer = new Map();          // elementId → Engstelle
+  const eintrag = id => {
+    if (!treffer.has(id)) {
+      const e = elById.get(id), inf = m.info.elInfo.get(id);
+      treffer.set(id, { id, typ: e.typ, label: inf?.label || id, kapKw: e.kapKw == null ? Infinity : +e.kapKw,flussKw: voll.flussKw.get(id) || 0,
+        vorlastKw: nurVorlast.get(id) || 0, strom: false, duMaxPct: 0, gebIds: new Set(),
+        unbekannt: !!(inf?.kab?.unbekannt || inf?.kab?.ersatz) });
+    }
+    return treffer.get(id);
+  };
+  for (const e of eing.elemente) {
+    const kap = e.kapKw == null ? Infinity : +e.kapKw;
+    if (Number.isFinite(kap) && (voll.flussKw.get(e.id) || 0) > kap + 0.01) eintrag(e.id).strom = true;
+  }
+  const pfadJeDach = new Map(gruppe.map(d => [d.id, pfad(d.elementId)]));
+  for (const d of gruppe) {
+    const du = voll.duPct.get('dach:' + d.id);
+    if (!(du > grenze + 1e-6)) continue;
+    let knapp = null, beitrag = -1;
+    for (const eid of pfadJeDach.get(d.id)) {
+      const b = (+elById.get(eid).duProKwPct || 0) * (voll.flussKw.get(eid) || 0);
+      if (b > beitrag) { beitrag = b; knapp = eid; }
+    }
+    if (knapp == null) continue;
+    const t = eintrag(knapp);
+    t.duMaxPct = Math.max(t.duMaxPct, du);
+  }
+  if (!treffer.size) return [];
+  // Dächer der Gruppe hinter jeder Engstelle
+  for (const d of gruppe) for (const eid of pfadJeDach.get(d.id)) treffer.get(eid)?.gebIds.add(d.id);
+
+  // Abhilfe: Maßnahmen auf genau diese Gruppe bemessen (mutiert nur die Kopie)
+  const mEing = { ...eing, elemente: eing.elemente.map(e => ({ ...e })), ganzOderGar: true };
+  pvnaMassnahmenErmitteln(mEing, m.info, { ohneKabel: nurTrafo });
+  const massnahme = new Map(mEing.elemente.filter(e => e.massnahme).map(e => [e.id, e.massnahme]));
+
+  const liste = [...treffer.values()].map(t => {
+    const pos = m.info.elPos.get(t.id);
+    const vorPos = m.info.elPos.get(elById.get(t.id)?.parentId);
+    const mm = massnahme.get(t.id);
+    return { ...t,
+      gebIds: [...t.gebIds],
+      kwpKorr: [...t.gebIds].reduce((s, id) => s + (nachId.get(id)?.kwpKorr || 0), 0),
+      ueberKw: Math.max(0, t.flussKw - t.kapKw),
+      // Kabel: Mitte zwischen Anfangs- und Endknoten, Trafo: sein Standort
+      pos: pos && vorPos && t.typ === 'kabel' ? { lat: (pos.lat + vorPos.lat) / 2, lng: (pos.lng + vorPos.lng) / 2 } : pos || null,
+      abhilfe: mm ? { label: mm.label, investEUR: +mm.investEUR || 0, teil: !!mm.teil } : null };
+  });
+  // Trafos zuerst, dann nach Überlast bzw. Spannung
+  return liste.sort((a, b) => (a.typ === 'trafo' ? 0 : 1) - (b.typ === 'trafo' ? 0 : 1)
+    || b.ueberKw - a.ueberKw || b.duMaxPct - a.duMaxPct);
 }
 
 /**
@@ -401,7 +487,23 @@ function _netzPruefen(zeilen) {
     }
   }
   if (ausbau) ausbau.mitKwp = mitKwp;
-  return { jahr, basisJahr, netzJahrGesetzt: _ab.netzJahr != null, vorlastKwp, vorrangKwp, einspFaktor,
+
+  // Engstellen der Pflichtgruppe: gestuft die Vorrang-Gruppe, sonst der ganze Umfang
+  let engstellen = null;
+  const pg = _pflichtGruppe();
+  if (pg && hatTrafo) {
+    const gruppe = vorrang.length ? vorrang : daecher;
+    const gZeilen = zeilen.filter(z => z.status !== 'leer' && (_ab.menge !== 'gestuft' || z.vorrang));
+    engstellen = {
+      gruppe: pg,
+      liste: gruppe.length ? _engstellen(anwenden(elemente.map(e => ({ ...e }))), gruppe, m, nurTrafo, nachId) : [],
+      noetigKwp: gZeilen.reduce((s, z) => s + (z.kwpKorr || 0), 0),
+      noetigN: gZeilen.length,
+      passtKwp: gZeilen.filter(z => z.status === 'voll' || (z.status === 'vorrang' && !z.grund)).reduce((s, z) => s + (z.kwpKorr || 0), 0),
+      ohneNetz: gZeilen.filter(z => z.status === 'ohneNetz' || (z.status === 'vorrang' && z.grund)).length,
+    };
+  }
+  return { jahr, basisJahr, engstellen, netzJahrGesetzt: _ab.netzJahr != null, vorlastKwp, vorrangKwp, einspFaktor,
     duGrenzePct: m.eingabe.duGrenzePct, nurTrafo, ausbau,
     zugeordnet: zugeordnet.length, zugeordnetMaxM: zugeordnet.length ? Math.max(...zugeordnet) : 0,
     unbekannteQs: m.info.unbekannteQs.length, ersatzQs: m.info.ersatzQs,
@@ -897,6 +999,63 @@ function _ausbauHtml(a) {
     </div>`;
 }
 
+/** Vorschau: Engstellen, an denen die Pflichtgruppe (Neubau/PV-Pflicht/Auswahl) scheitert. */
+function _engstellenHtml(n, stich) {
+  const es = n?.engstellen;
+  if (!es || !es.noetigN) return '';
+  const T = x => _fmt((x || 0) / 1000);
+  const name = escHtml(_vorrangLabel(es.gruppe, stich));
+  const fehlt = Math.max(0, es.noetigKwp - es.passtKwp);
+  const kopf = `<div style="color:var(--text);"><b>🚧 Engstellen für ${name}</b></div>
+      <div style="color:var(--muted);">${es.noetigN} Dächer · ${_fmt(es.noetigKwp)} kWp nötig — ${_fmt(es.passtKwp)} kWp passen ins Netz${fehlt > 0.5 ? `, <span style="color:${ROT};">${_fmt(fehlt)} kWp nicht</span>` : ''}${n.ausbau?.massnahmen?.length ? ' (nach der gewählten Ertüchtigung)' : ''}</div>`;
+  const ohne = es.ohneNetz ? `<div style="color:var(--muted);">${es.ohneNetz} ${es.ohneNetz === 1 ? 'Dach' : 'Dächer'} ohne Netzanbindung — dort ist die Grenze unbekannt.</div>` : '';
+  if (!es.liste.length) {
+    return `<div style="margin-top:5px;padding:3px 5px;border-left:2px solid ${GRUEN};font-size:9px;line-height:1.45;">
+        ${kopf}<div style="color:${GRUEN};">✓ Keine Engstelle — die ganze Gruppe passt ${n.nurTrafo ? 'unter die Trafogrenze' : 'ins Netz'}.</div>${ohne}</div>`;
+  }
+  const zeilen = es.liste.map((e, i) => {
+    const wert = e.ueberKw > 0.5 ? `+${_fmt(e.ueberKw)} kW` : `ΔU ${_fmt(e.duMaxPct, 1)} %`;
+    const was = [
+      e.ueberKw > 0.5 ? `Kap. ${_fmt(e.kapKw)} kW · nötig ${_fmt(e.flussKw)} kW${e.vorlastKw > 0.5 ? ` (davon ${_fmt(e.vorlastKw)} kW schon geplante PV)` : ''}` : '',
+      e.duMaxPct > 0 ? `Spannungsanhebung bis ${_fmt(e.duMaxPct, 1)} % > ${_fmt(n.duGrenzePct, 1)} %` : '',
+      `${e.gebIds.length} ${e.gebIds.length === 1 ? 'Dach' : 'Dächer'} dahinter · ${_fmt(e.kwpKorr)} kWp`,
+    ].filter(Boolean).join(' · ');
+    const abhilfe = e.abhilfe
+      ? `<span style="color:${GRUEN};">⚒ ${escHtml(e.abhilfe.label)} · ${T(e.abhilfe.investEUR)} T€${e.abhilfe.teil ? ' (reicht nicht ganz)' : ''}</span>`
+      : `<span style="color:#ffb74d;">${e.unbekannt ? 'Querschnitt unbekannt bzw. Ersatzwert — erst Kabeldaten prüfen' : 'keine Standardlösung — Netzplanung nötig'}</span>`;
+    return `<div style="padding:2px 0;border-top:1px solid var(--border);cursor:pointer;" data-click="pvabEngstelleZeigen(${i})" title="Auf der Karte zeigen">
+        <div style="display:flex;gap:4px;color:var(--text);">
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(e.label)}">${e.typ === 'trafo' ? '🔌' : '〰'} ${escHtml(e.label)}</span>
+          <span style="font-family:'DM Mono',monospace;color:${ROT};">${wert}</span>
+        </div>
+        <div style="color:var(--muted);">${was}</div>
+        <div>${abhilfe}</div>
+      </div>`;
+  }).join('');
+  const mitAbhilfe = es.liste.filter(e => e.abhilfe);
+  const summe = mitAbhilfe.length
+    ? `<div style="color:var(--muted);margin-top:2px;">Abhilfe zusammen ≈ ${T(mitAbhilfe.reduce((s, e) => s + e.abhilfe.investEUR, 0))} T€ (${mitAbhilfe.length} von ${es.liste.length} Engstellen)${mitAbhilfe.length < es.liste.length ? ' — der Rest braucht eine eigene Netzplanung' : ''}.</div>` : '';
+  return `<div style="margin-top:5px;padding:3px 5px;border-left:2px solid ${ROT};font-size:9px;line-height:1.45;">
+      ${kopf}${ohne}
+      <div style="max-height:180px;overflow-y:auto;margin-top:3px;">${zeilen}</div>
+      ${summe}
+    </div>`;
+}
+
+let _engstelleMarker = null;
+/** Engstelle aus der Vorschau auf der Karte zeigen (Trafo-Standort bzw. Kabelmitte). */
+export function pvabEngstelleZeigen(i) {
+  const e = _ab.vorschau?.netz?.engstellen?.liste?.[i];
+  if (!e) return;
+  if (!e.pos) { window.showHint?.(`Keine Lage bekannt: ${e.label}`, 4000); return; }
+  map.flyTo([e.pos.lat, e.pos.lng], Math.max(map.getZoom(), 18));
+  if (_engstelleMarker) map.removeLayer(_engstelleMarker);
+  _engstelleMarker = L.circleMarker([e.pos.lat, e.pos.lng], { radius: 16, color: ROT, weight: 3, fillColor: ROT, fillOpacity: 0.15, interactive: false }).addTo(map);
+  const mk = _engstelleMarker;
+  setTimeout(() => { if (_engstelleMarker === mk) { map.removeLayer(mk); _engstelleMarker = null; } }, 5000);
+  window.showHint?.(`🚧 ${e.label}${e.ueberKw > 0.5 ? ` — ${_fmt(e.ueberKw)} kW über der Kapazität` : ''}`, 5000);
+}
+
 function _vorschauHtml(nKand, stich) {
   const v = _ab.vorschau;
   if (!v) {
@@ -931,6 +1090,7 @@ function _vorschauHtml(nKand, stich) {
       ${ueber.length ? `<br><span style="color:${ORANGE};">${ueber.length} Dächer der Gruppe „${vorrangName}“ passen nicht mehr ${n.nurTrafo ? 'unter die Trafogrenze' : 'ins Netz'}${n.ausbau ? ' (auch nach der Ertüchtigung)' : ''} — sie werden trotzdem belegt, dort ist Netzausbau nötig.</span>` : ''}
       ${n.zugeordnet ? `<br>${n.zugeordnet} Gebäude ohne Kabelanbindung dem nächstgelegenen Trafo zugeordnet (Luftlinie, bis ${_fmt(n.zugeordnetMaxM)} m).` : ''}
       ${n.unbekannteQs && !n.ersatzQs && !n.nurTrafo ? `<br>⚠ ${n.unbekannteQs} Kabel ohne Querschnitt begrenzen nicht (Ersatzquerschnitt in der PV-Netzaufnahme).` : ''}
+      ${_engstellenHtml(n, stich)}
       ${_ausbauHtml(n.ausbau)}
     </div>` : '';
   return `
@@ -1011,5 +1171,6 @@ export function pvabBeenden() {
   _ab.vorschau = null;
   _ab.modus = null;
   _trafoCache = null;
+  if (_engstelleMarker) { map.removeLayer(_engstelleMarker); _engstelleMarker = null; }
   _bereichZeigen();
 }
