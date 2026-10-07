@@ -151,3 +151,69 @@ export function linieVereinfachen(linie, tolM = 0.5) {
   out.push(linie[linie.length - 1]);
   return out;
 }
+
+/** Nächster Punkt auf einer Polylinie: { punkt: { lat, lng }, abstand (m) }. */
+export function naechsterPunktAufLinie(p, linie) {
+  const kx = 111320 * Math.cos((p.lat * Math.PI) / 180), ky = 110540;
+  let best = { punkt: linie?.[0] || p, abstand: Infinity };
+  for (let i = 0; i < (linie || []).length - 1; i++) {
+    const a = linie[i], b = linie[i + 1];
+    const ax = (a.lng - p.lng) * kx, ay = (a.lat - p.lat) * ky, bx = (b.lng - p.lng) * kx, by = (b.lat - p.lat) * ky;
+    const dx = bx - ax, dy = by - ay, n = dx * dx + dy * dy;
+    const t = n ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / n)) : 0;
+    const d = Math.hypot(ax + t * dx, ay + t * dy);
+    if (d < best.abstand) best = { punkt: { lat: a.lat + t * (b.lat - a.lat), lng: a.lng + t * (b.lng - a.lng) }, abstand: d };
+  }
+  return best;
+}
+
+/**
+ * Gebäudeanschlüsse verbessern: Lohnt es sich, die Gebäude eines Asts per kurzem Stich an eine andere Leitung zu hängen,
+ * damit der Ast samt verwaister Zuleitung entfällt? Bewertet wird die eingesparte Trassenlänge (Ast, verwaiste
+ * Abzweige) gegen die neuen Stiche — so wird ein Gebäude auch von der etwas weiter entfernten Straße angeschlossen,
+ * wenn dafür kein Bogen um den Block nötig ist.
+ * kanten: [{ u, v, linie }]; o: { zentraleId, istAbzweig(id), gebaeude: Map id → { lat, lng }, kreuzt(von, nach, gebId) → bool,
+ *   maxStichM = 60, mehrAlsBisherM = 40, minGewinnM = 10, maxGebaeude = 12 }.
+ * Ergebnis: { kante, entfallen: [kanten], stiche: [{ gebId, ziel: kante, punkt, laenge }], gewinn } oder null.
+ */
+export function besteAstVerlegung(kanten, o) {
+  const { zentraleId, istAbzweig, gebaeude, kreuzt = () => false } = o;
+  const maxStich = o.maxStichM ?? 60, mehr = o.mehrAlsBisherM ?? 40, minGewinn = o.minGewinnM ?? 10, maxGeb = o.maxGebaeude ?? 12;
+  const laenge = k => linienLaenge(k.linie);
+  // bisheriger Stich je Gebäude (Länge der Leitung am Gebäude)
+  const bisher = new Map();
+  for (const k of kanten) for (const id of [k.u, k.v]) if (gebaeude.has(id)) bisher.set(id, Math.min(bisher.get(id) ?? Infinity, laenge(k)));
+  let best = null;
+  for (const kante of kanten) {
+    if (kante.u === zentraleId || kante.v === zentraleId) continue;
+    const a = strangAnalyse(kanten, kante, zentraleId, istAbzweig);
+    if (!a) continue;
+    const geb = [...a.teilnetz].filter(id => gebaeude.has(id));
+    if (!geb.length || geb.length > maxGeb) continue;
+    const imAst = kanten.filter(e => a.teilnetz.has(e.u) && a.teilnetz.has(e.v));
+    // Ziele der Stiche: übriges Netz und die Zuleitung, die sonst verwaist (sie bleibt dann ab dem Anschluss erhalten)
+    const tot = new Set(a.totKanten);
+    const ziele = kanten.filter(e => e !== kante && !imAst.includes(e) && !a.teilnetz.has(e.u) && !a.teilnetz.has(e.v));
+    if (!ziele.length) continue;
+    const stiche = [];
+    let ok = true;
+    for (const id of geb) {
+      const p = gebaeude.get(id);
+      let s = null;
+      for (const e of ziele) {
+        const n = naechsterPunktAufLinie(p, e.linie);
+        if (!s || n.abstand < s.laenge) s = { gebId: id, ziel: e, punkt: n.punkt, laenge: n.abstand };
+      }
+      if (!s || s.laenge > maxStich || s.laenge > (bisher.get(id) ?? 0) + mehr || kreuzt(p, s.punkt, id)) { ok = false; break; }
+      stiche.push(s);
+    }
+    if (!ok) continue;
+    // Von der Zuleitung bleibt alles ab dem am weitesten außen genutzten Abschnitt (totKanten läuft von außen zur Zentrale)
+    const genutzt = stiche.filter(st => tot.has(st.ziel)).map(st => a.totKanten.indexOf(st.ziel));
+    const ab = genutzt.length ? Math.min(...genutzt) : a.totKanten.length;
+    const entfallen = new Set([kante, ...imAst, ...a.totKanten.slice(0, ab)]);
+    const gewinn = [...entfallen].reduce((sum, e) => sum + laenge(e), 0) - stiche.reduce((sum, s) => sum + s.laenge, 0);
+    if (gewinn >= minGewinn && (!best || gewinn > best.gewinn)) best = { kante, entfallen: [...entfallen], stiche, gewinn };
+  }
+  return best;
+}

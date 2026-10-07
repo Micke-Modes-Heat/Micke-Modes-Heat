@@ -1,6 +1,6 @@
 // Vitest-Tests für lib/netz-strang.js — Strang umlegen: Teilnetz, verwaiste Abzweige, Wegsuche.
 import { describe, it, expect } from 'vitest';
-import { strangAnalyse, dijkstraBisZiel, abstandZuLinie, linienLaenge, linieVereinfachen, lageAufLinie, netzwegAbZentrale } from '../src/lib/netz-strang.js';
+import { strangAnalyse, dijkstraBisZiel, abstandZuLinie, linienLaenge, linieVereinfachen, lageAufLinie, netzwegAbZentrale, besteAstVerlegung } from '../src/lib/netz-strang.js';
 
 // Zentrale 1 — J10 — J11 — J12 (Außenquartier) — Gebäude 3, 4; an J10 hängt außerdem Gebäude 2
 const k = (u, v) => ({ u, v });
@@ -73,5 +73,29 @@ describe('Geometrie', () => {
   it('Vereinfachen entfernt nur Punkte auf der Geraden', () => {
     const l = [{ lat: 52, lng: 8 }, { lat: 52.0005, lng: 8 }, { lat: 52.001, lng: 8 }, { lat: 52.001, lng: 8.001 }];
     expect(linieVereinfachen(l)).toEqual([l[0], l[2], l[3]]);
+  });
+});
+
+describe('besteAstVerlegung', () => {
+  // Block: Zentrale unten links; Leitung rechts hoch (R), oben herum (O) und links runter (Li) zu zwei Gebäuden,
+  // die näher an der linken Straße liegen, aber auch von rechts mit einem etwas längeren Stich erreichbar sind.
+  const P = (lat, lng) => ({ lat, lng });
+  const knoten = { Z: P(52.0, 8.0), R0: P(52.0, 8.0012), R1: P(52.003, 8.0012), L1: P(52.003, 8.0), G1: P(52.0015, 8.0005), G2: P(52.0022, 8.0005) };
+  const kante = (u, v, ...zw) => ({ u, v, linie: [knoten[u], ...zw, knoten[v]] });
+  const L1a = P(52.0015, 8.0), L1b = P(52.0022, 8.0);
+  knoten.A1 = L1a; knoten.A2 = L1b;
+  const K = [kante('Z', 'R0'), kante('R0', 'R1'), kante('R1', 'L1'), kante('L1', 'A2'), kante('A2', 'A1'), kante('A2', 'G2'), kante('A1', 'G1')];
+  const o = { zentraleId: 'Z', istAbzweig: id => id !== 'Z' && !id.startsWith('G'), gebaeude: new Map([['G1', knoten.G1], ['G2', knoten.G2]]) };
+  it('hängt die Gebäude an die rechte Leitung, damit der Bogen über oben und links entfällt', () => {
+    const r = besteAstVerlegung(K, o);
+    expect(r).not.toBeNull();
+    expect(r.stiche.map(s => [s.gebId, s.ziel.u + '-' + s.ziel.v]).sort()).toEqual([['G1', 'R0-R1'], ['G2', 'R0-R1']]);
+    // entfallen: oben, links und die alten Stiche
+    expect(r.entfallen.map(k => k.u + '-' + k.v).sort()).toEqual(['A1-G1', 'A2-A1', 'A2-G2', 'L1-A2', 'R1-L1'].sort());
+    expect(r.gewinn).toBeGreaterThan(150);
+  });
+  it('lässt es bei kurzen Stichen, wenn der Umweg nicht spart oder ein Gebäude im Weg liegt', () => {
+    expect(besteAstVerlegung(K, { ...o, kreuzt: () => true })).toBeNull();
+    expect(besteAstVerlegung(K, { ...o, maxStichM: 20 })).toBeNull();
   });
 });

@@ -38,7 +38,7 @@ import { setEdgeStartId, setNetzEdges, setNetworkLocked, setSelectedId, setSelec
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { selectedStrandId } from './01-globals-varianten.js';
 import { netzSignatur, netzAenderungText, erstelleNetzVerlauf } from './lib/netz-verlauf.js';
-import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen, lageAufLinie, netzwegAbZentrale } from './lib/netz-strang.js';
+import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen, lageAufLinie, netzwegAbZentrale, besteAstVerlegung } from './lib/netz-strang.js';
 import { EIS, eisAuslegungVorschlag, eisBewertung, eisGeometrie, eisInvest } from './lib/eisspeicher.js';
 
 export function toggleGeoPanel() {
@@ -3983,6 +3983,8 @@ export function autoGenerateNetz(options = {}){
     });
     recalcNetz();
   }
+  // Gebäude von der sinnvolleren Straßenseite anschließen, statt die Leitung um den Block zu legen
+  const anschlussOpt = options.anschluesseOptimieren === false ? null : _anschluesseOptimieren();
   autoAssignEdgeCosts();
   // Nach der Erzeugung bewusst in eine ruhige Ergebnisansicht wechseln.
   setNetzRewireMode(false);
@@ -3998,8 +4000,91 @@ export function autoGenerateNetz(options = {}){
   const conflictInfo = conflictCount
     ? ` · ${conflictCount} Leitungsverlauf${conflictCount === 1 ? '' : 'e'} als Gebäudekonflikt markiert`
     : '';
-  showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte${streetInfo}${conflictInfo}.`, conflictCount ? 7000 : 4500);
+  const optInfo = anschlussOpt?.umgelegt
+    ? ` · ${anschlussOpt.umgelegt} Anschl${anschlussOpt.umgelegt === 1 ? 'uss' : 'üsse'} von der kürzeren Seite (−${Math.round(anschlussOpt.gespart)} m Trasse)`
+    : '';
+  showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte${optInfo}${streetInfo}${conflictInfo}.`, conflictCount ? 7000 : 4500);
   return window.netzEdges.length > 0;
+}
+
+/** Leitungen entfernen, die an einem Abzweig ohne Weiterführung enden (versorgen niemanden). Zentrale und Gebäude bleiben. */
+function _blattAbzweigeEntfernen() {
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  let entfernt = 0;
+  for (let runde = 0; runde < 500; runde++) {
+    const grad = new Map();
+    window.netzEdges.filter(e => !e.pruned).forEach(e => { grad.set(e.u,(grad.get(e.u) || 0) + 1); grad.set(e.v,(grad.get(e.v) || 0) + 1); });
+    const blatt = window.netzEdges.find(e => !e.pruned && [[e.u,e.uNode],[e.v,e.vNode]].some(([id,n]) =>
+      n && n.type !== 'geb' && id !== centralId && grad.get(id) === 1));
+    if (!blatt) break;
+    _removeNetzEdge(blatt);
+    entfernt++;
+  }
+  return entfernt;
+}
+
+/**
+ * Nach dem Aufbau: Äste, deren Gebäude sich mit kurzen Stichen an eine andere Leitung hängen lassen, so dass der Ast
+ * samt Zuleitung entfällt (z. B. Bogen um einen Block), umlegen — solange das Trasse spart (lib/netz-strang.js).
+ */
+export function _anschluesseOptimieren(maxRunden = 25) {
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  if (!centralId) return null;
+  const snapshot = captureWaermeNetzGraph();
+  const vorher = window._waermeNetzValidation || {};
+  const getrenntVorher = (vorher.disconnectedConsumerIds || []).length, zyklenVorher = vorher.cycleEdges || 0;
+  let gespart = 0, umgelegt = 0;
+  try {
+    for (let runde = 0; runde < maxRunden; runde++) {
+      const kanten = window.netzEdges.filter(e => !e.pruned);
+      const knoten = new Map();
+      kanten.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
+      const gebPunkte = new Map([...knoten].filter(([id,n]) => n?.type === 'geb' && id !== centralId).map(([id,n]) => [id,n.pt]));
+      const liste = kanten.map(e => ({u:e.u,v:e.v,linie:e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt],edge:e}));
+      const plan = besteAstVerlegung(liste,{
+        zentraleId:centralId, gebaeude:gebPunkte,
+        istAbzweig:id => !!knoten.get(id) && knoten.get(id).type !== 'geb',
+        kreuzt:(von,nach,gebId) => crossesForeignBuilding(L.latLng(von.lat,von.lng),L.latLng(nach.lat,nach.lng),gebaeude,[gebId]),
+      });
+      if (!plan) break;
+      // Zeitliche Schaltung der alten Hausanschlüsse (geplante Neubauten) übernehmen
+      const zeit = new Map();
+      plan.stiche.forEach(st => {
+        const alt = kanten.find(e => e.u === st.gebId || e.v === st.gebId);
+        if (alt?.visibleFromYear) zeit.set(st.gebId,{von:alt.visibleFromYear,bis:alt.visibleUntilYear ?? null});
+      });
+      plan.entfallen.forEach(x => _removeNetzEdge(x.edge));
+      const gebIds = new Set(plan.stiche.map(st => st.gebId));
+      plan.stiche.forEach(st => {
+        const punkt = L.latLng(st.punkt.lat,st.punkt.lng);
+        // Das Ziel kann von einem vorherigen Stich geteilt worden sein: dann die nächstgelegene Leitung ohne Gebäude am Ende
+        let ziel = window.netzEdges.includes(st.ziel.edge) ? st.ziel.edge : null;
+        if (!ziel) {
+          let d = Infinity;
+          window.netzEdges.filter(e => !e.pruned && !gebIds.has(e.u) && !gebIds.has(e.v)).forEach(e => {
+            const a = abstandZuLinie(punkt,e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt]);
+            if (a < d) { d = a; ziel = e; }
+          });
+        }
+        if (!ziel) throw new Error('kein Anschlussziel');
+        const neu = _makeNetzEdge(_knotenAufKante(ziel,punkt),knoten.get(st.gebId),0);
+        const z = zeit.get(st.gebId);
+        if (z) { neu.visibleFromYear = z.von; neu.visibleUntilYear = z.bis; }
+      });
+      _blattAbzweigeEntfernen();
+      gespart += plan.gewinn;
+      umgelegt += plan.stiche.length;
+    }
+    if (!umgelegt) return {gespart:0,umgelegt:0};
+    recalcNetz();
+    const v = window._waermeNetzValidation || {};
+    if ((v.cycleEdges || 0) > zyklenVorher || (v.disconnectedConsumerIds || []).length > getrenntVorher) throw new Error('ungültige Netzstruktur');
+    return {gespart,umgelegt};
+  } catch (error) {
+    console.warn('Anschlussoptimierung verworfen:',error);
+    applyWaermeNetzGraph(snapshot);
+    return {gespart:0,umgelegt:0};
+  }
 }
 
 export async function confirmAutoGenerateNetz(options = {}){
@@ -5121,6 +5206,15 @@ function _knotenAufKante(targetEdge, targetPoint) {
 let _strangPlan = null;
 let _strangPopup = null;
 
+function _punktImPolygon(p, polygon) {
+  let innen = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i], b = polygon[j];
+    if ((a.lat > p.lat) !== (b.lat > p.lat) && p.lng < ((b.lng - a.lng) * (p.lat - a.lat)) / (b.lat - a.lat) + a.lng) innen = !innen;
+  }
+  return innen;
+}
+
 function _strangPlanen(edge, punkt, verlaufVorher = null) {
   const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
   const kanten = window.netzEdges.filter(e => !e.pruned);
@@ -5138,6 +5232,19 @@ function _strangPlanen(edge, punkt, verlaufVorher = null) {
   const imNetz = kanten.filter(e => !entfaellt.has(e) && !analyse.teilnetz.has(e.u) && !analyse.teilnetz.has(e.v)).map(e => ({edge:e,linie:linie(e)}));
   const abstandZu = liste => p => Math.min(Infinity,...liste.map(x => abstandZuLinie(p,x.linie)));
   const unten = knoten.get(analyse.unten), zentrale = knoten.get(centralId);
+  // Losgelassen auf oder nahe der Heizzentrale: Strang direkt aus der Zentrale — Weg ab ihrem Anschlusspunkt an der Straße
+  let zurZentrale = false;
+  const zentraleGeb = gebaeude.find(g => g.id === centralId);
+  const aufZentrale = zentrale && (punkt.distanceTo(zentrale.pt) <= 40 ||
+    (zentraleGeb?.polygon?.length >= 3 && _punktImPolygon(punkt,zentraleGeb.polygon)));
+  if (aufZentrale) {
+    const nachbarn = kanten.filter(e => e.u === centralId || e.v === centralId).map(e => (e.u === centralId ? e.vNode : e.uNode))
+      .filter(n => n && !analyse.teilnetz.has(n.id));
+    if (nachbarn.length) {
+      punkt = nachbarn.reduce((a,b) => (a.pt.distanceTo(punkt) <= b.pt.distanceTo(punkt) ? a : b)).pt;
+      zurZentrale = true;
+    }
+  }
   // Leitungsweg von der Zentrale bis zu einem Punkt auf dem übrigen Netz (über die nächstgelegene Leitung)
   const netzweg = netzwegAbZentrale(imNetz.map(x => x.edge),centralId,e => linienLaenge(linie(e)));
   const leitungswegZurZentrale = p => {
@@ -5191,7 +5298,7 @@ function _strangPlanen(edge, punkt, verlaufVorher = null) {
   if (weg.every(p => Math.min(...bisher.map(l => abstandZuLinie(p,l))) <= 10) && linienLaenge(weg) >= 0.7 * laengeBisher) return null;
   const laenge = e => linienLaenge(linie(e));
   const delta = linienLaenge(weg) - linienLaenge(linieVorher) - analyse.totKanten.reduce((sum,e) => sum + laenge(e),0);
-  return {edge,analyse,unten,untenAnschluss,obenAnschluss,weg,viaPunkt:route.viaPunkt,delta,gebaeudeDahinter};
+  return {edge,analyse,unten,untenAnschluss,obenAnschluss,weg,viaPunkt:route.viaPunkt,delta,gebaeudeDahinter,zurZentrale};
 }
 
 export function netzStrangVorschlagSchliessen() {
@@ -5214,8 +5321,8 @@ export function netzStrangVorschlag(edge, punkt, verlaufVorher = null) {
   const n = plan.gebaeudeDahinter;
   const inhalt = document.createElement('div');
   inhalt.className = 'netz-strang-vorschlag';
-  inhalt.innerHTML = `<strong>Strang über diesen Punkt anbinden?</strong>`
-    + `<div>${n === 1 ? 'Das Gebäude dahinter wird' : `Die ${n} Gebäude dahinter werden`} über diese Straße an das Netz angeschlossen`
+  inhalt.innerHTML = `<strong>${plan.zurZentrale ? 'Strang direkt an die Heizzentrale anbinden?' : 'Strang über diesen Punkt anbinden?'}</strong>`
+    + `<div>${n === 1 ? 'Das Gebäude dahinter wird' : `Die ${n} Gebäude dahinter werden`} ${plan.zurZentrale ? 'über einen eigenen Strang aus der Heizzentrale versorgt' : 'über diese Straße an das Netz angeschlossen'}`
     + `${plan.analyse.totKanten.length ? '; nicht mehr benötigte Leitungen entfallen' : ''}.</div>`
     + `<div class="nsv-delta">Trassenlänge ca. ${delta > 0 ? '+' : delta < 0 ? '−' : '±'}${Math.abs(delta)} m</div>`
     + '<div class="nsv-knoepfe"><button type="button" class="nsv-ja">Strang umlegen</button>'
@@ -5291,6 +5398,7 @@ export function rewireBuildingConnection(buildingId, targetEdge, targetPoint) {
   if (!_nearestPointOnNetzEdge(targetEdge,targetPoint)) return false;
   if (parentEdge) _removeNetzEdge(parentEdge);
   _makeNetzEdge(_knotenAufKante(targetEdge,targetPoint),buildingNode,0);
+  _blattAbzweigeEntfernen();   // Leitungen, die nach dem Umhängen niemanden mehr versorgen
   recalcNetz();
   if ((window._waermeNetzValidation?.cycleEdges || 0) > 0 ||
       (window._waermeNetzValidation?.disconnectedConsumerIds || []).includes(buildingId)) {
