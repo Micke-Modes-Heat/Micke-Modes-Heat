@@ -22,6 +22,7 @@ import {
 } from './lib/gebaeude-3d.js';
 import {
   d3dRahmen, d3dDachEbenen, d3dDachDreiecke, d3dModule, d3dSchattierung,
+  d3dEbeneAusPunkten, d3dPolygon3dDreiecke,
 } from './lib/dach-3d.js';
 import { d3dNetzLinien, d3dStationen, D3D_STATIONEN } from './lib/netz-3d.js';
 import { firstPeilungGrad } from './lib/gebaeude-geometrie.js';
@@ -134,7 +135,8 @@ function d3dHatDachangabe(g) {
     || (g.dachform && g.dachform !== 'sattel')
     || g._pvDachformManuell
     || (g.dachAzimut != null && !g.dachAutoAzimut)
-    || g.pvRidgeOverride);
+    || g.pvRidgeOverride
+    || g.dachFlaechen?.length);
 }
 
 /**
@@ -152,6 +154,45 @@ function d3dAzimut(g, ring) {
   // Dachfläche senkrecht zum First, die Seite näher an Süd (wie detectRoofAzimutFromPolygon)
   const a = (first + 90) % 360, b = (first + 270) % 360;
   return Math.abs(a - 180) <= Math.abs(b - 180) ? a : b;
+}
+
+function _imRing(x, y, ring) {
+  let innen = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i], b = ring[j];
+    if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) innen = !innen;
+  }
+  return innen;
+}
+
+/**
+ * LoD2-Dach (37-lod2-import): echte Dachflächen und Giebelwände als Dreiecke,
+ * dazu die Ebene je Dachfläche für die Modulhöhe. Punkte [lat,lng,h] → lokal.
+ */
+function d3dLod2Geometrie(g, rahmen, traufe) {
+  // Aus dem Grundriss berechnete Dächer sitzen auf der aktuellen Wandhöhe
+  // (Geschosse × 3 m) — die kann sich seit der Berechnung geändert haben
+  const dz = g.dachLod2?.quelle === 'grundriss' ? traufe - (g.dachLod2.traufeM || traufe) : 0;
+  const lok = q => { const [x, y] = rahmen.nachXY(q[1], q[0]); return [x, y, q[2] + dz]; };
+  const dach = [], wand = [], ebenen = [];
+  for (const f of g.dachFlaechen || []) {
+    if (!Array.isArray(f.punkte) || f.punkte.length < 3) continue;
+    const pts = f.punkte.map(lok);
+    dach.push(...d3dPolygon3dDreiecke(pts));
+    const e = d3dEbeneAusPunkten(pts);
+    if (e) ebenen.push({ ...e, ring: pts, schraeg: !(f.neigung < 10) });
+  }
+  for (const w of g.dachLod2?.waende || []) if (w.length >= 3) wand.push(...d3dPolygon3dDreiecke(w.map(lok)));
+  const ebeneBei = (x, y) => {
+    let best = null, bestZ = -Infinity;
+    for (const e of ebenen) {
+      if (!_imRing(x, y, e.ring)) continue;
+      const z = e.a * x + e.b * y + e.c;
+      if (z > bestZ) { bestZ = z; best = e; }
+    }
+    return best;
+  };
+  return { dach, wand, ebeneBei };
 }
 
 let _farbCtx = null;
@@ -216,17 +257,25 @@ function d3dSzeneBauen(daten) {
     const zeigen = _d3d.daecher === 'alle' || (_d3d.daecher === 'angaben' && d3dHatDachangabe(g));
     // Höfe (Löcher) würde das Ebenenmodell überdachen → dort flach lassen
     const form = zeigen && ringe.length === 1 ? echteForm : 'flach';
-    const ebenen = d3dDachEbenen(form, pts, {
+    // LoD2-Dachflächen vorhanden → das echte Dach statt des Ebenenmodells
+    const lod2 = zeigen && g.dachFlaechen?.length ? d3dLod2Geometrie(g, rahmen, traufe) : null;
+    const ebenen = lod2 ? [{ a: 0, b: 0, c: traufe }] : d3dDachEbenen(form, pts, {
       azimut: d3dAzimut(g, ring), neigung: g.dachNeigung, traufe,
       first: g.pvRidgeOverride ? rahmen.nachXY(g.pvRidgeOverride.lng, g.pvRidgeOverride.lat) : null,
     });
-    if (form !== 'flach') {
+    const istAuswahl = f.properties.art === 'auswahl';
+    const wandRgb = () => istAuswahl ? auswahlRgb : d3dRgb(_d3d.modus === 'baujahr' ? f.properties.farbeBaujahr
+      : _d3d.modus === 'einheitlich' ? '#c9cdd3' : f.properties.farbe);
+    if (lod2) {
+      const wRgb = wandRgb();
+      for (const t of lod2.dach) dreieck(rahmen, t, istAuswahl ? auswahlRgb : dachRgb);
+      for (const t of lod2.wand) dreieck(rahmen, t, wRgb);
+      if (lod2.dach.length) stat.daecher++;
+    } else if (form !== 'flach') {
       const { dach, wand } = d3dDachDreiecke(pts, ebenen, traufe);
-      const istAuswahl = f.properties.art === 'auswahl';
-      const wandRgb = istAuswahl ? auswahlRgb : d3dRgb(_d3d.modus === 'baujahr' ? f.properties.farbeBaujahr
-        : _d3d.modus === 'einheitlich' ? '#c9cdd3' : f.properties.farbe);
+      const wRgb = wandRgb();
       for (const t of dach) dreieck(rahmen, t, istAuswahl ? auswahlRgb : dachRgb);
-      for (const t of wand) dreieck(rahmen, t, wandRgb);
+      for (const t of wand) dreieck(rahmen, t, wRgb);
       if (dach.length) stat.daecher++;
     }
     if (_d3d.module && typeof window.getGebPvModules === 'function'
@@ -235,7 +284,9 @@ function d3dSzeneBauen(daten) {
       try { res = window.getGebPvModules(g); } catch (e) { void e; }
       // Platziert wurde für die ECHTE Dachform (Schrägdach: auf der Dachhaut,
       // flach: aufgeständert) — so werden die Module auch dargestellt.
-      const quads = d3dModule(res, rahmen, { ebenen, schraeg: echteForm !== 'flach' && form !== 'flach' });
+      const quads = d3dModule(res, rahmen, lod2
+        ? { ebenen, ebeneBei: lod2.ebeneBei, schraeg: false }
+        : { ebenen, schraeg: echteForm !== 'flach' && form !== 'flach' });
       for (const q of quads) viereck(rahmen, q, modulRgb);
       stat.module += quads.length;
     }

@@ -29,7 +29,7 @@ import { polygonCenter, polygonAreaM2, forwardClickToMap, updateViz } from './02
 import {
   _hasBelegung, calcGebKwp, calcGebKwpKorr, getGebPvModules, pvNettoFlaeche,
   getDachDefaultNeigung, detectRoofAzimutFromPolygon, setPvVisible, escHtml, flyTo,
-  attachGebPvLayer, redrawGebPvModules, _clipPolyHalfPlane, _firstMitteLL,
+  attachGebPvLayer, redrawGebPvModules, _clipPolyHalfPlane, _firstMitteLL, FLACH_BIS_GRAD, pvFlaecheDachZuordnen,
 } from './03c-gebaeude-io.js';
 import { getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 
@@ -460,7 +460,7 @@ export function pvModusZuordnen(punkte) {
 
 // Fläche aus fertigen Punkten anlegen — gemeinsamer Weg für Rechteck und
 // Grundrissübernahme. Das freie Polygon geht weiter über finishGebPvDraw.
-function _flaecheAnhaengen(g, punkte, typ) {
+function _flaecheAnhaengen(g, punkte, typ, zeichnen = true) {
   if (!g.pvFlaechen) g.pvFlaechen = [];
   window._gebPvFlCounter = (window._gebPvFlCounter || 0) + 1;
   const fl = {
@@ -468,11 +468,12 @@ function _flaecheAnhaengen(g, punkte, typ) {
     polygon: punkte.map(p => ({ lat: p.lat, lng: p.lng })),
     flaeche: polygonAreaM2(punkte) || 0, layer: null, svgLayer: null,
   };
+  pvFlaecheDachZuordnen(g, fl);            // auf LoD2-Dächern: Ausrichtung der Dachfläche darunter
   g.pvFlaechen.push(fl);
   g.pvModus = 'flaechen';
   if (typ !== 'sperr') g.pvAktiv = true;
   attachGebPvLayer(g, fl);
-  redrawGebPvModules(g);
+  if (zeichnen) redrawGebPvModules(g);
   return fl;
 }
 
@@ -525,6 +526,7 @@ export function pvModusNachFlaeche(g) {
  */
 function _nordSeite(g) {
   if (!g || g.dachform !== 'sattel') return null;   // nur hier gibt es zwei Seiten
+  if (g.dachFlaechen?.length) return null;           // LoD2: Nordflächen werden gar nicht erst belegt
   const sektor = _vorgabe().nordSektor ?? 45;
   const abstandNord = a => { const x = ((a % 360) + 360) % 360; return Math.min(x, 360 - x); };
   const A = g.dachAzimut ?? 180;
@@ -616,10 +618,10 @@ export function pvmNordAussparen(gId) {
 // Erstbelegung eines Dachs: Vorgabewerte und Azimut aus dem Grundriss setzen,
 // Nordseite aussparen, danach kWp ins Asset.
 // @returns {number[]} ids automatisch angelegter Sperrflächen (für Strg+Z)
-function _erstbelegung(g) {
+function _erstbelegung(g, neu = 1) {
   if (!g || !_hasBelegung(g)) return [];
   const v = _vorgabe();
-  const erste = (g.pvFlaechen || []).filter(f => f.typ !== 'sperr').length <= 1;
+  const erste = (g.pvFlaechen || []).filter(f => f.typ !== 'sperr').length <= neu;
   let nordIds = [];
   if (erste) {
     // Echte Dachangaben (aus OSM oder von Hand, g.dachQuelle) haben Vorrang vor den Vorgaben
@@ -643,7 +645,10 @@ function _erstbelegung(g) {
 // Die Sperrflächen stehen vorn: Strg+Z arbeitet die Liste der Reihe nach ab und
 // die Assetfrage hängt daran, dass die Belegung zuletzt verschwindet.
 function _schritt(gId, belId, nordIds, assetVorher) {
-  return [...nordIds.map(flId => ({ gId, flId })), { gId, flId: belId, assetVorher }];
+  const bel = Array.isArray(belId) ? belId : [belId];
+  return [...nordIds.map(flId => ({ gId, flId })),
+    ...bel.slice(0, -1).map(flId => ({ gId, flId })),
+    { gId, flId: bel[bel.length - 1], assetVorher }];
 }
 
 // kWp ins PV-Asset schreiben; legt es an, wenn es noch keins gibt (pvuFixOne
@@ -702,9 +707,58 @@ export function pvmUndo() {
 // GRUNDRISS ÜBERNEHMEN
 // ══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Nach neu berechneten Dachflächen (37 dachGrundrissNeu): Belegungen, die aus
+ * Dachflächen entstanden sind, durch die neuen Flächen ersetzen; kWp ins Asset.
+ * Andere Belegungen (frei gezeichnet ohne Dachfläche) bleiben.
+ */
+export function pvmDachflaechenNeuBelegen(g) {
+  const weg = (g?.pvFlaechen || []).filter(fl => fl.typ === 'belegung' && fl.dachFlaecheId != null);
+  if (!weg.length) return;
+  for (const fl of weg) {
+    if (fl.layer) map.removeLayer(fl.layer);
+    if (fl.svgLayer) map.removeLayer(fl.svgLayer);
+  }
+  g.pvFlaechen = g.pvFlaechen.filter(fl => !weg.includes(fl));
+  if (g.dachFlaechen?.length) _grundriss(g);
+  if (!_hasBelegung(g)) g.pvAktiv = false;
+  _uebernehmen(g);
+  window._rerenderCard?.(g.id);
+  window._updateGebLabelPv?.(g.id);
+  pvModusRender();
+}
+
+/**
+ * Belegbare LoD2-Dachflächen eines Gebäudes: nicht senkrecht, groß genug für
+ * ein paar Module und — wenn „Nordseiten aussparen" an ist — nicht nach Norden
+ * geneigt (flache Flächen werden aufgeständert und zählen immer).
+ */
+function _dachflaechenZumBelegen(g) {
+  const v = _vorgabe();
+  const sektor = v.nordSektor ?? 45;
+  const abstandNord = a => { const x = ((a % 360) + 360) % 360; return Math.min(x, 360 - x); };
+  return (g.dachFlaechen || []).filter(f => Array.isArray(f.punkte) && f.punkte.length >= 3
+    && f.neigung <= 75 && (f.grundM2 ?? 0) >= 4
+    && !(v.nordSperr && f.neigung >= FLACH_BIS_GRAD && abstandNord(f.azimut) <= sektor));
+}
+
+/**
+ * Grundriss als Belegungsfläche übernehmen — bzw. bei LoD2-Dachdaten jede
+ * belegbare Dachfläche einzeln (mit eigener Neigung und Ausrichtung).
+ * @returns {any[]} angelegte Flächen (leer, wenn nichts belegbar ist)
+ */
 function _grundriss(g) {
-  if (!g || !Array.isArray(g.polygon) || g.polygon.length < 3) return null;
-  return _flaecheAnhaengen(g, g.polygon, 'belegung');
+  if (!g || !Array.isArray(g.polygon) || g.polygon.length < 3) return [];
+  if (g.dachFlaechen?.length) {
+    const fls = _dachflaechenZumBelegen(g).map(f => {
+      const fl = _flaecheAnhaengen(g, f.punkte.map(q => ({ lat: q[0], lng: q[1] })), 'belegung', false);
+      fl.azimut = f.azimut; fl.neigung = f.neigung; fl.dachFlaecheId = f.id;
+      return fl;
+    });
+    if (fls.length) redrawGebPvModules(g);
+    return fls;
+  }
+  return [_flaecheAnhaengen(g, g.polygon, 'belegung')];
 }
 
 /** Grundriss eines Gebäudes als Belegungsfläche übernehmen. */
@@ -714,11 +768,14 @@ export function pvmGrundriss(gId) {
   if (_hasBelegung(g) &&
       !confirm(`„${_name(g)}" hat bereits eine Belegungsfläche.\nGrundriss zusätzlich übernehmen?`)) return;
   _assetStandErfassen();
-  const fl = _grundriss(g);
-  if (!fl) { alert('Dieses Gebäude hat keinen Grundriss.'); return; }
   const vorher = _assetVorher(g.id);
-  const nordIds = _erstbelegung(g);
-  _verlaufMerken(_schritt(g.id, fl.id, nordIds, vorher));
+  const fls = _grundriss(g);
+  if (!fls.length) {
+    alert(g.dachFlaechen?.length ? 'Keine belegbare Dachfläche (alle zu klein, zu steil oder nach Norden).' : 'Dieses Gebäude hat keinen Grundriss.');
+    return;
+  }
+  const nordIds = _erstbelegung(g, fls.length);
+  _verlaufMerken(_schritt(g.id, fls.map(f => f.id), nordIds, vorher));
   window.pvModusGeb = g.id;
   window.calcStromPanel?.();
   window.renderGebPvPanel?.();
@@ -767,10 +824,10 @@ export function pvmStapelBelegen(ziele) {
     for (const g of ziele) {
       if (!g || _hasBelegung(g)) continue;
       const vorher = _assetVorher(g.id);
-      const fl = _grundriss(g);
-      if (!fl) continue;
-      const nordIds = _erstbelegung(g);
-      schritt.push(..._schritt(g.id, fl.id, nordIds, vorher));
+      const fls = _grundriss(g);
+      if (!fls.length) continue;
+      const nordIds = _erstbelegung(g, fls.length);
+      schritt.push(..._schritt(g.id, fls.map(f => f.id), nordIds, vorher));
       summe += calcGebKwpKorr(g) || 0;
       anzahl++;
     }
@@ -796,6 +853,16 @@ export function pvmStapelBelegen(ziele) {
 export function pvmProbe(g) {
   if (!g || !Array.isArray(g.polygon) || g.polygon.length < 3) return null;
   const v = _vorgabe();
+  if (g.dachFlaechen?.length) {
+    const t = { ...g, pvModus: 'flaechen', _pvModCache: null, _pvModSig: null,
+      pvFlaechen: _dachflaechenZumBelegen(g).map((f, i) => {
+        const poly = f.punkte.map(q => ({ lat: q[0], lng: q[1] }));
+        return { id: -1 - i, typ: 'belegung', polygon: poly, flaeche: polygonAreaM2(poly) || 0, azimut: f.azimut, neigung: f.neigung };
+      }) };
+    if (v.belegung != null) t.pvFlBelegung = v.belegung;
+    if (!t.pvFlaechen.length) return { kwp: 0, kwpKorr: 0, module: 0 };
+    return { kwp: calcGebKwp(t) || 0, kwpKorr: calcGebKwpKorr(t) || 0, module: getGebPvModules(t).count || 0 };
+  }
   const poly = g.polygon.map(p => ({ lat: p.lat, lng: p.lng }));
   const t = { ...g, pvModus: 'flaechen', _pvModCache: null, _pvModSig: null,
     pvFlaechen: [{ id: -1, typ: 'belegung', polygon: poly, flaeche: polygonAreaM2(poly) || 0 }] };
@@ -966,10 +1033,18 @@ function _aktivBlock(g) {
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;">${escHtml(_name(g))}</span>
       <span style="font-family:'DM Mono',monospace;color:${GELB};font-size:11px;">${kwp.toFixed(1)} kWp</span>
     </div>
+    ${g.dachFlaechen?.length ? `
+    <div style="font-size:9.5px;color:var(--muted);margin-bottom:4px;line-height:1.4;"
+      title="${g.dachLod2?.quelle === 'grundriss' ? 'Aus dem Grundriss berechnet (Flügel mit Sattel-/Walmdach, Kehlen an den Anschlüssen) — folgt Dachform und Neigung des Gebäudes' : 'Amtliches 3D-Gebäudemodell: jede Dachfläche mit eigener Neigung und Ausrichtung'}">
+      ${g.dachLod2?.quelle === 'grundriss' ? '📐 Aus Grundriss' : '🏠 LoD2'}: ${g.dachFlaechen.length} Dachflächen${g.dachLod2 ? ` · Traufe ${g.dachLod2.traufeM.toFixed(1)} m · First ${g.dachLod2.firstM.toFixed(1)} m` : ''}
+    </div>
     <button class="btn-xs" style="width:100%;border-color:${GELB};color:${GELB};"
       data-click="pvmGrundriss(${g.id})"
-      title="Den Gebäudegrundriss als Belegungsfläche übernehmen — bei Schrägdächern ist er die Dachfläche (Projektion und Firstteilung macht die Berechnung)">⊞ Grundriss als Fläche</button>
-    ${g.dachform === 'sattel' ? `
+      title="Jede belegbare Dachfläche als eigene Belegungsfläche übernehmen (mit ihrer Neigung und Ausrichtung; Nordflächen nach den Vorgaben ausgelassen)">⊞ Dachflächen übernehmen</button>` : `
+    <button class="btn-xs" style="width:100%;border-color:${GELB};color:${GELB};"
+      data-click="pvmGrundriss(${g.id})"
+      title="Den Gebäudegrundriss als Belegungsfläche übernehmen — bei Schrägdächern ist er die Dachfläche (Projektion und Firstteilung macht die Berechnung)">⊞ Grundriss als Fläche</button>`}
+    ${g.dachform === 'sattel' && !g.dachFlaechen?.length ? `
     <button class="btn-xs" style="width:100%;margin-top:4px;${nordDa ? `border-color:${ROT};color:${ROT};` : ''}"
       data-click="pvmNordAussparen(${g.id})"
       title="${nordDa

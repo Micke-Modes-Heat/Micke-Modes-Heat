@@ -347,6 +347,12 @@ export function getPvKorrFaktor(g) {
 
 // kWp mit Ertragskorrekturfaktor
 export function calcGebKwpKorr(g) {
+  // Belegungen mit eigener Ausrichtung (LoD2-Dachflächen): Ertragsfaktor je Fläche,
+  // gewichtet nach Modulanzahl.
+  if (g.pvModus === 'flaechen' && _hasBelegung(g)) {
+    const res = getGebPvModules(g);
+    if (res.gruppen) return calcGebKwp(g) * _gruppenKorrFaktor(g, res.gruppen);
+  }
   // Satteldach im Flächen-Modus (Phase 4): Ertragsfaktor anteilig aus beiden
   // Dachhälften (Azimut A / A+180), gewichtet nach Modulanzahl je Seite.
   if (g.pvModus === 'flaechen' && _hasBelegung(g) && g.dachform === 'sattel') {
@@ -1251,6 +1257,8 @@ window.updateGebDach = function(gId, field, value) {
   } else if (field === 'dachNeigung') {
     g.dachNeigung = value === '' ? null : parseFloat(value);
   }
+  // Aus dem Grundriss berechnete Dachflächen folgen den Dachangaben (37)
+  window.dachGrundrissNeu?.(g);
   // Im Flächen-Modus beeinflussen Dachform/Neigung/Azimut Platzierung, kWp UND Profil
   if (g.pvModus === 'flaechen' && _hasBelegung(g)) {
     redrawGebPvModules(g); calcStromPanel();
@@ -1594,15 +1602,136 @@ export function buildPvModuleOverlay(res) {
   return { svgEl, bounds: [[minLat, minLng], [maxLat, maxLng]] };
 }
 
+// ── Dachflächen mit eigener Ausrichtung (LoD2) ──────────────────────────────
+// g.dachFlaechen = [{ id, punkte:[[lat,lng,h]], neigung, azimut, flaecheM2, grundM2 }]
+// (aus 37-lod2-import.js, Dachdaten — für alle Varianten gleich). Eine Belegungs-
+// fläche trägt optional fl.azimut/fl.neigung (+ dachFlaecheId). Neu gezeichnete
+// Flächen bekommen sie beim Anlegen von der Dachfläche darunter
+// (pvFlaecheDachZuordnen); ältere Grundriss-Belegungen bleiben bei den Gebäudewerten.
+
+function _llImPolygon(p, poly) {
+  let innen = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.lat > p.lat) !== (b.lat > p.lat)
+        && p.lng < (b.lng - a.lng) * (p.lat - a.lat) / (b.lat - a.lat) + a.lng) innen = !innen;
+  }
+  return innen;
+}
+
+/** LoD2-Dachfläche unter einem Punkt (die höchste, falls sich Flächen überdecken). */
+export function dachflaecheBei(g, p) {
+  let best = null, bestH = -Infinity;
+  for (const f of g.dachFlaechen || []) {
+    if (!Array.isArray(f.punkte) || f.punkte.length < 3) continue;
+    if (!_llImPolygon(p, f.punkte.map(q => ({ lat: q[0], lng: q[1] })))) continue;
+    const h = Math.max(...f.punkte.map(q => q[2] || 0));
+    if (h > bestH) { bestH = h; best = f; }
+  }
+  return best;
+}
+
+/**
+ * Ausrichtung einer Belegungsfläche: eigene Angabe, sonst null (= Gebäudewerte).
+ * @returns {{azimut:number, neigung:number}|null}
+ */
+export function pvFlaecheOrientierung(g, fl) {
+  if (fl.azimut != null || fl.neigung != null) return { azimut: fl.azimut ?? 180, neigung: fl.neigung ?? 0 };
+  return null;
+}
+
+/**
+ * Neu gezeichnete Belegung auf einem Gebäude mit LoD2-Dachflächen: Ausrichtung
+ * und Neigung der Dachfläche unter ihrem Schwerpunkt übernehmen.
+ */
+export function pvFlaecheDachZuordnen(g, fl) {
+  if (!g?.dachFlaechen?.length || fl.typ !== 'belegung' || !(fl.polygon?.length >= 3)) return;
+  const d = dachflaecheBei(g, _polyCentroidLL(fl.polygon));
+  if (d) { fl.azimut = d.azimut; fl.neigung = d.neigung; fl.dachFlaecheId = d.id; }
+}
+
+// Neigung, unter der eine Dachfläche als Flachdach (aufgeständert) belegt wird
+export const FLACH_BIS_GRAD = 10;
+
+/**
+ * Modulplatzierung je Belegungsfläche mit eigener Ausrichtung: jede Fläche für
+ * sich am eigenen First (Azimut/Neigung), flache Flächen aufgeständert wie das
+ * Flachdach des Gebäudes. Liefert zusätzlich `gruppen` für den Ertrag je Fläche.
+ */
+function _computeJeFlaeche(g, belFl, orient, sperr, mb, ml) {
+  const allPts = belFl.flatMap(f => f.polygon);
+  const frame = {
+    maxLat: Math.max(...allPts.map(p => p.lat)), minLat: Math.min(...allPts.map(p => p.lat)),
+    maxLng: Math.max(...allPts.map(p => p.lng)), minLng: Math.min(...allPts.map(p => p.lng)),
+  };
+  const beleg = (g.pvFlBelegung != null ? g.pvFlBelegung : 90) / 100;
+  const gcr = (g.pvFlGcr != null ? g.pvFlGcr : (g.pvFlAusrichtung === 'ostwest' ? 85 : 40)) / 100;
+  const gebSchraeg = !!(g.dachform && g.dachform !== 'flach');
+  const modules = [], gruppen = [];
+  let bbox = null;
+  belFl.forEach((f, i) => {
+    const o = orient[i];
+    const flach = o ? o.neigung < FLACH_BIS_GRAD : !gebSchraeg;
+    const azimut = o ? o.azimut : (g.dachAzimut ?? 180);
+    const neigung = o ? o.neigung : (g.dachNeigung ?? getDachDefaultNeigung(g.dachform || 'sattel'));
+    const r = placePvModules([f.polygon], sperr, flach
+      ? { pitched: false, coverage: gcr, ausrichtung: g.pvFlAusrichtung || 'sued', moduleW: mb, moduleL: ml, frame }
+      : { pitched: true, tiltDeg: neigung, azimutDeg: azimut, coverage: beleg, moduleW: mb, moduleL: ml, frame });
+    for (const m of r.modules) { m.flId = f.id; modules.push(m); }
+    if (r.bbox) bbox = r.bbox;
+    gruppen.push({ flId: f.id, count: r.count, azimut, neigung: flach ? 0 : neigung, flach });
+  });
+  return { modules, count: modules.length, bbox, gruppen };
+}
+
+/** Ertragsfaktor über die Gruppen (nach Modulanzahl gewichtet). */
+function _gruppenKorrFaktor(g, gruppen) {
+  let n = 0, s = 0;
+  for (const gr of gruppen) {
+    if (!gr.count) continue;
+    const f = gr.flach
+      ? getPvKorrFaktor({ dachform: 'flach', pvFlAusrichtung: g.pvFlAusrichtung })
+      : getPvKorrFaktor({ dachform: 'sattel', dachAzimut: ((gr.azimut % 360) + 360) % 360, dachNeigung: gr.neigung });
+    n += gr.count; s += gr.count * f;
+  }
+  return n > 0 ? s / n : getPvKorrFaktor(g);
+}
+
+/**
+ * kWp eines Gebäudes nach Profilklasse (Süd / Ost-West) — nur für Gebäude mit
+ * Flächen eigener Ausrichtung, sonst null (dann gilt die Gebäudeklasse wie bisher).
+ * Ost- oder West-Flächen (±45°) laufen im Ost-West-Profil.
+ */
+export function gebPvKwpJeAusrichtung(g) {
+  if (g.pvModus !== 'flaechen' || !_hasBelegung(g)) return null;
+  const res = getGebPvModules(g);
+  if (!res.gruppen) return null;
+  const wp = parseFloat(document.getElementById('pv-modul-wp')?.value) || 450;
+  const out = { sued: 0, ostwest: 0 };
+  for (const gr of res.gruppen) {
+    const kwp = gr.count * wp / 1000;
+    let ow;
+    if (gr.flach) ow = g.pvFlAusrichtung === 'ostwest';
+    else { const a = ((gr.azimut % 360) + 360) % 360; ow = Math.min(Math.abs(a - 90), Math.abs(a - 270)) <= 45; }
+    out[ow ? 'ostwest' : 'sued'] += kwp;
+  }
+  return out;
+}
+
 // Gebäude-Adapter: baut die placePvModules-Optionen aus dem Gebäude (Dachform etc.).
 // Satteldach (Phase 4): jede Belegung wird am First in zwei Hälften (Azimut A / A+180)
 // geteilt und seitenweise platziert → echte zweiseitige Dachoptik + Ertrag je Seite.
 function _computeGebPvModules(g) {
-  const bel   = (g.pvFlaechen || []).filter(f => f.typ === 'belegung' && f.polygon && f.polygon.length >= 3).map(f => f.polygon);
+  const belFl = (g.pvFlaechen || []).filter(f => f.typ === 'belegung' && f.polygon && f.polygon.length >= 3);
+  const bel   = belFl.map(f => f.polygon);
   const sperr = (g.pvFlaechen || []).filter(f => f.typ === 'sperr'    && f.polygon && f.polygon.length >= 3).map(f => f.polygon);
   const mb = parseFloat(document.getElementById('pv-modul-breite')?.value) || 1.1;
   const ml = parseFloat(document.getElementById('pv-modul-laenge')?.value) || 1.7;
   const isPitched = !!(g.dachform && g.dachform !== 'flach');
+
+  // Flächen mit eigener Ausrichtung (LoD2) → je Fläche; sonst Gebäudewerte wie bisher
+  const orient = belFl.map(f => pvFlaecheOrientierung(g, f));
+  if (orient.some(Boolean)) return _computeJeFlaeche(g, belFl, orient, sperr, mb, ml);
 
   if (isPitched && g.dachform === 'sattel' && bel.length) {
     // ── First-Split: Belegung am First (durch den Schwerpunkt, senkrecht zum Azimut) teilen ──
@@ -1680,10 +1809,11 @@ function _computeGebPvModules(g) {
 function _gebPvSig(g) {
   const b = document.getElementById('pv-modul-breite')?.value;
   const l = document.getElementById('pv-modul-laenge')?.value;
-  const fls = (g.pvFlaechen || []).map(f => `${f.id}:${f.typ}:${Math.round(f.flaeche || 0)}`).join(',');
+  const fls = (g.pvFlaechen || []).map(f => `${f.id}:${f.typ}:${Math.round(f.flaeche || 0)}:${f.azimut ?? ''}:${f.neigung ?? ''}`).join(',');
+  const dfl = (g.dachFlaechen || []).map(f => `${f.azimut}/${f.neigung}`).join(',');
   const ridge = g.pvRidgeOverride ? `${g.pvRidgeOverride.lat.toFixed(6)},${g.pvRidgeOverride.lng.toFixed(6)}` : '';
   return [fls, g.pvFlGcr, g.pvFlAusrichtung, g.pvFlBelegung,
-          g.dachform, g.dachNeigung, g.dachAzimut, ridge, b, l].join('|');
+          g.dachform, g.dachNeigung, g.dachAzimut, ridge, b, l, dfl].join('|');
 }
 
 // Satteldach-Ertragsfaktor: nach Modulanzahl gewichteter Mittelwert der beiden
@@ -1872,6 +2002,7 @@ window.finishGebPvDraw = function() {
   if (!g.pvFlaechen) g.pvFlaechen = [];
   window._gebPvFlCounter = (window._gebPvFlCounter || 0) + 1;
   const fl = { id: window._gebPvFlCounter, typ, polygon: pts, flaeche: polygonAreaM2(pts) || 0, layer: null, svgLayer: null };
+  pvFlaecheDachZuordnen(g, fl);
   g.pvFlaechen.push(fl);
   attachGebPvLayer(g, fl);
   redrawGebPvModules(g);   // Module neu platzieren (Belegung erweitert / Sperrfläche schneidet aus)
@@ -2292,6 +2423,7 @@ function _rotateHandleIcon() {
 }
 
 function _finishGrundrissChange(g, areaChanged) {
+  window.dachGrundrissNeu?.(g);              // berechnete Dachflächen folgen dem Grundriss (37)
   if (areaChanged) {
     g.flaeche = polygonAreaM2(g.polygon);
     // defer: Totals/Netz/Lastgang werden unten einmal gesammelt angestoßen statt mehrfach
@@ -2434,7 +2566,7 @@ function _redrawGrundrissHandles(g) {
     if (event.originalEvent?.shiftKey) delta = Math.round(delta / 5) * 5;
     delta = ((delta + 540) % 360) - 180; // −180…180
     const f = drehFunktion(zentrum, delta);
-    _gebTransformieren(g, rotStart, p => { const r = f(p); return L.latLng(r.lat, r.lng); });
+    _gebTransformieren(g, rotStart, p => { const r = f(p); return L.latLng(r.lat, r.lng); }, delta);
     if (typeof rotStart.dachAzimut === 'number') g.dachAzimut = Math.round((rotStart.dachAzimut + delta + 360) % 360);
     rotMarker._delta = delta;
     _grundrissEdit.drehWinkel = (peil + delta + 360) % 360;
@@ -2445,8 +2577,34 @@ function _redrawGrundrissHandles(g) {
 }
 
 // Momentaufnahme aller am Grundriss hängenden Geometrie (für Verschieben/Drehen)
+// Zusatzfelder einer PV-Fläche, die mitgespeichert/kopiert werden müssen
+// (auto = automatische Nordseite, azimut/neigung = eigene Ausrichtung je Dachfläche).
+// Neue Flächenfelder hier eintragen — die Feldlisten beim Speichern, Laden,
+// Duplizieren und Gebäudeimport nutzen diese Funktion.
+function _pvFlZusatz(f) {
+  const z = {};
+  if (f.auto) z.auto = f.auto;
+  if (f.azimut != null) z.azimut = f.azimut;
+  if (f.neigung != null) z.neigung = f.neigung;
+  if (f.dachFlaecheId != null) z.dachFlaecheId = f.dachFlaecheId;
+  return z;
+}
+
+// LoD2-Dachdaten (Punkte [lat,lng,h]) mit einer Punktabbildung fn({lat,lng})→{lat,lng}
+function _dachDatenAbbilden(dachFlaechen, dachLod2, fn, dAzimut = 0) {
+  const pkt = q => { const r = fn({ lat: q[0], lng: q[1] }); return [r.lat, r.lng, q[2]]; };
+  return {
+    dachFlaechen: dachFlaechen ? dachFlaechen.map(f => ({ ...f, punkte: f.punkte.map(pkt),
+      azimut: Math.round((((f.azimut + dAzimut) % 360) + 360) % 360) })) : dachFlaechen,
+    dachLod2: dachLod2 ? { ...dachLod2, waende: (dachLod2.waende || []).map(w => w.map(pkt)) } : dachLod2,
+  };
+}
+
 function _gebSnapshot(g) {
   return {
+    dachFlaechen: g.dachFlaechen ? structuredClone(g.dachFlaechen) : null,
+    dachLod2: g.dachLod2 ? structuredClone(g.dachLod2) : null,
+    flAzimut: new Map((g.pvFlaechen || []).filter(fl => fl.azimut != null).map(fl => [fl, fl.azimut])),
     polygon: g.polygon.map(point => L.latLng(point.lat, point.lng)),
     pvFlaechen: (g.pvFlaechen || []).map(fl => ({
       fl,
@@ -2464,7 +2622,8 @@ function _gebSnapshot(g) {
 }
 
 // Wendet eine Punktabbildung fn(latlng)→latlng auf die Momentaufnahme an
-function _gebTransformieren(g, snap, fn) {
+// dAzimut: Drehung in Grad (nur beim Drehen) — dreht die Ausrichtung der Dachflächen mit
+function _gebTransformieren(g, snap, fn, dAzimut = 0) {
   g.polygon = snap.polygon.map(fn);
   g.polygonLayer?.setLatLngs(g.polygon);
   snap.pvFlaechen.forEach(({ fl, polygon }) => {
@@ -2475,6 +2634,12 @@ function _gebTransformieren(g, snap, fn) {
     const r = fn(snap.pvRidgeOverride);
     g.pvRidgeOverride = { lat: r.lat, lng: r.lng };
   }
+  if (snap.dachFlaechen || snap.dachLod2) {
+    const d = _dachDatenAbbilden(snap.dachFlaechen, snap.dachLod2, fn, dAzimut);
+    if (snap.dachFlaechen) g.dachFlaechen = d.dachFlaechen;
+    if (snap.dachLod2) g.dachLod2 = d.dachLod2;
+  }
+  snap.flAzimut?.forEach((az, fl) => { fl.azimut = Math.round((((az + dAzimut) % 360) + 360) % 360); });
   snap.assets.forEach(({ asset, lat, lng }) => {
     const r = fn({ lat, lng });
     asset.lat = r.lat;
@@ -2576,13 +2741,18 @@ export function dupliziereGebaeude(gId) {
   t.sanierungen = structuredClone(q.sanierungen || []);
   t.massnahmen = structuredClone(q.massnahmen || []);
   if (q.pvRidgeOverride) t.pvRidgeOverride = { lat: q.pvRidgeOverride.lat, lng: q.pvRidgeOverride.lng + dLng };
+  if (q.dachFlaechen || q.dachLod2) {
+    const d = _dachDatenAbbilden(structuredClone(q.dachFlaechen || null), structuredClone(q.dachLod2 || null), shift);
+    if (d.dachFlaechen) t.dachFlaechen = d.dachFlaechen;
+    if (d.dachLod2) t.dachLod2 = d.dachLod2;
+  }
   if (!Number.isInteger(window._gebPvFlCounter)) window._gebPvFlCounter = 1;
   t.pvFlaechen = (q.pvFlaechen || []).map(fl => ({
     id: window._gebPvFlCounter++,
     typ: fl.typ,
     polygon: (fl.polygon || []).map(shift),
     flaeche: fl.flaeche,
-    ...(fl.auto ? { auto: fl.auto } : {}),
+    ..._pvFlZusatz(fl),
     layer: null,
     svgLayer: null,
   }));
@@ -3148,11 +3318,13 @@ export function _buildProjectData() {
       dachNeigung: g.dachNeigung ?? null, dachAutoAzimut: g.dachAutoAzimut || false,
       dachQuelle: g.dachQuelle || null,
       pvRidgeOverride: g.pvRidgeOverride || null,
+      ...(g.dachFlaechen?.length ? { dachFlaechen: g.dachFlaechen } : {}),
+      ...(g.dachLod2 ? { dachLod2: g.dachLod2 } : {}),
       pvModus: g.pvModus || 'flaechen', pvFlGcr: g.pvFlGcr ?? null, pvFlAusrichtung: g.pvFlAusrichtung || 'sued',
       pvFlBelegung: g.pvFlBelegung ?? null, pvBaujahr: g.pvBaujahr ?? null,
       notstrom: g.notstrom || null,
       stationSteckbrief: g.stationSteckbrief || null,
-      pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ...(f.auto ? { auto: f.auto } : {}) })),
+      pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ..._pvFlZusatz(f) })),
       massnahmen: g.massnahmen || [],
       importSourceId: g.importSourceId || null,
       importSourceName: g.importSourceName || null,
@@ -3479,6 +3651,7 @@ function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
     'stromProfil','pvAktiv','pvDachanteil','zustand','dachform','dachAzimut',
     'dachNeigung','dachAutoAzimut','dachQuelle','pvRidgeOverride','pvModus','pvFlGcr',
     'pvFlAusrichtung','pvFlBelegung','pvBaujahr','notstrom','stationSteckbrief',
+    'dachFlaechen','dachLod2',
   ];
   fields.forEach(field => {
     if (source[field] !== undefined) target[field] = structuredClone(source[field]);
@@ -3497,7 +3670,7 @@ function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
     typ:surface.typ,
     polygon:structuredClone(surface.polygon),
     flaeche:surface.flaeche,
-    ...(surface.auto ? {auto:surface.auto} : {}),
+    ..._pvFlZusatz(surface),
     layer:null,
     svgLayer:null,
   }));
@@ -3743,6 +3916,9 @@ function _applyProjectData(project) {
             newG.dachAutoAzimut = g.dachAutoAzimut || false;
             newG.dachQuelle    = g.dachQuelle    || null;
             newG.pvRidgeOverride = g.pvRidgeOverride || null;
+            // LoD2-Dachflächen (37-lod2-import.js)
+            if (Array.isArray(g.dachFlaechen) && g.dachFlaechen.length) newG.dachFlaechen = g.dachFlaechen;
+            if (g.dachLod2 && typeof g.dachLod2 === 'object') newG.dachLod2 = g.dachLod2;
             // PV-Flächenzeichnung (Belegungs-/Sperrflächen) wiederherstellen
             // Default ist „Flächen zeichnen". Alte Projekte, in denen die Pauschale gar
             // nicht genutzt wurde (kein pvAktiv, keine gezeichnete Fläche), ziehen mit —
@@ -3757,7 +3933,7 @@ function _applyProjectData(project) {
             if (g.notstrom) newG.notstrom = normalisiereNotstrom(g.notstrom);
             // Stations-Steckbrief (34-stations-steckbrief.js)
             if (g.stationSteckbrief && typeof g.stationSteckbrief === 'object') newG.stationSteckbrief = structuredClone(g.stationSteckbrief);
-            newG.pvFlaechen     = (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ...(f.auto ? { auto: f.auto } : {}), layer: null, svgLayer: null }));
+            newG.pvFlaechen     = (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ..._pvFlZusatz(f), layer: null, svgLayer: null }));
             newG.pvFlaechen.forEach(f => {
               attachGebPvLayer(newG, f);
               if (f.id >= (window._gebPvFlCounter || 0)) window._gebPvFlCounter = f.id + 1;

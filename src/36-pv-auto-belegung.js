@@ -432,7 +432,7 @@ export function pvabBlockHtml() {
       ${_ab.nutzungOffen ? `<div style="max-height:110px;overflow-y:auto;margin-top:2px;">${typZeilen}</div>` : ''}` : ''}
       <div class="inp-group" style="margin-top:6px;">
         <div class="inp-label">② Belegung</div>
-        <div style="font-size:9px;color:var(--muted);line-height:1.4;">Grundriss als Fläche mit den „Vorgaben für neue Dächer" (unten).</div>
+        <div style="font-size:9px;color:var(--muted);line-height:1.4;">Grundriss als Fläche mit den „Vorgaben für neue Dächer" (unten) — bei LoD2-Daten je Dachfläche mit echter Neigung und Ausrichtung.</div>
         <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:3px;"
           title="Beim Satteldach die nach Norden zeigende Hälfte frei lassen (Sektor ±${_nordSektor()}° um Nord, unter „Vorgaben für neue Dächer“ einstellbar). Ohne Haken werden beide Dachseiten belegt.">
           <input type="checkbox" ${window.pvModusVorgabe?.nordSperr !== false ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
