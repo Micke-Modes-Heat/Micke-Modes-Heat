@@ -14,6 +14,8 @@ import { cancelDrawStromEdge } from './05b-stromnetz.js';
 import { beginInteraction, cancelInteraction, commitInteraction, getActiveInteraction } from './lib/interaction-state.js';
 import { createLifecycleScope } from './lib/lifecycle.js';
 import { wpAufstellungForm, rechteckEcken, WP_MODULE } from './lib/wp-aufstellung.js';
+import { wpSchallQuellen, lwaGesamt, pegelAm, isophone, isophonRadius, naechsterFassadenpunkt } from './lib/wp-schall.js';
+import { PT_TA_LAERM } from './lib/gutachten-potenzial.js';
 
 /** @type {import('./lib/lifecycle.js').LifecycleScope|null} */
 let areaDrawLifecycle = null;
@@ -2313,6 +2315,40 @@ export function lwWpSchallRadiusM(lwaDb, zielDb) {
   if (lwaDb <= zielDb) return 0;
   return Math.pow(10, (lwaDb - 11 - zielDb) / 20);
 }
+/** Schallquellen der LW-WP: jedes Außengerät mit seiner Schallleistung, gedreht wie die Aufstellfläche. */
+export function lwWpSchallQuellen() {
+  if (!window.lwWp) return [];
+  const auf = lwWpAufstellung(window.lwWp.leistungKw);
+  const lwa = window.lwWp.lwaManuell ? Number(window.lwWp.lwaDb) : null;
+  return wpSchallQuellen(auf, lwWpAufstellungOpt().drehung, lwa);
+}
+/** Schallleistung aller Außengeräte nach Herstellerangabe bzw. Schätzung (ohne manuelle Vorgabe). */
+export function lwWpLwaAuto(leistungKw) {
+  return Math.round(lwaGesamt(wpSchallQuellen(lwWpAufstellung(leistungKw), 0, null)) * 10) / 10;
+}
+/** Immissionsrichtwerte der gewählten Gebietsart: { gebiet, tag, nacht }. */
+export function lwWpGebiet() {
+  const name = window.lwWp?.gebiet || 'Allgemeines Wohngebiet';
+  const z = PT_TA_LAERM.find(x => x[0] === name) || PT_TA_LAERM.find(x => x[0] === 'Allgemeines Wohngebiet');
+  return { gebiet: z[0], tag: z[1], nacht: z[2] };
+}
+export function lwWpGebietSetzen(name) {
+  if (!window.lwWp) return;
+  window.lwWp.gebiet = name;
+  updateLwWpDisplay();
+}
+/** Pegel an den nächstgelegenen Gebäuden (nächster Punkt der Fassade), lauteste zuerst. */
+export function lwWpImmissionsorte(anzahl = 5) {
+  if (!window.lwWp) return [];
+  const quellen = lwWpSchallQuellen();
+  const lat0 = window.lwWp.lat, lng0 = window.lwWp.lng;
+  const latPerM = 1 / 111320, lngPerM = 1 / (111320 * Math.cos(lat0 * Math.PI / 180));
+  return (gebaeude || []).filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3).map(g => {
+    const poly = g.polygon.map(p => ({ ost: ((p.lng ?? p[1]) - lng0) / lngPerM, nord: ((p.lat ?? p[0]) - lat0) / latPerM }));
+    const f = naechsterFassadenpunkt(poly);
+    return { id: g.id, name: g.name || ('Gebäude ' + g.id), abstand: f.d, pegel: pegelAm(quellen, f.ost, f.nord) };
+  }).sort((a, b) => b.pegel - a.pegel).slice(0, anzahl);
+}
 export function toggleLwWpPanel() {
   const p = document.getElementById('lwwp-panel');
   const btn = document.getElementById('btn-lwwp-toggle');
@@ -2397,29 +2433,32 @@ export function redrawLwWp() {
   if (!window.lwWpSchallLayerGroup) window.lwWpSchallLayerGroup = L.layerGroup();
   window.lwWpLayerGroup.clearLayers();
   if (!window.lwWp || window.lwWp.lat == null || window.lwWp.lng == null) return;
+  _lwWpLwaSync();
   const pt = L.latLng(window.lwWp.lat, window.lwWp.lng);
   const leistung = window.lwWp.leistungKw;
   const lwa = window.lwWp.lwaDb;
   _lwWpAufstellungZeichnen(pt, leistung);
   window.lwWpSchallLayerGroup.clearLayers();
+  // Isophonen: Linien gleichen Pegels aus allen Außengeräten (Punktquellen, Halbraum) — folgen Form und Drehung der Fläche
+  const quellen = lwWpSchallQuellen();
+  const latPerM = 1 / 111320, lngPerM = 1 / (111320 * Math.cos(pt.lat * Math.PI / 180));
+  const zuLatLng = p => [pt.lat + p.nord * latPerM, pt.lng + p.ost * lngPerM];
   const schallStufen = [55, 50, 45, 40, 35];
   const schallFarben = ['#b71c1c', '#e65100', '#f9a825', '#8bc34a', '#2e7d32'];
   for (let i = schallStufen.length - 1; i >= 0; i--) {
-    const r = lwWpSchallRadiusM(lwa, schallStufen[i]);
-    if (r > 0.5 && r < 500) {
-      const circle = L.circle(pt, { radius: r, color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12 }).addTo(window.lwWpSchallLayerGroup);
-      circle.bindTooltip('', {sticky: true, direction: 'top', opacity: 0.9});
-      circle.on('mousemove', ev => {
-        const d = pt.distanceTo(ev.latlng);
-        if (d <= 0) return;
-        const lpAtD = lwa - 11 - 20 * Math.log10(d);
-        const tt = circle.getTooltip();
-        if (!tt) return;
-        tt.setContent(`<div class="lwwp-tooltip">Abstand: ${d.toFixed(1)} m<br>Pegel ≈ ${lpAtD.toFixed(1)} dB(A)</div>`);
-        tt.setLatLng(ev.latlng);
-        if (!map.hasLayer(tt)) circle.openTooltip(ev.latlng);
-      });
-    }
+    const linie = isophone(quellen, schallStufen[i]);
+    if (linie.length < 3) continue;
+    const flaeche = L.polygon(linie.map(zuLatLng), { color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12, className: 'lwwp-isophone' })
+      .addTo(window.lwWpSchallLayerGroup);
+    flaeche.bindTooltip('', { sticky: true, direction: 'top', opacity: 0.9 });
+    flaeche.on('mousemove', ev => {
+      const ost = (ev.latlng.lng - pt.lng) / lngPerM, nord = (ev.latlng.lat - pt.lat) / latPerM;
+      const tt = flaeche.getTooltip();
+      if (!tt) return;
+      tt.setContent(`<div class="lwwp-tooltip">Abstand zur Mitte: ${Math.hypot(ost, nord).toFixed(0)} m<br>Pegel ≈ ${pegelAm(quellen, ost, nord).toFixed(1)} dB(A)</div>`);
+      tt.setLatLng(ev.latlng);
+      if (!map.hasLayer(tt)) flaeche.openTooltip(ev.latlng);
+    });
   }
   // Hinweis: Größen-Anfasser (weiße Quadrate) wurden entfernt — wirkten unruhig.
   // Die Fläche skaliert automatisch aus dem Platzbedarf; manuelle Maße weiterhin
@@ -2476,12 +2515,38 @@ export function updateLwWpDisplay() {
   } else {
     ['lwwp-strom-lbl','lwwp-strom','lwwp-luft-lbl','lwwp-luft','lwwp-co2-lbl','lwwp-co2'].forEach(id => document.getElementById(id).style.display = 'none');
   }
-  const schallRows = [55, 50, 45, 40, 35].map(lp => {
-    const r = lwWpSchallRadiusM(lwa, lp);
-    return '&lt; ' + lp + ' dB: ' + (r >= 500 ? '&gt;500' : r.toFixed(1)) + ' m';
-  });
-  document.getElementById('lwwp-schall-tabelle').innerHTML = schallRows.join('<br>');
+  _lwWpSchallAnzeigen(auf);
   updateErzeugerAssetProps('lwwp');
+}
+
+// Schall im LW-WP-Panel: Quellen, Abstände je Pegel, Pegel an den nächsten Gebäuden gegen die Richtwerte
+function _lwWpSchallAnzeigen(auf) {
+  const el = document.getElementById('lwwp-schall-tabelle');
+  if (!el) return;
+  const quellen = lwWpSchallQuellen();
+  if (!quellen.length) { el.innerHTML = ''; return; }
+  const nf = (v, d = 0) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const gesamt = lwaGesamt(quellen);
+  const quelle = window.lwWp.lwaManuell ? 'Vorgabe' : (auf.modul.lwa != null ? 'Herstellerangabe' : 'Schätzung');
+  const g = lwWpGebiet();
+  const radien = [55, 50, 45, 40, 35].map(lp => {
+    const r = isophonRadius(quellen, lp);
+    return `<span>${lp} dB(A)</span><span>${r >= 2999 ? '&gt; 3 km' : r > 0 ? nf(r) + ' m' : '—'}</span>`;
+  }).join('');
+  const orte = lwWpImmissionsorte(5);
+  const ortZeilen = orte.map(o => {
+    const klasse = o.pegel > g.tag ? 'ueber' : o.pegel > g.nacht ? 'nacht' : 'ok';
+    return `<span class="lwwp-io-name" title="${escHtml(o.name)}">${escHtml(o.name)}</span><span>${nf(o.abstand)} m</span><span class="lwwp-io-pegel ${klasse}">${nf(o.pegel, 1)} dB(A)</span>`;
+  }).join('');
+  el.innerHTML = `<div class="lwwp-schall-quelle">${quellen.length} × ${nf(quellen[0].lwa, 1)} dB(A) (${quelle}) → <b>${nf(gesamt, 1)} dB(A)</b> gesamt</div>
+    <div class="lwwp-schall-radien"><span class="kopf">Pegel</span><span class="kopf">bis Abstand</span>${radien}</div>
+    ${orte.length ? `<div class="lwwp-schall-orte-kopf">Nächste Gebäude · Richtwert ${g.tag} / ${g.nacht} dB(A) tags / nachts</div>
+    <div class="lwwp-schall-orte">${ortZeilen}</div>` : ''}`;
+  const sel = document.getElementById('lwwp-gebiet');
+  if (sel) {
+    if (!sel.options.length) sel.innerHTML = PT_TA_LAERM.map(([name, tag, nacht]) => `<option value="${escHtml(name)}">${escHtml(name)} (${tag}/${nacht})</option>`).join('');
+    sel.value = g.gebiet;
+  }
 }
 
 // Steuerung der Aufstellung im LW-WP-Panel (Gerätegröße, Reihen, Drehung)
@@ -2522,31 +2587,33 @@ export function lwWpAufstellungSetzen(feld, wert) {
   updateLwWpDisplay();
 }
 
-export function calcLwaAuto(kw) {
-  // LWA-Schätzung aus Leistung: basierend auf Herstellerdaten (Vaillant, Stiebel Eltron,
-  // Viessmann, Daikin u.a.) und EU-Verordnung 813/2013 Ecodesign-Grenzwerten.
-  // Zwei-Segment-Logarithmus: kleine Anlagen (≤50 kW) skalieren moderater,
-  // große Anlagen (>50 kW) haben überproportional mehr Ventilatoren/Kompressoren.
-  const x = Math.max(kw, 1);
-  const raw = x <= 50
-    ? 47 + 12 * Math.log10(x)   // Residential/klein-gewerblich
-    : 30 + 22 * Math.log10(x);  // Groß-gewerblich/industriell
-  return Math.round(Math.min(100, Math.max(45, raw)));
-}
+/** Schallleistung der LW-WP aus der Leistung — über die Außengeräte der automatischen Aufstellung. */
+export function calcLwaAuto(kw) { return lwWpLwaAuto(kw); }
 
 export function updateLwWpData() {
   if (!window.lwWp) return;
   window.lwWp.leistungKw = parseFloat(document.getElementById('lwwp-leistung').value) || 100;
   // LWA: nur auto-berechnen wenn noch auf Default (80) oder wenn Leistung geändert
   const lwaEl = document.getElementById('lwwp-lwa');
-  if (lwaEl && !lwaEl._userEdited) {
-    const autoLwa = calcLwaAuto(window.lwWp.leistungKw);
-    lwaEl.value = autoLwa;
-    lwaEl.title = `Auto: ${autoLwa} dB(A) bei ${lwWp.leistungKw} kW — überschreibbar`;
-  }
-  window.lwWp.lwaDb = parseFloat(document.getElementById('lwwp-lwa').value) || calcLwaAuto(window.lwWp.leistungKw);
+  if (lwaEl?._userEdited) window.lwWp.lwaManuell = true;
+  if (lwaEl?._userEdited === false) window.lwWp.lwaManuell = false;
+  _lwWpLwaSync();
   updateLwWpDisplay();
   redrawLwWp();
+}
+
+/** Schallleistung: ohne Vorgabe aus den Außengeräten (Anzahl × Gerätewert), sonst die eingegebene Summe. */
+function _lwWpLwaSync() {
+  if (!window.lwWp) return;
+  const lwaEl = document.getElementById('lwwp-lwa');
+  const auto = lwWpLwaAuto(window.lwWp.leistungKw);
+  if (!window.lwWp.lwaManuell) {
+    window.lwWp.lwaDb = auto;
+    if (lwaEl) lwaEl.value = auto;
+  } else {
+    window.lwWp.lwaDb = parseFloat(lwaEl?.value) || window.lwWp.lwaDb || auto;
+  }
+  if (lwaEl) lwaEl.title = `Automatisch aus den Außengeräten: ${String(auto).replace('.', ',')} dB(A) — überschreibbar, Doppelklick setzt zurück`;
 }
 
 export function lwwpUseNetworkValues() {

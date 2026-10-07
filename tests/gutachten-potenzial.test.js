@@ -53,8 +53,9 @@ describe('Luft-WP und Schall', () => {
   });
   it('Schall', () => {
     expect(ptSchallRadius(90, 90)).toBe(0);
-    expect(ptSchallRadius(91, 40)).toBeCloseTo(10 ** 2, 9);
-    expect(text(ptTextSchall({ lwaDb: 91 }))).toContain('in rund 100 m Abstand eingehalten');
+    // Halbraum: 91 − 8 − 20·log r − Luftabsorption = 40 dB(A) → r ≈ 137 m
+    expect(ptSchallRadius(91, 40)).toBeCloseTo(136.9, 0);
+    expect(text(ptTextSchall({ lwaDb: 91 }))).toContain('in rund 137 m Abstand eingehalten');
   });
 });
 

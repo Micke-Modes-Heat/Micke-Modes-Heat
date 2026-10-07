@@ -2690,3 +2690,18 @@ textarea.ssb-in{resize:vertical;}
 body.trasse-loeschmodus .leaflet-interactive{cursor:not-allowed;}
 body.trasse-loeschmodus path.leaflet-interactive[stroke="#ff9800"],body.trasse-loeschmodus path.leaflet-interactive[stroke="#ab47bc"],body.trasse-loeschmodus path.leaflet-interactive[stroke="#42a5f5"]{cursor:pointer;}
 #btn-trasse-loeschmodus.active{background:#c62828;color:#fff;border-color:#c62828;}
+
+/* LW-WP: Schall im Panel */
+.lwwp-schall{font-size:10px;display:flex;flex-direction:column;gap:6px}
+.lwwp-schall-quelle{font-family:'DM Mono',monospace;font-size:10px;color:var(--text)}
+.lwwp-schall-radien{display:grid;grid-template-columns:auto 1fr;gap:1px 12px;font-family:'DM Mono',monospace;font-size:10px}
+.lwwp-schall-radien .kopf,.lwwp-schall-orte-kopf{color:var(--muted);font-family:inherit;font-size:9px}
+.lwwp-schall-orte{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:1px 8px;font-family:'DM Mono',monospace;font-size:10px}
+.lwwp-io-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lwwp-io-pegel.ok{color:#81c784}
+.lwwp-io-pegel.nacht{color:#ffb74d}
+.lwwp-io-pegel.ueber{color:#ef5350;font-weight:600}
+.lwwp-gebiet{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:6px;margin-top:6px;font-size:10px;color:var(--muted)}
+.lwwp-gebiet select{font-size:10px;padding:2px 4px}
+.lwwp-schall-legende{font-size:9px;color:var(--muted);margin-top:6px}
+.lwwp-schall-hinweis{font-size:8.5px;color:var(--muted);margin-top:4px;line-height:1.35}

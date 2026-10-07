@@ -3,6 +3,7 @@
 // Potenziale, oberflächennahe Geothermie (Sondenfeld), Tiefengeothermie (Fördermenge), Luft-Wasser-Wärmepumpe,
 // Schallemissionen, Biomasse (Pellets/Hackschnitzel). Rechenwerte sind benannte Konstanten; Standortwerte
 // (Wärmeleitfähigkeit, Zielhorizonte) kommen aus dem Projekt oder bleiben Platzhalter.
+import { isophonRadius } from './wp-schall.js';
 import { F, wtHilfen, wtDeckungsleistung } from './gutachten-waerme-texte.js';
 
 const { ok, nf, pct, liste, absatz, ueberschrift } = wtHilfen;
@@ -249,8 +250,8 @@ export const PT_TA_LAERM = Object.freeze([
   ['Industriegebiet', 70, 70], ['Gewerbegebiet', 65, 50], ['Kern-, Dorf-, Mischgebiet', 60, 45], ['Allgemeines Wohngebiet', 55, 40], ['Reines Wohngebiet', 50, 35],
 ]);
 
-/** Freifeld-Abstand (Halbkugel, wie 02c-karte-werkzeuge.js): r = 10^((LWA − 11 − L)/20). */
-export const ptSchallRadius = (lwa, ziel) => (lwa <= ziel ? 0 : 10 ** ((lwa - 11 - ziel) / 20));
+/** Abstand, ab dem der Pegel ziel unterschritten wird — Punktquelle im Halbraum mit Luftabsorption (lib/wp-schall.js). */
+export const ptSchallRadius = (lwa, ziel) => isophonRadius([{ ost: 0, nord: 0, lwa }], ziel);
 
 export function ptTextSchall(o = {}) {
   const out = [ueberschrift('Schallemissionen der Luft-Wasser-Wärmepumpe'), absatz('In diesem Abschnitt erfolgt eine erste Beurteilung, ob der Betrieb der Luft-Wasser-Wärmepumpe zu schalltechnischen Konflikten führen kann. Bewertungsgrundlage sind die Immissionsrichtwerte der TA Lärm, insbesondere für allgemeine und reine Wohngebiete in der Nachtzeit. ',

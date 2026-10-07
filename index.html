@@ -2122,14 +2122,14 @@
 
 <div class="float-panel cyan-border" id="lwwp-panel">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'lwwp-panel')"><span style="color:#00bcd4;font-size:12px">🌬 Luft-Wasser-Wärmepumpe</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleLwWpPanel()">✕</span></div>
-  <div class="panel-info">Platzierung auf der Karte. Platzbedarf und Schallausbreitung (Freifeld) werden automatisch berechnet.</div>
+  <div class="panel-info">Platzierung auf der Karte. Platzbedarf und Schallausbreitung der Außengeräte werden automatisch berechnet.</div>
   <div class="inp-group" style="margin-bottom:10px;">
     <input type="checkbox" id="lwwp-visible" checked data-change="setLwWpVisible(this.checked)"/>
     <label for="lwwp-visible" style="font-size:12px; cursor:pointer;">Luft-Wasser-WP anzeigen</label>
   </div>
   <div class="inp-group" style="margin-bottom:10px;">
     <input type="checkbox" id="lwwp-schall-visible" checked data-change="setSchallVisible(this.checked)"/>
-    <label for="lwwp-schall-visible" style="font-size:12px; cursor:pointer;">Schallringe anzeigen</label>
+    <label for="lwwp-schall-visible" style="font-size:12px; cursor:pointer;">Isophonen (Schall) anzeigen</label>
   </div>
   <div class="panel-btns" style="margin-bottom:10px;">
     <button class="btn-secondary" id="btn-place-lwwp" data-click="togglePlaceLwWp()" style="width:100%;">Auf Karte platzieren</button>
@@ -2141,8 +2141,8 @@
         <input class="inp-field" type="number" id="lwwp-leistung" value="100" min="1" step="1" data-change="updateLwWpData()" data-input="updateLwWpData(); updateAllDeckungen()"/>
       </div>
       <div class="inp-group">
-        <label class="inp-label">LWA Schall (dB) <span style="font-size:8px;color:var(--muted);">(auto)</span></label>
-        <input class="inp-field" type="number" id="lwwp-lwa" value="80" min="40" max="100" step="1"
+        <label class="inp-label" title="Schallleistungspegel aller Außengeräte zusammen. Automatisch aus Gerätegröße und Anzahl (Großgeräte nach Herstellerangabe); eigener Wert überschreibt, Doppelklick setzt zurück.">Schallleistung L<sub>WA</sub> dB(A) <span style="font-size:8px;color:var(--muted);">(auto)</span></label>
+        <input class="inp-field" type="number" id="lwwp-lwa" value="80" min="40" max="120" step="0.1"
           data-change="this._userEdited=true;updateLwWpData()"
           ondblclick="this._userEdited=false;updateLwWpData()" title="Doppelklick → Auto-Berechnung zurücksetzen"/>
       </div>
@@ -2219,16 +2219,16 @@
       <svg id="lwwp-cop-svg" width="100%" height="80" viewBox="0 0 300 80" preserveAspectRatio="none" style="display:block;"></svg>
     </div>
     <div class="inp-group" style="margin-bottom:10px; padding:8px; background:var(--bg); border-radius:5px; border:1px solid var(--border);">
-      <div class="inp-label" style="margin-bottom:4px;">Schallausbreitung (Freifeld)</div>
-      <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">Abstand bis Pegel &lt; …</div>
-      <div id="lwwp-schall-tabelle" style="font-size:11px; font-family:'DM Mono',monospace;"></div>
-      <div style="font-size:9px; color:var(--muted); margin-top:6px;">
-        Legende: <span style="color:#b71c1c;">Rot</span> 55 dB ·
-        <span style="color:#e65100;">Orange</span> 50 dB ·
-        <span style="color:#f9a825;">Gelb</span> 45 dB ·
-        <span style="color:#8bc34a;">Hellgrün</span> 40 dB ·
-        <span style="color:#2e7d32;">Grün</span> 35 dB
+      <div class="inp-label" style="margin-bottom:4px;">Schall (Außengeräte als Punktquellen, Halbraum)</div>
+      <div id="lwwp-schall-tabelle" class="lwwp-schall"></div>
+      <label class="lwwp-gebiet"><span>Gebietsart</span>
+        <select class="inp-field" id="lwwp-gebiet" data-change="lwWpGebietSetzen(this.value)"></select></label>
+      <div class="lwwp-schall-legende">
+        <span style="color:#b71c1c;">■</span> 55 <span style="color:#e65100;">■</span> 50 <span style="color:#f9a825;">■</span> 45
+        <span style="color:#8bc34a;">■</span> 40 <span style="color:#2e7d32;">■</span> 35 dB(A)
       </div>
+      <div class="lwwp-schall-hinweis">Überschlägig nach DIN ISO 9613-2 ohne Boden- und Abschirmdämpfung, Pegel am nächsten Fassadenpunkt.
+        Zuschläge für Ton- oder Impulshaltigkeit und Reflexionen an nahen Wänden sind nicht enthalten — ersetzt kein Schallgutachten.</div>
     </div>
     <div class="panel-btns">
       <button class="btn-secondary" data-click="clearLwWp()" style="border-color:#e53935; color:#e53935;">LW-WP entfernen</button>

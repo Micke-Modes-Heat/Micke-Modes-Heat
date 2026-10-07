@@ -5,7 +5,7 @@
 /** Typische Außengeräte (Monoblock bzw. Verdampfereinheit): Heizleistung (A7/W45), Länge × Tiefe × Höhe in m,
  *  Ventilatoren (Anzahl, Durchmesser in m, oben = nach oben ausblasend, sonst seitlich; ventReihen = nebeneinander quer),
  *  technikL = Länge des Technikteils ohne Ventilatoren an einer Stirnseite, abstaende = Mindestabstände des Geräts
- *  (sonst WP_ABSTAENDE). Bis 300 kW Richtwerte; die Großgeräte nach Herstellerdatenblättern luftgekühlter
+ *  (sonst WP_ABSTAENDE), lwa = Schallleistungspegel je Gerät in dB(A) (Herstellerangabe). Bis 300 kW Richtwerte; die Großgeräte nach Herstellerdatenblättern luftgekühlter
  *  R290-Wärmepumpen mit V-Registern (Mindestabstand 1,0 m an den Längsseiten, 1,0 / 1,5 m an den Stirnseiten). */
 const GROSS_ABSTAENDE = { luft: 1.0, wartung: 1.25, geraet: 1.5, reihe: 2.0 };
 export const WP_MODULE = [
@@ -14,11 +14,11 @@ export const WP_MODULE = [
   { kw: 80, l: 2.8, b: 1.2, h: 2.0, ventilatoren: 3, dm: 0.8, oben: true },
   { kw: 160, l: 4.2, b: 2.2, h: 2.3, ventilatoren: 4, dm: 0.9, oben: true },
   { kw: 300, l: 6.5, b: 2.3, h: 2.5, ventilatoren: 6, dm: 0.9, oben: true },
-  { kw: 515, l: 7.9, b: 2.3, h: 2.45, ventilatoren: 8, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, abstaende: GROSS_ABSTAENDE },
-  { kw: 570, l: 7.9, b: 2.3, h: 2.45, ventilatoren: 8, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, abstaende: GROSS_ABSTAENDE },
-  { kw: 650, l: 7.9, b: 2.3, h: 2.45, ventilatoren: 8, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, abstaende: GROSS_ABSTAENDE },
-  { kw: 710, l: 10.5, b: 2.3, h: 2.45, ventilatoren: 12, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, abstaende: GROSS_ABSTAENDE },
-  { kw: 810, l: 10.5, b: 2.3, h: 2.45, ventilatoren: 12, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, abstaende: GROSS_ABSTAENDE },
+  { kw: 515, l: 7.9, b: 2.3, h: 2.45, ventilatoren: 8, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, lwa: 92, abstaende: GROSS_ABSTAENDE },
+  { kw: 570, l: 7.9, b: 2.3, h: 2.45, ventilatoren: 8, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, lwa: 92, abstaende: GROSS_ABSTAENDE },
+  { kw: 650, l: 7.9, b: 2.3, h: 2.45, ventilatoren: 8, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, lwa: 93, abstaende: GROSS_ABSTAENDE },
+  { kw: 710, l: 10.5, b: 2.3, h: 2.45, ventilatoren: 12, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, lwa: 94, abstaende: GROSS_ABSTAENDE },
+  { kw: 810, l: 10.5, b: 2.3, h: 2.45, ventilatoren: 12, ventReihen: 2, dm: 0.85, oben: true, technikL: 2.34, lwa: 94, abstaende: GROSS_ABSTAENDE },
 ];
 
 /** Mindestabstände eines Geräts: eigene Herstellerwerte oder die allgemeinen Richtwerte. */
