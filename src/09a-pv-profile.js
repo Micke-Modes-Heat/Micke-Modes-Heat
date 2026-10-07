@@ -533,7 +533,7 @@ export function onEconomicScenarioChange() {
   const co2Alle = document.getElementById('wirt-co2-alle');
   if (co2Alle) co2Alle.checked = !!scenario.values.co2Alle;
   const co2Label = document.getElementById('wirt-co2-alle-label');
-  if (co2Label) co2Label.textContent = scenario.values.co2Alle ? 'alle Energieträger' : 'nur fossile';
+  if (co2Label) co2Label.textContent = scenario.values.co2Alle ? 'CO₂ auf alle Energieträger' : 'CO₂ nur auf fossile';
   if (hint) hint.textContent = `${scenario.label}, Stand ${scenario.effectiveDate}: ${scenario.source}.`;
   _onStrompreisChange('wirt-p-strom');
   _onGaspreisChange('wirt-p-gas');

@@ -733,11 +733,11 @@
       <button class="btn-secondary" data-click="setViewMode('karte')" style="font-size:11px;">← Zurück zur Karte</button>
     </div>
     <div class="analyse-kpi-bar" id="analyse-kpi-bar">
-      <div class="analyse-kpi"><div class="analyse-kpi-val" id="av-kpi-waerme">—</div><div class="analyse-kpi-lbl">Wärmebedarf MWh/a <span class="htip" data-tip="Gesamter Wärmebedarf des Quartiers pro Jahr, inkl. Netzverluste.">?</span></div></div>
-      <div class="analyse-kpi"><div class="analyse-kpi-val" id="av-kpi-pmax">—</div><div class="analyse-kpi-lbl">Spitzenlast kW <span class="htip" data-tip="Höchste Wärmeleistung, die in einer einzelnen Stunde des Jahres benötigt wird — bestimmt die nötige Erzeuger-Gesamtleistung.">?</span></div></div>
-      <div class="analyse-kpi"><div class="analyse-kpi-val" id="av-kpi-wgk">—</div><div class="analyse-kpi-lbl">WGK ct/kWh <span class="htip" data-tip="Wärmegestehungskosten: Was kostet eine kWh Wärme aus dem Gesamtsystem? Enthält Investition, Wartung, Energie — abzgl. Stromerlöse.">?</span></div></div>
-      <div class="analyse-kpi"><div class="analyse-kpi-val" id="av-kpi-co2">—</div><div class="analyse-kpi-lbl">CO₂ t/a <span class="htip" data-tip="Jährliche CO₂-Emissionen aller Erzeuger. Wärmepumpen: indirekt über Strommix. BHKW: Gutschrift für verdrängten Netzstrom.">?</span></div></div>
-      <div class="analyse-kpi"><div class="analyse-kpi-val" id="av-kpi-ee">—</div><div class="analyse-kpi-lbl">EE-Anteil % <span class="htip" data-tip="Anteil erneuerbarer Energien an der Wärmeversorgung (WP, Pellets, HHS, Solarthermie, Speicher). Ziel: mind. 65%.">?</span></div></div>
+      <div class="analyse-kpi" style="--kpi-c:#ef8a3c;"><div class="analyse-kpi-lbl">Wärmebedarf <span class="htip" data-tip="Gesamter Wärmebedarf des Quartiers pro Jahr, inkl. Netzverluste.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-waerme">—</span><small>MWh/a</small></div></div>
+      <div class="analyse-kpi" style="--kpi-c:#e53935;"><div class="analyse-kpi-lbl">Spitzenlast <span class="htip" data-tip="Höchste Wärmeleistung, die in einer einzelnen Stunde des Jahres benötigt wird — bestimmt die nötige Erzeuger-Gesamtleistung.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-pmax">—</span><small>kW</small></div></div>
+      <div class="analyse-kpi" style="--kpi-c:#ffb300;"><div class="analyse-kpi-lbl">Wärmegestehungskosten <span class="htip" data-tip="Was kostet eine kWh Wärme aus dem Gesamtsystem? Enthält Investition, Wartung, Energie — abzgl. Stromerlöse.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-wgk">—</span><small>ct/kWh</small></div></div>
+      <div class="analyse-kpi" style="--kpi-c:#90a4ae;"><div class="analyse-kpi-lbl">CO₂-Emissionen <span class="htip" data-tip="Jährliche CO₂-Emissionen aller Erzeuger. Wärmepumpen: indirekt über Strommix. BHKW: Gutschrift für verdrängten Netzstrom.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-co2">—</span><small>t/a</small></div></div>
+      <div class="analyse-kpi" style="--kpi-c:#43a047;"><div class="analyse-kpi-lbl">Erneuerbarer Anteil <span class="htip" data-tip="Anteil erneuerbarer Energien an der Wärmeversorgung (WP, Pellets, HHS, Solarthermie, Speicher). Ziel: mind. 65 %.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-ee">—</span><small>%</small></div><div class="analyse-kpi-bar-mini"><i id="av-kpi-ee-bar"></i><b title="Ziel 65 %"></b></div></div>
     </div>
     <div class="analyse-section-tabs" id="analyse-view-tabs">
       <button class="analyse-section-tab active" data-section="uebersicht" data-click="setAnalyseSection('uebersicht')">Übersicht</button>
@@ -745,50 +745,41 @@
       <button class="analyse-section-tab" data-section="wirtschaft" data-click="setAnalyseSection('wirtschaft')">Wirtschaftlichkeit</button>
       <button class="analyse-section-tab" data-section="strom" data-click="setAnalyseSection('strom')">Strom</button>
       <button class="analyse-section-tab" data-section="emissionen" data-click="setAnalyseSection('emissionen')">Emissionen</button>
-      <button class="analyse-section-tab" data-section="ausbauplaner" data-click="setAnalyseSection('ausbauplaner')" style="color:#4fc3f7;" title="Ausbauplaner — Maßnahmen-Fahrplan für Anlagen, Netzkomponenten und Gebäude">📅 Ausbauplaner</button>
+      <span class="analyse-tab-trenner">Werkzeuge</span>
+      <button class="analyse-section-tab" data-section="ausbauplaner" data-click="setAnalyseSection('ausbauplaner')" title="Ausbauplaner — Maßnahmen-Fahrplan für Anlagen, Netzkomponenten und Gebäude">📅 Ausbauplaner</button>
     </div>
 
     <!-- ── Übersicht (Dashboard) ─────────────────────────────── -->
     <div id="analyse-dispatch-grid" class="analyse-full-grid">
       <div class="analyse-full-card full-width">
-        <div class="analyse-full-card-title">Gestapelter Wärme-Lastgang (8760 h) <span class="htip" data-tip="Zeigt für jede Stunde des Jahres, welcher Erzeuger wie viel Wärme liefert. Die Flächen sind gestapelt — die Gesamthöhe entspricht dem Bedarf.">?</span></div>
-        <div class="av-lastgang-legend" style="display:flex;flex-wrap:wrap;gap:6px;font-size:10px;margin-bottom:3px;"></div>
+        <div class="analyse-full-card-title">Wärme-Lastgang nach Erzeugern <span class="analyse-card-sub">8.760 Stunden</span> <span class="htip" data-tip="Zeigt für jede Stunde des Jahres, welcher Erzeuger wie viel Wärme liefert. Die Flächen sind gestapelt — die Gesamthöhe entspricht dem Bedarf.">?</span></div>
+        <div class="av-lastgang-legend analyse-legende"></div>
         <canvas id="av-lastgang-canvas" height="200" style="cursor:crosshair;"></canvas>
+      </div>
+      <div class="analyse-full-card">
+        <div class="analyse-full-card-title">Erzeugermix</div>
+        <div id="av-erzeuger-table"></div>
       </div>
       <div class="analyse-full-card">
         <div class="analyse-full-card-title">Jahresdauerlinie <span class="htip" data-tip="Der Lastgang, nach Leistung sortiert (höchste zuerst). Zeigt, wie viele Stunden pro Jahr eine bestimmte Leistung überschritten wird. Wichtig für die Erzeuger-Dimensionierung.">?</span></div>
         <canvas id="av-jdl-canvas" height="180"></canvas>
-      </div>
-      <div class="analyse-full-card full-width">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div class="analyse-full-card-title" id="ekrone-title">3D-Teppich — stündliche Einsatzplanung (365 × 24 h)</div>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <div style="display:flex;gap:1px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden;">
-              <button class="ekrone-mode-btn active" data-mode="carpet" data-click="_setEkroneMode('carpet')" style="font-size:9px;padding:2px 8px;border:none;background:rgba(77,208,225,0.15);color:#4dd0e1;cursor:pointer;font-family:inherit;">Teppich</button>
-              <button class="ekrone-mode-btn" data-mode="helix" data-click="_setEkroneMode('helix')" style="font-size:9px;padding:2px 8px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;">Helix</button>
-            </div>
-            <span style="font-size:9px;color:var(--muted);cursor:pointer;" data-click="window._ekroneState={az:0.6,el:0.45,zoom:1};_renderEnergiekrone();">&#x21BA; Reset</span>
-          </div>
-        </div>
-        <canvas id="energiekrone-canvas" height="360" style="width:100%;display:block;border-radius:6px;cursor:grab;"></canvas>
-        <div id="energiekrone-legend" style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;margin-top:4px;"></div>
-        <div id="energiekrone-tooltip" style="display:none;position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:10px;color:var(--text);pointer-events:none;z-index:9000;box-shadow:0 4px 16px rgba(0,0,0,.4);font-family:'DM Mono',monospace;"></div>
-      </div>
-      <div class="analyse-full-card">
-        <div class="analyse-full-card-title">Metriken</div>
-        <div id="av-metriken-content" style="font-size:10px;color:var(--muted);">Daten werden geladen…</div>
+        <div id="av-metriken-content" class="analyse-metriken">Daten werden geladen…</div>
       </div>
       <div class="analyse-full-card full-width" id="wirt-co2-chart-wrap" style="display:none;">
-        <div class="analyse-full-card-title">CO₂-Emissionen — Entwicklung bis 2050
-          <span id="wirt-co2-total" style="float:right;font-size:9px;font-weight:normal;text-transform:none;letter-spacing:0;color:var(--text);"></span>
+        <div class="analyse-full-card-title">CO₂-Emissionen bis 2050
+          <span id="wirt-co2-total" class="analyse-card-sub"></span>
         </div>
         <canvas id="wirt-co2-canvas" height="160" style="width:100%;display:block;border-radius:6px;"></canvas>
-        <div id="wirt-co2-legend" style="display:flex;flex-wrap:wrap;gap:6px;font-size:9px;margin-top:4px;"></div>
+        <div id="wirt-co2-legend" class="analyse-legende"></div>
       </div>
-      <div class="analyse-full-card full-width">
-        <div class="analyse-full-card-title">Erzeuger-Übersicht</div>
-        <div id="av-erzeuger-table"></div>
-      </div>
+      <details class="analyse-full-card full-width analyse-aufklapp" id="energiekrone-details">
+        <summary class="analyse-full-card-title"><span id="ekrone-title">3D-Ansicht der Einsatzplanung <span class="analyse-card-sub">365 Tage × 24 h</span></span>
+          <span class="analyse-card-sub" style="cursor:pointer;" data-click="event.preventDefault();window._ekroneState={az:0.6,el:0.45,zoom:1};_renderEnergiekrone();">&#x21BA; Ansicht zurücksetzen</span>
+        </summary>
+        <canvas id="energiekrone-canvas" height="360" style="width:100%;display:block;border-radius:6px;cursor:grab;"></canvas>
+        <div id="energiekrone-legend" class="analyse-legende"></div>
+        <div id="energiekrone-tooltip" style="display:none;position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:10px;color:var(--text);pointer-events:none;z-index:9000;box-shadow:0 4px 16px rgba(0,0,0,.4);font-family:'DM Mono',monospace;"></div>
+      </details>
     </div>
 
     <!-- ── Wärme-Analyse ─────────────────────────────────────── -->
@@ -3059,110 +3050,72 @@
     <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleWirtschaftPanel()">✕</span>
   </div>
   <div class="panel-info">Investitions- und Betriebskosten nach VDI 2067 · KWW-Technikkatalog 12/2025</div>
-
-  <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px;">
-    <label for="wirt-szenario" style="font-size:10px;color:var(--muted);">Wirtschaftsszenario:</label>
-    <select class="inp-field" id="wirt-szenario" style="flex:1;font-size:10px;" data-change="onEconomicScenarioChange()">
-      <option value="project-base-2026-07-v1">Projektbasis 07/2026 · v1</option>
-      <option value="manual">Manuelle Annahmen</option>
-    </select>
-  </div>
-  <div id="wirt-szenario-hint" style="font-size:9px;color:var(--muted);margin-bottom:8px;">Dokumentierte Projektannahmen, Stand 18.07.2026; vor Beschluss projektspezifisch plausibilisieren.</div>
-
-  <div id="netz-bestand-options" style="margin:0 0 10px;padding:9px;background:rgba(76,175,80,0.06);border:1px solid rgba(76,175,80,0.2);border-radius:6px;">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-      <input type="checkbox" id="netz-sanierung-toggle" data-change="window._netzSanierung=this.checked;document.getElementById('netz-sanierung-detail').style.display=this.checked?'flex':'none';if(typeof calcWirtschaftPanel==='function')calcWirtschaftPanel();"/>
-      <label for="netz-sanierung-toggle" style="font-size:11px;cursor:pointer;">Netzsanierung in Investitionskosten berücksichtigen</label>
-    </div>
-    <div id="netz-sanierung-detail" style="display:none;align-items:center;gap:6px;font-size:10px;color:var(--muted);">
-      <span>Sanierungsanteil</span>
-      <input class="inp-field" type="number" id="netz-sanierung-pct" value="40" min="5" max="100" step="5"
-             style="width:48px;text-align:center;font-size:10px;" data-change="if(typeof calcWirtschaftPanel==='function')calcWirtschaftPanel();"/>
-      <span>% der Neubaukosten</span>
-    </div>
-    <div style="font-size:9px;color:var(--muted);margin-top:4px;">Nur für Bestandsnetze: berücksichtigt einen anteiligen Rohr- und Trassentausch in den Investitionskosten.</div>
-  </div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 8px;margin-bottom:8px;">
-    <div class="inp-group">
-      <label class="inp-label">Strom (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-strom" value="35" min="0" step="1" data-input="onEconomicManualInput();_onStrompreisChange('wirt-p-strom')"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label" title="Arbeitspreis für WP-/Stromkessel-Strom (Sondervertrag, reduzierte Netzentgelte, ggf. §14a EnWG). Leer = allgemeiner Strompreis. Großwärmepumpen zahlen typisch 18–25 ct statt Haushaltstarif.">WP-Strom (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-strom-wp" placeholder="= Strom" min="0" step="1" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">Erdgas (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-gas" value="10" min="0" step="0.5" data-input="onEconomicManualInput();_onGaspreisChange('wirt-p-gas')"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">Heizöl (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-hko" value="10" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">Fernwärme (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-fw" value="17" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">Pellets (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-pk" value="8" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">HHS (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-hhs" value="6" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label" title="BHKW-Vergütung wird oben im Strom-Tab differenziert eingestellt (Einspeisung/Eigenverbrauch/KWK-Zuschlag)">BHKW-Vergütung</label>
-      <span class="inp-field" style="color:var(--muted);font-size:9px;cursor:help;" title="Einstellung im Strom-Tab → BHKW-Vergütung">→ siehe Strom-Tab</span>
-      <input type="hidden" id="wirt-p-bhkw" value="12"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label" style="display:flex;align-items:center;gap:6px;">
-        <span title="CO₂-Kostenansatz für interne Wirtschaftlichkeitsrechnung (z.B. CO₂-Preis Projektionsbericht)">CO₂-Ansatz (€/t)</span>
-        <label class="tog" style="margin-left:auto;" title="Ein: CO₂-Kosten auf alle Energieträger anrechnen (Gas, Öl, Biomasse, Fernwärme, WP-Strom) · Aus: CO₂-Kosten nur auf fossile Brennstoffe (Gas, Öl)">
-          <input type="checkbox" id="wirt-co2-alle" checked data-change="onEconomicManualInput();document.getElementById('wirt-co2-alle-label').textContent=this.checked?'alle Energieträger':'nur fossile';calcWirtschaftPanel()"/>
+  <div class="wirt-layout">
+    <aside class="wirt-annahmen">
+      <div class="wirt-block">
+        <div class="wirt-block-titel">Szenario</div>
+        <select class="inp-field" id="wirt-szenario" data-change="onEconomicScenarioChange()">
+          <option value="project-base-2026-07-v1">Projektbasis 07/2026 · v1</option>
+          <option value="manual">Manuelle Annahmen</option>
+        </select>
+        <div id="wirt-szenario-hint" class="wirt-hinweis">Dokumentierte Projektannahmen, Stand 18.07.2026; vor Beschluss projektspezifisch plausibilisieren.</div>
+      </div>
+      <div class="wirt-block">
+        <div class="wirt-block-titel">Energiepreise <small>ct/kWh</small></div>
+        <div class="wirt-felder">
+        <label class="wirt-feld"><span>Strom</span><input class="inp-field" type="number" id="wirt-p-strom" value="35" min="0" step="1" data-input="onEconomicManualInput();_onStrompreisChange('wirt-p-strom')"/></label>
+        <label class="wirt-feld" title="Arbeitspreis für WP-/Stromkessel-Strom (Sondervertrag, reduzierte Netzentgelte, ggf. §14a EnWG). Leer = allgemeiner Strompreis. Großwärmepumpen zahlen typisch 18–25 ct statt Haushaltstarif."><span>WP-Strom</span><input class="inp-field" type="number" id="wirt-p-strom-wp" placeholder="= Strom" min="0" step="1" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        <label class="wirt-feld"><span>Erdgas</span><input class="inp-field" type="number" id="wirt-p-gas" value="10" min="0" step="0.5" data-input="onEconomicManualInput();_onGaspreisChange('wirt-p-gas')"/></label>
+        <label class="wirt-feld"><span>Heizöl</span><input class="inp-field" type="number" id="wirt-p-hko" value="10" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        <label class="wirt-feld"><span>Fernwärme</span><input class="inp-field" type="number" id="wirt-p-fw" value="17" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        <label class="wirt-feld"><span>Pellets</span><input class="inp-field" type="number" id="wirt-p-pk" value="8" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        <label class="wirt-feld"><span>Hackschnitzel</span><input class="inp-field" type="number" id="wirt-p-hhs" value="6" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        </div>
+        <div class="wirt-hinweis" title="Einstellung im Strom-Tab → BHKW-Vergütung">BHKW-Vergütung: im Strom-Tab</div>
+        <input type="hidden" id="wirt-p-bhkw" value="12"/>
+      </div>
+      <div class="wirt-block">
+        <div class="wirt-block-titel">CO₂ und Finanzierung</div>
+        <div class="wirt-felder">
+          <label class="wirt-feld" title="CO₂-Kostenansatz für interne Wirtschaftlichkeitsrechnung (z.B. CO₂-Preis Projektionsbericht)"><span>CO₂-Ansatz €/t</span><input class="inp-field" type="number" id="wirt-p-co2" value="120" min="0" step="10" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+          <label class="wirt-feld"><span>Kapitalzins %</span><input class="inp-field" type="number" id="wirt-zins" value="3.5" min="0" max="15" step="0.5" data-input="onEconomicManualInput();_syncZins();calcWirtschaftPanel()"/></label>
+          <label class="wirt-feld"><span>Bedienung €/h</span><input class="inp-field" type="number" id="wirt-lohn" value="45" min="0" step="5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        </div>
+        <label class="tog wirt-tog" title="Ein: CO₂-Kosten auf alle Energieträger anrechnen (Gas, Öl, Biomasse, Fernwärme, WP-Strom) · Aus: CO₂-Kosten nur auf fossile Brennstoffe (Gas, Öl)">
+          <input type="checkbox" id="wirt-co2-alle" checked data-change="onEconomicManualInput();document.getElementById('wirt-co2-alle-label').textContent=this.checked?'CO₂ auf alle Energieträger':'CO₂ nur auf fossile';calcWirtschaftPanel()"/>
           <span class="tog-track"></span>
-          <span class="tog-label" id="wirt-co2-alle-label">alle Energieträger</span>
+          <span class="tog-label" id="wirt-co2-alle-label">CO₂ auf alle Energieträger</span>
         </label>
-      </label>
-      <input class="inp-field" type="number" id="wirt-p-co2" value="120" min="0" step="10" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;margin-bottom:12px;">
-    <div class="inp-group">
-      <label class="inp-label">Kapitalzins (%)</label>
-      <input class="inp-field" type="number" id="wirt-zins" value="3.5" min="0" max="15" step="0.5" data-input="onEconomicManualInput();_syncZins();calcWirtschaftPanel()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">Stundensatz Bedienung (€/h)</label>
-      <input class="inp-field" type="number" id="wirt-lohn" value="45" min="0" step="5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-  </div>
-
-  <div id="wirt-table-wrap">
-    <div style="color:var(--muted);font-size:10px;text-align:center;padding:12px 0;">Stündliche Einsatzplanung ausführen, um Ergebnisse zu sehen.</div>
-  </div>
-  <!-- Jahresscheiben-Berechnung -->
-  <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
-    <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
-      Jahresscheiben / NPV-Analyse
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
-      <div class="inp-group" style="margin:0">
-        <label class="inp-label">Betrachtung (a)</label>
-        <input class="inp-field" type="number" id="js-laufzeit" value="20" min="5" max="40" step="5" data-input="calcJahresscheiben()"/>
       </div>
-      <div class="inp-group" style="margin:0">
-        <label class="inp-label">Preissteigerung (%/a)</label>
-        <input class="inp-field" type="number" id="js-eskalation" value="2.0" min="0" max="8" step="0.5" data-input="calcJahresscheiben()"/>
+      <div class="wirt-block">
+        <div class="wirt-block-titel">Barwertbetrachtung</div>
+        <div class="wirt-felder">
+          <label class="wirt-feld"><span>Zeitraum a</span><input class="inp-field" type="number" id="js-laufzeit" value="20" min="5" max="40" step="5" data-input="calcJahresscheiben()"/></label>
+          <label class="wirt-feld"><span>Preissteig. %/a</span><input class="inp-field" type="number" id="js-eskalation" value="2.0" min="0" max="8" step="0.5" data-input="calcJahresscheiben()"/></label>
+        </div>
+        <div class="wirt-hinweis">Diskontierung = Kapitalzins (<span id="js-diskont-sync"></span> %)</div>
       </div>
-    </div>
-    <div style="font-size:9px;color:var(--muted);margin-bottom:6px;">Diskontierung = Kapitalzins (<span id="js-diskont-sync"></span>%) aus VDI 2067</div>
-    <div id="js-result" style="display:none;"></div>
-    <div id="js-chart-wrap" style="display:none;margin-top:8px;">
-      <canvas id="js-canvas" height="160" style="width:100%;display:block;"></canvas>
-    </div>
+      <div class="wirt-block" id="netz-bestand-options">
+        <label class="wirt-check"><input type="checkbox" id="netz-sanierung-toggle" data-change="window._netzSanierung=this.checked;document.getElementById('netz-sanierung-detail').style.display=this.checked?'flex':'none';if(typeof calcWirtschaftPanel==='function')calcWirtschaftPanel();"/>
+          <span>Netzsanierung einrechnen</span></label>
+        <div id="netz-sanierung-detail" style="display:none;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin-top:5px;">
+          <input class="inp-field" type="number" id="netz-sanierung-pct" value="40" min="5" max="100" step="5" style="width:52px;text-align:center;font-size:10px;" data-change="if(typeof calcWirtschaftPanel==='function')calcWirtschaftPanel();"/>
+          <span>% der Neubaukosten</span>
+        </div>
+        <div class="wirt-hinweis">Nur für Bestandsnetze: anteiliger Rohr- und Trassentausch.</div>
+      </div>
+    </aside>
+    <section class="wirt-ergebnis">
+      <div id="wirt-table-wrap">
+        <div style="color:var(--muted);font-size:10px;text-align:center;padding:12px 0;">Stündliche Einsatzplanung ausführen, um Ergebnisse zu sehen.</div>
+      </div>
+      <div class="wirt-npv">
+        <div id="js-result" style="display:none;"></div>
+        <div id="js-chart-wrap" style="display:none;margin-top:8px;">
+          <canvas id="js-canvas" height="160" style="width:100%;display:block;"></canvas>
+        </div>
+      </div>
+    </section>
   </div>
 
   <button class="btn-secondary" data-click="hidePanels()" style="margin-top:10px;">Schließen</button>

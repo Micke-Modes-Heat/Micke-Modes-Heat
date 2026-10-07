@@ -830,6 +830,13 @@ export function calcWirtschaftPanel() {
 
 
   window._lastWgk = wgk;
+  // Grundlage für die Jahresscheiben/NPV-Rechnung: dieselben Bausteine und Energiekosten wie hier,
+  // damit Erstinvestition und Jahreskosten in beiden Darstellungen übereinstimmen
+  window._wirtErgebnis = {
+    keys: keys.join(','),
+    bausteine: rows.map(r => ({ id: r.id, invest: r.effVal, n: r.effVdi?.n || 0, inst: r.effVdi?.inst || 0, wart: r.effVdi?.wart || 0, bedien: r.effVdi?.bedien || 0 })),
+    energieJahr: gesamtEnergieMitCo2, lohn,
+  };
   window._lastInvestGes = gesamtInvest + pvInvestGes;
   window._lastJkGes = gesamtJk + gesamtEnergieMitCo2;
   // Kostenbestandteile für die Gutachtengrafiken (Kostenstruktur, mit/ohne PV-Eigenstrom)
@@ -910,7 +917,7 @@ export function calcWirtschaftPanel() {
 
   // WGK-Beitrag pro Baustein (ct/kWh)
   const _wgkMwh = gesamtMwh > 0.01 ? gesamtMwh : 1;
-  const _wgkCt = (jk) => (jk / _wgkMwh / 10).toFixed(1);
+  const _wgkCt = (jk) => (jk / _wgkMwh / 10).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
   let invHtml = '';
   let grpIdx = 0;
@@ -956,33 +963,61 @@ export function calcWirtschaftPanel() {
     window._wirtWaterfallData.push({ label: grp.label, value: grpRows.reduce((s, r) => s + r.effVal, 0), color: grp.color });
   }
 
-  wrap.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-      <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Investitionsbausteine</div>
-      <div style="display:flex;gap:2px;">
+  const _nf1 = v => v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const _jahr = gesamtJk + gesamtEnergieMitCo2;
+  const _teile = [
+    { label: 'Kapital (Annuität)', wert: _sumAnn, farbe: '#ffb74d', tip: 'Jährliche Rate aus den Investitionskosten — Zinsen und Tilgung über die Nutzungsdauer (VDI 2067).' },
+    { label: 'Instandhaltung', wert: _sumInst, farbe: '#ce93d8' },
+    { label: 'Wartung', wert: _sumWart, farbe: '#9575cd' },
+    { label: 'Bedienung', wert: _sumBed, farbe: '#7986cb' },
+    { label: 'Energie inkl. CO₂', wert: gesamtEnergieMitCo2, farbe: '#4fc3f7' },
+  ].filter(t => Math.abs(t.wert) > 0.5);
+  const _teilSumme = _teile.reduce((a, t) => a + Math.max(0, t.wert), 0) || 1;
+  const kopfHtml = `
+    <div class="wirt-kpis">
+      <div class="wirt-kpi wirt-kpi-haupt">
+        <span>Wärmegestehungskosten <span class="htip" data-tip="Wärmegestehungskosten nach VDI 2067: Investitionskosten werden auf jährliche Raten umgerechnet (Annuität). Dazu Wartung, Instandhaltung und Energiekosten. Abzüglich BHKW-Stromerlöse. Bezogen auf die erzeugte Wärme inkl. Netzverluste.">?</span></span>
+        <b>${_nf1(wgk)}<small>ct/kWh</small></b>
+        ${wgkVerkauft > wgk * 1.01 ? `<em title="Gleiche Jahreskosten, geteilt durch die beim Kunden ankommende Nutzwärme (ohne Netzverluste) — der für Wärmepreis-Kalkulationen relevante Wert.">${_nf1(wgkVerkauft)} ct/kWh je verkaufter kWh</em>` : '<em>VDI 2067, Annuitätenmethode</em>'}
+      </div>
+      <div class="wirt-kpi"><span>Jahreskosten</span><b>${fmtK(_jahr)}<small>k€/a</small></b><em>Kapital, Betrieb und Energie</em></div>
+      <div class="wirt-kpi"><span>Investition</span><b>${fmt(gesamtInvest / 1000)}<small>k€</small></b><em>inkl. Nebenkosten</em></div>
+      <div class="wirt-kpi" id="wirt-kpi-npv"><span>WGK Barwert</span><b>—</b><em>Barwertmethode</em></div>
+    </div>
+    <div class="wirt-karte">
+      <div class="wirt-karte-titel">Kostenstruktur <small>${fmtK(_jahr)} k€/a · ${_nf1(wgk)} ct/kWh</small></div>
+      <div class="wirt-struktur">${_teile.map(t => `<i style="width:${Math.max(0, t.wert) / _teilSumme * 100}%;background:${t.farbe}" title="${t.label}: ${fmtK(t.wert)} k€/a"></i>`).join('')}</div>
+      <div class="wirt-struktur-legende">${_teile.map(t => `<span${t.tip ? ` title="${t.tip}"` : ''}><i style="background:${t.farbe}"></i>${t.label}<b>${_wgkCt(t.wert)} ct</b><small>${fmtK(t.wert)} k€/a</small></span>`).join('')}</div>
+    </div>`;
+
+  wrap.innerHTML = kopfHtml + `
+    <div class="wirt-karte">
+    <div class="wirt-karte-titel">Investitionsbausteine
+      <div class="wirt-ansicht">
         <button class="viz-btn active" id="wirt-view-table" data-click="_wirtSetView('table')" style="font-size:9px;padding:2px 8px;">Tabelle</button>
         <button class="viz-btn" id="wirt-view-waterfall" data-click="_wirtSetView('waterfall')" style="font-size:9px;padding:2px 8px;">Aufbau</button>
         <button class="viz-btn" id="wirt-view-kurven" data-click="_wirtSetView('kurven')" style="font-size:9px;padding:2px 8px;" title="Spezifische Investitionskosten (€/kW) nach Anlagengröße — KWW-Kostenkurven der Wärmeerzeuger, eigene Anlagen als Punkte markiert">Kostenkurven</button>
       </div>
     </div>
     <div id="wirt-wrap-table">
-    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
-      <thead><tr style="color:var(--muted);font-size:9px;border-bottom:1px solid var(--border);">
-        <th style="text-align:left;padding-bottom:4px;">Baustein</th>
-        <th style="text-align:right;">n (a)</th>
-        <th style="text-align:right;">Invest (€)</th>
-        <th style="text-align:right;">Instandh. %</th>
-        <th style="text-align:right;">Wartung %</th>
-        <th style="text-align:right;">Bedienung h</th>
-        <th style="text-align:right;">JK k€/a</th>
-        <th style="text-align:right;color:#a5d6a7;">ct/kWh</th>
+    <table class="wirt-tabelle">
+      <thead><tr>
+        <th style="text-align:left;">Baustein</th>
+        <th>n (a)</th>
+        <th>Invest (€)</th>
+        <th>Instandh. %</th>
+        <th>Wartung %</th>
+        <th>Bedienung h</th>
+        <th>JK k€/a</th>
+        <th>ct/kWh</th>
       </tr></thead>
       <tbody>${invHtml}</tbody>
-      <tfoot><tr style="border-top:1px solid var(--border);font-weight:600;font-size:11px;">
-        <td colspan="4">Kapital- &amp; Betriebskosten</td>
-        <td></td><td></td>
-        <td style="text-align:right;font-family:'DM Mono',monospace;">${fmtK(gesamtJk)} k€/a</td>
-        <td style="text-align:right;font-family:'DM Mono',monospace;color:#a5d6a7;">${_wgkCt(gesamtJk)}</td>
+      <tfoot><tr>
+        <td colspan="2">Kapital- &amp; Betriebskosten</td>
+        <td>${fmt(gesamtInvest)} €</td>
+        <td></td><td></td><td></td>
+        <td>${fmtK(gesamtJk)} k€/a</td>
+        <td>${_wgkCt(gesamtJk)}</td>
       </tr></tfoot>
     </table>
     </div>
@@ -994,52 +1029,22 @@ export function calcWirtschaftPanel() {
       <div id="wirt-kurven-tt" style="position:absolute;pointer-events:none;display:none;background:#1a1d26;color:#cfd8dc;border:1px solid #2a3040;border-radius:4px;padding:4px 8px;font-family:'DM Mono',monospace;font-size:10px;white-space:nowrap;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,0.5);"></div>
       <div id="wirt-kurven-legend" style="display:flex;flex-wrap:wrap;gap:4px 10px;margin:6px 0 14px;font-size:9px;"></div>
     </div>
+    </div>
     ${enHtml ? `
-    <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Energiekosten</div>
-    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
-      <thead><tr style="color:var(--muted);font-size:9px;border-bottom:1px solid var(--border);">
-        <th style="text-align:left;">Erzeuger</th><th style="text-align:left;">Basis</th><th style="text-align:right;">k€/a</th><th style="text-align:right;color:#a5d6a7;">ct/kWh</th>
+    <div class="wirt-karte">
+    <div class="wirt-karte-titel">Energiekosten</div>
+    <table class="wirt-tabelle">
+      <thead><tr>
+        <th style="text-align:left;">Erzeuger</th><th style="text-align:left;">Basis</th><th>k€/a</th><th>ct/kWh</th>
       </tr></thead>
       <tbody>${enHtml}</tbody>
-      <tfoot><tr style="border-top:1px solid var(--border);font-weight:600;">
+      <tfoot><tr>
         <td colspan="2">Energiekosten gesamt</td>
-        <td style="text-align:right;font-family:'DM Mono',monospace;">${fmtK(gesamtEnergieMitCo2)} k€/a</td>
-        <td style="text-align:right;font-family:'DM Mono',monospace;color:#a5d6a7;">${_wgkCt(gesamtEnergieMitCo2)}</td>
+        <td>${fmtK(gesamtEnergieMitCo2)} k€/a</td>
+        <td>${_wgkCt(gesamtEnergieMitCo2)}</td>
       </tr></tfoot>
-    </table>` : ''}
-    <div style="background:rgba(76,175,80,0.12);border:2px solid #66bb6a;border-radius:8px;padding:14px 10px;margin-bottom:8px;">
-      <div style="text-align:center;margin-bottom:10px;">
-        <div style="font-size:9px;font-weight:600;color:#a5d6a7;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">WGK (VDI 2067 Annuität) <span class="htip" data-tip="Wärmegestehungskosten nach VDI 2067: Investitionskosten werden auf jährliche Raten umgerechnet (Annuität). Dazu Wartung, Instandhaltung und Energiekosten. Abzüglich BHKW-Stromerlöse. Bezogen auf die erzeugte Wärme inkl. Netzverluste.">?</span></div>
-        <div style="font-family:'DM Mono',monospace;font-size:28px;font-weight:700;color:#a5d6a7;">${wgk.toFixed(1)} <span style="font-size:14px;font-weight:400;">ct/kWh</span></div>
-        ${wgkVerkauft > wgk * 1.01 ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;" title="Gleiche Jahreskosten, geteilt durch die beim Kunden ankommende Nutzwärme (ohne Netzverluste) — der für Wärmepreis-Kalkulationen relevante Wert.">je verkaufter kWh (ohne Netzverluste): <span style="font-family:'DM Mono',monospace;color:#a5d6a7;">${wgkVerkauft.toFixed(1)} ct/kWh</span></div>` : ''}
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-size:10px;border-top:1px solid rgba(165,214,167,0.2);">
-        <tr><td style="color:var(--muted);padding:3px 0;">Annuität (Kapital) <span class="htip" data-tip="Jährliche Rate aus den Investitionskosten — wie bei einem Kredit. Umfasst Zinsen und Tilgung über die Nutzungsdauer der Anlage (VDI 2067).">?</span></td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:#a5d6a7;">${_wgkCt(_sumAnn)} ct/kWh</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--muted);padding-left:8px;">${fmtK(_sumAnn)} k&euro;/a</td></tr>
-        <tr><td style="color:var(--muted);padding:3px 0;">Instandhaltung</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:#a5d6a7;">${_wgkCt(_sumInst)} ct/kWh</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--muted);padding-left:8px;">${fmtK(_sumInst)} k&euro;/a</td></tr>
-        <tr><td style="color:var(--muted);padding:3px 0;">Wartung</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:#a5d6a7;">${_wgkCt(_sumWart)} ct/kWh</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--muted);padding-left:8px;">${fmtK(_sumWart)} k&euro;/a</td></tr>
-        <tr><td style="color:var(--muted);padding:3px 0;">Bedienung</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:#a5d6a7;">${_wgkCt(_sumBed)} ct/kWh</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--muted);padding-left:8px;">${fmtK(_sumBed)} k&euro;/a</td></tr>
-        <tr style="border-top:1px solid rgba(165,214,167,0.2);">
-            <td style="color:var(--muted);padding:3px 0;">Energiekosten (inkl. CO₂)</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:#a5d6a7;">${_wgkCt(gesamtEnergieMitCo2)} ct/kWh</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--muted);padding-left:8px;">${fmtK(gesamtEnergieMitCo2)} k&euro;/a</td></tr>
-        <tr style="border-top:1px solid rgba(165,214,167,0.3);font-weight:600;">
-            <td style="padding:4px 0;color:#a5d6a7;">Gesamt</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:#a5d6a7;">${wgk.toFixed(1)} ct/kWh</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:#a5d6a7;padding-left:8px;">${fmtK(gesamtJk+gesamtEnergieMitCo2)} k&euro;/a</td></tr>
-      </table>
-    </div>
-    <div style="background:rgba(255,152,0,0.1);border:1px solid #ff9800;border-radius:6px;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px;text-align:center;">
-      <div><div style="font-family:'DM Mono',monospace;font-size:14px;color:#ffb74d;">${fmtK(gesamtJk+gesamtEnergieMitCo2)} k&euro;/a</div><div style="font-size:9px;color:var(--muted);">Jahreskosten gesamt</div></div>
-      <div><div style="font-family:'DM Mono',monospace;font-size:14px;color:#fff176;">${fmt(gesamtInvest/1000)} k&euro;</div><div style="font-size:9px;color:var(--muted);">Investition gesamt</div></div>
-    </div>
+    </table>
+    </div>` : ''}
   `;
 
   // CO₂-Übersicht Chart
@@ -1389,7 +1394,7 @@ export function _renderWirtCo2Chart(keys, en) {
   const totalHeute = series.reduce((s, d) => s + d.vals[0], 0);
   const total2050  = series.reduce((s, d) => s + d.vals[nYears - 1], 0);
   const totalEl = document.getElementById('wirt-co2-total');
-  if (totalEl) totalEl.textContent = totalHeute.toFixed(1) + ' → ' + total2050.toFixed(1) + ' t CO₂/a';
+  if (totalEl) totalEl.textContent = 'heute ' + Math.round(totalHeute).toLocaleString('de-DE') + ' t/a → 2050 ' + Math.round(total2050).toLocaleString('de-DE') + ' t/a';
 
   // Legende
   const legendEl = document.getElementById('wirt-co2-legend');
@@ -1598,9 +1603,19 @@ export function calcJahresscheiben() {
   let totalInvest = 0;
   let annualOpex = 0; // Betriebskosten (Inst., Wartung, Bedienung) ohne Energie
   const reinvestYears = []; // [{year, amount}]
+  // Bevorzugt die Bausteine und Energiekosten der Wirtschaftlichkeitsrechnung übernehmen (gleiche Zahlen wie oben)
+  const wErg = window._wirtErgebnis;
+  const ausPanel = wErg && wErg.keys === keys.join(',') && wErg.bausteine.length > 0;
+  if (ausPanel) {
+    for (const b of wErg.bausteine) {
+      totalInvest += b.invest;
+      annualOpex += b.invest * (b.inst + b.wart) / 100 + b.bedien * wErg.lohn;
+      if (b.n > 0 && b.n < laufzeit) for (let y = b.n; y < laufzeit; y += b.n) reinvestYears.push({ year: y, amount: b.invest });
+    }
+  }
 
   let basisInvest = 0;
-  for (const b of BD) {
+  if (!ausPanel) for (const b of BD) {
     if (!b.aktiv()) continue;
     const inv = (ov[b.id] !== undefined) ? ov[b.id] : b.auto();
     const vdi = { ...b.vdi, ...(ovVdi[b.id] || {}) };
@@ -1625,7 +1640,7 @@ export function calcJahresscheiben() {
     { id:'planung', pct:0.10, vdi:{n:20,inst:0,wart:0,bedien:0} },
     { id:'unvorg', pct:0.07, vdi:{n:20,inst:0,wart:0,bedien:0} },
   ];
-  if (basisInvest > 0) {
+  if (!ausPanel && basisInvest > 0) {
     for (const b of PCT_ITEMS) {
       const inv = (ov[b.id] !== undefined) ? ov[b.id] : Math.round(basisInvest * b.pct);
       const vdi = { ...b.vdi, ...(ovVdi[b.id] || {}) };
@@ -1651,6 +1666,8 @@ export function calcJahresscheiben() {
     else if (k === 'fernwaerme') energyCostYear0 += wMwh * pFw * 10;
     else if (ETA[k]) energyCostYear0 += (wMwh / ETA[k]) * P[k] * 10;
   });
+
+  if (ausPanel) energyCostYear0 = wErg.energieJahr;   // inkl. WP-Stromtarif und CO₂-Kosten
 
   // Annuität der Erstinvestition (VDI 2067 Kapitalkosten p.a.)
   const q = 1 + diskont;
@@ -1687,16 +1704,20 @@ export function calcJahresscheiben() {
   const fmt = v => Math.round(v).toLocaleString('de-DE');
   const fmtK = v => (v / 1000).toFixed(0);
   const res = document.getElementById('js-result');
+  const npvKpi = document.querySelector('#wirt-kpi-npv b');
+  if (npvKpi) npvKpi.innerHTML = `${wgkNpv.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}<small>ct/kWh</small>`;
+  const npvKpiEm = document.querySelector('#wirt-kpi-npv em');
+  if (npvKpiEm) npvKpiEm.textContent = `${laufzeit} Jahre, Preise +${(eskalation * 100).toLocaleString('de-DE')} %/a`;
   if (res) {
     res.style.display = 'block';
     res.innerHTML = `
-      <div style="font-size:9px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;opacity:0.7;">Ergänzend: Barwert-/NPV-Methode</div>
-      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:8px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:4px;text-align:center;margin-bottom:4px;">
-        <div><div style="font-family:'DM Mono',monospace;font-size:11px;color:rgba(255,183,77,0.7);">${fmtK(totalInvest)} k&euro;</div><div style="font-size:7px;color:var(--muted);">Erstinvestition</div></div>
-        <div><div style="font-family:'DM Mono',monospace;font-size:11px;color:rgba(206,147,216,0.7);">${fmtK(years[1]?.jahreskosten||0)} k&euro;/a</div><div style="font-size:7px;color:var(--muted);">Jahreskosten (J.1)</div></div>
-        <div><div style="font-family:'DM Mono',monospace;font-size:11px;color:rgba(255,241,118,0.7);">${fmtK(npv)} k&euro;</div><div style="font-size:7px;color:var(--muted);">NPV (${laufzeit}a)</div></div>
-        <div><div style="font-family:'DM Mono',monospace;font-size:11px;color:rgba(165,214,167,0.7);">${fmtK(kumulativ)} k&euro;</div><div style="font-size:7px;color:var(--muted);">Gesamtkosten nom.</div></div>
-        <div><div style="font-family:'DM Mono',monospace;font-size:11px;color:rgba(79,195,247,0.7);">${wgkNpv.toFixed(1)} ct/kWh</div><div style="font-size:7px;color:var(--muted);">WGK (NPV)</div></div>
+      <div class="wirt-karte-titel">Barwertbetrachtung über ${laufzeit} Jahre <small>ergänzend zur Annuitätenmethode · Energiepreise +${(eskalation * 100).toLocaleString('de-DE')} %/a</small></div>
+      <div class="wirt-npv-werte">
+        <div><span>Erstinvestition</span><b>${fmt(totalInvest / 1000)} k€</b></div>
+        <div><span>Jahreskosten Jahr 1</span><b>${fmt((years[1]?.jahreskosten || 0) / 1000)} k€/a</b></div>
+        <div><span>Barwert der Kosten</span><b>${fmt(npv / 1000)} k€</b></div>
+        <div><span>Kosten nominal</span><b>${fmt(kumulativ / 1000)} k€</b></div>
+        <div><span>WGK Barwert</span><b>${wgkNpv.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ct/kWh</b></div>
       </div>
       <details style="font-size:10px;color:var(--muted);margin-top:4px;">
         <summary style="cursor:pointer;">Jahresscheiben-Tabelle</summary>
@@ -1745,14 +1766,14 @@ export function renderJahresscheibenChart(years, laufzeit) {
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
 
-  const PAD = { l: 54, r: 10, t: 16, b: 24 };
+  const PAD = { l: 54, r: 10, t: 20, b: 24 };
   const iW = W - PAD.l - PAD.r;
   const iH = H - PAD.t - PAD.b;
 
   // Skip year 0 for stacked bars (invest shown separately)
   const barData = years.filter(y => y.y > 0);
   const maxVal = Math.max(...barData.map(y => y.invest + y.betrieb + y.energie)) * 1.1 || 1;
-  const bW = Math.min(iW / barData.length * 0.7, 16);
+  const bW = Math.min(iW / barData.length * 0.6, 24);
   const gap = iW / barData.length;
 
   // Grid
@@ -1805,12 +1826,13 @@ export function renderJahresscheibenChart(years, laufzeit) {
   });
 
   // Legend
-  ctx.font = '8px sans-serif';
-  const legend = [{ l: 'Invest/Reinvest', c: '#ffb74d' }, { l: 'Betrieb', c: '#4fc3f7' }, { l: 'Energie', c: '#fff176' }];
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'left';
+  const legend = [{ l: 'Reinvestition', c: '#ffb74d' }, { l: 'Betrieb', c: '#4fc3f7' }, { l: 'Energie (eskaliert)', c: '#fff176' }];
   let lx = PAD.l;
   legend.forEach(lg => {
     ctx.fillStyle = lg.c;
-    ctx.fillRect(lx, 2, 8, 8);
+    ctx.fillRect(lx, 1, 8, 8);
     ctx.fillStyle = 'rgba(200,200,200,0.6)';
     ctx.fillText(lg.l, lx + 10, 9);
     lx += ctx.measureText(lg.l).width + 26;

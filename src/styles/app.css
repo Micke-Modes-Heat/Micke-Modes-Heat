@@ -292,6 +292,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .float-panel.inline-mode .panel-drag-handle{display:none!important;}
 .float-panel.inline-mode .panel-btns button[onclick*="hidePanels"]{display:none!important;}
 .float-panel.inline-mode button[onclick*="hidePanels()"]{display:none!important;}
+.float-panel.inline-mode button[data-click="hidePanels()"],.float-panel.inline-mode .float-panel-close{display:none!important;}
+.float-panel.inline-mode{resize:none!important;overflow:visible!important;border:none!important;}
+.float-panel.inline-mode .sa-tab-content{border:none!important;}
 .float-panel.blue-border{border:1px solid var(--accent); min-width:420px;--panel-accent:var(--accent);}
 .float-panel.purple-border{border:1px solid #ce93d8;--panel-accent:#ce93d8;}
 .float-panel.teal-border{border:1px solid #26a69a;--panel-accent:#26a69a;}
@@ -1192,18 +1195,21 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 /* ── Flow SVG Animations ── */
 @keyframes flowDash{from{stroke-dashoffset:16;}to{stroke-dashoffset:0;}}
 #live-flow-svg .flow-anim{stroke-dasharray:4 4;animation:flowDash 1.2s linear infinite;}
-.analyse-full-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-.analyse-full-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;min-height:180px;overflow:hidden;}
+.analyse-full-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;}
+.analyse-full-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.18);}
 .analyse-full-card.full-width{grid-column:1/-1;}
-.analyse-full-card-title{font-size:11px;color:var(--accent);margin-bottom:10px;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between;}
+.analyse-full-card-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
 .analyse-full-card canvas{width:100%;display:block;border-radius:4px;}
-.analyse-kpi-bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
-.analyse-kpi{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;min-width:100px;flex:1;}
-.analyse-kpi-val{font-family:'DM Mono',monospace;font-size:18px;color:var(--accent);line-height:1.2;}
-.analyse-kpi-lbl{font-size:9px;color:var(--muted);margin-top:2px;}
-.analyse-section-tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap;}
-.analyse-section-tab{padding:4px 12px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;transition:.15s;}
-.analyse-section-tab.active{background:var(--accent);color:#000;border-color:var(--accent);}
+.analyse-kpi-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px;}
+.analyse-kpi{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px 10px 16px;min-width:0;overflow:hidden;}
+.analyse-kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--kpi-c,var(--accent));}
+.analyse-kpi-val{font-family:'DM Mono',monospace;font-size:22px;color:var(--text);line-height:1.15;margin-top:4px;white-space:nowrap;}
+.analyse-kpi-val small{font-size:10px;color:var(--muted);margin-left:5px;font-family:inherit;}
+.analyse-kpi-lbl{font-size:10px;color:var(--muted);letter-spacing:.02em;}
+.analyse-section-tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap;align-items:center;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;}
+.analyse-section-tab{padding:5px 12px;border-radius:7px;border:none;background:transparent;color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;transition:.15s;}
+.analyse-section-tab:hover{color:var(--text);background:rgba(255,255,255,.05);}
+.analyse-section-tab.active{background:var(--accent);color:#000;font-weight:600;}
 .analyse-sub-tabs{display:flex;gap:3px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:6px;}
 .analyse-sub-tab{padding:4px 10px;border:none;background:none;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-7px;transition:.15s;}
 .analyse-sub-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
@@ -2496,3 +2502,97 @@ textarea.ssb-in{resize:vertical;}
 .lwwp-flaeche-label{pointer-events:none;}
 .lwwp-flaeche-label span{display:inline-block;transform:translateX(-50%);white-space:nowrap;font:600 10px 'DM Mono',monospace;color:#1b5e20;background:rgba(255,255,255,.88);border:1px solid #388e3c;border-radius:4px;padding:1px 5px;}
 .lwwp-flaeche-label span.zu-klein{color:#b71c1c;border-color:#ef5350;}
+
+/* ── Systemanalyse: Übersicht ── */
+.analyse-tab-trenner{margin:0 4px 0 10px;padding-left:12px;border-left:1px solid var(--border);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);opacity:.7;}
+.analyse-card-sub{font-size:10px;font-weight:400;color:var(--muted);}
+.analyse-full-card-title .htip{margin-left:auto;}
+.analyse-full-card-title .analyse-card-sub:last-child{margin-left:auto;}
+.analyse-legende{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10px;color:var(--muted);margin:2px 0 6px;}
+.analyse-kpi-bar-mini{position:relative;height:4px;margin-top:7px;background:rgba(255,255,255,.08);border-radius:2px;}
+.analyse-kpi-bar-mini i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:#ef8a3c;transition:width .3s;}
+.analyse-kpi-bar-mini i.ok{background:#43a047;}
+.analyse-kpi-bar-mini b{position:absolute;left:65%;top:-3px;bottom:-3px;width:2px;background:var(--text);opacity:.55;}
+.analyse-metriken{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-top:12px;font-size:10px;color:var(--muted);}
+.analyse-metrik{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:7px 9px;cursor:help;}
+.analyse-metrik span{display:block;font-size:9px;}
+.analyse-metrik b{display:block;font:500 14px 'DM Mono',monospace;color:var(--text);margin-top:2px;}
+.analyse-metrik b small{font-size:9px;color:var(--muted);margin-left:3px;}
+.erzeugermix-zeile{padding:7px 0;border-bottom:1px solid var(--border);}
+.erzeugermix-zeile:last-child{border-bottom:none;}
+.erzeugermix-kopf{display:flex;align-items:center;gap:8px;font-size:11px;}
+.erzeugermix-punkt{width:9px;height:9px;border-radius:3px;flex-shrink:0;}
+.erzeugermix-name{color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.erzeugermix-werte{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);white-space:nowrap;}
+.erzeugermix-kopf b{font-family:'DM Mono',monospace;font-size:12px;color:var(--text);min-width:52px;text-align:right;}
+.erzeugermix-balken{height:6px;margin-top:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;}
+.erzeugermix-balken i{display:block;height:100%;border-radius:3px;}
+.analyse-aufklapp > summary{cursor:pointer;list-style:none;margin-bottom:0;}
+.analyse-aufklapp > summary::-webkit-details-marker{display:none;}
+.analyse-aufklapp > summary::before{content:"▸";color:var(--muted);transition:transform .15s;display:inline-block;}
+.analyse-aufklapp[open] > summary::before{transform:rotate(90deg);}
+.analyse-aufklapp[open] > summary{margin-bottom:10px;}
+@media (max-width:900px){.analyse-full-grid{grid-template-columns:1fr;}}
+.erzeugermix-anteile{display:grid;grid-template-columns:auto 1fr auto;gap:6px 10px;align-items:center;font-size:10px;color:var(--muted);margin-bottom:10px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+.erzeugermix-anteile b{font:500 11px 'DM Mono',monospace;color:var(--text);text-align:right;}
+.erzeugermix-stapel{display:flex;height:14px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,.06);}
+.erzeugermix-stapel i{display:block;height:100%;border-right:1px solid var(--surface);}
+.erzeugermix-stapel i:last-child{border-right:none;}
+
+/* Eingebettete Panels (Wärme, Wirtschaftlichkeit, Strom) als Karte */
+#analyse-waerme-content,#analyse-section-content{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+#analyse-section-content:empty{display:none;}
+#analyse-waerme-wrap .analyse-sub-tabs{border-bottom:none;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;width:fit-content;max-width:100%;flex-wrap:wrap;}
+#analyse-waerme-wrap .analyse-sub-tab,#analyse-emissionen-wrap .analyse-sub-tab{border-radius:7px;margin-bottom:0;border-bottom:none;padding:5px 11px;}
+#analyse-waerme-wrap .analyse-sub-tab.active,#analyse-emissionen-wrap .analyse-sub-tab.active{background:rgba(255,255,255,.08);color:var(--text);}
+#analyse-emissionen-wrap .analyse-sub-tabs{border-bottom:none;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;width:fit-content;max-width:100%;flex-wrap:wrap;}
+
+/* ── Wirtschaftlichkeit ── */
+.wirt-layout{display:flex;flex-direction:column;gap:12px;}
+.float-panel.inline-mode .wirt-layout{display:grid;grid-template-columns:minmax(230px,280px) minmax(0,1fr);gap:16px;align-items:start;}
+.float-panel.inline-mode .wirt-annahmen{position:sticky;top:0;}
+#wirtschaft-panel.inline-mode > .panel-info{margin-bottom:12px;}
+.wirt-annahmen{display:flex;flex-direction:column;gap:10px;}
+.wirt-block{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 10px;}
+.wirt-block-titel{font-size:10px;font-weight:600;color:var(--text);margin-bottom:7px;}
+.wirt-block-titel small{font-weight:400;color:var(--muted);margin-left:4px;}
+.wirt-block select{width:100%;font-size:10px;}
+.wirt-hinweis{font-size:9px;color:var(--muted);margin-top:6px;line-height:1.4;}
+.wirt-felder{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;}
+.wirt-feld{display:flex;flex-direction:column;gap:2px;font-size:9px;color:var(--muted);min-width:0;}
+.wirt-feld .inp-field{font-size:11px;padding:3px 6px;width:100%;}
+.wirt-tog{margin-top:8px;}
+.wirt-check{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text);cursor:pointer;}
+.wirt-ergebnis{display:flex;flex-direction:column;gap:12px;min-width:0;}
+#wirt-table-wrap{display:flex;flex-direction:column;gap:12px;}
+.wirt-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
+.wirt-kpi{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;min-width:0;}
+.wirt-kpi > span{display:block;font-size:10px;color:var(--muted);}
+.wirt-kpi b{display:block;font:500 20px 'DM Mono',monospace;color:var(--text);margin-top:3px;white-space:nowrap;}
+.wirt-kpi b small{font-size:10px;color:var(--muted);margin-left:4px;}
+.wirt-kpi em{display:block;font-style:normal;font-size:9px;color:var(--muted);margin-top:2px;}
+.wirt-kpi-haupt{border-color:rgba(102,187,106,.55);background:rgba(76,175,80,.08);}
+.wirt-kpi-haupt b{color:#a5d6a7;font-size:24px;}
+.wirt-karte{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;min-width:0;overflow-x:auto;}
+.wirt-karte-titel{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px;}
+.wirt-karte-titel small{font-weight:400;font-size:9px;color:var(--muted);}
+.wirt-ansicht{margin-left:auto;display:flex;gap:2px;}
+.wirt-struktur{display:flex;height:16px;border-radius:5px;overflow:hidden;background:rgba(255,255,255,.06);}
+.wirt-struktur i{display:block;height:100%;border-right:1px solid var(--bg);}
+.wirt-struktur-legende{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:10px;color:var(--muted);}
+.wirt-struktur-legende span{display:inline-flex;align-items:baseline;gap:5px;}
+.wirt-struktur-legende i{width:8px;height:8px;border-radius:2px;display:inline-block;}
+.wirt-struktur-legende b{font:500 11px 'DM Mono',monospace;color:var(--text);}
+.wirt-struktur-legende small{font-size:9px;}
+.wirt-tabelle{width:100%;border-collapse:collapse;font-size:11px;}
+.wirt-tabelle th{font-size:9px;font-weight:500;color:var(--muted);text-align:right;padding:0 4px 5px;border-bottom:1px solid var(--border);white-space:nowrap;}
+.wirt-tabelle td{padding:3px 4px;}
+.wirt-tabelle tbody tr:hover{background:rgba(255,255,255,.03);}
+.wirt-tabelle tfoot td{border-top:1px solid var(--border);font-weight:600;padding-top:5px;text-align:right;font-family:'DM Mono',monospace;}
+.wirt-tabelle tfoot td:first-child{text-align:left;font-family:inherit;}
+.wirt-npv{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+.wirt-npv:not(:has(#js-result[style*="block"])){display:none;}
+.wirt-npv-werte{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:6px;}
+.wirt-npv-werte span{display:block;font-size:9px;color:var(--muted);}
+.wirt-npv-werte b{font:500 13px 'DM Mono',monospace;color:var(--text);}
+#wirtschaft-panel:not(.inline-mode) .wirt-ergebnis{order:-1;}

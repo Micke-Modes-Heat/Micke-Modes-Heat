@@ -188,7 +188,6 @@ declare global {
 
     // 3D-Visualisierung
     _ekroneDragging?: boolean;
-    _ekroneMode?: string;
     _ekroneMaxKw?: number;
 
     // Leaflet-Map (globaler Zugriff aus älterem Code)

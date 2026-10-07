@@ -4242,7 +4242,7 @@ function _applyProjectData(project) {
           if (el && key === 'wpStromCtKwh' && es.values[key] == null) el.value = '';
         }
         const co2 = document.getElementById('wirt-co2-alle'); if (co2) co2.checked = !!es.values.co2Alle;
-        const label = document.getElementById('wirt-co2-alle-label'); if (label) label.textContent = es.values.co2Alle ? 'alle Energieträger' : 'nur fossile';
+        const label = document.getElementById('wirt-co2-alle-label'); if (label) label.textContent = es.values.co2Alle ? 'CO₂ auf alle Energieträger' : 'CO₂ nur auf fossile';
         const hint = document.getElementById('wirt-szenario-hint'); if (hint) hint.textContent = es.scenarioId === 'manual' ? 'Manuelle Annahmen aus Projektdatei.' : `Gespeichertes Wirtschaftsszenario ${es.scenarioId}.`;
         _onStrompreisChange('wirt-p-strom'); _onGaspreisChange('wirt-p-gas');
       }

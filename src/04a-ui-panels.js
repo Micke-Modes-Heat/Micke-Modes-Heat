@@ -1865,18 +1865,22 @@ export function refreshAnalyseView() {
     // Try from gebaeude
     const tw = gebaeude.reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
     const thl = gebaeude.reduce((s, g) => s + (parseFloat(g.heizlast) || 0), 0);
-    setKpi('av-kpi-waerme', tw.toFixed(0));
-    setKpi('av-kpi-pmax', thl.toFixed(0));
+    setKpi('av-kpi-waerme', Math.round(tw).toLocaleString('de-DE'));
+    setKpi('av-kpi-pmax', Math.round(thl).toLocaleString('de-DE'));
   }
 
   // WGK + EE from globals (zuverlässiger als DOM-Footer)
-  setKpi('av-kpi-wgk', window._lastWgk ? window._lastWgk.toFixed(1) + ' ct' : '—');
+  const _nf = (v, d = 0) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  setKpi('av-kpi-wgk', window._lastWgk ? _nf(window._lastWgk, 1) : '—');
   // EE-Anteil direkt berechnen
   const _eeKeys = ['lwwp','fg','geo','pellets','hhs'];
   const _den = window._dispatchEnergy || {};
   let _eeW = 0, _gesW = 0;
   for (const k of Object.keys(_den)) { const w = _den[k]?.waermeMwh || 0; _gesW += w; if (_eeKeys.includes(k) || k === '_thermSpeicher') _eeW += w; }
-  setKpi('av-kpi-ee', _gesW > 0 ? (_eeW / _gesW * 100).toFixed(0) + ' %' : '—');
+  const _eePct = _gesW > 0 ? _eeW / _gesW * 100 : null;
+  setKpi('av-kpi-ee', _eePct != null ? _nf(_eePct) : '—');
+  const _eeBar = document.getElementById('av-kpi-ee-bar');
+  if (_eeBar) { _eeBar.style.width = (_eePct != null ? Math.min(100, _eePct) : 0) + '%'; _eeBar.classList.toggle('ok', _eePct != null && _eePct >= 65); }
 
   // CO₂ direkt aus Dispatch-Daten berechnen
   const _co2Eta = _getEtaMap();
@@ -1895,7 +1899,7 @@ export function refreshAnalyseView() {
       _co2Tot += (e.waermeMwh || 0) / _co2Eta[k] * emf / 1e3;
     }
   }
-  setKpi('av-kpi-co2', _co2Tot > 0.01 ? _co2Tot.toFixed(1) : '—');
+  setKpi('av-kpi-co2', _co2Tot > 0.01 ? _nf(_co2Tot, _co2Tot < 100 ? 1 : 0) : '—');
 
   // Render the active section
   const grid    = document.getElementById('analyse-dispatch-grid');
