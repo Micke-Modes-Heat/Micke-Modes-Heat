@@ -2705,3 +2705,37 @@ body.trasse-loeschmodus path.leaflet-interactive[stroke="#ff9800"],body.trasse-l
 .lwwp-gebiet select{font-size:10px;padding:2px 4px}
 .lwwp-schall-legende{font-size:9px;color:var(--muted);margin-top:6px}
 .lwwp-schall-hinweis{font-size:8.5px;color:var(--muted);margin-top:4px;line-height:1.35}
+
+/* Wirtschaftlichkeit: Kostenanalyse */
+.wirt-abschnitt{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px}
+.wirt-abschnitt small{font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted);margin-left:6px}
+.wirt-analyse-raster{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.wirt-analyse-raster>.wirt-karte{margin-bottom:0}
+@media (max-width:1100px){.wirt-analyse-raster{grid-template-columns:1fr}}
+.wirt-kennwerte{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.wirt-kennwerte span{display:flex;flex-direction:column;padding:5px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg);min-width:96px}
+.wirt-kennwerte small{font-size:8.5px;color:var(--muted)}
+.wirt-kennwerte b{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;color:var(--text)}
+.wirt-tornado{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);gap:4px 0;align-items:center;font-size:10px}
+.wirt-tornado .wt-name{padding-right:10px;color:var(--text);white-space:nowrap}
+.wirt-tornado .wt-links,.wirt-tornado .wt-rechts{display:flex;align-items:center;gap:4px;height:16px}
+.wirt-tornado .wt-links{justify-content:flex-end;border-right:1px solid var(--muted);padding-right:2px}
+.wirt-tornado .wt-rechts{padding-left:2px}
+.wirt-tornado .wt-links i{display:block;height:12px;background:#66bb6a;border-radius:2px 0 0 2px;opacity:.85}
+.wirt-tornado .wt-rechts i{display:block;height:12px;background:#ef5350;border-radius:0 2px 2px 0;opacity:.85}
+.wirt-tornado b{font-family:'DM Mono',monospace;font-weight:400;font-size:9.5px;color:var(--text);white-space:nowrap}
+.wirt-tornado small{font-size:8.5px;color:var(--muted);white-space:nowrap}
+.we-kopf,.we-zeile{display:grid;grid-template-columns:150px 190px minmax(0,1fr) 64px 80px;gap:10px;align-items:center}
+.we-kopf{font-size:8.5px;color:var(--muted);padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:4px}
+.we-kopf i{display:inline-block;width:8px;height:8px;border-radius:2px;margin:0 2px 0 6px;vertical-align:middle}
+.we-kopf span:nth-child(n+4){text-align:right}
+.we-zeile{font-size:10px;padding:3px 0}
+.we-name{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.we-name i{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.we-menge{color:var(--muted);font-family:'DM Mono',monospace;font-size:9.5px;white-space:nowrap}
+.we-balken{display:flex;height:12px;background:var(--bg);border-radius:3px;overflow:hidden}
+.we-balken i{display:block;height:100%}
+.we-wert{text-align:right;font-family:'DM Mono',monospace;font-weight:500;color:var(--text)}
+.we-summe{text-align:right;font-family:'DM Mono',monospace;color:var(--muted);font-size:9.5px}
+.we-gemeinsam{border-top:1px dashed var(--border);margin-top:3px;padding-top:5px}
+@media (max-width:1100px){.we-kopf,.we-zeile{grid-template-columns:120px 1fr 60px}.we-menge,.we-summe,.we-kopf span:nth-child(2),.we-kopf span:nth-child(5){display:none}}
