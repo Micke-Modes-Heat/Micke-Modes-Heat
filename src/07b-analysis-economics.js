@@ -12,6 +12,7 @@ import { getKostenProMKlasse } from './04a-ui-panels.js';
 import { getThermSpeicherParams } from './06b-gl-berechnen.js';
 import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
 import { CalcEngine } from './08-calc-engine.js';
+import { euroKompakt, euroTeile } from './lib/euro-format.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { OPT_IH, OPT_INVEST_DEFAULT, OPT_NUTZUNG } from './config/optimizer-defaults.js';
 import { autoGkResult } from './06c-dispatch-core.js';
@@ -931,7 +932,7 @@ export function calcWirtschaftPanel() {
       '<td style="text-align:right;">' + vdiInput(b,'inst',38) + '</td>' +
       '<td style="text-align:right;">' + vdiInput(b,'wart',38) + '</td>' +
       '<td style="text-align:right;">' + vdiInput(b,'bedien',44) + '</td>' +
-      '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + fmtK(b.jk) + ' k€/a</td>' +
+      '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + euroKompakt(b.jk, true) + '</td>' +
       '<td style="text-align:right;font-family:\'DM Mono\',monospace;font-size:9px;color:#a5d6a7;">' + _wgkCt(b.jk) + '</td>' +
     '</tr>';
   }
@@ -958,9 +959,9 @@ export function calcWirtschaftPanel() {
         '<span style="color:' + grp.color + ';">' + grp.label + '</span> ' +
         '<span style="font-weight:normal;font-size:9px;color:var(--muted);margin-left:4px;">' + subLabel + '</span>' +
       '</td>' +
-      '<td style="text-align:right;font-family:\'DM Mono\',monospace;font-size:11px;">' + fmt(grpInvest) + ' €</td>' +
+      '<td style="text-align:right;font-family:\'DM Mono\',monospace;font-size:11px;">' + euroKompakt(grpInvest) + '</td>' +
       '<td colspan="3"></td>' +
-      '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + fmtK(grpJk) + ' k€/a</td>' +
+      '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + euroKompakt(grpJk, true) + '</td>' +
       '<td style="text-align:right;font-family:\'DM Mono\',monospace;font-size:10px;color:#a5d6a7;">' + _wgkCt(grpJk) + '</td>' +
     '</tr>';
     grpRows.forEach(b => { invHtml += _wirtDetailRow(b, gi, isOpen); });
@@ -971,7 +972,7 @@ export function calcWirtschaftPanel() {
     `<tr>
       <td style="color:${r.color}">${r.label}</td>
       <td style="color:var(--muted);font-size:10px;">${r.detail}</td>
-      <td style="text-align:right;font-family:'DM Mono',monospace;">${fmtK(r.kosten)} k€/a</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;">${euroKompakt(r.kosten, true)}</td>
       <td style="text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:#a5d6a7;">${_wgkCt(r.kosten)}</td>
     </tr>`
   ).join('');
@@ -1001,14 +1002,14 @@ export function calcWirtschaftPanel() {
         <b>${_nf1(wgk)}<small>ct/kWh</small></b>
         ${ohneNetz ? '<em>nur Wärmeerzeugung, ohne Netz und Hausstationen</em>' : wgkVerkauft > wgk * 1.01 ? `<em title="Gleiche Jahreskosten, geteilt durch die beim Kunden ankommende Nutzwärme (ohne Netzverluste) — der für Wärmepreis-Kalkulationen relevante Wert.">${_nf1(wgkVerkauft)} ct/kWh je verkaufter kWh</em>` : '<em>VDI 2067, Annuitätenmethode</em>'}
       </div>
-      <div class="wirt-kpi"><span>Jahreskosten</span><b>${fmtK(_jahr)}<small>k€/a</small></b><em>Kapital, Betrieb und Energie</em></div>
-      <div class="wirt-kpi"><span>Investition</span><b>${fmt(gesamtInvest / 1000)}<small>k€</small></b><em>${ohneNetz ? 'Erzeugung inkl. Nebenkosten' : 'inkl. Nebenkosten'}</em></div>
+      <div class="wirt-kpi"><span>Jahreskosten</span><b>${euroTeile(_jahr, true).zahl}<small>${euroTeile(_jahr, true).einheit}</small></b><em>Kapital, Betrieb und Energie</em></div>
+      <div class="wirt-kpi"><span>Investition</span><b>${euroTeile(gesamtInvest).zahl}<small>${euroTeile(gesamtInvest).einheit}</small></b><em>${ohneNetz ? 'Erzeugung inkl. Nebenkosten' : 'inkl. Nebenkosten'}</em></div>
       <div class="wirt-kpi" id="wirt-kpi-npv"><span>WGK Barwert</span><b>—</b><em>Barwertmethode</em></div>
     </div>
     <div class="wirt-karte">
-      <div class="wirt-karte-titel">Kostenstruktur <small>${fmtK(_jahr)} k€/a · ${_nf1(wgk)} ct/kWh</small></div>
-      <div class="wirt-struktur">${_teile.map(t => `<i style="width:${Math.max(0, t.wert) / _teilSumme * 100}%;background:${t.farbe}" title="${t.label}: ${fmtK(t.wert)} k€/a"></i>`).join('')}</div>
-      <div class="wirt-struktur-legende">${_teile.map(t => `<span${t.tip ? ` title="${t.tip}"` : ''}><i style="background:${t.farbe}"></i>${t.label}<b>${_wgkCt(t.wert)} ct</b><small>${fmtK(t.wert)} k€/a</small></span>`).join('')}</div>
+      <div class="wirt-karte-titel">Kostenstruktur <small>${euroKompakt(_jahr, true)} · ${_nf1(wgk)} ct/kWh</small></div>
+      <div class="wirt-struktur">${_teile.map(t => `<i style="width:${Math.max(0, t.wert) / _teilSumme * 100}%;background:${t.farbe}" title="${t.label}: ${euroKompakt(t.wert, true)}"></i>`).join('')}</div>
+      <div class="wirt-struktur-legende">${_teile.map(t => `<span${t.tip ? ` title="${t.tip}"` : ''}><i style="background:${t.farbe}"></i>${t.label}<b>${_wgkCt(t.wert)} ct</b><small>${euroKompakt(t.wert, true)}</small></span>`).join('')}</div>
     </div>`;
 
   wrap.innerHTML = kopfHtml + `
@@ -1025,19 +1026,19 @@ export function calcWirtschaftPanel() {
       <thead><tr>
         <th style="text-align:left;">Baustein</th>
         <th>n (a)</th>
-        <th>Invest (€)</th>
+        <th>Investition</th>
         <th>Instandh. %</th>
         <th>Wartung %</th>
         <th>Bedienung h</th>
-        <th>JK k€/a</th>
+        <th>Kosten/a</th>
         <th>ct/kWh</th>
       </tr></thead>
       <tbody>${invHtml}</tbody>
       <tfoot><tr>
         <td colspan="2">Kapital- &amp; Betriebskosten</td>
-        <td>${fmt(gesamtInvest)} €</td>
+        <td>${euroKompakt(gesamtInvest)}</td>
         <td></td><td></td><td></td>
-        <td>${fmtK(gesamtJk)} k€/a</td>
+        <td>${euroKompakt(gesamtJk, true)}</td>
         <td>${_wgkCt(gesamtJk)}</td>
       </tr></tfoot>
     </table>
@@ -1056,12 +1057,12 @@ export function calcWirtschaftPanel() {
     <div class="wirt-karte-titel">Energiekosten</div>
     <table class="wirt-tabelle">
       <thead><tr>
-        <th style="text-align:left;">Erzeuger</th><th style="text-align:left;">Basis</th><th>k€/a</th><th>ct/kWh</th>
+        <th style="text-align:left;">Erzeuger</th><th style="text-align:left;">Basis</th><th>Kosten/a</th><th>ct/kWh</th>
       </tr></thead>
       <tbody>${enHtml}</tbody>
       <tfoot><tr>
         <td colspan="2">Energiekosten gesamt</td>
-        <td>${fmtK(gesamtEnergieMitCo2)} k€/a</td>
+        <td>${euroKompakt(gesamtEnergieMitCo2, true)}</td>
         <td>${_wgkCt(gesamtEnergieMitCo2)}</td>
       </tr></tfoot>
     </table>
@@ -1735,10 +1736,10 @@ export function calcJahresscheiben() {
     res.innerHTML = `
       <div class="wirt-karte-titel">Barwertbetrachtung über ${laufzeit} Jahre <small>ergänzend zur Annuitätenmethode · Energiepreise +${(eskalation * 100).toLocaleString('de-DE')} %/a</small></div>
       <div class="wirt-npv-werte">
-        <div><span>Erstinvestition</span><b>${fmt(totalInvest / 1000)} k€</b></div>
-        <div><span>Jahreskosten Jahr 1</span><b>${fmt((years[1]?.jahreskosten || 0) / 1000)} k€/a</b></div>
-        <div><span>Barwert der Kosten</span><b>${fmt(npv / 1000)} k€</b></div>
-        <div><span>Kosten nominal</span><b>${fmt(kumulativ / 1000)} k€</b></div>
+        <div><span>Erstinvestition</span><b>${euroKompakt(totalInvest)}</b></div>
+        <div><span>Jahreskosten Jahr 1</span><b>${euroKompakt(years[1]?.jahreskosten || 0, true)}</b></div>
+        <div><span>Barwert der Kosten</span><b>${euroKompakt(npv)}</b></div>
+        <div><span>Kosten nominal</span><b>${euroKompakt(kumulativ)}</b></div>
         <div><span>WGK Barwert</span><b>${wgkNpv.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ct/kWh</b></div>
       </div>
       <details style="font-size:10px;color:var(--muted);margin-top:4px;">
@@ -1756,12 +1757,12 @@ export function calcJahresscheiben() {
             </tr></thead>
             <tbody>${years.map(r => `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
               <td style="padding:1px 4px;">${r.y}</td>
-              <td style="text-align:right;padding:1px 4px;${r.invest>0?'color:#ffb74d':''}">${r.invest>0?fmtK(r.invest):'—'}</td>
-              <td style="text-align:right;padding:1px 4px;">${r.betrieb>0?fmtK(r.betrieb):'—'}</td>
-              <td style="text-align:right;padding:1px 4px;">${r.energie>0?fmtK(r.energie):'—'}</td>
-              <td style="text-align:right;padding:1px 4px;">${fmtK(r.total)}</td>
-              <td style="text-align:right;padding:1px 4px;color:#ce93d8;">${r.jahreskosten>0?fmtK(r.jahreskosten):'—'}</td>
-              <td style="text-align:right;padding:1px 4px;color:#4fc3f7;">${fmtK(r.kumulativ)}</td>
+              <td style="text-align:right;padding:1px 4px;${r.invest>0?'color:#ffb74d':''}">${r.invest>0?euroKompakt(r.invest):'—'}</td>
+              <td style="text-align:right;padding:1px 4px;">${r.betrieb>0?euroKompakt(r.betrieb):'—'}</td>
+              <td style="text-align:right;padding:1px 4px;">${r.energie>0?euroKompakt(r.energie):'—'}</td>
+              <td style="text-align:right;padding:1px 4px;">${euroKompakt(r.total)}</td>
+              <td style="text-align:right;padding:1px 4px;color:#ce93d8;">${r.jahreskosten>0?euroKompakt(r.jahreskosten):'—'}</td>
+              <td style="text-align:right;padding:1px 4px;color:#4fc3f7;">${euroKompakt(r.kumulativ)}</td>
             </tr>`).join('')}</tbody>
           </table>
         </div>
@@ -1807,7 +1808,7 @@ export function renderJahresscheibenChart(years, laufzeit) {
     ctx.fillStyle = 'rgba(200,200,200,0.4)';
     ctx.font = '8px DM Mono, monospace';
     ctx.textAlign = 'right';
-    ctx.fillText(Math.round(maxVal * i / 4 / 1000) + 'k', PAD.l - 3, y + 3);
+    ctx.fillText(euroKompakt(maxVal * i / 4).replace(' €', ''), PAD.l - 3, y + 3);
   }
   ctx.fillStyle = 'rgba(200,200,200,0.5)';
   ctx.font = '7px sans-serif';

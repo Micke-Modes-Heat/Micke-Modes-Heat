@@ -1,4 +1,5 @@
 import { co2AusEinsatz } from './lib/co2-einsatz.js';
+import { euroKompakt } from './lib/euro-format.js';
 import { map } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, redrawFliessgewaesser, redrawLwWp, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
 import { calcVerdraengungEmF, clearBhkw, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
@@ -506,8 +507,8 @@ export function renderVergleich() {
     { label: 'Leistung', fn: r => r?.erzeuger?.length ? r.erzeuger.map(e => fmt(e.leistungKw, 'kW')).join(', ') : '—' },
     { label: 'EE-Anteil', fn: r => r?.eeAnteil != null ? fmt(r.eeAnteil, '%', 1) : '—', numFn: r => r?.eeAnteil, best: 'max', bold: true },
     { label: window._wirtOhneNetz ? 'WIRTSCHAFTLICHKEIT — NUR WÄRMEERZEUGUNG (OHNE NETZ)' : 'WIRTSCHAFTLICHKEIT', header: true },
-    { label: 'Investition gesamt', fn: r => r?.investGes > 0 ? fmt(Math.round(r.investGes/1000), 'k€') : '—', numFn: r => r?.investGes, best: 'min', bold: true },
-    { label: 'Jahreskosten gesamt', fn: r => r?.jkGes > 0 ? fmt(r.jkGes/1000, 'k€/a', 1) : '—', numFn: r => r?.jkGes, best: 'min' },
+    { label: 'Investition gesamt', fn: r => r?.investGes > 0 ? euroKompakt(r.investGes) : '—', numFn: r => r?.investGes, best: 'min', bold: true },
+    { label: 'Jahreskosten gesamt', fn: r => r?.jkGes > 0 ? euroKompakt(r.jkGes, true) : '—', numFn: r => r?.jkGes, best: 'min' },
     { label: 'WGK System gesamt', fn: r => r?.wgkText || '—', numFn: r => r?.wgkNum, best: 'min', bold: true },
     { label: 'Stromkosten WP', fn: r => r?.stromkostenWp != null ? fmt(r.stromkostenWp, '€/a') : '—', numFn: r => r?.stromkostenWp, best: 'min' },
     { label: 'PV-AUSBAU (Merit-Order)', header: true },
