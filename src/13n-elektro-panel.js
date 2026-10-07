@@ -140,7 +140,7 @@ function _html() { return `
       title="Alle gezeichneten und aus OSM übernommenen Elektro-Trassenabschnitte auf einmal entfernen — Wärmetrassen bleiben erhalten">✕ Alle Elektro-Trassen löschen</button>
     <button class="lp-tool-btn lp-btn-tile" style="width:100%;margin-bottom:2px;"
       data-click="realignAllStromKabel()"
-      title="Verlauf und Länge aller bestehenden Kabel neu entlang der aktuellen Trassen berechnen — z.B. nach nachträglich gezeichneten oder korrigierten Trassen">↻ Kabel neu ausrichten</button>
+      title="Verlauf und Länge aller bestehenden Kabel neu entlang der aktuellen Trassen berechnen (Elektro- und gezeichnete Wärmetrassen) — z.B. nach nachträglich gezeichneten oder korrigierten Trassen">↻ Kabel neu ausrichten</button>
     <button class="lp-tool-btn lp-btn-tile" style="width:100%;"
       data-click="showAutoNetzDialog()"
       title="Stromnetz automatisch erzeugen">Netz automatisch erzeugen</button>

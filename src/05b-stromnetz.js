@@ -509,10 +509,14 @@ export function stromNodeClick(nodeId) {
 }
 
 // ── Trassen-Routing für Elektroleitungen (portiert aus Energiekarte1.1) ───────
-// Konvertiert window.trassePoints + window.trasseSegments in das EL.trassen-Format
+// Konvertiert window.trassePoints + window.trasseSegments in das EL.trassen-Format.
+// Kabel dürfen auch in gezeichneten Wärmetrassen liegen (gemeinsamer Graben) — umgekehrt
+// nutzt das Wärmenetz keine Elektro-Trassen. Nur für Wärme übernommene OSM-Straßen
+// bleiben außen vor, damit „OSM löschen“ im Elektro-Tab die Kabelführung wirklich ändert.
 function _getTrassenForRouting() {
   const pts = window.trassePoints;
-  const segs = window.trasseSegments.filter(seg => !seg.domains || seg.domains.includes('strom'));
+  const segs = window.trasseSegments.filter(seg => !seg.domains || seg.domains.includes('strom') ||
+    (seg.domains.includes('waerme') && seg.source !== 'osm-street'));
   if (!pts || pts.length < 2 || !segs || segs.length === 0) return [];
   return segs
     .map((seg, i) => ({
