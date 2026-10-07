@@ -7946,18 +7946,24 @@ function ggPvBelegungAbsatz(v) {
   const bv = ggPvBelegung(v.id) || {};
   const d = v.dachbelegung || {};
   const n = bv.netz || {};
+  const mass = n.ausbau?.massnahmen || [];
+  // Ertüchtigung aus der automatischen Belegung: Maßnahmen benennen, Kosten stehen in 5.5
+  const nMass = mass.length === 1 ? 'einer Ertüchtigung' : `${GG_ZAHLWORT[mass.length] || mass.length} Ertüchtigungen`;
+  const welche = mass.length ? ` (${gEsc(mass.map(m => m.label).join('; '))})` : '';
+  const pruefung = n.nurTrafo ? ' Geprüft wurde dabei die Belastbarkeit der Transformatoren; die Niederspannungskabel werden in der weiteren Planung bemessen.' : '';
   const netz = !n.geprueft
     ? 'Die Netzaufnahme dieser Belegung wurde nicht geprüft.'
     : n.vertraeglich
-      ? `Das bestehende Netz nimmt sie im Jahr ${ggTextFeld(n.jahr, 'Netzjahr')} ohne Ertüchtigung auf`
-        + (n.nurTrafo ? '; geprüft wurde dabei die Belastbarkeit der Transformatoren, die Niederspannungskabel werden in der weiteren Planung bemessen.' : '.')
-      : 'Sie überschreitet an einzelnen Stellen die Aufnahmefähigkeit des bestehenden Netzes; dort ist eine Ertüchtigung vorauszusetzen.';
+      ? (mass.length
+        ? `Das Netz im Jahr ${ggTextFeld(n.jahr, 'Netzjahr')} nimmt sie nach ${nMass} auf${welche}.`
+        : `Das Netz im Jahr ${ggTextFeld(n.jahr, 'Netzjahr')} nimmt sie ohne Ertüchtigung auf.`) + pruefung
+      : `Sie überschreitet${mass.length ? ` auch nach ${nMass}${welche}` : ''} an einzelnen Stellen die Aufnahmefähigkeit des Netzes; dort ist eine weitere Ertüchtigung vorauszusetzen.` + pruefung;
   return `${ggPvName(v)}: ${ggPvFeld(d.daecher, 'Anzahl Dächer')} Dächer mit zusammen ${ggPvFeld(d.neuKwp, 'kWp Belegung')} kWp`
     + (d.geplantKwp > 0.5 ? `, dazu ${ggPvFeld(d.geplantKwp, 'kWp geplant')} kWp bereits geplante PV, insgesamt ${ggPvFeld(v.pvKwp, 'kWp gesamt')} kWp` : '')
     + '. '
     + (bv.beschreibung ? `Auswahl: ${gEsc(bv.beschreibung)}. ` : '')
     + (v.batKwh > 0
-      ? `Der Speicher ist ${ggPvSpeicherRegelText(v)} und hat ${ggPvFeld(v.batKwh, 'kWh Speicher')} kWh.`
+      ? `Der Speicher hat ${ggPvFeld(v.batKwh, 'kWh Speicher')} kWh; er ist ${ggPvSpeicherRegelText(v)}.`
       : bv.speicher === 'ohne' ? 'Ein Speicher ist nicht vorgesehen.' : 'Ein Speicher bringt bei dieser Belegung keinen Vorteil und entfällt.')
     + ` ${netz}`;
 }

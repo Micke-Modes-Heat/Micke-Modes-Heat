@@ -1443,6 +1443,8 @@ function _ladeStand(id) {
   const vorher = new Map();
   const geaendert = pvBelegungAnwenden(gebaeude, rec ? rec.gebaeudePv : baseGebaeudePv, vorher);
   if (geaendert.length) window.variantenPvNeuZeichnen?.(geaendert, vorher);
+  // Belegungsstände (38): andere Belegung durch Variantenwechsel — passenden Stand suchen, nichts überschreiben
+  window.pvbsVarianteGewechselt?.();
   if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
   return true;
 }

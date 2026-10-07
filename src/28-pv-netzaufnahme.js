@@ -81,12 +81,15 @@ const _fmt = (x, d = 0) => (x == null || !Number.isFinite(x)) ? '—'
 
 /**
  * Baut das radiale Netzmodell für das Rechenjahr.
+ * opts.inklGeplant: auch GEPLANTE (noch nicht umgesetzte) Maßnahmen an Trafos und
+ *   Kabeln einrechnen — „Netz wie geplant" (automatische Belegung mit Netzjahr, 36).
  * Rückgabe: { elemente, daecher, pruefpunkte, info } — info enthält Labels,
  * Zuordnungen und Hinweise für die Darstellung.
  */
 export function pvnaModell(opts = {}) {
   const { stich, ziel } = pvnaJahre(opts);
   const yr = opts.jahr ?? ziel;
+  const jOpts = { inklGeplant: !!opts.inklGeplant };
   const flaechen = opts.flaechen === 'bestand' || opts.flaechen === 'neu' ? opts.flaechen : 'alle';
   // Flächenfilter: Dach aufnehmen? (Neubau = Gebäude nach dem Stichjahr gebaut)
   const flaecheOk = neu => flaechen === 'alle' || (flaechen === 'neu') === neu;
@@ -140,7 +143,7 @@ export function pvnaModell(opts = {}) {
   // Radialer Baum je Trafo — gleiche Traversierungsregel wie elCalcAssets:
   // Gebäude immer durchqueren, Assets nur in Richtung steigenden TYPE_RANK.
   for (const t of aktiveA.filter(a => a.type === 'Trafo')) {
-    const p = getAssetPropsForYear(t, yr);
+    const p = getAssetPropsForYear(t, yr, jOpts);
     const kva = parseFloat(p.leistungKVA) || 630;
     const tid = 'T:' + t.id;
     elemente.push({ id: tid, typ: 'trafo', parentId: null, kapKw: kva * PF_TRAFO, duProKwPct: 0, vorlastKw: 0 });
@@ -163,7 +166,7 @@ export function pvnaModell(opts = {}) {
       besucht.add(id);
       const eid = 'E:' + edge.id;
       if (!elInfo.has(eid)) {
-        const kab = _kabelElement(edge, yr, { cosPhi, kIz, tLeiter, I_je_kW, ersatzQs });
+        const kab = _kabelElement(edge, yr, { cosPhi, kIz, tLeiter, I_je_kW, ersatzQs, inklGeplant: jOpts.inklGeplant });
         elemente.push({ id: eid, typ: 'kabel', parentId: knotenEl.get(von),
           kapKw: kab.kapKw, duProKwPct: kab.duProKwPct, vorlastKw: 0 });
         elInfo.set(eid, { label: `Kabel ${name(von)} → ${name(id)}`, kabelText: kab.text,
@@ -189,7 +192,7 @@ export function pvnaModell(opts = {}) {
   // Wind, KWK und PV-Anlagen der Bestandsschicht.
   let bestandPvKwp = 0;
   for (const a of aktiveA) {
-    const p = getAssetPropsForYear(a, yr);
+    const p = getAssetPropsForYear(a, yr, jOpts);
     let kw = 0;
     if (a.type === 'Wind') kw = parseFloat(p.leistungKW) || 0;
     else if (a.type === 'KWK') kw = parseFloat(p.leistungElKW) || 0;
@@ -215,7 +218,7 @@ export function pvnaModell(opts = {}) {
     if (g && !pvnaGebaeudeSteht(g, yr)) continue;                   // Gebäude (noch) nicht da bzw. abgerissen
     const neu = g ? pvnaIstNeubau(g, stich) : (_int(a.baujahr) ?? 0) > stich;
     if (!flaecheOk(neu)) continue;
-    const p = getAssetPropsForYear(a, yr);
+    const p = getAssetPropsForYear(a, yr, jOpts);
     const kwp = parseFloat(p.leistungKWp) || 0;
     if (kwp <= 0) continue;
     const ertrag = p.pvSpez ? (parseFloat(p.pvSpez) / 950) : (p.ausrichtung === 'ostwest' ? 0.9 : 1.0);
@@ -279,7 +282,7 @@ export function pvnaKabelNeu(pKw, lengthM, duZielPct, k) {
 
 /** Kapazität, ΔU-Koeffizient und Beschreibung eines Bestandskabels. */
 function _kabelElement(edge, yr, k) {
-  const ep = getStromEdgePropsForYear(edge, yr);
+  const ep = getStromEdgePropsForYear(edge, yr, { inklGeplant: !!k.inklGeplant });
   const lengthM = edge.lengthM || 0;
   if (edge.stationsintern) {
     return { kapKw: Infinity, duProKwPct: 0, text: 'stationsintern', stationsintern: true,
@@ -596,6 +599,22 @@ export function pvnaFahrplanStufen() {
       summeKwp: st.summeKwp, kumInvestEUR: st.kumInvestEUR, anzahlKum: anzahl,
     };
   });
+}
+
+/**
+ * Ertüchtigungen für eine EIGENE Eingabe neu bestimmen (automatische Belegung, 36):
+ * dieselbe Regel wie pvnaModell, aber bemessen auf die Dächer und Vorlasten dieser
+ * Eingabe statt auf das pauschale Dachpotenzial. Hängt `massnahme` an die Elemente
+ * (mutiert eingabe.elemente). info = modell.info des zugehörigen Netzmodells.
+ * opts.ohneKabel: nur Trafo-Maßnahmen (Grenze „nur Trafo" — Kabel sind dort ungeprüft).
+ */
+export function pvnaMassnahmenErmitteln(eingabe, info, opts = {}) {
+  for (const e of eingabe.elemente) delete e.massnahme;
+  // elInfo-Kopien: die Markierungen (ungeloest/teil) gehören zu dieser Rechnung, nicht zum Modell
+  const elInfo = new Map([...info.elInfo].map(([id, v]) => [id, { ...v }]));
+  _massnahmenAnhaengen(eingabe, elInfo, { kIz: info.kIz, cosPhi: info.cosPhi, tLeiter: info.tLeiter, I_je_kW: info.I_je_kW });
+  if (opts.ohneKabel) for (const e of eingabe.elemente) if (e.typ === 'kabel') delete e.massnahme;
+  return eingabe;
 }
 
 /** Eingabe mit umgesetzten Ertüchtigungen: Kapazität/ΔU der gewählten Elemente nach der Maßnahme. */

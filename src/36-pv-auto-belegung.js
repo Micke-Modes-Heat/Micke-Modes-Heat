@@ -35,8 +35,8 @@ import { _hasBelegung, calcGebKwpKorr, escHtml } from './03c-gebaeude-io.js';
 import { ASSETS, TYPE_RANK, deleteAsset } from './13a-assets-core.js';
 import { pvmPlanungsSchrittMerken, pvmProbe, pvmStapelBelegen, pvModusMarkiereKarte, pvModusRender } from './25-pv-modus.js';
 import { normSchicht, SCHICHT } from './lib/schichten.js';
-import { pvnaEinstellungen, pvnaIstNeubau, pvnaJahre, pvnaModell } from './28-pv-netzaufnahme.js';
-import { pvnaFuellen } from './lib/pv-netzaufnahme-core.js';
+import { pvnaEinstellungen, pvnaIstNeubau, pvnaJahre, pvnaMassnahmenErmitteln, pvnaModell } from './28-pv-netzaufnahme.js';
+import { pvnaFuellen, pvnaTreppe } from './lib/pv-netzaufnahme-core.js';
 
 const CYAN  = '#4dd0e1';
 const GRUEN = '#66bb6a';
@@ -77,6 +77,11 @@ const _ab = {
   vorrang: 'neubau',          // bei 'gestuft': diese Gruppe immer voll
   grenze: 'kabel',            // 'kabel' = Trafo + NS-Kabel · 'trafo' = nur der Trafo begrenzt
   ohneNetzBelegen: false,
+  /** Netzstand: Jahr, bis zu dem geplante Netzänderungen zählen (null = Rechenjahr der Netzaufnahme) */
+  netzJahr: null,
+  /** Ertüchtigung: 'keiner' (Bestandsnetz) | 'budget' (bis budgetT T€) | 'alle' */
+  ausbau: 'keiner',
+  budgetT: 100,
   /** @type {null | {zeilen:any[], sig:string, netz:any}} */
   vorschau: null,
 };
@@ -92,6 +97,7 @@ const _flaeche = g => parseFloat(g.flaeche) || polygonAreaM2(g.polygon) || 0;
 const _sig = () => JSON.stringify([window.pvModusVorgabe || null, _ab.umfang, _ab.trafoId, _ab.minM2,
   [..._ab.ohneNutzung].sort(), _ab.menge, _ab.menge === 'gestuft' ? _ab.vorrang : null,
   _ab.menge !== 'max' ? _ab.grenze : null,
+  _ab.menge !== 'max' ? [_ab.netzJahr, _ab.ausbau, _ab.ausbau === 'budget' ? _ab.budgetT : null] : null,
   _ab.bereich ? _ab.bereich.toBBoxString() : null]);
 const _vorrangLabel = (w, stich) => w === 'neubau' ? `Neubauten (nach ${stich})` : (VORRANG.find(v => v[0] === w)?.[1] || w);
 
@@ -247,19 +253,29 @@ function _begrenzerText(b, info) {
 }
 
 /**
- * Netzprüfung wie die Netzaufnahme: radiales Modell im Rechenjahr, alle schon
+ * Netzprüfung wie die Netzaufnahme: radiales Modell im Netzjahr, alle schon
  * geplanten PV-Anlagen/-Dächer als Vorlast, die Kandidaten gierig nach Ertrag
  * — jedes nur ganz. Setzt status 'netz' bzw. 'ohneNetz' an den Zeilen.
  * Gestuft: Vorrang-Zeilen werden immer belegt ('vorrang'); erst wird geprüft,
- * ob sie selbst noch ins Bestandsnetz passen ('vorrangUeber' wenn nicht), dann
- * gehen sie als Vorlast in die Füllung der übrigen.
+ * ob sie selbst noch ins Netz passen ('vorrangUeber' wenn nicht), dann gehen
+ * sie als Vorlast in die Füllung der übrigen.
+ *
+ * Netzentwicklung (Nutzerwunsch 07.10.2026):
+ *   Netzjahr  — das Modell zählt alles, was im Projekt bis dahin geplant ist
+ *               (neue Trafos/Kabel, Maßnahmen wie Trafo-Tausch). Leer = Rechenjahr
+ *               der Netzaufnahme; nie vor dem letzten Neubau unter den Kandidaten.
+ *   Ausbau    — rechnerische Ertüchtigung wie die Ausbautreppe der Netzaufnahme,
+ *               aber bemessen auf GENAU diese Dächer (28 pvnaMassnahmenErmitteln):
+ *               keine · bis Budget (kumuliert, Stufe für Stufe nach kWp je €) · alle.
  */
 function _netzPruefen(zeilen) {
   const ein = pvnaEinstellungen();
   const { ziel } = pvnaJahre(ein);
+  const basisJahr = _ab.netzJahr ?? ziel;
   // Rechenjahr: spätestens, wenn der letzte Neubau unter den Kandidaten steht
-  const jahr = Math.max(ziel, ...zeilen.map(z => _int(z.g.baujahr) || 0));
-  const m = pvnaModell({ ...ein, quelle: 'alle', flaechen: 'alle', jahr });
+  const jahr = Math.max(basisJahr, ...zeilen.map(z => _int(z.g.baujahr) || 0));
+  // Netzjahr gesetzt = „Netz wie geplant": auch geplante Maßnahmen (Trafo-Tausch, Kabel) zählen
+  const m = pvnaModell({ ...ein, quelle: 'alle', flaechen: 'alle', jahr, inklGeplant: _ab.netzJahr != null });
   const { knotenEl, dachInfo, einspFaktor } = m.info;
   _trafoCache = m.info.knotenTrafo || null;
   const kandIds = new Set(zeilen.map(z => z.g.id));
@@ -267,7 +283,7 @@ function _netzPruefen(zeilen) {
   // „nur Trafo": alle Kabel unter dem Trafo sind NS — ohne Strom- und Spannungsgrenze
   const nurTrafo = _ab.grenze === 'trafo';
   const elemente = m.eingabe.elemente.map(e => (nurTrafo && e.typ === 'kabel'
-    ? { ...e, kapKw: null, duProKwPct: 0 } : { ...e }));
+    ? { ...e, kapKw: Infinity, duProKwPct: 0 } : { ...e }));
   const elById = new Map(elemente.map(e => [e.id, e]));
   // Ersatzanbindung „nur Trafo": ohne Kabel → nächstgelegener Trafo des Rechenjahres
   const trafos = nurTrafo ? elemente.filter(e => e.typ === 'trafo' && m.info.elPos.get(e.id))
@@ -310,34 +326,86 @@ function _netzPruefen(zeilen) {
     (z.vorrang ? vorrang : daecher).push({ id: z.g.id, elementId, kwpMax: z.kwp, ertragFaktor: z.kwpKorr / z.kwp, einspFaktor });
     nachId.set(z.g.id, z);
   }
+
+  // Vorrang-Gruppe als zusätzliche Vorlast für die Füllung der übrigen
+  const mitVorrang = elemente.map(e => ({ ...e }));
+  const mvById = new Map(mitVorrang.map(e => [e.id, e]));
+  let vorrangKwp = 0;
+  for (const d of vorrang) {
+    const el = mvById.get(d.elementId);
+    el.vorlastKw = (+el.vorlastKw || 0) + d.kwpMax * einspFaktor;
+    vorrangKwp += d.kwpMax;
+  }
+
+  // ── Ertüchtigung: Maßnahmen für genau diese Belegung, Ausbautreppe, Auswahl nach Budget ──
+  let ausbau = null;
+  const umgesetzt = new Map();                 // elementId → massnahme
+  const hatTrafo = elemente.some(e => e.typ === 'trafo');
+  if (_ab.ausbau !== 'keiner' && hatTrafo) {
+    const eing = { elemente: mitVorrang, daecher, pruefpunkte: m.eingabe.pruefpunkte,
+      duGrenzePct: m.eingabe.duGrenzePct, ganzOderGar: true };
+    pvnaMassnahmenErmitteln(eing, m.info, { ohneKabel: nurTrafo });
+    // Steht nur die Vorrang-Gruppe auf der Liste, trägt die Treppe nichts bei — ihre
+    // Engpässe dann direkt ertüchtigen (sie wird ohnehin belegt).
+    const treppe = pvnaTreppe(eing);
+    const budget = _ab.ausbau === 'budget' ? Math.max(0, +_ab.budgetT || 0) * 1000 : Infinity;
+    const gewaehlt = [];
+    for (const st of treppe.schritte) {
+      if (st.kumInvestEUR > budget + 0.5) break;
+      gewaehlt.push(st);
+    }
+    for (const st of gewaehlt) for (const mm of st.massnahmen) umgesetzt.set(mm.elementId, mvById.get(mm.elementId)?.massnahme);
+    // Engpässe, die schon die Vorrang-Gruppe allein verursacht (gehören zu ihr, nicht zur Treppe)
+    if (vorrang.length && _ab.ausbau === 'alle') {
+      for (const e of mitVorrang) if (e.massnahme && !umgesetzt.has(e.id) && (+e.vorlastKw || 0) > (+e.kapKw || Infinity)) umgesetzt.set(e.id, e.massnahme);
+    }
+    const naechste = treppe.schritte[gewaehlt.length] || null;
+    // Anzeige in ertragskorrigierten kWp wie die übrige Vorschau (gerechnet wird mit Modulleistung)
+    const nenn = daecher.reduce((t, d) => t + d.kwpMax, 0);
+    const korr = daecher.reduce((t, d) => t + (nachId.get(d.id)?.kwpKorr || 0), 0);
+    const fk = nenn > 0 ? korr / nenn : 1;
+    const korrVon = res => res.daecher.reduce((t, d) => t + (d.kwp > 0 ? (nachId.get(d.id)?.kwpKorr || 0) * d.kwp / (d.kwpMax || 1) : 0), 0);
+    ausbau = {
+      art: _ab.ausbau, budgetEUR: Number.isFinite(budget) ? budget : null,
+      massnahmen: [...umgesetzt.entries()].filter(([, mm]) => mm).map(([id, mm]) => ({ elementId: id, label: mm.label, investEUR: +mm.investEUR || 0, teil: !!mm.teil })),
+      investEUR: [...umgesetzt.values()].reduce((t, mm) => t + (+mm?.investEUR || 0), 0),
+      ohneKwp: korrVon(treppe.basis),
+      stufen: gewaehlt.length, stufenGesamt: treppe.schritte.length,
+      naechste: naechste ? { zuwachsKwp: naechste.zuwachsKwp * fk, investEUR: naechste.investEUR,
+        label: naechste.massnahmen.map(x => x.label).join(' + ') } : null,
+      alleInvestEUR: treppe.schritte.at(-1)?.kumInvestEUR || 0,
+      alleKwp: korrVon(treppe.ende),
+    };
+  }
+  const anwenden = els => els.map(e => (umgesetzt.get(e.id)
+    ? { ...e, kapKw: umgesetzt.get(e.id).kapKw ?? e.kapKw, duProKwPct: umgesetzt.get(e.id).duProKwPct ?? e.duProKwPct } : e));
+
   const fuellen = (els, ds) => pvnaFuellen({ elemente: els, daecher: ds, pruefpunkte: m.eingabe.pruefpunkte,
     duGrenzePct: m.eingabe.duGrenzePct, ganzOderGar: true });
-  let vorrangKwp = 0;
   if (vorrang.length) {
-    // Passt die Vorrang-Gruppe selbst noch ins Bestandsnetz? Belegt wird sie so oder so.
-    const rv = fuellen(elemente.map(e => ({ ...e })), vorrang);
+    // Passt die Vorrang-Gruppe selbst noch ins Netz (ggf. ertüchtigt)? Belegt wird sie so oder so.
+    const rv = fuellen(anwenden(elemente.map(e => ({ ...e }))), vorrang);
     for (const d of rv.daecher) {
       const z = nachId.get(d.id);
       if (z && !(d.kwp > 0)) { z.status = 'vorrangUeber'; z.grund = _begrenzerText(d.begrenzer, m.info); }
     }
-    for (const d of vorrang) {
-      const el = elById.get(d.elementId);
-      el.vorlastKw = (+el.vorlastKw || 0) + d.kwpMax * einspFaktor;
-      vorrangKwp += d.kwpMax;
-    }
   }
+  let mitKwp = 0;
   if (daecher.length) {
-    const r = fuellen(elemente, daecher);
+    const r = fuellen(anwenden(mitVorrang), daecher);
+    mitKwp = r.daecher.reduce((t, d) => t + (d.kwp > 0 ? (nachId.get(d.id)?.kwpKorr || 0) : 0), 0);
     for (const d of r.daecher) {
       const z = nachId.get(d.id);
       if (z && !(d.kwp > 0)) { z.status = 'netz'; z.grund = _begrenzerText(d.begrenzer, m.info); }
       if (z?.ersatzTrafo && z.status === 'netz') z.grund += ' (ohne Kabel zugeordnet)';
     }
   }
-  return { jahr, vorlastKwp, vorrangKwp, einspFaktor, duGrenzePct: m.eingabe.duGrenzePct, nurTrafo,
+  if (ausbau) ausbau.mitKwp = mitKwp;
+  return { jahr, basisJahr, netzJahrGesetzt: _ab.netzJahr != null, vorlastKwp, vorrangKwp, einspFaktor,
+    duGrenzePct: m.eingabe.duGrenzePct, nurTrafo, ausbau,
     zugeordnet: zugeordnet.length, zugeordnetMaxM: zugeordnet.length ? Math.max(...zugeordnet) : 0,
     unbekannteQs: m.info.unbekannteQs.length, ersatzQs: m.info.ersatzQs,
-    ohneTrafo: !m.eingabe.elemente.some(e => e.typ === 'trafo') };
+    ohneTrafo: !hatTrafo };
 }
 
 export async function pvabUebernehmen() {
@@ -368,7 +436,9 @@ function _umfangKurz(stich) {
 
 function _mengeKurz(stich) {
   if (_ab.menge === 'max') return 'Maximal';
-  const g = _ab.grenze === 'trafo' ? ', nur Trafo' : '';
+  const g = (_ab.grenze === 'trafo' ? ', nur Trafo' : '')
+    + (_ab.netzJahr != null ? `, Netz ${_ab.netzJahr}` : '')
+    + (_ab.ausbau === 'alle' ? ', ertüchtigt' : _ab.ausbau === 'budget' ? `, ertüchtigt bis ${_fmt(_ab.budgetT)} T€` : '');
   if (_ab.menge === 'netz') return 'Netzverträglich' + g;
   return `Gestuft (${_vorrangLabel(_ab.vorrang, stich)} voll${g})`;
 }
@@ -387,7 +457,7 @@ function _auslegungBeschreibung(stich, n) {
   if (_ab.menge === 'max') teile.push('jedes Dach voll, Netz nicht geprüft');
   else {
     teile.push((_ab.menge === 'gestuft' ? `${_vorrangLabel(_ab.vorrang, stich)} immer voll, Rest ` : '')
-      + `netzverträglich im Bestandsnetz${n ? ` ${n.jahr}` : ''} (${n?.nurTrafo ? 'nur Trafogrenze' : `Trafo + NS-Kabel, ΔU ≤ ${_fmt(n?.duGrenzePct, 1)} %`}), `
+      + `netzverträglich im ${n?.ausbau?.massnahmen?.length ? `ertüchtigten Netz (${n.ausbau.massnahmen.length} Maßnahme${n.ausbau.massnahmen.length > 1 ? 'n' : ''})` : 'Netz'}${n ? ` des Jahres ${n.jahr}` : ''} (${n?.nurTrafo ? 'nur Trafogrenze' : `Trafo + NS-Kabel, ΔU ≤ ${_fmt(n?.duGrenzePct, 1)} %`}), `
       + 'beste Erträge zuerst, jedes Dach ganz oder gar nicht');
   }
   return teile.join('; ');
@@ -417,9 +487,12 @@ export function pvabAlsStand() {
     const ueber = v.zeilen.filter(z => z.status === 'vorrangUeber').length;
     const ohne = _ab.ohneNetzBelegen ? v.zeilen.filter(z => z.status === 'ohneNetz').length : 0;
     const vertraeglich = !ueber && !ohne && !n.ohneTrafo;
+    const a = n.ausbau?.massnahmen?.length ? n.ausbau : null;
     netz = { geprueft: true, vertraeglich, nurTrafo: !!n.nurTrafo, jahr: n.jahr,
+      // Ertüchtigung: Kosten gehen in der PV-Analyse statt der Netzbau-Pauschalen ein (09d netzausbauEUR)
+      ausbau: a ? { investEUR: a.investEUR, massnahmen: a.massnahmen.map(m => ({ label: m.label, investEUR: m.investEUR })) } : null,
       text: vertraeglich
-        ? `Passt ins Bestandsnetz ${n.jahr}${n.nurTrafo ? ' (nur Trafogrenze geprüft)' : ''} — ohne Netzbau-Pauschalen.`
+        ? `Passt ins Netz ${n.jahr}${a ? ` mit ${a.massnahmen.length} Ertüchtigung${a.massnahmen.length > 1 ? 'en' : ''} (${_fmt(a.investEUR / 1000)} T€)` : ''}${n.nurTrafo ? ' (nur Trafogrenze geprüft)' : ''} — ohne Netzbau-Pauschalen.`
         : [ueber ? `${ueber} Dächer über der Netzgrenze` : '', ohne ? `${ohne} Dächer ohne Netzanbindung` : '',
            n.ohneTrafo ? 'kein Trafo im Netzjahr' : ''].filter(Boolean).join(', ') + ' — Netzbau-Pauschalen sind enthalten.' };
   }
@@ -427,7 +500,7 @@ export function pvabAlsStand() {
   const st = window.pvbsAusVorschau(zeilen, { name: name.trim() || vorschlag, beschreibung: _auslegungBeschreibung(stich, n), netz, potenzial });
   const sum = zeilen.reduce((t, z) => t + (z.kwpKorr || 0), 0);
   window.showHint?.(`💾 Belegungsstand „${st.name}" gespeichert (${zeilen.length} Dächer neu · ${_fmt(sum)} kWp)`
-    + (potenzial ? ' — ist jetzt Anlagenpotenzial der PV-Analyse.' : '.') + ' Das Projekt ist unverändert; ansehen/aktivieren unter „📚 Belegungsstände".', 9000);
+    + (potenzial ? ' — ist jetzt Grundlage der PV-Analyse.' : '.') + ' Das Projekt ist unverändert — unter „📚 Belegungsstände“ anzeigen (👁) oder zum Bearbeiten öffnen (✎).', 9000);
   _ab.vorschau = null;
   pvModusRender();
   pvModusMarkiereKarte();
@@ -750,8 +823,8 @@ function _belegenHtml() {
         <div class="inp-label">③ Wie viel?</div>
         <div style="display:flex;flex-direction:column;gap:2px;">
           ${radio('max', 'Maximal — jedes Dach voll', 'Netzgrenzen werden nicht geprüft')}
-          ${radio('netz', 'Netzverträglich (Bestandsnetz)', 'Wie die PV-Netzaufnahme: ohne Kabel- oder Trafo-Ertüchtigung. Beste Erträge zuerst, jedes Dach ganz oder gar nicht; bereits geplante PV hat Vorrang.')}
-          ${radio('gestuft', 'Gestuft — Gruppe voll, Rest netzverträglich', 'Erst eine Gruppe aus ① immer voll belegen (z. B. alle Neubauten oder die PV-Pflicht-Fälle), danach die übrigen Dächer nur, soweit das Bestandsnetz es noch verträgt.')}
+          ${radio('netz', 'Netzverträglich', 'Wie die PV-Netzaufnahme: so viel, wie das Netz aufnimmt — im gewählten Netzjahr und mit der gewählten Ertüchtigung (Standard: Bestandsnetz ohne Ertüchtigung). Beste Erträge zuerst, jedes Dach ganz oder gar nicht; bereits geplante PV hat Vorrang.')}
+          ${radio('gestuft', 'Gestuft — Gruppe voll, Rest netzverträglich', 'Erst eine Gruppe aus ① immer voll belegen (z. B. alle Neubauten oder die PV-Pflicht-Fälle), danach die übrigen Dächer nur, soweit das Netz es noch verträgt.')}
         </div>
         ${_ab.menge === 'gestuft' ? `
         <div style="display:flex;align-items:center;gap:5px;margin-top:4px;font-size:10px;">
@@ -770,6 +843,7 @@ function _belegenHtml() {
             ${_opt('trafo', 'Nur Trafo (NS-Kabel ausgeblendet)', _ab.grenze === 'trafo')}
           </select>
         </div>
+        ${_netzentwicklungHtml()}
         <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:3px;"
           title="Gebäude ohne Verbindung zum erfassten Stromnetz — ihre Netzgrenze ist unbekannt">
           <input type="checkbox" ${_ab.ohneNetzBelegen ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
@@ -780,6 +854,46 @@ function _belegenHtml() {
         <b style="color:${CYAN};">${liste.length}</b> Dächer kommen in Frage${ausgelassen ? `<div style="font-size:9px;color:var(--muted);">ausgelassen: ${ausgelassen}</div>` : ''}
       </div>
       ${_vorschauHtml(liste.length, stich)}
+    </div>`;
+}
+
+/** ③ Netzstand (Jahr) und Ertüchtigung — nur bei netzverträglich/gestuft. */
+function _netzentwicklungHtml() {
+  const { ziel } = pvnaJahre(pvnaEinstellungen());
+  const zeile = 'display:flex;align-items:center;gap:5px;margin-top:4px;font-size:10px;';
+  return `
+        <div style="${zeile}" title="Geplante Netzänderungen bis zu diesem Jahr zählen mit: neue Trafos und Kabel (Baujahr) sowie Maßnahmen wie Trafo-Tausch oder Kabelverstärkung — auch solche mit Status „geplant“. Leer = Rechenjahr der PV-Netzaufnahme (${ziel}). Nie vor dem Baujahr des letzten Neubaus unter den Dächern.">
+          <span style="color:var(--muted);white-space:nowrap;">Netzstand im Jahr:</span>
+          <input class="inp-field" type="number" min="1990" max="2100" step="1" value="${_ab.netzJahr ?? ''}" placeholder="${ziel}"
+            style="width:64px;padding:2px 4px;" data-change="pvabSet('netzJahr',this.value)"/>
+          <span style="color:var(--muted);font-size:9px;">${_ab.netzJahr == null ? 'wie Netzaufnahme' : 'mit geplanten Änderungen'}</span>
+        </div>
+        <div style="${zeile}" title="Rechnerische Ertüchtigung wie die Ausbautreppe der Netzaufnahme, aber bemessen auf genau diese Dächer: größerer Trafo, Kabel verstärken/parallel. Stufe für Stufe nach dem größten kWp-Zuwachs je Euro.">
+          <span style="color:var(--muted);white-space:nowrap;">Ertüchtigung:</span>
+          <select class="inp-field" style="flex:1;" data-change="pvabSet('ausbau',this.value)">
+            ${_opt('keiner', 'keine — Netz wie geplant', _ab.ausbau === 'keiner')}
+            ${_opt('budget', 'bis zu einem Budget', _ab.ausbau === 'budget')}
+            ${_opt('alle', 'alle nötigen', _ab.ausbau === 'alle')}
+          </select>
+          ${_ab.ausbau === 'budget' ? `<input class="inp-field" type="number" min="0" step="10" value="${_ab.budgetT}"
+            style="width:56px;padding:2px 4px;" data-change="pvabSet('budgetT',this.value)"/><span style="color:var(--muted);">T€</span>` : ''}
+        </div>`;
+}
+
+/** Vorschau: was die Ertüchtigung bringt — Maßnahmen, Kosten, Zuwachs, nächste Stufe. */
+function _ausbauHtml(a) {
+  if (!a) return '';
+  const T = x => _fmt((x || 0) / 1000);
+  if (!a.stufenGesamt) {
+    return `<div style="margin-top:4px;padding:3px 5px;border-left:2px solid ${GRUEN};font-size:9px;line-height:1.4;">
+      Ertüchtigung: keine nötig bzw. keine bringt mehr kWp — das Netz begrenzt hier nicht oder nur durch Kabel ohne Ausbauvorschlag.</div>`;
+  }
+  const liste = a.massnahmen.slice(0, 5).map(m => `<div style="display:flex;gap:4px;"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(m.label)}">⚒ ${escHtml(m.label)}</span><span style="font-family:'DM Mono',monospace;">${T(m.investEUR)} T€</span></div>`).join('');
+  return `<div style="margin-top:4px;padding:3px 5px;border-left:2px solid ${GRUEN};font-size:9px;line-height:1.45;">
+      <div style="color:var(--text);"><b>Ertüchtigung:</b> ${a.massnahmen.length ? `${a.massnahmen.length} Maßnahme${a.massnahmen.length > 1 ? 'n' : ''} · ${T(a.investEUR)} T€ → ${_fmt(a.mitKwp)} kWp statt ${_fmt(a.ohneKwp)} kWp ohne` : `keine umgesetzt (${a.art === 'budget' ? 'Budget reicht für keine Stufe' : '—'}) · ${_fmt(a.ohneKwp)} kWp`}</div>
+      ${liste}${a.massnahmen.length > 5 ? `<div>… und ${a.massnahmen.length - 5} weitere</div>` : ''}
+      ${a.naechste ? `<div style="color:var(--muted);margin-top:2px;">Nächste Stufe: +${_fmt(a.naechste.zuwachsKwp)} kWp für ${T(a.naechste.investEUR)} T€ (${escHtml(a.naechste.label)}) · alle ${a.stufenGesamt} Stufen: ${_fmt(a.alleKwp)} kWp für ${T(a.alleInvestEUR)} T€</div>` : ''}
+      ${a.massnahmen.some(m => m.teil) ? '<div style="color:#ffb74d;">⚠ Teil-Ertüchtigung: größte Standardlösung löst den Engpass nicht ganz.</div>' : ''}
     </div>`;
 }
 
@@ -812,11 +926,12 @@ function _vorschauHtml(nKand, stich) {
   const vorrangName = escHtml(_vorrangLabel(_ab.vorrang, stich));
   const n = v.netz;
   const netzInfo = n ? `<div style="font-size:9px;color:var(--muted);line-height:1.4;margin-top:4px;">
-      Netzjahr ${n.jahr} · ${_fmt(n.einspFaktor, 1)} kW/kWp · ${n.nurTrafo ? 'nur Trafogrenze — NS-Kabel und ΔU ungeprüft' : `ΔU ≤ ${_fmt(n.duGrenzePct, 1)} %`}${n.vorlastKwp > 0 ? ` · ${_fmt(n.vorlastKwp)} kWp schon geplant (Vorrang)` : ''}
+      Netzstand ${n.jahr}${n.netzJahrGesetzt || n.jahr !== n.basisJahr ? '' : ' (Rechenjahr der Netzaufnahme)'} · ${n.ausbau ? 'mit Ertüchtigung' : 'ohne Ertüchtigung'} · ${_fmt(n.einspFaktor, 1)} kW/kWp · ${n.nurTrafo ? 'nur Trafogrenze — NS-Kabel und ΔU ungeprüft' : `ΔU ≤ ${_fmt(n.duGrenzePct, 1)} %`}${n.vorlastKwp > 0 ? ` · ${_fmt(n.vorlastKwp)} kWp schon geplant (Vorrang)` : ''}
       ${n.ohneTrafo ? `<br><span style="color:${ROT};">Kein Trafo im Netzjahr — es gibt kein Netz zum Anschließen.</span>` : ''}
-      ${ueber.length ? `<br><span style="color:${ORANGE};">${ueber.length} Dächer der Gruppe „${vorrangName}“ passen nicht mehr ${n.nurTrafo ? 'unter die Trafogrenze' : 'ins Bestandsnetz'} — sie werden trotzdem belegt, dort ist Netzausbau nötig.</span>` : ''}
+      ${ueber.length ? `<br><span style="color:${ORANGE};">${ueber.length} Dächer der Gruppe „${vorrangName}“ passen nicht mehr ${n.nurTrafo ? 'unter die Trafogrenze' : 'ins Netz'}${n.ausbau ? ' (auch nach der Ertüchtigung)' : ''} — sie werden trotzdem belegt, dort ist Netzausbau nötig.</span>` : ''}
       ${n.zugeordnet ? `<br>${n.zugeordnet} Gebäude ohne Kabelanbindung dem nächstgelegenen Trafo zugeordnet (Luftlinie, bis ${_fmt(n.zugeordnetMaxM)} m).` : ''}
       ${n.unbekannteQs && !n.ersatzQs && !n.nurTrafo ? `<br>⚠ ${n.unbekannteQs} Kabel ohne Querschnitt begrenzen nicht (Ersatzquerschnitt in der PV-Netzaufnahme).` : ''}
+      ${_ausbauHtml(n.ausbau)}
     </div>` : '';
   return `
     <div style="margin-top:6px;padding:5px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
@@ -872,6 +987,9 @@ export function pvabSet(feld, wert) {
   else if (feld === 'minM2') _ab.minM2 = Math.max(0, parseFloat(wert) || 0);
   else if (feld === 'menge') _ab.menge = ['netz', 'gestuft'].includes(wert) ? wert : 'max';
   else if (feld === 'grenze') _ab.grenze = wert === 'trafo' ? 'trafo' : 'kabel';
+  else if (feld === 'netzJahr') _ab.netzJahr = _int(wert);
+  else if (feld === 'ausbau') _ab.ausbau = ['budget', 'alle'].includes(wert) ? wert : 'keiner';
+  else if (feld === 'budgetT') _ab.budgetT = Math.max(0, parseFloat(wert) || 0);
   else if (feld === 'vorrang') _ab.vorrang = VORRANG.some(v => v[0] === wert) ? wert : 'neubau';
   else if (feld === 'ohneNetzBelegen') { _ab.ohneNetzBelegen = !!wert; pvModusRender(); pvModusMarkiereKarte(); return; }
   else if (feld === 'nutzungOffen') { _ab.nutzungOffen = !_ab.nutzungOffen; pvModusRender(); return; }

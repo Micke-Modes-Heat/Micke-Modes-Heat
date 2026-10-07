@@ -952,6 +952,7 @@ export function pvmNaechstesOffenes() {
 export function pvModusMarkiereKarte() {
   if (!window.pvModusAktiv) return;
   if (window.pvabMarkiereKarte?.()) return;      // Vorschau „Dächer automatisch belegen" (36)
+  if (window.pvbsMarkiereKarte?.()) return;      // angezeigter Belegungsstand (38): Dächer nach dem Stand färben
   const aktiv = window.pvModusGeb;
   (window.gebaeude || []).forEach(g => {
     if (!g.polygonLayer) return;
