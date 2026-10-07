@@ -355,6 +355,23 @@ export function _syncZins() {
   if (jsSync) jsSync.textContent = v.toFixed(1);
 }
 
+/** Bausteine des Wärmenetzes — entfallen bei „nur Wärmeerzeugung“. */
+export const WIRT_NETZ_BAUSTEINE = new Set(['waermenetz', 'huest']);
+export function wirtOhneNetz() { return !!window._wirtOhneNetz; }
+/** Betrachtungsumfang umschalten: Gesamtsystem (false) oder nur Wärmeerzeugung (true). */
+export function wirtUmfangSetzen(ohneNetz) {
+  window._wirtOhneNetz = !!ohneNetz;
+  _wirtUmfangUiSync();
+  calcWirtschaftPanel();
+  if (typeof window.cacheVariantResults === 'function') window.cacheVariantResults();
+}
+export function _wirtUmfangUiSync() {
+  const ohne = wirtOhneNetz();
+  document.querySelectorAll('.wirt-umfang button').forEach(b => b.classList.toggle('active', (b.dataset.umfang === 'erzeugung') === ohne));
+  const opt = document.getElementById('netz-bestand-options');
+  if (opt) opt.style.display = ohne ? 'none' : '';
+}
+
 export function calcWirtschaftPanel() {
   _syncZins();
   const wrap = document.getElementById('wirt-table-wrap');
@@ -599,6 +616,9 @@ export function calcWirtschaftPanel() {
   ];
 
   // 1. Pass: direkte Bausteine
+  // „Nur Wärmeerzeugung“: Leitungsnetz und Hausübergabestationen bleiben außen vor,
+  // damit sich die Erzeugungskonzepte unabhängig vom Netz vergleichen lassen
+  const ohneNetz = wirtOhneNetz();
   const rows = [];
   let basisInvest = 0;
   // Netz, Erdsonden und HÜST sind Vollkosten-Sätze (inkl. Tiefbau/Montage) —
@@ -606,6 +626,7 @@ export function calcWirtschaftPanel() {
   const PCT_EXCLUDE = new Set(['waermenetz', 'geo_sonden', 'huest']);
   for (const b of BD) {
     if (!b.aktiv()) continue;
+    if (ohneNetz && WIRT_NETZ_BAUSTEINE.has(b.id)) continue;
     const autoVal = b.auto();
     const effVal  = (ov[b.id] !== undefined) ? ov[b.id] : autoVal;
     const effVdi  = { ...b.vdi, ...(ovVdi[b.id] || {}) };
@@ -833,7 +854,7 @@ export function calcWirtschaftPanel() {
   // Grundlage für die Jahresscheiben/NPV-Rechnung: dieselben Bausteine und Energiekosten wie hier,
   // damit Erstinvestition und Jahreskosten in beiden Darstellungen übereinstimmen
   window._wirtErgebnis = {
-    keys: keys.join(','),
+    keys: keys.join(',') + (ohneNetz ? '|ohneNetz' : ''),
     bausteine: rows.map(r => ({ id: r.id, invest: r.effVal, n: r.effVdi?.n || 0, inst: r.effVdi?.inst || 0, wart: r.effVdi?.wart || 0, bedien: r.effVdi?.bedien || 0 })),
     energieJahr: gesamtEnergieMitCo2, lohn,
   };
@@ -978,10 +999,10 @@ export function calcWirtschaftPanel() {
       <div class="wirt-kpi wirt-kpi-haupt">
         <span>Wärmegestehungskosten <span class="htip" data-tip="Wärmegestehungskosten nach VDI 2067: Investitionskosten werden auf jährliche Raten umgerechnet (Annuität). Dazu Wartung, Instandhaltung und Energiekosten. Abzüglich BHKW-Stromerlöse. Bezogen auf die erzeugte Wärme inkl. Netzverluste.">?</span></span>
         <b>${_nf1(wgk)}<small>ct/kWh</small></b>
-        ${wgkVerkauft > wgk * 1.01 ? `<em title="Gleiche Jahreskosten, geteilt durch die beim Kunden ankommende Nutzwärme (ohne Netzverluste) — der für Wärmepreis-Kalkulationen relevante Wert.">${_nf1(wgkVerkauft)} ct/kWh je verkaufter kWh</em>` : '<em>VDI 2067, Annuitätenmethode</em>'}
+        ${ohneNetz ? '<em>nur Wärmeerzeugung, ohne Netz und Hausstationen</em>' : wgkVerkauft > wgk * 1.01 ? `<em title="Gleiche Jahreskosten, geteilt durch die beim Kunden ankommende Nutzwärme (ohne Netzverluste) — der für Wärmepreis-Kalkulationen relevante Wert.">${_nf1(wgkVerkauft)} ct/kWh je verkaufter kWh</em>` : '<em>VDI 2067, Annuitätenmethode</em>'}
       </div>
       <div class="wirt-kpi"><span>Jahreskosten</span><b>${fmtK(_jahr)}<small>k€/a</small></b><em>Kapital, Betrieb und Energie</em></div>
-      <div class="wirt-kpi"><span>Investition</span><b>${fmt(gesamtInvest / 1000)}<small>k€</small></b><em>inkl. Nebenkosten</em></div>
+      <div class="wirt-kpi"><span>Investition</span><b>${fmt(gesamtInvest / 1000)}<small>k€</small></b><em>${ohneNetz ? 'Erzeugung inkl. Nebenkosten' : 'inkl. Nebenkosten'}</em></div>
       <div class="wirt-kpi" id="wirt-kpi-npv"><span>WGK Barwert</span><b>—</b><em>Barwertmethode</em></div>
     </div>
     <div class="wirt-karte">
@@ -1605,7 +1626,7 @@ export function calcJahresscheiben() {
   const reinvestYears = []; // [{year, amount}]
   // Bevorzugt die Bausteine und Energiekosten der Wirtschaftlichkeitsrechnung übernehmen (gleiche Zahlen wie oben)
   const wErg = window._wirtErgebnis;
-  const ausPanel = wErg && wErg.keys === keys.join(',') && wErg.bausteine.length > 0;
+  const ausPanel = wErg && wErg.keys === keys.join(',') + (wirtOhneNetz() ? '|ohneNetz' : '') && wErg.bausteine.length > 0;
   if (ausPanel) {
     for (const b of wErg.bausteine) {
       totalInvest += b.invest;
@@ -1617,6 +1638,7 @@ export function calcJahresscheiben() {
   let basisInvest = 0;
   if (!ausPanel) for (const b of BD) {
     if (!b.aktiv()) continue;
+    if (wirtOhneNetz() && WIRT_NETZ_BAUSTEINE.has(b.id)) continue;
     const inv = (ov[b.id] !== undefined) ? ov[b.id] : b.auto();
     const vdi = { ...b.vdi, ...(ovVdi[b.id] || {}) };
     totalInvest += inv;

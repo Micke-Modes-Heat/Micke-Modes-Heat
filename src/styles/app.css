@@ -2596,3 +2596,7 @@ textarea.ssb-in{resize:vertical;}
 .wirt-npv-werte span{display:block;font-size:9px;color:var(--muted);}
 .wirt-npv-werte b{font:500 13px 'DM Mono',monospace;color:var(--text);}
 #wirtschaft-panel:not(.inline-mode) .wirt-ergebnis{order:-1;}
+.wirt-umfang{display:inline-flex;align-self:flex-start;gap:2px;padding:3px;background:var(--bg);border:1px solid var(--border);border-radius:8px;}
+.wirt-umfang button{border:none;background:transparent;color:var(--muted);font:inherit;font-size:10px;padding:4px 11px;border-radius:6px;cursor:pointer;}
+.wirt-umfang button:hover{color:var(--text);}
+.wirt-umfang button.active{background:var(--accent);color:#000;font-weight:600;}

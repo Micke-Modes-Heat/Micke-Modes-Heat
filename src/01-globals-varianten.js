@@ -426,12 +426,14 @@ function _hash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 3
 export function stammSignatur(key = variantKey(activeVariantId)) {
   const geb = _hash(JSON.stringify(gebaeude.map(g => [g.id, g.waerme, g.heizlast, g.baujahr, g.abrissjahr, g.nutzung, g.flaeche, g.stockwerke])));
   const rec = key === 'base' ? null : varianten.find(v => v.id === key);
-  if (rec?.netzEigen) return String(geb);
+  // Betrachtungsumfang der Wirtschaftlichkeit (mit/ohne Netz) gilt für alle Varianten
+  const umfang = window._wirtOhneNetz ? '|nurErzeugung' : '';
+  if (rec?.netzEigen) return String(geb) + umfang;
   const liveGemeinsam = !aktiveVarianteNetzEigen();
   const trasse = liveGemeinsam
     ? [trassePoints.map(p => [p.lat, p.lng]), trasseSegments]
     : [(waermeNetzGemeinsam?.trasse || []).map(p => [p.lat, p.lng]), waermeNetzGemeinsam?.trasseSegments || []];
-  return `${geb}|${_hash(JSON.stringify(trasse))}`;
+  return `${geb}|${_hash(JSON.stringify(trasse))}${umfang}`;
 }
 
 /** 'aktuell' | 'veraltet' | 'nie' — Stand der Wärme-Kennzahlen einer Variante. */
@@ -503,7 +505,7 @@ export function renderVergleich() {
     { label: 'Typ', fn: r => r?.erzeuger?.length ? r.erzeuger.map(e => e.typ).join(', ') : '—' },
     { label: 'Leistung', fn: r => r?.erzeuger?.length ? r.erzeuger.map(e => fmt(e.leistungKw, 'kW')).join(', ') : '—' },
     { label: 'EE-Anteil', fn: r => r?.eeAnteil != null ? fmt(r.eeAnteil, '%', 1) : '—', numFn: r => r?.eeAnteil, best: 'max', bold: true },
-    { label: 'WIRTSCHAFTLICHKEIT', header: true },
+    { label: window._wirtOhneNetz ? 'WIRTSCHAFTLICHKEIT — NUR WÄRMEERZEUGUNG (OHNE NETZ)' : 'WIRTSCHAFTLICHKEIT', header: true },
     { label: 'Investition gesamt', fn: r => r?.investGes > 0 ? fmt(Math.round(r.investGes/1000), 'k€') : '—', numFn: r => r?.investGes, best: 'min', bold: true },
     { label: 'Jahreskosten gesamt', fn: r => r?.jkGes > 0 ? fmt(r.jkGes/1000, 'k€/a', 1) : '—', numFn: r => r?.jkGes, best: 'min' },
     { label: 'WGK System gesamt', fn: r => r?.wgkText || '—', numFn: r => r?.wgkNum, best: 'min', bold: true },
