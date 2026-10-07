@@ -1,3 +1,4 @@
+import { co2AusEinsatz } from './lib/co2-einsatz.js';
 import { map } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, redrawFliessgewaesser, redrawLwWp, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
 import { calcVerdraengungEmF, clearBhkw, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
@@ -334,8 +335,20 @@ export function cacheVariantResults() {
   // Numerische CO₂-Werte aus erzeugerList extrahieren (für Summierung)
   // Felder co2n / co2lzn bereits bei Stromkessel, bei anderen rückwärts parsen
   const _parseTon = s => { if (!s || s === '—') return 0; const m = s.match(/^([\d.]+)/); return m ? parseFloat(m[1]) : 0; };
-  const co2GesH  = erzeugerList.reduce((s, e) => s + (e.co2n  !== undefined ? e.co2n  : _parseTon(e.co2)),  0);
-  const co2GesLZ = erzeugerList.reduce((s, e) => s + (e.co2lzn !== undefined ? e.co2lzn : _parseTon(e.co2lz)), 0);
+  let co2GesH  = erzeugerList.reduce((s, e) => s + (e.co2n  !== undefined ? e.co2n  : _parseTon(e.co2)),  0);
+  let co2GesLZ = erzeugerList.reduce((s, e) => s + (e.co2lzn !== undefined ? e.co2lzn : _parseTon(e.co2lz)), 0);
+  // Maßgeblich sind die Energiemengen der Einsatzplanung (alle Erzeuger, auch Heizöl, Biomasse, Fernwärme);
+  // die Kurzliste oben rechnet aus den Panel-Eingaben und kennt nur einen Teil der Technik.
+  const _dispEnCo2 = window._dispatchEnergy || {};
+  if (Object.keys(_dispEnCo2).length) {
+    const _num = (id, d) => parseFloat(document.getElementById(id)?.value) || d;
+    const _sigma = _num('bhkw-skz', 0.45);
+    const _etaCo2 = { ..._getEtaMap(), stromkessel: _num('sk-eta', 99) / 100, bhkwTh: (_num('bhkw-eta', 88) / 100) / (1 + _sigma) };
+    const _ef = { gas: gasEmF, oel: heizoelEmF, pellets: pelletsEmF, hhs: hhsEmF, fw: fernwaermeEmF };
+    const _bhkwCo2 = { gutschrift: bhkwCo2Gutschrift, sigma: _sigma, verdraengungEf: calcVerdraengungEmF() };
+    co2GesH = co2AusEinsatz(_dispEnCo2, { ..._ef, strom: stromEmF }, _etaCo2, _bhkwCo2).t;
+    co2GesLZ = co2AusEinsatz(_dispEnCo2, { ..._ef, strom: stromEmFLZ }, _etaCo2, _bhkwCo2).t;
+  }
   // Investition aus Wirtschaftlichkeits-Panel (globale Variable, gesetzt von calcWirtschaftPanel)
   const investGes = window._lastInvestGes || erzeugerList.reduce((s, e) => s + (e.invest || 0), 0);
   const jkGes = window._lastJkGes || 0;

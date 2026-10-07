@@ -727,15 +727,17 @@ export function calcWirtschaftPanel() {
     // Fernwärme: EmF bereits bezogen auf kWh Nutzwärme
     const alleET = document.getElementById('wirt-co2-alle')?.checked !== false;
     const emfMap = {
-      gaskessel:   { emf: gasEmF,        eta: 0.92,  typ: 'verbrennung', fossil: true  },
-      _autoGk:     { emf: gasEmF,        eta: 0.92,  typ: 'verbrennung', fossil: true  },
-      heizoel:     { emf: heizoelEmF,    eta: 0.90,  typ: 'verbrennung', fossil: true  },
+      gaskessel:   { emf: gasEmF,        eta: _getEtaMap().gaskessel, typ: 'verbrennung', fossil: true  },
+      _autoGk:     { emf: gasEmF,        eta: _getEtaMap().gaskessel, typ: 'verbrennung', fossil: true  },
+      heizoel:     { emf: heizoelEmF,    eta: _getEtaMap().heizoel,   typ: 'verbrennung', fossil: true  },
       pellets:     { emf: pelletsEmF,    eta: _getEtaMap().pellets, typ: 'verbrennung', fossil: false },
       hhs:         { emf: hhsEmF,        eta: _getEtaMap().hhs,     typ: 'verbrennung', fossil: false },
       fernwaerme:  { emf: fernwaermeEmF, eta: 1.0,   typ: 'nutzwaerme',  fossil: false },
       lwwp:        { emf: stromEmF,      eta: null,  typ: 'strom',       fossil: false },
       fg:          { emf: stromEmF,      eta: null,  typ: 'strom',       fossil: false },
       geo:         { emf: stromEmF,      eta: null,  typ: 'strom',       fossil: false },
+      stromkessel: { emf: stromEmF,      eta: null,  typ: 'strom',       fossil: false },
+      bhkw:        { emf: gasEmF,        eta: null,  typ: 'bhkw',        fossil: true  },
     };
     keys.forEach(k => {
       const e   = en[k] || {};
@@ -747,6 +749,14 @@ export function calcWirtschaftPanel() {
         const wMwh = e.waermeMwh || 0;
         if (wMwh < 0.1) return;
         tCo2 = wMwh / cfg.eta * (cfg.emf / 1e6) * 1e3; // MWh_W / η × g/kWh × 1000kWh/MWh / 1e6g/t
+      } else if (cfg.typ === 'bhkw') {
+        // Erdgas über den thermischen Wirkungsgrad, abzüglich Gutschrift für den erzeugten Strom (wie in der CO₂-Bilanz)
+        const wMwh = e.waermeMwh || 0;
+        if (wMwh < 0.1) return;
+        const sigma = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
+        const etaTh = ((parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100) / (1 + sigma);
+        const gutschrift = bhkwCo2Gutschrift ? wMwh * sigma * calcVerdraengungEmF() / 1e3 : 0;
+        tCo2 = Math.max(0, wMwh / etaTh * cfg.emf / 1e3 - gutschrift);
       } else if (cfg.typ === 'nutzwaerme') {
         const wMwh = e.waermeMwh || 0;
         if (wMwh < 0.1) return;
