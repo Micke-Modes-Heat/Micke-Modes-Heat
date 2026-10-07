@@ -26,7 +26,7 @@ import { validateRadialHeatGraph } from './lib/waerme-graph-validation.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
 import { areaEditMarkers, areaLatLngs, cacheVariantResults, currentMode, drawPoints, edgeKey, edgeWaypoints, fliessgewaesser, gasKessel, geoThermie, networkLocked, netzPruningMode, trassePoints, trasseSegments } from './01-globals-varianten.js';
-import { addEdgeMidHandle, strassenWegeAbPunkt, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getEdgeWaypoints, getKostenProM, getUWertForDN, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, removeEdgeWaypointMarkers, standardDNs } from './02a-netz-physik.js';
+import { addEdgeMidHandle, getEdgePathPoints, strassenWegeAbPunkt, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getEdgeWaypoints, getKostenProM, getUWertForDN, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, removeEdgeWaypointMarkers, standardDNs } from './02a-netz-physik.js';
 import { OSM_SKIP_TYPES, addGebaeude, osmNutzung } from './02b-gebaeude.js';
 import { polygonCenter, redrawFliessgewaesser, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
@@ -3918,7 +3918,7 @@ export function autoGenerateNetz(options = {}){
   mstEdges.forEach(e => {
     const displayPoints = _netzDisplayPoints(e.uNode,e.vNode);
     const layer = L.polyline(displayPoints, {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
-    const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane'});
+    const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane', className: 'netz-hit'});
     if (netzVisible) { layer.addTo(map); hitLayer.addTo(map); }
     const edgeObj = {
         u: e.u, v: e.v, uNode: e.uNode, vNode: e.vNode,
@@ -3926,9 +3926,11 @@ export function autoGenerateNetz(options = {}){
         buildingConflict:e.buildingConflict === true,
         waypoint: null, segLayers: [], warnMarker: null, midMarker: null
     };
+    hitLayer.on('mousedown', ev => _leitungGreifen(edgeObj, ev));
     hitLayer.on('click', (ev) => {
       // Beim Zeichnen der Trasse: Klick an die Karte durchreichen
       if (window.isDrawingEdge || window.isDrawingTrasse) return;
+      if (Date.now() - _leitungGezogenUm < 400) { L.DomEvent.stopPropagation(ev); return; }
       _selectNetzEditEdge(edgeObj);
       showEdgePopup(edgeObj, ev.originalEvent);
       L.DomEvent.stopPropagation(ev);
@@ -4458,7 +4460,7 @@ export function addNetzEdge(u, v, {force = false} = {}){
   }
   const displayPoints = _netzDisplayPoints(uNode,vNode);
   const layer = L.polyline(displayPoints, {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
-  const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane'});
+  const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane', className: 'netz-hit'});
   if (netzVisible) { layer.addTo(map); hitLayer.addTo(map); }
 
   const edgeObj = {
@@ -4470,9 +4472,11 @@ export function addNetzEdge(u, v, {force = false} = {}){
     waypoint: null, segLayers: [], warnMarker: null, midMarker: null
   };
 
+  hitLayer.on('mousedown', ev => _leitungGreifen(edgeObj, ev));
   hitLayer.on('click', (ev) => {
     // Beim Zeichnen der Trasse liegen die Leitungen über den Straßen: Klick an die Karte durchreichen (Trassenpunkt setzen)
     if (window.isDrawingEdge || window.isDrawingTrasse) return;
+    if (Date.now() - _leitungGezogenUm < 400) { L.DomEvent.stopPropagation(ev); return; }   // Ende eines Ziehens, kein Klick
     if (netzPruningMode) { toggleEdgePruned(edgeObj); L.DomEvent.stopPropagation(ev); return; }
     _selectNetzEditEdge(edgeObj);
     showEdgePopup(edgeObj, ev.originalEvent);
@@ -4515,7 +4519,7 @@ function _nextJunctionId(){
 function _makeNetzEdge(uNode, vNode, dn){
   const displayPoints = _netzDisplayPoints(uNode,vNode);
   const layer    = L.polyline(displayPoints, {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
-  const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane'});
+  const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane', className: 'netz-hit'});
   if (netzVisible) { layer.addTo(map); hitLayer.addTo(map); }
   const edgeObj = {
     u: uNode.id, v: vNode.id, uNode, vNode,
@@ -4523,9 +4527,11 @@ function _makeNetzEdge(uNode, vNode, dn){
     _straightLength: calcEdgeLength({layer}), length: calcEdgeLength({layer}),
     waypoint: null, segLayers: [], warnMarker: null, midMarker: null
   };
+  hitLayer.on('mousedown', ev => _leitungGreifen(edgeObj, ev));
   hitLayer.on('click', (ev) => {
     // Beim Zeichnen der Trasse liegen die Leitungen über den Straßen: Klick an die Karte durchreichen (Trassenpunkt setzen)
     if (window.isDrawingEdge || window.isDrawingTrasse) return;
+    if (Date.now() - _leitungGezogenUm < 400) { L.DomEvent.stopPropagation(ev); return; }   // Ende eines Ziehens, kein Klick
     if (netzPruningMode) { toggleEdgePruned(edgeObj); L.DomEvent.stopPropagation(ev); return; }
     _selectNetzEditEdge(edgeObj);
     showEdgePopup(edgeObj, ev.originalEvent);
@@ -4873,11 +4879,78 @@ export function setNetzMotionless(enabled) {
   refreshNetzFlowArrows();
 }
 
+// ── Leitung direkt greifen und ziehen (Bearbeitungsmodus) ──
+// Wie bei der Routenplanung: Leitung an beliebiger Stelle greifen und auf den gewünschten Verlauf ziehen —
+// ohne vorher anklicken. Beim Loslassen gilt dasselbe wie für den Ziehpunkt der Leitung: Straßenrouting
+// über den Punkt und, wenn er auf einer anderen Straße liegt, das Angebot, den Strang umzulegen.
+let _leitungGezogenUm = 0;
+
+function _leitungGreifen(edgeObj, ev) {
+  if (!netzEditMode || netzPruningMode || window.isDrawingTrasse || window.isDrawingEdge) return;
+  if ((ev.originalEvent?.button ?? 0) !== 0 || !edgeObj.midMarker) return;
+  L.DomEvent.stopPropagation(ev);
+  ev.originalEvent?.preventDefault?.();
+  const startPx = map.latLngToContainerPoint(ev.latlng);
+  const pfad = getEdgePathPoints(edgeObj);
+  let bewegt = false;
+  const kartenZiehen = map.dragging.enabled();
+  if (kartenZiehen) map.dragging.disable();
+  const vorschau = latlng => {
+    // eingefügt an der nächstgelegenen Stelle des bisherigen Verlaufs
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < pfad.length - 1; i++) {
+      const d = L.LineUtil.pointToSegmentDistance(map.latLngToLayerPoint(latlng), map.latLngToLayerPoint(pfad[i]), map.latLngToLayerPoint(pfad[i + 1]));
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    const punkte = [...pfad.slice(0, best + 1), latlng, ...pfad.slice(best + 1)];
+    edgeObj.layer?.setLatLngs(punkte);
+    edgeObj.hitLayer?.setLatLngs(punkte);
+  };
+  const bewegen = e => {
+    if (!bewegt && map.latLngToContainerPoint(e.latlng).distanceTo(startPx) < 5) return;
+    bewegt = true;
+    map.getContainer().classList.add('netz-zieht');
+    vorschau(e.latlng);
+  };
+  const loslassen = e => {
+    map.off('mousemove', bewegen);
+    map.off('mouseup', loslassen);
+    document.removeEventListener('mouseup', abbrechen);
+    map.getContainer().classList.remove('netz-zieht');
+    if (kartenZiehen) map.dragging.enable();
+    if (!bewegt) return;   // einfacher Klick: wie bisher auswählen
+    _leitungGezogenUm = Date.now();
+    // Der Browser meldet nach dem Loslassen noch einen Klick — der würde das Angebot sofort wieder schließen
+    const container = map.getContainer();
+    const schlucken = ce => { ce.stopPropagation(); ce.preventDefault(); };
+    container.addEventListener('click', schlucken, { capture: true, once: true });
+    setTimeout(() => container.removeEventListener('click', schlucken, { capture: true }), 400);
+    _selectNetzEditEdge(edgeObj);
+    edgeObj.midMarker.setLatLng(e.latlng);
+    edgeObj.midMarker.fire('dragend');
+  };
+  // Loslassen außerhalb der Karte: Vorschau verwerfen
+  const abbrechen = () => {
+    if (!bewegt) return;
+    map.off('mousemove', bewegen);
+    map.off('mouseup', loslassen);
+    document.removeEventListener('mouseup', abbrechen);
+    map.getContainer().classList.remove('netz-zieht');
+    if (kartenZiehen) map.dragging.enable();
+    edgeObj.layer?.setLatLngs(pfad);
+    edgeObj.hitLayer?.setLatLngs(pfad);
+  };
+  map.on('mousemove', bewegen);
+  map.on('mouseup', loslassen);
+  document.addEventListener('mouseup', abbrechen);
+}
+
 /** Ist ein Bearbeitungsmodus des Wärmenetzes aktiv (Leitungsverläufe oder Anschlüsse)? Für andere Module, window-Kopien sind nicht live. */
 export function netzBearbeitungAktiv() { return { edit: netzEditMode, rewire: netzRewireMode }; }
 
 export function setNetzEditMode(enabled) {
   netzEditMode = !!enabled;
+  map.getContainer().classList.toggle('netz-bearbeiten', netzEditMode);   // Leitungen zeigen die „Greifen“-Hand
   if (netzEditMode) setNetzVisible(true);
   window.netzEdges.forEach(edge => {
     if (!netzEditMode) edge.editSelected = false;

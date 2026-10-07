@@ -70,3 +70,47 @@ test('dist: Strang des Außenquartiers über eine andere Straße umlegen', async
   expect(r.popupNachNein).toBe(false);             // „Nur Verlauf ändern“ schließt den Vorschlag
   expect(fehler).toEqual([]);
 });
+
+test('dist: Leitung im Bearbeitungsmodus direkt greifen und auf eine andere Straße ziehen', async ({ page }) => {
+  await page.route(/tile\.openstreetmap\.org|overpass/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.netzStrangVorschlag === 'function');
+  const pos = await page.evaluate(async () => {
+    clearNetz(); setGebaeude([]);
+    setTrassePoints([
+      L.latLng(52.0800, 8.0000), L.latLng(52.0800, 8.0060),
+      L.latLng(52.0800, 8.0060), L.latLng(52.0830, 8.0060),
+      L.latLng(52.0800, 8.0000), L.latLng(52.0845, 8.0000), L.latLng(52.0845, 8.0060), L.latLng(52.0830, 8.0060),
+    ]);
+    setTrasseSegments([{ start: 0, end: 1, domains: ['waerme'] }, { start: 2, end: 3, domains: ['waerme'] }, { start: 4, end: 7, domains: ['waerme'] }]);
+    const polygon = (lat, lng) => [L.latLng(lat - .00004, lng - .00004), L.latLng(lat - .00004, lng + .00004),
+      L.latLng(lat + .00004, lng + .00004), L.latLng(lat + .00004, lng - .00004)];
+    [[981, 'Zentrale', 52.0797, 8.0000], [982, 'Quartier 1', 52.0797, 8.0030], [983, 'Außen A', 52.0833, 8.0058], [984, 'Außen B', 52.0833, 8.0063]]
+      .forEach(([id, name, lat, lng]) => {
+        const g = addGebaeude({ id, name, baujahr: 2000, coords: polygon(lat, lng), skipAutoCreate: true });
+        g.heizlast = '100'; g.waerme = '200';
+      });
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value = '981';
+    await createQuickWaermeNetz();
+    setNetzEditMode(true);
+    map.fitBounds(L.latLngBounds([52.0795, 7.9995], [52.0850, 8.0065]), { animate: false });
+    const r = map.getContainer().getBoundingClientRect();
+    const px = ll => { const p = map.latLngToContainerPoint(L.latLng(...ll)); return { x: r.left + p.x, y: r.top + p.y }; };
+    return { von: px([52.0845, 8.0030]), nach: px([52.0815, 8.0060]) };
+  });
+  await page.mouse.move(pos.von.x, pos.von.y);
+  await page.mouse.down();
+  await page.mouse.move((pos.von.x + pos.nach.x) / 2, (pos.von.y + pos.nach.y) / 2, { steps: 5 });
+  await page.mouse.move(pos.nach.x, pos.nach.y, { steps: 5 });
+  await page.mouse.up();
+  const r = await page.evaluate(() => ({
+    vorschlag: document.querySelector('.netz-strang-vorschlag')?.textContent || '',
+    leitungsfenster: getComputedStyle(document.getElementById('edge-popup') || document.body).display,
+  }));
+  expect(r.vorschlag).toContain('Strang über diesen Punkt anbinden');
+  expect(r.leitungsfenster).toBe('none');
+  await page.locator('.netz-strang-vorschlag .nsv-ja').click();
+  const nachher = await page.evaluate(() => (window._waermeNetzValidation?.disconnectedConsumerIds || []).length);
+  expect(nachher).toBe(0);
+});
