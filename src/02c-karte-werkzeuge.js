@@ -1354,6 +1354,11 @@ export function toggleDrawTrasse(domain) {
     if (_tcb) _tcb.checked = true;
     // Andere Modi beenden
     if (window.isDrawingStromEdge && typeof cancelDrawStromEdge === 'function') cancelDrawStromEdge();
+    // Bearbeitungsmodi des Wärmenetzes beenden: ihre Ziehpunkte liegen über der Trasse und würden Klicks abfangen
+    window.netzStrangVorschlagSchliessen?.();
+    const _netzModi = window.netzBearbeitungAktiv?.() || {};
+    if (_netzModi.edit) window.setNetzEditMode?.(false);
+    if (_netzModi.rewire) window.setNetzRewireMode?.(false);
     if (typeof window.setPendingType === 'function' && window._pendingAssetType) window.setPendingType(window._pendingAssetType);
     buttons.forEach(btn => btn.classList.add('active'));
     setTrasseDetached(false);

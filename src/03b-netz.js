@@ -3927,12 +3927,14 @@ export function autoGenerateNetz(options = {}){
         waypoint: null, segLayers: [], warnMarker: null, midMarker: null
     };
     hitLayer.on('click', (ev) => {
-      if (window.isDrawingEdge) return;
+      // Beim Zeichnen der Trasse: Klick an die Karte durchreichen
+      if (window.isDrawingEdge || window.isDrawingTrasse) return;
       _selectNetzEditEdge(edgeObj);
       showEdgePopup(edgeObj, ev.originalEvent);
       L.DomEvent.stopPropagation(ev);
     });
     hitLayer.on('contextmenu', () => {
+      if (window.isDrawingTrasse) return;   // Rechtsklick beim Trassenzeichnen löscht keine Leitung
       if (!ensureWaermeNetzStructureEditable()) return;
       map.removeLayer(layer);
       map.removeLayer(hitLayer);
@@ -4469,13 +4471,15 @@ export function addNetzEdge(u, v, {force = false} = {}){
   };
 
   hitLayer.on('click', (ev) => {
-    if (window.isDrawingEdge) return;
+    // Beim Zeichnen der Trasse liegen die Leitungen über den Straßen: Klick an die Karte durchreichen (Trassenpunkt setzen)
+    if (window.isDrawingEdge || window.isDrawingTrasse) return;
     if (netzPruningMode) { toggleEdgePruned(edgeObj); L.DomEvent.stopPropagation(ev); return; }
     _selectNetzEditEdge(edgeObj);
     showEdgePopup(edgeObj, ev.originalEvent);
     L.DomEvent.stopPropagation(ev);
   });
   hitLayer.on('contextmenu', () => {
+    if (window.isDrawingTrasse) return;   // Rechtsklick beim Trassenzeichnen löscht keine Leitung
     if (!ensureWaermeNetzStructureEditable()) return;
     map.removeLayer(layer);
     map.removeLayer(hitLayer);
@@ -4520,13 +4524,15 @@ function _makeNetzEdge(uNode, vNode, dn){
     waypoint: null, segLayers: [], warnMarker: null, midMarker: null
   };
   hitLayer.on('click', (ev) => {
-    if (window.isDrawingEdge) return;
+    // Beim Zeichnen der Trasse liegen die Leitungen über den Straßen: Klick an die Karte durchreichen (Trassenpunkt setzen)
+    if (window.isDrawingEdge || window.isDrawingTrasse) return;
     if (netzPruningMode) { toggleEdgePruned(edgeObj); L.DomEvent.stopPropagation(ev); return; }
     _selectNetzEditEdge(edgeObj);
     showEdgePopup(edgeObj, ev.originalEvent);
     L.DomEvent.stopPropagation(ev);
   });
   hitLayer.on('contextmenu', () => {
+    if (window.isDrawingTrasse) return;   // Rechtsklick beim Trassenzeichnen löscht keine Leitung
     if (!ensureWaermeNetzStructureEditable()) return;
     map.removeLayer(layer); map.removeLayer(hitLayer);
     if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
@@ -4867,6 +4873,9 @@ export function setNetzMotionless(enabled) {
   refreshNetzFlowArrows();
 }
 
+/** Ist ein Bearbeitungsmodus des Wärmenetzes aktiv (Leitungsverläufe oder Anschlüsse)? Für andere Module, window-Kopien sind nicht live. */
+export function netzBearbeitungAktiv() { return { edit: netzEditMode, rewire: netzRewireMode }; }
+
 export function setNetzEditMode(enabled) {
   netzEditMode = !!enabled;
   if (netzEditMode) setNetzVisible(true);
@@ -5094,6 +5103,7 @@ export function netzStrangVorschlagSchliessen() {
  */
 export function netzStrangVorschlag(edge, punkt, verlaufVorher = null) {
   netzStrangVorschlagSchliessen();
+  if (window.isDrawingTrasse) return false;
   let plan = null;
   try { plan = _strangPlanen(edge,punkt,verlaufVorher); } catch (error) { console.error('Strang umlegen:',error); }
   if (!plan) return false;
