@@ -2658,3 +2658,7 @@ textarea.ssb-in{resize:vertical;}
 #center-vergleich-view .vergleich-table th{background:transparent!important;color:var(--muted)!important;font-size:11px;letter-spacing:0;border-bottom:2px solid var(--border);}
 #center-vergleich-view .vergleich-table th.clickable[style*="var(--accent)"],#center-vergleich-view .vergleich-table th.clickable[style*="#4caf50"]{color:var(--text)!important;border-bottom-color:var(--accent);}
 #center-vergleich-view .vergleich-table th.clickable:hover{background:rgba(255,255,255,.04)!important;}
+.lwwp-form-zeile{display:flex;align-items:center;gap:6px;font-size:10px;font-family:'DM Mono',monospace;color:var(--text);}
+.lwwp-form-zeile .zu-klein,#lwwp-form-info.zu-klein{color:#ef5350;}
+.lwwp-griff{display:flex!important;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#fff;color:#1b5e20;border:2px solid #388e3c;font:700 11px/1 sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:grab;}
+.lwwp-griff.drehen{color:#0277bd;border-color:#0277bd;}

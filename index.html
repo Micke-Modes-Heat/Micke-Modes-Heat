@@ -2183,7 +2183,11 @@
         </select>
         <label class="inp-label" for="lwwp-drehung">Drehung <span id="lwwp-drehung-wert">0°</span></label>
         <input type="range" id="lwwp-drehung" min="0" max="179" step="1" value="0" data-input="lwWpAufstellungSetzen('drehung', this.value)"/>
+        <span class="inp-label">Form</span>
+        <div class="lwwp-form-zeile"><span id="lwwp-form-info">automatisch</span>
+          <button type="button" class="btn-xs" id="lwwp-form-reset" data-click="lwWpAufstellungSetzen('laenge', 'auto')" title="Seitenverhältnis wieder automatisch wählen" style="display:none;">zurücksetzen</button></div>
       </div>
+      <div class="wirt-hinweis">Auf der Karte: <b>⟳</b> dreht die Fläche, <b>↔</b> ändert das Seitenverhältnis — die Fläche bleibt gleich, die Geräte ordnen sich neu.</div>
       <div class="lwwp-aufstellung-verfuegbar">
         <span class="inp-label" title="Optional: tatsächlich verfügbare Fläche. Ist sie kleiner als benötigt, wird sie rot.">Verfügbare Fläche (optional)</span>
         <input class="inp-field" type="number" id="lwwp-man-laenge" placeholder="Länge m" step="0.5" min="0.5" title="Länge entlang der Gerätereihe" data-input="redrawLwWp();updateLwWpDisplay();"/>

@@ -13,7 +13,7 @@ import { _gebLabelHtml, escHtml } from './03c-gebaeude-io.js';
 import { cancelDrawStromEdge } from './05b-stromnetz.js';
 import { beginInteraction, cancelInteraction, commitInteraction, getActiveInteraction } from './lib/interaction-state.js';
 import { createLifecycleScope } from './lib/lifecycle.js';
-import { wpAufstellung, rechteckEcken, WP_ABSTAENDE, WP_MODULE } from './lib/wp-aufstellung.js';
+import { wpAufstellungForm, rechteckEcken, WP_ABSTAENDE, WP_MODULE } from './lib/wp-aufstellung.js';
 
 /** @type {import('./lib/lifecycle.js').LifecycleScope|null} */
 let areaDrawLifecycle = null;
@@ -2141,10 +2141,12 @@ export function updateWirtDisplay(prefix, result) {
 // Gerätegröße, Reihen und Drehung stehen in lwWp.aufstellung.
 export function lwWpAufstellungOpt() {
   const a = window.lwWp?.aufstellung || {};
-  return { modulKw: a.modulKw ?? 'auto', reihen: a.reihen ?? 'auto', drehung: Number(a.drehung) || 0 };
+  const laenge = Number(a.laenge);
+  return { modulKw: a.modulKw ?? 'auto', reihen: a.reihen ?? 'auto', drehung: Number(a.drehung) || 0,
+    laenge: Number.isFinite(laenge) && laenge > 0 ? laenge : null };
 }
 export function lwWpAufstellung(leistungKw) {
-  return wpAufstellung(leistungKw, lwWpAufstellungOpt());
+  return wpAufstellungForm(leistungKw, lwWpAufstellungOpt());
 }
 export function lwWpPlatzbedarfM2(leistungKw) {
   return lwWpAufstellung(leistungKw).flaeche;
@@ -2155,6 +2157,7 @@ function _lwWpFlaecheMasse(auf) {
   const manB = parseFloat(document.getElementById('lwwp-man-breite')?.value) || 0;
   return { l: manL > 0 ? manL : auf.laenge, b: manB > 0 ? manB : auf.breite, manuell: manL > 0 || manB > 0 };
 }
+const LWWP_GRIFF_ABSTAND = 1.5;   // m außerhalb der Fläche
 function _lwWpAufstellungZeichnen(pt, leistung) {
   const auf = lwWpAufstellung(leistung);
   const { drehung } = lwWpAufstellungOpt();
@@ -2162,15 +2165,18 @@ function _lwWpAufstellungZeichnen(pt, leistung) {
   const latPerM = 1 / 111320;
   const lngPerM = 1 / (111320 * Math.cos(pt.lat * Math.PI / 180));
   const zuLatLng = ecken => ecken.map(e => [pt.lat + e.nord * latPerM, pt.lng + e.ost * lngPerM]);
-  const zuKlein = m.l * m.b < auf.flaeche * 0.98 || m.l < auf.laenge - 0.05 || m.b < auf.breite - 0.05;
+  const zuKleinManuell = m.manuell && (m.l < auf.laenge - 0.05 || m.b < auf.breite - 0.05);
+  const zuKlein = zuKleinManuell || !auf.passt;
   const farbe = zuKlein ? '#ef5350' : '#388e3c';
   const nf = (v, d = 1) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
-  const text = `${auf.anzahl} × Außengerät ~${auf.modul.kw} kW (${nf(auf.modul.l)} × ${nf(auf.modul.b)} m)`
+  const text = `${auf.anzahl} × Außengerät ~${auf.modul.kw} kW (${nf(auf.modul.l)} × ${nf(auf.modul.b)} × ${nf(auf.modul.h)} m)`
     + `<br>Fläche inkl. Abstände: ${nf(auf.laenge)} × ${nf(auf.breite)} m ≈ <b>${nf(auf.flaeche, 0)} m²</b>`
-    + (m.manuell ? `<br>verfügbar: ${nf(m.l)} × ${nf(m.b)} m${zuKlein ? ' — <b>zu klein</b>' : ''}` : '')
+    + (auf.formFrei ? ` · ${auf.reihen} ${auf.reihen === 1 ? 'Reihe' : 'Reihen'} à ${auf.jeReihe}` : '')
+    + (!auf.passt ? `<br><b>In dieser Form reichen die Abstände nicht</b> — sie bräuchte ≈ ${nf(auf.flaecheForm, 0)} m²` : '')
+    + (m.manuell ? `<br>verfügbar: ${nf(m.l)} × ${nf(m.b)} m${zuKleinManuell ? ' — <b>zu klein</b>' : ''}` : '')
     + '<br><span style="opacity:.7">Richtwerte, Herstellerangaben maßgeblich</span>';
   // Fläche inkl. Abstände
-  L.polygon(zuLatLng(rechteckEcken(0, 0, m.l, m.b, drehung)), {
+  const flaeche = L.polygon(zuLatLng(rechteckEcken(0, 0, m.l, m.b, drehung)), {
     color: farbe, weight: 2, dashArray: '6 4', fillColor: farbe, fillOpacity: zuKlein ? 0.18 : 0.10, className: 'lwwp-flaeche',
   }).bindTooltip(text, { sticky: true }).addTo(window.lwWpLayerGroup);
   // Geräte
@@ -2184,7 +2190,7 @@ function _lwWpAufstellungZeichnen(pt, leistung) {
   L.marker([pt.lat + (sued - 1) * latPerM, pt.lng], {
     interactive: false, keyboard: false,
     icon: L.divIcon({ className: 'lwwp-flaeche-label', iconSize: null, iconAnchor: [0, 0],
-      html: `<span${zuKlein ? ' class="zu-klein"' : ''}>${auf.anzahl} × ~${auf.modul.kw} kW · ${nf(auf.flaeche, 0)} m²</span>` }),
+      html: `<span${zuKlein ? ' class="zu-klein"' : ''}>${auf.anzahl} × ~${auf.modul.kw} kW · ${nf(auf.flaeche, 0)} m²${!auf.passt ? ' · Abstände reichen nicht' : ''}</span>` }),
   }).addTo(window.lwWpLayerGroup);
   // Luftrichtung je Reihe: kurze Pfeile vor und hinter der Reihe
   const reihenY = [...new Set(auf.geraete.map(g => g.y))];
@@ -2196,6 +2202,35 @@ function _lwWpAufstellungZeichnen(pt, leistung) {
         .addTo(window.lwWpLayerGroup);
     }
   }
+  // Griffe zum Drehen und Formen — nur bei geöffnetem LW-WP-Panel und ohne manuelle Fläche
+  if (!document.getElementById('lwwp-panel')?.classList.contains('visible') || m.manuell) return;
+  const punkt = (x, y, w) => { const e = rechteckEcken(x, y, 0, 0, w)[0]; return L.latLng(pt.lat + e.nord * latPerM, pt.lng + e.ost * lngPerM); };
+  const lokal = ll => {   // Kartenpunkt → Meter in Ost/Nord relativ zur Mitte
+    return { ost: (ll.lng - pt.lng) / lngPerM, nord: (ll.lat - pt.lat) / latPerM };
+  };
+  const griff = (ll, cls, titel) => L.marker(ll, { draggable: true, keyboard: false, zIndexOffset: 3500, title: titel,
+    icon: L.divIcon({ className: 'lwwp-griff ' + cls, iconSize: [18, 18], iconAnchor: [9, 9], html: cls === 'drehen' ? '⟳' : '↔' }) })
+    .addTo(window.lwWpLayerGroup);
+  // Drehgriff vor der Längsseite: Richtung Mitte → Griff = Drehung (Kompass, im Uhrzeigersinn)
+  const dreh = griff(punkt(0, m.b / 2 + LWWP_GRIFF_ABSTAND, drehung), 'drehen', 'Fläche drehen');
+  let drehNeu = drehung;
+  dreh.on('drag', ev => {
+    const p = lokal(ev.target.getLatLng());
+    drehNeu = (Math.atan2(p.ost, p.nord) * 180 / Math.PI + 360) % 360;
+    flaeche.setLatLngs(zuLatLng(rechteckEcken(0, 0, m.l, m.b, drehNeu)));
+  });
+  dreh.on('dragend', () => lwWpAufstellungSetzen('drehung', drehNeu));
+  // Längengriff an der Stirnseite: Länge ändern, Breite = Fläche / Länge
+  const lang = griff(punkt(m.l / 2 + LWWP_GRIFF_ABSTAND, 0, drehung), 'laenge', 'Seitenverhältnis ändern — die Fläche bleibt gleich');
+  let laengeNeu = m.l;
+  lang.on('drag', ev => {
+    const p = lokal(ev.target.getLatLng());
+    const w = drehung * Math.PI / 180;
+    const x = p.ost * Math.cos(w) - p.nord * Math.sin(w);   // Abstand entlang der Längsachse
+    laengeNeu = Math.min(auf.maxL ?? Infinity, Math.max(auf.minL ?? 1, 2 * (Math.abs(x) - LWWP_GRIFF_ABSTAND)));
+    flaeche.setLatLngs(zuLatLng(rechteckEcken(0, 0, laengeNeu, auf.flaeche / laengeNeu, drehung)));
+  });
+  lang.on('dragend', () => lwWpAufstellungSetzen('laenge', laengeNeu));
 }
 // Freifeld-Radius (ohne Gebäudedämpfung); Zusatzdämpfung wird punktbezogen bei der Tooltip-Berechnung berücksichtigt.
 export function lwWpSchallRadiusM(lwaDb, zielDb) {
@@ -2225,6 +2260,7 @@ export function toggleLwWpPanel() {
       document.getElementById('lwwp-data-section').style.display = 'none';
     }
   }
+  if (window.lwWp) redrawLwWp();   // Dreh-/Formgriffe nur bei offenem Panel
 }
 
 export function togglePlaceLwWp() {
@@ -2323,6 +2359,7 @@ export function redrawLwWp() {
   });
   updateLwWpVisibility();
   redrawVerbindungslinien();
+  window.d3dNachViz?.();   // offene 3D-Ansicht zeigt die Außengeräte mit
 }
 
 export function updateLwWpDisplay() {
@@ -2386,12 +2423,25 @@ function _lwWpAufstellungUiSync() {
   if (dreh && document.activeElement !== dreh) dreh.value = String(o.drehung);
   const drehWert = document.getElementById('lwwp-drehung-wert');
   if (drehWert) drehWert.textContent = Math.round(o.drehung) + '°';
+  const formInfo = document.getElementById('lwwp-form-info');
+  if (formInfo && window.lwWp) {
+    const auf = lwWpAufstellung(window.lwWp.leistungKw);
+    const nf = v => v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    formInfo.textContent = o.laenge ? `${nf(auf.laenge)} × ${nf(auf.breite)} m${auf.passt ? '' : ' — Abstände reichen nicht'}` : 'automatisch';
+    formInfo.classList.toggle('zu-klein', !auf.passt);
+  }
+  const formReset = document.getElementById('lwwp-form-reset');
+  if (formReset) formReset.style.display = o.laenge ? '' : 'none';
 }
 export function lwWpAufstellungSetzen(feld, wert) {
   if (!window.lwWp) return;
   const a = { ...lwWpAufstellungOpt() };
   if (feld === 'drehung') a.drehung = ((Math.round(Number(wert) || 0) % 180) + 180) % 180;
-  else a[feld] = wert === 'auto' ? 'auto' : Number(wert);
+  else if (feld === 'laenge') a.laenge = wert === 'auto' || wert == null ? null : Math.round(Number(wert) * 10) / 10;
+  else {
+    a[feld] = wert === 'auto' ? 'auto' : Number(wert);
+    if (feld === 'reihen' || feld === 'modulKw') a.laenge = null;   // neue Grundanordnung → Form wieder automatisch
+  }
   window.lwWp.aufstellung = a;
   redrawLwWp();
   updateLwWpDisplay();

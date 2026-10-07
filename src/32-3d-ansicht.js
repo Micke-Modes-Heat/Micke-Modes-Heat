@@ -26,6 +26,7 @@ import {
 } from './lib/dach-3d.js';
 import { d3dNetzLinien, d3dStationen, D3D_STATIONEN } from './lib/netz-3d.js';
 import { firstPeilungGrad } from './lib/gebaeude-geometrie.js';
+import { wpGeraete3d } from './lib/wp-aufstellung.js';
 
 const D3D_MAPLIBRE_VERSION = '5.24.0';   // nur für den CDN-Fallback im Dev-Modus
 const D3D_NEIGUNG = 55;
@@ -312,6 +313,18 @@ function d3dSzeneBauen(daten) {
       for (const q of quads) viereck(rahmen, q, modulRgb);
       stat.module += quads.length;
     }
+  }
+  // Luft-Wasser-WP: Außengeräte (Gehäuse, Wärmetauscher-Register, Ventilatoren) auf ihrem Fundament
+  const wp = window.lwWp;
+  if (wp && wp.lat != null && window.lwWpVisible !== false && typeof window.lwWpAufstellung === 'function') {
+    try {
+      const auf = window.lwWpAufstellung(wp.leistungKw);
+      const dreh = window.lwWpAufstellungOpt?.().drehung || 0;
+      const rahmen = d3dRahmen(wp.lng, wp.lat);
+      const farben = { fundament: d3dRgb('#a9abae'), gehaeuse: d3dRgb('#e4e7ea'), register: d3dRgb('#5a6570'), luefter: d3dRgb('#232b30'), nabe: d3dRgb('#9aa8b0') };
+      for (const { teil, t } of wpGeraete3d(auf, dreh)) dreieck(rahmen, t, farben[teil]);
+      stat.wpGeraete = auf.anzahl;
+    } catch (e) { console.warn('3D-Ansicht: WP-Außengeräte', e); }
   }
   return { daten: new Float32Array(werte), ursprung, stat };
 }

@@ -79,8 +79,55 @@ test('dist: Aufstellfläche der Außengeräte — Geräte, Drehung und Speichern
   expect(result.geraete).toBe(8);
   expect(result.anzeige).toBe('8 × ~80 kW · 2 Reihen');
   expect(result.label).toMatch(/^8 × ~80 kW · \d+ m²$/);
-  expect(result.aufstellung).toEqual({modulKw:80,reihen:2,drehung:20});
-  expect(result.nachLaden).toEqual({modulKw:80,reihen:2,drehung:20});
+  expect(result.aufstellung).toEqual({modulKw:80,reihen:2,drehung:20,laenge:null});
+  expect(result.nachLaden).toEqual({modulKw:80,reihen:2,drehung:20,laenge:null});
   expect(result.geraeteNachLaden).toBe(8);
+  expect(pageErrors).toEqual([]);
+});
+
+test('dist: Aufstellfläche per Griff formen (Fläche bleibt gleich) und drehen',async({page})=>{
+  await page.setViewportSize({width:1700,height:1000});
+  const pageErrors=[];
+  page.on('pageerror',error=>pageErrors.push(String(error)));
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.placeLwWpAt==='function'&&typeof window.lwWpAufstellungSetzen==='function');
+  const vorher=await page.evaluate(()=>{
+    document.getElementById('lwwp-leistung').value=100;
+    placeLwWpAt(L.latLng(52.08,8));   // öffnet das LW-WP-Panel → Griffe sichtbar
+    map.setView([52.08,8],20,{animate:false});
+    // Fläche mitten in den freien Kartenbereich zwischen linker Seitenleiste und LW-WP-Panel schieben
+    const pr=document.getElementById('lwwp-panel').getBoundingClientRect(), mr=map.getContainer().getBoundingClientRect();
+    const y=mr.top+mr.height*0.75;
+    let x=pr.left-10; while(x>mr.left&&map.getContainer().contains(document.elementFromPoint(x,y))) x-=5;
+    const ziel={x:(x+pr.left)/2-mr.left,y:y-mr.top};
+    const ist=map.latLngToContainerPoint(L.latLng(52.08,8));
+    map.panBy([ist.x-ziel.x, ist.y-ziel.y],{animate:false});
+    redrawLwWp();
+    return {flaeche:lwWpPlatzbedarfM2(100),laenge:lwWpAufstellung(100).laenge};
+  });
+  await page.waitForTimeout(300);
+  const box=async sel=>{const b=await page.locator(sel).boundingBox();return {x:b.x+b.width/2,y:b.y+b.height/2};};
+  // Längengriff Richtung Mitte ziehen → kürzer
+  const g=await box('.lwwp-griff.laenge');
+  const mitte=await page.evaluate(()=>{const p=map.latLngToContainerPoint(L.latLng(52.08,8));const r=map.getContainer().getBoundingClientRect();return {x:r.left+p.x,y:r.top+p.y};});
+  await page.mouse.move(g.x,g.y); await page.mouse.down();
+  await page.mouse.move(g.x-(g.x-mitte.x)*0.35,g.y,{steps:8}); await page.mouse.up();
+  await page.waitForTimeout(200);
+  const geformt=await page.evaluate(()=>({auf:{...window.lwWp.aufstellung},flaeche:lwWpPlatzbedarfM2(100),a:lwWpAufstellung(100)}));
+  expect(geformt.auf.laenge).toBeGreaterThan(0);
+  expect(geformt.auf.laenge).toBeLessThan(vorher.laenge);
+  expect(geformt.flaeche).toBeCloseTo(vorher.flaeche,6);
+  expect(geformt.a.laenge*geformt.a.breite).toBeCloseTo(vorher.flaeche,4);
+  // Drehgriff nach Osten ziehen → ~90°
+  const d=await box('.lwwp-griff.drehen');
+  await page.mouse.move(d.x,d.y); await page.mouse.down();
+  await page.mouse.move(mitte.x+80,mitte.y,{steps:8}); await page.mouse.up();
+  await page.waitForTimeout(200);
+  const dreh=await page.evaluate(()=>window.lwWp.aufstellung.drehung);
+  expect(Math.abs(dreh-90)).toBeLessThan(8);
+  // zurücksetzen
+  await page.evaluate(()=>lwWpAufstellungSetzen('laenge','auto'));
+  expect(await page.evaluate(()=>window.lwWp.aufstellung.laenge)).toBeNull();
   expect(pageErrors).toEqual([]);
 });

@@ -47,3 +47,53 @@ describe('rechteckEcken', () => {
     expect(g.nord).toBeCloseTo(-3, 6);
   });
 });
+
+import { wpAufstellungForm } from '../src/lib/wp-aufstellung.js';
+describe('wpAufstellungForm', () => {
+  it('ohne Länge = automatische Aufstellung', () => {
+    expect(wpAufstellungForm(640, { modulKw: 80 })).toMatchObject({ formFrei: false, passt: true, reihen: 2 });
+  });
+  it('vorgegebene Länge: Fläche bleibt gleich, Breite = Fläche / Länge, Reihen passen sich an', () => {
+    const auto = wpAufstellungForm(640, { modulKw: 80 });
+    const gleich = wpAufstellungForm(640, { modulKw: 80, laenge: auto.laenge });
+    expect(gleich).toMatchObject({ jeReihe: 4, reihen: 2, passt: true });
+    const kurz = wpAufstellungForm(640, { modulKw: 80, laenge: 11.2 });
+    expect(kurz.laenge * kurz.breite).toBeCloseTo(auto.flaeche, 6);
+    expect(kurz).toMatchObject({ jeReihe: 3, reihen: 3 });
+    expect(kurz.geraete).toHaveLength(8);
+  });
+  it('meldet, wenn die Geräte in der gewählten Form keinen Platz haben', () => {
+    const auto = wpAufstellungForm(640, { modulKw: 80 });
+    const kurz = wpAufstellungForm(640, { modulKw: 80, laenge: 11.2 });
+    expect(kurz.passt).toBe(false);
+    expect(kurz.flaecheForm).toBeGreaterThan(auto.flaeche);
+    // sehr lang: begrenzt auf die Länge, bei der noch ein Gerät mit Luftabstand in die Breite passt
+    const lang = wpAufstellungForm(640, { modulKw: 80, laenge: 500 });
+    expect(lang.breite).toBeCloseTo(1.2 + 2 * 1.5, 6);
+    // kleine Anlage: verschiedene Formen passen bei gleicher Fläche
+    const klein = wpAufstellungForm(100, {});
+    expect(wpAufstellungForm(100, { laenge: klein.laenge * 0.9 }).flaeche).toBeCloseTo(klein.flaeche, 6);
+  });
+});
+
+import { wpGeraete3d, wpAufstellung as _auf } from '../src/lib/wp-aufstellung.js';
+describe('wpGeraete3d', () => {
+  it('Fundament, Gehäuse, Register und Ventilatoren in der richtigen Höhe', () => {
+    const auf = _auf(640, { modulKw: 80 });
+    const d = wpGeraete3d(auf, 0);
+    const teile = new Set(d.map(x => x.teil));
+    expect([...teile].sort()).toEqual(['fundament', 'gehaeuse', 'luefter', 'nabe', 'register']);
+    const zMax = Math.max(...d.flatMap(x => x.t.map(p => p[2])));
+    expect(zMax).toBeCloseTo(0.15 + auf.modul.h + 0.03, 6);
+    // 8 Geräte × 3 Ventilatoren × 16 Segmente
+    expect(d.filter(x => x.teil === 'luefter')).toHaveLength(8 * 3 * 16);
+  });
+  it('Drehung um 90°: Längsachse zeigt nach Süden', () => {
+    const auf = _auf(16, {});
+    const ohne = wpGeraete3d(auf, 0).filter(x => x.teil === 'fundament').flatMap(x => x.t);
+    const mit = wpGeraete3d(auf, 90).filter(x => x.teil === 'fundament').flatMap(x => x.t);
+    const span = (pts, i) => Math.max(...pts.map(p => p[i])) - Math.min(...pts.map(p => p[i]));
+    expect(span(mit, 1)).toBeCloseTo(span(ohne, 0), 6);
+    expect(span(mit, 0)).toBeCloseTo(span(ohne, 1), 6);
+  });
+});
