@@ -5,7 +5,7 @@ import { edgeKey, edgeWaypoints, netzVisible, selectedStrandId, trassePoints, tr
 import { map } from './02b-gebaeude.js';
 import { netzEditMode, recalcNetz } from './03b-netz.js';
 import { KMR_KOSTEN } from './config/netz-kosten.js';
-import { dijkstraBisZiel } from './lib/netz-strang.js';
+import { dijkstraBisZiel, stichEntfernen } from './lib/netz-strang.js';
 
 export let overlayLayer = null;
 
@@ -432,9 +432,12 @@ export function rerouteEdgeViaStreet(edgeObj,viaPoints = edgeObj.routingViaPoint
     if (!part) return false;
     routed.push(...(index ? part.slice(1) : part));
   }
-  const fullPath = [path[0],...routed,path[path.length - 1]].filter((point,index,array) =>
-    index === 0 || point.distanceTo(array[index - 1]) > 0.15);
-  edgeObj.routingViaPoints = snaps.slice(1,-1).map(snap => snap.point);
+  // Hin und zurück auf derselben Straße (Zwischenziel hinter einem Ende) ergibt keine doppelte Leitung
+  const fullPath = stichEntfernen([path[0],...routed,path[path.length - 1]].filter((point,index,array) =>
+    index === 0 || point.distanceTo(array[index - 1]) > 0.15)).map(p => L.latLng(p.lat,p.lng));
+  // Zwischenziele, die dabei weggefallen sind, sind keine Vorgaben mehr
+  edgeObj.routingViaPoints = snaps.slice(1,-1).map(snap => snap.point)
+    .filter(v => fullPath.some((p,i) => i > 0 && L.LineUtil.pointToSegmentDistance(map.project(v,18),map.project(fullPath[i - 1],18),map.project(p,18)) < 2));
   edgeObj.waypoints = fullPath.slice(1,-1);
   _persistEdgeWaypoints(edgeObj);
   _setEdgePath(edgeObj);

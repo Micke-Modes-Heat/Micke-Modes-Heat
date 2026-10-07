@@ -1,6 +1,6 @@
 // Vitest-Tests für lib/netz-strang.js — Strang umlegen: Teilnetz, verwaiste Abzweige, Wegsuche.
 import { describe, it, expect } from 'vitest';
-import { strangAnalyse, dijkstraBisZiel, abstandZuLinie, linienLaenge, linieVereinfachen, lageAufLinie, netzwegAbZentrale, besteAstVerlegung } from '../src/lib/netz-strang.js';
+import { strangAnalyse, dijkstraBisZiel, abstandZuLinie, linienLaenge, linieVereinfachen, lageAufLinie, netzwegAbZentrale, besteAstVerlegung, stichEntfernen, parallelAbschnitte } from '../src/lib/netz-strang.js';
 
 // Zentrale 1 — J10 — J11 — J12 (Außenquartier) — Gebäude 3, 4; an J10 hängt außerdem Gebäude 2
 const k = (u, v) => ({ u, v });
@@ -97,5 +97,26 @@ describe('besteAstVerlegung', () => {
   it('lässt es bei kurzen Stichen, wenn der Umweg nicht spart oder ein Gebäude im Weg liegt', () => {
     expect(besteAstVerlegung(K, { ...o, kreuzt: () => true })).toBeNull();
     expect(besteAstVerlegung(K, { ...o, maxStichM: 20 })).toBeNull();
+  });
+});
+
+describe('Doppelführung vermeiden', () => {
+  const P = (lat, lng) => ({ lat, lng });
+  it('stichEntfernen schneidet Hin-und-zurück-Stücke ab', () => {
+    const l = [P(52, 8), P(52, 8.001), P(52, 8.002), P(52, 8.001), P(52.001, 8.001)];
+    expect(stichEntfernen(l)).toEqual([P(52, 8), P(52, 8.001), P(52.001, 8.001)]);
+    expect(stichEntfernen([P(52, 8), P(52, 8.001), P(52, 8.002)])).toHaveLength(3);   // ohne Rückweg unverändert
+    // auf einem geraden Stück hin und ein Stück zurück
+    expect(stichEntfernen([P(52, 8), P(52, 8.008), P(52, 8.004)])).toEqual([P(52, 8), P(52, 8.004)]);
+    // Wende um einen Block (parallele Straße) bleibt erhalten
+    expect(stichEntfernen([P(52, 8), P(52, 8.002), P(52.0005, 8.002), P(52.0005, 8)])).toHaveLength(4);
+  });
+  it('parallelAbschnitte findet nebeneinander verlegte Leitungen', () => {
+    const a = { linie: [P(52, 8), P(52.001, 8)] };                 // 110 m nach Norden
+    const b = { linie: [P(52.0002, 8.00002), P(52.0009, 8.00002)] }; // daneben (≈ 1,4 m), 78 m lang
+    const c = { linie: [P(52, 8.001), P(52.001, 8.001)] };          // 68 m entfernt
+    const r = parallelAbschnitte([a, b, c]);
+    expect(r).toHaveLength(1);
+    expect(r[0].laengeM).toBeGreaterThan(60);
   });
 });

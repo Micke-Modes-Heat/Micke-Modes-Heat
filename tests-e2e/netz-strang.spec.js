@@ -119,7 +119,7 @@ test('dist: Leitung im Netz-Reiter direkt greifen und auf eine andere Straße zi
   expect(nachher).toBe(0);
 });
 
-test('dist: Leitung auf die Heizzentrale ziehen bindet den Strang direkt an die Zentrale', async ({ page }) => {
+test('dist: Leitung auf die Heizzentrale ziehen bindet den Strang ab der Zentrale an — ohne Doppelleitung', async ({ page }) => {
   await page.route(/tile\.openstreetmap\.org|overpass/, route => route.abort());
   await page.goto('/');
   await page.waitForFunction(() => typeof window.netzStrangVorschlag === 'function');
@@ -149,14 +149,42 @@ test('dist: Leitung auf die Heizzentrale ziehen bindet den Strang direkt an die 
     const text = document.querySelector('.netz-strang-vorschlag')?.textContent || '';
     const ok = angeboten && netzStrangUmlegen();
     await new Promise(res => setTimeout(res, 300));
-    const anZentrale = window.netzEdges.filter(e => !e.pruned && (e.u === 981 || e.v === 981)).length;
-    return { angeboten, text, ok, anZentrale, oben: nahe(52.0830, 8.0045), getrennt: (window._waermeNetzValidation?.disconnectedConsumerIds || []).length };
+    const doppelt = netzWorkspaceStatus().parallel.length;
+    return { angeboten, text, ok, doppelt, oben: nahe(52.0830, 8.0045), getrennt: (window._waermeNetzValidation?.disconnectedConsumerIds || []).length };
   });
   expect(r.keinUmweg).toBeUndefined();
   expect(r.angeboten).toBe(true);
   expect(r.text).toContain('Strang direkt an die Heizzentrale anbinden');
   expect(r.ok).toBe(true);
-  expect(r.anZentrale).toBe(2);   // bisheriger Anschluss + eigener Strang für das Quartier
+  expect(r.doppelt).toBe(0);      // vorhandene Leitung aus der Zentrale wird mitbenutzt, nichts liegt doppelt
   expect(r.oben).toBe(0);         // der Abschnitt im Norden ist entfallen
   expect(r.getrennt).toBe(0);
+});
+
+test('dist: Punkt hinter das Ende einer Leitung ziehen ergibt kein Hin und Zurück', async ({ page }) => {
+  await page.route(/tile\.openstreetmap\.org|overpass/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.autoGenerateNetz === 'function');
+  const r = await page.evaluate(async () => {
+    clearNetz(); setGebaeude([]);
+    setTrassePoints([L.latLng(52.0800, 8.0000), L.latLng(52.0800, 8.0090)]);
+    setTrasseSegments([{ start: 0, end: 1, domains: ['waerme'] }]);
+    const polygon = (lat, lng) => [L.latLng(lat - .00004, lng - .00004), L.latLng(lat - .00004, lng + .00004), L.latLng(lat + .00004, lng + .00004), L.latLng(lat + .00004, lng - .00004)];
+    [[981, 'Zentrale', 52.0797, 8.0000], [982, 'Haus', 52.0797, 8.0040]].forEach(([id, name, lat, lng]) => {
+      const g = addGebaeude({ id, name, baujahr: 2000, coords: polygon(lat, lng), skipAutoCreate: true }); g.heizlast = '100'; g.waerme = '200';
+    });
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value = '981';
+    autoGenerateNetz({ strategy: 'trasse', anschluesseOptimieren: false });
+    openNetzWorkspace('edit');
+    const e = window.netzEdges.find(k => { const l = k.layer.getLatLngs().map(p => p.lng); return !k.pruned && Math.min(...l) < 8.0005 && Math.max(...l) > 8.0035; });
+    // Zwischenziel weit hinter dem Ende der Leitung auf derselben Straße
+    const ok = rerouteEdgeViaStreet(e, [L.latLng(52.0800, 8.0080)]);
+    const maxLng = Math.max(...e.layer.getLatLngs().map(p => p.lng));
+    const status = netzWorkspaceStatus();
+    return { ok, maxLng, ecken: e.routingViaPoints.length, doppeltVorher: status.parallel.length, kanten: window.netzEdges.length };
+  });
+  expect(r.maxLng).toBeLessThan(8.0045);   // kein Abstecher bis 8,008 und zurück
+  expect(r.ecken).toBe(0);                  // das weggefallene Zwischenziel ist keine Vorgabe mehr
+  expect(r.doppeltVorher).toBe(0);
 });

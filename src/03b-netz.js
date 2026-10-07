@@ -38,7 +38,7 @@ import { setEdgeStartId, setNetzEdges, setNetworkLocked, setSelectedId, setSelec
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { selectedStrandId } from './01-globals-varianten.js';
 import { netzSignatur, netzAenderungText, erstelleNetzVerlauf } from './lib/netz-verlauf.js';
-import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen, besteAstVerlegung } from './lib/netz-strang.js';
+import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen, besteAstVerlegung, parallelAbschnitte } from './lib/netz-strang.js';
 import { EIS, eisAuslegungVorschlag, eisBewertung, eisGeometrie, eisInvest } from './lib/eisspeicher.js';
 
 export function toggleGeoPanel() {
@@ -1005,6 +1005,17 @@ function _netzVersorgungsGebaeude() {
     getComputedStats(building, globalYear).heizlast > 0);
 }
 
+// Doppelt verlegte Abschnitte (zwei Leitungen direkt nebeneinander) — nur neu rechnen, wenn sich das Netz geändert hat
+let _parallelCache = { sig: null, kanten: [] };
+function _parallelVerlegt(edges) {
+  const sig = `${_netzStandSignatur}|${edges.length}`;
+  if (_parallelCache.sig !== sig) {
+    const liste = edges.filter(e => !e.pruned && e.layer).map(e => ({ edge: e, linie: e.layer.getLatLngs() }));
+    _parallelCache = { sig, kanten: parallelAbschnitte(liste).map(t => ({ edge: t.a.edge, laengeM: t.laengeM })) };
+  }
+  return _parallelCache.kanten;
+}
+
 export function netzWorkspaceStatus() {
   const edges = (window.netzEdges || []).filter(edge => !edge.temporallyHidden);
   const verbunden = new Set(edges.flatMap(edge => [edge.u, edge.v]));
@@ -1019,6 +1030,7 @@ export function netzWorkspaceStatus() {
     offeneGebaeude,
     konflikte: edges.filter(edge => edge.buildingConflict),
     hydraulik: edges.filter(edge => edge.hydraulicBottleneck),
+    parallel: _parallelVerlegt(edges),
     bestand: !!window.networkLocked,
     trasse: waermeTrassenInfo().haupttrasse,
   };
@@ -1049,6 +1061,7 @@ function _netzArbeitslisteHtml(status) {
   const punkte = [
     ...status.offeneGebaeude.map(building => ({ typ: 'geb', id: building.id, titel: building.name || `Gebäude ${building.id}`, text: 'ohne Anschluss', aktion: 'anschließen', stufe: 'offen' })),
     ...status.konflikte.map(edge => ({ typ: 'edge', id: `${edge.u}-${edge.v}`, titel: 'Leitung durch Gebäude', text: `${Math.round(edge.length || 0)} m`, aktion: 'Verlauf ändern', stufe: 'konflikt' })),
+    ...(status.parallel || []).map(x => ({ typ: 'edge', id: `${x.edge.u}-${x.edge.v}`, titel: 'Doppelt verlegt', text: `${Math.round(x.laengeM)} m neben einer anderen Leitung`, aktion: 'zeigen', stufe: 'konflikt' })),
     ...status.hydraulik.map(edge => ({ typ: 'edge', id: `${edge.u}-${edge.v}`, titel: `Hydraulik DN ${edge.dn || '?'}`,
       text: edge.velocityExceeded ? `${(edge._vActual || 0).toFixed(1)} m/s` : `${Math.round(edge.dpPerM || 0)} Pa/m`, aktion: 'zeigen', stufe: 'hydraulik' })),
   ];
@@ -5299,18 +5312,20 @@ function _strangPlanen(edge, punkt, verlaufVorher = null) {
     weg = weg.slice(0,k + 1);
     obenAnschluss = anschluss({weg,amPunkt:false},imNetz,zentrale);
   }
-  // Auf die Heizzentrale gezogen: eigener Strang aus der Zentrale für alles dahinter (nicht an vorhandene Leitungen gehängt)
-  if (zurZentrale) {
-    obenAnschluss = {knoten:zentrale,punkt:zentrale.pt};
-    weg = [...zumStrang.weg].reverse().concat([zentrale.pt]);
-  }
+  // Auf die Heizzentrale gezogen: Strang ab der Zentrale. Liegt auf dem Weg schon eine Leitung, wird sie mitbenutzt
+  // (eine Straße, eine Trasse); die neue Leitung beginnt dort, wo der Weg sie verlässt.
+  if (zurZentrale && !imNetz.length) obenAnschluss = {knoten:zentrale,punkt:zentrale.pt};
   // Gleiche Anbindung wie bisher (an denselben Enden, nichts verwaist): nichts vorzuschlagen
   const oben = knoten.get(analyse.oben);
   if (!analyse.totKanten.length && oben && obenAnschluss.punkt.distanceTo(oben.pt) < 15 && untenAnschluss.punkt.distanceTo(unten.pt) < 15) return null;
   // Neuer Weg liegt praktisch auf dem bisherigen (nur innerhalb derselben Straße verschoben): kein Vorschlag
   const linieVorher = verlaufVorher?.length >= 2 ? verlaufVorher : linie(edge);
   const bisher = [linieVorher,...analyse.totKanten.map(linie)];
-  if (weg.every(p => Math.min(...bisher.map(l => abstandZuLinie(p,l))) <= 10)) return null;
+  // Gleich nur, wenn neuer und alter Verlauf gegenseitig aufeinander liegen — sonst lieber das Umlegen anbieten
+  const probenAuf = l => l.flatMap((p,i) => (i ? [0.25,0.5,0.75,1].map(t => L.latLng(l[i - 1].lat + (p.lat - l[i - 1].lat) * t,l[i - 1].lng + (p.lng - l[i - 1].lng) * t)) : [p]));
+  const neuAufAlt = weg.every(p => Math.min(...bisher.map(l => abstandZuLinie(p,l))) <= 10);
+  const altAufNeu = bisher.every(l => probenAuf(l).every(p => abstandZuLinie(p,weg) <= 10));
+  if (neuAufAlt && altAufNeu) return null;
   const laenge = e => linienLaenge(linie(e));
   const delta = linienLaenge(weg) - linienLaenge(linieVorher) - analyse.totKanten.reduce((sum,e) => sum + laenge(e),0);
   return {edge,analyse,unten,untenAnschluss,obenAnschluss,weg,viaPunkt:route.viaPunkt,delta,gebaeudeDahinter,zurZentrale};

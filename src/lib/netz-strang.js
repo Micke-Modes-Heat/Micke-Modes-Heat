@@ -217,3 +217,57 @@ export function besteAstVerlegung(kanten, o) {
   }
   return best;
 }
+
+/**
+ * Hin-und-zurück-Stücke aus einem Verlauf entfernen: läuft die Linie zu einem Punkt und auf demselben Weg zurück
+ * (z. B. weil ein Zwischenziel hinter dem Ende lag), wird der Abstecher abgeschnitten. Anfang und Ende bleiben.
+ */
+export function stichEntfernen(linie, tolM = 1) {
+  const pkte = linie || [];
+  if (pkte.length < 3) return [...pkte];
+  const out = [];
+  const gleich = (a, b) => abstandZuLinie(a, [b]) <= tolM;
+  for (const p of pkte) {
+    // Läuft die Linie auf dem zuletzt gelaufenen Stück zurück, war dessen Endpunkt die Spitze eines Abstechers
+    while (out.length >= 2 && abstandZuLinie(p, [out[out.length - 2], out[out.length - 1]]) <= tolM) out.pop();
+    if (out.length && gleich(p, out[out.length - 1])) { out[out.length - 1] = p; continue; }
+    out.push(p);
+  }
+  // Endpunkte exakt erhalten
+  out[0] = pkte[0];
+  out[out.length - 1] = pkte[pkte.length - 1];
+  return out;
+}
+
+/**
+ * Doppelt verlegte Abschnitte: Stellen, an denen eine Leitung über mindestens minM direkt neben einer anderen liegt
+ * (Abstand ≤ tolM). kanten: [{ linie, ... }]. Ergebnis: [{ a, b, laengeM }] je betroffenem Paar.
+ */
+export function parallelAbschnitte(kanten, tolM = 3, minM = 15, schrittM = 3) {
+  const box = l => l.reduce((b, p) => ({ s: Math.min(b.s, p.lat), n: Math.max(b.n, p.lat), w: Math.min(b.w, p.lng), o: Math.max(b.o, p.lng) }),
+    { s: Infinity, n: -Infinity, w: Infinity, o: -Infinity });
+  const boxen = kanten.map(k => box(k.linie || []));
+  const rand = 0.00005;   // ≈ 5 m
+  const proben = l => {
+    const out = [];
+    for (let i = 0; i < l.length - 1; i++) {
+      const n = Math.max(1, Math.ceil(linienLaenge([l[i], l[i + 1]]) / schrittM));
+      for (let j = 0; j < n; j++) out.push({ lat: l[i].lat + ((l[i + 1].lat - l[i].lat) * j) / n, lng: l[i].lng + ((l[i + 1].lng - l[i].lng) * j) / n });
+    }
+    return out;
+  };
+  const treffer = [];
+  for (let i = 0; i < kanten.length; i++) {
+    const pi = proben(kanten[i].linie || []);
+    for (let j = i + 1; j < kanten.length; j++) {
+      const a = boxen[i], b = boxen[j];
+      if (a.n + rand < b.s || b.n + rand < a.s || a.o + rand < b.w || b.o + rand < a.w) continue;
+      let lauf = 0, best = 0;
+      for (const p of pi) {
+        if (abstandZuLinie(p, kanten[j].linie) <= tolM) { lauf += schrittM; best = Math.max(best, lauf); } else lauf = 0;
+      }
+      if (best >= minM) treffer.push({ a: kanten[i], b: kanten[j], laengeM: best });
+    }
+  }
+  return treffer;
+}
