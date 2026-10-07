@@ -11,14 +11,16 @@ import { polygonAreaM2, polygonCenter, redrawTrasse } from './02c-karte-werkzeug
 import { setNetzVisible } from './03b-netz.js';
 import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js';
-import { KABEL_TYPEN, TRAFO_GROESSEN, MS_I_MAX_A, MS_SECTIONS } from './config/netz-kosten.js';
+import { KABEL_TYPEN, TRAFO_GROESSEN, MS_I_MAX_A, MS_SECTIONS, kabelTypOptionen } from './config/netz-kosten.js';
 import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
 import { nsKabelAuslegen } from './lib/ns-auslegung.js';
+import { anschlussWirksam } from './lib/anschlussleistung.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { createId } from './lib/util.js';
+import { baueTrassenGraph, routeEntlangTrassen } from './lib/trassen-routing.js';
 import { mergeOsmElements, splitOsmBbox, subdivideOsmBbox } from './lib/osm-bbox-tiles.js';
 import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus, getAssetPropsForYear } from './13a-assets-core.js';
-import { collapseAssetSpider, redrawAllAssets } from './13b-assets-render.js';
+import { collapseAssetSpider, redrawAllAssets, refreshTrafoAuslastung } from './13b-assets-render.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
 import { schichtAusEndpunkten, normSchicht, SCHICHT } from './lib/schichten.js';
 import { globalYear, stromEdges } from './01-globals-varianten.js';
@@ -91,9 +93,7 @@ export function openCableInspector(edge) {
 
 function _renderCableInspector(panel, edge) {
   const FUSE_SIZES = [0, 16, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250];
-  const typeOpts = Object.entries(KABEL_TYPEN)
-    .map(([k, v]) => `<option value="${k}"${k === edge.cableType ? ' selected' : ''}>${v.label}</option>`)
-    .join('');
+  const typeOpts = kabelTypOptionen(edge.cableType || 'NAYY');
   const fuseOpts = FUSE_SIZES
     .map(a => `<option value="${a}"${a === (edge.fuseA || 0) ? ' selected' : ''}>${a === 0 ? '— kein —' : a + ' A'}</option>`)
     .join('');
@@ -147,6 +147,12 @@ function _renderCableInspector(panel, edge) {
           Automatisch dimensionieren
         </label>
       </div>
+      <div class="ci-field" style="margin-bottom:6px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;" title="Kabel ist im Normalbetrieb offen (Trennstelle eines Rings bzw. einer Linie). Gleichwertig: an der Schaltanlage „Trennstelle“ anhaken und das offene Feld wählen.">
+          <input type="checkbox" id="ci-ts"${edge.trennstelle ? ' checked' : ''}>
+          Offene Trennstelle (Normalbetrieb)
+        </label>
+      </div>
       <div style="margin:4px 0 8px;padding:6px 8px;background:var(--surface2);border-radius:6px;">
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="width:8px;height:8px;border-radius:50%;background:${stMeta.c};flex-shrink:0;"></span>
@@ -195,6 +201,12 @@ function _renderCableInspector(panel, edge) {
   fuseEl.addEventListener('change', apply);
   parallelEl.addEventListener('change', apply);
   autoEl.addEventListener('change', () => { qsEl.disabled = autoEl.checked; apply(); });
+  // Eigener Weg statt apply(): die Trennstelle ändert nichts an Querschnitt/Schätzung
+  panel.querySelector('#ci-ts').addEventListener('change', ev => {
+    edge.trennstelle = ev.target.checked;
+    recalcStromNetz();
+    if (typeof window.sldRefresh === 'function') window.sldRefresh();
+  });
 
   _wireCableMassn(panel, edge);
 
@@ -497,10 +509,14 @@ export function stromNodeClick(nodeId) {
 }
 
 // ── Trassen-Routing für Elektroleitungen (portiert aus Energiekarte1.1) ───────
-// Konvertiert window.trassePoints + window.trasseSegments in das EL.trassen-Format
+// Konvertiert window.trassePoints + window.trasseSegments in das EL.trassen-Format.
+// Kabel dürfen auch in gezeichneten Wärmetrassen liegen (gemeinsamer Graben) — umgekehrt
+// nutzt das Wärmenetz keine Elektro-Trassen. Nur für Wärme übernommene OSM-Straßen
+// bleiben außen vor, damit „OSM löschen“ im Elektro-Tab die Kabelführung wirklich ändert.
 function _getTrassenForRouting() {
   const pts = window.trassePoints;
-  const segs = window.trasseSegments.filter(seg => !seg.domains || seg.domains.includes('strom'));
+  const segs = window.trasseSegments.filter(seg => !seg.domains || seg.domains.includes('strom') ||
+    (seg.domains.includes('waerme') && seg.source !== 'osm-street'));
   if (!pts || pts.length < 2 || !segs || segs.length === 0) return [];
   return segs
     .map((seg, i) => ({
@@ -510,225 +526,33 @@ function _getTrassenForRouting() {
     .filter(t => t.pts.length >= 2);
 }
 
-function _elPtDist(a, b) {
-  return L.latLng(a[0], a[1]).distanceTo(L.latLng(b[0], b[1]));
+// Graph wird je Trassenstand nur einmal gebaut (Kabel-Neuausrichtung routet jede Leitung einzeln)
+let _trassenGraphCache = { sig: null, graph: null };
+function _trassenGraph(trassen) {
+  const sig = JSON.stringify(trassen);
+  if (_trassenGraphCache.sig !== sig) _trassenGraphCache = { sig, graph: baueTrassenGraph(trassen) };
+  return _trassenGraphCache.graph;
 }
 
-function _elProjOnSeg(p, a, b) {
-  const ax = a[1], ay = a[0], bx = b[1], by = b[0], px = p[1], py = p[0];
-  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
-  if (len2 < 1e-18) return { t: 0, pt: a };
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
-  return { t, pt: [ay + t * dy, ax + t * dx] };
+function _routeMitGraph(graph, from, to) {
+  const route = routeEntlangTrassen(graph, [from.lat, from.lng], [to.lat, to.lng]);
+  return route ? route.map(p => L.latLng(p[0], p[1])) : null;
 }
 
-// Baut Graph aus Trassen-Segmenten mit Cross-Trassen-Verbindungen
-function _elBuildGraph(trassen) {
-  const SNAP_M = 20;
-  const nodeMap = new Map();
-  const key = pt => pt[0].toFixed(7) + ',' + pt[1].toFixed(7);
-
-  function getNode(pt) {
-    const k = key(pt);
-    if (!nodeMap.has(k)) nodeMap.set(k, { id: k, lat: pt[0], lng: pt[1], adj: [] });
-    return nodeMap.get(k);
-  }
-  function addEdge(nA, nB) {
-    const d = _elPtDist([nA.lat, nA.lng], [nB.lat, nB.lng]);
-    if (!nA.adj.some(a => a.toKey === nB.id)) nA.adj.push({ toKey: nB.id, dist: d });
-    if (!nB.adj.some(a => a.toKey === nA.id)) nB.adj.push({ toKey: nA.id, dist: d });
-  }
-
-  for (const tr of trassen) {
-    for (let i = 0; i < tr.pts.length - 1; i++) {
-      addEdge(getNode(tr.pts[i]), getNode(tr.pts[i + 1]));
-    }
-  }
-
-  // Cross-Trassen-Snapping: Enden nahe anderer Trassen verbinden
-  const snapsBySegment = new Map();
-  for (const tr of trassen) {
-    const endpoints = [tr.pts[0], tr.pts[tr.pts.length - 1]];
-    for (const ep of endpoints) {
-      const kEp = key(ep);
-      const nEp = nodeMap.get(kEp); if (!nEp) continue;
-      let best = null;
-      for (const other of trassen) {
-        if (other.id === tr.id) continue;
-        for (let i = 0; i < other.pts.length - 1; i++) {
-          const { pt: proj, t } = _elProjOnSeg(ep, other.pts[i], other.pts[i + 1]);
-          const d = _elPtDist(ep, proj);
-          if (d < SNAP_M && (!best || d < best.d))
-            best = { d, proj, t, ptA: other.pts[i], ptB: other.pts[i + 1], otherId: other.id, segIdx: i };
-        }
-      }
-      if (!best) continue;
-      const segKey = `${best.otherId}:${best.segIdx}`;
-      if (!snapsBySegment.has(segKey))
-        snapsBySegment.set(segKey, { ptA: best.ptA, ptB: best.ptB, snaps: [] });
-      snapsBySegment.get(segKey).snaps.push({ t: best.t, proj: best.proj, kEp, nEp });
-    }
-  }
-  for (const { ptA, ptB, snaps } of snapsBySegment.values()) {
-    const kA = key(ptA), kB = key(ptB);
-    const nA = nodeMap.get(kA), nB = nodeMap.get(kB);
-    if (!nA || !nB) continue;
-    nA.adj = nA.adj.filter(a => a.toKey !== kB);
-    nB.adj = nB.adj.filter(a => a.toKey !== kA);
-    const interior = [];
-    for (const { t, proj, kEp, nEp } of snaps) {
-      if (t < 1e-5) {
-        if (kEp !== kA) addEdge(nEp, nA);
-      } else if (t > 1 - 1e-5) {
-        if (kEp !== kB) addEdge(nEp, nB);
-      } else {
-        const kP = key(proj);
-        if (!nodeMap.has(kP)) nodeMap.set(kP, { id: kP, lat: proj[0], lng: proj[1], adj: [] });
-        const nP = nodeMap.get(kP);
-        if (kEp !== kP) addEdge(nEp, nP);
-        if (!interior.some(s => s.k === kP)) interior.push({ k: kP, n: nP, t });
-      }
-    }
-    interior.sort((a, b) => a.t - b.t);
-    let prevKey = kA, prevNode = nA;
-    for (const { k, n } of interior) {
-      if (prevKey !== k) addEdge(prevNode, n);
-      prevKey = k; prevNode = n;
-    }
-    if (prevKey !== kB) addEdge(prevNode, nB);
-  }
-  return nodeMap;
-}
-
-function _elClosestOnTrasse(trassen, lat, lng) {
-  const p = [lat, lng]; let best = null;
-  for (const tr of trassen) {
-    for (let i = 0; i < tr.pts.length - 1; i++) {
-      const { pt } = _elProjOnSeg(p, tr.pts[i], tr.pts[i + 1]);
-      const d = _elPtDist(p, pt);
-      if (!best || d < best.dist) best = { trasseId: tr.id, segIdx: i, pt, dist: d };
-    }
-  }
-  return best;
-}
-
-function _elDijkstra(nodeMap, startKey, endKey) {
-  if (startKey === endKey) return [[nodeMap.get(startKey).lat, nodeMap.get(startKey).lng]];
-  const dist = new Map(), prev = new Map(), vis = new Set();
-  dist.set(startKey, 0);
-  const q = [[0, startKey]];
-  while (q.length) {
-    q.sort((a, b) => a[0] - b[0]);
-    const [d, u] = q.shift();
-    if (vis.has(u)) continue;
-    vis.add(u);
-    if (u === endKey) break;
-    const node = nodeMap.get(u); if (!node) continue;
-    for (const { toKey, dist: ed } of node.adj) {
-      const nd = d + ed;
-      if (!dist.has(toKey) || nd < dist.get(toKey)) {
-        dist.set(toKey, nd); prev.set(toKey, { from: u }); q.push([nd, toKey]);
-      }
-    }
-  }
-  if (!dist.has(endKey)) return null;
-  const path = []; let cur = endKey;
-  while (cur) { const node = nodeMap.get(cur); if (node) path.unshift([node.lat, node.lng]); cur = prev.get(cur)?.from; }
-  return path;
-}
-
-// Fügt einen virtuellen Knoten für `proj` in nodeMap ein (idempotent per key)
-function _insertVirtualNode(nodeMap, trassen, proj) {
-  const key = pt => pt[0].toFixed(7) + ',' + pt[1].toFixed(7);
-  const tr = trassen.find(t => t.id === proj.trasseId); if (!tr) return null;
-  const ptPrev = tr.pts[proj.segIdx], ptNext = tr.pts[proj.segIdx + 1];
-  const kPrev = key(ptPrev), kNext = key(ptNext);
-  const kVirt = key(proj.pt);
-  if (nodeMap.has(kVirt)) return kVirt;
-  const { t: tVirt } = _elProjOnSeg(proj.pt, ptPrev, ptNext);
-  const segNodes = [{ k: kPrev, t: 0.0 }, { k: kNext, t: 1.0 }];
-  for (const [k, n] of nodeMap) {
-    if (k === kPrev || k === kNext) continue;
-    const { t, pt: onPt } = _elProjOnSeg([n.lat, n.lng], ptPrev, ptNext);
-    if (t > 1e-4 && t < 1 - 1e-4 && _elPtDist([n.lat, n.lng], onPt) < 2.0)
-      segNodes.push({ k, t });
-  }
-  segNodes.sort((a, b) => a.t - b.t);
-  const vn = { id: kVirt, lat: proj.pt[0], lng: proj.pt[1], adj: [] };
-  nodeMap.set(kVirt, vn);
-  const prevNb = [...segNodes].reverse().find(sn => sn.t <= tVirt + 1e-9);
-  const nextNb = segNodes.find(sn => sn.t >= tVirt - 1e-9);
-  [prevNb, nextNb].forEach(nb => {
-    if (!nb || nb.k === kVirt) return;
-    const nbNode = nodeMap.get(nb.k); if (!nbNode) return;
-    const d = _elPtDist(proj.pt, [nbNode.lat, nbNode.lng]);
-    if (!vn.adj.some(a => a.toKey === nb.k)) {
-      vn.adj.push({ toKey: nb.k, dist: d });
-      nbNode.adj.push({ toKey: kVirt, dist: d });
-    }
-  });
-  return kVirt;
-}
-
-// Routing-Kern: verwendet bereits gebauten nodeMap (mutiert ihn für virtuelle Knoten)
-function _routeWithGraph(trassen, nodeMap, from, to) {
-  const ptA = [from.lat, from.lng];
-  const ptB = [to.lat,   to.lng];
-  const projA = _elClosestOnTrasse(trassen, from.lat, from.lng);
-  const projB = _elClosestOnTrasse(trassen, to.lat,   to.lng);
-  if (!projA || !projB) return null;
-
-  const key = pt => pt[0].toFixed(7) + ',' + pt[1].toFixed(7);
-  const kA = _insertVirtualNode(nodeMap, trassen, projA);
-  const kB = _insertVirtualNode(nodeMap, trassen, projB);
-  if (!kA || !kB) return null;
-
-  if (kA !== kB && projA.trasseId === projB.trasseId && projA.segIdx === projB.segIdx) {
-    const dAB = _elPtDist(projA.pt, projB.pt);
-    nodeMap.get(kA)?.adj.push({ toKey: kB, dist: dAB });
-    nodeMap.get(kB)?.adj.push({ toKey: kA, dist: dAB });
-  }
-
-  const trassePth = _elDijkstra(nodeMap, kA, kB);
-  if (!trassePth || trassePth.length === 0) return null;
-
-  const route = [ptA];
-  if (_elPtDist(ptA, projA.pt) > 2) route.push(projA.pt);
-  for (const pt of trassePth) {
-    const last = route[route.length - 1];
-    if (!last || _elPtDist(last, pt) > 0.5) route.push(pt);
-  }
-  if (_elPtDist(ptB, projB.pt) > 2) {
-    const last = route[route.length - 1];
-    if (!last || _elPtDist(last, projB.pt) > 0.5) route.push(projB.pt);
-  }
-  route.push(ptB);
-
-  return route.map(p => L.latLng(p[0], p[1]));
-}
-
-// Vollständiges Routing: von Punkt A nach B entlang Trassen (mit virtuellem Knoteneinstieg)
+// Vollständiges Routing: von Punkt A nach B entlang der Elektro-Trassen
+// (rechtwinkliger Stich auf die Trasse, kürzester Weg im Trassennetz — siehe lib/trassen-routing.js)
 export function routeAlongTrasse(from, to) {
-  const trassen = _getTrassenForRouting();
-  if (trassen.length === 0) return null;
-  const nodeMap = _elBuildGraph(trassen);
-  if (nodeMap.size === 0) return null;
-  return _routeWithGraph(trassen, nodeMap, from, to);
+  return _routeMitGraph(_trassenGraph(_getTrassenForRouting()), from, to);
 }
 
 // Einmalig den Trassen-Graph bauen — für Batch-Routing in autoNetzAssets
 export function buildTrasseGraph() {
-  const trassen = _getTrassenForRouting();
-  if (!trassen.length) return null;
-  const nodeMap = _elBuildGraph(trassen);
-  if (nodeMap.size === 0) return null;
-  return { trassen, nodeMap };
+  return _trassenGraph(_getTrassenForRouting());
 }
 
-// Routing mit vorgebautem Graph (nodeMap wird wiederverwendet, virtuelle Knoten akkumulieren)
+// Routing mit vorgebautem Graph
 export function routeAlongTrasseWithGraph(ctx, from, to) {
-  if (!ctx) return null;
-  return _routeWithGraph(ctx.trassen, ctx.nodeMap, from, to);
+  return ctx ? _routeMitGraph(ctx, from, to) : null;
 }
 
 export function polylineLength(pts) {
@@ -2216,6 +2040,8 @@ export function updateStromEdgeVisuals() {
       if (map.hasLayer(e.arrowMarker)) map.removeLayer(e.arrowMarker);
     }
   });
+  // Trafo-Füllstandsbalken folgen dem Farbmodus (nur bei „Auslastung" sichtbar)
+  refreshTrafoAuslastung();
 }
 
 // ── Auto-Netz: Alle Gebäude mit nächstem Trafo/NSHV verbinden ──
@@ -2642,7 +2468,11 @@ export function elCalcAssets(opts = {}) {
   // Betriebsbedingungen wie im Lastflusspfad (Iz-Derating, Leitertemperatur).
   // Vorher ignorierte die Asset-Rechnung beides und legte dadurch optimistischer
   // aus als der Altpfad — bei identischem Netz kamen zwei Querschnitte heraus.
-  const _kIz     = _nsKIz();
+  // Ohne gerendertes Elektro-Panel fehlen die Iz-Felder und _nsKIz() liefert NaN;
+  // nsKabelAuslegen rechnet dann mit 1 — denselben Wert hier führen, damit
+  // Kante und Ergebnisblatt den tatsächlich verwendeten Faktor zeigen.
+  const _kIzRoh  = _nsKIz();
+  const _kIz     = _kIzRoh > 0 ? _kIzRoh : 1;
   const _tLeiter = _nsLeiterTemp();
   // Die Auto-Dimensionierung verteilt MAX_DELTA_U_PCT entlang des Pfades: je mehr
   // ΔU bereits auf vorgelagerten Abschnitten "verbraucht" wurde, desto enger ist
@@ -2717,7 +2547,9 @@ export function elCalcAssets(opts = {}) {
     adjList.get(e.v).push({ neighborId: e.u });
   }
 
-  function bfsDownstream(edge, loadFn, gebLoadFn) {
+  // stat (optional) zählt mit, WORAUS sich die Last zusammensetzt — nur für das
+  // Ergebnisblatt (Rechnung je Strecke), auf das Ergebnis hat es keinen Einfluss.
+  function bfsDownstream(edge, loadFn, gebLoadFn, stat = null) {
     const a = assetMap.get(edge.u), b = assetMap.get(edge.v);
     // Mindestens ein Asset-Endpunkt muss existieren
     if (!a && !b) return 0;
@@ -2733,10 +2565,14 @@ export function elCalcAssets(opts = {}) {
       visited.add(cur);
       const asset = assetMap.get(cur);
       if (asset) {
-        load += loadFn(asset);
+        const l = loadFn(asset);
+        load += l;
+        if (stat && l > 0) stat.nAnlagen++;
       } else {
         // Gebäude oder sonstiger Nicht-Asset-Knoten → Gebäude-Last addieren
-        load += (gebLoadFn ? gebLoadFn(cur) : gebVerbrauch(cur));
+        const l = gebLoadFn ? gebLoadFn(cur) : gebVerbrauch(cur);
+        load += l;
+        if (stat && l > 0) { stat.nGeb++; stat.gebKw += l; }
       }
       const curRank = TYPE_RANK[asset?.type] ?? 6;
       for (const { neighborId } of (adjList.get(cur) || [])) {
@@ -2769,14 +2605,36 @@ export function elCalcAssets(opts = {}) {
   // Schritt 1: Lastfluss, Richtung & Kabeltyp-Eckdaten je Kante (Reihenfolge-
   // unabhängig — bestimmt nur, WAS dimensioniert werden muss, nicht WIE).
   const edgeCalc = new Map();
+  // Herkunft der Last je Kante — wird erst im sichtbaren Lauf als Stempel
+  // _calcHinter geschrieben (s. Ergebnis-Stempel unten).
+  const _hinter = new Map();
   for (const e of activeE) {
     const aAsset = assetMap.get(e.u), bAsset = assetMap.get(e.v);
     if (!aAsset || !bAsset) continue;
     const rankA = TYPE_RANK[aAsset.type] ?? 6, rankB = TYPE_RANK[bAsset.type] ?? 6;
     const lengthM = e.lengthM || 0;
 
-    const P_v = bfsDownstream(e, assetVerbrauch, gebVerbrauch);
-    const P_g = bfsDownstream(e, assetErzeugung, () => 0); // Gebäude erzeugen nicht
+    const statV = { nAnlagen: 0, nGeb: 0, gebKw: 0 };
+    const statG = { nAnlagen: 0, nGeb: 0, gebKw: 0 };
+    const P_vLast = bfsDownstream(e, assetVerbrauch, gebVerbrauch, statV);
+    let P_v = P_vLast;
+    // Hausanschluss eines Verbrauchers (Blatt): das Kabel muss die Anschluss-
+    // leistung tragen (Handwert oder Klasse + 20 % Reserve), nicht nur die Last.
+    // Sammelleitungen bleiben beim Lastfluss — die Anschlussleistungen treten
+    // nie gleichzeitig auf.
+    const sinkA = rankA <= rankB ? bAsset : aAsset;
+    let anschlussKw = null;
+    if (sinkA.type === 'Verbraucher' && (adjList.get(sinkA.id)?.length || 0) === 1) {
+      anschlussKw = anschlussWirksam(_p(sinkA)).kw;
+      P_v = Math.max(P_v, anschlussKw);
+    }
+    const P_g = bfsDownstream(e, assetErzeugung, () => 0, statG); // Gebäude erzeugen nicht
+    _hinter.set(e, {
+      nVerbraucher: statV.nAnlagen, nGeb: statV.nGeb, gebKw: statV.gebKw,
+      nErzeuger: statG.nAnlagen, lastKw: P_vLast,
+      // Mindestwert am Hausanschluss nur ausweisen, wenn er die Last tatsächlich anhebt
+      anschlussKw: anschlussKw != null && anschlussKw > P_vLast ? anschlussKw : null,
+    });
     const P_net   = P_v - P_g;
     const P_worst = Math.max(P_v, P_g);
     // MS-Kabel: Strom mit MS-Spannung berechnen, keine NS-Kabelauslegung
@@ -2810,7 +2668,11 @@ export function elCalcAssets(opts = {}) {
         csMs = MS_SECTIONS.find(s => MS_I_MAX_A[s] >= I_A) || MS_SECTIONS[MS_SECTIONS.length - 1];
         e.crossSection = csMs;
       }
-      const iMaxMs = MS_I_MAX_A[csMs] || MS_I_MAX_A[MS_SECTIONS[MS_SECTIONS.length - 1]];
+      // Erfasster MS-Typ mit eigener Tabelle (z. B. N2XS2Y Kupfer) → dessen Iz;
+      // sonst die Aluminium-Richtwerte MS_I_MAX_A.
+      const msTyp = KABEL_TYPEN[ep.cableType];
+      const izTyp = msTyp?.msKabel ? msTyp.sections.find(s => s.mm2 === csMs)?.Iz : null;
+      const iMaxMs = izTyp || MS_I_MAX_A[csMs] || MS_I_MAX_A[MS_SECTIONS[MS_SECTIONS.length - 1]];
       e._effCrossSection = csMs;
       e.ratedCurrentA = iMaxMs;
       e.auslastungPct = iMaxMs ? (I_A / iMaxMs) * 100 : 0;
@@ -2899,6 +2761,11 @@ export function elCalcAssets(opts = {}) {
   const bfsQ   = [...nodeVoltDrop.keys()];
   const bfsVis = new Set(bfsQ);
   const sizedEdges = new Set();
+  // Netzstruktur für das Ergebnisblatt: welche Station speist einen Knoten, über
+  // welchen Abgang (= erste Kante ab der Station), und in welcher Pfadfolge.
+  // Abgang = null, solange man noch an der Station selbst steht.
+  const _speis = new Map(bfsQ.map(id => [id, { speisId: id, abgangId: null }]));
+  const _pfad  = new Map();
   while (bfsQ.length) {
     const curId  = bfsQ.shift();
     const cumV   = nodeVoltDrop.get(curId) ?? 0;
@@ -2906,6 +2773,10 @@ export function elCalcAssets(opts = {}) {
     for (const { edge: e, nextId } of (dirAdj.get(curId) || [])) {
       if (bfsVis.has(nextId)) continue;
       bfsVis.add(nextId);
+      const sp = _speis.get(curId);
+      const abgangId = sp?.abgangId ?? e.id;
+      _speis.set(nextId, { speisId: sp?.speisId ?? null, abgangId });
+      _pfad.set(e, { von: curId, nach: nextId, speisId: sp?.speisId ?? null, abgangId, idx: _pfad.size });
       const calc = edgeCalc.get(e);
       let dU_V = 0;
       if (!calc.msLevel) {
@@ -2927,6 +2798,11 @@ export function elCalcAssets(opts = {}) {
       }
       sizedEdges.add(e);
       nodeVoltDrop.set(nextId, cumV + dU_V);
+      // Kumulierter Spannungsfall an beiden Enden — Strom-Knoten gibt es in
+      // reinen Anlagen-Netzen nicht, das Blatt braucht ihn trotzdem.
+      const pe = _pfad.get(e);
+      pe.duVonPct  = cumV / U_N * 100;
+      pe.duNachPct = (cumV + dU_V) / U_N * 100;
       bfsQ.push(nextId);
     }
   }
@@ -2952,8 +2828,11 @@ export function elCalcAssets(opts = {}) {
   // Richtungen; 800 kW Rückspeisung belasten ihn genauso wie 800 kW Bezug. Eine
   // Nettobildung (P_v − P_g) würde reine Einspeise-Stränge auf 0 % klemmen und
   // damit z. B. eine 1-MWp-PV an einem 630-kVA-Trafo unsichtbar machen.
+  const _trafoGeb = new Map();   // Gebäude ohne Anlage je Trafo (nur Ergebnisblatt)
   for (const trafoAsset of activeA.filter(a => a.type === 'Trafo')) {
     const ratedKVA = parseFloat(_p(trafoAsset).leistungKVA) || 630;
+    const geb = { n: 0, kw: 0 };
+    _trafoGeb.set(trafoAsset, geb);
     const trafoRank = TYPE_RANK[trafoAsset.type] ?? 6;
     const visited = new Set([trafoAsset.id]);
     const queue = [];
@@ -2972,7 +2851,9 @@ export function elCalcAssets(opts = {}) {
       } else {
         // Gebäude ohne eigenes Verbraucher-Asset — zählt mit und wird durchquert,
         // sonst fiele alles dahinter aus der Summe (identisch zu bfsDownstream).
-        P_v += gebVerbrauch(cur);
+        const l = gebVerbrauch(cur);
+        P_v += l;
+        if (l > 0) { geb.n++; geb.kw += l; }
       }
       const curRank = TYPE_RANK[curAsset?.type] ?? 6;
       for (const { neighborId } of (adjList.get(cur) || [])) {
@@ -3020,14 +2901,44 @@ export function elCalcAssets(opts = {}) {
     a._calcVerbrauchKw = assetVerbrauch(a);
     a._calcErzeugungKw = assetErzeugung(a);
   }
-  for (const e of (window.stromEdges || [])) delete e._calcJahr;
-  for (const e of activeE) e._calcJahr = yr;
+  for (const e of (window.stromEdges || [])) {
+    delete e._calcJahr; delete e._calcHinter; delete e._calcPfad;
+  }
+  for (const e of activeE) {
+    e._calcJahr = yr;
+    if (_hinter.has(e)) e._calcHinter = _hinter.get(e);
+    if (_pfad.has(e))   e._calcPfad   = _pfad.get(e);
+  }
+  // Netzstruktur je Anlage (speisende Station, Abgang) und Gebäudelast je Trafo
+  for (const a of ASSETS.items) {
+    delete a._calcSpeis; delete a._calcGebKw; delete a._calcNGeb; delete a._calcDuKumPct;
+  }
+  for (const a of activeA) {
+    if (_speis.has(a.id)) a._calcSpeis = _speis.get(a.id);
+    if (nodeVoltDrop.has(a.id)) a._calcDuKumPct = nodeVoltDrop.get(a.id) / U_N * 100;
+  }
+  for (const [t, geb] of _trafoGeb) { t._calcGebKw = geb.kw; t._calcNGeb = geb.n; }
+  // Gebäude ohne eigene Anlage, die über ein Kabel am Netz hängen — sie tragen
+  // zur Last bei, stehen aber in keiner Anlagensumme (Jahresstrom ÷ 1800 h).
+  let gebKw = 0, nGeb = 0;
+  for (const id of adjList.keys()) {
+    if (assetMap.has(id)) continue;
+    const l = gebVerbrauch(id);
+    if (l > 0) { gebKw += l; nGeb++; }
+  }
   window._elErgebnisStand = {
     jahr: yr, zeit: Date.now(),
     nAssets: activeA.length, nKabel: activeE.length,
     verbrauchKw: totalVerbrauch, erzeugungKw: totalErzeugung,
+    gebKw, nGeb,
+    // Rechenparameter dieses Laufs — das Blatt zeigt sie statt der aktuellen
+    // UI-Felder, damit Annahmen und Ergebnis nie auseinanderlaufen.
+    cosPhi: COS_PHI, kIz: _kIz, tLeiterC: _tLeiter, uMsV: U_MS,
     warnungen: [...warn],
   };
+  // Erst jetzt steht der Stempel (_calcVerbrauchKw) — der Aufruf aus
+  // updateStromEdgeVisuals oben sah noch den Stand der vorigen Rechnung.
+  refreshTrafoAuslastung();
 
   const summary = [
     `Verbraucher: ${totalVerbrauch.toFixed(1)} kW · Einspeisung: ${totalErzeugung.toFixed(1)} kW`,
@@ -3468,6 +3379,9 @@ export async function clearAllStromTrassen() {
 export function clearStromNetz() {
   if (typeof window.stopAnimStrom === 'function') window.stopAnimStrom();
   window.stromEdges.forEach(e => {
+    // Auch die dunkle Kontur entfernen — sonst bleibt nach jedem Variantenwechsel
+    // das Netz der vorigen Variante als schwarze Strichlinie auf der Karte stehen.
+    if (e.outlineLayer && map.hasLayer(e.outlineLayer)) map.removeLayer(e.outlineLayer);
     if (e.layer && map.hasLayer(e.layer)) map.removeLayer(e.layer);
     if (e.hitLayer && map.hasLayer(e.hitLayer)) map.removeLayer(e.hitLayer);
     if (e.arrowMarker && map.hasLayer(e.arrowMarker)) map.removeLayer(e.arrowMarker);

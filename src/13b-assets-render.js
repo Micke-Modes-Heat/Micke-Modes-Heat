@@ -7,6 +7,7 @@ import { globalYear } from './01-globals-varianten.js';
 import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 import { selectFromMap, lwWpSchallRadiusM } from './02c-karte-werkzeuge.js';
 import { SCHICHT, SCHICHT_META, normSchicht, schichtRang, schichtSichtbar } from './lib/schichten.js';
+import { ssIstStationsGebaeude } from './lib/stations-steckbrief.js';
 import { calcWindLwaAuto } from './13q-wind-ertrag.js';
 import { computeSuitabilityGrid } from './13s-wind-flaeche.js';
 
@@ -95,7 +96,10 @@ export function _buildAssetTooltip(asset) {
   if (asset.baujahr) h += _attKv('Baujahr', asset.baujahr);
 
   const sn = (window.stromNodes || []).find(n => n.id === asset.id);
-  if (sn) {
+  const trafoAusl = asset.type === 'Trafo' ? _trafoAusl(asset) : null;
+  if (trafoAusl) {
+    h += _attHr + _trafoAuslTooltip(trafoAusl);
+  } else if (sn) {
     h += _attHr;
     if (sn.isProducer && sn.peakLoadKw)
       h += _attKv('↓ Einspeisung (WC)', Math.abs(sn.peakLoadKw).toFixed(1) + ' kW', '#ef9a9a');
@@ -124,15 +128,86 @@ function _buildGroupTooltip(assets) {
   const rows = assets.slice(0, 6).map(a => {
     const cfg = ASSET_CFG[a.type];
     const fg  = _contrast(cfg.color);
+    const ausl = a.type === 'Trafo' ? _trafoAusl(a) : null;
     return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">` +
       `<span style="background:${cfg.color};color:${fg};border-radius:3px;padding:0 5px;font-size:11px;">${cfg.icon}</span>` +
       `<span style="font-size:11px;">${a.name}</span>` +
-    `</div>`;
+    `</div>` +
+    (ausl ? `<div style="padding:2px 0 4px 4px;">${_trafoAuslTooltip(ausl)}</div>` : '');
   }).join('');
   const more = assets.length > 6
     ? `<div style="color:#78909c;font-size:10px;margin-top:2px;">+ ${assets.length - 6} weitere</div>`
     : '';
-  return `<div style="min-width:145px;">${rows}${more}</div>`;
+  const minW = assets.some(a => a.type === 'Trafo') ? 195 : 145;
+  return `<div style="min-width:${minW}px;">${rows}${more}</div>`;
+}
+
+// ── Trafo-Auslastung auf der Karte ──────────────────────────────────────────
+// Quelle ist ausschließlich der Ergebnis-Stempel von elCalcAssets
+// (_calcPeakLoad*), derselbe Wert wie im Ergebnisblatt, im SLD und im
+// Engpass-Sweep — NICHT sn._auslastungPct, das die Schnellberechnung mit
+// anderer Formel überschreibt. _calcVerbrauchKw markiert, dass der Trafo in der
+// letzten sichtbaren Rechnung steckte; ohne ihn wären die Werte veraltet
+// (z. B. Trafo im eingestellten Jahr noch nicht gebaut).
+// Ampel wie die Kabel im Farbmodus „Auslastung" (getStromEdgeColor).
+function _auslAmpel(pct) {
+  return pct > 100 ? '#e53935' : pct > 80 ? '#fdd835' : '#4caf50';
+}
+function _trafoAusl(a) {
+  if (a._calcVerbrauchKw === undefined || a._calcPeakLoadPct == null) return null;
+  const kva = parseFloat(a.props?.leistungKVA) || 630;
+  const kw  = a._calcPeakLoadKw || 0;
+  return {
+    pct: a._calcPeakLoadPct, kva, kw,
+    bezugKw: a._calcPeakLoadKwV || 0,
+    einspKw: a._calcPeakLoadKwG || 0,
+    rueck:   a._calcFlowDirection === -1,
+    // Reserve auf der Wirkleistungsseite (kVA × 0,9, wie elCalcAssets/Ergebnisblatt)
+    reserveKw: kva * 0.9 - kw,
+  };
+}
+function _trafoAuslTooltip(t) {
+  const col = _auslAmpel(t.pct);
+  const bar = `<div style="height:5px;background:#263238;border-radius:3px;overflow:hidden;margin:2px 0 3px;">` +
+    `<div style="width:${Math.min(100, t.pct).toFixed(0)}%;height:100%;background:${col};"></div></div>`;
+  let h = _attKv('Auslastung', `${t.pct.toFixed(0)} % von ${t.kva} kVA`, col) + bar;
+  h += _attKv('↑ Bezug', t.bezugKw.toFixed(1) + ' kW', '#90caf9');
+  h += _attKv('↓ Rückspeisung', t.einspKw.toFixed(1) + ' kW', '#ef9a9a');
+  h += _attKv('Maßgebend', t.rueck ? 'Rückspeisung' : 'Bezug');
+  h += _attKv(t.reserveKw >= 0 ? 'Reserve' : 'Überlast',
+    Math.abs(t.reserveKw).toFixed(0) + ' kW', t.reserveKw >= 0 ? null : '#e53935');
+  return h;
+}
+// Füllstandsbalken unter dem Marker — nur im Farbmodus „Auslastung", damit
+// Kabel und Trafos dieselbe Farbsprache sprechen. Mehrere Trafos an einem
+// Gebäude: der höchstausgelastete zählt.
+function _trafoBalkenHtml(assets) {
+  if (window.stromColorMode !== 'auslastung') return '';
+  let max = null;
+  for (const a of assets) {
+    if (a.type !== 'Trafo' || !schichtSichtbar(normSchicht(a.schicht))) continue;
+    const t = _trafoAusl(a);
+    if (t && (max == null || t.pct > max)) max = t.pct;
+  }
+  if (max == null) return '';
+  const cls = max > 100 ? ' asset-ausl-ueber' : '';
+  return `<span class="asset-ausl-bar${cls}"><i style="width:${Math.min(100, max).toFixed(0)}%;background:${_auslAmpel(max)};"></i></span>`;
+}
+
+// Balken nach einer Rechnung / einem Farbmodus-Wechsel nachziehen, ohne alle
+// Marker neu zu zeichnen. Aufgerufen aus updateStromEdgeVisuals und am Ende
+// von elCalcAssets (dort erst nach dem Setzen des Ergebnis-Stempels).
+export function refreshTrafoAuslastung() {
+  const marker = new Set();
+  for (const a of ASSETS.items) if (a.type === 'Trafo' && a._marker) marker.add(a._marker);
+  for (const m of marker) {
+    const el = m.getElement?.();
+    const host = el?.querySelector('.asset-chips') || el?.querySelector('.asset-marker');
+    if (!host) continue;
+    host.querySelector(':scope > .asset-ausl-bar')?.remove();
+    const html = _trafoBalkenHtml(ASSETS.items.filter(a => a._marker === m));
+    if (html) host.insertAdjacentHTML('beforeend', html);
+  }
 }
 
 // Zwei Zoom-Stufen:
@@ -294,7 +369,7 @@ function drawBuildingGroup(buildingId) {
   const moreChip = rest > 0 ? `<span class="asset-chip-more${restSelected ? ' asset-chip-selected' : ''}" style="font-size:${fs}px;">+${rest}</span>` : '';
   const pendingBadge = sichtbareAssets.some(hasPendingMassnahmen) ? `<span class="asset-massn-badge"></span>` : '';
 
-  const html = `<div class="asset-chips"${sichtbareAssets.length === 0 ? ' style="display:none;"' : ''}>${chipsHtml}${moreChip}${pendingBadge}</div>`;
+  const html = `<div class="asset-chips"${sichtbareAssets.length === 0 ? ' style="display:none;"' : ''}>${chipsHtml}${moreChip}${pendingBadge}${_trafoBalkenHtml(assets)}</div>`;
 
   // iconSize abschätzen (Chips + Gaps + Padding) für korrekte Zentrierung
   const nSlots = shown.length + (rest > 0 ? 1 : 0);
@@ -313,7 +388,8 @@ function drawBuildingGroup(buildingId) {
   });
 
   const m = L.marker([c.lat, c.lng], { icon, draggable: true, zIndexOffset: 200 });
-  m.bindTooltip(_buildGroupTooltip(assets), { sticky: true, className: 'geb-tooltip', offset: [8, 0] });
+  // Als Funktion, damit der Hover die Werte der jeweils letzten Rechnung zeigt
+  m.bindTooltip(() => _buildGroupTooltip(assets), { sticky: true, className: 'geb-tooltip', offset: [8, 0] });
 
   m.on('dragend', () => {
     const ll = m.getLatLng();
@@ -367,7 +443,7 @@ function _showAssetDeletePopup(buildingId, latlng) {
   const assets = getAssetsForBuilding(buildingId);
   if (assets.length === 0) return;
   if (assets.length === 1) {
-    deleteAsset(assets[0].id);
+    deleteAsset(assets[0].id, false, { nutzer: true });
     redrawAllAssets();
     return;
   }
@@ -396,7 +472,7 @@ function _showAssetDeletePopup(buildingId, latlng) {
       row.addEventListener('mouseenter', () => row.style.background = 'rgba(239,83,80,0.12)');
       row.addEventListener('mouseleave', () => row.style.background = '');
       row.addEventListener('click', () => {
-        deleteAsset(row.dataset.id);
+        deleteAsset(row.dataset.id, false, { nutzer: true });
         map.closePopup(popup);
         redrawAllAssets();
       });
@@ -407,6 +483,12 @@ function _showAssetDeletePopup(buildingId, latlng) {
 function openBuildingAssetList(buildingId, marker) {
   const assets = getAssetsForBuilding(buildingId);
   if (assets.length === 0) return;
+  // Station (NAP/Schaltanlage/Trafo im Gebäude): Steckbrief statt Einzelliste — die Komponenten
+  // bleiben dort über „Inspector ↗" einzeln erreichbar (34-stations-steckbrief.js).
+  if (ssIstStationsGebaeude(buildingId, assets) && typeof window.openStationsSteckbrief === 'function') {
+    window.openStationsSteckbrief(buildingId);
+    return;
+  }
   if (assets.length === 1) {
     ASSETS.selectedId = assets[0].id;
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(assets[0]);
@@ -500,7 +582,7 @@ function spiderfyBuilding(buildingId, centerLatLng) {
     sm.on('contextmenu', ev => {
       L.DomEvent.stopPropagation(ev);
       collapseAssetSpider();
-      deleteAsset(a.id);
+      deleteAsset(a.id, false, { nutzer: true });
       redrawAllAssets();
     });
   });
@@ -748,7 +830,7 @@ function drawSingleMarker(asset) {
                 schichtCol ? `border-color:${schichtCol};border-width:2px;` : ''}${
                 versteckt ? 'display:none;' : ''}">
              <span class="asset-marker-icon" style="font-size:${fontSize}px;">${cfg.icon}</span>
-             ${pendingBadge}
+             ${pendingBadge}${asset.type === 'Trafo' ? _trafoBalkenHtml([asset]) : ''}
            </div>`,
     iconSize:   [size, size],
     iconAnchor: [size / 2, size / 2],
@@ -777,7 +859,7 @@ function drawSingleMarker(asset) {
   });
   m.on('contextmenu', e => {
     L.DomEvent.stopPropagation(e);
-    deleteAsset(asset.id);
+    deleteAsset(asset.id, false, { nutzer: true });
     redrawAllAssets();
   });
 
@@ -810,18 +892,9 @@ function drawSingleMarker(asset) {
       if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
     }
   });
-
-  m.on('contextmenu', e => {
-    L.DomEvent.stopPropagation(e);
-    // Strom-Knoten und angeschlossene Kabel mitentfernen
-    if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
-    else if (window.stromNodes) {
-      const idx = window.stromNodes.findIndex(n => n.id === asset.id);
-      if (idx >= 0) window.stromNodes.splice(idx, 1);
-    }
-    deleteAsset(asset.id);
-    redrawAllAssets();
-  });
+  // Rechtsklick-Löschen hängt schon oben am Marker; deleteAsset entfernt dabei
+  // auch Strom-Knoten und angeschlossene Kabel. Ein zweiter Handler hier hat
+  // früher die Kabel schon vor der Rückfrage gekappt.
 
   m.addTo(standaloneLayer);
   asset._marker = m;

@@ -1,6 +1,7 @@
 // ── 13e-assets-inspector.js — Editor-Panel für selektiertes Asset ──────────
 
 import { createId } from './lib/util.js';
+import { anschlussWirksam } from './lib/anschlussleistung.js';
 
 // Persistiert den Einklapp-Zustand der Sektionen innerhalb einer Session
 const _sectionCollapsed = {};
@@ -25,7 +26,7 @@ function wireSectionToggles(panel) {
   });
 }
 
-import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAsset, deleteAsset, computeTwwKw, TWW_DEFAULTS } from './13a-assets-core.js';
+import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAsset, deleteAsset, pvFlaechenZumAsset, computeTwwKw, TWW_DEFAULTS } from './13a-assets-core.js';
 import { drawAssetMarker, redrawAllAssets, updateLadeParking, zoomToWindEignungsflaeche } from './13b-assets-render.js';
 import { openSlpEditor } from './13i-slp-editor.js';
 import { globalYear } from './01-globals-varianten.js';
@@ -34,6 +35,7 @@ import { getElSlpProfiles, getElSlpGruppen } from './13k-elslp-registry.js';
 import { computeWindYield, calcWindLwaAuto, computeWindScenarios, windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
 import { toggleDrawWindGebiet, clearWindGebiet } from './02c-karte-werkzeuge.js';
 import { SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
+import { SS_STATIONS_TYPEN, ssIstStationsGebaeude, ssStationsGebaeude, ssStationsLabel } from './lib/stations-steckbrief.js';
 
 // Inspector-Slot sitzt im Elektro-Tab der rechten Sidebar
 function getPanel() { return document.getElementById('sb-asset-inspector-slot'); }
@@ -96,6 +98,28 @@ export function renderSidebarAssetList() {
   );
 
   let html = '';
+  // Stationen (Gebäude mit NAP/Schaltanlage/Trafo) — öffnen den Stations-Steckbrief
+  const stationen = ssStationsGebaeude(items, window.gebaeude || []);
+  if (stationen.length) {
+    const collapsed = !!_groupCollapsed['_stationen'];
+    const rows = stationen.map(g => {
+      const n = items.filter(a => String(a.buildingId) === String(g.id) && a.type === 'Trafo').length;
+      return `<div class="sb-asset-row" data-station-geb="${esc(g.id)}" title="Stations-Steckbrief öffnen">
+        <span class="sb-asset-row-icon" style="background:#43a047;">📋</span>
+        <span class="sb-asset-row-name">${esc(ssStationsLabel(g))}</span>
+        <span style="margin-left:auto;font-size:9px;color:var(--muted);flex-shrink:0;">${n ? n + ' Trafo' + (n > 1 ? 's' : '') : ''}</span>
+      </div>`;
+    }).join('');
+    html += `<div class="sb-asset-group">
+      <div class="sb-asset-group-hdr${collapsed ? ' is-collapsed' : ''}" data-group-type="_stationen">
+        <span class="sb-asset-group-icon" style="color:#66bb6a;">📋</span>
+        <span class="sb-asset-group-label">Stationen</span>
+        <span class="sb-asset-group-count">${stationen.length}</span>
+        <span class="sb-asset-group-chevron">▾</span>
+      </div>
+      <div class="sb-asset-group-rows${collapsed ? ' is-collapsed' : ''}">${rows}</div>
+    </div>`;
+  }
   for (const type of sortedTypes) {
     const cfg = ASSET_CFG[type];
     const typeItems = byType.get(type);
@@ -181,6 +205,14 @@ export function renderSidebarAssetList() {
     });
   });
 
+  // Klick-Handler: Stationen → Stations-Steckbrief
+  container.querySelectorAll('.sb-asset-row[data-station-geb]').forEach(row => {
+    row.addEventListener('click', () => {
+      const g = (window.gebaeude || []).find(x => String(x.id) === row.dataset.stationGeb);
+      if (g && typeof window.openStationsSteckbrief === 'function') window.openStationsSteckbrief(g.id);
+    });
+  });
+
   // Klick-Handler: Kabel → öffnet Kabel-Inspector-Modal
   container.querySelectorAll('.sb-asset-row[data-edge-idx]').forEach(row => {
     row.addEventListener('click', () => {
@@ -197,13 +229,20 @@ function esc(s) { return String(s ?? '').replace(/"/g, '&quot;').replace(/</g, '
 // Planungsschicht nachträglich korrigierbar machen — im falschen Eingabemodus
 // angelegte Objekte sollen billig zu berichtigen sein, sonst arbeitet man
 // gegen den Modus statt mit ihm.
+// „Warum ist es da?“ — zugleich die Antwort auf „in welchen Varianten gilt es?“.
 function buildSchichtSelect(asset) {
   const cur = normSchicht(asset.schicht);
+  const variante = window.aktiverVariantenName?.() || 'dieser Variante';
+  const TEXT = {
+    bestand:      '🏛 Ist heute schon da · alle Varianten',
+    entwicklung:  '📈 Kommt ohnehin · alle Varianten',
+    entscheidung: `🎯 Geplant · nur in ${variante}`,
+  };
   const opts = SCHICHT_REIHENFOLGE.map(s =>
-    `<option value="${s}"${s === cur ? ' selected' : ''}>${SCHICHT_META[s].icon} ${SCHICHT_META[s].label}</option>`
+    `<option value="${s}"${s === cur ? ' selected' : ''}>${TEXT[s] || SCHICHT_META[s].label}</option>`
   ).join('');
   return `<div class="ins-field-group">
-    <label class="ins-field-label" title="${SCHICHT_META[cur].hinweis}">Planungsschicht</label>
+    <label class="ins-field-label" title="${SCHICHT_META[cur].hinweis}">Gilt in ${window.wirkungChipFuerSchicht?.(cur) || ''}</label>
     <select class="ins-field-input" data-field="schicht"
       style="border-left:3px solid ${SCHICHT_META[cur].farbe};">${opts}</select>
   </div>`;
@@ -356,6 +395,47 @@ function _windScenarioRow(s) {
   </div>`;
 }
 
+// ── Trennstelle: welches Kabelfeld der Station ist im Normalbetrieb offen? ──
+// Station = alle MS-Betriebsmittel (NAP/Schaltanlage/Trafo) eines Gebäudes, wie im Übersichtsschaltbild.
+// Das gewählte Kabel bekommt das Merkmal trennstelle — daraus liest das Schaltbild die Speiserichtung.
+const _MS_TYPEN = new Set(['NAP', 'Schaltanlage', 'Trafo']);
+function _stationsKabel(asset) {
+  const station = a => (a?.buildingId != null ? 'g' + a.buildingId : 'a' + a?.id);
+  const meine = station(asset);
+  const byId = new Map(ASSETS.items.map(a => [String(a.id), a]));
+  return (window.stromEdges || []).map(e => {
+    const a = byId.get(String(e.u)), b = byId.get(String(e.v));
+    if (!a || !b || !_MS_TYPEN.has(a.type) || !_MS_TYPEN.has(b.type)) return null;
+    const sa = station(a), sb = station(b);
+    if (sa === sb || (sa !== meine && sb !== meine)) return null;
+    return { e, gegen: sa === meine ? b : a };
+  }).filter(Boolean);
+}
+// Kabelstil (offene Trennstelle gestrichelt) und Einlinienschema auffrischen
+function _kabelNeuZeichnen() {
+  if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
+  if (typeof window.sldRefresh === 'function') window.sldRefresh();
+}
+function _stationsName(a) {
+  const g = a.buildingId != null ? (window.gebaeude || []).find(x => String(x.id) === String(a.buildingId)) : null;
+  const geb = g ? (g.gebaeudenummer ? `Gebäude ${g.gebaeudenummer}` : g.name || '') : '';
+  return [geb, a.name].filter(Boolean).join(' · ') || a.type;
+}
+function _trennstelleFeldHtml(asset) {
+  const kabel = _stationsKabel(asset);
+  if (!kabel.length) {
+    return `<div style="font-size:10px;color:var(--muted);margin:2px 0 6px;">Keine MS-Kabel zu anderen Stationen — offenes Feld nicht wählbar.</div>`;
+  }
+  const offen = kabel.find(k => k.e.trennstelle);
+  const opts = [`<option value="">— offenes Feld wählen —</option>`]
+    .concat(kabel.map((k, i) => `<option value="${i}"${k === offen ? ' selected' : ''}>Richtung ${esc(_stationsName(k.gegen))}</option>`))
+    .join('');
+  return `<div class="ins-field-group">
+      <label class="ins-field-label">Offenes Feld (Normalbetrieb)</label>
+      <select class="ins-field-input" data-ts-kabel="${asset.id}">${opts}</select>
+    </div>
+    <div style="font-size:9px;color:var(--muted);margin:-2px 0 6px;line-height:1.4;">Das Kabel in diese Richtung ist im Normalbetrieb offen — daraus ermittelt das Übersichtsschaltbild, welche Stationen über welche Seite versorgt werden.</div>`;
+}
 // ── Props-Formular je Typ ───────────────────────────────────────────────────
 function buildPropsForm(asset) {
   const id = asset.id;
@@ -369,7 +449,8 @@ function buildPropsForm(asset) {
       return row2(
         numField(id, 'felder',     'Anzahl Felder',  6,   {props:p, step:1, min:1}),
         numField(id, 'nennstromA', 'Nennstrom (A)',  630, {props:p, step:1})
-      ) + checkField(id, 'trennstelle', 'Trennstelle (Schutzkonzept)', !!p.trennstelle);
+      ) + checkField(id, 'trennstelle', 'Trennstelle (Schutzkonzept)', !!p.trennstelle)
+        + (p.trennstelle ? _trennstelleFeldHtml(asset) : '');
 
     case 'Trafo': {
       const kvaOpts = [50,100,160,200,250,315,400,500,630,800,1000,1250,1600,2000]
@@ -423,11 +504,20 @@ function buildPropsForm(asset) {
           <select class="ins-field-input" data-prop="slpTyp" data-id="${id}">${optsHtml}</select>
         </div>`;
       })();
-      // Anschlussleistung: nur dokumentiert (z. B. aus dem Bestandsplan), die
-      // Last rechnet weiter mit der Leistung.
+      // Anschlussleistung: Handeingabe (z. B. aus dem Bestandsplan) hat Vorrang;
+      // leer = nächsthöhere Anschlussklasse zur Leistung + 20 % Reserve. Die Last
+      // rechnet weiter mit der Leistung, das Hausanschlusskabel mit der Anschlussleistung.
+      const anschl = anschlussWirksam({ leistungKW: p.leistungKW ?? 10, anschlussleistungKW: p.anschlussleistungKW });
+      const anschlField = `<div class="ins-field-group">
+          <label class="ins-field-label">Anschlussleistung (kW)</label>
+          <input class="ins-field-input" type="number" step="any" min="0"
+            value="${p.anschlussleistungKW ?? ''}" placeholder="auto ${anschl.kw}"
+            title="Leer = automatisch: nächsthöhere Anschlussklasse zu Leistung + 20 % Reserve (${anschl.kw} kW)"
+            data-prop="anschlussleistungKW" data-id="${id}">
+        </div>`;
       return row2(
-          numField(id, 'leistungKW',          'Leistung (kW)',          10, {props:p}),
-          numField(id, 'anschlussleistungKW', 'Anschlussleistung (kW)', '', {props:p, min:0})
+          numField(id, 'leistungKW', 'Leistung (kW)', 10, {props:p}),
+          anschlField
         )
         + slpSelectHtml
         + `<button class="ins-link-btn" data-slp-open="${curSlp}">Profil ansehen →</button>`;
@@ -683,7 +773,7 @@ function _massnRowHtml(m) {
     <span class="ins-massn-dot" style="background:${s.color};" title="${s.label}"></span>
     <div class="ins-massn-info">
       <div class="ins-massn-titel">${t.icon} ${esc(m.titel || '—')}</div>
-      <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten} · <span class="ins-massn-typ-tag">${t.label}</span></div>
+      <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten} · <span class="ins-massn-typ-tag">${t.label}</span> · ${window.massnahmeGeltungText?.(m) || ''}</div>
     </div>
     <button class="ins-massn-edit" data-m-id="${m.id}" title="Bearbeiten">✎</button>
     <button class="ins-massn-del"  data-m-id="${m.id}" title="Löschen">×</button>
@@ -711,6 +801,10 @@ function buildMassnahmenSection(asset) {
       <div class="ins-row-2" style="margin-top:4px;">
         <select class="ins-field-input" id="mf-typ-${asset.id}">${typOpts}</select>
         <select class="ins-field-input" id="mf-status-${asset.id}">${statusOpts}</select>
+      </div>
+      <div class="ins-field-group" style="margin-top:4px;">
+        <label class="ins-field-label" title="In welchen Varianten wirkt diese Maßnahme? Ertüchtigungen unterscheiden Varianten typischerweise.">Gilt für</label>
+        <select class="ins-field-input" id="mf-gilt-${asset.id}">${window.massnahmeGeltungOptionen?.() || '<option value="">alle Varianten</option>'}</select>
       </div>
       <div id="mf-newprops-${asset.id}" style="display:none;"></div>
       <div class="ins-massn-form-btns">
@@ -765,6 +859,8 @@ function wireMassnahmen(panel, asset) {
     form.querySelector(`#mf-kosten-${aid}`).value = m?.kosten || '';
     form.querySelector(`#mf-typ-${aid}`).value    = m?.typ    || 'Sanierung';
     form.querySelector(`#mf-status-${aid}`).value = m?.status || 'geplant';
+    const giltSel = form.querySelector(`#mf-gilt-${aid}`);
+    if (giltSel) giltSel.value = window.massnahmeGeltungWert?.(m, asset) ?? '';
     updateNewPropsForm(m?.typ || 'Sanierung');
     // Gespeicherte Ziel-Props befüllen
     if (m?.newProps) {
@@ -790,6 +886,8 @@ function wireMassnahmen(panel, asset) {
     const kosten = parseFloat(panel.querySelector(`#mf-kosten-${aid}`).value) || 0;
     const typ    = panel.querySelector(`#mf-typ-${aid}`).value;
     const status = panel.querySelector(`#mf-status-${aid}`).value;
+    const giltEl = panel.querySelector(`#mf-gilt-${aid}`);
+    const variante = giltEl ? (giltEl.value || null) : undefined;
 
     // Ziel-Parameter einsammeln
     const newProps = {};
@@ -807,12 +905,13 @@ function wireMassnahmen(panel, asset) {
     if (!asset.massnahmen) asset.massnahmen = [];
     if (editingId) {
       const m = asset.massnahmen.find(x => x.id === editingId);
-      if (m) Object.assign(m, { titel, jahr, kosten, typ, status, newProps });
+      if (m) Object.assign(m, { titel, jahr, kosten, typ, status, newProps }, variante !== undefined ? { variante } : {});
       // dependsOn/phaseId werden durch das Board (M5+) gesetzt, hier nur als Default sichern
       if (!m.dependsOn) m.dependsOn = [];
       if (m.phaseId === undefined) m.phaseId = null;
     } else {
-      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, typ, status, newProps, dependsOn: [], phaseId: null });
+      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, typ, status, newProps, dependsOn: [], phaseId: null, ...(variante !== undefined ? { variante } : {}) });
+      window.markiereVarianteGeaendert?.();
     }
     closeForm();
     refreshList();
@@ -1381,6 +1480,9 @@ function renderInspector(asset) {
       <span class="asset-ins-icon">${cfg.icon}</span>
       <span class="asset-ins-title">${cfg.label}</span>
       <button onclick="toggleVormerkenAsset('${asset.id}')" title="${asset.feldVorgemerkt ? 'Vorgemerkt – klicken zum Entfernen' : 'Für Feldbegehung vormerken'}" style="background:none;border:none;cursor:pointer;margin-left:auto;font-size:${asset.feldVorgemerkt ? 16 : 13}px;color:${asset.feldVorgemerkt ? '#f59e0b' : '#888'};padding:0 6px;line-height:1;">★</button>
+      ${SS_STATIONS_TYPEN.has(asset.type) && ssIstStationsGebaeude(asset.buildingId, ASSETS.items) ? `<button data-click="openStationsSteckbriefFuerAsset('${asset.id}')" title="Stations-Steckbrief: die ganze Station (Schaltanlage, Trafos, NSHV) auf einem Blatt"
+        style="background:rgba(0,0,0,0.25);border:1px solid rgba(102,187,106,0.55);border-radius:4px;
+        cursor:pointer;color:#a5d6a7;padding:2px 7px;line-height:1;font-size:12px;margin-right:4px;">📋 Station</button>` : ''}
       <button onclick="openKnotenanalyseFor('${asset.id}')" title="Knotenpunkt-Analyse öffnen"
         style="background:rgba(0,0,0,0.25);border:1px solid rgba(79,195,247,0.45);border-radius:4px;
         cursor:pointer;color:#4fc3f7;padding:2px 7px;line-height:1;font-size:13px;margin-right:4px;">📈</button>
@@ -1527,9 +1629,11 @@ export function renderAssetSidebar(filterText) {
     btn.addEventListener('click', () => {
       const asset = (ASSETS.items || []).find(a => a.id === btn.dataset.asid);
       if (!asset) return;
-      if (!confirm(`Anlage/Komponente „${asset.name}“ wirklich löschen?`)) return;
+      const nFl = pvFlaechenZumAsset(asset);
+      if (!confirm(`Anlage/Komponente „${asset.name}“ wirklich löschen?`
+        + (nFl ? `\n\nDie ${nFl} Belegungsfläche(n) auf dem Dach werden mit gelöscht.` : ''))) return;
       if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
-      deleteAsset(asset.id);
+      deleteAsset(asset.id, false, { nutzer: true, rueckfrage: false });
       redrawAllAssets();
       ASSETS.selectedId = null;
       renderAssetSidebar();
@@ -1588,8 +1692,23 @@ function wireEvents(panel, asset) {
       // Wind: Ertragsschätzung hängt von mehreren Feldern ab → Panel neu aufbauen;
       // Abstands-/Lärmringe auf der Karte ebenfalls aktualisieren
       if (asset.type === 'Wind') { drawAssetMarker(asset); renderInspector(asset); }
+      // Trennstelle: Auswahl des offenen Feldes ein-/ausblenden; ohne Trennstelle ist auch kein Kabel der Station offen
+      if (asset.type === 'Schaltanlage' && key === 'trennstelle') {
+        if (!el.checked) { _stationsKabel(asset).forEach(k => { k.e.trennstelle = false; }); _kabelNeuZeichnen(); }
+        renderInspector(asset);
+      }
     };
     el.addEventListener('change', handler);
+  });
+
+  // Trennstelle: offenes Feld = genau ein Kabel der Station mit Merkmal trennstelle
+  panel.querySelectorAll('[data-ts-kabel]').forEach(el => {
+    el.addEventListener('change', () => {
+      const kabel = _stationsKabel(asset);
+      const wahl = el.value === '' ? null : kabel[parseInt(el.value, 10)];
+      kabel.forEach(k => { k.e.trennstelle = k === wahl; });
+      _kabelNeuZeichnen();
+    });
   });
 
   // Toggle-Buttons (Batterie Betriebsmodus) — im floating panel: Panel neu rendern
@@ -1614,8 +1733,8 @@ function wireEvents(panel, asset) {
 
   panel.querySelectorAll('[data-action="delete"]').forEach(b =>
     b.addEventListener('click', () => {
-      if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
-      deleteAsset(asset.id);
+      // deleteAsset kappt Knoten und Kabel selbst — erst nach seiner Rückfrage
+      if (deleteAsset(asset.id, false, { nutzer: true }) === false) return;
       redrawAllAssets();
       closeAssetInspector();
     }));

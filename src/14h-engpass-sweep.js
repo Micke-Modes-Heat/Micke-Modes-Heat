@@ -29,7 +29,7 @@ import {
   engpassMassnahmeJahr, engpassDownstreamLeaves, engpassAusloeser,
   engpassIstBestandsmangel,
 } from './lib/engpass-core.js';
-import { KABEL_TYPEN } from './config/netz-kosten.js';
+import { kabelTypenFuerAusbau } from './config/netz-kosten.js';
 import { ERT_TRAFO_STUFEN, ertNaechsteTrafoStufe } from './14b-ertuechtigung.js';
 
 // Pure Schicht weiterreichen, damit window.* / Aufrufer nur ein Modul kennen müssen
@@ -373,12 +373,12 @@ export function engpassMassnahmenVerwerfen() {
   return n;
 }
 
-// Dimensionierungs-Parameter für die Kabelwahl. Alle bekannten Kabeltypen
-// übergeben — dimensioniert wird primär im Typ des Bestandskabels, die übrigen
-// erscheinen als Materialalternative.
-function _kabelParams() {
+// Dimensionierungs-Parameter für die Kabelwahl. Dimensioniert wird primär im Typ
+// des Bestandskabels (sofern heute noch verlegt), die Standardtypen erscheinen als
+// Materialalternative — Bestands-/MS-/Freileitungstypen nie (kabelTypenFuerAusbau).
+function _kabelParams(cableType) {
   return {
-    typen:      KABEL_TYPEN,
+    typen:      kabelTypenFuerAusbau(cableType),
     tiefbauEurM: parseFloat(document.getElementById('strom-k-tiefbau')?.value) || 100,
     grenzDuPct: ENGPASS_GRENZEN.deltaUKumPct,
   };
@@ -412,7 +412,7 @@ export function engpassVorschlag(item, res, opts = {}) {
   if (item.art === 'kabel') {
     if (item.msLevel || item.stationsintern) return null;   // MS: eigene Systematik; stationsintern: nie Engpass
     const alternativen = engpassKabelAlternativen(
-      item.ist, { benoetigtA: item.maxStromA, maxDuPct: item.maxDuPct }, _kabelParams());
+      item.ist, { benoetigtA: item.maxStromA, maxDuPct: item.maxDuPct }, _kabelParams(item.ist?.cableType));
     const wahl = engpassWaehleAlternative(alternativen);
     if (!wahl) {
       // Kein Standardkabel (auch nicht 8 Parallelstränge) trägt den Strom bzw. hält den Spannungsfall
@@ -535,7 +535,6 @@ const KORR_ORIG = '_engpassKorrOrig';
 export function engpassBestandsmaengel(res) {
   const r = res || _letztesErgebnis;
   if (!r) return [];
-  const params = _kabelParams();
   const out = [];
 
   for (const k of r.kabel) {
@@ -543,7 +542,7 @@ export function engpassBestandsmaengel(res) {
     if (k.stationsintern) continue; // auf Trafo-Nennleistung ausgelegt, nie Engpass
     if (!engpassIstBestandsmangel(k, r.von, engpassAusloeserFuer(k))) continue;
     const wahl = engpassWaehleAlternative(engpassKabelAlternativen(
-      k.ist, { benoetigtA: k.maxStromA, maxDuPct: k.maxDuPct }, params));
+      k.ist, { benoetigtA: k.maxStromA, maxDuPct: k.maxDuPct }, _kabelParams(k.ist?.cableType)));
     out.push({
       item: k,
       vorschlag: wahl ? { art: 'kabel', label: wahl.label, newProps: wahl.newProps, investEUR: wahl.investEUR } : null,

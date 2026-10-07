@@ -263,7 +263,8 @@ test('dist: Projekt-Roundtrip erhält Trasse, Wärmegraph und legitime Nullwerte
   expect(result.electric.edges).toEqual([{
     id:'edge_roundtrip', u:'nap_roundtrip', v:'sa_roundtrip', crossSection:0,
     autoSized:false, fuseA:0, msLevel:true, trennstelle:true, baujahr:2025, abrissjahr:null,
-    massnahmen:[{id:'m_roundtrip', typ:'Austausch', status:'geplant'}],
+    // variante: Geltungsbereich der Maßnahme (null = gilt in allen Varianten)
+    massnahmen:[{id:'m_roundtrip', typ:'Austausch', status:'geplant', variante:null}],
   }]);
   expect(pageErrors).toHaveLength(0);
 });

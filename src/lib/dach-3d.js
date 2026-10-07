@@ -237,9 +237,10 @@ export function d3dDachDreiecke(pts, ebenen, traufe) {
  * → lokale 3D-Vierecke auf der Dachhaut.
  * @param {{modules:{pts:{x:number,y:number}[], edge:{x:number,y:number}[]}[], bbox:any}} res
  * @param {ReturnType<typeof d3dRahmen>} rahmen
- * @param {{ebenen?:any[], schraeg:boolean, boden?:boolean}} p
+ * @param {{ebenen?:any[], schraeg:boolean, boden?:boolean, ebeneBei?:(x:number,y:number)=>any}} p
  *   schraeg: Module liegen auf der Dachhaut; sonst aufgeständert (hohe Kante = edge)
  *   boden: Freifläche (Höhe über Gelände statt über Dach)
+ *   ebeneBei: LoD2 — Ebene {a,b,c,schraeg} der Dachfläche unter der Modulmitte
  * @returns {number[][][]} je Modul 4 Ecken [x,y,z]
  */
 export function d3dModule(res, rahmen, p) {
@@ -251,13 +252,20 @@ export function d3dModule(res, rahmen, p) {
   for (const m of res.modules) {
     if (!m.pts || m.pts.length < 4) continue;
     const hoch = new Set(m.edge || []);
+    // LoD2: Ebene der Dachfläche unter der Modulmitte (p.ebeneBei), sonst Dachmodell
+    let ebene = null, schraeg = p.schraeg;
+    if (p.ebeneBei) {
+      const lok = m.pts.map(zuLokal);
+      const e = p.ebeneBei(lok.reduce((s, q) => s + q[0], 0) / lok.length, lok.reduce((s, q) => s + q[1], 0) / lok.length);
+      if (e) { ebene = [e]; schraeg = e.schraeg; }
+    }
     out.push(m.pts.map(q => {
       const [x, y] = zuLokal(q);
       let z;
       if (p.boden) z = FF_UNTEN + (hoch.has(q) ? FF_HUB : 0);
       else {
-        const dach = d3dDachHoehe(p.ebenen || [{ a: 0, b: 0, c: 0 }], x, y);
-        z = p.schraeg ? dach + MODUL_ABSTAND : dach + AUFST_UNTEN + (hoch.has(q) ? AUFST_HUB : 0);
+        const dach = d3dDachHoehe(ebene || p.ebenen || [{ a: 0, b: 0, c: 0 }], x, y);
+        z = schraeg ? dach + MODUL_ABSTAND : dach + AUFST_UNTEN + (hoch.has(q) ? AUFST_HUB : 0);
       }
       return [x, y, z];
     }));
@@ -281,4 +289,46 @@ export function d3dSchattierung(t) {
   const l = Math.hypot(L[0], L[1], L[2]);
   const dot = Math.abs(n[0] * L[0] + n[1] * L[1] + n[2] * L[2]) / l;
   return 0.55 + 0.45 * dot;
+}
+
+/* ── Beliebige 3D-Flächen (LoD2-Dachflächen und Giebelwände) ──────────────── */
+
+function _newell(pts) {
+  let nx = 0, ny = 0, nz = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    nx += (a[1] - b[1]) * (a[2] + b[2]);
+    ny += (a[2] - b[2]) * (a[0] + b[0]);
+    nz += (a[0] - b[0]) * (a[1] + b[1]);
+  }
+  return [nx, ny, nz];
+}
+
+/**
+ * Ebene h = a·x + b·y + c durch einen (fast) ebenen 3D-Ring [x,y,z] — für die
+ * Modulhöhe auf einer LoD2-Dachfläche. null bei senkrechten Flächen.
+ */
+export function d3dEbeneAusPunkten(pts) {
+  if (!pts || pts.length < 3) return null;
+  const [nx, ny, nz] = _newell(pts);
+  if (Math.abs(nz) < 1e-9 * (Math.abs(nx) + Math.abs(ny) + 1)) return null;
+  let cx = 0, cy = 0, cz = 0;
+  for (const p of pts) { cx += p[0]; cy += p[1]; cz += p[2]; }
+  cx /= pts.length; cy /= pts.length; cz /= pts.length;
+  return { a: -nx / nz, b: -ny / nz, c: cz + (nx * cx + ny * cy) / nz };
+}
+
+/**
+ * Dreiecke eines beliebig im Raum liegenden, ebenen Polygons [x,y,z]: projiziert
+ * auf die Koordinatenebene, in der es am größten erscheint, dort per
+ * Ohrenschnitt zerlegt, Eckpunkte unverändert zurück.
+ * @returns {number[][][]}
+ */
+export function d3dPolygon3dDreiecke(pts) {
+  if (!pts || pts.length < 3) return [];
+  const n = _newell(pts).map(Math.abs);
+  const weg = n[2] >= n[0] && n[2] >= n[1] ? 2 : n[0] >= n[1] ? 0 : 1;   // diese Achse entfällt
+  const [u, v] = [0, 1, 2].filter(k => k !== weg);
+  const flach = pts.map((p, i) => [p[u], p[v], i]);
+  return d3dTriangulieren(flach).map(t => t.map(q => pts[q[2]]));
 }

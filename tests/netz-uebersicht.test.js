@@ -240,3 +240,230 @@ describe('nuNetzUebersicht — Zielnetz (mitPlanung)', () => {
     expect(r.kennzahlen.ringe).toBe(1);
   });
 });
+
+describe('nuNetzUebersicht — Linien zwischen zwei Netzanschlusspunkten', () => {
+  // NAP 1 (Gebäude 1) und NAP 2 (Gebäude 2), dazwischen drei Linien:
+  // L1: 11 → 12 → 13, offen zwischen 12 und 13 · L2: 21 → 22, offen vor NAP 2 · L3: 31 → 32 → 33 ohne Trennstelle
+  const geb = [1, 2, 11, 12, 13, 21, 22, 31, 32, 33].map(i => ({ id: i, name: `Station ${i}`, gebaeudenummer: String(i) }));
+  const bau = ({ tsL3 = null } = {}) => {
+    const as = [A('nap1', 'NAP', 1, { spannungKV: 20 }), A('sa1', 'Schaltanlage', 1),
+                A('nap2', 'NAP', 2, { spannungKV: 20 }), A('sa2', 'Schaltanlage', 2)];
+    const es = [E('x1', 'nap1', 'sa1'), E('x2', 'nap2', 'sa2')];
+    [[11, 12, 13], [21, 22], [31, 32, 33]].forEach((l, li) => {
+      let prev = 'sa1';
+      l.forEach(g => {
+        as.push(A('t' + g, 'Trafo', g, { leistungKVA: 630 }));
+        es.push(E('k' + g, prev, 't' + g, { trennstelle: g === 13 || g === tsL3 }));
+        prev = 't' + g;
+      });
+      es.push(E('ende' + li, prev, 'sa2', { trennstelle: li === 1 }));
+    });
+    return nuNetzUebersicht({ assets: as, edges: es, gebaeude: geb, typeRank: RANG, heute: HEUTE });
+  };
+
+  it('erkennt drei Linien statt drei Strahlen an NAP 1; NAP 2 behält keine Abgänge', () => {
+    const r = bau();
+    expect(r.linien).toHaveLength(3);
+    expect(r.linien.map(l => [l.art, l.von, l.bis])).toEqual([['linie', 'g1', 'g2'], ['linie', 'g1', 'g2'], ['linie', 'g1', 'g2']]);
+    expect(r.wurzeln.map(w => w.abgaenge.length)).toEqual([0, 0]);
+    expect(r.kennzahlen).toMatchObject({ linien: 3, abgaenge: 0, ringe: 0 });
+  });
+
+  it('Hauptweg von NAP 1 nach NAP 2, Anbindungen an beiden Enden', () => {
+    const [l1] = bau().linien;
+    expect(l1.folge).toEqual(['g11', 'g12', 'g13']);
+    expect(l1.haupt).toBe(3);
+    expect(l1.wurzel.map(x => x.i)).toEqual([0]);
+    expect(l1.wurzelB.map(x => x.i)).toEqual([2]);
+    expect(l1.innen.map(x => [x.i, x.j])).toEqual([[0, 1], [1, 2]]);
+  });
+
+  it('Speiserichtung aus der offenen Trennstelle am Kabel', () => {
+    const [l1, l2] = bau().linien;
+    expect(l1.speisung).toEqual(['A', 'A', 'B']);
+    expect(l2.speisung).toEqual(['A', 'A']);
+    expect(l1.gekoppelt).toBe(false);
+  });
+
+  it('Linie ohne Trennstelle koppelt beide Netzanschlüsse → Hinweis', () => {
+    const r = bau();
+    expect(r.linien[2].gekoppelt).toBe(true);
+    expect(r.linien[2].speisung).toEqual(['beide', 'beide', 'beide']);
+    expect(r.hinweise.join(' ')).toMatch(/Linie 3 zwischen NAP 1 und NAP 2 ohne offene Trennstelle/);
+    expect(bau({ tsL3: 32 }).hinweise.join(' ')).not.toMatch(/Linie 3/);
+  });
+
+  it('Übergabestationen mit eigenem Trafo und einer Linie dazwischen (Kompaktstationen)', () => {
+    const as = [A('nap1', 'NAP', 1), A('sa1', 'Schaltanlage', 1), A('t1', 'Trafo', 1, { leistungKVA: 630 }),
+                A('nap2', 'NAP', 2), A('sa2', 'Schaltanlage', 2), A('t2', 'Trafo', 2, { leistungKVA: 630 }),
+                A('sa11', 'Schaltanlage', 11), A('t11', 'Trafo', 11, { leistungKVA: 630 }),
+                A('sa12', 'Schaltanlage', 12), A('t12', 'Trafo', 12, { leistungKVA: 630 })];
+    const es = [E('a', 'nap1', 'sa1'), E('b', 'sa1', 't1'), E('c', 'nap2', 'sa2'), E('d', 'sa2', 't2'),
+                E('e', 'sa11', 't11'), E('f', 'sa12', 't12'),
+                E('k1', 'sa1', 'sa11'), E('k2', 'sa11', 'sa12', { trennstelle: true }), E('k3', 'sa12', 'sa2')];
+    const r = nuNetzUebersicht({ assets: as, edges: es, gebaeude: geb, typeRank: RANG, heute: HEUTE });
+    expect(r.linien).toHaveLength(1);
+    expect(r.linien[0]).toMatchObject({ art: 'linie', folge: ['g11', 'g12'], speisung: ['A', 'B'] });
+    expect(r.kennzahlen).toMatchObject({ stationen: 4, linien: 1, abgaenge: 0 });
+  });
+
+  it('direktes Kabel zwischen zwei Übergabestationen ist eine Kupplung', () => {
+    const as = [A('nap1', 'NAP', 1), A('sa1', 'Schaltanlage', 1), A('nap2', 'NAP', 2), A('sa2', 'Schaltanlage', 2)];
+    const es = [E('a', 'nap1', 'sa1'), E('c', 'nap2', 'sa2'), E('k', 'sa1', 'sa2', { trennstelle: true })];
+    const r = nuNetzUebersicht({ assets: as, edges: es, gebaeude: geb, typeRank: RANG, heute: HEUTE });
+    expect(r.linien).toHaveLength(1);
+    expect(r.linien[0]).toMatchObject({ art: 'kopplung', von: 'g1', bis: 'g2', gekoppelt: false });
+    expect(r.kennzahlen.linien).toBe(0);
+  });
+
+  it('Abzweig an einer Linie hängt hinter dem Hauptweg', () => {
+    const as = [A('nap1', 'NAP', 1), A('nap2', 'NAP', 2),
+                A('t11', 'Trafo', 11), A('t12', 'Trafo', 12), A('t13', 'Trafo', 13)];
+    const es = [E('a', 'nap1', 't11'), E('b', 't11', 't12', { trennstelle: true }), E('c', 't12', 'nap2'), E('d', 't11', 't13')];
+    const [l] = nuNetzUebersicht({ assets: as, edges: es, gebaeude: geb, typeRank: RANG, heute: HEUTE }).linien;
+    expect(l).toMatchObject({ art: 'linie', folge: ['g11', 'g12', 'g13'], haupt: 2, abzweige: 1, speisung: ['A', 'B', 'A'] });
+  });
+});
+
+describe('nuNetzUebersicht — Leiter unter einer Übergabe', () => {
+  // Übergabe (1) speist Station 5 und 6 über eigene Kabel; zwischen 5 und 6 drei Linien, an 6 ein Stich (40)
+  const geb = [1, 5, 6, 11, 12, 13, 21, 22, 31, 32, 33, 40].map(i => ({ id: i, name: `G${i}`, gebaeudenummer: String(i) }));
+  const bau = ({ ts = [], knotenUebergabe = false } = {}) => {
+    const as = [A('nap', 'NAP', 1), A('sa0', 'Schaltanlage', 1), A('sa6', 'Schaltanlage', 6), A('t6', 'Trafo', 6, { leistungKVA: 800 }),
+                A('t40', 'Trafo', 40, { leistungKVA: 250 })];
+    const es = [E('x', 'nap', 'sa0'), E('i6', 'sa6', 't6'), E('z6', 'sa0', 'sa6'), E('s40', 'sa6', 't40')];
+    let links = 'sa0';
+    if (!knotenUebergabe) {
+      as.push(A('sa5', 'Schaltanlage', 5), A('t5', 'Trafo', 5, { leistungKVA: 800 }));
+      es.push(E('i5', 'sa5', 't5'), E('z5', 'sa0', 'sa5'));
+      links = 'sa5';
+    }
+    [[11, 12, 13], [21, 22], [31, 32, 33]].forEach((l, li) => {
+      let prev = links;
+      l.forEach(g => { as.push(A('t' + g, 'Trafo', g, { leistungKVA: 400 })); es.push(E('k' + g, prev, 't' + g, { trennstelle: ts.includes(g) })); prev = 't' + g; });
+      es.push(E('e' + li, prev, 'sa6'));
+    });
+    return nuNetzUebersicht({ assets: as, edges: es, gebaeude: geb, typeRank: RANG, heute: HEUTE });
+  };
+
+  it('zwei Knotenstationen mit drei Linien dazwischen werden eine Leiter statt „vermascht“', () => {
+    const r = bau();
+    const [ab] = r.wurzeln[0].abgaenge;
+    expect(ab.art).toBe('leiter');
+    expect(ab.leiter).toMatchObject({ links: 'g5', rechts: 'g6' });
+    expect(ab.leiter.zubringer.map(v => [v.a, v.b])).toEqual([['g1', 'g5'], ['g1', 'g6']]);
+    expect(ab.leiter.linien.map(l => [l.art, l.folge.join(',')])).toEqual([['linie', 'g11,g12,g13'], ['linie', 'g21,g22'], ['linie', 'g31,g32,g33']]);
+    expect(ab.leiter.stiche).toHaveLength(1);
+    expect(ab.leiter.stiche[0]).toMatchObject({ seite: 'B', art: 'strahl', folge: ['g40'] });
+    expect(r.kennzahlen).toMatchObject({ linien: 3, abgaenge: 1, ringe: 0 });
+    expect(ab.folge).toHaveLength(11);   // Rückfall-Felder bleiben vollständig
+  });
+
+  it('Speiserichtung je Linie aus der Trennstelle am Kabel; ohne Trennstelle ein Hinweis', () => {
+    expect(bau().hinweise.join(' ')).toMatch(/3 Linien zwischen zwei Knotenstationen ohne erfasste offene Trennstelle/);
+    const r = bau({ ts: [13, 21, 32] });
+    const [l1, l2, l3] = r.wurzeln[0].abgaenge[0].leiter.linien;
+    expect(l1.speisung).toEqual(['A', 'A', 'B']);
+    expect(l2.speisung).toEqual(['B', 'B']);
+    expect(l3.speisung).toEqual(['A', 'B', 'B']);
+    expect(r.hinweise.join(' ')).not.toMatch(/Knotenstationen/);
+  });
+
+  it('Übergabe selbst als linker Knoten: direktes Kabel zur rechten Station ist Zubringer, keine Kupplung', () => {
+    const [ab] = bau({ knotenUebergabe: true }).wurzeln[0].abgaenge;
+    expect(ab.art).toBe('leiter');
+    expect(ab.leiter.links).toBeNull();
+    expect(ab.leiter.rechts).toBe('g6');
+    expect(ab.leiter.linien.map(l => l.art)).toEqual(['linie', 'linie', 'linie']);
+    expect(ab.leiter.zubringer[0]).toBeNull();
+    expect(ab.leiter.zubringer[1]).toMatchObject({ a: 'g1', b: 'g6' });
+  });
+
+  it('einfacher Ring bleibt Ring (nur eine Linie zwischen zwei Stationen ist keine Leiter)', () => {
+    const [ab] = lauf().wurzeln[0].abgaenge;
+    expect(ab.art).toBe('ring');
+    expect(ab.leiter).toBeNull();
+  });
+});
+
+describe('nuNetzUebersicht — Leiter mit Abzweigen, Querverbindung und Diagnose', () => {
+  const geb = [1, 5, 6, 11, 12, 13, 21, 22, 31, 32, 33, 50, 60].map(i => ({ id: i, name: `G${i}`, gebaeudenummer: String(i) }));
+  const T = (g, kva = 630) => A('t' + g, 'Trafo', g, { leistungKVA: kva });
+  const basis = () => {
+    const as = [A('nap', 'NAP', 1), A('sa0', 'Schaltanlage', 1), T(5), T(6), T(11), T(12), T(13), T(21), T(22), T(31), T(32), T(33), T(50)];
+    const es = [E('x', 'nap', 'sa0'), E('z5', 'sa0', 't5'), E('z6', 'sa0', 't6'),
+      E('a1', 't5', 't11'), E('a2', 't11', 't12'), E('a3', 't12', 't13'), E('a4', 't13', 't6'),
+      E('b1', 't5', 't21'), E('b2', 't21', 't22'), E('b3', 't22', 't6'),
+      E('c1', 't5', 't31'), E('c2', 't31', 't32'), E('c3', 't32', 't33'), E('c4', 't33', 't6'),
+      E('st', 't21', 't50')];   // Abzweig an einer Linienstation → dritte Station mit ≥ 3 Nachbarn
+    return { as, es };
+  };
+  const lauf2 = ({ as, es }) => nuNetzUebersicht({ assets: as, edges: es, gebaeude: geb, typeRank: RANG, heute: HEUTE });
+
+  it('Abzweig an einer Linienstation: Knoten = die beiden von der Übergabe gespeisten Stationen', () => {
+    const [ab] = lauf2(basis()).wurzeln[0].abgaenge;
+    expect(ab.art).toBe('leiter');
+    expect(ab.leiter).toMatchObject({ links: 'g5', rechts: 'g6' });
+    const l2 = ab.leiter.linien[1];
+    expect(l2).toMatchObject({ art: 'linie', folge: ['g21', 'g22', 'g50'], haupt: 2, abzweige: 1 });
+  });
+
+  it('Querverbindung zwischen zwei Linien: eine vermaschte Linie, weiter Leiter', () => {
+    const b = basis();
+    b.es.push(E('q', 't12', 't32'));
+    const [ab] = lauf2(b).wurzeln[0].abgaenge;
+    expect(ab.art).toBe('leiter');
+    expect(ab.leiter.linien.map(l => l.art)).toEqual(['vermascht', 'linie']);
+    expect(ab.leiter.linien[0].wege).toEqual([3, 3]);   // zwei Linien über die Querverbindung, je eigene Zeile
+    expect(lauf2(b).kennzahlen.linien).toBe(3);
+  });
+
+  it('kein Leitermuster → Hinweis nennt die störenden Stationen', () => {
+    const b = basis();
+    b.es.push(E('w', 'sa0', 't12'));   // Linienstation zusätzlich an der Übergabe
+    const r = lauf2(b);
+    expect(r.wurzeln[0].abgaenge[0].art).toBe('vermascht');
+    expect(r.hinweise.join(' ')).toMatch(/Abgang 1 ist vermascht.*Übergabe speist Gebäude 5, Gebäude 6, Gebäude 12/);
+    expect(r.hinweise.join(' ')).toMatch(/Stationen mit ≥ 3 MS-Verbindungen: .*Gebäude 5 \(4\)/);
+  });
+});
+
+describe('nuNetzUebersicht — Änderungen im Zielnetz (Marken, Rückbau)', () => {
+  const geb = [1, 2, 3, 4, 5, 6].map(i => ({ id: i, name: `G${i}`, gebaeudenummer: String(i) }));
+  const as = [
+    A('nap', 'NAP', 1), A('sa1', 'Schaltanlage', 1),
+    A('t2', 'Trafo', 2, { leistungKVA: 630 }, { massnahmen: [{ status: 'geplant', jahr: 2030, newProps: { leistungKVA: 1000 } }] }),
+    A('t3', 'Trafo', 3, { leistungKVA: 400 }), A('t4', 'Trafo', 4, { leistungKVA: 250 }, { abrissjahr: 2029 }),
+    A('t5', 'Trafo', 5, { leistungKVA: 630 }, { baujahr: 2032 }),
+  ];
+  const es = [
+    E('x', 'nap', 'sa1'), E('a1', 'sa1', 't2', { crossSection: 150, baujahr: 1998 }),
+    E('a2', 't2', 't3', { crossSection: 150, massnahmen: [{ status: 'geplant', jahr: 2031, newProps: { crossSection: 240 } }] }),
+    E('a3', 't3', 'sa1', { baujahr: 2031 }), E('b1', 'sa1', 't4', { abrissjahr: 2029 }), E('c1', 't3', 't5', { baujahr: 2032 }),
+  ];
+  const ziel = () => nuNetzUebersicht({ assets: as, edges: es, gebaeude: geb, typeRank: RANG, heute: HEUTE, mitPlanung: true });
+
+  it('nummeriert die Änderungen nach Jahr; Kabel zur neuen Station gehören zu deren Neubau', () => {
+    const r = ziel();
+    expect(r.aenderungen.map(x => [x.nr, x.art, x.jahr])).toEqual([
+      [1, 'station-weg', 2029], [2, 'trafo', 2030], [3, 'kabel-neu', 2031], [4, 'kabel-ertuechtigt', 2031], [5, 'station-neu', 2032],
+    ]);
+    expect(r.aenderungen[4]).toMatchObject({ station: 'g5', anbindung: 1 });
+    expect(r.aenderungen[1].tausch.map(t => [t.kvaIst, t.kva])).toEqual([[630, 1000]]);
+  });
+
+  it('zurückgebaute Station bleibt als „entfällt“ erhalten, Kabel bekommen Baujahr und Ist-Querschnitt', () => {
+    const r = ziel();
+    expect(r.stationen.g4).toBeUndefined();
+    expect(r.entfallen.g4).toMatchObject({ entfaellt: true, jahr: 2029 });
+    const v = r.verbindungen.find(x => x.a === 'g2' && x.b === 'g3');
+    expect(v.kabel[0]).toMatchObject({ qs: 240, qsIst: 150 });
+    expect(r.verbindungen.find(x => x.a === 'g1' && x.b === 'g2').baujahr).toBe(1998);
+  });
+
+  it('Bestand ohne Planung: keine Änderungen, nichts entfällt', () => {
+    const r = nuNetzUebersicht({ assets: as, edges: es, gebaeude: geb, typeRank: RANG, heute: HEUTE });
+    expect(r.aenderungen).toEqual([]);
+    expect(r.entfallen).toEqual({});
+  });
+});

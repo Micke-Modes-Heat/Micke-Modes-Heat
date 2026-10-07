@@ -19,7 +19,7 @@ import { ASSETS, TYPE_RANK, getAssetStatus, getAssetPropsForYear } from './13a-a
 import { getStromEdgeStatus, getStromEdgePropsForYear, _nsCosPhi, _nsKIz, _nsLeiterTemp, MAX_DELTA_U_PCT } from './05b-stromnetz.js';
 import { gebaeude } from './01-globals-varianten.js';
 import { calcGebKwp, calcGebKwpKorr, escHtml } from './03c-gebaeude-io.js';
-import { KABEL_TYPEN } from './config/netz-kosten.js';
+import { KABEL_TYPEN, kabelTypenFuerAusbau } from './config/netz-kosten.js';
 import { nsKabelAuslegen } from './lib/ns-auslegung.js';
 import { ERT_TRAFO_STUFEN, ertNaechsteTrafoStufe } from './14b-ertuechtigung.js';
 import { engpassKabelAlternativen, engpassWaehleAlternative } from './lib/engpass-core.js';
@@ -254,7 +254,7 @@ export function pvnaModell(opts = {}) {
     .map(a => ({ id: a.id, typ: a.type, name: a.name || a.type, pos: knotenPos(a.id) })).filter(m => m.pos);
 
   return { eingabe, info: { elInfo, dachInfo, hinweise, unbekannteQs, ersatzQs, bestandPvKwp, jahr: yr, stichjahr: stich, flaechen,
-    cosPhi, kIz, tLeiter, I_je_kW, elPos, msPunkte } };
+    cosPhi, kIz, tLeiter, I_je_kW, elPos, msPunkte, knotenEl, knotenTrafo, einspFaktor } };
 }
 
 /**
@@ -374,7 +374,7 @@ function _massnahmenAnhaengen(eingabe, elInfo, k) {
     for (let i = 0; i < 5; i++) {
       wahl = engpassWaehleAlternative(engpassKabelAlternativen(kab.ist,
         { benoetigtA: fluss * k.I_je_kW / (k.kIz || 1), maxDuPct: zielDu },
-        { typen: KABEL_TYPEN, tiefbauEurM, grenzDuPct: eingabe.duGrenzePct }));
+        { typen: kabelTypenFuerAusbau(kab.ist.cableType), tiefbauEurM, grenzDuPct: eingabe.duGrenzePct }));
       if (!wahl) break;
       const np = wahl.newProps;
       const kt = KABEL_TYPEN[np.cableType || kab.ist.cableType] || KABEL_TYPEN.NAYY;
@@ -390,7 +390,9 @@ function _massnahmenAnhaengen(eingabe, elInfo, k) {
     // nichts, und der Ausbaufahrplan bräche an dieser Stelle ab.
     let teil = false, teilText = '';
     if (!wahl) {
-      const kt = KABEL_TYPEN[kab.ist.cableType] || KABEL_TYPEN.NAYY;
+      // Bestands-/Sondertypen (Papier, Freileitung, NYM) werden nicht im selben Typ verstärkt
+      const ausbauTyp = KABEL_TYPEN[kab.ist.cableType]?.gruppe === 'ns' ? kab.ist.cableType : 'NAYY';
+      const kt = KABEL_TYPEN[ausbauTyp];
       const izMax = Math.max(...kt.sections.map(s => s.Iz)) * 8;
       const bedarfA = fluss * k.I_je_kW / (k.kIz || 1);
       // Strom übersteigt 8 Stränge → größte Standardlösung; sonst scheitert nur die
@@ -398,7 +400,7 @@ function _massnahmenAnhaengen(eingabe, elInfo, k) {
       teilText = bedarfA > izMax * 0.999 ? 'größte Standardlösung' : 'Spannung damit nicht voll gelöst';
       wahl = engpassWaehleAlternative(engpassKabelAlternativen(kab.ist,
         { benoetigtA: Math.min(bedarfA, izMax * 0.999), maxDuPct: 0 },
-        { typen: { [kab.ist.cableType || 'NAYY']: kt }, tiefbauEurM, grenzDuPct: eingabe.duGrenzePct }));
+        { typen: { [ausbauTyp]: kt }, tiefbauEurM, grenzDuPct: eingabe.duGrenzePct }));
       if (wahl) {
         teil = true;
         neu = _kabelKennwerte(kt, wahl.newProps.crossSection, wahl.newProps.nParallel || 1, kab.ist.lengthM, k);
@@ -644,7 +646,7 @@ export function pvnaRender() {
   el.innerHTML = _steuerHtml() + (_letztes ? _ergebnisHtml(_letztes) : `
     <div style="color:var(--muted);font-size:11px;text-align:center;padding:40px 0;">
       Rechnet aus Trafos, Kabeln und den Dachflächen der Gebäude, wie viel PV das
-      bestehende Netz aufnimmt — unabhängig von Lastgang und Variantenrechnung.<br>
+      bestehende Netz aufnimmt — unabhängig von Lastgang und Auslegungsrechnung.<br>
       „Aufnahme berechnen" starten.</div>`);
 }
 

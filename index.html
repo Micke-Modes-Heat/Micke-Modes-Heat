@@ -47,11 +47,11 @@
   <div class="ctx-group" id="schicht-bar"></div>
   <div class="ctx-sep"></div>
   <div class="ctx-group" id="varianten-bar">
-    <span class="ctx-label">Varianten</span>
+    <span class="ctx-label">Variante</span>
     <div class="var-pills" id="var-pills" style="display:flex;gap:3px;">
-      <span class="var-pill var-pill-base active" data-click="activateVariant(null)">Basisdaten</span>
+      <span class="var-pill var-pill-base active" data-click="activateVariant(null)">Hauptplan</span>
     </div>
-    <button class="var-add-btn" data-click="addVariante()" style="font-size:10px;">+ Variante</button>
+    <button class="var-add-btn" data-click="addVariante()" style="font-size:10px;" title="Neue Variante anlegen: Name, Ausgangspunkt und Zweck">＋ Variante</button>
   </div>
   <div class="header-spacer" style="flex:1;"></div>
   <button class="tool-btn" id="btn-gefuehrt" data-click="guideToggle()" style="border-color:#ff9800;color:#ffb74d;font-size:11px;padding:0 10px;gap:5px;" title="Geführter Modus: Schritt für Schritt durch ein Stromgutachten — blendet aus, was im aktuellen Schritt nicht gebraucht wird">🧭<span class="btn-text"> Geführt</span></button>
@@ -292,6 +292,8 @@
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" id="btn-osm-import" data-click="showOsmPanel()" style="border-color:#66bb6a;color:#66bb6a;grid-column:1/-1;">↓ OSM-Import (OpenStreetMap)</button>
           <button class="lp-tool-btn" id="btn-osm-dach" data-click="dachformenAusOsmErgaenzen({nachfragen:true})" style="border-color:#a1887f;color:#bcaaa4;grid-column:1/-1;" title="Dachform, Neigung und Richtung (roof:shape, roof:angle, roof:direction) aus OpenStreetMap für alle Gebäude ohne eigene Dachangabe übernehmen — z. B. nach einem Import aus dem amtlichen Kataster, das keine Dachform liefert">🏠 Dachformen aus OSM ergänzen</button>
+          <button class="lp-tool-btn" id="btn-lod2-import" data-click="lod2DateiWaehlen()" style="border-color:#8d6e63;color:#d7ccc8;grid-column:1/-1;" title="Amtliches 3D-Gebäudemodell (LoD2, CityGML .gml/.xml oder .zip vom Geoportal des Landes) laden: jede Dachfläche mit echter Neigung und Ausrichtung — für PV-Belegung und 3D-Ansicht">🏠 Dachflächen aus LoD2 laden …</button>
+          <button class="lp-tool-btn" id="btn-dach-grundriss" data-click="dachGrundrissBerechnen()" style="border-color:#8d6e63;color:#d7ccc8;grid-column:1/-1;" title="Für Gebäude ohne LoD2 (auch geplante Neubauten): Dachflächen aus dem rechtwinkligen Grundriss berechnen — L-, T- und U-Formen mit Kehlen und Giebeln, nach Dachform und Neigung des Gebäudes. Mit Auswahl in der Gebäudeliste nur für die ausgewählten Gebäude.">📐 Dachflächen aus Grundriss berechnen</button>
         </div>
       </div>
 
@@ -301,6 +303,8 @@
           <div class="lp-step-num" data-num="2">2</div>
           <div class="lp-step-text">Wärmenetz planen<span>Wärmenetz dimensionieren und konfigurieren</span></div>
         </div>
+        <!-- Wirkungsbereich (33-varianten-ui.js): gemeinsames oder eigenes Netz dieser Variante -->
+        <div class="var-wirkung-box" data-wirkung="waermenetz" style="margin:0 0 8px;font-size:10.5px;"></div>
         <!-- Wärmenetz-Assistent: ein durchgehender Ablauf in vier Schritten -->
         <div id="netz-workspace" class="netz-assistent">
           <div class="na-kopf">
@@ -451,6 +455,7 @@
           <div class="lp-step-num" data-num="3">3</div>
           <div class="lp-step-text">Wärmeversorgung planen<span>Erzeuger hinzufügen und konfigurieren</span></div>
         </div>
+        <div class="var-wirkung-box" data-wirkung="erzeuger" style="margin:0 0 8px;font-size:10.5px;"></div>
         <div class="lp-section-title">Wärmeerzeugung</div>
         <div id="lp-erz-buttons" class="lp-tool-grid">
           <button class="lp-tool-btn" data-click="toggleLwWpPanel()" style="border-color:#66bb6a;color:#66bb6a;">🌊 Luft-WP</button>
@@ -675,23 +680,7 @@
       </div>
     </div>
   </div>
-  <div id="vergleich-panel" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;z-index:600;background:var(--surface);overflow:auto;padding:20px 24px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <span style="font-size:13px;color:var(--accent);letter-spacing:.04em;">Variantenvergleich</span>
-      <div style="display:flex;gap:6px;">
-        <button class="btn-secondary" data-click="refreshVergleich()" style="font-size:11px;">↻ Alle aktualisieren</button>
-        <button class="btn-secondary" data-click="toggleVergleich()" style="font-size:11px;">✕ Schließen</button>
-      </div>
-    </div>
-    <div style="font-size:10px;color:var(--muted);margin-bottom:16px;">Klick auf Spaltenheader aktiviert die Variante. "Alle aktualisieren" berechnet alle Varianten neu.</div>
-    <div id="vergleich-pareto-wrap" style="margin-bottom:16px;">
-      <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Pareto-Diagramm — CO₂ vs. Wirtschaftlichkeit</div>
-      <canvas id="vergleich-pareto-canvas" height="240" style="width:100%;display:block;background:var(--surface2);border-radius:6px;cursor:pointer;"></canvas>
-      <div id="vergleich-pareto-legend" style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;margin-top:4px;"></div>
-    </div>
-    <div id="vergleich-table-wrap" style="overflow-x:auto;"></div>
-  </div>
-  <div id="variant-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(15,17,23,0.88);border:1px solid var(--accent);border-radius:20px;padding:4px 16px;font-size:12px;color:var(--accent);pointer-events:none;white-space:nowrap;">⬤ &nbsp;<span id="variant-banner-name"></span></div>
+  <div id="variant-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(15,17,23,0.88);border:1px solid var(--accent);border-radius:20px;padding:4px 14px;font-size:12px;color:var(--accent);white-space:nowrap;cursor:pointer;" data-click="variantenMenuToggle()" title="Variante wechseln oder verwalten">⬤ &nbsp;<span id="variant-banner-name"></span><span id="variant-banner-zusatz" style="color:var(--muted);font-size:11px;"></span></div>
 
   <!-- ══ Center: Gebäude-View ══════════════════════════════════════ -->
   <div id="center-gebaeude-view">
@@ -1107,14 +1096,26 @@
   <div id="center-vergleich-view">
     <div class="vergleich-header">
       <h2>Variantenvergleich</h2>
-      <div style="display:flex;gap:6px;">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn-secondary" data-click="refreshVergleich()" style="font-size:11px;" title="Rechnet nur Varianten nach, deren Kennzahlen fehlen oder veraltet sind — jede davon wird dafür kurz aktiviert">↻ Veraltete rechnen</button>
+        <button class="btn-secondary" data-click="addVariante()" style="font-size:11px;">＋ Neue Variante</button>
+        <button class="btn-secondary" data-click="variantenZeitstrahlToggle()" style="font-size:11px;">⏱ Zeitstrahl</button>
         <button class="btn-secondary" data-click="exportVergleichCSV()" style="font-size:11px;">📋 CSV Export</button>
-        <button class="btn-secondary" data-click="refreshVergleich()" style="font-size:11px;">↻ Alle aktualisieren</button>
         <button class="btn-secondary" data-click="setViewMode('karte')" style="font-size:11px;">← Zurück zur Karte</button>
       </div>
     </div>
-    <div style="font-size:10px;color:var(--muted);margin-bottom:16px;">Klick auf Spaltenheader aktiviert die Variante. Beste Werte pro Zeile werden <span style="color:#66bb6a;">grün</span> hervorgehoben.</div>
-    <div id="vergleich-view-table-wrap" style="overflow-x:auto;"></div>
+    <div style="font-size:10px;color:var(--muted);margin-bottom:12px;">Jede Variante = gemeinsamer Stamm (Bestand + was ohnehin kommt) + ihre eigenen Entscheidungen. Klick auf einen Spaltenkopf aktiviert die Variante.</div>
+    <div class="vergleich-abschnitt">Was die Varianten unterscheidet</div>
+    <div id="vergleich-uebersicht" style="overflow-x:auto;margin-bottom:18px;"></div>
+    <div class="vergleich-abschnitt">Wärme · Kennzahlen <span style="font-weight:400;text-transform:none;letter-spacing:0;">— beste Werte je Zeile <span style="color:#66bb6a;">grün</span></span></div>
+    <div id="vergleich-view-table-wrap" style="overflow-x:auto;margin-bottom:14px;"></div>
+    <div id="vergleich-pareto-wrap" style="margin-bottom:18px;">
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">CO₂ gegen Wärmegestehungskosten</div>
+      <canvas id="vergleich-pareto-canvas" height="240" style="width:100%;display:block;background:var(--surface2);border-radius:6px;cursor:pointer;"></canvas>
+      <div id="vergleich-pareto-legend" style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;margin-top:4px;"></div>
+    </div>
+    <div class="vergleich-abschnitt">Strom · Planungsentscheidungen</div>
+    <div id="vergleich-strom-wrap" style="margin-bottom:24px;"></div>
   </div>
 
   <!-- ══ Center: Live-View ═══════════════════════════════════════════ -->
@@ -1258,7 +1259,7 @@
       <div class="sidebar-scroll">
         <div class="gebaeude-list" id="geb-list"></div>
         <div class="add-section">
-          <button class="btn-add" data-click="addGebaeude()">+ Manuell hinzufügen</button>
+          <div style="display:flex;gap:6px;"><button class="btn-add" data-click="addGebaeude()" title="Grundriss als Polygon zeichnen (beliebig viele Ecken)">+ Polygon</button><button class="btn-add" data-click="addGebaeude({form:'rechteck'})" title="Grundriss als Rechteck zeichnen: Grundlinie (2 Klicks) + Breite (1 Klick), beliebig gedreht">▭ Rechteck</button></div>
         </div>
         <div class="legend">
           <div class="legend-row">
@@ -1422,6 +1423,10 @@
             ✓ Übernehmen
           </button>
           <span id="bulk-confirm-msg" style="display:none;font-size:10px;font-weight:600;"></span>
+          <button onclick="selBulkDelete()" id="bulk-delete-btn" title="Alle ausgewählten Anlagen samt angeschlossener Kabel löschen"
+            style="margin-left:auto;font-size:10px;padding:3px 10px;background:transparent;color:#ef5350;border:1px solid #ef5350;border-radius:4px;cursor:pointer;font-weight:600;">
+            🗑 Löschen
+          </button>
         </div>
       </div>
       <!-- Asset-Liste: alle Assets nach Typ gruppiert -->

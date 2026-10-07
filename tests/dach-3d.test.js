@@ -1,8 +1,7 @@
 // Vitest-Tests für lib/dach-3d.js (Dachformen und Module der 3D-Ansicht).
 import { describe, it, expect } from 'vitest';
 import {
-  d3dDachEbenen, d3dDachHoehe, d3dDachDreiecke, d3dTriangulieren, d3dModule, d3dRahmen,
-  d3dSchattierung,
+  d3dDachEbenen, d3dDachHoehe, d3dDachDreiecke, d3dTriangulieren, d3dModule, d3dRahmen, d3dSchattierung, d3dEbeneAusPunkten, d3dPolygon3dDreiecke,
 } from '../src/lib/dach-3d.js';
 
 // 20 m (Ost-West) × 10 m (Nord-Süd), Mitte im Ursprung
@@ -141,5 +140,26 @@ describe('d3dSchattierung', () => {
     expect(s).toBeGreaterThanOrEqual(0.55);
     expect(s).toBeLessThanOrEqual(1);
     expect(d3dSchattierung([t[0], t[2], t[1]])).toBeCloseTo(s, 9);
+  });
+});
+
+describe('LoD2-Flächen im Raum', () => {
+  it('Ebene einer geneigten Dachfläche', () => {
+    const e = d3dEbeneAusPunkten([[0, 0, 6], [12, 0, 6], [12, 4, 9], [0, 4, 9]]);
+    expect(e.a).toBeCloseTo(0, 6);
+    expect(e.b).toBeCloseTo(0.75, 6);
+    expect(e.c).toBeCloseTo(6, 6);
+  });
+  it('senkrechte Fläche hat keine Dachebene', () => {
+    expect(d3dEbeneAusPunkten([[0, 0, 0], [0, 8, 0], [0, 4, 3]])).toBeNull();
+  });
+  it('Giebelwand (senkrecht) wird trianguliert, Eckpunkte bleiben 3D', () => {
+    const giebel = [[0, 0, 6], [0, 8, 6], [0, 4, 9]];
+    const t = d3dPolygon3dDreiecke(giebel);
+    expect(t).toHaveLength(1);
+    expect(t[0].map(p => p[2]).sort()).toEqual([6, 6, 9]);
+  });
+  it('Fünfeck-Wand ergibt drei Dreiecke', () => {
+    expect(d3dPolygon3dDreiecke([[0, 0, 0], [0, 0, 6], [0, 4, 9], [0, 8, 6], [0, 8, 0]])).toHaveLength(3);
   });
 });

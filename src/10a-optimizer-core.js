@@ -7,7 +7,7 @@
 // OPT_INVEST_DEFAULT, OPT_NUTZUNG, OPT_IH, OPT_EE_KEYS, OPT_MERIT_ORDER → src/config/optimizer-defaults.js
 
 // Mapping Optimizer-Key → CalcEngine INVEST_KURVEN Key
-import { captureErzeugerState, captureNetzState, fernwaermeEmF, gasEmF, gebaeude, globalYear, heizoelEmF, hhsEmF, networkLocked, netzEdges, pelletsEmF, renderVariantenBar, stromEmF, updateVariantBanner, varianten } from './01-globals-varianten.js';
+import { sichereAktivenStand, _varianteAusLiveAnlegen, fernwaermeEmF, gasEmF, gebaeude, globalYear, heizoelEmF, hhsEmF, networkLocked, netzEdges, pelletsEmF, stromEmF, varianten } from './01-globals-varianten.js';
 import { getComputedStats, getGebStromMwh, map } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, polygonCenter, redrawFliessgewaesser, redrawLwWp } from './02c-karte-werkzeuge.js';
 import { clearBhkw, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons } from './03a-erzeuger.js';
@@ -614,14 +614,11 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
   const titel = result.keys.map(k => ERZEUGER_CFG[k]?.label || k).join('+');
   const varName = 'Opt: ' + titel;
 
-  // Variante anlegen (wie addVariante(), aber ohne prompt)
-  if (window.activeVariantId === null) {
-    window.baseNetzSnapshot = captureNetzState();
-    window.baseErzeugerSnapshot = captureErzeugerState();
-  } else {
-    const cur = varianten.find(v => v.id === window.activeVariantId);
-    if (cur) { cur.netz = captureNetzState(); cur.erzeuger = captureErzeugerState(); }
-  }
+  // Bisherigen Stand VOLLSTÄNDIG sichern (Wärme, Erzeuger, Strom-Paket, Maßnahmen,
+  // Dach-PV), bevor die Erzeuger umgebaut werden. Früher fehlte hier das
+  // Stromnetz: Planungsobjekte seit dem letzten Wechsel wanderten in die neue
+  // Variante und fehlten danach in der Ausgangsvariante.
+  const vonKey = sichereAktivenStand();
 
   // Alle Erzeuger deaktivieren (saubere Basis für neue Variante)
   if (typeof clearLwWp === 'function') clearLwWp();
@@ -785,14 +782,10 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
   if (typeof redrawErzeugerIcons === 'function') redrawErzeugerIcons();
 
   // Variante mit diesem Zustand speichern
-  const id = 'v_' + Date.now();
-  varianten.push({ id, name: varName, netz: captureNetzState(), erzeuger: captureErzeugerState(), gebaeudeAusschlüsse: [] });
-  window.activeVariantId = id;
-  renderVariantenBar();
-  updateVariantBanner();
-
-  // Neuberechnung auslösen
-  if (typeof updateAllDeckungen === 'function') updateAllDeckungen();
+  _varianteAusLiveAnlegen({
+    name: varName, herkunft: 'optimierer', vonKey,
+    zweck: 'Aus der Optimierung übernommener Erzeugerpark: ' + titel,
+  });
 
   // Hinweis wenn standortabhängige Erzeuger automatisch platziert wurden
   const wpKeys = result.config.map(e => e.key).filter(k => ['lwwp','fg','geo'].includes(k));
@@ -922,7 +915,7 @@ export function updateFooterStatus() {
   // Variante + Jahr
   const fsV = document.getElementById('fs-variante');
   if (fsV) {
-    const vName = window.activeVariantId ? (varianten.find(v => v.id === window.activeVariantId)?.name || '?') : 'Basis';
+    const vName = window.activeVariantId ? (varianten.find(v => v.id === window.activeVariantId)?.name || '?') : 'Hauptplan';
     fsV.textContent = vName + ' · ' + (typeof globalYear !== 'undefined' ? globalYear : '—');
   }
   // Update Ergebnis-Tab KPIs + Step Progress
@@ -954,7 +947,7 @@ export function updateStatusPanel() {
   let html = '';
 
   // ─── Abschnitt: Variante ────────────────────────────────────────────
-  const varName = window.activeVariantId ? (varianten.find(v => v.id === window.activeVariantId)?.name || '?') : 'Basisdaten';
+  const varName = window.activeVariantId ? (varianten.find(v => v.id === window.activeVariantId)?.name || '?') : 'Hauptplan';
   html += `<div style="margin-bottom:8px;padding:5px 8px;background:var(--surface2);border-radius:5px;border-left:3px solid ${activeVariantId ? 'var(--accent)' : '#4caf50'};">`;
   html += `<span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.06em;">Aktive Variante</span><br>`;
   html += `<span style="color:var(--text);font-size:12px;">${varName}</span>`;

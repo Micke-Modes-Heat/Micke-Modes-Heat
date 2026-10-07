@@ -114,7 +114,8 @@ export function d3dFeatures(gebaeude, opt = {}) {
         gid: g.id,
         name: String(g.name || `Gebäude ${g.id}`),
         geschosse,
-        hoehe: geschosse * gh,
+        // LoD2 (37-lod2-import): echte Traufhöhe statt Geschosse × 3 m
+        hoehe: g.dachLod2 && g.dachLod2.quelle !== 'grundriss' && g.dachLod2.traufeM > 0.5 ? g.dachLod2.traufeM : geschosse * gh,
         baujahr: parseInt(g.baujahr, 10) || null,
         nutzung: String(g.nutzung || ''),
         status: raus ? 'ausgeschlossen' : status,

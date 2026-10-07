@@ -10,7 +10,7 @@ function projizieren(ringe) {
   const cosLat = Math.cos(ref.lat * Math.PI / 180);
   const f = p => ({ x: (p.lng - ref.lng) * Math.PI / 180 * R * cosLat, y: (p.lat - ref.lat) * Math.PI / 180 * R });
   const zurueck = p => ({ lat: ref.lat + p.y / R * 180 / Math.PI, lng: ref.lng + p.x / (R * cosLat) * 180 / Math.PI });
-  return { ringe: ringe.map(r => r.map(f)), zurueck };
+  return { ringe: ringe.map(r => r.map(f)), zurueck, hin: f };
 }
 
 function ohneSchluss(pts) {
@@ -202,6 +202,234 @@ export function vereinigePolygone(coordsA, coordsB) {
 export function flaecheM2(coords) {
   if (!coords || coords.length < 3) return 0;
   return Math.abs(vorzeichenFlaeche(ohneSchluss(projizieren([coords]).ringe[0])));
+}
+
+/**
+ * Rechteck aus Grundlinie (p1→p2) und einem dritten Punkt, der die Breite und die
+ * Seite bestimmt (senkrechter Abstand von der Grundlinie). Das Rechteck darf beliebig
+ * gedreht sein. Liefert null bei (nahezu) entarteter Grundlinie oder Breite.
+ * @returns {{coords:{lat:number,lng:number}[], laengeM:number, breiteM:number}|null}
+ */
+export function rechteckAusDreiPunkten(p1, p2, p3, minM = 0.3) {
+  const { ringe, zurueck } = projizieren([[p1, p2, p3]]);
+  const [a, b, c] = ringe[0];
+  const dx = b.x - a.x, dy = b.y - a.y, laenge = Math.hypot(dx, dy);
+  if (laenge < minM) return null;
+  const ux = dx / laenge, uy = dy / laenge;
+  const nx = -uy, ny = ux;
+  const w = (c.x - a.x) * nx + (c.y - a.y) * ny;
+  if (Math.abs(w) < minM) return null;
+  const ring = [a, b, { x: b.x + nx * w, y: b.y + ny * w }, { x: a.x + nx * w, y: a.y + ny * w }];
+  return { coords: ring.map(zurueck), laengeM: laenge, breiteM: Math.abs(w) };
+}
+
+/**
+ * Drehfunktion um ein Zentrum. grad = Uhrzeigersinn (Kompassrichtung, Karte genordet).
+ * Gibt eine Funktion zurück, die {lat,lng} (oder [lat,lng]) auf den gedrehten Punkt abbildet.
+ * Die Drehung läuft im lokalen Meter-System, Formen bleiben also maßstabsgetreu.
+ */
+export function drehFunktion(zentrum, grad) {
+  const cLat = zentrum.lat ?? zentrum[0], cLng = zentrum.lng ?? zentrum[1];
+  const cosLat = Math.cos(cLat * Math.PI / 180);
+  const phi = grad * Math.PI / 180, c = Math.cos(phi), s = Math.sin(phi);
+  return p => {
+    const lat = p.lat ?? p[0], lng = p.lng ?? p[1];
+    const x = (lng - cLng) * Math.PI / 180 * R * cosLat, y = (lat - cLat) * Math.PI / 180 * R;
+    const xr = x * c + y * s, yr = -x * s + y * c;
+    return { lat: cLat + yr / R * 180 / Math.PI, lng: cLng + xr / (R * cosLat) * 180 / Math.PI };
+  };
+}
+
+/** Kompasspeilung (0 = Nord, im Uhrzeigersinn, 0–360°) von einem Zentrum zu einem Punkt. */
+export function peilungGrad(zentrum, p) {
+  const cosLat = Math.cos(zentrum.lat * Math.PI / 180);
+  const x = (p.lng - zentrum.lng) * cosLat, y = p.lat - zentrum.lat;
+  return ((Math.atan2(x, y) * 180 / Math.PI) % 360 + 360) % 360;
+}
+
+/**
+ * Firstrichtung eines Grundrisses als Kompasspeilung (0–180°, 0 = Nord–Süd).
+ * Hauptrichtung aus ALLEN Kanten (nach Länge gewichtet, Winkel mod 90° über
+ * 4·Winkel gemittelt), der First läuft entlang der längeren Ausdehnung des so
+ * ausgerichteten Hüllrechtecks. Robust gegen in viele Stücke zerlegte Seiten
+ * (ALKIS), abgeschrägte Ecken und L-Formen — „längste Einzelkante" erwischt dort
+ * leicht die Stirnseite.
+ * @param {{lat:number,lng:number}[]} coords
+ * @returns {number|null}
+ */
+export function firstPeilungGrad(coords) {
+  if (!coords || coords.length < 3) return null;
+  const pts = ohneSchluss(projizieren([coords]).ringe[0]);
+  if (pts.length < 3) return null;
+  let sx = 0, sy = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const l = Math.hypot(b.x - a.x, b.y - a.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
+    sx += l * Math.cos(4 * ang); sy += l * Math.sin(4 * ang);
+  }
+  if (Math.hypot(sx, sy) < 1e-9) return null;
+  const theta = Math.atan2(sy, sx) / 4;          // Achse (mathematisch, x Ost / y Nord)
+  const ct = Math.cos(theta), st = Math.sin(theta);
+  let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+  for (const p of pts) {
+    const u = p.x * ct + p.y * st, v = -p.x * st + p.y * ct;
+    if (u < uMin) uMin = u; if (u > uMax) uMax = u;
+    if (v < vMin) vMin = v; if (v > vMax) vMax = v;
+  }
+  const lang = uMax - uMin >= vMax - vMin ? theta : theta + Math.PI / 2;
+  // mathematischer Winkel → Kompass (von Nord im Uhrzeigersinn), First symmetrisch → mod 180
+  return ((90 - lang * 180 / Math.PI) % 180 + 180) % 180;
+}
+
+/**
+ * Richtet einen Grundriss rechtwinklig aus: Hauptrichtung bestimmen (nach Kantenlänge
+ * gewichtet), jede Kante der nächstliegenden der beiden Achsen zuordnen, aufeinander-
+ * folgende gleichgerichtete Kanten zusammenlegen und die Ecken als Schnittpunkte
+ * neu bilden. Ergebnis hat ausschließlich 90°-Ecken.
+ * @returns {{coords:{lat:number,lng:number}[], winkelGrad:number, flaecheVorherM2:number,
+ *   flaecheNachherM2:number, abweichungProzent:number, diagonaleKanten:number}|null}
+ *   null, wenn sich keine rechtwinklige Kontur bilden lässt (z. B. Dreieck, Kreisbogen).
+ */
+export function richteRechtwinklig(coords, { diagonalGrad = 20, minKanteM = 0.3 } = {}) {
+  if (!coords || coords.length < 3) return null;
+  const { ringe, zurueck } = projizieren([coords]);
+  let pts = ohneSchluss(ringe[0]).map(p => ({ x: p.x, y: p.y }));
+  const flaecheVorher = Math.abs(vorzeichenFlaeche(pts));
+  if (pts.length < 3 || flaecheVorher < 0.5) return null;
+
+  // Kürzeste Kanten (Digitalisierungsrauschen) zu einem Punkt verschmelzen
+  for (let guard = 0; guard < 200 && pts.length > 4; guard++) {
+    let k = -1, kl = minKanteM;
+    for (let i = 0; i < pts.length; i++) {
+      const b = pts[(i + 1) % pts.length], l = Math.hypot(b.x - pts[i].x, b.y - pts[i].y);
+      if (l < kl) { kl = l; k = i; }
+    }
+    if (k < 0) break;
+    const j = (k + 1) % pts.length;
+    const m = { x: (pts[k].x + pts[j].x) / 2, y: (pts[k].y + pts[j].y) / 2 };
+    pts = pts.map((p, i) => (i === k ? m : p)).filter((_, i) => i !== j);
+  }
+
+  const n = pts.length;
+  // Hauptrichtung: Kantenwinkel mod 90° → über 4·Winkel mitteln
+  let sx = 0, sy = 0;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    const l = Math.hypot(b.x - a.x, b.y - a.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
+    sx += l * Math.cos(4 * ang); sy += l * Math.sin(4 * ang);
+  }
+  const theta = Math.atan2(sy, sx) / 4;
+  const ct = Math.cos(theta), st = Math.sin(theta);
+  const q = pts.map(p => ({ x: p.x * ct + p.y * st, y: -p.x * st + p.y * ct }));
+
+  // Kanten klassifizieren: 'h' = waagerecht (y = konst), 'v' = senkrecht (x = konst)
+  const kanten = [];
+  let diagonal = 0;
+  for (let i = 0; i < n; i++) {
+    const a = q[i], b = q[(i + 1) % n], dx = b.x - a.x, dy = b.y - a.y;
+    const l = Math.hypot(dx, dy);
+    const horizontal = Math.abs(dx) >= Math.abs(dy);
+    const abw = Math.atan2(horizontal ? Math.abs(dy) : Math.abs(dx), horizontal ? Math.abs(dx) : Math.abs(dy)) * 180 / Math.PI;
+    if (abw > diagonalGrad) diagonal++;
+    kanten.push({ art: horizontal ? 'h' : 'v', l, wert: horizontal ? (a.y + b.y) / 2 : (a.x + b.x) / 2 });
+  }
+  const start = kanten.findIndex((k, i) => k.art !== kanten[(i + n - 1) % n].art);
+  if (start < 0) return null; // alle Kanten gleichgerichtet → keine Fläche
+
+  // Aufeinanderfolgende gleichartige Kanten zu einer Geraden (längengewichteter Mittelwert)
+  const gruppen = [];
+  for (let s = 0; s < n; s++) {
+    const k = kanten[(start + s) % n], last = gruppen[gruppen.length - 1];
+    if (last && last.art === k.art) { last.summe += k.wert * k.l; last.l += k.l; }
+    else gruppen.push({ art: k.art, summe: k.wert * k.l, l: k.l });
+  }
+  if (gruppen.length < 4 || gruppen.length % 2) return null;
+  gruppen.forEach(g => { g.wert = g.summe / (g.l || 1); });
+
+  // Ecke zwischen Gruppe i und i+1: senkrechte Gerade liefert x, waagerechte y
+  const ecken = gruppen.map((g, i) => {
+    const h = gruppen[(i + 1) % gruppen.length];
+    return g.art === 'h' ? { x: h.wert, y: g.wert } : { x: g.wert, y: h.wert };
+  });
+  const ergebnis = vereinfachen(ecken.map(p => ({ x: p.x * ct - p.y * st, y: p.x * st + p.y * ct })));
+  const flaecheNachher = Math.abs(vorzeichenFlaeche(ergebnis));
+  if (ergebnis.length < 4 || flaecheNachher < 0.5) return null;
+  return {
+    coords: ergebnis.map(zurueck),
+    winkelGrad: ((90 - theta * 180 / Math.PI) % 90 + 90) % 90, // Kompassrichtung einer Gebäudeachse (0–90°)
+    flaecheVorherM2: flaecheVorher,
+    flaecheNachherM2: flaecheNachher,
+    abweichungProzent: Math.abs(flaecheNachher - flaecheVorher) / flaecheVorher * 100,
+    diagonaleKanten: diagonal,
+  };
+}
+
+function schwerpunkt(pts) {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const f = pts[j].x * pts[i].y - pts[i].x * pts[j].y;
+    a += f; cx += (pts[j].x + pts[i].x) * f; cy += (pts[j].y + pts[i].y) * f;
+  }
+  return a ? { x: cx / (3 * a), y: cy / (3 * a) } : { x: pts[0].x, y: pts[0].y };
+}
+
+// Richtung (rad, mathematisch) der längsten Kante eines gegen den Uhrzeigersinn orientierten Rings
+function laengsteKante(ring) {
+  let best = -1, ang = 0;
+  ring.forEach((a, i) => {
+    const b = ring[(i + 1) % ring.length], l = Math.hypot(b.x - a.x, b.y - a.y);
+    if (l > best + 1e-6) { best = l; ang = Math.atan2(b.y - a.y, b.x - a.x); }
+  });
+  return ang;
+}
+
+/**
+ * Überträgt die Maße/Form eines Gebäudes (quelle) auf ein anderes (ziel): Der Flächen-
+ * schwerpunkt und die Ausrichtung des Ziels bleiben erhalten. Als Ausrichtung dient die
+ * Richtung der jeweils längsten Kante, d. h. die lange Seite der Quelle liegt auf der
+ * langen Seite des Ziels. Die Form wird nur gedreht und verschoben, nie verzerrt.
+ * @returns {{coords:{lat:number,lng:number}[], drehungGrad:number, flaecheM2:number}|null}
+ */
+export function uebertrageForm(zielCoords, quelleCoords) {
+  if (!zielCoords || zielCoords.length < 3 || !quelleCoords || quelleCoords.length < 3) return null;
+  const { ringe, zurueck } = projizieren([zielCoords, quelleCoords]);
+  const z = ccw(ohneSchluss(ringe[0])), q = ccw(ohneSchluss(ringe[1]));
+  if (Math.abs(vorzeichenFlaeche(z)) < 0.5 || Math.abs(vorzeichenFlaeche(q)) < 0.5) return null;
+  const delta = laengsteKante(z) - laengsteKante(q);
+  const c = Math.cos(delta), s = Math.sin(delta);
+  const zc = schwerpunkt(z), qc = schwerpunkt(q);
+  const neu = q.map(p => {
+    const x = p.x - qc.x, y = p.y - qc.y;
+    return { x: zc.x + x * c - y * s, y: zc.y + x * s + y * c };
+  });
+  return { coords: neu.map(zurueck), drehungGrad: -delta * 180 / Math.PI, flaecheM2: Math.abs(vorzeichenFlaeche(neu)) };
+}
+
+/**
+ * Punktabbildung vom alten auf den neuen Grundriss desselben Gebäudes (z. B. nach
+ * uebertrageForm), damit PV-Flächen, First und Anlagen anteilig mitwandern: In den
+ * Gebäudeachsen des alten Grundrisses (Richtung der längsten Kante) wird das
+ * umschließende Rechteck des alten auf das des neuen gestreckt. Ein Punkt in der
+ * Mitte der Ostseite bleibt so in der Mitte der Ostseite.
+ * @returns {((p:{lat:number,lng:number}) => {lat:number,lng:number})|null}
+ */
+export function formAbbildung(altCoords, neuCoords) {
+  if (!altCoords || altCoords.length < 3 || !neuCoords || neuCoords.length < 3) return null;
+  const { ringe, zurueck, hin } = projizieren([altCoords, neuCoords]);
+  const alt = ccw(ohneSchluss(ringe[0])), neu = ohneSchluss(ringe[1]);
+  const th = laengsteKante(alt), c = Math.cos(th), s = Math.sin(th);
+  const lokal = p => ({ u: p.x * c + p.y * s, v: -p.x * s + p.y * c });
+  const box = pts => pts.map(lokal).reduce((b, p) => ({
+    u0: Math.min(b.u0, p.u), u1: Math.max(b.u1, p.u), v0: Math.min(b.v0, p.v), v1: Math.max(b.v1, p.v),
+  }), { u0: Infinity, u1: -Infinity, v0: Infinity, v1: -Infinity });
+  const a = box(alt), n = box(neu);
+  if (a.u1 - a.u0 < 0.1 || a.v1 - a.v0 < 0.1) return null;
+  const su = (n.u1 - n.u0) / (a.u1 - a.u0), sv = (n.v1 - n.v0) / (a.v1 - a.v0);
+  return p => {
+    const l = lokal(hin(p));
+    const u = n.u0 + (l.u - a.u0) * su, v = n.v0 + (l.v - a.v0) * sv;
+    return zurueck({ x: u * c - v * s, y: u * s + v * c });
+  };
 }
 
 /**

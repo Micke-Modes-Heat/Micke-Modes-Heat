@@ -33,7 +33,8 @@ import { setFliessgewaesserVisible } from './02c-karte-werkzeuge.js';
 import { PROJECT_SCHEMA_VERSION, prepareProjectForImport } from './lib/project-schema.js';
 import { schichtBackfill, SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
 import { repairPhasen } from './lib/phasen-core.js';
-import { vereinigePolygone } from './lib/gebaeude-geometrie.js';
+import { bandIntervalle, rechteckTrifftPolygon, vereinigeIntervalle } from './lib/pv-raster.js';
+import { drehFunktion, firstPeilungGrad, formAbbildung, peilungGrad, richteRechtwinklig, uebertrageForm, vereinigePolygone } from './lib/gebaeude-geometrie.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
 import { getPvTariffProvenance } from './config/tariff-scenarios.js';
 import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
@@ -346,6 +347,12 @@ export function getPvKorrFaktor(g) {
 
 // kWp mit Ertragskorrekturfaktor
 export function calcGebKwpKorr(g) {
+  // Belegungen mit eigener Ausrichtung (LoD2-Dachflächen): Ertragsfaktor je Fläche,
+  // gewichtet nach Modulanzahl.
+  if (g.pvModus === 'flaechen' && _hasBelegung(g)) {
+    const res = getGebPvModules(g);
+    if (res.gruppen) return calcGebKwp(g) * _gruppenKorrFaktor(g, res.gruppen);
+  }
   // Satteldach im Flächen-Modus (Phase 4): Ertragsfaktor anteilig aus beiden
   // Dachhälften (Azimut A / A+180), gewichtet nach Modulanzahl je Seite.
   if (g.pvModus === 'flaechen' && _hasBelegung(g) && g.dachform === 'sattel') {
@@ -356,23 +363,12 @@ export function calcGebKwpKorr(g) {
   return calcGebKwp(g) * getPvKorrFaktor(g);
 }
 
-// Azimut der wahrscheinlichen Südseite aus dem längsten Polygon-Segment ermitteln
+// Azimut der wahrscheinlichen Südseite aus der Längsachse des Grundrisses ermitteln
+// (Hauptrichtung aller Kanten, nicht nur der längsten — siehe firstPeilungGrad)
 export function detectRoofAzimutFromPolygon(polygon) {
-  if (!polygon || polygon.length < 2) return null;
-  let maxLen = -1, ridgeAngleDeg = 0;
-  for (let i = 0; i < polygon.length; i++) {
-    const a = polygon[i],           b = polygon[(i + 1) % polygon.length];
-    const lat1 = a.lat ?? a[0],    lng1 = a.lng ?? a[1];
-    const lat2 = b.lat ?? b[0],    lng2 = b.lng ?? b[1];
-    const dLat = (lat2 - lat1) * 111320;
-    const dLng = (lng2 - lng1) * 111320 * Math.cos(((lat1 + lat2) / 2) * Math.PI / 180);
-    const len  = Math.sqrt(dLat * dLat + dLng * dLng);
-    if (len > maxLen) {
-      maxLen = len;
-      // Winkel von Nord im Uhrzeigersinn (0–180°, da Firstrichtung symmetrisch)
-      ridgeAngleDeg = ((Math.atan2(dLng, dLat) * 180 / Math.PI) % 180 + 180) % 180;
-    }
-  }
+  if (!polygon || polygon.length < 3) return null;
+  const ridgeAngleDeg = firstPeilungGrad(polygon.map(p => ({ lat: p.lat ?? p[0], lng: p.lng ?? p[1] })));
+  if (ridgeAngleDeg == null) return null;
   // First läuft entlang ridgeAngleDeg → Südhang ist senkrecht dazu
   const faceA = (ridgeAngleDeg + 90) % 360;
   const faceB = (ridgeAngleDeg - 90 + 360) % 360;
@@ -702,11 +698,17 @@ function _pvuEnsurePvAsset(g) {
 }
 
 // Ein Gebäude angleichen (Asset ggf. anlegen + kWp übernehmen).
-window.pvuFixOne = function(gId) {
+// opts.ohneNachlauf: nur Asset anlegen/überschreiben — Stapelaktionen (PV-Modus,
+// automatische Belegung) rechnen das Stromnetz einmal am Ende über pvuNachlauf nach.
+window.pvuFixOne = function(gId, opts = {}) {
   const g = (window.gebaeude || []).find(x => x.id === gId);
   if (!g) return;
   if (!_pvuEnsurePvAsset(g)) { alert('Kein PV-Asset anlegbar (Gebäude ohne Polygon).'); return; }
   window.overwritePvAsset(gId);
+  if (opts.ohneNachlauf) return;
+  window.pvuNachlauf();
+};
+window.pvuNachlauf = function() {
   if (typeof recalcStromNetz === 'function') recalcStromNetz();
   if (typeof redrawAllAssets === 'function') redrawAllAssets();
   pvuRender();
@@ -1255,6 +1257,8 @@ window.updateGebDach = function(gId, field, value) {
   } else if (field === 'dachNeigung') {
     g.dachNeigung = value === '' ? null : parseFloat(value);
   }
+  // Aus dem Grundriss berechnete Dachflächen folgen den Dachangaben (37)
+  window.dachGrundrissNeu?.(g);
   // Im Flächen-Modus beeinflussen Dachform/Neigung/Azimut Platzierung, kWp UND Profil
   if (g.pvModus === 'flaechen' && _hasBelegung(g)) {
     redrawGebPvModules(g); calcStromPanel();
@@ -1369,61 +1373,33 @@ export function setPvVisible(visible) {
 }
 window.setPvVisible = setPvVisible;
 
-
-// Halbebenen-Clip im metrischen XY-Raum: behält die Seite, auf der
-// (p−a)·normal ≥ 0 gilt. Baustein für den Rand-Inset unten.
-function _clipHalfPlaneXY(poly, a, normal) {
-  const f = p => (p.x - a.x) * normal.x + (p.y - a.y) * normal.y;
-  const out = [];
-  for (let i = 0; i < poly.length; i++) {
-    const pa = poly[i], pb = poly[(i + 1) % poly.length];
-    const fa = f(pa), fb = f(pb);
-    if (fa >= 0) out.push(pa);
-    if ((fa >= 0) !== (fb >= 0)) {
-      const t = fa / (fa - fb);
-      out.push({ x: pa.x + t * (pb.x - pa.x), y: pa.y + t * (pb.y - pa.y) });
-    }
-  }
-  return out;
-}
-
-// Polygon um `dist` Meter nach innen versetzen (Randabstand für Modulraster,
-// z. B. Wind-/Brandschutzzonen). Schneidet für jede Kante die inwärts verschobene
-// Halbebene — exakt für konvexe Polygone, bei konkaven ggf. leicht konservativ
-// (kappt Einbuchtungen etwas zu früh, nie zu spät → nie mehr Module als real passen).
-function _insetPolygonXY(poly, dist) {
-  if (!(dist > 0) || poly.length < 3) return poly;
-  let cx = 0, cy = 0;
-  for (const p of poly) { cx += p.x; cy += p.y; }
-  cx /= poly.length; cy /= poly.length;
-  let result = poly;
-  for (let i = 0; i < poly.length && result.length >= 3; i++) {
-    const a = poly[i], b = poly[(i + 1) % poly.length];
-    const ex = b.x - a.x, ey = b.y - a.y;
-    const len = Math.hypot(ex, ey);
-    if (!len) continue;
-    let nx = -ey / len, ny = ex / len; // Normalenkandidat, senkrecht zur Kante
-    if ((cx - a.x) * nx + (cy - a.y) * ny < 0) { nx = -nx; ny = -ny; } // Richtung zum Schwerpunkt = innen
-    result = _clipHalfPlaneXY(result, { x: a.x + nx * dist, y: a.y + ny * dist }, { x: nx, y: ny });
-  }
-  return result;
-}
-
-// ── Punkt-in-Polygon (Ray-Casting) im metrischen XY-Raum ────────────────────
-function _pip(pt, poly) {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
-    if (((yi > pt.y) !== (yj > pt.y)) && (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi)) inside = !inside;
-  }
-  return inside;
-}
-
 /** Schwerpunkt eines lat/lng-Polygons (arithmetisches Mittel der Ecken). */
 export function _polyCentroidLL(poly) {
   let lat = 0, lng = 0;
   for (const p of poly) { lat += p.lat; lng += p.lng; }
   return { lat: lat / poly.length, lng: lng / poly.length };
+}
+
+/**
+ * Punkt auf der automatischen Firstlinie eines Satteldachs: Mitte des Hüllrechtecks
+ * quer zum First (entlang der Falllinie A), wie die 3D-Dachform (lib/dach-3d).
+ * Das reine Eckenmittel liegt bei ungleich verteilten Ecken daneben — Kataster-
+ * grundrisse haben oft einen doppelten Schlusspunkt oder viele Punkte auf einer
+ * Seite; dann wurde eine Dachhälfte zu schmal für eine Modulreihe und blieb leer.
+ */
+export function _firstMitteLL(poly, azimutDeg) {
+  const c = _polyCentroidLL(poly);
+  const A = (azimutDeg ?? 180) * Math.PI / 180;
+  const cosL = Math.cos(c.lat * Math.PI / 180);
+  const dO = Math.sin(A), dN = Math.cos(A);                   // Falllinie (Ost, Nord)
+  let sMin = Infinity, sMax = -Infinity;
+  for (const p of poly) {
+    const s = (p.lng - c.lng) * 111320 * cosL * dO + (p.lat - c.lat) * 111320 * dN;
+    if (s < sMin) sMin = s; if (s > sMax) sMax = s;
+  }
+  if (!Number.isFinite(sMin)) return c;
+  const sm = (sMin + sMax) / 2;
+  return { lat: c.lat + sm * dN / 111320, lng: c.lng + sm * dO / (111320 * cosL) };
 }
 
 /**
@@ -1479,10 +1455,11 @@ export function placePvModules(belPolys, sperrPolys, opts = {}) {
   const cosL   = Math.cos(latRef * Math.PI / 180);
   // metrische Projektion: Ursprung oben/links, y nach unten (SVG-konform)
   const toXY = p => ({ x: (p.lng - minLng) * 111320 * cosL, y: (maxLat - p.lat) * 111320 });
-  // Randabstand: Belegungsfläche vor der Rasterung um `edgeInset` Meter nach innen
-  // versetzen (Wind-/Brandschutzzonen, Montagerand) — Default 0,3 m.
-  const edgeInset = opts.edgeInset != null ? opts.edgeInset : 0.3;
-  const belXY   = bel.map(poly => _insetPolygonXY(poly.map(toXY), edgeInset)).filter(p => p.length >= 3);
+  // Randabstand zur Kante der Belegungsfläche (Wind-/Brandschutzzonen, Montagerand),
+  // Default 0,3 m — geprüft je Modul (rechteckImPolygon mit vergrößertem Modul),
+  // nicht durch Einrücken des Polygons: das zerstört konkave Grundrisse.
+  const edgeInset = opts.edgeInset != null ? Math.max(0, opts.edgeInset) : 0.3;
+  const belXY   = bel.map(poly => poly.map(toXY));
   const sperrXY = sperr.map(poly => poly.map(toXY));
   if (!belXY.length) return { modules: [], count: 0, bbox: null };
 
@@ -1526,10 +1503,42 @@ export function placePvModules(belPolys, sperrPolys, opts = {}) {
   const sperrR = sperrXY.map(poly => poly.map(rot));
 
   // Bbox im rotierten Frame
-  let rMinX = Infinity, rMinY = Infinity, rMaxX = -Infinity, rMaxY = -Infinity;
+  let rMinY = Infinity, rMaxY = -Infinity;
   for (const poly of belR) for (const p of poly) {
-    if (p.x < rMinX) rMinX = p.x; if (p.x > rMaxX) rMaxX = p.x;
     if (p.y < rMinY) rMinY = p.y; if (p.y > rMaxY) rMaxY = p.y;
+  }
+  // 1 mm Toleranz gegen Gleitkomma an exakt anliegenden Kanten
+  const TOL = 1e-3, rand = Math.max(0, edgeInset - TOL);
+
+  // Reihe für Reihe statt starrem Raster: Katastergrundrisse sind nie exakt
+  // rechtwinklig und der Azimut ist auf ganze Grad gerundet — eine Traufe, die
+  // ein paar Millimeter schief zum Raster steht, kostete sonst die ganze erste
+  // Reihe. bandIntervalle liefert je Reihe die Abschnitte, in denen das Modul
+  // samt Randabstand vollständig in der Belegung liegt (auch bei L-Formen);
+  // darin werden die Module mittig gesetzt.
+  const reihe = y => {
+    const iv = vereinigeIntervalle(belR.flatMap(poly => bandIntervalle(poly, y - rand, y + cellD + rand)));
+    const xs = [];
+    for (const [a, b] of iv) {
+      const frei = b - a - 2 * rand;
+      const n = frei + 1e-9 >= cellW ? Math.floor((frei - cellW) / pitchX + 1e-9) + 1 : 0;
+      const x0 = a + rand + (frei - ((n - 1) * pitchX + cellW)) / 2;
+      for (let k = 0; k < n; k++) xs.push(x0 + k * pitchX);
+    }
+    return xs;
+  };
+  const reihenAb = y0 => {
+    const rows = [];
+    for (let y = y0; y + cellD + rand <= rMaxY + 1e-6; y += pitchY) rows.push({ y, xs: reihe(y) });
+    return rows;
+  };
+  // Lage der Reihen: mehrere Startversätze probieren, den mit den meisten Modulen nehmen
+  const nVersatz = (rMaxY - rMinY) / pitchY > 60 ? 4 : 10;
+  let reihen = [], best = -1;
+  for (let k = 0; k < nVersatz; k++) {
+    const rows = reihenAb(rMinY + rand + k * pitchY / nVersatz);
+    const n = rows.reduce((s2, r) => s2 + r.xs.length, 0);
+    if (n > best) { best = n; reihen = rows; }
   }
 
   // Ost-West (nur flach): Shimmer-Kante reihenweise wechseln → Rücken-an-Rücken-Optik
@@ -1537,28 +1546,20 @@ export function placePvModules(belPolys, sperrPolys, opts = {}) {
 
   const modules = [];
   const MAX = opts.max || 12000; // Sicherheitslimit gegen Extremfälle (Performance)
-  let rowIdx = 0;
-  for (let y = rMinY; y + cellD <= rMaxY + 1e-6 && modules.length < MAX; y += pitchY, rowIdx++) {
+  reihen.forEach(({ y, xs }, rowIdx) => {
     const flipEdge = owAlternate && (rowIdx % 2 === 1);
-    for (let x = rMinX; x + cellW <= rMaxX + 1e-6; x += pitchX) {
+    for (const x of xs) {
+      if (modules.length >= MAX) return;
+      // darf kein Sperrpolygon überlappen — auch keins, das kleiner ist als das Modul (Kamin)
+      const modul = { x0: x + TOL, y0: y + TOL, x1: x + cellW - TOL, y1: y + cellD - TOL };
+      if (sperrR.some(poly => rechteckTrifftPolygon(modul, poly))) continue;
       const corners = [{ x, y }, { x: x + cellW, y }, { x: x + cellW, y: y + cellD }, { x, y: y + cellD }];
-      const center  = { x: x + cellW / 2, y: y + cellD / 2 };
-      // muss komplett in EINEM Belegungspolygon liegen
-      // Das Raster beginnt exakt an der Bbox-Kante des (eingerückten) Polygons: bei
-      // achsparallelen Dächern liegen die Modulecken dann AUF dem Polygonrand, und der
-      // Punkt-im-Polygon-Test entscheidet dort zufällig (Gleitkomma) — teils fielen
-      // dadurch ganze Dachhälften auf 0 Module. Geprüft wird mit ein paar mm nach innen
-      // gezogenen Ecken (0,4 % der Strecke Ecke→Mitte).
-      const inner = corners.map(c => ({ x: c.x + (center.x - c.x) * 0.004, y: c.y + (center.y - c.y) * 0.004 }));
-      if (!belR.some(poly => _pip(center, poly) && inner.every(c => _pip(c, poly)))) continue;
-      // darf kein Sperrpolygon berühren
-      if (sperrR.some(poly => _pip(center, poly) || inner.some(c => _pip(c, poly)))) continue;
       const pts  = corners.map(unrot);          // zurück in metrischen (nicht-rotierten) Frame
       // Shimmer-Kante: Süd = obere Kante; Ost-West = abwechselnd ober/unter (Paare)
       const edge = flipEdge ? [pts[3], pts[2]] : [pts[0], pts[1]];
       modules.push({ pts, edge });
     }
-  }
+  });
 
   return {
     modules, count: modules.length,
@@ -1601,15 +1602,136 @@ export function buildPvModuleOverlay(res) {
   return { svgEl, bounds: [[minLat, minLng], [maxLat, maxLng]] };
 }
 
+// ── Dachflächen mit eigener Ausrichtung (LoD2) ──────────────────────────────
+// g.dachFlaechen = [{ id, punkte:[[lat,lng,h]], neigung, azimut, flaecheM2, grundM2 }]
+// (aus 37-lod2-import.js, Dachdaten — für alle Varianten gleich). Eine Belegungs-
+// fläche trägt optional fl.azimut/fl.neigung (+ dachFlaecheId). Neu gezeichnete
+// Flächen bekommen sie beim Anlegen von der Dachfläche darunter
+// (pvFlaecheDachZuordnen); ältere Grundriss-Belegungen bleiben bei den Gebäudewerten.
+
+function _llImPolygon(p, poly) {
+  let innen = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.lat > p.lat) !== (b.lat > p.lat)
+        && p.lng < (b.lng - a.lng) * (p.lat - a.lat) / (b.lat - a.lat) + a.lng) innen = !innen;
+  }
+  return innen;
+}
+
+/** LoD2-Dachfläche unter einem Punkt (die höchste, falls sich Flächen überdecken). */
+export function dachflaecheBei(g, p) {
+  let best = null, bestH = -Infinity;
+  for (const f of g.dachFlaechen || []) {
+    if (!Array.isArray(f.punkte) || f.punkte.length < 3) continue;
+    if (!_llImPolygon(p, f.punkte.map(q => ({ lat: q[0], lng: q[1] })))) continue;
+    const h = Math.max(...f.punkte.map(q => q[2] || 0));
+    if (h > bestH) { bestH = h; best = f; }
+  }
+  return best;
+}
+
+/**
+ * Ausrichtung einer Belegungsfläche: eigene Angabe, sonst null (= Gebäudewerte).
+ * @returns {{azimut:number, neigung:number}|null}
+ */
+export function pvFlaecheOrientierung(g, fl) {
+  if (fl.azimut != null || fl.neigung != null) return { azimut: fl.azimut ?? 180, neigung: fl.neigung ?? 0 };
+  return null;
+}
+
+/**
+ * Neu gezeichnete Belegung auf einem Gebäude mit LoD2-Dachflächen: Ausrichtung
+ * und Neigung der Dachfläche unter ihrem Schwerpunkt übernehmen.
+ */
+export function pvFlaecheDachZuordnen(g, fl) {
+  if (!g?.dachFlaechen?.length || fl.typ !== 'belegung' || !(fl.polygon?.length >= 3)) return;
+  const d = dachflaecheBei(g, _polyCentroidLL(fl.polygon));
+  if (d) { fl.azimut = d.azimut; fl.neigung = d.neigung; fl.dachFlaecheId = d.id; }
+}
+
+// Neigung, unter der eine Dachfläche als Flachdach (aufgeständert) belegt wird
+export const FLACH_BIS_GRAD = 10;
+
+/**
+ * Modulplatzierung je Belegungsfläche mit eigener Ausrichtung: jede Fläche für
+ * sich am eigenen First (Azimut/Neigung), flache Flächen aufgeständert wie das
+ * Flachdach des Gebäudes. Liefert zusätzlich `gruppen` für den Ertrag je Fläche.
+ */
+function _computeJeFlaeche(g, belFl, orient, sperr, mb, ml) {
+  const allPts = belFl.flatMap(f => f.polygon);
+  const frame = {
+    maxLat: Math.max(...allPts.map(p => p.lat)), minLat: Math.min(...allPts.map(p => p.lat)),
+    maxLng: Math.max(...allPts.map(p => p.lng)), minLng: Math.min(...allPts.map(p => p.lng)),
+  };
+  const beleg = (g.pvFlBelegung != null ? g.pvFlBelegung : 90) / 100;
+  const gcr = (g.pvFlGcr != null ? g.pvFlGcr : (g.pvFlAusrichtung === 'ostwest' ? 85 : 40)) / 100;
+  const gebSchraeg = !!(g.dachform && g.dachform !== 'flach');
+  const modules = [], gruppen = [];
+  let bbox = null;
+  belFl.forEach((f, i) => {
+    const o = orient[i];
+    const flach = o ? o.neigung < FLACH_BIS_GRAD : !gebSchraeg;
+    const azimut = o ? o.azimut : (g.dachAzimut ?? 180);
+    const neigung = o ? o.neigung : (g.dachNeigung ?? getDachDefaultNeigung(g.dachform || 'sattel'));
+    const r = placePvModules([f.polygon], sperr, flach
+      ? { pitched: false, coverage: gcr, ausrichtung: g.pvFlAusrichtung || 'sued', moduleW: mb, moduleL: ml, frame }
+      : { pitched: true, tiltDeg: neigung, azimutDeg: azimut, coverage: beleg, moduleW: mb, moduleL: ml, frame });
+    for (const m of r.modules) { m.flId = f.id; modules.push(m); }
+    if (r.bbox) bbox = r.bbox;
+    gruppen.push({ flId: f.id, count: r.count, azimut, neigung: flach ? 0 : neigung, flach });
+  });
+  return { modules, count: modules.length, bbox, gruppen };
+}
+
+/** Ertragsfaktor über die Gruppen (nach Modulanzahl gewichtet). */
+function _gruppenKorrFaktor(g, gruppen) {
+  let n = 0, s = 0;
+  for (const gr of gruppen) {
+    if (!gr.count) continue;
+    const f = gr.flach
+      ? getPvKorrFaktor({ dachform: 'flach', pvFlAusrichtung: g.pvFlAusrichtung })
+      : getPvKorrFaktor({ dachform: 'sattel', dachAzimut: ((gr.azimut % 360) + 360) % 360, dachNeigung: gr.neigung });
+    n += gr.count; s += gr.count * f;
+  }
+  return n > 0 ? s / n : getPvKorrFaktor(g);
+}
+
+/**
+ * kWp eines Gebäudes nach Profilklasse (Süd / Ost-West) — nur für Gebäude mit
+ * Flächen eigener Ausrichtung, sonst null (dann gilt die Gebäudeklasse wie bisher).
+ * Ost- oder West-Flächen (±45°) laufen im Ost-West-Profil.
+ */
+export function gebPvKwpJeAusrichtung(g) {
+  if (g.pvModus !== 'flaechen' || !_hasBelegung(g)) return null;
+  const res = getGebPvModules(g);
+  if (!res.gruppen) return null;
+  const wp = parseFloat(document.getElementById('pv-modul-wp')?.value) || 450;
+  const out = { sued: 0, ostwest: 0 };
+  for (const gr of res.gruppen) {
+    const kwp = gr.count * wp / 1000;
+    let ow;
+    if (gr.flach) ow = g.pvFlAusrichtung === 'ostwest';
+    else { const a = ((gr.azimut % 360) + 360) % 360; ow = Math.min(Math.abs(a - 90), Math.abs(a - 270)) <= 45; }
+    out[ow ? 'ostwest' : 'sued'] += kwp;
+  }
+  return out;
+}
+
 // Gebäude-Adapter: baut die placePvModules-Optionen aus dem Gebäude (Dachform etc.).
 // Satteldach (Phase 4): jede Belegung wird am First in zwei Hälften (Azimut A / A+180)
 // geteilt und seitenweise platziert → echte zweiseitige Dachoptik + Ertrag je Seite.
 function _computeGebPvModules(g) {
-  const bel   = (g.pvFlaechen || []).filter(f => f.typ === 'belegung' && f.polygon && f.polygon.length >= 3).map(f => f.polygon);
+  const belFl = (g.pvFlaechen || []).filter(f => f.typ === 'belegung' && f.polygon && f.polygon.length >= 3);
+  const bel   = belFl.map(f => f.polygon);
   const sperr = (g.pvFlaechen || []).filter(f => f.typ === 'sperr'    && f.polygon && f.polygon.length >= 3).map(f => f.polygon);
   const mb = parseFloat(document.getElementById('pv-modul-breite')?.value) || 1.1;
   const ml = parseFloat(document.getElementById('pv-modul-laenge')?.value) || 1.7;
   const isPitched = !!(g.dachform && g.dachform !== 'flach');
+
+  // Flächen mit eigener Ausrichtung (LoD2) → je Fläche; sonst Gebäudewerte wie bisher
+  const orient = belFl.map(f => pvFlaecheOrientierung(g, f));
+  if (orient.some(Boolean)) return _computeJeFlaeche(g, belFl, orient, sperr, mb, ml);
 
   if (isPitched && g.dachform === 'sattel' && bel.length) {
     // ── First-Split: Belegung am First (durch den Schwerpunkt, senkrecht zum Azimut) teilen ──
@@ -1622,9 +1744,9 @@ function _computeGebPvModules(g) {
     const maxLng = Math.max(...allPts.map(p => p.lng)), minLng = Math.min(...allPts.map(p => p.lng));
     const cosL   = Math.cos((maxLat + minLat) / 2 * Math.PI / 180);
     const frame  = { minLat, maxLat, minLng, maxLng };
-    // Firstlinie: manuell gesetzter Punkt (First neu zeichnen) oder Schwerpunkt der
-    // Belegung als Default; jede Belegung wird an dieser Linie geklippt.
-    const C = g.pvRidgeOverride || _polyCentroidLL(allPts);
+    // Firstlinie: manuell gesetzter Punkt (First neu zeichnen) oder die Mitte der
+    // Belegung quer zum First als Default; jede Belegung wird an dieser Linie geklippt.
+    const C = g.pvRidgeOverride || _firstMitteLL(allPts, A);
     const front = [], back = [];
     for (const poly of bel) {
       const fr = _clipPolyHalfPlane(poly, C, A, cosL, true);
@@ -1632,9 +1754,23 @@ function _computeGebPvModules(g) {
       if (fr.length >= 3) front.push(fr);
       if (bk.length >= 3) back.push(bk);
     }
+    // Automatisch ausgesparte Nordseite (PV-Modus, fl.auto = 'nord'): die ganze
+    // Hälfte an DIESER Firstlinie bleibt frei. Die gespeicherte Sperrfläche sagt
+    // nur, welche Seite — in älteren Projekten ist sie noch an der früheren
+    // Firstlage (Eckenmittel) geschnitten und würde sonst Streifen sperren/freilassen.
+    const autoNord = (g.pvFlaechen || []).filter(f => f.typ === 'sperr' && f.auto === 'nord' && f.polygon && f.polygon.length >= 3);
+    const sperrSonst = autoNord.length
+      ? (g.pvFlaechen || []).filter(f => f.typ === 'sperr' && f.auto !== 'nord' && f.polygon && f.polygon.length >= 3).map(f => f.polygon)
+      : sperr;
+    let nordVorne = null;
+    if (autoNord.length) {
+      const n = _polyCentroidLL(autoNord[0].polygon), Ar = A * Math.PI / 180;
+      nordVorne = Math.sin(Ar) * (n.lng - C.lng) * cosL + Math.cos(Ar) * (n.lat - C.lat) > 0;
+    }
+    const leer = { modules: [], count: 0, bbox: null };
     const base = { pitched: true, tiltDeg: tilt, coverage: beleg, moduleW: mb, moduleL: ml, frame };
-    const rF = placePvModules(front, sperr, { ...base, azimutDeg: A });
-    const rB = placePvModules(back,  sperr, { ...base, azimutDeg: A + 180 });
+    const rF = nordVorne === true  ? leer : placePvModules(front, sperrSonst, { ...base, azimutDeg: A });
+    const rB = nordVorne === false ? leer : placePvModules(back,  sperrSonst, { ...base, azimutDeg: A + 180 });
     const bbox = (rF.bbox || rB.bbox);
     // Firstlinie: Schwerpunkt in SVG-Koordinaten für Overlay-Rendering
     let ridgeLine = null;
@@ -1673,10 +1809,11 @@ function _computeGebPvModules(g) {
 function _gebPvSig(g) {
   const b = document.getElementById('pv-modul-breite')?.value;
   const l = document.getElementById('pv-modul-laenge')?.value;
-  const fls = (g.pvFlaechen || []).map(f => `${f.id}:${f.typ}:${Math.round(f.flaeche || 0)}`).join(',');
+  const fls = (g.pvFlaechen || []).map(f => `${f.id}:${f.typ}:${Math.round(f.flaeche || 0)}:${f.azimut ?? ''}:${f.neigung ?? ''}`).join(',');
+  const dfl = (g.dachFlaechen || []).map(f => `${f.azimut}/${f.neigung}`).join(',');
   const ridge = g.pvRidgeOverride ? `${g.pvRidgeOverride.lat.toFixed(6)},${g.pvRidgeOverride.lng.toFixed(6)}` : '';
   return [fls, g.pvFlGcr, g.pvFlAusrichtung, g.pvFlBelegung,
-          g.dachform, g.dachNeigung, g.dachAzimut, ridge, b, l].join('|');
+          g.dachform, g.dachNeigung, g.dachAzimut, ridge, b, l, dfl].join('|');
 }
 
 // Satteldach-Ertragsfaktor: nach Modulanzahl gewichteter Mittelwert der beiden
@@ -1865,6 +2002,7 @@ window.finishGebPvDraw = function() {
   if (!g.pvFlaechen) g.pvFlaechen = [];
   window._gebPvFlCounter = (window._gebPvFlCounter || 0) + 1;
   const fl = { id: window._gebPvFlCounter, typ, polygon: pts, flaeche: polygonAreaM2(pts) || 0, layer: null, svgLayer: null };
+  pvFlaecheDachZuordnen(g, fl);
   g.pvFlaechen.push(fl);
   attachGebPvLayer(g, fl);
   redrawGebPvModules(g);   // Module neu platzieren (Belegung erweitert / Sperrfläche schneidet aus)
@@ -1991,8 +2129,8 @@ export function renderGebPvPanel() {
     return;
   }
 
-  // Tabellenkopf
-  let html = `<div style="display:grid;grid-template-columns:auto 1fr 64px 50px;gap:4px 8px;align-items:center;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--border);">
+  // Tabellenkopf — darüber, wo die Belegung gilt (Dachdaten gemeinsam, Belegung je Variante)
+  let html = (window.pvBelegungWirkungHtml?.() || '') + `<div style="display:grid;grid-template-columns:auto 1fr 64px 50px;gap:4px 8px;align-items:center;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--border);">
     <span style="color:var(--muted)">PV</span>
     <span style="color:var(--muted)">Gebäude</span>
     <span style="color:var(--muted);text-align:right;">Dach%</span>
@@ -2112,6 +2250,11 @@ export function _renderExpandedPanel(g, stats) {
           data-input="updateField(${g.id},'baujahr',this.value)"/>
       </div>
       <div class="inp-group">
+        <div class="inp-label" title="Wie „Planung → Abriss planen“: ab diesem Jahr gilt das Gebäude samt seinen Elektro-Assets als abgerissen">Abrissjahr</div>
+        <input class="inp-field" type="number" min="1800" max="2100" placeholder="—" value="${escVal(g.abrissjahr)}"
+          data-change="setAbrissjahr(${g.id},this.value)"/>
+      </div>
+      <div class="inp-group">
         <div class="inp-label">Stockwerke</div>
         <input class="inp-field" type="number" placeholder="1" value="${g.stockwerke || 1}"
           data-input="updateField(${g.id},'stockwerke',this.value)"/>
@@ -2153,13 +2296,20 @@ export function _renderExpandedPanel(g, stats) {
       <span style="color:var(--muted)">Anteil Verbrauch</span><span style="color:${g.netzVerlustRatioPct < 5 ? '#4caf50' : g.netzVerlustRatioPct < 10 ? '#f9a825' : '#e53935'};font-weight:bold">${g.netzVerlustRatioPct.toFixed(1)} %</span>
     </div>` : ''}
     <div class="geb-actions">
-      ${!g.polygon ? `<button class="btn-xs blue" data-click="startDraw(${g.id})">&#9998; Zeichnen</button>` : ''}
+      ${!g.polygon ? `<button class="btn-xs blue" data-click="startDraw(${g.id})" title="Grundriss als Polygon zeichnen">&#9998; Polygon</button>
+      <button class="btn-xs blue" data-click="startDraw(${g.id},'rechteck')" title="Grundriss als Rechteck zeichnen: Grundlinie (2 Klicks) + Breite (1 Klick)">&#9645; Rechteck</button>` : ''}
       ${g.polygon ? '<button class="btn-xs purple" data-click="flyTo(' + g.id + ')">&#8982;</button>' : ''}
       ${g.polygon ? `<button class="btn-xs ${_grundrissEdit?.gId === g.id ? 'blue' : ''}"
         data-click="toggleGebaeudeGrundrissEdit(${g.id})"
         title="${_grundrissEdit?.gId === g.id ? 'Grundrissbearbeitung beenden' : 'Gebäude formen oder versetzen'}">
         ${_grundrissEdit?.gId === g.id ? '✓ Grundriss' : '↔ Grundriss'}
       </button>` : ''}
+      ${g.polygon ? `<button class="btn-xs" data-click="richteGebaeudeRechtwinklig(${g.id})"
+        title="Grundriss rechtwinklig ausrichten: alle Ecken werden zu 90°-Ecken, die Gebäuderichtung bleibt erhalten">&#8735; Rechtwinklig</button>
+      <button class="btn-xs ${_formModus?.zielId === g.id ? 'blue' : ''}" data-click="startGebaeudeFormUebernahme(${g.id})"
+        title="${_formModus?.zielId === g.id ? 'Maßübernahme beenden' : 'Maße eines anderen Gebäudes übernehmen — Position und Drehung dieses Gebäudes bleiben'}">${_formModus?.zielId === g.id ? '✓ Fertig' : '⇆ Maße übernehmen'}</button>
+      <button class="btn-xs" data-click="dupliziereGebaeude(${g.id})"
+        title="Gebäude kopieren (Grundriss, Nutzung, Dach, PV-Flächen) — die Kopie lässt sich sofort verschieben und drehen">&#10697; Duplizieren</button>` : ''}
       ${g.polygon ? `<button class="btn-xs ${_mergeModus?.zielId === g.id ? 'blue' : ''}"
         data-click="startGebaeudeMerge(${g.id})"
         title="${_mergeModus?.zielId === g.id ? 'Zusammenfügen beenden' : 'Weiteres Gebäude anklicken und mit diesem Grundriss vereinigen'}">
@@ -2170,6 +2320,7 @@ export function _renderExpandedPanel(g, stats) {
       ${netzEdges.some(e => e.u === g.id || e.v === g.id) ? `<button class="btn-xs red" data-click="abklemmenGebaeude(${g.id})" title="Alle Netzleitungen entfernen">⛕✕</button>` : ''}
       <button class="btn-xs" data-click="finishGebaeudeGrundrissEdit(); removeGebaeude(${g.id})" title="Löschen" style="margin-left:auto">&#10005;</button>
     </div>
+    ${_formStatusHtml(g)}
     ${activeVariantId !== null ? `<div style="margin-top:5px;padding-top:5px;border-top:1px solid var(--border);">
       <button class="btn-xs ${ausgeschlossen ? 'green' : ''}" style="${ausgeschlossen ? '' : 'border-color:#f9a825;color:#f9a825;'}" data-click="toggleAusschluss(${g.id})">
         ${ausgeschlossen ? '↩ Wieder anschließen' : '⊗ In Variante abkoppeln'}
@@ -2229,7 +2380,8 @@ function _renderFelddatenBlock(g) {
 // Die Griffe erscheinen ausschließlich nach expliziter Aktivierung am aktuell
 // bearbeiteten Gebäude. Runde Griffe verschieben eine Außenkante parallel,
 // quadratische Griffe einen einzelnen Eckpunkt. Der Griff in der Mitte versetzt
-// den vollständigen Grundriss samt zugehöriger Dach- und Anlagengeometrie.
+// den vollständigen Grundriss samt zugehöriger Dach- und Anlagengeometrie, der
+// orange Drehgriff (↻) dreht ihn um die Mitte.
 let _grundrissEdit = null;
 
 function _clearGrundrissHandles() {
@@ -2272,23 +2424,32 @@ function _moveHandleIcon() {
   });
 }
 
-function _translatePoints(points, dLat, dLng) {
-  return (points || []).map(point => L.latLng(
-    (point.lat ?? point[0]) + dLat,
-    (point.lng ?? point[1]) + dLng,
-  ));
+function _rotateHandleIcon() {
+  return L.divIcon({
+    className: '',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    html: '<span style="display:grid;place-items:center;width:18px;height:18px;margin:3px;border-radius:50%;background:#3a2a14;border:1px solid #f4b942;color:#fff4cf;box-shadow:0 1px 5px rgba(0,0,0,.6);font:700 13px/1 sans-serif;opacity:.92;cursor:grab;">↻</span>',
+  });
 }
 
 function _finishGrundrissChange(g, areaChanged) {
+  window.dachGrundrissNeu?.(g);              // berechnete Dachflächen folgen dem Grundriss (37)
   if (areaChanged) {
     g.flaeche = polygonAreaM2(g.polygon);
-    updateField(g.id, 'flaeche', g.flaeche);
+    // defer: Totals/Netz/Lastgang werden unten einmal gesammelt angestoßen statt mehrfach
+    updateField(g.id, 'flaeche', g.flaeche, { defer: true });
   }
   g._pvModSig = null;
   redrawGebPvFlaechen(g);
   redrawAllAssets();
   redrawErzeugerIcons();
   recalcNetz();
+  if (areaChanged) {
+    updateTotals();
+    if (document.getElementById('chart-panel')?.classList.contains('visible')) drawChart();
+    glBerechnenDebounced(1500);
+  }
   updateViz();
   _redrawGrundrissHandles(g);
   _rerenderCard(g.id);
@@ -2380,47 +2541,121 @@ function _redrawGrundrissHandles(g) {
     title: 'Gebäude versetzen',
   }).addTo(map);
   let moveStart = null;
-  moveMarker.on('dragstart', () => {
-    moveStart = {
-      center: L.latLng(center.lat, center.lng),
-      polygon: g.polygon.map(point => L.latLng(point.lat, point.lng)),
-      pvFlaechen: (g.pvFlaechen || []).map(fl => ({
-        fl,
-        polygon: (fl.polygon || []).map(point =>
-          L.latLng(point.lat ?? point[0], point.lng ?? point[1])),
-      })),
-      pvRidgeOverride: g.pvRidgeOverride
-        ? L.latLng(g.pvRidgeOverride.lat, g.pvRidgeOverride.lng)
-        : null,
-      assets: ASSETS.items
-        .filter(asset => asset.buildingId === g.id)
-        .map(asset => ({ asset, lat: asset.lat, lng: asset.lng })),
-    };
-  });
+  moveMarker.on('dragstart', () => { moveStart = _gebSnapshot(g); });
   moveMarker.on('drag', event => {
     if (!moveStart) return;
     const current = event.target.getLatLng();
-    const dLat = current.lat - moveStart.center.lat;
-    const dLng = current.lng - moveStart.center.lng;
-    g.polygon = _translatePoints(moveStart.polygon, dLat, dLng);
-    g.polygonLayer?.setLatLngs(g.polygon);
-    moveStart.pvFlaechen.forEach(({ fl, polygon }) => {
-      fl.polygon = _translatePoints(polygon, dLat, dLng);
-      fl.layer?.setLatLngs(fl.polygon);
-    });
-    if (moveStart.pvRidgeOverride) {
-      g.pvRidgeOverride = {
-        lat: moveStart.pvRidgeOverride.lat + dLat,
-        lng: moveStart.pvRidgeOverride.lng + dLng,
-      };
-    }
-    moveStart.assets.forEach(({ asset, lat, lng }) => {
-      asset.lat = lat + dLat;
-      asset.lng = lng + dLng;
-    });
+    const dLat = current.lat - center.lat;
+    const dLng = current.lng - center.lng;
+    _gebTransformieren(g, moveStart, p => L.latLng(
+      (p.lat ?? p[0]) + dLat, (p.lng ?? p[1]) + dLng));
   });
   moveMarker.on('dragend', () => _finishGrundrissChange(g, false));
   _grundrissEdit.markers.push(moveMarker);
+
+  // Drehgriff: liegt außerhalb des Grundrisses in Richtung _grundrissEdit.drehWinkel
+  // (Kompassrichtung, zunächst Nord). Ziehen dreht Grundriss samt Dachflächen, Modulen
+  // und Anlagen um die Mitte; Umschalt = Rasterung in 5°-Schritten.
+  const abstandM = Math.max(...g.polygon.map(p => map.distance(center, p))) + 4;
+  const peil = _grundrissEdit.drehWinkel || 0;
+  const griffPos = L.latLng(
+    center.lat + Math.cos(peil * Math.PI / 180) * abstandM / 111194.9,
+    center.lng + Math.sin(peil * Math.PI / 180) * abstandM / (111194.9 * Math.cos(center.lat * Math.PI / 180)),
+  );
+  const rotMarker = L.marker(griffPos, {
+    draggable: true,
+    icon: _rotateHandleIcon(),
+    zIndexOffset: 2950,
+    title: 'Gebäude drehen (Umschalt = 5°-Raster)',
+  }).addTo(map);
+  const zentrum = { lat: center.lat, lng: center.lng };
+  let rotStart = null;
+  rotMarker.on('dragstart', () => { rotStart = _gebSnapshot(g); });
+  rotMarker.on('drag', event => {
+    if (!rotStart) return;
+    let delta = peilungGrad(zentrum, event.target.getLatLng()) - peil;
+    if (event.originalEvent?.shiftKey) delta = Math.round(delta / 5) * 5;
+    delta = ((delta + 540) % 360) - 180; // −180…180
+    const f = drehFunktion(zentrum, delta);
+    _gebTransformieren(g, rotStart, p => { const r = f(p); return L.latLng(r.lat, r.lng); }, delta);
+    if (typeof rotStart.dachAzimut === 'number') g.dachAzimut = Math.round((rotStart.dachAzimut + delta + 360) % 360);
+    rotMarker._delta = delta;
+    _grundrissEdit.drehWinkel = (peil + delta + 360) % 360;
+    showHint(`↻ ${Math.round(delta)}°`, 0);
+  });
+  rotMarker.on('dragend', () => { hideHint(); _finishGrundrissChange(g, false); });
+  _grundrissEdit.markers.push(rotMarker);
+}
+
+// Momentaufnahme aller am Grundriss hängenden Geometrie (für Verschieben/Drehen)
+// Zusatzfelder einer PV-Fläche, die mitgespeichert/kopiert werden müssen
+// (auto = automatische Nordseite, azimut/neigung = eigene Ausrichtung je Dachfläche).
+// Neue Flächenfelder hier eintragen — die Feldlisten beim Speichern, Laden,
+// Duplizieren und Gebäudeimport nutzen diese Funktion.
+function _pvFlZusatz(f) {
+  const z = {};
+  if (f.auto) z.auto = f.auto;
+  if (f.azimut != null) z.azimut = f.azimut;
+  if (f.neigung != null) z.neigung = f.neigung;
+  if (f.dachFlaecheId != null) z.dachFlaecheId = f.dachFlaecheId;
+  return z;
+}
+
+// LoD2-Dachdaten (Punkte [lat,lng,h]) mit einer Punktabbildung fn({lat,lng})→{lat,lng}
+function _dachDatenAbbilden(dachFlaechen, dachLod2, fn, dAzimut = 0) {
+  const pkt = q => { const r = fn({ lat: q[0], lng: q[1] }); return [r.lat, r.lng, q[2]]; };
+  return {
+    dachFlaechen: dachFlaechen ? dachFlaechen.map(f => ({ ...f, punkte: f.punkte.map(pkt),
+      azimut: Math.round((((f.azimut + dAzimut) % 360) + 360) % 360) })) : dachFlaechen,
+    dachLod2: dachLod2 ? { ...dachLod2, waende: (dachLod2.waende || []).map(w => w.map(pkt)) } : dachLod2,
+  };
+}
+
+function _gebSnapshot(g) {
+  return {
+    dachFlaechen: g.dachFlaechen ? structuredClone(g.dachFlaechen) : null,
+    dachLod2: g.dachLod2 ? structuredClone(g.dachLod2) : null,
+    flAzimut: new Map((g.pvFlaechen || []).filter(fl => fl.azimut != null).map(fl => [fl, fl.azimut])),
+    polygon: g.polygon.map(point => L.latLng(point.lat, point.lng)),
+    pvFlaechen: (g.pvFlaechen || []).map(fl => ({
+      fl,
+      polygon: (fl.polygon || []).map(point =>
+        L.latLng(point.lat ?? point[0], point.lng ?? point[1])),
+    })),
+    pvRidgeOverride: g.pvRidgeOverride
+      ? L.latLng(g.pvRidgeOverride.lat, g.pvRidgeOverride.lng)
+      : null,
+    dachAzimut: g.dachAzimut,
+    assets: ASSETS.items
+      .filter(asset => asset.buildingId === g.id)
+      .map(asset => ({ asset, lat: asset.lat, lng: asset.lng })),
+  };
+}
+
+// Wendet eine Punktabbildung fn(latlng)→latlng auf die Momentaufnahme an
+// dAzimut: Drehung in Grad (nur beim Drehen) — dreht die Ausrichtung der Dachflächen mit
+function _gebTransformieren(g, snap, fn, dAzimut = 0) {
+  g.polygon = snap.polygon.map(fn);
+  g.polygonLayer?.setLatLngs(g.polygon);
+  snap.pvFlaechen.forEach(({ fl, polygon }) => {
+    fl.polygon = polygon.map(fn);
+    fl.layer?.setLatLngs(fl.polygon);
+  });
+  if (snap.pvRidgeOverride) {
+    const r = fn(snap.pvRidgeOverride);
+    g.pvRidgeOverride = { lat: r.lat, lng: r.lng };
+  }
+  if (snap.dachFlaechen || snap.dachLod2) {
+    const d = _dachDatenAbbilden(snap.dachFlaechen, snap.dachLod2, fn, dAzimut);
+    if (snap.dachFlaechen) g.dachFlaechen = d.dachFlaechen;
+    if (snap.dachLod2) g.dachLod2 = d.dachLod2;
+  }
+  snap.flAzimut?.forEach((az, fl) => { fl.azimut = Math.round((((az + dAzimut) % 360) + 360) % 360); });
+  snap.assets.forEach(({ asset, lat, lng }) => {
+    const r = fn({ lat, lng });
+    asset.lat = r.lat;
+    asset.lng = r.lng;
+  });
 }
 
 export function toggleGebaeudeGrundrissEdit(gId) {
@@ -2443,6 +2678,313 @@ export function finishGebaeudeGrundrissEdit() {
   const gId = _grundrissEdit?.gId;
   _clearGrundrissHandles();
   if (gId != null) _rerenderCard(gId);
+}
+
+// Grundriss rechtwinklig ausrichten: alle Ecken werden 90°-Ecken, die Gebäuderichtung
+// bleibt (dominante Kantenrichtung). Bei diagonalen Kanten oder größerer Flächenänderung
+// vorher bestätigen lassen.
+// Zeichnet die Statusmeldung, bevor die (bei großen Projekten spürbar lange) Neuberechnung startet
+function _naechsterFrame() {
+  return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+}
+
+export async function richteGebaeudeRechtwinklig(gId) {
+  const g = window.gebaeude.find(b => b.id === gId);
+  if (!g?.polygon || g.polygon.length < 3) return;
+  const r = richteRechtwinklig(g.polygon);
+  if (!r) { showHint('⚠ Dieser Grundriss lässt sich nicht rechtwinklig ausrichten (zu wenige gerade Kanten).', 4500); return; }
+  if (r.diagonaleKanten > 0 || r.abweichungProzent > 8) {
+    const hinweise = [];
+    if (r.diagonaleKanten) hinweise.push(`${r.diagonaleKanten} Kante(n) liegen deutlich schräg zur Gebäuderichtung (z. B. Abschrägungen) und werden ebenfalls angeglichen.`);
+    const text = `„${escHtml(g.name || 'Gebäude ' + g.id)}" wird rechtwinklig ausgerichtet.<br>Grundfläche: <b>${Math.round(r.flaecheVorherM2)} m²</b> → <b>${Math.round(r.flaecheNachherM2)} m²</b> (${r.abweichungProzent.toFixed(1).replace('.', ',')} % Abweichung).`
+      + (hinweise.length ? '<br><br>' + hinweise.join('<br>') : '');
+    const ok = typeof window.epConfirm === 'function'
+      ? await window.epConfirm('Rechtwinklig ausrichten', text, { okText: 'Ausrichten', cancelText: 'Abbrechen' })
+      : window.confirm(text.replace(/<[^>]+>/g, ''));
+    if (!ok) return;
+  }
+  showHint('⏳ Grundriss wird rechtwinklig ausgerichtet und neu berechnet …', 0);
+  await _naechsterFrame();
+  try {
+    g.polygon = r.coords.map(p => L.latLng(p.lat, p.lng));
+    g.polygonLayer?.setLatLngs(g.polygon);
+    if (g.dachAutoAzimut) {
+      const az = detectRoofAzimutFromPolygon(g.polygon);
+      if (az != null) g.dachAzimut = az;
+    }
+    _finishGrundrissChange(g, true);
+    showHint(`✓ Rechtwinklig ausgerichtet: ${Math.round(r.flaecheNachherM2)} m²`, 3500);
+  } catch (err) {
+    console.error(err);
+    showHint('⚠ Ausrichten fehlgeschlagen: ' + err.message, 6000);
+  }
+}
+
+// Gebäude kopieren: Grundriss (um Gebäudebreite + 3 m nach Osten versetzt), Nutzung,
+// Kennwerte, Dach- und PV-Flächen. Netzanschlüsse und Anlagen werden nicht übernommen —
+// Standard-Anlagen legt wie bei jedem neuen Gebäude autoCreateBuildingAssets an.
+// Die Kopie öffnet sofort die Grundrissbearbeitung (Verschieben ✥, Drehen ↻).
+export function dupliziereGebaeude(gId) {
+  const q = window.gebaeude.find(b => b.id === gId);
+  if (!q?.polygon || q.polygon.length < 3) return null;
+  finishGebaeudeGrundrissEdit();
+  const lats = q.polygon.map(p => p.lat), lngs = q.polygon.map(p => p.lng);
+  const midLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const breiteM = (Math.max(...lngs) - Math.min(...lngs)) * 111194.9 * Math.cos(midLat * Math.PI / 180);
+  const dLng = (breiteM + 3) / (111194.9 * Math.cos(midLat * Math.PI / 180));
+  const shift = p => L.latLng(p.lat ?? p[0], (p.lng ?? p[1]) + dLng);
+
+  const namen = new Set(window.gebaeude.map(b => b.name));
+  const basis = `${q.name || 'Gebäude ' + q.id} (Kopie)`;
+  let name = basis;
+  for (let i = 2; namen.has(name); i++) name = `${basis} ${i}`;
+
+  const t = addGebaeude({
+    coords: q.polygon.map(shift), name, nutzung: q.nutzung, stockwerke: q.stockwerke,
+    baujahr: q.baujahr, baujährQuelle: q.baujährQuelle, schicht: q.schicht, skipAutoCreate: true,
+  });
+  [
+    'waerme', 'heizlast', 'spez', 'spezHeizlast', 'abrissjahr', 'waermeManual', 'heizlastManual',
+    'strom', 'spezStrom', 'stromProfil', 'pvAktiv', 'pvDachanteil', 'zustand', 'dachform',
+    'dachAzimut', 'dachNeigung', 'dachAutoAzimut', 'dachQuelle', 'pvModus', 'pvFlGcr',
+    'pvFlAusrichtung', 'pvFlBelegung', 'pvBaujahr', 'notstrom',
+  ].forEach(field => { if (q[field] !== undefined) t[field] = structuredClone(q[field]); });
+  t.sanierungen = structuredClone(q.sanierungen || []);
+  t.massnahmen = structuredClone(q.massnahmen || []);
+  if (q.pvRidgeOverride) t.pvRidgeOverride = { lat: q.pvRidgeOverride.lat, lng: q.pvRidgeOverride.lng + dLng };
+  if (q.dachFlaechen || q.dachLod2) {
+    const d = _dachDatenAbbilden(structuredClone(q.dachFlaechen || null), structuredClone(q.dachLod2 || null), shift);
+    if (d.dachFlaechen) t.dachFlaechen = d.dachFlaechen;
+    if (d.dachLod2) t.dachLod2 = d.dachLod2;
+  }
+  if (!Number.isInteger(window._gebPvFlCounter)) window._gebPvFlCounter = 1;
+  t.pvFlaechen = (q.pvFlaechen || []).map(fl => ({
+    id: window._gebPvFlCounter++,
+    typ: fl.typ,
+    polygon: (fl.polygon || []).map(shift),
+    flaeche: fl.flaeche,
+    ..._pvFlZusatz(fl),
+    layer: null,
+    svgLayer: null,
+  }));
+  t.pvFlaechen.forEach(fl => attachGebPvLayer(t, fl));
+  redrawGebPvModules(t);
+  if (typeof window.autoCreateBuildingAssets === 'function') {
+    try { window.autoCreateBuildingAssets(t); } catch (e) { console.warn('autoCreateBuildingAssets:', e); }
+  }
+  _invalidateStats?.();
+  updateTotals();
+  renderList();
+  updateViz();
+  toggleGebaeudeGrundrissEdit(t.id);
+  showHint(`⧉ Kopie „${name}" angelegt — ✥ verschiebt, ↻ dreht (Umschalt = 5°-Raster) · Esc = fertig`, 7000);
+  return t;
+}
+
+// ── Maße übernehmen ───────────────────────────────────────────────────────
+// Zielgebäude wählen (Button „Maße übernehmen"), dann ein Gebäude auf der Karte anklicken:
+// dessen Grundrissform (Länge, Breite, Kontur) ersetzt die des Ziels. Schwerpunkt und
+// Drehung des Ziels bleiben; die lange Seite der Quelle liegt auf der langen Seite des
+// Ziels. PV-Flächen, First und Anlagen des Ziels werden anteilig in dessen Gebäudeachsen
+// mitgestreckt (formAbbildung). Das angeklickte Gebäude bleibt unverändert. Esc/„✓ Fertig" beendet den Modus.
+//
+// Klicks werden im Capture-Schritt am Kartencontainer abgefangen und per Punkt-im-
+// Grundriss einem Gebäude zugeordnet. Über dem Dach liegen sonst PV-Flächen, Verbrauchs-
+// kreise und Namensschilder, die den Klick schlucken — dann passierte schlicht nichts.
+// Ziel (cyan) und Vorschau der neuen Form (orange) liegen in einem eigenen, nicht
+// klickbaren Pane, damit updateViz sie nicht überfärbt.
+let _formModus = null;
+const _FORM_PANE = 'gebFormUebernahme';
+
+function _formEscape(event) {
+  if (event.key === 'Escape') endeGebaeudeFormUebernahme();
+}
+
+function _gebName(g) { return g.name || 'Gebäude ' + g.id; }
+
+function _punktImRing(lat, lng, ring) {
+  let innen = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i], b = ring[j];
+    if ((a.lat > lat) !== (b.lat > lat) && lng < (b.lng - a.lng) * (lat - a.lat) / (b.lat - a.lat) + a.lng) innen = !innen;
+  }
+  return innen;
+}
+
+// Gebäude unter dem Kartenpunkt; bei Überlappung (z. B. Neubau über Abriss) das kleinste
+function _gebaeudeAnPunkt(latlng) {
+  let best = null, bestA = Infinity;
+  (window.gebaeude || []).forEach(g => {
+    if (!g.polygon || g.polygon.length < 3 || !g.polygonLayer || !map.hasLayer(g.polygonLayer)) return;
+    if (!g.polygonLayer.getBounds().contains(latlng) || !_punktImRing(latlng.lat, latlng.lng, g.polygon)) return;
+    const a = g.flaeche || polygonAreaM2(g.polygon);
+    if (a < bestA) { bestA = a; best = g; }
+  });
+  return best;
+}
+
+function _formEreignisRelevant(event) {
+  // Zoom-/Layer-Knöpfe und Popups normal bedienen lassen
+  return !event.target?.closest?.('.leaflet-control, .leaflet-popup');
+}
+
+function _formLayer(coords, style) {
+  return L.polygon(coords, { pane: _FORM_PANE, interactive: false, ...style }).addTo(map);
+}
+
+function _formZielZeichnen() {
+  const m = _formModus;
+  if (!m) return;
+  const z = window.gebaeude.find(b => b.id === m.zielId);
+  if (m.zielLayer) { map.removeLayer(m.zielLayer); m.zielLayer = null; }
+  if (!z?.polygon) return;
+  m.zielLayer = _formLayer(z.polygon, { color: '#00e5ff', weight: 3.5, dashArray: '8 5', fillColor: '#00e5ff', fillOpacity: 0.12 });
+  m.zielLayer.bindTooltip(`Ziel: ${escHtml(_gebName(z))}`, { permanent: true, direction: 'top', className: 'geb-tooltip' });
+}
+
+function _formVorschauEntfernen() {
+  const m = _formModus;
+  if (!m) return;
+  if (m.quelleLayer) { map.removeLayer(m.quelleLayer); m.quelleLayer = null; }
+  if (m.vorschauLayer) { map.removeLayer(m.vorschauLayer); m.vorschauLayer = null; }
+}
+
+function _formGrundHinweis() {
+  const z = window.gebaeude.find(b => b.id === _formModus?.zielId);
+  if (z) showHint(`⇆ Gebäude anklicken, dessen Maße „${_gebName(z)}" (cyan) übernehmen soll — auch wenn PV darauf liegt · Esc = fertig`, 0);
+}
+
+function _formMausBewegung(event) {
+  const m = _formModus;
+  if (!m || m.busy || !_formEreignisRelevant(event)) return;
+  const g = _gebaeudeAnPunkt(map.mouseEventToLatLng(event));
+  const id = g?.id ?? null;
+  if (id === m.hoverId) return;
+  m.hoverId = id;
+  _formVorschauEntfernen();
+  const z = window.gebaeude.find(b => b.id === m.zielId);
+  if (!g || !z?.polygon) { _formGrundHinweis(); return; }
+  if (g.id === z.id) { showHint('⇆ Das ist das Zielgebäude (cyan) — bitte ein anderes Gebäude anklicken', 0); return; }
+  m.quelleLayer = _formLayer(g.polygon, { color: '#ff9800', weight: 3, fill: false });
+  const r = uebertrageForm(z.polygon, g.polygon);
+  if (!r) { showHint(`⚠ „${_gebName(g)}" lässt sich nicht übertragen (Grundriss zu klein)`, 0); return; }
+  m.vorschauLayer = _formLayer(r.coords, { color: '#ff9800', weight: 2.5, dashArray: '4 4', fillColor: '#ff9800', fillOpacity: 0.18 });
+  showHint(`⇆ Klick übernimmt die Maße von „${_gebName(g)}": ${Math.round(z.flaeche || 0)} → ${Math.round(r.flaecheM2)} m² (orange gestrichelt = neue Form)`, 0);
+}
+
+function _formKartenKlick(event) {
+  if (!_formModus || !_formEreignisRelevant(event)) return;
+  // Kartenverschieben endet ebenfalls mit einem click-Ereignis
+  if (map.dragging?.moved?.()) return;
+  event.stopImmediatePropagation();
+  event.preventDefault();
+  const g = _gebaeudeAnPunkt(map.mouseEventToLatLng(event));
+  if (!g) { showHint('⇆ Dort liegt kein Gebäude — bitte innerhalb eines Grundrisses klicken · Esc = fertig', 3500); return; }
+  gebaeudeFormClick(g.id);
+}
+
+export function endeGebaeudeFormUebernahme() {
+  if (!_formModus) return;
+  const zielId = _formModus.zielId;
+  _formVorschauEntfernen();
+  if (_formModus.zielLayer) map.removeLayer(_formModus.zielLayer);
+  clearTimeout(_formModus.flashTimer);
+  const container = map.getContainer();
+  container.removeEventListener('click', _formKartenKlick, true);
+  container.removeEventListener('mousemove', _formMausBewegung, true);
+  container.classList.remove('geb-form-aktiv');
+  document.removeEventListener('keydown', _formEscape);
+  _formModus = null;
+  hideHint();
+  _rerenderCard(zielId);
+}
+
+export function startGebaeudeFormUebernahme(gId) {
+  if (_formModus?.zielId === gId) { endeGebaeudeFormUebernahme(); return; }
+  const g = window.gebaeude.find(b => b.id === gId);
+  if (!g?.polygon || g.polygon.length < 3) return;
+  if (typeof endeGebaeudeMerge === 'function') endeGebaeudeMerge();
+  // Griffe der Grundrissbearbeitung würden Klicks auf Nachbargebäude verdecken
+  if (_grundrissEdit) finishGebaeudeGrundrissEdit();
+  endeGebaeudeFormUebernahme();
+  if (!map.getPane(_FORM_PANE)) {
+    const pane = map.createPane(_FORM_PANE);
+    pane.style.zIndex = 620; // über PV-Flächen und Markern, unter Tooltips
+    pane.style.pointerEvents = 'none';
+  }
+  _formModus = { zielId: gId, hoverId: null, busy: false, letzte: null };
+  const container = map.getContainer();
+  container.addEventListener('click', _formKartenKlick, true);
+  container.addEventListener('mousemove', _formMausBewegung, true);
+  container.classList.add('geb-form-aktiv');
+  document.addEventListener('keydown', _formEscape);
+  _formZielZeichnen();
+  _formGrundHinweis();
+  _rerenderCard(gId);
+}
+
+// true = Klick verbraucht
+export function gebaeudeFormClick(quelleId) {
+  if (!_formModus) return false;
+  if (_formModus.busy) { showHint('⏳ Die vorige Übernahme läuft noch — einen Moment …', 2500); return true; }
+  const z = window.gebaeude.find(b => b.id === _formModus.zielId);
+  const q = window.gebaeude.find(b => b.id === quelleId);
+  if (!z?.polygon) { endeGebaeudeFormUebernahme(); return false; }
+  if (quelleId === z.id) { showHint('⇆ Das ist das Zielgebäude (cyan) — bitte das Gebäude anklicken, dessen Maße übernommen werden sollen', 3500); return true; }
+  if (!q?.polygon) { showHint('⚠ Dieses Gebäude hat noch keinen Grundriss', 3000); return true; }
+  const r = uebertrageForm(z.polygon, q.polygon);
+  if (!r) { showHint('⚠ Maße lassen sich nicht übertragen (Grundriss zu klein)', 3500); return true; }
+  _formModus.busy = true;
+  _formUebernehmen(z, q, r).finally(() => { if (_formModus) _formModus.busy = false; });
+  return true;
+}
+
+async function _formUebernehmen(z, q, r) {
+  const qName = _gebName(q);
+  const vorher = Math.round(z.flaeche || 0);
+  showHint(`⏳ Maße von „${qName}" werden übernommen und neu berechnet …`, 0);
+  await _naechsterFrame();
+  try {
+    // PV-Flächen, First und Anlagen anteilig mitnehmen, danach den Grundriss exakt setzen
+    const snap = _gebSnapshot(z);
+    const f = formAbbildung(snap.polygon, r.coords);
+    if (f) _gebTransformieren(z, snap, p => { const n = f(p); return L.latLng(n.lat, n.lng); });
+    z.polygon = r.coords.map(p => L.latLng(p.lat, p.lng));
+    z.polygonLayer?.setLatLngs(z.polygon);
+    if (z.dachAutoAzimut) {
+      const az = detectRoofAzimutFromPolygon(z.polygon);
+      if (az != null) z.dachAzimut = az;
+    }
+    const nachher = Math.round(r.flaecheM2);
+    if (_formModus) {
+      _formModus.letzte = { qName, vorher, nachher };
+      _formModus.hoverId = null;
+      _formVorschauEntfernen();
+      _formZielZeichnen();
+      // kurz grün aufblitzen lassen: die Übernahme hat stattgefunden
+      const zl = _formModus.zielLayer;
+      zl?.setStyle({ color: '#66bb6a', fillColor: '#66bb6a', fillOpacity: 0.35, dashArray: '' });
+      _formModus.flashTimer = setTimeout(() => {
+        zl?.setStyle({ color: '#00e5ff', fillColor: '#00e5ff', fillOpacity: 0.12, dashArray: '8 5' });
+      }, 1200);
+    }
+    _finishGrundrissChange(z, true);
+    const pvHinweis = z.pvFlaechen?.length ? ' · PV-Flächen anteilig mitgeführt, bitte prüfen' : '';
+    showHint(`✓ Maße von „${qName}" übernommen: ${vorher} → ${nachher} m²${pvHinweis} · weiteres Gebäude anklicken oder Esc`, 0);
+  } catch (err) {
+    console.error(err);
+    showHint('⚠ Maßübernahme fehlgeschlagen: ' + err.message, 6000);
+  }
+}
+
+// Statuszeile in der Karte des Zielgebäudes
+function _formStatusHtml(g) {
+  if (_formModus?.zielId !== g.id) return '';
+  const l = _formModus.letzte;
+  const text = l
+    ? `✓ Maße von „${escHtml(l.qName)}" übernommen: ${l.vorher} → ${l.nachher} m² — weiteres Gebäude anklicken oder „✓ Fertig"`
+    : 'Maßübernahme aktiv: Quellgebäude auf der Karte anklicken (Ziel = cyan umrandet, Vorschau = orange)';
+  return `<div style="margin-top:5px;padding:5px 7px;border-radius:4px;font-size:10px;line-height:1.4;border:1px solid ${l ? '#66bb6a' : '#00e5ff'};color:${l ? '#66bb6a' : '#00e5ff'};background:var(--bg)">⇆ ${text}</div>`;
 }
 
 // ── Grundrisse zusammenfügen ──────────────────────────────────────────────
@@ -2469,6 +3011,7 @@ export function startGebaeudeMerge(gId) {
   if (_mergeModus?.zielId === gId) { endeGebaeudeMerge(); return; }
   const g = window.gebaeude.find(b => b.id === gId);
   if (!g?.polygon || g.polygon.length < 3) return;
+  endeGebaeudeFormUebernahme();
   const vorher = _mergeModus?.zielId;
   _mergeModus = { zielId: gId, busy: false };
   if (vorher != null) _rerenderCard(vorher);
@@ -2786,10 +3329,13 @@ export function _buildProjectData() {
       dachNeigung: g.dachNeigung ?? null, dachAutoAzimut: g.dachAutoAzimut || false,
       dachQuelle: g.dachQuelle || null,
       pvRidgeOverride: g.pvRidgeOverride || null,
+      ...(g.dachFlaechen?.length ? { dachFlaechen: g.dachFlaechen } : {}),
+      ...(g.dachLod2 ? { dachLod2: g.dachLod2 } : {}),
       pvModus: g.pvModus || 'flaechen', pvFlGcr: g.pvFlGcr ?? null, pvFlAusrichtung: g.pvFlAusrichtung || 'sued',
       pvFlBelegung: g.pvFlBelegung ?? null, pvBaujahr: g.pvBaujahr ?? null,
       notstrom: g.notstrom || null,
-      pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ...(f.auto ? { auto: f.auto } : {}) })),
+      stationSteckbrief: g.stationSteckbrief || null,
+      pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ..._pvFlZusatz(f) })),
       massnahmen: g.massnahmen || [],
       importSourceId: g.importSourceId || null,
       importSourceName: g.importSourceName || null,
@@ -3115,7 +3661,8 @@ function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
     'abrissjahr','stockwerke','waermeManual','heizlastManual','strom','spezStrom',
     'stromProfil','pvAktiv','pvDachanteil','zustand','dachform','dachAzimut',
     'dachNeigung','dachAutoAzimut','dachQuelle','pvRidgeOverride','pvModus','pvFlGcr',
-    'pvFlAusrichtung','pvFlBelegung','pvBaujahr','notstrom',
+    'pvFlAusrichtung','pvFlBelegung','pvBaujahr','notstrom','stationSteckbrief',
+    'dachFlaechen','dachLod2',
   ];
   fields.forEach(field => {
     if (source[field] !== undefined) target[field] = structuredClone(source[field]);
@@ -3134,7 +3681,7 @@ function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
     typ:surface.typ,
     polygon:structuredClone(surface.polygon),
     flaeche:surface.flaeche,
-    ...(surface.auto ? {auto:surface.auto} : {}),
+    ..._pvFlZusatz(surface),
     layer:null,
     svgLayer:null,
   }));
@@ -3382,6 +3929,9 @@ function _applyProjectData(project) {
             newG.dachAutoAzimut = g.dachAutoAzimut || false;
             newG.dachQuelle    = g.dachQuelle    || null;
             newG.pvRidgeOverride = g.pvRidgeOverride || null;
+            // LoD2-Dachflächen (37-lod2-import.js)
+            if (Array.isArray(g.dachFlaechen) && g.dachFlaechen.length) newG.dachFlaechen = g.dachFlaechen;
+            if (g.dachLod2 && typeof g.dachLod2 === 'object') newG.dachLod2 = g.dachLod2;
             // PV-Flächenzeichnung (Belegungs-/Sperrflächen) wiederherstellen
             // Default ist „Flächen zeichnen". Alte Projekte, in denen die Pauschale gar
             // nicht genutzt wurde (kein pvAktiv, keine gezeichnete Fläche), ziehen mit —
@@ -3394,7 +3944,9 @@ function _applyProjectData(project) {
             newG.pvFlBelegung   = g.pvFlBelegung ?? null;
             // Notstromklasse (26-blackout-modus.js)
             if (g.notstrom) newG.notstrom = normalisiereNotstrom(g.notstrom);
-            newG.pvFlaechen     = (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ...(f.auto ? { auto: f.auto } : {}), layer: null, svgLayer: null }));
+            // Stations-Steckbrief (34-stations-steckbrief.js)
+            if (g.stationSteckbrief && typeof g.stationSteckbrief === 'object') newG.stationSteckbrief = structuredClone(g.stationSteckbrief);
+            newG.pvFlaechen     = (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ..._pvFlZusatz(f), layer: null, svgLayer: null }));
             newG.pvFlaechen.forEach(f => {
               attachGebPvLayer(newG, f);
               if (f.id >= (window._gebPvFlCounter || 0)) window._gebPvFlCounter = f.id + 1;
@@ -3729,11 +4281,17 @@ function _applyProjectData(project) {
       // Wirtschaftlichkeits-Overrides wiederherstellen
       if (project.wirtBausteineOverrides) window._wirtBausteineOverrides = project.wirtBausteineOverrides;
       if (project.wirtVdiOverrides)       window._wirtVdiOverrides       = project.wirtVdiOverrides;
-      // Varianten wiederherstellen (immer mit Basisdaten starten beim Laden)
+      // Varianten wiederherstellen. Der Live-Zustand in der Datei gehört zu der
+      // Variante, die beim Speichern aktiv war — also genau diese wieder
+      // aktivieren. Früher startete das Laden immer in den Basisdaten: der
+      // Stand einer Alternative wurde dann als Hauptplan gelesen und beim
+      // nächsten Wechsel über den echten Hauptplan geschrieben.
+      // Ausnahme: Altprojekte vor dem Delta-Modell (kein stromNetzGemeinsam) —
+      // deren Migration setzt den Hauptplan als Live-Zustand voraus.
       _restoreVariantenKernzustand({
+        ...project,
         varianten: project.varianten || [],
-        basisName: project.basisName || '',
-        activeVariantId: null,
+        activeVariantId: project.stromNetzGemeinsam ? (project.activeVariantId ?? null) : null,
         baseNetzSnapshot: project.baseNetzSnapshot || null,
         baseErzeugerSnapshot: project.baseErzeugerSnapshot || null,
         baseStromNetzSnapshot: project.baseStromNetzSnapshot || null,
@@ -4043,7 +4601,7 @@ export function showHint(msg, duration){
 export function hideHint(){clearTimeout(_hintTimer);document.getElementById('hint').classList.add('hidden');}
 
 export const sty=document.createElement('style');
-sty.textContent=`.geb-tooltip{background:#0f1117;border:1px solid #2a3050;color:#e8eaf0;font-family:'DM Sans',sans-serif;font-size:12px;padding:5px 8px;border-radius:7px;box-shadow:0 6px 24px rgba(0,0,0,.6);font-weight:normal;line-height:1.5;}.geb-tooltip .leaflet-tooltip-tip{display:none;}`;
+sty.textContent=`.geb-tooltip{background:#0f1117;border:1px solid #2a3050;color:#e8eaf0;font-family:'DM Sans',sans-serif;font-size:12px;padding:5px 8px;border-radius:7px;box-shadow:0 6px 24px rgba(0,0,0,.6);font-weight:normal;line-height:1.5;}.geb-tooltip .leaflet-tooltip-tip{display:none;}.geb-form-aktiv,.geb-form-aktiv .leaflet-interactive{cursor:crosshair!important;}`;
 document.head.appendChild(sty);
 
 export let dashOffset = 0;

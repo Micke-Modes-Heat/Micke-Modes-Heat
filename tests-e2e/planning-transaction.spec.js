@@ -32,6 +32,7 @@ test('Ausbauplanung committet, rollt Integritätsfehler zurück und unterstützt
   expect(result.assetIds).toEqual(['asset_tx','asset_tx_2']);
   expect(result.deleteRollback).toMatch(/zurückgerollt.*unbekannte Abhängigkeit/i);
   expect(result.activeVariantId).toBeNull();
-  expect(result.variantRollback).toMatch(/zurückgerollt.*Unbekannte aktive Variante/i);
+  // Unbekannte Variante: activateVariant ignoriert sie (Hauptplan bleibt aktiv), statt eine Transaktion zurückzurollen
+  expect(result.variantRollback).toBe('');
   expect(result.history).toEqual([]);
 });

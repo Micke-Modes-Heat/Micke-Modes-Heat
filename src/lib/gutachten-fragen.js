@@ -53,7 +53,9 @@ export const GF_FRAGEN = Object.freeze([
   { id: 'zsb', kapitel: '7', frage: 'Vorgabe Zweistoffbrenner (Spitzenlast/Resilienz)', art: 'auswahl',
     optionen: [['gilt', 'gilt für alle Varianten'], ['gilt-nicht', 'gilt nicht']], standard: 'gilt' },
   { id: 'empfehlung', kapitel: '9.1', frage: 'Empfohlene Variante', art: 'auswahl',
-    optionen: ctx => [['auto', 'nach Bewertungsmatrix'], ...(ctx?.varianten || []).map(n => [n, n])], standard: 'auto' },
+    optionen: ctx => [['auto', 'nach Bewertungsmatrix'], ...(ctx?.varianten || []).map(n => [n, n === ctx?.stern ? `${n} (★ Gutachtenvariante)` : n])],
+    standard: ctx => (ctx?.stern && (ctx.varianten || []).includes(ctx.stern) ? ctx.stern : 'auto'),
+    hinweis: 'Vorgabe: die im Variantenmenü mit ★ markierte Gutachtenvariante, sonst Rang 1 der Bewertungsmatrix. Gilt für Empfehlung und Maßnahmenfahrplan.' },
   { id: 'nt', kapitel: '9.1', frage: 'Niedertemperatur-Ertüchtigung', art: 'auswahl',
     optionen: [['empfehlen', 'ausführlich empfehlen'], ['erwaehnen', 'nur kurz erwähnen'], ['weglassen', 'weglassen']], standard: 'empfehlen' },
 ]);

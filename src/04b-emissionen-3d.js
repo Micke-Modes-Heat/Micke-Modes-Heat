@@ -8,7 +8,7 @@ import { glKannBerechnen } from './06b-gl-berechnen.js';
 import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
 import { autoGkResult, meritOrderKeys } from './06c-dispatch-core.js';
 import { DAYS_PER_YEAR } from './lib/physik-konstanten.js';
-import { activateVariant, fernwaermeEmF, heizoelEmF, hhsEmF, pefFernwaerme, pefHeizoel, pefHhs, pefPellets, pefStrom, pefWP, pelletsEmF, refreshVergleich, stromEmF } from './01-globals-varianten.js';
+import { fernwaermeEmF, heizoelEmF, hhsEmF, pefFernwaerme, pefHeizoel, pefHhs, pefPellets, pefStrom, pefWP, pelletsEmF, stromEmF } from './01-globals-varianten.js';
 import { _glIsRunning, glBerechnenDebounced } from './06b-gl-berechnen.js';
 import { DA_COLORS_FALLBACK } from './07a-analysis-charts.js';
 import { _renderWirtCo2Chart } from './07b-analysis-economics.js';
@@ -1422,28 +1422,18 @@ export function renderAnalyseErzeugerTable() {
 }
 
 // ── Vergleich Center View ────────────────────────────────────────
-export async function refreshVergleichView() {
-  // Reuse the existing refreshVergleich logic but render to the new container
-  if (typeof refreshVergleich === 'function') await refreshVergleich();
-  // Copy the rendered table to the new view
-  const oldWrap = document.getElementById('vergleich-table-wrap');
-  const newWrap = document.getElementById('vergleich-view-table-wrap');
-  if (oldWrap && newWrap) {
-    newWrap.innerHTML = oldWrap.innerHTML;
-    // Make column headers clickable
-    newWrap.querySelectorAll('th.clickable').forEach(th => {
-      th.onclick = function() {
-        const vid = this.dataset.variantId;
-        if (vid === 'base') activateVariant(null);
-        else activateVariant(vid);
-        setTimeout(() => refreshVergleichView(), 200);
-      };
-    });
-  }
+// Ein Ort für den Vergleich: oben, was die Varianten unterscheidet (33-varianten-ui),
+// darunter die Wärme-Kennzahlen und die Strom-Pakete (13x). Beim Öffnen wird
+// NICHT mehr jede Variante durchgeschaltet — gezeigt wird der letzte Stand mit
+// Kennzeichnung „veraltet“; nachgerechnet wird auf Knopfdruck.
+export function refreshVergleichView() {
+  if (typeof window.cacheVariantResults === 'function') window.cacheVariantResults();
+  if (typeof window.renderVergleich === 'function') window.renderVergleich();
+  window.variantenVergleichAnsichtRender?.();
 }
 
 export function exportVergleichCSV() {
-  const table = document.querySelector('#vergleich-view-table-wrap .vergleich-table') || document.querySelector('#vergleich-table-wrap .vergleich-table');
+  const table = document.querySelector('#vergleich-view-table-wrap .vergleich-table');
   if (!table) { alert('Keine Vergleichsdaten vorhanden. Bitte zuerst Varianten anlegen.'); return; }
   let csv = '';
   table.querySelectorAll('tr').forEach(row => {

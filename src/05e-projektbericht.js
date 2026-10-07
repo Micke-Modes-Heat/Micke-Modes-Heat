@@ -47,7 +47,7 @@ function collectReportInput(meta={}) {
   const activeVariant = (varianten || []).find(variant => variant.id === activeVariantId);
   const variantsData=Object.entries(variantResults || {}).map(([id,result])=>({
     id,
-    label:result?.label || (id==='base'?'Basisdaten':id),
+    label:result?.label || (id==='base'?'Hauptplan':id),
     heatMwh:result?.erzeugung,
     lossesMwh:result?.netzverluste,
     investmentEur:result?.investGes,
@@ -61,7 +61,7 @@ function collectReportInput(meta={}) {
     client:meta.client,
     author:meta.author,
     year,
-    variantName:activeVariant?.name || 'Basisdaten',
+    variantName:activeVariant?.name || 'Hauptplan',
     buildings,
     networkEdges:(netzEdges || []).map(edge => ({...edge,lengthM:edge.lengthM ?? edge.length})),
     generation,

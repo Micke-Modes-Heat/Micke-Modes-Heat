@@ -6,6 +6,11 @@
 // Source: VDEW "Repräsentative Lastprofile" 1999/2000, BDEW 2006
 
 import { _slpCache } from './02b-gebaeude.js';
+import { slpTagtypen } from './lib/slp-kalender.js';
+
+// Bezugsjahr der 8760-h-Achse (Wochentage, Feiertage). 2026 ist das Jahr,
+// auf das die übrigen Zeitreihen des Tools ausgerichtet sind.
+export const SLP_BEZUGSJAHR = 2026;
 
 // ── Profil-Metadaten ─────────────────────────────────────────────────────────
 export const SLP_INFO = {
@@ -28,6 +33,7 @@ export const SLP_INFO = {
 
 // ── BDEW-Tageslastgangformen (24h, Relativfaktoren bezogen auf Jahresmittel) ─
 // BASE[Typ][Tagtyp] = [h0..h23]  ·  Saison-Skalierung über SEASON_SCALE
+// Tagtypen WT/Sa/So; hat ein Profil zusätzlich 'Fr', gilt WT nur Mo–Do.
 const BASE = {
   H0: {
     WT: [0.46,0.42,0.38,0.36,0.37,0.46,0.63,0.93,1.15,1.07,0.94,0.89,0.92,0.90,0.88,0.93,1.07,1.35,1.54,1.53,1.43,1.18,0.85,0.60],
@@ -84,30 +90,48 @@ const BASE = {
     Sa: [0.74,0.72,0.71,0.72,0.76,0.89,1.04,1.14,1.17,1.12,1.07,1.04,1.01,1.01,1.04,1.07,1.09,1.07,1.01,0.95,0.89,0.84,0.79,0.76],
     So: [0.74,0.72,0.71,0.72,0.76,0.89,1.04,1.14,1.17,1.12,1.07,1.04,1.01,1.01,1.04,1.07,1.09,1.07,1.01,0.95,0.89,0.84,0.79,0.76],
   },
-  // ── Bundeswehr-spezifische Profile ──────────────────────────────────────────
+  // ── Bundeswehr-spezifische Profile (überarbeitet 10/2026) ────────────────────
+  // WT = Montag–Donnerstag. Eigener Freitagsgang: Dienstschluss gegen Mittag,
+  // danach Heimfahrt der Wochenendpendler. Samstag/Sonntag ohne Dienstbetrieb;
+  // Feiertage und die Weihnachtsdienstbefreiung (24.–31.12.) zählen wie Sonntag.
+  // Die Formen sind Erfahrungswerte, nicht aus Messungen abgeleitet — mit
+  // gemessenen Liegenschafts-Lastgängen (15-min-CSV-Import) überprüfen.
   BW0: {
-    // Allgemeine Verwaltung / Mischnutzung: früher Dienstbeginn (5–6 Uhr), Bürobetrieb 7–16 Uhr
-    WT: [0.34,0.32,0.31,0.30,0.38,0.68,1.05,1.35,1.52,1.58,1.58,1.50,1.38,1.50,1.56,1.52,1.28,0.90,0.58,0.45,0.38,0.35,0.34,0.34],
-    Sa: [0.34,0.32,0.31,0.30,0.37,0.62,0.92,1.18,1.35,1.42,1.42,1.35,1.25,1.18,1.05,0.88,0.70,0.52,0.42,0.37,0.35,0.34,0.33,0.33],
-    So: [0.33,0.31,0.30,0.30,0.32,0.46,0.65,0.83,0.98,1.06,1.09,1.06,1.01,0.99,0.96,0.90,0.78,0.66,0.55,0.46,0.42,0.39,0.37,0.35],
+    // Liegenschaft gemischt (Stab/Verwaltung, Unterkunft, Technik, Küche, Wache):
+    // hohe Grundlast rund um die Uhr (Wache, Zaun-/Sicherheitsbeleuchtung, IT,
+    // Kühlung, Lüftung), Dienstbetrieb 7–16 Uhr, abends Unterkunftsanteil.
+    WT: [0.60,0.59,0.58,0.58,0.60,0.70,0.94,1.26,1.46,1.52,1.52,1.50,1.40,1.46,1.48,1.40,1.18,0.98,0.90,0.84,0.78,0.72,0.66,0.62],
+    Fr: [0.60,0.59,0.58,0.58,0.60,0.70,0.94,1.26,1.44,1.48,1.46,1.40,1.26,1.04,0.88,0.78,0.71,0.67,0.65,0.63,0.62,0.61,0.60,0.59],
+    Sa: [0.58,0.57,0.57,0.56,0.56,0.57,0.59,0.62,0.65,0.67,0.68,0.69,0.68,0.66,0.65,0.64,0.64,0.65,0.66,0.65,0.63,0.61,0.59,0.58],
+    So: [0.58,0.57,0.56,0.56,0.56,0.57,0.58,0.61,0.63,0.65,0.66,0.66,0.66,0.65,0.64,0.64,0.66,0.70,0.76,0.80,0.80,0.75,0.68,0.62],
   },
   BW1: {
-    // Unterkunft / Kaserne: Wecken 5 Uhr, Mittagstief (Ausbildung), Abendspitze 17–22 Uhr
-    WT: [0.50,0.46,0.42,0.42,0.58,1.18,1.62,1.42,0.92,0.70,0.68,0.76,0.90,0.72,0.68,0.82,1.18,1.58,1.68,1.60,1.36,1.02,0.76,0.58],
-    Sa: [0.54,0.50,0.46,0.46,0.55,0.95,1.28,1.40,1.42,1.36,1.30,1.28,1.32,1.30,1.26,1.24,1.28,1.40,1.42,1.30,1.08,0.86,0.68,0.58],
-    So: [0.58,0.52,0.48,0.47,0.53,0.85,1.15,1.32,1.42,1.45,1.44,1.41,1.38,1.36,1.32,1.32,1.36,1.42,1.40,1.25,1.02,0.83,0.70,0.62],
+    // Unterkunft / Kaserne: Wecken 5–6 Uhr, tagsüber leer (Dienst), kleine
+    // Mittagsspitze, Abendspitze 17–22 Uhr. Freitag Heimfahrt ab Mittag,
+    // Wochenende weitgehend leer, Sonntagabend Rückkehr der Pendler.
+    WT: [0.48,0.45,0.43,0.43,0.50,0.98,1.55,1.20,0.70,0.60,0.58,0.62,0.78,0.64,0.58,0.62,0.95,1.45,1.70,1.72,1.66,1.42,1.00,0.66],
+    Fr: [0.50,0.46,0.44,0.43,0.50,0.98,1.52,1.18,0.70,0.60,0.58,0.64,0.74,0.58,0.50,0.48,0.50,0.56,0.62,0.64,0.62,0.56,0.48,0.44],
+    Sa: [0.42,0.40,0.39,0.39,0.39,0.40,0.42,0.45,0.48,0.50,0.51,0.51,0.51,0.50,0.49,0.49,0.51,0.56,0.61,0.63,0.61,0.56,0.49,0.45],
+    So: [0.43,0.41,0.40,0.39,0.39,0.40,0.42,0.44,0.47,0.49,0.50,0.50,0.50,0.49,0.49,0.50,0.56,0.68,0.88,1.10,1.25,1.20,0.92,0.62],
   },
   BW2: {
-    // Werkstatt / Instandhaltung: Frühschicht 6–15 Uhr, Samstag Bereitschaftsbetrieb
-    WT: [0.22,0.22,0.22,0.22,0.28,0.72,1.38,1.75,1.78,1.72,1.68,1.55,1.30,1.55,1.70,1.55,1.08,0.52,0.30,0.25,0.22,0.22,0.22,0.22],
-    Sa: [0.22,0.22,0.22,0.22,0.24,0.52,1.08,1.50,1.62,1.60,1.54,1.38,1.10,0.82,0.48,0.30,0.24,0.22,0.22,0.22,0.22,0.22,0.22,0.22],
-    So: [0.22,0.22,0.22,0.22,0.22,0.24,0.27,0.31,0.36,0.36,0.34,0.31,0.28,0.26,0.24,0.22,0.22,0.22,0.22,0.22,0.22,0.22,0.22,0.22],
+    // Werkstatt / Instandhaltung: Arbeitsbeginn 6:30, Mittagspause, Ende ~16 Uhr,
+    // Freitag Ende gegen Mittag; Grundlast durch Batterie-Erhaltungsladung,
+    // Kompressor-Bereitschaft, Lüftung, Sicherheitsbeleuchtung. Kein Wochenendbetrieb.
+    WT: [0.28,0.28,0.28,0.28,0.30,0.48,1.10,1.62,1.75,1.72,1.66,1.55,1.18,1.52,1.62,1.45,1.02,0.55,0.38,0.33,0.31,0.30,0.29,0.28],
+    Fr: [0.28,0.28,0.28,0.28,0.30,0.48,1.10,1.60,1.72,1.68,1.58,1.28,0.80,0.52,0.40,0.35,0.32,0.30,0.29,0.29,0.28,0.28,0.28,0.28],
+    Sa: [0.28,0.28,0.28,0.28,0.28,0.28,0.29,0.30,0.32,0.33,0.33,0.33,0.32,0.31,0.30,0.29,0.29,0.28,0.28,0.28,0.28,0.28,0.28,0.28],
+    So: [0.28,0.28,0.28,0.28,0.28,0.28,0.28,0.28,0.29,0.29,0.29,0.29,0.29,0.29,0.28,0.28,0.28,0.28,0.28,0.28,0.28,0.28,0.28,0.28],
   },
   BW3: {
-    // Kantine / Truppenverpflegung: Frühstück 5–7 Uhr, Mittag 11–13 Uhr, Abendessen 17–18 Uhr
-    WT: [0.22,0.22,0.22,0.26,0.58,1.32,1.70,1.46,0.88,0.86,0.92,1.62,1.75,1.28,0.72,0.72,1.22,1.45,1.05,0.52,0.34,0.27,0.24,0.22],
-    Sa: [0.22,0.22,0.22,0.24,0.48,1.08,1.50,1.40,1.00,0.86,0.86,1.50,1.62,1.26,0.72,0.72,1.15,1.35,0.92,0.50,0.32,0.27,0.24,0.22],
-    So: [0.22,0.22,0.22,0.23,0.40,0.86,1.28,1.36,1.02,0.83,0.86,1.43,1.57,1.22,0.72,0.71,1.10,1.28,0.86,0.50,0.32,0.27,0.24,0.22],
+    // Kantine / Truppenküche: Grundlast Kühl-/Tiefkühlzellen rund um die Uhr.
+    // Höchstlast beim Kochen VOR der Ausgabe (Mittag 9–11:30 Uhr), Spülstraße
+    // nach den Mahlzeiten, Abendessen 17–18:30 Uhr. Freitag ohne Abendessen,
+    // Wochenende reduzierte Verpflegung (Wache, Bereitschaft).
+    WT: [0.35,0.34,0.34,0.36,0.62,1.20,1.42,1.22,1.05,1.40,1.72,1.78,1.52,1.38,1.05,0.92,1.18,1.30,1.10,0.78,0.48,0.40,0.37,0.36],
+    Fr: [0.35,0.34,0.34,0.36,0.62,1.18,1.38,1.18,1.02,1.32,1.62,1.65,1.38,1.20,0.82,0.58,0.45,0.42,0.40,0.38,0.37,0.36,0.35,0.35],
+    Sa: [0.35,0.34,0.34,0.35,0.38,0.48,0.56,0.55,0.50,0.56,0.66,0.70,0.62,0.52,0.44,0.42,0.50,0.56,0.50,0.42,0.38,0.37,0.36,0.35],
+    So: [0.35,0.34,0.34,0.35,0.38,0.48,0.56,0.55,0.50,0.56,0.66,0.70,0.62,0.52,0.44,0.42,0.50,0.56,0.50,0.42,0.38,0.37,0.36,0.35],
   },
 };
 
@@ -123,10 +147,10 @@ const SEASON_SCALE = {
   L0:  { W:1.15, U:1.00, S:0.88 },
   L1:  { W:1.20, U:1.00, S:0.82 },
   L2:  { W:1.10, U:1.00, S:0.87 },
-  BW0: { W:1.12, U:1.00, S:0.92 },
-  BW1: { W:1.22, U:1.00, S:0.83 },
-  BW2: { W:1.06, U:1.00, S:0.96 },
-  BW3: { W:1.10, U:1.00, S:0.93 },
+  BW0: { W:1.10, U:1.00, S:0.93 },
+  BW1: { W:1.20, U:1.00, S:0.82 },   // Beleuchtung; Sommer zusätzlich Urlaubszeit
+  BW2: { W:1.10, U:1.00, S:0.94 },   // Beleuchtung, Torluftschleier, Motorvorwärmung
+  BW3: { W:1.04, U:1.00, S:0.97 },   // Kühlung im Sommer gleicht Urlaubszeit teils aus
 };
 
 // ── Hilfsfunktionen ──────────────────────────────────────────────────────────
@@ -135,10 +159,14 @@ function getSeason(doy) {
   if (doy >= 134 && doy <= 256) return 'S';  // 15. Mai – 14. Sep
   return 'U';
 }
-function getDaytype(dow) {
-  if (dow === 5) return 'Sa';
-  if (dow === 6) return 'So';
-  return 'WT';
+// Bundeswehr-Profile: Weihnachtsdienstbefreiung zählt wie Sonntag (lib/slp-kalender.js)
+const _isBw = type => /^BW\d/.test(type);
+function _hasFr(type) {
+  if (_custom[type]) return !!_custom[type].base?.W?.Fr;
+  return !!BASE[type]?.Fr;
+}
+function _tagtypen(type) {
+  return slpTagtypen(SLP_BEZUGSJAHR, { bw: _isBw(type), mitFreitag: _hasFr(type) });
 }
 
 // ── Zustandsspeicher ─────────────────────────────────────────────────────────
@@ -155,6 +183,7 @@ _loadCustom();
 
 // ── 24h-Werte für Typ/Saison/Tagtyp (berücksichtigt Edits + Custom) ──────────
 function _getVals(type, s, dt) {
+  if (dt === 'Fr' && !_hasFr(type)) dt = 'WT';   // ohne eigenen Freitagsgang
   if (_custom[type]) return _custom[type].base[s]?.[dt] ?? Array(24).fill(1);
   if (_edited[type]?.[s]?.[dt]) return _edited[type][s][dt];
   const bd = BASE[type]; const sc = SEASON_SCALE[type];
@@ -165,9 +194,10 @@ function _getVals(type, s, dt) {
 // ── 8760h-Profil aufbauen (normiert, Summe = 1.0) ───────────────────────────
 export function buildSlpProfile8760(type) {
   const result = new Float32Array(8760);
+  const tage = _tagtypen(type);
   for (let h = 0; h < 8760; h++) {
     const doy = Math.floor(h / 24);
-    result[h] = _getVals(type, getSeason(doy), getDaytype((doy + 3) % 7))[h % 24];
+    result[h] = _getVals(type, getSeason(doy), tage[doy])[h % 24];
   }
   let sum = 0;
   for (let i = 0; i < 8760; i++) sum += result[i];
@@ -206,8 +236,10 @@ export function closeSlpEditor() {
 
 // ── Panel komplett rendern ────────────────────────────────────────────────────
 function _render() {
+  if (_st.daytype === 'Fr' && !_hasFr(_st.type)) _st.daytype = 'WT';
   const { type, season, daytype, editMode } = _st;
   const isCustom = !!_custom[type];
+  const hasFr = _hasFr(type);
   const isEdited = !isCustom && !!_edited[type]?.[season]?.[daytype];
 
   const stdOpts = Object.keys(SLP_INFO).map(t =>
@@ -249,7 +281,7 @@ function _render() {
     <div style="display:flex;gap:4px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
       ${sb('W','Winter')}${sb('U','Übergang')}${sb('S','Sommer')}
       <span style="flex:1;min-width:8px;"></span>
-      ${db('WT','Werktag')}${db('Sa','Samstag')}${db('So','Sonntag')}
+      ${db('WT', hasFr ? 'Mo–Do' : 'Werktag')}${hasFr ? db('Fr','Freitag') : ''}${db('Sa','Samstag')}${db('So','So / Feiertag')}
     </div>
 
     <!-- Chart -->
@@ -357,7 +389,7 @@ function _doSaveTpl() {
   const base = {};
   for (const s of ['W','U','S']) {
     base[s] = {};
-    for (const dt of ['WT','Sa','So']) base[s][dt] = _getVals(_st.type, s, dt).slice();
+    for (const dt of _hasFr(_st.type) ? ['WT','Fr','Sa','So'] : ['WT','Sa','So']) base[s][dt] = _getVals(_st.type, s, dt).slice();
   }
   _custom[name] = { base, desc: `Erstellt aus: ${_st.type}` };
   _saveCustom();
@@ -378,11 +410,15 @@ function _handleCsvImport(text, filename) {
     alert(`Zu wenige Werte (${values.length}). Erwartet: 35.040 × 15-min.`); return;
   }
 
-  // Aggregation: Summen + Zähler pro (Saison, Tagtyp, Stunde)
+  // Aggregation: Summen + Zähler pro (Saison, Tagtyp, Stunde). Freitag wird
+  // getrennt erfasst (gemessene Liegenschaften haben oft einen kurzen Freitag),
+  // Feiertage zählen wie Sonntag — gleicher Kalender wie beim Profilaufbau.
+  const DTS = ['WT','Fr','Sa','So'];
+  const tage = slpTagtypen(SLP_BEZUGSJAHR, { mitFreitag: true });
   const sums = {}, cnts = {};
   for (const s of ['W','U','S']) {
     sums[s] = {}; cnts[s] = {};
-    for (const dt of ['WT','Sa','So']) {
+    for (const dt of DTS) {
       sums[s][dt] = new Array(24).fill(0);
       cnts[s][dt] = new Array(24).fill(0);
     }
@@ -392,7 +428,7 @@ function _handleCsvImport(text, filename) {
     const doy = Math.floor(q / 96);
     const hod = Math.floor((q % 96) / 4);
     const s   = getSeason(doy);
-    const dt  = getDaytype((doy + 3) % 7);
+    const dt  = tage[doy] ?? 'WT';
     sums[s][dt][hod] += values[q];
     cnts[s][dt][hod]++;
   }
@@ -402,16 +438,18 @@ function _handleCsvImport(text, filename) {
   const avgs = {};
   for (const s of ['W','U','S']) {
     avgs[s] = {};
-    for (const dt of ['WT','Sa','So']) {
+    for (const dt of DTS) {
       avgs[s][dt] = sums[s][dt].map((v, h) => cnts[s][dt][h] > 0 ? v / cnts[s][dt][h] : 0);
-      grandSum   += avgs[s][dt].reduce((a, b) => a + b, 0);
+      // Kurze Messreihe ohne Freitag in dieser Saison → Werktagsgang übernehmen
+      if (dt === 'Fr' && cnts[s].Fr.every(c => c === 0)) avgs[s].Fr = avgs[s].WT.slice();
+      grandSum  += avgs[s][dt].reduce((a, b) => a + b, 0);
       grandCount += 24;
     }
   }
   const mean = grandCount > 0 ? grandSum / grandCount : 1;
   if (mean > 0) {
     for (const s of ['W','U','S'])
-      for (const dt of ['WT','Sa','So'])
+      for (const dt of DTS)
         avgs[s][dt] = avgs[s][dt].map(v => v / mean);
   }
 

@@ -86,7 +86,7 @@ export function buildProjectReportModel(input = {}) {
     renewablePct:num(variant.renewablePct),
   }));
   return {
-    meta:{title:input.title || 'Automatischer Projektbericht', client:input.client || '', author:input.author || '', year:input.year || null, variantName:input.variantName || 'Basisdaten', createdAt:input.createdAt || new Date().toISOString()},
+    meta:{title:input.title || 'Automatischer Projektbericht', client:input.client || '', author:input.author || '', year:input.year || null, variantName:input.variantName || 'Hauptplan', createdAt:input.createdAt || new Date().toISOString()},
     buildings:{count:buildings.length, connected:connectedBuildings, totalAreaM2, totalHeatMwh, totalPeakKw, missing, groups:groupBuildings(buildings)},
     generation:{items:generation, totalMwh:generationMwh, balanceDeltaMwh, balanceDeltaPct},
     network:{exists:networkEdges.length>0, edgeCount:networkEdges.length, lengthM:networkLengthM, lossMwh:networkLossMwh, overloadedCount:overloaded.length, maxUtilizationPct, foreignNodeCount:[...connectedIds].filter(id => !buildingIds.has(id)).length},

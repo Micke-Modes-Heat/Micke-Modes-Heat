@@ -4,7 +4,7 @@
 import { freiflaechen, gebaeude } from './01-globals-varianten.js';
 import { calcFFKwp, updateBhkwDisplay, updateGasKesselDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
 import { hidePanels } from './03b-netz.js';
-import { calcGebKwp } from './03c-gebaeude-io.js';
+import { calcGebKwp, gebPvKwpJeAusrichtung } from './03c-gebaeude-io.js';
 import { GL_MONTH_HOURS } from './06a-gbi-lastgang.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
@@ -66,6 +66,9 @@ export function pvOrientationMix() {
   }
   for (const g of _gebs) {
     if (!g.pvAktiv) continue;
+    // Dachflächen mit eigener Ausrichtung (LoD2): je Fläche zuordnen
+    const je = gebPvKwpJeAusrichtung(g);
+    if (je) { kSued += je.sued; kOst += je.ostwest; continue; }
     const k = calcGebKwp(g) || 0;
     let cls = 'sued';
     if (g.pvModus === 'flaechen') {

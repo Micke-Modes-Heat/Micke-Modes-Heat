@@ -20,7 +20,7 @@ import { glLastgangKw } from './06a-gbi-lastgang.js';
 import { detectBundesland } from './lib/bundeslaender.js';
 import { readNum } from './lib/util.js';
 import { clipBuildingEndpoint, crossesForeignBuilding } from './lib/netz-building-obstacles.js';
-import { bereinigeKleinbauten } from './lib/gebaeude-geometrie.js';
+import { bereinigeKleinbauten, rechteckAusDreiPunkten } from './lib/gebaeude-geometrie.js';
 import { osmDachAusTags, osmQuerAzimut, osmDachGebaeude, osmDachZuordnen } from './lib/osm-dach.js';
 import { validateRadialHeatGraph } from './lib/waerme-graph-validation.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
@@ -522,11 +522,15 @@ export function clearGeo() {
   redrawErzeugerIcons();
 }
 
-export function startDraw(id){
+// form: 'polygon' (Eckpunkte, Startpunkt schließt) | 'rechteck' (Grundlinie 2 Klicks + Breite 1 Klick)
+export function startDraw(id, form = 'polygon'){
   clearArea(); cancelDraw();
-  beginInteraction({id:'draw-generator-area',label:'Gebäudegrundriss zeichnen',hint:'Eckpunkte setzen und Startpunkt zum Abschließen anklicken.',cancel:cancelDraw});
-  window.drawingId=id; window.drawPoints=[];
-  showHint('Eckpunkte anklicken · Am Ende Startpunkt (rot) anklicken · Rechtsklick = Zurück');
+  const rechteck = form === 'rechteck';
+  beginInteraction({id:'draw-generator-area',label:rechteck?'Gebäude als Rechteck zeichnen':'Gebäudegrundriss zeichnen',hint:rechteck?'Zwei Klicks setzen die Grundlinie, der dritte die Breite.':'Eckpunkte setzen und Startpunkt zum Abschließen anklicken.',cancel:cancelDraw});
+  window.drawingId=id; window.drawPoints=[]; window.drawForm=rechteck?'rechteck':'polygon';
+  showHint(rechteck
+    ? 'Rechteck: 1. Klick = Ecke · 2. Klick = Ende der Grundlinie (beliebig gedreht) · 3. Klick = Breite · Rechtsklick = Zurück · Esc = Abbrechen'
+    : 'Eckpunkte anklicken · Am Ende Startpunkt (rot) anklicken · Rechtsklick = Zurück');
   _hideForDraw();
   map.getContainer().style.cursor='crosshair';
   setSelectedId(id); renderList();
@@ -535,10 +539,47 @@ export function startDraw(id){
 export function cancelDraw(){
   if(window.drawPolyline){map.removeLayer(window.drawPolyline);window.drawPolyline=null;}
   if(window.drawStartMarker){map.removeLayer(window.drawStartMarker);window.drawStartMarker=null;}
-  window.drawingId=null;window.drawPoints=[];
+  window.drawingId=null;window.drawPoints=[];window.drawForm=null;
   map.getContainer().style.cursor='';hideHint();
   _restoreAfterDraw();
   cancelInteraction('draw-generator-area');
+}
+
+// Rechteck-Modus: Vorschau (Linie, ab 2 Punkten das Rechteck mit Maßen) zum Mauszeiger
+export function rechteckVorschau(cursor){
+  const pts = window.drawPoints || [];
+  if (window.drawPolyline) { map.removeLayer(window.drawPolyline); window.drawPolyline = null; }
+  if (!pts.length) return;
+  const stil = {color:'#4fc3f7',weight:2,dashArray:'6 4',interactive:false};
+  const ziel = cursor || pts[pts.length - 1];
+  if (pts.length === 1) {
+    window.drawPolyline = L.polyline([pts[0], ziel], stil).addTo(map);
+    if (cursor) window.drawPolyline.bindTooltip(map.distance(pts[0], ziel).toFixed(1).replace('.', ',') + ' m', {permanent:true, direction:'center', className:'draw-mass-tip'});
+    return;
+  }
+  const r = rechteckAusDreiPunkten(pts[0], pts[1], ziel);
+  if (!r) { window.drawPolyline = L.polyline(pts, stil).addTo(map); return; }
+  window.drawPolyline = L.polygon(r.coords, {...stil, fillColor:'#4fc3f7', fillOpacity:.12}).addTo(map);
+  window.drawPolyline.bindTooltip(`${r.laengeM.toFixed(1).replace('.', ',')} × ${r.breiteM.toFixed(1).replace('.', ',')} m`, {permanent:true, direction:'center', className:'draw-mass-tip'});
+}
+
+// Klick im Rechteck-Modus: 3. Punkt schließt das Rechteck ab
+export function rechteckKlick(latlng){
+  const pts = window.drawPoints;
+  if (pts.length === 0) {
+    const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
+    window.drawStartMarker = L.marker(latlng, {icon: startIcon, interactive: false, zIndexOffset: 2000}).addTo(map);
+  }
+  if (pts.length === 1 && map.distance(pts[0], latlng) < 0.3) { showHint('Grundlinie zu kurz — weiter weg klicken', 2500); return; }
+  if (pts.length === 2) {
+    const r = rechteckAusDreiPunkten(pts[0], pts[1], latlng);
+    if (!r) { showHint('Breite zu klein — weiter von der Grundlinie entfernt klicken', 2500); return; }
+    window.drawPoints = r.coords.map(c => L.latLng(c.lat, c.lng));
+    finishDraw();
+    return;
+  }
+  pts.push(latlng);
+  rechteckVorschau(null);
 }
 
 export function finishDraw(){
@@ -1196,7 +1237,9 @@ export function setupOverlayOnMap(url, w, h, name) {
   const center = map.getCenter();
   const offsetLat = 0.003;
   const ratio = (w && h) ? w / h : 1;
-  const offsetLng = offsetLat * ratio;
+  // Längengrade sind um cos(Breite) kürzer als Breitengrade – ohne Korrektur
+  // läge der Plan in Mitteleuropa um ~1/3 horizontal gestaucht auf der Karte.
+  const offsetLng = offsetLat * ratio / Math.cos(center.lat * Math.PI / 180);
   const corners = [
     { lat: center.lat + offsetLat, lng: center.lng - offsetLng }, // NW
     { lat: center.lat + offsetLat, lng: center.lng + offsetLng }, // NE
@@ -1600,13 +1643,49 @@ function _ovFitHomography(src, dst) {
   };
 }
 
-// Passendes Verfahren nach Punktzahl wählen und Transformation liefern.
-function _ovFitFor(pairs) {
-  const src = pairs.map(p => _ovProj(p.src));
+// Verfahren wählen und Transformation liefern. Standard ist die formtreue
+// Ähnlichkeit (Helmert, Least-Squares über alle Punkte): Lagepläne sind
+// maßstäblich, Affin/Projektiv setzen Klickfehler in Scherung bzw. Perspektive
+// um, die zu den Planecken hin stark anwächst. Höhere Verfahren nur auf Wunsch
+// und erst ab der jeweiligen Mindestpunktzahl.
+const _OV_FIT_METHODS = {
+  similarity: { min: 2, label: 'Formtreu (drehen + skalieren)' },
+  affine:     { min: 3, label: 'Affin (Skalierung x/y + Scherung)' },
+  projective: { min: 4, label: 'Projektiv (Perspektive)' },
+};
+
+// Abbildung „aktuell angezeigte Lage (projiziert) → Bildpixel des Originalplans".
+// Die Lib spannt das Bild projektiv auf die 4 Ecken; die Umkehrung über die 4
+// Eckpaare ist exakt. Pixel-y wird gespiegelt, weil Mercator-y nach Norden wächst
+// (sonst wäre die Abbildung eine Spiegelung, die „formtreu" nicht darstellen kann).
+// So wird immer vom unverzerrten Original aus gerechnet – eine Stauchung aus dem
+// Laden oder von den Kantengriffen wird nicht mitgeschleppt.
+function _ovPixelMapper(layer) {
+  if (!layer || !layer.getCorners) return null;
+  const el = layer.getElement && layer.getElement();
+  const ov = _activeOverlay();
+  const w = (el && el.naturalWidth) || (ov && ov.w);
+  const h = (el && el.naturalHeight) || (ov && ov.h);
+  if (!w || !h) return null;
+  const cur = layer.getCorners().map(_ovProj);                       // TL, TR, BL, BR
+  const px = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: 0, y: -h }, { x: w, y: -h }];
+  return _ovFitHomography(cur, px);
+}
+
+function _ovFitFor(pairs, mode = 'similarity') {
+  const toPx = _ovPixelMapper(window.overlayLayer);
+  const viaPx = toPx ? p => toPx(p) : p => p;                        // Fallback: Bildgröße unbekannt
+  const src = pairs.map(p => viaPx(_ovProj(p.src)));
   const dst = pairs.map(p => _ovProj(p.dst));
-  if (pairs.length >= 4) return { T: _ovFitHomography(src, dst), method: 'Projektiv (Perspektive)' };
-  if (pairs.length >= 3) return { T: _ovFitAffine(src, dst), method: 'Affin (Skalierung x/y + Scherung)' };
-  return { T: _ovFitSimilarity(src, dst), method: 'Ähnlichkeit (drehen + skalieren)' };
+  const n = pairs.length;
+  let T, method;
+  if (src.some(p => !p)) { T = null; method = _OV_FIT_METHODS[mode]?.label || ''; }
+  else if (mode === 'projective' && n >= 4) { T = _ovFitHomography(src, dst); method = _OV_FIT_METHODS.projective.label; }
+  else if (mode === 'affine' && n >= 3)     { T = _ovFitAffine(src, dst);     method = _OV_FIT_METHODS.affine.label; }
+  else                                       { T = _ovFitSimilarity(src, dst); method = _OV_FIT_METHODS.similarity.label; }
+  // Nach außen bleibt T eine Abbildung „aktuelle Lage → neue Lage".
+  if (!T) return { T: null, method };
+  return { T: p => { const q = viaPx(p); return q ? T(q) : null; }, method };
 }
 
 // Restfehler je Passpunkt in echten Metern (Ellipsoid-Abstand über map.distance).
@@ -1628,7 +1707,7 @@ export function startOverlayReference() {
   const imgEl = window.overlayLayer.getElement && window.overlayLayer.getElement();
   if (imgEl) imgEl.style.pointerEvents = 'none';
 
-  window._ovRef = { pairs: [], expecting: 'plan', tempSrc: null, tempMarker: null, markers: [], lines: [] };
+  window._ovRef = { pairs: [], expecting: 'plan', tempSrc: null, tempMarker: null, markers: [], lines: [], mode: 'similarity' };
   document.getElementById('overlay-panel')?.classList.remove('visible');
   map.on('click', _ovRefClick);
   _ovRefBuildControl();
@@ -1690,7 +1769,7 @@ export function _ovRefUndo() {
 export function _ovRefApply() {
   const ref = window._ovRef;
   if (!ref || ref.pairs.length < 2) { showHint('Mindestens 2 Referenzpunkt-Paare nötig.'); return; }
-  const { T, method } = _ovFitFor(ref.pairs);
+  const { T, method } = _ovFitFor(ref.pairs, ref.mode);
   if (!T) { showHint('Punkte liegen zu dicht beieinander oder auf einer Linie — bitte weiter auseinander oder versetzt wählen.'); return; }
   const newCorners = window.overlayLayer.getCorners().map(c => _ovUnproj(T(_ovProj(c))));
   if (newCorners.some(c => !c || !isFinite(c.lat) || !isFinite(c.lng))) {
@@ -1735,7 +1814,15 @@ function _ovRefBuildControl() {
   box.innerHTML = `
     <div style="font-size:12px;font-weight:700;color:#ce93d8;margin-bottom:6px;">🎯 Plan über Referenzpunkte ausrichten</div>
     <div id="ov-ref-hint" style="font-size:11px;line-height:1.45;color:#b9c0d4;margin-bottom:8px;"></div>
-    <div id="ov-ref-status" style="font-size:11px;margin-bottom:10px;"></div>
+    <div id="ov-ref-status" style="font-size:11px;margin-bottom:8px;"></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#b9c0d4;margin-bottom:10px;">
+      Verfahren
+      <select id="ov-ref-mode" style="flex:1;font-size:11px;">
+        <option value="similarity">${_OV_FIT_METHODS.similarity.label} – empfohlen</option>
+        <option value="affine">${_OV_FIT_METHODS.affine.label} – ab 3 Punkten</option>
+        <option value="projective">${_OV_FIT_METHODS.projective.label} – ab 4 Punkten</option>
+      </select>
+    </label>
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
       <button id="ov-ref-apply" class="btn-secondary" style="flex:1;min-width:120px;">Ausrichten</button>
       <button id="ov-ref-undo"  class="btn-secondary" style="flex:0 0 auto;">↶ Zurück</button>
@@ -1745,6 +1832,14 @@ function _ovRefBuildControl() {
   box.querySelector('#ov-ref-apply').addEventListener('click', _ovRefApply);
   box.querySelector('#ov-ref-undo').addEventListener('click', _ovRefUndo);
   box.querySelector('#ov-ref-cancel').addEventListener('click', _ovRefCancel);
+  const modeSel = box.querySelector('#ov-ref-mode');
+  modeSel.value = window._ovRef?.mode || 'similarity';
+  modeSel.addEventListener('change', () => {
+    if (window._ovRef) window._ovRef.mode = modeSel.value;
+    _ovRefUpdate();
+  });
+  // Klicks auf das Steuerfeld dürfen nicht als Passpunkt auf der Karte landen.
+  L.DomEvent.disableClickPropagation(box);
 }
 
 function _ovRefUpdate() {
@@ -1764,14 +1859,18 @@ function _ovRefUpdate() {
   if (statEl) {
     let html = `<span style="color:#4dd0e1;">${n}</span> vollständige${n === 1 ? 's' : ''} Punktepaar${n === 1 ? '' : 'e'}`;
     if (n >= 2) {
-      const { T, method } = _ovFitFor(ref.pairs);
+      const { T, method } = _ovFitFor(ref.pairs, ref.mode);
       html += ` · Verfahren: <b>${method}</b>`;
+      const need = _OV_FIT_METHODS[ref.mode]?.min || 2;
+      if (n < need) html += ` <span style="color:#ffcc80;">(gewähltes Verfahren erst ab ${need} Punkten)</span>`;
       if (T) {
         const res = _ovResiduals(ref.pairs, T);
         const maxR = Math.max(...res), meanR = res.reduce((a, b) => a + b, 0) / res.length;
         const worst = res.indexOf(maxR) + 1;
-        // Bei minimaler Punktzahl (exakter Fit) sind Residuen ~0 → als Kontrolle markieren.
-        const exact = (n === 2) || (n === 3) || (n === 4);
+        // Bei minimaler Punktzahl des tatsächlich genutzten Verfahrens (exakter Fit)
+        // sind Residuen ~0 → als Kontrolle markieren.
+        const used = n >= need ? need : 2;
+        const exact = n === used;
         const col = maxR > 3 ? '#ef9a9a' : '#a5d6a7';
         html += `<br><span style="color:#8891a8;">Passgenauigkeit (Vorschau):</span> `
           + `<span style="color:${col};">Ø ${meanR.toFixed(1)} m, max ${maxR.toFixed(1)} m`

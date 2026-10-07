@@ -46,6 +46,7 @@ export const XS = Object.freeze({
   beispiel:   10,   // gesperrte Beispielzelle: hellblau, umbrechend
   gut:        11,   // gesperrt, hellgrün: Anforderung heute erfüllt
   luecke:     12,   // gesperrt, hellorange: Lücke, Maßnahme nötig
+  info:       13,   // gesperrt, hellgrau: nur zur Information (wird nicht eingelesen)
 });
 
 const F_DUNKEL = 'FF266426';   // LKEBw dunkel
@@ -57,6 +58,7 @@ const F_LINIE  = 'FFD0D4CE';
 const F_BLAU   = 'FFDCEBF7';   // Beispielwerte
 const F_GUT    = 'FFE2F0D9';   // erfüllt
 const F_LUECKE = 'FFFCE4D6';   // Lücke
+const F_INFO   = 'FFF0F0F0';   // Infozellen
 
 const KOPF = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
@@ -75,7 +77,7 @@ function _stylesXml() {
   const fills = [
     '<fill><patternFill patternType="none"/></fill>',
     '<fill><patternFill patternType="gray125"/></fill>',
-    solid(F_DUNKEL), solid(F_GELB), solid(F_TINT), solid(F_HELL), solid(F_BLAU), solid(F_GUT), solid(F_LUECKE),
+    solid(F_DUNKEL), solid(F_GELB), solid(F_TINT), solid(F_HELL), solid(F_BLAU), solid(F_GUT), solid(F_LUECKE), solid(F_INFO),
   ];
   const kante = s => `<${s} style="thin"><color rgb="${F_LINIE}"/></${s}>`;
   const borders = [
@@ -107,6 +109,8 @@ function _stylesXml() {
       + '<alignment vertical="top" wrapText="1"/></xf>',
     '<xf numFmtId="0" fontId="0" fillId="8" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1">'
       + '<alignment vertical="top" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="3" fillId="9" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
+      + '<alignment vertical="top"/></xf>',
   ];
   return KOPF + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
     + `<fonts count="${fonts.length}">${fonts.join('')}</fonts>`
@@ -125,6 +129,20 @@ function _zelle(roh) {
   if (roh == null) return { w: null, s: XS.standard };
   if (typeof roh === 'object') return { w: roh.w ?? null, s: Number(roh.s) || XS.standard };
   return { w: roh, s: XS.standard };
+}
+
+/**
+ * Bereich des Autofilters (Kopfzeile bis letzte Zeile über alle Spalten) oder
+ * null. Auf einem geschützten Blatt lässt Excel keinen neuen Filter anlegen —
+ * er muss darum schon in der Datei stehen, dann ist er trotz Schutz benutzbar.
+ */
+function _filterBereich(blatt) {
+  if (!blatt.filter) return null;
+  const zeilen = blatt.zeilen || [];
+  let maxSpalte = 0;
+  for (const z of zeilen) if (z && z.length > maxSpalte) maxSpalte = z.length;
+  if (!maxSpalte || zeilen.length < 1) return null;
+  return `A1:${spalteZuBuchstabe(maxSpalte - 1)}${zeilen.length}`;
 }
 
 /**
@@ -186,6 +204,9 @@ function _sheetXml(blatt, sst) {
     : '<sheetProtection sheet="1" objects="1" scenarios="1" formatCells="0" formatColumns="0"'
       + ' formatRows="0" insertRows="0" deleteRows="0" sort="0" autoFilter="0"/>';
 
+  const filter = _filterBereich(blatt);
+  const filterXml = filter ? `<autoFilter ref="${filter}"/>` : '';
+
   const verbunden = (blatt.verbunden || []).length
     ? `<mergeCells count="${blatt.verbunden.length}">`
       + blatt.verbunden.map(b => `<mergeCell ref="${b}"/>`).join('') + '</mergeCells>'
@@ -199,7 +220,7 @@ function _sheetXml(blatt, sst) {
       + (p.titel ? ` promptTitle="${xmlEsc(p.titel)}"` : '')
       + (p.hinweis ? ` prompt="${xmlEsc(p.hinweis)}"` : '')
       + ' errorTitle="Auswahlliste"'
-      + ' error="Bitte einen Wert aus der Liste wählen. Wenn nichts passt, ist &quot;unbekannt&quot; die richtige Antwort."'
+      + ` error="${xmlEsc(p.fehler || 'Bitte einen Wert aus der Liste wählen. Wenn nichts passt, ist "unbekannt" die richtige Antwort.')}"`
       + `><formula1>${xmlEsc(p.liste)}</formula1></dataValidation>`).join('') + '</dataValidations>'
     : '';
 
@@ -214,7 +235,7 @@ function _sheetXml(blatt, sst) {
     + '<sheetFormatPr defaultRowHeight="15"/>'
     + (cols ? `<cols>${cols}</cols>` : '')
     + `<sheetData>${zeilenXml}</sheetData>`
-    + schutz + verbunden + pruefXml
+    + schutz + filterXml + verbunden + pruefXml
     + '<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>'
     + pageSetup + rowBreaks
     + '</worksheet>';
@@ -241,9 +262,10 @@ export function blattName(name) {
  *   quer?: boolean,             // Druck im Querformat auf eine Seitenbreite
  *   umbrueche?: number[],       // feste Seitenumbrüche vor diesen Zeilen (0-basiert)
  *   schutz?: boolean,
+ *   filter?: boolean,           // Autofilter auf der Kopfzeile (Zeile 1)
  *   versteckt?: boolean,
  *   verbunden?: string[],
- *   pruefungen?: Array<{bereich:string, liste:string, titel?:string, hinweis?:string}>,
+ *   pruefungen?: Array<{bereich:string, liste:string, titel?:string, hinweis?:string, fehler?:string}>,
  * }>} mappe.blaetter
  * @param {Record<string,string>} [mappe.namen]  definierte Namen → Bezug, z. B. {L_JaNein:'Listen!$A$2:$A$4'}
  * @param {string} [mappe.titel]
@@ -282,11 +304,18 @@ export function xlsxDateien(mappe) {
   dateien['xl/sharedStrings.xml'] = sstXml;
   dateien['xl/styles.xml'] = _stylesXml();
 
-  const namen = mappe?.namen && Object.keys(mappe.namen).length
-    ? '<definedNames>' + Object.entries(mappe.namen)
-      .map(([n, bezug]) => `<definedName name="${xmlEsc(n)}">${xmlEsc(bezug)}</definedName>`).join('')
-      + '</definedNames>'
-    : '';
+  // Excel führt den Filterbereich je Blatt als versteckten Namen _xlnm._FilterDatabase
+  const filterNamen = blaetter.map((b, i) => {
+    const bereich = _filterBereich(b);
+    if (!bereich) return '';
+    // „A1" → „$A$1" (absoluter Bezug, wie Excel ihn schreibt)
+    const [von, bis] = bereich.split(':').map(r => r.replace(/^([A-Z]+)(\d+)$/, '$$$1$$$2'));
+    const blattRef = "'" + blattNamen[i].replace(/'/g, "''") + "'";
+    return `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">${xmlEsc(`${blattRef}!${von}:${bis}`)}</definedName>`;
+  }).join('');
+  const eigene = Object.entries(mappe?.namen || {})
+    .map(([n, bezug]) => `<definedName name="${xmlEsc(n)}">${xmlEsc(bezug)}</definedName>`).join('');
+  const namen = filterNamen || eigene ? `<definedNames>${filterNamen}${eigene}</definedNames>` : '';
   dateien['xl/workbook.xml'] = KOPF
     + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
     + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'

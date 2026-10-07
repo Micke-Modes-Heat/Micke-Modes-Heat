@@ -98,3 +98,11 @@ describe('Vorgaben passend zu den Varianten', () => {
     expect(gfAntwort({}, 'pot-nicht', {})).toContain('solarthermie');
   });
 });
+
+describe('Empfohlene Variante und ★ Gutachtenvariante', () => {
+  it('★ Gutachtenvariante ist die Vorgabe, sonst Bewertungsmatrix', () => {
+    expect(gfAntwort({}, 'empfehlung', { varianten: ['Hauptplan', 'V1'], stern: 'V1' })).toBe('V1');
+    expect(gfAntwort({}, 'empfehlung', { varianten: ['Hauptplan', 'V1'] })).toBe('auto');
+    expect(gfAntwort({ empfehlung: 'Hauptplan' }, 'empfehlung', { varianten: ['Hauptplan', 'V1'], stern: 'V1' })).toBe('Hauptplan');
+  });
+});

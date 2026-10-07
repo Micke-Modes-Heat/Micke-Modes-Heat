@@ -611,7 +611,7 @@ function ggWordZelle(inhalt, o = {}) {
   return `<td style="padding:5px 10px;border:1px solid ${GG_WORD.border};background:${o.bg || GG_WORD.bandBg};
       ${o.akzent ? `border-left:4px solid ${o.akzent};` : ''}
       font-family:${GG_WORD.font};font-size:10.5px;font-weight:${o.bold ? 700 : 400};
-      color:#000000;text-align:center;">${gEsc(inhalt)}</td>`;
+      color:#000000;text-align:center;">${Array.isArray(inhalt) ? inhalt.map(gEsc).join('<br>') : gEsc(inhalt)}</td>`;
 }
 
 /**
@@ -628,7 +628,7 @@ export function ggTabelleHtmlTable(cfg) {
 
   const rows = zeilen.length ? zeilen.map(r => '<tr>' + cols.map((c, i) => {
     const val = r.werte?.[i];
-    const s = (val == null || val === '') ? '—' : String(val);
+    const s = ggZellLeer(val) ? '—' : Array.isArray(val) ? val : String(val);
     return ggWordZelle(s, {
       bg: r.highlight ? GG_WORD.highlightBg : undefined,
       bold: !!r.highlight,
@@ -655,7 +655,7 @@ function ggTabellePlainText(cfg) {
   const cols = cfg.spalten || [];
   const wert = (r, i) => {
     const v = r.werte?.[i];
-    return (v == null || v === '') ? '' : String(v);
+    return ggZellLeer(v) ? '' : Array.isArray(v) ? v.join(', ') : String(v);
   };
   return [cols.map(c => c.label || '').join('\t'),
           ...(cfg.zeilen || []).map(r => cols.map((c, i) => wert(r, i)).join('\t'))].join('\n');
@@ -1274,6 +1274,20 @@ function ggSpaltenDefaults(c, i) {
   return { align: c.align || (i === 0 ? 'left' : 'right'), mono: c.mono !== false && i > 0 };
 }
 
+/** Leere Tabellenzelle: null, '' oder leeres Array (mehrzeilige Zelle ohne Einträge). */
+function ggZellLeer(v) {
+  return v == null || v === '' || (Array.isArray(v) && !v.length);
+}
+
+// Zeilenabstand innerhalb einer mehrzeiligen Zelle (Wert als Array)
+const GG_TAB_ZEILENABSTAND = 18;
+
+/** Höhe einer Tabellenzeile: Grundhöhe plus je weiterer Textzeile der längsten Zelle. */
+function ggTabZeilenHoehe(r, S) {
+  const n = Math.max(1, ...(r.werte || []).map(v => (Array.isArray(v) ? v.length : 1)));
+  return S.tabRow + (n - 1) * GG_TAB_ZEILENABSTAND;
+}
+
 export function ggRenderTabelle(cfg, T = GG_THEME) {
   const S = T.sheet, W = T.width;
   const gruen = T.accents.gruenDunkel;
@@ -1281,9 +1295,9 @@ export function ggRenderTabelle(cfg, T = GG_THEME) {
   const zeilen  = cfg.zeilen  || [];
   const headH = S.headHSchmal;
   const tabTop = S.headBand + headH + S.tabTop;
-  const rowN  = Math.max(zeilen.length, 1);
+  const rumpfH = zeilen.length ? zeilen.reduce((s, r) => s + ggTabZeilenHoehe(r, S), 0) : S.tabRow;
   const fussH = cfg.fussnote ? 20 : 0;
-  const height = tabTop + S.tabHeadH + rowN * S.tabRow + fussH + S.footSpace + 10;
+  const height = tabTop + S.tabHeadH + rumpfH + fussH + S.footSpace + 10;
   const G = { S, W, headH, reduziert: true, height };
   const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
   let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.tabelleTitel || cfg.titel }, T, G);
@@ -1315,18 +1329,22 @@ export function ggRenderTabelle(cfg, T = GG_THEME) {
     y += S.tabRow;
   }
   for (const r of zeilen) {
-    if (r.highlight) out += `<rect x="${x0}" y="${gR(y)}" width="${gR(totalW)}" height="${S.tabRow}" fill="${T.tint}"/>`;
-    if (r.akzent) out += `<rect x="${x0}" y="${gR(y)}" width="4" height="${S.tabRow}" fill="${r.akzent}"/>`;
-    const ty = y + S.tabRow / 2 + S.fsTab * 0.36;
+    const rowH = ggTabZeilenHoehe(r, S);
+    if (r.highlight) out += `<rect x="${x0}" y="${gR(y)}" width="${gR(totalW)}" height="${rowH}" fill="${T.tint}"/>`;
+    if (r.akzent) out += `<rect x="${x0}" y="${gR(y)}" width="4" height="${rowH}" fill="${r.akzent}"/>`;
     cols.forEach((c, i) => {
       const val = r.werte?.[i];
-      const s = (val == null || val === '') ? '—' : String(val);
+      const teile = ggZellLeer(val) ? ['—'] : Array.isArray(val) ? val.map(String) : [String(val)];
+      // Zellinhalt senkrecht in der Zeile zentriert — einzeilige Zellen neben mehrzeiligen auch
+      const ty0 = y + rowH / 2 - (teile.length - 1) * GG_TAB_ZEILENABSTAND / 2 + S.fsTab * 0.36;
       const tx = c.align === 'right' ? c.x + c.w - P : c.x + P + (r.akzent && i === 0 ? 8 : 0);
-      out += txt(tx, ty, s, { mono: c.mono, size: i === 0 ? S.fsTab : S.fsTabWert,
-                 weight: r.highlight && i > 0 ? 600 : 500, fill: r.highlight && i > 0 ? gruen : T.text.strong,
-                 anchor: c.align === 'right' ? 'end' : 'start' });
+      teile.forEach((s, k) => {
+        out += txt(tx, ty0 + k * GG_TAB_ZEILENABSTAND, s, { mono: c.mono, size: i === 0 ? S.fsTab : S.fsTabWert,
+                   weight: r.highlight && i > 0 ? 600 : 500, fill: r.highlight && i > 0 ? gruen : T.text.strong,
+                   anchor: c.align === 'right' ? 'end' : 'start' });
+      });
     });
-    y += S.tabRow;
+    y += rowH;
     out += `<line x1="${x0}" y1="${gR(y) + 0.5}" x2="${x1}" y2="${gR(y) + 0.5}" stroke="${T.line}" stroke-width="1"/>`;
   }
 
@@ -1618,7 +1636,10 @@ function ggFrageKontextNeu() {
   inVariante.fernwaerme = keys.has('fernwaerme');
   inVariante.solarthermie = keys.has('solarthermie');
   inVariante.gasGrundlast = v.some(x => { const e = vaEnergie(x); return e.waerme > 0 && e.fossilPct > 50; });
-  return { inVariante, varianten: v.map(x => x.name) };
+  // ★ Gutachtenvariante aus dem Variantenmenü: Vorgabe für die empfohlene Variante (Fragebogen 9.1)
+  const g = ggLies(() => window.gutachtenVariante, null);
+  const stern = g == null ? '' : ggLies(() => window.variantenName?.(g), '') || '';
+  return { inVariante, varianten: v.map(x => x.name), stern };
 }
 /** Antwort auf eine Frage des Fragebogens oder ihre Vorgabe. */
 export function ggFrage(id) {
@@ -1706,9 +1727,13 @@ export function ggPlausiPruefung() {
     const techNicht = Object.keys(GF_TECHNIKEN).filter(k => inV[k] && ['nicht', 'weglassen'].includes(ggFrage(`pot-${k}`)));
     if (techNicht.length) add('warn', `${techNicht.map(k => GF_TECHNIKEN[k].titel).join(', ')} wird in einer Variante genutzt, ist im Fragebogen Kap. 4 aber als nicht berücksichtigt bzw. „nicht erwähnen“ gesetzt.`);
     const aktiv = ggLies(() => (typeof window.getActiveVariantId === 'function' ? window.getActiveVariantId() : window.activeVariantId), null);
-    if (aktiv) {
-      const name = ggLies(() => window.varianten?.find(x => x.id === aktiv)?.name, aktiv);
-      add('warn', `Aktiv ist die Variante „${name}“ – Lastgang, Spitzenlast und Netz in den Kapiteln 3 und 4 stammen aus ihr. Für das Gutachten auf „Basisdaten“ wechseln.`);
+    // Die ★ Gutachtenvariante (Variantenmenü) bestimmt, welcher Stand in die Kapitel 2–4 gehört; ohne ★ ist es der Hauptplan
+    const stern = ggLies(() => window.gutachtenVariante, null);
+    const vName = id => ggLies(() => window.variantenName?.(id), '') || String(id ?? '');
+    if (stern != null && stern !== (aktiv ?? 'base')) {
+      add('warn', `Gutachtenvariante ist „★ ${vName(stern)}“, aktiv ist „${vName(aktiv)}“ – Lastgang, Spitzenlast und Netz in den Kapiteln 2 bis 4 stammen aus der aktiven Variante. Vor dem Export zur Gutachtenvariante wechseln.`);
+    } else if (stern == null && aktiv) {
+      add('warn', `Aktiv ist die Variante „${vName(aktiv)}“ – Lastgang, Spitzenlast und Netz in den Kapiteln 2 bis 4 stammen aus ihr. Für das Gutachten auf „${vName(null)}“ wechseln oder die Variante im Variantenmenü als ★ Gutachtenvariante festlegen.`);
     }
     const h = ggWaermeHerkunft();
     if (!ss?.pMaxKw) add('warn', 'Kein Wärmelastgang berechnet (🔥 Wärme-Grundlagen).');
@@ -1854,7 +1879,7 @@ export function ggWaermeDaten() {
       : r.erzeugerDetail?.length ? r.erzeugerDetail
         : r.erzeuger.map(e => ({ key: GG_TYP_KEY[e.typ], name: GG_TYP_KEY[e.typ] ? undefined : e.typ, leistungKw: e.leistungKw, waermeMwh: e.waermeMwh }));
     return {
-      id, name: id === 'base' ? ggLies(() => w.getBasisName?.(), '') || 'Basisvariante' : (r.label || id), aktiv, erzeuger: detail,
+      id, name: id === 'base' ? ggLies(() => w.variantenName?.('base'), '') || 'Hauptplan' : (r.label || id), aktiv, erzeuger: detail,
       investEur: r.investGes || undefined, jahreskostenEur: r.jkGes || undefined, wgkCt: r.wgkNum || undefined,
       co2T: r.co2GesH, co2LzT: r.co2GesLZ, eeAnteilPct: r.eeAnteil ?? undefined, netzverlustPct: r.netzverlustePct, wirtKomp: r.wirtKomp || null,
       gebaeudeStempel: r.gebaeudeStempel || null, bedarfMwh: r.gebäudebedarf, ausschluesse: r.ausschlüsse || 0,
@@ -4326,12 +4351,12 @@ function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
     return {
       gebIdx:      g ? gebListe.indexOf(g) : 1e9,
       gebLabel:    String(g?.gebaeudenummer || g?.name || '—').trim(),
+      gebNummer:   String(g?.gebaeudenummer || '').trim(),
       stationKey:  t.buildingId || 'einzeln:' + t.id,
-      // Heißt das Standortgebäude schon „Trafostation 3“ (oder „TST 3“, „Kompaktstation 3“),
-      // gewinnt dieser Name — auch wenn er dann in der Gebäudespalte noch einmal steht; sonst
-      // wird unten in Tabellenreihenfolge durchnummeriert. Tabelle, Übersichtsschaltbild und
+      // Die Station heißt wie ihr Standortgebäude; nur Stationen ohne benanntes Gebäude werden
+      // unten in Tabellenreihenfolge durchnummeriert. Tabelle, Übersichtsschaltbild und
       // Resilienz nennen die Station so gleich.
-      stationName: GG_STATION_NAME.test(g?.name || '') ? String(g.name).trim() : '',
+      stationName: String(g?.name || '').trim(),
       trafo:       t.name || 'Trafo',
       kva:         Number(t.props?.leistungKVA) || 0,
       bj:          Number.isFinite(bj) ? bj : null,
@@ -4346,10 +4371,12 @@ function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
                      || (a.gebIdx - b.gebIdx)
                      || a.trafo.localeCompare(b.trafo, 'de', { numeric: true }));
 
-  // Durchnummeriert werden nur Stationen ohne eigenen Namen, und zwar mit Nummern, die kein
-  // benanntes Standortgebäude schon trägt — sonst hieß „Trafostation 1“ zweimal. Benannte
-  // Stationen behalten ihren Namen; ihr Eintrag in `nr` zählt nur für die Stationsanzahl.
-  const belegt = new Set(zeilen.filter(z => z.stationName).map(z => ggNummerAusName(z.stationName)).filter(n => n != null));
+  // Durchnummeriert werden nur Stationen ohne Gebäudenamen, und zwar mit Nummern, die kein
+  // Standortgebäude namens „Trafostation 3“/„TST 3“ schon trägt — sonst hieß „Trafostation 1“
+  // zweimal. Benannte Stationen behalten ihren Namen; ihr Eintrag in `nr` zählt nur für die
+  // Stationsanzahl.
+  const belegt = new Set(zeilen.filter(z => GG_STATION_NAME.test(z.stationName))
+    .map(z => ggNummerAusName(z.stationName)).filter(n => n != null));
   const nr = new Map();
   let n = 0;
   for (const z of zeilen) {
@@ -4361,6 +4388,47 @@ function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
   for (const z of zeilen) z.station = z.stationName || 'Trafostation ' + nr.get(z.stationKey);
   return { zeilen, nr };
 }
+
+/**
+ * Trafo-Zeilen je Station zusammengefasst (Reihenfolge wie ggTrafoZeilen) — eine Tabellenzeile
+ * je Trafostation, darin die enthaltenen Trafos untereinander.
+ * @returns {{stationen: Array<{key:string, station:string, gebNummer:string, trafos:object[], kva:number, geplant:boolean}>, zeilen: object[]}}
+ */
+function ggTrafoStationen(trafos, opts) {
+  const { zeilen } = ggTrafoZeilen(trafos, opts);
+  const map = new Map();
+  for (const z of zeilen) {
+    if (!map.has(z.stationKey)) map.set(z.stationKey, { key: z.stationKey, station: z.station, gebNummer: z.gebNummer, trafos: [] });
+    map.get(z.stationKey).trafos.push(z);
+  }
+  const stationen = [...map.values()].map(s => ({
+    ...s,
+    kva: s.trafos.reduce((a, z) => a + z.kva, 0),
+    geplant: s.trafos.some(z => z.geplant),
+  }));
+  return { stationen, zeilen };
+}
+
+/** Tabellenwerte einer Station: Name · Gebäude-Nr. · Trafos · Leistung · Baujahr · Summe (Trafospalten mehrzeilig). */
+function ggTrafoStationWerte(s, { mitPlanung = false } = {}) {
+  return [
+    s.station,
+    s.gebNummer || '—',
+    s.trafos.map(z => z.trafo),
+    s.trafos.map(z => (z.kva > 0 ? ggNum(z.kva) + ' kVA' : '—')),
+    s.trafos.map(z => (mitPlanung && z.geplant ? 'geplant' : String(z.bj || '—'))),
+    s.kva > 0 ? ggNum(s.kva) + ' kVA' : '—',
+  ];
+}
+
+const GG_TRAFO_STATION_SPALTEN = [
+  { label: 'Station',  weight: 2.0, align: 'left', mono: false },
+  { label: 'Geb.-Nr.', weight: 0.9, align: 'left', mono: false },
+  { label: 'Trafos',   weight: 1.2, align: 'left', mono: false },
+  { label: 'Leistung', weight: 1.1 },
+  { label: 'Baujahr',  weight: 1.0 },
+  { label: 'Summe',    weight: 1.1 },
+];
 
 const GG_STATION_NAME = /station|^\s*(TST|TS|TrSt)\s*[-.]?\s*\d/i;
 /** Endnummer einer Stationsbezeichnung: „Trafostation 12“ → 12, „TST 4a“ → 4. */
@@ -4412,44 +4480,32 @@ GG_FIGUREN.push(
     kapitel: '5.1.2 Stromnetz intern (MS/NS)',
     titel: 'Übersicht Trafostationen',
     datei: 'trafostationen-ist',
-    hinweis: 'Alle bestehenden Transformatoren des Liegenschaftsnetzes mit Standortgebäude, Station, '
-           + 'Nennleistung und Baujahr — gelesen aus den Trafo-Assets des Elektro-Tabs. Trafos einer '
-           + 'Planungsschicht oder mit Baujahr in der Zukunft zählen hier nicht zum Bestand; sie stehen '
-           + 'bei der Variantenbildung (3.4.1).',
+    hinweis: 'Eine Zeile je bestehender Trafostation (benannt nach dem Standortgebäude) mit den darin '
+           + 'enthaltenen Transformatoren, Nennleistung und Baujahr — gelesen aus den Trafo-Assets des '
+           + 'Elektro-Tabs. Trafos einer Planungsschicht oder mit Baujahr in der Zukunft zählen hier nicht '
+           + 'zum Bestand; sie stehen bei der Variantenbildung (5.4.1).',
     render: cfg => ggRenderTabelle(cfg),
     config: {
       eyebrow: 'Elektrotechnisches Gutachten',
       titel: 'Übersicht Trafostationen',
       leer: 'Keine bestehenden Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.',
-      spalten: [
-        { label: 'Gebäude',       weight: 1.4, align: 'left', mono: false },
-        { label: 'Nr.',           weight: 1.6, align: 'left', mono: false },
-        { label: 'Trafo',         weight: 1.2, align: 'left', mono: false },
-        { label: 'Trafoleistung', weight: 1.3 },
-        { label: 'Baujahr',       weight: 1.1 },
-      ],
+      spalten: GG_TRAFO_STATION_SPALTEN.map(c => ({ ...c })),
       zeilen: [], fussnote: '',
     },
     ausProjekt(cfg) {
       let trafos = [];
       try { trafos = window.listAssets?.({ type: 'Trafo' }) || []; } catch (e) { void e; }
-      const { zeilen, nr } = ggTrafoZeilen(trafos, { nurBestand: true });
+      const { stationen, zeilen } = ggTrafoStationen(trafos, { nurBestand: true });
       if (!zeilen.length) {
         cfg.zeilen = []; cfg.fussnote = '';
         return '⚠ Keine bestehenden Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.';
       }
 
-      cfg.zeilen = zeilen.map(z => ({
-        werte: [z.gebLabel,
-                z.station,
-                z.trafo,
-                z.kva > 0 ? ggNum(z.kva) + ' kVA' : '—',
-                z.bj || '—'],
-      }));
+      cfg.zeilen = stationen.map(s => ({ werte: ggTrafoStationWerte(s) }));
 
       const summe = zeilen.reduce((s, z) => s + z.kva, 0);
-      cfg.fussnote = `${zeilen.length} Transformatoren in ${nr.size} Stationen · installierte Leistung ${ggNum(summe)} kVA`;
-      return `✓ ${zeilen.length} bestehende Trafos aus dem Elektromodell übernommen.`;
+      cfg.fussnote = `${zeilen.length} Transformatoren in ${stationen.length} Stationen · installierte Leistung ${ggNum(summe)} kVA`;
+      return `✓ ${stationen.length} bestehende Stationen mit ${zeilen.length} Trafos aus dem Elektromodell übernommen.`;
     },
   },
 
@@ -4461,21 +4517,15 @@ GG_FIGUREN.push(
     kapitel: '5.4.1 Netzanschluss und internes Stromnetz',
     titel: 'Übersicht Trafostationen',
     datei: 'trafostationen',
-    hinweis: 'Alle Transformatoren des Liegenschaftsnetzes mit Standortgebäude, Station, '
-           + 'Nennleistung und Baujahr — gelesen aus den Trafo-Assets des Elektro-Tabs. '
+    hinweis: 'Eine Zeile je Trafostation (benannt nach dem Standortgebäude) mit den darin enthaltenen '
+           + 'Transformatoren, Nennleistung und Baujahr — gelesen aus den Trafo-Assets des Elektro-Tabs. '
            + 'Trafos einer Planungsschicht oder mit Baujahr in der Zukunft stehen als „geplant“.',
     render: cfg => ggRenderTabelle(cfg),
     config: {
       eyebrow: 'Elektrotechnisches Gutachten',
       titel: 'Übersicht Trafostationen',
       leer: 'Keine Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.',
-      spalten: [
-        { label: 'Gebäude',       weight: 1.4, align: 'left', mono: false },
-        { label: 'Nr.',           weight: 1.6, align: 'left', mono: false },
-        { label: 'Trafo',         weight: 1.2, align: 'left', mono: false },
-        { label: 'Trafoleistung', weight: 1.3 },
-        { label: 'Baujahr',       weight: 1.1 },
-      ],
+      spalten: GG_TRAFO_STATION_SPALTEN.map(c => ({ ...c })),
       zeilen: [], fussnote: '',
     },
     ausProjekt(cfg) {
@@ -4486,22 +4536,19 @@ GG_FIGUREN.push(
         return '⚠ Keine Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.';
       }
 
-      const { zeilen, nr } = ggTrafoZeilen(trafos);
+      const { stationen, zeilen } = ggTrafoStationen(trafos);
 
-      cfg.zeilen = zeilen.map(z => ({
-        werte: [z.gebLabel,
-                z.station,
-                z.trafo,
-                z.kva > 0 ? ggNum(z.kva) + ' kVA' : '—',
-                z.geplant ? 'geplant' : (z.bj || '—')],
-        akzent: z.geplant ? GG_THEME.accents.gruen : undefined,
+      // Grüner Akzent, sobald die Station einen geplanten Trafo enthält (neue Station oder Zubau)
+      cfg.zeilen = stationen.map(s => ({
+        werte: ggTrafoStationWerte(s, { mitPlanung: true }),
+        akzent: s.geplant ? GG_THEME.accents.gruen : undefined,
       }));
 
       const summe = zeilen.reduce((s, z) => s + z.kva, 0);
       const nGeplant = zeilen.filter(z => z.geplant).length;
-      cfg.fussnote = `${zeilen.length} Transformatoren in ${nr.size} Stationen · installierte Leistung `
+      cfg.fussnote = `${zeilen.length} Transformatoren in ${stationen.length} Stationen · installierte Leistung `
                    + `${ggNum(summe)} kVA`
-                   + (nGeplant ? ` · davon ${nGeplant} geplant (grün markiert)` : '');
+                   + (nGeplant ? ` · davon ${nGeplant} geplant (Station grün markiert)` : '');
       return `✓ ${zeilen.length} Trafos aus dem Elektromodell übernommen`
            + (nGeplant ? `, davon ${nGeplant} geplant.` : '.');
     },
@@ -4857,7 +4904,8 @@ GG_FIGUREN.push({
  * Stationsnamen wie in der Tabelle „Übersicht Trafostationen" (ggTrafoZeilen). */
 
 const GG_NU_ERZ = { PV: ['PV', 'kWp'], KWK: ['BHKW', 'kWel'], Wind: ['Wind', 'kW'], Batterie: ['Batterie', 'kW'], Nsa: ['NEA', 'kW'], H2: ['H₂', 'kW'] };
-const GG_NU_ART = { ring: 'Ring', strahl: 'Strahl', verzweigt: 'Strahl, verzweigt', vermascht: 'vermascht', kette: 'Kette' };
+const GG_NU_ART = { ring: 'Ring', strahl: 'Strahl', verzweigt: 'Strahl, verzweigt', vermascht: 'vermascht', kette: 'Kette',
+  leiter: 'vermascht' };   // Leiter, die nicht als Leiter gezeichnet werden kann (neben einer NAP-Leiter)
 
 /** Trafos einer Station als Kurztext: „2 × 630 kVA", „2 × 630 + 800 kVA". */
 function ggNuTrafoText(trafos) {
@@ -4896,14 +4944,20 @@ function ggNetzUebersichtDaten({ mitPlanung = false, zieljahr = null } = {}) {
     typeRank: window.TYPE_RANK || undefined, heute: new Date().getFullYear(), mitPlanung, zieljahr,
     massnahmeJahr: typeof window.massnahmeJahr === 'function' ? m => window.massnahmeJahr(m) : undefined });
   const { nr } = ggTrafoZeilen(assets.filter(a => a.type === 'Trafo'), { nurBestand: !mitPlanung });
+  // Zielnetz: Nummer der Maßnahme je Station bzw. Kabelverbindung (Marken im Bild, Tabelle in 3.4.1)
+  const markeStation = new Map(), markeKante = new Map();
+  for (const x of r.aenderungen || []) {
+    if (x.station) markeStation.set(x.station, x.nr);
+    if (x.kante) markeKante.set(x.kante, x.nr);
+  }
 
   const sicht = key => {
-    const st = r.stationen[key];
-    const stName = GG_STATION_NAME.test(st.gebName) ? st.gebName.trim() : '';
-    // Heißt das Gebäude schon wie die Station, steht darunter nur noch die Gebäudenummer.
-    const gebLabel = st.gebNummer ? `Gebäude ${st.gebNummer}` : stName ? '' : st.gebName;
+    const st = r.stationen[key] || r.entfallen?.[key];
+    // Die Station heißt wie ihr Gebäude (wie in der Tabelle); darunter steht nur noch die Gebäudenummer.
+    const stName = String(st.gebName || '').trim();
+    const gebLabel = st.gebNummer ? `Gebäude ${st.gebNummer}` : '';
     const tabKey = st.gebId != null ? st.gebId : st.trafos[0] ? 'einzeln:' + st.trafos[0].id : null;
-    const station = stName || (st.trafos.length ? `Trafostation ${nr.get(tabKey) ?? '?'}` : '');
+    const station = stName || (st.trafos.length ? (nr.has(tabKey) ? `Trafostation ${nr.get(tabKey)}` : 'Trafostation') : '');
     const titel = st.hatNap ? 'Übergabestation' : station || 'Schaltstation';
     const zeile2 = [st.hatNap ? station : '', gebLabel].filter(Boolean).join(' · ');
     const erzTrafo = st.trafos.some(t => t.erzeugung);
@@ -4912,24 +4966,51 @@ function ggNetzUebersichtDaten({ mitPlanung = false, zieljahr = null } = {}) {
     const zubau = st.geplant ? '' : [
       tausch.length ? `Tausch ${ggNuKvaGruppen(tausch.map(t => t.kvaIst))} → ${ggNuKvaGruppen(tausch.map(t => t.kva))} kVA` : '',
       neu.length ? `+ ${ggNuTrafoText(neu)} neu` : '',
+      st.trafosEntfallen?.length ? `− ${ggNuKvaGruppen(st.trafosEntfallen.map(t => t.kva))} kVA Rückbau` : '',
     ].filter(Boolean).join(' · ');
     return {
       titel, zeile2, trafo: ggNuTrafoText(st.trafos), hatTrafo: st.trafos.length > 0, zubau,
       geb: [st.gebaeudeVersorgt ? `${ggNum(st.gebaeudeVersorgt)} Gebäude versorgt` : '', erzTrafo ? 'Erzeugungsnetz' : '']
         .filter(Boolean).join(' · '),
       erz: ggNuErzeugerText(st.erzeuger), ts: st.trennstelle, geplant: st.geplant, uebergabe: st.hatNap,
+      key, marke: markeStation.get(key) || null, entfaellt: !!st.entfaellt, jahrWeg: st.jahr ?? null,
     };
   };
-  const kante = v => ({ ts: v.trennstelle, geplant: v.geplant, ertuechtigt: v.ertuechtigt, anzahl: v.anzahl });
-  const abgang = ab => ({
-    art: ab.art, abzweige: ab.abzweige || 0, stationen: ab.folge.map(sicht),
-    innen: ab.innen.map(x => ({ i: x.i, j: x.j, ...kante(x.kante) })),
-    wurzel: ab.wurzel.map(x => ({ i: x.i, ...kante(x.kante) })),
+  const kante = v => ({ ts: v.trennstelle, geplant: v.geplant, ertuechtigt: v.ertuechtigt, anzahl: v.anzahl,
+    marke: markeKante.get(v) || null, kabel: ggNuVerbKabel(v), laengeM: v.laengeM || 0 });
+  const linieBasis = l => ({
+    ...abgang(l), haupt: l.haupt, wege: l.wege || null,
+    wurzelB: l.wurzelB.map(x => ({ i: x.i, ...kante(x.kante) })), direkt: l.direkt ? kante(l.direkt) : null,
+    speisung: l.speisung, gekoppelt: l.gekoppelt, tsNurStation: l.trennstelleNurStation,
   });
+  // Leiter unter einer Übergabe: Knotenstationen links/rechts, Zubringer, Linien dazwischen, Stiche
+  const leiter = lt => ({
+    links: lt.links ? sicht(lt.links) : null, rechts: sicht(lt.rechts),
+    nameL: lt.links ? ggNuKurzName(sicht(lt.links)) : 'Übergabestation', nameR: ggNuKurzName(sicht(lt.rechts)),
+    knappL: lt.links ? ggNuKurzName(sicht(lt.links), { knapp: true }) : 'Übergabe',
+    knappR: ggNuKurzName(sicht(lt.rechts), { knapp: true }),
+    zubringer: lt.zubringer.map(v => (v ? kante(v) : null)),
+    linien: lt.linien.map(linieBasis), stiche: lt.stiche.map(s => ({ seite: s.seite, ...abgang(s) })),
+  });
+  function abgang(ab) {
+    return {
+      art: ab.art, abzweige: ab.abzweige || 0, stationen: ab.folge.map(sicht),
+      // Ring mit Abzweigen: Ringweg zuerst, die Stiche darunter (Lage wie bei Linien)
+      ...(ab.art === 'ring' && ab.abzweige ? { haupt: ab.folge.length - ab.abzweige } : {}),
+      innen: ab.innen.map(x => ({ i: x.i, j: x.j, ...kante(x.kante) })),
+      wurzel: ab.wurzel.map(x => ({ i: x.i, ...kante(x.kante) })),
+      leiter: ab.leiter ? leiter(ab.leiter) : null,
+    };
+  }
+  // Linien zwischen zwei Übergabestationen: von/bis als Index in bloecke
+  const wIdx = new Map(r.wurzeln.map((w, i) => [w.key, i]));
+  const linie = l => ({ ...linieBasis(l), von: wIdx.get(l.von), bis: wIdx.get(l.bis) });
   const netz = {
     napKV: r.kennzahlen.napKV,
     bloecke: r.wurzeln.map(w => ({ station: sicht(w.key), napKV: r.stationen[w.key].napKV, abgaenge: w.abgaenge.map(abgang) })),
+    linien: r.linien.map(linie),
     ohneNap: r.ohneNap.map(abgang),
+    entfallen: Object.values(r.entfallen || {}).sort((a, b) => a.gebIdx - b.gebIdx).map(st => sicht(st.key)),
   };
   return { netz, r, sicht };
 }
@@ -4939,8 +5020,8 @@ function ggNetzUebersichtDaten({ mitPlanung = false, zieljahr = null } = {}) {
  * Übersichtsschaltbild. Ohne Netzmodell leer (der Text beginnt dann mit dem Tabellenabsatz).
  */
 function ggNetzStrukturAbsaetze() {
-  let r;
-  try { ({ r } = ggNetzUebersichtDaten()); } catch (e) { void e; return []; }
+  let r, sicht;
+  try { ({ r, sicht } = ggNetzUebersichtDaten()); } catch (e) { void e; return []; }
   const k = r.kennzahlen;
   if (!Object.keys(r.stationen).length) return [];
   const eine = (n, einz, mehrz, w = 'eine') => (n === 1 ? `${w} ${einz}` : `${ggNum(n)} ${mehrz}`);
@@ -4959,14 +5040,76 @@ function ggNetzStrukturAbsaetze() {
     s.push(`Die Liegenschaft ist über ${ggTextFeld('', 'Übergabestation / Netzanschlusspunkt')} ${netzTxt} des Netzbetreibers angeschlossen.`);
   }
 
-  const abg = r.wurzeln.flatMap(w => w.abgaenge);
-  const von = nW > 1 ? 'Von den Übergabestationen' : 'Von der Übergabestation';
+  // Linien zwischen zwei Übergabestationen (zweiseitig anschließbar, im Normalbetrieb offen getrennt)
+  const lin = r.linien.filter(l => l.art !== 'kopplung');
+  const nrW = key => r.wurzeln.findIndex(w => w.key === key) + 1;
+  if (lin.length) {
+    const nSt = lin.reduce((n, l) => n + l.folge.length, 0);
+    const paare = [...new Set(lin.map(l => `${nrW(l.von)}|${nrW(l.bis)}`))];
+    const zwischen = paare.length === 1 && nW === 2 ? 'den beiden Übergabestationen'
+      : paare.length === 1 ? `den Übergabestationen ${paare[0].replace('|', ' und ')}` : 'den Übergabestationen';
+    s.push(`Zwischen ${zwischen} ${lin.length === 1 ? 'verläuft eine Mittelspannungslinie' : `verlaufen ${ggNum(lin.length)} Mittelspannungslinien`}, `
+      + `über die ${eine(nSt, 'Station', 'Stationen')} versorgt ${nSt === 1 ? 'wird' : 'werden'}.`);
+    if (lin.every(l => !l.gekoppelt)) {
+      const zahlen = new Map();
+      lin.forEach(l => l.speisung.forEach(sp => {
+        const w = sp === 'A' ? nrW(l.von) : sp === 'B' ? nrW(l.bis) : null;
+        if (w) zahlen.set(w, (zahlen.get(w) || 0) + 1);
+      }));
+      const verteilung = [...zahlen.entries()].sort((a, b) => a[0] - b[0])
+        .map(([w, n]) => `${eine(n, 'Station', 'Stationen')} über Übergabestation ${w}`);
+      s.push(`Im Normalbetrieb ${lin.length === 1 ? 'ist die Linie' : 'ist jede Linie'} an einer offenen Trennstelle aufgetrennt, sodass `
+        + `${verteilung.length > 1 ? verteilung.slice(0, -1).join(', ') + ' und ' + verteilung.at(-1) : verteilung[0] || 'jede Station einseitig'} `
+        + `versorgt ${nSt === 1 ? 'wird' : 'werden'}. Fällt eine Einspeisung aus, können die betroffenen Stationen durch Umschalten `
+        + `an der Trennstelle über die andere Übergabestation versorgt werden; die Trennstellen sind in der folgenden Abbildung markiert.`);
+    } else {
+      s.push(`Im Normalbetrieb ${lin.length === 1 ? 'wird die Linie' : 'werden die Linien'} an einer offenen Trennstelle aufgetrennt, `
+        + `damit die beiden Netzanschlüsse nicht parallel betrieben werden (Lage der Trennstelle: ${ggTextFeld('', 'Station bzw. Kabelabschnitt je Linie')}).`);
+    }
+  }
+
+  // Leiter: die Übergabe speist zwei Knotenstationen, zwischen denen mehrere Linien verlaufen
+  const leitern = r.wurzeln.flatMap(w => w.abgaenge).filter(a => a.leiter);
+  for (const ab of leitern) {
+    const lt = ab.leiter;
+    const nameL = lt.links ? ggNuKurzName(sicht(lt.links)) : 'der Übergabestation';
+    const nameR = ggNuKurzName(sicht(lt.rechts));
+    const ll = lt.linien.filter(l => l.art !== 'kopplung');
+    const nSt = ll.reduce((n, l) => n + l.folge.length, 0);
+    const nL = ll.reduce((n, l) => n + Math.max(1, l.wege?.length || 0), 0);
+    const quer = ll.some(l => (l.wege?.length || 0) > 1);
+    const linienTxt = `${nL === 1 ? 'verläuft eine Mittelspannungslinie' : `verlaufen ${ggNum(nL)} Mittelspannungslinien`}`
+      + `${quer ? ' (teils untereinander querverbunden)' : ''}, `
+      + `über die ${eine(nSt, 'weitere Station', 'weitere Stationen')} versorgt ${nSt === 1 ? 'wird' : 'werden'}.`;
+    s.push(lt.links
+      ? `Von der Übergabestation ${lt.zubringer[1] ? 'werden' : 'wird'} ${lt.zubringer[1] ? `die beiden Stationen ${nameL} und ${nameR}` : nameL} `
+        + `über eigene Kabel gespeist. Zwischen ${nameL} und ${nameR} ${linienTxt}`
+      : `Zwischen der Übergabestation und ${nameR} ${linienTxt}`);
+    if (ll.every(l => !l.gekoppelt)) {
+      const zA = ll.reduce((n, l) => n + l.speisung.filter(x => x === 'A').length, 0);
+      const zB = ll.reduce((n, l) => n + l.speisung.filter(x => x === 'B').length, 0);
+      const teile = [zA ? `${eine(zA, 'Station', 'Stationen')} über ${nameL}` : '', zB ? `${eine(zB, 'Station', 'Stationen')} über ${nameR}` : '']
+        .filter(Boolean);
+      s.push(`Im Normalbetrieb ${ll.length === 1 ? 'ist die Linie' : 'ist jede Linie'} an einer offenen Trennstelle aufgetrennt`
+        + (teile.length ? `, sodass ${teile.join(' und ')} versorgt ${zA + zB === 1 ? 'wird' : 'werden'}` : '')
+        + '; bei einer Störung kann durch Umschalten an der Trennstelle von der anderen Seite versorgt werden. '
+        + 'Die Trennstellen sind in der folgenden Abbildung markiert.');
+    } else {
+      s.push(`Im Normalbetrieb ${ll.length === 1 ? 'wird die Linie' : 'werden die Linien'} an einer offenen Trennstelle aufgetrennt `
+        + `(Lage der Trennstelle: ${ggTextFeld('', 'Station bzw. Kabelabschnitt je Linie')}).`);
+    }
+  }
+
+  const abg = r.wurzeln.flatMap(w => w.abgaenge).filter(a => !a.leiter);
+  const von = nW > 1 ? 'von den Übergabestationen' : 'von der Übergabestation';
+  // „Von der Übergabestation geht …“ bzw. nach Linien/Leiter „Daneben geht von der Übergabestation …“
+  const satz = verb => (lin.length || leitern.length ? `Daneben ${verb} ${von}` : `V${von.slice(1)} ${verb}`);
   if (abg.length === 1) {
     const n = abg[0].folge.length;
     const art = abg[0].art === 'ring' ? 'ein Mittelspannungsring' : 'ein Mittelspannungsstrahl';
-    s.push(`${von} geht ${art} aus, über den ${eine(n, 'Station', 'Stationen')} versorgt ${n === 1 ? 'wird' : 'werden'}.`);
+    s.push(`${satz('geht')} ${art} aus, über den ${eine(n, 'Station', 'Stationen')} versorgt ${n === 1 ? 'wird' : 'werden'}.`);
   } else if (abg.length > 1) {
-    s.push(`${von} gehen ${ggNum(abg.length)} Mittelspannungsabgänge aus`
+    s.push(`${satz('gehen')} ${ggNum(abg.length)} Mittelspannungsabgänge aus`
       + (k.ringe ? `, davon ${k.ringe === abg.length ? 'alle' : ggNum(k.ringe)} als Ring ausgeführt` : '') + '.');
   }
   const ringe = abg.filter(a => a.art === 'ring');
@@ -4985,6 +5128,86 @@ function ggNetzStrukturAbsaetze() {
   }
   s.push('Die folgende Abbildung zeigt die Struktur des Netzes schematisch.');
   return [s.join(' ')];
+}
+
+/**
+ * Kurzname einer Station für Kopfzeilen und Text: „Trafostation 3“. Heißt die Station nur allgemein
+ * („Trafostation“ ohne Nummer, Schaltstation), unterscheidet erst das Gebäude: „Trafostation (Gebäude 5)“.
+ */
+function ggNuKurzName(s, { knapp = false } = {}) {
+  if (!s) return '';
+  if (/\d/.test(s.titel) && s.titel !== 'Übergabestation') return s.titel;
+  if (!s.zeile2) return s.titel;
+  return knapp ? s.zeile2 : `${s.titel} (${s.zeile2})`;
+}
+
+/** Kabelangabe „NA2XS2Y 150 mm²“ (ohne Typ: „150 mm²“); ist = Bestand statt Ziel. */
+function ggNuKabelLabel(k, { ist = false } = {}) {
+  const typ = ist ? k.typIst : k.typ, qs = ist ? k.qsIst : k.qs;
+  return [typ, qs ? `${ggNum(qs)} mm²` : ''].filter(Boolean).join(' ');
+}
+/** Häufigste Kabelangabe einer Verbindung (bei Parallelsystemen); leer ohne Angaben. */
+function ggNuVerbKabel(v, opts) {
+  const z = new Map();
+  for (const k of v.kabel || []) { const l = ggNuKabelLabel(k, opts); if (l) z.set(l, (z.get(l) || 0) + 1); }
+  return [...z.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+}
+/** Länge in m bzw. km für Kopfzeilen und Tabellen */
+function ggNuLaenge(m) {
+  return m >= 1000 ? `${ggNum(m / 1000, 1)} km` : `${ggNum(Math.round(m))} m`;
+}
+
+/**
+ * Stränge des Netzes in Zeichenreihenfolge, mit denselben Namen wie im Übersichtsschaltbild („Abgang 2 · Linie 1“,
+ * bei mehreren NAP mit Präfix). Je Strang die Kabelabschnitte in Fließrichtung: { v (Verbindung), von, nach }.
+ */
+function ggNuStraenge(r) {
+  const out = [];
+  const abschnitte = (ab, von, bis) => [
+    ...ab.wurzel.map(x => ({ v: x.kante, von, nach: ab.folge[x.i] })),
+    ...ab.innen.map(x => ({ v: x.kante, von: ab.folge[x.i], nach: ab.folge[x.j] })),
+    ...(ab.wurzelB || []).map(x => ({ v: x.kante, von: ab.folge[x.i], nach: bis })),
+  ];
+  const mehrNap = r.wurzeln.length > 1;
+  r.wurzeln.forEach((w, wi) => {
+    const pre = mehrNap ? `NAP ${wi + 1} · ` : '';
+    // wie im Bild: Leiter-Abgänge zuletzt
+    [...w.abgaenge].sort((a, b) => (a.leiter ? 1 : 0) - (b.leiter ? 1 : 0)).forEach((ab, i) => {
+      const lab = `${pre}Abgang ${i + 1}`;
+      if (!ab.leiter) { out.push({ label: lab, art: ab.art, stationen: ab.folge, kabel: abschnitte(ab, w.key) }); return; }
+      const lt = ab.leiter, A = lt.links ?? w.key, B = lt.rechts;
+      const zub = [[lt.zubringer[0], lt.links], [lt.zubringer[1], lt.rechts]].filter(([v]) => v).map(([v, nach]) => ({ v, von: w.key, nach }));
+      out.push({ label: `${lab} · Zubringer`, art: 'zubringer', stationen: [lt.links, lt.rechts].filter(Boolean), kabel: zub });
+      let n = 1;
+      lt.linien.forEach(l => {
+        const k = Math.max(1, l.wege?.length || 0);
+        out.push(l.art === 'kopplung'
+          ? { label: `${lab} · Kupplung`, art: 'kopplung', stationen: [], kabel: [{ v: l.direkt, von: A, nach: B }] }
+          : { label: `${lab} · ${k > 1 ? `Linien ${n}–${n + k - 1}` : `Linie ${n}`}`, art: l.art, stationen: l.folge, kabel: abschnitte(l, A, B) });
+        n += k;
+      });
+      lt.stiche.forEach((st, si) => out.push({ label: `${lab} · Stich ${si + 1}`, art: st.art, stationen: st.folge,
+        kabel: abschnitte(st, st.seite === 'A' ? A : B) }));
+    });
+  });
+  const nr = k => r.wurzeln.findIndex(w => w.key === k) + 1;
+  let n = 1;
+  r.linien.forEach(l => {
+    const k = Math.max(1, l.wege?.length || 0);
+    const enden = `NAP ${nr(l.von)} ↔ NAP ${nr(l.bis)}`;
+    out.push(l.art === 'kopplung'
+      ? { label: `Kupplung ${enden}`, art: 'kopplung', stationen: [], kabel: [{ v: l.direkt, von: l.von, nach: l.bis }] }
+      : { label: `${k > 1 ? `Linien ${n}–${n + k - 1}` : `Linie ${n}`} (${enden})`, art: l.art, stationen: l.folge, kabel: abschnitte(l, l.von, l.bis) });
+    if (l.art !== 'kopplung') n += k;
+  });
+  r.ohneNap.forEach(ab => out.push({ label: 'ohne NAP-Anbindung', art: ab.art, stationen: ab.folge, kabel: abschnitte(ab, null) }));
+  return out;
+}
+/** Station → erster Strang, in dem sie liegt (für Texte wie „eingebunden in Abgang 2 · Linie 1“) */
+function ggNuStrangVon(straenge) {
+  const m = new Map();
+  for (const st of straenge) for (const k of st.stationen) if (!m.has(k)) m.set(k, st);
+  return m;
 }
 
 /** Kabeltypen der MS-Verbindungen für die Fußnote: „NA2XS2Y 185 mm² (4) · NA2XS2Y 95 mm² (1)". */
@@ -5011,72 +5234,183 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
   const x0 = S.padX, x1 = W - S.padX;
   const netz = cfg.netz || {};
   const bloecke = netz.bloecke || [];
+  const linien = netz.linien || [];
   const ohneNap = netz.ohneNap || [];
-  const alleSt = [...bloecke.flatMap(b => [b.station, ...b.abgaenge.flatMap(a => a.stationen)]), ...ohneNap.flatMap(a => a.stationen)];
-  const alleV = [...bloecke.flatMap(b => b.abgaenge), ...ohneNap].flatMap(a => [...a.innen, ...a.wurzel]);
+  const alleAb = [...bloecke.flatMap(b => b.abgaenge), ...linien, ...ohneNap];
+  const alleSt = [...bloecke.map(b => b.station), ...alleAb.flatMap(a => a.stationen)];
+  const alleV = alleAb.flatMap(a => [...a.innen, ...a.wurzel, ...(a.wurzelB || []), ...(a.direkt ? [a.direkt] : [])]);
 
   // ── Raster ──
   const busX = x0 + 110;            // MS-Sammelschiene der Übergabestation (senkrecht)
+  const busXR = W - busX;           // zweite Übergabestation einer Leiter: gespiegelt am rechten Rand
   const xa = busX + 58;             // linke Kante der Stationskarten
   const mitZubau = alleSt.some(s => s.zubau);   // Zielnetz: eine Zeile mehr für Trafotausch/-zubau
-  const K = 5, gap = 24, ch = mitZubau ? 114 : 100, ANSCHLUSS = 44, labelH = 24;
-  const cw = (x1 - xa - (K - 1) * gap) / K;
+  const ch = mitZubau ? 114 : 100, ANSCHLUSS = 44, labelH = 24;
+  // Stationen je Reihe: von Hand (Einzelansicht) oder automatisch — Abgänge einer Übergabe 5, Leitern so viele
+  // wie die längste Linie (4–8). Ab 5 Karten zwischen zwei Sammelschienen rücken diese an den Rand.
+  const leiterLinien = [...linien, ...bloecke.flatMap(b => b.abgaenge).flatMap(a => a.leiter?.linien || [])];
+  const laengste = Math.max(0, ...leiterLinien.flatMap(l => (l.wege?.length ? l.wege : [l.haupt ?? l.stationen.length])));
+  const wahl = parseInt(cfg.stationenJeReihe, 10);
+  const vonHand = Number.isFinite(wahl) && wahl >= 3 && wahl <= 10;
+  const raster = (K, busL, rand) => {
+    const busR = W - busL, kartenX = busL + rand;
+    const gap = K >= 6 ? 12 : K === 5 ? 16 : 24;
+    // Gassen für Verbindungen über mehrere Reihen liegen zwischen Sammelschiene und Karten
+    const gasse = g => busL + (rand >= 50 ? 18 + (g % 4) * 8 : 8 + (g % 4) * 4);
+    return { K, gap, busL, busR, xa: kartenX, rand, gasse };
+  };
+  const K1 = vonHand ? wahl : 5;
+  const L1 = raster(K1, busX, 58);
+  if (K1 <= 5) L1.gap = 24;   // bis 5 Karten bis zum Blattrand: Abstand wie bisher
+  L1.cw = (x1 - L1.xa - (K1 - 1) * L1.gap) / K1;
+  const K2 = vonHand ? wahl : Math.min(8, Math.max(4, laengste));
+  const L2 = K2 > 4 ? raster(K2, x0 + 30, 26) : raster(K2, busX, 58);
+  L2.cw = (L2.busR - L2.rand - L2.xa - (K2 - 1) * L2.gap) / K2;
   const uebW = 220, uebH = ch;
-  const cardX = c => xa + c * (cw + gap);
   const spurY = (unten, s) => unten + 14 + s * 10;
   const dxVon = s => ((s % 3) - 1) * 14;
 
-  // ── Planung je Abgang: Reihen, Routen, Spuren unter den Reihen ──
-  const plane = ab => {
+  // ── Planung je Abgang/Linie: Reihen, Routen, Spuren unter den Reihen ──
+  // Bei einer Linie beginnen die Abzweige in einer neuen Reihe, damit der Hauptweg rechts frei an die
+  // zweite Sammelschiene kommt.
+  // Mehrere Wege einer Linie (Querverbindung) stehen je in einer eigenen Zeile.
+  const plane = (ab, L) => {
+    const K = L.K;
     const n = ab.stationen.length;
-    const R = Math.max(1, Math.ceil(n / K));
-    const pos = i => ({ r: Math.floor(i / K), c: i % K });
-    const spuren = Array(R).fill(0);
+    const wegeL = ab.wege?.length ? ab.wege : ab.haupt != null ? [ab.haupt] : [];
+    const nWeg = wegeL.reduce((a, b) => a + b, 0);
+    const posArr = [];
+    let R = 0;
+    for (const len of [...wegeL, ...(wegeL.length ? [] : [n])]) {
+      for (let j = 0; j < len; j++) posArr.push({ r: R + Math.floor(j / K), c: j % K });
+      R += Math.ceil(len / K);
+    }
+    // Stiche (Abzweige) in Reihen unter den Wegen, in der Spalte der Station, an der sie hängen; ein Stich
+    // mit mehreren Stationen läuft nach rechts weiter, sonst nach unten.
+    const belegt = new Set(posArr.map(q => q.r + ':' + q.c));
+    const frei = (r, c) => c < K && !belegt.has(r + ':' + c);
+    if (wegeL.length && nWeg < n) {
+      const eltern = new Map();
+      (ab.innen || []).forEach(v => { if (v.j >= nWeg && v.i < v.j && !eltern.has(v.j)) eltern.set(v.j, v.i); });
+      const R0 = R;
+      for (let i = nWeg; i < n; i++) {
+        const e = eltern.get(i), pe = e != null ? posArr[e] : null;
+        let r = R0, c = pe ? pe.c : 0;
+        if (pe && e >= nWeg && frei(pe.r, pe.c + 1)) { r = pe.r; c = pe.c + 1; }
+        else if (pe && e >= nWeg) r = pe.r + 1;
+        while (!frei(r, c)) { if (pe) r++; else if (++c >= K) { c = 0; r++; } }
+        belegt.add(r + ':' + c);
+        posArr.push({ r, c });
+        R = Math.max(R, r + 1);
+      }
+    }
+    const pos = i => posArr[i];
+    const rechtsAussen = new Map();   // Reihe → größte belegte Spalte
+    posArr.forEach(p => rechtsAussen.set(p.r, Math.max(rechtsAussen.get(p.r) ?? -1, p.c)));
+    const spuren = Array(Math.max(1, R)).fill(0);
     const neu = r => spuren[r]++;
     let gasse = 0;
     const routen = [];
+    const mitWegen = wegeL.length > 0;
     (ab.wurzel || []).forEach((w, k) => {
-      if (k === 0 && w.i === 0) routen.push({ art: 'bus', w });
+      if ((k === 0 && w.i === 0) || (mitWegen && pos(w.i).c === 0)) routen.push({ art: 'bus', w });
       else routen.push({ art: 'busSpur', w, s: neu(pos(w.i).r) });
     });
+    (ab.wurzelB || []).forEach(w => {
+      const p = pos(w.i);
+      if (p.c === rechtsAussen.get(p.r)) routen.push({ art: 'busR', w });
+      else routen.push({ art: 'busSpurR', w, s: neu(p.r) });
+    });
+    if (ab.direkt) routen.push({ art: 'kupplung', w: ab.direkt });
     (ab.innen || []).forEach(v => {
       const pi = pos(v.i), pj = pos(v.j);
-      if (v.j === v.i + 1 && pi.r === pj.r) routen.push({ art: 'direkt', v });
-      else if (v.j === v.i + 1) routen.push({ art: 'umbruch', v, s: neu(pi.r) });
+      const zwischenFrei = () => { for (let r = pi.r + 1; r < pj.r; r++) if (belegt.has(r + ':' + pi.c)) return false; return true; };
+      if (v.j === v.i + 1 && pi.r === pj.r && pj.c === pi.c + 1) routen.push({ art: 'direkt', v });
+      else if (pi.c === pj.c && pj.r > pi.r && zwischenFrei()) routen.push({ art: 'senkrecht', v });
+      else if (v.j === v.i + 1 && pi.r !== pj.r) routen.push({ art: 'umbruch', v, s: neu(pi.r) });
       else if (pi.r === pj.r) routen.push({ art: 'spur', v, s: neu(pi.r) });
       else if (pj.r === pi.r + 1) routen.push({ art: 'runter', v, s: neu(pi.r) });
       else routen.push({ art: 'gasse', v, s: neu(pi.r), s2: neu(pj.r - 1), g: gasse++ });
     });
     const spurH = spuren.map(k => (k ? 20 + k * 10 : 22));
-    const hoehe = labelH + R * ch + spurH.reduce((a, b) => a + b, 0);
-    return { ab, n, R, pos, routen, spurH, hoehe };
+    const hoehe = n ? labelH + R * ch + spurH.reduce((a, b) => a + b, 0) : labelH + 26;
+    return { ab, L, n, R, pos, routen, spurH, hoehe };
   };
+
+  // Übergabestationen, die über Linien verbunden sind, werden paarweise als Leiter gezeichnet
+  const partner = new Map();
+  for (const l of linien) {
+    if (l.von == null || l.bis == null || l.von === l.bis || partner.has(l.von) || partner.has(l.bis)) continue;
+    partner.set(l.von, l.bis);
+    partner.set(l.bis, l.von);
+  }
+  // Eigene Abgänge einer Übergabe; eine Linie zu einer dritten Übergabe hängt vereinfacht als Abgang daran
+  // Leiter-Abgänge zuletzt: dort endet die Sammelschiene der Übergabe am Zubringer
+  const eigene = bi => [
+    ...bloecke[bi].abgaenge,
+    ...linien.filter(l => l.von === bi && partner.get(bi) !== l.bis && l.art !== 'kopplung')
+      .map(l => ({ ...l, wurzelB: [], zuNap: l.bis + 1 })),
+  ].sort((a, b) => (a.leiter ? 1 : 0) - (b.leiter ? 1 : 0));
+
+  // Leiter unter einer Übergabe: Zubringerschiene, Knotenstationen links/rechts (Karten wie Übergabestationen),
+  // darunter die Linien zwischen ihren Sammelschienen und die Stiche (rechte Seite gespiegelt)
+  const planeLeiter = ab => {
+    const lt = ab.leiter;
+    const lin = lt.linien.map(l => plane(l, L2));
+    const sA = lt.stiche.filter(s => s.seite === 'A').map(s => plane(s, L2));
+    const sB = lt.stiche.filter(s => s.seite === 'B').map(s => plane(s, L2));
+    const teile = [...lin, ...sA, ...sB];
+    const railDy = labelH + 6, kartenDy = railDy + 26;
+    let dy = kartenDy + uebH + 22;
+    const offs = teile.map(q => { const o = dy; dy += q.hoehe + 10; return o; });
+    return {
+      ab, lt, lin, sA, sB, railDy, kartenDy, hoehe: dy - 10,
+      setTop(t) { this.top = t; teile.forEach((q, i) => { q.top = t + offs[i]; }); },
+    };
+  };
+  const setzeTop = (p, t) => (p.setTop ? p.setTop(t) : (p.top = t));
 
   const top = S.headBand + S.headHSchmal + 22;
   let y = top;
-  const bPlan = bloecke.map(b => {
-    const bp = { b, top: y, egY: y + 58, uebTop: y + 80, abg: b.abgaenge.map(plane) };
-    let ay = bp.uebTop + uebH + 22;
-    for (const p of bp.abg) { p.top = ay; ay += p.hoehe + 10; }
-    bp.bottom = ay;
+  const gPlan = [];
+  bloecke.forEach((b, bi) => {
+    const re = partner.get(bi);
+    if (re != null && re < bi) return;   // rechte Hälfte einer Leiter
+    const L = re != null ? L2 : L1;
+    // Zwischen zwei NAP ist kein Platz für eine zweite Leiter → dort klassisch (vermascht)
+    const planAbg = ab => (ab.leiter && re == null ? planeLeiter(ab) : plane(ab, L));
+    const gp = { li: bi, re: re ?? null, L, top: y, egY: y + 58, uebTop: y + 80 };
+    gp.lin = re != null ? linien.filter(l => l.von === bi && l.bis === re).map(l => plane(l, L)) : [];
+    gp.liAbg = eigene(bi).map(planAbg);
+    gp.reAbg = re != null ? eigene(re).map(planAbg) : [];
+    let ay = gp.uebTop + uebH + 22;
+    for (const p of [...gp.lin, ...gp.liAbg, ...gp.reAbg]) { setzeTop(p, ay); ay += p.hoehe + 10; }
+    gp.bottom = ay;
     y = ay + 14;
-    return bp;
+    gPlan.push(gp);
   });
-  const oPlan = ohneNap.map(plane);
+  const oPlan = ohneNap.map(ab => plane(ab, L1));
   const ohneTop = y;
   if (oPlan.length) {
     let ay = y + 26;
     for (const p of oPlan) { p.top = ay; ay += p.hoehe + 10; }
     y = ay;
   }
-  const leer = !bPlan.length && !oPlan.length;
+  // Zielnetz: entfallende Stationen als eigener Abschnitt unter dem Netz (grau, „entfällt“)
+  const entf = netz.entfallen || [];
+  const entfTop = y;
+  if (entf.length) y += 26 + Math.ceil(entf.length / L1.K) * (ch + 14);
+  const leer = !gPlan.length && !oPlan.length && !entf.length;
   if (leer) y = top + 120;
   const mitGeplant = alleSt.some(s => s.geplant) || alleV.some(v => v.geplant);
   const mitErt = alleV.some(v => v.ertuechtigt);
   const mitTs = alleSt.some(s => s.ts) || alleV.some(v => v.ts);
+  const mitMarke = [...alleSt, ...entf].some(s => s.marke) || alleV.some(v => v.marke);
   const legY = y + 22;
   const fuss = cfg.fussnote ? String(cfg.fussnote).split('\n').filter(Boolean) : [];
-  const height = legY + 14 + fuss.length * 17 + S.footSpace + 8;
+  // Zielnetz mit Marken/Rückbau: Legende in zwei Zeilen
+  const legZeilen = mitMarke || entf.length ? 2 : 1;
+  const height = legY + 14 + (legZeilen - 1) * 22 + fuss.length * 17 + S.footSpace + 8;
   const G = { S, W, headH: S.headHSchmal, reduziert: true, height };
   let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.titel }, T, G);
 
@@ -5089,6 +5423,9 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
       <circle cx="${gR(x - 7)}" cy="${gR(yy)}" r="2.4" fill="${rot}"/><circle cx="${gR(x + 7)}" cy="${gR(yy)}" r="2.4" fill="${rot}"/>`;
   // Parallele Systeme kurz über der Leitung — zwischen zwei Karten ist nur eine Kartenlücke Platz
   const systeme = (x, yy, v) => (v.anzahl > 1 ? txt(x, yy - 6, `${v.anzahl}×`, { anchor: 'middle', size: 10, weight: 600, fill: T.text.muted }) : '');
+  // Nummer einer Maßnahme (Zielnetz) — verweist auf die Tabelle „Maßnahmen an der Netzstruktur“
+  const marke = (x, yy, nr) => `<circle cx="${gR(x)}" cy="${gR(yy)}" r="8.5" fill="${hell}" stroke="${T.bg}" stroke-width="1.5"/>`
+    + txt(x, yy + 3.6, String(nr), { anchor: 'middle', size: nr > 9 ? 9 : 10, weight: 700, fill: '#FFFFFF' });
   const trafoSym = (x, yy, r = 7, farbe = strich) => `<circle cx="${gR(x)}" cy="${gR(yy)}" r="${r}" fill="none" stroke="${farbe}" stroke-width="1.4"/>
       <circle cx="${gR(x)}" cy="${gR(yy + r * 1.35)}" r="${r}" fill="none" stroke="${farbe}" stroke-width="1.4"/>`;
   const zeichen = size => size * 0.55;
@@ -5103,8 +5440,8 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
     const rand = o.ohneNap ? T.text.faint : st.geplant ? hell : st.uebergabe ? gruen : T.rule;
     let k = `<rect x="${gR(kx) + 0.5}" y="${gR(ky) + 0.5}" width="${gR(breite) - 1}" height="${ch - 1}" fill="${fill}" stroke="${rand}"
         stroke-width="${st.uebergabe ? 1.6 : 1.2}"${st.geplant || o.ohneNap ? ' stroke-dasharray="5 3"' : ''}/>`;
-    const maxT = Math.floor((breite - (st.ts ? 36 : 16)) / (12 * 0.52));
-    k += txt(kx + 10, ky + 18, ggResKuerzen(st.titel, maxT), { size: 12, weight: 700 });
+    k += passend(kx + 10, ky + 18, st.titel, breite - (st.ts ? 36 : 16) - (st.marke ? 22 : 0), { size: 12, weight: 700 });
+    if (st.marke) k += marke(kx + breite - 13 - (st.ts ? 30 : 0), ky + 14, st.marke);
     if (st.ts) {
       k += `<rect x="${gR(kx + breite - 30)}" y="${gR(ky + 7)}" width="22" height="15" fill="${T.neutral.cardBg}" stroke="${rot}" stroke-width="1.2"/>`;
       k += txt(kx + breite - 19, ky + 18.5, 'TS', { anchor: 'middle', size: 9.5, weight: 700, fill: rot });
@@ -5126,42 +5463,90 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
       k += passend(kx + 10, ky + 78 + i * 14, z.t, breite - 18, z.o);
     });
     if (st.geplant) k += txt(kx + breite - 8, ky + ch - 8, 'geplant', { anchor: 'end', size: 9.5, weight: 600, fill: hell });
+    if (st.entfaellt) {
+      k += `<rect x="${gR(kx) + 0.5}" y="${gR(ky) + 0.5}" width="${gR(breite) - 1}" height="${ch - 1}" fill="${T.bg}" opacity="0.55"
+          stroke="${T.text.faint}" stroke-width="1.2" stroke-dasharray="5 3"/>`;
+      k += `<line x1="${gR(kx + 6)}" y1="${gR(ky + ch - 6)}" x2="${gR(kx + breite - 6)}" y2="${gR(ky + 6)}" stroke="${T.text.faint}" stroke-width="1"/>`;
+      k += txt(kx + breite - 8, ky + ch - 8, st.jahrWeg ? `entfällt ${st.jahrWeg}` : 'entfällt', { anchor: 'end', size: 9.5, weight: 700, fill: rot });
+      if (st.marke) k += marke(kx + breite - 13 - (st.ts ? 30 : 0), ky + 14, st.marke);
+    }
     return k;
   };
 
-  // ── ein Abgang: Routen zuerst, Karten darüber ──
-  const zeichneAbgang = (p, nr, mitBus, busYs) => {
-    const ab = p.ab;
+  // ── ein Abgang bzw. eine Linie: Routen zuerst, Karten darüber ──
+  // spiegel: Abgang der rechten Übergabe einer Leiter — Leitungen per Spiegelgruppe, Texte und Karten
+  // an gespiegelter Stelle, damit die Schrift lesbar bleibt.
+  const abgangArt = ab => (ab.zuNap ? `Linie zu NAP ${ab.zuNap}` : GG_NU_ART[ab.art] || ab.art)
+    + (ab.abzweige ? ` mit ${ab.abzweige === 1 ? 'Abzweig' : ggNum(ab.abzweige) + ' Abzweigen'}` : '');
+  const stationenTxt = n => `${ggNum(n)} ${n === 1 ? 'Station' : 'Stationen'}`;
+  const zeichneAbgang = (p, { kopf, kopfFarbe, warn = '', mitBus = true, busYs = [], busYsR = [], spiegel = false }) => {
+    const ab = p.ab, L = p.L, cw = L.cw, gap = L.gap, xa = L.xa, busL = L.busL, busR = L.busR;
+    const mx = x => (spiegel ? W - x : x);
     const rowTop = r => p.top + labelH + r * ch + p.spurH.slice(0, r).reduce((a, b) => a + b, 0);
     const geo = i => {
       const { r, c } = p.pos(i);
-      const kx = cardX(c), ky = rowTop(r);
+      const kx = xa + c * (cw + gap), ky = rowTop(r);
       return { r, kx, ky, cx: kx + cw / 2, ya: ky + ANSCHLUSS, unten: ky + ch };
     };
-    const art = (GG_NU_ART[ab.art] || ab.art) + (ab.abzweige ? ` mit ${ab.abzweige === 1 ? 'Abzweig' : ggNum(ab.abzweige) + ' Abzweigen'}` : '');
-    const kopf = mitBus ? `Abgang ${nr} · ${art} · ${ggNum(p.n)} ${p.n === 1 ? 'Station' : 'Stationen'}`
-      : p.n === 1 ? 'Einzelstation' : `${art} · ${ggNum(p.n)} Stationen`;
-    let o = txt(xa, p.top + 14, kopf, { size: 11, weight: 600, fill: mitBus ? gruen : T.text.muted });
+    // Kabel: überwiegender Typ (nach Trassenlänge, ohne Längen nach Anzahl) und Trassenlänge in den Kopf,
+    // abweichende Abschnitte bekommen ihre Angabe an die Leitung
+    const kv = [...(ab.innen || []), ...(ab.wurzel || []), ...(ab.wurzelB || []), ...(ab.direkt ? [ab.direkt] : [])];
+    const mitLaenge = kv.some(v => v.laengeM > 0);
+    const gewicht = new Map();
+    kv.forEach(v => { if (v.kabel) gewicht.set(v.kabel, (gewicht.get(v.kabel) || 0) + (mitLaenge ? v.laengeM / Math.max(1, v.anzahl) : 1)); });
+    const hauptKabel = [...gewicht.entries()].sort((x, y) => y[1] - x[1])[0]?.[0] || '';
+    const trasse = kv.reduce((sum, v) => sum + (v.laengeM || 0) / Math.max(1, v.anzahl), 0);
+    const kopfVoll = kopf + (hauptKabel ? ` · ${hauptKabel}` : '') + (trasse > 0 ? ` · ${ggNuLaenge(trasse)}` : '');
+    const typVon = l => l.replace(/\s*[\d.,]+\s*mm²$/, '');
+    // gleicher Typ: nur der Querschnitt („240“), sonst die volle Angabe — passt so in eine Kartenlücke
+    const abweichung = v => (!v.kabel || !hauptKabel || v.kabel === hauptKabel ? ''
+      : typVon(v.kabel) === typVon(hauptKabel) ? v.kabel.slice(typVon(v.kabel).length).replace(/\s*mm²$/, '').trim() : v.kabel);
+    const beschrift = (x, yy, v, senkrecht) => {
+      const t = [v.anzahl > 1 ? `${v.anzahl}×` : '', abweichung(v)].filter(Boolean).join(' ');
+      if (!t) return '';
+      return senkrecht ? txt(x + 6, yy + 3, t, { size: 9.5, weight: 600, fill: T.text.muted })
+        : txt(x, yy - 6, t, { anchor: 'middle', size: 9.5, weight: 600, fill: T.text.muted });
+    };
+    let lin = '', tsm = '', mk = '';
+    let o = txt(mx(xa), p.top + 14, kopfVoll, { size: 11, weight: 600, fill: kopfFarbe, ...(spiegel ? { anchor: 'end' } : {}) });
+    if (warn) o += txt(xa + ggEstW(kopfVoll, 11) + 10, p.top + 14, warn, { size: 11, weight: 700, fill: rot });
     for (const rt of p.routen) {
-      const v = rt.v || rt.w;
+      let v = rt.v || rt.w;
       let d = '', tsX = null, tsY = null;
       if (rt.art === 'bus') {
         const g = geo(rt.w.i);
-        d = `M${busX} ${g.ya}H${gR(g.kx)}`;
-        tsX = (busX + g.kx) / 2; tsY = g.ya;
+        d = `M${busL} ${g.ya}H${gR(g.kx)}`;
+        tsX = (busL + g.kx) / 2; tsY = g.ya;
         busYs.push(g.ya);
-        o += systeme(tsX, tsY, v);
       } else if (rt.art === 'busSpur') {
         const g = geo(rt.w.i), ys = spurY(g.unten, rt.s), ax = g.cx + dxVon(rt.s);
-        d = `M${gR(ax)} ${g.unten}V${ys}H${busX}`;
+        d = `M${gR(ax)} ${g.unten}V${ys}H${busL}`;
         tsX = (ax + xa) / 2; tsY = ys;
         busYs.push(ys);
+      } else if (rt.art === 'busR') {
+        const g = geo(rt.w.i);
+        d = `M${gR(g.kx + cw)} ${g.ya}H${busR}`;
+        tsX = (g.kx + cw + busR) / 2; tsY = g.ya;
+        busYsR.push(g.ya);
+      } else if (rt.art === 'busSpurR') {
+        const g = geo(rt.w.i), ys = spurY(g.unten, rt.s), ax = g.cx + dxVon(rt.s);
+        d = `M${gR(ax)} ${g.unten}V${ys}H${busR}`;
+        tsX = (ax + busR - L.rand) / 2; tsY = ys;
+        busYsR.push(ys);
+      } else if (rt.art === 'kupplung') {
+        const yy = p.top + labelH + 10;
+        d = `M${busL} ${yy}H${busR}`;
+        tsX = W / 2; tsY = yy;
+        busYs.push(yy); busYsR.push(yy);
       } else {
         const a = geo(v.i), b = geo(v.j);
         if (rt.art === 'direkt') {
           d = `M${gR(a.kx + cw)} ${a.ya}H${gR(b.kx)}`;
           tsX = a.kx + cw + gap / 2; tsY = a.ya;
-          o += systeme(tsX, tsY, v);
+        } else if (rt.art === 'senkrecht') {   // Stich direkt unter seiner Station
+          d = `M${gR(a.cx)} ${a.unten}V${b.ky}`;
+          tsX = a.cx; tsY = (a.unten + b.ky) / 2;
+          if (v.ts) { tsm += `<g transform="rotate(90 ${gR(tsX)} ${gR(tsY)})">${tsMarke(tsX, tsY)}</g>`; v = { ...v, ts: false }; }
         } else if (rt.art === 'umbruch') {
           const ys = spurY(a.unten, rt.s), xr = a.kx + cw + 10;
           d = `M${gR(a.kx + cw)} ${a.ya}H${gR(xr)}V${ys}H${gR(b.cx + dxVon(rt.s))}V${b.ky}`;
@@ -5171,16 +5556,93 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
           d = `M${gR(a.cx + dx)} ${a.unten}V${ys}H${gR(b.cx + dx)}V${rt.art === 'spur' ? b.unten : b.ky}`;
           tsX = (a.cx + b.cx) / 2; tsY = ys;
         } else {   // gasse: über den Gang zwischen Sammelschiene und Karten in eine tiefere Reihe
-          const ys1 = spurY(a.unten, rt.s), xg = busX + 18 + (rt.g % 4) * 8;
+          const ys1 = spurY(a.unten, rt.s), xg = L.gasse(rt.g);
           const ys2 = spurY(rowTop(b.r - 1) + ch, rt.s2), dx = dxVon(rt.s);
           d = `M${gR(a.cx + dx)} ${a.unten}V${ys1}H${xg}V${ys2}H${gR(b.cx + dx)}V${b.ky}`;
           tsX = (a.cx + xg) / 2; tsY = ys1;
         }
       }
-      o += pfad(d, v.geplant, v.ertuechtigt);
-      if (v.ts) o += tsMarke(tsX, tsY);
+      lin += pfad(d, v.geplant, v.ertuechtigt);
+      if (v.ts) tsm += tsMarke(tsX, tsY);
+      const senk = rt.art === 'senkrecht';
+      mk += beschrift(mx(tsX), tsY, v, senk);   // nach den Karten, sonst in schmalen Lücken verdeckt
+      if (v.marke) mk += senk ? marke(mx(tsX) - 14, tsY, v.marke) : marke(mx(tsX), tsY + 13, v.marke);
     }
-    ab.stationen.forEach((st, i) => { const g = geo(i); o += karte(st, g.kx, g.ky, cw, { ohneNap: !mitBus }); });
+    ab.stationen.forEach((st, i) => {
+      const g = geo(i);
+      o += karte(st, spiegel ? W - g.kx - cw : g.kx, g.ky, cw, { ohneNap: !mitBus });
+    });
+    // Trennstellen nach den Karten: in schmalen Kartenlücken sonst verdeckt
+    const spiegeln = x => (spiegel ? `<g transform="matrix(-1 0 0 1 ${W} 0)">${x}</g>` : x);
+    return spiegeln(lin) + o + spiegeln(tsm) + mk;
+  };
+  const abgangKopf = (p, nr, pre = '') => `${pre}Abgang ${nr} · ${abgangArt(p.ab)} · ${stationenTxt(p.n)}`;
+  // Mehrere NAP: Abgänge je NAP gezählt, mit Präfix (gleiche Namen wie in den Tabellen, ggNuStraenge)
+  const napPre = bi => (bloecke.length > 1 ? `NAP ${bi + 1} · ` : '');
+  // Linie zwischen zwei Übergaben bzw. Knotenstationen (Namen nA/nB): Kopf mit Speiserichtung im
+  // Normalbetrieb, Warnung ohne offene Trennstelle. In der Leiter nennt schon der Abgangskopf die Enden.
+  const linieKopf = (l, nr, nA, nB, { mitEnden = true } = {}) => {
+    const warn = !l.gekoppelt ? '' : l.tsNurStation ? 'offenes Feld der Trennstelle fehlt' : 'ohne offene Trennstelle';
+    if (l.art === 'kopplung') return { kopf: `Direkte Kupplung ${nA} ↔ ${nB}`, warn };
+    const zA = l.speisung.filter(s => s === 'A').length, zB = l.speisung.filter(s => s === 'B').length;
+    const nWege = Math.max(1, l.wege?.length || 0);
+    const titel = nWege > 1 ? `Linien ${nr}–${nr + nWege - 1} mit Querverbindung`
+      : `Linie ${nr}${l.art === 'linie' ? '' : ' (vermascht)'}`;
+    const teile = [titel + (l.abzweige ? ` · ${l.abzweige === 1 ? 'Abzweig' : ggNum(l.abzweige) + ' Abzweige'}` : ''),
+      ...(mitEnden ? [`${nA} ↔ ${nB}`] : []), stationenTxt(l.stationen.length)];
+    if (!l.gekoppelt && (zA || zB)) {
+      teile.push(!zB ? `Normalbetrieb: alle über ${nA}` : !zA ? `Normalbetrieb: alle über ${nB}`
+        : `Normalbetrieb: ${ggNum(zA)} über ${nA}, ${ggNum(zB)} über ${nB}`);
+    }
+    return { kopf: teile.join(' · '), warn };
+  };
+  // Leiter unter einer Übergabe zeichnen (Plan aus planeLeiter); busYs = Sammelschiene der Übergabe
+  const zeichneLeiter = (p, nr, busYs, pre = '') => {
+    const lt = p.lt;
+    const railY = p.top + p.railDy, kTop = p.top + p.kartenDy;
+    const nLin = lt.linien.filter(l => l.art !== 'kopplung').reduce((s, l) => s + Math.max(1, l.wege?.length || 0), 0);
+    let o = txt(xa, p.top + 14, `${pre}Abgang ${nr} · ${lt.nameL} ↔ ${lt.nameR} · ${ggNum(nLin)} ${nLin === 1 ? 'Linie' : 'Linien'} · `
+      + stationenTxt(p.ab.stationen.length), { size: 11, weight: 600, fill: gruen });
+    // Zubringer: senkrecht zur linken, über die Schiene zur rechten Knotenstation
+    const [zA, zB] = lt.zubringer;
+    const zuText = v => [v.anzahl > 1 ? `${v.anzahl}×` : '', v.kabel].filter(Boolean).join(' ');
+    if (lt.links && zA) {
+      const my = (railY + kTop) / 2;
+      o += pfad(`M${busX} ${railY}V${kTop}`, zA.geplant, zA.ertuechtigt);
+      if (zA.ts) o += `<g transform="rotate(90 ${busX} ${gR(my)})">${tsMarke(busX, my)}</g>`;
+      if (zuText(zA)) o += txt(busX + 8, my + 3, zuText(zA), { size: 9.5, weight: 600, fill: T.text.muted });
+      if (zA.marke) o += marke(busX - 14, my, zA.marke);
+    }
+    if (zB) {
+      o += pfad(`M${busX} ${railY}H${busXR}V${kTop}`, zB.geplant, zB.ertuechtigt);
+      if (zB.ts) o += tsMarke(W / 2, railY);
+      if (zuText(zB)) o += txt(W / 2, railY - 6, zuText(zB), { anchor: 'middle', size: 9.5, weight: 600, fill: T.text.muted });
+      if (zB.marke) o += marke(W / 2, railY + 13, zB.marke);
+    }
+    if ((lt.links && zA) || zB) busYs.push(railY);
+    if (lt.links) o += karte(lt.links, x0, kTop, uebW);
+    o += karte(lt.rechts, x1 - uebW, kTop, uebW);
+    // Linien und Stiche an den Sammelschienen der Knotenstationen (ist die Übergabe selbst der linke
+    // Knoten, hängen die Linien direkt an deren Sammelschiene)
+    const L = p.lin[0]?.L || L2;
+    const ysA = [], ysB = [];
+    let linNr = 1;
+    p.lin.forEach(q => {
+      const { kopf, warn } = linieKopf(q.ab, linNr, lt.knappL, lt.knappR, { mitEnden: false });
+      linNr += Math.max(1, q.ab.wege?.length || 0);
+      o += zeichneAbgang(q, { kopf, kopfFarbe: gruen, warn, busYs: ysA, busYsR: ysB });
+    });
+    const stichKopf = (q, i) => `Stich ${i + 1} · ${abgangArt(q.ab)} · ${stationenTxt(q.n)}`;
+    p.sA.forEach((q, i) => { o += zeichneAbgang(q, { kopf: stichKopf(q, i), kopfFarbe: gruen, busYs: ysA }); });
+    p.sB.forEach((q, i) => { o += zeichneAbgang(q, { kopf: stichKopf(q, p.sA.length + i), kopfFarbe: gruen, busYs: ysB, spiegel: true }); });
+    if (lt.links) o += sammelschiene(L.busL, { uebTop: kTop }, ysA, false);
+    else {
+      // Übergabe selbst ist der linke Knoten: ihre Sammelschiene knickt auf die Linie der Leiter ab
+      busYs.push(railY);
+      if (L.busL !== busX) o += `<line x1="${busX}" y1="${railY}" x2="${L.busL}" y2="${railY}" stroke="${gruen}" stroke-width="5"/>`;
+      o += sammelschiene(L.busL, { uebTop: railY - uebH }, ysA, false, { ohneText: true });
+    }
+    o += sammelschiene(L.busR, { uebTop: kTop }, ysB, true);
     return o;
   };
 
@@ -5189,52 +5651,106 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
                { anchor: 'middle', size: 13, fill: T.text.faint });
   }
 
-  bPlan.forEach((bp, bi) => {
-    const b = bp.b;
+  // Netz des Netzbetreibers über einer Übergabe (Kasten mittig über der Sammelschiene bx)
+  const netzbetreiber = (b, bx, gp) => {
     const uKv = b.napKV || netz.napKV;
-    // Netz des Netzbetreibers und Eigentumsgrenze am NAP
-    out += `<rect x="${x0 + 0.5}" y="${bp.top + 0.5}" width="${uebW}" height="38" fill="${T.neutral.cardBg}" stroke="${blau}"
+    const kx = bx - (busX - x0);
+    let o = `<rect x="${kx + 0.5}" y="${gp.top + 0.5}" width="${uebW}" height="38" fill="${T.neutral.cardBg}" stroke="${blau}"
               stroke-width="1.2" stroke-dasharray="5 3"/>`;
-    out += txt(x0 + uebW / 2, bp.top + 16, 'Netz des Netzbetreibers', { anchor: 'middle', size: 11.5, weight: 600 });
-    out += txt(x0 + uebW / 2, bp.top + 31, uKv ? `Mittelspannung ${ggNum(uKv, uKv % 1 ? 1 : 0)} kV` : 'Mittelspannung',
-               { anchor: 'middle', size: 11, fill: T.text.muted });
-    out += `<line x1="${busX}" y1="${bp.top + 38}" x2="${busX}" y2="${bp.uebTop}" stroke="${strich}" stroke-width="2"/>`;
-    out += `<line x1="${x0}" y1="${bp.egY}" x2="${x1}" y2="${bp.egY}" stroke="${T.text.muted}" stroke-width="1.2" stroke-dasharray="10 5"/>`;
-    out += `<circle cx="${busX}" cy="${bp.egY}" r="4.5" fill="${strich}"/>`;
-    out += txt(busX + 14, bp.egY - 7, bloecke.length > 1 ? `Netzanschlusspunkt ${bi + 1} (NAP)` : 'Netzanschlusspunkt (NAP)', { size: 11.5, weight: 600 });
-    out += txt(x1, bp.egY - 7, 'EIGENTUMSGRENZE', { anchor: 'end', mono: true, size: 10, weight: 600, tracking: 1, fill: T.text.muted });
-    out += txt(x1, bp.egY + 15, 'Netzbetreiber ↑  ·  Liegenschaft ↓', { anchor: 'end', size: 10, fill: T.text.faint });
+    o += txt(kx + uebW / 2, gp.top + 16, 'Netz des Netzbetreibers', { anchor: 'middle', size: 11.5, weight: 600 });
+    o += txt(kx + uebW / 2, gp.top + 31, uKv ? `Mittelspannung ${ggNum(uKv, uKv % 1 ? 1 : 0)} kV` : 'Mittelspannung',
+             { anchor: 'middle', size: 11, fill: T.text.muted });
+    o += `<line x1="${bx}" y1="${gp.top + 38}" x2="${bx}" y2="${gp.uebTop}" stroke="${strich}" stroke-width="2"/>`;
+    o += `<circle cx="${bx}" cy="${gp.egY}" r="4.5" fill="${strich}"/>`;
+    return o;
+  };
+  const sammelschiene = (bx, gp, ys, rechts, { ohneText = false } = {}) => {
+    const busTop = gp.uebTop + uebH, busBot = Math.max(busTop + 18, ...ys);
+    let o = `<line x1="${bx}" y1="${busTop}" x2="${bx}" y2="${gR(busBot)}" stroke="${gruen}" stroke-width="5"/>`;
+    ys.forEach(yy => { o += `<circle cx="${bx}" cy="${gR(yy)}" r="4" fill="${gruen}"/>`; });
+    // Beschriftung außen; liegt die Schiene am Blattrand (dichte Leiter), innen daneben
+    const aussen = rechts ? x1 - bx > 100 : bx - x0 > 100;
+    const links = rechts ? !aussen : aussen;
+    if (!ohneText) o += txt(links ? bx - 10 : bx + 10, busTop + 16, 'MS-Sammelschiene', { anchor: links ? 'end' : 'start', size: 10, fill: T.text.muted });
+    return o;
+  };
 
-    // Übergabestation und Kennzahlen daneben
-    out += karte(b.station, x0, bp.uebTop, uebW);
-    if (bi === 0 && (cfg.kenngroessen || []).length) {
+  gPlan.forEach((gp, gi) => {
+    const b = bloecke[gp.li], bR = gp.re != null ? bloecke[gp.re] : null;
+    const napTxt = bi => (bloecke.length > 1 ? `Netzanschlusspunkt ${bi + 1} (NAP)` : 'Netzanschlusspunkt (NAP)');
+    // Netz des Netzbetreibers und Eigentumsgrenze am NAP (bei einer Leiter zwei NAP, Grenze dazwischen beschriftet)
+    out += `<line x1="${x0}" y1="${gp.egY}" x2="${x1}" y2="${gp.egY}" stroke="${T.text.muted}" stroke-width="1.2" stroke-dasharray="10 5"/>`;
+    out += netzbetreiber(b, busX, gp);
+    out += txt(busX + 14, gp.egY - 7, napTxt(gp.li), { size: 11.5, weight: 600 });
+    if (bR) {
+      out += netzbetreiber(bR, busXR, gp);
+      out += txt(busXR - 14, gp.egY - 7, napTxt(gp.re), { anchor: 'end', size: 11.5, weight: 600 });
+      out += txt(W / 2, gp.egY - 7, 'EIGENTUMSGRENZE', { anchor: 'middle', mono: true, size: 10, weight: 600, tracking: 1, fill: T.text.muted });
+      out += txt(W / 2, gp.egY + 15, 'Netzbetreiber ↑  ·  Liegenschaft ↓', { anchor: 'middle', size: 10, fill: T.text.faint });
+    } else {
+      out += txt(x1, gp.egY - 7, 'EIGENTUMSGRENZE', { anchor: 'end', mono: true, size: 10, weight: 600, tracking: 1, fill: T.text.muted });
+      out += txt(x1, gp.egY + 15, 'Netzbetreiber ↑  ·  Liegenschaft ↓', { anchor: 'end', size: 10, fill: T.text.faint });
+    }
+
+    // Übergabestation(en) und Kennzahlen daneben
+    out += karte(b.station, x0, gp.uebTop, uebW);
+    if (bR) out += karte(bR.station, x1 - uebW, gp.uebTop, uebW);
+    if (gi === 0 && (cfg.kenngroessen || []).length) {
       const kx = x0 + uebW + 70;
-      out += `<line x1="${kx - 22}.5" y1="${bp.uebTop + 6}" x2="${kx - 22}.5" y2="${bp.uebTop + uebH - 6}" stroke="${T.line}" stroke-width="1"/>`;
+      out += `<line x1="${kx - 22}.5" y1="${gp.uebTop + 6}" x2="${kx - 22}.5" y2="${gp.uebTop + uebH - 6}" stroke="${T.line}" stroke-width="1"/>`;
       cfg.kenngroessen.slice(0, 5).forEach(([k, v], i) => {
-        const ky = bp.uebTop + 18 + i * 19;
+        const ky = gp.uebTop + 18 + i * 19;
         out += txt(kx, ky, k, { mono: true, size: 11, weight: 500, fill: T.text.faint });
         out += txt(kx + 190, ky, v, { mono: true, size: 11.5, weight: 600 });
       });
     }
 
-    // Abgänge; danach die Sammelschiene bis zum tiefsten Anschluss
-    const busYs = [];
-    bp.abg.forEach((p, i) => { out += zeichneAbgang(p, i + 1, true, busYs); });
-    const busTop = bp.uebTop + uebH, busBot = Math.max(busTop + 18, ...busYs);
-    out += `<line x1="${busX}" y1="${busTop}" x2="${busX}" y2="${gR(busBot)}" stroke="${gruen}" stroke-width="5"/>`;
-    busYs.forEach(yy => { out += `<circle cx="${busX}" cy="${gR(yy)}" r="4" fill="${gruen}"/>`; });
-    out += txt(busX - 10, busTop + 16, 'MS-Sammelschiene', { anchor: 'end', size: 10, fill: T.text.muted });
+    // Linien zwischen den Übergaben, dann die eigenen Abgänge (rechte Übergabe gespiegelt);
+    // danach die Sammelschienen bis zum tiefsten Anschluss
+    const busYs = [], busYsR = [];
+    let linNr = 1;
+    gp.lin.forEach(p => {
+      const { kopf, warn } = linieKopf(p.ab, linNr, `NAP ${gp.li + 1}`, `NAP ${gp.re + 1}`);
+      linNr += Math.max(1, p.ab.wege?.length || 0);
+      out += zeichneAbgang(p, { kopf, kopfFarbe: gruen, warn, busYs, busYsR });
+    });
+    gp.liAbg.forEach((p, i) => {
+      out += p.lt ? zeichneLeiter(p, i + 1, busYs, napPre(gp.li))
+        : zeichneAbgang(p, { kopf: abgangKopf(p, i + 1, napPre(gp.li)), kopfFarbe: gruen, busYs });
+    });
+    gp.reAbg.forEach((p, i) => {
+      out += zeichneAbgang(p, { kopf: abgangKopf(p, i + 1, napPre(gp.re)), kopfFarbe: gruen, busYs: busYsR, spiegel: true });
+    });
+    out += sammelschiene(gp.L.busL, gp, busYs, false);
+    if (bR) out += sammelschiene(gp.L.busR, gp, busYsR, true);
   });
+
+  if (entf.length) {
+    const zj = cfg.zieljahrText || '';
+    out += txt(x0, entfTop + 14, `Rückbau${zj ? ' bis ' + zj : ''} · entfallende Stationen`, { size: 11.5, weight: 700, fill: T.text.muted });
+    entf.forEach((st, i) => {
+      const r = Math.floor(i / L1.K), c = i % L1.K;
+      out += karte(st, L1.xa + c * (L1.cw + L1.gap), entfTop + 26 + r * (ch + 14), L1.cw);
+    });
+  }
 
   if (oPlan.length) {
     out += txt(x0, ohneTop + 14, 'Ohne Mittelspannungsverbindung zum Netzanschlusspunkt (im Netzmodell)',
                { size: 11.5, weight: 700, fill: T.text.muted });
-    oPlan.forEach(p => { out += zeichneAbgang(p, 0, false, []); });
+    oPlan.forEach(p => {
+      const kopf = p.n === 1 ? 'Einzelstation' : `${abgangArt(p.ab)} · ${ggNum(p.n)} Stationen`;
+      out += zeichneAbgang(p, { kopf, kopfFarbe: T.text.muted, mitBus: false });
+    });
   }
 
   // ── Legende ──
-  let lx = x0;
-  const leg = (sym, text) => { out += sym(lx, legY) + txt(lx + 30, legY + 4, text, { size: 11 }); lx += 30 + ggEstW(text, 11) + 24; };
+  let lx = x0, ly = legY;
+  const leg = (sym, text) => {
+    const w = 30 + ggEstW(text, 11) + 24;
+    if (lx > x0 && lx + w - 24 > x1) { lx = x0; ly += 22; }
+    out += sym(lx, ly) + txt(lx + 30, ly + 4, text, { size: 11 });
+    lx += w;
+  };
   if (!leer) {
     leg((x, yy) => pfad(`M${x} ${yy}H${x + 22}`, false), mitGeplant || mitErt ? 'MS-Kabel Bestand' : 'MS-Kabel');
     if (mitGeplant) leg((x, yy) => pfad(`M${x} ${yy}H${x + 22}`, true), 'Neubau (geplant)');
@@ -5242,8 +5758,13 @@ export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
     leg((x, yy) => trafoSym(x + 11, yy - 5, 5.5), 'Transformator MS/NS');
     if (mitTs) leg((x, yy) => tsMarke(x + 11, yy), 'offene Trennstelle (TS)');
     leg((x, yy) => `<rect x="${x + 0.5}" y="${yy - 7.5}" width="22" height="14" fill="${T.tint}" stroke="${gruen}" stroke-width="1.4"/>`, 'Übergabestation');
+    if (mitMarke) leg((x, yy) => marke(x + 11, yy - 1, 1), 'Maßnahme (Tabelle Maßnahmen an der Netzstruktur)');
+    if (entf.length) {
+      leg((x, yy) => `<rect x="${x + 0.5}" y="${yy - 7.5}" width="22" height="14" fill="${T.bg}" stroke="${T.text.faint}" stroke-width="1.2" stroke-dasharray="4 2"/>`
+        + `<line x1="${x + 3}" y1="${yy + 4}" x2="${x + 19}" y2="${yy - 5}" stroke="${T.text.faint}" stroke-width="1"/>`, 'entfällt (Rückbau)');
+    }
   }
-  fuss.forEach((z, i) => { out += txt(x0, legY + 30 + i * 17, z, { size: S.fsTab - 2, fill: T.text.faint }); });
+  fuss.forEach((z, i) => { out += txt(x0, legY + (legZeilen - 1) * 22 + 30 + i * 17, z, { size: S.fsTab - 2, fill: T.text.faint }); });
   return ggFinishSvg(out, W, height);
 }
 
@@ -5256,12 +5777,13 @@ GG_FIGUREN.push({
   datei: 'netz-uebersichtsschaltbild-ist',
   hinweis: 'Aus dem Netzmodell des Elektro-Tabs verdichtet: je Gebäude eine Station (NAP, Schaltanlagen, Trafos), '
          + 'dazwischen nur die Mittelspannungskabel. Ringe, Strahlen und offene Trennstellen (Schaltanlage „Trennstelle“ '
-         + 'oder Kabel-Merkmal) werden erkannt; je Station stehen die Trafoleistung, die versorgten Gebäude und die '
+         + 'oder Kabel-Merkmal) werden erkannt, ebenso Linien zwischen zwei Netzanschlusspunkten (als Leiter zwischen beiden '
+         + 'Sammelschienen, Speiserichtung aus der offenen Trennstelle am Kabel); je Station stehen die Trafoleistung, die versorgten Gebäude und die '
          + 'Erzeuger der NS-Seite. Nur Bestand — Stationsnamen wie in der Tabelle „Übersicht Trafostationen“.',
   render: cfg => ggRenderNetzUebersicht(cfg),
   config: {
     eyebrow: 'Stromnetz · Ist-Zustand', titel: 'Übersichtsschaltbild Mittelspannungsnetz',
-    netz: null, kenngroessen: [], fussnote: '',
+    netz: null, kenngroessen: [], fussnote: '', stationenJeReihe: 'auto',
     leer: 'Kein Netzmodell — im Elektro-Tab NAP, Schaltanlagen und Trafos anlegen.',
   },
   ausProjekt(cfg) {
@@ -5276,7 +5798,8 @@ GG_FIGUREN.push({
       ['Trafostationen', ggNum(k.stationen)],
       ['Transformatoren', ggNum(k.trafos)],
       ['installierte Leistung', `${ggNum(k.kva)} kVA`],
-      ['Abgänge / Ringe', `${ggNum(k.abgaenge)} / ${ggNum(k.ringe)}`],
+      k.linien ? ['Linien / Abgänge / Ringe', `${ggNum(k.linien)} / ${ggNum(k.abgaenge)} / ${ggNum(k.ringe)}`]
+        : ['Abgänge / Ringe', `${ggNum(k.abgaenge)} / ${ggNum(k.ringe)}`],
       ...(k.msLaengeM > 0 ? [['MS-Kabel (Trasse)', `≈ ${ggNum(k.msLaengeM / 1000, 1)} km`]] : []),
     ];
     const kabel = ggNuKabelText(r.verbindungen);
@@ -5285,7 +5808,8 @@ GG_FIGUREN.push({
         + (k.schaltstationen ? ` · ${ggNum(k.schaltstationen)} Schaltstation${k.schaltstationen > 1 ? 'en' : ''} ohne Transformator` : ''),
       kabel ? `MS-Kabel je Verbindung: ${kabel}` : '',
     ].filter(Boolean).join('\n');
-    const lage = `${ggNum(k.stationen)} Trafostationen, ${ggNum(k.abgaenge)} Abgänge (${ggNum(k.ringe)} Ringe)`;
+    const lage = `${ggNum(k.stationen)} Trafostationen, ${k.linien ? `${ggNum(k.linien)} ${k.linien === 1 ? 'Linie' : 'Linien'}, ` : ''}`
+      + `${ggNum(k.abgaenge)} Abgänge (${ggNum(k.ringe)} Ringe)`;
     return r.hinweise.length ? `⚠ ${lage} — ${r.hinweise.join(' ')}` : `✓ ${lage} aus dem Netzmodell übernommen.`;
   },
 });
@@ -5309,7 +5833,7 @@ GG_FIGUREN.push({
   render: cfg => ggRenderNetzUebersicht(cfg),
   config: {
     eyebrow: 'Stromnetz · Zielzustand', titel: 'Übersichtsschaltbild Zielnetz Mittelspannung',
-    netz: null, kenngroessen: [], fussnote: '',
+    netz: null, kenngroessen: [], fussnote: '', stationenJeReihe: 'auto',
     leer: 'Kein Netzmodell — im Elektro-Tab NAP, Schaltanlagen und Trafos anlegen.',
   },
   ausProjekt(cfg) {
@@ -5317,6 +5841,7 @@ GG_FIGUREN.push({
     const { netz, r } = ggNetzUebersichtDaten({ mitPlanung: true });
     cfg.netz = netz;
     const k = r.kennzahlen, ki = ist.r.kennzahlen;
+    cfg.zieljahrText = k.zieljahr ? String(k.zieljahr) : '';
     if (!Object.keys(r.stationen).length) {
       cfg.kenngroessen = []; cfg.fussnote = '';
       return '⚠ Kein Netzmodell — im Elektro-Tab NAP, Schaltanlagen und Trafos anlegen.';
@@ -5329,7 +5854,9 @@ GG_FIGUREN.push({
       ['Trafostationen', pfeil(ki.stationen, k.stationen)],
       ['Transformatoren', pfeil(ki.trafos, k.trafos)],
       ['installierte Leistung', pfeil(ki.kva, k.kva, ' kVA')],
-      ['Abgänge / Ringe', `${pfeil(ki.abgaenge, k.abgaenge)} / ${pfeil(ki.ringe, k.ringe)}`],
+      k.linien || ki.linien
+        ? ['Linien / Abgänge / Ringe', `${pfeil(ki.linien, k.linien)} / ${pfeil(ki.abgaenge, k.abgaenge)} / ${pfeil(ki.ringe, k.ringe)}`]
+        : ['Abgänge / Ringe', `${pfeil(ki.abgaenge, k.abgaenge)} / ${pfeil(ki.ringe, k.ringe)}`],
       ...(k.msLaengeM > 0 ? [['MS-Kabel (Trasse)', `≈ ${ggNum(k.msLaengeM / 1000, 1)} km`]] : []),
     ];
 
@@ -5359,9 +5886,202 @@ GG_FIGUREN.push({
       aend.length ? `Änderungen gegenüber Bestand: ${aend.join(' · ')}` : 'Keine Änderungen gegenüber dem Bestand geplant',
       kabel ? `MS-Kabel je Verbindung (Ziel): ${kabel}` : '',
     ].filter(Boolean).join('\n');
-    if (!aend.length) return '⚠ Im Netzmodell sind keine Planungen erfasst — das Zielnetz entspricht dem Bestand (3.1.2).';
+    if (!aend.length) return '⚠ Im Netzmodell sind keine Planungen erfasst — das Zielnetz entspricht dem Bestand (5.1.2).';
     const hinw = r.hinweise;
     return `${hinw.length ? '⚠' : '✓'} Zielnetz: ${aend.join(', ')}.${hinw.length ? ' ' + hinw.join(' ') : ''}`;
+  },
+});
+
+/* ── 3.4.1 Änderungen der Netzstruktur: Text, Maßnahmentabelle · 3.1.2 Übersicht MS-Kabel ──
+ * Alle drei lesen dieselbe Verdichtung wie die Übersichtsschaltbilder; die Nummern der Maßnahmen sind die
+ * Marken im Zielnetz-Bild (lib: aenderungen, sortiert nach Jahr). */
+
+/** Maßnahmen an der Netzstruktur als Zeilen { nr, text, wirkung, art, jahr } — Ist und Ziel aus ggNetzUebersichtDaten */
+function ggNuAenderungsZeilen(ist, ziel, { knapp = false } = {}) {
+  const name = key => ggNuKurzName(ziel.sicht(key), { knapp });
+  const strIst = ggNuStrangVon(ggNuStraenge(ist.r)), strZiel = ggNuStrangVon(ggNuStraenge(ziel.r));
+  const ringOderLinie = a => a === 'ring' || a === 'linie';
+  return (ziel.r.aenderungen || []).map(x => {
+    let text = '', wirkung = '', art = '';
+    if (x.art === 'station-neu') {
+      const st = ziel.r.stationen[x.station];
+      text = `Neubau ${name(x.station)}${st?.trafos.length ? ` (${ggNuTrafoText(st.trafos)})` : ''}`
+        + (x.anbindung ? `, Anbindung über ${x.anbindung === 1 ? 'ein Kabel' : `${ggNum(x.anbindung)} Kabel`}` : '');
+      art = 'Neubau';
+      const sz = strZiel.get(x.station);
+      if (sz) wirkung = `eingebunden in ${sz.label}`;
+    } else if (x.art === 'trafo') {
+      const teile = [
+        x.tausch.length ? `Tausch ${ggNuKvaGruppen(x.tausch.map(t => t.kvaIst))} → ${ggNuKvaGruppen(x.tausch.map(t => t.kva))} kVA` : '',
+        x.neu.length ? `zusätzlich ${ggNuTrafoText(x.neu)}` : '',
+        x.weg.length ? `Rückbau ${ggNuKvaGruppen(x.weg.map(t => t.kva))} kVA` : '',
+      ].filter(Boolean);
+      text = `${name(x.station)}: ${teile.join(', ')}`;
+      art = x.tausch.length ? 'Tausch' : x.neu.length ? 'Zubau' : 'Rückbau';
+    } else if (x.art === 'kabel-neu' || x.art === 'kabel-ertuechtigt') {
+      const v = x.kante, a = v.a, b = v.b;
+      if (x.art === 'kabel-neu') {
+        const kab = ggNuVerbKabel(v);
+        text = `Neue Kabelverbindung ${name(a)} – ${name(b)}${kab ? ` (${kab})` : ''}`;
+        art = 'Neubau';
+        // Endet das Kabel an der Übergabe (kein Strang), zählt der Strang der anderen Station
+        const ia = strIst.get(a), ib = strIst.get(b), si = ia || ib, za = strZiel.get(a) || strZiel.get(b);
+        if (ia && ib && ia !== ib) wirkung = `verbindet ${ia.label} und ${ib.label}`;
+        else if (si && za && ringOderLinie(za.art) && !ringOderLinie(si.art)) wirkung = `schließt ${si.label} ${za.art === 'ring' ? 'zum Ring' : 'zur Linie'}`;
+      } else {
+        const vi = ggNuVerbKabel(v, { ist: true }), vz = ggNuVerbKabel(v);
+        // gleicher Kabeltyp: nur die Querschnitte („NA2XS2Y 150 → 240 mm²“)
+        const typ = l => l.replace(/\s*[\d.,]+\s*mm²$/, '');
+        const wechsel = !(vi && vz && vi !== vz) ? 'Ertüchtigung'
+          : typ(vi) === typ(vz) && typ(vi) !== vi ? `${vi.replace(/\s*mm²$/, '')} → ${vz.slice(typ(vz).length).trim()}` : `${vi} → ${vz}`;
+        text = `Kabel ${name(a)} – ${name(b)}: ${wechsel}`;
+        art = 'Ertüchtigung';
+      }
+    } else if (x.art === 'station-weg') {
+      text = `Rückbau ${name(x.station)}`;
+      art = 'Rückbau';
+      const si = strIst.get(x.station);
+      if (si) wirkung = `entfällt aus ${si.label}`;
+    } else if (x.art === 'kabel-weg') {
+      const lbl = ggNuKabelLabel(x.kabel);
+      text = `Rückbau Kabel ${name(x.a)} – ${name(x.b)}${lbl ? ` (${lbl})` : ''}`;
+      art = 'Rückbau';
+    }
+    return { nr: x.nr, text, wirkung, art, jahr: x.jahr };
+  });
+}
+
+/** Text 3.4.1: was sich an der Netzstruktur gegenüber dem Bestand ändert, nummeriert wie im Zielnetz-Bild */
+function ggNetzStrukturZielAbsaetze() {
+  let ist, ziel;
+  try { ist = ggNetzUebersichtDaten(); ziel = ggNetzUebersichtDaten({ mitPlanung: true }); } catch (e) { void e; return []; }
+  if (!Object.keys(ziel.r.stationen).length) return [];
+  const k = ziel.r.kennzahlen, ki = ist.r.kennzahlen;
+  const zeilen = ggNuAenderungsZeilen(ist, ziel);
+  const s = [];
+  if (!zeilen.length) {
+    s.push('Die Struktur des Mittelspannungsnetzes bleibt gegenüber dem Bestand (Kapitel 5.1.2) unverändert; '
+      + 'im Netzmodell sind keine Neubauten, Ertüchtigungen oder Rückbauten erfasst.');
+    return [s.join(' ')];
+  }
+  s.push(`Gegenüber dem Bestand (Kapitel 5.1.2) ${zeilen.length === 1 ? 'ist eine Maßnahme' : `sind ${ggNum(zeilen.length)} Maßnahmen`} `
+    + `an der Netzstruktur vorgesehen${k.zieljahr ? ` (Zielzustand ${k.zieljahr})` : ''}.`);
+  if (zeilen.length <= 8) {
+    s.push(zeilen.map(z => `(${z.nr}) ${z.text}${z.wirkung ? ` – ${z.wirkung}` : ''}${z.jahr ? ` (${z.jahr})` : ''}.`).join(' '));
+  } else {
+    const n = new Map();
+    zeilen.forEach(z => n.set(z.art, (n.get(z.art) || 0) + 1));
+    s.push(`Im Einzelnen: ${[...n.entries()].map(([a, c]) => `${ggNum(c)} × ${a}`).join(', ')}.`);
+  }
+  const pfeil = (a, b, einh = '') => (a === b ? `${ggNum(b)}${einh}` : `${ggNum(b)}${einh} (Bestand ${ggNum(a)}${einh})`);
+  s.push(`Danach umfasst das Netz ${pfeil(ki.stationen, k.stationen)} Trafostationen mit einer installierten Leistung von `
+    + `${pfeil(ki.kva, k.kva, ' kVA')}`
+    + `, gegliedert in ${pfeil(ki.abgaenge, k.abgaenge)} ${k.abgaenge === 1 ? 'Abgang' : 'Abgänge'}`
+    + (k.linien || ki.linien ? `, ${pfeil(ki.linien, k.linien)} ${k.linien === 1 ? 'Linie' : 'Linien'}` : '')
+    + ` und ${pfeil(ki.ringe, k.ringe)} ${k.ringe === 1 ? 'Ring' : 'Ringe'}.`);
+  s.push('Die Maßnahmen sind in der folgenden Abbildung nummeriert und in der Tabelle „Maßnahmen an der Netzstruktur“ zusammengefasst.');
+  return [s.join(' ')];
+}
+
+GG_FIGUREN.push({
+  id: 'netz-struktur-ziel-text',
+  istText: true,
+  reihe: 34,   // vor dem Zielnetz-Schaltbild (35)
+  kapitel: '5.4.1 Netzanschluss und internes Stromnetz',
+  titel: 'Gutachtentext: Änderungen der Netzstruktur',
+  datei: 'netz-struktur-ziel-text',
+  hinweis: 'Vergleicht Bestand (5.1.2) und Zielnetz: nummerierte Maßnahmen (Neubau, Tausch, Ertüchtigung, Rückbau) mit '
+         + 'ihrer Wirkung auf die Struktur (z. B. „schließt Abgang 1 zum Ring“) und die Kennwerte vorher/nachher. '
+         + 'Die Nummern stehen als Marken im Zielnetz-Bild und in der Tabelle „Maßnahmen an der Netzstruktur“.',
+  render: () => ggTextBlatt(ggNetzStrukturZielAbsaetze()),
+  config: {},
+});
+
+GG_FIGUREN.push({
+  id: 'netz-massnahmen-ziel',
+  autoSync: true,
+  reihe: 36,   // nach dem Zielnetz-Schaltbild
+  kapitel: '5.4.1 Netzanschluss und internes Stromnetz',
+  titel: 'Maßnahmen an der Netzstruktur',
+  datei: 'netz-massnahmen-ziel',
+  hinweis: 'Alle geplanten Änderungen am Mittelspannungsnetz aus dem Netzmodell: neue Stationen und Kabel, Trafotausch und '
+         + '-zubau, Kabelertüchtigungen und Rückbau — nummeriert wie die Marken im Zielnetz-Bild, sortiert nach Jahr.',
+  render: cfg => ggRenderTabelle(cfg),
+  config: {
+    eyebrow: 'Elektrotechnisches Gutachten',
+    titel: 'Maßnahmen an der Netzstruktur',
+    leer: 'Keine Planungen im Netzmodell — das Zielnetz entspricht dem Bestand.',
+    spalten: [
+      { label: 'Nr.', weight: 0.4 },
+      { label: 'Maßnahme', weight: 4.4, align: 'left', mono: false },
+      { label: 'Wirkung auf die Netzstruktur', weight: 2.4, align: 'left', mono: false },
+      { label: 'Art', weight: 1.1, align: 'left', mono: false },
+      { label: 'Jahr', weight: 0.6 },
+    ],
+    zeilen: [], fussnote: '',
+  },
+  ausProjekt(cfg) {
+    const ist = ggNetzUebersichtDaten(), ziel = ggNetzUebersichtDaten({ mitPlanung: true });
+    const zeilen = ggNuAenderungsZeilen(ist, ziel, { knapp: true });
+    if (!zeilen.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Im Netzmodell sind keine Planungen erfasst.'; }
+    cfg.zeilen = zeilen.map(z => ({
+      werte: [String(z.nr), z.text, z.wirkung || '—', z.art, z.jahr ? String(z.jahr) : '—'],
+      akzent: z.art === 'Rückbau' ? GG_THEME.energy.waerme : GG_THEME.accents.gruen,
+    }));
+    const n = new Map();
+    zeilen.forEach(z => n.set(z.art, (n.get(z.art) || 0) + 1));
+    cfg.fussnote = `${zeilen.length} Maßnahmen · ${[...n.entries()].map(([a, c]) => `${a} ${c}`).join(' · ')} · Nummern wie im Zielnetz-Bild`;
+    return `✓ ${zeilen.length} Maßnahmen an der Netzstruktur übernommen.`;
+  },
+});
+
+GG_FIGUREN.push({
+  id: 'ms-kabel-ist',
+  autoSync: true,
+  reihe: 1010,   // nach der Tabelle „Übersicht Trafostationen“
+  kapitel: '5.1.2 Stromnetz intern (MS/NS)',
+  titel: 'Übersicht MS-Kabel',
+  datei: 'ms-kabel-ist',
+  hinweis: 'Alle Mittelspannungskabel zwischen den Stationen, nach Strang geordnet wie im Übersichtsschaltbild '
+         + '(Abgang, Linie, Zubringer, Stich) — Kabeltyp und Querschnitt aus dem Kabel-Editor, Länge aus der Trasse, '
+         + 'Baujahr von den Kabeln. Parallele Systeme stehen als „2 ×“.',
+  render: cfg => ggRenderTabelle(cfg),
+  config: {
+    eyebrow: 'Elektrotechnisches Gutachten',
+    titel: 'Übersicht MS-Kabel',
+    leer: 'Keine Mittelspannungskabel im Netzmodell.',
+    spalten: [
+      { label: 'Strang', weight: 1.7, align: 'left', mono: false },
+      { label: 'von', weight: 1.9, align: 'left', mono: false },
+      { label: 'nach', weight: 1.9, align: 'left', mono: false },
+      { label: 'Kabel', weight: 1.7, align: 'left', mono: false },
+      { label: 'Länge', weight: 0.9 },
+      { label: 'Baujahr', weight: 0.8 },
+    ],
+    zeilen: [], fussnote: '',
+  },
+  ausProjekt(cfg) {
+    const { r, sicht } = ggNetzUebersichtDaten();
+    if (!r.verbindungen.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine MS-Kabel zwischen Stationen im Netzmodell.'; }
+    const name = key => (key ? ggNuKurzName(sicht(key)) : '—');
+    const gesehen = new Set();
+    const zeilen = [];
+    const zeile = (label, ab) => {
+      const v = ab.v;
+      if (!v || gesehen.has(v)) return;
+      gesehen.add(v);
+      const kab = ggNuVerbKabel(v) + (v.kabel.some(k => k.geschaetzt) ? ' (geschätzt)' : '');
+      const len = v.laengeM > 0 ? `${v.anzahl > 1 ? `${v.anzahl} × ` : ''}${ggNum(Math.round(v.laengeM / v.anzahl))} m` : '—';
+      const systeme = v.anzahl > 1 && !(v.laengeM > 0) ? `${v.anzahl} × ` : '';
+      zeilen.push({ werte: [label, name(ab.von), name(ab.nach), systeme + (kab || 'ohne Angabe'), len, v.baujahr ? String(v.baujahr) : '—'] });
+    };
+    for (const st of ggNuStraenge(r)) for (const ab of st.kabel) zeile(st.label, ab);
+    r.verbindungen.forEach(v => zeile('sonstige', { v, von: v.a, nach: v.b }));
+    cfg.zeilen = zeilen;
+    const trasse = r.verbindungen.reduce((s, v) => s + (v.laengeM || 0) / Math.max(1, v.anzahl), 0);
+    cfg.fussnote = `${zeilen.length} Kabelabschnitte` + (trasse > 0 ? ` · Trassenlänge ≈ ${ggNuLaenge(trasse)}` : '')
+      + ` · ${ggNuKabelText(r.verbindungen)}`;
+    return `✓ ${zeilen.length} MS-Kabelabschnitte übernommen.`;
   },
 });
 
@@ -6217,7 +6937,7 @@ const GG_BEDARF_TEXT_HINWEIS = {
   gebaeude: 'Einleitung zu 3.3.1: Messbasis, Planungsgrundlage, Rückbau und Neubau mit ihrer Wirkung auf die Leistung. '
           + 'Planungsgrundlage und Herkunft der Neubau-Leistungen erfasst das Tool nicht — sie bleiben als Platzhalter offen.',
   waerme:   'Einleitung zu 3.3.2: elektrische Wärmeerzeuger der aktiven Variante und ihr Zusatzbedarf. Der Variantenname '
-          + 'kommt aus der Kopfleiste; in den Basisdaten bleibt er als Platzhalter offen.',
+          + 'kommt aus der Kopfleiste; im Hauptplan bleibt er als Platzhalter offen.',
   lade:     'Einleitung zu 3.3.3: Standorte, Ladepunkte, installierte Leistung, Gleichzeitigkeit und Zusatzbedarf. '
           + 'Die Grundlage der Bedarfsermittlung erfasst das Tool nicht — sie bleibt als Platzhalter offen.',
 };
@@ -7142,9 +7862,10 @@ export function ggRenderRueckAmpel(cfg, T = GG_THEME) {
   return ggFinishSvg(out, W, G.height);
 }
 
-/** Kanonische Varianten (mit Lesehilfe-Info) aus der PV-Analyse, sonst leer. */
+/** Kanonische Varianten (mit Lesehilfe-Info) aus der PV-Analyse, sonst leer.
+ *  Dachbelegungen aus dem PV-Modus ('belegung-<nr>') sind Arbeitsstände der Analyse, nicht des Gutachtens. */
 function ggPvKanon() {
-  return (window._pvAnalyse?.ergebnisse || []).filter(v => v.info && v.info.frage);
+  return (window._pvAnalyse?.ergebnisse || []).filter(v => v.info && v.info.frage && !/^belegung-/.test(v.id));
 }
 /** Kurzform der Variantenlabel für Achsen/Kategorien (voller Name steht in Tabellen). */
 const GG_PV_KURZ = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'netz-eigen': 'Bestandsnetz (eigen)', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
@@ -8365,7 +9086,9 @@ function ggPvFiguren() {
         cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
         ggMetaDefaults(cfg, 'pdBearbeiterStrom');
 
-        const v = window._pvResVarianten;
+        // Dachbelegungen aus dem PV-Modus gehören nicht ins Gutachten (wie ggPvKanon)
+        const vRoh = window._pvResVarianten;
+        const v = vRoh ? { ...vRoh, zeilen: (vRoh.zeilen || []).filter(z => !/^belegung-/.test(z.id)) } : null;
         if (!v?.zeilen?.length) { cfg.kategorien = []; cfg.gruppen = []; return '⚠ Noch kein Variantenvergleich vorhanden.'; }
 
         const durH = v.durH;
@@ -10855,7 +11578,7 @@ function ggNotstromStandHtml() {
       ? gEsc(`${GG_RES_MODE_LBL[r.mode] || r.mode} · ${r.durH} h · Aggregat ${r.genKw > 0 ? ggNum(r.genKw) + ' kW' : 'keines'} · `
         + `Notbetrieb ${ggNum(ggNotbetriebPct(r))} %`)
       : gelb('fehlt — ☀ PV-Analyse › Kapitel 6.1 „Resilienz“ öffnen'))
-    + zeile('Bestand (3.1.4)', s.bestand.length ? anlagen(s.bestand, s.bestandKw) : 'keine NEA')
+    + zeile('Bestand (5.1.4)', s.bestand.length ? anlagen(s.bestand, s.bestandKw) : 'keine NEA')
     + zeile('Geplant (Elektro-Tab)', s.geplant.length ? anlagen(s.geplant, s.geplantKw) : 'keine geplanten Notstromaggregate');
   const erf = s.erforderlichKw;
   if (erf && s.geplant.length && s.geplantKw != null && s.bestandKw != null) {
@@ -10882,7 +11605,7 @@ GG_FIGUREN.push(
     titel: 'Gutachtentext: Auslegung Notstromversorgung',
     datei: 'notstrom-auslegung-text',
     hinweis: 'Auslegung aus der Inselbetrieb-Simulation (☀ PV-Analyse › Kapitel 6.1 „Resilienz“): Ausfalldauer, Betriebsweise, '
-           + 'Aggregatleistung inkl. 20 % Reserve, Kraftstoff und Tank; Abgleich mit dem Bestand (3.1.4) und den geplanten '
+           + 'Aggregatleistung inkl. 20 % Reserve, Kraftstoff und Tank; Abgleich mit dem Bestand (5.1.4) und den geplanten '
            + 'Notstromaggregaten des Elektro-Tabs.',
     render: cfg => ggRenderNotstromAuslegungText(cfg),
     config: {},
@@ -10964,7 +11687,7 @@ GG_FIGUREN.push(
       cfg.fussnote = r
         ? `Erforderlich: Inselbetrieb-Simulation ${r.durH} h ${r.isWorst ? 'zum ungünstigsten Zeitpunkt' : 'zum gewählten Zeitpunkt'}, `
           + `${GG_RES_MODE_LBL[r.mode] || r.mode}, Aggregat inkl. 20 % Reserve · Bestand: Kapitel 5.1.4 · Geplant: Planungsschicht im Elektro-Tab`
-        : 'Erforderliche Werte fehlen — ☀ PV-Analyse › Kapitel 6.1 „Resilienz“ öffnen · Bestand: Kapitel 3.1.4';
+        : 'Erforderliche Werte fehlen — ☀ PV-Analyse › Kapitel 6.1 „Resilienz“ öffnen · Bestand: Kapitel 5.1.4';
       return r ? '✓ Bestand, Resilienz-Auslegung und geplante Aggregate übernommen.'
                : '⚠ Resilienz-Rechnung fehlt — nur Bestand und geplante Aggregate übernommen.';
     },
@@ -11709,7 +12432,7 @@ GG_FIGUREN.push(
  * auch im Dokument. Die von Hand änderbaren Felder landen in der Projektdatei;
  * Datenreihen nicht, die kommen beim Zeichnen frisch aus dem Projekt.
  * ═══════════════════════════════════════════════════════════════════════ */
-const GG_EINSTELLUNG_TEXTFELDER = ['eyebrow', 'titel', 'tabelleTitel', 'ort'];
+const GG_EINSTELLUNG_TEXTFELDER = ['eyebrow', 'titel', 'tabelleTitel', 'ort', 'stationenJeReihe'];
 
 /** Von Hand änderbare Felder einer Figur-Config (ohne Datenreihen). */
 function ggEinstellungenVon(cfg) {
@@ -12056,6 +12779,10 @@ export function ggRenderPanel() {
             ? sel('ggSetLayout(this.value)', [['voll', 'Blatt: vollständig'],
                                               ['reduziert', 'Blatt: reduziert + Kennzahlentabelle']], _gg.layout)
             : '')
+        + (figur.config.stationenJeReihe !== undefined
+            ? sel('ggSetStationenJeReihe(this.value)', [['auto', 'Stationen je Reihe: automatisch'],
+                  ...[4, 5, 6, 7, 8].map(n => [String(n), `${n} Stationen je Reihe`])], figur.config.stationenJeReihe)
+            : '')
         + ((ggZeigtTabelle(figur) || ggIstTabellenFigur(figur))
             ? sel('ggSetZiel(this.value)', [['figur', 'Export: Abbildung'],
                   ['tabelle', ggIstTabellenFigur(figur) ? 'Export: Word-Tabelle' : 'Export: Kennzahlen']], _gg.ziel)
@@ -12254,6 +12981,14 @@ export function ggSyncFromProject() {
   }
   ggRenderPanel();
   ggSay(meldung || '✓ Aus dem Projektstand übernommen.');
+}
+
+/** Übersichtsschaltbild: Stationen je Reihe ('auto' = längste Linie, Abgänge 5). */
+export function ggSetStationenJeReihe(v) {
+  const fig = ggFigur();
+  fig.config.stationenJeReihe = /^[3-9]$|^10$/.test(String(v)) ? String(v) : 'auto';
+  ggMerkeManuell(fig.id, 'stationenJeReihe');
+  ggRenderPanel();
 }
 
 export function ggSetKopf(feld, wert) {

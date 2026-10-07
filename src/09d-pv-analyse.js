@@ -138,8 +138,40 @@ const PV_STRATEGIE_INFO = {
   herleitung:'Netzstrategie-Editor: Dächer im Zieljahr zu Gruppen zusammengefasst, je Gruppe ein Anschlussweg; Befüllung mit derselben Netzphysik wie die Netzaufnahme. Invest = alle neuen Anschlüsse, Stationen, MS-Trassen und Ertüchtigungen der Strategie.',
   bewertung: 'Zeigt, was eine Strategie über die ganze Liegenschaft wirtschaftlich bedeutet — inklusive der Netzkosten, die in den übrigen Varianten nur pauschal angesetzt sind.',
 };
+// Dachbelegungen aus „Dächer automatisch belegen" (36) als Auslegungen 'belegung-<nr>'.
+// MIT frage: sie laufen durch alle Abschnitte der PV-Analyse (Auslegung im Blick,
+// Energiefluss, Speicherbetrieb, Jahresgang) — um ihren Speicher geht es ja gerade.
+// Nur das Gutachten (17 ggPvKanon) lässt sie aus; dort bleibt das feste Schema.
+const PV_BELEGUNG_FARBEN = ['#ff8a65', '#f06292', '#ba68c8', '#ffb74d', '#a1887f', '#e57373'];
+/** Regeln für den Speicher einer Dachbelegung: [id, Kurzname, Erklärung]. */
+const PV_BELEGUNG_SPEICHER = [
+  ['wirt',       'wirtschaftlich',        'Batterie mit dem höchsten Jahresüberschuss bei fester PV-Leistung — wie bei „Wirtschaftlich optimiert", mit Börsenpreisen im Spot-Betrieb'],
+  ['ohne',       'ohne Speicher',         'reine PV, keine Batterie'],
+  ['autarkie',   'Autarkie-Sättigung',    'Batterie so groß, bis der Autarkiegrad um weniger als 0,3 %-Punkte je weitere 1.000 kWh steigt — wie bei „Autarkie-optimiert"'],
+  ['abregelung', 'Abregelung vermeiden',  'kleinste Batterie, mit der an der Einspeisegrenze des Netzanschlusses (fast) nichts mehr abgeregelt wird'],
+  ['fest',       'feste Größe',           'Speichergröße in kWh selbst vorgegeben'],
+];
+const _pvSpeicherRegel = id => PV_BELEGUNG_SPEICHER.find(s => s[0] === id) || PV_BELEGUNG_SPEICHER[0];
+const _pvBelegungFarbe = nr => PV_BELEGUNG_FARBEN[(Math.max(1, nr) - 1) % PV_BELEGUNG_FARBEN.length];
+
+function _pvBelegungInfo(id) {
+  const nr = +(/^belegung-(\d+)$/.exec(id || '')?.[1] || 0);
+  if (!nr) return null;
+  const bv = (window._pvAnalyse?.belegungsVarianten || []).find(b => b.nr === nr);
+  const sp = _pvSpeicherRegel(bv?.speicher);
+  return {
+    label: bv?.name || `Dachbelegung ${nr}`, farbe: _pvBelegungFarbe(nr), icon: '▦',
+    frage:     'Was bringt diese Dachbelegung — mit passend ausgelegtem Speicher?',
+    ziel:      'Im PV-Modus automatisch belegte Dächer zusätzlich zur schon geplanten PV',
+    herleitung:`Dächer im PV-Modus automatisch belegt${bv?.beschreibung ? ` (${bv.beschreibung})` : ''}; dazu die bereits geplante PV aller übrigen Gebäude. Speicher „${sp[1]}": ${sp[2]}.`,
+    bewertung: 'Zeigt eine konkrete, gebäudescharfe Belegung neben den optimierten Auslegungen. Die Netzprüfung stammt aus der Vorschau beim Übernehmen'
+      + (bv?.stand ? ` (${bv.stand})` : '') + ' — ändert sich das Netz, die Vorschau neu rechnen und erneut übernehmen.',
+  };
+}
+
 const _pvVarInfo = id => PV_VARIANTEN_INFO[id]
-  || (/^fahrplan-\d+$/.test(id || '') ? PV_FAHRPLAN_INFO : /^strategie-\d+$/.test(id || '') ? PV_STRATEGIE_INFO : null);
+  || (/^fahrplan-\d+$/.test(id || '') ? PV_FAHRPLAN_INFO : /^strategie-\d+$/.test(id || '') ? PV_STRATEGIE_INFO
+    : _pvBelegungInfo(id));
 /** Farbe je Fahrplanstufe: von Türkis (Stufe 1) nach Dunkelblau (letzte Stufe). */
 const _pvFahrplanFarbe = (k, n) => `hsl(${190 + Math.round(40 * (n > 1 ? (k - 1) / (n - 1) : 0))}, 70%, ${62 - Math.round(22 * (n > 1 ? (k - 1) / (n - 1) : 0))}%)`;
 
@@ -163,6 +195,10 @@ function _pvStandardZustand() {
     fahrplanVarianten: null,    // Fahrplanstufen als Varianten 'fahrplan-<k>': { alle: bool, stufen: [k, …] }
     netzStrategien: null,       // Netzstrategien als Varianten 'strategie-<k>' (30-netzstrategie.js):
                                 //   [{ key, label, kwp, investEUR, abregelung, detail, stand, jahre }]
+    belegungsVarianten: null,   // Dachbelegungen aus dem PV-Modus (36) als Varianten 'belegung-<nr>':
+                                //   [{ nr, name, beschreibung, dachKwp: {gebId: kWp}, summeKwp,
+                                //      speicher: 'wirt'|'ohne'|'autarkie'|'abregelung'|'fest', batKwh,
+                                //      netz: { geprueft, vertraeglich, text }, stand }]
     pflichtLand: '',            // Bundesland für die PV-Pflicht ('' = aus der Karte bestimmen)
     pflichtAnnahme: 'auto',     // 'auto' = nur geplante Neubauten/Dachsanierungen | 'alle' | 'aus'
     deckZu: { infra: true },    // eingeklappte Gruppen des Steuer-Decks (Infra: selten geändert)
@@ -174,7 +210,8 @@ function _pvStandardZustand() {
     stale: false,
     herleitung: null, lastParams: null, lastProfilQuelle: null, basis: null, standText: '',
     pflicht: null,              // Pflicht-Kontext des letzten Laufs (Land, Norm, Sollleistung, Fälle)
-    fokus: 'wirt-opt',          // „Variante im Blick" — steuert alle variantenbezogenen Abschnitte
+    fokus: 'wirt-opt',          // „Auslegung im Blick" — steuert alle variantenbezogenen Abschnitte
+    stempel: null,              // für welche Planungsvariante gerechnet wurde ({variantKey, name, zeit})
   };
 }
 
@@ -406,6 +443,33 @@ function pvGetMaxKwpFromAssets() {
   const manual = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
 
   return assetKwp + gebKwp + ffKwp + manual;
+}
+
+/**
+ * Schon geplante PV ohne die Gebäude `ids` (Set aus String-IDs) — Quellen wie
+ * pvGetMaxKwpFromAssets, aber ohne den manuellen Override. Grundlage der
+ * Dachbelegungs-Varianten: deren Dächer kommen aus der Momentaufnahme, alles
+ * andere aus dem Projekt. So zählt ein inzwischen wirklich belegtes Dach nur einmal.
+ */
+function _pvKwpOhneGebaeude(ids) {
+  const assetKwp = (ASSETS?.items || [])
+    .filter(a => a.type === 'PV' && !(a.buildingId != null && ids.has(String(a.buildingId))))
+    .reduce((s, a) => s + (parseFloat(a.props?.leistungKWp) || 0), 0);
+  const mitAsset = _pvGebaeudeIdsMitAsset();
+  const gebKwp = gebaeude.reduce((s, g) => s + (g.pvAktiv && !mitAsset.has(g.id) && !ids.has(String(g.id)) ? calcGebKwp(g) : 0), 0);
+  const ffKwp  = freiflaechen.reduce((s, ff) => s + calcFFKwp(ff), 0);
+  const manual = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
+  return assetKwp + gebKwp + ffKwp + manual;
+}
+
+/**
+ * Obergrenze der kWp-Achsen und -Schieber in den Abbildungen: das Anlagenpotenzial,
+ * mindestens aber die größte Dachbelegung aus dem PV-Modus — deren Dächer sind im
+ * Projekt (noch) nicht belegt, ihre Auslegung läge sonst jenseits der Schieber.
+ */
+function _pvAchsenMaxKwp() {
+  const bel = (window._pvAnalyse?.ergebnisse || []).filter(v => /^belegung-/.test(v.id)).map(v => v.pvKwp || 0);
+  return Math.max(pvGetMaxKwpFromAssets() || 500, ...bel);
 }
 
 /** Aufschlüsselung der PV-Quellen für die Anzeige */
@@ -1130,6 +1194,34 @@ function pvFindNullAbrBat(pvKwp, demandH, pvProfile, napParams, spotH) {
   };
 }
 
+/**
+ * Speicher einer Dachbelegung nach der gewählten Regel (PV_BELEGUNG_SPEICHER) —
+ * dieselben Rechenwege wie die festen Auslegungen, nur mit vorgegebener PV-Leistung.
+ * @returns {{ batKwh:number, strategie:string, hinweis:string }}
+ */
+function _pvBelegungSpeicher(bv, kwp, demandH, pvProfile, napParams, spotH, params) {
+  const strat = spotH ? 'spot-dyn' : 'ev';
+  const mit = bat => ({ batKwh: bat, strategie: bat > 0 ? strat : 'none', hinweis: '' });
+  switch (bv.speicher) {
+    case 'ohne': return { batKwh: 0, strategie: 'none', hinweis: '' };
+    case 'fest': return mit(Math.max(0, Math.round(+bv.batKwh || 0)));
+    case 'autarkie': {
+      const a = pvCalcAutarkieMax(kwp, demandH, pvProfile, napParams);
+      return { batKwh: a.batKwh, strategie: a.strategie, hinweis: '' };
+    }
+    case 'abregelung': {
+      if (!(napParams.maxEinspeisKw > 0)) {
+        return { batKwh: 0, strategie: 'none',
+          hinweis: 'Ohne Einspeisegrenze am Netzanschluss wird nichts abgeregelt — der Speicher entfällt.' };
+      }
+      const r = pvFindNullAbrBat(kwp, demandH, pvProfile, napParams, spotH);
+      return { ...mit(r.batKwh), hinweis: r.batKwh > 0 && !r.isZero
+        ? `Selbst ${(r.batKwh / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MWh Speicher senken die Abregelung nur auf ${Math.round(r.curtailMwh)} MWh/a.` : '' };
+    }
+    default: return mit(pvOptBat(kwp, demandH, pvProfile, napParams, strat, spotH, params));
+  }
+}
+
 export function pvBerechneAlle() {
   const state    = window._pvAnalyse;
   const demandH  = pvGetDemandH();
@@ -1341,7 +1433,7 @@ export function pvBerechneAlle() {
     eS.netzstrategie = st;
     eS.hinweis = `${st.detail}. Netz-Invest ${Math.round((+st.investEUR || 0) / 1000)} T€`
       + (st.jahre ? ` (Rechenjahr ${st.jahre.ziel}, Neubau nach ${st.jahre.stich})` : '') + '.'
-      + (st.abregelung ? ' Enthält Gruppen mit Abregelung je Dach — die Variantenrechnung setzt die volle Leistung ohne diese Kappung an, der Ertrag ist hier eher zu hoch.' : '');
+      + (st.abregelung ? ' Enthält Gruppen mit Abregelung je Dach — die Auslegungsrechnung setzt die volle Leistung ohne diese Kappung an, der Ertrag ist hier eher zu hoch.' : '');
   });
 
   // ═══ 2) EIGENVERBRAUCHS-OPTIMIERT — größte PV mit ≥90 % Eigenverbrauch + EV-Batterie
@@ -1385,6 +1477,39 @@ export function pvBerechneAlle() {
     const eMaxPv = ergebnisse[ergebnisse.length - 1];
     if (eMaxPv && nullAbrHinweis) eMaxPv.hinweis = nullAbrHinweis;
     if (eMaxPv && nullAbr) eMaxPv.nullAbr = nullAbr;   // Zahlen für den Gutachtentext 3.4.2
+  }
+
+  // ═══ 6) DACHBELEGUNGEN — aus „Dächer automatisch belegen" (36) übernommen ════
+  //     PV = Momentaufnahme der belegten Dächer + schon geplante PV aller übrigen
+  //     Gebäude. Anders als Fahrplan/Netzstrategie bekommt jede Belegung einen
+  //     Speicher nach der gewählten Regel. Netzbau-Pauschalen entfallen nur, wenn
+  //     die Vorschau die ganze Belegung im Bestandsnetz geprüft hat.
+  const gebNachId = new Map(gebaeude.map(g => [String(g.id), g]));
+  for (const bv of state.belegungsVarianten || []) {
+    const id = `belegung-${bv.nr}`;
+    const ids = new Set();
+    let neuKwp = 0, fehlend = 0;
+    for (const [gid, k] of Object.entries(bv.dachKwp || {})) {
+      if (!gebNachId.has(gid)) { fehlend++; continue; }
+      ids.add(gid);
+      neuKwp += +k || 0;
+    }
+    const geplantKwp = _pvKwpOhneGebaeude(ids);
+    const kwpB = neuKwp + geplantKwp;
+    if (!(kwpB > 0)) continue;
+    const sp = _pvBelegungSpeicher(bv, kwpB, demandH, pvProfile, napParams, spotH, params);
+    berechne(id, kwpB, sp.batKwh, sp.strategie, '', { ohneNetzbau: !!bv.netz?.vertraeglich });
+    const eB = ergebnisse[ergebnisse.length - 1];
+    if (eB?.id !== id) continue;
+    eB.dachbelegung = { nr: bv.nr, daecher: ids.size, neuKwp, geplantKwp, speicher: bv.speicher };
+    const f0 = x => Math.round(x).toLocaleString('de-DE');
+    eB.hinweis = [
+      `${ids.size} Dächer neu belegt (${f0(neuKwp)} kWp)${geplantKwp > 0.5 ? ` + ${f0(geplantKwp)} kWp schon geplante PV` : ''}.`,
+      bv.speicher === 'ohne' ? 'Ohne Speicher.'
+        : `Speicher „${_pvSpeicherRegel(bv.speicher)[1]}": ${sp.batKwh > 0 ? f0(sp.batKwh) + ' kWh' : 'keiner'}.`,
+      sp.hinweis, bv.netz?.text || '',
+      fehlend ? `${fehlend} Gebäude der Belegung gibt es nicht mehr.` : '',
+    ].filter(Boolean).join(' ');
   }
 
   // ── Rückspeise- & Erzeugungsnetz-Beurteilung je Variante ──
@@ -1476,6 +1601,9 @@ export function pvBerechneAlle() {
   state.berechnet  = true;
   state.stale      = false;
   state.lastParams = params;
+  // Für welche Planungsvariante gerechnet wurde — nach einem Variantenwechsel
+  // zeigt das Panel, dass die Zahlen noch zur alten Variante gehören.
+  state.stempel = window.ergebnisStempelAktiv?.() || null;
   state.lastProfilQuelle = pvGetProfilQuelle();   // Herkunft mitprotokollieren
   // Datenbasis dieses Laufs für den Gutachtentext 3.4.2 (17) — damit der Text denselben
   // Stand zeigt wie Tabelle und Abbildungen, nicht zwischenzeitlich geänderte Eingaben.
@@ -1516,7 +1644,7 @@ export function pvaBuildAnalyseSection() {
     btn.className    = 'analyse-section-tab';
     btn.dataset.section = 'pva';
     btn.textContent  = '☀ PV-Analyse';
-    btn.title = 'PV-Analyse: Varianten- und Wirtschaftlichkeitsvergleich für PV-Anlagen — Eigenverbrauch, Einspeisung, Batterieoptimierung und Netzanschluss-Infrastruktur.';
+    btn.title = 'PV-Analyse: Auslegungs- und Wirtschaftlichkeitsvergleich für PV-Anlagen — Eigenverbrauch, Einspeisung, Batterieoptimierung und Netzanschluss-Infrastruktur.';
     btn.addEventListener('click', () => {
       if (typeof window.setAnalyseSection === 'function') window.setAnalyseSection('pva');
     });
@@ -1564,7 +1692,7 @@ export function initPvAnalyse() {
 // Die Blackout-/Inselbetrieb-Analyse (früher „Kapitel 6.1" am Ende der PV-Analyse) bekommt
 // so eigenen Platz für die genauere Betrachtung, statt am Ende der PV-Abbildungen
 // unterzugehen. Rechnet auf den bereits in der PV-Analyse berechneten Varianten
-// (window._pvAnalyse.ergebnisse) — dort zuerst „Varianten berechnen" nötig.
+// (window._pvAnalyse.ergebnisse) — dort zuerst „Auslegungen berechnen" nötig.
 // ══════════════════════════════════════════════════════════════════════════════
 
 export function resBuildAnalyseSection() {
@@ -1646,8 +1774,8 @@ const PVA_VIEWS = [
     render:(v, a) => { renderGrenznutzenChart(a.demandH, a.pvProfile, a.napParams, a.params, v);
                        renderWindGrenznutzenChart(a.demandH, a.pvProfile, a.napParams, a.params, v); } },
   // 2 — Welche Auslegung?
-  { id:'tabelle', fokus:true,    kap:'2', nr:'2.1', label:'Varianten-Vergleich', el:'pva-result-tabelle', render:(v) => renderVariantenTabelle(v) },
-  { id:'steckbrief', fokus:true, kap:'2', nr:'2.2', label:'Variantensteckbrief', el:'pva-steckbrief', render:(v) => renderSteckbrief(v) },
+  { id:'tabelle', fokus:true,    kap:'2', nr:'2.1', label:'Auslegungen im Vergleich', el:'pva-result-tabelle', render:(v) => renderVariantenTabelle(v) },
+  { id:'steckbrief', fokus:true, kap:'2', nr:'2.2', label:'Auslegungssteckbrief', el:'pva-steckbrief', render:(v) => renderSteckbrief(v) },
   { id:'abb1', kap:'2', nr:'2.3', label:'Optimierungsfläche', el:'pva-chart-heatmap', args:true,
     render:(v, a) => renderOptHeatmap(a.demandH, a.pvProfile, a.napParams, a.params, v) },
   { id:'abb3', fokus:true, kap:'2', nr:'2.4', label:'Eigenverbrauch und Autarkie', el:'pva-ev-kurve', args:true,
@@ -1687,15 +1815,15 @@ const _pvaDirty = new Set();
 /** Alle Abschnitte als neu-zu-zeichnen markieren (nach einem Rechenlauf / Panel-Aufbau). */
 function _pvaAlleDirty() { PVA_VIEWS.forEach(v => _pvaDirty.add(v.id)); }
 
-// ── Variante im Blick ─────────────────────────────────────────────────────────
+// ── Auslegung im Blick ─────────────────────────────────────────────────────────
 // Eine Auswahl für das ganze Dokument statt je eigener Varianten-Knöpfe in 3.2, 3.3,
 // 3.4, 5.2, 5.3 und 6.1 (die liefen auseinander: wer in 3.2 „Autarkie" wählte, sah
 // in 3.3 noch „Wirtschaftlich"). Die Leiste steht mitlaufend über den Kapiteln; ein
 // Klick auf eine Tabellenzeile oder einen Energiebilanz-Balken setzt sie ebenfalls.
 // Die Schieber in 3.2–3.4 und 6.1 bleiben zum freien Ausprobieren und starten auf
-// der Variante im Blick.
+// der Auslegung im Blick.
 
-/** Die Variante im Blick — fällt auf „Wirtschaftlich" bzw. die erste Variante zurück. */
+/** Die Auslegung im Blick — fällt auf „Wirtschaftlich" bzw. die erste Variante zurück. */
 function pvaFokusVariante(varianten = window._pvAnalyse?.ergebnisse) {
   const kanon = (varianten || []).filter(v => v.info && v.info.frage);
   const id = window._pvAnalyse?.fokus;
@@ -1732,18 +1860,18 @@ function _pvaFokusleisteZeichnen() {
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;padding:7px 0 8px;border-bottom:1px solid var(--border);margin-bottom:4px;"
       title="Steuert die Hervorhebung in 2.1 und 3.1, den Steckbrief 2.2, die Speicherkurven in 2.4, den Ausgangspunkt der Schieber in 3.2–3.4 und 6.1 sowie 5.2 und 5.3">
-      <span style="font-size:10.5px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;">Variante im Blick</span>
+      <span style="font-size:10.5px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;">Auslegung im Blick</span>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">${chips}</div>
     </div>`;
 }
 
-/** Zeile unter den Schiebern eines Abschnitts: Ausgangspunkt + Rücksprung zur Variante im Blick. */
+/** Zeile unter den Schiebern eines Abschnitts: Ausgangspunkt + Rücksprung zur Auslegung im Blick. */
 function _pvaFokusZeileHtml(v, hinweis = '') {
   return `<div data-pva-fokuszeile style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-bottom:8px;">
-    <span>Ausgangspunkt: <b style="color:${v.farbe};">${v.icon} ${escHtml(v.label)}</b>${v.id === pvaFokusVariante()?.id ? ' (Variante im Blick)' : ''}</span>
+    <span>Ausgangspunkt: <b style="color:${v.farbe};">${v.icon} ${escHtml(v.label)}</b>${v.id === pvaFokusVariante()?.id ? ' (Auslegung im Blick)' : ''}</span>
     ${hinweis ? `<span style="color:#ffb74d;">${hinweis}</span>` : ''}
     <span data-pva-frei style="display:none;color:#ffb74d;">· Schieber frei verstellt</span>
-    <button data-pva-fokus-reset style="display:none;cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:10px;color:#cfd8dc;font-size:11px;padding:1px 9px;">↺ zurück zur Variante</button>
+    <button data-pva-fokus-reset style="display:none;cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:10px;color:#cfd8dc;font-size:11px;padding:1px 9px;">↺ zurück zur Auslegung</button>
   </div>`;
 }
 
@@ -1969,7 +2097,7 @@ function _pvaDokumentHtml() {
         <span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--accent);">${v.nr}</span>
         <span style="font-size:13.5px;font-weight:600;color:var(--text);">${v.label}</span></div>` : ''}
       <div data-pva-platz style="min-height:90px;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);
-           border-radius:7px;color:var(--muted);font-size:11px;">Erscheint nach „Varianten berechnen" (Kapitel 0).</div>
+           border-radius:7px;color:var(--muted);font-size:11px;">Erscheint nach „Auslegungen berechnen" (Kapitel 0).</div>
       <div id="${v.el}" style="overflow:hidden;"></div>
       ${(v.extraEl || []).map(id => `<div id="${id}" style="overflow:hidden;"></div>`).join('')}
     </section>`;
@@ -2072,7 +2200,7 @@ function renderAnnahmenblatt(varianten) {
   if (!el) return;
   const s = window._pvAnalyse;
   const p = s.lastParams;
-  if (!p) { el.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:20px;">Erst „Varianten berechnen".</div>'; return; }
+  if (!p) { el.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:20px;">Erst „Auslegungen berechnen".</div>'; return; }
 
   const szenario = (() => { try { return getEconomicScenario()?.values; } catch (e) { return null; } })();
   const num = (v, d = 0) => Number(v).toLocaleString('de-DE', { minimumFractionDigits:d, maximumFractionDigits:d });
@@ -2122,7 +2250,7 @@ function renderAnnahmenblatt(varianten) {
         <div style="font-family:'DM Mono',monospace;font-size:12px;color:${nAbw ? '#ffa726' : '#66bb6a'};">${nAbw} ${nAbw === 1 ? 'Position' : 'Positionen'}</div>
       </div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:9px 12px;">
-        <div style="font-size:10px;color:var(--muted);">Berechnete Varianten</div>
+        <div style="font-size:10px;color:var(--muted);">Berechnete Auslegungen</div>
         <div style="font-family:'DM Mono',monospace;font-size:12px;">${(varianten || []).length}</div>
       </div>
     </div>
@@ -2144,7 +2272,7 @@ function renderAnnahmenblatt(varianten) {
       ${kapitel('2 · Wirtschaftliche Annahmen')}
       ${zeile('Strombezugspreis', num(p.pStrom, 1) + ' ct/kWh',
               abwPreis ? `manuell überschrieben — Szenariowert ${num(szenario.stromCtKwh, 1)} ct/kWh` : 'Projektszenario', abwPreis)}
-      ${zeile('Einspeisevergütung', num(p.pEinsp, 1) + ' ct/kWh', 'Projektannahme, für alle Varianten gleich')}
+      ${zeile('Einspeisevergütung', num(p.pEinsp, 1) + ' ct/kWh', 'Projektannahme, für alle Auslegungen gleich')}
       ${zeile('Kalkulationszins', num(p.zins * 100, 1) + ' %',
               abwZins ? `manuell überschrieben — Szenariowert ${num(szenario.kapitalzinsPct, 1)} %` : 'Projektszenario', abwZins)}
       ${zeile('PV-Investition', num(p.pvInvestPerKwp) + ' €/kWp', 'schlüsselfertig inkl. Montage')}
@@ -2193,9 +2321,9 @@ function renderAnnahmenblatt(varianten) {
           zeile('Tank-Investition', num(_PV_RES_COST.tankEurPerL, 2) + ' €/l',
                 'aufgefangene Lagerung, Volumen mit ' + num((_PV_RES_COST.tankMargin - 1) * 100) + ' % Zuschlag') +
           zeile('Leistungsreserve Aggregat', '20 %', 'Aufschlag auf die kleinste ausreichende Leistung') +
-          zeile('Variantenvergleich', vv ? num(vv.zeilen.length) + ' Varianten gerechnet' : 'nicht gerechnet',
-                vv ? 'jede Variante an ihrem eigenen ungünstigsten Zeitpunkt'
-                   : 'in Kapitel 6.1 auf „Varianten vergleichen" klicken');
+          zeile('Variantenvergleich', vv ? num(vv.zeilen.length) + ' Auslegungen gerechnet' : 'nicht gerechnet',
+                vv ? 'jede Auslegung an ihrem eigenen ungünstigsten Zeitpunkt'
+                   : 'in Kapitel 6.1 auf „Auslegungen vergleichen" klicken');
       })()}
     </table>
 
@@ -2207,7 +2335,7 @@ function renderAnnahmenblatt(varianten) {
         <div>Batterie-Kapazitätsalterung nicht abgebildet; Ersatz über die kürzere Annuität.</div>
         <div>Wärmepumpen und Ladeinfrastruktur als feste Last, nicht als steuerbare Flexibilität.</div>
         <div>Δu-Abschätzung als Screening bei cos φ ≈ 1; ersetzt keine Netzverträglichkeitsprüfung.</div>
-        <div>Einspeisevergütung als ein Satz für alle Varianten, ohne EEG-Leistungsstaffel.</div>
+        <div>Einspeisevergütung als ein Satz für alle Auslegungen, ohne EEG-Leistungsstaffel.</div>
         <div>Kapitalwert mit konstantem Jahresüberschuss, ohne Preissteigerungspfad.</div>
         <div>Keine PV-Degradation über die Nutzungsdauer.</div>
         <div>Resilienz: Strom- und Wärmeausfall werden getrennt betrachtet. Dass bei Netzausfall
@@ -2236,7 +2364,7 @@ function _pvBuildPanelHtml() {
   <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;">
     <div>
       <div style="font-size:15px;font-weight:600;color:var(--text);letter-spacing:.06em;text-transform:uppercase;">PV-Ausbauanalyse</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:3px;">Variantenstudie · Wirtschaftlichkeit · Netzintegration &nbsp;·&nbsp; Kapitel 3.4.2 / 3.5</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;">Auslegungsstudie · Wirtschaftlichkeit · Netzintegration &nbsp;·&nbsp; Kapitel 3.4.2 / 3.5</div>
     </div>
     <div style="display:flex;gap:6px;">
       <button class="btn-secondary" data-click="pvaSetView('annahmen')" style="font-size:11px;">Annahmenblatt</button>
@@ -2417,7 +2545,7 @@ function _pvBuildPanelHtml() {
             <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
               <span style="color:#9575cd;font-size:12px;">§</span>
               <span style="font-size:11px;font-weight:600;color:var(--text);">Landesrechtliche PV-Pflicht</span>
-              <span class="htip" data-tip="Mindestbelegung nach Bauordnung bzw. Solar-/Klimaschutzgesetz des Bundeslandes. Ergibt eine eigene Variante und prüft alle anderen Varianten gegen diese Untergrenze. Orientierungswert, keine Rechtsberatung.">?</span>
+              <span class="htip" data-tip="Mindestbelegung nach Bauordnung bzw. Solar-/Klimaschutzgesetz des Bundeslandes. Ergibt eine eigene Auslegung und prüft alle anderen Auslegungen gegen diese Untergrenze. Orientierungswert, keine Rechtsberatung.">?</span>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
               <select id="pva-pflicht-land" data-change="window._pvAnalyse.pflichtLand=this.value;window.pvPflichtRefresh&&window.pvPflichtRefresh()"
@@ -2434,7 +2562,8 @@ function _pvBuildPanelHtml() {
               </select>
             </div>
             <div id="pva-pflicht-info" style="margin-top:6px;">${_pvPflichtInfo()}</div>
-          </div>`;
+          </div>
+          <div id="pva-belegungen" style="margin-top:11px;padding-top:9px;border-top:1px solid var(--border);">${_pvBelegungenHtml()}</div>`;
         })()}
       </div>
 
@@ -2493,7 +2622,7 @@ function _pvBuildPanelHtml() {
            title="Ein- und ausklappen">
         <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);">06</span>
         <div style="font-size:12px;font-weight:600;color:var(--text);">Netzanschluss-Infrastruktur</div>
-        <span class="htip" data-tip="Netzanschluss- und Zusatzkosten je PV-Leistungsstufe. Die Stufe wird jeder Variante automatisch nach ihrer PV-Leistung zugeordnet; alle Werte sind editierbar.">?</span>
+        <span class="htip" data-tip="Netzanschluss- und Zusatzkosten je PV-Leistungsstufe. Die Stufe wird jeder Auslegung automatisch nach ihrer PV-Leistung zugeordnet; alle Werte sind editierbar.">?</span>
         <span id="pva-infra-summary" style="margin-left:auto;font-size:10px;color:#78909c;">${_pvaInfraSummary()}</span>
         <span id="pva-infra-caret" style="color:#78909c;font-size:11px;width:12px;text-align:center;">${window._pvAnalyse.deckZu?.infra ? '▸' : '▾'}</span>
       </div>
@@ -2558,12 +2687,14 @@ function _pvBuildPanelHtml() {
     font-size:11px;color:#ffb74d;display:none;align-items:center;gap:9px;">
     <span style="font-size:14px;">⚠</span>
     <span>Die Eingaben haben sich geändert — die Ergebnisse stammen noch aus der vorherigen
-      Berechnung. <b>Varianten neu berechnen</b>, bevor Zahlen ins Gutachten übernommen werden.</span>
+      Berechnung. <b>Auslegungen neu berechnen</b>, bevor Zahlen ins Gutachten übernommen werden.</span>
   </div>
+
+  <div id="pva-stempel-hinweis"></div>
 
   <button class="btn-confirm" id="pva-btn-berechnen"
     style="width:100%;padding:11px;font-size:12px;margin-top:12px;letter-spacing:.04em;"
-    data-click="pvBerechneAlle()">Varianten berechnen</button>
+    data-click="pvBerechneAlle()">Auslegungen berechnen</button>
 
     </section>
 
@@ -2573,8 +2704,8 @@ function _pvBuildPanelHtml() {
       <div id="pva-leer-hinweis" style="margin-top:22px;padding:14px;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:11.5px;text-align:center;">
         ${(() => {
           const hasBase = !!(window.elQuartierH15 || window.elQuartierH);
-          if (!hasBase) return 'Lastgang oben hochladen und anschließend „Varianten berechnen".';
-          return '✓ Lastgang geladen — jetzt „Varianten berechnen". Die Kapitel 1–7 füllen sich danach.';
+          if (!hasBase) return 'Lastgang oben hochladen und anschließend „Auslegungen berechnen".';
+          return '✓ Lastgang geladen — jetzt „Auslegungen berechnen". Die Kapitel 1–7 füllen sich danach.';
         })()}
       </div>
       ${_pvaDokumentHtml()}
@@ -2613,7 +2744,7 @@ function _pvaInfraSummary() {
     const basis = stufen.length + ' Stufen · ' +
       Math.round(stufen.reduce((x, y) => x + y.invest, 0)).toLocaleString('de-DE') + ' € hinterlegt';
     return teil
-      ? basis + ' · gewählte Variante: ' + escHtml(teil.label) + ' (' + Math.round(teil.invest).toLocaleString('de-DE') + ' €)'
+      ? basis + ' · gewählte Auslegung: ' + escHtml(teil.label) + ' (' + Math.round(teil.invest).toLocaleString('de-DE') + ' €)'
       : basis;
   } catch (e) { return 'Kosten je PV-Leistungsstufe'; }
 }
@@ -2910,7 +3041,7 @@ function _pvHerleitungTeile(varianten, W) {
 // ── Kapitel 2.2 — Variantensteckbrief ───────────────────────────────────────
 // Früher zwei getrennte Blöcke mit derselben Gliederung nach Varianten: sieben
 // Textkarten (Lesehilfe) und darunter sieben Grafikfelder (Herleitung), zusammen
-// rund 1.800 px. Jetzt ein Steckbrief für die Variante im Blick: links, welche Frage
+// rund 1.800 px. Jetzt ein Steckbrief für die Auslegung im Blick: links, welche Frage
 // sie beantwortet, wie sie entsteht und wie man sie bewertet — rechts der Beleg aus
 // der Suchspur der Optimierung. Auf Knopfdruck stehen alle Steckbriefe untereinander
 // (z. B. zum Durchblättern oder Drucken).
@@ -2948,7 +3079,7 @@ function renderSteckbrief(varianten) {
         <div style="display:flex;align-items:baseline;gap:8px;">
           <span style="color:${v.farbe};font-size:16px;">${v.icon}</span>
           <span style="font-size:14px;font-weight:600;color:var(--text);">${escHtml(v.label)}</span>
-          ${v.id === fokus.id && _pvaSteckbriefAlle ? '<span style="font-size:10.5px;color:var(--accent);">Variante im Blick</span>' : ''}
+          ${v.id === fokus.id && _pvaSteckbriefAlle ? '<span style="font-size:10.5px;color:var(--accent);">Auslegung im Blick</span>' : ''}
         </div>
         <div style="font-size:12.5px;color:${v.farbe};font-weight:600;line-height:1.45;">${v.info.frage}</div>
         <div style="font-size:12px;color:#b0bec5;line-height:1.6;"><b style="color:var(--text);">So entsteht sie:</b> ${v.info.herleitung}</div>
@@ -2970,8 +3101,8 @@ function renderSteckbrief(varianten) {
       </div>` : `
       <div style="display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:6px;
                   color:var(--muted);font-size:11.5px;padding:24px;text-align:center;line-height:1.6;">
-        Für diese Variante gibt es keine Suchspur — sie ist nicht optimiert, sondern vorgegeben
-        (z. B. aus dem Einlinienschema, dem Fahrplan oder einer Netzstrategie).</div>`;
+        Für diese Auslegung gibt es keine Suchspur — sie ist nicht optimiert, sondern vorgegeben
+        (z. B. aus dem Einlinienschema, dem Fahrplan, einer Netzstrategie oder einer Dachbelegung aus dem PV-Modus).</div>`;
     return `
     <div style="display:grid;grid-template-columns:${breit ? 'minmax(0,5fr) minmax(0,7fr)' : 'minmax(0,1fr)'};gap:18px;
                 background:var(--surface);border:1px solid var(--border);border-left:3px solid ${v.farbe};border-radius:7px;padding:14px 16px;">
@@ -2982,10 +3113,10 @@ function renderSteckbrief(varianten) {
   const liste = _pvaSteckbriefAlle ? kanon : [fokus];
   el.innerHTML = `
   <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px;">
-    <span style="font-size:12px;color:#b0bec5;">Welche Frage die Variante beantwortet, wie sie entsteht — und der Beleg aus der Suchspur der Optimierung
-      <span style="font-size:11px;color:var(--muted);margin-left:6px;">${_pvaSteckbriefAlle ? 'alle Varianten' : 'Variante wechseln: Leiste oben oder Tabellenzeile'}</span></span>
+    <span style="font-size:12px;color:#b0bec5;">Welche Frage die Auslegung beantwortet, wie sie entsteht — und der Beleg aus der Suchspur der Optimierung
+      <span style="font-size:11px;color:var(--muted);margin-left:6px;">${_pvaSteckbriefAlle ? 'alle Auslegungen' : 'Auslegung wechseln: Leiste oben oder Tabellenzeile'}</span></span>
     <button data-click="pvaSteckbriefAlle()" style="flex-shrink:0;cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:10px;color:#cfd8dc;font-size:11px;padding:2px 10px;">
-      ${_pvaSteckbriefAlle ? 'nur Variante im Blick' : `alle ${kanon.length} Varianten untereinander`}</button>
+      ${_pvaSteckbriefAlle ? 'nur Auslegung im Blick' : `alle ${kanon.length} Auslegungen untereinander`}</button>
   </div>
   <div style="display:flex;flex-direction:column;gap:12px;">${liste.map(karte).join('')}</div>
   <div style="margin-top:8px;font-size:10.5px;color:#78909c;line-height:1.55;">
@@ -3004,7 +3135,7 @@ function renderRechenweg(varianten) {
   const p = window._pvAnalyse.lastParams;
   if (!p) { el.innerHTML = ''; return; }
 
-  const v = pvaFokusVariante(varianten) || varianten[0];   // Variante im Blick
+  const v = pvaFokusVariante(varianten) || varianten[0];   // Auslegung im Blick
   const w = v.wirt, s = v.sim;
 
   const aPv  = annF(p.zins, p.pvLife  || 20);
@@ -3084,7 +3215,7 @@ function renderRechenweg(varianten) {
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">Rechenweg — Nachvollziehbarkeit
       <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">jede Zahl mit Formel; entspricht Anhang B der Grundlagen-Doku</span>
     </span>
-    <span style="font-size:11.5px;color:var(--muted);">für <b style="color:${v.farbe};">${v.icon} ${escHtml(v.label)}</b> (Variante im Blick)</span>
+    <span style="font-size:11.5px;color:var(--muted);">für <b style="color:${v.farbe};">${v.icon} ${escHtml(v.label)}</b> (Auslegung im Blick)</span>
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;align-items:start;">
     ${blkEnergie}${blkInvest}${blkJk}${blkErloes}
@@ -3166,7 +3297,7 @@ function renderOptHeatmap(demandH, pvProfile, napParams, params, varianten, over
   const el = overrideEl || document.getElementById('pva-chart-heatmap');
   if (!el) return;
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const spez   = pvGetSpez();
   const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
 
@@ -3288,7 +3419,7 @@ function renderOptHeatmap(demandH, pvProfile, napParams, params, varianten, over
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">Jahresüberschuss über PV-Leistung × Batteriekapazität
-      <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px;">Farbe = Netto-Überschuss €/a · weiße Linie = Bereich ≥ 95 % des Optimums · ✕ Optimum · ○ Varianten</span>
+      <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px;">Farbe = Netto-Überschuss €/a · weiße Linie = Bereich ≥ 95 % des Optimums · ✕ Optimum · ○ Auslegungen</span>
     </span>
     ${overrideEl ? '' : `<span style="display:flex;gap:6px;flex-shrink:0;">
       <button data-pva-fs="surf" title="Dieselbe Fläche drehbar in 3D" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:11px;padding:2px 8px;">3D ansehen</button>
@@ -3356,7 +3487,7 @@ function renderOptSurface3D(demandH, pvProfile, napParams, params, varianten, ov
   const el = overrideEl || document.getElementById('pva-chart-heatmap');
   if (!el) return;
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const spez   = pvGetSpez();
   const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
 
@@ -3392,7 +3523,7 @@ function renderOptSurface3D(demandH, pvProfile, napParams, params, varianten, ov
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">3D-Optimierung: Jahresüberschuss über PV-Leistung × Batteriekapazität
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">ziehen zum Drehen · Scrollen zoomt · ○ Varianten · ✕ Optimum</span>
+      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">ziehen zum Drehen · Scrollen zoomt · ○ Auslegungen · ✕ Optimum</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="surf" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -3557,7 +3688,7 @@ function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten
   const el = overrideEl || document.getElementById('pva-chart-grenznutzen');
   if (!el) return;
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const spez   = pvGetSpez();
   const steps  = [];
   for (let k = 0; k <= maxKwp; k += Math.max(5, Math.round(maxKwp / 50))) steps.push(k);
@@ -3807,7 +3938,7 @@ function _pvProfilInfoHtml() {
     ? `<div id="pva-profil-upload" data-click="document.getElementById('pv-file-input').click()"
          style="border:1px dashed var(--border);border-radius:6px;padding:5px 8px;cursor:pointer;margin-top:6px;font-size:10.5px;color:var(--muted);"
          onmouseenter="this.style.borderColor='#66bb6a'" onmouseleave="this.style.borderColor='var(--border)'">
-         📂 PVGIS-Stundenprofil hochladen — ersetzt das synthetische Profil für alle Varianten
+         📂 PVGIS-Stundenprofil hochladen — ersetzt das synthetische Profil für alle Auslegungen
        </div>`
     : `<div style="margin-top:6px;">
          <button data-click="pvClear()" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:1px 8px;font-size:10.5px;cursor:pointer;">
@@ -3871,6 +4002,14 @@ function _pvFelderWiederherstellen() {
   }
 }
 
+/** Hinweis, wenn die Ergebnisse für eine andere Planungsvariante gerechnet wurden. */
+export function pvaStempelAktualisieren() {
+  const el = document.getElementById('pva-stempel-hinweis');
+  if (!el) return;
+  const s = window._pvAnalyse;
+  el.innerHTML = (s?.ergebnisse?.length && window.stempelHinweisHtml?.(s.stempel, 'pvBerechneAlle()')) || '';
+}
+
 function pvMarkStale() {
   const s = window._pvAnalyse;
   if (!s || !s.berechnet) return;          // noch nie gerechnet → nichts zu entwerten
@@ -3891,6 +4030,7 @@ function _pvApplyStaleUi() {
   const stale = !!(s && s.stale && s.ergebnisse?.length);
   const hint = document.getElementById('pva-stale-hinweis');
   if (hint) hint.style.display = stale ? 'flex' : 'none';
+  pvaStempelAktualisieren();
   const res = document.getElementById('pva-ergebnis-kapitel');
   if (res) {
     res.style.opacity       = stale ? '0.45' : '1';
@@ -4084,17 +4224,17 @@ function renderVariantenTabelle(varianten) {
 
   let html = `
   <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px;">
-    <div style="font-size:12px;font-weight:600;color:var(--text);">Varianten-Vergleich</div>
-    <div style="font-size:10.5px;color:#78909c;">Auswahl über den höchsten Jahresüberschuss · fünf kanonische Varianten</div>
+    <div style="font-size:12px;font-weight:600;color:var(--text);">Auslegungen im Vergleich</div>
+    <div style="font-size:10.5px;color:#78909c;">Auswahl über den höchsten Jahresüberschuss · fünf feste Auslegungen</div>
   </div>
   <div style="overflow-x:auto;">
   <table style="width:100%;border-collapse:collapse;font-size:11px;">
     <thead>
       <tr style="color:var(--muted);text-align:right;border-bottom:1px solid var(--border);font-size:10px;">
-        <th style="text-align:left;padding:4px 6px;white-space:nowrap;">Variante</th>
+        <th style="text-align:left;padding:4px 6px;white-space:nowrap;">Auslegung</th>
         ${th('kWp')}
         ${th('Bat&nbsp;kWh')}
-        ${windAktiv ? th('Wind&nbsp;kW', 'Installierte Windkraftleistung — fester Sockel, in allen Varianten gleich') : ''}
+        ${windAktiv ? th('Wind&nbsp;kW', 'Installierte Windkraftleistung — fester Sockel, in allen Auslegungen gleich') : ''}
         ${th('EV&nbsp;%', 'Eigenverbrauchsquote der PV-Erzeugung')}
         ${th('Aut&nbsp;%', 'Autarkiegrad: Anteil des Bedarfs aus eigener Erzeugung')}
         ${th('Abr&nbsp;MWh', 'Abgeregelte Energie — nur bei aktiver NAP-Einspeisebegrenzung', napAktiv ? '#ef9a9a' : '#546e7a')}
@@ -4130,7 +4270,7 @@ function renderVariantenTabelle(varianten) {
       `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;${farbe ? 'color:' + farbe + ';' : ''}${extra || ''}">${inhalt}</td>`;
 
     html += `
-      <tr data-click="pvaSetFokus('${v.id}')" title="${imBlick ? 'Variante im Blick' : 'Klicken: als Variante im Blick wählen'}"
+      <tr data-click="pvaSetFokus('${v.id}')" title="${imBlick ? 'Auslegung im Blick' : 'Klicken: als Auslegung im Blick wählen'}"
           style="border-bottom:1px solid rgba(255,255,255,0.04);background:${rowBg};cursor:pointer;">
         <td style="padding:6px;white-space:nowrap;border-left:3px solid ${imBlick ? 'var(--accent)' : 'transparent'};">
           <span style="color:${v.farbe};font-size:12px;">${v.icon}</span>
@@ -4202,7 +4342,7 @@ function renderVariantenTabelle(varianten) {
       ${verletzt.length
         ? `<div style="color:#ef9a9a;margin-top:3px;">Unter der Pflichtleistung und damit nicht genehmigungsfähig: ${
             verletzt.map(v => `${escHtml(v.label)} (−${fmt(Math.abs(v.pflicht.deltaKwp))} kWp)`).join(', ')}</div>`
-        : '<div style="color:#a5d6a7;margin-top:3px;">Alle Varianten erfüllen die Pflichtleistung.</div>'}
+        : '<div style="color:#a5d6a7;margin-top:3px;">Alle Auslegungen erfüllen die Pflichtleistung.</div>'}
       ${(pf?.annahmen || []).length
         ? `<div style="color:#78909c;margin-top:3px;">Annahmen: ${pf.annahmen.map(a => escHtml(a)).join(' · ')}</div>` : ''}
       <div style="color:#607d8b;margin-top:3px;">${escHtml(PV_PFLICHT_META.disclaimer)}</div>
@@ -4265,7 +4405,7 @@ function _pvOpenFs(title, renderCb) {
 // Das klassische Kurvenpaar: Mit wachsender PV sinkt der Anteil, den das Quartier
 // selbst nutzt (EV-Quote), während der gedeckte Anteil des Bedarfs (Autarkie) immer
 // flacher steigt. Beide ohne Speicher (durchgezogen) und — gestrichelt — mit dem
-// Speicher der Variante im Blick (ohne Speicher: der wirtschaftlichen), damit sichtbar wird, was der
+// Speicher der Auslegung im Blick (ohne Speicher: der wirtschaftlichen), damit sichtbar wird, was der
 // Speicher an beiden Kurven verschiebt. Varianten stehen als Marken an der x-Achse
 // (mehrere Varianten gleicher Größe teilen sich eine Marke).
 
@@ -4273,7 +4413,7 @@ function renderEvKurve(demandH, pvProfile, napParams, params, varianten, overrid
   const el = overrideEl || document.getElementById('pva-ev-kurve');
   if (!el) return;
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const spez   = pvGetSpez();
   const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
   const kanon  = (varianten || []).filter(v => v.info && v.info.frage);
@@ -4363,7 +4503,7 @@ function renderEvKurve(demandH, pvProfile, napParams, params, varianten, overrid
     }
   }
 
-  // Befund an der Variante im Blick. Der Kreuzungspunkt ist die Größe, bei der die
+  // Befund an der Auslegung im Blick. Der Kreuzungspunkt ist die Größe, bei der die
   // Jahreserzeugung dem Bedarf entspricht (EV-Quote · Erzeugung = Autarkie · Bedarf).
   const dF = fokus ? data.reduce((b, c) => Math.abs(c.kwp - fokus.pvKwp) < Math.abs(b.kwp - fokus.pvKwp) ? c : b) : null;
   const pz = n => Math.round(n).toLocaleString('de-DE');
@@ -4524,7 +4664,7 @@ function renderBilanzChart(varianten, overrideEl) {
   const rMin = rows.reduce((a, b) => (aut(b) < aut(a) ? b : a)), rMax = rows.reduce((a, b) => (aut(b) > aut(a) ? b : a));
   const rF = rows.find(r => r.v.id === fokusId);
   const anteil = (r, i) => (r.erzeugung > 0 ? r.rechts[i][1] / r.erzeugung : 0);
-  const befund = `Die Varianten decken zwischen <b>${pct(aut(rMin))} %</b> (${rMin.v.icon} ${escHtml(rMin.v.label)}) und <b>${pct(aut(rMax))} %</b> (${rMax.v.icon} ${escHtml(rMax.v.label)}) des Bedarfs selbst.` +
+  const befund = `Die Auslegungen decken zwischen <b>${pct(aut(rMin))} %</b> (${rMin.v.icon} ${escHtml(rMin.v.label)}) und <b>${pct(aut(rMax))} %</b> (${rMax.v.icon} ${escHtml(rMax.v.label)}) des Bedarfs selbst.` +
     (rF && rF.erzeugung > 0
       ? ` Bei ${rF.v.icon} ${escHtml(rF.v.label)} bleiben <b>${pct(anteil(rF, 0))} %</b> der Erzeugung vor Ort, ${pct(anteil(rF, 1))} % gehen ins Netz` +
         (anteil(rF, 2) > 0.005 ? `, ${pct(anteil(rF, 2))} % werden abgeregelt.` : '.')
@@ -4533,7 +4673,7 @@ function renderBilanzChart(varianten, overrideEl) {
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">Woher der Bedarf gedeckt wird und wohin die Erzeugung geht
-      <span style="font-size:11px;color:var(--muted);margin-left:6px;">Prozent je Seite · Zahlen am Rand in MWh/a · Klick auf eine Zeile nimmt die Variante in den Blick</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:6px;">Prozent je Seite · Zahlen am Rand in MWh/a · Klick auf eine Zeile nimmt die Auslegung in den Blick</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="bilanz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -4562,7 +4702,7 @@ function renderBilanzChart(varianten, overrideEl) {
 
   const fsBtn = el.querySelector('[data-pva-fs="bilanz"]');
   if (fsBtn) fsBtn.addEventListener('click', () =>
-    _pvOpenFs('Energiebilanz je Variante', cnt => renderBilanzChart(window._pvAnalyse.ergebnisse, cnt))
+    _pvOpenFs('Energiebilanz je Auslegung', cnt => renderBilanzChart(window._pvAnalyse.ergebnisse, cnt))
   );
 }
 
@@ -4632,7 +4772,7 @@ function renderScatterChart(varianten, overrideEl) {
 
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-    <span style="font-size:12px;font-weight:400;color:#b0bec5;">Investition und Jahresüberschuss je Variante
+    <span style="font-size:12px;font-weight:400;color:#b0bec5;">Investition und Jahresüberschuss je Auslegung
       <span style="font-size:11px;color:var(--muted);margin-left:6px;">je höher, desto mehr bleibt jährlich übrig · steilere Linie = mehr Überschuss je investiertem Euro</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="scatter" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
@@ -4678,7 +4818,7 @@ function renderScatterChart(varianten, overrideEl) {
 
   const fsBtn = el.querySelector('[data-pva-fs="scatter"]');
   if (fsBtn) fsBtn.addEventListener('click', () =>
-    _pvOpenFs('Investition und Jahresüberschuss je Variante', cnt => renderScatterChart(window._pvAnalyse.ergebnisse, cnt))
+    _pvOpenFs('Investition und Jahresüberschuss je Auslegung', cnt => renderScatterChart(window._pvAnalyse.ergebnisse, cnt))
   );
 }
 
@@ -4738,7 +4878,7 @@ function renderRueckAmpel(varianten, overrideEl) {
       Abregelung, NAP-Ertüchtigung und Erzeugungsnetz wirtschaftlich gegeneinander abwägen.</div>`;
   } else {
     banner = `<div style="background:rgba(102,187,106,0.12);border-left:3px solid #66bb6a;padding:7px 10px;border-radius:5px;font-size:11px;color:#a5d6a7;">
-      <b>Kein Erzeugungsnetz erforderlich</b> — alle Varianten bleiben innerhalb von Spannungsband und Anschlusskapazität.</div>`;
+      <b>Kein Erzeugungsnetz erforderlich</b> — alle Auslegungen bleiben innerhalb von Spannungsband und Anschlusskapazität.</div>`;
   }
 
   const kwF = n => Math.round(n).toLocaleString('de-DE');
@@ -4747,8 +4887,8 @@ function renderRueckAmpel(varianten, overrideEl) {
   const befund = na0
     ? (bezugKw
         ? (drueber.length
-            ? `Ohne Netzdaten hilfsweise gegen die bisherige Bezugsspitze (<b>${kwF(bezugKw)} kW</b>) geprüft: ${drueber.length} von ${rows.length} Varianten speisen in der Spitze mehr zurück, als heute bezogen wird — dort ist eine Anschlussprüfung beim Netzbetreiber nötig.`
-            : `Alle Varianten bleiben in der Rückspeisespitze unter der bisherigen Bezugsspitze (${kwF(bezugKw)} kW) — ein Hinweis, dass der vorhandene Anschluss reicht, aber kein Nachweis.`)
+            ? `Ohne Netzdaten hilfsweise gegen die bisherige Bezugsspitze (<b>${kwF(bezugKw)} kW</b>) geprüft: ${drueber.length} von ${rows.length} Auslegungen speisen in der Spitze mehr zurück, als heute bezogen wird — dort ist eine Anschlussprüfung beim Netzbetreiber nötig.`
+            : `Alle Auslegungen bleiben in der Rückspeisespitze unter der bisherigen Bezugsspitze (${kwF(bezugKw)} kW) — ein Hinweis, dass der vorhandene Anschluss reicht, aber kein Nachweis.`)
         : '')
     : `Die höchste Rückspeisespitze hat ${hoch.icon} ${escHtml(hoch.label)} mit <b>${kwF(hoch.rueck.maxKw)} kW</b> an ${kwF(hoch.rueck.stunden)} Stunden mit Einspeisung im Jahr.`;
 
@@ -4799,20 +4939,20 @@ function renderRueckAmpel(varianten, overrideEl) {
 // ── Kapitel 3.2 — Energiefluss (Sankey) mit PV/Batterie-Schiebern ─────────────
 // Zeigt für eine frei wählbare (PV × Batterie)-Kombination, wohin die Energie
 // fließt — mit dem Speicher als eigenem Knoten. Die Schieber starten auf der
-// Variante im Blick; Ziehen zeigt live, wie sich die Ströme verschieben.
+// Auslegung im Blick; Ziehen zeigt live, wie sich die Ströme verschieben.
 
 function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, overrideEl) {
   const el = overrideEl || document.getElementById('pva-chart-fluss');
   if (!el) return;
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const spez   = pvGetSpez();
   const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
   const kanon  = (varianten || []).filter(v => v.info && v.info.frage);
   const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
   const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
 
-  // Startwerte: Variante im Blick
+  // Startwerte: Auslegung im Blick
   const start = pvaFokusVariante(kanon) || { pvKwp: Math.round(maxKwp/2), batKwh: 0 };
 
   const COL = { ev:'#66bb6a', es:'#42a5f5', ct:'#ff9800', nb:'#ef5350', vl:'#78909c', pv:'#fdd835', wd:'#4dd0e1' };
@@ -5044,13 +5184,13 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
   const el = overrideEl || document.getElementById('pva-chart-speicherfluss');
   if (!el) return;
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
   const kanon  = (varianten || []).filter(v => v.info && v.info.frage);
   const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
   const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
 
-  // Startwert: Variante im Blick. Ohne Speicher hat diese Abbildung nichts zu zeigen —
+  // Startwert: Auslegung im Blick. Ohne Speicher hat diese Abbildung nichts zu zeigen —
   // dann startet sie auf der Variante mit dem größten Speicher und sagt das dazu.
   const fokus = pvaFokusVariante(kanon);
   const start = (fokus?.batKwh > 0 ? fokus : null)
@@ -5106,7 +5246,7 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
       kpiEl.innerHTML = '';
       svgWrap.innerHTML = `<div style="color:var(--muted);font-size:10px;text-align:center;padding:38px 0;line-height:1.7;">
         Diese Auslegung hat keinen Speicher — es gibt keinen Speicherfluss darzustellen.<br>
-        <span style="color:#78909c;">Batterie-Slider aufziehen oder oben eine Variante mit Speicher wählen.</span></div>`;
+        <span style="color:#78909c;">Batterie-Slider aufziehen oder oben eine Auslegung mit Speicher wählen.</span></div>`;
       return;
     }
 
@@ -5394,7 +5534,7 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
   const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
   const kanon  = varianten.filter(v => v.info && v.info.frage);
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
   const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
   const pvStep = 1, batStep = 5;
@@ -5405,7 +5545,7 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
     ? _pvFsArgs.params.windKwInstalled : 0;
   const windMax = windKwInst > 0 ? Math.round(windKwInst * 2) : 0;
 
-  // Startwerte: Variante im Blick. Die Schieberstellung übersteht ein Neuzeichnen,
+  // Startwerte: Auslegung im Blick. Die Schieberstellung übersteht ein Neuzeichnen,
   // bis eine andere Variante in den Blick genommen wird.
   const fokus = pvaFokusVariante(kanon) || varianten[0];
   if (_pvahVarId !== fokus.id) {
@@ -5480,7 +5620,7 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
     });
 
     // Aktuelle Konfiguration einer kanonischen Variante zuordnen (für Label/Farbe) —
-    // gerundet, weil die Schieber ganzzahlig sind; bei Gleichstand gewinnt die Variante im Blick
+    // gerundet, weil die Schieber ganzzahlig sind; bei Gleichstand gewinnt die Auslegung im Blick
     const passt = v => Math.round(v.pvKwp) === Math.round(pv) && Math.round(v.batKwh) === Math.round(bat);
     const match = passt(fokus) ? fokus : kanon.find(passt);
     const farbe = match ? match.farbe : COL.pv;
@@ -5784,7 +5924,7 @@ const _PV_RES_BAUSCHWERE = {
 const _PV_RES_KRIT_GRUPPEN = new Set(['Unterkunft und Pflege', 'Gesundheit', 'Bildung und Betreuung']);
 
 let _pvResVarId = null, _pvResPvKwp = null, _pvResBatKwh = null;
-let _pvResFokusId = null;   // Variante im Blick beim letzten Zeichnen (null = gerade geladen → gespeicherte Auslegung behalten)
+let _pvResFokusId = null;   // Auslegung im Blick beim letzten Zeichnen (null = gerade geladen → gespeicherte Auslegung behalten)
 let _pvResDurH = null, _pvResFuel = null, _pvResLoadFrac = null;
 // Betriebsweise (welche Erzeuger im Inselbetrieb verfügbar sind):
 //  'gen'        — nur Notstrom (klassisch, batterieunabhängig auf Spitzenlast)
@@ -5927,7 +6067,7 @@ function renderResilienz(varianten, overrideEl) {
 
 
   const hinweisKeineVarianten = () => {
-    el.innerHTML = energyHeader + '<div style="font-size:10px;color:var(--muted);padding:8px 0;">Erst „Varianten berechnen" nutzen, um die elektrische Resilienz zu betrachten.</div>';
+    el.innerHTML = energyHeader + '<div style="font-size:10px;color:var(--muted);padding:8px 0;">Erst „Auslegungen berechnen" nutzen, um die elektrische Resilienz zu betrachten.</div>';
     _pvResWireEnergyHeader(el);
   };
   if (!varianten?.length) { hinweisKeineVarianten(); return; }
@@ -5948,7 +6088,7 @@ function renderResilienz(varianten, overrideEl) {
   const nDays   = Math.floor(nHours / 24);
 
   // Startzustand
-  // Auslegung: Variante im Blick. Die Schieberstellung bleibt, bis eine andere Variante
+  // Auslegung: Auslegung im Blick. Die Schieberstellung bleibt, bis eine andere Variante
   // in den Blick kommt. Direkt nach dem Laden gilt die gespeicherte Auslegung weiter —
   // sonst änderten sich beim bloßen Öffnen die Abbildungen für Gutachten 5.2.
   const fokus = pvaFokusVariante(kanon);
@@ -5972,7 +6112,7 @@ function renderResilienz(varianten, overrideEl) {
   const batActive = _pvResMode !== 'gen';
   const genActive = _pvResMode !== 'pv-bat';
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
   const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
   const COL = { pv: '#fdd835', bat: '#42a5f5', gen: '#ff8f00', unmet: '#ef5350' };
@@ -6215,11 +6355,11 @@ function renderResilienz(varianten, overrideEl) {
       <div style="display:flex;align-items:center;gap:9px;background:#11151d;border:1px solid rgba(255,255,255,0.08);
                   border-radius:6px;padding:8px 11px;">
         <span style="font-size:11px;color:var(--muted);flex:1;">
-          ${vres ? 'Randbedingungen geändert — der Variantenvergleich ist veraltet.'
-                 : 'Wie schlagen sich die fünf PV-Varianten unter diesen Randbedingungen?'}
+          ${vres ? 'Randbedingungen geändert — der Vergleich der Auslegungen ist veraltet.'
+                 : 'Wie schlagen sich die fünf PV-Auslegungen unter diesen Randbedingungen?'}
           <span style="color:#607d8b;"> Fünf Jahres-Scans, wenige Sekunden.</span>
         </span>
-        ${knopf(vres ? 'Neu vergleichen' : 'Varianten vergleichen', '#4fc3f7')}
+        ${knopf(vres ? 'Neu vergleichen' : 'Auslegungen vergleichen', '#4fc3f7')}
       </div>`;
     } else {
       const fmtK = v => v >= 10000 ? `${(v/1000).toFixed(0)} k€` : `${Math.round(v).toLocaleString('de-DE')} €`;
@@ -6240,13 +6380,13 @@ function renderResilienz(varianten, overrideEl) {
       }).join('');
       varEl.innerHTML = `
       <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
-        <span style="font-size:11px;color:var(--muted);flex:1;">Resilienz je PV-Variante — jede an ihrem eigenen ungünstigsten Zeitpunkt,
+        <span style="font-size:11px;color:var(--muted);flex:1;">Resilienz je PV-Auslegung — jede an ihrem eigenen ungünstigsten Zeitpunkt,
           ${vres.durH} h Ausfall, ${MODE_LBL[vres.mode] || vres.mode}, ${Math.round(vres.frac*100)} % Notbetriebslast</span>
         ${knopf('Neu rechnen', 'rgba(255,255,255,0.25)')}
       </div>
       <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">
         <thead><tr style="color:var(--muted);border-bottom:1px solid rgba(255,255,255,0.12);">
-          <th style="text-align:left;padding:3px 6px;">Variante</th>
+          <th style="text-align:left;padding:3px 6px;">Auslegung</th>
           <th style="text-align:right;padding:3px 6px;">kWp</th>
           <th style="text-align:right;padding:3px 6px;">Bat kWh</th>
           <th style="text-align:right;padding:3px 6px;" title="Anteil aller Ausfallzeitpunkte im Jahr, die PV und Speicher allein vollständig tragen">Ø gedeckt</th>
@@ -6782,7 +6922,7 @@ function renderSensitivitaet(varianten, overrideEl) {
   const kanon = varianten.filter(v => v.info && v.info.frage);
   if (!kanon.length) { el.innerHTML = ''; return; }
 
-  const v = pvaFokusVariante(kanon);                // Referenz: Variante im Blick
+  const v = pvaFokusVariante(kanon);                // Referenz: Auslegung im Blick
 
   // Überschuss (€/a) für gegebene (überschriebene) Parameter — sim bleibt konstant.
   const surplusFor = (overrides) => {
@@ -6876,7 +7016,7 @@ function renderSensitivitaet(varianten, overrideEl) {
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">Sensitivitätsanalyse: Hebel auf den Jahresüberschuss
       <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">jede Annahme einzeln variiert, übrige auf Basiswert — längster Balken = größter Hebel</span>
-      <span style="display:block;font-size:10.5px;color:#a5d6a7;margin-top:2px;">Referenz: ${v.icon} ${v.label} (Variante im Blick) · Basis-Überschuss <b>${fmtEUR(baseSurplus)} €/a</b></span>
+      <span style="display:block;font-size:10.5px;color:#a5d6a7;margin-top:2px;">Referenz: ${v.icon} ${v.label} (Auslegung im Blick) · Basis-Überschuss <b>${fmtEUR(baseSurplus)} €/a</b></span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="sensitivitaet" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;flex-shrink:0;">⤢</button>'}
   </div>
@@ -6923,8 +7063,8 @@ function _pvUpdateBerechnenBtn(loading) {
   }
   const s = window._pvAnalyse;
   btn.textContent = (s && s.stale && s.ergebnisse?.length)
-    ? 'Varianten neu berechnen'
-    : 'Varianten berechnen';
+    ? 'Auslegungen neu berechnen'
+    : 'Auslegungen berechnen';
   btn.disabled = false;
 }
 
@@ -6933,6 +7073,109 @@ function _pvUBudget() {
   const s = window._pvAnalyse;
   if (s.uBudgetManuell && s.uBudgetPct > 0) return s.uBudgetPct;
   return /mittel|\bMS\b/i.test(String(window.naSpannungsebene || '')) ? 2 : 3;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DACHBELEGUNGEN AUS DEM PV-MODUS (36) — Liste in Karte 04, Übernahme, Speicherwahl
+// ══════════════════════════════════════════════════════════════════════════════
+
+const _pvSpeicherOptionen = an => PV_BELEGUNG_SPEICHER.map(([w, l, t]) =>
+  `<option value="${w}" title="${escHtml(t)}"${w === an ? ' selected' : ''}>${escHtml(l)}</option>`).join('');
+
+function _pvBelegungenHtml() {
+  const liste = window._pvAnalyse?.belegungsVarianten || [];
+  const ergebnisse = window._pvAnalyse?.ergebnisse || [];
+  const kopf = `
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
+      <span style="color:${PV_BELEGUNG_FARBEN[0]};font-size:12px;">▦</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text);">Dachbelegungen aus dem PV-Modus</span>
+      <span class="htip" data-tip="Jede Vorschau aus „⚡ Dächer automatisch belegen“ lässt sich als eigene Auslegung übernehmen, ohne das Projekt zu belegen. Gerechnet wird mit den Dächern der Vorschau plus der schon geplanten PV aller übrigen Gebäude; der Speicher wird je Belegung nach der gewählten Regel ausgelegt.">?</span>
+    </div>`;
+  if (!liste.length) {
+    return kopf + `<div style="font-size:10.5px;color:var(--muted);line-height:1.5;">Noch keine. Im PV-Modus unter „⚡ Dächer automatisch belegen“ eine Vorschau rechnen und „☀ Als Auslegung in die PV-Analyse“ wählen.</div>`;
+  }
+  const f0 = x => Math.round(+x || 0).toLocaleString('de-DE');
+  const sel = 'padding:3px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10.5px;';
+  const zeilen = liste.map(bv => {
+    const n = Object.keys(bv.dachKwp || {}).length;
+    const erg = ergebnisse.find(e => e.id === `belegung-${bv.nr}`);
+    const bat = erg ? ` · Speicher ${erg.batKwh > 0 ? f0(erg.batKwh) + ' kWh' : '—'}` : '';
+    const netzFarbe = !bv.netz?.geprueft ? 'var(--muted)' : bv.netz.vertraeglich ? '#66bb6a' : '#ffa726';
+    return `
+      <div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+        <div style="display:flex;align-items:center;gap:6px;font-size:10.5px;">
+          <span style="width:9px;height:9px;border-radius:2px;background:${_pvBelegungFarbe(bv.nr)};flex:none;"></span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);"
+            title="${escHtml((bv.beschreibung || '') + (bv.netz?.text ? ' · ' + bv.netz.text : '') + (bv.stand ? ' · Stand ' + bv.stand : ''))}">${escHtml(bv.name)}</span>
+          <button data-click="pvaBelegungEntfernen(${bv.nr})" title="Auslegung entfernen"
+            style="cursor:pointer;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:10px;padding:0 5px;">✕</button>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin:2px 0 3px 15px;">
+          ${n} Dächer · ${f0(bv.summeKwp)} kWp neu${bat}
+          · <span style="color:${netzFarbe};">${!bv.netz?.geprueft ? 'Netz ungeprüft' : bv.netz.vertraeglich ? 'netzverträglich' : 'über Netzgrenze'}</span></div>
+        <div style="display:flex;align-items:center;gap:5px;margin-left:15px;">
+          <span style="font-size:10px;color:var(--muted);">Speicher</span>
+          <select data-change="pvaBelegungSetze(${bv.nr},'speicher',this.value)" style="flex:1;${sel}"
+            title="${escHtml(_pvSpeicherRegel(bv.speicher)[2])}">${_pvSpeicherOptionen(bv.speicher)}</select>
+          ${bv.speicher === 'fest' ? `<input type="number" min="0" step="50" value="${Math.round(+bv.batKwh || 0)}"
+            data-change="pvaBelegungSetze(${bv.nr},'batKwh',this.value)" style="width:70px;${sel}"/>
+            <span style="font-size:10px;color:var(--muted);">kWh</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+  return kopf + zeilen;
+}
+
+function _pvBelegungenRefresh() {
+  const el = document.getElementById('pva-belegungen');
+  if (el) el.innerHTML = _pvBelegungenHtml();
+}
+
+/** Speicherregeln für die Auswahl in 36: [[id, Kurzname, Erklärung], …] */
+export function pvaBelegungSpeicherOptionen() {
+  return PV_BELEGUNG_SPEICHER.map(s => [...s]);
+}
+
+/**
+ * Dachbelegung aus der Vorschau von 36 als Auslegung vormerken. Ändert nichts am
+ * Projekt; die Auslegung entsteht beim nächsten „Auslegungen berechnen“.
+ * @returns {number} Nummer der neuen Auslegung (Varianten-ID 'belegung-<nr>')
+ */
+export function pvaBelegungAnlegen(daten) {
+  const s = window._pvAnalyse;
+  const liste = s.belegungsVarianten || [];
+  const nr = liste.reduce((m, b) => Math.max(m, b.nr || 0), 0) + 1;
+  liste.push({
+    nr, name: String(daten.name || `Dachbelegung ${nr}`).slice(0, 80),
+    beschreibung: daten.beschreibung || '', dachKwp: { ...(daten.dachKwp || {}) },
+    summeKwp: +daten.summeKwp || 0,
+    speicher: _pvSpeicherRegel(daten.speicher)[0], batKwh: Math.max(0, +daten.batKwh || 0),
+    netz: daten.netz || null, stand: daten.stand || new Date().toLocaleDateString('de-DE'),
+  });
+  s.belegungsVarianten = liste;
+  pvMarkStale();
+  _pvBelegungenRefresh();
+  return nr;
+}
+
+export function pvaBelegungSetze(nr, feld, wert) {
+  const bv = (window._pvAnalyse.belegungsVarianten || []).find(b => b.nr === nr);
+  if (!bv) return;
+  if (feld === 'speicher') bv.speicher = _pvSpeicherRegel(wert)[0];
+  else if (feld === 'batKwh') bv.batKwh = Math.max(0, parseFloat(wert) || 0);
+  else return;
+  pvMarkStale();
+  _pvBelegungenRefresh();
+}
+
+export function pvaBelegungEntfernen(nr) {
+  const s = window._pvAnalyse;
+  const bv = (s.belegungsVarianten || []).find(b => b.nr === nr);
+  if (!bv || !confirm(`Auslegung „${bv.name}“ aus der PV-Analyse entfernen?\n\nDie Dächer im Projekt bleiben, wie sie sind.`)) return;
+  const rest = s.belegungsVarianten.filter(b => b.nr !== nr);
+  s.belegungsVarianten = rest.length ? rest : null;
+  pvMarkStale();
+  _pvBelegungenRefresh();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

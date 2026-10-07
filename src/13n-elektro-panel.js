@@ -13,6 +13,7 @@
 import { isErzeugerAktiv } from './06c-dispatch-core.js';
 import { lwWp, bhkw, gebaeude } from './01-globals-varianten.js';
 import { getBatParams } from './09a-pv-profile.js';
+import { kabelTypOptionen } from './config/netz-kosten.js';
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
 
@@ -139,7 +140,7 @@ function _html() { return `
       title="Alle gezeichneten und aus OSM übernommenen Elektro-Trassenabschnitte auf einmal entfernen — Wärmetrassen bleiben erhalten">✕ Alle Elektro-Trassen löschen</button>
     <button class="lp-tool-btn lp-btn-tile" style="width:100%;margin-bottom:2px;"
       data-click="realignAllStromKabel()"
-      title="Verlauf und Länge aller bestehenden Kabel neu entlang der aktuellen Trassen berechnen — z.B. nach nachträglich gezeichneten oder korrigierten Trassen">↻ Kabel neu ausrichten</button>
+      title="Verlauf und Länge aller bestehenden Kabel neu entlang der aktuellen Trassen berechnen (Elektro- und gezeichnete Wärmetrassen) — z.B. nach nachträglich gezeichneten oder korrigierten Trassen">↻ Kabel neu ausrichten</button>
     <button class="lp-tool-btn lp-btn-tile" style="width:100%;"
       data-click="showAutoNetzDialog()"
       title="Stromnetz automatisch erzeugen">Netz automatisch erzeugen</button>
@@ -190,8 +191,7 @@ function _html() { return `
       <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Kabeltyp</div>
       <select id="strom-kabel-typ"
         style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;margin-bottom:6px;">
-        <option value="NAYY">NAYY (Aluminium)</option>
-        <option value="NYY" selected>NYY (Kupfer) — Standard</option>
+        ${kabelTypOptionen('NYY', ['ns'])}
       </select>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px;">
         ${_inp('strom-ns-cosphi', 'NS cos φ', '0.95',
@@ -577,8 +577,12 @@ export function elPanelRefreshStatus() {
 
   if (tiles) {
     if (!_calcStamp && !edges.length) { if (tiles.innerHTML) tiles.innerHTML = ''; return; }
-    const trafos   = (window.stromNodes || []).filter(n => n.type === 'trafo');
-    const maxTrafo = trafos.reduce((m, t) => Math.max(m, t._auslastungPct || 0), 0);
+    // Ergebnis-Stempel von elCalcAssets (_calcPeakLoadPct, nur Trafos der letzten
+    // Rechnung) — derselbe Wert wie Karten-Hover, Ergebnisblatt und SLD.
+    // sn._auslastungPct taugt nicht: die Schnellberechnung (recalcStromNetz)
+    // überschreibt ihn mit einer anderen Formel (ohne cos φ).
+    const trafos   = assets.filter(a => a.type === 'Trafo' && a._calcVerbrauchKw !== undefined);
+    const maxTrafo = trafos.reduce((m, t) => Math.max(m, t._calcPeakLoadPct || 0), 0);
     const du       = window._stromNetzKpis?.maxDeltaU || 0;
     const lenM     = edges.reduce((sum, e) => sum + (e.lengthM || 0), 0);
 

@@ -21,7 +21,10 @@ import {
   gdKapitelEinfuegen, gdKapitelLoeschen, gdKapitelVerschieben, gdKapitelEbene,
   gdNeuerTextBlock, gdNeuerFigurBlock, gdNeuerBildBlock, gdBlockEinfuegen, gdBlockLoeschen, gdBlockVerschieben,
   gdFindeBlock, gdBeschriftungen, gdFigurIds, gdNormDeckblatt, GUTACHTEN_DECKBLATT_VORGABEN,
+  gdAnlagenNummern, gdStationsAnlagenErgaenzen, gdAnlageLoeschen, gdAnlageVerschieben,
 } from './lib/gutachten-dokument.js';
+import { ssStationModell, ssBestandsStationen, ssSteckbriefBlatt, ssSteckbriefTitel, ssSteckbriefHtml, ssStationsLabel } from './lib/stations-steckbrief.js';
+import { ssdxAnlagenVerzeichnis, ssdxSteckbriefAnlage } from './lib/steckbrief-docx.js';
 import {
   gdxKontext, gdxDeckblatt, gdxInhaltsverzeichnis, gdxVerzeichnis, gdxUeberschrift, gdxFreitext,
   gdxBausteinAbsaetze, gdxTabelle, gdxAbbildung, gdxBeschriftung, gdxErzeugePaket,
@@ -86,6 +89,36 @@ function findeBlock(id) {
 }
 // Über den Fragebogen ausgeblendete Bausteine bekommen keine Abbildungs-/Tabellennummer
 const teilArten = b => (ggFigurSichtbar(b.figurId) ? ggFigurTeilArten(b.figurId, { layout: b.layout, kennzahlen: b.kennzahlen }) : []);
+
+/* ── Anlagen: Stations-Steckbriefe (lib/stations-steckbrief.js) ──
+ * Der Inhalt wird nie im Dokument gespeichert, sondern bei jedem Zeichnen/Export aus dem
+ * Netzmodell gelesen — Bestand zum heutigen Jahr, wie die Trafo-Tabelle in 5.1.2. */
+function netzDaten() {
+  let assets = [];
+  try { assets = window.listAssets?.() || []; } catch (e) { void e; }
+  return { assets, edges: window.stromEdges || [], gebaeude: window.gebaeude || [], heute: new Date().getFullYear() };
+}
+/** Anlage → { blatt, titel } oder { fehler } (Gebäude gelöscht, keine Station mehr) */
+function anlageInhalt(a) {
+  const d = netzDaten();
+  const geb = d.gebaeude.find(g => String(g.id) === String(a.gebaeudeId));
+  if (!geb) return { fehler: 'Das Stationsgebäude gibt es im Projekt nicht mehr.', titel: 'Steckbrief Trafostation' };
+  const m = ssStationModell({ gebaeudeId: geb.id, ...d, messort: String(window.naMessort || ''), nurBestand: true });
+  if (!m.trafos.length && !m.naps.length && !m.schaltanlagen.length) {
+    return { fehler: `${ssStationsLabel(geb)}: keine bestehende Station (mehr) — Komponenten fehlen oder sind nur geplant.`, titel: 'Steckbrief ' + ssStationsLabel(geb) };
+  }
+  const blatt = ssSteckbriefBlatt(m, {
+    liegenschaft: String(window.pdKaserneName || ''), adresse: String(window.pdLiegenschaftAdresse || ''), weNummer: String(window.pdWeNummer || ''),
+  });
+  return { blatt, titel: ssSteckbriefTitel(blatt), hinweise: m.hinweise };
+}
+const findeAnlage = id => (_gut.dok?.anlagen || []).find(a => a.id === id) || null;
+/** Bestehende Stationen, für die noch keine Anlage existiert */
+function fehlendeStationen() {
+  const d = netzDaten();
+  const da = new Set((_gut.dok?.anlagen || []).map(a => String(a.gebaeudeId)));
+  return ssBestandsStationen(d.assets, d.gebaeude, d.heute).filter(g => !da.has(String(g.id)));
+}
 const seitenElement = (art, id) => document.querySelector(`#gut-seite [data-gut-el="${art}:${id}"]`);
 const scrollZu = (art, id) => seitenElement(art, id)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
 
@@ -364,6 +397,31 @@ function renderSeite() {
     }
   });
 
+  const anlagen = _gut.dok.anlagen || [];
+  if (anlagen.length) {
+    const anr = gdAnlagenNummern(anlagen);
+    const verz = document.createElement('div');
+    verz.style.cssText = 'margin:40px 0 0;padding-top:18px;border-top:2px dashed #c5ccc4;';
+    verz.innerHTML = `<div style="font-size:21px;font-weight:bold;margin-bottom:8px;">Anlagen</div>`
+      + `<table style="width:100%;border-collapse:collapse;font-size:13px;">${anlagen.map((a, i) =>
+          `<tr><td style="width:110px;border-top:1px solid #E2E4DF;border-bottom:1px solid #E2E4DF;padding:4px 6px;color:#266426;">Anlage ${anr[i]}</td>`
+          + `<td style="border-top:1px solid #E2E4DF;border-bottom:1px solid #E2E4DF;padding:4px 6px;">${esc(anlageInhalt(a).titel)}</td></tr>`).join('')}</table>`;
+    papier.appendChild(verz);
+    anlagen.forEach((a, i) => {
+      const inhalt = anlageInhalt(a);
+      const box = document.createElement('div');
+      box.dataset.gutEl = 'anlage:' + a.id;
+      box.dataset.click = `gutWaehle('anlage','${a.id}')`;
+      box.style.cssText = 'margin:34px 0 0;padding:14px 6px 4px;border-top:2px dashed #c5ccc4;border-radius:3px;cursor:pointer;';
+      box.innerHTML = `<div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#3F9C3F;">Anlage ${anr[i]}</div>`
+        + `<div style="font-size:21px;font-weight:bold;margin:2px 0 10px;">${esc(inhalt.titel)}</div>`
+        + (inhalt.fehler
+          ? `<div style="padding:14px;border:1px dashed ${GUT_WARN};color:#7a5b00;background:#fff8e1;font-size:12px;">⚠ ${esc(inhalt.fehler)}</div>`
+          : `<div style="font-size:11.5px;">${ssSteckbriefHtml(inhalt.blatt)}</div>`);
+      papier.appendChild(box);
+    });
+  }
+
   host.appendChild(papier);
   zuEinpassen.forEach(svg => ggFitLabels(svg));   // Textbreite lässt sich erst im Dokument messen
   markiereAuswahl();
@@ -444,6 +502,18 @@ function renderGliederung() {
       + `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${k.ebene === 1 ? 'font-weight:600;' : ''}">${titel}</span>${zaehler}`);
     for (const b of k.bloecke) html += zeile('block', b.id, einr + 18, 'var(--muted)', blockLabel(b, katalog));
   });
+  const anlagen = _gut.dok.anlagen || [];
+  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 4px;">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Anlagen</div>
+      ${knopf('+ Steckbriefe', 'gutAnlagenSteckbriefe()', { klein: true, titel: 'Für jede bestehende Trafo-/Übergabestation einen Stations-Steckbrief als Anlage anlegen (vorhandene bleiben)' })}</div>`;
+  if (!anlagen.length) html += hinweis('Noch keine Anlagen.');
+  const anr = gdAnlagenNummern(anlagen);
+  anlagen.forEach((a, i) => {
+    const inhalt = anlageInhalt(a);
+    html += zeile('anlage', a.id, 0, inhalt.fehler ? GUT_WARN : 'var(--text,#e8eaed)',
+      `<span style="flex-shrink:0;opacity:.6;min-width:26px;">${anr[i]}</span>`
+      + `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${inhalt.fehler ? '⚠ ' : '📋 '}${esc(inhalt.titel.replace(/^Steckbrief\s+/, ''))}</span>`);
+  });
   el.innerHTML = html;
 }
 
@@ -513,6 +583,7 @@ function dokumentPanel() {
     + ueberschrift('Platzhalter') + platzhalterHtml()
     + fragenHtml(GF_FRAGEN, 'Fragebogen (optional, alle Kapitel)')
     + standardtextPanel()
+    + anlagenAbschnitt()
     + deckblattPanel()
     + ueberschrift('Zurücksetzen')
     + knopf('↺ Standardgliederung neu anlegen', 'gutStandardAnlegen(true)', { gefahr: true, titel: 'Ersetzt das aktuelle Dokument samt aller Freitexte.' });
@@ -716,6 +787,26 @@ function blockPanel(b, kapIdx) {
   return html;
 }
 
+function anlagePanel(a) {
+  const idx = _gut.dok.anlagen.indexOf(a);
+  const nr = gdAnlagenNummern(_gut.dok.anlagen)[idx];
+  const inhalt = anlageInhalt(a);
+  const hw = inhalt.hinweise || [];
+  return panelKopf(`Anlage ${esc(nr)}`)
+    + `<div style="font-size:12px;color:var(--text,#e8eaed);margin-top:6px;">${esc(inhalt.titel)}</div>`
+    + (inhalt.fehler ? `<div style="margin-top:8px;font-size:11px;line-height:1.45;color:${GUT_WARN};">⚠ ${esc(inhalt.fehler)}</div>` : '')
+    + hinweis('Der Inhalt kommt live aus dem Stations-Steckbrief — Bestand zum heutigen Jahr. Angaben dort ändern, '
+      + 'hier erscheinen sie beim nächsten Zeichnen bzw. im Word-Export.')
+    + (hw.length ? `<div style="margin-top:8px;font-size:10.5px;line-height:1.5;color:${GUT_WARN};">${hw.map(h => '⚠ ' + esc(h)).join('<br>')}</div>` : '')
+    + ueberschrift('Bearbeiten')
+    + knopf('📋 Steckbrief öffnen', `gutAnlageOeffnen('${a.id}')`, { primaer: true, titel: 'Stations-Steckbrief im Elektro-Bereich öffnen (Stationsart, Schaltanlage, Trafos, NSHV, Mängel)' })
+    + ueberschrift('Anordnung')
+    + `<div style="display:flex;gap:4px;">${knopf('↑ nach oben', `gutAnlageVerschieben('${a.id}',-1)`)}${knopf('↓ nach unten', `gutAnlageVerschieben('${a.id}',1)`)}</div>`
+    + hinweis('Die Nummern (Anlage I, II, …) folgen der Reihenfolge.')
+    + ueberschrift('Entfernen')
+    + knopf('🗑 Anlage entfernen', `gutAnlageLoeschen('${a.id}')`, { gefahr: true, titel: 'Nimmt nur die Anlage aus dem Gutachten — der Steckbrief im Projekt bleibt.' });
+}
+
 function renderEigenschaften() {
   const el = document.getElementById('gut-eigenschaften');
   if (!el) return;
@@ -731,6 +822,10 @@ function renderEigenschaften() {
   if (a?.art === 'block') {
     const pos = gdFindeBlock(_gut.dok, a.id);
     if (pos) { el.innerHTML = blockPanel(_gut.dok.kapitel[pos.kapIdx].bloecke[pos.blockIdx], pos.kapIdx); return; }
+  }
+  if (a?.art === 'anlage') {
+    const an = findeAnlage(a.id);
+    if (an) { el.innerHTML = anlagePanel(an); return; }
   }
   _gut.auswahl = null;
   el.innerHTML = dokumentPanel();
@@ -748,15 +843,18 @@ function neuZeichnen() {
 export function gutStandardAnlegen(ersetzen = false) {
   if (_gut.dok && !ersetzen) return;
   if (_gut.dok && !window.confirm('Das aktuelle Gutachten-Dokument samt aller Freitexte, Lagepläne und der Anordnung durch die '
-      + 'Standardgliederung ersetzen? Das Deckblatt bleibt erhalten.')) return;
+      + 'Standardgliederung ersetzen? Deckblatt und Anlagen bleiben erhalten.')) return;
   const { dok, nichtZugeordnet } = gdStandardDokument(ggFigurenKatalog());
   dok.deckblatt = _gut.dok?.deckblatt || dok.deckblatt;   // Projektangaben haben nichts mit der Gliederung zu tun
+  dok.anlagen = _gut.dok?.anlagen || [];                  // Anlagen ebenso
   _gut.dok = dok;
+  const neueAnlagen = gdStationsAnlagenErgaenzen(dok, fehlendeStationen().map(g => g.id));
   _gut.auswahl = null;
   _gut.cache.clear();
   gutRender();
   const n = dok.kapitel.reduce((s, k) => s + k.bloecke.length, 0);
   gutSay(`✓ Standardgliederung angelegt — ${n} Abbildungen und Textbausteine eingesetzt.`
+    + (neueAnlagen.length ? ` ${neueAnlagen.length} Stations-Steckbrief(e) als Anlage.` : '')
     + (nichtZugeordnet.length ? ` ${nichtZugeordnet.length} ohne passendes Kapitel.` : ''));
 }
 
@@ -818,6 +916,42 @@ export function gutGliederungUmstellen() {
     + (erg.bausteine ? `, ${erg.bausteine} Bausteine in neue Unterkapitel` : '')
     + (erg.eigene.length ? `, ${erg.eigene.length} eigene Kapitel beibehalten` : '')
     + (ergaenzt ? `, ${ergaenzt} neue Texte und Abbildungen ergänzt.` : '. Neue Bausteine bei Bedarf über „Mit Standardgliederung abgleichen“ ergänzen.'));
+}
+
+/** Je bestehender Station einen Steckbrief als Anlage anlegen (vorhandene bleiben, Reihenfolge = Gebäudeliste). */
+export function gutAnlagenSteckbriefe() {
+  if (!_gut.dok) return;
+  const fehlend = fehlendeStationen();
+  if (!fehlend.length) {
+    gutSay(ssBestandsStationen(netzDaten().assets, netzDaten().gebaeude).length
+      ? '✓ Für jede bestehende Station gibt es schon einen Steckbrief.'
+      : '⚠ Keine bestehenden Trafo- oder Übergabestationen im Modell — im Elektro-Tab zuerst welche anlegen.', !ssBestandsStationen(netzDaten().assets, netzDaten().gebaeude).length);
+    return;
+  }
+  const neu = gdStationsAnlagenErgaenzen(_gut.dok, fehlend.map(g => g.id));
+  _gut.auswahl = neu.length ? { art: 'anlage', id: neu[0].id } : _gut.auswahl;
+  neuZeichnen();
+  if (neu[0]) scrollZu('anlage', neu[0].id);
+  gutSay(`✓ ${neu.length} Stations-Steckbrief${neu.length === 1 ? '' : 'e'} als Anlage angelegt.`);
+}
+
+export function gutAnlageVerschieben(id, richtung) {
+  if (!_gut.dok || !gdAnlageVerschieben(_gut.dok, id, richtung)) return;
+  neuZeichnen();
+  scrollZu('anlage', id);
+}
+
+export function gutAnlageLoeschen(id) {
+  if (!_gut.dok || !gdAnlageLoeschen(_gut.dok, id)) return;
+  _gut.auswahl = null;
+  neuZeichnen();
+}
+
+export function gutAnlageOeffnen(id) {
+  const a = findeAnlage(id);
+  if (!a) return;
+  if (typeof window.openStationsSteckbrief === 'function') window.openStationsSteckbrief(a.gebaeudeId);
+  else gutSay('⚠ Der Stations-Steckbrief ist in dieser Ansicht nicht verfügbar.', true);
 }
 
 export function gutLeeresAnlegen() {
@@ -1242,6 +1376,18 @@ function standardtextPanel() {
     + hinweis('Wird in „Nicht berücksichtigt – Gas-Grundlast“ und im Abschnitt Zweistoffbrenner des Variantenvergleichs eingesetzt; ebenfalls nur lokal gespeichert.');
 }
 
+function anlagenAbschnitt() {
+  const n = (_gut.dok.anlagen || []).length;
+  const fehlend = fehlendeStationen();
+  return ueberschrift('Anlagen')
+    + `<div style="font-size:11px;color:var(--muted);line-height:1.45;margin-bottom:6px;">${n ? `${n} Anlage${n === 1 ? '' : 'n'} im Dokument.` : 'Noch keine Anlagen.'}`
+    + (fehlend.length ? ` <span style="color:${GUT_WARN};">${fehlend.length} bestehende Station${fehlend.length === 1 ? '' : 'en'} ohne Steckbrief.</span>` : '') + '</div>'
+    + (fehlend.length
+      ? knopf(`📋 Steckbriefe der Stationen anlegen (${fehlend.length})`, 'gutAnlagenSteckbriefe()', { primaer: true,
+          titel: 'Je bestehender Trafo-/Übergabestation eine Anlage „Steckbrief Trafostation“ — wie die Vorlage „Liegenschaft_Steckbrief Trafostation“.' })
+      : `<div style="font-size:11px;color:${GUT_AKZENT};">✓ Für jede bestehende Station gibt es einen Steckbrief.</div>`);
+}
+
 function deckblattPanel() {
   const d = _gut.dok.deckblatt || gdNormDeckblatt();
   const v = deckblattVorgaben();
@@ -1297,6 +1443,9 @@ export async function gutWordPaket() {
   if (alle.some(x => x.art === 'Tabelle')) koerper += gdxVerzeichnis('Tabellenverzeichnis', 'Tabelle', { neueSeite });
 
   const warnungen = [];
+  // Anlagen wie in der Vorlage: Liste hinter den Verzeichnissen, Inhalte hinter dem letzten Kapitel
+  const anlagen = (dok.anlagen || []).map((a, i) => ({ a, nr: gdAnlagenNummern(dok.anlagen)[i], ...anlageInhalt(a) }));
+  koerper += ssdxAnlagenVerzeichnis(anlagen.map(x => ({ nr: x.nr, titel: x.titel })));
   for (let ki = 0; ki < dok.kapitel.length; ki++) {
     const k = dok.kapitel[ki];
     koerper += gdxUeberschrift(k.ebene, nummern[ki], k.titel);
@@ -1333,6 +1482,10 @@ export async function gutWordPaket() {
         if (nrListe[ti]) koerper += gdxBeschriftung(nrListe[ti].art, nrListe[ti].nr, text);
       }
     }
+  }
+  for (const x of anlagen) {
+    if (x.fehler) { warnungen.push(`Anlage ${x.nr}: ${x.fehler}`); continue; }
+    koerper += ssdxSteckbriefAnlage(x.nr, x.titel, x.blatt);
   }
   const titel = 'Gutachten zur zukünftigen Energieversorgung' + (deckblatt.liegenschaft ? ` der ${deckblatt.liegenschaft}` : '');
   return { paket: gdxErzeugePaket(ctx, koerper, { titel }), warnungen };
@@ -1577,6 +1730,20 @@ let _gutExportLaeuft = false;
 
 export async function gutWordExport() {
   if (_gutExportLaeuft) return;
+  // Das Gutachten gehört zur ★-Variante. Abbildungen und Zahlen kommen aber aus
+  // dem Live-Zustand — ist gerade eine andere Variante aktiv, vorher fragen.
+  const konflikt = window.gutachtenVarianteKonflikt?.();
+  if (konflikt) {
+    if (confirm(`Gutachtenvariante ist „${konflikt.gutachten}“, aktiv ist „${konflikt.aktiv}“.
+
+Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; den Export bitte erneut starten.`)) {
+      window.activateVariant?.(konflikt.id);
+      gutAktualisieren();
+      gutSay(`Zu „${konflikt.gutachten}“ gewechselt. Abbildungen neu gezeichnet — Export bitte erneut starten.`);
+      return;
+    }
+    if (!confirm(`Trotzdem mit der aktiven Variante „${konflikt.aktiv}“ exportieren?`)) return;
+  }
   if (typeof window.JSZip !== 'function') { gutSay('⚠ JSZip ist nicht geladen — Seite neu laden.', true); return; }
   _gutExportLaeuft = true;
   gutSay('Word-Datei wird erstellt …');
@@ -1591,7 +1758,7 @@ export async function gutWordExport() {
     a.href = url; a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     gutSay(`✓ ${name} erstellt (${Math.round(blob.size / 1024)} KB). Beim Öffnen fragt Word, ob Felder aktualisiert werden sollen — „Ja“ füllt die Verzeichnisse.`
-      + (warnungen.length ? ` ⚠ ${warnungen.length} Abbildung(en) übersprungen.` : ''));
+      + (warnungen.length ? ` ⚠ ${warnungen.length} Abbildung(en)/Anlage(n) übersprungen.` : ''));
   } catch (e) {
     console.error('Gutachten-Editor: Word-Export fehlgeschlagen', e);
     gutSay('⚠ Word-Export fehlgeschlagen: ' + e.message, true);
@@ -1616,6 +1783,7 @@ export function gutCaptureGutachten() {
     ...(_gut.dok?.fragen && Object.keys(_gut.dok.fragen).length ? { fragen: structuredClone(_gut.dok.fragen) } : {}),
     ...(_gut.dok?.platzhalter && Object.keys(_gut.dok.platzhalter).length ? { platzhalter: structuredClone(_gut.dok.platzhalter) } : {}),
     ...(_gut.dok?.praesentation ? { praesentation: structuredClone(_gut.dok.praesentation) } : {}),
+    anlagen: _gut.dok ? structuredClone(_gut.dok.anlagen || []) : null,
     figurEinstellungen,
   };
 }

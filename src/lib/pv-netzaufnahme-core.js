@@ -76,6 +76,8 @@ function _elementMap(elemente) {
  *   pruefpunkte: [{ id, elementId }] — zusätzliche Knoten mit Spannungsgrenze
  *                 (Dächer sind automatisch Prüfpunkte)
  *   duGrenzePct: zulässige Spannungsanhebung (Default 3 %)
+ *   ganzOderGar: true = ein Dach wird nur voll belegt oder gar nicht; passt es
+ *                nicht ganz, bleibt sein Platz für die folgenden Dächer frei
  * }
  *
  * Rückgabe: {
@@ -168,6 +170,7 @@ export function pvnaFuellen(eingabe) {
     }
 
     xMax = Math.max(0, xMax);
+    if (eingabe.ganzOderGar && xMax < kwpMax - 1e-6) xMax = 0;
     if (xMax > EPS) {
       for (const eid of p) fluss.set(eid, fluss.get(eid) + f * xMax);
       for (let i = 0; i < pp.length; i++) {

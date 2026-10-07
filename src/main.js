@@ -109,6 +109,12 @@ import * as autarkieZiel from './31-autarkieziel.js';
 import * as dreiDAnsicht from './32-3d-ansicht.js';
 import * as bestandsanlage from './33-bestandsanlage.js';
 import * as witterung from './34-witterung.js';
+import * as variantenUi from './33-varianten-ui.js';
+import * as stationsSteckbrief from './34-stations-steckbrief.js';
+import * as excel from './35-excel.js';
+import * as pvAutoBelegung from './36-pv-auto-belegung.js';
+import * as lod2Import from './37-lod2-import.js';
+import * as variantenRegeln from './lib/varianten-regeln.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -126,7 +132,7 @@ const modules = [
   napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap, engpassSweep, engpassPanel,
-  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung,
+  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, lod2Import, variantenRegeln,
 ];
 window.pdfjsLib = pdfjsLib;
 lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});
