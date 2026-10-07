@@ -33,7 +33,8 @@ import { setFliessgewaesserVisible } from './02c-karte-werkzeuge.js';
 import { PROJECT_SCHEMA_VERSION, prepareProjectForImport } from './lib/project-schema.js';
 import { schichtBackfill, SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
 import { repairPhasen } from './lib/phasen-core.js';
-import { drehFunktion, formAbbildung, peilungGrad, richteRechtwinklig, uebertrageForm, vereinigePolygone } from './lib/gebaeude-geometrie.js';
+import { bandIntervalle, rechteckTrifftPolygon, vereinigeIntervalle } from './lib/pv-raster.js';
+import { drehFunktion, firstPeilungGrad, formAbbildung, peilungGrad, richteRechtwinklig, uebertrageForm, vereinigePolygone } from './lib/gebaeude-geometrie.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
 import { getPvTariffProvenance } from './config/tariff-scenarios.js';
 import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
@@ -356,23 +357,12 @@ export function calcGebKwpKorr(g) {
   return calcGebKwp(g) * getPvKorrFaktor(g);
 }
 
-// Azimut der wahrscheinlichen Südseite aus dem längsten Polygon-Segment ermitteln
+// Azimut der wahrscheinlichen Südseite aus der Längsachse des Grundrisses ermitteln
+// (Hauptrichtung aller Kanten, nicht nur der längsten — siehe firstPeilungGrad)
 export function detectRoofAzimutFromPolygon(polygon) {
-  if (!polygon || polygon.length < 2) return null;
-  let maxLen = -1, ridgeAngleDeg = 0;
-  for (let i = 0; i < polygon.length; i++) {
-    const a = polygon[i],           b = polygon[(i + 1) % polygon.length];
-    const lat1 = a.lat ?? a[0],    lng1 = a.lng ?? a[1];
-    const lat2 = b.lat ?? b[0],    lng2 = b.lng ?? b[1];
-    const dLat = (lat2 - lat1) * 111320;
-    const dLng = (lng2 - lng1) * 111320 * Math.cos(((lat1 + lat2) / 2) * Math.PI / 180);
-    const len  = Math.sqrt(dLat * dLat + dLng * dLng);
-    if (len > maxLen) {
-      maxLen = len;
-      // Winkel von Nord im Uhrzeigersinn (0–180°, da Firstrichtung symmetrisch)
-      ridgeAngleDeg = ((Math.atan2(dLng, dLat) * 180 / Math.PI) % 180 + 180) % 180;
-    }
-  }
+  if (!polygon || polygon.length < 3) return null;
+  const ridgeAngleDeg = firstPeilungGrad(polygon.map(p => ({ lat: p.lat ?? p[0], lng: p.lng ?? p[1] })));
+  if (ridgeAngleDeg == null) return null;
   // First läuft entlang ridgeAngleDeg → Südhang ist senkrecht dazu
   const faceA = (ridgeAngleDeg + 90) % 360;
   const faceB = (ridgeAngleDeg - 90 + 360) % 360;
@@ -702,11 +692,17 @@ function _pvuEnsurePvAsset(g) {
 }
 
 // Ein Gebäude angleichen (Asset ggf. anlegen + kWp übernehmen).
-window.pvuFixOne = function(gId) {
+// opts.ohneNachlauf: nur Asset anlegen/überschreiben — Stapelaktionen (PV-Modus,
+// automatische Belegung) rechnen das Stromnetz einmal am Ende über pvuNachlauf nach.
+window.pvuFixOne = function(gId, opts = {}) {
   const g = (window.gebaeude || []).find(x => x.id === gId);
   if (!g) return;
   if (!_pvuEnsurePvAsset(g)) { alert('Kein PV-Asset anlegbar (Gebäude ohne Polygon).'); return; }
   window.overwritePvAsset(gId);
+  if (opts.ohneNachlauf) return;
+  window.pvuNachlauf();
+};
+window.pvuNachlauf = function() {
   if (typeof recalcStromNetz === 'function') recalcStromNetz();
   if (typeof redrawAllAssets === 'function') redrawAllAssets();
   pvuRender();
@@ -1369,61 +1365,33 @@ export function setPvVisible(visible) {
 }
 window.setPvVisible = setPvVisible;
 
-
-// Halbebenen-Clip im metrischen XY-Raum: behält die Seite, auf der
-// (p−a)·normal ≥ 0 gilt. Baustein für den Rand-Inset unten.
-function _clipHalfPlaneXY(poly, a, normal) {
-  const f = p => (p.x - a.x) * normal.x + (p.y - a.y) * normal.y;
-  const out = [];
-  for (let i = 0; i < poly.length; i++) {
-    const pa = poly[i], pb = poly[(i + 1) % poly.length];
-    const fa = f(pa), fb = f(pb);
-    if (fa >= 0) out.push(pa);
-    if ((fa >= 0) !== (fb >= 0)) {
-      const t = fa / (fa - fb);
-      out.push({ x: pa.x + t * (pb.x - pa.x), y: pa.y + t * (pb.y - pa.y) });
-    }
-  }
-  return out;
-}
-
-// Polygon um `dist` Meter nach innen versetzen (Randabstand für Modulraster,
-// z. B. Wind-/Brandschutzzonen). Schneidet für jede Kante die inwärts verschobene
-// Halbebene — exakt für konvexe Polygone, bei konkaven ggf. leicht konservativ
-// (kappt Einbuchtungen etwas zu früh, nie zu spät → nie mehr Module als real passen).
-function _insetPolygonXY(poly, dist) {
-  if (!(dist > 0) || poly.length < 3) return poly;
-  let cx = 0, cy = 0;
-  for (const p of poly) { cx += p.x; cy += p.y; }
-  cx /= poly.length; cy /= poly.length;
-  let result = poly;
-  for (let i = 0; i < poly.length && result.length >= 3; i++) {
-    const a = poly[i], b = poly[(i + 1) % poly.length];
-    const ex = b.x - a.x, ey = b.y - a.y;
-    const len = Math.hypot(ex, ey);
-    if (!len) continue;
-    let nx = -ey / len, ny = ex / len; // Normalenkandidat, senkrecht zur Kante
-    if ((cx - a.x) * nx + (cy - a.y) * ny < 0) { nx = -nx; ny = -ny; } // Richtung zum Schwerpunkt = innen
-    result = _clipHalfPlaneXY(result, { x: a.x + nx * dist, y: a.y + ny * dist }, { x: nx, y: ny });
-  }
-  return result;
-}
-
-// ── Punkt-in-Polygon (Ray-Casting) im metrischen XY-Raum ────────────────────
-function _pip(pt, poly) {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
-    if (((yi > pt.y) !== (yj > pt.y)) && (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi)) inside = !inside;
-  }
-  return inside;
-}
-
 /** Schwerpunkt eines lat/lng-Polygons (arithmetisches Mittel der Ecken). */
 export function _polyCentroidLL(poly) {
   let lat = 0, lng = 0;
   for (const p of poly) { lat += p.lat; lng += p.lng; }
   return { lat: lat / poly.length, lng: lng / poly.length };
+}
+
+/**
+ * Punkt auf der automatischen Firstlinie eines Satteldachs: Mitte des Hüllrechtecks
+ * quer zum First (entlang der Falllinie A), wie die 3D-Dachform (lib/dach-3d).
+ * Das reine Eckenmittel liegt bei ungleich verteilten Ecken daneben — Kataster-
+ * grundrisse haben oft einen doppelten Schlusspunkt oder viele Punkte auf einer
+ * Seite; dann wurde eine Dachhälfte zu schmal für eine Modulreihe und blieb leer.
+ */
+export function _firstMitteLL(poly, azimutDeg) {
+  const c = _polyCentroidLL(poly);
+  const A = (azimutDeg ?? 180) * Math.PI / 180;
+  const cosL = Math.cos(c.lat * Math.PI / 180);
+  const dO = Math.sin(A), dN = Math.cos(A);                   // Falllinie (Ost, Nord)
+  let sMin = Infinity, sMax = -Infinity;
+  for (const p of poly) {
+    const s = (p.lng - c.lng) * 111320 * cosL * dO + (p.lat - c.lat) * 111320 * dN;
+    if (s < sMin) sMin = s; if (s > sMax) sMax = s;
+  }
+  if (!Number.isFinite(sMin)) return c;
+  const sm = (sMin + sMax) / 2;
+  return { lat: c.lat + sm * dN / 111320, lng: c.lng + sm * dO / (111320 * cosL) };
 }
 
 /**
@@ -1479,10 +1447,11 @@ export function placePvModules(belPolys, sperrPolys, opts = {}) {
   const cosL   = Math.cos(latRef * Math.PI / 180);
   // metrische Projektion: Ursprung oben/links, y nach unten (SVG-konform)
   const toXY = p => ({ x: (p.lng - minLng) * 111320 * cosL, y: (maxLat - p.lat) * 111320 });
-  // Randabstand: Belegungsfläche vor der Rasterung um `edgeInset` Meter nach innen
-  // versetzen (Wind-/Brandschutzzonen, Montagerand) — Default 0,3 m.
-  const edgeInset = opts.edgeInset != null ? opts.edgeInset : 0.3;
-  const belXY   = bel.map(poly => _insetPolygonXY(poly.map(toXY), edgeInset)).filter(p => p.length >= 3);
+  // Randabstand zur Kante der Belegungsfläche (Wind-/Brandschutzzonen, Montagerand),
+  // Default 0,3 m — geprüft je Modul (rechteckImPolygon mit vergrößertem Modul),
+  // nicht durch Einrücken des Polygons: das zerstört konkave Grundrisse.
+  const edgeInset = opts.edgeInset != null ? Math.max(0, opts.edgeInset) : 0.3;
+  const belXY   = bel.map(poly => poly.map(toXY));
   const sperrXY = sperr.map(poly => poly.map(toXY));
   if (!belXY.length) return { modules: [], count: 0, bbox: null };
 
@@ -1526,10 +1495,42 @@ export function placePvModules(belPolys, sperrPolys, opts = {}) {
   const sperrR = sperrXY.map(poly => poly.map(rot));
 
   // Bbox im rotierten Frame
-  let rMinX = Infinity, rMinY = Infinity, rMaxX = -Infinity, rMaxY = -Infinity;
+  let rMinY = Infinity, rMaxY = -Infinity;
   for (const poly of belR) for (const p of poly) {
-    if (p.x < rMinX) rMinX = p.x; if (p.x > rMaxX) rMaxX = p.x;
     if (p.y < rMinY) rMinY = p.y; if (p.y > rMaxY) rMaxY = p.y;
+  }
+  // 1 mm Toleranz gegen Gleitkomma an exakt anliegenden Kanten
+  const TOL = 1e-3, rand = Math.max(0, edgeInset - TOL);
+
+  // Reihe für Reihe statt starrem Raster: Katastergrundrisse sind nie exakt
+  // rechtwinklig und der Azimut ist auf ganze Grad gerundet — eine Traufe, die
+  // ein paar Millimeter schief zum Raster steht, kostete sonst die ganze erste
+  // Reihe. bandIntervalle liefert je Reihe die Abschnitte, in denen das Modul
+  // samt Randabstand vollständig in der Belegung liegt (auch bei L-Formen);
+  // darin werden die Module mittig gesetzt.
+  const reihe = y => {
+    const iv = vereinigeIntervalle(belR.flatMap(poly => bandIntervalle(poly, y - rand, y + cellD + rand)));
+    const xs = [];
+    for (const [a, b] of iv) {
+      const frei = b - a - 2 * rand;
+      const n = frei + 1e-9 >= cellW ? Math.floor((frei - cellW) / pitchX + 1e-9) + 1 : 0;
+      const x0 = a + rand + (frei - ((n - 1) * pitchX + cellW)) / 2;
+      for (let k = 0; k < n; k++) xs.push(x0 + k * pitchX);
+    }
+    return xs;
+  };
+  const reihenAb = y0 => {
+    const rows = [];
+    for (let y = y0; y + cellD + rand <= rMaxY + 1e-6; y += pitchY) rows.push({ y, xs: reihe(y) });
+    return rows;
+  };
+  // Lage der Reihen: mehrere Startversätze probieren, den mit den meisten Modulen nehmen
+  const nVersatz = (rMaxY - rMinY) / pitchY > 60 ? 4 : 10;
+  let reihen = [], best = -1;
+  for (let k = 0; k < nVersatz; k++) {
+    const rows = reihenAb(rMinY + rand + k * pitchY / nVersatz);
+    const n = rows.reduce((s2, r) => s2 + r.xs.length, 0);
+    if (n > best) { best = n; reihen = rows; }
   }
 
   // Ost-West (nur flach): Shimmer-Kante reihenweise wechseln → Rücken-an-Rücken-Optik
@@ -1537,28 +1538,20 @@ export function placePvModules(belPolys, sperrPolys, opts = {}) {
 
   const modules = [];
   const MAX = opts.max || 12000; // Sicherheitslimit gegen Extremfälle (Performance)
-  let rowIdx = 0;
-  for (let y = rMinY; y + cellD <= rMaxY + 1e-6 && modules.length < MAX; y += pitchY, rowIdx++) {
+  reihen.forEach(({ y, xs }, rowIdx) => {
     const flipEdge = owAlternate && (rowIdx % 2 === 1);
-    for (let x = rMinX; x + cellW <= rMaxX + 1e-6; x += pitchX) {
+    for (const x of xs) {
+      if (modules.length >= MAX) return;
+      // darf kein Sperrpolygon überlappen — auch keins, das kleiner ist als das Modul (Kamin)
+      const modul = { x0: x + TOL, y0: y + TOL, x1: x + cellW - TOL, y1: y + cellD - TOL };
+      if (sperrR.some(poly => rechteckTrifftPolygon(modul, poly))) continue;
       const corners = [{ x, y }, { x: x + cellW, y }, { x: x + cellW, y: y + cellD }, { x, y: y + cellD }];
-      const center  = { x: x + cellW / 2, y: y + cellD / 2 };
-      // muss komplett in EINEM Belegungspolygon liegen
-      // Das Raster beginnt exakt an der Bbox-Kante des (eingerückten) Polygons: bei
-      // achsparallelen Dächern liegen die Modulecken dann AUF dem Polygonrand, und der
-      // Punkt-im-Polygon-Test entscheidet dort zufällig (Gleitkomma) — teils fielen
-      // dadurch ganze Dachhälften auf 0 Module. Geprüft wird mit ein paar mm nach innen
-      // gezogenen Ecken (0,4 % der Strecke Ecke→Mitte).
-      const inner = corners.map(c => ({ x: c.x + (center.x - c.x) * 0.004, y: c.y + (center.y - c.y) * 0.004 }));
-      if (!belR.some(poly => _pip(center, poly) && inner.every(c => _pip(c, poly)))) continue;
-      // darf kein Sperrpolygon berühren
-      if (sperrR.some(poly => _pip(center, poly) || inner.some(c => _pip(c, poly)))) continue;
       const pts  = corners.map(unrot);          // zurück in metrischen (nicht-rotierten) Frame
       // Shimmer-Kante: Süd = obere Kante; Ost-West = abwechselnd ober/unter (Paare)
       const edge = flipEdge ? [pts[3], pts[2]] : [pts[0], pts[1]];
       modules.push({ pts, edge });
     }
-  }
+  });
 
   return {
     modules, count: modules.length,
@@ -1622,9 +1615,9 @@ function _computeGebPvModules(g) {
     const maxLng = Math.max(...allPts.map(p => p.lng)), minLng = Math.min(...allPts.map(p => p.lng));
     const cosL   = Math.cos((maxLat + minLat) / 2 * Math.PI / 180);
     const frame  = { minLat, maxLat, minLng, maxLng };
-    // Firstlinie: manuell gesetzter Punkt (First neu zeichnen) oder Schwerpunkt der
-    // Belegung als Default; jede Belegung wird an dieser Linie geklippt.
-    const C = g.pvRidgeOverride || _polyCentroidLL(allPts);
+    // Firstlinie: manuell gesetzter Punkt (First neu zeichnen) oder die Mitte der
+    // Belegung quer zum First als Default; jede Belegung wird an dieser Linie geklippt.
+    const C = g.pvRidgeOverride || _firstMitteLL(allPts, A);
     const front = [], back = [];
     for (const poly of bel) {
       const fr = _clipPolyHalfPlane(poly, C, A, cosL, true);
@@ -1632,9 +1625,23 @@ function _computeGebPvModules(g) {
       if (fr.length >= 3) front.push(fr);
       if (bk.length >= 3) back.push(bk);
     }
+    // Automatisch ausgesparte Nordseite (PV-Modus, fl.auto = 'nord'): die ganze
+    // Hälfte an DIESER Firstlinie bleibt frei. Die gespeicherte Sperrfläche sagt
+    // nur, welche Seite — in älteren Projekten ist sie noch an der früheren
+    // Firstlage (Eckenmittel) geschnitten und würde sonst Streifen sperren/freilassen.
+    const autoNord = (g.pvFlaechen || []).filter(f => f.typ === 'sperr' && f.auto === 'nord' && f.polygon && f.polygon.length >= 3);
+    const sperrSonst = autoNord.length
+      ? (g.pvFlaechen || []).filter(f => f.typ === 'sperr' && f.auto !== 'nord' && f.polygon && f.polygon.length >= 3).map(f => f.polygon)
+      : sperr;
+    let nordVorne = null;
+    if (autoNord.length) {
+      const n = _polyCentroidLL(autoNord[0].polygon), Ar = A * Math.PI / 180;
+      nordVorne = Math.sin(Ar) * (n.lng - C.lng) * cosL + Math.cos(Ar) * (n.lat - C.lat) > 0;
+    }
+    const leer = { modules: [], count: 0, bbox: null };
     const base = { pitched: true, tiltDeg: tilt, coverage: beleg, moduleW: mb, moduleL: ml, frame };
-    const rF = placePvModules(front, sperr, { ...base, azimutDeg: A });
-    const rB = placePvModules(back,  sperr, { ...base, azimutDeg: A + 180 });
+    const rF = nordVorne === true  ? leer : placePvModules(front, sperrSonst, { ...base, azimutDeg: A });
+    const rB = nordVorne === false ? leer : placePvModules(back,  sperrSonst, { ...base, azimutDeg: A + 180 });
     const bbox = (rF.bbox || rB.bbox);
     // Firstlinie: Schwerpunkt in SVG-Koordinaten für Overlay-Rendering
     let ridgeLine = null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bereinigeKleinbauten, drehFunktion, flaecheM2, formAbbildung, peilungGrad, rechteckAusDreiPunkten, richteRechtwinklig, uebertrageForm, vereinigePolygone } from '../src/lib/gebaeude-geometrie.js';
+import { bereinigeKleinbauten, drehFunktion, firstPeilungGrad, flaecheM2, formAbbildung, peilungGrad, rechteckAusDreiPunkten, richteRechtwinklig, uebertrageForm, vereinigePolygone } from '../src/lib/gebaeude-geometrie.js';
 
 // Rechteck in Metern ab (x,y) am Ursprung 53°N/10°E
 const LAT = 53, LNG = 10;
@@ -182,5 +182,34 @@ describe('formAbbildung', () => {
   });
   it('liefert null bei entartetem Grundriss', () => {
     expect(formAbbildung(rect(0, 0, 10, 10).slice(0, 2), rect(0, 0, 5, 5))).toBeNull();
+  });
+});
+
+describe('firstPeilungGrad', () => {
+  // Punkte [x,y] in Metern um den Ursprung um `grad` im Uhrzeigersinn (Kompass) drehen
+  const gedreht = (pts, grad) => {
+    const w = -grad * Math.PI / 180, c = Math.cos(w), s = Math.sin(w);
+    return pts.map(([x, y]) => ({ lat: LAT + dLat(x * s + y * c), lng: LNG + dLng(x * c - y * s) }));
+  };
+  const abw = (a, b) => { const d = Math.abs(a - b) % 180; return Math.min(d, 180 - d); };
+
+  it('Rechteck Ost–West → First 90°', () => {
+    expect(abw(firstPeilungGrad(rect(0, 0, 20, 10)), 90)).toBeLessThan(0.5);
+  });
+  it('um 35° gedrehtes Rechteck → First entlang der Längsseite', () => {
+    const r = gedreht([[0, 0], [20, 0], [20, 10], [0, 10]], 35);
+    expect(abw(firstPeilungGrad(r), 125)).toBeLessThan(0.5);
+  });
+  it('Längsseiten in kurze Stücke zerlegt (ALKIS) → trotzdem Längsachse', () => {
+    // 20 × 10 m, jede Längsseite in 4 Stücke à 5 m (kürzer als die 10-m-Stirnseite)
+    const pts = [[0, 0], [5, 0], [10, 0], [15, 0], [20, 0], [20, 10], [15, 10], [10, 10], [5, 10], [0, 10]];
+    expect(abw(firstPeilungGrad(gedreht(pts, 50)), 140)).toBeLessThan(0.5);
+  });
+  it('abgeschrägte Ecken verdrehen die Achse nicht', () => {
+    const pts = [[2, 0], [18, 0], [20, 2], [20, 8], [18, 10], [2, 10], [0, 8], [0, 2]];
+    expect(abw(firstPeilungGrad(gedreht(pts, 20)), 110)).toBeLessThan(1);
+  });
+  it('zu wenige Punkte → null', () => {
+    expect(firstPeilungGrad(rect(0, 0, 1, 1).slice(0, 2))).toBeNull();
   });
 });

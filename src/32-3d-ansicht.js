@@ -24,6 +24,7 @@ import {
   d3dRahmen, d3dDachEbenen, d3dDachDreiecke, d3dModule, d3dSchattierung,
 } from './lib/dach-3d.js';
 import { d3dNetzLinien, d3dStationen, D3D_STATIONEN } from './lib/netz-3d.js';
+import { firstPeilungGrad } from './lib/gebaeude-geometrie.js';
 
 const D3D_MAPLIBRE_VERSION = '5.24.0';   // nur für den CDN-Fallback im Dev-Modus
 const D3D_NEIGUNG = 55;
@@ -136,6 +137,23 @@ function d3dHatDachangabe(g) {
     || g.pvRidgeOverride);
 }
 
+/**
+ * Azimut für die Dachform (ring = Außenring [lng,lat]). Ohne PV-Belegung ist er reine Darstellung: fehlt er
+ * oder wurde er früher automatisch (längste Einzelkante) ermittelt, kommt er
+ * frisch aus der Längsachse des Grundrisses — sonst liefe der First bei schräg
+ * stehenden Gebäuden mit der Vorgabe 180° quer von Ecke zu Ecke. Mit Belegung
+ * gilt der gespeicherte Wert, weil die Module (03c) damit platziert sind.
+ */
+function d3dAzimut(g, ring) {
+  const belegt = (g.pvFlaechen || []).some(f => f.typ === 'belegung');
+  if (belegt || (g.dachAzimut != null && (!g.dachAutoAzimut || g.dachQuelle))) return g.dachAzimut;
+  const first = firstPeilungGrad(ring.map(([lng, lat]) => ({ lat, lng })));
+  if (first == null) return g.dachAzimut;
+  // Dachfläche senkrecht zum First, die Seite näher an Süd (wie detectRoofAzimutFromPolygon)
+  const a = (first + 90) % 360, b = (first + 270) % 360;
+  return Math.abs(a - 180) <= Math.abs(b - 180) ? a : b;
+}
+
 let _farbCtx = null;
 /** CSS-Farbe → [r,g,b] 0…1 (über die Canvas-Normalisierung, versteht jedes Format). */
 function d3dRgb(css) {
@@ -199,7 +217,7 @@ function d3dSzeneBauen(daten) {
     // Höfe (Löcher) würde das Ebenenmodell überdachen → dort flach lassen
     const form = zeigen && ringe.length === 1 ? echteForm : 'flach';
     const ebenen = d3dDachEbenen(form, pts, {
-      azimut: g.dachAzimut, neigung: g.dachNeigung, traufe,
+      azimut: d3dAzimut(g, ring), neigung: g.dachNeigung, traufe,
       first: g.pvRidgeOverride ? rahmen.nachXY(g.pvRidgeOverride.lng, g.pvRidgeOverride.lat) : null,
     });
     if (form !== 'flach') {

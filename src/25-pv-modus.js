@@ -29,7 +29,7 @@ import { polygonCenter, polygonAreaM2, forwardClickToMap, updateViz } from './02
 import {
   _hasBelegung, calcGebKwp, calcGebKwpKorr, getGebPvModules, pvNettoFlaeche,
   getDachDefaultNeigung, detectRoofAzimutFromPolygon, setPvVisible, escHtml, flyTo,
-  attachGebPvLayer, redrawGebPvModules, _clipPolyHalfPlane, _polyCentroidLL,
+  attachGebPvLayer, redrawGebPvModules, _clipPolyHalfPlane, _firstMitteLL,
 } from './03c-gebaeude-io.js';
 import { getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 
@@ -40,6 +40,8 @@ const GELB = '#ffd54f';
 const ROT  = '#e53935';
 
 let _stoppt = false;
+/** Stapelbelegung läuft: Stromnetz erst am Ende einmal nachrechnen (pvuNachlauf). */
+let _stapelLaeuft = false;
 /** @type {((e:KeyboardEvent)=>void)|null} */
 let _tastenHandler = null;
 /** Rückgängig-Stapel: je Eintrag die in einem Schritt entstandenen Flächen. */
@@ -142,6 +144,7 @@ export function pvModusStop() {
     window.cancelGebFirstDraw?.();
     _rechteckAbbruch();
     window.pvModusAktiv = false;
+    window.pvabBeenden?.();                    // automatische Belegung (36): Vorschau/Bereich weg
     if (_tastenHandler) { document.removeEventListener('keydown', _tastenHandler, true); _tastenHandler = null; }
     map.off('click', _rechteckKartenklick);
     _verlauf = [];
@@ -180,6 +183,7 @@ function _taste(event) {
   const ziel = event.target;
   const tippt = !!ziel && (ziel.tagName === 'INPUT' || ziel.tagName === 'TEXTAREA' ||
                            ziel.tagName === 'SELECT' || ziel.isContentEditable);
+  if (window.pvabZiehtBereich) return;           // Bereich aufziehen (36) hat eigenes Esc
   if (event.key === 'Escape') {
     if (tippt) { ziel.blur(); return; }
     // Esc beendet erst die laufende Zeichnung, erst beim zweiten Mal den Modus.
@@ -559,8 +563,8 @@ function _nordAnwenden(g) {
   const alle   = bel.flatMap(f => f.polygon);
   const maxLat = Math.max(...alle.map(p => p.lat)), minLat = Math.min(...alle.map(p => p.lat));
   const cosL   = Math.cos((maxLat + minLat) / 2 * Math.PI / 180);
-  const C      = g.pvRidgeOverride || _polyCentroidLL(alle);
   const A      = g.dachAzimut ?? 180;
+  const C      = g.pvRidgeOverride || _firstMitteLL(alle, A);
   const ids = [];
   for (const f of bel) {
     const haelfte = _clipPolyHalfPlane(f.polygon, C, A, cosL, nordVorne);
@@ -646,7 +650,7 @@ function _schritt(gId, belId, nordIds, assetVorher) {
 // aus 03c macht beides und rechnet das Stromnetz nach).
 function _uebernehmen(g) {
   if (!g || !_hasBelegung(g)) return;
-  window.pvuFixOne?.(g.id);
+  window.pvuFixOne?.(g.id, { ohneNachlauf: _stapelLaeuft });
 }
 
 function _verlaufMerken(eintraege) {
@@ -742,26 +746,75 @@ export function pvmGrundrissAuswahl() {
   if (!confirm(`${ziele.length} ausgewählte Dächer mit ihrem Grundriss belegen?\n\n` +
                `Für jedes Dach entsteht eine Belegungsfläche in Grundrissgröße, die kWp gehen direkt ins PV-Asset. ` +
                `Mit Strg+Z lässt sich der ganze Schritt zurücknehmen.`)) return;
+  const { anzahl, summe } = pvmStapelBelegen(ziele);
+  window.showHint?.(`${anzahl} Dächer belegt · Σ ${summe.toFixed(0)} kWp. Strg+Z nimmt den Schritt zurück.`, 7000);
+}
 
+/**
+ * Grundriss für eine Liste von Gebäuden als Belegungsfläche übernehmen — mit
+ * den Vorgaben, wie beim einzelnen Dach, aber als EIN Strg+Z-Schritt und mit
+ * nur einer Stromnetz-Nachrechnung am Ende. Bereits belegte Dächer bleiben unberührt.
+ * Gemeinsamer Weg für die Auswahl und die automatische Belegung (36).
+ * @param {any[]} ziele Gebäude
+ * @returns {{anzahl:number, summe:number}}
+ */
+export function pvmStapelBelegen(ziele) {
   _assetStandErfassen();
   const schritt = [];
-  let summe = 0;
-  for (const g of ziele) {
-    const vorher = _assetVorher(g.id);
-    const fl = _grundriss(g);
-    if (!fl) continue;
-    const nordIds = _erstbelegung(g);
-    schritt.push(..._schritt(g.id, fl.id, nordIds, vorher));
-    summe += calcGebKwpKorr(g) || 0;
-  }
+  let summe = 0, anzahl = 0;
+  _stapelLaeuft = true;
+  try {
+    for (const g of ziele) {
+      if (!g || _hasBelegung(g)) continue;
+      const vorher = _assetVorher(g.id);
+      const fl = _grundriss(g);
+      if (!fl) continue;
+      const nordIds = _erstbelegung(g);
+      schritt.push(..._schritt(g.id, fl.id, nordIds, vorher));
+      summe += calcGebKwpKorr(g) || 0;
+      anzahl++;
+    }
+  } finally { _stapelLaeuft = false; }
   if (schritt.length) _verlaufMerken(schritt);
+  window.pvuNachlauf?.();
   window.pvModusHilfe = false;
   window.calcStromPanel?.();
   window.renderList?.();
   window.renderGebPvPanel?.();
-  window.showHint?.(`${schritt.length} Dächer belegt · Σ ${summe.toFixed(0)} kWp. Strg+Z nimmt den Schritt zurück.`, 7000);
   pvModusMarkiereKarte();
   pvModusRender();
+  return { anzahl, summe };
+}
+
+/**
+ * Probebelegung ohne jede Änderung am Gebäude: was „Grundriss als Fläche" mit
+ * den aktuellen Vorgaben ergäbe (Dachform/Neigung/Belegungsgrad, Azimut aus dem
+ * Grundriss, Nordseite ausgespart — wie _erstbelegung + _nordAnwenden), auf
+ * einer flachen Kopie gerechnet. Grundlage der Vorschau in 36.
+ * @returns {{kwp:number, kwpKorr:number, module:number}|null}
+ */
+export function pvmProbe(g) {
+  if (!g || !Array.isArray(g.polygon) || g.polygon.length < 3) return null;
+  const v = _vorgabe();
+  const poly = g.polygon.map(p => ({ lat: p.lat, lng: p.lng }));
+  const t = { ...g, pvModus: 'flaechen', _pvModCache: null, _pvModSig: null,
+    pvFlaechen: [{ id: -1, typ: 'belegung', polygon: poly, flaeche: polygonAreaM2(poly) || 0 }] };
+  if (v.dachform && !g._pvDachformManuell && !g.dachQuelle) t.dachform = v.dachform;
+  if (v.belegung != null) t.pvFlBelegung = v.belegung;
+  if (v.neigung  != null && !(g.dachQuelle && g.dachNeigung != null)) t.dachNeigung = v.neigung;
+  if (t.dachAzimut == null) {
+    const az = detectRoofAzimutFromPolygon(poly);
+    if (az !== null) t.dachAzimut = az;
+  }
+  const nordVorne = v.nordSperr ? _nordSeite(t) : null;
+  if (nordVorne !== null) {
+    const maxLat = Math.max(...poly.map(p => p.lat)), minLat = Math.min(...poly.map(p => p.lat));
+    const cosL = Math.cos((maxLat + minLat) / 2 * Math.PI / 180);
+    const C = t.pvRidgeOverride || _firstMitteLL(poly, t.dachAzimut ?? 180);
+    const haelfte = _clipPolyHalfPlane(poly, C, t.dachAzimut ?? 180, cosL, nordVorne);
+    if (haelfte.length >= 3) t.pvFlaechen.push({ id: -2, typ: 'sperr', auto: 'nord', polygon: haelfte, flaeche: polygonAreaM2(haelfte) || 0 });
+  }
+  return { kwp: calcGebKwp(t) || 0, kwpKorr: calcGebKwpKorr(t) || 0, module: getGebPvModules(t).count || 0 };
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -799,6 +852,7 @@ export function pvmNaechstesOffenes() {
 /** Dächer mit Fläche warm, Dächer ohne Fläche gestrichelt — offene Arbeit sichtbar. */
 export function pvModusMarkiereKarte() {
   if (!window.pvModusAktiv) return;
+  if (window.pvabMarkiereKarte?.()) return;      // Vorschau „Dächer automatisch belegen" (36)
   const aktiv = window.pvModusGeb;
   (window.gebaeude || []).forEach(g => {
     if (!g.polygonLayer) return;
@@ -1082,6 +1136,7 @@ function _html() {
         : `<div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.4;">
              Stapelweise: Gebäude in der Liste oder Gebäudetabelle ankreuzen (dort filtern) — dann erscheint hier „Grundriss für die Auswahl".
            </div>`}
+      ${window.pvabBlockHtml?.() || ''}
       <div style="margin-top:8px;">${_aktivBlock(g)}</div>
       ${_vorgabeBlock()}
       ${_listenBlock()}

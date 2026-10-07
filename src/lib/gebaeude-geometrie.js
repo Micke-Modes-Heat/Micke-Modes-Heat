@@ -248,6 +248,40 @@ export function peilungGrad(zentrum, p) {
 }
 
 /**
+ * Firstrichtung eines Grundrisses als Kompasspeilung (0–180°, 0 = Nord–Süd).
+ * Hauptrichtung aus ALLEN Kanten (nach Länge gewichtet, Winkel mod 90° über
+ * 4·Winkel gemittelt), der First läuft entlang der längeren Ausdehnung des so
+ * ausgerichteten Hüllrechtecks. Robust gegen in viele Stücke zerlegte Seiten
+ * (ALKIS), abgeschrägte Ecken und L-Formen — „längste Einzelkante" erwischt dort
+ * leicht die Stirnseite.
+ * @param {{lat:number,lng:number}[]} coords
+ * @returns {number|null}
+ */
+export function firstPeilungGrad(coords) {
+  if (!coords || coords.length < 3) return null;
+  const pts = ohneSchluss(projizieren([coords]).ringe[0]);
+  if (pts.length < 3) return null;
+  let sx = 0, sy = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const l = Math.hypot(b.x - a.x, b.y - a.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
+    sx += l * Math.cos(4 * ang); sy += l * Math.sin(4 * ang);
+  }
+  if (Math.hypot(sx, sy) < 1e-9) return null;
+  const theta = Math.atan2(sy, sx) / 4;          // Achse (mathematisch, x Ost / y Nord)
+  const ct = Math.cos(theta), st = Math.sin(theta);
+  let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+  for (const p of pts) {
+    const u = p.x * ct + p.y * st, v = -p.x * st + p.y * ct;
+    if (u < uMin) uMin = u; if (u > uMax) uMax = u;
+    if (v < vMin) vMin = v; if (v > vMax) vMax = v;
+  }
+  const lang = uMax - uMin >= vMax - vMin ? theta : theta + Math.PI / 2;
+  // mathematischer Winkel → Kompass (von Nord im Uhrzeigersinn), First symmetrisch → mod 180
+  return ((90 - lang * 180 / Math.PI) % 180 + 180) % 180;
+}
+
+/**
  * Richtet einen Grundriss rechtwinklig aus: Hauptrichtung bestimmen (nach Kantenlänge
  * gewichtet), jede Kante der nächstliegenden der beiden Achsen zuordnen, aufeinander-
  * folgende gleichgerichtete Kanten zusammenlegen und die Ecken als Schnittpunkte

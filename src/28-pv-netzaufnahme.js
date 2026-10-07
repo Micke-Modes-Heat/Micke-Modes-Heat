@@ -254,7 +254,7 @@ export function pvnaModell(opts = {}) {
     .map(a => ({ id: a.id, typ: a.type, name: a.name || a.type, pos: knotenPos(a.id) })).filter(m => m.pos);
 
   return { eingabe, info: { elInfo, dachInfo, hinweise, unbekannteQs, ersatzQs, bestandPvKwp, jahr: yr, stichjahr: stich, flaechen,
-    cosPhi, kIz, tLeiter, I_je_kW, elPos, msPunkte } };
+    cosPhi, kIz, tLeiter, I_je_kW, elPos, msPunkte, knotenEl, knotenTrafo, einspFaktor } };
 }
 
 /**

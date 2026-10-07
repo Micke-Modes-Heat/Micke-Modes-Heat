@@ -30,6 +30,18 @@ describe('pvnaFuellen', () => {
     expect(r.potenzialKwp).toBe(200);
   });
 
+  it('ganzOderGar: ein Dach, das nicht voll passt, bleibt leer und lässt den Platz frei', () => {
+    const e = netz();
+    e.daecher.push({ id: 'C', elementId: 'K2', kwpMax: 30, ertragFaktor: 0.8, einspFaktor: 1 });
+    const r = pvnaFuellen({ ...e, ganzOderGar: true });
+    const d = id => r.daecher.find(x => x.id === id);
+    expect(d('A').kwp).toBe(0);                     // 100 > Kabel K1 (60)
+    expect(d('A').begrenzer).toEqual({ elementId: 'K1', art: 'strom' });
+    expect(d('B').kwp).toBeCloseTo(100);            // Trafo hat noch volle 100
+    expect(d('C').kwp).toBe(0);                     // Trafo jetzt voll
+    expect(d('C').begrenzer.art).toBe('trafo');
+  });
+
   it('belegt das ertragsstärkere Dach zuerst', () => {
     const e = netz();
     e.daecher[1].ertragFaktor = 1.2;               // B jetzt besser
