@@ -3304,6 +3304,9 @@ export async function clearAllStromTrassen() {
 export function clearStromNetz() {
   if (typeof window.stopAnimStrom === 'function') window.stopAnimStrom();
   window.stromEdges.forEach(e => {
+    // Auch die dunkle Kontur entfernen — sonst bleibt nach jedem Variantenwechsel
+    // das Netz der vorigen Variante als schwarze Strichlinie auf der Karte stehen.
+    if (e.outlineLayer && map.hasLayer(e.outlineLayer)) map.removeLayer(e.outlineLayer);
     if (e.layer && map.hasLayer(e.layer)) map.removeLayer(e.layer);
     if (e.hitLayer && map.hasLayer(e.hitLayer)) map.removeLayer(e.hitLayer);
     if (e.arrowMarker && map.hasLayer(e.arrowMarker)) map.removeLayer(e.arrowMarker);

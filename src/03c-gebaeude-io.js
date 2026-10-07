@@ -2250,6 +2250,11 @@ export function _renderExpandedPanel(g, stats) {
           data-input="updateField(${g.id},'baujahr',this.value)"/>
       </div>
       <div class="inp-group">
+        <div class="inp-label" title="Wie „Planung → Abriss planen“: ab diesem Jahr gilt das Gebäude samt seinen Elektro-Assets als abgerissen">Abrissjahr</div>
+        <input class="inp-field" type="number" min="1800" max="2100" placeholder="—" value="${escVal(g.abrissjahr)}"
+          data-change="setAbrissjahr(${g.id},this.value)"/>
+      </div>
+      <div class="inp-group">
         <div class="inp-label">Stockwerke</div>
         <input class="inp-field" type="number" placeholder="1" value="${g.stockwerke || 1}"
           data-input="updateField(${g.id},'stockwerke',this.value)"/>

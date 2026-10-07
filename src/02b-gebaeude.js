@@ -555,6 +555,7 @@ export async function removeGebaeude(id){
     const uN = window.stromNodes.find(n => n.id === e.u);
     const vN = window.stromNodes.find(n => n.id === e.v);
     if ((uN && uN.type === 'geb' && uN.gebId === id) || (vN && vN.type === 'geb' && vN.gebId === id)) {
+      if(e.outlineLayer) map.removeLayer(e.outlineLayer);
       if(e.layer) map.removeLayer(e.layer);
       if(e.hitLayer) map.removeLayer(e.hitLayer);
       if(e.arrowMarker) map.removeLayer(e.arrowMarker);
@@ -594,6 +595,7 @@ export function clearOsmBuildings(){
     const uN = window.stromNodes.find(n => n.id === e.u);
     const vN = window.stromNodes.find(n => n.id === e.v);
     if ((uN && uN.type === 'geb' && osmIds.has(uN.gebId)) || (vN && vN.type === 'geb' && osmIds.has(vN.gebId))) {
+      if(e.outlineLayer) map.removeLayer(e.outlineLayer);
       if(e.layer) map.removeLayer(e.layer);
       if(e.hitLayer) map.removeLayer(e.hitLayer);
       if(e.arrowMarker) map.removeLayer(e.arrowMarker);
@@ -1211,6 +1213,15 @@ export function savePlan(id, mode) {
   }
   
   _invalidateStats();
+  renderList(); updateViz(); updateTotals(); recalcNetz();
+}
+
+// Abrissjahr direkt aus dem Eigenschaften-Feld (neben dem Baujahr) — wirkt wie
+// „Planung → Abriss planen“; leeres Feld nimmt den Abriss wieder heraus.
+export function setAbrissjahr(id, val) {
+  const g = window.gebaeude.find(x => x.id === id);
+  if (!g) return;
+  updateField(id, 'abrissjahr', val, { defer: true });
   renderList(); updateViz(); updateTotals(); recalcNetz();
 }
 
