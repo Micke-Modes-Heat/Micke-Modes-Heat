@@ -19,6 +19,9 @@
 //      es danach noch verträgt.
 //
 // Die Vorschau ändert nichts am Projekt; „Übernehmen" ist ein Strg+Z-Schritt.
+// Alternativ geht die Vorschau als Auslegung in die PV-Analyse (09d
+// pvaBelegungAnlegen, Variante 'belegung-<nr>') — samt Regel für den Speicher,
+// ohne das Projekt anzufassen. So lassen sich mehrere Belegungen vergleichen.
 //
 // Daneben „Belegungen entfernen": dieselben Umfänge, alle Flächen der Dächer
 // samt PV-Asset weg, als Planungstransaktion (Strg+Z im PV-Modus).
@@ -75,6 +78,9 @@ const _ab = {
   vorrang: 'neubau',          // bei 'gestuft': diese Gruppe immer voll
   grenze: 'kabel',            // 'kabel' = Trafo + NS-Kabel · 'trafo' = nur der Trafo begrenzt
   ohneNetzBelegen: false,
+  /** Speicherregel, wenn die Vorschau als Auslegung in die PV-Analyse geht (09d PV_BELEGUNG_SPEICHER) */
+  speicher: 'wirt',
+  batKwh: 0,                  // nur bei speicher 'fest'
   /** @type {null | {zeilen:any[], sig:string, netz:any}} */
   vorschau: null,
 };
@@ -349,6 +355,91 @@ export async function pvabUebernehmen() {
   _trafoCache = null;
   const { anzahl, summe } = pvmStapelBelegen(ziele);
   window.showHint?.(`✓ ${anzahl} Dächer belegt · Σ ${_fmt(summe)} kWp. Strg+Z nimmt den ganzen Schritt zurück.`, 8000);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ALS AUSLEGUNG IN DIE PV-ANALYSE (09d pvaBelegungAnlegen)
+// ══════════════════════════════════════════════════════════════════════════
+
+function _umfangKurz(stich) {
+  if (_ab.umfang === 'trafo') {
+    const t = _trafos().find(x => String(x.id) === String(_ab.trafoId));
+    return t ? `Netzgebiet ${t.name}` : 'Netzgebiet';
+  }
+  return { alle: 'alle Dächer', neubau: `Neubauten nach ${stich}`, pflicht: 'PV-Pflicht-Fälle',
+    auswahl: 'Auswahl', bereich: 'Kartenbereich' }[_ab.umfang] || _ab.umfang;
+}
+
+function _mengeKurz(stich) {
+  if (_ab.menge === 'max') return 'Maximal';
+  const g = _ab.grenze === 'trafo' ? ', nur Trafo' : '';
+  if (_ab.menge === 'netz') return 'Netzverträglich' + g;
+  return `Gestuft (${_vorrangLabel(_ab.vorrang, stich)} voll${g})`;
+}
+
+/** Vorschlag für den Namen der Auslegung, z. B. „Netzverträglich · alle Dächer". */
+function _auslegungName(stich) {
+  return `${_mengeKurz(stich)} · ${_umfangKurz(stich)}`;
+}
+
+/** Ausführliche Beschreibung (Herleitung in der PV-Analyse). */
+function _auslegungBeschreibung(stich, n) {
+  const teile = [`${_umfangKurz(stich)} ab ${_ab.minM2} m²`];
+  const aus = _ab.ohneNutzung.size;
+  if (aus) teile.push(`${aus} Nutzungstyp${aus > 1 ? 'en' : ''} ausgenommen`);
+  teile.push(window.pvModusVorgabe?.nordSperr !== false ? 'Nordseiten ausgespart' : 'beide Dachseiten');
+  if (_ab.menge === 'max') teile.push('jedes Dach voll, Netz nicht geprüft');
+  else {
+    teile.push((_ab.menge === 'gestuft' ? `${_vorrangLabel(_ab.vorrang, stich)} immer voll, Rest ` : '')
+      + `netzverträglich im Bestandsnetz${n ? ` ${n.jahr}` : ''} (${n?.nurTrafo ? 'nur Trafogrenze' : `Trafo + NS-Kabel, ΔU ≤ ${_fmt(n?.duGrenzePct, 1)} %`}), `
+      + 'beste Erträge zuerst, jedes Dach ganz oder gar nicht');
+  }
+  return teile.join('; ');
+}
+
+/**
+ * Die aktuelle Vorschau als Auslegung an die PV-Analyse geben — Momentaufnahme
+ * der Dächer, die „Übernehmen" belegen würde. Ändert nichts am Projekt.
+ */
+export function pvabAlsAuslegung() {
+  const v = _ab.vorschau;
+  if (!v || v.sig !== _sig()) return;
+  const zeilen = v.zeilen.filter(_wirdBelegt);
+  if (!zeilen.length) { alert('Kein Dach zum Belegen.'); return; }
+  if (typeof window.pvaBelegungAnlegen !== 'function') { alert('Die PV-Analyse ist nicht verfügbar.'); return; }
+  const { stich } = pvnaJahre(pvnaEinstellungen());
+  const vorschlag = _auslegungName(stich);
+  const name = prompt('Name der Auslegung in der PV-Analyse:', vorschlag);
+  if (name == null) return;
+
+  const dachKwp = {};
+  let summeKwp = 0;
+  for (const z of zeilen) {
+    dachKwp[z.g.id] = Math.round(z.kwpKorr * 10) / 10;
+    summeKwp += z.kwpKorr;
+  }
+  const n = v.netz;
+  let netz;
+  if (!n) netz = { geprueft: false, vertraeglich: false, text: 'Netz nicht geprüft (Maximalbelegung) — die Netzbau-Pauschalen sind enthalten.' };
+  else {
+    const ueber = v.zeilen.filter(z => z.status === 'vorrangUeber').length;
+    const ohne = _ab.ohneNetzBelegen ? v.zeilen.filter(z => z.status === 'ohneNetz').length : 0;
+    const vertraeglich = !ueber && !ohne && !n.ohneTrafo;
+    netz = { geprueft: true, vertraeglich, nurTrafo: !!n.nurTrafo, jahr: n.jahr,
+      text: vertraeglich
+        ? `Passt ins Bestandsnetz ${n.jahr}${n.nurTrafo ? ' (nur Trafogrenze geprüft)' : ''} — ohne Netzbau-Pauschalen.`
+        : [ueber ? `${ueber} Dächer über der Netzgrenze` : '', ohne ? `${ohne} Dächer ohne Netzanbindung` : '',
+           n.ohneTrafo ? 'kein Trafo im Netzjahr' : ''].filter(Boolean).join(', ') + ' — Netzbau-Pauschalen sind enthalten.' };
+  }
+  window.pvaBelegungAnlegen({
+    name: name.trim() || vorschlag, beschreibung: _auslegungBeschreibung(stich, n),
+    dachKwp, summeKwp, speicher: _ab.speicher, batKwh: _ab.batKwh, netz,
+    stand: new Date().toLocaleDateString('de-DE'),
+  });
+  const regel = window.pvaBelegungSpeicherOptionen?.().find(s => s[0] === _ab.speicher)?.[1] || _ab.speicher;
+  window.showHint?.(`☀ „${name.trim() || vorschlag}" steht in der PV-Analyse (${zeilen.length} Dächer · ${_fmt(summeKwp)} kWp · Speicher ${regel}). `
+    + 'Dort „Auslegungen berechnen". Das Projekt ist unverändert.', 9000);
+  pvModusRender();
 }
 
 /** Wird diese Vorschauzeile beim Übernehmen belegt? */
@@ -753,7 +844,32 @@ function _vorschauHtml(nKand, stich) {
           data-click="pvabUebernehmen()" title="Belegungsflächen anlegen, kWp in die PV-Assets — ein Strg+Z-Schritt">✓ ${belegen.length} Dächer belegen · ${_fmt(sum(belegen))} kWp</button>
         <button class="btn-xs" data-click="${veraltet ? 'pvabVorschau()' : 'pvabVerwerfen()'}" title="${veraltet ? 'Neu berechnen' : 'Vorschau verwerfen'}">${veraltet ? '↻' : '✕'}</button>
       </div>
+      ${_auslegungHtml(belegen.length && !veraltet)}
     </div>`;
+}
+
+/** „Als Auslegung in die PV-Analyse" samt Speicherregel — unter den Belegen-Knöpfen. */
+function _auslegungHtml(aktiv) {
+  const regeln = window.pvaBelegungSpeicherOptionen?.() || [];
+  if (!regeln.length) return '';
+  const regel = regeln.find(r => r[0] === _ab.speicher) || regeln[0];
+  const schon = (window._pvAnalyse?.belegungsVarianten || []).length;
+  return `
+      <div style="margin-top:6px;padding-top:5px;border-top:1px dashed var(--border);">
+        <div style="display:flex;align-items:center;gap:4px;font-size:10px;">
+          <span style="color:var(--muted);white-space:nowrap;" title="Wie der Speicher dieser Auslegung in der PV-Analyse ausgelegt wird — dort jederzeit änderbar">Speicher:</span>
+          <select class="inp-field" style="flex:1;" data-change="pvabSet('speicher',this.value)" title="${escHtml(regel[2])}">
+            ${regeln.map(([w, l, t]) => `<option value="${w}" title="${escHtml(t)}"${w === regel[0] ? ' selected' : ''}>${escHtml(l)}</option>`).join('')}
+          </select>
+          ${regel[0] === 'fest' ? `<input class="inp-field" type="number" min="0" step="50" value="${Math.round(_ab.batKwh)}" style="width:62px;padding:2px 4px;"
+            data-change="pvabSet('batKwh',this.value)"/><span style="color:var(--muted);">kWh</span>` : ''}
+        </div>
+        <button class="btn-xs" style="width:100%;margin-top:4px;border-color:${ORANGE};color:${ORANGE};" ${aktiv ? '' : 'disabled'}
+          data-click="pvabAlsAuslegung()"
+          title="Diese Belegung als eigene Auslegung in die PV-Analyse übernehmen — mit Speicher nach der gewählten Regel. Die Dächer im Projekt bleiben unverändert; so lassen sich mehrere Belegungen nebeneinander vergleichen.">
+          ☀ Als Auslegung in die PV-Analyse</button>
+        ${schon ? `<div style="font-size:9px;color:var(--muted);margin-top:2px;">${schon} Dachbelegung${schon > 1 ? 'en' : ''} schon in der PV-Analyse (Karte „04 Anlagenpotenzial“).</div>` : ''}
+      </div>`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -781,6 +897,9 @@ export function pvabSet(feld, wert) {
   else if (feld === 'grenze') _ab.grenze = wert === 'trafo' ? 'trafo' : 'kabel';
   else if (feld === 'vorrang') _ab.vorrang = VORRANG.some(v => v[0] === wert) ? wert : 'neubau';
   else if (feld === 'ohneNetzBelegen') { _ab.ohneNetzBelegen = !!wert; pvModusRender(); pvModusMarkiereKarte(); return; }
+  // Speicherregel betrifft nur die Übergabe an die PV-Analyse — die Vorschau bleibt
+  else if (feld === 'speicher') { _ab.speicher = String(wert || 'wirt'); pvModusRender(); return; }
+  else if (feld === 'batKwh') { _ab.batKwh = Math.max(0, parseFloat(wert) || 0); return; }
   else if (feld === 'nutzungOffen') { _ab.nutzungOffen = !_ab.nutzungOffen; pvModusRender(); return; }
   _ab.vorschau = null;                     // andere Auswahl → Karte zeigt gleich die neuen Kandidaten
   if (feld === 'umfang' && wert === 'bereich' && !_ab.bereich) setTimeout(pvabBereichZiehen, 0);

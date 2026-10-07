@@ -6367,9 +6367,10 @@ export function ggRenderRueckAmpel(cfg, T = GG_THEME) {
   return ggFinishSvg(out, W, G.height);
 }
 
-/** Kanonische Varianten (mit Lesehilfe-Info) aus der PV-Analyse, sonst leer. */
+/** Kanonische Varianten (mit Lesehilfe-Info) aus der PV-Analyse, sonst leer.
+ *  Dachbelegungen aus dem PV-Modus ('belegung-<nr>') sind Arbeitsstände der Analyse, nicht des Gutachtens. */
 function ggPvKanon() {
-  return (window._pvAnalyse?.ergebnisse || []).filter(v => v.info && v.info.frage);
+  return (window._pvAnalyse?.ergebnisse || []).filter(v => v.info && v.info.frage && !/^belegung-/.test(v.id));
 }
 /** Kurzform der Variantenlabel für Achsen/Kategorien (voller Name steht in Tabellen). */
 const GG_PV_KURZ = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'netz-eigen': 'Bestandsnetz (eigen)', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
@@ -7590,7 +7591,9 @@ function ggPvFiguren() {
         cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
         ggMetaDefaults(cfg, 'pdBearbeiterStrom');
 
-        const v = window._pvResVarianten;
+        // Dachbelegungen aus dem PV-Modus gehören nicht ins Gutachten (wie ggPvKanon)
+        const vRoh = window._pvResVarianten;
+        const v = vRoh ? { ...vRoh, zeilen: (vRoh.zeilen || []).filter(z => !/^belegung-/.test(z.id)) } : null;
         if (!v?.zeilen?.length) { cfg.kategorien = []; cfg.gruppen = []; return '⚠ Noch kein Variantenvergleich vorhanden.'; }
 
         const durH = v.durH;

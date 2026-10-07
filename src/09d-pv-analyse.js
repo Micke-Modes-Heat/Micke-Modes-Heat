@@ -138,8 +138,40 @@ const PV_STRATEGIE_INFO = {
   herleitung:'Netzstrategie-Editor: Dächer im Zieljahr zu Gruppen zusammengefasst, je Gruppe ein Anschlussweg; Befüllung mit derselben Netzphysik wie die Netzaufnahme. Invest = alle neuen Anschlüsse, Stationen, MS-Trassen und Ertüchtigungen der Strategie.',
   bewertung: 'Zeigt, was eine Strategie über die ganze Liegenschaft wirtschaftlich bedeutet — inklusive der Netzkosten, die in den übrigen Varianten nur pauschal angesetzt sind.',
 };
+// Dachbelegungen aus „Dächer automatisch belegen" (36) als Auslegungen 'belegung-<nr>'.
+// MIT frage: sie laufen durch alle Abschnitte der PV-Analyse (Auslegung im Blick,
+// Energiefluss, Speicherbetrieb, Jahresgang) — um ihren Speicher geht es ja gerade.
+// Nur das Gutachten (17 ggPvKanon) lässt sie aus; dort bleibt das feste Schema.
+const PV_BELEGUNG_FARBEN = ['#ff8a65', '#f06292', '#ba68c8', '#ffb74d', '#a1887f', '#e57373'];
+/** Regeln für den Speicher einer Dachbelegung: [id, Kurzname, Erklärung]. */
+const PV_BELEGUNG_SPEICHER = [
+  ['wirt',       'wirtschaftlich',        'Batterie mit dem höchsten Jahresüberschuss bei fester PV-Leistung — wie bei „Wirtschaftlich optimiert", mit Börsenpreisen im Spot-Betrieb'],
+  ['ohne',       'ohne Speicher',         'reine PV, keine Batterie'],
+  ['autarkie',   'Autarkie-Sättigung',    'Batterie so groß, bis der Autarkiegrad um weniger als 0,3 %-Punkte je weitere 1.000 kWh steigt — wie bei „Autarkie-optimiert"'],
+  ['abregelung', 'Abregelung vermeiden',  'kleinste Batterie, mit der an der Einspeisegrenze des Netzanschlusses (fast) nichts mehr abgeregelt wird'],
+  ['fest',       'feste Größe',           'Speichergröße in kWh selbst vorgegeben'],
+];
+const _pvSpeicherRegel = id => PV_BELEGUNG_SPEICHER.find(s => s[0] === id) || PV_BELEGUNG_SPEICHER[0];
+const _pvBelegungFarbe = nr => PV_BELEGUNG_FARBEN[(Math.max(1, nr) - 1) % PV_BELEGUNG_FARBEN.length];
+
+function _pvBelegungInfo(id) {
+  const nr = +(/^belegung-(\d+)$/.exec(id || '')?.[1] || 0);
+  if (!nr) return null;
+  const bv = (window._pvAnalyse?.belegungsVarianten || []).find(b => b.nr === nr);
+  const sp = _pvSpeicherRegel(bv?.speicher);
+  return {
+    label: bv?.name || `Dachbelegung ${nr}`, farbe: _pvBelegungFarbe(nr), icon: '▦',
+    frage:     'Was bringt diese Dachbelegung — mit passend ausgelegtem Speicher?',
+    ziel:      'Im PV-Modus automatisch belegte Dächer zusätzlich zur schon geplanten PV',
+    herleitung:`Dächer im PV-Modus automatisch belegt${bv?.beschreibung ? ` (${bv.beschreibung})` : ''}; dazu die bereits geplante PV aller übrigen Gebäude. Speicher „${sp[1]}": ${sp[2]}.`,
+    bewertung: 'Zeigt eine konkrete, gebäudescharfe Belegung neben den optimierten Auslegungen. Die Netzprüfung stammt aus der Vorschau beim Übernehmen'
+      + (bv?.stand ? ` (${bv.stand})` : '') + ' — ändert sich das Netz, die Vorschau neu rechnen und erneut übernehmen.',
+  };
+}
+
 const _pvVarInfo = id => PV_VARIANTEN_INFO[id]
-  || (/^fahrplan-\d+$/.test(id || '') ? PV_FAHRPLAN_INFO : /^strategie-\d+$/.test(id || '') ? PV_STRATEGIE_INFO : null);
+  || (/^fahrplan-\d+$/.test(id || '') ? PV_FAHRPLAN_INFO : /^strategie-\d+$/.test(id || '') ? PV_STRATEGIE_INFO
+    : _pvBelegungInfo(id));
 /** Farbe je Fahrplanstufe: von Türkis (Stufe 1) nach Dunkelblau (letzte Stufe). */
 const _pvFahrplanFarbe = (k, n) => `hsl(${190 + Math.round(40 * (n > 1 ? (k - 1) / (n - 1) : 0))}, 70%, ${62 - Math.round(22 * (n > 1 ? (k - 1) / (n - 1) : 0))}%)`;
 
@@ -163,6 +195,10 @@ function _pvStandardZustand() {
     fahrplanVarianten: null,    // Fahrplanstufen als Varianten 'fahrplan-<k>': { alle: bool, stufen: [k, …] }
     netzStrategien: null,       // Netzstrategien als Varianten 'strategie-<k>' (30-netzstrategie.js):
                                 //   [{ key, label, kwp, investEUR, abregelung, detail, stand, jahre }]
+    belegungsVarianten: null,   // Dachbelegungen aus dem PV-Modus (36) als Varianten 'belegung-<nr>':
+                                //   [{ nr, name, beschreibung, dachKwp: {gebId: kWp}, summeKwp,
+                                //      speicher: 'wirt'|'ohne'|'autarkie'|'abregelung'|'fest', batKwh,
+                                //      netz: { geprueft, vertraeglich, text }, stand }]
     pflichtLand: '',            // Bundesland für die PV-Pflicht ('' = aus der Karte bestimmen)
     pflichtAnnahme: 'auto',     // 'auto' = nur geplante Neubauten/Dachsanierungen | 'alle' | 'aus'
     deckZu: { infra: true },    // eingeklappte Gruppen des Steuer-Decks (Infra: selten geändert)
@@ -407,6 +443,33 @@ function pvGetMaxKwpFromAssets() {
   const manual = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
 
   return assetKwp + gebKwp + ffKwp + manual;
+}
+
+/**
+ * Schon geplante PV ohne die Gebäude `ids` (Set aus String-IDs) — Quellen wie
+ * pvGetMaxKwpFromAssets, aber ohne den manuellen Override. Grundlage der
+ * Dachbelegungs-Varianten: deren Dächer kommen aus der Momentaufnahme, alles
+ * andere aus dem Projekt. So zählt ein inzwischen wirklich belegtes Dach nur einmal.
+ */
+function _pvKwpOhneGebaeude(ids) {
+  const assetKwp = (ASSETS?.items || [])
+    .filter(a => a.type === 'PV' && !(a.buildingId != null && ids.has(String(a.buildingId))))
+    .reduce((s, a) => s + (parseFloat(a.props?.leistungKWp) || 0), 0);
+  const mitAsset = _pvGebaeudeIdsMitAsset();
+  const gebKwp = gebaeude.reduce((s, g) => s + (g.pvAktiv && !mitAsset.has(g.id) && !ids.has(String(g.id)) ? calcGebKwp(g) : 0), 0);
+  const ffKwp  = freiflaechen.reduce((s, ff) => s + calcFFKwp(ff), 0);
+  const manual = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
+  return assetKwp + gebKwp + ffKwp + manual;
+}
+
+/**
+ * Obergrenze der kWp-Achsen und -Schieber in den Abbildungen: das Anlagenpotenzial,
+ * mindestens aber die größte Dachbelegung aus dem PV-Modus — deren Dächer sind im
+ * Projekt (noch) nicht belegt, ihre Auslegung läge sonst jenseits der Schieber.
+ */
+function _pvAchsenMaxKwp() {
+  const bel = (window._pvAnalyse?.ergebnisse || []).filter(v => /^belegung-/.test(v.id)).map(v => v.pvKwp || 0);
+  return Math.max(pvGetMaxKwpFromAssets() || 500, ...bel);
 }
 
 /** Aufschlüsselung der PV-Quellen für die Anzeige */
@@ -1131,6 +1194,34 @@ function pvFindNullAbrBat(pvKwp, demandH, pvProfile, napParams, spotH) {
   };
 }
 
+/**
+ * Speicher einer Dachbelegung nach der gewählten Regel (PV_BELEGUNG_SPEICHER) —
+ * dieselben Rechenwege wie die festen Auslegungen, nur mit vorgegebener PV-Leistung.
+ * @returns {{ batKwh:number, strategie:string, hinweis:string }}
+ */
+function _pvBelegungSpeicher(bv, kwp, demandH, pvProfile, napParams, spotH, params) {
+  const strat = spotH ? 'spot-dyn' : 'ev';
+  const mit = bat => ({ batKwh: bat, strategie: bat > 0 ? strat : 'none', hinweis: '' });
+  switch (bv.speicher) {
+    case 'ohne': return { batKwh: 0, strategie: 'none', hinweis: '' };
+    case 'fest': return mit(Math.max(0, Math.round(+bv.batKwh || 0)));
+    case 'autarkie': {
+      const a = pvCalcAutarkieMax(kwp, demandH, pvProfile, napParams);
+      return { batKwh: a.batKwh, strategie: a.strategie, hinweis: '' };
+    }
+    case 'abregelung': {
+      if (!(napParams.maxEinspeisKw > 0)) {
+        return { batKwh: 0, strategie: 'none',
+          hinweis: 'Ohne Einspeisegrenze am Netzanschluss wird nichts abgeregelt — der Speicher entfällt.' };
+      }
+      const r = pvFindNullAbrBat(kwp, demandH, pvProfile, napParams, spotH);
+      return { ...mit(r.batKwh), hinweis: r.batKwh > 0 && !r.isZero
+        ? `Selbst ${(r.batKwh / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MWh Speicher senken die Abregelung nur auf ${Math.round(r.curtailMwh)} MWh/a.` : '' };
+    }
+    default: return mit(pvOptBat(kwp, demandH, pvProfile, napParams, strat, spotH, params));
+  }
+}
+
 export function pvBerechneAlle() {
   const state    = window._pvAnalyse;
   const demandH  = pvGetDemandH();
@@ -1386,6 +1477,39 @@ export function pvBerechneAlle() {
     const eMaxPv = ergebnisse[ergebnisse.length - 1];
     if (eMaxPv && nullAbrHinweis) eMaxPv.hinweis = nullAbrHinweis;
     if (eMaxPv && nullAbr) eMaxPv.nullAbr = nullAbr;   // Zahlen für den Gutachtentext 3.4.2
+  }
+
+  // ═══ 6) DACHBELEGUNGEN — aus „Dächer automatisch belegen" (36) übernommen ════
+  //     PV = Momentaufnahme der belegten Dächer + schon geplante PV aller übrigen
+  //     Gebäude. Anders als Fahrplan/Netzstrategie bekommt jede Belegung einen
+  //     Speicher nach der gewählten Regel. Netzbau-Pauschalen entfallen nur, wenn
+  //     die Vorschau die ganze Belegung im Bestandsnetz geprüft hat.
+  const gebNachId = new Map(gebaeude.map(g => [String(g.id), g]));
+  for (const bv of state.belegungsVarianten || []) {
+    const id = `belegung-${bv.nr}`;
+    const ids = new Set();
+    let neuKwp = 0, fehlend = 0;
+    for (const [gid, k] of Object.entries(bv.dachKwp || {})) {
+      if (!gebNachId.has(gid)) { fehlend++; continue; }
+      ids.add(gid);
+      neuKwp += +k || 0;
+    }
+    const geplantKwp = _pvKwpOhneGebaeude(ids);
+    const kwpB = neuKwp + geplantKwp;
+    if (!(kwpB > 0)) continue;
+    const sp = _pvBelegungSpeicher(bv, kwpB, demandH, pvProfile, napParams, spotH, params);
+    berechne(id, kwpB, sp.batKwh, sp.strategie, '', { ohneNetzbau: !!bv.netz?.vertraeglich });
+    const eB = ergebnisse[ergebnisse.length - 1];
+    if (eB?.id !== id) continue;
+    eB.dachbelegung = { nr: bv.nr, daecher: ids.size, neuKwp, geplantKwp, speicher: bv.speicher };
+    const f0 = x => Math.round(x).toLocaleString('de-DE');
+    eB.hinweis = [
+      `${ids.size} Dächer neu belegt (${f0(neuKwp)} kWp)${geplantKwp > 0.5 ? ` + ${f0(geplantKwp)} kWp schon geplante PV` : ''}.`,
+      bv.speicher === 'ohne' ? 'Ohne Speicher.'
+        : `Speicher „${_pvSpeicherRegel(bv.speicher)[1]}": ${sp.batKwh > 0 ? f0(sp.batKwh) + ' kWh' : 'keiner'}.`,
+      sp.hinweis, bv.netz?.text || '',
+      fehlend ? `${fehlend} Gebäude der Belegung gibt es nicht mehr.` : '',
+    ].filter(Boolean).join(' ');
   }
 
   // ── Rückspeise- & Erzeugungsnetz-Beurteilung je Variante ──
@@ -2438,7 +2562,8 @@ function _pvBuildPanelHtml() {
               </select>
             </div>
             <div id="pva-pflicht-info" style="margin-top:6px;">${_pvPflichtInfo()}</div>
-          </div>`;
+          </div>
+          <div id="pva-belegungen" style="margin-top:11px;padding-top:9px;border-top:1px solid var(--border);">${_pvBelegungenHtml()}</div>`;
         })()}
       </div>
 
@@ -2977,7 +3102,7 @@ function renderSteckbrief(varianten) {
       <div style="display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:6px;
                   color:var(--muted);font-size:11.5px;padding:24px;text-align:center;line-height:1.6;">
         Für diese Auslegung gibt es keine Suchspur — sie ist nicht optimiert, sondern vorgegeben
-        (z. B. aus dem Einlinienschema, dem Fahrplan oder einer Netzstrategie).</div>`;
+        (z. B. aus dem Einlinienschema, dem Fahrplan, einer Netzstrategie oder einer Dachbelegung aus dem PV-Modus).</div>`;
     return `
     <div style="display:grid;grid-template-columns:${breit ? 'minmax(0,5fr) minmax(0,7fr)' : 'minmax(0,1fr)'};gap:18px;
                 background:var(--surface);border:1px solid var(--border);border-left:3px solid ${v.farbe};border-radius:7px;padding:14px 16px;">
@@ -3172,7 +3297,7 @@ function renderOptHeatmap(demandH, pvProfile, napParams, params, varianten, over
   const el = overrideEl || document.getElementById('pva-chart-heatmap');
   if (!el) return;
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const spez   = pvGetSpez();
   const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
 
@@ -3362,7 +3487,7 @@ function renderOptSurface3D(demandH, pvProfile, napParams, params, varianten, ov
   const el = overrideEl || document.getElementById('pva-chart-heatmap');
   if (!el) return;
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const spez   = pvGetSpez();
   const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
 
@@ -3563,7 +3688,7 @@ function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten
   const el = overrideEl || document.getElementById('pva-chart-grenznutzen');
   if (!el) return;
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const spez   = pvGetSpez();
   const steps  = [];
   for (let k = 0; k <= maxKwp; k += Math.max(5, Math.round(maxKwp / 50))) steps.push(k);
@@ -4288,7 +4413,7 @@ function renderEvKurve(demandH, pvProfile, napParams, params, varianten, overrid
   const el = overrideEl || document.getElementById('pva-ev-kurve');
   if (!el) return;
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const spez   = pvGetSpez();
   const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
   const kanon  = (varianten || []).filter(v => v.info && v.info.frage);
@@ -4820,7 +4945,7 @@ function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, ov
   const el = overrideEl || document.getElementById('pva-chart-fluss');
   if (!el) return;
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const spez   = pvGetSpez();
   const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
   const kanon  = (varianten || []).filter(v => v.info && v.info.frage);
@@ -5059,7 +5184,7 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
   const el = overrideEl || document.getElementById('pva-chart-speicherfluss');
   if (!el) return;
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
   const kanon  = (varianten || []).filter(v => v.info && v.info.frage);
   const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
@@ -5409,7 +5534,7 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
   const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
   const kanon  = varianten.filter(v => v.info && v.info.frage);
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
   const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
   const pvStep = 1, batStep = 5;
@@ -5987,7 +6112,7 @@ function renderResilienz(varianten, overrideEl) {
   const batActive = _pvResMode !== 'gen';
   const genActive = _pvResMode !== 'pv-bat';
 
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const maxKwp = _pvAchsenMaxKwp();
   const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
   const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
   const COL = { pv: '#fdd835', bat: '#42a5f5', gen: '#ff8f00', unmet: '#ef5350' };
@@ -6948,6 +7073,109 @@ function _pvUBudget() {
   const s = window._pvAnalyse;
   if (s.uBudgetManuell && s.uBudgetPct > 0) return s.uBudgetPct;
   return /mittel|\bMS\b/i.test(String(window.naSpannungsebene || '')) ? 2 : 3;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DACHBELEGUNGEN AUS DEM PV-MODUS (36) — Liste in Karte 04, Übernahme, Speicherwahl
+// ══════════════════════════════════════════════════════════════════════════════
+
+const _pvSpeicherOptionen = an => PV_BELEGUNG_SPEICHER.map(([w, l, t]) =>
+  `<option value="${w}" title="${escHtml(t)}"${w === an ? ' selected' : ''}>${escHtml(l)}</option>`).join('');
+
+function _pvBelegungenHtml() {
+  const liste = window._pvAnalyse?.belegungsVarianten || [];
+  const ergebnisse = window._pvAnalyse?.ergebnisse || [];
+  const kopf = `
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
+      <span style="color:${PV_BELEGUNG_FARBEN[0]};font-size:12px;">▦</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text);">Dachbelegungen aus dem PV-Modus</span>
+      <span class="htip" data-tip="Jede Vorschau aus „⚡ Dächer automatisch belegen“ lässt sich als eigene Auslegung übernehmen, ohne das Projekt zu belegen. Gerechnet wird mit den Dächern der Vorschau plus der schon geplanten PV aller übrigen Gebäude; der Speicher wird je Belegung nach der gewählten Regel ausgelegt.">?</span>
+    </div>`;
+  if (!liste.length) {
+    return kopf + `<div style="font-size:10.5px;color:var(--muted);line-height:1.5;">Noch keine. Im PV-Modus unter „⚡ Dächer automatisch belegen“ eine Vorschau rechnen und „☀ Als Auslegung in die PV-Analyse“ wählen.</div>`;
+  }
+  const f0 = x => Math.round(+x || 0).toLocaleString('de-DE');
+  const sel = 'padding:3px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10.5px;';
+  const zeilen = liste.map(bv => {
+    const n = Object.keys(bv.dachKwp || {}).length;
+    const erg = ergebnisse.find(e => e.id === `belegung-${bv.nr}`);
+    const bat = erg ? ` · Speicher ${erg.batKwh > 0 ? f0(erg.batKwh) + ' kWh' : '—'}` : '';
+    const netzFarbe = !bv.netz?.geprueft ? 'var(--muted)' : bv.netz.vertraeglich ? '#66bb6a' : '#ffa726';
+    return `
+      <div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+        <div style="display:flex;align-items:center;gap:6px;font-size:10.5px;">
+          <span style="width:9px;height:9px;border-radius:2px;background:${_pvBelegungFarbe(bv.nr)};flex:none;"></span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);"
+            title="${escHtml((bv.beschreibung || '') + (bv.netz?.text ? ' · ' + bv.netz.text : '') + (bv.stand ? ' · Stand ' + bv.stand : ''))}">${escHtml(bv.name)}</span>
+          <button data-click="pvaBelegungEntfernen(${bv.nr})" title="Auslegung entfernen"
+            style="cursor:pointer;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:10px;padding:0 5px;">✕</button>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin:2px 0 3px 15px;">
+          ${n} Dächer · ${f0(bv.summeKwp)} kWp neu${bat}
+          · <span style="color:${netzFarbe};">${!bv.netz?.geprueft ? 'Netz ungeprüft' : bv.netz.vertraeglich ? 'netzverträglich' : 'über Netzgrenze'}</span></div>
+        <div style="display:flex;align-items:center;gap:5px;margin-left:15px;">
+          <span style="font-size:10px;color:var(--muted);">Speicher</span>
+          <select data-change="pvaBelegungSetze(${bv.nr},'speicher',this.value)" style="flex:1;${sel}"
+            title="${escHtml(_pvSpeicherRegel(bv.speicher)[2])}">${_pvSpeicherOptionen(bv.speicher)}</select>
+          ${bv.speicher === 'fest' ? `<input type="number" min="0" step="50" value="${Math.round(+bv.batKwh || 0)}"
+            data-change="pvaBelegungSetze(${bv.nr},'batKwh',this.value)" style="width:70px;${sel}"/>
+            <span style="font-size:10px;color:var(--muted);">kWh</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+  return kopf + zeilen;
+}
+
+function _pvBelegungenRefresh() {
+  const el = document.getElementById('pva-belegungen');
+  if (el) el.innerHTML = _pvBelegungenHtml();
+}
+
+/** Speicherregeln für die Auswahl in 36: [[id, Kurzname, Erklärung], …] */
+export function pvaBelegungSpeicherOptionen() {
+  return PV_BELEGUNG_SPEICHER.map(s => [...s]);
+}
+
+/**
+ * Dachbelegung aus der Vorschau von 36 als Auslegung vormerken. Ändert nichts am
+ * Projekt; die Auslegung entsteht beim nächsten „Auslegungen berechnen“.
+ * @returns {number} Nummer der neuen Auslegung (Varianten-ID 'belegung-<nr>')
+ */
+export function pvaBelegungAnlegen(daten) {
+  const s = window._pvAnalyse;
+  const liste = s.belegungsVarianten || [];
+  const nr = liste.reduce((m, b) => Math.max(m, b.nr || 0), 0) + 1;
+  liste.push({
+    nr, name: String(daten.name || `Dachbelegung ${nr}`).slice(0, 80),
+    beschreibung: daten.beschreibung || '', dachKwp: { ...(daten.dachKwp || {}) },
+    summeKwp: +daten.summeKwp || 0,
+    speicher: _pvSpeicherRegel(daten.speicher)[0], batKwh: Math.max(0, +daten.batKwh || 0),
+    netz: daten.netz || null, stand: daten.stand || new Date().toLocaleDateString('de-DE'),
+  });
+  s.belegungsVarianten = liste;
+  pvMarkStale();
+  _pvBelegungenRefresh();
+  return nr;
+}
+
+export function pvaBelegungSetze(nr, feld, wert) {
+  const bv = (window._pvAnalyse.belegungsVarianten || []).find(b => b.nr === nr);
+  if (!bv) return;
+  if (feld === 'speicher') bv.speicher = _pvSpeicherRegel(wert)[0];
+  else if (feld === 'batKwh') bv.batKwh = Math.max(0, parseFloat(wert) || 0);
+  else return;
+  pvMarkStale();
+  _pvBelegungenRefresh();
+}
+
+export function pvaBelegungEntfernen(nr) {
+  const s = window._pvAnalyse;
+  const bv = (s.belegungsVarianten || []).find(b => b.nr === nr);
+  if (!bv || !confirm(`Auslegung „${bv.name}“ aus der PV-Analyse entfernen?\n\nDie Dächer im Projekt bleiben, wie sie sind.`)) return;
+  const rest = s.belegungsVarianten.filter(b => b.nr !== nr);
+  s.belegungsVarianten = rest.length ? rest : null;
+  pvMarkStale();
+  _pvBelegungenRefresh();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
