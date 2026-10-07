@@ -212,6 +212,9 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
   // Peak-Leistungen für Bausteine
   const _bPKw = {};
   for (const erz of erzeugerList) _bPKw[erz.key] = erz.leistKw;
+  // Auto-Spitzenlastkessel (Rest, den die gewählten Erzeuger nicht decken) wie in der normalen Wirtschaftlichkeit
+  const _agkMwh = dispatchResult.autoGkMwh || 0, _agkKw = dispatchResult.autoGkPeakKw || 0;
+  if (_agkMwh > 0.05 && _agkKw > 0.1) _bPKw._autoGk = Math.ceil(_agkKw);
   const _bInvestFn = (key, kw) => kw > 0.1 ? Math.round(kw * _optInvestProKw(key, kw)) : 0;
 
   // Dynamische Bohrmeter für Geo
@@ -251,6 +254,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
     key: e.key, waermeMwh: e.waermeMwh, elMwh: e.elMwh,
     typ: (typeof ERZEUGER_CFG !== 'undefined' && ERZEUGER_CFG[e.key]) ? ERZEUGER_CFG[e.key].typ : null
   }));
+  if (_bPKw._autoGk) erzListTyped.push({ key: '_autoGk', waermeMwh: _agkMwh, elMwh: 0, typ: 'fix' });
 
   // BHKW-Erlös-Daten
   const bhkwEigMwh = pvBatResult ? (pvBatResult.bhkwEigenMwh || 0) : 0;

@@ -528,10 +528,21 @@ describe('Ansatz 4: Plausibilität — EE-Anteil Konsistenz', () => {
     expect(kw.eeAnteil).toBe(100);
   });
 
-  it('100% WP → 100% EE', () => {
+  it('WP allein: nicht auf die Spitzenlast hochskaliert, den Rest deckt der Auto-Gaskessel', () => {
     const disp = refDispatch(new Float32Array(lastgangKw), tempH, vlH, [{ key: 'lwwp', leistKw: 200 }], 0);
+    expect(disp.erzeugerList[0].leistKw).toBe(200);
+    expect(disp.autoGkMwh).toBeGreaterThan(0);
+    const wp = disp.erzeugerList[0].waermeMwh;
+    expect(wp + disp.autoGkMwh).toBeCloseTo(disp.gesamtMwh, 1);
     const kw = refKennwerte(disp, 0, 0, 0);
-    expect(kw.eeAnteil).toBe(100);
+    expect(kw.eeAnteil).toBeCloseTo(wp / disp.gesamtMwh * 100, 1);
+  });
+
+  it('Kessel als letzter Erzeuger bleibt Backup bis zur Spitzenlast', () => {
+    const disp = refDispatch(new Float32Array(lastgangKw), tempH, vlH, [{ key: 'lwwp', leistKw: 200 }, { key: 'gaskessel', leistKw: 1 }], 0);
+    expect(disp.autoGkMwh).toBeCloseTo(0, 6);
+    expect(disp.erzeugerList[1].waermeMwh).toBeGreaterThan(0);
+    expect(disp.erzeugerList[1].leistKw).toBeGreaterThan(1);
   });
 
   it('50% WP + 50% Gas → EE zwischen 30-70%', () => {

@@ -204,12 +204,16 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
   // pKw aus erzeugerList
   const _bPKw = {};
   for (const erz of erzeugerList) _bPKw[erz.key] = erz.leistKw;
+  // Auto-Spitzenlastkessel (Rest, den die gewählten Erzeuger nicht decken) wie in der normalen Wirtschaftlichkeit
+  const _agkMwh = dispR.autoGkMwh || 0, _agkKw = dispR.autoGkPeakKw || 0;
+  if (_agkMwh > 0.05 && _agkKw > 0.1) _bPKw._autoGk = Math.ceil(_agkKw);
 
   // erzList mit typ-Info für _calcKostenShared
   const erzListTyped = erzeugerList.map(erz => ({
     key: erz.key, waermeMwh: erz.waermeMwh, elMwh: erz.elMwh,
     typ: D.ERZEUGER_TYP[erz.key]
   }));
+  if (_bPKw._autoGk) erzListTyped.push({ key: '_autoGk', waermeMwh: _agkMwh, elMwh: 0, typ: 'fix' });
 
   // Quartier-Strom
   let quartierStromMwh = 0;

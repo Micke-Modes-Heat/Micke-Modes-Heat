@@ -198,7 +198,7 @@ export function _calcKostenShared(p) {
                + _bEinsp * ((strom.pBhkwEinsp||8) + (strom.pBhkwKwkE||8)) * 10;
       }
       kosten = gasK - erloes;
-    } else if (erz.key === 'gaskessel') {
+    } else if (erz.key === 'gaskessel' || erz.key === '_autoGk') {
       kosten = wMwh / (etas.gaskessel||0.92) * (prices.gas||10) * 10;
     } else if (erz.key === 'heizoel') {
       kosten = wMwh / (etas.heizoel||0.90) * (prices.hko||10) * 10;
@@ -221,7 +221,7 @@ export function _calcKostenShared(p) {
     if (erz2.typ === 'wp' || erz2.key === 'stromkessel') {
       var pvA = pvEigenMwh > 0 && gesamtStromMwh > 0 ? pvEigenMwh * (eM / gesamtStromMwh) : 0;
       tCo2 = Math.max(0, eM - pvA) * (emf.strom||420) / 1e3;
-    } else if (erz2.key === 'gaskessel') {
+    } else if (erz2.key === 'gaskessel' || erz2.key === '_autoGk') {
       tCo2 = wM / (etas.gaskessel||0.92) * (emf.gas||240) / 1e3;
     } else if (erz2.typ === 'kwk' || erz2.key === 'bhkw') {
       var etaThCo2 = (etas.bhkw||0.88) / (1 + (etas.bhkwSigma||0.45));
@@ -544,9 +544,9 @@ export function calcWirtschaftPanel() {
       aktiv:()=>aktiv('fernwaerme'),auto:()=>Math.round((pKw.fernwaerme||0)*80),
       tooltip:'Fernwärme-Übergabestation inkl. WT, Regelung, Pumpe, pauschal 80 €/kW (AGFW-Richtwert)' },
     { id:'schornstein',label:'Schornstein/Abgasanlage',  vdi:{n:40,inst:1.0,wart:2.0,bedien:0},
-      aktiv:()=>aktiv('pellets')||aktiv('hhs')||aktiv('heizoel')||aktiv('gaskessel')||aktiv('bhkw'),
-      auto:()=>Math.round(((pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw.bhkw||0))*60),
-      tooltip:'Schornstein für alle Feuerungsanlagen (inkl. BHKW), 60 €/kW' },
+      aktiv:()=>aktiv('pellets')||aktiv('hhs')||aktiv('heizoel')||aktiv('gaskessel')||aktiv('bhkw')||(pKw._autoGk||0)>0.1,
+      auto:()=>Math.round(((pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw._autoGk||0)+(pKw.bhkw||0))*60),
+      tooltip:'Schornstein für alle Feuerungsanlagen (inkl. BHKW und Spitzenlast-Kessel), 60 €/kW' },
     { id:'puffer',     label:'Pufferspeicher',           vdi:{n:20,inst:1.0,wart:1.0,bedien:0},
       aktiv:()=>sumKw > 0 && !thermSpeicherAktiv,
       auto:()=>Math.round(sumKw * 25 * 7 / 1000) * 1000,
@@ -1603,8 +1603,8 @@ export function calcJahresscheiben() {
     { id:'bhkw_hydr', aktiv:()=>aktiv('bhkw'), auto:()=>Math.round((pKw.bhkw||0)*150), vdi:{n:25,inst:1.5,wart:1.0,bedien:0} },
     { id:'sk', aktiv:()=>aktiv('stromkessel'), auto:()=>Math.round((pKw.stromkessel||0)*80), vdi:{n:20,inst:1.0,wart:1.0,bedien:0} },
     { id:'fw_pumpe', aktiv:()=>aktiv('fernwaerme'), auto:()=>Math.round((pKw.fernwaerme||0)*80), vdi:{n:18,inst:2.0,wart:1.0,bedien:0} },
-    { id:'schornstein', aktiv:()=>aktiv('pellets')||aktiv('hhs')||aktiv('heizoel')||aktiv('gaskessel')||aktiv('bhkw'),
-      auto:()=>Math.round(((pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw.bhkw||0))*60), vdi:{n:40,inst:1.0,wart:2.0,bedien:0} },
+    { id:'schornstein', aktiv:()=>aktiv('pellets')||aktiv('hhs')||aktiv('heizoel')||aktiv('gaskessel')||aktiv('bhkw')||(pKw._autoGk||0)>0.1,
+      auto:()=>Math.round(((pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw._autoGk||0)+(pKw.bhkw||0))*60), vdi:{n:40,inst:1.0,wart:2.0,bedien:0} },
     { id:'puffer', aktiv:()=>sumKw>0, auto:()=>Math.round(sumKw*25*7/1000)*1000, vdi:{n:20,inst:1.0,wart:1.0,bedien:0} },
     { id:'schallschutz', aktiv:()=>aktiv('lwwp')||aktiv('bhkw'), auto:()=>Math.round(((pKw.lwwp||0)+(pKw.bhkw||0))*75), vdi:{n:25,inst:0.5,wart:0.5,bedien:0} },
     { id:'entstaubung', aktiv:()=>(pKw.pellets||0)+(pKw.hhs||0)>200,

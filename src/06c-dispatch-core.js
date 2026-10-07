@@ -397,8 +397,11 @@ export function _dispatchCore(cfg) {
   // Auto-GK (Spitzenlast-Backup)
   let autoGkKwh = 0, autoGkPeakKw = 0;
 
-  // Backup-Erzeuger (Optimizer: letzter Erzeuger hat unbegrenzte Kapazität)
-  const backupErz = backupMode && erzList.length > 0 ? erzList[erzList.length - 1] : null;
+  // Backup-Erzeuger (Optimizer: letzter Erzeuger hat unbegrenzte Kapazität) — nur ein Kessel bzw. Fernwärme.
+  // Wärmepumpen, BHKW und Solarthermie werden nicht auf die Spitzenlast hochskaliert; den Rest deckt wie in der
+  // normalen Berechnung der Auto-Gaskessel (gerade in den kältesten Stunden, wenn die WP-Leistung einbricht).
+  const _letzter = erzList.length > 0 ? erzList[erzList.length - 1] : null;
+  const backupErz = backupMode && _letzter && _letzter.typ === 'fix' ? _letzter : null;
   let backupPeakKw = 0, backupHourKw = 0;
 
   // WP-Reserven
