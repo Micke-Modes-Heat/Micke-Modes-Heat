@@ -56,27 +56,31 @@ export function wpAufstellung(leistungKw, o = {}) {
 }
 
 /**
- * Wie wpAufstellung, aber mit vorgegebener Länge der Fläche (z. B. auf der Karte gezogen): Die Fläche bleibt
- * gleich, die Breite ergibt sich als Fläche / Länge. Die Geräte werden in so viele Reihen gelegt, wie die
- * Länge verlangt; zusätzliche Breite geht als Luftraum zwischen die Reihen.
- * o: wie wpAufstellung plus laenge (m, optional). Ergebnis zusätzlich: passt (Geräte haben mit Abständen Platz).
+ * Wie wpAufstellung, aber mit vorgegebener Länge der Fläche (z. B. auf der Karte gezogen). Ziel ist die
+ * gleiche Fläche wie bei der automatischen Anordnung (Breite = Fläche / Länge); die Geräte werden in so viele
+ * Reihen gelegt, wie die Länge erlaubt. Reichen Länge oder Breite dafür nicht, wächst die Fläche so weit,
+ * dass alle Luft- und Wartungsabstände eingehalten sind — die Anordnung passt also immer.
+ * o: wie wpAufstellung plus laenge (m, optional).
+ * Ergebnis zusätzlich: flaecheAuto (m² der automatischen Anordnung), mehrFlaeche (m², um die die Form größer ist).
  */
 export function wpAufstellungForm(leistungKw, o = {}) {
   const auto = wpAufstellung(leistungKw, o);
   const L0 = Number(o.laenge);
-  if (!Number.isFinite(L0) || L0 <= 0) return { ...auto, passt: true, formFrei: false };
+  if (!Number.isFinite(L0) || L0 <= 0) return { ...auto, passt: true, formFrei: false, flaecheAuto: auto.flaeche, mehrFlaeche: 0 };
   const { modul, anzahl } = auto;
   const a = WP_ABSTAENDE;
-  const flaeche = auto.flaeche;
-  const minL = modul.l + 2 * a.wartung;
-  const maxL = flaeche / (modul.b + 2 * a.luft);   // schmaler als ein Gerät mit Luftabstand geht nicht
-  const laenge = Math.min(Math.max(L0, minL), Math.max(minL, maxL));
-  const breite = flaeche / laenge;
-  const jeReihe = Math.max(1, Math.min(anzahl, Math.floor((laenge - 2 * a.wartung + a.geraet) / (modul.l + a.geraet) + 1e-9)));
+  const ziel = auto.flaeche;
+  const minL = modul.l + 2 * a.wartung;                                   // ein Gerät je Reihe
+  const maxL = anzahl * modul.l + (anzahl - 1) * a.geraet + 2 * a.wartung; // alle in einer Reihe
+  const wunschL = Math.min(Math.max(L0, minL), maxL);
+  const jeReihe = Math.max(1, Math.min(anzahl, Math.floor((wunschL - 2 * a.wartung + a.geraet) / (modul.l + a.geraet) + 1e-9)));
   const reihen = Math.ceil(anzahl / jeReihe);
-  const brauchtB = 2 * a.luft + reihen * modul.b + (reihen - 1) * a.reihe;
   const brauchtL = 2 * a.wartung + jeReihe * modul.l + (jeReihe - 1) * a.geraet;
-  const passt = brauchtB <= breite + 0.01 && brauchtL <= laenge + 0.01;
+  const brauchtB = 2 * a.luft + reihen * modul.b + (reihen - 1) * a.reihe;
+  const laenge = Math.max(wunschL, brauchtL);
+  const breite = Math.max(ziel / laenge, brauchtB);                       // im Notfall etwas breiter
+  const flaeche = laenge * breite;
+  // zusätzliche Breite geht als Luftraum zwischen die Reihen bzw. gleichmäßig an die Ränder
   const reihenAbstand = reihen > 1 ? Math.max(a.reihe, (breite - 2 * a.luft - reihen * modul.b) / (reihen - 1)) : 0;
   const block = reihen * modul.b + (reihen - 1) * reihenAbstand;
   const geraete = [];
@@ -86,9 +90,8 @@ export function wpAufstellungForm(leistungKw, o = {}) {
     const y = -block / 2 + modul.b / 2 + r * (modul.b + reihenAbstand);
     for (let i = 0; i < inReihe; i++) geraete.push({ x: -reiheL / 2 + modul.l / 2 + i * (modul.l + a.geraet), y, l: modul.l, b: modul.b });
   }
-  // Fläche, die diese Form mit allen Abständen bräuchte (Hinweis, wenn sie größer ist als die gezeichnete)
-  const flaecheForm = Math.max(brauchtL, laenge) * Math.max(brauchtB, breite);
-  return { ...auto, laenge, breite, flaeche, reihen, jeReihe, geraete, passt, flaecheForm, formFrei: true, minL, maxL: Math.max(minL, maxL) };
+  return { ...auto, laenge, breite, flaeche, reihen, jeReihe, geraete, passt: true, formFrei: true,
+    flaecheAuto: ziel, mehrFlaeche: Math.max(0, flaeche - ziel), minL, maxL };
 }
 
 /** Rechteck (Mitte cx/cy in m, Länge l entlang x, Breite b) um winkelGrad im Uhrzeigersinn gedreht

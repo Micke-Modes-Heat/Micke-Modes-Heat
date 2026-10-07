@@ -50,29 +50,40 @@ describe('rechteckEcken', () => {
 
 import { wpAufstellungForm } from '../src/lib/wp-aufstellung.js';
 describe('wpAufstellungForm', () => {
-  it('ohne Länge = automatische Aufstellung', () => {
-    expect(wpAufstellungForm(640, { modulKw: 80 })).toMatchObject({ formFrei: false, passt: true, reihen: 2 });
+  const abstaendeOk = r => {
+    const A = WP_ABSTAENDE;
+    for (const g of r.geraete) {
+      expect(Math.abs(g.x) + g.l / 2).toBeLessThanOrEqual(r.laenge / 2 - A.wartung + 1e-6);
+      expect(Math.abs(g.y) + g.b / 2).toBeLessThanOrEqual(r.breite / 2 - A.luft + 1e-6);
+    }
+    const reihenY = [...new Set(r.geraete.map(g => +g.y.toFixed(6)))].sort((p, q) => p - q);
+    for (let i = 1; i < reihenY.length; i++) expect(reihenY[i] - reihenY[i - 1] - r.modul.b).toBeGreaterThanOrEqual(A.reihe - 1e-6);
+  };
+  it('ohne Länge = automatische Anordnung', () => {
+    expect(wpAufstellungForm(640, { modulKw: 80 })).toMatchObject({ formFrei: false, passt: true, reihen: 2, mehrFlaeche: 0 });
   });
-  it('vorgegebene Länge: Fläche bleibt gleich, Breite = Fläche / Länge, Reihen passen sich an', () => {
+  it('gezogene Länge: Abstände immer eingehalten, Fläche wächst nur wenn nötig', () => {
     const auto = wpAufstellungForm(640, { modulKw: 80 });
-    const gleich = wpAufstellungForm(640, { modulKw: 80, laenge: auto.laenge });
-    expect(gleich).toMatchObject({ jeReihe: 4, reihen: 2, passt: true });
+    for (const L of [4, 7, 9, 11.2, 14.6, 18, 22, 30, 500]) {
+      const r = wpAufstellungForm(640, { modulKw: 80, laenge: L });
+      expect(r.passt).toBe(true);
+      expect(r.geraete).toHaveLength(8);
+      expect(r.flaeche).toBeGreaterThanOrEqual(auto.flaeche - 1e-6);
+      expect(r.laenge * r.breite).toBeCloseTo(r.flaeche, 6);
+      abstaendeOk(r);
+    }
+    // gleiche Länge wie automatisch → gleiche Fläche
+    expect(wpAufstellungForm(640, { modulKw: 80, laenge: auto.laenge }).mehrFlaeche).toBeCloseTo(0, 6);
+    // 11,2 m → 3 Reihen à 3, etwas mehr Fläche als automatisch
     const kurz = wpAufstellungForm(640, { modulKw: 80, laenge: 11.2 });
-    expect(kurz.laenge * kurz.breite).toBeCloseTo(auto.flaeche, 6);
     expect(kurz).toMatchObject({ jeReihe: 3, reihen: 3 });
-    expect(kurz.geraete).toHaveLength(8);
+    expect(kurz.mehrFlaeche).toBeGreaterThan(0);
   });
-  it('meldet, wenn die Geräte in der gewählten Form keinen Platz haben', () => {
-    const auto = wpAufstellungForm(640, { modulKw: 80 });
-    const kurz = wpAufstellungForm(640, { modulKw: 80, laenge: 11.2 });
-    expect(kurz.passt).toBe(false);
-    expect(kurz.flaecheForm).toBeGreaterThan(auto.flaeche);
-    // sehr lang: begrenzt auf die Länge, bei der noch ein Gerät mit Luftabstand in die Breite passt
-    const lang = wpAufstellungForm(640, { modulKw: 80, laenge: 500 });
-    expect(lang.breite).toBeCloseTo(1.2 + 2 * 1.5, 6);
-    // kleine Anlage: verschiedene Formen passen bei gleicher Fläche
+  it('kleine Anlage: andere Form bei gleicher Fläche, solange die Abstände reichen', () => {
     const klein = wpAufstellungForm(100, {});
-    expect(wpAufstellungForm(100, { laenge: klein.laenge * 0.9 }).flaeche).toBeCloseTo(klein.flaeche, 6);
+    const r = wpAufstellungForm(100, { laenge: klein.laenge * 0.9 });
+    expect(r.flaeche).toBeGreaterThanOrEqual(klein.flaeche - 1e-6);
+    abstaendeOk(r);
   });
 });
 

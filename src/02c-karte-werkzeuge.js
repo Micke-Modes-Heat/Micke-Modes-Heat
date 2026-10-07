@@ -2242,13 +2242,13 @@ function _lwWpAufstellungZeichnen(pt, leistung) {
   const lngPerM = 1 / (111320 * Math.cos(pt.lat * Math.PI / 180));
   const zuLatLng = ecken => ecken.map(e => [pt.lat + e.nord * latPerM, pt.lng + e.ost * lngPerM]);
   const zuKleinManuell = m.manuell && (m.l < auf.laenge - 0.05 || m.b < auf.breite - 0.05);
-  const zuKlein = zuKleinManuell || !auf.passt;
+  const zuKlein = zuKleinManuell;
   const farbe = zuKlein ? '#ef5350' : '#388e3c';
   const nf = (v, d = 1) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
   const text = `${auf.anzahl} × Außengerät ~${auf.modul.kw} kW (${nf(auf.modul.l)} × ${nf(auf.modul.b)} × ${nf(auf.modul.h)} m)`
     + `<br>Fläche inkl. Abstände: ${nf(auf.laenge)} × ${nf(auf.breite)} m ≈ <b>${nf(auf.flaeche, 0)} m²</b>`
     + (auf.formFrei ? ` · ${auf.reihen} ${auf.reihen === 1 ? 'Reihe' : 'Reihen'} à ${auf.jeReihe}` : '')
-    + (!auf.passt ? `<br><b>In dieser Form reichen die Abstände nicht</b> — sie bräuchte ≈ ${nf(auf.flaecheForm, 0)} m²` : '')
+    + (auf.mehrFlaeche > 0.5 ? `<br>In dieser Form ≈ ${nf(auf.mehrFlaeche, 0)} m² mehr als bei automatischer Anordnung, damit alle Abstände eingehalten sind` : '')
     + (m.manuell ? `<br>verfügbar: ${nf(m.l)} × ${nf(m.b)} m${zuKleinManuell ? ' — <b>zu klein</b>' : ''}` : '')
     + '<br><span style="opacity:.7">Richtwerte, Herstellerangaben maßgeblich</span>';
   // Fläche inkl. Abstände
@@ -2266,7 +2266,7 @@ function _lwWpAufstellungZeichnen(pt, leistung) {
   L.marker([pt.lat + (sued - 1) * latPerM, pt.lng], {
     interactive: false, keyboard: false,
     icon: L.divIcon({ className: 'lwwp-flaeche-label', iconSize: null, iconAnchor: [0, 0],
-      html: `<span${zuKlein ? ' class="zu-klein"' : ''}>${auf.anzahl} × ~${auf.modul.kw} kW · ${nf(auf.flaeche, 0)} m²${!auf.passt ? ' · Abstände reichen nicht' : ''}</span>` }),
+      html: `<span${zuKlein ? ' class="zu-klein"' : ''}>${auf.anzahl} × ~${auf.modul.kw} kW · ${nf(auf.flaeche, 0)} m²</span>` }),
   }).addTo(window.lwWpLayerGroup);
   // Luftrichtung je Reihe: kurze Pfeile vor und hinter der Reihe
   const reihenY = [...new Set(auf.geraete.map(g => g.y))];
@@ -2503,8 +2503,7 @@ function _lwWpAufstellungUiSync() {
   if (formInfo && window.lwWp) {
     const auf = lwWpAufstellung(window.lwWp.leistungKw);
     const nf = v => v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-    formInfo.textContent = o.laenge ? `${nf(auf.laenge)} × ${nf(auf.breite)} m${auf.passt ? '' : ' — Abstände reichen nicht'}` : 'automatisch';
-    formInfo.classList.toggle('zu-klein', !auf.passt);
+    formInfo.textContent = o.laenge ? `${nf(auf.laenge)} × ${nf(auf.breite)} m${auf.mehrFlaeche > 0.5 ? ` (+${Math.round(auf.mehrFlaeche)} m² für die Abstände)` : ''}` : 'automatisch';
   }
   const formReset = document.getElementById('lwwp-form-reset');
   if (formReset) formReset.style.display = o.laenge ? '' : 'none';

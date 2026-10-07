@@ -85,7 +85,7 @@ test('dist: Aufstellfläche der Außengeräte — Geräte, Drehung und Speichern
   expect(pageErrors).toEqual([]);
 });
 
-test('dist: Aufstellfläche per Griff formen (Fläche bleibt gleich) und drehen',async({page})=>{
+test('dist: Aufstellfläche per Griff formen (Abstände passen immer) und drehen',async({page})=>{
   await page.setViewportSize({width:1700,height:1000});
   const pageErrors=[];
   page.on('pageerror',error=>pageErrors.push(String(error)));
@@ -117,8 +117,11 @@ test('dist: Aufstellfläche per Griff formen (Fläche bleibt gleich) und drehen'
   const geformt=await page.evaluate(()=>({auf:{...window.lwWp.aufstellung},flaeche:lwWpPlatzbedarfM2(100),a:lwWpAufstellung(100)}));
   expect(geformt.auf.laenge).toBeGreaterThan(0);
   expect(geformt.auf.laenge).toBeLessThan(vorher.laenge);
-  expect(geformt.flaeche).toBeCloseTo(vorher.flaeche,6);
-  expect(geformt.a.laenge*geformt.a.breite).toBeCloseTo(vorher.flaeche,4);
+  // gleiche Fläche, nur wenn die Abstände es verlangen etwas mehr
+  expect(geformt.flaeche).toBeGreaterThanOrEqual(vorher.flaeche-1e-6);
+  expect(geformt.flaeche-vorher.flaeche).toBeCloseTo(geformt.a.mehrFlaeche,6);
+  expect(geformt.a.laenge*geformt.a.breite).toBeCloseTo(geformt.flaeche,4);
+  expect(await page.locator('.lwwp-flaeche-label .zu-klein').count()).toBe(0);
   // Drehgriff nach Osten ziehen → ~90°
   const d=await box('.lwwp-griff.drehen');
   await page.mouse.move(d.x,d.y); await page.mouse.down();
