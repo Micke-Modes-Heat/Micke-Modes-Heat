@@ -114,3 +114,35 @@ test('dist: Leitung im Netz-Reiter direkt greifen und auf eine andere Straße zi
   const nachher = await page.evaluate(() => (window._waermeNetzValidation?.disconnectedConsumerIds || []).length);
   expect(nachher).toBe(0);
 });
+
+test('dist: Umlegen schließt an den direkten Strang aus der Zentrale an statt über einen Umweg', async ({ page }) => {
+  await page.route(/tile\.openstreetmap\.org|overpass/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.netzStrangVorschlag === 'function');
+  const r = await page.evaluate(async () => {
+    clearNetz(); setGebaeude([]);
+    setTrassePoints([
+      L.latLng(52.0800, 8.0000), L.latLng(52.0830, 8.0000), L.latLng(52.0830, 8.0060), L.latLng(52.0800, 8.0060),   // Umweg: Norden, Osten, runter
+      L.latLng(52.0800, 8.0000), L.latLng(52.0800, 8.0060),   // direkt von der Zentrale nach Osten
+    ]);
+    setTrasseSegments([{ start: 0, end: 3, domains: ['waerme'] }, { start: 4, end: 5, domains: ['waerme'] }]);
+    const polygon = (lat, lng) => [L.latLng(lat - .00004, lng - .00004), L.latLng(lat - .00004, lng + .00004), L.latLng(lat + .00004, lng + .00004), L.latLng(lat + .00004, lng - .00004)];
+    [[981, 'Zentrale', 52.0797, 8.0000], [982, 'Quartier oben', 52.0833, 8.0030], [983, 'Unten A', 52.0797, 8.0058], [984, 'Unten B', 52.0797, 8.0063]]
+      .forEach(([id, name, lat, lng]) => { const g = addGebaeude({ id, name, baujahr: 2000, coords: polygon(lat, lng), skipAutoCreate: true }); g.heizlast = '100'; g.waerme = '200'; });
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value = '981';
+    await createQuickWaermeNetz();
+    const nahe = (lat, lng) => window.netzEdges.filter(e => !e.pruned && e.layer.getLatLngs().some((p, i, a) => i > 0 &&
+      L.LineUtil.pointToSegmentDistance(map.latLngToLayerPoint(L.latLng(lat, lng)), map.latLngToLayerPoint(a[i - 1]), map.latLngToLayerPoint(p)) < 3)).length;
+    const runter = window.netzEdges.find(e => !e.pruned && nahe(52.0815, 8.0060) && e.layer.getLatLngs().some(p => Math.abs(p.lng - 8.006) < 1e-6 && Math.abs(p.lat - 52.0815) < 0.0016));
+    const vorher = { runter: nahe(52.0815, 8.0060), oben: nahe(52.0830, 8.0045) };
+    const angeboten = netzStrangVorschlag(runter, L.latLng(52.0800, 8.0059));
+    const ok = angeboten && netzStrangUmlegen();
+    await new Promise(res => setTimeout(res, 300));
+    return { vorher, angeboten, ok, runter: nahe(52.0815, 8.0060), oben: nahe(52.0830, 8.0045), getrennt: (window._waermeNetzValidation?.disconnectedConsumerIds || []).length };
+  });
+  expect(r.vorher).toEqual({ runter: 1, oben: 1 });   // Gebäude B hängt über den Umweg im Norden
+  expect(r.angeboten).toBe(true);
+  expect(r.ok).toBe(true);
+  expect([r.runter, r.oben, r.getrennt]).toEqual([0, 0, 0]);   // Umweg entfallen, alles über den direkten Strang versorgt
+});

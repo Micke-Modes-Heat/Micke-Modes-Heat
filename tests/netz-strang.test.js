@@ -1,6 +1,6 @@
 // Vitest-Tests für lib/netz-strang.js — Strang umlegen: Teilnetz, verwaiste Abzweige, Wegsuche.
 import { describe, it, expect } from 'vitest';
-import { strangAnalyse, dijkstraBisZiel, abstandZuLinie, linienLaenge, linieVereinfachen } from '../src/lib/netz-strang.js';
+import { strangAnalyse, dijkstraBisZiel, abstandZuLinie, linienLaenge, linieVereinfachen, lageAufLinie, netzwegAbZentrale } from '../src/lib/netz-strang.js';
 
 // Zentrale 1 — J10 — J11 — J12 (Außenquartier) — Gebäude 3, 4; an J10 hängt außerdem Gebäude 2
 const k = (u, v) => ({ u, v });
@@ -37,7 +37,12 @@ describe('dijkstraBisZiel', () => {
   add('s', 'a', 5); add('a', 'z1', 50); add('s', 'b', 10); add('b', 'z2', 10);
   it('findet das nächste Ziel über den kürzesten Weg', () => {
     const r = dijkstraBisZiel(adj, 's', key => key.startsWith('z'));
-    expect(r).toEqual({ ziel: 'z2', weg: ['s', 'b', 'z2'], laenge: 20 });
+    expect(r).toEqual({ ziel: 'z2', weg: ['s', 'b', 'z2'], laenge: 20, gesamt: 20 });
+  });
+  it('mit Zuschlag je Ziel gewinnt die kleinste Summe (z. B. Leitungsweg bis zur Zentrale)', () => {
+    // z2 ist näher (20), liegt aber 100 m Leitung von der Zentrale entfernt; z1 (55) direkt an der Zentrale
+    const r = dijkstraBisZiel(adj, 's', key => key.startsWith('z'), () => false, key => (key === 'z2' ? 100 : 0));
+    expect(r).toMatchObject({ ziel: 'z1', laenge: 55, gesamt: 55 });
   });
   it('gesperrte Knoten werden umgangen', () => {
     const r = dijkstraBisZiel(adj, 's', key => key.startsWith('z'), key => key === 'b');
@@ -56,6 +61,14 @@ describe('Geometrie', () => {
     expect(abstandZuLinie(p, linie)).toBeCloseTo(11.05, 1);
     expect(linienLaenge([{ lat: 52, lng: 8 }, { lat: 52.001, lng: 8 }])).toBeCloseTo(110.5, 0);
     expect(abstandZuLinie(p, [])).toBe(Infinity);
+  });
+  it('Lage auf der Linie und Leitungsweg ab der Zentrale', () => {
+    const linie = [{ lat: 52, lng: 8 }, { lat: 52.001, lng: 8 }];
+    const l = lageAufLinie({ lat: 52.0005, lng: 8.0001 }, linie);
+    expect(l.entlang).toBeCloseTo(55.3, 0);
+    expect(l.laenge).toBeCloseTo(110.5, 0);
+    const d = netzwegAbZentrale(K, 1, () => 10);
+    expect([d.get(1), d.get(10), d.get(12), d.get(4)]).toEqual([0, 10, 30, 40]);
   });
   it('Vereinfachen entfernt nur Punkte auf der Geraden', () => {
     const l = [{ lat: 52, lng: 8 }, { lat: 52.0005, lng: 8 }, { lat: 52.001, lng: 8 }, { lat: 52.001, lng: 8.001 }];

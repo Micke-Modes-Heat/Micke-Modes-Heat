@@ -38,7 +38,7 @@ import { setEdgeStartId, setNetzEdges, setNetworkLocked, setSelectedId, setSelec
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { selectedStrandId } from './01-globals-varianten.js';
 import { netzSignatur, netzAenderungText, erstelleNetzVerlauf } from './lib/netz-verlauf.js';
-import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen } from './lib/netz-strang.js';
+import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen, lageAufLinie, netzwegAbZentrale } from './lib/netz-strang.js';
 import { EIS, eisAuslegungVorschlag, eisBewertung, eisGeometrie, eisInvest } from './lib/eisspeicher.js';
 
 export function toggleGeoPanel() {
@@ -5138,11 +5138,28 @@ function _strangPlanen(edge, punkt, verlaufVorher = null) {
   const imNetz = kanten.filter(e => !entfaellt.has(e) && !analyse.teilnetz.has(e.u) && !analyse.teilnetz.has(e.v)).map(e => ({edge:e,linie:linie(e)}));
   const abstandZu = liste => p => Math.min(Infinity,...liste.map(x => abstandZuLinie(p,x.linie)));
   const unten = knoten.get(analyse.unten), zentrale = knoten.get(centralId);
+  // Leitungsweg von der Zentrale bis zu einem Punkt auf dem übrigen Netz (über die nächstgelegene Leitung)
+  const netzweg = netzwegAbZentrale(imNetz.map(x => x.edge),centralId,e => linienLaenge(linie(e)));
+  const leitungswegZurZentrale = p => {
+    let best = Infinity, d = Infinity;
+    imNetz.forEach(x => {
+      const l = lageAufLinie(p,x.linie);
+      if (l.abstand >= d) return;
+      const du = netzweg.get(x.edge.u), dv = netzweg.get(x.edge.v);
+      // Linienpunkte laufen von u nach v (Verlauf der Leitung)
+      const w = Math.min(Number.isFinite(du) ? du + l.entlang : Infinity, Number.isFinite(dv) ? dv + (l.laenge - l.entlang) : Infinity);
+      if (Number.isFinite(w)) { d = l.abstand; best = w; }
+    });
+    return Number.isFinite(best) ? best : 0;
+  };
   // Vom Punkt aus in beide Richtungen: zum nächsten Punkt des Strangs und zum nächsten Punkt des übrigen Netzes
   const route = strassenWegeAbPunkt(punkt,[
     {abstand:abstandZu(imStrang),punkt:unten.pt},
-    // weiter zum Netz: nicht auf dem Weg zum Strang zurück und nicht durch den Strang hindurch
-    {abstand:abstandZu(imNetz),punkt:zentrale?.pt,getrennt:true,meiden:p => abstandZu(imStrang)(p) <= 8 && abstandZu(imNetz)(p) > 8},
+    // weiter zum Netz: nicht auf dem Weg zum Strang zurück und nicht durch den Strang hindurch. Angeschlossen wird
+    // dort, wo Straßenweg + Leitungsweg bis zur Zentrale am kürzesten sind (wie eine Route Zentrale → Punkt → Strang):
+    // vorhandene Leitungen werden nur genutzt, wenn sie auf dem Weg liegen — sonst ein eigener Strang aus der Zentrale
+    {abstand:abstandZu(imNetz),punkt:imNetz.length ? null : zentrale?.pt,getrennt:true,meiden:p => abstandZu(imStrang)(p) <= 8 && abstandZu(imNetz)(p) > 8,
+      zuschlag:p => leitungswegZurZentrale(p)},
   ]);
   if (!route) return null;
   const [zumStrang,zumNetz] = route.wege;
@@ -5170,7 +5187,8 @@ function _strangPlanen(edge, punkt, verlaufVorher = null) {
   // Neuer Weg liegt praktisch auf dem bisherigen (nur innerhalb derselben Straße verschoben): kein Vorschlag
   const linieVorher = verlaufVorher?.length >= 2 ? verlaufVorher : linie(edge);
   const bisher = [linieVorher,...analyse.totKanten.map(linie)];
-  if (weg.every(p => Math.min(...bisher.map(l => abstandZuLinie(p,l))) <= 10)) return null;
+  const laengeBisher = bisher.reduce((sum,l) => sum + linienLaenge(l),0);
+  if (weg.every(p => Math.min(...bisher.map(l => abstandZuLinie(p,l))) <= 10) && linienLaenge(weg) >= 0.7 * laengeBisher) return null;
   const laenge = e => linienLaenge(linie(e));
   const delta = linienLaenge(weg) - linienLaenge(linieVorher) - analyse.totKanten.reduce((sum,e) => sum + laenge(e),0);
   return {edge,analyse,unten,untenAnschluss,obenAnschluss,weg,viaPunkt:route.viaPunkt,delta,gebaeudeDahinter};

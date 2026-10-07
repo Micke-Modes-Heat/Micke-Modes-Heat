@@ -447,7 +447,8 @@ export function rerouteEdgeViaStreet(edgeObj,viaPoints = edgeObj.routingViaPoint
  * gilt als erreicht an der ersten Straßenstelle höchstens toleranzM von ihm entfernt; ein optionaler punkt (z. B. ein
  * Gebäude abseits der Straße) wird auf die Straße gerastet und zählt selbst als Ziel. meiden(latlng): Stellen, die der
  * Weg nicht betreten darf; getrennt: true — der Weg darf die Wege der vorherigen Ziele nicht mitbenutzen (wie eine Route
- * durch ein Zwischenziel: hin und weiter nicht auf derselben Straße).
+ * durch ein Zwischenziel: hin und weiter nicht auf derselben Straße). zuschlag(latlng): Kosten hinter dem Anschluss —
+ * gewählt wird dann das Ziel mit der kleinsten Summe aus Straßenweg und Zuschlag statt des nächsten.
  * Ergebnis: { viaPunkt, wege: [{ weg: [LatLng] von via bis Ziel, amPunkt }] } oder null (keine Straßen, Punkt abseits, kein Weg).
  */
 export function strassenWegeAbPunkt(via, ziele, toleranzM = 8) {
@@ -492,8 +493,10 @@ export function strassenWegeAbPunkt(via, ziele, toleranzM = 8) {
     const eigen = `@strang-ziel-${index}`;
     const ziel = ziele[index];
     const gesperrt = key => key !== eigen && ((ziel.getrennt && benutzt.has(key)) || (ziel.meiden ? ziel.meiden(graph.positions.get(key)) : false));
+    // zuschlag(latlng): Kosten hinter dem Anschluss (Leitungsweg bis zur Zentrale) — am eigenen Punkt keiner
+    const zielKosten = ziel.zuschlag ? key => (key === eigen ? 0 : ziel.zuschlag(graph.positions.get(key))) : null;
     const r = dijkstraBisZiel(graph.adjacency,'@strang-via',
-      key => key === eigen || ziel.abstand(graph.positions.get(key)) <= toleranzM, gesperrt);
+      key => key === eigen || ziel.abstand(graph.positions.get(key)) <= toleranzM, gesperrt, zielKosten);
     if (!r) return null;
     r.weg.slice(1).forEach(key => benutzt.add(key));
     const weg = r.weg.map(key => graph.positions.get(key)).filter(Boolean);
