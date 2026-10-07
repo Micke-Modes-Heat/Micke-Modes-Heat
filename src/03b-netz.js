@@ -39,6 +39,7 @@ import { setEdgeStartId, setNetzEdges, setNetworkLocked, setSelectedId, setSelec
 import { selectedStrandId } from './01-globals-varianten.js';
 import { netzSignatur, netzAenderungText, erstelleNetzVerlauf } from './lib/netz-verlauf.js';
 import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen, besteAstVerlegung, parallelAbschnitte } from './lib/netz-strang.js';
+import { strangGruppen, sackgassenEntfernen, quartierJeGebaeude, hauptstraenge } from './lib/netz-quartiere.js';
 import { EIS, eisAuslegungVorschlag, eisBewertung, eisGeometrie, eisInvest } from './lib/eisspeicher.js';
 
 export function toggleGeoPanel() {
@@ -1008,10 +1009,16 @@ function _netzVersorgungsGebaeude() {
 // Doppelt verlegte Abschnitte (zwei Leitungen direkt nebeneinander) — nur neu rechnen, wenn sich das Netz geändert hat
 let _parallelCache = { sig: null, kanten: [] };
 function _parallelVerlegt(edges) {
-  const sig = `${_netzStandSignatur}|${edges.length}`;
+  const sig = `${_netzStandSignatur}|${edges.length}|${JSON.stringify((window.netzQuartiere || []).map(q => q.gebIds))}`;
   if (_parallelCache.sig !== sig) {
     const liste = edges.filter(e => !e.pruned && e.layer).map(e => ({ edge: e, linie: e.layer.getLatLngs() }));
-    _parallelCache = { sig, kanten: parallelAbschnitte(liste).map(t => ({ edge: t.a.edge, laengeM: t.laengeM })) };
+    // Getrennte Hauptstränge verschiedener Versorgungsquartiere liegen gewollt nebeneinander (gemeinsamer Graben)
+    const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+    const knoten = new Map();
+    edges.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
+    const strang = _strangZuordnung(edges.filter(e => !e.pruned),centralId,knoten);
+    const gewollt = t => strang && strang.quartierDerKante(t.a.edge) !== strang.quartierDerKante(t.b.edge);
+    _parallelCache = { sig, kanten: parallelAbschnitte(liste).filter(t => !gewollt(t)).map(t => ({ edge: t.a.edge, laengeM: t.laengeM })) };
   }
   return _parallelCache.kanten;
 }
@@ -1159,6 +1166,30 @@ export function netzWorkspaceAktualisieren() {
   document.querySelectorAll('[data-netz-braucht="trasse"]').forEach(element => { element.hidden = !status.trasse; });
   document.querySelectorAll('[data-netz-braucht="netz"]').forEach(element => { element.hidden = !status.abschnitte; });
   _netzModusAnzeigen();
+  // Versorgungsquartiere: Liste aktualisieren, auf der Karte nur im Schritt ② zeigen
+  window.netzQuartiereListe?.();
+  window.netzQuartiereAnzeigen?.(_netzWorkspaceSichtbar() && _naOffen === 2);
+}
+
+/** Je Versorgungsquartier: Wird es im aktuellen Netz über eigene Hauptstränge versorgt? Map Quartier-ID → Status. */
+export function netzQuartierStatus() {
+  const out = new Map();
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const kanten = (window.netzEdges || []).filter(e => !e.pruned);
+  const knoten = new Map();
+  kanten.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
+  const strang = _strangZuordnung(kanten,centralId,knoten);
+  if (!strang) return out;
+  for (const q of window.netzQuartiere || []) {
+    const abgaenge = new Set((q.gebIds || []).map(id => strang.abgangVon.get(id)).filter(a => a != null));
+    out.set(q.id,{
+      linien:kanten.filter(e => strang.quartierDerKante(e) === q.id).map(e => e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt]),
+      angeschlossen:abgaenge.size > 0,
+      abgaenge:abgaenge.size,
+      eigener:abgaenge.size > 0 && [...abgaenge].every(a => strang.quartierVonAbgang.get(a) === q.id),
+    });
+  }
+  return out;
 }
 
 /** Anleitung zum aktiven Kartenmodus in der Sidebar statt eines dauerhaften Hinweisbalkens. */
@@ -3496,14 +3527,14 @@ export function autoGenerateNetz(options = {}){
     return false;
   }
 
-  const allPts = nodes.map(g => {
+  const allePunkte = nodes.map(g => {
     const load = networkLocked
       ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast || 0
       : _maxBuildingLoad(g,planningYears);
     return { id: g.id, type: 'geb', pt: polygonCenter(g.polygon), load };
   });
 
-  const usedNodeIds = new Set(allPts.map(node => node.id));
+  const usedNodeIds = new Set(allePunkte.map(node => node.id));
   let tIdCounter = 10000;
   const nextTrasseNodeId = () => {
     while (usedNodeIds.has(tIdCounter)) tIdCounter++;
@@ -3511,6 +3542,14 @@ export function autoGenerateNetz(options = {}){
     usedNodeIds.add(id);
     return id;
   };
+  // Versorgungsquartiere: je Quartier ein eigener Baum ab der Zentrale (eigener Hauptstrang), übrige Gebäude gemeinsam
+  const quartiere = (window.netzQuartiere || []).filter(q => q.gebIds?.length);
+  const gruppen = quartiere.length
+    ? strangGruppen(allePunkte.map(n => n.id), quartiere, zId)
+    : [{id:null, gebIds:allePunkte.map(n => n.id).filter(id => id !== zId)}];
+  const zentralePunkt = allePunkte.find(n => n.id === zId);
+  // Netz für eine Gruppe planen (Zentrale + Gebäude); false, wenn sich die Gruppe nicht anschließen lässt
+  const gruppePlanen = allPts => {
   const useHeatTrasse = strategy !== 'quick';
   // Automatisch übernommene OSM-Straßen sind nur Routinggrundlage der Straßen-Strategie. Bei einer
   // gezeichneten Haupttrasse dürfen sie nicht als verbindliche Vorgabe in das Netz gezwungen werden.
@@ -3927,6 +3966,23 @@ export function autoGenerateNetz(options = {}){
   mstEdges.splice(0,mstEdges.length,...optimizedEdges);
   window._netzBuildingObstacleDiagnostics.usedConflictEdges =
     mstEdges.filter(edge => edge.buildingConflict).length;
+  return mstEdges;
+  };
+
+  const mstEdges = [];
+  const strassenDiag = {uncoveredBuildings:0,freeClusters:0};
+  for (const gruppe of gruppen) {
+    const ids = new Set(gruppe.gebIds);
+    let kanten = gruppePlanen([zentralePunkt, ...allePunkte.filter(n => ids.has(n.id))]);
+    if (kanten === false) return false;
+    // Eigene Stränge: nur der Teil von Trasse und Straßen, der die Gebäude der Gruppe erreicht
+    if (quartiere.length) kanten = sackgassenEntfernen(kanten, id => id !== zId && !ids.has(id));
+    mstEdges.push(...kanten);
+    strassenDiag.uncoveredBuildings += window._streetRoutingDiagnostics?.uncoveredBuildings || 0;
+    strassenDiag.freeClusters += window._streetRoutingDiagnostics?.freeClusters || 0;
+  }
+  if (window._streetRoutingDiagnostics) Object.assign(window._streetRoutingDiagnostics, strassenDiag);
+  window._netzBuildingObstacleDiagnostics.usedConflictEdges = mstEdges.filter(edge => edge.buildingConflict).length;
 
   mstEdges.forEach(e => {
     const displayPoints = _netzDisplayPoints(e.uNode,e.vNode);
@@ -4020,6 +4076,26 @@ export function autoGenerateNetz(options = {}){
   return window.netzEdges.length > 0;
 }
 
+/**
+ * Zuordnung der Leitungen zu den Hauptsträngen, wenn Versorgungsquartiere festgelegt sind (sonst null).
+ * erlaubt(gebId, kante): Liegt die Leitung in einem Strang, der nur das Quartier des Gebäudes versorgt?
+ */
+function _strangZuordnung(kanten, centralId, knoten) {
+  const quartiere = (window.netzQuartiere || []).filter(q => q.gebIds?.length);
+  if (!quartiere.length) return null;
+  const quartierVon = quartierJeGebaeude(quartiere,centralId);
+  const h = hauptstraenge(kanten,centralId,quartierVon,id => knoten.get(id)?.type === 'geb');
+  const quartierDerKante = e => {
+    const abgang = h.abgangVon.get(e.u === centralId ? e.v : e.u);
+    return abgang == null ? undefined : h.quartierVonAbgang.get(abgang);
+  };
+  return {
+    ...h,
+    quartierDerKante,
+    erlaubt:(gebId,e) => quartierDerKante(e) === (quartierVon.get(gebId) ?? null),
+  };
+}
+
 /** Leitungen entfernen, die an einem Abzweig ohne Weiterführung enden (versorgen niemanden). Zentrale und Gebäude bleiben. */
 function _blattAbzweigeEntfernen() {
   const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
@@ -4054,8 +4130,11 @@ export function _anschluesseOptimieren(maxRunden = 25) {
       kanten.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
       const gebPunkte = new Map([...knoten].filter(([id,n]) => n?.type === 'geb' && id !== centralId).map(([id,n]) => [id,n.pt]));
       const liste = kanten.map(e => ({u:e.u,v:e.v,linie:e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt],edge:e}));
+      // Versorgungsquartiere: Gebäude nur an Leitungen des eigenen Hauptstrangs hängen
+      const strang = _strangZuordnung(kanten,centralId,knoten);
       const plan = besteAstVerlegung(liste,{
         zentraleId:centralId, gebaeude:gebPunkte,
+        zielErlaubt:strang ? (gebId,ziel) => strang.erlaubt(gebId,ziel.edge) : undefined,
         istAbzweig:id => !!knoten.get(id) && knoten.get(id).type !== 'geb',
         kreuzt:(von,nach,gebId) => crossesForeignBuilding(L.latLng(von.lat,von.lng),L.latLng(nach.lat,nach.lng),gebaeude,[gebId]),
       });

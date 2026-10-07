@@ -3375,6 +3375,7 @@ export function _buildProjectData() {
     trasse: trassePoints.map(p => ({lat: p.lat, lng: p.lng})),
     trasseSegments: trasseSegments,
     waermeNetzGraph: captureWaermeNetzGraph(),
+    ...(window.netzQuartiere?.length ? { netzQuartiere: structuredClone(window.netzQuartiere) } : {}),
     customEdges: netzEdges.filter(e => e.u < 10000 && e.v < 10000).map(e => ({u: e.u, v: e.v, pruned: e.pruned || false})),
     edgeWaypoints: edgeWaypoints,
     fliessgewaesser: fliessgewaesser ? { latlngs: fliessgewaesser.latlngs, durchflussLs: fliessgewaesser.durchflussLs, leistungKw: fliessgewaesser.leistungKw, jaz: fliessgewaesser.jaz, visible: fliessgewaesserVisible } : null,
@@ -4025,6 +4026,7 @@ function _applyProjectData(project) {
          redrawTrasse();
       }
 
+      window.netzQuartiere = Array.isArray(project.netzQuartiere) ? structuredClone(project.netzQuartiere) : [];
       setEdgeWaypoints(project.edgeWaypoints || {});
       const _prunedMap = {};
       const hasSavedWaermeGraph = Array.isArray(project.waermeNetzGraph?.edges) &&

@@ -173,11 +173,12 @@ export function naechsterPunktAufLinie(p, linie) {
  * Abzweige) gegen die neuen Stiche — so wird ein Gebäude auch von der etwas weiter entfernten Straße angeschlossen,
  * wenn dafür kein Bogen um den Block nötig ist.
  * kanten: [{ u, v, linie }]; o: { zentraleId, istAbzweig(id), gebaeude: Map id → { lat, lng }, kreuzt(von, nach, gebId) → bool,
- *   maxStichM = 60, mehrAlsBisherM = 40, minGewinnM = 10, maxGebaeude = 12 }.
+ *   maxStichM = 60, mehrAlsBisherM = 40, minGewinnM = 10, maxGebaeude = 12,
+ *   zielErlaubt(gebId, kante) → bool (z. B. nur Leitungen des eigenen Hauptstrangs) }.
  * Ergebnis: { kante, entfallen: [kanten], stiche: [{ gebId, ziel: kante, punkt, laenge }], gewinn } oder null.
  */
 export function besteAstVerlegung(kanten, o) {
-  const { zentraleId, istAbzweig, gebaeude, kreuzt = () => false } = o;
+  const { zentraleId, istAbzweig, gebaeude, kreuzt = () => false, zielErlaubt = () => true } = o;
   const maxStich = o.maxStichM ?? 60, mehr = o.mehrAlsBisherM ?? 40, minGewinn = o.minGewinnM ?? 10, maxGeb = o.maxGebaeude ?? 12;
   const laenge = k => linienLaenge(k.linie);
   // bisheriger Stich je Gebäude (Länge der Leitung am Gebäude)
@@ -201,6 +202,7 @@ export function besteAstVerlegung(kanten, o) {
       const p = gebaeude.get(id);
       let s = null;
       for (const e of ziele) {
+        if (!zielErlaubt(id, e)) continue;
         const n = naechsterPunktAufLinie(p, e.linie);
         if (!s || n.abstand < s.laenge) s = { gebId: id, ziel: e, punkt: n.punkt, laenge: n.abstand };
       }
