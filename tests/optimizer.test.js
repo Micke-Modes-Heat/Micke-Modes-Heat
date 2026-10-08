@@ -611,3 +611,18 @@ describe('Ansatz 5: Worker-Code Struktur', () => {
     expect(code).toContain('self.onmessage');
   });
 });
+
+describe('Kostenfunktion: PV-Eigenverbrauch der Gebäude', () => {
+  const basis = (quartierMwh) => _calcKostenShared({
+    pKw: { gaskessel: 500 }, erzList: [{ key: 'gaskessel', waermeMwh: 1000, elMwh: 0, typ: 'fix' }],
+    zinsPct: 3.5, lohn: 45, prices: { strom: 30, gas: 10 }, etas: { gaskessel: 0.92 },
+    investFn: (k, kw) => kw * 100, extra: {},
+    pv: { kwp: 100, batKwh: 0, eigenMwh: 60, einspMwh: 40, gesamtEigenMwh: 60, invPerKwp: 1000, pEinsp: 6 },
+    strom: { quartierMwh }, co2: {}, gesamtMwh: 1000, stMwh: 0,
+  });
+  it('ohne Wärmepumpe geht der ganze PV-Eigenverbrauch an die Gebäude und wird zum Strompreis gutgeschrieben', () => {
+    const r = basis(200);
+    expect(r.pvQuartierEur).toBeCloseTo(60 * 30 * 10, 6);
+    expect(basis(0).pvJk - r.pvJk).toBeCloseTo(18000, 6);
+  });
+});

@@ -861,7 +861,7 @@ export function _runPvBatOpt(resultDiv) {
     }
     const saving     = sv * preisB + ins * preisE;                      // €/a Ersparnis
     const aging = batKwh > 0 ? estimateBatteryAging({capacityKwh:batKwh,annualDischargeKwh:batDischargeKwh,
-      calendarFadePctPerYear:parseFloat(document.getElementById('bat-calendar-fade')?.value)||1.5,
+      calendarFadePctPerYear:(v => Number.isFinite(v) ? v : 1.5)(parseFloat(document.getElementById('bat-calendar-fade')?.value)),
       cycleLife:parseFloat(document.getElementById('bat-cycle-life')?.value)||6000,eolCapacityPct:parseFloat(document.getElementById('bat-eol-pct')?.value)||80,studyYears:batLife}) : null;
     const effectiveBatLife = aging && Number.isFinite(aging.expectedLifeYears) ? Math.max(1,aging.expectedLifeYears) : batLife;
     const annualCost = kwp * pvAnnKwp + batKwh * batInvest * (annF(zinssatz, effectiveBatLife) + omPct); // €/a

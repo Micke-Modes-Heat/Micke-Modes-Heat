@@ -253,7 +253,7 @@ export function _calcKostenShared(p) {
   if (pCo2 > 0 && bhkwGutschriftT > 0) co2Jk = Math.max(0, co2Jk - bhkwGutschriftT * pCo2);
 
   // ── PV + Batterie ──
-  var pvJk = 0, pvInvestGes = 0;
+  var pvJk = 0, pvInvestGes = 0, pvQuartierEur = 0;
   var pvKwp = pv.kwp || 0;
   var batKwh = pv.batKwh || 0;
   function annF(z, n) { return z > 0 ? z * Math.pow(1+z,n) / (Math.pow(1+z,n)-1) : 1/n; }
@@ -265,6 +265,10 @@ export function _calcKostenShared(p) {
       var pEinspEff = pv.pEinsp || 8;
       pvJk -= pvEinspMwh * pEinspEff * 10;
     }
+    // PV-Eigenverbrauch der Gebäude (übriger Strombedarf) spart Netzbezug zum allgemeinen Strompreis —
+    // die PV-Kosten trägt die Wärme voll, also auch diese Gutschrift (Anteil wie beim WP-Strom)
+    var pvQuartierMwh = pvEigenMwh > 0 && gesamtStromMwh > 0 ? pvEigenMwh * (strom.quartierMwh || 0) / gesamtStromMwh : 0;
+    if (pvQuartierMwh > 0) { pvQuartierEur = pvQuartierMwh * (prices.strom || 35) * 10; pvJk -= pvQuartierEur; }
   }
   if (batKwh > 0) {
     var batInv = batKwh * (pv.batInvPerKwh || 400);
@@ -300,7 +304,7 @@ export function _calcKostenShared(p) {
 
   return {
     investGesamt: investGesamt + pvInvestGes, kapitalJk: kapitalJk,
-    energieJk: energieJk, co2Jk: co2Jk, pvJk: pvJk,
+    energieJk: energieJk, co2Jk: co2Jk, pvJk: pvJk, pvQuartierEur: pvQuartierEur,
     jahreskosten: jahreskosten, wgk: wgk,
     co2ta: co2ta, eeAnteil: eeAnteil,
     stromAutarkie: stromAutarkie, waermeAutarkie: waermeAutarkie,
@@ -365,6 +369,16 @@ export function _syncZins() {
   if (display) display.textContent = v.toFixed(1) + ' %';
   const jsSync = document.getElementById('js-diskont-sync');
   if (jsSync) jsSync.textContent = v.toFixed(1);
+}
+
+/**
+ * Batterie-Lebensdauer für die Annuität: aus der Alterungsschätzung (Kalender + Vollzyklen),
+ * ohne Schätzung bzw. bei unbegrenzter Lebensdauer die eingetragene Nutzungsdauer.
+ * Gleiche Regel in Wirtschaftlichkeit, Optimierer (Worker: D.batLife) und PV-Variantenrechnung.
+ */
+export function batterieLebensdauer(expectedLifeYears) {
+  if (Number.isFinite(expectedLifeYears) && expectedLifeYears > 0) return Math.max(1, expectedLifeYears);
+  return parseFloat(document.getElementById('opt-bat-life')?.value) || OPT_NUTZUNG.bat;
 }
 
 /** Bausteine des Wärmenetzes — entfallen bei „nur Wärmeerzeugung“. */
@@ -827,7 +841,7 @@ export function calcWirtschaftPanel() {
     }
   }
   // PV + Batterie: Investitionskosten und Einspeisevergütung (konsistent mit Optimierer)
-  let pvJk = 0, pvInvestGes = 0;
+  let pvJk = 0, pvInvestGes = 0, _pvQuartierMwh = 0;
   const _pvKwp = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
   const _batKwh = parseFloat(document.getElementById('bat-kapazitaet')?.value) || 0;
   if (_pvKwp > 0 || _batKwh > 0) {
@@ -849,17 +863,21 @@ export function calcWirtschaftPanel() {
         const pEinspEff = parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8;
         pvJk -= _pvEinspMwh * pEinspEff * 10;
       }
+      // PV-Eigenverbrauch der Gebäude: vermiedener Netzbezug zum allgemeinen Strompreis (wie _calcKostenShared)
+      _pvQuartierMwh = _pvEigenMwh > 0 && _gesamtStromMwh > 0 ? _pvEigenMwh * _quartierStromMwh / _gesamtStromMwh : 0;
+      pvJk -= _pvQuartierMwh * pStrom * 10;
     }
     if (_batKwh > 0) {
       const batInvEuro = _batKwh * (parseFloat(document.getElementById('opt-bat-invest')?.value) || OPT_INVEST_DEFAULT.bat);
       pvInvestGes += batInvEuro;
-      pvJk += batInvEuro * (_annF(_zinsFrac, OPT_NUTZUNG.bat) + OPT_IH.bat);
+      pvJk += batInvEuro * (_annF(_zinsFrac, batterieLebensdauer(window._batteryAging?.expectedLifeYears)) + OPT_IH.bat);
     }
     if (Math.abs(pvJk) > 1) {
       energyRows.push({ label: 'PV/Batterie', kosten: pvJk,
-        detail: pvJk > 0
+        detail: (pvJk > 0
           ? `Annuität ${Math.round(pvInvestGes).toLocaleString('de-DE')} € Invest − Einsp. ${_pvEinspMwh.toFixed(0)} MWh`
-          : `Einsp.-Vergütung übersteigt Annuität (Netto-Gutschrift)`,
+          : `Einsp.-Vergütung und Eigenverbrauch übersteigen Annuität (Netto-Gutschrift)`)
+          + (_pvQuartierMwh > 0.5 ? ` − Eigenverbrauch Gebäude ${_pvQuartierMwh.toFixed(0)} MWh × ${pStrom} ct/kWh` : ''),
         color: '#ffd54f' });
     }
   }

@@ -17,7 +17,7 @@ import { getKostenProMKlasse, updateLpErgebnisKpis, updateLpStepProgress } from 
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
 import { clearSolarthermie, clearThermSpeicher, getThermSpeicherParams, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
 import { _dispatchCore, autoGkResult, isErzeugerAktiv, meritOrderKeys, onSystemStateUpdated, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
-import { _calcKostenShared, _parseGeoBohrMeter } from './07b-analysis-economics.js';
+import { _calcKostenShared, _parseGeoBohrMeter, batterieLebensdauer } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
@@ -35,6 +35,9 @@ import { pvBatteryStep } from './lib/pv-battery-core.js';
 import { estimateBatteryAging } from './lib/battery-aging.js';
 import { optEinspeiseCt, optGrobPunkte, optRasterStufen, optSuchraum } from './lib/optimierer-suche.js';
 import { DEFAULT_PV_TARIFF_SCENARIO_ID, PV_TARIFF_SCENARIOS } from './config/tariff-scenarios.js';
+
+// Zahlenfeld lesen, 0 ist ein gültiger Wert (||-Fallback würde ihn verschlucken)
+function _zahlOder(id, def) { const v = parseFloat(document.getElementById(id)?.value); return Number.isFinite(v) ? v : def; }
 
 export const _OPT_CE_KEY = {
   lwwp:'LuftWP', fg:'FlussWP', geo:'GeoWP', gaskessel:'Gaskessel',
@@ -262,7 +265,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
   const bhkwEigMwh = pvBatResult ? (pvBatResult.bhkwEigenMwh || 0) : 0;
   const bhkwEinspMwh = pvBatResult ? (pvBatResult.bhkwEinspMwh || 0) : 0;
   const batAging = batKwh > 0 ? estimateBatteryAging({capacityKwh:batKwh,annualDischargeKwh:(pvBatResult?.batDischargeMwh||0)*1000,
-    calendarFadePctPerYear:parseFloat(document.getElementById('bat-calendar-fade')?.value)||1.5,
+    calendarFadePctPerYear:_zahlOder('bat-calendar-fade', 1.5),
     cycleLife:parseFloat(document.getElementById('bat-cycle-life')?.value)||6000,eolCapacityPct:parseFloat(document.getElementById('bat-eol-pct')?.value)||80,studyYears:20}) : null;
 
   const result = _calcKostenShared({
@@ -296,7 +299,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
       gesamtEigenMwh: gesamtEigenMwh,
       invPerKwp: pvInvPerKwp,
       batInvPerKwh: parseFloat(document.getElementById('opt-bat-invest')?.value) || OPT_INVEST_DEFAULT.bat,
-      batLifeYears: batAging && Number.isFinite(batAging.expectedLifeYears) ? Math.max(1,batAging.expectedLifeYears) : OPT_NUTZUNG.bat,
+      batLifeYears: batterieLebensdauer(batAging?.expectedLifeYears),
       // Vergütung passend zur Anlagengröße dieser Variante (wie im Worker)
       pEinsp: optEinspeiseCt(_optPvEinspDesc(), pvKwp)
     },
@@ -521,7 +524,8 @@ export function _collectOptDomParams() {
     investKurven, pvInvestMode, pvInvestManual,
     pvInvestTabelle,
     batInvest: f('opt-bat-invest', OPT_INVEST_DEFAULT.bat),
-    batCalendarFade: f('bat-calendar-fade', 1.5),
+    batCalendarFade: _zahlOder('bat-calendar-fade', 1.5),
+    batLife: f('opt-bat-life', OPT_NUTZUNG.bat),
     batCycleLife: f('bat-cycle-life', 6000),
     batEolPct: f('bat-eol-pct', 80),
     pvEinsp: _optPvEinspDesc(),
@@ -778,15 +782,14 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
     if (typeof clearThermSpeicher === 'function') clearThermSpeicher();
   }
 
-  // PV + Batterie aus Optimierungsergebnis übernehmen
-  if (result.pvKwp > 0) {
-    const pvEl = document.getElementById('pv-kwp');
-    if (pvEl) pvEl.value = result.pvKwp.toFixed(1);
-  }
-  if (result.batKwh > 0) {
-    const batEl = document.getElementById('bat-kapazitaet');
-    if (batEl) batEl.value = result.batKwh.toFixed(1);
-  }
+  // PV + Batterie genau so übernehmen, wie die Variante bewertet wurde — auch 0 (sonst bliebe
+  // eine frühere Zusatz-PV stehen); Batterieleistung wie in der Optimierung = halbe Kapazität
+  const pvEl = document.getElementById('pv-kwp');
+  if (pvEl) pvEl.value = (result.pvKwp || 0).toFixed(1);
+  const batEl = document.getElementById('bat-kapazitaet');
+  if (batEl) batEl.value = (result.batKwh || 0).toFixed(1);
+  const batKwEl = document.getElementById('bat-leistung');
+  if (batKwEl) batKwEl.value = ((result.batKwh || 0) / 2).toFixed(1);
   // Einspeisevergütung so setzen, wie die Optimierung sie für diese Anlagengröße angesetzt hat
   if (result.pvKwp > 0) {
     const desc = _optPvEinspDesc();

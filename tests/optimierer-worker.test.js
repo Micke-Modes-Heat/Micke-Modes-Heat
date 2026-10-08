@@ -110,11 +110,19 @@ describe('Optimierer-Worker: vollständiger Lauf', () => {
   it('PV: über den Gestehungskosten vergütet → bis zur Grenze; Marktprämie unter den Kosten → darunter', () => {
     const teuer = { flat: 20 };
     const markt = { tiers: [{ upToKwp: 100, ctPerKwh: 5.9 }], ersatz: [{ upToKwp: 1000, ctPerKwh: 5.9 }] };
-    const a = lauf({ aktiv: ['lwwp', 'gaskessel'], pvEinsp: teuer, pvInvest: 900 }).done.topFein;
-    const b = lauf({ aktiv: ['lwwp', 'gaskessel'], pvEinsp: markt, pvInvest: 1200 }).done.topFein;
-    // PV-Strom zählt in den Wärmekosten über den WP-Strom (wie im Wirtschaftlichkeits-Panel) → WP-Konzept betrachten
-    const best = l => l.filter(r => r.kanon.includes('lwwp')).sort((x, y) => x.score - y.score)[0];
-    expect(best(a).pvKwp).toBe(400);
-    expect(best(b).pvKwp).toBeLessThan(400);
+    const best = l => l.slice().sort((x, y) => x.score - y.score)[0];
+    const a = best(lauf({ aktiv: ['lwwp', 'gaskessel'], pvEinsp: teuer, pvInvest: 900, pvHi: 3000 }).done.topFein);
+    const b = best(lauf({ aktiv: ['lwwp', 'gaskessel'], pvEinsp: markt, pvInvest: 1200, pvHi: 3000 }).done.topFein);
+    expect(a.pvKwp).toBe(3000);
+    // Eigenverbrauch lohnt, Überschuss zu 5,9 ct bei ~10 ct Gestehungskosten nicht
+    expect(b.pvKwp).toBeGreaterThan(50);
+    expect(b.pvKwp).toBeLessThan(3000);
+  }, 60000);
+
+  it('PV-Eigenverbrauch der Gebäude zählt: auch ohne Wärmepumpe lohnt PV', () => {
+    const markt = { tiers: [{ upToKwp: 100, ctPerKwh: 5.9 }], ersatz: [{ upToKwp: 1000, ctPerKwh: 5.9 }] };
+    const r = lauf({ aktiv: ['gaskessel'], pvEinsp: markt, pvInvest: 1000, pvHi: 2000 }).done.topFein[0];
+    expect(r.kanon).toBe('gaskessel');
+    expect(r.pvKwp).toBeGreaterThan(50);
   }, 60000);
 });

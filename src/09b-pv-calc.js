@@ -327,7 +327,7 @@ export function calcStromPanel() {
   const wpAnteil = gesamtMwh > 0 ? (wpMwh / gesamtMwh * 100) : 0;
   window._batteryAging = bat ? estimateBatteryAging({
     capacityKwh:bat.kapKwh, annualDischargeKwh:batDischargeKwh,
-    calendarFadePctPerYear:parseFloat(document.getElementById('bat-calendar-fade')?.value) || 0,
+    calendarFadePctPerYear:(v => Number.isFinite(v) ? v : 1.5)(parseFloat(document.getElementById('bat-calendar-fade')?.value)),
     cycleLife:parseFloat(document.getElementById('bat-cycle-life')?.value) || 6000,
     eolCapacityPct:parseFloat(document.getElementById('bat-eol-pct')?.value) || 80,
     studyYears:parseFloat(document.getElementById('opt-bat-life')?.value) || 15,

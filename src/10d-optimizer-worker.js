@@ -243,7 +243,8 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
       gesamtEigenMwh: gesamtEigenMwh,
       invPerKwp: _pvInvestPerKwp(pvKwp),
       batInvPerKwh: D.batInvest,
-      batLifeYears: batAging && Number.isFinite(batAging.expectedLifeYears) ? Math.max(1, batAging.expectedLifeYears) : 15,
+      // wie batterieLebensdauer() im Hauptthread: Alterungsschätzung, sonst eingetragene Nutzungsdauer
+      batLifeYears: batAging && Number.isFinite(batAging.expectedLifeYears) && batAging.expectedLifeYears > 0 ? Math.max(1, batAging.expectedLifeYears) : (D.batLife || 15),
       pEinsp: optEinspeiseCt(D.pvEinsp, pvKwp),
     },
     strom: {
