@@ -175,9 +175,12 @@ export function buildBuildingHeatProfiles(buildings,tempH,year,getStats,isExclud
 
 export function getBuildingHeatProfileMeta(building) {
   const archetype=archetypeFor(building);
+  const requested=building?.heatProfileType || building?.nutzung;
   return {
     type:Object.entries(ARCHETYPES).find(([,value])=>value===archetype)?.[0] || 'ghd',
     label:archetype.label,
+    // true: keine (bekannte) Nutzung → allgemeines GHD-Profil als Ersatz
+    ersatz:!(ARCHETYPES[requested] || ARCHETYPE_ALIASES[requested]),
     sigLinDe:archetype.sig,
     baseShare:archetype.baseShare,
   };

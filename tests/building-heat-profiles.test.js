@@ -85,3 +85,12 @@ describe('gebäudespezifische Wärmelastgänge',()=>{
     expect(getBuildingHeatProfileMeta({nutzung:'werkstatt'})).toMatchObject({type:'industrie',label:'Industrie und Produktion'});
   });
 });
+
+describe('Ersatzprofil ohne Nutzung', () => {
+  it('kennzeichnet Gebäude ohne (bekannte) Nutzung als Ersatz', () => {
+    expect(getBuildingHeatProfileMeta({}).ersatz).toBe(true);
+    expect(getBuildingHeatProfileMeta({ nutzung: 'unbekannt' }).ersatz).toBe(true);
+    expect(getBuildingHeatProfileMeta({ nutzung: 'ghd' }).ersatz).toBe(false);
+    expect(getBuildingHeatProfileMeta({ nutzung: 'kaserne' }).ersatz).toBe(false);
+  });
+});

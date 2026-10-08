@@ -134,6 +134,15 @@ export function applyBulk() {
   renderList(); updateViz(); updateTotals(); recalcNetz();
 }
 
+/** Genau die Gebäude ohne Nutzung auswählen — für die Sammelzuordnung in der Gebäudeübersicht. */
+export function gebOhneNutzungAuswaehlen() {
+  gebaeude.forEach(g => { g.selected = !g.nutzung; });
+  renderList();
+  updateBulkBar();
+  if (currentViewMode === 'gebaeude') renderGebaeudeOverview();
+  document.getElementById('geb-bulk-nutzung')?.focus();
+}
+
 export function clearSelection() {
   gebaeude.forEach(g => g.selected = false);
   renderList();
@@ -465,7 +474,9 @@ export function renderGebaeudeOverview() {
       ${zelle(r,'zustand',`<select data-change="updateGebaeudeTableField(${g.id},'zustand',this.value)">${['','1','2','3'].map(v => `<option value="${v}" ${(baZustandAusText(g.zustand) || '') === v ? 'selected' : ''}>${v || '—'}</option>`).join('')}</select>`)}
       ${zelle(r,'twwArt',`<select data-change="updateGebaeudeTableField(${g.id},'twwArt',this.value)"><option value="">—</option>${Object.entries(BA_TWW_ARTEN).map(([k,t]) => `<option value="${k}" ${g.twwArt === k ? 'selected' : ''} title="${_gebTableEsc(t.name)}">${_gebTableEsc(BA_TWW_KURZ[k])}</option>`).join('')}</select>`)}
       ${zelle(r,'twwKw',`<input class="geb-table-num" type="number" min="0" value="${_gebTableEsc(g.twwKw ?? '')}" data-change="updateGebaeudeTableField(${g.id},'twwKw',this.value)">`)}
-      <td><button class="geb-profile-btn" data-click="showGebaeudeHeatProfile(${g.id})">${_gebTableEsc(getBuildingHeatProfileMeta(g).label)}</button></td>
+      <td>${(meta => meta.ersatz
+        ? `<button class="geb-profile-btn ersatz" data-click="showGebaeudeHeatProfile(${g.id})" title="Keine Nutzung zugeordnet — das Wärmeprofil wird ersatzweise wie Gewerbe, Handel und Dienstleistung gerechnet. Nutzung in der Spalte „Nutzung“ wählen.">Ersatz: GHD</button>`
+        : `<button class="geb-profile-btn" data-click="showGebaeudeHeatProfile(${g.id})">${_gebTableEsc(meta.label)}</button>`)(getBuildingHeatProfileMeta(g))}</td>
       <td class="geb-table-readonly" title="${_gebTableEsc(g.importSourceName || '')}">${_gebTableEsc(g.importSourceName || '—')}</td>
     </tr>`;
   }).join('');
@@ -476,6 +487,14 @@ export function renderGebaeudeOverview() {
   if (markInfo) markInfo.textContent = mark && trGroesse(mark) > 1 ? `${trGroesse(mark)} Zellen markiert` : '';
   const count = document.getElementById('geb-table-result-count');
   if (count) count.textContent = `${rows.length} von ${gebaeude.length} Gebäuden`;
+  // Gebäude ohne Nutzung: zählen in Karte und Diagrammen als „Nicht zugeordnet“ und rechnen mit dem GHD-Ersatzprofil
+  const ohne = gebaeude.filter(g => !g.nutzung).length;
+  const ohneEl = document.getElementById('geb-ohne-nutzung');
+  if (ohneEl) {
+    ohneEl.style.display = ohne ? '' : 'none';
+    ohneEl.innerHTML = ohne ? `⚠ ${ohne.toLocaleString('de-DE')} Gebäude ohne Nutzung — in Karte und Diagrammen „Nicht zugeordnet“, Wärmeprofil ersatzweise wie Gewerbe/Handel/Dienstleistung.
+      <button class="btn-secondary" data-click="gebOhneNutzungAuswaehlen()">Diese auswählen und zuordnen</button>` : '';
+  }
   const bulk = document.getElementById('geb-table-bulk');
   if (bulk) {
     bulk.classList.toggle('visible',selected.length > 0);
