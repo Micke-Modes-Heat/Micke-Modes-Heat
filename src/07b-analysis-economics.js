@@ -165,15 +165,39 @@ export function _calcKostenShared(p) {
     if (_erz.typ === 'wp' || _erz.key === 'stromkessel') wpSkStromMwh += (_erz.elMwh||0);
     if (_erz.typ === 'kwk') bhkwElMwh += (_erz.elMwh||0);
   }
-  var gesamtStromMwh = wpSkStromMwh + (strom.quartierMwh || 0);
-  var pvEigenMwh = pv.eigenMwh || 0;
-  var pvEinspMwh = pv.einspMwh || 0;
+  // ── PV-Strom für Wärmepumpen und Stromkessel (nur mit pv.modus === 'wp', sonst bleibt PV außen vor) ──
+  // Die Wärme kauft nur den Strom, den WP und Stromkessel laut Stundenbilanz direkt bzw. über die Batterie von
+  // der PV bekommen — zum PV-Gestehungspreis (Batteriestrom zusätzlich zum Speicherpreis). Einspeisung und
+  // Eigenverbrauch der Gebäude gehören zur Stromseite. Der Vorteil ist damit auf (Netzpreis − PV-Preis) × WP-Strom
+  // aus PV begrenzt — eine größere PV oder Batterie kann die Wärmekosten nicht beliebig senken.
+  function annF(z, n) { return z > 0 ? z * Math.pow(1+z,n) / (Math.pow(1+z,n)-1) : 1/n; }
+  var pvAn = pv.modus === 'wp';
+  var pvKwp = pvAn ? (pv.kwp || 0) : 0;
+  var batKwh = pvAn ? (pv.batKwh || 0) : 0;
+  var pvCt = pvKwp > 0 && (pv.ertragMwh || 0) > 0
+    ? pvKwp * (pv.invPerKwp || 1200) * (annF(zinsFrac, 20) + 0.01) / (pv.ertragMwh * 10) : 0;
+  var batCt = batKwh > 0 && (pv.batEntladungMwh || 0) > 0
+    ? batKwh * (pv.batInvPerKwh || 400) * (annF(zinsFrac, pv.batLifeYears || 15) + 0.01) / (pv.batEntladungMwh * 10) : 0;
+  var pvDirektMwh = pvKwp > 0 ? Math.min(wpSkStromMwh, pv.zuWpDirektMwh || 0) : 0;
+  var pvBatMwh = pvKwp > 0 ? Math.min(Math.max(0, wpSkStromMwh - pvDirektMwh), pv.zuWpBatMwh || 0) : 0;
+  var pvStromEur = 0, pvVorteilEur = 0;
+  function pvTeil(el) {
+    var anteil = wpSkStromMwh > 0 ? el / wpSkStromMwh : 0;
+    return { d: pvDirektMwh * anteil, b: pvBatMwh * anteil };
+  }
 
   var energieJk = 0;
   var energyRows = [];
   // WP-/Stromkessel-Strom: optional eigener Arbeitspreis (Sondervertrag),
   // sonst allgemeiner Strompreis
   var pStromWp = (prices.stromWp != null && !isNaN(prices.stromWp)) ? prices.stromWp : (prices.strom||35);
+  function stromKosten(el) {
+    var t = pvTeil(el);
+    var pvEur = (t.d * pvCt + t.b * (pvCt + batCt)) * 10;
+    pvStromEur += pvEur;
+    pvVorteilEur += (t.d + t.b) * pStromWp * 10 - pvEur;
+    return Math.max(0, el - t.d - t.b) * pStromWp * 10 + pvEur;
+  }
   for (var _j=0; _j<erzList.length; _j++) {
     var erz = erzList[_j];
     var wMwh = erz.waermeMwh || 0;
@@ -181,14 +205,11 @@ export function _calcKostenShared(p) {
     if (wMwh < 0.1 && eMwh < 0.1) continue;
     var kosten = 0;
     if (erz.key === 'lwwp' || erz.key === 'fg' || erz.key === 'geo') {
-      var pvAbzug = pvEigenMwh > 0 && gesamtStromMwh > 0 ? pvEigenMwh * (eMwh / gesamtStromMwh) : 0;
-      kosten = Math.max(0, eMwh - pvAbzug) * pStromWp * 10;
+      kosten = stromKosten(eMwh);
     } else if (erz.key === 'fernwaerme') {
       kosten = wMwh * (prices.fw||17) * 10;
     } else if (erz.key === 'stromkessel') {
-      var skEl = eMwh > 0.1 ? eMwh : wMwh;
-      var pvAbzugSk = pvEigenMwh > 0 && gesamtStromMwh > 0 ? pvEigenMwh * (skEl / gesamtStromMwh) : 0;
-      kosten = Math.max(0, skEl - pvAbzugSk) * pStromWp * 10;
+      kosten = stromKosten(eMwh > 0.1 ? eMwh : wMwh);
     } else if (erz.typ === 'kwk' || erz.key === 'bhkw') {
       var bhkwSigma = etas.bhkwSigma || 0.45;
       var etaTh = (etas.bhkw||0.88) / (1 + bhkwSigma);
@@ -225,8 +246,9 @@ export function _calcKostenShared(p) {
     var wM = erz2.waermeMwh||0, eM = erz2.elMwh||0;
     var tCo2 = 0;
     if (erz2.typ === 'wp' || erz2.key === 'stromkessel') {
-      var pvA = pvEigenMwh > 0 && gesamtStromMwh > 0 ? pvEigenMwh * (eM / gesamtStromMwh) : 0;
-      tCo2 = Math.max(0, eM - pvA) * (emf.strom||420) / 1e3;
+      // nur der Netzbezug verursacht CO₂ — PV-Strom (falls angerechnet) nicht
+      var pvA = pvTeil(eM);
+      tCo2 = Math.max(0, eM - pvA.d - pvA.b) * (emf.strom||420) / 1e3;
     } else if (erz2.key === 'gaskessel' || erz2.key === '_autoGk') {
       tCo2 = wM / (etas.gaskessel||0.92) * (emf.gas||240) / 1e3;
     } else if (erz2.typ === 'kwk' || erz2.key === 'bhkw') {
@@ -252,32 +274,8 @@ export function _calcKostenShared(p) {
   // wie die Wirtschaftlichkeitsrechnung: CO₂-Kostenansatz auf die Netto-Bilanz (inkl. BHKW-Gutschrift)
   if (pCo2 > 0 && bhkwGutschriftT > 0) co2Jk = Math.max(0, co2Jk - bhkwGutschriftT * pCo2);
 
-  // ── PV + Batterie ──
-  var pvJk = 0, pvInvestGes = 0, pvQuartierEur = 0;
-  var pvKwp = pv.kwp || 0;
-  var batKwh = pv.batKwh || 0;
-  function annF(z, n) { return z > 0 ? z * Math.pow(1+z,n) / (Math.pow(1+z,n)-1) : 1/n; }
-  if (pvKwp > 0) {
-    var pvInv = pvKwp * (pv.invPerKwp || 1200);
-    pvInvestGes += pvInv;
-    pvJk += pvInv * (annF(zinsFrac, 20) + 0.01);
-    if (pvEinspMwh > 0.01) {
-      var pEinspEff = pv.pEinsp || 8;
-      pvJk -= pvEinspMwh * pEinspEff * 10;
-    }
-    // PV-Eigenverbrauch der Gebäude (übriger Strombedarf) spart Netzbezug zum allgemeinen Strompreis —
-    // die PV-Kosten trägt die Wärme voll, also auch diese Gutschrift (Anteil wie beim WP-Strom)
-    var pvQuartierMwh = pvEigenMwh > 0 && gesamtStromMwh > 0 ? pvEigenMwh * (strom.quartierMwh || 0) / gesamtStromMwh : 0;
-    if (pvQuartierMwh > 0) { pvQuartierEur = pvQuartierMwh * (prices.strom || 35) * 10; pvJk -= pvQuartierEur; }
-  }
-  if (batKwh > 0) {
-    var batInv = batKwh * (pv.batInvPerKwh || 400);
-    pvInvestGes += batInv;
-    pvJk += batInv * (annF(zinsFrac, pv.batLifeYears || 15) + 0.01);
-  }
-
-  // ── Ergebnis ──
-  var jahreskosten = kapitalJk + energieJk + co2Jk + pvJk;
+  // ── Ergebnis ── (PV und Batterie sind keine Wärmeerzeuger: keine Investition, keine Einspeiseerlöse in der WGK)
+  var jahreskosten = kapitalJk + energieJk + co2Jk;
   var totalWaerme = (p.gesamtMwh || 0) + (p.stMwh || 0);
   var wgk = totalWaerme > 0 ? jahreskosten / totalWaerme / 10 : 0;
 
@@ -287,13 +285,13 @@ export function _calcKostenShared(p) {
   for (var _ee=0; _ee<erzList.length; _ee++) { if (EE_KEYS_SET[erzList[_ee].key]) eeMwh += erzList[_ee].waermeMwh; }
   var eeAnteil = totalWaerme > 0 ? eeMwh / totalWaerme * 100 : 0;
 
-  // Strom-/Wärmeautarkie
-  var gesamtEigenMwh = (pv.gesamtEigenMwh || pvEigenMwh);
-  var stromAutarkie = gesamtStromMwh > 0 ? Math.min(100, gesamtEigenMwh / gesamtStromMwh * 100) : 0;
+  // Strom-/Wärmeautarkie: Anteil des Wärme-Stroms aus PV, Anteil der Wärme aus Solarthermie und PV-Strom
+  var pvZuWpMwh = pvDirektMwh + pvBatMwh;
+  var stromAutarkie = wpSkStromMwh > 0 ? Math.min(100, pvZuWpMwh / wpSkStromMwh * 100) : 0;
   var stMwh = p.stMwh || 0;
   var autarkeWaermeMwh = stMwh;
-  if (pvEigenMwh > 0 && gesamtStromMwh > 0) {
-    var pvAnteil = Math.min(1, pvEigenMwh / gesamtStromMwh);
+  if (pvZuWpMwh > 0 && wpSkStromMwh > 0) {
+    var pvAnteil = Math.min(1, pvZuWpMwh / wpSkStromMwh);
     for (var _aw=0; _aw<erzList.length; _aw++) {
       if ((erzList[_aw].typ === 'wp' || erzList[_aw].key === 'stromkessel') && erzList[_aw].elMwh > 0) {
         autarkeWaermeMwh += erzList[_aw].waermeMwh * pvAnteil;
@@ -303,12 +301,12 @@ export function _calcKostenShared(p) {
   var waermeAutarkie = totalWaerme > 0 ? Math.min(100, autarkeWaermeMwh / totalWaerme * 100) : 0;
 
   return {
-    investGesamt: investGesamt + pvInvestGes, kapitalJk: kapitalJk,
-    energieJk: energieJk, co2Jk: co2Jk, pvJk: pvJk, pvQuartierEur: pvQuartierEur,
+    investGesamt: investGesamt, kapitalJk: kapitalJk,
+    energieJk: energieJk, co2Jk: co2Jk, pvJk: 0,
+    pvCt: pvCt, batCt: batCt, pvZuWpMwh: pvZuWpMwh, pvStromEur: pvStromEur, pvVorteilEur: pvVorteilEur,
     jahreskosten: jahreskosten, wgk: wgk,
     co2ta: co2ta, eeAnteil: eeAnteil,
     stromAutarkie: stromAutarkie, waermeAutarkie: waermeAutarkie,
-    pvEigenMwh: pvEigenMwh, pvEinspMwh: pvEinspMwh,
     totalWaerme: totalWaerme,
     bausteinRows: bausteinRows, energyRows: energyRows
   };
@@ -379,6 +377,56 @@ export function _syncZins() {
 export function batterieLebensdauer(expectedLifeYears) {
   if (Number.isFinite(expectedLifeYears) && expectedLifeYears > 0) return Math.max(1, expectedLifeYears);
   return parseFloat(document.getElementById('opt-bat-life')?.value) || OPT_NUTZUNG.bat;
+}
+
+/** „PV-Strom für Wärmepumpen anrechnen“ (Projekteinstellung, Standard aus). */
+export function wirtPvWp() { return !!window._wirtPvWp; }
+export function wirtPvWpSetzen(an) {
+  window._wirtPvWp = !!an;
+  _wirtPvWpUiSync();
+  calcWirtschaftPanel();
+  if (typeof window.cacheVariantResults === 'function') window.cacheVariantResults();
+  if (typeof window._optPvWpGeaendert === 'function') window._optPvWpGeaendert();
+}
+export function _wirtPvWpUiSync() {
+  document.querySelectorAll('input.wirt-pv-wp').forEach(c => { c.checked = wirtPvWp(); });
+}
+
+/**
+ * PV-Eingaben für _calcKostenShared aus der aktuellen Planung (Strombilanz des Strom-Moduls).
+ * Ohne Schalter { modus: 'aus' } — PV bleibt dann vollständig außerhalb der Wärmekosten.
+ */
+export function pvWaermeEingaben() {
+  if (!wirtPvWp()) return { modus: 'aus' };
+  const b = window._stromBilanz || {};
+  const kwp = b.pvKwp || 0;
+  const auto = document.getElementById('pv-invest-auto')?.checked && typeof CalcEngine !== 'undefined';
+  const invPerKwp = auto ? CalcEngine.getPvInvestPerKwp(kwp) : (parseFloat(document.getElementById('opt-pv-invest')?.value) || OPT_INVEST_DEFAULT.pv);
+  // Batterie nur, wenn sie im Strom-Modul arbeitet (Kapazität und Leistung)
+  const batKwh = (parseFloat(document.getElementById('bat-leistung')?.value) || 0) > 0 ? (parseFloat(document.getElementById('bat-kapazitaet')?.value) || 0) : 0;
+  return {
+    modus: 'wp', kwp, ertragMwh: b.pvErtragMwh || 0, invPerKwp,
+    batKwh, batInvPerKwh: parseFloat(document.getElementById('opt-bat-invest')?.value) || OPT_INVEST_DEFAULT.bat,
+    batLifeYears: batterieLebensdauer(window._batteryAging?.expectedLifeYears), batEntladungMwh: b.batEntladungMwh || 0,
+    zuWpDirektMwh: b.pvZuWpDirektMwh || 0, zuWpBatMwh: b.pvZuWpBatMwh || 0,
+  };
+}
+
+/**
+ * Verrechnungspreise des PV-Stroms für die Wärme (gleiche Formel wie in _calcKostenShared, das ohne Importe
+ * auskommen muss): PV-Gestehungspreis = Annuität + 1 % Betrieb je kWh Ertrag; Batteriestrom zusätzlich
+ * Batterie-Jahreskosten je entladene kWh. Die angerechneten Mengen sind auf den WP-/Stromkessel-Strom begrenzt.
+ */
+export function pvWaermePreise(pv, zinsFrac, wpSkStromMwh) {
+  const leer = { pvCt: 0, batCt: 0, direktMwh: 0, batMwh: 0 };
+  if (!pv || pv.modus !== 'wp' || !(pv.kwp > 0)) return leer;
+  const annF = (z, n) => z > 0 ? z * Math.pow(1 + z, n) / (Math.pow(1 + z, n) - 1) : 1 / n;
+  const pvCt = pv.ertragMwh > 0 ? pv.kwp * (pv.invPerKwp || 1200) * (annF(zinsFrac, 20) + 0.01) / (pv.ertragMwh * 10) : 0;
+  const batCt = pv.batKwh > 0 && pv.batEntladungMwh > 0
+    ? pv.batKwh * (pv.batInvPerKwh || 400) * (annF(zinsFrac, pv.batLifeYears || 15) + 0.01) / (pv.batEntladungMwh * 10) : 0;
+  const direktMwh = Math.min(wpSkStromMwh, pv.zuWpDirektMwh || 0);
+  const batMwh = Math.min(Math.max(0, wpSkStromMwh - direktMwh), pv.zuWpBatMwh || 0);
+  return { pvCt, batCt, direktMwh, batMwh };
 }
 
 /** Bausteine des Wärmenetzes — entfallen bei „nur Wärmeerzeugung“. */
@@ -701,23 +749,24 @@ export function calcWirtschaftPanel() {
   }
 
   // Energiekosten
-  // PV-Eigenverbrauch: WP/SK-Stromkosten anteilig reduzieren (konsistent mit Optimierer)
-  const _bil = window._stromBilanz || {};
-  const _pvEigenMwh = _bil.pvEigenMwh || 0;
-  const _pvEinspMwh = _bil.pvEinspMwh || 0;
-  // Gesamter Strombedarf (WP + SK + Quartier) für anteilige Zuordnung
+  // PV-Strom zählt nur, wenn „PV-Strom für Wärmepumpen anrechnen“ aktiv ist — dann zum PV-Gestehungspreis
+  // (gleiche Regel wie _calcKostenShared, siehe pvWaermePreise)
   let _wpSkElMwh = 0;
   keys.forEach(k => {
     const e = en[k] || {};
     if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') _wpSkElMwh += (e.elMwh || 0);
   });
-  // Übriger Strombedarf wie in der Strombilanz (Upload, Jahressumme, Gebäudedaten, Kälte) — früher fehlten
-  // hier die Gebäudedaten, dann ging der ganze PV-Eigenverbrauch rechnerisch an die Wärmepumpe
-  let _quartierStromMwh = 0;
-  if (Number.isFinite(_bil.quartierMwh)) _quartierStromMwh = _bil.quartierMwh;
-  else if (window.elQuartierH) { for (let t = 0; t < 8760; t++) _quartierStromMwh += window.elQuartierH[t]; _quartierStromMwh /= 1000; }
-  else { const _gebs = typeof gebaeude !== 'undefined' ? gebaeude : []; let _sK = 0; for (const g of _gebs) _sK += parseFloat(g.stromJahr || g.stromkwh || 0); _quartierStromMwh = _sK / 1000; }
-  const _gesamtStromMwh = _wpSkElMwh + _quartierStromMwh;
+  const _zinsFracPv = zins / 100;
+  const _pvW = pvWaermePreise(pvWaermeEingaben(), _zinsFracPv, _wpSkElMwh);
+  const _pvTeil = el => { const a = _wpSkElMwh > 0 ? el / _wpSkElMwh : 0; return { d: _pvW.direktMwh * a, b: _pvW.batMwh * a }; };
+  const _stromKosten = el => {
+    const t = _pvTeil(el);
+    const pvEur = (t.d * _pvW.pvCt + t.b * (_pvW.pvCt + _pvW.batCt)) * 10;
+    return { kosten: Math.max(0, el - t.d - t.b) * pStromWp * 10 + pvEur, pvMwh: t.d + t.b, pvEur };
+  };
+  const _stromDetail = (el, r) => r.pvMwh > 0.1
+    ? `${el.toFixed(0)} MWh Strom: ${(el - r.pvMwh).toFixed(0)} MWh Netz × ${pStromWp} ct + ${r.pvMwh.toFixed(0)} MWh PV × ${(r.pvEur / r.pvMwh / 10).toFixed(1)} ct/kWh`
+    : `${el.toFixed(0)} MWh Strom × ${pStromWp} ct/kWh`;
 
   const energyRows = [];
   const _energieJeErz = {}, _energieJeTraeger = {}, _co2JeErz = {};
@@ -732,14 +781,10 @@ export function calcWirtschaftPanel() {
     const ETA = _getEtaMap();
     const P   = { gaskessel:pGas, heizoel:pHko, pellets:pPk, hhs:pHhs, _autoGk:pGas };
     if (k === 'lwwp' || k === 'fg' || k === 'geo') {
-      // PV-Eigenverbrauchsanteil abziehen (nur Netzbezug kostet)
-      const pvAbzug = _pvEigenMwh > 0 && _gesamtStromMwh > 0 ? _pvEigenMwh * (eMwh / _gesamtStromMwh) : 0;
-      const netzbezugMwh = Math.max(0, eMwh - pvAbzug);
-      kosten = netzbezugMwh * pStromWp * 10;
-      _pvEnergieEur += (eMwh - netzbezugMwh) * pStromWp * 10;
-      detail = pvAbzug > 0.1
-        ? `${eMwh.toFixed(0)} MWh Strom − ${pvAbzug.toFixed(0)} MWh PV = ${netzbezugMwh.toFixed(0)} MWh × ${pStromWp} ct/kWh`
-        : `${eMwh.toFixed(0)} MWh Strom × ${pStromWp} ct/kWh`;
+      const r = _stromKosten(eMwh);
+      kosten = r.kosten;
+      _pvEnergieEur += r.pvMwh * pStromWp * 10 - r.pvEur;   // Entlastung gegenüber Netzbezug
+      detail = _stromDetail(eMwh, r);
     } else if (k === 'fernwaerme') {
       kosten = wMwh * pFw * 10;
       detail = `${wMwh.toFixed(0)} MWh × ${pFw} ct/kWh`;
@@ -755,15 +800,11 @@ export function calcWirtschaftPanel() {
       const _bilHint = (window._stromBilanz?.bhkwEigenMwh > 0 || window._stromBilanz?.bhkwEinspMwh > 0) ? '' : ' ⚠ Eigen/Einsp.=60/40 geschätzt – Strom-Panel für genaue Werte';
       detail = `Gas: ${gasVerb.toFixed(0)} MWh × ${pGas} ct − Strom-Erlös: ${Math.round(stromErl).toLocaleString('de-DE')} €${_bilHint}`;
     } else if (k === 'stromkessel') {
-      // PV-Eigenverbrauchsanteil abziehen (η ≈ 1.0 → wMwh ≈ eMwh)
-      const skElMwh = eMwh > 0.1 ? eMwh : wMwh;
-      const pvAbzugSk = _pvEigenMwh > 0 && _gesamtStromMwh > 0 ? _pvEigenMwh * (skElMwh / _gesamtStromMwh) : 0;
-      const skNetzbezug = Math.max(0, skElMwh - pvAbzugSk);
-      kosten = skNetzbezug * pStromWp * 10;
-      _pvEnergieEur += (skElMwh - skNetzbezug) * pStromWp * 10;
-      detail = pvAbzugSk > 0.1
-        ? `${skElMwh.toFixed(0)} MWh Strom − ${pvAbzugSk.toFixed(0)} MWh PV = ${skNetzbezug.toFixed(0)} MWh × ${pStromWp} ct/kWh`
-        : `${wMwh.toFixed(0)} MWh Strom × ${pStromWp} ct/kWh`;
+      const skElMwh = eMwh > 0.1 ? eMwh : wMwh;   // η ≈ 1
+      const r = _stromKosten(skElMwh);
+      kosten = r.kosten;
+      _pvEnergieEur += r.pvMwh * pStromWp * 10 - r.pvEur;
+      detail = _stromDetail(skElMwh, r);
     } else if (ETA[k]) {
       const verb = wMwh / ETA[k];
       kosten = verb * P[k] * 10;
@@ -826,9 +867,9 @@ export function calcWirtschaftPanel() {
       } else if (cfg.typ === 'strom') {
         const eMwh = e.elMwh || 0;
         if (eMwh < 0.1) return;
-        // PV-Eigenverbrauchsanteil abziehen — nur Netzbezug verursacht CO2
-        const _pvAnteilCo2 = _pvEigenMwh > 0 && _gesamtStromMwh > 0 ? _pvEigenMwh * (eMwh / _gesamtStromMwh) : 0;
-        const _netzbezugCo2 = Math.max(0, eMwh - _pvAnteilCo2);
+        // nur Netzbezug verursacht CO₂ — angerechneter PV-Strom nicht
+        const _pvT = _pvTeil(eMwh);
+        const _netzbezugCo2 = Math.max(0, eMwh - _pvT.d - _pvT.b);
         tCo2 = _netzbezugCo2 * (cfg.emf / 1e6) * 1e3;
         _pvCo2Eur += (eMwh - _netzbezugCo2) * (cfg.emf / 1e6) * 1e3 * pCo2;
       }
@@ -840,47 +881,9 @@ export function calcWirtschaftPanel() {
         detail: `${alleET ? 'alle Energieträger inkl. WP-Strom' : 'nur fossile Brennstoffe'} × ${pCo2} €/t`, color: '#f9a825' });
     }
   }
-  // PV + Batterie: Investitionskosten und Einspeisevergütung (konsistent mit Optimierer)
-  let pvJk = 0, pvInvestGes = 0, _pvQuartierMwh = 0;
-  const _pvKwp = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
-  const _batKwh = parseFloat(document.getElementById('bat-kapazitaet')?.value) || 0;
-  if (_pvKwp > 0 || _batKwh > 0) {
-    const _zinsFrac = zins / 100;
-    const _annF = (z, n) => z > 0 ? z * Math.pow(1+z,n) / (Math.pow(1+z,n)-1) : 1/n;
-    if (_pvKwp > 0) {
-      const pvAutoChk = document.getElementById('pv-invest-auto');
-      let pvInvPerKwp;
-      if (pvAutoChk?.checked && typeof CalcEngine !== 'undefined') {
-        pvInvPerKwp = CalcEngine.getPvInvestPerKwp(_pvKwp);
-      } else {
-        pvInvPerKwp = parseFloat(document.getElementById('opt-pv-invest')?.value) || OPT_INVEST_DEFAULT.pv;
-      }
-      const pvInvEuro = _pvKwp * pvInvPerKwp;
-      pvInvestGes += pvInvEuro;
-      pvJk += pvInvEuro * (_annF(_zinsFrac, OPT_NUTZUNG.pv) + OPT_IH.pv);
-      // Einspeisevergütung
-      if (_pvEinspMwh > 0.01) {
-        const pEinspEff = parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8;
-        pvJk -= _pvEinspMwh * pEinspEff * 10;
-      }
-      // PV-Eigenverbrauch der Gebäude: vermiedener Netzbezug zum allgemeinen Strompreis (wie _calcKostenShared)
-      _pvQuartierMwh = _pvEigenMwh > 0 && _gesamtStromMwh > 0 ? _pvEigenMwh * _quartierStromMwh / _gesamtStromMwh : 0;
-      pvJk -= _pvQuartierMwh * pStrom * 10;
-    }
-    if (_batKwh > 0) {
-      const batInvEuro = _batKwh * (parseFloat(document.getElementById('opt-bat-invest')?.value) || OPT_INVEST_DEFAULT.bat);
-      pvInvestGes += batInvEuro;
-      pvJk += batInvEuro * (_annF(_zinsFrac, batterieLebensdauer(window._batteryAging?.expectedLifeYears)) + OPT_IH.bat);
-    }
-    if (Math.abs(pvJk) > 1) {
-      energyRows.push({ label: 'PV/Batterie', kosten: pvJk,
-        detail: (pvJk > 0
-          ? `Annuität ${Math.round(pvInvestGes).toLocaleString('de-DE')} € Invest − Einsp. ${_pvEinspMwh.toFixed(0)} MWh`
-          : `Einsp.-Vergütung und Eigenverbrauch übersteigen Annuität (Netto-Gutschrift)`)
-          + (_pvQuartierMwh > 0.5 ? ` − Eigenverbrauch Gebäude ${_pvQuartierMwh.toFixed(0)} MWh × ${pStrom} ct/kWh` : ''),
-        color: '#ffd54f' });
-    }
-  }
+  // PV und Batterie sind keine Wärmeerzeuger: keine Investition und keine Einspeiseerlöse in der WGK.
+  // Mit „PV-Strom für Wärmepumpen anrechnen“ steckt ihr Beitrag im Strompreis der WP-Zeilen (PV-Gestehungspreis).
+  const pvJk = 0, pvInvestGes = 0;
 
   const gesamtEnergieMitCo2 = energyRows.reduce((s, r) => s + r.kosten, 0);
 

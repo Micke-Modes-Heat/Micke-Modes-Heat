@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { optKombinationen, optKonzeptSchluessel, optEinspeiseCt, optMusterSuche, optSuchraum, optGrobPunkte, optRasterStufen } from '../src/lib/optimierer-suche.js';
+import { optKombinationen, optKonzeptSchluessel, optMusterSuche, optSuchraum, optGrobPunkte, optRasterStufen } from '../src/lib/optimierer-suche.js';
 
 const TYPEN = { lwwp: 'wp', fg: 'wp', geo: 'wp', gaskessel: 'fix', pellets: 'fix', bhkw: 'kwk', heizoel: 'fix' };
 const MERIT = ['bhkw', 'geo', 'fg', 'lwwp', 'pellets', 'hhs', 'stromkessel', 'fernwaerme', 'gaskessel', 'heizoel'];
@@ -17,26 +17,6 @@ describe('optKonzeptSchluessel', () => {
   });
   it('ohne Restwärme kein Gaskessel', () => {
     expect(optKonzeptSchluessel(['pellets'], 0.01, 50)).toBe('pellets');
-  });
-});
-
-describe('optEinspeiseCt', () => {
-  const tiers = [{ upToKwp: 10, ctPerKwh: 7.78 }, { upToKwp: 40, ctPerKwh: 6.73 }, { upToKwp: 100, ctPerKwh: 5.5 }];
-  const ersatz = [{ upToKwp: 10, ctPerKwh: 8.18 }, { upToKwp: 40, ctPerKwh: 7.13 }, { upToKwp: 1000, ctPerKwh: 5.9 }];
-  it('fester Satz bei manueller Annahme', () => {
-    expect(optEinspeiseCt({ flat: 7.78 }, 2000)).toBe(7.78);
-  });
-  it('Staffel innerhalb des Modells, leistungsgewichtet', () => {
-    expect(optEinspeiseCt({ tiers, ersatz }, 10)).toBeCloseTo(7.78, 6);
-    expect(optEinspeiseCt({ tiers, ersatz }, 40)).toBeCloseTo((10 * 7.78 + 30 * 6.73) / 40, 6);
-  });
-  it('oberhalb der Modellgrenze Marktprämie, oberhalb 1 MWp deren letzter Satz', () => {
-    const r500 = optEinspeiseCt({ tiers, ersatz }, 500);
-    expect(r500).toBeLessThan(6.5);
-    expect(optEinspeiseCt({ tiers, ersatz }, 2000)).toBe(5.9);
-  });
-  it('bereits geplante PV zählt für die Staffel mit', () => {
-    expect(optEinspeiseCt({ tiers, ersatz, offsetKwp: 30 }, 10)).toBeCloseTo(optEinspeiseCt({ tiers, ersatz }, 40), 6);
   });
 });
 
@@ -75,6 +55,11 @@ describe('optSuchraum / optGrobPunkte', () => {
     const k = r.kombis.find(kk => kk.keys.join('+') === 'lwwp+pellets');
     expect(k.backupIdx).toBe(1);
     expect(k.grenzen[1]).toEqual({ lo: 1, hi: 1 });
+  });
+  it('Wärmepumpen dürfen bis 2 × Spitzenlast groß werden (Kälteeinbußen), Kessel bis 1,2 ×', () => {
+    const r = optSuchraum({ aktiv: ['lwwp', 'pellets', 'gaskessel'], constraints: {}, jahr: 2026, peak: 1000, typen: TYPEN, meritOrder: MERIT });
+    expect(r.kombis.find(k => k.keys.join('+') === 'lwwp').grenzen[0].hi).toBe(2000);
+    expect(r.kombis.find(k => k.keys.join('+') === 'pellets').grenzen[0].hi).toBe(1200);
   });
   it('Min/Max-Leistungen und Bis-Jahr', () => {
     const constraints = { lwwp: { minKw: 300, maxKw: 600, bisJahr: 2030 } };

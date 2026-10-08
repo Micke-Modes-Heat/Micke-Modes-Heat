@@ -17,7 +17,7 @@ import { getKostenProMKlasse, updateLpErgebnisKpis, updateLpStepProgress } from 
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
 import { clearSolarthermie, clearThermSpeicher, getThermSpeicherParams, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
 import { _dispatchCore, autoGkResult, isErzeugerAktiv, meritOrderKeys, onSystemStateUpdated, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
-import { _calcKostenShared, _parseGeoBohrMeter, batterieLebensdauer } from './07b-analysis-economics.js';
+import { _calcKostenShared, _parseGeoBohrMeter, batterieLebensdauer, pvWaermeEingaben, wirtPvWp } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
@@ -33,8 +33,7 @@ import { _quelleTemp } from './06c-dispatch-core.js';
 import { OPT_EE_KEYS, OPT_IH, OPT_MERIT_ORDER, OPT_NUTZUNG } from './config/optimizer-defaults.js';
 import { pvBatteryStep } from './lib/pv-battery-core.js';
 import { estimateBatteryAging } from './lib/battery-aging.js';
-import { optEinspeiseCt, optGrobPunkte, optRasterStufen, optSuchraum } from './lib/optimierer-suche.js';
-import { DEFAULT_PV_TARIFF_SCENARIO_ID, PV_TARIFF_SCENARIOS } from './config/tariff-scenarios.js';
+import { optGrobPunkte, optRasterStufen, optSuchraum } from './lib/optimierer-suche.js';
 
 // Zahlenfeld lesen, 0 ist ein gültiger Wert (||-Fallback würde ihn verschlucken)
 function _zahlOder(id, def) { const v = parseFloat(document.getElementById(id)?.value); return Number.isFinite(v) ? v : def; }
@@ -137,7 +136,10 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
 }
 
 // ── PV/Bat stündliche Simulation ──────────────────────────────────────────
-export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
+// wpSkH (optional): stündlicher Strombedarf von WP und Stromkessel — dann wird der PV-Strom an diese Verbraucher
+// mitgezählt (direkt bzw. über die Batterie), Grundlage für „PV-Strom für Wärmepumpen anrechnen“.
+// batLeistKwIn / spezIn (optional): Batterieleistung und spez. PV-Ertrag der Planung statt C/2 bzw. pv-spez.
+export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult, wpSkH = null, batLeistKwIn = null, spezIn = null) {
   const hasBhkw = bhkwElH && bhkwElH.some(v => v > 0);
   if (pvKwp <= 0 && !hasBhkw) {
     let sumDem = 0;
@@ -147,9 +149,10 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
   }
 
   const pvProfile = window._optCachedPvProfile || ((typeof makePvProfile8760 === 'function') ? makePvProfile8760() : null);
-  const spez = parseFloat(document.getElementById('pv-spez')?.value) || 1000;
+  const spez = spezIn || parseFloat(document.getElementById('pv-spez')?.value) || 1000;
   const ETA_BAT = 0.90;
-  const batLeistKw = batKwh > 0 ? batKwh / 2 : 0; // C/2 Rate
+  const batLeistKw = batKwh > 0 ? (batLeistKwIn > 0 ? batLeistKwIn : batKwh / 2) : 0; // sonst C/2
+  let zuWpDirekt = 0, zuWpBat = 0;
 
   let sv = 0, ins = 0, bez = 0, soc = 0, socPv = 0, socBhkw = 0;
   let pvEig = 0, pvEinsp = 0, bhkwEig = 0, bhkwEinsp = 0;
@@ -200,11 +203,17 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
     bhkwEig += (step.bhkwDirectKwh + step.bhkwDischargedKwh) / 1000;
     pvEinsp += (rGen / 1000) * pvFrac;
     bhkwEinsp += (rGen / 1000) * (1 - pvFrac);
+    if (wpSkH && dem > 0) {
+      const anteil = Math.min(1, wpSkH[t] / dem);
+      zuWpDirekt += step.pvDirectKwh * anteil / 1000 + pvWpSpeicher;
+      zuWpBat += step.pvDischargedKwh * anteil / 1000;
+    }
   }
 
   return { eigenMwh: sv / 1000 + pvWpSpeicherGes, einspeiseMwh: ins / 1000, netzbezugMwh: bez / 1000,
            pvEigenMwh: pvEig, pvEinspMwh: pvEinsp, bhkwEigenMwh: bhkwEig, bhkwEinspMwh: bhkwEinsp,
-           pvWpSpeicherMwh: pvWpSpeicherGes, batDischargeMwh:batDischargeKwh/1000 };
+           pvWpSpeicherMwh: pvWpSpeicherGes, batDischargeMwh:batDischargeKwh/1000,
+           pvErtragMwh: pvKwp * spez / 1000, zuWpDirektMwh: zuWpDirekt, zuWpBatMwh: zuWpBat };
 }
 
 // _calcBausteinKostenOpt ENTFERNT — nutzt jetzt _calcKostenShared
@@ -245,15 +254,6 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
   else if (window.elQuartierH) { for (let t = 0; t < 8760; t++) quartierStromMwh += window.elQuartierH[t]; quartierStromMwh /= 1000; }
   else { const gebs = typeof gebaeude !== 'undefined' ? gebaeude : []; let s = 0; for (const g of gebs) s += parseFloat(g.stromJahr || g.stromkwh || 0); quartierStromMwh = s / 1000; }
 
-  // PV-Daten
-  const pvEigenMwh = pvBatResult ? (pvBatResult.pvEigenMwh != null ? pvBatResult.pvEigenMwh : pvBatResult.eigenMwh) : 0;
-  const pvEinspMwh = pvBatResult ? (pvBatResult.pvEinspMwh != null ? pvBatResult.pvEinspMwh : pvBatResult.einspeiseMwh) : 0;
-  const gesamtEigenMwh = pvBatResult ? (pvBatResult.eigenMwh || 0) : 0;
-  const pvAutoChk = document.getElementById('pv-invest-auto');
-  let pvInvPerKwp = OPT_INVEST_DEFAULT.pv;
-  if (pvAutoChk?.checked && typeof CalcEngine !== 'undefined') pvInvPerKwp = CalcEngine.getPvInvestPerKwp(pvKwp);
-  else pvInvPerKwp = parseFloat(document.getElementById('opt-pv-invest')?.value) || OPT_INVEST_DEFAULT.pv;
-
   // ErzList mit typ ergänzen
   const erzListTyped = erzeugerList.map(e => ({
     key: e.key, waermeMwh: e.waermeMwh, elMwh: e.elMwh,
@@ -264,9 +264,6 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
   // BHKW-Erlös-Daten
   const bhkwEigMwh = pvBatResult ? (pvBatResult.bhkwEigenMwh || 0) : 0;
   const bhkwEinspMwh = pvBatResult ? (pvBatResult.bhkwEinspMwh || 0) : 0;
-  const batAging = batKwh > 0 ? estimateBatteryAging({capacityKwh:batKwh,annualDischargeKwh:(pvBatResult?.batDischargeMwh||0)*1000,
-    calendarFadePctPerYear:_zahlOder('bat-calendar-fade', 1.5),
-    cycleLife:parseFloat(document.getElementById('bat-cycle-life')?.value)||6000,eolCapacityPct:parseFloat(document.getElementById('bat-eol-pct')?.value)||80,studyYears:20}) : null;
 
   const result = _calcKostenShared({
     pKw: _bPKw,
@@ -293,16 +290,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
       tsTyp: document.getElementById('ts-typ')?.value || 'puffer',
       tsDt: parseFloat(document.getElementById('ts-dt')?.value) || 40,
     },
-    pv: {
-      kwp: pvKwp, batKwh: batKwh,
-      eigenMwh: pvEigenMwh, einspMwh: pvEinspMwh,
-      gesamtEigenMwh: gesamtEigenMwh,
-      invPerKwp: pvInvPerKwp,
-      batInvPerKwh: parseFloat(document.getElementById('opt-bat-invest')?.value) || OPT_INVEST_DEFAULT.bat,
-      batLifeYears: batterieLebensdauer(batAging?.expectedLifeYears),
-      // Vergütung passend zur Anlagengröße dieser Variante (wie im Worker)
-      pEinsp: optEinspeiseCt(_optPvEinspDesc(), pvKwp)
-    },
+    pv: _optPvObjekt(pvKwp, batKwh, pvBatResult),
     strom: {
       quartierMwh: quartierStromMwh,
       bhkwEigenMwh: bhkwEigMwh, bhkwEinspMwh: bhkwEinspMwh,
@@ -326,17 +314,36 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
     stMwh: stWaermeMwhOpt || 0
   });
 
-  // Debug
-
-  const spez = parseFloat(document.getElementById('pv-spez')?.value) || 1000;
-  const pvErtragMwh = pvKwp * spez / 1000;
-
   return {
     wgk: result.wgk, co2ta: result.co2ta, eeAnteil: result.eeAnteil,
     stromAutarkie: result.stromAutarkie, waermeAutarkie: result.waermeAutarkie,
     investGesamt: result.investGesamt, jahreskosten: result.jahreskosten,
-    pvEigenMwh: pvEigenMwh, pvErtragMwh: pvErtragMwh
+    pvErtragMwh: pvBatResult?.pvErtragMwh || 0, pvZuWpMwh: result.pvZuWpMwh, pvCt: result.pvCt,
   };
+}
+
+/**
+ * PV-Eingaben der Optimierung: PV und Batterie wie in der Planung (nicht optimiert); angerechnet wird nur der
+ * PV-Strom an WP/Stromkessel aus der Stundensimulation dieser Variante — wie pvWaermeEingaben() im Panel.
+ */
+function _optPvObjekt(pvKwp, batKwh, r) {
+  if (!wirtPvWp() || !(pvKwp > 0)) return { modus: 'aus' };
+  const plan = pvWaermeEingaben();
+  const aging = batKwh > 0 ? estimateBatteryAging({ capacityKwh: batKwh, annualDischargeKwh: (r?.batDischargeMwh || 0) * 1000,
+    calendarFadePctPerYear: _zahlOder('bat-calendar-fade', 1.5), cycleLife: parseFloat(document.getElementById('bat-cycle-life')?.value) || 6000,
+    eolCapacityPct: parseFloat(document.getElementById('bat-eol-pct')?.value) || 80, studyYears: 20 }) : null;
+  return { ...plan, kwp: pvKwp, batKwh, ertragMwh: r?.pvErtragMwh ?? plan.ertragMwh,
+    batEntladungMwh: r?.batDischargeMwh || 0, batLifeYears: batterieLebensdauer(aging?.expectedLifeYears),
+    zuWpDirektMwh: r?.zuWpDirektMwh || 0, zuWpBatMwh: r?.zuWpBatMwh || 0 };
+}
+
+/** PV und Batterie der Planung für die Optimierung (nur mit „PV-Strom für Wärmepumpen anrechnen“). */
+export function _optPvPlan() {
+  if (!wirtPvWp()) return { kwp: 0, batKwh: 0, batKw: 0, spez: 0 };
+  const b = window._stromBilanz || {};
+  const batKw = parseFloat(document.getElementById('bat-leistung')?.value) || 0;
+  return { kwp: Math.round(b.pvKwp || 0), batKwh: batKw > 0 ? Math.round(parseFloat(document.getElementById('bat-kapazitaet')?.value) || 0) : 0,
+    batKw, spez: b.pvSpez || 0 };
 }
 
 // ── Score-Berechnung je Optimierungsziel ──────────────────────────────────
@@ -432,7 +439,7 @@ export function _optUpdateEstimate() {
   let punkte = 0;
   for (const k of raum.kombis) punkte += optGrobPunkte(k.grenzen, stufen, 1000).length;
   const mult = (document.getElementById('opt-cand-st')?.checked ? 2 : 1) * (document.getElementById('opt-cand-ts')?.checked ? 2 : 1);
-  const pvN = document.getElementById('opt-cand-pv')?.checked ? (document.getElementById('opt-cand-bat')?.checked ? 4 : 3) : 1;
+  const pvN = wirtPvWp() ? 1 : 0;
   // ~0,25 ms je Einsatzplanung, ~0,2 ms je PV/Batterie-Bewertung (gemessen); Kerne parallel
   const kerne = Math.max(1, Math.min((navigator.hardwareConcurrency || 4) - 1, 8));
   const grobSek = punkte * mult * (0.25 + pvN * 0.2) / 1000 / kerne;
@@ -444,7 +451,7 @@ export function _optUpdateEstimate() {
 }
 
 /** Anzahl der Anlagenkonzepte, die in die Feinsuche gehen, und deren Bewertungsbudget je Qualität. */
-export const OPT_FEIN_ANZAHL = { schnell: 4, standard: 6, gruendlich: 10 };
+export const OPT_FEIN_ANZAHL = { schnell: 5, standard: 8, gruendlich: 12 };
 export const OPT_FEIN_EVALS = { schnell: 150, standard: 350, gruendlich: 700 };
 
 // Event-Listener für Kandidaten-Checkboxen → Schätzung aktualisieren
@@ -498,17 +505,6 @@ export function _collectOptDomParams() {
       investKurven[optKey] = pts;
     }
   }
-  // PV-Invest: Auto vs manuell
-  let pvInvestMode = 'manual';
-  let pvInvestManual = f('opt-pv-invest', OPT_INVEST_DEFAULT.pv);
-  const pvAutoChk = document.getElementById('pv-invest-auto');
-  if (pvAutoChk?.checked && typeof CalcEngine !== 'undefined') {
-    pvInvestMode = 'auto';
-  }
-  // PV-Invest-Tabelle für den Auto-Modus — dieselbe wie CalcEngine.getPvInvestPerKwp
-  const pvInvestTabelle = (typeof CalcEngine !== 'undefined' && CalcEngine.PV_INVEST_TABELLE)
-    ? CalcEngine.PV_INVEST_TABELLE.map(r => ({ kwp: r.kwp, eurKwp: r.eurKwp }))
-    : [{ kwp: 5, eurKwp: pvInvestManual }];
   return {
     bhkwSkz: f('bhkw-skz', 0.45), skEta: f('sk-eta', 99) / 100, lwwpMinCop: f('lwwp-min-cop', 0),
     geoDtAbsenkung: f('geo-dt-absenkung', 0),
@@ -519,16 +515,18 @@ export function _collectOptDomParams() {
     etaGk: f('gk-eta', 92) / 100, etaHko: f('hko-eta', 90) / 100,
     etaPk: f('pk-eta', 88) / 100, etaHhs: f('hhs-eta', 85) / 100,
     etaBhkw: f('bhkw-eta', 88) / 100,
-    pvSpez: f('pv-spez', 1000), stSpez: f('st-spez', 400),
+    // spez. PV-Ertrag und Batterieleistung wie in der Strombilanz der Planung
+    pvSpez: _optPvPlan().spez || f('pv-spez', 1000), batKw: _optPvPlan().batKw, stSpez: f('st-spez', 400),
     guetegrade,
-    investKurven, pvInvestMode, pvInvestManual,
-    pvInvestTabelle,
+    investKurven,
     batInvest: f('opt-bat-invest', OPT_INVEST_DEFAULT.bat),
     batCalendarFade: _zahlOder('bat-calendar-fade', 1.5),
     batLife: f('opt-bat-life', OPT_NUTZUNG.bat),
     batCycleLife: f('bat-cycle-life', 6000),
     batEolPct: f('bat-eol-pct', 80),
-    pvEinsp: _optPvEinspDesc(),
+    // „PV-Strom für Wärmepumpen anrechnen“: PV/Batterie der Planung, PV-Preisbasis wie im Panel
+    pvWp: wirtPvWp(),
+    pvInvPerKwpPlan: wirtPvWp() ? pvWaermeEingaben().invPerKwp : 0,
     // Emissionsfaktoren
     stromEmF: typeof stromEmF !== 'undefined' ? stromEmF : 363,
     gasEmF: typeof gasEmF !== 'undefined' ? gasEmF : 240,
@@ -554,50 +552,6 @@ export function _collectOptDomParams() {
     netzInvest: _calcNetzInvestForOpt(),
     ohneNetz: !!window._wirtOhneNetz,
   };
-}
-
-/**
- * Einspeisevergütung als Funktion der PV-Größe (für optEinspeiseCt). Mit Tarifmodell
- * (Teil-/Volleinspeisung, Marktprämie) gilt die EEG-Staffel des gewählten Tarifstands
- * für die gesamte PV des Projekts; oberhalb der Modellgrenze das Marktprämienmodell
- * (Direktvermarktung ab 100 kWp). Manuell/Ausschreibung: der eingetragene Satz.
- */
-export function _optPvEinspDesc() {
-  const feld = parseFloat(document.getElementById('strom-preis-einsp')?.value);
-  const flat = { flat: Number.isFinite(feld) ? feld : 8 };
-  const modell = document.getElementById('pv-verg-modell')?.value || 'teil';
-  const szenId = document.getElementById('pv-tarif-szenario')?.value || DEFAULT_PV_TARIFF_SCENARIO_ID;
-  const szen = PV_TARIFF_SCENARIOS[szenId];
-  const tarif = szen?.tariffs?.[modell];
-  if (!tarif || modell === 'manuell') return flat;
-  // wie onPvVergModellChange: Gebäude-PV und Freiflächen zählen für die Staffel mit
-  // (über window — ein statischer Import aus 03a/03c verschiebt die Modul-Ladereihenfolge)
-  const geb = typeof gebaeude !== 'undefined' ? gebaeude : [];
-  const gebKwp = typeof window.calcGebKwp === 'function' ? window.calcGebKwp : () => 0;
-  const ffKwp = typeof window.calcFFKwp === 'function' ? window.calcFFKwp : () => 0;
-  const offsetKwp = geb.reduce((sum, g) => sum + (g.pvAktiv ? gebKwp(g) : 0), 0)
-    + (window.freiflaechen || []).reduce((sum, ff) => sum + (ffKwp(ff) || 0), 0);
-  return {
-    tiers: tarif.tiers.map(t => ({ upToKwp: t.upToKwp, ctPerKwh: t.ctPerKwh })),
-    ersatz: (szen.tariffs.markt?.tiers || tarif.tiers).map(t => ({ upToKwp: t.upToKwp, ctPerKwh: t.ctPerKwh })),
-    offsetKwp,
-  };
-}
-
-/**
- * Obergrenze der PV in der Optimierung: eigener Max-Wert, sonst das PV-Potenzial des
- * Projekts (PV-Modul: Dächer/Belegungsstand, PV-Assets, Freiflächen — ohne die manuelle
- * PV im Strom-Panel, die die Optimierung selbst setzt). quelle: 'max' | 'potenzial' | 'schaetzung'.
- */
-export function _optPvGrenze(maxKw, stromMwhSchaetz, pvSpez) {
-  if (maxKw > 0) return { kwp: Math.round(maxKw), quelle: 'max' };
-  let pot = 0;
-  try { pot = typeof window.pvGetMaxKwpFromAssets === 'function' ? window.pvGetMaxKwpFromAssets() : 0; } catch (e) { pot = 0; }
-  const override = window._pvAnalyse?.pvMaxKwpOverride || 0;
-  if (!(override > 0)) pot -= parseFloat(document.getElementById('pv-kwp')?.value) || 0;
-  if (pot > 1) return { kwp: Math.round(pot), quelle: 'potenzial' };
-  // ohne erfasstes Potenzial: Jahresstrombedarf als Ertrag (Eigenverbrauch begrenzt das Optimum ohnehin)
-  return { kwp: Math.max(50, Math.round(stromMwhSchaetz * 1000 / (pvSpez || 1000))), quelle: 'schaetzung' };
 }
 
 export function _optVarianteUebernehmen(result, btnEl, _transactionActive = false) {
@@ -780,21 +734,6 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
     if (typeof updateThermSpeicherDisplay === 'function') updateThermSpeicherDisplay();
   } else {
     if (typeof clearThermSpeicher === 'function') clearThermSpeicher();
-  }
-
-  // PV + Batterie genau so übernehmen, wie die Variante bewertet wurde — auch 0 (sonst bliebe
-  // eine frühere Zusatz-PV stehen); Batterieleistung wie in der Optimierung = halbe Kapazität
-  const pvEl = document.getElementById('pv-kwp');
-  if (pvEl) pvEl.value = (result.pvKwp || 0).toFixed(1);
-  const batEl = document.getElementById('bat-kapazitaet');
-  if (batEl) batEl.value = (result.batKwh || 0).toFixed(1);
-  const batKwEl = document.getElementById('bat-leistung');
-  if (batKwEl) batKwEl.value = ((result.batKwh || 0) / 2).toFixed(1);
-  // Einspeisevergütung so setzen, wie die Optimierung sie für diese Anlagengröße angesetzt hat
-  if (result.pvKwp > 0) {
-    const desc = _optPvEinspDesc();
-    const einspEl = document.getElementById('strom-preis-einsp');
-    if (einspEl && desc.flat == null) einspEl.value = optEinspeiseCt(desc, result.pvKwp).toFixed(2);
   }
 
   // Einmal am Ende: Icons aktualisieren

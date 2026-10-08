@@ -46,34 +46,34 @@ function jahr() {
   return { tempH, vlH, last, pv, q };
 }
 
-function dom(pvEinsp, pvInvest) {
+function dom(pvWp = false, pvInvest = 900) {
   const typen = {}; for (const [k, v] of Object.entries(ERZEUGER_CFG)) typen[k] = v.typ;
   return {
     bhkwSkz: 0.45, skEta: 0.99, lwwpMinCop: 0, geoDtAbsenkung: 0, geoTiefe: 100, geoQPerM: 31,
     tsDt: 40, tsVerlust: 0.5, tsEntladeKw: 200, tsLadeKw: 200, tsTyp: 'puffer',
     etaGk: 0.92, etaHko: 0.9, etaPk: 0.88, etaHhs: 0.85, etaBhkw: 0.88, pvSpez: 950, stSpez: 400,
-    guetegrade: { lwwp: 0.42, fg: 0.56, geo: 0.5 }, investKurven: {}, pvInvestMode: 'manual', pvInvestManual: pvInvest,
-    pvInvestTabelle: [{ kwp: 5, eurKwp: pvInvest }], batInvest: 400, batCalendarFade: 1.5, batCycleLife: 6000, batEolPct: 80,
-    pvEinsp, stromEmF: 363, gasEmF: 240, heizoelEmF: 310, pelletsEmF: 20, hhsEmF: 20, fernwaermeEmF: 180,
+    guetegrade: { lwwp: 0.42, fg: 0.56, geo: 0.5 }, investKurven: {}, pvWp, pvInvPerKwpPlan: pvInvest, batKw: 0,
+    batInvest: 400, batCalendarFade: 1.5, batCycleLife: 6000, batEolPct: 80, batLife: 15,
+    stromEmF: 363, gasEmF: 240, heizoelEmF: 310, pelletsEmF: 20, hhsEmF: 20, fernwaermeEmF: 180,
     pCo2: 0, co2Alle: true, bhkwGutschrift: false, verdraengungEf: 400,
     OPT_INVEST_DEFAULT: { ...OPT_INVEST_DEFAULT }, OPT_NUTZUNG: { ...OPT_NUTZUNG }, OPT_IH: { ...OPT_IH },
     ERZEUGER_TYP: typen, lohn: 45, bohrMeter: 0, nGeb: 0, netzInvest: 0, ohneNetz: false,
   };
 }
 
-function lauf({ aktiv, pvEinsp, pvInvest = 900, pvHi = 400, mode = 'full', seeds, zusatzSeeds }) {
+function lauf({ aktiv, pvWp = false, pvInvest = 900, pvKwp = 0, mode = 'full', seeds, zusatzSeeds }) {
   const J = jahr();
   let peak = 0; for (const v of J.last) peak = Math.max(peak, v);
   const raum = optSuchraum({ aktiv, constraints: {}, jahr: 2026, peak, typen: dom().ERZEUGER_TYP, meritOrder: OPT_MERIT_ORDER });
   const kombis = raum.kombis.map(k => ({ ...k, punkte: optGrobPunkte(k.grenzen, optRasterStufen('schnell'), peak) }));
   const suche = { peak, backupMode: raum.backupMode, gasImplizit: raum.gasImplizit, kombis,
-    pv: { lo: 0, hi: pvHi }, bat: { lo: 0, hi: 0 }, st: { lo: 0, hi: 0 }, ts: { lo: 0, hi: 0 },
+    pv: { lo: pvKwp, hi: pvKwp }, bat: { lo: 0, hi: 0 }, st: { lo: 0, hi: 0 }, ts: { lo: 0, hi: 0 },
     gasMaxKw: 0, minSchrittErz: Math.max(1, Math.round(peak * 0.005)), maxEvalFein: 250, anzahlFein: 4 };
   const msgs = [];
   const ctx = { self: { postMessage: m => msgs.push(m) }, Math, Float32Array, Map, Set, Number, Infinity, Object, Array, Date, isFinite, console };
   runInNewContext(_buildOptWorkerCode(), ctx);
   ctx.self.onmessage({ data: {
-    mode, dom: dom(pvEinsp, pvInvest), suche, ziel: 'min-wgk', seeds, zusatzSeeds,
+    mode, dom: dom(pvWp, pvInvest), suche, ziel: 'min-wgk', seeds, zusatzSeeds,
     params: { pStrom: 30, pStromWp: 25, pGas: 9, pPk: 7, pHhs: 5, pHko: 10, pFw: 15, pBhkwEinsp: 8, pBhkwKwkE: 8, pBhkwKwkEig: 4, zinssatz: 0.035 },
     lastgangKw: J.last, tempH: J.tempH, vlH: J.vlH, pvProfile: J.pv, stNormProfile: null, quartierH: J.q,
   } });
@@ -82,7 +82,7 @@ function lauf({ aktiv, pvEinsp, pvInvest = 900, pvHi = 400, mode = 'full', seeds
 
 describe('Optimierer-Worker: vollständiger Lauf', () => {
   it('jedes Anlagenkonzept nur einmal, Gaskessel nie doppelt', () => {
-    const { done } = lauf({ aktiv: ['lwwp', 'gaskessel', 'pellets'], pvEinsp: { flat: 6 } });
+    const { done } = lauf({ aktiv: ['lwwp', 'gaskessel', 'pellets'] });
     const kanons = done.topFein.map(r => r.kanon);
     expect(new Set(kanons).size).toBe(kanons.length);
     expect(kanons.filter(k => k === 'gaskessel+lwwp').length).toBeLessThanOrEqual(1);
@@ -91,7 +91,7 @@ describe('Optimierer-Worker: vollständiger Lauf', () => {
   }, 60000);
 
   it('Feinsuche ist nie schlechter als der beste Grobpunkt ihres Konzepts', () => {
-    const { done } = lauf({ aktiv: ['lwwp', 'gaskessel'], pvEinsp: { flat: 6 } });
+    const { done } = lauf({ aktiv: ['lwwp', 'gaskessel'] });
     for (const r of done.topFein) {
       const grob = Math.min(...done.grobResults.filter(g => g.kanon === r.kanon).map(g => g.score));
       expect(r.score).toBeLessThanOrEqual(grob + 1e-9);
@@ -99,7 +99,7 @@ describe('Optimierer-Worker: vollständiger Lauf', () => {
   }, 60000);
 
   it('Ausgangsplanung als Startpunkt: Ergebnis mindestens so gut wie die Planung', () => {
-    const { done } = lauf({ aktiv: ['lwwp', 'gaskessel'], pvEinsp: { flat: 6 }, mode: 'fein',
+    const { done } = lauf({ aktiv: ['lwwp', 'gaskessel'], mode: 'fein',
       seeds: [{ keys: ['lwwp'], x: [173, 37, 0, 0, 0], kanon: null, ausgangsplanung: true }] });
     const r = done.topFein[0];
     expect(r.ausgangsplanung).toBe(true);
@@ -107,22 +107,23 @@ describe('Optimierer-Worker: vollständiger Lauf', () => {
     expect(r.score).toBeLessThanOrEqual(r.start.score);
   }, 60000);
 
-  it('PV: über den Gestehungskosten vergütet → bis zur Grenze; Marktprämie unter den Kosten → darunter', () => {
-    const teuer = { flat: 20 };
-    const markt = { tiers: [{ upToKwp: 100, ctPerKwh: 5.9 }], ersatz: [{ upToKwp: 1000, ctPerKwh: 5.9 }] };
+  it('PV wird nicht dimensioniert: ohne Schalter bleibt sie außen vor', () => {
+    const { done } = lauf({ aktiv: ['lwwp', 'gaskessel'], pvKwp: 400, pvWp: false });
+    for (const r of done.topFein) expect(r.kw.pvZuWpMwh || 0).toBe(0);
+    const ohne = lauf({ aktiv: ['lwwp', 'gaskessel'] }).done.topFein;
     const best = l => l.slice().sort((x, y) => x.score - y.score)[0];
-    const a = best(lauf({ aktiv: ['lwwp', 'gaskessel'], pvEinsp: teuer, pvInvest: 900, pvHi: 3000 }).done.topFein);
-    const b = best(lauf({ aktiv: ['lwwp', 'gaskessel'], pvEinsp: markt, pvInvest: 1200, pvHi: 3000 }).done.topFein);
-    expect(a.pvKwp).toBe(3000);
-    // Eigenverbrauch lohnt, Überschuss zu 5,9 ct bei ~10 ct Gestehungskosten nicht
-    expect(b.pvKwp).toBeGreaterThan(50);
-    expect(b.pvKwp).toBeLessThan(3000);
+    expect(best(done.topFein).kw.wgk).toBeCloseTo(best(ohne).kw.wgk, 6);
   }, 60000);
 
-  it('PV-Eigenverbrauch der Gebäude zählt: auch ohne Wärmepumpe lohnt PV', () => {
-    const markt = { tiers: [{ upToKwp: 100, ctPerKwh: 5.9 }], ersatz: [{ upToKwp: 1000, ctPerKwh: 5.9 }] };
-    const r = lauf({ aktiv: ['gaskessel'], pvEinsp: markt, pvInvest: 1000, pvHi: 2000 }).done.topFein[0];
-    expect(r.kanon).toBe('gaskessel');
-    expect(r.pvKwp).toBeGreaterThan(50);
+  it('mit Schalter: PV der Planung senkt die WGK, höchstens um (WP-Preis − PV-Preis) × PV-Strom an WP', () => {
+    const seed = [{ keys: ['lwwp'], x: [400, 400, 0, 0, 0], kanon: null }];
+    const mit = lauf({ aktiv: ['lwwp', 'gaskessel'], pvKwp: 400, pvWp: true, mode: 'fein', seeds: seed }).done.topFein[0];
+    const ohne = lauf({ aktiv: ['lwwp', 'gaskessel'], pvKwp: 400, pvWp: false, mode: 'fein', seeds: seed }).done.topFein[0];
+    expect(mit.pvKwp).toBe(400);
+    expect(mit.kw.pvZuWpMwh).toBeGreaterThan(0);
+    expect(mit.kw.wgk).toBeLessThan(ohne.kw.wgk);
+    const vorteilEur = (ohne.kw.wgk - mit.kw.wgk) * 10 * mit.gesamtMwh;
+    expect(vorteilEur).toBeLessThanOrEqual(mit.kw.pvZuWpMwh * (25 - mit.kw.pvCt) * 10 * 1.5 + 1);
+    expect(ohne.kw.wgk - mit.kw.wgk).toBeLessThan(2);
   }, 60000);
 });

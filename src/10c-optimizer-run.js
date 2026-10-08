@@ -6,7 +6,7 @@ import { aggregateGebStrom } from './02b-gebaeude.js';
 import { escHtml } from './03c-gebaeude-io.js';
 import { makeStProfile8760 } from './06b-gl-berechnen.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
-import { OPT_FEIN_ANZAHL, OPT_FEIN_EVALS, _collectOptDomParams, _optGetScaledLastgang, _optKennwerte2, _optPvGrenze, _optScore } from './10a-optimizer-core.js';
+import { OPT_FEIN_ANZAHL, OPT_FEIN_EVALS, _collectOptDomParams, _optGetScaledLastgang, _optKennwerte2, _optPvPlan, _optScore } from './10a-optimizer-core.js';
 import { optGrobPunkte, optRasterStufen, optSuchraum } from './lib/optimierer-suche.js';
 import { OPT_MERIT_ORDER } from './config/optimizer-defaults.js';
 import { _buildOptWorkerCode, _optRenderBarChart, _optRenderRadar, _optRenderScatter } from './10d-optimizer-worker.js';
@@ -74,11 +74,9 @@ export function _runOptWorker(resDiv) {
     _optFinished();
     return;
   }
-  const pvAktiv = !!document.getElementById('opt-cand-pv')?.checked;
-  const batAktiv = !!document.getElementById('opt-cand-bat')?.checked;
   const tsAktiv = !!document.getElementById('opt-cand-ts')?.checked;
   const constraints = {};
-  for (const k of [...allKeys, 'pv', 'bat', 'st', 'ts']) {
+  for (const k of [...allKeys, 'st', 'ts']) {
     constraints[k] = {
       minKw: parseFloat(document.getElementById('opt-min-' + k)?.value) || 0,
       maxKw: parseFloat(document.getElementById('opt-max-' + k)?.value) || 0,
@@ -137,17 +135,15 @@ export function _runOptWorker(resDiv) {
   const stufen = optRasterStufen(quality);
   const kombis = raum.kombis.map(k => ({ ...k, punkte: optGrobPunkte(k.grenzen, stufen, peak) }));
 
-  const hatWp = aktiv.some(k => dom.ERZEUGER_TYP[k] === 'wp');
-  const stromSchaetzMwh = _qSum / 1000 + (hatWp ? waermeMwh / 3.2 : 0);
   const achse = (aktivFlag, con, hiAuto) => {
     if (!aktivFlag) return { lo: 0, hi: 0 };
     const hi = Math.max(0, Math.round(con.maxKw > 0 ? con.maxKw : hiAuto));
     return { lo: Math.min(hi, Math.round(con.minKw || 0)), hi };
   };
-  const pvGrenze = _optPvGrenze(constraints.pv.maxKw, stromSchaetzMwh, dom.pvSpez);
-  const pv = achse(pvAktiv, { ...constraints.pv, maxKw: pvGrenze.kwp }, pvGrenze.kwp);
-  // Batterie: höchstens ein Tagesstrombedarf bzw. 2 kWh je kWp
-  const bat = achse(batAktiv && pv.hi > 0, constraints.bat, Math.max(20, Math.min(pv.hi * 2, stromSchaetzMwh * 1000 / 365)));
+  // PV und Batterie werden nicht optimiert: mit „PV-Strom für Wärmepumpen anrechnen“ fest wie in der Planung, sonst 0
+  const pvPlan = _optPvPlan();
+  const pv = { lo: pvPlan.kwp, hi: pvPlan.kwp };
+  const bat = { lo: pvPlan.kwp > 0 ? pvPlan.batKwh : 0, hi: pvPlan.kwp > 0 ? pvPlan.batKwh : 0 };
   const st = achse(stAktiv && !!stNormProfile, constraints.st, waermeMwh * 0.4 * 1000 / (dom.stSpez || 400));
   // Wärmespeicher: bis zur dreifachen Stundenleistung der halben Spitzenlast (WP-Pufferung)
   const ts = achse(tsAktiv, constraints.ts, Math.max(10, peak * 0.5 * 3 / (1.16 * dom.tsDt) * 3));
@@ -158,8 +154,8 @@ export function _runOptWorker(resDiv) {
     maxEvalFein: OPT_FEIN_EVALS[quality] || 350,
     anzahlFein: OPT_FEIN_ANZAHL[quality] || 6,
   };
-  const ausgangsSeed = _optAusgangsSeed(raum, { pvAktiv: pv.hi > 0, batAktiv: bat.hi > 0, stAktiv: st.hi > 0, tsAktiv: ts.hi > 0 });
-  const info = { pvGrenze: pvAktiv ? pvGrenze : null, ohneNetz: !!window._wirtOhneNetz, jahr: optYear };
+  const ausgangsSeed = _optAusgangsSeed(raum, { pv: pv.lo, bat: bat.lo, stAktiv: st.hi > 0, tsAktiv: ts.hi > 0 });
+  const info = { ohneNetz: !!window._wirtOhneNetz, pvWp: !!window._wirtPvWp, jahr: optYear, ziel };
 
   // Anzahl paralleler Worker (min 1, max 8, einen Kern für die Oberfläche freilassen)
   const numWorkers = Math.max(1, Math.min((navigator.hardwareConcurrency || 4) - 1, 8));
@@ -326,8 +322,8 @@ export function _optAusgangsSeed(raum, achsen) {
   const gens = k.keys.map((key, i) => i === k.backupIdx ? 1 : Math.max(1, Math.round(leist(key))));
   const zahl = id => Math.max(0, Math.round(parseFloat(document.getElementById(id)?.value) || 0));
   const x = gens.concat([
-    achsen.pvAktiv ? zahl('pv-kwp') : 0,
-    achsen.batAktiv ? zahl('bat-kapazitaet') : 0,
+    achsen.pv || 0,
+    achsen.bat || 0,
     achsen.stAktiv && solarthermieAktiv ? zahl('st-flaeche') : 0,
     achsen.tsAktiv && thermSpeicherAktiv ? zahl('ts-volumen') : 0,
   ]);
@@ -355,6 +351,16 @@ function _optNachrechnen(r, params) {
     speicherEntladenMwh: r.speicherEntladenMwh || 0,
   };
   return _optKennwerte2(dispResult, r.pvKwp || 0, r.batKwh || 0, r.pvBatData || null, params, r.stMwh || 0, r.stM2 || 0, r.tsVol || 0);
+}
+
+/** „PV-Strom für Wärmepumpen anrechnen“ umgestellt: PV-Flüsse stammen aus der Stundensimulation des Laufs → neu rechnen. */
+export function _optPvWpGeaendert() {
+  const resDiv = document.getElementById('opt-result-list');
+  if (!window._optLetzterLauf || window._optRunning || !resDiv || resDiv.querySelector('.opt-veraltet')) return;
+  const h = document.createElement('div');
+  h.className = 'opt-karte-hinweis opt-veraltet';
+  h.textContent = 'PV-Einstellung geändert \u2014 Ergebnisse bitte neu berechnen.';
+  resDiv.insertBefore(h, resDiv.firstChild);
 }
 
 /** Nach dem Umschalten „Gesamtsystem / Nur Wärmeerzeugung“: letzte Ergebnisse neu bewerten. */
@@ -397,7 +403,12 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
     const b = besteJe.get(r.kanon);
     if (!b || r.score < b.score) besteJe.set(r.kanon, r);
   }
-  const top3 = [...besteJe.values()].sort((a, b) => a.score - b.score).slice(0, 3);
+  const sortiert = [...besteJe.values()].sort((a, b) => a.score - b.score);
+  // „≥ 65 % EE“: nur Varianten zeigen, die die Bedingung erfüllen; erfüllt keine sie, die beste Annäherung mit Hinweis
+  const eeZiel = ziel === 'min-kosten-ee';
+  const zulaessig = eeZiel ? sortiert.filter(r => r.kw.eeAnteil >= 65) : sortiert;
+  const eeVerfehlt = eeZiel && !zulaessig.length;
+  const top3 = (eeVerfehlt ? sortiert : zulaessig).slice(0, 3);
   for (const r of top3) r.anzeigeKeys = _optAnzeigeKeys(r.kanon);
   window._optTop3Final = top3;   // für die Markierung im Streudiagramm
   const ausgang = topFein.find(r => r.ausgangsplanung && r.start)?.start || null;
@@ -417,6 +428,12 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
     kopfHtml += '<div class="opt-ausgang">Aktuelle Planung im selben Rechenmodell: <b>' + nf(ausgang.kw.wgk, 1) + ' ct/kWh</b>'
       + (ziel === 'min-wgk' && diff > 0.05 ? ' — Variante 1 ist ' + nf(diff, 1) + ' ct/kWh günstiger' : '') + '</div>';
   }
+  if (eeVerfehlt) {
+    kopfHtml += '<div class="opt-karte-hinweis">Keine Variante erreicht 65 % erneuerbare Wärme \u2014 gezeigt wird die beste Annäherung. Wärmepumpen, Biomasse oder Solarthermie als Kandidaten ergänzen bzw. Höchstleistungen prüfen.</div>';
+  }
+  if (window._wirtPvWp) {
+    kopfHtml += '<div class="opt-ausgang">PV-Strom für Wärmepumpen angerechnet (PV und Batterie wie in der Planung, nicht optimiert)</div>';
+  }
   kopf.innerHTML = kopfHtml;
   resDiv.appendChild(kopf);
 
@@ -425,9 +442,7 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
     card.className = 'opt-karte' + (idx === 0 ? ' opt-karte-erste' : '');
     const titel = r.anzeigeKeys.map(k => ERZEUGER_CFG[k]?.label || k).join(' + ')
       + (r.stM2 > 0 ? ' + ST ' + nf(r.stM2) + ' m²' : '')
-      + (r.tsVol > 0 ? ' + WS ' + nf(r.tsVol) + ' m³' : '')
-      + (r.pvKwp > 0 ? ' + PV ' + nf(r.pvKwp) + ' kWp' : '')
-      + (r.batKwh > 0 ? ' + Batterie ' + nf(r.batKwh) + ' kWh' : '');
+      + (r.tsVol > 0 ? ' + WS ' + nf(r.tsVol) + ' m³' : '');
 
     const eeColor = r.kw.eeAnteil >= 65 ? '#81c784' : '#ef9a9a';
     const eeBadge = '<span style="background:' + eeColor + ';color:#000;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:600;">' + r.kw.eeAnteil.toFixed(0) + '% EE</span>';
@@ -464,24 +479,15 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
     if (r.autoGkMwh > 0.05) {
       erzHtml += zeile(ERZEUGER_CFG.gaskessel?.color || '#78909c', 'Gaskessel (Spitzenlast)', r.autoGkPeakKw ? nf(Math.ceil(r.autoGkPeakKw)) + ' kW' : '—', nf(r.autoGkMwh) + ' MWh', totalInkST > 0 ? r.autoGkMwh / totalInkST * 100 : 0);
     }
-    if (r.pvKwp > 0) {
-      erzHtml += zeile('#fdd835', 'PV' + (r.batKwh > 0 ? ' + Batterie' : ''), nf(r.pvKwp) + ' kWp' + (r.batKwh > 0 ? ' / ' + nf(r.batKwh) + ' kWh' : ''), nf(r.kw.pvErtragMwh) + ' MWh Strom', null);
+    if (r.pvKwp > 0 && r.kw.pvZuWpMwh > 0) {
+      erzHtml += zeile('#fdd835', 'PV-Strom an WP (Planung' + (r.batKwh > 0 ? ' + Batterie' : '') + ')', nf(r.pvKwp) + ' kWp', nf(r.kw.pvZuWpMwh) + ' MWh \u00e0 ' + nf(r.kw.pvCt, 1) + ' ct', null);
     }
     erzHtml += '</div>';
-
-    // PV am Rand des Suchraums: Grenze offenlegen, statt ein scheinbares Optimum zu zeigen
-    let hinweis = '';
-    const pg = info.pvGrenze;
-    if (pg && r.pvKwp > 0 && r.pvKwp >= pg.kwp - Math.max(1, pg.kwp * 0.01)) {
-      hinweis = '<div class="opt-karte-hinweis">PV an der Obergrenze ('
-        + (pg.quelle === 'max' ? 'eingestellter Max-Wert' : pg.quelle === 'potenzial' ? 'PV-Potenzial des Projekts' : 'geschätzt aus dem Strombedarf — PV-Potenzial im PV-Modus erfassen oder Max-Wert setzen')
-        + ', ' + nf(pg.kwp) + ' kWp): jede weitere kWp senkt die Kosten noch.</div>';
-    }
 
     card.innerHTML =
       '<div class="opt-karte-kopf"><span class="opt-karte-rang">' + (idx + 1) + '</span>' +
         '<span class="opt-karte-titel">' + escHtml(titel) + '</span>' + eeBadge + '</div>' +
-      kpiHtml + erzHtml + hinweis +
+      kpiHtml + erzHtml +
       '<div class="opt-karte-fuss"><button class="btn-secondary" data-click="_optVarianteUebernehmen(window._optLastResults[' + idx + '], this)">Als Variante übernehmen</button></div>';
     resDiv.appendChild(card);
   });

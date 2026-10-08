@@ -3246,6 +3246,7 @@ function _captureEconomicScenario() {
       co2Alle:!!document.getElementById('wirt-co2-alle')?.checked,
       kapitalzinsPct:n('wirt-zins'), lohnEurH:n('wirt-lohn'),
       ...(window._wirtOhneNetz ? { nurErzeugung: true } : {}),
+      ...(window._wirtPvWp ? { pvStromFuerWp: true } : {}),
     },
   };
 }
@@ -4238,7 +4239,8 @@ function _applyProjectData(project) {
         for (const [key,id] of Object.entries(ids)) { const el=document.getElementById(id); if(el && project.battery[key] != null) el.value=project.battery[key]; }
       }
       window._wirtOhneNetz = false;   // Betrachtungsumfang gehört zum Projekt
-      queueMicrotask(() => window._wirtUmfangUiSync?.());
+      window._wirtPvWp = false;       // ebenso „PV-Strom für Wärmepumpen anrechnen“
+      queueMicrotask(() => { window._wirtUmfangUiSync?.(); window._wirtPvWpUiSync?.(); });
       if (project.economicScenario?.values) {
         const es = project.economicScenario;
         const ids = {stromCtKwh:'wirt-p-strom',wpStromCtKwh:'wirt-p-strom-wp',gasCtKwh:'wirt-p-gas',heizoelCtKwh:'wirt-p-hko',fernwaermeCtKwh:'wirt-p-fw',pelletsCtKwh:'wirt-p-pk',hhsCtKwh:'wirt-p-hhs',co2EurT:'wirt-p-co2',kapitalzinsPct:'wirt-zins',lohnEurH:'wirt-lohn'};
@@ -4250,6 +4252,7 @@ function _applyProjectData(project) {
         const co2 = document.getElementById('wirt-co2-alle'); if (co2) co2.checked = !!es.values.co2Alle;
         const label = document.getElementById('wirt-co2-alle-label'); if (label) label.textContent = es.values.co2Alle ? 'CO₂ auf alle Energieträger' : 'CO₂ nur auf fossile';
         window._wirtOhneNetz = !!es.values.nurErzeugung;
+        window._wirtPvWp = !!es.values.pvStromFuerWp;
         const hint = document.getElementById('wirt-szenario-hint'); if (hint) hint.textContent = es.scenarioId === 'manual' ? 'Manuelle Annahmen aus Projektdatei.' : `Gespeichertes Wirtschaftsszenario ${es.scenarioId}.`;
         _onStrompreisChange('wirt-p-strom'); _onGaspreisChange('wirt-p-gas');
       }

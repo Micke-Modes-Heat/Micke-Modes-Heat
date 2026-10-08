@@ -35,35 +35,6 @@ export function optKonzeptSchluessel(keys, autoGkMwh, autoGkPeakKw) {
 }
 
 /**
- * Einspeisevergütung (ct/kWh) für eine PV-Größe. desc.flat = fester Satz (manuelle Annahme);
- * sonst leistungsgewichtete EEG-Staffel. Jenseits der Grenze des gewählten Modells gilt die
- * Ersatzstaffel (Marktprämienmodell — ab 100 kWp ist Direktvermarktung Pflicht), jenseits
- * auch dieser ihr letzter Satz (Ausschreibungsbereich, Näherung).
- * desc.offsetKwp = bereits geplante PV, die für die Staffel mitzählt.
- */
-export function optEinspeiseCt(desc, kwp) {
-  if (!desc) return 8;
-  if (desc.flat != null) return desc.flat;
-  function staffel(cap, tiers) {
-    if (!tiers || !tiers.length) return null;
-    let vorher = 0, summe = 0;
-    for (const t of tiers) {
-      summe += Math.max(0, Math.min(cap, t.upToKwp) - vorher) * t.ctPerKwh;
-      vorher = t.upToKwp;
-      if (cap <= t.upToKwp) return summe / cap;
-    }
-    return null;
-  }
-  const gesamt = Math.max(0, kwp || 0) + (desc.offsetKwp || 0);
-  if (gesamt <= 0) return desc.tiers[0].ctPerKwh;
-  const r = staffel(gesamt, desc.tiers);
-  if (r != null) return r;
-  const ersatz = desc.ersatz && desc.ersatz.length ? desc.ersatz : desc.tiers;
-  const r2 = staffel(gesamt, ersatz);
-  return r2 != null ? r2 : ersatz[ersatz.length - 1].ctPerKwh;
-}
-
-/**
  * Leistungsstufen der Grobsuche als Anteil der Spitzenlast.
  * @param {string} qualitaet schnell | standard | gruendlich
  */
@@ -177,7 +148,8 @@ export function optSuchraum(p) {
       if (i === backupIdx) return { lo: 1, hi: 1 };
       const c = p.constraints[k] || {};
       const minGilt = c.minKw > 0 && (!c.bisJahr || c.bisJahr >= p.jahr);
-      const hi = Math.max(1, Math.round(c.maxKw > 0 ? c.maxKw : p.peak * 1.2));
+      // Wärmepumpen verlieren bei Kälte deutlich an Leistung → bis 2 × Spitzenlast, übrige bis 1,2 ×
+      const hi = Math.max(1, Math.round(c.maxKw > 0 ? c.maxKw : p.peak * (p.typen[k] === 'wp' ? 2 : 1.2)));
       // Jeder Erzeuger einer Mehrfachkombination trägt mindestens 10 % der Spitzenlast —
       // kleiner wäre er praktisch die kleinere Kombination, die ohnehin geprüft wird
       const boden = Math.round(p.peak * (keys.length > 1 ? 0.1 : 0.05));

@@ -591,7 +591,6 @@ describe('Ansatz 5: Worker-Code Struktur', () => {
     expect(code).toContain('function kennwerte');
     expect(code).toContain('function score');
     expect(code).toContain('function optMusterSuche');
-    expect(code).toContain('function optEinspeiseCt');
     expect(code).toContain('function _calcKostenShared');
     expect(code).toContain(_dispatchCore.toString());
     expect(code).toContain(pvBatteryStep.toString());
@@ -603,7 +602,6 @@ describe('Ansatz 5: Worker-Code Struktur', () => {
     expect(code).toContain('function _defaultGuetegrad');
     expect(code).toContain('function _quelleTemp');
     expect(code).toContain('function _investProKw');
-    expect(code).toContain('function _pvInvestPerKwp');
   });
 
   it('Worker-Code enthält self.onmessage Handler', () => {
@@ -612,17 +610,32 @@ describe('Ansatz 5: Worker-Code Struktur', () => {
   });
 });
 
-describe('Kostenfunktion: PV-Eigenverbrauch der Gebäude', () => {
-  const basis = (quartierMwh) => _calcKostenShared({
-    pKw: { gaskessel: 500 }, erzList: [{ key: 'gaskessel', waermeMwh: 1000, elMwh: 0, typ: 'fix' }],
-    zinsPct: 3.5, lohn: 45, prices: { strom: 30, gas: 10 }, etas: { gaskessel: 0.92 },
-    investFn: (k, kw) => kw * 100, extra: {},
-    pv: { kwp: 100, batKwh: 0, eigenMwh: 60, einspMwh: 40, gesamtEigenMwh: 60, invPerKwp: 1000, pEinsp: 6 },
-    strom: { quartierMwh }, co2: {}, gesamtMwh: 1000, stMwh: 0,
+describe('Kostenfunktion: PV-Strom für Wärmepumpen', () => {
+  const basis = (pv) => _calcKostenShared({
+    pKw: { lwwp: 500 }, erzList: [{ key: 'lwwp', waermeMwh: 1000, elMwh: 300, typ: 'wp' }],
+    zinsPct: 3.5, lohn: 45, prices: { strom: 30, stromWp: 25 }, etas: {},
+    investFn: (k, kw) => kw * 600, extra: {}, pv, strom: { quartierMwh: 400 }, co2: {}, gesamtMwh: 1000, stMwh: 0,
   });
-  it('ohne Wärmepumpe geht der ganze PV-Eigenverbrauch an die Gebäude und wird zum Strompreis gutgeschrieben', () => {
-    const r = basis(200);
-    expect(r.pvQuartierEur).toBeCloseTo(60 * 30 * 10, 6);
-    expect(basis(0).pvJk - r.pvJk).toBeCloseTo(18000, 6);
+  const pvWp = { modus: 'wp', kwp: 500, ertragMwh: 500, invPerKwp: 800, batKwh: 0, zuWpDirektMwh: 80, zuWpBatMwh: 0 };
+  it('ohne Schalter bleibt PV vollständig außen vor (keine Investition, keine Gutschrift)', () => {
+    const aus = basis({ modus: 'aus', kwp: 500, ertragMwh: 500, invPerKwp: 800, zuWpDirektMwh: 80 });
+    const ohne = basis(undefined);
+    expect(aus.jahreskosten).toBeCloseTo(ohne.jahreskosten, 6);
+    expect(aus.investGesamt).toBe(ohne.investGesamt);
+    expect(aus.pvZuWpMwh).toBe(0);
+  });
+  it('mit Schalter: WP-Strom aus PV zum Gestehungspreis, Vorteil auf (Netzpreis − PV-Preis) × PV→WP begrenzt', () => {
+    const r = basis(pvWp), ohne = basis(undefined);
+    const annF = 0.035 * 1.035 ** 20 / (1.035 ** 20 - 1);
+    const pvCt = 500 * 800 * (annF + 0.01) / (500 * 10);
+    expect(r.pvCt).toBeCloseTo(pvCt, 6);
+    expect(ohne.jahreskosten - r.jahreskosten).toBeCloseTo(80 * (25 - pvCt) * 10, 3);
+    expect(r.investGesamt).toBe(ohne.investGesamt);   // PV-Investition gehört zur Stromseite
+  });
+  it('eine riesige PV kann den Vorteil nicht über den WP-Strom hinaus treiben', () => {
+    const r = basis({ ...pvWp, kwp: 20000, ertragMwh: 20000, zuWpDirektMwh: 5000 });
+    const ohne = basis(undefined);
+    expect(r.pvZuWpMwh).toBe(300);
+    expect(ohne.jahreskosten - r.jahreskosten).toBeLessThanOrEqual(300 * 25 * 10);
   });
 });

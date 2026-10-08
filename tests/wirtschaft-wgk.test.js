@@ -304,54 +304,23 @@ describe('_calcKostenShared — Kapitalkosten (VDI 2067)', () => {
 });
 
 describe('_calcKostenShared — PV & Batterie', () => {
-  it('PV-Invest wird annuitätisch berechnet', () => {
-    const result = _calcKostenShared({
-      pKw: {},
-      investFn: () => 0,
-      erzList: [],
-      gesamtMwh: 100,
-      pv: { kwp: 100, invPerKwp: 1000 },
-    });
-
-    // PV-Invest: 100 kWp × 1000 €/kWp = 100.000 €
-    expect(result.investGesamt).toBeCloseTo(100000, -2);
-    expect(result.pvJk).toBeGreaterThan(0);
+  // PV und Batterie sind keine Wärmeerzeuger: weder Investition noch Einspeiseerlös gehen in die WGK ein
+  it('PV und Batterie ohne Schalter: keine Investition, keine Jahreskosten', () => {
+    const r = _calcKostenShared({ pKw: {}, investFn: () => 0, erzList: [], gesamtMwh: 100,
+      pv: { kwp: 100, invPerKwp: 1000, batKwh: 100, batInvPerKwh: 400, einspMwh: 50, pEinsp: 8 } });
+    expect(r.investGesamt).toBe(0);
+    expect(r.jahreskosten).toBe(0);
   });
 
-  it('Batterie-Invest wird addiert', () => {
-    const result = _calcKostenShared({
-      pKw: {},
-      investFn: () => 0,
-      erzList: [],
-      gesamtMwh: 100,
-      pv: { kwp: 50, invPerKwp: 1000, batKwh: 100, batInvPerKwh: 400 },
-    });
-
-    // PV 50.000 + Bat 40.000 = 90.000
-    expect(result.investGesamt).toBeCloseTo(90000, -2);
-  });
-
-  it('PV-Einspeisung reduziert Jahreskosten', () => {
-    const ohne = _calcKostenShared({
-      pKw: {},
-      investFn: () => 0,
-      erzList: [],
-      gesamtMwh: 100,
-      pv: { kwp: 100, invPerKwp: 1000, einspMwh: 0 },
-    });
-    const mit = _calcKostenShared({
-      pKw: {},
-      investFn: () => 0,
-      erzList: [],
-      gesamtMwh: 100,
-      pv: { kwp: 100, invPerKwp: 1000, einspMwh: 50, pEinsp: 8 },
-    });
-
-    // Einspeisung bringt Erlös → niedrigere PV-Jahreskosten
-    expect(mit.pvJk).toBeLessThan(ohne.pvJk);
+  it('auch mit Schalter keine PV-Investition in der Wärme — nur der WP-Strom aus PV wird bepreist', () => {
+    const basis = pv => _calcKostenShared({ pKw: { lwwp: 100 }, investFn: () => 0, erzList: [{ key: 'lwwp', waermeMwh: 300, elMwh: 100, typ: 'wp' }],
+      gesamtMwh: 300, prices: { strom: 30 }, pv });
+    const r = basis({ modus: 'wp', kwp: 100, ertragMwh: 100, invPerKwp: 1000, batKwh: 100, batInvPerKwh: 400, batEntladungMwh: 20, zuWpDirektMwh: 30, zuWpBatMwh: 10 });
+    expect(r.investGesamt).toBe(basis(undefined).investGesamt);
+    expect(r.pvZuWpMwh).toBe(40);
+    expect(r.batCt).toBeGreaterThan(0);
   });
 });
-
 describe('_calcKostenShared — BHKW (KWK)', () => {
   it('BHKW Brennstoffkosten abzüglich Stromerlös', () => {
     const result = _calcKostenShared({

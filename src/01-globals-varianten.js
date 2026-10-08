@@ -445,7 +445,7 @@ export function stammSignatur(key = variantKey(activeVariantId)) {
   const geb = _hash(JSON.stringify(gebaeude.map(g => [g.id, g.waerme, g.heizlast, g.baujahr, g.abrissjahr, g.nutzung, g.flaeche, g.stockwerke])));
   const rec = key === 'base' ? null : varianten.find(v => v.id === key);
   // Betrachtungsumfang der Wirtschaftlichkeit (mit/ohne Netz) gilt für alle Varianten
-  const umfang = window._wirtOhneNetz ? '|nurErzeugung' : '';
+  const umfang = (window._wirtOhneNetz ? '|nurErzeugung' : '') + (window._wirtPvWp ? '|pvWp' : '');
   if (rec?.netzEigen) return String(geb) + umfang;
   const liveGemeinsam = !aktiveVarianteNetzEigen();
   const trasse = liveGemeinsam

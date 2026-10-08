@@ -2743,3 +2743,5 @@ body.trasse-loeschmodus path.leaflet-interactive[stroke="#ff9800"],body.trasse-l
 .we-summe{text-align:right;font-family:'DM Mono',monospace;color:var(--muted);font-size:9.5px}
 .we-gemeinsam{border-top:1px dashed var(--border);margin-top:3px;padding-top:5px}
 @media (max-width:1100px){.we-kopf,.we-zeile{grid-template-columns:120px 1fr 60px}.we-menge,.we-summe,.we-kopf span:nth-child(2),.we-kopf span:nth-child(5){display:none}}
+.wirt-pv-wp-label{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:10px;color:var(--muted);cursor:pointer;}
+.wirt-pv-wp-label input{accent-color:var(--accent);margin:0;}

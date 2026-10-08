@@ -950,18 +950,6 @@
           <input class="inp-field" type="number" id="opt-max-heizoel" min="0" placeholder="kW" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
           <input class="inp-field" type="number" id="opt-bis-heizoel" min="2024" max="2060" placeholder="Jahr" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
 
-          <input type="checkbox" id="opt-cand-pv" checked style="accent-color:#ffd54f;">
-          <label for="opt-cand-pv" style="display:flex;align-items:center;gap:4px;cursor:pointer;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffd54f;flex-shrink:0;"></span>PV (Zusatz)</label>
-          <input class="inp-field" type="number" id="opt-min-pv" min="0" placeholder="kWp" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
-          <input class="inp-field" type="number" id="opt-max-pv" min="0" placeholder="kWp" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
-          <span></span>
-
-          <input type="checkbox" id="opt-cand-bat" checked style="accent-color:#b39ddb;">
-          <label for="opt-cand-bat" style="display:flex;align-items:center;gap:4px;cursor:pointer;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#b39ddb;flex-shrink:0;"></span>Batterie (Zusatz)</label>
-          <input class="inp-field" type="number" id="opt-min-bat" min="0" placeholder="kWh" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
-          <input class="inp-field" type="number" id="opt-max-bat" min="0" placeholder="kWh" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
-          <span></span>
-
           <input type="checkbox" id="opt-cand-st" checked style="accent-color:#ef6c00;">
           <label for="opt-cand-st" style="display:flex;align-items:center;gap:4px;cursor:pointer;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef6c00;flex-shrink:0;"></span>Solarthermie</label>
           <input class="inp-field" type="number" id="opt-min-st" min="0" placeholder="m²" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
@@ -1003,6 +991,7 @@
           <button type="button" class="active" data-umfang="gesamt" data-click="wirtUmfangSetzen(false)">Gesamtsystem</button>
           <button type="button" data-umfang="erzeugung" data-click="wirtUmfangSetzen(true)">Nur Wärmeerzeugung</button>
         </div>
+        <label class="wirt-pv-wp-label" title="PV und Batterie sind keine Wärmeerzeuger und bleiben standardmäßig außerhalb der Wärmegestehungskosten. Eingeschaltet bezieht die Wärmepumpe den PV-Strom, den sie laut Stundenbilanz direkt oder über die Batterie erhält, zum PV-Gestehungspreis statt zum Netzpreis. Die PV-Größe kommt aus der PV-Planung und wird nicht mitoptimiert; Einspeisung und Eigenverbrauch der Gebäude bleiben auf der Stromseite."><input type="checkbox" class="wirt-pv-wp" data-change="wirtPvWpSetzen(this.checked)"> PV-Strom für Wärmepumpen anrechnen</label>
       </div>
 
       <!-- Spalte 3: Button -->
@@ -1048,8 +1037,8 @@
         </div>
 
         <div style="margin-bottom:12px;">
-          <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x2778; PV + Batterie dimensionieren</div>
-          <div>PV und Batterie werden nach demselben Ziel bewertet wie die Wärmeerzeuger &mdash; es gibt keine eigene Amortisationsregel. Die Einspeisevergütung richtet sich nach der Anlagengröße (EEG-Staffel des eingestellten Tarifs, ab 100&thinsp;kWp Direktvermarktung). Obergrenze ist der Max-Wert oder das <b>PV-Potenzial des Projekts</b> aus dem PV-Modus; liegt das Ergebnis an dieser Grenze, steht das auf der Ergebniskarte.</div>
+          <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x2778; PV und Batterie</div>
+          <div>PV und Batterie sind keine Wärmeerzeuger und werden hier <b>nicht dimensioniert</b> &mdash; das geschieht in der PV-Analyse. Standardmäßig bleiben sie außerhalb der Wärmegestehungskosten. Mit &bdquo;PV-Strom für Wärmepumpen anrechnen&ldquo; gehen PV und Batterie <b>wie geplant</b> in die Stundenbilanz ein: Die Wärmepumpe bezieht ihren PV-Strom zum PV-Gestehungspreis statt zum Netzpreis; Einspeisung und Eigenverbrauch der Gebäude bleiben auf der Stromseite.</div>
         </div>
 
         <div style="margin-bottom:12px;">
@@ -1059,7 +1048,7 @@
 
         <div style="margin-bottom:12px;">
           <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x277A; Feinphase &mdash; Mustersuche</div>
-          <div>Die besten Konzepte (4/6/10 je nach Genauigkeit) und die <b>aktuelle Planung</b> werden weiter optimiert: Leistungen aller Erzeuger, PV, Batterie, Solarthermie und Wärmespeicher werden gemeinsam schrittweise verändert, solange das Ziel besser wird, dann mit halber Schrittweite (bis 0,5&thinsp;% der Spitzenlast). Alle Ergebnisse werden danach mit demselben Code wie die Wirtschaftlichkeit nachgerechnet.</div>
+          <div>Die besten Konzepte (5/8/12 je nach Genauigkeit) und die <b>aktuelle Planung</b> werden weiter optimiert: Leistungen aller Erzeuger, Solarthermie und Wärmespeicher werden gemeinsam schrittweise verändert, solange das Ziel besser wird, dann mit halber Schrittweite (bis 0,5&thinsp;% der Spitzenlast). Alle Ergebnisse werden danach mit demselben Code wie die Wirtschaftlichkeit nachgerechnet.</div>
         </div>
 
         <div style="margin-bottom:4px;">
@@ -3112,6 +3101,7 @@
         <button type="button" class="active" data-umfang="gesamt" data-click="wirtUmfangSetzen(false)">Gesamtsystem</button>
         <button type="button" data-umfang="erzeugung" data-click="wirtUmfangSetzen(true)">Nur Wärmeerzeugung</button>
       </div>
+      <label class="wirt-pv-wp-label" title="PV und Batterie sind keine Wärmeerzeuger und bleiben standardmäßig außerhalb der Wärmegestehungskosten. Eingeschaltet bezieht die Wärmepumpe den PV-Strom, den sie laut Stundenbilanz direkt oder über die Batterie erhält, zum PV-Gestehungspreis statt zum Netzpreis. Einspeisung und Eigenverbrauch der Gebäude bleiben auf der Stromseite."><input type="checkbox" class="wirt-pv-wp" data-change="wirtPvWpSetzen(this.checked)"> PV-Strom für Wärmepumpen anrechnen</label>
       <div id="wirt-table-wrap">
         <div style="color:var(--muted);font-size:10px;text-align:center;padding:12px 0;">Stündliche Einsatzplanung ausführen, um Ergebnisse zu sehen.</div>
       </div>

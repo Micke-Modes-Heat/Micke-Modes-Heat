@@ -4,7 +4,7 @@ import { _dispatchCore } from './06c-dispatch-core.js';
 import { _calcKostenShared } from './07b-analysis-economics.js';
 import { pvBatteryStep } from './lib/pv-battery-core.js';
 import { estimateBatteryAging } from './lib/battery-aging.js';
-import { optEinspeiseCt, optKonzeptSchluessel, optMusterSuche } from './lib/optimierer-suche.js';
+import { optKonzeptSchluessel, optMusterSuche } from './lib/optimierer-suche.js';
 
 /**
  * Quelltext des Optimierer-Workers. Die Rechenkerne (Dispatch, Kosten, PV/Batterie,
@@ -28,7 +28,6 @@ let QH_MWH = 0;
 
 ${pvBatteryStep.toString()}
 ${estimateBatteryAging.toString()}
-${optEinspeiseCt.toString()}
 ${optKonzeptSchluessel.toString()}
 ${optMusterSuche.toString()}
 
@@ -64,20 +63,6 @@ function _tabelle(pts, x) {
 function _investProKw(key, kw) {
   const v = _tabelle(D.investKurven[key], kw);
   return v > 0 ? v : (D.OPT_INVEST_DEFAULT[key] || 200);
-}
-
-function _pvInvestPerKwp(kwp) {
-  if (D.pvInvestMode !== 'auto') return D.pvInvestManual;
-  const tab = D.pvInvestTabelle;
-  if (kwp <= tab[0].kwp) return tab[0].eurKwp;
-  if (kwp >= tab[tab.length - 1].kwp) return tab[tab.length - 1].eurKwp;
-  for (let i = 0; i < tab.length - 1; i++) {
-    if (kwp >= tab[i].kwp && kwp <= tab[i + 1].kwp) {
-      const t = (kwp - tab[i].kwp) / (tab[i + 1].kwp - tab[i].kwp);
-      return Math.round(tab[i].eurKwp + t * (tab[i + 1].eurKwp - tab[i].eurKwp));
-    }
-  }
-  return tab[tab.length - 1].eurKwp;
 }
 
 // ── Gemeinsame Kostenberechnung (eingebettet aus Main-Thread) ──
@@ -126,16 +111,19 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
   };
 }
 
-function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
+// wpSkH: stündlicher Strombedarf von WP + Stromkessel → PV-Strom an diese Verbraucher (direkt / über die Batterie)
+function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult, wpSkH) {
   const hasBhkw = bhkwElH && bhkwElH.some(v => v > 0);
   if (pvKwp <= 0 && !hasBhkw) {
     let sumDem = 0;
     for (let t = 0; t < 8760; t++) sumDem += demandH[t];
     return { eigenMwh: 0, einspeiseMwh: 0, netzbezugMwh: sumDem / 1000,
-             pvEigenMwh: 0, pvEinspMwh: 0, bhkwEigenMwh: 0, bhkwEinspMwh: 0, batDischargeMwh: 0 };
+             pvEigenMwh: 0, pvEinspMwh: 0, bhkwEigenMwh: 0, bhkwEinspMwh: 0, batDischargeMwh: 0,
+             pvErtragMwh: 0, zuWpDirektMwh: 0, zuWpBatMwh: 0 };
   }
   const spez = D.pvSpez;
-  const batLeistKw = batKwh > 0 ? batKwh / 2 : 0;
+  const batLeistKw = batKwh > 0 ? (D.batKw > 0 ? D.batKw : batKwh / 2) : 0;
+  let zuWpDirekt = 0, zuWpBat = 0;
   let sv = 0, ins = 0, bez = 0, soc = 0, socPv = 0, socBhkw = 0;
   let pvEig = 0, pvEinsp = 0, bhkwEig = 0, bhkwEinsp = 0;
   let tsSoc = 0, pvWpSpGes = 0, batDischargeKwh = 0;
@@ -181,10 +169,16 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
     bhkwEig += (step.bhkwDirectKwh + step.bhkwDischargedKwh) / 1000;
     pvEinsp += (rGen / 1000) * pvFrac;
     bhkwEinsp += (rGen / 1000) * (1 - pvFrac);
+    if (wpSkH && dem > 0) {
+      const anteil = Math.min(1, wpSkH[t] / dem);
+      zuWpDirekt += step.pvDirectKwh * anteil / 1000 + pvWpSp;
+      zuWpBat += step.pvDischargedKwh * anteil / 1000;
+    }
   }
   return { eigenMwh: sv / 1000 + pvWpSpGes, einspeiseMwh: ins / 1000, netzbezugMwh: bez / 1000,
            pvEigenMwh: pvEig, pvEinspMwh: pvEinsp, bhkwEigenMwh: bhkwEig, bhkwEinspMwh: bhkwEinsp,
-           pvWpSpeicherMwh: pvWpSpGes, batDischargeMwh: batDischargeKwh / 1000 };
+           pvWpSpeicherMwh: pvWpSpGes, batDischargeMwh: batDischargeKwh / 1000,
+           pvErtragMwh: pvKwp * spez / 1000, zuWpDirektMwh: zuWpDirekt, zuWpBatMwh: zuWpBat };
 }
 
 function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeicherVol) {
@@ -199,9 +193,6 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
   const erzListTyped = erzeugerList.map(erz => ({ key: erz.key, waermeMwh: erz.waermeMwh, elMwh: erz.elMwh, typ: D.ERZEUGER_TYP[erz.key] }));
   if (_bPKw._autoGk) erzListTyped.push({ key: '_autoGk', waermeMwh: _agkMwh, elMwh: 0, typ: 'fix' });
 
-  const pvEigenMwh = pvBatR ? (pvBatR.pvEigenMwh != null ? pvBatR.pvEigenMwh : pvBatR.eigenMwh) : 0;
-  const pvEinspMwh = pvBatR ? (pvBatR.pvEinspMwh != null ? pvBatR.pvEinspMwh : pvBatR.einspeiseMwh) : 0;
-  const gesamtEigenMwh = pvBatR ? (pvBatR.eigenMwh || 0) : 0;
   const bhkwEigMwh = pvBatR ? (pvBatR.bhkwEigenMwh || 0) : 0;
   const bhkwEinspMwh = pvBatR ? (pvBatR.bhkwEinspMwh || 0) : 0;
 
@@ -237,16 +228,13 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
       optSpeicherVol: optSpeicherVol || 0,
       tsTyp: D.tsTyp, tsDt: D.tsDt,
     },
-    pv: {
-      kwp: pvKwp, batKwh: batKwh,
-      eigenMwh: pvEigenMwh, einspMwh: pvEinspMwh,
-      gesamtEigenMwh: gesamtEigenMwh,
-      invPerKwp: _pvInvestPerKwp(pvKwp),
-      batInvPerKwh: D.batInvest,
-      // wie batterieLebensdauer() im Hauptthread: Alterungsschätzung, sonst eingetragene Nutzungsdauer
+    // PV/Batterie wie in der Planung; angerechnet wird nur PV-Strom an WP/Stromkessel (wie pvWaermeEingaben)
+    pv: D.pvWp && pvKwp > 0 ? {
+      modus: 'wp', kwp: pvKwp, ertragMwh: pvBatR ? pvBatR.pvErtragMwh : 0, invPerKwp: D.pvInvPerKwpPlan,
+      batKwh: batKwh, batInvPerKwh: D.batInvest, batEntladungMwh: pvBatR ? pvBatR.batDischargeMwh : 0,
       batLifeYears: batAging && Number.isFinite(batAging.expectedLifeYears) && batAging.expectedLifeYears > 0 ? Math.max(1, batAging.expectedLifeYears) : (D.batLife || 15),
-      pEinsp: optEinspeiseCt(D.pvEinsp, pvKwp),
-    },
+      zuWpDirektMwh: pvBatR ? pvBatR.zuWpDirektMwh : 0, zuWpBatMwh: pvBatR ? pvBatR.zuWpBatMwh : 0,
+    } : { modus: 'aus' },
     strom: {
       quartierMwh: QH_MWH,
       bhkwEigenMwh: bhkwEigMwh, bhkwEinspMwh: bhkwEinspMwh,
@@ -265,7 +253,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
   return { wgk: result.wgk, co2ta: result.co2ta, eeAnteil: result.eeAnteil,
     stromAutarkie: result.stromAutarkie, waermeAutarkie: result.waermeAutarkie,
     investGesamt: result.investGesamt, jahreskosten: result.jahreskosten,
-    pvEigenMwh: pvEigenMwh, pvErtragMwh: pvKwp * D.pvSpez / 1000 };
+    pvErtragMwh: pvBatR ? pvBatR.pvErtragMwh : 0, pvZuWpMwh: result.pvZuWpMwh, pvCt: result.pvCt };
 }
 
 function score(kw, ziel) {
@@ -320,9 +308,9 @@ self.onmessage = function(e) {
     const st = stReduziert(stM2);
     const config = keys.map((k, i) => ({ key: k, leistKw: gens[i], typ: D.ERZEUGER_TYP[k] || 'fix', guetegrad: D.guetegrade[k] || _defaultGuetegrad(k) }));
     const disp = dispatch8760(st.lastgang, tempH, vlH, config, tsVol, st.stExcessH, S.backupMode);
-    const demandH = new Float32Array(8760);
-    for (let t = 0; t < 8760; t++) demandH[t] = disp.wpElH[t] + disp.skElH[t] + quartierH[t];
-    const r = { disp, demandH, stMwh: st.waermeMwh };
+    const demandH = new Float32Array(8760), wpSkH = new Float32Array(8760);
+    for (let t = 0; t < 8760; t++) { wpSkH[t] = disp.wpElH[t] + disp.skElH[t]; demandH[t] = wpSkH[t] + quartierH[t]; }
+    const r = { disp, demandH, wpSkH, stMwh: st.waermeMwh };
     if (dispCache.size > 48) dispCache.delete(dispCache.keys().next().value);
     dispCache.set(ck, r);
     return r;
@@ -334,7 +322,7 @@ self.onmessage = function(e) {
     const gens = x.slice(0, n);
     const pvKwp = x[n], batKwh = x[n + 1], stM2 = x[n + 2], tsVol = x[n + 3];
     const E = einsatz(keys, gens, stM2, tsVol);
-    const pvBat = pvBatSim8760(pvKwp, batKwh, E.demandH, E.disp.bhkwElH, pvProfile, E.disp);
+    const pvBat = pvBatSim8760(pvKwp, batKwh, E.demandH, E.disp.bhkwElH, pvProfile, E.disp, E.wpSkH);
     const kw = kennwerte(E.disp, pvKwp, batKwh, pvBat, params, E.stMwh, stM2, tsVol);
     const kanon = optKonzeptSchluessel(keys, E.disp.autoGkMwh, E.disp.autoGkPeakKw);
     let sc = score(kw, ziel);
@@ -358,7 +346,8 @@ self.onmessage = function(e) {
       pvBatData: { eigenMwh: b.pvBat.eigenMwh, einspeiseMwh: b.pvBat.einspeiseMwh,
         pvEigenMwh: b.pvBat.pvEigenMwh, pvEinspMwh: b.pvBat.pvEinspMwh,
         bhkwEigenMwh: b.pvBat.bhkwEigenMwh, bhkwEinspMwh: b.pvBat.bhkwEinspMwh,
-        netzbezugMwh: b.pvBat.netzbezugMwh, batDischargeMwh: b.pvBat.batDischargeMwh },
+        netzbezugMwh: b.pvBat.netzbezugMwh, batDischargeMwh: b.pvBat.batDischargeMwh,
+        pvErtragMwh: b.pvBat.pvErtragMwh, zuWpDirektMwh: b.pvBat.zuWpDirektMwh, zuWpBatMwh: b.pvBat.zuWpBatMwh },
     };
   }
 
