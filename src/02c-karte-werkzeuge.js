@@ -14,7 +14,7 @@ import { cancelDrawStromEdge } from './05b-stromnetz.js';
 import { beginInteraction, cancelInteraction, commitInteraction, getActiveInteraction } from './lib/interaction-state.js';
 import { createLifecycleScope } from './lib/lifecycle.js';
 import { wpAufstellungForm, rechteckEcken, WP_MODULE } from './lib/wp-aufstellung.js';
-import { wpSchallQuellen, lwaGesamt, pegelAm, isophone, isophonRadius, naechsterFassadenpunkt } from './lib/wp-schall.js';
+import { wpSchallQuellen, lwaGesamt, pegelAm, isophone, isophonRadius, naechsterFassadenpunkt, WP_SCHALLSCHUTZ, schallschutzDb, quellenMitSchallschutz } from './lib/wp-schall.js';
 import { PT_TA_LAERM } from './lib/gutachten-potenzial.js';
 
 /** @type {import('./lib/lifecycle.js').LifecycleScope|null} */
@@ -597,6 +597,16 @@ export function selectFromMap(id, clickEvent){
   if(window.isDrawingEdge ?? isDrawingEdge){
     if(window.edgeStartId === null){ window.edgeStartId = id; showHint('Zweites Gebäude anklicken.'); }
     else { if(window.edgeStartId !== id){ addNetzEdge(window.edgeStartId, id); recalcNetz(); } window.edgeStartId = null; showHint('Nächstes Gebäude anklicken oder Tool beenden.'); }
+    return;
+  }
+  // Erneuter Klick auf das ausgewählte Gebäude hebt die Auswahl wieder auf
+  if (selectedId === id) {
+    setSelectedId(null);
+    _expandedIds.delete(id);
+    document.querySelectorAll('.geb-card.selected').forEach(c => c.classList.remove('selected'));
+    window.updateSperrVisibility?.();
+    _rerenderCard(id);
+    updateViz();
     return;
   }
   setSelectedId(id);
@@ -2315,12 +2325,22 @@ export function lwWpSchallRadiusM(lwaDb, zielDb) {
   if (lwaDb <= zielDb) return 0;
   return Math.pow(10, (lwaDb - 11 - zielDb) / 20);
 }
-/** Schallquellen der LW-WP: jedes Außengerät mit seiner Schallleistung, gedreht wie die Aufstellfläche. */
+/** Schallquellen der LW-WP: jedes Außengerät mit seiner Schallleistung, gedreht wie die Aufstellfläche,
+ *  gemindert um den gewählten Schallschutz (Haube, Einhausung, Wand). */
 export function lwWpSchallQuellen() {
   if (!window.lwWp) return [];
   const auf = lwWpAufstellung(window.lwWp.leistungKw);
   const lwa = window.lwWp.lwaManuell ? Number(window.lwWp.lwaDb) : null;
-  return wpSchallQuellen(auf, lwWpAufstellungOpt().drehung, lwa);
+  return quellenMitSchallschutz(wpSchallQuellen(auf, lwWpAufstellungOpt().drehung, lwa), lwWpSchallschutzDb());
+}
+/** Dämpfung des Schallschutzes an den Außengeräten in dB(A) (0 = keiner). */
+export function lwWpSchallschutzDb() { return schallschutzDb(window.lwWp?.schallschutz); }
+export function lwWpSchallschutzSetzen(art, db) {
+  if (!window.lwWp) return;
+  const alt = window.lwWp.schallschutz || {};
+  window.lwWp.schallschutz = art === 'keine' ? null : { art, db: art === 'manuell' ? (Number(db) || alt.db || 10) : undefined };
+  updateLwWpDisplay();
+  redrawLwWp();
 }
 /** Schallleistung aller Außengeräte nach Herstellerangabe bzw. Schätzung (ohne manuelle Vorgabe). */
 export function lwWpLwaAuto(leistungKw) {
@@ -2400,7 +2420,7 @@ export function togglePlaceLwWp() {
 export function placeLwWpAt(latlng) {
   const leistung = parseFloat(document.getElementById('lwwp-leistung').value) || 12;
   const lwa = parseFloat(document.getElementById('lwwp-lwa').value) || 80;
-  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible, ...(window.lwWp?.aufstellung ? { aufstellung: window.lwWp.aufstellung } : {}) };
+  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible, ...(window.lwWp?.aufstellung ? { aufstellung: window.lwWp.aufstellung } : {}), ...(window.lwWp?.schallschutz ? { schallschutz: window.lwWp.schallschutz } : {}) };
   document.getElementById('lwwp-man-laenge').value = '';
   document.getElementById('lwwp-man-breite').value = '';
   window.isPlacingLwWp = false;
@@ -2528,6 +2548,7 @@ function _lwWpSchallAnzeigen(auf) {
   const nf = (v, d = 0) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
   const gesamt = lwaGesamt(quellen);
   const quelle = window.lwWp.lwaManuell ? 'Vorgabe' : (auf.modul.lwa != null ? 'Herstellerangabe' : 'Schätzung');
+  const schutz = lwWpSchallschutzDb();
   const g = lwWpGebiet();
   const radien = [55, 50, 45, 40, 35].map(lp => {
     const r = isophonRadius(quellen, lp);
@@ -2538,10 +2559,17 @@ function _lwWpSchallAnzeigen(auf) {
     const klasse = o.pegel > g.tag ? 'ueber' : o.pegel > g.nacht ? 'nacht' : 'ok';
     return `<span class="lwwp-io-name" title="${escHtml(o.name)}">${escHtml(o.name)}</span><span>${nf(o.abstand)} m</span><span class="lwwp-io-pegel ${klasse}">${nf(o.pegel, 1)} dB(A)</span>`;
   }).join('');
-  el.innerHTML = `<div class="lwwp-schall-quelle">${quellen.length} × ${nf(quellen[0].lwa, 1)} dB(A) (${quelle}) → <b>${nf(gesamt, 1)} dB(A)</b> gesamt</div>
+  el.innerHTML = `<div class="lwwp-schall-quelle">${quellen.length} × ${nf(quellen[0].lwa + schutz, 1)} dB(A) (${quelle})${schutz > 0 ? ` − ${nf(schutz)} dB Schallschutz` : ''} → <b>${nf(gesamt, 1)} dB(A)</b> gesamt</div>
     <div class="lwwp-schall-radien"><span class="kopf">Pegel</span><span class="kopf">bis Abstand</span>${radien}</div>
     ${orte.length ? `<div class="lwwp-schall-orte-kopf">Nächste Gebäude · Richtwert ${g.tag} / ${g.nacht} dB(A) tags / nachts</div>
     <div class="lwwp-schall-orte">${ortZeilen}</div>` : ''}`;
+  const ss = document.getElementById('lwwp-schallschutz');
+  if (ss) {
+    if (!ss.options.length) ss.innerHTML = WP_SCHALLSCHUTZ.map(x => `<option value="${x.id}">${escHtml(x.label)}${x.db ? ` (−${x.db} dB)` : ''}</option>`).join('');
+    ss.value = window.lwWp.schallschutz?.art || 'keine';
+    const dbEl = document.getElementById('lwwp-schallschutz-db');
+    if (dbEl) { dbEl.style.display = ss.value === 'manuell' ? '' : 'none'; if (ss.value === 'manuell') dbEl.value = schutz; }
+  }
   const sel = document.getElementById('lwwp-gebiet');
   if (sel) {
     if (!sel.options.length) sel.innerHTML = PT_TA_LAERM.map(([name, tag, nacht]) => `<option value="${escHtml(name)}">${escHtml(name)} (${tag}/${nacht})</option>`).join('');

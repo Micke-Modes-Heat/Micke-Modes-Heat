@@ -943,7 +943,12 @@ export async function loadAutosave() {
   try {
     const snapshot = _latestAutosave || await loadLatestAutosave();
     if (!snapshot) return;
-    await _loadProject(snapshot.project);
+    const anzeige = typeof window.projektLadeAnzeige === 'function' ? window.projektLadeAnzeige('automatische Sicherung', 0) : null;
+    try {
+      anzeige?.text('Projekt wird aufgebaut — Gebäude, Netz und Berechnungen …');
+      if (typeof window._nachZeichnen === 'function') await window._nachZeichnen();
+      await _loadProject(snapshot.project);
+    } finally { anzeige?.weg(); }
     showHint('✓ Autosave wiederhergestellt.');
     setTimeout(hideHint, 3000);
   } catch(e) { showHint('Fehler beim Wiederherstellen.'); console.error(e); }

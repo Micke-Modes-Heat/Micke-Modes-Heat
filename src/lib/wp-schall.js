@@ -87,3 +87,28 @@ export function naechsterFassadenpunkt(polygon) {
   }
   return best;
 }
+
+/**
+ * Schallschutz an den Außengeräten: typische Einfügungsdämpfung in dB(A) (Richtwerte; die tatsächliche Minderung
+ * hängt von Ausführung, Frequenzspektrum und Luftführung ab und ist mit dem Hersteller abzustimmen).
+ */
+export const WP_SCHALLSCHUTZ = Object.freeze([
+  { id: 'keine', label: 'kein Schallschutz', db: 0 },
+  { id: 'wand', label: 'Schallschutzwand / Lärmschutzzaun', db: 6 },
+  { id: 'haube', label: 'Schallschutzhaube', db: 10 },
+  { id: 'einhausung', label: 'Einhausung mit Kulissenschalldämpfern', db: 15 },
+  { id: 'manuell', label: 'eigener Wert', db: null },
+]);
+
+/** Dämpfung in dB(A) für eine Schallschutz-Angabe { art, db } (eigener Wert begrenzt auf 0–30 dB). */
+export function schallschutzDb(s) {
+  if (!s || !s.art) return 0;
+  if (s.art === 'manuell') return Math.min(30, Math.max(0, Number(s.db) || 0));
+  return WP_SCHALLSCHUTZ.find(x => x.id === s.art)?.db || 0;
+}
+
+/** Quellen mit Schallschutz: jede Quelle um die Dämpfung gemindert. */
+export function quellenMitSchallschutz(quellen, daempfungDb) {
+  const d = Number(daempfungDb) || 0;
+  return d > 0 ? quellen.map(q => ({ ...q, lwa: q.lwa - d })) : quellen;
+}

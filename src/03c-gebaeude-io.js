@@ -3380,7 +3380,7 @@ export function _buildProjectData() {
     customEdges: netzEdges.filter(e => e.u < 10000 && e.v < 10000).map(e => ({u: e.u, v: e.v, pruned: e.pruned || false})),
     edgeWaypoints: edgeWaypoints,
     fliessgewaesser: fliessgewaesser ? { latlngs: fliessgewaesser.latlngs, durchflussLs: fliessgewaesser.durchflussLs, leistungKw: fliessgewaesser.leistungKw, jaz: fliessgewaesser.jaz, visible: fliessgewaesserVisible } : null,
-    lwWp: lwWp ? { lat: lwWp.lat, lng: lwWp.lng, leistungKw: lwWp.leistungKw, lwaDb: lwWp.lwaDb, jaz: _finiteNumberOr(document.getElementById('lwwp-jaz').value, 3.0), waerme: document.getElementById('lwwp-waerme').value, minCop: document.getElementById('lwwp-min-cop')?.value || '', visible: lwWpVisible, ...(lwWp.aufstellung ? { aufstellung: lwWp.aufstellung } : {}), ...(lwWp.lwaManuell ? { lwaManuell: true } : {}), ...(lwWp.gebiet ? { gebiet: lwWp.gebiet } : {}) } : null,
+    lwWp: lwWp ? { lat: lwWp.lat, lng: lwWp.lng, leistungKw: lwWp.leistungKw, lwaDb: lwWp.lwaDb, jaz: _finiteNumberOr(document.getElementById('lwwp-jaz').value, 3.0), waerme: document.getElementById('lwwp-waerme').value, minCop: document.getElementById('lwwp-min-cop')?.value || '', visible: lwWpVisible, ...(lwWp.aufstellung ? { aufstellung: lwWp.aufstellung } : {}), ...(lwWp.lwaManuell ? { lwaManuell: true } : {}), ...(lwWp.gebiet ? { gebiet: lwWp.gebiet } : {}), ...(lwWp.schallschutz ? { schallschutz: lwWp.schallschutz } : {}) } : null,
     geoThermie: geoThermie ? { ...geoThermie, heizlast: document.getElementById('geo-heizlast').value, waerme: document.getElementById('geo-waerme').value, jaz: _finiteNumberOr(document.getElementById('geo-jaz').value, 4.5), tiefe: _finiteNumberOr(document.getElementById('geo-tiefe').value, 100), qPerM: _finiteNumberOr(document.getElementById('geo-q-perm').value, 50), abstand: _finiteNumberOr(document.getElementById('geo-abstand').value, 10), dtAbsenkung: _finiteNumberOr(document.getElementById('geo-dt-absenkung').value, 0) } : null,
     gasKessel: gasKessel ? { leistungKw: gasKessel.leistungKw, eta: document.getElementById('gk-eta').value, waerme: document.getElementById('gk-waerme').value } : null,
     heizoelKessel: heizoelKessel ? { leistungKw: heizoelKessel.leistungKw, eta: document.getElementById('hko-eta').value, waerme: document.getElementById('hko-waerme').value } : null,
@@ -3556,11 +3556,39 @@ export function exportJSON(){
   return saveProject();
 }
 
+/**
+ * Ladeanzeige beim Öffnen eines Projekts. Das Einlesen selbst läuft synchron und blockiert die Seite —
+ * der Spinner ist eine reine CSS-Animation und dreht sich trotzdem weiter. Rückgabe: { text(t), weg() }.
+ */
+export function projektLadeAnzeige(dateiName, bytes) {
+  let el = document.getElementById('projekt-lade-anzeige');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'projekt-lade-anzeige';
+    el.setAttribute('role', 'status');
+    el.innerHTML = '<div class="pla-box"><div class="pla-spinner" aria-hidden="true"></div><div class="pla-titel"></div><div class="pla-text"></div></div>';
+    document.body.appendChild(el);
+  }
+  const mb = bytes > 0 ? ` (${(bytes / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB)` : '';
+  el.querySelector('.pla-titel').textContent = 'Projekt wird geladen' + (dateiName ? ': ' + dateiName : '') + mb;
+  el.querySelector('.pla-text').textContent = 'Datei wird gelesen …';
+  el.classList.add('sichtbar');
+  return {
+    text(t) { el.querySelector('.pla-text').textContent = t; },
+    weg() { el.classList.remove('sichtbar'); },
+  };
+}
+/** Zwei Bildaufbauten abwarten, damit Anzeige und Text gezeichnet sind, bevor die blockierende Arbeit beginnt. */
+export function _nachZeichnen() {
+  return new Promise(res => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(res, 0))));
+}
+
 export async function openProjectFile() {
   if (typeof window.showOpenFilePicker !== 'function') {
     document.getElementById('import-file')?.click();
     return false;
   }
+  let anzeige = null;
   try {
     const [handle] = await window.showOpenFilePicker({
       multiple:false,
@@ -3568,7 +3596,11 @@ export async function openProjectFile() {
     });
     if (!handle) return false;
     const file = await handle.getFile();
-    const project = JSON.parse(await file.text());
+    anzeige = projektLadeAnzeige(handle.name || file.name, file.size);
+    const text = await file.text();
+    anzeige.text('Projekt wird aufgebaut — Gebäude, Netz und Berechnungen. Bei großen Liegenschaften kann das eine Weile dauern …');
+    await _nachZeichnen();
+    const project = JSON.parse(text);
     _loadProject(project);
     _projectFileHandle = handle;
     _setProjectFileStatus(handle.name || file.name);
@@ -3579,15 +3611,22 @@ export async function openProjectFile() {
     console.error('Projekt öffnen fehlgeschlagen:',error);
     showHint('Fehler beim Laden der Datei.',5000);
     return false;
+  } finally {
+    anzeige?.weg();
   }
 }
 
 export function importJSON(event) {
   const file = event.target.files[0];
   if (!file) return;
+  const anzeige = projektLadeAnzeige(file.name, file.size);
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onprogress = ev => { if (ev.lengthComputable && ev.total > 0) anzeige.text(`Datei wird gelesen … ${Math.round(ev.loaded / ev.total * 100)} %`); };
+  reader.onerror = () => { anzeige.weg(); showHint('Fehler beim Lesen der Datei.'); };
+  reader.onload = async function(e) {
     try {
+      anzeige.text('Projekt wird aufgebaut — Gebäude, Netz und Berechnungen. Bei großen Liegenschaften kann das eine Weile dauern …');
+      await _nachZeichnen();
       const project = JSON.parse(e.target.result);
       _loadProject(project);
       // Klassischer Datei-Input liefert aus Sicherheitsgründen keinen
@@ -3599,6 +3638,8 @@ export function importJSON(event) {
     } catch (err) {
       showHint('Fehler beim Laden der Datei.');
       console.error(err);
+    } finally {
+      anzeige.weg();
     }
   };
   reader.readAsText(file);
@@ -4070,7 +4111,7 @@ function _applyProjectData(project) {
       }
 
     if (project.lwWp && project.lwWp.lat != null && project.lwWp.lng != null) {
-        window.lwWp = { lat: project.lwWp.lat, lng: project.lwWp.lng, leistungKw: project.lwWp.leistungKw ?? 12, lwaDb: project.lwWp.lwaDb ?? 80, visible: project.lwWp.visible !== false, ...(project.lwWp.aufstellung ? { aufstellung: project.lwWp.aufstellung } : {}), ...(project.lwWp.lwaManuell ? { lwaManuell: true } : {}), ...(project.lwWp.gebiet ? { gebiet: project.lwWp.gebiet } : {}) };
+        window.lwWp = { lat: project.lwWp.lat, lng: project.lwWp.lng, leistungKw: project.lwWp.leistungKw ?? 12, lwaDb: project.lwWp.lwaDb ?? 80, visible: project.lwWp.visible !== false, ...(project.lwWp.aufstellung ? { aufstellung: project.lwWp.aufstellung } : {}), ...(project.lwWp.lwaManuell ? { lwaManuell: true } : {}), ...(project.lwWp.gebiet ? { gebiet: project.lwWp.gebiet } : {}), ...(project.lwWp.schallschutz ? { schallschutz: project.lwWp.schallschutz } : {}) };
         window.lwWpVisible = window.lwWp.visible !== false;
         document.getElementById('lwwp-visible').checked = lwWpVisible;
         document.getElementById('lwwp-leistung').value = lwWp.leistungKw;

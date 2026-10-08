@@ -2200,11 +2200,14 @@
       <div id="lwwp-schall-tabelle" class="lwwp-schall"></div>
       <label class="lwwp-gebiet"><span>Gebietsart</span>
         <select class="inp-field" id="lwwp-gebiet" data-change="lwWpGebietSetzen(this.value)"></select></label>
+      <label class="lwwp-gebiet" title="Schallschutz an den Außengeräten: Einfügungsdämpfung als Richtwert, wirkt auf Isophonen, Pegel an den Gebäuden und das Gutachten. Eigener Wert nach Herstellerangabe."><span>Schallschutz</span>
+        <span class="lwwp-schallschutz-wahl"><select class="inp-field" id="lwwp-schallschutz" data-change="lwWpSchallschutzSetzen(this.value, document.getElementById('lwwp-schallschutz-db').value)"></select>
+        <input class="inp-field" type="number" id="lwwp-schallschutz-db" min="0" max="30" step="1" placeholder="dB" style="display:none;width:58px;" data-change="lwWpSchallschutzSetzen('manuell', this.value)"/></span></label>
       <div class="lwwp-schall-legende">
         <span style="color:#b71c1c;">■</span> 55 <span style="color:#e65100;">■</span> 50 <span style="color:#f9a825;">■</span> 45
         <span style="color:#8bc34a;">■</span> 40 <span style="color:#2e7d32;">■</span> 35 dB(A)
       </div>
-      <div class="lwwp-schall-hinweis">Überschlägig nach DIN ISO 9613-2 ohne Boden- und Abschirmdämpfung, Pegel am nächsten Fassadenpunkt.
+      <div class="lwwp-schall-hinweis">Überschlägig nach DIN ISO 9613-2 ohne Boden- und Abschirmdämpfung (Schallschutz an den Geräten als Einfügungsdämpfung), Pegel am nächsten Fassadenpunkt.
         Zuschläge für Ton- oder Impulshaltigkeit und Reflexionen an nahen Wänden sind nicht enthalten — ersetzt kein Schallgutachten.</div>
     </div>
     <div class="panel-btns">

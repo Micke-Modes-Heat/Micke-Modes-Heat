@@ -1,6 +1,6 @@
 // Vitest-Tests für lib/wp-schall.js — Schallausbreitung der LW-WP-Außengeräte.
 import { describe, it, expect } from 'vitest';
-import { schallPegel, pegelSumme, wpSchallQuellen, lwaGesamt, pegelAm, isophone, isophonRadius, naechsterFassadenpunkt } from '../src/lib/wp-schall.js';
+import { schallPegel, pegelSumme, wpSchallQuellen, lwaGesamt, pegelAm, isophone, isophonRadius, naechsterFassadenpunkt, schallschutzDb, quellenMitSchallschutz } from '../src/lib/wp-schall.js';
 import { wpAufstellung } from '../src/lib/wp-aufstellung.js';
 
 describe('Ausbreitung', () => {
@@ -51,5 +51,22 @@ describe('Isophonen und Immissionsorte', () => {
   it('nächster Fassadenpunkt eines Gebäudes', () => {
     const f = naechsterFassadenpunkt([{ ost: 10, nord: -5 }, { ost: 20, nord: -5 }, { ost: 20, nord: 5 }, { ost: 10, nord: 5 }]);
     expect(f).toMatchObject({ ost: 10, nord: 0, d: 10 });
+  });
+});
+
+describe('Schallschutz an den Außengeräten', () => {
+  it('Richtwerte je Art, eigener Wert auf 0–30 dB begrenzt', () => {
+    expect(schallschutzDb(null)).toBe(0);
+    expect(schallschutzDb({ art: 'haube' })).toBe(10);
+    expect(schallschutzDb({ art: 'einhausung' })).toBe(15);
+    expect(schallschutzDb({ art: 'manuell', db: 12 })).toBe(12);
+    expect(schallschutzDb({ art: 'manuell', db: 80 })).toBe(30);
+  });
+  it('mindert jede Quelle: Pegel am Ort und Isophonen-Radius schrumpfen entsprechend', () => {
+    const q = wpSchallQuellen(wpAufstellung(1500), 0, null);
+    const m = quellenMitSchallschutz(q, 10);
+    expect(pegelAm(q, 0, 100) - pegelAm(m, 0, 100)).toBeCloseTo(10, 6);
+    expect(isophonRadius(m, 40)).toBeLessThan(isophonRadius(q, 40) / 2);
+    expect(quellenMitSchallschutz(q, 0)).toBe(q);
   });
 });

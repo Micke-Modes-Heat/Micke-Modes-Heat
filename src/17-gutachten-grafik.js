@@ -1529,7 +1529,7 @@ function ggPotenzialDaten() {
       jaz: Number.isFinite(jaz('geo')) ? jaz('geo') : ggFeldZahl('geo-jaz'), deckungPct: anteil('geo'),
     },
     lwwp: {
-      wpKw: lwKw, jaz: jaz('lwwp'), deckungPct: anteil('lwwp'), waermeMwh: en.lwwp?.waermeMwh, stromMwh: en.lwwp?.elMwh, lwaDb: ggFeldZahl('lwwp-lwa'),
+      wpKw: lwKw, jaz: jaz('lwwp'), deckungPct: anteil('lwwp'), waermeMwh: en.lwwp?.waermeMwh, stromMwh: en.lwwp?.elMwh, lwaDb: ggFeldZahl('lwwp-lwa'), schallschutzDb: typeof window.lwWpSchallschutzDb === 'function' ? window.lwWpSchallschutzDb() : 0, schallschutzArt: window.lwWp?.schallschutz?.art || null,
       platzM2: Number.isFinite(lwKw) && typeof w.lwWpPlatzbedarfM2 === 'function' ? w.lwWpPlatzbedarfM2(lwKw) : NaN,
       vl15: ggFeldZahl('gl-vl15'), vlMinus5: ggFeldZahl('gl-vl5'), lastgangJahr: ggLies(() => w.getWitterung?.()?.messjahr, ''),
     },
@@ -3641,13 +3641,14 @@ const GG_FIGUREN = [
     config: { ...ggGebVorlage('Mindestabstände Luft-WP nach TA Lärm', 'Abstand in m', 'Gebietsart', 'Kein Schallleistungspegel eingetragen.'), eyebrow: 'Potenzialanalyse' },
     ausProjekt(cfg) {
       ggGebKopf(cfg);
-      const lwa = ggPotenzialDaten().lwwp.lwaDb;
+      const lw = ggPotenzialDaten().lwwp;
+      const lwa = lw.lwaDb > 0 ? lw.lwaDb - (lw.schallschutzDb || 0) : lw.lwaDb;   // wirksamer Pegel mit Schallschutz
       const r = abSchallAbstaende(lwa);
       if (!r.length) { ggGebLeer(cfg); return '⚠ Kein Schallleistungspegel (Luft-WP-Panel).'; }
       cfg.kategorien = r.map(x => x.gebiet.replace(' Wohngebiet', ' WG').replace('Kern-, Dorf-, Mischgebiet', 'Misch-/Dorfgebiet'));
       cfg.gruppen = [{ label: '', segmente: [{ label: 'tags', farbe: '#C9A227', werte: r.map(x => x.rTag) }] }, { label: '', segmente: [{ label: 'nachts', farbe: '#2F4858', werte: r.map(x => x.rNacht) }] }];
       cfg.punkte = null; cfg.summenLabel = true;
-      cfg.kpiLinks = [{ wert: `${ggNum(lwa)} dB(A)`, label: 'Schallleistungspegel' }];
+      cfg.kpiLinks = [{ wert: `${ggNum(lwa)} dB(A)`, label: lw.schallschutzDb > 0 ? `Schallleistungspegel mit Schallschutz (−${ggNum(lw.schallschutzDb)} dB)` : 'Schallleistungspegel' }];
       cfg.kpiRechts = [{ wert: `${ggNum(r.find(x => x.nacht === 40)?.rNacht)} m`, label: 'allg. Wohngebiet nachts (40 dB(A))', highlight: true }];
       return `✓ ${r.length} Gebietsarten.`;
     },

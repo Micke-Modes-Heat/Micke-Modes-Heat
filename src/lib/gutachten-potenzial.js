@@ -254,16 +254,23 @@ export const PT_TA_LAERM = Object.freeze([
 export const ptSchallRadius = (lwa, ziel) => isophonRadius([{ ost: 0, nord: 0, lwa }], ziel);
 
 export function ptTextSchall(o = {}) {
+  const schutz = o.lwaDb > 0 ? Math.max(0, Number(o.schallschutzDb) || 0) : 0;
   const out = [ueberschrift('Schallemissionen der Luft-Wasser-Wärmepumpe'), absatz('In diesem Abschnitt erfolgt eine erste Beurteilung, ob der Betrieb der Luft-Wasser-Wärmepumpe zu schalltechnischen Konflikten führen kann. Bewertungsgrundlage sind die Immissionsrichtwerte der TA Lärm, insbesondere für allgemeine und reine Wohngebiete in der Nachtzeit. ',
-    'Die Ausbreitungsberechnung ist bewusst konservativ: Schallmindernde Faktoren wie Einhausungen, Abschirmung durch Gebäude oder Vegetation bleiben unberücksichtigt.')];
+    schutz > 0
+      ? `Die Ausbreitungsberechnung berücksichtigt den vorgesehenen Schallschutz an den Außengeräten (${ptSchallschutzName(o.schallschutzArt)}) mit einer Einfügungsdämpfung von ${nf(schutz)} dB; Abschirmung durch Gebäude oder Vegetation bleibt unberücksichtigt.`
+      : 'Die Ausbreitungsberechnung ist bewusst konservativ: Schallmindernde Faktoren wie Einhausungen, Abschirmung durch Gebäude oder Vegetation bleiben unberücksichtigt.')];
   if (o.lwaDb > 0) {
-    const r40 = ptSchallRadius(o.lwaDb, 40), r35 = ptSchallRadius(o.lwaDb, 35), r55 = ptSchallRadius(o.lwaDb, 55);
-    out.push(absatz(`Für die ${o.wpKw > 0 ? `${L(o.wpKw)}-` : ''}Luft-Wasser-Wärmepumpe wird ein Schallleistungspegel von ${nf(o.lwaDb)} dB(A) angesetzt. `,
+    const lwa = o.lwaDb - schutz;
+    const r40 = ptSchallRadius(lwa, 40), r35 = ptSchallRadius(lwa, 35), r55 = ptSchallRadius(lwa, 55);
+    out.push(absatz(`Für die ${o.wpKw > 0 ? `${L(o.wpKw)}-` : ''}Luft-Wasser-Wärmepumpe wird ein Schallleistungspegel von ${nf(o.lwaDb)} dB(A) angesetzt${schutz > 0 ? `, mit Schallschutz wirksam ${nf(lwa)} dB(A)` : ''}. `,
       `Im Freifeld wird der Nachtrichtwert eines allgemeinen Wohngebiets (40 dB(A)) in rund ${nf(r40)} m Abstand eingehalten, der eines reinen Wohngebiets (35 dB(A)) in rund ${nf(r35)} m; 55 dB(A) werden bereits nach rund ${nf(r55)} m unterschritten.`));
   }
   out.push(absatz('Diese überschlägige Berechnung dient der ersten Orientierung in der Vorplanung. Sie ersetzt kein Schallgutachten, das im Genehmigungsverfahren von einem Sachverständigen zu erstellen ist.'));
   return out;
 }
+
+const PT_SCHALLSCHUTZ_NAMEN = { wand: 'Schallschutzwand', haube: 'Schallschutzhaube', einhausung: 'Einhausung mit Kulissenschalldämpfern', manuell: 'Schallschutzmaßnahme' };
+function ptSchallschutzName(art) { return PT_SCHALLSCHUTZ_NAMEN[art] || 'Schallschutzmaßnahme'; }
 
 /* ══════════════════════════════════════════════════════════════════════════
  * Biomasse
