@@ -2847,3 +2847,4 @@ tr.ga-blink td{animation:ga-blink 1.6s ease 2;}
 .hz-tab td{padding:3px 5px;border-bottom:1px solid rgba(255,255,255,0.04);font-family:'DM Mono',monospace;}
 .hz-tab select{font-size:10px;padding:1px 3px;}
 #hz-canvas{width:100%;display:block;border-radius:4px;background:rgba(0,0,0,0.12);}
+.nq-fix{background:transparent;border:1px solid #ffb74d;color:#ffb74d;border-radius:4px;font-size:9px;padding:1px 6px;cursor:pointer;}

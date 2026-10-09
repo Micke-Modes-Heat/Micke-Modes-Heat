@@ -1193,6 +1193,42 @@ export function netzQuartierStatus() {
   return out;
 }
 
+/**
+ * Quartier, das (teilweise) über den Strang eines anderen versorgt wird: die obersten Leitungen, hinter denen nur
+ * Gebäude dieses Quartiers hängen, bekommen je einen eigenen Abgang aus der Heizzentrale.
+ */
+export function netzQuartierStrangHerstellen(quartierId) {
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const q = (window.netzQuartiere || []).find(x => x.id === quartierId);
+  if (!q || !centralId) return 0;
+  const quartierVon = quartierJeGebaeude((window.netzQuartiere || []).filter(x => x.gebIds?.length),centralId);
+  const eltern = window._netzElternKante || new Map();
+  // Elternknoten je Knoten und Quartiere im Teilbaum
+  const elternKnoten = new Map();
+  for (const [id, e] of eltern) elternKnoten.set(id, e.u === id ? e.v : e.u);
+  const imTeilbaum = new Map();
+  for (const g of gebaeude) {
+    if (!eltern.has(g.id)) continue;
+    const qq = quartierVon.get(g.id) ?? null;
+    for (let x = g.id; x != null && x !== centralId; x = elternKnoten.get(x)) {
+      if (!imTeilbaum.has(x)) imTeilbaum.set(x, new Set());
+      imTeilbaum.get(x).add(qq);
+    }
+  }
+  const nurQ = id => { const s = imTeilbaum.get(id); return !!s && s.size === 1 && s.has(q.id); };
+  // oberste Knoten: Teilbaum nur dieses Quartier, Elternknoten nicht (und nicht die Zentrale selbst)
+  const kanten = [];
+  for (const [id] of imTeilbaum) {
+    const p = elternKnoten.get(id);
+    if (nurQ(id) && p != null && p !== centralId && !nurQ(p)) kanten.push(eltern.get(id));
+  }
+  let n = 0;
+  for (const e of kanten) if (window.netzEdges.includes(e) && netzAbgangAusZentrale(e)) n++;
+  showHint(n ? `✓ ${q.name}: ${n} eigene${n === 1 ? 'r Abgang' : ' Abgänge'} aus der Heizzentrale angelegt.` : `${q.name}: kein Strang gefunden, der sich trennen lässt — ggf. „Netz berechnen“.`, 5000);
+  window.netzQuartiereListe?.();
+  return n;
+}
+
 /** Anleitung zum aktiven Kartenmodus in der Sidebar statt eines dauerhaften Hinweisbalkens. */
 function _netzModusAnzeigen() {
   const box = document.getElementById('netz-workspace-modus');
@@ -3572,7 +3608,14 @@ export function autoGenerateNetz(options = {}){
   if (useHeatTrasse && trasseSegments.length === 0) trassePoints.forEach((_, i) => heatPointIndices.add(i));
   else heatSegments.forEach(seg => { for (let i=seg.start; i<=seg.end; i++) heatPointIndices.add(i); });
   const sharedTrasseNodes = new Map();
+  // Haupttrasse an der Heizzentrale verankert: ein Trassenpunkt im Zentralengebäude (oder ≤ 8 m vom Mittelpunkt)
+  // ist die Zentrale selbst — das Netz beginnt dann direkt dort, ohne eigenen Stich
+  const zentraleKnoten = allPts.find(n => n.id === zId);
+  const zentraleGeb = gebaeude.find(g => g.id === zId);
+  const anZentrale = pt => !!zentraleKnoten && (L.latLng(pt).distanceTo(zentraleKnoten.pt) <= 8 ||
+    (zentraleGeb?.polygon?.length >= 3 && _punktImPolygon(L.latLng(pt), zentraleGeb.polygon)));
   const getTrasseNode = pt => {
+    if (anZentrale(pt)) return zentraleKnoten;
     const key = `${Number(pt.lat).toFixed(7)},${Number(pt.lng).toFixed(7)}`;
     if (!sharedTrasseNodes.has(key)) sharedTrasseNodes.set(key, { id: nextTrasseNodeId(), type: 'trasse', pt, load: 0 });
     return sharedTrasseNodes.get(key);
@@ -4121,6 +4164,28 @@ function _strangZuordnung(kanten, centralId, knoten) {
   };
 }
 
+/**
+ * Versorgungsquartiere: Darf ein Gebäude an diese Leitung? Nur an Leitungen des eigenen Hauptstrangs (Gebäude ohne
+ * Quartier nur an Leitungen ohne Quartier). Ohne Quartiere: immer. Gilt für Umhängen, Anschlüsse, Strang umlegen.
+ */
+function _quartierZielPruefer() {
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const kanten = (window.netzEdges || []).filter(e => !e.pruned);
+  const knoten = new Map();
+  kanten.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
+  const strang = _strangZuordnung(kanten,centralId,knoten);
+  if (!strang) return null;
+  const quartierVon = quartierJeGebaeude((window.netzQuartiere || []).filter(q => q.gebIds?.length),centralId);
+  return {
+    erlaubt: (gebId, e) => {
+      const q = strang.quartierDerKante(e);
+      // Leitungen außerhalb der Zone der Hauptzentrale (mehrere Zentralen) und noch nicht zugeordnete: frei
+      return q === undefined || q === (quartierVon.get(gebId) ?? null);
+    },
+    quartierVon,
+  };
+}
+
 /** Leitungen entfernen, die an einem Abzweig ohne Weiterführung enden (versorgen niemanden). Zentrale und Gebäude bleiben. */
 function _blattAbzweigeEntfernen() {
   const zentralen = new Set(netzZentralenIds());
@@ -4351,7 +4416,8 @@ export function _anschluesseOptimieren(maxRunden = 25) {
         let ziel = window.netzEdges.includes(st.ziel.edge) ? st.ziel.edge : null;
         if (!ziel) {
           let d = Infinity;
-          window.netzEdges.filter(e => !e.pruned && !gebIds.has(e.u) && !gebIds.has(e.v)).forEach(e => {
+          const pruefer = _quartierZielPruefer();
+          window.netzEdges.filter(e => !e.pruned && !gebIds.has(e.u) && !gebIds.has(e.v) && (!pruefer || pruefer.erlaubt(st.gebId,e))).forEach(e => {
             const a = abstandZuLinie(punkt,e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt]);
             if (a < d) { d = a; ziel = e; }
           });
@@ -5030,9 +5096,11 @@ export function connectGebToNearestPipe(g){
   // Nächstgelegenen Punkt auf dem vollständigen Leitungsverlauf suchen. Das
   // Bestandsnetz darf dabei weder begradigt noch neu dimensioniert werden.
   let best = null;
+  const quartierPruefer = _quartierZielPruefer();
   for (const e of window.netzEdges) {
     if (e.pruned || e.visibleFromYear != null ||
         !e.uNode || !e.vNode || !e.uNode.pt || !e.vNode.pt) continue;
+    if (quartierPruefer && !quartierPruefer.erlaubt(g.id,e)) continue;
     const projection = _nearestPointOnNetzEdge(e,gc);
     if (!projection) continue;
     const allowedIds = [g.id,e.uNode,e.vNode]
@@ -5560,7 +5628,11 @@ function _strangPlanen(edge, punkt, verlaufVorher = null) {
   const linie = e => e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt];
   const entfaellt = new Set([edge,...analyse.totKanten]);
   const imStrang = kanten.filter(e => e !== edge && analyse.teilnetz.has(e.u) && analyse.teilnetz.has(e.v)).map(e => ({edge:e,linie:linie(e)}));
-  const imNetz = kanten.filter(e => !entfaellt.has(e) && !analyse.teilnetz.has(e.u) && !analyse.teilnetz.has(e.v)).map(e => ({edge:e,linie:linie(e)}));
+  const qPruefer = _quartierZielPruefer();
+  const strangGeb = [...analyse.teilnetz].filter(id => knoten.get(id)?.type === 'geb');
+  const imNetz = kanten.filter(e => !entfaellt.has(e) && !analyse.teilnetz.has(e.u) && !analyse.teilnetz.has(e.v))
+    .filter(e => !qPruefer || strangGeb.every(id => qPruefer.erlaubt(id,e)))
+    .map(e => ({edge:e,linie:linie(e)}));
   const abstandZu = liste => p => Math.min(Infinity,...liste.map(x => abstandZuLinie(p,x.linie)));
   const unten = knoten.get(analyse.unten), zentrale = knoten.get(centralId);
   // Losgelassen auf oder nahe der Heizzentrale: Strang direkt aus der Zentrale — Weg ab ihrem Anschlusspunkt an der Straße
@@ -5768,6 +5840,11 @@ export function rewireBuildingConnection(buildingId, targetEdge, targetPoint) {
     showHint('Dieses Ziel liegt im nachgelagerten Teilnetz des Gebäudes.',3500);
     return false;
   }
+  const pruefer = _quartierZielPruefer();
+  if (pruefer && !pruefer.erlaubt(buildingId,targetEdge)) {
+    showHint('Diese Leitung gehört zum Hauptstrang eines anderen Quartiers — Gebäude nur an den eigenen Strang hängen.',4500);
+    return false;
+  }
   const snapshot = captureWaermeNetzGraph();
   const stats = getComputedStats(building,globalYear);
   const buildingNode = parentEdge
@@ -5818,9 +5895,11 @@ function _renderNetzRewireMarkers() {
       if (netzRewirePreview) { map.removeLayer(netzRewirePreview); netzRewirePreview=null; }
       const parentEdge = _parentEdgeForBuilding(building.id);
       const forbidden = parentEdge ? _buildingSideNodes(building.id,parentEdge) : new Set();
+      const qPruefer = _quartierZielPruefer();
       const candidates = window.netzEdges
         .filter(edge => !edge.pruned && !edge.temporallyHidden && edge !== parentEdge &&
-          !(parentEdge && forbidden.has(edge.u) && forbidden.has(edge.v)))
+          !(parentEdge && forbidden.has(edge.u) && forbidden.has(edge.v)) &&
+          (!qPruefer || qPruefer.erlaubt(building.id,edge)))
         .map(edge => _nearestPointOnNetzEdge(edge,event.target.getLatLng()))
         .filter(Boolean).sort((a,b)=>a.distancePx-b.distancePx);
       const target = candidates[0];

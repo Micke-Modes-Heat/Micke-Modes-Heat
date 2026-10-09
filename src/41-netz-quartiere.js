@@ -17,6 +17,7 @@ let _sichtbar = false;
 
 const _quartiere = () => (Array.isArray(window.netzQuartiere) ? window.netzQuartiere : (window.netzQuartiere = []));
 const _zentraleId = () => parseInt(document.getElementById('netz-zentrale')?.value, 10);
+const _istZentrale = id => (window.netzZentralenIds?.() || [_zentraleId()]).includes(id);
 const _esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 /** Quartier festlegen: mit angehakten Gebäuden direkt, sonst Bereich auf der Karte umfahren. */
@@ -28,8 +29,7 @@ export function netzQuartierHinzufuegen() {
 }
 
 function _anlegen(ids, bereich) {
-  const z = _zentraleId();
-  const gebIds = ids.filter(id => id !== z);
+  const gebIds = ids.filter(id => !_istZentrale(id));
   if (!gebIds.length) { showHint('Im Bereich liegt kein zu versorgendes Gebäude.', 4000); return false; }
   const liste = _quartiere();
   // Ein Gebäude gehört nur einem Quartier: aus bisherigen Quartieren herausnehmen
@@ -181,7 +181,7 @@ export function netzQuartiereListe() {
     const s = status.get(q.id);
     const info = !s || !s.angeschlossen ? '<span class="nq-status">noch nicht berechnet</span>'
       : s.eigener ? `<span class="nq-status ok">✓ eigener Strang${s.abgaenge > 1 ? ` (${s.abgaenge} Abgänge)` : ''}</span>`
-        : '<span class="nq-status warn">teilt Strang — Netz neu berechnen</span>';
+        : `<span class="nq-status warn">teilt Strang</span> <button type="button" class="nq-fix" title="Gebäude dieses Quartiers, die über einen fremden Strang versorgt werden, bekommen einen eigenen Abgang aus der Heizzentrale" data-click="netzQuartierStrangHerstellen('${_esc(q.id)}')">eigenen Strang herstellen</button>`;
     return `<div class="nq-zeile" data-quartier="${_esc(q.id)}">
       <span class="nq-farbe" style="background:${_esc(q.farbe)}"></span>
       <input class="nq-name" value="${_esc(q.name)}" aria-label="Name des Quartiers" data-change="netzQuartierUmbenennen('${_esc(q.id)}', this.value)">

@@ -175,6 +175,27 @@ function manualWaermeConnectedBuildingIds() {
   return connected;
 }
 
+/** Liegt der Punkt in einer Heizzentrale (Haupt- oder weitere)? Dann deren Mittelpunkt als Ankerpunkt. */
+function _heizzentraleAnker(latlng) {
+  const ids = window.netzZentralenIds?.() || [];
+  for (const id of ids) {
+    const g = gebaeude.find(x => x.id === id);
+    if (!g?.polygon?.length) continue;
+    let innen = false;
+    for (let i = 0, j = g.polygon.length - 1; i < g.polygon.length; j = i++) {
+      const a = g.polygon[i], b = g.polygon[j];
+      if ((a.lat > latlng.lat) !== (b.lat > latlng.lat) && latlng.lng < ((b.lng - a.lng) * (latlng.lat - a.lat)) / (b.lat - a.lat) + a.lng) innen = !innen;
+    }
+    if (innen) {
+      const c = polygonCenter(g.polygon);
+      const p = L.latLng(c.lat, c.lng);
+      p._hzName = g.name || 'Heizzentrale';
+      return p;
+    }
+  }
+  return null;
+}
+
 function updateManualWaermeBuildingStyles() {
   if (!window._manualWaermeNetzDrawing) return;
   const connected = manualWaermeConnectedBuildingIds();
@@ -1103,7 +1124,10 @@ map.on('click',e=>{
   }
   if(window.isDrawingTrasse) {
     recordTrasseHistory();
-    const clickedLatLng = snapManualWaermePoint(e.latlng);
+    let clickedLatLng = snapManualWaermePoint(e.latlng);
+    // Klick in eine Heizzentrale: Haupttrasse dort verankern (Punkt in die Mitte der Zentrale)
+    const hzAnker = !window._manualWaermeNetzDrawing && _heizzentraleAnker(clickedLatLng);
+    if (hzAnker) clickedLatLng = hzAnker;
     if (window._manualWaermeNetzDrawing &&
         window.trasseDetached &&
         selectedManualTrassePointIndex!=null) {
@@ -1121,18 +1145,18 @@ map.on('click',e=>{
     const strangLeer = window.trassePoints.length <= window.trasseCurrentSegStart;
     if (window.trasseDetached || strangLeer) {
       // Neuer Strang: an vorhandenem Punkt oder mitten auf einer Linie einrasten = Abzweig
-      const ziel = clickedLatLng._gebaeude ? null : trasseEinrastziel(clickedLatLng);
+      const ziel = clickedLatLng._gebaeude || hzAnker ? null : trasseEinrastziel(clickedLatLng);
       const start = ziel ? trasseEinrastpunktSetzen(ziel) : clickedLatLng;
       setTrasseCurrentSegStart(window.trassePoints.length);
       window.trassePoints.push(L.latLng(start.lat, start.lng));
-      showHint(ziel
+      showHint(hzAnker ? `✓ Strang an der Heizzentrale „${hzAnker._hzName}“ verankert. Weitere Punkte klicken · Enter/Doppelklick beendet den Strang.` : ziel
         ? 'Abzweig gesetzt. Weitere Punkte klicken · Klick auf eine Leitung verbindet · Enter/Doppelklick beendet den Strang.'
         : 'Strang begonnen. Weitere Punkte klicken · Klick auf eine Leitung verbindet · Enter/Doppelklick beendet den Strang.', 5000);
       setTrasseDetached(false);
     } else {
       // Laufender Strang: Klick auf eine vorhandene Leitung verbindet dorthin und beendet den Strang
       const startPunkt = window.trassePoints[window.trasseCurrentSegStart];
-      const ziel = clickedLatLng._gebaeude ? null : trasseEinrastziel(clickedLatLng);
+      const ziel = clickedLatLng._gebaeude || hzAnker ? null : trasseEinrastziel(clickedLatLng);
       const zuNahAmStart = ziel && startPunkt &&
         map.latLngToContainerPoint(ziel.latlng).distanceTo(map.latLngToContainerPoint(startPunkt)) < 12;
       if (ziel && !zuNahAmStart) {
@@ -1144,6 +1168,11 @@ map.on('click',e=>{
         return;
       }
       window.trassePoints.push(clickedLatLng);
+      if (hzAnker) {
+        // Ende an der Zentrale: Strang ist fertig
+        startNewTrasseBranch();
+        showHint(`✓ Strang an der Heizzentrale „${hzAnker._hzName}“ verankert und beendet.`, 4500);
+      }
     }
     redrawTrasse();
     return;

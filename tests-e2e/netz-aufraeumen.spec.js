@@ -74,3 +74,49 @@ test('dist: tote Leitungen werden angezeigt und entfernt', async ({ page }) => {
   expect(r.res.tote).toBe(1);
   expect(r.kanten).toBe(1);
 });
+
+// Quartier über den Strang eines anderen versorgt: „eigenen Strang herstellen“ legt einen eigenen Abgang an
+test('dist: Quartier bekommt seinen eigenen Hauptstrang ab der Zentrale', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    clearNetz(); setGebaeude([]);
+    const poly = (lat, lng) => [L.latLng(lat - .00004, lng - .00006), L.latLng(lat - .00004, lng + .00006), L.latLng(lat + .00004, lng + .00006), L.latLng(lat + .00004, lng - .00006)];
+    const pos = [[52.0800, 7.9995]];
+    for (let i = 0; i < 4; i++) pos.push([52.0803 + (i % 2) * 0.0004, 8.0020 + Math.floor(i / 2) * 0.0010]);
+    for (let i = 0; i < 4; i++) pos.push([52.0803 + (i % 2) * 0.0004, 8.0060 + Math.floor(i / 2) * 0.0010]);
+    pos.forEach(([la, ln], i) => { const g = addGebaeude({ id: 200 + i, name: 'G' + i, baujahr: 1975, coords: poly(la, ln), skipAutoCreate: true }); g.waerme = '300'; g.heizlast = '150'; });
+    populateZentraleSelect(); document.getElementById('netz-zentrale').value = '200';
+    window.netzQuartiere = []; setNetworkLocked(false);
+    autoGenerateNetz({ strategy: 'quick', trasseTreue: 50 });
+    window.netzQuartiere = [{ id: 'q1', name: 'Q1', gebIds: [201, 202, 203, 204], farbe: '#8e24aa' }, { id: 'q2', name: 'Q2', gebIds: [205, 206, 207, 208], farbe: '#00897b' }];
+    recalcNetz();
+    const vor = netzQuartierStatus().get('q2').eigener;
+    // Umhängen an den fremden Strang wird abgelehnt
+    const q1Kante = netzEdges.find(e => [e.u, e.v].includes(201));
+    const neu = netzQuartierStrangHerstellen('q2');
+    const nach = [...netzQuartierStatus()].map(([k, v]) => [k, v.eigener]);
+    const fremd = netzEdges.find(e => [e.u, e.v].includes(201) && netzEdges.includes(e)) || q1Kante;
+    const umgehaengt = rewireBuildingConnection(205, fremd, fremd.uNode.pt);
+    return { vor, neu, nach, umgehaengt, val: window._waermeNetzValidation };
+  });
+  expect(r.vor).toBe(false);
+  expect(r.neu).toBeGreaterThan(0);
+  expect(r.nach).toEqual([['q1', true], ['q2', true]]);
+  expect(r.umgehaengt).toBe(false);
+  expect(r.val.cycleEdges).toBe(0);
+});
+
+// Haupttrasse in der Heizzentrale begonnen: das Netz beginnt direkt dort (kein eigener Stich)
+test('dist: Haupttrasse ist an der Heizzentrale verankert', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    clearNetz(); setGebaeude([]);
+    const poly = (lat, lng, d = .00006) => [L.latLng(lat - d, lng - d * 1.6), L.latLng(lat - d, lng + d * 1.6), L.latLng(lat + d, lng + d * 1.6), L.latLng(lat + d, lng - d * 1.6)];
+    [[52.0800, 8.0000], [52.0805, 8.0030], [52.0805, 8.0050], [52.0795, 8.0040]].forEach(([la, ln], i) => { const g = addGebaeude({ id: 300 + i, name: 'G' + i, baujahr: 1975, coords: poly(la, ln), skipAutoCreate: true }); g.waerme = '300'; g.heizlast = '150'; });
+    populateZentraleSelect(); document.getElementById('netz-zentrale').value = '300';
+    setTrassePoints([L.latLng(52.08002, 8.00003), L.latLng(52.0800, 8.0020), L.latLng(52.0800, 8.0060)]);
+    setTrasseSegments([{ start: 0, end: 2, domains: ['waerme'] }]);
+    setNetworkLocked(false);
+    autoGenerateNetz({ strategy: 'trasse', trasseTreue: 80 });
+    return netzEdges.filter(e => e.u === 300 || e.v === 300).map(e => (e.u === 300 ? e.vNode : e.uNode)).map(n => ({ typ: n.type, lng: +n.pt.lng.toFixed(4) }));
+  });
+  expect(r).toEqual([{ typ: 'trasse', lng: 8.002 }]);
+});
