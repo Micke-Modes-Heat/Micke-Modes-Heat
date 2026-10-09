@@ -22,6 +22,7 @@ import { calcGebKwp, calcGebKwpKorr, escHtml } from './03c-gebaeude-io.js';
 import { KABEL_TYPEN, kabelTypenFuerAusbau } from './config/netz-kosten.js';
 import { nsKabelAuslegen } from './lib/ns-auslegung.js';
 import { ERT_TRAFO_STUFEN, ertNaechsteTrafoStufe } from './14b-ertuechtigung.js';
+import { gruppenBetriebsart, trafoGruppen, trafoGruppenKapazitaet } from './lib/trafo-parallel.js';
 import { engpassKabelAlternativen, engpassWaehleAlternative } from './lib/engpass-core.js';
 import { normSchicht, SCHICHT } from './lib/schichten.js';
 import { pvnaAbregelung, pvnaFuellen, pvnaLastfluss, pvnaTreppe, pvnaVollausbau } from './lib/pv-netzaufnahme-core.js';
@@ -148,6 +149,8 @@ export function pvnaModell(opts = {}) {
 
   // Radialer Baum je Trafo — gleiche Traversierungsregel wie elCalcAssets:
   // Gebäude immer durchqueren, Assets nur in Richtung steigenden TYPE_RANK.
+  const reich = new Map();            // Trafo-ID → NS-seitig erreichte Knoten (für Trafogruppen)
+  const kontakte = [];                // Kabel direkt vom Trafo zu einem Knoten, den schon ein anderer Trafo hat
   for (const t of aktiveA.filter(a => a.type === 'Trafo')) {
     const p = getAssetPropsForYear(t, yr, jOpts);
     const kva = parseFloat(p.leistungKVA) || 630;
@@ -161,6 +164,8 @@ export function pvnaModell(opts = {}) {
     const trafoRang = TYPE_RANK.Trafo;
     const queue = [];
     const besucht = new Set([t.id]);
+    const r = new Set();
+    reich.set(t.id, r);
     for (const { nb, edge } of (adj.get(t.id) || [])) {
       const nbA = assetMap.get(nb);
       if (nbA && (TYPE_RANK[nbA.type] ?? 6) <= trafoRang) continue;   // nicht Richtung MS/NAP
@@ -168,8 +173,13 @@ export function pvnaModell(opts = {}) {
     }
     while (queue.length) {
       const { id, von, edge } = queue.shift();
-      if (besucht.has(id) || knotenTrafo.has(id)) continue;   // erster Trafo gewinnt
+      if (!besucht.has(id) && knotenTrafo.has(id) && knotenTrafo.get(id) !== t.id) {
+        r.add(id);                                            // NS-Netz eines anderen Trafos → Trafogruppe
+        if (von === t.id) kontakte.push({ trafoId: t.id, id, edge });
+      }
+      if (besucht.has(id) || knotenTrafo.has(id)) continue;   // erster Trafo baut den Baum, Gruppe s. u.
       besucht.add(id);
+      r.add(id);
       const eid = 'E:' + edge.id;
       if (!elInfo.has(eid)) {
         const kab = _kabelElement(edge, yr, { cosPhi, kIz, tLeiter, I_je_kW, ersatzQs, inklGeplant: jOpts.inklGeplant });
@@ -192,6 +202,54 @@ export function pvnaModell(opts = {}) {
       }
     }
   }
+  // Trafos an einem gemeinsamen NS-Netz (z. B. dieselbe NSHV) bilden wie in
+  // elCalcAssets (05b) eine Gruppe: ein Trafo-Element mit der Leistung der Gruppe
+  // in ihrer Betriebsart (lib/trafo-parallel). Sonst hinge der zweite Trafo leer
+  // daneben und nur der erste zählte. Kabel direkt am Trafo tragen nur dessen
+  // Anteil — Kapazität und ΔU je kW entsprechend umgerechnet.
+  const trafoLeiter = new Map();      // Trafo-ID → Trafo, der die Gruppe im Modell vertritt
+  for (const gr of trafoGruppen(reich)) {
+    for (const id of gr) trafoLeiter.set(id, gr[0]);
+    if (gr.length < 2) continue;
+    const ta = gr.map(id => assetMap.get(id));
+    const tp = ta.map(t => getAssetPropsForYear(t, yr, jOpts));
+    const art = gruppenBetriebsart(tp.map(p => p.betriebsart));
+    const trafos = ta.map((t, i) => ({ id: t.id, name: t.name || 'Trafo', kva: parseFloat(tp[i].leistungKVA) || 630, ukPct: tp[i].ukProzent }));
+    const { kapKw, faktor } = trafoGruppenKapazitaet(trafos, art, PF_TRAFO);
+    const lid = 'T:' + gr[0];
+    const fL = faktor.get(gr[0]) || 1;
+    // Kabel des vertretenden Trafos zu einem Knoten, an dem auch ein anderer Trafo der Gruppe hängt
+    const geteiltEl = new Set(kontakte.filter(k => gr.includes(k.trafoId)).map(k => knotenEl.get(k.id)));
+    for (const e of elemente) {
+      if (e.parentId !== lid || !geteiltEl.has(e.id)) continue;
+      e.kapKw /= fL;
+      e.duProKwPct *= fL;
+    }
+    // Kabel der übrigen Trafos zur gemeinsamen Schiene: begrenzen die Gruppe mit
+    let kabelKapKw = Infinity, kabelText = '';
+    for (const k of kontakte) {
+      if (k.trafoId === gr[0] || !gr.includes(k.trafoId)) continue;
+      const kab = _kabelElement(k.edge, yr, { cosPhi, kIz, tLeiter, I_je_kW, ersatzQs, inklGeplant: jOpts.inklGeplant });
+      const kap = kab.kapKw / (faktor.get(k.trafoId) || 1);
+      if (!kab.unbekannt && kab.kapKw > 0 && kap < kabelKapKw) { kabelKapKw = kap; kabelText = `Kabel ${name(k.trafoId)} → ${name(k.id)}, ${kab.text}`; }
+    }
+    const leit = elemente.find(e => e.id === lid);
+    leit.kapKw = Math.min(kapKw, kabelKapKw);
+    elInfo.set(lid, { ...elInfo.get(lid),
+      label: `${trafos.map(x => x.name).join(' + ')} (${trafos.map(x => x.kva).join(' + ')} kVA, ${art === 'parallel' ? 'Parallelbetrieb' : 'N-1'})`
+        + (kabelKapKw < kapKw ? ` — begrenzt durch ${kabelText}` : ''),
+      kva: trafos.reduce((s, x) => s + x.kva, 0), gruppe: { art, trafos, faktor, kabelKapKw } });
+    for (const id of gr.slice(1)) {
+      const tid = 'T:' + id;
+      for (const e of elemente) if (e.parentId === tid) e.parentId = lid;
+      elemente.splice(elemente.findIndex(e => e.id === tid), 1);
+      elInfo.delete(tid);
+      elPos.delete(tid);
+      knotenEl.set(id, lid);
+    }
+  }
+  for (const [k, v] of knotenTrafo) if (trafoLeiter.has(v)) knotenTrafo.set(k, trafoLeiter.get(v));
+  for (const inf of elInfo.values()) if (trafoLeiter.has(inf.trafoId)) inf.trafoId = trafoLeiter.get(inf.trafoId);
   const elById = new Map(elemente.map(e => [e.id, e]));
 
   // Anlage ohne eigenes Kabel (z. B. Dach-PV vor dem automatischen Anschluss, 39):
@@ -287,7 +345,7 @@ export function pvnaModell(opts = {}) {
     .map(a => ({ id: a.id, typ: a.type, name: a.name || a.type, pos: knotenPos(a.id) })).filter(m => m.pos);
 
   return { eingabe, info: { elInfo, dachInfo, hinweise, unbekannteQs, ersatzQs, bestandPvKwp, jahr: yr, stichjahr: stich, flaechen,
-    cosPhi, kIz, tLeiter, I_je_kW, elPos, msPunkte, knotenEl, knotenTrafo, einspFaktor } };
+    cosPhi, kIz, tLeiter, I_je_kW, elPos, msPunkte, knotenEl, knotenTrafo, trafoLeiter, einspFaktor } };
 }
 
 /**
@@ -385,6 +443,24 @@ function _massnahmenAnhaengen(eingabe, elInfo, k) {
     const info = elInfo.get(e.id);
     if (e.typ === 'trafo') {
       if (!(fluss > e.kapKw)) continue;
+      if (info.gruppe) {
+        // Trafogruppe: jeden Trafo tauschen, dessen Anteil über seiner Leistung liegt
+        const { trafos, faktor, kabelKapKw } = info.gruppe;
+        const neu = trafos.map(x => {
+          const f = faktor.get(x.id) || 1;
+          const st = fluss * f > x.kva * PF_TRAFO ? ertNaechsteTrafoStufe(fluss * f, ERT_TRAFO_STUFEN) : null;
+          return { x, f, st: st && st.bisKvA > x.kva ? st : null };
+        });
+        const tausch = neu.filter(n => n.st);
+        if (!tausch.length) continue;
+        const kapNeu = Math.min(...neu.map(n => (n.st ? n.st.bisKvA * PF_TRAFO : n.x.kva * PF_TRAFO) / n.f), kabelKapKw);
+        e.massnahme = {
+          label: tausch.map(n => `${n.x.name} ${n.x.kva} → ${n.st.bisKvA < Infinity ? n.st.bisKvA + ' kVA' : 'Übergabestation'}`).join(' + '),
+          investEUR: tausch.reduce((s, n) => s + n.st.investEUR, 0),
+          kapKw: kapNeu,
+        };
+        continue;
+      }
       const st = ertNaechsteTrafoStufe(fluss, ERT_TRAFO_STUFEN);
       if (!st || st.bisKvA <= info.kva) continue;
       e.massnahme = {

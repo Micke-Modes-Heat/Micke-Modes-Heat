@@ -439,8 +439,8 @@ function _pvGebaeudeIdsMitAsset() {
  *  Elektro-PV-Assets (13a) + Gebäude-PV ohne eigenes Asset + Freiflächen-PV + Strom-Panel-Eingabe */
 /**
  * Belegungsstand, der als Anlagenpotenzial dient (38) — dessen Dächer statt der
- * Projektbelegung, alle übrigen Quellen (Freifläche, PV-Assets ohne Dachflächen,
- * manuell) wie gehabt. null = kein Stand gewählt oder gelöscht.
+ * Projektbelegung (auch ein dort leeres Dach bleibt leer), dazu nur PV außerhalb
+ * der Dächer (Freifläche, PV-Assets ohne Gebäude, manuell). null = kein Stand gewählt oder gelöscht.
  */
 function _pvPotenzialStand() {
   const id = window._pvAnalyse?.potenzialStandId;
@@ -450,7 +450,7 @@ function _pvPotenzialStand() {
 function pvGetMaxKwpFromAssets() {
   if (window._pvAnalyse.pvMaxKwpOverride > 0) return window._pvAnalyse.pvMaxKwpOverride;
   const st = _pvPotenzialStand();
-  if (st) return st.summeKwp + _pvKwpOhneGebaeude(st.ids);
+  if (st) return st.summeKwp + _pvKwpAusserhalbDaecher();
 
   // 1. Elektro-Assets vom Typ 'PV' (ASSETS.items aus 13a-assets-core.js)
   const assetKwp = (ASSETS?.items || [])
@@ -489,6 +489,20 @@ function _pvKwpOhneGebaeude(ids) {
 }
 
 /**
+ * PV außerhalb aller Dächer: PV-Assets ohne Gebäude, Freiflächen, manuell.
+ * Ergänzt einen Belegungsstand (38) als Anlagenpotenzial und als Auslegung — der Stand beschreibt
+ * alle Dächer der Liegenschaft, ein dort leeres Dach bleibt auch hier leer.
+ */
+function _pvKwpAusserhalbDaecher() {
+  const assetKwp = (ASSETS?.items || [])
+    .filter(a => a.type === 'PV' && a.buildingId == null)
+    .reduce((s, a) => s + (parseFloat(a.props?.leistungKWp) || 0), 0);
+  const ffKwp  = freiflaechen.reduce((s, ff) => s + calcFFKwp(ff), 0);
+  const manual = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
+  return assetKwp + ffKwp + manual;
+}
+
+/**
  * Obergrenze der kWp-Achsen und -Schieber in den Abbildungen: das Anlagenpotenzial,
  * mindestens aber die größte Dachbelegung aus dem PV-Modus — deren Dächer sind im
  * Projekt (noch) nicht belegt, ihre Auslegung läge sonst jenseits der Schieber.
@@ -510,12 +524,11 @@ function pvGetAssetBreakdown() {
   const assetN   = (ASSETS?.items || []).filter(a => a.type === 'PV').length;
   const st = _pvPotenzialStand();
   if (st) {
-    // Dächer des Stands ersetzen Gebäude-PV und die PV-Assets dieser Gebäude
-    const ohne = (ASSETS?.items || []).filter(a => a.type === 'PV' && !(a.buildingId != null && st.ids.has(String(a.buildingId))));
-    const mitA = _pvGebaeudeIdsMitAsset();
+    // Der Stand legt alle Dächer fest: ersetzt Gebäude-PV und alle PV-Assets an Gebäuden
+    const ohne = (ASSETS?.items || []).filter(a => a.type === 'PV' && a.buildingId == null);
     return {
       assetKwp: ohne.reduce((t, a) => t + (parseFloat(a.props?.leistungKWp) || 0), 0), assetN: ohne.length,
-      gebKwp: gebaeude.reduce((t, g) => t + (g.pvAktiv && !mitA.has(g.id) && !st.ids.has(String(g.id)) ? calcGebKwp(g) : 0), 0),
+      gebKwp: 0,
       ffKwp, manual,
       stand: { name: st.name, kwp: st.summeKwp, daecher: st.daecher, beschreibung: st.beschreibung },
     };
@@ -1519,7 +1532,8 @@ export function pvBerechneAlle() {
 
   // ═══ 6) DACHBELEGUNGEN — aus „Dächer automatisch belegen" (36) übernommen ════
   //     PV = Momentaufnahme der belegten Dächer + schon geplante PV aller übrigen
-  //     Gebäude. Anders als Fahrplan/Netzstrategie bekommt jede Belegung einen
+  //     Gebäude; aus einem Belegungsstand dagegen nur dessen Dächer + PV außerhalb
+  //     der Dächer (der Stand legt alle Dächer fest, wie im Panel). Anders als Fahrplan/Netzstrategie bekommt jede Belegung einen
   //     Speicher nach der gewählten Regel. Netzbau-Pauschalen entfallen nur, wenn
   //     die Vorschau die ganze Belegung im Bestandsnetz geprüft hat.
   const gebNachId = new Map(gebaeude.map(g => [String(g.id), g]));
@@ -1534,7 +1548,7 @@ export function pvBerechneAlle() {
       ids.add(gid);
       neuKwp += +k || 0;
     }
-    const geplantKwp = _pvKwpOhneGebaeude(ids);
+    const geplantKwp = bv.ausStand ? _pvKwpAusserhalbDaecher() : _pvKwpOhneGebaeude(ids);
     const kwpB = neuKwp + geplantKwp;
     if (!(kwpB > 0)) continue;
     const sp = _pvBelegungSpeicher(bv, kwpB, demandH, pvProfile, napParams, spotH, params);
@@ -1545,11 +1559,11 @@ export function pvBerechneAlle() {
       netzausbauLabel: nAusbau ? `Netzertüchtigung (${nAusbau.massnahmen.length} Maßnahme${nAusbau.massnahmen.length > 1 ? 'n' : ''})` : '' });
     const eB = ergebnisse[ergebnisse.length - 1];
     if (eB?.id !== id) continue;
-    eB.dachbelegung = { nr: bv.nr, daecher: ids.size, neuKwp, geplantKwp, speicher: bv.speicher };
+    eB.dachbelegung = { nr: bv.nr, daecher: ids.size, neuKwp, geplantKwp, speicher: bv.speicher, ausStand: bv.ausStand };
     eB.netzausbau = nAusbau ? { investEUR: nAusbau.investEUR, massnahmen: nAusbau.massnahmen } : null;
     const f0 = x => Math.round(x).toLocaleString('de-DE');
     eB.hinweis = [
-      `${ids.size} Dächer ${bv.ausStand ? 'laut Belegungsstand' : 'neu belegt'} (${f0(neuKwp)} kWp)${geplantKwp > 0.5 ? ` + ${f0(geplantKwp)} kWp ${bv.ausStand ? 'weitere geplante PV' : 'schon geplante PV'}` : ''}.`,
+      `${ids.size} Dächer ${bv.ausStand ? 'laut Belegungsstand' : 'neu belegt'} (${f0(neuKwp)} kWp)${geplantKwp > 0.5 ? ` + ${f0(geplantKwp)} kWp ${bv.ausStand ? 'PV außerhalb der Dächer (Freifläche, Anlagen ohne Gebäude)' : 'schon geplante PV'}` : ''}.`,
       bv.speicher === 'ohne' ? 'Ohne Speicher.'
         : `Speicher „${_pvSpeicherRegel(bv.speicher)[1]}": ${sp.batKwh > 0 ? f0(sp.batKwh) + ' kWh' : 'keiner'}.`,
       sp.hinweis, bv.netz?.text || '',
@@ -7142,6 +7156,7 @@ function _pvPotenzialKopfHtml() {
     : '';
   const staende = window.pvbsListe?.() || [];
   const projektId = window.pvbsProjektId?.() || null;
+  const entwurf = window.pvbsEntwurfInfo?.() || null;     // ungespeicherte Belegung auf den Dächern (38)
   const potId = window._pvAnalyse.potenzialStandId;
   const name = id => staende.find(st => st.id === id)?.name || '';
   const sel = 'width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;';
@@ -7152,10 +7167,11 @@ function _pvPotenzialKopfHtml() {
     </div>
     <div data-ohne-stale style="margin-bottom:6px;" title="Mit welchem gespeicherten Belegungsstand der Variantenvergleich rechnet — z. B. „Gesamtpotenzial“ aus der automatischen Belegung, ohne die Dächer im Projekt belegen zu müssen.">
       <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">Dächer: Belegungsstand</div>
-      ${staende.length ? `<select data-change="pvaPotenzialStand(this.value)" style="${sel}">
+      ${staende.length || entwurf ? `<select data-change="pvaPotenzialStand(this.value)" style="${sel}">
         ${projektId ? `<option value=""${potId && potId !== projektId ? '' : ' selected'}>„${escHtml(name(projektId))}“ — im Projekt</option>` : ''}
+        ${entwurf ? `<option value=""${potId ? '' : ' selected'}>Entwurf im Projekt (ungespeichert, ${entwurf.daecher} Dächer)</option>` : ''}
         ${staende.filter(st => st.id !== projektId).map(st => `<option value="${st.id}"${st.id === potId ? ' selected' : ''}>„${escHtml(st.name)}“</option>`).join('')}
-      </select>` : '<div style="font-size:10px;color:var(--muted);line-height:1.4;">Noch kein Belegungsstand — sie entstehen im PV-Modus („⚡ Dächer automatisch belegen“ → „💾 Als Belegungsstand speichern“) oder von selbst, sobald Dächer belegt sind.</div>'}
+      </select>` : '<div style="font-size:10px;color:var(--muted);line-height:1.4;">Noch kein Belegungsstand — sie entstehen im PV-Modus („⚡ Dächer automatisch belegen“ → „💾 Als Belegungsstand speichern“) oder aus belegten Dächern im Projekt über „💾 als neuer Stand“.</div>'}
       ${potId && !bd.stand ? '<div style="font-size:10px;color:#ef9a9a;margin-top:3px;">Der gewählte Belegungsstand existiert nicht mehr — es gilt der Stand im Projekt.</div>' : ''}
     </div>
     ${bd.stand ? zeile(`Belegungsstand (${bd.stand.daecher} Dächer)`, bd.stand.kwp) : ''}

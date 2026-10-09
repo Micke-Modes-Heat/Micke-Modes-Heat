@@ -59,3 +59,16 @@ export function phaseJahrSetzen(phase, feld, wert) {
   if (feld === 'jahrBis' && parseInt(next.jahrVon) > jahr) next.jahrVon = String(jahr);
   return next;
 }
+
+/**
+ * Jahr einer Maßnahme — die eine Regel für Assets, Kabel, Gebäude und Gutachten:
+ * ein lesbares eigenes Jahr gewinnt, sonst das Startjahr ihrer Phase, sonst null.
+ */
+export function massnahmeJahrAus(m, phasenArr) {
+  const eigen = parseInt(m?.jahr);
+  if (Number.isFinite(eigen) && eigen > 0) return eigen;
+  if (m?.phaseId == null) return null;
+  const p = (phasenArr || []).find(x => x?.id === m.phaseId);
+  const von = parseInt(p?.jahrVon);
+  return Number.isFinite(von) ? von : null;
+}

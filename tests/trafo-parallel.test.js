@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { trafoGruppen, trafoAufteilung, gruppenBetriebsart, BETRIEBSART_VORGABE } from '../src/lib/trafo-parallel.js';
+import { trafoGruppen, trafoAufteilung, trafoGruppenKapazitaet, gruppenBetriebsart, BETRIEBSART_VORGABE } from '../src/lib/trafo-parallel.js';
 
 describe('trafoGruppen', () => {
   it('fasst Trafos auf derselben NSHV zusammen, getrennte Netze bleiben einzeln', () => {
@@ -67,5 +67,23 @@ describe('gruppenBetriebsart', () => {
   it('erster gesetzter Wert gilt, sonst die Vorgabe', () => {
     expect(gruppenBetriebsart([undefined, 'parallel', 'n1'])).toBe('parallel');
     expect(gruppenBetriebsart(['', null])).toBe(BETRIEBSART_VORGABE);
+  });
+});
+
+describe('trafoGruppenKapazitaet', () => {
+  const zwei = [{ id: 'a', kva: 630 }, { id: 'b', kva: 630 }];
+  it('Parallelbetrieb: zwei gleiche Trafos lassen die doppelte Leistung durch', () => {
+    const k = trafoGruppenKapazitaet(zwei, 'parallel', 0.9);
+    expect(k.kapKw).toBeCloseTo(2 * 630 * 0.9);
+    expect(k.faktor.get('a')).toBeCloseTo(0.5);
+  });
+  it('N-1: bei zwei Trafos zählt nur der kleinere', () => {
+    const k = trafoGruppenKapazitaet([{ id: 'a', kva: 1000 }, { id: 'b', kva: 630 }], 'n1', 0.9);
+    expect(k.kapKw).toBeCloseTo(630 * 0.9);
+  });
+  it('Parallelbetrieb ungleicher Trafos: begrenzt der Trafo, der zuerst voll ist (Sr/uk)', () => {
+    const k = trafoGruppenKapazitaet([{ id: 'a', kva: 1000, ukPct: 6 }, { id: 'b', kva: 630, ukPct: 4 }], 'parallel', 1);
+    // Gewichte 166,7 / 157,5 → b trägt 48,6 % und ist bei 630 / 0,486 ≈ 1297 kW voll
+    expect(k.kapKw).toBeCloseTo(630 / (157.5 / (1000 / 6 + 157.5)), 0);
   });
 });

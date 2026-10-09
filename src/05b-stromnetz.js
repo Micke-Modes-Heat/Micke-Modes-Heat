@@ -5,7 +5,7 @@
 // ══════════════════════════════════════════════════════════════════
 
 // ── Styled Modal-Dialoge ────────────────────────────────────────
-import { areaLatLngs, bhkw, freiflaechen, gebaeude, geoThermie, lwWp, setStromEdges, setStromNodes, setTrasseCurrentSegStart, setTrassePoints, setTrasseSegments, trassePoints, trasseSegments } from './01-globals-varianten.js';
+import { areaLatLngs, bhkw, freiflaechen, gebaeude, geoThermie, lwWp, massnahmeJahr, setStromEdges, setStromNodes, setTrasseCurrentSegStart, setTrassePoints, setTrasseSegments, trassePoints, trasseSegments } from './01-globals-varianten.js';
 import { getGebStromMwh, map } from './02b-gebaeude.js';
 import { polygonAreaM2, polygonCenter, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { setNetzVisible } from './03b-netz.js';
@@ -17,6 +17,7 @@ import { nsKabelAuslegen } from './lib/ns-auslegung.js';
 import { anschlussWirksam } from './lib/anschlussleistung.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { createId } from './lib/util.js';
+import { massnahmenSektionHtml, massnahmenSektionVerdrahten, MASSN_TYPEN_KABEL } from './40-massnahmen-ui.js';
 import { msSpannungen } from './lib/ms-spannung.js';
 import { trafoGruppen, trafoAufteilung, gruppenBetriebsart } from './lib/trafo-parallel.js';
 import { baueTrassenGraph, routeEntlangTrassen } from './lib/trassen-routing.js';
@@ -229,116 +230,25 @@ function _renderCableInspector(panel, edge) {
   };
 }
 
-// ── Kabel-Maßnahmen (kompakter Editor, analog zum Asset-Inspector) ──────────────
-const _CABLE_MASSN_STATUS = {
-  geplant:   { label: 'Geplant',   color: '#4fc3f7' },
-  umgesetzt: { label: 'Umgesetzt', color: '#4caf50' },
-  abgelehnt: { label: 'Abgelehnt', color: '#9e9e9e' },
-};
-const _CABLE_MASSN_TYP = {
-  Verlegung:   { label: 'Neuverlegung', icon: '🧵' },
-  Ertuecht:    { label: 'Ertüchtigung', icon: '⚡' },
-  Austausch:   { label: 'Austausch',    icon: '🔧' },
-  Rueckbau:    { label: 'Rückbau',      icon: '🏚' },
-};
-function _cableMassnId() { return createId('cm'); }
-
-function _cableMassnRow(m) {
-  const s = _CABLE_MASSN_STATUS[m.status] || _CABLE_MASSN_STATUS.geplant;
-  const t = _CABLE_MASSN_TYP[m.typ]       || _CABLE_MASSN_TYP.Austausch;
-  const kosten = m.kosten ? m.kosten.toLocaleString('de-DE') + ' €' : '—';
-  return `<div class="ins-massn-row" data-cm-id="${m.id}">
-    <span class="ins-massn-dot" style="background:${s.color};" title="${s.label}"></span>
-    <div class="ins-massn-info">
-      <div class="ins-massn-titel">${t.icon} ${(m.titel || '—').replace(/</g,'&lt;')}</div>
-      <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten} · <span class="ins-massn-typ-tag">${t.label}</span></div>
-    </div>
-    <button class="ins-massn-edit" data-cm-id="${m.id}" title="Bearbeiten">✎</button>
-    <button class="ins-massn-del"  data-cm-id="${m.id}" title="Löschen">×</button>
-  </div>`;
+// ── Kabel-Maßnahmen: gemeinsame Oberfläche mit dem Asset-Inspector (40-massnahmen-ui.js) ──
+// Ziel-Parameter wie in getStromEdgePropsForYear: Querschnitt, Parallelstränge, Kabeltyp.
+const _CABLE_ZIEL_SCHEMA = [
+  { key: 'cableType',    label: 'Kabeltyp', optionen: wert => kabelTypOptionen(wert) },
+  { key: 'crossSection', label: 'Querschnitt (mm²)' },
+  { key: 'nParallel',    label: 'Parallelstränge' },
+];
+function _cableMassnCtx(edge) {
+  return {
+    ziel: 'kante', schema: _CABLE_ZIEL_SCHEMA, typen: MASSN_TYPEN_KABEL, standardTyp: 'Ertuechtigung',
+    objektSchicht: getStromEdgeSchicht(edge),
+    nachAenderung: () => { if (typeof window.sldRefresh === 'function') window.sldRefresh(); },
+  };
 }
-
 function _cableMassnSection(edge) {
-  const list = edge.massnahmen || [];
-  const rows = list.map(_cableMassnRow).join('');
-  const typOpts    = Object.entries(_CABLE_MASSN_TYP).map(([v, t]) => `<option value="${v}">${t.icon} ${t.label}</option>`).join('');
-  const statusOpts = Object.entries(_CABLE_MASSN_STATUS).map(([v, s]) => `<option value="${v}">${s.label}</option>`).join('');
-  const eid = edge.id;
-  return `
-    <div class="ins-section-header" style="margin-top:8px;"><span class="asset-ins-section-title">Maßnahmen</span></div>
-    <div class="ins-massn-list" id="cm-list-${eid}">${rows || '<div class="ins-massn-empty">Keine Maßnahmen</div>'}</div>
-    <button class="ins-massn-add-btn" id="cm-add-${eid}">+ Maßnahme hinzufügen</button>
-    <div class="ins-massn-form" id="cm-form-${eid}" style="display:none;">
-      <input class="ins-field-input" type="text" id="cm-titel-${eid}" placeholder="Titel der Maßnahme">
-      <div class="ins-row-2" style="margin-top:4px;">
-        <input class="ins-field-input" type="number" id="cm-jahr-${eid}"   placeholder="Jahr">
-        <input class="ins-field-input" type="number" id="cm-kosten-${eid}" placeholder="Kosten €" min="0">
-      </div>
-      <div class="ins-row-2" style="margin-top:4px;">
-        <select class="ins-field-input" id="cm-typ-${eid}">${typOpts}</select>
-        <select class="ins-field-input" id="cm-status-${eid}">${statusOpts}</select>
-      </div>
-      <div class="ins-massn-form-btns">
-        <button class="ins-massn-form-cancel" id="cm-cancel-${eid}">Abbrechen</button>
-        <button class="ins-massn-form-save"   id="cm-save-${eid}">Speichern</button>
-      </div>
-    </div>`;
+  return `<div class="ins-section-header" style="margin-top:8px;"><span class="asset-ins-section-title">Maßnahmen</span></div>
+    ${massnahmenSektionHtml(edge, _cableMassnCtx(edge))}`;
 }
-
-function _wireCableMassn(panel, edge) {
-  const eid = edge.id;
-  let editingId = null;
-  const $ = sel => panel.querySelector(sel);
-
-  function refreshList() {
-    const listEl = $(`#cm-list-${eid}`);
-    if (!listEl) return;
-    const list = edge.massnahmen || [];
-    listEl.innerHTML = list.length ? list.map(_cableMassnRow).join('') : '<div class="ins-massn-empty">Keine Maßnahmen</div>';
-    bindRows();
-  }
-  function openForm(m) {
-    editingId = m ? m.id : null;
-    const form = $(`#cm-form-${eid}`);
-    $(`#cm-titel-${eid}`).value  = m?.titel  || '';
-    $(`#cm-jahr-${eid}`).value   = m?.jahr   || '';
-    $(`#cm-kosten-${eid}`).value = m?.kosten || '';
-    $(`#cm-typ-${eid}`).value    = m?.typ    || 'Austausch';
-    $(`#cm-status-${eid}`).value = m?.status || 'geplant';
-    form.style.display = '';
-    $(`#cm-titel-${eid}`).focus();
-  }
-  function closeForm() { editingId = null; $(`#cm-form-${eid}`).style.display = 'none'; }
-  function saveForm() {
-    const titel = $(`#cm-titel-${eid}`).value.trim();
-    if (!titel) return;
-    const jahr   = parseInt($(`#cm-jahr-${eid}`).value)    || null;
-    const kosten = parseFloat($(`#cm-kosten-${eid}`).value) || 0;
-    const typ    = $(`#cm-typ-${eid}`).value;
-    const status = $(`#cm-status-${eid}`).value;
-    if (!edge.massnahmen) edge.massnahmen = [];
-    if (editingId) {
-      const m = edge.massnahmen.find(x => x.id === editingId);
-      if (m) Object.assign(m, { titel, jahr, kosten, typ, status });
-    } else {
-      edge.massnahmen.push({ id: _cableMassnId(), titel, jahr, kosten, typ, status });
-    }
-    closeForm();
-    refreshList();
-  }
-  function bindRows() {
-    panel.querySelectorAll(`#cm-list-${eid} .ins-massn-edit`).forEach(btn => {
-      btn.onclick = () => { const m = (edge.massnahmen || []).find(x => x.id === btn.dataset.cmId); if (m) openForm(m); };
-    });
-    panel.querySelectorAll(`#cm-list-${eid} .ins-massn-del`).forEach(btn => {
-      btn.onclick = () => { edge.massnahmen = (edge.massnahmen || []).filter(x => x.id !== btn.dataset.cmId); refreshList(); };
-    });
-  }
-  $(`#cm-add-${eid}`)?.addEventListener('click', () => openForm(null));
-  $(`#cm-cancel-${eid}`)?.addEventListener('click', closeForm);
-  $(`#cm-save-${eid}`)?.addEventListener('click', saveForm);
-  bindRows();
-}
+function _wireCableMassn(panel, edge) { massnahmenSektionVerdrahten(panel, edge, _cableMassnCtx(edge)); }
 
 export function setNetzSubTab(sub) {
   // Leitet auf den eigenen Elektro-Tab um (Sub-Tabs wurden entfernt)
@@ -710,11 +620,9 @@ export function getStromEdgePropsForYear(edge, year, opts = {}) {
   return base;
 }
 
-// Jahr einer Kabel-Maßnahme (analog massnahmeJahr für Assets)
+// Jahr einer Kabel-Maßnahme — dieselbe Regel wie für Assets (lib/phasen-core.js)
 function _cableMassnJahr(m) {
-  if (m.jahr) return parseInt(m.jahr);
-  const p = (window.phasen || []).find(x => x.id === m.phaseId);
-  return p ? parseInt(p.jahrVon) : null;
+  return massnahmeJahr(m);
 }
 
 /**

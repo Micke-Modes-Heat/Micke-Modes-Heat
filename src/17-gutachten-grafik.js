@@ -14,7 +14,8 @@ import { naKvaText, NA_MESSORTE } from './lib/netzanschluss.js';
 import { BP_STUFEN, bpStufen, bpLadeLeistung, bpJahresreihe } from './lib/bedarfsprognose.js';
 import { sdJahresuebersicht, sdJahresauswertung, sdTrend, sdZeitraumText, sdDauerlinie } from './lib/stromdaten.js';
 import { ENGPASS_GRENZEN, ENGPASS_VORLAUF_J, engpassVersorgung } from './lib/engpass-core.js';
-import { EK_GRUPPEN, EK_ARTEN, EK_VORGABEN, ekNormKennwerte, ekAuswertung } from './lib/elektro-kosten.js';
+import { EK_GRUPPEN, EK_ARTEN, EK_VORGABEN, ekNormKennwerte, ekAuswertung, ekNetzPositionen } from './lib/elektro-kosten.js';
+import { mrStatusAusStand } from './lib/massnahmen-register.js';
 import { resilienzZielMatrix, zielKraftstoffL } from './lib/resilienz-core.js';
 import { nuNetzUebersicht } from './lib/netz-uebersicht.js';
 import {
@@ -7487,9 +7488,10 @@ function ggNetzInternStandHtml() {
     + zeile('Bestandsmängel', String(n(e => e.bestand)))
     + zeile('Ohne Standardlösung', String(n(e => e.v?.ungeloest && !e.bestand)))
     + zeile('Mittelspannung', String(n(e => e.ms)))
-    + '<div style="margin-top:8px;font-size:10px;color:var(--muted);line-height:1.5;">Ertüchtigungen sind Vorschläge des '
-    + 'Maßnahmen-Generators, im Projekt wird dafür nichts angelegt. Kosten folgen in Kapitel 5.5. Bestandsmängel bitte im '
-    + 'Elektro-Tab prüfen (Querschnitt, Trafoleistung).</div>';
+    + ggNetzAbgleichHtml(ggNetzKosten())
+    + '<div style="margin-top:8px;font-size:10px;color:var(--muted);line-height:1.5;">Steht am Betriebsmittel eine Maßnahme, '
+    + 'zeigen Tabelle und Kosten (5.5) diese; sonst den Vorschlag der Engpass-Analyse. Übernehmen unter Elektro › '
+    + 'Engpass-Fahrplan › Maßnahmen vorschlagen. Bestandsmängel bitte im Elektro-Tab prüfen (Querschnitt, Trafoleistung).</div>';
 }
 
 GG_FIGUREN.push(
@@ -7535,7 +7537,8 @@ GG_FIGUREN.push(
     titel: 'Engpässe im internen Stromnetz',
     datei: 'netz-intern-engpaesse',
     hinweis: 'Betriebsmittel, die im Betrachtungszeitraum zum Engpass werden, mit höchster Auslastung, Engpassjahr, '
-           + 'vorgeschlagener Ertüchtigung und Umsetzungsjahr — ohne Kosten (Kapitel 5.5). Bestandsmängel und nicht lösbare '
+           + 'Ertüchtigung und Umsetzungsjahr — die im Projekt geplante Maßnahme, sonst der Vorschlag der Engpass-Analyse; '
+           + 'ohne Kosten (Kapitel 5.5). Bestandsmängel und nicht lösbare '
            + 'Engpässe sind farbig markiert.',
     render: cfg => ggRenderTabelle(cfg),
     config: {
@@ -7561,24 +7564,33 @@ GG_FIGUREN.push(
       cfg.leer = `Keine Engpässe im Netzmodell bis ${res.bis}.`;
       const g = ENGPASS_GRENZEN;
       const liste = ggEngpassListe(res);
+      // Steht am Betriebsmittel eine Maßnahme, zeigt die Tabelle sie — dieselbe Quelle wie die Kosten in 5.5
+      const netz = ggNetzKosten();
+      const geplant = id => netz.positionen.filter(p => p.quelle === 'plan' && (p.objIds || [p.objId]).includes(id));
       cfg.zeilen = liste.map(({ item, bestand, ms, v }) => {
         const spannung = String(item.ursache || '').includes('spannung');
+        const plan = geplant(item.id);
+        const planJahre = plan.map(p => p.jahr).filter(j => j != null);
         return {
           werte: [
             item.label,
             item.art === 'trafo' ? 'Trafo' : ms ? 'Kabel MS' : 'Kabel NS',
             `${ggNum(item.maxAuslPct)} %` + (spannung ? ` · ΔU ${ggNum(item.maxDuPct, 1)} %` : ''),
             bestand ? 'Bestand' : String(item.engpassJahr),
-            bestand ? 'Bestandsdaten prüfen' : ms ? 'MS-Planung' : v?.ungeloest ? 'Netzstruktur ändern' : (v?.label || '—'),
-            bestand ? '—' : (v?.jahr ?? '—'),
+            plan.length ? plan.map(p => p.umfang).join(' + ')
+              : bestand ? 'Bestandsdaten prüfen' : ms ? 'MS-Planung' : v?.ungeloest ? 'Netzstruktur ändern' : (v?.label || '—'),
+            plan.length ? (planJahre.length ? Math.min(...planJahre) : '—') : bestand ? '—' : (v?.jahr ?? '—'),
           ],
-          akzent: bestand ? GG_THEME.energy.gas : v?.ungeloest ? GG_THEME.energy.waerme : GG_THEME.accents.gruen,
+          akzent: plan.length ? GG_THEME.accents.gruen
+            : bestand ? GG_THEME.energy.gas : v?.ungeloest ? GG_THEME.energy.waerme : GG_THEME.accents.gruen,
         };
       });
       cfg.fussnote = `Netzmodell ${res.von}–${res.bis} · Engpass: Trafo > ${g.trafoPct} %, Kabel > ${g.auslastungPct} % Iz `
                    + `oder ΔU > ${ggNum(g.deltaUKumPct)} % · Umsetzung ${ENGPASS_VORLAUF_J} Jahre vor Engpass · Kosten siehe Kapitel 5.5`;
+      const nV = netz.vorschlaege.length;
       return liste.length
-        ? `✓ ${liste.length} Engpässe aus dem Netzmodell (${res.von}–${res.bis}) übernommen.`
+        ? `✓ ${liste.length} Engpässe aus dem Netzmodell (${res.von}–${res.bis}) übernommen`
+          + (nV ? ` · ${nV} ohne geplante Maßnahme, dort steht der Vorschlag der Engpass-Analyse.` : '.')
         : `✓ Keine Engpässe im Netzmodell bis ${res.bis}.`;
     },
   },
@@ -7960,7 +7972,7 @@ function ggPvBelegungAbsatz(v) {
         : `Das Netz im Jahr ${ggTextFeld(n.jahr, 'Netzjahr')} nimmt sie ohne Ertüchtigung auf.`) + pruefung
       : `Sie überschreitet${mass.length ? ` auch nach ${nMass}${welche}` : ''} an einzelnen Stellen die Aufnahmefähigkeit des Netzes; dort ist eine weitere Ertüchtigung vorauszusetzen.` + pruefung;
   return `${ggPvName(v)}: ${ggPvFeld(d.daecher, 'Anzahl Dächer')} Dächer mit zusammen ${ggPvFeld(d.neuKwp, 'kWp Belegung')} kWp`
-    + (d.geplantKwp > 0.5 ? `, dazu ${ggPvFeld(d.geplantKwp, 'kWp geplant')} kWp bereits geplante PV, insgesamt ${ggPvFeld(v.pvKwp, 'kWp gesamt')} kWp` : '')
+    + (d.geplantKwp > 0.5 ? `, dazu ${ggPvFeld(d.geplantKwp, 'kWp geplant')} kWp ${d.ausStand ? 'PV außerhalb der Dächer' : 'bereits geplante PV'}, insgesamt ${ggPvFeld(v.pvKwp, 'kWp gesamt')} kWp` : '')
     + '. '
     + (bv.beschreibung ? `Auswahl: ${gEsc(bv.beschreibung)}. ` : '')
     + (v.batKwh > 0
@@ -12201,7 +12213,7 @@ GG_FIGUREN.push(
 
 /* ── 3.5 Wirtschaftlichkeit und Investitionskosten ──────────────────────────────
  * Kostenpositionen aus 5.4.1–5.4.4: Netzanschluss (Mehrleistung × Baukostenzuschuss), internes Netz
- * (Ertüchtigungsvorschläge des Netzmodells), PV/Speicher (wirtschaftlich optimierte Variante der PV-Analyse,
+ * (geplante Maßnahmen an Trafos/Verteilungen/Kabeln, sonst Vorschläge der Engpass-Analyse), PV/Speicher (wirtschaftlich optimierte Variante der PV-Analyse,
  * Jahreskosten von dort), Notstrom (Resilienz-Rechnung), Ladeinfrastruktur (Ladepunkte × Kennwert).
  * Jahreskosten nach VDI 2067 über lib/elektro-kosten.js. Die Kennwerte hängen an der Config der Kostentabelle
  * und werden als deren Figur-Einstellung gespeichert. */
@@ -12237,21 +12249,15 @@ function ggKostenPositionen() {
     offen.push('Netzanschluss (vereinbarte Anschlussleistung fehlt)');
   }
 
-  // Internes Netz (3.4.1): Ertüchtigungsvorschläge ohne Bestandsmängel und MS
-  const res = (window.stromEdges || []).length ? ggEngpassErgebnis() : null;
-  if (res) {
-    const liste = ggEngpassListe(res);
-    for (const e of liste) {
-      if (e.bestand || e.ms) continue;
-      if (!e.v || e.v.ungeloest) continue;
-      pos.push({ gruppe: 'netz', art: e.v.art, label: `${e.item.label}: ${e.v.label}`, umfang: e.v.label,
-                 investEur: e.v.investEUR, jahr: e.v.jahr });
-    }
-    const n = (f, text) => { const c = liste.filter(f).length; if (c) offen.push(`${c} ${text}`); };
-    n(e => e.bestand, 'Bestandsmängel im internen Netz');
-    n(e => !e.bestand && !e.ms && e.v?.ungeloest, 'Engpässe ohne Standardertüchtigung');
-    n(e => e.ms, 'Engpässe im Mittelspannungsnetz');
-  }
+  // Internes Netz (3.4.1): geplante Maßnahmen an Trafos, Verteilungen und Kabeln; Engpässe ohne Maßnahme mit dem
+  // Vorschlag der Engpass-Analyse (ohne Bestandsmängel und MS)
+  const netz = ggNetzKosten();
+  pos.push(...netz.positionen);
+  const n = (c, text) => { if (c) offen.push(`${c} ${text}`); };
+  n(netz.offen.bestand, 'Bestandsmängel im internen Netz');
+  n(netz.offen.ungeloest, 'Engpässe ohne Standardertüchtigung');
+  n(netz.offen.ms, 'Engpässe im Mittelspannungsnetz');
+  n(netz.offen.ohneKosten, netz.offen.ohneKosten === 1 ? 'geplante Netzmaßnahme ohne Kostenangabe' : 'geplante Netzmaßnahmen ohne Kostenangabe');
 
   // PV und Batteriespeicher (3.4.2): wirtschaftlich optimierte Variante, Jahreskosten aus der PV-Analyse
   const pv = ggPvKanon().find(v => v.id === 'wirt-opt') || null;
@@ -12288,7 +12294,54 @@ function ggKostenPositionen() {
                investEur: z.l.punkte * k.ladepunktEur + z.l.schnell * k.schnellladepunktEur, jahr: z.jahr });
   }
 
-  return { a: ekAuswertung(pos, k), offen, pv };
+  return { a: ekAuswertung(pos, k), offen, pv, netz };
+}
+
+const GG_VERTEILUNG_TYPEN = new Set(['Schaltanlage', 'NSHV', 'UV', 'KVS']);
+
+/**
+ * Im Projekt geplante Maßnahmen an Trafos, Verteilungen und Kabeln. Titel, Betrag, Jahr und Stand kommen aus der
+ * Maßnahmenliste (lib/massnahmen-register.js); eine Maßnahme an mehreren Betriebsmitteln erscheint einmal mit allen.
+ */
+function ggNetzGeplant(namen = new Map()) {
+  const w = window;
+  try { w.massnahmenAbgleichen?.(); } catch (e) { void e; }
+  const register = new Map(ggLies(() => w.massnahmenRegister || [], []).map(e => [e.id, e]));
+  const jahr = m => (typeof w.massnahmeJahr === 'function' ? w.massnahmeJahr(m) : (parseInt(m.jahr, 10) || null));
+  const wirkungen = [];
+  for (const a of ggLies(() => w.ASSETS?.items || [], [])) {
+    const art = a.type === 'Trafo' ? 'trafo' : GG_VERTEILUNG_TYPEN.has(a.type) ? 'verteilung' : null;
+    if (!art) continue;
+    for (const m of a.massnahmen || []) if (m) wirkungen.push({ objId: a.id, objLabel: namen.get(a.id) || a.name || a.type, art, m });
+  }
+  for (const e of ggLies(() => w.stromEdges || [], [])) {
+    for (const m of e.massnahmen || []) if (m) wirkungen.push({ objId: e.id, objLabel: namen.get(e.id) || e.name || 'Kabel', art: 'kabel', m });
+  }
+  const out = [], jeEintrag = new Map();
+  for (const x of wirkungen) {
+    const e = x.m.massnahmeRef != null ? register.get(x.m.massnahmeRef) : null;
+    if (!e) { out.push({ ...x, m: { ...x.m, jahr: jahr(x.m) } }); continue; }
+    const da = jeEintrag.get(e.id);
+    if (da) { if (!da.objIds.includes(x.objId)) da.objIds.push(x.objId); continue; }
+    const g = { objId: x.objId, objIds: [x.objId], objLabel: x.objLabel, art: x.art,
+      m: { id: e.id, titel: e.titel, kosten: Number(e.kosten?.investEur) || 0, jahr: jahr({ jahr: e.jahr, phaseId: e.phaseId }),
+           status: mrStatusAusStand(e.stand) } };
+    jeEintrag.set(e.id, g);
+    out.push(g);
+  }
+  return out;
+}
+
+/** Kostenpositionen des internen Netzes: geplante Maßnahmen vor Vorschlägen der Engpass-Analyse (lib/elektro-kosten.js). */
+function ggNetzKosten() {
+  const res = (window.stromEdges || []).length ? ggEngpassErgebnis() : null;
+  const liste = res ? ggEngpassListe(res) : [];
+  const namen = new Map(liste.map(e => [e.item.id, e.item.label]));
+  return ekNetzPositionen({
+    engpaesse: liste.map(e => ({ id: e.item.id, label: e.item.label, bestand: e.bestand, ms: e.ms, v: e.v })),
+    geplant: ggNetzGeplant(namen),
+    heute: new Date().getFullYear(),
+  });
 }
 
 function ggRenderKostenText(cfg, T = GG_THEME) {
@@ -12351,7 +12404,8 @@ function ggRenderKostenText(cfg, T = GG_THEME) {
 /** Einzelansicht der Kostenbausteine: Kennwerte zum Anpassen, Summen und offene Punkte. */
 function ggKostenStandHtml() {
   const k = ggKostenKennwerte();
-  const { a, offen } = ggKostenPositionen();
+  const { a, offen, netz } = ggKostenPositionen();
+  const abgleich = ggNetzAbgleichHtml(netz);
   const feld = (label, pfad, wert, einheit) => `<label style="display:flex;flex-direction:column;gap:2px;font-size:10px;color:var(--muted);">
       ${gEsc(label)}
       <span style="display:flex;align-items:center;gap:4px;">
@@ -12366,7 +12420,8 @@ function ggKostenStandHtml() {
   if (!_ggKostenKennwerteOffen) {
     return `<div style="margin-bottom:6px;">${kopf}</div>`
       + `<div style="font-size:11px;line-height:1.6;">Investition gesamt ${ggEuro(a.summeInvestEur)} · Jahreskosten ${ggEuro(a.summeJahreskostenEur)}/a · ${a.positionen.length} Positionen</div>`
-      + (offen.length ? `<div style="font-size:10px;color:#e0a126;margin-top:4px;line-height:1.5;">Nicht beziffert: ${gEsc(offen.join(' · '))}</div>` : '');
+      + (offen.length ? `<div style="font-size:10px;color:#e0a126;margin-top:4px;line-height:1.5;">Nicht beziffert: ${gEsc(offen.join(' · '))}</div>` : '')
+      + abgleich;
   }
   // Feldbereich mit fester Höhe und eigenem Scrollbalken — auch aufgeklappt bleibt die Vorschau sichtbar
   let html = `<div style="margin-bottom:4px;">${kopf}</div>`
@@ -12384,9 +12439,29 @@ function ggKostenStandHtml() {
   if (offen.length) {
     html += `<div style="font-size:10px;color:#e0a126;margin-top:4px;line-height:1.5;">Nicht beziffert: ${gEsc(offen.join(' · '))}</div>`;
   }
-  return html + '<div style="margin-top:6px;font-size:10px;color:var(--muted);line-height:1.5;">PV und Speicher: Investition und '
+  return html + abgleich + '<div style="margin-top:6px;font-size:10px;color:var(--muted);line-height:1.5;">PV und Speicher: Investition und '
     + 'Jahreskosten der wirtschaftlich optimierten Variante aus der PV-Analyse (dort eigener Zins). Notstrom: Kostensatz der '
-    + 'Resilienz-Rechnung. Internes Netz: Ertüchtigungsvorschläge des Netzmodells.</div>';
+    + 'Resilienz-Rechnung. Internes Netz: die im Projekt geplanten Maßnahmen an Trafos, Verteilungen und Kabeln mit ihren '
+    + 'Beträgen und Jahren; Engpässe ohne Maßnahme mit dem Vorschlag der Engpass-Analyse.</div>';
+}
+
+/** Abgleich internes Netz: Vorschläge ohne Maßnahme und Maßnahmen, die vom heutigen Vorschlag abweichen. */
+function ggNetzAbgleichHtml(netz) {
+  if (!netz) return '';
+  const zeilen = [];
+  const nP = netz.positionen.filter(p => p.quelle === 'plan').length;
+  if (netz.vorschlaege.length) {
+    zeilen.push(`<div style="color:#e0a126;">${netz.vorschlaege.length} ${netz.vorschlaege.length === 1 ? 'Engpass geht' : 'Engpässe gehen'} nur als Vorschlag ein, `
+      + `ohne Maßnahme im Projekt: ${gEsc(netz.vorschlaege.slice(0, 6).join(', '))}${netz.vorschlaege.length > 6 ? ' …' : ''}. `
+      + 'Übernehmen unter Elektro › Engpass-Fahrplan › Maßnahmen vorschlagen.</div>');
+  }
+  for (const d of netz.abweichend.slice(0, 6)) {
+    zeilen.push(`<div style="color:#e0a126;">${gEsc(d.label)}: geplant ${ggEuro(d.plan.investEur)}${d.plan.jahr != null ? ` (${d.plan.jahr})` : ''}, `
+      + `die Engpass-Analyse schlägt heute ${gEsc(d.vorschlag.label)} für ${ggEuro(d.vorschlag.investEur)}${d.vorschlag.jahr != null ? ` (${d.vorschlag.jahr})` : ''} vor. Im Gutachten steht die geplante Maßnahme.</div>`);
+  }
+  if (netz.abweichend.length > 6) zeilen.push(`<div style="color:#e0a126;">… und ${netz.abweichend.length - 6} weitere Abweichungen.</div>`);
+  if (!zeilen.length && nP) zeilen.push(`<div style="color:var(--muted);">Internes Netz: ${nP} geplante ${nP === 1 ? 'Maßnahme' : 'Maßnahmen'}, alle Engpässe abgedeckt.</div>`);
+  return zeilen.length ? `<div style="margin-top:6px;font-size:10px;line-height:1.5;display:flex;flex-direction:column;gap:3px;">${zeilen.join('')}</div>` : '';
 }
 
 let _ggKostenKennwerteOffen = false;
@@ -12466,7 +12541,7 @@ GG_FIGUREN.push(
       kennwerte: JSON.parse(JSON.stringify(EK_VORGABEN)),
     },
     ausProjekt(cfg) {
-      const { a, offen } = ggKostenPositionen();
+      const { a, offen, netz } = ggKostenPositionen();
       const mit = a.gruppen.filter(g => g.investEur > 0);
       if (!mit.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine bezifferbaren Maßnahmen.'; }
       cfg.zeilen = mit.map(g => ({
@@ -12486,7 +12561,9 @@ GG_FIGUREN.push(
                    + `Ladepunkt ${ggNum(kw.ladepunktEur)} € / Schnellladepunkt ${ggNum(kw.schnellladepunktEur)} € · PV: Werte der PV-Analyse`
                    + (ggKostenVonHand() ? '' : ' · Vorschlagswerte')
                    + (offen.length ? ' · nicht beziffert siehe Text' : '');
-      return `✓ ${a.positionen.length} Kostenpositionen übernommen` + (offen.length ? ` — ${offen.length} Punkte nicht beziffert.` : '.');
+      const nV = netz.vorschlaege.length;
+      return `✓ ${a.positionen.length} Kostenpositionen übernommen` + (offen.length ? ` — ${offen.length} Punkte nicht beziffert` : '')
+        + (nV ? ` · ${nV} Netz-${nV === 1 ? 'Position ist' : 'Positionen sind'} nur Vorschlag der Engpass-Analyse` : '') + '.';
     },
   },
 

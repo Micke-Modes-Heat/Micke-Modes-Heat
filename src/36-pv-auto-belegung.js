@@ -153,8 +153,11 @@ function _trafoZuordnung() {
   const ein = pvnaEinstellungen();
   const m = pvnaModell({ ...ein, quelle: 'alle', flaechen: 'alle' });
   _trafoCache = m.info.knotenTrafo || new Map();
+  _trafoLeiter = m.info.trafoLeiter || new Map();
   return _trafoCache;
 }
+/** Trafos einer Gruppe (gemeinsame NSHV) teilen sich ein Netzgebiet — vertreten durch den ersten. */
+let _trafoLeiter = new Map();
 
 function _pflichtIds() {
   const liste = window.pvPflichtGebaeudeliste?.() || [];
@@ -180,7 +183,7 @@ function _umfangFilter(umfang, stich) {
     return g => {
       if (!zu) return false;
       const t = _gebKnoten(g.id, zu) ?? _naechsterTrafo(_gebMitte(g), trafos)?.id;
-      return t === _ab.trafoId;
+      return t === (_trafoLeiter.get(_ab.trafoId) ?? _ab.trafoId);
     };
   }
   return () => true;
@@ -364,6 +367,7 @@ function _netzPruefen(zeilen) {
   const m = pvnaModell({ ...ein, quelle: 'alle', flaechen: 'alle', jahr, inklGeplant: _ab.netzJahr != null });
   const { knotenEl, dachInfo, einspFaktor } = m.info;
   _trafoCache = m.info.knotenTrafo || null;
+  _trafoLeiter = m.info.trafoLeiter || new Map();
   const kandIds = new Set(zeilen.map(z => z.g.id));
   const gebById = new Map((window.gebaeude || []).map(g => [g.id, g]));
   // „nur Trafo": alle Kabel unter dem Trafo sind NS — ohne Strom- und Spannungsgrenze
@@ -567,9 +571,11 @@ function _auslegungBeschreibung(stich, n) {
 
 /**
  * Die aktuelle Vorschau als Belegungsstand speichern (38 pvbsAusVorschau) —
- * die Dächer, die „Übernehmen" belegen würde, samt der schon vorhandenen
- * Belegung. Ändert nichts am Projekt. „Alle Dächer · Maximal" wird beim
- * ersten Mal Anlagenpotenzial der PV-Analyse.
+ * NUR die Dächer, die „Übernehmen" belegen würde; schon belegte Dächer kommen
+ * nicht mit (38: Stände überschneiden sich nicht mit der Projektbelegung).
+ * Ausnahme „Alle Dächer · Maximal" (Gesamtpotenzial): enthält auch die schon
+ * belegten Dächer, sonst wäre es nicht das ganze Potenzial; wird beim ersten Mal
+ * Anlagenpotenzial der PV-Analyse. Ändert nichts am Projekt.
  */
 export function pvabAlsStand() {
   const v = _ab.vorschau;
@@ -580,7 +586,13 @@ export function pvabAlsStand() {
   const { stich } = pvnaJahre(pvnaEinstellungen());
   const gesamt = _ab.umfang === 'alle' && _ab.menge === 'max';
   const vorschlag = gesamt ? 'Gesamtpotenzial' : _auslegungName(stich);
-  const name = prompt('Name des Belegungsstands:', vorschlag);
+  // Schon belegte Dächer überspringt die Vorschau — sie gehören nicht in den Stand,
+  // außer ins Gesamtpotenzial
+  const schonBelegt = _kandidaten().raus.belegt;
+  const name = prompt('Name des Belegungsstands:'
+    + (!schonBelegt ? '' : gesamt
+      ? `\n\nGesamtpotenzial: die ${schonBelegt} schon belegten Dächer werden mit ihrer Belegung aus dem Projekt aufgenommen.`
+      : `\n\n${schonBelegt} schon belegte Dächer sind nicht enthalten — nur die ${zeilen.length} Dächer der Vorschau.`), vorschlag);
   if (name == null) return;
 
   const n = v.netz;
@@ -599,9 +611,9 @@ export function pvabAlsStand() {
            n.ohneTrafo ? 'kein Trafo im Netzjahr' : ''].filter(Boolean).join(', ') + ' — Netzbau-Pauschalen sind enthalten.' };
   }
   const potenzial = gesamt && !window._pvAnalyse?.potenzialStandId;
-  const st = window.pvbsAusVorschau(zeilen, { name: name.trim() || vorschlag, beschreibung: _auslegungBeschreibung(stich, n), netz, potenzial });
+  const st = window.pvbsAusVorschau(zeilen, { name: name.trim() || vorschlag, beschreibung: _auslegungBeschreibung(stich, n), netz, potenzial, mitProjekt: gesamt });
   const sum = zeilen.reduce((t, z) => t + (z.kwpKorr || 0), 0);
-  window.showHint?.(`💾 Belegungsstand „${st.name}" gespeichert (${zeilen.length} Dächer neu · ${_fmt(sum)} kWp)`
+  window.showHint?.(`💾 Belegungsstand „${st.name}" gespeichert (${zeilen.length} Dächer · ${_fmt(sum)} kWp${!schonBelegt ? '' : gesamt ? ` + ${schonBelegt} schon belegte` : `, ohne ${schonBelegt} schon belegte`})`
     + (potenzial ? ' — ist jetzt Grundlage der PV-Analyse.' : '.') + ' Das Projekt ist unverändert — unter „📚 Belegungsstände“ anzeigen (👁) oder zum Bearbeiten öffnen (✎).', 9000);
   _ab.vorschau = null;
   pvModusRender();

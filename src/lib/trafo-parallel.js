@@ -107,3 +107,23 @@ export function trafoAufteilung(trafos, last, betriebsart = BETRIEBSART_VORGABE,
   }
   return erg;
 }
+
+/**
+ * Was eine Gruppe insgesamt durchlässt: die Gruppenleistung, bei der der erste
+ * Trafo seine Bemessungsleistung erreicht (je Trafo kVA·pf / Anteil in der
+ * Betriebsart). Parallel: zwei gleiche Trafos → doppelte Leistung; N-1: ohne den
+ * stärksten anderen Trafo (bei zwei Trafos die des kleineren).
+ * @param {Array<{id:any, kva:number, ukPct?:number}>} trafos
+ * @returns {{ kapKw:number, faktor: Map<any, number> }}  faktor = Anteil der Gruppenlast je Trafo
+ */
+export function trafoGruppenKapazitaet(trafos, betriebsart = BETRIEBSART_VORGABE, pf = 0.9) {
+  const auf = trafoAufteilung(trafos, { kwV: 1, kwG: 0 }, betriebsart, pf);
+  const faktor = new Map();
+  let kapKw = Infinity;
+  for (const x of trafos || []) {
+    const f = auf.get(x.id)?.faktor || 1;
+    faktor.set(x.id, f);
+    kapKw = Math.min(kapKw, _zahl(x.kva, 630) * pf / f);
+  }
+  return { kapKw: Number.isFinite(kapKw) ? kapKw : 0, faktor };
+}

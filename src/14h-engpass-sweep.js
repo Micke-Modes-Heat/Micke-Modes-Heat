@@ -27,7 +27,7 @@ import {
   ENGPASS_GRENZEN, ENGPASS_VORLAUF_J, engpassStuetzjahre, engpassBewerte,
   engpassKlassifiziere, engpassKabelAlternativen, engpassWaehleAlternative,
   engpassMassnahmeJahr, engpassDownstreamLeaves, engpassAusloeser,
-  engpassIstBestandsmangel,
+  engpassIstBestandsmangel, ENGPASS_AUTO_TAG, engpassEigeneMassnahme,
 } from './lib/engpass-core.js';
 import { kabelTypenFuerAusbau } from './config/netz-kosten.js';
 import { ERT_TRAFO_STUFEN, ertNaechsteTrafoStufe } from './14b-ertuechtigung.js';
@@ -358,8 +358,9 @@ function _renderLegende(res) {
 // ── Maßnahmen automatisch vorschlagen ────────────────────────────────────────
 
 // Kennzeichen für automatisch erzeugte Maßnahmen — erlaubt sauberes Ersetzen
-// beim erneuten Lauf (statt Duplikate anzuhäufen).
-const AUTO_TAG = '_autoEngpass';
+// beim erneuten Lauf (statt Duplikate anzuhäufen). Bearbeitet der Nutzer eine
+// solche Maßnahme, verliert sie das Kennzeichen und bleibt erhalten.
+const AUTO_TAG = ENGPASS_AUTO_TAG;
 
 /** Entfernt alle zuvor automatisch erzeugten Engpass-Maßnahmen. */
 export function engpassMassnahmenVerwerfen() {
@@ -455,6 +456,8 @@ export function engpassGeneriereMassnahmen(opts = {}) {
 
   engpassMassnahmenVerwerfen();
   const items = [];
+  // Betriebsmittel, an denen schon eine eigene Maßnahme steht — die bleibt, es kommt kein Vorschlag dazu
+  const beibehalten = [];
   // Engpässe, die sich mit keiner Standard-Ertüchtigung auflösen lassen.
   // Die dürfen NICHT stillschweigend entfallen — sonst wirkt der Fahrplan
   // vollständig, obwohl der Engpass bestehen bleibt.
@@ -467,6 +470,8 @@ export function engpassGeneriereMassnahmen(opts = {}) {
     if (uebergehen?.has(k.id)) continue;
     const edge = (window.stromEdges || []).find(e => e.id === k.id);
     if (!edge) continue;
+    const eigeneK = engpassEigeneMassnahme(edge, `auto_${k.id}`);
+    if (eigeneK) { beibehalten.push({ id: k.id, art: 'kabel', label: k.label, titel: eigeneK.titel }); continue; }
 
     // Wahl der Ertüchtigung liegt in engpassVorschlag — dieselbe, die das Gutachten anzeigt
     const v = engpassVorschlag(k, res, { vorlaufJ });
@@ -496,6 +501,8 @@ export function engpassGeneriereMassnahmen(opts = {}) {
     if (uebergehen?.has(t.id)) continue;
     const asset = (ASSETS.items || []).find(a => a.id === t.id);
     if (!asset) continue;
+    const eigeneT = engpassEigeneMassnahme(asset, `auto_${t.id}`);
+    if (eigeneT) { beibehalten.push({ id: t.id, art: 'trafo', label: t.label, titel: eigeneT.titel }); continue; }
 
     const v = engpassVorschlag(t, res, { vorlaufJ });
     if (!v || v.ungeloest) continue;   // wie bisher: ohne größere Trafostufe keine Maßnahme
@@ -513,7 +520,7 @@ export function engpassGeneriereMassnahmen(opts = {}) {
 
   items.sort((a, b) => (a.jahr ?? 0) - (b.jahr ?? 0));
   ungeloest.sort((a, b) => (a.engpassJahr ?? 0) - (b.engpassJahr ?? 0));
-  return { items, ungeloest, investGesamt: items.reduce((s, i) => s + (i.kosten || 0), 0) };
+  return { items, ungeloest, beibehalten, investGesamt: items.reduce((s, i) => s + (i.kosten || 0), 0) };
 }
 
 // ── Bestandsmängel: von vornherein zu klein dimensioniert ────────────────────

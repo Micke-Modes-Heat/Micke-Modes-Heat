@@ -12,6 +12,8 @@
 // Dieses Modul ist bewusst Leaflet-frei und rein → testbar (tests/cluster-core.test.js).
 // Das Rendering/Zeichnen liegt in 14g-cluster-map.js.
 
+import { massnahmeJahrAus } from './lib/phasen-core.js';
+
 // Cluster = {
 //   id:      string,             — eindeutige ID
 //   name:    string,             — Kürzel/Label, z.B. "A", "zentral"
@@ -218,12 +220,7 @@ export function clusterMassnahmenAnzahl(cluster, gebaeudeArr) {
 // Effektives Jahr einer Maßnahme: explizites m.jahr gewinnt, sonst jahrVon der Phase
 // (falls verplant), sonst null. phasenArr wird explizit übergeben (kein Global-Zugriff → testbar).
 export function massnahmeEffektivesJahr(m, phasenArr) {
-  if (m.jahr != null && m.jahr !== '') return Number(m.jahr);
-  if (m.phaseId) {
-    const p = (phasenArr || []).find(x => x.id === m.phaseId);
-    if (p && p.jahrVon != null && p.jahrVon !== '') return parseInt(p.jahrVon);
-  }
-  return null;
+  return massnahmeJahrAus(m, phasenArr);
 }
 
 // Sortierte, eindeutige Meilenstein-Jahre aus Cluster-Fertigstellungen und Maßnahmen.

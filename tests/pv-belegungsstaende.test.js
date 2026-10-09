@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  pvbsNeu, pvbsSummen, pvbsPlan, pvbsGleich, pvbsFelder, pvbsDachAbweichung, PVBS_LEER,
+  pvbsNeu, pvbsSummen, pvbsPlan, pvbsGleich, pvbsFelder, pvbsDachAbweichung, pvbsZuordnen, PVBS_LEER,
 } from '../src/lib/pv-belegungsstaende.js';
 
 const fl = (id, typ = 'belegung') => ({ id, typ, polygon: [{ lat: 1, lng: 1 }, { lat: 1, lng: 2 }, { lat: 2, lng: 2 }], flaeche: 10, layer: { x: 1 } });
@@ -68,5 +68,37 @@ describe('Hilfen', () => {
   it('pvbsDachAbweichung meldet nur Abweichungen der Kopie', () => {
     expect(pvbsDachAbweichung({ dachform: 'sattel', dachNeigung: 35 }, { dachform: 'sattel', dachNeigung: 30, dachAzimut: 170 }))
       .toEqual({ dachNeigung: 30, dachAzimut: 170 });
+  });
+});
+
+describe('Zuordnung Projekt ↔ Stand', () => {
+  const a = pvbsNeu({ id: 'a', name: 'A', eintraege: { 1: { felder: felder(fl(1)) } } });
+  const b = pvbsNeu({ id: 'b', name: 'B', eintraege: { 2: { felder: felder(fl(2)) } } });
+  const liste = [a, b];
+
+  it('gleiche Dächer: Stand liegt im Projekt, kein Entwurf', () => {
+    expect(pvbsZuordnen(liste, 'a', { 1: felder(fl(9)) })).toEqual({ projektId: 'a', entwurf: false });
+  });
+
+  it('entspricht einem anderen Stand: der wird Stand im Projekt', () => {
+    expect(pvbsZuordnen(liste, 'a', { 2: felder(fl(2)) })).toEqual({ projektId: 'b', entwurf: false });
+  });
+
+  it('bearbeitet: Entwurf auf dem bisherigen Stand, nichts wird gespeichert', () => {
+    expect(pvbsZuordnen(liste, 'a', { 1: felder(fl(1)), 3: felder(fl(3)) })).toEqual({ projektId: 'a', entwurf: true });
+    expect(a.geb[3]).toBeUndefined();
+  });
+
+  it('alle Dächer geleert: Entwurf, solange es einen Stand gab', () => {
+    expect(pvbsZuordnen(liste, 'a', {})).toEqual({ projektId: 'a', entwurf: true });
+    expect(pvbsZuordnen(liste, null, {})).toEqual({ projektId: null, entwurf: false });
+  });
+
+  it('neue Belegung ohne Stand: Entwurf ohne Basis — kein automatischer Stand', () => {
+    expect(pvbsZuordnen([], null, { 5: felder(fl(5)) })).toEqual({ projektId: null, entwurf: true });
+  });
+
+  it('nach Variantenwechsel ohne Treffer: bisheriger Stand ist keine Basis mehr', () => {
+    expect(pvbsZuordnen(liste, 'a', { 5: felder(fl(5)) }, true)).toEqual({ projektId: null, entwurf: true });
   });
 });

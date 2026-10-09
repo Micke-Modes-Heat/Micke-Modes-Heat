@@ -125,3 +125,23 @@ export function pvbsDachAbweichung(g, kopie) {
   }
   return d;
 }
+
+/**
+ * Belegung im Projekt einem gespeicherten Stand zuordnen. Ein Stand liegt nur
+ * dann „im Projekt", wenn die Dächer ihm genau entsprechen — sonst ist die
+ * Belegung ein ungespeicherter Entwurf, der auf dem bisherigen Stand beruht
+ * (`basisLoesen`: nach einem Variantenwechsel auf keinem).
+ * @param {any[]} liste      gespeicherte Stände
+ * @param {string|null} basisId  bisheriger Stand im Projekt
+ * @param {Record<string, any>} aktuell  { [gebId]: felder } der belegten Gebäude
+ * @returns {{ projektId: string|null, entwurf: boolean }}
+ */
+export function pvbsZuordnen(liste, basisId, aktuell, basisLoesen = false) {
+  const basis = (liste || []).find(s => s.id === basisId) || null;
+  if (basis && pvbsGleich(basis, aktuell)) return { projektId: basis.id, entwurf: false };
+  const treffer = (liste || []).find(s => s !== basis && pvbsGleich(s, aktuell));
+  if (treffer) return { projektId: treffer.id, entwurf: false };
+  const projektId = basis && !basisLoesen ? basis.id : null;
+  const leer = !Object.keys(aktuell || {}).length;
+  return { projektId, entwurf: !(leer && !projektId) };
+}
