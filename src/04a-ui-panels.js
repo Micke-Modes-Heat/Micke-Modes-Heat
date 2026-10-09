@@ -1122,6 +1122,7 @@ export function showEdgePopup(e, mouseEvt) {
       <button data-click="toggleEdgePruned()" style="width:100%;padding:5px 8px;background:${e.pruned?'#1b3a2a':'rgba(249,168,37,0.12)'};border:1px solid ${e.pruned?'#4caf50':'#f9a825'};border-radius:4px;color:${e.pruned?'#4caf50':'#f9a825'};cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">
         ${e.pruned?'✓ Wieder anschließen':'✂ Abschnitt deaktivieren'}
       </button>
+      ${e.pruned ? '' : `<button data-click="edgeAbgangAusZentrale()" title="Die Gebäude hinter diesem Abschnitt bekommen einen eigenen Abgang aus der Heizzentrale; dieser Abschnitt und nicht mehr benötigte Zuleitungen entfallen" style="width:100%;margin-top:5px;padding:5px 8px;background:rgba(79,195,247,0.1);border:1px solid #4fc3f7;border-radius:4px;color:#4fc3f7;cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">⇱ Eigener Abgang aus der Heizzentrale</button>`}
     </div>`;
 
   // Position near mouse, clamped to viewport
@@ -1135,6 +1136,13 @@ export function showEdgePopup(e, mouseEvt) {
   if (py + ph > rect.height - 10) py = mouseEvt.clientY - rect.top  - ph - 12;
   popup.style.left = px + 'px';
   popup.style.top  = py + 'px';
+}
+
+/** Popup-Knopf: Strang hinter dem gewählten Abschnitt direkt aus der Heizzentrale versorgen. */
+export function edgeAbgangAusZentrale() {
+  const e = activeEdgePopup;
+  closeEdgePopup();
+  if (e) window.netzAbgangAusZentrale?.(e);
 }
 
 export function closeEdgePopup() {

@@ -168,6 +168,37 @@ export function naechsterPunktAufLinie(p, linie) {
 }
 
 /**
+ * Kürzester zulässiger Stich von einem Gebäude zu einer der Leitungen. Ist der nächstgelegene Punkt nicht erreichbar
+ * (Stich würde durch ein fremdes Gebäude laufen, z. B. weil die Leitung dort an einem anderen Gebäude endet),
+ * werden weitere Punkte entlang der Leitungen geprüft — statt das Gebäude gar nicht umzuhängen.
+ * ziele: [{ linie }]; o: { maxStich, kreuzt(von, nach, gebId), zielErlaubt(gebId, kante), schrittM = 5 }.
+ * Ergebnis: { gebId, ziel, punkt, laenge } oder null.
+ */
+export function besterStich(gebId, p, ziele, o = {}) {
+  const maxStich = o.maxStich ?? 60, kreuzt = o.kreuzt || (() => false), zielErlaubt = o.zielErlaubt || (() => true);
+  const schritt = o.schrittM ?? 5;
+  const kand = [];
+  for (const e of ziele) {
+    if (!zielErlaubt(gebId, e)) continue;
+    const n = naechsterPunktAufLinie(p, e.linie);
+    if (!(n.abstand <= maxStich)) continue;
+    kand.push({ e, punkt: n.punkt, abstand: n.abstand });
+    const l = e.linie || [];
+    for (let i = 0; i < l.length - 1; i++) {
+      const stuecke = Math.max(1, Math.ceil(linienLaenge([l[i], l[i + 1]]) / schritt));
+      for (let j = 0; j <= stuecke; j++) {
+        const q = { lat: l[i].lat + ((l[i + 1].lat - l[i].lat) * j) / stuecke, lng: l[i].lng + ((l[i + 1].lng - l[i].lng) * j) / stuecke };
+        const d = linienLaenge([p, q]);
+        if (d <= maxStich) kand.push({ e, punkt: q, abstand: d });
+      }
+    }
+  }
+  kand.sort((a, b) => a.abstand - b.abstand);
+  for (const k of kand.slice(0, 60)) if (!kreuzt(p, k.punkt, gebId)) return { gebId, ziel: k.e, punkt: k.punkt, laenge: k.abstand };
+  return null;
+}
+
+/**
  * Gebäudeanschlüsse verbessern: Lohnt es sich, die Gebäude eines Asts per kurzem Stich an eine andere Leitung zu hängen,
  * damit der Ast samt verwaister Zuleitung entfällt? Bewertet wird die eingesparte Trassenlänge (Ast, verwaiste
  * Abzweige) gegen die neuen Stiche — so wird ein Gebäude auch von der etwas weiter entfernten Straße angeschlossen,
@@ -199,14 +230,8 @@ export function besteAstVerlegung(kanten, o) {
     const stiche = [];
     let ok = true;
     for (const id of geb) {
-      const p = gebaeude.get(id);
-      let s = null;
-      for (const e of ziele) {
-        if (!zielErlaubt(id, e)) continue;
-        const n = naechsterPunktAufLinie(p, e.linie);
-        if (!s || n.abstand < s.laenge) s = { gebId: id, ziel: e, punkt: n.punkt, laenge: n.abstand };
-      }
-      if (!s || s.laenge > maxStich || s.laenge > (bisher.get(id) ?? 0) + mehr || kreuzt(p, s.punkt, id)) { ok = false; break; }
+      const s = besterStich(id, gebaeude.get(id), ziele, { maxStich, kreuzt, zielErlaubt });
+      if (!s || s.laenge > (bisher.get(id) ?? 0) + mehr) { ok = false; break; }
       stiche.push(s);
     }
     if (!ok) continue;
@@ -272,4 +297,44 @@ export function parallelAbschnitte(kanten, tolM = 3, minM = 15, schrittM = 3) {
     }
   }
   return treffer;
+}
+
+/**
+ * Liegt Linie A an einem ihrer Enden auf Linie B (doppelt verlegt)? Dann ab wo verlässt sie B?
+ * Ergebnis: { ende: 'start' | 'ende', punkt, laengeM, rest } — rest ist der Verlauf von A ohne das doppelte Stück
+ * (vom Verlassen von B bis zum anderen Ende, Richtung wie in A) — oder null.
+ */
+export function ueberlappungAmEnde(linieA, linieB, tolM = 3, minM = 15, schrittM = 2) {
+  const l = linieA || [];
+  if (l.length < 2 || !(linieB?.length >= 2)) return null;
+  // A abtasten: [{ p, i (Segment), s (Meter ab Start) }]
+  const proben = [];
+  let s = 0;
+  for (let i = 0; i < l.length - 1; i++) {
+    const seg = linienLaenge([l[i], l[i + 1]]);
+    const n = Math.max(1, Math.ceil(seg / schrittM));
+    for (let j = 0; j < n; j++) proben.push({ p: { lat: l[i].lat + ((l[i + 1].lat - l[i].lat) * j) / n, lng: l[i].lng + ((l[i + 1].lng - l[i].lng) * j) / n }, i, s: s + (seg * j) / n });
+    s += seg;
+  }
+  proben.push({ p: l[l.length - 1], i: l.length - 2, s });
+  const nah = proben.map(x => abstandZuLinie(x.p, linieB) <= tolM);
+  const lauf = richtung => {
+    const idx = richtung > 0 ? [...proben.keys()] : [...proben.keys()].reverse();
+    let letzter = -1;
+    for (const k of idx) { if (!nah[k]) break; letzter = k; }
+    return letzter;
+  };
+  const vorne = nah[0] ? lauf(1) : -1;
+  const hinten = nah[proben.length - 1] ? lauf(-1) : -1;
+  // A liegt komplett auf B: nichts aufzulösen (oder ein reines Duplikat — das löst toteLeitungen bzw. der Nutzer)
+  if (vorne === proben.length - 1 || hinten === 0) return null;
+  const lenVorne = vorne >= 0 ? proben[vorne].s : 0;
+  const lenHinten = hinten >= 0 ? s - proben[hinten].s : 0;
+  if (Math.max(lenVorne, lenHinten) < minM) return null;
+  if (lenVorne >= lenHinten) {
+    const q = proben[vorne];
+    return { ende: 'start', punkt: q.p, laengeM: lenVorne, rest: [q.p, ...l.slice(q.i + 1)] };
+  }
+  const q = proben[hinten];
+  return { ende: 'ende', punkt: q.p, laengeM: lenHinten, rest: [...l.slice(0, q.i + 1), q.p] };
 }

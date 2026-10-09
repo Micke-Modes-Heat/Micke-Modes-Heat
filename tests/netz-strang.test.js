@@ -120,3 +120,41 @@ describe('Doppelführung vermeiden', () => {
     expect(r[0].laengeM).toBeGreaterThan(60);
   });
 });
+
+describe('besterStich', () => {
+  it('nimmt den nächsten erreichbaren Punkt, wenn der nächstgelegene hinter einem Gebäude liegt', async () => {
+    const { besterStich } = await import('../src/lib/netz-strang.js');
+    // Leitung von West nach Ost, 0,0003° ≈ 20 m südlich des Gebäudes
+    const linie = [{ lat: 52.0797, lng: 7.9990 }, { lat: 52.0797, lng: 8.0010 }];
+    const p = { lat: 52.0800, lng: 8.0000 };
+    const frei = besterStich(1, p, [{ linie }], { maxStich: 60 });
+    expect(frei.laenge).toBeLessThan(35);
+    // direkt südlich ist gesperrt (fremdes Gebäude dazwischen): Stich geht schräg an einen Punkt weiter östlich
+    const gesperrt = (von, nach) => Math.abs(nach.lng - 8.0000) < 0.0001;
+    const s = besterStich(1, p, [{ linie }], { maxStich: 60, kreuzt: gesperrt });
+    expect(s).not.toBeNull();
+    expect(Math.abs(s.punkt.lng - 8.0)).toBeGreaterThanOrEqual(0.0001);
+    expect(s.laenge).toBeGreaterThan(frei.laenge);
+    expect(besterStich(1, p, [{ linie }], { maxStich: 10 })).toBeNull();
+  });
+});
+
+describe('ueberlappungAmEnde', () => {
+  it('erkennt ein am Anfang doppelt verlegtes Stück und liefert den Rest', async () => {
+    const { ueberlappungAmEnde, linienLaenge } = await import('../src/lib/netz-strang.js');
+    // B: Straße West→Ost; A: startet auf B, läuft 40 m auf B mit und biegt dann nach Norden ab
+    const B = [{ lat: 52.08, lng: 8.0 }, { lat: 52.08, lng: 8.002 }];
+    const A = [{ lat: 52.08, lng: 8.0003 }, { lat: 52.08, lng: 8.0009 }, { lat: 52.0806, lng: 8.0009 }];
+    const u = ueberlappungAmEnde(A, B);
+    expect(u.ende).toBe('start');
+    expect(u.laengeM).toBeGreaterThan(35);
+    expect(u.punkt.lng).toBeCloseTo(8.0009, 4);
+    expect(linienLaenge(u.rest)).toBeLessThan(linienLaenge(A) - 35);
+    // umgekehrte Richtung: Ende liegt auf B
+    const r = ueberlappungAmEnde([...A].reverse(), B);
+    expect(r.ende).toBe('ende');
+    // kurzes Mitlaufen (< 15 m) zählt nicht, getrennte Linien auch nicht
+    expect(ueberlappungAmEnde([{ lat: 52.08, lng: 8.0008 }, { lat: 52.08, lng: 8.0009 }, { lat: 52.0806, lng: 8.0009 }], B)).toBeNull();
+    expect(ueberlappungAmEnde([{ lat: 52.081, lng: 8.0 }, { lat: 52.081, lng: 8.002 }], B)).toBeNull();
+  });
+});
