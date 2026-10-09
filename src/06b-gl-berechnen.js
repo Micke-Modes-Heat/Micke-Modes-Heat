@@ -35,8 +35,53 @@ export function glBerechnenDebounced(delay = 1000) {
   const dot = document.getElementById('gl-status-dot');
   if (dot) dot.className = 'gl-status-dot pending';
   _glAutoTimer = setTimeout(async () => {
-    if (!_glIsRunning) await glBerechnen();
+    // Läuft gerade eine Berechnung, geht der Auftrag nicht verloren: danach erneut versuchen
+    if (_glIsRunning) { glBerechnenDebounced(Math.max(delay, 200)); return; }
+    await glBerechnen();
   }, delay);
+}
+
+// ── Eingangsstand des Lastgangs ───────────────────────────────────────────
+// Jahresverlust des berechneten Wärmenetzes, so wie glBerechnen ihn verwendet (null = Prozentansatz)
+function _netzVerlustEingang() {
+  return window.netzEdges?.length > 0 && Number.isFinite(window._netzAnnualLossMWh)
+    ? Math.max(0, window._netzAnnualLossMWh) : null;
+}
+
+/**
+ * Was außerhalb der Grundlagen-Eingaben in den Lastgang eingeht: der Netzverlust und — beim
+ * Lastgang aus Gebäudedaten — Jahr, Gebäudewerte und Nutzungsprofile. Ändert sich davon etwas,
+ * ohne dass neu gerechnet wird, beruhen Deckungsanteile auf einem veralteten Lastgang.
+ */
+export function lastgangEingangSignatur() {
+  const v = _netzVerlustEingang();
+  const netz = v === null ? '-' : v.toFixed(2);
+  const teile = [String(globalYear)];
+  for (const g of gebaeude) {
+    if (isExcluded(g.id)) continue;
+    const st = getComputedStats(g, globalYear) || {};
+    teile.push([g.id, st.status || '', (+st.waerme || 0).toFixed(2), (+st.heizlast || 0).toFixed(2),
+      g.heatProfileType || '', g.nutzung || ''].join(':'));
+  }
+  return { netz, geb: teile.join('|') };
+}
+
+/**
+ * Lastgang passt nicht mehr zu Netzverlust bzw. Gebäudedaten (nur ein bereits berechneter Lastgang).
+ * Ein eingegebener Verbrauch/Lastgang enthält die Verluste schon; der Netzverlust verändert ihn nur
+ * bei dezentralem TWW. Gebäudedaten zählen nur beim Lastgang aus Gebäudedaten.
+ */
+export function lastgangVeraltet() {
+  const ss = window.systemState;
+  if (!ss?.lastgangKw || !ss.eingang) return false;
+  const jetzt = lastgangEingangSignatur();
+  const netzWirkt = ss.nurGebaeude || !!ss.twwDezentral;
+  return (netzWirkt && jetzt.netz !== ss.eingang.netz) || (ss.nurGebaeude && jetzt.geb !== ss.eingang.geb);
+}
+
+/** Nach Netz- oder Gebäudeänderungen: Lastgang neu rechnen, sobald er nicht mehr passt. */
+export function lastgangBeiBedarfNeu(delay = 600) {
+  if (lastgangVeraltet()) glBerechnenDebounced(delay);
 }
 
 /**
@@ -58,6 +103,8 @@ export function glBerechnenAuto() {
 async function glBerechnen() {
   if (_glIsRunning) return;
   _glIsRunning = true;
+  // Gebäude- und Jahresstand zu Beginn festhalten (Netzverlust: dort, wo er gelesen wird)
+  const eingang = lastgangEingangSignatur();
   const btn = document.getElementById('gl-run-btn');
   btn.textContent = '⏳ Berechne…'; btn.disabled = true;
 
@@ -188,10 +235,8 @@ async function glBerechnen() {
     // Fallback für Projekte ohne aufgebautes Wärmenetz.
     const nvPct = Math.min(netzverlust, 50);
     const nvFaktor = 1 - nvPct / 100;
-    const detailedNetworkLossMWh = window.netzEdges?.length > 0 &&
-      Number.isFinite(window._netzAnnualLossMWh)
-      ? Math.max(0,window._netzAnnualLossMWh)
-      : null;
+    const detailedNetworkLossMWh = _netzVerlustEingang();
+    eingang.netz = detailedNetworkLossMWh === null ? '-' : detailedNetworkLossMWh.toFixed(2);
     let nutzwaermeMwh, gesamtMwhMitNV;
     // Netzbetrieb je Stunde (nur mit dezentralem TWW): Heizperiode aus dem gleitenden 3-Tage-Mittel der Außentemperatur
     let netzAn = null, twwInfo = null;
@@ -290,6 +335,8 @@ async function glBerechnen() {
       netzverlustQuelle: detailedNetworkLossMWh !== null ? 'waermenetz' : 'prozentwert',
       netzverlustMwh: effectiveLossMWh,
       nurGebaeude,
+      // Netzverlust und Gebäudestand, mit denen gerechnet wurde (lastgangVeraltet prüft das)
+      eingang,
       // Trinkwarmwasser dezentral: Netz nur in der Heizperiode (Betriebsstunden, entfallenes TWW)
       twwDezentral: twwInfo,
       pMaxKw: Math.max(...lastgangKw),

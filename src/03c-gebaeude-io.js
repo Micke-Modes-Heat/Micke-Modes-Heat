@@ -108,6 +108,8 @@ export function updateTotals(){
   }
 
   updatePrintLegend();
+  // Gebäudewerte (Sanierung, Abriss, Neubau, Ausschluss …) gehen in den Lastgang aus Gebäudedaten ein
+  window.lastgangBeiBedarfNeu?.(1500);
 }
 
 export function cardDotColor(g){

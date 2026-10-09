@@ -5601,6 +5601,8 @@ export function syncVLTemps(source) {
 export function recalcNetz(){
   const ergebnis = _recalcNetzIntern();
   _netzVerlaufBeobachten();
+  // Geänderte Netzverluste (U-Wert, Temperaturen, Leitungen, DN, Jahr) gehen in den Lastgang ein
+  window.lastgangBeiBedarfNeu?.();
   return ergebnis;
 }
 
