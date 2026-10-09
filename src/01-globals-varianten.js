@@ -1347,7 +1347,7 @@ export function applyErzeugerState(state) {
   clearThermSpeicher();
   if (!state) return;
   if (state.lwWp && state.lwWp.lat != null) {
-    lwWp = { lat: state.lwWp.lat, lng: state.lwWp.lng, leistungKw: state.lwWp.leistungKw || 12, lwaDb: state.lwWp.lwaDb || 80, visible: state.lwWp.visible !== false, ...(state.lwWp.aufstellung ? { aufstellung: { ...state.lwWp.aufstellung } } : {}), ...(state.lwWp.lwaManuell ? { lwaManuell: true } : {}), ...(state.lwWp.gebiet ? { gebiet: state.lwWp.gebiet } : {}), ...(state.lwWp.schallschutz ? { schallschutz: { ...state.lwWp.schallschutz } } : {}) };
+    lwWp = { lat: state.lwWp.lat, lng: state.lwWp.lng, leistungKw: state.lwWp.leistungKw || 12, lwaDb: state.lwWp.lwaDb || 80, visible: state.lwWp.visible !== false, ...(state.lwWp.aufstellung ? { aufstellung: { ...state.lwWp.aufstellung } } : {}), ...(state.lwWp.lwaManuell ? { lwaManuell: true } : {}), ...(state.lwWp.gebiet ? { gebiet: state.lwWp.gebiet } : {}), ...(state.lwWp.schallschutz ? { schallschutz: { ...state.lwWp.schallschutz } } : {}), ...(state.lwWp.ohneGebaeude ? { ohneGebaeude: true } : {}) };
     lwWpVisible = lwWp.visible;
     document.getElementById('lwwp-visible').checked = lwWpVisible;
     document.getElementById('lwwp-leistung').value = lwWp.leistungKw;

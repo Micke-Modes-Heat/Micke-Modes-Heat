@@ -16,6 +16,7 @@ import { createLifecycleScope } from './lib/lifecycle.js';
 import { wpAufstellungForm, rechteckEcken, WP_MODULE } from './lib/wp-aufstellung.js';
 import { wpSchallQuellen, lwaGesamt, pegelAm, isophone, isophonRadius, naechsterFassadenpunkt, WP_SCHALLSCHUTZ, schallschutzDb, quellenMitSchallschutz } from './lib/wp-schall.js';
 import { PT_TA_LAERM } from './lib/gutachten-potenzial.js';
+import { hindernis, schallSzene, pegel3d, isophonen3d, immissionsort3d } from './lib/schall-hindernisse.js';
 
 /** @type {import('./lib/lifecycle.js').LifecycleScope|null} */
 let areaDrawLifecycle = null;
@@ -2382,16 +2383,86 @@ export function lwWpGebietSetzen(name) {
   window.lwWp.gebiet = name;
   updateLwWpDisplay();
 }
-/** Pegel an den nächstgelegenen Gebäuden (nächster Punkt der Fassade), lauteste zuerst. */
-export function lwWpImmissionsorte(anzahl = 5) {
-  if (!window.lwWp) return [];
-  const quellen = lwWpSchallQuellen();
+/** Gebäude als Schallhindernisse berücksichtigen (Abschirmung, Reflexion)? Standard: ja. */
+export function lwWpMitGebaeuden() { return !!window.lwWp && window.lwWp.ohneGebaeude !== true; }
+export function lwWpMitGebaeudenSetzen(an) {
+  if (!window.lwWp) return;
+  if (an) delete window.lwWp.ohneGebaeude; else window.lwWp.ohneGebaeude = true;
+  updateLwWpDisplay();
+  redrawLwWp();
+}
+// Lokale Koordinaten (m) relativ zur Mitte der Aufstellfläche
+function _lwWpLokal() {
   const lat0 = window.lwWp.lat, lng0 = window.lwWp.lng;
   const latPerM = 1 / 111320, lngPerM = 1 / (111320 * Math.cos(lat0 * Math.PI / 180));
-  return (gebaeude || []).filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3).map(g => {
-    const poly = g.polygon.map(p => ({ ost: ((p.lng ?? p[1]) - lng0) / lngPerM, nord: ((p.lat ?? p[0]) - lat0) / latPerM }));
+  return p => ({ ost: ((p.lng ?? p[1]) - lng0) / lngPerM, nord: ((p.lat ?? p[0]) - lat0) / latPerM });
+}
+// Höhe eines Gebäudes für die Abschirmung: Traufhöhe aus LoD2, sonst Geschosse × 3 m
+function _gebHoeheM(g) {
+  if (g.dachLod2 && g.dachLod2.quelle !== 'grundriss' && g.dachLod2.traufeM > 0.5) return g.dachLod2.traufeM;
+  return Math.max(1, Math.min(60, parseInt(g.stockwerke, 10) || 1)) * 3;
+}
+function _gebGeschosse(g) { return Math.max(1, Math.min(30, parseInt(g.stockwerke, 10) || Math.round(_gebHoeheM(g) / 3) || 1)); }
+// Gebäude, die im betrachteten Jahr stehen (geplante und abgerissene zählen nicht)
+function _lwWpGebaeudeImBestand() {
+  const jahr = window.globalYear || globalYear;
+  return (gebaeude || []).filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3 && !Array.isArray(g.polygon[0]?.[0]) && (() => {
+    const st = getComputedStats(g, jahr)?.status;
+    return st !== 'geplant' && st !== 'abgerissen';
+  })());
+}
+let _lwWpSzeneCache = null;
+/** Rechenszene der LW-WP (Quellen, Gebäude als Hindernisse) — zwischengespeichert, solange sich nichts ändert. */
+export function lwWpSchallSzene() {
+  if (!window.lwWp) return null;
+  const quellen = lwWpSchallQuellen();
+  const auf = lwWpAufstellung(window.lwWp.leistungKw);
+  const hs = Math.max(1, auf.modul?.h || 2);
+  const zuLokal = _lwWpLokal();
+  const gebs = lwWpMitGebaeuden() ? _lwWpGebaeudeImBestand() : [];
+  const hind = gebs.map(g => hindernis(g.id, g.polygon.map(zuLokal), _gebHoeheM(g)));
+  const schluessel = JSON.stringify([window.lwWp.lat, window.lwWp.lng, hs, quellen, hind.map(h => [h.id, h.h, h.box])]);
+  if (_lwWpSzeneCache?.schluessel === schluessel) return _lwWpSzeneCache.sz;
+  const sz = schallSzene(quellen, hind, hs);
+  _lwWpSzeneCache = { schluessel, sz, iso: null };
+  return sz;
+}
+const LWWP_SCHALL_STUFEN = [55, 50, 45, 40, 35];
+/** Isophonen je Stufe als [{ost, nord}] (Empfängerhöhe 4 m); mit Gebäuden abgeschirmt, sonst Freifeld. */
+export function lwWpIsophonen() {
+  const sz = lwWpSchallSzene();
+  if (!sz || !sz.quellen.length) return new Map();
+  if (_lwWpSzeneCache.iso) return _lwWpSzeneCache.iso;
+  const iso = sz.hind.length
+    ? isophonen3d(sz, LWWP_SCHALL_STUFEN, { hr: 4 })
+    : new Map(LWWP_SCHALL_STUFEN.map(z => [z, isophone(sz.quellen, z)]));
+  _lwWpSzeneCache.iso = iso;
+  return iso;
+}
+/** Pegel an einem Punkt der Karte (ost/nord relativ zur Flächenmitte, 4 m Höhe). */
+export function lwWpPegelAm(ost, nord) {
+  const sz = lwWpSchallSzene();
+  if (!sz) return -Infinity;
+  return sz.hind.length ? pegel3d(sz, ost, nord, 4).pegel : pegelAm(sz.quellen, ost, nord);
+}
+/**
+ * Pegel an den Gebäuden, lauteste zuerst. Ohne Gebäudeeinfluss: nächster Fassadenpunkt. Mit Gebäuden: lautester
+ * Fassadenpunkt über alle Geschosse, Abschirmung je Außengerät, Reflexionen an Fassaden nahe der Geräte.
+ * Ergebnis: [{ id, name, abstand, pegel, frei, geschoss }].
+ */
+export function lwWpImmissionsorte(anzahl = 5) {
+  if (!window.lwWp) return [];
+  const sz = lwWpSchallSzene();
+  const zuLokal = _lwWpLokal();
+  const kandidaten = _lwWpGebaeudeImBestand().map(g => {
+    const poly = g.polygon.map(zuLokal);
     const f = naechsterFassadenpunkt(poly);
-    return { id: g.id, name: g.name || ('Gebäude ' + g.id), abstand: f.d, pegel: pegelAm(quellen, f.ost, f.nord) };
+    return { g, poly, id: g.id, name: g.name || ('Gebäude ' + g.id), abstand: f.d, pegel: pegelAm(sz.quellen, f.ost, f.nord) };
+  }).filter(k => !sz.ohne.has(k.id)).sort((a, b) => b.pegel - a.pegel);
+  if (!sz.hind.length) return kandidaten.slice(0, anzahl).map(({ id, name, abstand, pegel }) => ({ id, name, abstand, pegel, frei: pegel, geschoss: 0 }));
+  return kandidaten.slice(0, Math.max(anzahl * 4, 20)).map(k => {
+    const io = immissionsort3d(sz, { id: k.id, poly: k.poly, geschosse: _gebGeschosse(k.g) });
+    return { id: k.id, name: k.name, abstand: k.abstand, pegel: io.pegel, frei: io.frei, geschoss: io.geschoss };
   }).sort((a, b) => b.pegel - a.pegel).slice(0, anzahl);
 }
 export function toggleLwWpPanel() {
@@ -2445,7 +2516,7 @@ export function togglePlaceLwWp() {
 export function placeLwWpAt(latlng) {
   const leistung = parseFloat(document.getElementById('lwwp-leistung').value) || 12;
   const lwa = parseFloat(document.getElementById('lwwp-lwa').value) || 80;
-  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible, ...(window.lwWp?.aufstellung ? { aufstellung: window.lwWp.aufstellung } : {}), ...(window.lwWp?.schallschutz ? { schallschutz: window.lwWp.schallschutz } : {}) };
+  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible, ...(window.lwWp?.aufstellung ? { aufstellung: window.lwWp.aufstellung } : {}), ...(window.lwWp?.schallschutz ? { schallschutz: window.lwWp.schallschutz } : {}), ...(window.lwWp?.ohneGebaeude ? { ohneGebaeude: true } : {}) };
   document.getElementById('lwwp-man-laenge').value = '';
   document.getElementById('lwwp-man-breite').value = '';
   window.isPlacingLwWp = false;
@@ -2485,13 +2556,13 @@ export function redrawLwWp() {
   _lwWpAufstellungZeichnen(pt, leistung);
   window.lwWpSchallLayerGroup.clearLayers();
   // Isophonen: Linien gleichen Pegels aus allen Außengeräten (Punktquellen, Halbraum) — folgen Form und Drehung der Fläche
-  const quellen = lwWpSchallQuellen();
   const latPerM = 1 / 111320, lngPerM = 1 / (111320 * Math.cos(pt.lat * Math.PI / 180));
   const zuLatLng = p => [pt.lat + p.nord * latPerM, pt.lng + p.ost * lngPerM];
-  const schallStufen = [55, 50, 45, 40, 35];
+  const schallStufen = LWWP_SCHALL_STUFEN;
   const schallFarben = ['#b71c1c', '#e65100', '#f9a825', '#8bc34a', '#2e7d32'];
+  const isophonen = lwWpIsophonen();
   for (let i = schallStufen.length - 1; i >= 0; i--) {
-    const linie = isophone(quellen, schallStufen[i]);
+    const linie = isophonen.get(schallStufen[i]) || [];
     if (linie.length < 3) continue;
     const flaeche = L.polygon(linie.map(zuLatLng), { color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12, className: 'lwwp-isophone' })
       .addTo(window.lwWpSchallLayerGroup);
@@ -2500,7 +2571,7 @@ export function redrawLwWp() {
       const ost = (ev.latlng.lng - pt.lng) / lngPerM, nord = (ev.latlng.lat - pt.lat) / latPerM;
       const tt = flaeche.getTooltip();
       if (!tt) return;
-      tt.setContent(`<div class="lwwp-tooltip">Abstand zur Mitte: ${Math.hypot(ost, nord).toFixed(0)} m<br>Pegel ≈ ${pegelAm(quellen, ost, nord).toFixed(1)} dB(A)</div>`);
+      tt.setContent(`<div class="lwwp-tooltip">Abstand zur Mitte: ${Math.hypot(ost, nord).toFixed(0)} m<br>Pegel ≈ ${lwWpPegelAm(ost, nord).toFixed(1)} dB(A)</div>`);
       tt.setLatLng(ev.latlng);
       if (!map.hasLayer(tt)) flaeche.openTooltip(ev.latlng);
     });
@@ -2575,14 +2646,20 @@ function _lwWpSchallAnzeigen(auf) {
   const quelle = window.lwWp.lwaManuell ? 'Vorgabe' : (auf.modul.lwa != null ? 'Herstellerangabe' : 'Schätzung');
   const schutz = lwWpSchallschutzDb();
   const g = lwWpGebiet();
-  const radien = [55, 50, 45, 40, 35].map(lp => {
-    const r = isophonRadius(quellen, lp);
+  const isophonen = lwWpIsophonen();
+  const mitte = lwWpSchallSzene().mitte;
+  const radien = LWWP_SCHALL_STUFEN.map(lp => {
+    const linie = isophonen.get(lp) || [];
+    const r = linie.length ? Math.max(...linie.map(q => Math.hypot(q.ost - mitte.ost, q.nord - mitte.nord))) : (isophonRadius(quellen, lp) >= 2999 ? 3000 : 0);
     return `<span>${lp} dB(A)</span><span>${r >= 2999 ? '&gt; 3 km' : r > 0 ? nf(r) + ' m' : '—'}</span>`;
   }).join('');
   const orte = lwWpImmissionsorte(5);
+  const mitGeb = lwWpMitGebaeuden();
   const ortZeilen = orte.map(o => {
     const klasse = o.pegel > g.tag ? 'ueber' : o.pegel > g.nacht ? 'nacht' : 'ok';
-    return `<span class="lwwp-io-name" title="${escHtml(o.name)}">${escHtml(o.name)}</span><span>${nf(o.abstand)} m</span><span class="lwwp-io-pegel ${klasse}">${nf(o.pegel, 1)} dB(A)</span>`;
+    const daempf = o.frei - o.pegel;
+    const info = mitGeb ? `ohne Gebäudeeinfluss ${nf(o.frei, 1)} dB(A) · ${daempf >= 0 ? 'Abschirmung −' + nf(daempf, 1) : 'Reflexion +' + nf(-daempf, 1)} dB · lautester Punkt im ${o.geschoss ? o.geschoss + '. OG' : 'EG'}` : '';
+    return `<span class="lwwp-io-name" title="${escHtml(o.name)}">${escHtml(o.name)}</span><span>${nf(o.abstand)} m</span><span class="lwwp-io-pegel ${klasse}"${info ? ` title="${escHtml(info)}"` : ''}>${nf(o.pegel, 1)} dB(A)${mitGeb && Math.abs(daempf) >= 0.5 ? `<small class="lwwp-io-daempf">${daempf > 0 ? '−' : '+'}${nf(Math.abs(daempf))}</small>` : ''}</span>`;
   }).join('');
   el.innerHTML = `<div class="lwwp-schall-quelle">${quellen.length} × ${nf(quellen[0].lwa + schutz, 1)} dB(A) (${quelle})${schutz > 0 ? ` − ${nf(schutz)} dB Schallschutz` : ''} → <b>${nf(gesamt, 1)} dB(A)</b> gesamt</div>
     <div class="lwwp-schall-radien"><span class="kopf">Pegel</span><span class="kopf">bis Abstand</span>${radien}</div>
@@ -2595,6 +2672,12 @@ function _lwWpSchallAnzeigen(auf) {
     const dbEl = document.getElementById('lwwp-schallschutz-db');
     if (dbEl) { dbEl.style.display = ss.value === 'manuell' ? '' : 'none'; if (ss.value === 'manuell') dbEl.value = schutz; }
   }
+  const cbGeb = document.getElementById('lwwp-schall-gebaeude');
+  if (cbGeb) cbGeb.checked = mitGeb;
+  const hinweis = document.getElementById('lwwp-schall-modell');
+  if (hinweis) hinweis.textContent = mitGeb
+    ? 'mit Abschirmung durch Gebäude (Beugung über Dach und seitlich, Höhe aus LoD2 bzw. Geschosse × 3 m) und Reflexion an Fassaden nahe der Geräte; Isophonen in 4 m Höhe, an den Gebäuden lautester Fassadenpunkt über alle Geschosse'
+    : 'ohne Abschirmung durch Gebäude, Pegel am nächsten Fassadenpunkt';
   const sel = document.getElementById('lwwp-gebiet');
   if (sel) {
     if (!sel.options.length) sel.innerHTML = PT_TA_LAERM.map(([name, tag, nacht]) => `<option value="${escHtml(name)}">${escHtml(name)} (${tag}/${nacht})</option>`).join('');
