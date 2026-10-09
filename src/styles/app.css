@@ -2793,3 +2793,29 @@ body.trasse-loeschmodus path.leaflet-interactive[stroke="#ff9800"],body.trasse-l
 .sp-fuss{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;margin-top:10px;font-size:9px;color:var(--muted);line-height:1.4;}
 .sp-fuss .btn-secondary{flex-shrink:0;font-size:10px;}
 .sp-hinweis{font-size:10px;color:#81c784;margin-top:4px;}
+
+/* ── Gebäudeübersicht: Datenanalyse mit wählbaren Achsen ── */
+.geb-dyn-analyse{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:10px 0;}
+.ga-kopf{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:8px;}
+.ga-kopf h3{margin:0 8px 0 0;font-size:12px;color:var(--accent);font-weight:600;}
+.ga-kopf label{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:5px;}
+.ga-kopf select{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;padding:2px 4px;}
+.ga-flaeche{position:relative;}
+.ga-flaeche canvas{width:100%;display:block;border-radius:4px;background:rgba(0,0,0,0.12);}
+.ga-tipp{position:absolute;display:none;pointer-events:none;background:rgba(15,17,23,0.94);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:10px;color:var(--text);max-width:220px;line-height:1.45;z-index:5;}
+.ga-info{font-size:9.5px;color:var(--muted);margin-top:5px;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;}
+.ga-info i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:-1px;}
+.ga-info em{font-style:normal;}
+@keyframes ga-blink{0%,100%{background:transparent}30%{background:rgba(79,195,247,0.35)}}
+tr.ga-blink td{animation:ga-blink 1.6s ease 2;}
+
+/* ── Quartier sondieren ── */
+.qs-werkzeuge{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;}
+.qs-werkzeuge .btn-secondary{font-size:10px;padding:3px 9px;}
+.qs-hinweis{font-size:10px;color:#4fc3f7;}
+.qs-leer{font-size:11px;color:var(--muted);padding:10px 2px;line-height:1.5;}
+.qs-quelle{font-size:9.5px;color:var(--muted);margin-bottom:6px;}
+.qs-ansicht{display:flex;gap:2px;margin:4px 0 6px;flex-wrap:wrap;}
+.qs-ansicht .viz-btn{font-size:9px;padding:2px 8px;}
+#qs-canvas{width:100%;display:block;border-radius:4px;background:rgba(0,0,0,0.12);}
+.leaflet-container.qs-ziehen,.leaflet-container.qs-ziehen .leaflet-interactive{cursor:crosshair!important;}

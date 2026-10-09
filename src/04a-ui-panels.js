@@ -418,6 +418,7 @@ export function renderGebaeudeOverview() {
   const head = document.getElementById('geb-table-head');
   if (!body || !head) return;
   _renderGebOverviewAnalysis();
+  window.gaRender?.();
   const rows = _filteredSortedBuildings();
   const selected = gebaeude.filter(g => g.selected);
   const allVisibleSelected = rows.length > 0 && rows.every(g => g.selected);
