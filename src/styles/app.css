@@ -2848,3 +2848,9 @@ tr.ga-blink td{animation:ga-blink 1.6s ease 2;}
 .hz-tab select{font-size:10px;padding:1px 3px;}
 #hz-canvas{width:100%;display:block;border-radius:4px;background:rgba(0,0,0,0.12);}
 .nq-fix{background:transparent;border:1px solid #ffb74d;color:#ffb74d;border-radius:4px;font-size:9px;padding:1px 6px;cursor:pointer;}
+
+/* ── Wärme-Schemata (Netz, Heizzentrale) ── */
+#ws-panel{position:fixed;top:0;right:0;bottom:0;width:560px;background:var(--bg);border-left:1px solid var(--border);display:none;flex-direction:column;z-index:600;}
+#ws-panel.visible{display:flex;}
+#ws-panel.sld-fullscreen{left:0;width:100%!important;z-index:900;}
+#ws-canvas-wrap{flex:1;overflow:auto;background:#0b0e18;}

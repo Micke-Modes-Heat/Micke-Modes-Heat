@@ -545,6 +545,7 @@
           <button class="lp-tool-btn" data-click="toggleStatusPanel()" style="border-color:#90caf9;color:#90caf9;">📊 Status</button>
           <button class="lp-tool-btn" data-click="setViewMode('analyse')" style="border-color:#4fc3f7;color:#4fc3f7;">📈 Systemanalyse</button>
           <button class="lp-tool-btn" data-click="showSankey()" style="border-color:#ce93d8;color:#ce93d8;">🔀 Sankey-Diagramm</button>
+          <button class="lp-tool-btn" id="btn-waerme-schema" data-click="wsToggle()" style="border-color:#ff8f00;color:#ffb74d;grid-column:1/-1;" title="Netzschema (Strangplan) und Hydraulikschema der Heizzentrale">🗺 Wärmenetz- &amp; Zentralenschema</button>
           <button class="lp-tool-btn" id="btn-quartier-sonde" data-click="qsToggle()" style="border-color:#4fc3f7;color:#4fc3f7;" title="Bereich auf der Karte aufziehen und Lastgang, Dauerlinie und Kennwerte dieser Gebäude ansehen">🔍 Quartier sondieren</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Vergleich</div>
@@ -660,6 +661,28 @@
     <div id="sld-info-bar" style="display:none;">
       <div id="sld-info-content"></div>
     </div>
+  </div>
+
+  <!-- ══ Schemata Wärmenetz / Heizzentrale ══ -->
+  <div id="ws-panel">
+    <div class="sld-head">
+      <span class="sld-head-titel">🔥 Wärme-Schemata</span>
+      <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
+        <button class="sld-head-btn" data-click="wsZoom(-0.2)" title="Verkleinern">−</button>
+        <button class="sld-head-btn" data-click="wsZoom(0)" title="Zoom zurücksetzen" id="ws-zoom-label">100%</button>
+        <button class="sld-head-btn" data-click="wsZoom(0.2)" title="Vergrößern">+</button>
+        <button class="sld-head-btn" data-click="wsExportSvg()" title="Als SVG-Datei speichern">SVG</button>
+        <button class="sld-head-btn" data-click="wsDrucken()" title="Druckansicht (als PDF speichern)">📄 PDF</button>
+        <button class="sld-head-btn" id="ws-btn-fs" data-click="wsVollbild()" title="Vollbild">⛶</button>
+        <button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:0 3px;line-height:1;" data-click="wsToggle()" title="Schließen">✕</button>
+      </div>
+    </div>
+    <div class="sld-suchleiste">
+      <button class="sld-head-btn ws-tab active" data-ansicht="netz" data-click="wsAnsicht('netz')">Netzschema</button>
+      <button class="sld-head-btn ws-tab" data-ansicht="zentrale" data-click="wsAnsicht('zentrale')">Heizzentrale</button>
+      <span id="ws-zentrale-wahl" style="display:flex;gap:4px;"></span>
+    </div>
+    <div class="sld-canvas-wrap" id="ws-canvas-wrap"><div id="ws-canvas"></div></div>
   </div>
 
   <div id="erzeuger-status" style="position:absolute;top:10px;right:350px;z-index:500;display:flex;gap:5px;align-items:flex-start;pointer-events:none;"></div>
