@@ -1194,6 +1194,7 @@ function _migriereWaermeNetz() {
 export function captureNetzState() {
   return {
     zentrale: document.getElementById('netz-zentrale').value,
+    ...window.heizzentralenStand?.(),
     vl: document.getElementById('netz-vl').value,
     rl: document.getElementById('netz-rl').value,
     v: document.getElementById('netz-v').value,
@@ -1215,6 +1216,7 @@ export function applyNetzState(state) {
   if (!state) return;
   const zentrale = document.getElementById('netz-zentrale');
   if (zentrale && state.zentrale != null) zentrale.value = state.zentrale;
+  window.heizzentralenLaden?.(state);
   document.getElementById('netz-vl').value = state.vl ?? 90;
   document.getElementById('netz-rl').value = state.rl ?? 60;
   syncVLTemps('netz');

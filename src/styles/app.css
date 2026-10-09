@@ -2828,3 +2828,22 @@ tr.ga-blink td{animation:ga-blink 1.6s ease 2;}
 .vg-flaeche{position:relative;}
 .vg-flaeche canvas{width:100%;display:block;border-radius:6px;background:var(--surface2);}
 .vg-leer{font-size:11px;color:var(--muted);padding:8px 0;}
+
+/* ── Mehrere Heizzentralen ── */
+.hz-liste{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
+.hz-zeile{display:flex;gap:4px;align-items:center;}
+.hz-zeile .hz-name{width:78px;font-size:11px;padding:3px 5px;}
+.hz-zeile .hz-geb{flex:1;font-size:11px;padding:3px 5px;color:var(--muted);}
+.hz-zeile select.hz-geb{color:var(--text);}
+.hz-zu,.hz-weg{background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;font-size:10px;padding:2px 6px;}
+.hz-zu:hover{color:var(--accent);border-color:var(--accent);} .hz-weg:hover{color:#e57373;border-color:#e57373;}
+.hz-kenn{font-size:9.5px;color:var(--muted);margin:-1px 0 3px 82px;}
+.hz-plus{font-size:10.5px;padding:4px 8px;align-self:flex-start;}
+.hz-opt{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+.hz-opt .inp-field{width:76px;font-size:10.5px;padding:2px 4px;}
+.hz-hinweis{font-size:9.5px;color:var(--muted);line-height:1.4;}
+.hz-tab{width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:6px;}
+.hz-tab th{text-align:left;color:var(--muted);font-weight:500;font-size:9.5px;border-bottom:1px solid var(--border);padding:3px 5px;}
+.hz-tab td{padding:3px 5px;border-bottom:1px solid rgba(255,255,255,0.04);font-family:'DM Mono',monospace;}
+.hz-tab select{font-size:10px;padding:1px 3px;}
+#hz-canvas{width:100%;display:block;border-radius:4px;background:rgba(0,0,0,0.12);}

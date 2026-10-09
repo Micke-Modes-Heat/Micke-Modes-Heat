@@ -1214,22 +1214,29 @@ export function redrawVerbindungslinien() {
   const g = gebaeude.find(x => x.id === zId);
   if (!g || !g.polygon) return;
   const zentrale = polygonCenter(g.polygon);
+  // Mehrere Heizzentralen: Linie zur Zentrale, an der der Erzeuger steht (Standort)
+  const zentraleFuer = key => {
+    const id = window.erzeugerStandort?.(key);
+    const zg = id != null && id !== zId ? gebaeude.find(x => x.id === id) : null;
+    return zg?.polygon ? polygonCenter(zg.polygon) : zentrale;
+  };
   const lineStyle = { color: '#9e9e9e', weight: 1.5, dashArray: '8,6', opacity: 0.55 };
   if (geoThermie && geoThermie.lat != null)
-    L.polyline([L.latLng(geoThermie.lat, geoThermie.lng), zentrale], lineStyle).addTo(window.verbindungsLayerGroup);
+    L.polyline([L.latLng(geoThermie.lat, geoThermie.lng), zentraleFuer('geo')], lineStyle).addTo(window.verbindungsLayerGroup);
   if (lwWp && lwWp.lat != null)
-    L.polyline([L.latLng(lwWp.lat, lwWp.lng), zentrale], lineStyle).addTo(window.verbindungsLayerGroup);
+    L.polyline([L.latLng(lwWp.lat, lwWp.lng), zentraleFuer('lwwp')], lineStyle).addTo(window.verbindungsLayerGroup);
   if (fliessgewaesser && fliessgewaesser.latlngs && fliessgewaesser.latlngs.length >= 2) {
     const pts = fliessgewaesser.latlngs.map(p => L.latLng(p.lat, p.lng));
-    const cp = closestPointOnPolyline(pts, zentrale);
-    if (cp) L.polyline([cp, zentrale], lineStyle).addTo(window.verbindungsLayerGroup);
+    const ziel = zentraleFuer('fg');
+    const cp = closestPointOnPolyline(pts, ziel);
+    if (cp) L.polyline([cp, ziel], lineStyle).addTo(window.verbindungsLayerGroup);
   }
   if (pelletsKessel && pelletsKessel.lat != null)
-    L.polyline([L.latLng(pelletsKessel.lat, pelletsKessel.lng), zentrale], lineStyle).addTo(window.verbindungsLayerGroup);
+    L.polyline([L.latLng(pelletsKessel.lat, pelletsKessel.lng), zentraleFuer('pellets')], lineStyle).addTo(window.verbindungsLayerGroup);
   if (heizhackschnitzel && heizhackschnitzel.lat != null)
-    L.polyline([L.latLng(heizhackschnitzel.lat, heizhackschnitzel.lng), zentrale], lineStyle).addTo(window.verbindungsLayerGroup);
+    L.polyline([L.latLng(heizhackschnitzel.lat, heizhackschnitzel.lng), zentraleFuer('hhs')], lineStyle).addTo(window.verbindungsLayerGroup);
   if (window.fernwaerme && window.fernwaerme.lat != null)
-    L.polyline([L.latLng(window.fernwaerme.lat, window.fernwaerme.lng), zentrale], lineStyle).addTo(window.verbindungsLayerGroup);
+    L.polyline([L.latLng(window.fernwaerme.lat, window.fernwaerme.lng), zentraleFuer('fernwaerme')], lineStyle).addTo(window.verbindungsLayerGroup);
   freiflaechen.forEach(ff => {
     if (ff.polygon && ff.polygon.length >= 3)
       L.polyline([polygonCenter(ff.polygon), zentrale],

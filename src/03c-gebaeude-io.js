@@ -3354,9 +3354,11 @@ export function _buildProjectData() {
       importSourceColor: g.importSourceColor || null,
       importOriginalBuildingId: g.importOriginalBuildingId ?? null,
       importBuildingKey: g.importBuildingKey || null,
+      heizzentrale: g.heizzentrale ?? null,
     })),
     netz: {
       zentrale: document.getElementById('netz-zentrale').value,
+      ...window.heizzentralenStand?.(),
       vl: document.getElementById('netz-vl').value,
       rl: document.getElementById('netz-rl').value,
       v: document.getElementById('netz-v').value,
@@ -3991,6 +3993,7 @@ function _applyProjectData(project) {
             newG.importSourceColor = g.importSourceColor || null;
             newG.importOriginalBuildingId = g.importOriginalBuildingId ?? null;
             newG.importBuildingKey = g.importBuildingKey || null;
+            if (g.heizzentrale != null) newG.heizzentrale = g.heizzentrale;
             newG.nutzung = g.nutzung || '';
             newG.stockwerke = g.stockwerke ?? 1;
             newG.waermeManual = g.waermeManual || false;
@@ -4067,6 +4070,7 @@ function _applyProjectData(project) {
 
          populateZentraleSelect();
          document.getElementById('netz-zentrale').value = project.netz.zentrale || '';
+         window.heizzentralenLaden?.(project.netz);
 
          if (project.netz.isLocked && !networkLocked) {
              toggleNetworkLock();

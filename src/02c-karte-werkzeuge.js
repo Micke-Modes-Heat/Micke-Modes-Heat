@@ -449,13 +449,16 @@ export function updateViz(){
       }
       // Heizzentrale hervorheben
       const hzId = parseInt(document.getElementById('netz-zentrale')?.value);
-      if (g.id === hzId && !excluded) {
+      // Weitere Heizzentralen am selben Netz: gleiche Hervorhebung, Beschriftung mit ihrem Namen
+      const weitereHz = (window.weitereZentralen || []).find(z => Number(z.id) === g.id && Number(z.id) !== hzId);
+      if ((g.id === hzId || weitereHz) && !excluded) {
         g.polygonLayer.setStyle({ color: '#ff8f00', weight: 2.5, fillColor: '#ff8f00', fillOpacity: 0.12, dashArray: '' });
         if (g.hzLabelMarker) { map.removeLayer(g.hzLabelMarker); g.hzLabelMarker = null; }
         if (g.polygon) {
           const c = polygonCenter(g.polygon);
+          const hzText = (window.weitereZentralen || []).length ? (weitereHz ? (weitereHz.name || 'HZ 2') : (window.hauptzentraleName || 'HZ 1')) : 'HZ';
           g.hzLabelMarker = L.marker(c, {
-            icon: L.divIcon({ className:'', html:'<div style="background:rgba(255,143,0,0.85);color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;white-space:nowrap;pointer-events:none;letter-spacing:0.5px;">HZ</div>', iconAnchor:[10,8] }),
+            icon: L.divIcon({ className:'', html:`<div style="background:rgba(255,143,0,0.85);color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;white-space:nowrap;pointer-events:none;letter-spacing:0.5px;">${String(hzText).replace(/[<>&"]/g, '')}</div>`, iconAnchor:[10,8] }),
             interactive: false, zIndexOffset: 100
           }).addTo(map);
         }

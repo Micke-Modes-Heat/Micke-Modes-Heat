@@ -69,7 +69,7 @@ export let _daRubber = null; // { x0, x1 } während Drag
 // ── Tab-Umschaltung ───────────────────────────────────────────────────────
 export function saSetTab(name) {
   saCurrentTab = name;
-  ['lastgang','jdl','woche','tempvl','metriken','dim','split','speicher','optimierung','sensitivitaet'].forEach(n => {
+  ['lastgang','jdl','woche','tempvl','metriken','dim','split','speicher','zentralen','optimierung','sensitivitaet'].forEach(n => {
     document.getElementById(`sa-tab-btn-${n}`)?.classList.toggle('active', n === name);
     document.getElementById(`sa-tab-${n}`)?.classList.toggle('active', n === name);
   });
@@ -82,6 +82,7 @@ export function saSetTab(name) {
   if (name === 'split')    splitRender();
   if (name === 'sensitivitaet') { if (typeof runSensitivitaet === 'function') runSensitivitaet(); }
   if (name === 'speicher') window.spRender?.();
+  if (name === 'zentralen') window.hzAnalyseRender?.();
 }
 
 // ── Lastgang Sub-Views ──────────────────────────────────────────────────

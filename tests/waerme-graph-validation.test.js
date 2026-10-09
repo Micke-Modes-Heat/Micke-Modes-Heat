@@ -20,3 +20,11 @@ describe('Wärmenetz-Topologieprüfung', () => {
     expect(result.cycleEdgeIndexes).toEqual([]);
   });
 });
+
+describe('mehrere Heizzentralen', () => {
+  it('jede Zentrale ist Wurzel; Verbraucher an einer der beiden sind verbunden', () => {
+    const r = validateRadialHeatGraph([{ u: 1, v: 2 }, { u: 3, v: 4 }], [1, 3], [2, 4]);
+    expect(r.disconnectedConsumerIds).toEqual([]);
+    expect(r.cycleEdgeIndexes).toEqual([]);
+  });
+});

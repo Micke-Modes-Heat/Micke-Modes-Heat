@@ -22,7 +22,6 @@ import { readNum } from './lib/util.js';
 import { clipBuildingEndpoint, crossesForeignBuilding } from './lib/netz-building-obstacles.js';
 import { bereinigeKleinbauten, rechteckAusDreiPunkten } from './lib/gebaeude-geometrie.js';
 import { osmDachAusTags, osmQuerAzimut, osmDachGebaeude, osmDachZuordnen } from './lib/osm-dach.js';
-import { validateRadialHeatGraph } from './lib/waerme-graph-validation.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
 import { areaEditMarkers, areaLatLngs, cacheVariantResults, currentMode, drawPoints, edgeKey, edgeWaypoints, fliessgewaesser, gasKessel, geoThermie, networkLocked, netzPruningMode, trassePoints, trasseSegments } from './01-globals-varianten.js';
@@ -40,6 +39,7 @@ import { selectedStrandId } from './01-globals-varianten.js';
 import { netzSignatur, netzAenderungText, erstelleNetzVerlauf } from './lib/netz-verlauf.js';
 import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen, besteAstVerlegung, parallelAbschnitte, ueberlappungAmEnde } from './lib/netz-strang.js';
 import { strangGruppen, sackgassenEntfernen, quartierJeGebaeude, hauptstraenge } from './lib/netz-quartiere.js';
+import { zentraleJeGebaeude, kuppelVerbindungen } from './lib/netz-zentralen.js';
 import { EIS, eisAuslegungVorschlag, eisBewertung, eisGeometrie, eisInvest } from './lib/eisspeicher.js';
 
 export function toggleGeoPanel() {
@@ -3511,14 +3511,16 @@ export function autoGenerateNetz(options = {}){
     return false;
   }
 
+  // Weitere Heizzentralen am selben Netz: vor clearNetz merken (die Liste gehört zum Projekt, nicht zum Netz)
+  const wurzelnAufbau = netzZentralenIds();
   clearNetz();
 
   const planningYears = _netzPlanningYears();
   const nodes = gebaeude.filter(g => {
     if (!g.polygon) return false;
     // Die Zentrale ist der hydraulische Startknoten und muss auch dann Teil des
-    // Graphen sein, wenn das Zentralengebäude selbst keinen Wärmebedarf hat.
-    if (g.id === zId) return true;
+    // Graphen sein, wenn das Zentralengebäude selbst keinen Wärmebedarf hat (ebenso weitere Zentralen).
+    if (g.id === zId || wurzelnAufbau.includes(g.id)) return true;
     return networkLocked
       ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast > 0
       : _maxBuildingLoad(g,planningYears) > 0;
@@ -3545,12 +3547,20 @@ export function autoGenerateNetz(options = {}){
   };
   // Versorgungsquartiere: je Quartier ein eigener Baum ab der Zentrale (eigener Hauptstrang), übrige Gebäude gemeinsam
   const quartiere = (window.netzQuartiere || []).filter(q => q.gebIds?.length);
-  const gruppen = quartiere.length
-    ? strangGruppen(allePunkte.map(n => n.id), quartiere, zId)
-    : [{id:null, gebIds:allePunkte.map(n => n.id).filter(id => id !== zId)}];
-  const zentralePunkt = allePunkte.find(n => n.id === zId);
+  // Mehrere Heizzentralen: Gebäude der nächstgelegenen (oder fest zugeordneten) Zentrale zuordnen, je Zone planen
+  const zentralenPunkte = wurzelnAufbau.map(id => allePunkte.find(n => n.id === id)).filter(Boolean);
+  const zoneVon = zentraleJeGebaeude(allePunkte, zentralenPunkte,
+    new Map(gebaeude.filter(g => g.heizzentrale != null).map(g => [g.id, Number(g.heizzentrale)])));
+  const gruppen = [];
+  for (const zp of zentralenPunkte) {
+    const ids = allePunkte.map(n => n.id).filter(id => zoneVon.get(id) === zp.id && !wurzelnAufbau.includes(id));
+    if (!ids.length) continue;
+    const g = quartiere.length ? strangGruppen(ids, quartiere, zp.id) : [{id:null, gebIds:ids}];
+    g.forEach(x => gruppen.push({ ...x, zentrale: zp.id }));
+  }
   // Netz für eine Gruppe planen (Zentrale + Gebäude); false, wenn sich die Gruppe nicht anschließen lässt
-  const gruppePlanen = allPts => {
+  // zId: Zentrale dieser Gruppe (verdeckt die Hauptzentrale)
+  const gruppePlanen = (allPts, zId) => {
   const useHeatTrasse = strategy !== 'quick';
   // Automatisch übernommene OSM-Straßen sind nur Routinggrundlage der Straßen-Strategie. Bei einer
   // gezeichneten Haupttrasse dürfen sie nicht als verbindliche Vorgabe in das Netz gezwungen werden.
@@ -3972,15 +3982,26 @@ export function autoGenerateNetz(options = {}){
 
   const mstEdges = [];
   const strassenDiag = {uncoveredBuildings:0,freeClusters:0};
+  const zonenKnoten = new Map();
   for (const gruppe of gruppen) {
     const ids = new Set(gruppe.gebIds);
-    let kanten = gruppePlanen([zentralePunkt, ...allePunkte.filter(n => ids.has(n.id))]);
+    const zp = allePunkte.find(n => n.id === gruppe.zentrale);
+    let kanten = gruppePlanen([zp, ...allePunkte.filter(n => ids.has(n.id))], gruppe.zentrale);
     if (kanten === false) return false;
     // Eigene Stränge: nur der Teil von Trasse und Straßen, der die Gebäude der Gruppe erreicht
-    if (quartiere.length) kanten = sackgassenEntfernen(kanten, id => id !== zId && !ids.has(id));
+    if (quartiere.length) kanten = sackgassenEntfernen(kanten, id => id !== gruppe.zentrale && !ids.has(id));
     mstEdges.push(...kanten);
+    if (!zonenKnoten.has(gruppe.zentrale)) zonenKnoten.set(gruppe.zentrale, new Map());
+    kanten.forEach(k => [k.uNode, k.vNode].forEach(n => { if (n?.pt) zonenKnoten.get(gruppe.zentrale).set(n.id, n); }));
     strassenDiag.uncoveredBuildings += window._streetRoutingDiagnostics?.uncoveredBuildings || 0;
     strassenDiag.freeClusters += window._streetRoutingDiagnostics?.freeClusters || 0;
+  }
+  // Mehrere Zentralen am selben Netz: Zonen über Verbindungsleitungen (kürzeste Verbindung) zusammenschließen
+  if (wurzelnAufbau.length > 1 && window._hzVerbinden !== false) {
+    // Zentralen ohne eigene Gebäude trotzdem anbinden
+    zentralenPunkte.forEach(zp => { if (!zonenKnoten.has(zp.id)) zonenKnoten.set(zp.id, new Map([[zp.id, zp]])); });
+    const zonen = new Map([...zonenKnoten].map(([z, m]) => [z, [...m.values()]]));
+    kuppelVerbindungen(zonen).forEach(k => mstEdges.push({ u: k.a.id, v: k.b.id, uNode: k.a, vNode: k.b, kuppelAufbau: true }));
   }
   if (window._streetRoutingDiagnostics) Object.assign(window._streetRoutingDiagnostics, strassenDiag);
   window._netzBuildingObstacleDiagnostics.usedConflictEdges = mstEdges.filter(edge => edge.buildingConflict).length;
@@ -4102,13 +4123,13 @@ function _strangZuordnung(kanten, centralId, knoten) {
 
 /** Leitungen entfernen, die an einem Abzweig ohne Weiterführung enden (versorgen niemanden). Zentrale und Gebäude bleiben. */
 function _blattAbzweigeEntfernen() {
-  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const zentralen = new Set(netzZentralenIds());
   let entfernt = 0;
   for (let runde = 0; runde < 500; runde++) {
     const grad = new Map();
     window.netzEdges.filter(e => !e.pruned).forEach(e => { grad.set(e.u,(grad.get(e.u) || 0) + 1); grad.set(e.v,(grad.get(e.v) || 0) + 1); });
     const blatt = window.netzEdges.find(e => !e.pruned && [[e.u,e.uNode],[e.v,e.vNode]].some(([id,n]) =>
-      n && n.type !== 'geb' && id !== centralId && grad.get(id) === 1));
+      n && n.type !== 'geb' && !zentralen.has(id) && grad.get(id) === 1));
     if (!blatt) break;
     _removeNetzEdge(blatt);
     entfernt++;
@@ -4123,7 +4144,7 @@ function _blattAbzweigeEntfernen() {
  * Ergebnis: die Kanten, die entfernt würden (entfernen = true: entfernt sie auch).
  */
 export function toteLeitungen(entfernen = false) {
-  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const zentralen = new Set(netzZentralenIds());
   const gebMap = new Map(gebaeude.map(g => [g.id, g]));
   // Verbraucher: Gebäude mit Wärmebedarf jetzt oder in einem anderen Planungsjahr (Neubau, Sanierung)
   const jahre = [globalYear, 2030, 2035, 2040, 2045, 2050];
@@ -4149,13 +4170,13 @@ export function toteLeitungen(entfernen = false) {
       while (q.length) { const x = q.pop(); for (const n of nachbarn.get(x) || []) if (!komp.has(n.zu)) { komp.set(n.zu, k); q.push(n.zu); } }
       k++;
     }
-    const mitZentrale = komp.get(centralId), mitVerbraucher = new Set();
-    for (const [id, c] of komp) if (id !== centralId && istVerbraucher(id)) mitVerbraucher.add(c);
+    const mitZentrale = new Set([...zentralen].map(z => komp.get(z)).filter(c => c != null)), mitVerbraucher = new Set();
+    for (const [id, c] of komp) if (!zentralen.has(id) && istVerbraucher(id)) mitVerbraucher.add(c);
     const tot = kanten.find(e => {
       const c = komp.get(e.u);
-      if (c !== mitZentrale && mitVerbraucher.has(c)) return false;
-      if (c !== mitZentrale) return true;   // Teilnetz ohne Verbraucher und ohne Zentrale
-      return [e.u, e.v].some(id => id !== centralId && (nachbarn.get(id) || []).length === 1 && !istVerbraucher(id));
+      if (!mitZentrale.has(c) && mitVerbraucher.has(c)) return false;
+      if (!mitZentrale.has(c)) return true;   // Teilnetz ohne Verbraucher und ohne Zentrale
+      return [e.u, e.v].some(id => !zentralen.has(id) && (nachbarn.get(id) || []).length === 1 && !istVerbraucher(id));
     });
     if (!tot) break;
     ergebnis.push(tot);
@@ -4170,6 +4191,18 @@ export function toteLeitungenEntfernen() {
   const n = toteLeitungen(true).length;
   showHint(n ? `✓ ${n} Leitung${n === 1 ? '' : 'en'} ohne Abnehmer entfernt.` : 'Keine Leitungen ohne Abnehmer gefunden.', 3500);
   return n;
+}
+
+/** Leitungen, die von einer Zentrale aus erreichbar sind (ohne Verbindungsleitungen übergeben = ihre Zone). */
+function _kantenDerZone(kanten, zentrale) {
+  const nachbarn = new Map();
+  kanten.forEach(e => { for (const [a, b] of [[e.u, e.v], [e.v, e.u]]) { if (!nachbarn.has(a)) nachbarn.set(a, []); nachbarn.get(a).push({ b, e }); } });
+  const besucht = new Set([zentrale]), out = new Set(), q = [zentrale];
+  while (q.length) {
+    const x = q.pop();
+    for (const n of nachbarn.get(x) || []) { out.add(n.e); if (!besucht.has(n.b)) { besucht.add(n.b); q.push(n.b); } }
+  }
+  return kanten.filter(e => out.has(e));
 }
 
 /**
@@ -4284,16 +4317,25 @@ export function _anschluesseOptimieren(maxRunden = 25) {
       const kanten = window.netzEdges.filter(e => !e.pruned);
       const knoten = new Map();
       kanten.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
-      const gebPunkte = new Map([...knoten].filter(([id,n]) => n?.type === 'geb' && id !== centralId).map(([id,n]) => [id,n.pt]));
-      const liste = kanten.map(e => ({u:e.u,v:e.v,linie:e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt],edge:e}));
-      // Versorgungsquartiere: Gebäude nur an Leitungen des eigenen Hauptstrangs hängen
-      const strang = _strangZuordnung(kanten,centralId,knoten);
-      const plan = besteAstVerlegung(liste,{
-        zentraleId:centralId, gebaeude:gebPunkte,
-        zielErlaubt:strang ? (gebId,ziel) => strang.erlaubt(gebId,ziel.edge) : undefined,
-        istAbzweig:id => !!knoten.get(id) && knoten.get(id).type !== 'geb',
-        kreuzt:(von,nach,gebId) => crossesForeignBuilding(L.latLng(von.lat,von.lng),L.latLng(nach.lat,nach.lng),gebaeude,[gebId]),
-      });
+      // Mehrere Zentralen: je Versorgungszone getrennt (Gebäude bleiben in ihrer Zone, Verbindungsleitungen tabu)
+      const zentralen = netzZentralenIds();
+      let plan = null;
+      for (const zentrale of zentralen) {
+        const zoneKanten = zentralen.length > 1 ? _kantenDerZone(kanten.filter(e => !e.kuppel),zentrale) : kanten;
+        const zoneKnoten = new Map();
+        zoneKanten.forEach(e => { zoneKnoten.set(e.u,e.uNode); zoneKnoten.set(e.v,e.vNode); });
+        const gebPunkte = new Map([...zoneKnoten].filter(([id,n]) => n?.type === 'geb' && !zentralen.includes(id)).map(([id,n]) => [id,n.pt]));
+        const liste = zoneKanten.map(e => ({u:e.u,v:e.v,linie:e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt],edge:e}));
+        // Versorgungsquartiere: Gebäude nur an Leitungen des eigenen Hauptstrangs hängen
+        const strang = zentrale === centralId ? _strangZuordnung(zoneKanten,centralId,zoneKnoten) : null;
+        plan = besteAstVerlegung(liste,{
+          zentraleId:zentrale, gebaeude:gebPunkte,
+          zielErlaubt:strang ? (gebId,ziel) => strang.erlaubt(gebId,ziel.edge) : undefined,
+          istAbzweig:id => !!zoneKnoten.get(id) && zoneKnoten.get(id).type !== 'geb',
+          kreuzt:(von,nach,gebId) => crossesForeignBuilding(L.latLng(von.lat,von.lng),L.latLng(nach.lat,nach.lng),gebaeude,[gebId]),
+        });
+        if (plan) break;
+      }
       if (!plan) break;
       // Zeitliche Schaltung der alten Hausanschlüsse (geplante Neubauten) übernehmen
       const zeit = new Map();
@@ -5382,7 +5424,12 @@ function _removeNetzEdge(edge) {
 
 function _parentEdgeForBuilding(buildingId) {
   const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
-  if (!centralId || buildingId === centralId) return null;
+  if (!centralId || istNetzZentrale(buildingId)) return null;
+  // Mehrere Zentralen: Versorgungsweg aus der letzten Netzberechnung (kürzester Weg zur nächsten Zentrale)
+  if (netzZentralenIds().length > 1) {
+    const e = window._netzElternKante?.get(buildingId);
+    return e && window.netzEdges.includes(e) ? e : null;
+  }
   const adjacency = new Map();
   window.netzEdges.filter(edge => !edge.pruned).forEach(edge => {
     if (!adjacency.has(edge.u)) adjacency.set(edge.u, []);
@@ -5496,8 +5543,12 @@ function _punktImPolygon(p, polygon) {
 }
 
 function _strangPlanen(edge, punkt, verlaufVorher = null) {
-  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
-  const kanten = window.netzEdges.filter(e => !e.pruned);
+  // Mehrere Zentralen: in der Zone der Leitung planen (ohne Verbindungsleitungen), mit deren Zentrale
+  const mehrere = netzZentralenIds().length > 1;
+  const centralId = mehrere ? window._netzWurzelVon?.get(edge.u) ?? window._netzWurzelVon?.get(edge.v)
+    : parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const alle = window.netzEdges.filter(e => !e.pruned);
+  const kanten = mehrere && centralId != null ? _kantenDerZone(alle.filter(e => !e.kuppel), centralId) : alle;
   if (!centralId || !kanten.includes(edge) || !punkt) return null;
   const knoten = new Map();
   kanten.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
@@ -5665,9 +5716,11 @@ export function netzStrangUmlegen() {
 export function netzAbgangAusZentrale(edge) {
   if (!edge || !window.netzEdges.includes(edge)) return false;
   if (!ensureWaermeNetzStructureEditable()) return false;
-  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const mehrere = netzZentralenIds().length > 1;
+  const centralId = mehrere ? (window._netzWurzelVon?.get(edge.u) ?? window._netzWurzelVon?.get(edge.v))
+    : parseInt(document.getElementById('netz-zentrale')?.value, 10);
   const zentraleGeb = gebaeude.find(g => g.id === centralId);
-  const kanten = window.netzEdges.filter(e => !e.pruned);
+  const kanten = mehrere ? _kantenDerZone(window.netzEdges.filter(e => !e.pruned && !e.kuppel), centralId) : window.netzEdges.filter(e => !e.pruned);
   const zentrale = kanten.map(e => (e.u === centralId ? e.uNode : e.v === centralId ? e.vNode : null)).find(Boolean)
     || (zentraleGeb?.polygon ? { id: centralId, type: 'geb', pt: polygonCenter(zentraleGeb.polygon), load: 0 } : null);
   if (!zentrale) { showHint('Bitte zuerst eine Heizzentrale festlegen.', 3500); return false; }
@@ -5816,9 +5869,41 @@ export function syncVLTemps(source) {
   }
 }
 
+/**
+ * Alle Heizzentralen des Wärmenetzes (Gebäude-IDs). Die Auswahl „Heizzentrale“ ist die aktive (Hauptzentrale);
+ * weitere Zentralen speisen in dasselbe Netz ein (window.weitereZentralen = [{ id, name }]).
+ */
+export function netzZentralenIds() {
+  const ids = [];
+  const haupt = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  if (Number.isFinite(haupt)) ids.push(haupt);
+  for (const z of window.weitereZentralen || []) {
+    const id = Number(z?.id);
+    if (Number.isFinite(id) && !ids.includes(id) && gebaeude.some(g => g.id === id)) ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * Übergabeleistung der Verbindungsleitungen zwischen den Versorgungszonen (kW): Eingabe im Netz-Panel, sonst die
+ * höchste Netzlast im Sommer (Juni–August) — so kann eine Zentrale das Netz im Sommer allein versorgen.
+ * Ohne Lastgang: 20 % der Summe der Gebäude-Heizlasten.
+ */
+export function kuppelUebergabeKw() {
+  const eingabe = parseFloat(window._hzKuppelKw ?? document.getElementById('netz-kuppel-kw')?.value);
+  if (eingabe > 0) return eingabe;
+  const lg = window.systemState?.lastgangKw;
+  if (lg?.length >= 5832) { let m = 0; for (let i = 3624; i < 5832; i++) if (lg[i] > m) m = lg[i]; if (m > 0) return m; }
+  return 0.2 * gebaeude.filter(g => !isExcluded(g.id)).reduce((s, g) => s + (getComputedStats(g, globalYear).heizlast || 0), 0);
+}
+
+/** Ist dieser Knoten eine Heizzentrale? */
+export function istNetzZentrale(id) { return netzZentralenIds().includes(Number(id)); }
+
 export function recalcNetz(){
   const ergebnis = _recalcNetzIntern();
   _netzVerlaufBeobachten();
+  window.hzRender?.();
   // Geänderte Netzverluste (U-Wert, Temperaturen, Leitungen, DN, Jahr) gehen in den Lastgang ein
   window.lastgangBeiBedarfNeu?.();
   return ergebnis;
@@ -5832,6 +5917,9 @@ function _recalcNetzIntern(){
   gebaeude.forEach(g => delete g.tempIn);
 
   const zId = parseInt(document.getElementById('netz-zentrale').value);
+  const wurzeln = netzZentralenIds();
+  window._netzWurzelVon = new Map();
+  window._netzJeZentrale = {};
   if(!zId || isNaN(zId)) {
     gebaeude.forEach(g => { g.netzVerlustKW = null; g.netzVerlustRatioPct = null; g.netzVerlustJahrMWh = null; });
     updateStrandDropdown();
@@ -5866,11 +5954,13 @@ function _recalcNetzIntern(){
   }
 
   const nodeMap = {};
-  const zGeb = gebMap.get(zId);
-  if(zGeb) {
-      nodeMap[zId] = { id: zId, load: getComputedStats(zGeb, globalYear).heizlast||0, adj: [] };
+  wurzeln.forEach(w => {
+    const zGeb = gebMap.get(w);
+    if(zGeb) {
+      nodeMap[w] = { id: w, load: getComputedStats(zGeb, globalYear).heizlast||0, adj: [] };
       zGeb.tempIn = vlTemp;
-  }
+    }
+  });
 
   window.netzEdges.forEach(e => {
     // Deaktivieren schaltet den Abschnitt nur hydraulisch aus. Geometrie und
@@ -5888,24 +5978,81 @@ function _recalcNetzIntern(){
   });
 
   const consumerIds = gebaeude
-    .filter(g => g.id !== zId && !isExcluded(g.id) && getComputedStats(g, globalYear).heizlast > 0)
+    .filter(g => !wurzeln.includes(g.id) && !isExcluded(g.id) && getComputedStats(g, globalYear).heizlast > 0)
     .map(g => g.id);
-  const topology = validateRadialHeatGraph(window.netzEdges, zId, consumerIds);
+
+  // ── Versorgungszonen ──
+  // Eine Zentrale: Baum per Breitensuche wie bisher. Mehrere Zentralen am selben Netz: jeder Knoten wird von der
+  // Zentrale versorgt, die über das Netz am nächsten liegt (kürzester Leitungsweg). Leitungen zwischen zwei Zonen
+  // sind Verbindungsleitungen mit Trennstelle — kein Ring.
+  const order = [];
+  const parentEdge = {};
+  const wurzelVon = window._netzWurzelVon;
+  if (wurzeln.length <= 1) {
+    const visited = new Set([zId]);
+    const queue = [zId];
+    wurzelVon.set(zId, zId);
+    while(queue.length > 0){
+      const curr = queue.shift();
+      order.push(curr);
+      if(nodeMap[curr]){
+          nodeMap[curr].adj.forEach(neighbor => {
+            if(!visited.has(neighbor.to)){
+              visited.add(neighbor.to);
+              parentEdge[neighbor.to] = { e: neighbor.edge, pNodeId: curr };
+              wurzelVon.set(neighbor.to, zId);
+              queue.push(neighbor.to);
+            }
+          });
+      }
+    }
+  } else {
+    const dist = new Map(wurzeln.filter(w => nodeMap[w]).map(w => [w, 0]));
+    wurzeln.forEach(w => wurzelVon.set(w, w));
+    const fertig = new Set();
+    for (;;) {
+      let curr = null, dMin = Infinity;
+      for (const [id, d] of dist) if (!fertig.has(id) && d < dMin) { dMin = d; curr = id; }
+      if (curr === null) break;
+      fertig.add(curr);
+      order.push(curr);
+      for (const nb of nodeMap[curr]?.adj || []) {
+        if (fertig.has(nb.to) || wurzeln.includes(nb.to)) continue;
+        const d = dMin + Math.max(0.01, nb.edge.length || 0);
+        if (d < (dist.get(nb.to) ?? Infinity)) {
+          dist.set(nb.to, d);
+          parentEdge[nb.to] = { e: nb.edge, pNodeId: curr };
+          wurzelVon.set(nb.to, wurzelVon.get(curr));
+        }
+      }
+    }
+  }
+  window._netzElternKante = new Map(Object.entries(parentEdge).map(([id, p]) => [Number(id), p.e]));
+  const baumKanten = new Set(Object.values(parentEdge).map(p => p.e));
+  const kuppelKanten = window.netzEdges.filter(e => !e.pruned && !baumKanten.has(e) &&
+    wurzelVon.has(e.u) && wurzelVon.has(e.v) && wurzelVon.get(e.u) !== wurzelVon.get(e.v));
+  window.netzEdges.forEach(e => { e.kuppel = kuppelKanten.includes(e); });
+  const zyklenIdx = window.netzEdges.map((e, i) => i).filter(i => {
+    const e = window.netzEdges[i];
+    return !e.pruned && !baumKanten.has(e) && !e.kuppel && wurzelVon.has(e.u) && wurzelVon.has(e.v);
+  });
   window._waermeNetzValidation = {
-    cycleEdges: topology.cycleEdgeIndexes.length,
-    disconnectedConsumerIds: topology.disconnectedConsumerIds
+    cycleEdges: zyklenIdx.length,
+    disconnectedConsumerIds: consumerIds.filter(id => !wurzelVon.has(id)),
   };
+  window._netzKuppelAnzahl = kuppelKanten.length;
   window.netzEdges.forEach((edge, index) => {
-    edge.notHydraulicallySolved = topology.cycleEdgeIndexes.includes(index);
-    edge.disconnected = !edge.pruned && (!topology.reachable.has(edge.u) || !topology.reachable.has(edge.v));
+    edge.notHydraulicallySolved = zyklenIdx.includes(index);
+    edge.disconnected = !edge.pruned && (!wurzelVon.has(edge.u) || !wurzelVon.has(edge.v));
     if (edge.notHydraulicallySolved) edge.layer?.setStyle({dashArray: '8,6', color: '#ab47bc'});
     else if (edge.disconnected) edge.layer?.setStyle({dashArray: '4,6', color: '#ff9800'});
   });
   const topologyWarning = document.getElementById('netz-topology-warning');
   if (topologyWarning) {
     const parts = [];
-    if (topology.disconnectedConsumerIds.length) parts.push(`${topology.disconnectedConsumerIds.length} Verbraucher nicht mit der Zentrale verbunden`);
-    if (topology.cycleEdgeIndexes.length) parts.push(`${topology.cycleEdgeIndexes.length} Ringkante(n) nicht hydraulisch gelöst`);
+    const getrennt = window._waermeNetzValidation.disconnectedConsumerIds.length;
+    if (getrennt) parts.push(`${getrennt} Verbraucher nicht mit ${wurzeln.length > 1 ? 'einer Heizzentrale' : 'der Zentrale'} verbunden`);
+    if (zyklenIdx.length) parts.push(`${zyklenIdx.length} Ringkante(n) nicht hydraulisch gelöst`);
     let tote = 0;
     try { tote = toteLeitungen(false).length; } catch { tote = 0; }
     topologyWarning.innerHTML = (parts.length ? `⚠ ${parts.join(' · ')}` : '')
@@ -5913,34 +6060,21 @@ function _recalcNetzIntern(){
     topologyWarning.style.display = parts.length || tote ? 'block' : 'none';
   }
 
-  const order = [];
-  const parentEdge = {};
-  const visited = new Set([zId]);
-  const queue = [zId];
-
-  while(queue.length > 0){
-    const curr = queue.shift();
-    order.push(curr);
-    if(nodeMap[curr]){
-        nodeMap[curr].adj.forEach(neighbor => {
-          if(!visited.has(neighbor.to)){
-            visited.add(neighbor.to);
-            parentEdge[neighbor.to] = { e: neighbor.edge, pNodeId: curr };
-            queue.push(neighbor.to);
-          }
-        });
-    }
-  }
-
-  const neighborsOfZ = nodeMap[zId] ? nodeMap[zId].adj.map(a => a.to).sort((a,b)=>a-b) : [];
-  window.netzEdges.forEach(e => {
-    if (e.u === zId || e.v === zId) {
-      const other = e.u === zId ? e.v : e.u;
-      e.strandId = Math.max(0, neighborsOfZ.indexOf(other));
-    }
+  // Stränge: Abgänge je Zentrale, fortlaufend nummeriert
+  let strangNr = 0;
+  window.netzEdges.forEach(e => { e.strandId = null; });
+  wurzeln.forEach(w => {
+    const abgaenge = (nodeMap[w]?.adj || []).filter(a => parentEdge[a.to]?.e === a.edge).map(a => a.to).sort((a,b)=>a-b);
+    window.netzEdges.forEach(e => {
+      if ((e.u === w || e.v === w) && baumKanten.has(e)) {
+        const other = e.u === w ? e.v : e.u;
+        e.strandId = strangNr + Math.max(0, abgaenge.indexOf(other));
+      }
+    });
+    strangNr += Math.max(1, abgaenge.length);
   });
   order.forEach(nodeId => {
-    if (nodeId === zId || !parentEdge[nodeId]) return;
+    if (wurzeln.includes(nodeId) || !parentEdge[nodeId]) return;
     const e = parentEdge[nodeId].e;
     if (e.strandId != null) return;
     const pNodeId = parentEdge[nodeId].pNodeId;
@@ -6032,6 +6166,14 @@ function _recalcNetzIntern(){
       yearLoad[pInfo.pNodeId] = (yearLoad[pInfo.pNodeId] || 0) + raw;
       yearConsumers[pInfo.pNodeId] = (yearConsumers[pInfo.pNodeId] || 0) + count;
     }
+  });
+  // Verbindungsleitungen zwischen den Zonen: ausgelegt auf die Übergabeleistung (Eingabe, sonst Sommerspitze des
+  // ganzen Netzes — dann kann im Sommer eine Zentrale allein das Netz versorgen)
+  const kuppelKw = kuppelUebergabeKw();
+  window.netzEdges.filter(e => e.kuppel).forEach(e => {
+    e.load = kuppelKw; e.loadRaw = kuppelKw; e._nVerbraucher = 0; e._gzf = 1;
+    e.designLoad = kuppelKw; e.designLoadRaw = kuppelKw;
+    e.tempIn = vlTemp; e.tempOut = vlTemp;
   });
 
   const cp = 4.184;
@@ -6210,6 +6352,26 @@ function _recalcNetzIntern(){
   // berechnetes Netz existiert, ersetzt dieser leitungsgenaue Jahreswert den
   // pauschalen Prozentansatz aus den Wärme-Grundlagendaten.
   window._netzAnnualLossMWh = totalLossJahrMWh;
+  // Kennwerte je Heizzentrale (Versorgungszone); Verbindungsleitungen zählen je zur Hälfte zu beiden Zonen
+  wurzeln.forEach(w => { window._netzJeZentrale[w] = { verlustMWh: 0, laengeM: 0, gebIds: [], heizlastKw: 0, waermeMwh: 0 }; });
+  window.netzEdges.forEach(e => {
+    if (e.pruned) return;
+    const zonen = e.kuppel ? [wurzelVon.get(e.u), wurzelVon.get(e.v)] : [wurzelVon.get(e.u) ?? wurzelVon.get(e.v)];
+    zonen.forEach(z => {
+      const k = window._netzJeZentrale[z];
+      if (!k) return;
+      k.verlustMWh += (e.lossKW_annual || 0) * 8.76 / zonen.length;
+      k.laengeM += (e.length || 0) / zonen.length;
+    });
+  });
+  gebaeude.forEach(g => {
+    const z = wurzelVon.get(g.id);
+    if (z == null || !window._netzJeZentrale[z] || isExcluded(g.id)) return;
+    const st = getComputedStats(g, globalYear);
+    if (!(st.heizlast > 0) && !(st.waerme > 0)) return;
+    const k = window._netzJeZentrale[z];
+    k.gebIds.push(g.id); k.heizlastKw += st.heizlast || 0; k.waermeMwh += st.waerme || 0;
+  });
   const connectedIds = new Set(window.netzEdges.flatMap(e => [e.u, e.v]));
   const totalVerbrauchMWh = gebaeude.filter(g => connectedIds.has(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
   const totalErzeugungMWh = totalLossJahrMWh + totalVerbrauchMWh;
@@ -6226,7 +6388,7 @@ function _recalcNetzIntern(){
     }
   }
 
-  nodeMap[zId].tempIn = vlTemp;
+  wurzeln.forEach(w => { if (nodeMap[w]) nodeMap[w].tempIn = vlTemp; });
 
   for(let i = 0; i < order.length; i++){
     const curr = order[i];
@@ -6253,7 +6415,7 @@ function _recalcNetzIntern(){
   // Per-Gebäude: zugerechnete Netzverluste (proportional nach Wärmestromanteil)
   gebaeude.forEach(g => { g.netzVerlustKW = null; g.netzVerlustRatioPct = null; g.netzVerlustJahrMWh = null; });
   order.forEach(nodeId => {
-    if (nodeId === zId || !parentEdge[nodeId]) return;
+    if (wurzeln.includes(nodeId) || !parentEdge[nodeId]) return;
     const g = gebMap.get(nodeId);
     if (!g) return;
     const bLoad = getComputedStats(g, globalYear).heizlast || 0;
@@ -6489,6 +6651,12 @@ function _recalcNetzIntern(){
       }
 
       targetLayer.unbindTooltip();
+      if (e.kuppel) {
+        // Verbindungsleitung zwischen zwei Versorgungszonen: eigene Darstellung und Erläuterung
+        e.layer.setStyle({ color: '#26c6da', dashArray: '10, 5' });
+        ttHtml = '<span style="color:#26c6da">⇄ Verbindungsleitung zwischen zwei Heizzentralen</span><br>'
+          + `<span style="color:var(--muted);font-size:9px">Trennstelle zwischen den Versorgungszonen; ausgelegt auf ${Math.round(e.load)} kW Übergabe (Sommerbetrieb mit einer Zentrale bzw. Eingabe im Netz-Panel)</span><br>` + ttHtml;
+      }
       e.infoHtml = ttHtml;
 
       // Gradient

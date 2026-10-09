@@ -1836,6 +1836,7 @@
     <button class="sa-tab"        id="sa-tab-btn-dim"       data-click="saSetTab('dim')">Auslegung</button>
     <button class="sa-tab"        id="sa-tab-btn-split"     data-click="saSetTab('split')">Energiesplit</button>
     <button class="sa-tab"        id="sa-tab-btn-speicher"  data-click="saSetTab('speicher')" title="Kurz- und Langzeit-Wärmespeicher im aktuellen System untersuchen">Speicher</button>
+    <button class="sa-tab"        id="sa-tab-btn-zentralen" data-click="saSetTab('zentralen')" title="Mehrere Heizzentralen: Erzeuger-Standorte, Einspeisung je Zentrale, Übergabe über die Verbindungsleitung">Zentralen</button>
     <button class="sa-tab"        id="sa-tab-btn-sensitivitaet" data-click="saSetTab('sensitivitaet')">Sensitivität</button>
   </div>
 
@@ -1951,6 +1952,11 @@
       <span><span style="color:#ff8a65;">━ ━</span> 90 % Energiedeckung</span>
       <span><span style="color:#4fc3f7;">───</span> Schieber-Position</span>
     </div>
+  </div>
+
+  <!-- ══ Tab: Mehrere Heizzentralen ═══════════════════════════════════════ -->
+  <div class="sa-tab-content" id="sa-tab-zentralen">
+    <div id="hz-analyse"></div>
   </div>
 
   <!-- ══ Tab: Wärmespeicher-Analyse ═══════════════════════════════════════ -->
@@ -2931,6 +2937,7 @@
   <div class="inp-group" id="netz-central-control" style="margin-bottom:10px">
     <label class="inp-label">Heizzentrale auswählen</label>
     <select class="inp-field" id="netz-zentrale" data-change="recalcNetz(); redrawGasKessel(); redrawVerbindungslinien(); updateViz();" style="font-family:inherit;font-size:12px;padding:6px;font-weight:normal;"></select>
+    <div id="hz-liste" class="hz-liste"></div>
   </div>
   <!-- Interner Kompatibilitätswert für ältere Projekte und Strangberichte.
        Der frühere Ansichtsfilter ist kein Bestandteil der Bedienoberfläche mehr. -->
