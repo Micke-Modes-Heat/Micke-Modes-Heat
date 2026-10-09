@@ -224,3 +224,20 @@ export function mrAbgleich(register, wirkungen, opts = {}) {
 
   return { register: liste, neu: neue.filter(e => liste.includes(e)).length, entfernt, getrennt, wirkungenJe };
 }
+
+export const MR_DRINGLICHKEIT = Object.freeze({ sofort: 'sofort', kurz: 'kurzfristig', mittel: 'mittelfristig', lang: 'langfristig' });
+
+/** Dringlichkeit aus dem Jahr, solange niemand sie festlegt: bis heute sofort, bis +2 kurz-, bis +5 mittel-, danach langfristig. */
+export function mrDringlichkeitAuto(jahr, heute = new Date().getFullYear()) {
+  const j = jahrNorm(jahr);
+  if (j == null) return null;
+  if (j <= heute) return 'sofort';
+  if (j <= heute + 2) return 'kurz';
+  if (j <= heute + 5) return 'mittel';
+  return 'lang';
+}
+
+/** Wirksame Dringlichkeit eines Eintrags: festgelegt oder aus dem Jahr. */
+export function mrDringlichkeit(e, heute) {
+  return e?.dringlichkeit || mrDringlichkeitAuto(e?.jahr, heute);
+}

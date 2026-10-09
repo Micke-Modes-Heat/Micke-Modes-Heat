@@ -1054,6 +1054,9 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .ins-massn-form-cancel,.ins-massn-form-save{padding:4px 12px;border-radius:5px;border:1px solid var(--border);font-size:10px;cursor:pointer;background:transparent;color:var(--muted);}
 .ins-massn-form-save{background:var(--accent);color:#000;border-color:var(--accent);font-weight:600;}
 .ins-massn-typ-tag{color:var(--accent,#4fc3f7);font-size:8px;letter-spacing:.3px;}
+.ins-massn-nr{font-family:ui-monospace,Consolas,monospace;font-size:9px;color:var(--accent,#4fc3f7);font-weight:600;}
+.ins-massn-hinweis{font-size:9px;line-height:1.4;color:var(--muted);background:var(--surface2,rgba(255,255,255,.04));border-radius:4px;padding:4px 6px;margin-bottom:6px;}
+.ins-massn-fehler{font-size:9px;color:#e57373;margin-top:4px;}
 .ins-newprops-label{font-size:9px;color:var(--muted);margin:6px 0 2px;border-top:1px solid var(--border);padding-top:5px;}
 
 /* Maßnahmen-Badge auf Leaflet Asset-Markern */

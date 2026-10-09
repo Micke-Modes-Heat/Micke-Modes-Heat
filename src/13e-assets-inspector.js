@@ -1,7 +1,7 @@
 // ── 13e-assets-inspector.js — Editor-Panel für selektiertes Asset ──────────
 
 import { createId } from './lib/util.js';
-import { ENGPASS_AUTO_TAG } from './lib/engpass-core.js';
+import { massnahmenSektionHtml, massnahmenSektionVerdrahten, MASSN_TYPEN_ASSET } from './40-massnahmen-ui.js';
 import { anschlussWirksam } from './lib/anschlussleistung.js';
 
 // Persistiert den Einklapp-Zustand der Sektionen innerhalb einer Session
@@ -791,7 +791,6 @@ function buildPropsForm(asset) {
 }
 
 // ── Maßnahmen-Hilfsfunktionen ────────────────────────────────────────────────
-function massnahmeId() { return createId('m'); }
 
 const MASSN_STATUS = {
   geplant:    { label: 'Geplant',   color: '#4fc3f7' },
@@ -807,187 +806,20 @@ const MASSN_TYP = {
   Sonstiges:     { label: 'Sonstiges',    icon: '•', hasNewProps: false },
 };
 
-function _massnRowHtml(m) {
-  const s = MASSN_STATUS[m.status] || MASSN_STATUS.geplant;
-  const t = MASSN_TYP[m.typ]       || MASSN_TYP.Sonstiges;
-  const kosten = m.kosten ? m.kosten.toLocaleString('de-DE') + ' €' : '—';
-  return `<div class="ins-massn-row" data-m-id="${m.id}">
-    <span class="ins-massn-dot" style="background:${s.color};" title="${s.label}"></span>
-    <div class="ins-massn-info">
-      <div class="ins-massn-titel">${t.icon} ${esc(m.titel || '—')}</div>
-      <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten} · <span class="ins-massn-typ-tag">${t.label}</span> · ${window.massnahmeGeltungText?.(m) || ''}</div>
-    </div>
-    <button class="ins-massn-edit" data-m-id="${m.id}" title="Bearbeiten">✎</button>
-    <button class="ins-massn-del"  data-m-id="${m.id}" title="Löschen">×</button>
-  </div>`;
+// Maßnahmen-Abschnitt: gemeinsame Oberfläche mit dem Kabel-Inspektor (40-massnahmen-ui.js)
+const VERTEILUNG_TYPEN = new Set(['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS']);
+function _massnCtx(asset) {
+  return {
+    ziel: 'asset',
+    schema: ASSET_PROPS_SCHEMA[asset.type] || [],
+    typen: MASSN_TYPEN_ASSET,
+    standardTyp: VERTEILUNG_TYPEN.has(asset.type) ? 'Ertuechtigung' : 'Sanierung',
+    objektSchicht: asset.schicht,
+    nachAenderung: () => drawAssetMarker(asset),   // Marker-Badge „geplant“
+  };
 }
-
-function buildMassnahmenSection(asset) {
-  const list = (asset.massnahmen || []);
-  const rows = list.map(_massnRowHtml).join('');
-
-  const typOpts    = Object.entries(MASSN_TYP)
-    .map(([v, t]) => `<option value="${v}">${t.icon} ${t.label}</option>`).join('');
-  const statusOpts = Object.entries(MASSN_STATUS)
-    .map(([v, s]) => `<option value="${v}">${s.label}</option>`).join('');
-
-  return `
-    <div class="ins-massn-list" id="ins-massn-list-${asset.id}">${rows || '<div class="ins-massn-empty">Keine Maßnahmen</div>'}</div>
-    <button class="ins-massn-add-btn" id="ins-massn-add-${asset.id}">+ Maßnahme hinzufügen</button>
-    <div class="ins-massn-form" id="ins-massn-form-${asset.id}" style="display:none;">
-      <input class="ins-field-input" type="text" id="mf-titel-${asset.id}" placeholder="Titel der Maßnahme">
-      <div class="ins-row-2" style="margin-top:4px;">
-        <input class="ins-field-input" type="number" id="mf-jahr-${asset.id}"   placeholder="Jahr">
-        <input class="ins-field-input" type="number" id="mf-kosten-${asset.id}" placeholder="Kosten €" min="0">
-      </div>
-      <div class="ins-row-2" style="margin-top:4px;">
-        <select class="ins-field-input" id="mf-typ-${asset.id}">${typOpts}</select>
-        <select class="ins-field-input" id="mf-status-${asset.id}">${statusOpts}</select>
-      </div>
-      <div class="ins-field-group" style="margin-top:4px;">
-        <label class="ins-field-label" title="In welchen Varianten wirkt diese Maßnahme? Ertüchtigungen unterscheiden Varianten typischerweise.">Gilt für</label>
-        <select class="ins-field-input" id="mf-gilt-${asset.id}">${window.massnahmeGeltungOptionen?.() || '<option value="">alle Varianten</option>'}</select>
-      </div>
-      <div id="mf-newprops-${asset.id}" style="display:none;"></div>
-      <div class="ins-massn-form-btns">
-        <button class="ins-massn-form-cancel" id="mf-cancel-${asset.id}">Abbrechen</button>
-        <button class="ins-massn-form-save"   id="mf-save-${asset.id}">Speichern</button>
-      </div>
-    </div>`;
-}
-
-function wireMassnahmen(panel, asset) {
-  const aid = asset.id;
-  let editingId = null;
-
-  function refreshList() {
-    const listEl = panel.querySelector(`#ins-massn-list-${aid}`);
-    if (!listEl) return;
-    const list = asset.massnahmen || [];
-    listEl.innerHTML = list.length
-      ? list.map(_massnRowHtml).join('')
-      : '<div class="ins-massn-empty">Keine Maßnahmen</div>';
-    bindRowButtons();
-  }
-
-  function updateNewPropsForm(typ) {
-    const container = panel.querySelector(`#mf-newprops-${aid}`);
-    if (!container) return;
-    const typDef = MASSN_TYP[typ];
-    if (!typDef?.hasNewProps) {
-      container.innerHTML = '';
-      container.style.display = 'none';
-      return;
-    }
-    const schema = ASSET_PROPS_SCHEMA[asset.type] || [];
-    if (schema.length === 0) {
-      container.innerHTML = `<div class="ins-newprops-label">Keine editierbaren Parameter für diesen Typ.</div>`;
-      container.style.display = '';
-      return;
-    }
-    container.innerHTML = `<div class="ins-newprops-label">Ziel-Parameter (optional):</div>` +
-      schema.map(s => `<div class="ins-field-group">
-        <label class="ins-field-label">${s.label}</label>
-        <input class="ins-field-input mf-newprop" type="text" data-prop="${s.key}" placeholder="${s.label}">
-      </div>`).join('');
-    container.style.display = '';
-  }
-
-  function openForm(m) {
-    editingId = m ? m.id : null;
-    const form = panel.querySelector(`#ins-massn-form-${aid}`);
-    form.querySelector(`#mf-titel-${aid}`).value  = m?.titel  || '';
-    form.querySelector(`#mf-jahr-${aid}`).value   = m?.jahr   || '';
-    form.querySelector(`#mf-kosten-${aid}`).value = m?.kosten || '';
-    form.querySelector(`#mf-typ-${aid}`).value    = m?.typ    || 'Sanierung';
-    form.querySelector(`#mf-status-${aid}`).value = m?.status || 'geplant';
-    const giltSel = form.querySelector(`#mf-gilt-${aid}`);
-    if (giltSel) giltSel.value = window.massnahmeGeltungWert?.(m, asset) ?? '';
-    updateNewPropsForm(m?.typ || 'Sanierung');
-    // Gespeicherte Ziel-Props befüllen
-    if (m?.newProps) {
-      const container = panel.querySelector(`#mf-newprops-${aid}`);
-      container?.querySelectorAll('.mf-newprop').forEach(inp => {
-        const key = inp.dataset.prop;
-        if (m.newProps[key] !== undefined) inp.value = m.newProps[key];
-      });
-    }
-    form.style.display = '';
-    form.querySelector(`#mf-titel-${aid}`).focus();
-  }
-
-  function closeForm() {
-    editingId = null;
-    panel.querySelector(`#ins-massn-form-${aid}`).style.display = 'none';
-  }
-
-  function saveForm() {
-    const titel  = panel.querySelector(`#mf-titel-${aid}`).value.trim();
-    if (!titel) return;
-    const jahr   = parseInt(panel.querySelector(`#mf-jahr-${aid}`).value)    || null;
-    const kosten = parseFloat(panel.querySelector(`#mf-kosten-${aid}`).value) || 0;
-    const typ    = panel.querySelector(`#mf-typ-${aid}`).value;
-    const status = panel.querySelector(`#mf-status-${aid}`).value;
-    const giltEl = panel.querySelector(`#mf-gilt-${aid}`);
-    const variante = giltEl ? (giltEl.value || null) : undefined;
-
-    // Ziel-Parameter einsammeln
-    const newProps = {};
-    if (MASSN_TYP[typ]?.hasNewProps) {
-      panel.querySelector(`#mf-newprops-${aid}`)?.querySelectorAll('.mf-newprop').forEach(inp => {
-        const key = inp.dataset.prop;
-        const v = inp.value.trim();
-        if (v !== '') {
-          const n = parseFloat(v);
-          newProps[key] = isNaN(n) ? v : n;
-        }
-      });
-    }
-
-    if (!asset.massnahmen) asset.massnahmen = [];
-    if (editingId) {
-      const m = asset.massnahmen.find(x => x.id === editingId);
-      if (m) Object.assign(m, { titel, jahr, kosten, typ, status, newProps }, variante !== undefined ? { variante } : {});
-      // Bearbeitet = eigene Maßnahme: „Maßnahmen vorschlagen“ (14h) ersetzt sie nicht mehr
-      if (m) delete m[ENGPASS_AUTO_TAG];
-      // dependsOn/phaseId werden durch das Board (M5+) gesetzt, hier nur als Default sichern
-      if (!m.dependsOn) m.dependsOn = [];
-      if (m.phaseId === undefined) m.phaseId = null;
-    } else {
-      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, typ, status, newProps, dependsOn: [], phaseId: null, ...(variante !== undefined ? { variante } : {}) });
-      window.markiereVarianteGeaendert?.();
-    }
-    closeForm();
-    refreshList();
-    drawAssetMarker(asset); // Marker-Badge aktualisieren
-  }
-
-  function bindRowButtons() {
-    panel.querySelectorAll('.ins-massn-edit').forEach(btn => {
-      btn.onclick = () => {
-        const m = (asset.massnahmen || []).find(x => x.id === btn.dataset.mId);
-        if (m) openForm(m);
-      };
-    });
-    panel.querySelectorAll('.ins-massn-del').forEach(btn => {
-      btn.onclick = () => {
-        asset.massnahmen = (asset.massnahmen || []).filter(x => x.id !== btn.dataset.mId);
-        refreshList();
-        drawAssetMarker(asset); // Marker-Badge aktualisieren
-      };
-    });
-  }
-
-  panel.querySelector(`#ins-massn-add-${aid}`)?.addEventListener('click', () => openForm(null));
-  panel.querySelector(`#mf-cancel-${aid}`)?.addEventListener('click',  closeForm);
-  panel.querySelector(`#mf-save-${aid}`)?.addEventListener('click',    saveForm);
-  panel.querySelector(`#mf-typ-${aid}`)?.addEventListener('change', e => updateNewPropsForm(e.target.value));
-  panel.querySelector(`#ins-massn-form-${aid}`)?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') saveForm();
-    if (e.key === 'Escape') closeForm();
-  });
-  bindRowButtons();
-}
+function buildMassnahmenSection(asset) { return massnahmenSektionHtml(asset, _massnCtx(asset)); }
+function wireMassnahmen(panel, asset) { massnahmenSektionVerdrahten(panel, asset, _massnCtx(asset)); }
 
 // ── Investitionsplan ─────────────────────────────────────────────────────────
 export function showInvestitionsplan() {

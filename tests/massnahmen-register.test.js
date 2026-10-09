@@ -169,3 +169,16 @@ describe('mrAbgleich — Kopien', () => {
     expect(reg.find(e => e.id === kopie.massnahmeRef)).toMatchObject({ nr: 2, variante: 'v_2' });
   });
 });
+
+import { mrDringlichkeitAuto, mrDringlichkeit } from '../src/lib/massnahmen-register.js';
+describe('Dringlichkeit', () => {
+  it('leitet sie aus dem Jahr ab, solange nichts festgelegt ist', () => {
+    expect(mrDringlichkeitAuto(2026, 2026)).toBe('sofort');
+    expect(mrDringlichkeitAuto('2028', 2026)).toBe('kurz');
+    expect(mrDringlichkeitAuto(2031, 2026)).toBe('mittel');
+    expect(mrDringlichkeitAuto(2032, 2026)).toBe('lang');
+    expect(mrDringlichkeitAuto(null, 2026)).toBe(null);
+    expect(mrDringlichkeit({ jahr: 2040, dringlichkeit: 'kurz' }, 2026)).toBe('kurz');
+    expect(mrDringlichkeit({ jahr: 2040 }, 2026)).toBe('lang');
+  });
+});
