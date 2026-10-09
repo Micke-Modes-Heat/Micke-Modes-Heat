@@ -249,3 +249,45 @@ describe('_dispatchCore — Speicher: Startfüllung und Ladefenster', () => {
     expect(immer.thermGeladenGes).toBeGreaterThanOrEqual(tag.thermGeladenGes);
   });
 });
+
+describe('_dispatchCore — Speicherladung je Erzeuger (JAZ, keine Doppelzählung)', () => {
+  const n = 24 * 14;
+  const last = new Float32Array(n).map((_, t) => (t % 24 >= 8 && t % 24 < 18 ? 50 : 250));
+  const basis = {
+    lastgangKw: last, tempH: new Float32Array(n).fill(10), vlH: new Float32Array(n).fill(45),
+    stProfile: null, stExcessH: null, bhkwSigma: 0.45, skEta: 0.99, lwwpMinCop: 0,
+    quelleTemp: () => 10, recordHourly: true, backupMode: false,
+  };
+  const sp = { kapKwh: 2000, verlustRate: 0, entladeKw: 500, ladeKw: 500 };
+
+  it('WP lädt den Speicher: Ladewärme zählt zur WP-Erzeugung, Strom dazu passt (JAZ)', () => {
+    const r = _dispatchCore({ ...basis, erzList: makeErzList([{ key: 'lwwp', typ: 'wp', kw: 150 }, { key: 'gaskessel', kw: 500 }]), speicherParams: sp });
+    expect(r.ladeKwh.lwwp).toBeGreaterThan(0);
+    expect(r.ladeKwh.lwwp).toBeCloseTo(r.thermGeladenGes, 3);
+    // konstanter COP (feste Temperaturen): JAZ aus erzeugter Wärme = COP der Stunde
+    const tVL = 45 + 273.15, cop = Math.min(tVL / (45 - 10) * 0.42, 8);
+    expect((r.thKwh.lwwp + r.ladeKwh.lwwp) / r.elKwh.lwwp).toBeCloseTo(cop, 4);
+    // Energiebilanz der Last: direkt + Speicherentladung + Kessel + Rest = Last
+    const gedeckt = r.thKwh.lwwp + r.thKwh.gaskessel + r.thKwh._thermSpeicher + r.autoGkKwh;
+    expect(gedeckt).toBeCloseTo(r.gesamtKwh, 1);
+  });
+
+  it('BHKW-Mindestlast in den Speicher: nicht doppelt gezählt, Summe der Deckung = Last', () => {
+    const r = _dispatchCore({ ...basis, lastgangKw: new Float32Array(n).fill(30),
+      erzList: [{ key: 'bhkw', typ: 'kwk', leistKw: 100, guetegrad: 0.42, color: '#888' }],
+      speicherParams: { kapKwh: 500, verlustRate: 0.005, entladeKw: 100 } });
+    expect(r.ladeKwh.bhkw).toBeGreaterThan(0);
+    const gedeckt = r.thKwh.bhkw + (r.thKwh._thermSpeicher || 0) + r.autoGkKwh;
+    expect(gedeckt).toBeCloseTo(r.gesamtKwh, 1);
+    // Strom aus der gesamten Erzeugung (direkt + Ladung + verworfen)
+    expect(r.elKwh.bhkw).toBeCloseTo((r.thKwh.bhkw + r.ladeKwh.bhkw + r.verworfenKwh.bhkw) * 0.45, 1);
+  });
+
+  it('Solarthermie-Überschuss: als Ladung der Solarthermie gezählt (auch ohne Stundenaufzeichnung)', () => {
+    const st = new Float32Array(n).map((_, t) => (t % 24 >= 10 && t % 24 < 16 ? 120 : 0));
+    const r = _dispatchCore({ ...basis, recordHourly: false, stProfile: st, erzList: makeErzList([{ key: 'gaskessel', kw: 500 }]), speicherParams: sp });
+    expect(Number.isFinite(r.thKwh.solarthermie)).toBe(true);
+    expect(r.ladeKwh.solarthermie).toBeGreaterThan(0);
+  });
+});
+

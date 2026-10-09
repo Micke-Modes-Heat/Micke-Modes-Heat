@@ -201,11 +201,13 @@ function normErz(liste) {
     return {
       ...k, ...e, key: e.key, name: e.name || k.name || e.key,
       leistungKw: num(e.leistungKw) || 0, waermeMwh: num(e.waermeMwh) || 0, elMwh: num(e.elMwh) || 0,
+      // erzeugt (JAZ, Brennstoff) und an die Last inkl. anteiliger Speicherwärme (Deckungsanteile); ältere Stände: direkt
+      erzeugtMwh: num(e.erzeugtMwh) || num(e.waermeMwh) || 0, anLastMwh: num(e.anLastMwh) || num(e.waermeMwh) || 0,
     };
-  }).filter(e => e.leistungKw > 0 || e.waermeMwh > 0);
+  }).filter(e => e.leistungKw > 0 || e.waermeMwh > 0 || e.erzeugtMwh > 0);
   const waermeErz = erz.filter(e => e.art !== 'speicher');
-  const gesamtErz = summe(waermeErz, e => e.waermeMwh);
-  waermeErz.forEach(e => { e.anteil = gesamtErz > 0 ? (e.waermeMwh / gesamtErz) * 100 : NaN; });
+  const gesamtErz = summe(waermeErz, e => e.anLastMwh);
+  waermeErz.forEach(e => { e.anteil = gesamtErz > 0 ? (e.anLastMwh / gesamtErz) * 100 : NaN; });
   const nachLeistung = [...waermeErz].sort((a, b) => b.leistungKw - a.leistungKw);
   const nachWaerme = [...waermeErz].sort((a, b) => b.waermeMwh - a.waermeMwh || b.leistungKw - a.leistungKw);
   return {
@@ -240,6 +242,8 @@ export function wtNormalisiere(d = {}) {
     pMaxKw: num(lg.pMaxKw), nutzMwh: nutz, gesamtMwh: ok(num(lg.gesamtMwh)) ? num(lg.gesamtMwh) : nutz, tMinC: num(lg.tMinC),
     jdlKw: lg.jdlKw || null,
     netzverlustPct: num(lg.netzverlustPct), netzverlustMwh: num(lg.netzverlustMwh),
+    // Ist-Stichjahr (3.1), falls abweichend vom Lastgangjahr; sonst dieselben Werte
+    ist: d.lastgangIst ? { gesamtMwh: num(d.lastgangIst.gesamtMwh), pMaxKw: num(d.lastgangIst.pMaxKw), jahr: num(d.lastgangIst.jahr) } : null,
     projekt: d.projekt || {}, typ: wtProjektTyp(d.projekt), herkunft: d.herkunft || {},
     netz: d.netz || {}, gebaeude: d.gebaeude || {}, wirt: d.wirtschaft || {},
     varianten,
@@ -321,7 +325,14 @@ function belastbarkeitAbsatz(n) {
 function netzverlustHerkunft(n, mitMwh = true) {
   const h = n.herkunft;
   if (h.netzverlustQuelle === 'waermenetz') return `aus der leitungsgenauen Berechnung des Wärmenetzes${mitMwh && ok(n.netzverlustMwh) ? ` (${nf(n.netzverlustMwh)} MWh/a)` : ''}`;
-  if (h.netzverlustQuelle === 'prozentwert') return `pauschal mit ${ok(num(h.netzverlustPct)) ? pct(num(h.netzverlustPct), 1) : 'einem Prozentwert'} angesetzt, da kein Netz berechnet ist`;
+  if (h.netzverlustQuelle === 'prozentwert') {
+    // Dezentrales Trinkwarmwasser: Netz nur in der Heizperiode — der wirksame Anteil weicht vom Ansatz ab
+    const ansatz = num(h.netzverlustPct), wirksam = num(n.netzverlustPct);
+    if (ok(ansatz) && ok(wirksam) && Math.abs(ansatz - wirksam) > 0.05) {
+      return `aus dem pauschalen Ansatz von ${pct(ansatz, 1)} während der Betriebsstunden des Netzes abgeleitet, da kein Netz berechnet ist`;
+    }
+    return `pauschal mit ${ok(ansatz) ? pct(ansatz, 1) : 'einem Prozentwert'} angesetzt, da kein Netz berechnet ist`;
+  }
   return '';
 }
 
@@ -391,9 +402,11 @@ export function wtIstZustand(d) {
     return out;
   }
   out.push(...entwicklungAbsaetze(n).slice(0, 1));
-  if (ok(n.gesamtMwh) && n.gesamtMwh > 0) {
-    out.push(absatz(`Der Wärmebedarf der Liegenschaft beträgt rund ${nf(n.gesamtMwh)} MWh pro Jahr einschließlich Netzverlusten`
-      + (ok(n.pMaxKw) ? `, die Spitzenlast ${nf(n.pMaxKw)} kW` : '') + '.'
+  const istG = n.ist && ok(n.ist.gesamtMwh) ? n.ist.gesamtMwh : n.gesamtMwh;
+  const istP = n.ist && ok(n.ist.pMaxKw) ? n.ist.pMaxKw : n.pMaxKw;
+  if (ok(istG) && istG > 0) {
+    out.push(absatz(`Der Wärmebedarf der Liegenschaft beträgt ${n.ist && ok(n.ist.jahr) ? `im Jahr ${n.ist.jahr} ` : ''}rund ${nf(istG)} MWh pro Jahr einschließlich Netzverlusten`
+      + (ok(istP) ? `, die Spitzenlast ${nf(istP)} kW` : '') + '.'
       + (netzverlustHerkunft(n) ? ` Die Netzverluste sind ${netzverlustHerkunft(n)}.` : '')));
   } else {
     out.push(absatz('Der Wärmebedarf der Liegenschaft beträgt ', F('Wärmebedarf in MWh/a'), ' MWh pro Jahr, die Spitzenlast ', F('Spitzenlast in kW'), ' kW.'));
@@ -687,7 +700,7 @@ function technikAbsaetze(v, gesehen) {
 
   const wps = von('wp');
   if (wps.length) {
-    const w = summe(wps, e => e.waermeMwh), el = summe(wps, e => e.elMwh), kw = summe(wps, e => e.leistungKw);
+    const w = summe(wps, e => e.erzeugtMwh), el = summe(wps, e => e.elMwh), kw = summe(wps, e => e.leistungKw);
     const plural = wps.length > 1;
     const p = [`${plural ? 'Die Wärmepumpen' : mitArtikel(wps[0], true)} (${nf(kw)} kW thermisch)`];
     if (w > 0 && el > 0) {
@@ -861,7 +874,7 @@ export function wtVariantenvergleich(d) {
   const inv = V.filter(v => ok(v.investEur));
   const bestInv = extrem(inv, 'investEur', 'min');
   if (inv.length >= 2 && bestWgk && bestInv && bestInv !== bestWgk) {
-    out.push(absatz(`Die geringste Investition erfordert ${nameV(bestInv)} (${nf(bestInv.investEur / 1000)} Tsd. €), die niedrigsten Gestehungskosten erreicht jedoch ${nameV(bestWgk)} (Investition ${nf(bestWgk.investEur / 1000)} Tsd. €). Höhere Investitionen werden hier durch geringere Betriebskosten über die Nutzungsdauer ausgeglichen.`));
+    out.push(absatz(`Die geringste Investition erfordert ${nameV(bestInv)} (${nf(bestInv.investEur / 1000)} Tsd. €), die niedrigsten Gestehungskosten erreicht jedoch ${nameV(bestWgk)}${ok(bestWgk.investEur) ? ` (Investition ${nf(bestWgk.investEur / 1000)} Tsd. €)` : ''}. Höhere Investitionen werden hier durch geringere Betriebskosten über die Nutzungsdauer ausgeglichen.`));
   }
 
   // Zielkonflikt oder Gleichlauf
@@ -982,7 +995,7 @@ export function wtEmpfehlung(d) {
     if (bw) teile.push(`wirtschaftlich am günstigsten ist ${nameV(bw)} (${nf(bw.wgkCt, 1)} ct/kWh)`);
     if (bc) teile.push(`die geringsten Emissionen hat ${nameV(bc)} (${nf(bc.co2T)} t CO₂e/a)`);
     if (be && ok(be.eeAnteilPct)) teile.push(`den höchsten Anteil erneuerbarer Energien erreicht ${nameV(be)} (${pct(be.eeAnteilPct, 1)})`);
-    out.push(absatz('Im Variantenvergleich zeigt sich: ', liste(teile), '.'));
+    if (teile.length) out.push(absatz('Im Variantenvergleich zeigt sich: ', liste(teile), '.'));
     if (bw && bc && bw === bc) {
       out.push(absatz(`Da ${nameV(bw)} wirtschaftlich und ökologisch vorn liegt, wird diese Variante zur Umsetzung empfohlen.`));
     } else {

@@ -138,7 +138,8 @@ export function calcGeoThermie() {
   const tQK  = 10 + 273.15; // mittlere Erdreichtemperatur Deutschland
   const jazCarnot = Math.max(2, Math.min(8, (tVlK / (tVlK - tQK)) * guetegrad));
   const en  = window._dispatchEnergy?.['geo'];
-  const jaz = (en && en.elMwh > 0) ? en.waermeMwh / en.elMwh : jazCarnot;
+  // JAZ aus der gesamten erzeugten Wärme (inkl. Speicherladung) — Grundlage des Entzugs für die Sondenauslegung
+  const jaz = (en && en.elMwh > 0) ? (en.erzeugtMwh ?? en.waermeMwh) / en.elMwh : jazCarnot;
   const jazEl = document.getElementById('geo-jaz');
   if (jazEl) jazEl.value = jaz.toFixed(2);
   // Display: nur nach Dispatch einen Wert zeigen (vorher —)

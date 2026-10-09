@@ -347,8 +347,10 @@ export function _dispatchCore(cfg) {
   }
 
   // Akkumulatoren (immer)
-  const thKwh = {}, elKwh = {};
-  for (const erz of erzList) { thKwh[erz.key] = 0; elKwh[erz.key] = 0; }
+  // thKwh: Wärme direkt an die Last; ladeKwh: Wärme, die der Erzeuger in den Speicher lädt (erzeugt = beides);
+  // verworfenKwh: BHKW-Mindestlastwärme, die weder Last noch Speicher aufnehmen (Notkühler)
+  const thKwh = {}, elKwh = {}, ladeKwh = {}, verworfenKwh = {};
+  for (const erz of erzList) { thKwh[erz.key] = 0; elKwh[erz.key] = 0; ladeKwh[erz.key] = 0; verworfenKwh[erz.key] = 0; }
   const wpElH   = new Float32Array(n);
   const bhkwElH = new Float32Array(n);
   const skElH   = new Float32Array(n);
@@ -373,10 +375,8 @@ export function _dispatchCore(cfg) {
   }
 
   // Solarthermie (nur wenn stProfile vorhanden = Hauptpfad)
-  if (hatST && recordHourly) {
-    hourly['solarthermie'] = new Float32Array(n);
-    thKwh['solarthermie'] = 0; elKwh['solarthermie'] = 0;
-  }
+  if (hatST || stExcessH) { thKwh['solarthermie'] = thKwh['solarthermie'] || 0; elKwh['solarthermie'] = 0; ladeKwh['solarthermie'] = 0; }
+  if (hatST && recordHourly) hourly['solarthermie'] = new Float32Array(n);
 
   // Wärmespeicher — Startfüllung optional (Langzeitspeicher: Füllstand vom Jahresende), Ladefenster der WP
   // standardmäßig tagsüber 8–18 Uhr, für Speicheranalysen frei wählbar (ladeVon/ladeBis)
@@ -447,6 +447,7 @@ export function _dispatchCore(cfg) {
           thermSOC += laden;
           if (recordHourly) thermLadeH[t] += laden;
           thermGeladenGes += laden;
+          ladeKwh['solarthermie'] += laden;
         }
       }
     }
@@ -454,7 +455,7 @@ export function _dispatchCore(cfg) {
     // ── PHASE 1b: ST-Überschuss → Speicher (Optimizer — Lastgang bereits reduziert) ──
     if (!hatST && stExcessH && hatSpeicher && stExcessH[t] > 0.001) {
       const laden = Math.min(stExcessH[t], thSp.kapKwh - thermSOC);
-      if (laden > 0.001) { thermSOC += laden; thermGeladenGes += laden; }
+      if (laden > 0.001) { thermSOC += laden; thermGeladenGes += laden; ladeKwh['solarthermie'] += laden; }
     }
 
     // ── PHASE 2: Merit-Order — Nicht-Kessel (oder alle wenn kein Speicher) ──
@@ -506,6 +507,8 @@ export function _dispatchCore(cfg) {
             thermSOC += laden;
             if (recordHourly) thermLadeH[t] += laden;
             thermGeladenGes += laden;
+            ladeKwh[erz.key] += laden;
+            verworfenKwh[erz.key] += ueberschuss - laden;
           }
         } else {
           pTh = 0;
@@ -515,10 +518,12 @@ export function _dispatchCore(cfg) {
       }
 
       if (pTh < 0.001) continue;
-      thKwh[erz.key] += pTh;
-      if (recordHourly) hourly[erz.key][t] = pTh;
+      // An die Last geht höchstens die Restlast; ein BHKW-Überschuss (Mindestlast) ist oben als Ladung gezählt
+      const anLast = Math.min(pTh, Math.max(0, residual));
+      thKwh[erz.key] += anLast;
+      if (recordHourly) hourly[erz.key][t] = anLast;
       if (isBackup) backupHourKw += pTh;
-      residual -= Math.min(pTh, residual); // nur Bedarfsanteil abziehen (BHKW-Mindestlast)
+      residual -= anLast;
 
       if (eisQuelle && cop > 1) eis.entziehen(pTh * (1 - 1 / cop));
       if (erz.typ === 'wp' && cop > 0) {
@@ -612,6 +617,7 @@ export function _dispatchCore(cfg) {
           thermSOC += ladeKw;
           if (recordHourly) thermLadeH[t] += ladeKw;
           thermGeladenGes += ladeKw;
+          ladeKwh[wp.key] += ladeKw;
           restLade -= ladeKw;
           const extraEl = ladeKw / wp.cop;
           wpElH[t] += extraEl;
@@ -635,7 +641,7 @@ export function _dispatchCore(cfg) {
   }
 
   return {
-    thKwh, elKwh, gesamtKwh,
+    thKwh, elKwh, gesamtKwh, ladeKwh, verworfenKwh,
     autoGkKwh, autoGkPeakKw,
     wpElH, bhkwElH, skElH,
     // Stündlich (nur recordHourly)
@@ -731,7 +737,7 @@ export function _deckungen8760(ss) {
   eisPanelAnzeigen(r.eisStat);
 
   // Kurzreferenzen
-  const { thKwh, elKwh, gesamtKwh, autoGkKwh, autoGkPeakKw,
+  const { thKwh, elKwh, gesamtKwh, ladeKwh, verworfenKwh, autoGkKwh, autoGkPeakKw,
           wpElH, bhkwElH, skElH,
           hourly, residualH, thKwhM, elKwhM,
           thermSocH, thermEntladeH, thermLadeH, thermVerlustH, wpReservesH,
@@ -868,10 +874,12 @@ export function _deckungen8760(ss) {
     const cfg = ERZEUGER_CFG[key];
     const wpMwh      = thKwh[key] / 1000;
     const deckungPct = gesamtKwh > 0 ? thKwh[key] / gesamtKwh * 100 : 0;
-    const vbh        = leistungen[key] > 0 ? thKwh[key] / leistungen[key] : null;
+    // erzeugte Wärme = direkt an die Last + in den Speicher geladen (+ verworfene BHKW-Mindestlastwärme)
+    const erzeugtKwh = thKwh[key] + (ladeKwh[key] || 0) + (verworfenKwh[key] || 0);
+    const vbh        = leistungen[key] > 0 ? erzeugtKwh / leistungen[key] : null;
     let jazStr = '';
     if (cfg.typ === 'wp' && elKwh[key] > 0) {
-      const jaz = thKwh[key] / elKwh[key];
+      const jaz = erzeugtKwh / elKwh[key];   // JAZ = Σ erzeugte Wärme / Σ Strom (VDI 4650), inkl. Speicherladung
       jazStr = jaz.toFixed(2);
       const hintId = key === 'lwwp' ? 'lwwp-jaz-hint' : key === 'fg' ? 'fg-jaz-hint' : 'geo-jaz-hint';
       const hint = document.getElementById(hintId);
@@ -880,10 +888,10 @@ export function _deckungen8760(ss) {
         const disp = document.getElementById('geo-jaz-display');
         if (disp) disp.textContent = jaz.toFixed(2) + ' (stundenscharf)';
       }
-      _updateErzeugerWaerme(key, thKwh[key] / 1000);
-      _updateWpPanelDispatch(key, thKwh[key], elKwh[key], leistungen[key], thKwhM[key], elKwhM[key]);
+      _updateErzeugerWaerme(key, erzeugtKwh / 1000);
+      _updateWpPanelDispatch(key, erzeugtKwh, elKwh[key], leistungen[key], thKwhM[key], elKwhM[key]);
     } else {
-      _updateErzeugerWaerme(key, thKwh[key] / 1000);
+      _updateErzeugerWaerme(key, erzeugtKwh / 1000);
     }
     _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, i + 1, 'stundenscharf · ' + leistungen[key].toFixed(0) + ' kW', vbh, allDeckungen, heizlastInfos[key],systemSummary,requirementsByKey[key]);
     processed.add(key);
@@ -927,12 +935,17 @@ export function _deckungen8760(ss) {
   window._dispatchActiveKeys = dispKeys;
 
   // ── Dispatch-Energiemengen für Wirtschaftlichkeitsrechnung ──
+  // waermeMwh: direkt an die Last (Deckungsanteile, Summe mit _thermSpeicher = Last); ladeMwh: in den Speicher
+  // geladen; erzeugtMwh: insgesamt erzeugt (für JAZ, Brennstoff, Vollbenutzungsstunden) — lib/dispatch-energie.js
   window._dispatchEnergy = {};
-  activeKeys.forEach(key => {
-    window._dispatchEnergy[key] = { waermeMwh: thKwh[key] / 1000, elMwh: (elKwh[key] || 0) / 1000 };
-  });
-  if (hatST) window._dispatchEnergy['solarthermie'] = { waermeMwh: thKwh['solarthermie'] / 1000, elMwh: 0 };
-  if (hatSpeicher) window._dispatchEnergy['_thermSpeicher'] = { waermeMwh: thKwh['_thermSpeicher'] / 1000, elMwh: 0 };
+  const _eintrag = (key, el) => {
+    const w = (thKwh[key] || 0) / 1000, l = (ladeKwh[key] || 0) / 1000, v = (verworfenKwh[key] || 0) / 1000;
+    return { waermeMwh: w, elMwh: el, ladeMwh: l, verworfenMwh: v, erzeugtMwh: w + l + v };
+  };
+  activeKeys.forEach(key => { window._dispatchEnergy[key] = _eintrag(key, (elKwh[key] || 0) / 1000); });
+  if (hatST) window._dispatchEnergy['solarthermie'] = _eintrag('solarthermie', 0);
+  if (hatSpeicher) window._dispatchEnergy['_thermSpeicher'] = { waermeMwh: thKwh['_thermSpeicher'] / 1000, elMwh: 0,
+    geladenMwh: thermGeladenGes / 1000, verlustMwh: thermVerlustGes / 1000 };
   if (autoGkKwh > 0.1) window._dispatchEnergy['_autoGk'] = { waermeMwh: autoGkKwh / 1000, elMwh: 0 };
 
   calcStromPanel();

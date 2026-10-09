@@ -84,7 +84,11 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
     if (!erz.typ) erz.typ = D.ERZEUGER_TYP[erz.key] || 'fix';
     if (!erz.guetegrad) erz.guetegrad = D.guetegrade[erz.key] || _defaultGuetegrad(erz.key);
   }
-  const r = _dispatchCore({
+  // Saisonalspeicher wie in der Hauptrechnung (dispatchEingaben): Laden rund um die Uhr, Jahresbeginn mit dem
+  // Füllstand vom Jahresende (eingeschwungen)
+  const saisonal = !!thSp && D.tsTyp === 'saisonal';
+  if (saisonal) thSp = { ...thSp, ladeVon: 0, ladeBis: 24 };
+  const args = {
     lastgangKw, tempH, vlH,
     erzList: erzeugerList,
     speicherParams: thSp,
@@ -94,10 +98,14 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
     quelleTemp: _quelleTemp,
     recordHourly: false,
     backupMode: !!backupMode,
-  });
+  };
+  if (saisonal) args.speicherStartKwh = _dispatchCore(args).thermSocEnde || 0;
+  const r = _dispatchCore(args);
   for (const erz of erzeugerList) {
     erz.waermeMwh = (r.thKwh[erz.key] || 0) / 1000;
     erz.elMwh = (r.elKwh[erz.key] || 0) / 1000;
+    erz.ladeMwh = ((r.ladeKwh?.[erz.key] || 0) + (r.verworfenKwh?.[erz.key] || 0)) / 1000;
+    erz.erzeugtMwh = erz.waermeMwh + erz.ladeMwh;
   }
   // Backup-Kessel: Leistung = tatsächliche Spitze seines Einsatzes
   const _backupErz = backupMode && erzeugerList.length > 0 ? erzeugerList[erzeugerList.length - 1] : null;
@@ -110,6 +118,7 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
     wpElH: r.wpElH, bhkwElH: r.bhkwElH, skElH: r.skElH,
     speicherEntladenMwh: r.thermEntladenGes / 1000,
     speicherGeladenMwh: r.thermGeladenGes / 1000,
+    stLadeMwh: (r.ladeKwh?.solarthermie || 0) / 1000,
     wpResKwH: r.wpResKwH, wpResCopH: r.wpResCopH,
     thSpParams: r.hatSpeicher ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw, ladeKw: r.speicherParams.ladeKw ?? r.speicherParams.entladeKw } : null,
   };
@@ -194,7 +203,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
   // Spitzenlastkessel (Rest, den die gewählten Erzeuger nicht decken) wie in der Wirtschaftlichkeit
   const _agkMwh = dispR.autoGkMwh || 0, _agkKw = dispR.autoGkPeakKw || 0;
   if (_agkMwh > 0.05 && _agkKw > 0.1) _bPKw._autoGk = Math.ceil(_agkKw);
-  const erzListTyped = erzeugerList.map(erz => ({ key: erz.key, waermeMwh: erz.waermeMwh, elMwh: erz.elMwh, typ: D.ERZEUGER_TYP[erz.key] }));
+  const erzListTyped = erzeugerList.map(erz => ({ key: erz.key, waermeMwh: erz.waermeMwh, elMwh: erz.elMwh, ladeMwh: erz.ladeMwh || 0, erzeugtMwh: erz.erzeugtMwh ?? erz.waermeMwh, typ: D.ERZEUGER_TYP[erz.key] }));
   if (_bPKw._autoGk) erzListTyped.push({ key: '_autoGk', waermeMwh: _agkMwh, elMwh: 0, typ: 'fix' });
 
   const bhkwEigMwh = pvBatR ? (pvBatR.bhkwEigenMwh || 0) : 0;
@@ -204,11 +213,12 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
   let _dynBohrMeter = D.bohrMeter || 0;
   const _geoErz = erzeugerList.find(e => e.key === 'geo');
   if (_geoErz && _geoErz.leistKw > 0 && _dynBohrMeter < 1) {
-    const _geoJaz = (_geoErz.elMwh > 0) ? _geoErz.waermeMwh / _geoErz.elMwh : 4.0;
+    const _geoErzeugt = _geoErz.erzeugtMwh ?? _geoErz.waermeMwh;
+    const _geoJaz = (_geoErz.elMwh > 0) ? _geoErzeugt / _geoErz.elMwh : 4.0;
     const _proSondeKw = D.geoQPerM * D.geoTiefe / 1000;
     const _nLeistung = Math.max(1, Math.ceil(_geoErz.leistKw * (_geoJaz - 1) / _geoJaz / _proSondeKw));
     let _nEnergie = 1;
-    if (_geoErz.waermeMwh > 0) _nEnergie = Math.max(1, Math.ceil(_geoErz.waermeMwh * 1000 * (_geoJaz - 1) / _geoJaz / (_proSondeKw * 2100)));
+    if (_geoErzeugt > 0) _nEnergie = Math.max(1, Math.ceil(_geoErzeugt * 1000 * (_geoJaz - 1) / _geoJaz / (_proSondeKw * 2100)));
     _dynBohrMeter = Math.max(_nLeistung, _nEnergie) * D.geoTiefe;
   }
 
@@ -252,6 +262,8 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
     },
     gesamtMwh: gesamtMwh,
     stMwh: stMwh || 0,
+    speicherEntladenMwh: dispR.speicherEntladenMwh || 0,
+    stLadeMwh: dispR.stLadeMwh || 0,
   });
 
   return { wgk: result.wgk, co2ta: result.co2ta, eeAnteil: result.eeAnteil,
@@ -346,7 +358,9 @@ self.onmessage = function(e) {
       erzWaermeMwh: d.erzeugerList.map(e => e.waermeMwh),
       erzLeistKw: d.erzeugerList.map(e => e.leistKw),
       erzElMwh: d.erzeugerList.map(e => e.elMwh),
+      erzLadeMwh: d.erzeugerList.map(e => e.ladeMwh || 0),
       speicherEntladenMwh: d.speicherEntladenMwh || 0,
+      stLadeMwh: d.stLadeMwh || 0,
       pvBatData: { eigenMwh: b.pvBat.eigenMwh, einspeiseMwh: b.pvBat.einspeiseMwh,
         pvEigenMwh: b.pvBat.pvEigenMwh, pvEinspMwh: b.pvBat.pvEinspMwh,
         bhkwEigenMwh: b.pvBat.bhkwEigenMwh, bhkwEinspMwh: b.pvBat.bhkwEinspMwh,

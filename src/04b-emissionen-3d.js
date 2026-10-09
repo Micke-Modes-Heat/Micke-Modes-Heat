@@ -127,7 +127,7 @@ export function _calcPefData() {
     } else if (k === 'bhkw') {
       const etaGes = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
       const sigma  = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
-      endenergieMwh = wMwh / (etaGes / (1 + sigma));
+      endenergieMwh = (e.erzeugtMwh ?? wMwh) / (etaGes / (1 + sigma));   // inkl. Mindestlastwärme für den Speicher
     } else if (ETA[k]) {
       endenergieMwh = wMwh / ETA[k];
     } else {

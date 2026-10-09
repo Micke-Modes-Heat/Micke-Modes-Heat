@@ -1,4 +1,5 @@
 import { co2AusEinsatz } from './lib/co2-einsatz.js';
+import { eeAnteilPct, erzeugtMwh as _erzeugtMwh, waermeAnLastJeErzeuger } from './lib/dispatch-energie.js';
 import { euroKompakt } from './lib/euro-format.js';
 import { map } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, redrawFliessgewaesser, redrawLwWp, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
@@ -381,12 +382,9 @@ export function cacheVariantResults() {
   // WGK as number for comparison
   const wgkNum = window._lastWgk || wgkGes || null;
   // EE-Anteil direkt aus Dispatch-Daten berechnen
-  const EE_KEYS_V = ['lwwp','fg','geo','pellets','hhs'];
+  // EE-Anteil an der gedeckten Last; die Speicherwärme zählt nach Herkunft der Ladung (lib/dispatch-energie.js)
   const dispEn = window._dispatchEnergy || {};
-  let eeW = 0, gesW = 0;
-  // Der Wärmespeicher gibt nur weiter, was die Erzeuger erzeugt haben — weder erneuerbar noch zusätzlich
-  for (const k of Object.keys(dispEn)) { if (k === '_thermSpeicher') continue; const w = dispEn[k]?.waermeMwh || 0; gesW += w; if (EE_KEYS_V.includes(k)) eeW += w; }
-  const eeAnteil = gesW > 0 ? (eeW / gesW * 100) : null;
+  const eeAnteil = Object.keys(dispEn).length ? eeAnteilPct(dispEn) : null;
   // WP-Stromkosten (sum of all WP electricity * Strompreis)
   let stromkostenWp = null;
   const WP_KEYS_V = ['lwwp','fg','geo'];
@@ -409,8 +407,11 @@ export function cacheVariantResults() {
     gaskessel: gasKessel?.leistungKw, _autoGk: autoGkResult?.leistungKw, heizoel: heizoelKessel?.leistungKw, bhkw: bhkw?.leistungThKw,
     pellets: pelletsKessel?.leistungKw, hhs: heizhackschnitzel?.leistungKw, stromkessel: stromkessel?.leistungKw, fernwaerme: fernwaerme?.leistungKw,
   };
+  // waermeMwh: direkt an die Last; anLastMwh: inkl. anteiliger Speicherwärme; erzeugtMwh: insgesamt erzeugt (JAZ)
+  const _anLast = waermeAnLastJeErzeuger(dispEn);
   const erzeugerDetail = Object.keys(dispEn).map(k => ({
     key: k, leistungKw: _detailLeistung[k] || 0, waermeMwh: dispEn[k]?.waermeMwh || 0, elMwh: dispEn[k]?.elMwh || 0,
+    erzeugtMwh: _erzeugtMwh(dispEn, k), anLastMwh: k === '_thermSpeicher' ? undefined : _anLast[k],
     speicherM3: k === '_thermSpeicher' ? (parseFloat(document.getElementById('ts-volumen')?.value) || undefined) : undefined,
   }));
   // Netzkennwerte je Variante (Gutachten: Tabelle nur, wenn sich die Varianten unterscheiden)

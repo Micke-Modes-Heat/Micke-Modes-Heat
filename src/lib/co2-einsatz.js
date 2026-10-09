@@ -12,7 +12,8 @@ export function co2AusEinsatz(en, ef = {}, eta = {}, bhkw = {}) {
   let t = 0;
   const f = x => (Number.isFinite(Number(x)) ? Number(x) : 0);
   for (const [k, e] of Object.entries(en || {})) {
-    const w = f(e?.waermeMwh), el = f(e?.elMwh);
+    // Brennstoff für die gesamte erzeugte Wärme (BHKW: auch die Mindestlastwärme für den Speicher)
+    const w = Number.isFinite(Number(e?.erzeugtMwh)) ? f(e.erzeugtMwh) : f(e?.waermeMwh), el = f(e?.elMwh);
     if (k === '_thermSpeicher' || k === 'solarthermie' || (w < 0.1 && el < 0.1)) continue;
     let kg = 0;
     if (k === 'gaskessel' || k === '_autoGk') kg = (w / (eta.gaskessel || 0.92)) * f(ef.gas);

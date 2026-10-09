@@ -31,6 +31,7 @@ const optimizerLifecycle = typeof appLifecycle !== 'undefined' ? appLifecycle : 
 };
 import { _quelleTemp } from './06c-dispatch-core.js';
 import { OPT_EE_KEYS, OPT_IH, OPT_MERIT_ORDER, OPT_NUTZUNG } from './config/optimizer-defaults.js';
+import { eeAnteilPct, lastMwh } from './lib/dispatch-energie.js';
 import { pvBatteryStep } from './lib/pv-battery-core.js';
 import { estimateBatteryAging } from './lib/battery-aging.js';
 import { optGrobPunkte, optRasterStufen, optSuchraum } from './lib/optimierer-suche.js';
@@ -99,7 +100,10 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
   }
 
   // Kern-Dispatch aufrufen (nutzt _quelleTemp aus 06-system-dispatch.js — identische Logik)
-  const r = _dispatchCore({
+  // Saisonalspeicher wie in der Hauptrechnung (dispatchEingaben): Laden rund um die Uhr, eingeschwungener Jahresbeginn
+  const saisonal = !!thSp && document.getElementById('ts-typ')?.value === 'saisonal';
+  if (saisonal) thSp = { ...thSp, ladeVon: 0, ladeBis: 24 };
+  const args = {
     lastgangKw, tempH, vlH,
     erzList: erzeugerList,
     speicherParams: thSp,
@@ -109,12 +113,17 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
     quelleTemp: _quelleTemp,
     recordHourly: false,
     backupMode: true,
-  });
+  };
+  if (saisonal) args.speicherStartKwh = _dispatchCore(args).thermSocEnde || 0;
+  const r = _dispatchCore(args);
 
   // Ergebnisse in erzeugerList schreiben (Optimizer-Format)
   for (const erz of erzeugerList) {
     erz.waermeMwh = (r.thKwh[erz.key] || 0) / 1000;
     erz.elMwh     = (r.elKwh[erz.key] || 0) / 1000;
+    // in den Speicher geladene Wärme: zählt zur Erzeugung (JAZ, Brennstoff), nicht zur Direktdeckung
+    erz.ladeMwh   = ((r.ladeKwh?.[erz.key] || 0) + (r.verworfenKwh?.[erz.key] || 0)) / 1000;
+    erz.erzeugtMwh = erz.waermeMwh + erz.ladeMwh;
   }
   // Backup-Kessel: leistKw auf tatsächlichen Peak anheben
   const backupErz = erzeugerList.length > 0 ? erzeugerList[erzeugerList.length - 1] : null;
@@ -130,6 +139,7 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
     wpElH: r.wpElH, bhkwElH: r.bhkwElH, skElH: r.skElH,
     speicherEntladenMwh: r.thermEntladenGes / 1000,
     speicherGeladenMwh: r.thermGeladenGes / 1000,
+    stLadeMwh: (r.ladeKwh?.solarthermie || 0) / 1000,
     wpResKwH: r.wpResKwH, wpResCopH: r.wpResCopH,
     thSpParams: r.speicherParams ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw, ladeKw: r.speicherParams.ladeKw ?? r.speicherParams.entladeKw } : null,
   };
@@ -236,15 +246,16 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
   let _dynBohrMeter = typeof _parseGeoBohrMeter === 'function' ? _parseGeoBohrMeter() : 0;
   const _geoErz = erzeugerList.find(e => e.key === 'geo');
   if (_geoErz && _geoErz.leistKw > 0 && _dynBohrMeter < 1) {
-    const jaz = (_geoErz.elMwh > 0) ? _geoErz.waermeMwh / _geoErz.elMwh : 4.0;
+    const _geoErzeugt = _geoErz.erzeugtMwh ?? _geoErz.waermeMwh;
+    const jaz = (_geoErz.elMwh > 0) ? _geoErzeugt / _geoErz.elMwh : 4.0;
     const tiefe = Math.min(400, Math.max(30, parseFloat(document.getElementById('geo-tiefe')?.value) || 100));
     const qPerM = Math.min(60, Math.max(10, parseFloat(document.getElementById('geo-q-perm')?.value) || 31));
     const erdwKw = _geoErz.leistKw * (jaz - 1) / jaz;
     const proSondeKw = qPerM * tiefe / 1000;
     const nL = Math.max(1, Math.ceil(erdwKw / proSondeKw));
     let nE = 1;
-    if (_geoErz.waermeMwh > 0) {
-      nE = Math.max(1, Math.ceil(_geoErz.waermeMwh * 1000 * (jaz - 1) / jaz / (proSondeKw * 2100)));
+    if (_geoErzeugt > 0) {
+      nE = Math.max(1, Math.ceil(_geoErzeugt * 1000 * (jaz - 1) / jaz / (proSondeKw * 2100)));
     }
     _dynBohrMeter = Math.max(nL, nE) * tiefe;
   }
@@ -257,7 +268,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
 
   // ErzList mit typ ergänzen
   const erzListTyped = erzeugerList.map(e => ({
-    key: e.key, waermeMwh: e.waermeMwh, elMwh: e.elMwh,
+    key: e.key, waermeMwh: e.waermeMwh, elMwh: e.elMwh, ladeMwh: e.ladeMwh || 0, erzeugtMwh: e.erzeugtMwh ?? e.waermeMwh,
     typ: (typeof ERZEUGER_CFG !== 'undefined' && ERZEUGER_CFG[e.key]) ? ERZEUGER_CFG[e.key].typ : null
   }));
   if (_bPKw._autoGk) erzListTyped.push({ key: '_autoGk', waermeMwh: _agkMwh, elMwh: 0, typ: 'fix' });
@@ -312,7 +323,9 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
       }
     },
     gesamtMwh: gesamtMwh,
-    stMwh: stWaermeMwhOpt || 0
+    stMwh: stWaermeMwhOpt || 0,
+    speicherEntladenMwh: dispatchResult.speicherEntladenMwh || 0,
+    stLadeMwh: dispatchResult.stLadeMwh || 0
   });
 
   return {
@@ -858,16 +871,10 @@ export function updateFooterStatus() {
 
   // EE-Anteil
   const fsEE = document.getElementById('fs-ee');
+  // EE-Anteil an der gedeckten Last, Speicherwärme nach Herkunft der Ladung (lib/dispatch-energie.js)
   const en = window._dispatchEnergy || {};
-  const EE_KEYS = ['lwwp','fg','geo','pellets','hhs'];
-  let eeWaerme = 0, gesWaerme = 0;
-  for (const k of Object.keys(en)) {
-    const w = en[k]?.waermeMwh || 0;
-    gesWaerme += w;
-    if (EE_KEYS.includes(k)) eeWaerme += w;
-  }
-  if (gesWaerme > 0) {
-    const eePct = eeWaerme / gesWaerme * 100;
+  if (lastMwh(en) > 0) {
+    const eePct = eeAnteilPct(en);
     window._lastEeAnteil = eePct;
     _fsTxt(fsEE, 'EE: ' + eePct.toFixed(0) + ' %');
     _fsDot(fsEE, true, eePct < 65);

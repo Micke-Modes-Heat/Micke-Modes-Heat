@@ -103,18 +103,19 @@ function _lauf(E, param, aufzeichnen) {
 }
 
 function _kosten(E, r, vol, kp) {
-  const erzeugerList = E.erzList.map(e => ({ key: e.key, typ: e.typ, leistKw: e.leistKw,
-    waermeMwh: (r.thKwh[e.key] || 0) / 1000, elMwh: (r.elKwh[e.key] || 0) / 1000 }));
-  // Aus dem Speicher entladene Wärme stammt von dem, der ihn geladen hat: Wärmepumpe, sonst Solarthermie, sonst BHKW
-  let stMwh = (r.thKwh.solarthermie || 0) / 1000;
-  const ausSpeicher = (r.thermEntladenGes || 0) / 1000;
-  if (ausSpeicher > 0) {
-    const quelle = erzeugerList.find(e => e.typ === 'wp') || (stMwh > 0 ? null : erzeugerList.find(e => e.typ === 'kwk'));
-    if (quelle) quelle.waermeMwh += ausSpeicher; else stMwh += ausSpeicher;
-  }
-  const stM2 = stMwh > 0 ? (parseFloat(el('st-flaeche')?.value) || 0) : 0;
-  const k = _optKennwerte2({ erzeugerList, gesamtMwh: r.gesamtKwh / 1000, autoGkMwh: r.autoGkKwh / 1000, autoGkPeakKw: r.autoGkPeakKw },
-    0, 0, null, kp, stMwh, stM2, vol || 0, { typ: S.art === 'lang' ? 'saisonal' : 'gross', dt: S.dt });
+  // Direkt an die Last, in den Speicher geladen und insgesamt erzeugt — wie die Hauptrechnung (lib/dispatch-energie.js);
+  // die Speicherentladung ordnet _calcKostenShared nach Herkunft der Ladung zu (EE-Anteil)
+  const erzeugerList = E.erzList.map(e => {
+    const w = (r.thKwh[e.key] || 0) / 1000, l = ((r.ladeKwh?.[e.key] || 0) + (r.verworfenKwh?.[e.key] || 0)) / 1000;
+    return { key: e.key, typ: e.typ, leistKw: e.leistKw, waermeMwh: w, elMwh: (r.elKwh[e.key] || 0) / 1000, ladeMwh: l, erzeugtMwh: w + l };
+  });
+  // Solarthermie direkt; _optKennwerte2 erwartet die Last ohne diesen Anteil (wie im Optimierer)
+  const stMwh = (r.thKwh.solarthermie || 0) / 1000;
+  // Kollektoren gehören in allen Läufen (mit und ohne Speicher) zur Anlage
+  const stM2 = E.stProfile ? (parseFloat(el('st-flaeche')?.value) || 0) : 0;
+  const k = _optKennwerte2({ erzeugerList, gesamtMwh: r.gesamtKwh / 1000 - stMwh, autoGkMwh: r.autoGkKwh / 1000, autoGkPeakKw: r.autoGkPeakKw,
+    speicherEntladenMwh: (r.thermEntladenGes || 0) / 1000, stLadeMwh: (r.ladeKwh?.solarthermie || 0) / 1000 },
+  0, 0, null, kp, stMwh, stM2, vol || 0, { typ: S.art === 'lang' ? 'saisonal' : 'gross', dt: S.dt });
   return k;
 }
 

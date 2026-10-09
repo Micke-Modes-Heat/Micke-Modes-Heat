@@ -83,7 +83,9 @@ export function _buildSankeyData(perBuilding) {
   let totalVerluste = 0;
   keys.forEach(k => {
     const d = en[k];
-    if (!d || !d.waermeMwh || d.waermeMwh <= 0) return;
+    // dE: insgesamt erzeugt (direkt + Speicherladung); Eingänge und Verluste beziehen sich darauf
+    const dE = d ? (d.erzeugtMwh ?? d.waermeMwh) : 0;
+    if (!d || !(dE > 0)) return;
     const label = LABEL[k] || k;
     const eCol = ECOLOR[k] || '#78909c';
 
@@ -91,49 +93,50 @@ export function _buildSankeyData(perBuilding) {
     let brennstoffMwh = 0;
     if (['gaskessel', '_autoGk'].includes(k)) {
       const eta = parseFloat(document.getElementById('gk-eta')?.value) / 100 || 0.92;
-      brennstoffMwh = d.waermeMwh / eta;
+      brennstoffMwh = dE / eta;
       flows.push({ from: 'Erdgas', to: label, value: brennstoffMwh, color: C_ERDGAS });
     } else if (k === 'heizoel') {
-      brennstoffMwh = d.waermeMwh / (_getEtaMap().heizoel || 0.90);
+      brennstoffMwh = dE / (_getEtaMap().heizoel || 0.90);
       flows.push({ from: 'Heizöl', to: label, value: brennstoffMwh, color: C_HEIZOEL });
     } else if (k === 'pellets') {
-      brennstoffMwh = d.waermeMwh / _getEtaMap().pellets;
+      brennstoffMwh = dE / _getEtaMap().pellets;
       flows.push({ from: 'Pellets', to: label, value: brennstoffMwh, color: C_PELLETS });
     } else if (k === 'hhs') {
-      brennstoffMwh = d.waermeMwh / _getEtaMap().hhs;
+      brennstoffMwh = dE / _getEtaMap().hhs;
       flows.push({ from: 'Hackschnitzel', to: label, value: brennstoffMwh, color: C_HHS });
     } else if (k === 'bhkw') {
       const bhkwEtaGes = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
       const bhkwSigma  = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
       const eta_th = bhkwEtaGes / (1 + bhkwSigma);
-      brennstoffMwh = d.waermeMwh / eta_th;
+      brennstoffMwh = dE / eta_th;
       flows.push({ from: 'Erdgas', to: label, value: brennstoffMwh, color: C_ERDGAS });
     } else if (k === 'fernwaerme') {
       flows.push({ from: 'Fernwärme-Netz', to: label, value: d.waermeMwh, color: C_FERNWAERME });
     } else if (['lwwp', 'fg', 'geo'].includes(k)) {
-      const elMwh = d.elMwh || (d.waermeMwh / 3.0);
-      const umwelt = d.waermeMwh - elMwh;
+      const elMwh = d.elMwh || (dE / 3.0);
+      const umwelt = dE - elMwh;
       // Strom-Quelle (Netz vs. PV) wird unten aufgeteilt
       flows.push({ from: '_strom_wp', to: label, value: elMwh, color: C_STROM, _isElPlaceholder: true });
       if (umwelt > 0) flows.push({ from: 'Umweltwärme', to: label, value: umwelt, color: C_UMWELT });
     } else if (k === 'stromkessel') {
       flows.push({ from: '_strom_sk', to: label, value: d.elMwh || d.waermeMwh, color: C_STROM, _isElPlaceholder: true });
     } else if (k === 'solarthermie') {
-      flows.push({ from: 'Solarstrahlung', to: label, value: d.waermeMwh, color: C_SOLAR });
+      flows.push({ from: 'Solarstrahlung', to: label, value: dE, color: C_SOLAR });
     } else if (k === '_thermSpeicher') {
       // Speicher-Entladung: keine Eingangsseite
     }
 
-    // Erzeuger → Nutzwärme
-    flows.push({ from: label, to: 'Erzeugte Wärme', value: d.waermeMwh, color: C_WAERME });
+    // Erzeuger → Nutzwärme (direkt) und → Wärmespeicher (Ladung); der Speicher gibt unten an die Nutzwärme ab
+    if (d.waermeMwh > 0) flows.push({ from: label, to: 'Erzeugte Wärme', value: d.waermeMwh, color: C_WAERME });
+    if (k !== '_thermSpeicher' && (d.ladeMwh || 0) > 0.1) flows.push({ from: label, to: 'Wärmespeicher', value: d.ladeMwh, color: C_WAERME });
 
     // Wirkungsgradverluste (Brennstoff - Nutzwärme - Strom)
     // Bei BHKW: Verlust = Brennstoff - Wärme - Strom
     let verlust = 0;
     if (k === 'bhkw') {
-      verlust = brennstoffMwh - d.waermeMwh - (d.elMwh || 0);
+      verlust = brennstoffMwh - dE - (d.elMwh || 0) + (d.verworfenMwh || 0);   // Notkühler zählt als Verlust
     } else if (brennstoffMwh > 0) {
-      verlust = brennstoffMwh - d.waermeMwh;
+      verlust = brennstoffMwh - dE;
     }
     if (verlust > 0.1) {
       flows.push({ from: label, to: 'Wirkungsgrad-\nverluste', value: verlust, color: C_VERLUST });
@@ -285,7 +288,7 @@ export function _buildSankeyCO2Data() {
       const bhkwEtaGes = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
       const bhkwSigma  = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
       const eta_th = bhkwEtaGes / (1 + bhkwSigma);
-      const brennstoffMwh = d.waermeMwh / eta_th;
+      const brennstoffMwh = (d.erzeugtMwh ?? d.waermeMwh) / eta_th;   // inkl. Mindestlastwärme für den Speicher
       co2_t = brennstoffMwh * 1000 * gasEmF / 1e6;
       flows.push({ from: 'Erdgas', to: label, value: co2_t, color: '#ff9800' });
       // KWK-Gutschrift

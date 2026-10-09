@@ -354,6 +354,9 @@ async function glBerechnen() {
     // Basis-Lastgang für jahresweise Skalierung speichern
     window._basisLastgangKw = new Float32Array(lastgangKw);
     window._basisYear = globalYear;
+    // Nutzwärme und Netzverlust des Basisjahrs — werden beim Jahreswechsel mit demselben Faktor fortgeschrieben
+    window._basisNutzwaermeMwh = window.systemState.nutzwaermeMwh;
+    window._basisNetzverlustMwh = window.systemState.netzverlustMwh;
     window._basisGebWaermeSumme = gebaeude.reduce((s, g) => {
       if (isExcluded(g.id)) return s;
       const st = getComputedStats(g, globalYear);
@@ -454,32 +457,45 @@ export function glSkaliereMitMonaten(arr, monatswerte) {
     const f = faktoren[m1] * (1 - t) + faktoren[m2] * t;
     result[i] = arr[i] * Math.max(0, f);
   }
-  return result;
-}
-
-// ── Fall 4: Monatsfloor anwenden ─────────────────────────────────────────
-export function glAnwendeMonatsfloor(arr, monatswerte, gesamtMwh) {
-  const MONAT_STUNDEN = [744,672,744,720,744,720,744,744,720,744,720,744];
-  const result = Float32Array.from(arr);
-  let h = 0;
+  // Die geglätteten Faktoren treffen die Monatswerte nur ungefähr — je Monat exakt nachskalieren
+  h = 0;
   for (let m = 0; m < 12; m++) {
     const stunden = MONAT_STUNDEN[m];
-    if (monatswerte[m] == null) { h += stunden; continue; }
-    const floor = monatswerte[m] * 1000; // kWh
-    let sum = 0;
-    for (let i = 0; i < stunden && h + i < 8760; i++) sum += result[h + i];
-    if (sum < floor) {
-      // Gleichmäßig auffüllen
-      const add = (floor - sum) / stunden;
-      for (let i = 0; i < stunden && h + i < 8760; i++) result[h + i] += add;
+    if (monatswerte[m] != null) {
+      let sum = 0;
+      for (let i = 0; i < stunden && h + i < 8760; i++) sum += result[h + i];
+      if (sum > 0) { const k = monatswerte[m] * 1000 / sum; for (let i = 0; i < stunden && h + i < 8760; i++) result[h + i] *= k; }
     }
     h += stunden;
   }
-  // Auf Gesamtmenge skalieren
-  const sumNeu = result.reduce((a, b) => a + b, 0) / 1000;
-  if (sumNeu > 0 && gesamtMwh) {
-    const f = gesamtMwh / sumNeu;
-    for (let i = 0; i < 8760; i++) result[i] *= f;
+  return result;
+}
+
+// ── Fälle 3+4: Monatswerte einhalten ────────────────────────────────────
+// Eingegebene Monate werden exakt getroffen; die übrigen Monate teilen sich den Rest bis zur Jahresmenge
+// im Verhältnis des Profils (ohne Rest: 0). Liegt die Jahresmenge unter Σ Monatswerte, gilt Σ Monatswerte.
+export function glAnwendeMonatsfloor(arr, monatswerte, gesamtMwh) {
+  const MONAT_STUNDEN = [744,672,744,720,744,720,744,744,720,744,720,744];
+  const result = Float32Array.from(arr);
+  const start = [];
+  let h = 0, gegebenMwh = 0, restProfilKwh = 0, restStunden = 0;
+  const summe = [];
+  for (let m = 0; m < 12; m++) {
+    start.push(h);
+    let sum = 0;
+    for (let i = 0; i < MONAT_STUNDEN[m] && h + i < 8760; i++) sum += result[h + i];
+    summe.push(sum);
+    if (monatswerte[m] != null) gegebenMwh += monatswerte[m];
+    else { restProfilKwh += sum; restStunden += MONAT_STUNDEN[m]; }
+    h += MONAT_STUNDEN[m];
+  }
+  const restKwh = Math.max(0, ((gesamtMwh || gegebenMwh) - gegebenMwh) * 1000);
+  for (let m = 0; m < 12; m++) {
+    const n = MONAT_STUNDEN[m], h0 = start[m];
+    const ziel = monatswerte[m] != null ? monatswerte[m] * 1000
+      : (restProfilKwh > 0 ? restKwh * summe[m] / restProfilKwh : restKwh * n / Math.max(1, restStunden));
+    if (summe[m] > 0) { const k = ziel / summe[m]; for (let i = 0; i < n && h0 + i < 8760; i++) result[h0 + i] *= k; }
+    else { for (let i = 0; i < n && h0 + i < 8760; i++) result[h0 + i] = ziel / n; }
   }
   return result;
 }

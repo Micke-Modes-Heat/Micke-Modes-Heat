@@ -167,7 +167,14 @@ export function gbiBackToUpload() {
 // ── Step 3: Auto-Matching ───────────────────────────────────────────────
 export function gbiStartMatching() {
   // Build CSV data objects
-  var num = function(v) { return parseFloat((v || '').replace(/\./g, '').replace(',', '.')) || 0; };
+  // Deutsches und englisches Zahlenformat: „1.234,5“, „1234,5“, „1.234“ (Tausender) und „180.5“ (Dezimalpunkt)
+  var num = function(v) {
+    var s = String(v || '').trim().replace(/['"\s]/g, '');
+    if (!s) return 0;
+    if (s.indexOf(',') >= 0) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+    if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) return parseFloat(s.replace(/\./g, '')) || 0;
+    return parseFloat(s) || 0;
+  };
   gbiData = gbiRawRows.map(function(row, idx) {
     return {
       idx: idx,

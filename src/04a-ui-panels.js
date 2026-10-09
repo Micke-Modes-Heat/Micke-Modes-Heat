@@ -3,6 +3,7 @@
 
 import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, networkLocked, variantResults } from './01-globals-varianten.js';
 import { getWLD } from './02a-netz-physik.js';
+import { eeAnteilPct, lastMwh } from './lib/dispatch-energie.js';
 import { _invalidateStats, getComputedStats, getNutzungstypen, map } from './02b-gebaeude.js';
 import { setGebVisible, setMode, setSchallVisible, updateViz } from './02c-karte-werkzeuge.js';
 import { hidePanels, recalcNetz, setNetzVisible } from './03b-netz.js';
@@ -1950,11 +1951,9 @@ export function refreshAnalyseView() {
   const _nf = (v, d = 0) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
   setKpi('av-kpi-wgk', window._lastWgk ? _nf(window._lastWgk, 1) : '—');
   // EE-Anteil direkt berechnen
-  const _eeKeys = ['lwwp','fg','geo','pellets','hhs'];
+  // wie Variantenvergleich und Optimierer: Speicherwärme nach Herkunft der Ladung (lib/dispatch-energie.js)
   const _den = window._dispatchEnergy || {};
-  let _eeW = 0, _gesW = 0;
-  for (const k of Object.keys(_den)) { if (k === '_thermSpeicher') continue; const w = _den[k]?.waermeMwh || 0; _gesW += w; if (_eeKeys.includes(k)) _eeW += w; }   // Speicher: nur weitergegebene Wärme
-  const _eePct = _gesW > 0 ? _eeW / _gesW * 100 : null;
+  const _eePct = lastMwh(_den) > 0 ? eeAnteilPct(_den) : null;
   setKpi('av-kpi-ee', _eePct != null ? _nf(_eePct) : '—');
   const _eeBar = document.getElementById('av-kpi-ee-bar');
   if (_eeBar) { _eeBar.style.width = (_eePct != null ? Math.min(100, _eePct) : 0) + '%'; _eeBar.classList.toggle('ok', _eePct != null && _eePct >= 65); }

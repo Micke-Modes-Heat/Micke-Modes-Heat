@@ -210,7 +210,8 @@ export function _calcKostenShared(p) {
     } else if (erz.typ === 'kwk' || erz.key === 'bhkw') {
       var bhkwSigma = etas.bhkwSigma || 0.45;
       var etaTh = (etas.bhkw||0.88) / (1 + bhkwSigma);
-      var gasK = wMwh / etaTh * (prices.gas||10) * 10;
+      // Brennstoff für die gesamte erzeugte Wärme (auch die in den Speicher geladene Mindestlastwärme)
+      var gasK = (erz.erzeugtMwh != null ? erz.erzeugtMwh : wMwh) / etaTh * (prices.gas||10) * 10;
       // BHKW-Erlös
       var erloes = 0;
       if (strom.bhkwStromErloes != null && strom.bhkwStromErloes !== undefined) {
@@ -250,9 +251,10 @@ export function _calcKostenShared(p) {
       tCo2 = wM / (etas.gaskessel||0.92) * (emf.gas||240) / 1e3;
     } else if (erz2.typ === 'kwk' || erz2.key === 'bhkw') {
       var etaThCo2 = (etas.bhkw||0.88) / (1 + (etas.bhkwSigma||0.45));
-      tCo2 = wM / etaThCo2 * (emf.gas||240) / 1e3;
+      var wErzBhkw = erz2.erzeugtMwh != null ? erz2.erzeugtMwh : wM;
+      tCo2 = wErzBhkw / etaThCo2 * (emf.gas||240) / 1e3;
       // Stromgutschrift (verdrängter Netzstrom) — unten von Emissionsbilanz und CO₂-Kostenansatz abgezogen
-      if (co2p.bhkwGutschrift) bhkwGutschriftT += wM * (etas.bhkwSigma||0.45) * (co2p.verdraengungEf || emf.strom || 420) / 1e3;
+      if (co2p.bhkwGutschrift) bhkwGutschriftT += wErzBhkw * (etas.bhkwSigma||0.45) * (co2p.verdraengungEf || emf.strom || 420) / 1e3;
     } else if (erz2.key === 'heizoel') {
       tCo2 = wM / (etas.heizoel||0.90) * (emf.heizoel||310) / 1e3;
     } else if (erz2.key === 'pellets') {
@@ -263,7 +265,7 @@ export function _calcKostenShared(p) {
       tCo2 = wM * (emf.fernwaerme||200) / 1e3;
     }
     co2ta += tCo2;
-    if (pCo2 > 0 && (co2p.alleET !== false || erz2.key === 'gaskessel' || erz2.key === 'heizoel' || erz2.key === 'bhkw')) {
+    if (pCo2 > 0 && (co2p.alleET !== false || erz2.key === 'gaskessel' || erz2.key === '_autoGk' || erz2.key === 'heizoel' || erz2.key === 'bhkw')) {
       co2Jk += tCo2 * pCo2;
     }
   }
@@ -276,11 +278,18 @@ export function _calcKostenShared(p) {
   var totalWaerme = (p.gesamtMwh || 0) + (p.stMwh || 0);
   var wgk = totalWaerme > 0 ? jahreskosten / totalWaerme / 10 : 0;
 
-  // EE-Anteil
+  // EE-Anteil — die Speicherentladung zählt nach Herkunft der Ladung (WP/Solarthermie erneuerbar, BHKW nicht);
+  // wie lib/dispatch-energie.js (hier in sich geschlossen, der Worker bettet die Funktion ein)
   var EE_KEYS_SET = {lwwp:1,fg:1,geo:1,pellets:1,hhs:1};
   var eeMwh = p.stMwh || 0;
-  for (var _ee=0; _ee<erzList.length; _ee++) { if (EE_KEYS_SET[erzList[_ee].key]) eeMwh += erzList[_ee].waermeMwh; }
-  var eeAnteil = totalWaerme > 0 ? eeMwh / totalWaerme * 100 : 0;
+  var ladeGes = p.stLadeMwh || 0, ladeEe = p.stLadeMwh || 0;
+  for (var _ee=0; _ee<erzList.length; _ee++) {
+    var _l = erzList[_ee].ladeMwh || 0;
+    ladeGes += _l;
+    if (EE_KEYS_SET[erzList[_ee].key]) { eeMwh += erzList[_ee].waermeMwh; ladeEe += _l; }
+  }
+  if (ladeGes > 0) eeMwh += (p.speicherEntladenMwh || 0) * ladeEe / ladeGes;
+  var eeAnteil = totalWaerme > 0 ? Math.min(100, eeMwh / totalWaerme * 100) : 0;
 
   // Strom-/Wärmeautarkie: Anteil des Wärme-Stroms aus PV, Anteil der Wärme aus Solarthermie und PV-Strom
   var pvZuWpMwh = pvDirektMwh + pvBatMwh;
@@ -778,7 +787,8 @@ export function calcWirtschaftPanel() {
       const etaBhkw = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
       const sigma = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
       const etaTh = (1 + sigma) > 0 ? etaBhkw / (1 + sigma) : 0.4;
-      const gasVerb = etaTh > 0 ? wMwh / etaTh : wMwh;
+      const wErz = e.erzeugtMwh ?? wMwh;   // inkl. Mindestlastwärme für den Speicher
+      const gasVerb = etaTh > 0 ? wErz / etaTh : wErz;
       const gasK = gasVerb * pGas * 10;
       const stromErl = window._bhkwStromErloes || 0;
       kosten = gasK - stromErl;
@@ -795,7 +805,8 @@ export function calcWirtschaftPanel() {
       kosten = verb * P[k] * 10;
       detail = `${verb.toFixed(0)} MWh Brennstoff × ${P[k]} ct/kWh`;
     }
-    if (kosten > 0) energyRows.push({ label: DA_LABELS[k]||k, kosten, detail, color: _daColor(k), key: k });
+    // auch negative Zeilen (BHKW: Stromerlös höher als Gaskosten) — wie in _calcKostenShared
+    if (Math.abs(kosten) > 0.5) energyRows.push({ label: DA_LABELS[k]||k, kosten, detail, color: _daColor(k), key: k });
     // für die Kostenanalyse: Kosten je Erzeuger und je Energieträger (BHKW: Gasbezug ohne Stromerlös)
     if (Math.abs(kosten) > 0) _energieJeErz[k] = (_energieJeErz[k] || 0) + kosten;
     const _tr = (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') ? 'strom'
@@ -838,8 +849,9 @@ export function calcWirtschaftPanel() {
         if (wMwh < 0.1) return;
         tCo2 = wMwh / cfg.eta * (cfg.emf / 1e6) * 1e3; // MWh_W / η × g/kWh × 1000kWh/MWh / 1e6g/t
       } else if (cfg.typ === 'bhkw') {
-        // Erdgas über den thermischen Wirkungsgrad, abzüglich Gutschrift für den erzeugten Strom (wie in der CO₂-Bilanz)
-        const wMwh = e.waermeMwh || 0;
+        // Erdgas über den thermischen Wirkungsgrad, abzüglich Gutschrift für den erzeugten Strom (wie in der CO₂-Bilanz);
+        // maßgeblich ist die gesamte erzeugte Wärme (auch die Mindestlastwärme für den Speicher)
+        const wMwh = e.erzeugtMwh ?? e.waermeMwh ?? 0;
         if (wMwh < 0.1) return;
         const sigma = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
         const etaTh = ((parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100) / (1 + sigma);
@@ -1662,6 +1674,7 @@ export function _renderWirtCo2Chart(keys, en) {
 }
 
 // ── Jahresscheiben-Berechnung (NPV) ──────────────────────────────────────
+let _jsNachholen = false;
 export function calcJahresscheiben() {
   const keys  = window._dispatchActiveKeys || [];
   const en    = window._dispatchEnergy    || {};
@@ -1677,7 +1690,7 @@ export function calcJahresscheiben() {
   // Betrachtungszeitraum wie im Feld vorgesehen 5–40 a (sonst läuft der Annuitätsfaktor über: ∞/∞)
   const laufzeit   = Math.min(40, Math.max(5, parseInt(document.getElementById('js-laufzeit')?.value) || 20));
   const eskalation = (parseFloat(document.getElementById('js-eskalation')?.value) || 2) / 100;
-  const zins  = Number.isFinite(parseFloat(document.getElementById('wirt-zins')?.value)) ? parseFloat(document.getElementById('wirt-zins').value) : 2.7;   // 0 % ist ein gültiger Zins
+  const zins  = Number.isFinite(parseFloat(document.getElementById('wirt-zins')?.value)) ? parseFloat(document.getElementById('wirt-zins').value) : 3.5;   // 0 % ist ein gültiger Zins (Vorgabe wie im Feld)
   const diskont    = zins / 100; // Synchron mit Kapitalzins (VDI 2067)
   const dSync = document.getElementById('js-diskont-sync');
   if (dSync) dSync.textContent = zins.toFixed(1);
@@ -1741,7 +1754,7 @@ export function calcJahresscheiben() {
         }
         let s=0;netzEdges.forEach(e=>{if(e.pruned)return;
           const kpm=typeof getKostenProMKlasse==='function'?getKostenProMKlasse(e.dn,e.kostKlasse||'mittel'):0;s+=kpm*(e.length||0);});return Math.round(s);},
-      vdi:{n:50,inst:1.5,wart:0.5,bedien:40} },
+      vdi:{n:50,inst:1.0,wart:0,bedien:40} },
   ];
 
   let totalInvest = 0;
@@ -1750,6 +1763,13 @@ export function calcJahresscheiben() {
   // Bevorzugt die Bausteine und Energiekosten der Wirtschaftlichkeitsrechnung übernehmen (gleiche Zahlen wie oben)
   const wErg = window._wirtErgebnis;
   const ausPanel = wErg && wErg.keys === keys.join(',') + (wirtOhneNetz() ? '|ohneNetz' : '') && wErg.bausteine.length > 0;
+  // Ohne aktuelle Wirtschaftlichkeitsrechnung zuerst diese rechnen (sie ruft die Barwertbetrachtung selbst auf) —
+  // der vereinfachte Ersatzweg unten kennt nicht alle Bausteine und Tarife
+  if (!ausPanel && !_jsNachholen && document.getElementById('wirt-table-wrap')) {
+    _jsNachholen = true;
+    try { calcWirtschaftPanel(); } finally { _jsNachholen = false; }
+    return;
+  }
   if (ausPanel) {
     for (const b of wErg.bausteine) {
       totalInvest += b.invest;
@@ -1995,8 +2015,10 @@ export function _renderOptKostenUebersicht() {
   const pFw = parseFloat(document.getElementById('wirt-p-fw')?.value) || 17;
   const pPk = parseFloat(document.getElementById('wirt-p-pk')?.value) || 8;
   const pHhs = parseFloat(document.getElementById('wirt-p-hhs')?.value) || 6;
-  const pCo2 = parseFloat(document.getElementById('wirt-p-co2')?.value) || 120;
-  const zins = parseFloat(document.getElementById('wirt-zins')?.value) || 3.5;
+  // 0 ist ein gültiger Wert (kein CO₂-Ansatz bzw. 0 % Zins) — nur leere Felder durch Vorgaben ersetzen
+  const _zahlOder = (id, vorgabe) => { const v = parseFloat(document.getElementById(id)?.value); return Number.isFinite(v) ? v : vorgabe; };
+  const pCo2 = _zahlOder('wirt-p-co2', 120);
+  const zins = _zahlOder('wirt-zins', 3.5);
   const lohn = parseFloat(document.getElementById('wirt-lohn')?.value) || 45;
   const pEinsp = parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8;
   const pBhkwE = parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8;
@@ -2034,7 +2056,7 @@ export function _renderOptKostenUebersicht() {
     {k:'entstaub', label:'Entstaubung',     inv:'20–40k', unit:'€ pauschal', n:15, ih:2.0, wart:3.0, bed:100, color:'#795548', fuel:'—', grp:'neben', note:'bei Biomasse >200 kW'},
     {k:'huest',    label:'Hausübergabestationen', inv:'5–15k', unit:'€/Geb.', n:25, ih:1.0, wart:1.0, bed:0, color:'#607d8b', fuel:'—', grp:'neben'},
     {k:'netzanschl',label:'Netzanschluss (Strom)',inv:40, unit:'€/kWₑₗ', n:40, ih:0.5, wart:0, bed:0, color:'#9e9e9e', fuel:'—', grp:'neben', note:'bei >500 kWₑₗ'},
-    {k:'waermenetz',label:'Wärmenetz (KMR)',inv:'—', unit:'strangweise', n:50, ih:1.5, wart:0.5, bed:40, color:'#c62828', fuel:'—', grp:'neben', note:'aus Netzplanung'},
+    {k:'waermenetz',label:'Wärmenetz (KMR)',inv:'—', unit:'strangweise', n:50, ih:1.0, wart:0, bed:40, color:'#c62828', fuel:'—', grp:'neben', note:'aus Netzplanung'},
     // Prozentuale Zuschläge
     {k:'bauteil',  label:'Bautechnik',      inv:'5%', unit:'der Basisinvest.', n:50, ih:1.0, wart:1.0, bed:0, color:'#9e9e9e', fuel:'—', grp:'zuschlag'},
     {k:'hydr_elt', label:'Hydraulik + E-Technik',inv:'12%', unit:'der Basisinvest.', n:40, ih:1.0, wart:0, bed:0, color:'#9e9e9e', fuel:'—', grp:'zuschlag'},

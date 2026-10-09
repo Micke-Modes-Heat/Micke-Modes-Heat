@@ -593,7 +593,8 @@ export function showErzeugerPopup(key) {
   const gesamtMwh = ss?.gesamtMwhMitNV || 0;
   const deckPct   = gesamtMwh > 0 ? waermeMwh / gesamtMwh * 100 : 0;
   const vbh       = peakKw > 0 ? Math.round(totalKwh / peakKw) : 0;
-  const jaz       = cfg.typ === 'wp' && elMwh > 0 ? (waermeMwh / elMwh).toFixed(2) : null;
+  // JAZ = Σ erzeugte Wärme (direkt + Speicherladung) / Σ Strom
+  const jaz       = cfg.typ === 'wp' && elMwh > 0 ? ((en[key]?.erzeugtMwh ?? waermeMwh) / elMwh).toFixed(2) : null;
 
   // DOM befüllen
   const epIcon = document.getElementById('ep-icon');

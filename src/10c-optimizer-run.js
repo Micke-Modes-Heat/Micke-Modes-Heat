@@ -344,11 +344,14 @@ function _optNachrechnen(r, params) {
       leistKw: r.erzLeistKw?.[i] ?? c.leistKw,
       waermeMwh: r.erzWaermeMwh?.[i] ?? 0,
       elMwh: r.erzElMwh?.[i] ?? 0,
+      ladeMwh: r.erzLadeMwh?.[i] ?? 0,
+      erzeugtMwh: (r.erzWaermeMwh?.[i] ?? 0) + (r.erzLadeMwh?.[i] ?? 0),
     })),
     autoGkMwh: r.autoGkMwh || 0,
     autoGkPeakKw: r.autoGkPeakKw || 0,
     gesamtMwh: r.gesamtMwh || 0,
     speicherEntladenMwh: r.speicherEntladenMwh || 0,
+    stLadeMwh: r.stLadeMwh || 0,
   };
   return _optKennwerte2(dispResult, r.pvKwp || 0, r.batKwh || 0, r.pvBatData || null, params, r.stMwh || 0, r.stM2 || 0, r.tsVol || 0);
 }
