@@ -34,6 +34,11 @@ test('dist: Wirtschaftlichkeit ohne Netzkosten und Barwert mit denselben Baustei
       };
     };
     const gesamt = lesen();
+    // Zeitraum außerhalb 5–40 a: wird begrenzt statt „NaN ct/kWh“ anzuzeigen
+    const lz = document.getElementById('js-laufzeit');
+    lz.value = '1000000'; calcJahresscheiben();
+    const jsText = document.getElementById('js-result')?.innerText || '';
+    lz.value = '20'; calcJahresscheiben();
     wirtUmfangSetzen(true);
     const erzeugung = lesen();
     const knopf = document.querySelector('.wirt-umfang button.active')?.dataset.umfang;
@@ -41,10 +46,12 @@ test('dist: Wirtschaftlichkeit ohne Netzkosten und Barwert mit denselben Baustei
     wirtUmfangSetzen(false);
     _loadProject(gespeichert);
     await new Promise(r => setTimeout(r, 0));
-    return { gesamt, erzeugung, knopf, gespeichertFlag: gespeichert.economicScenario.values.nurErzeugung, nachLaden: window._wirtOhneNetz,
+    return { jsText, gesamt, erzeugung, knopf, gespeichertFlag: gespeichert.economicScenario.values.nurErzeugung, nachLaden: window._wirtOhneNetz,
       knopfNachLaden: document.querySelector('.wirt-umfang button.active')?.dataset.umfang };
   });
 
+  expect(result.jsText).toContain('40 Jahre');
+  expect(result.jsText).not.toMatch(/NaN|Infinity/);
   expect(result.gesamt.netz).toBe(true);
   expect(result.erzeugung.netz).toBe(false);
   expect(result.erzeugung.invest).toBeLessThan(result.gesamt.invest);
