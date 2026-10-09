@@ -3047,23 +3047,37 @@ export function gebaeudeMergeClick(quelleId) {
 }
 window.gebaeudeMergeClick = gebaeudeMergeClick;
 
-async function _gebaeudeZusammenfuegen(zielId, quelleId) {
+/**
+ * Zwei Gebäude vereinigen (Grundriss, PV-Flächen) — auch für die Grundrissprüfung (41).
+ * opts.ohneHinweis: ohne den Hinweis des Klick-Modus.
+ * opts.umrissBehalten: der Umriss des Ziels bleibt (Gebäudeteil bzw. Doppelerfassung geht
+ *   darin auf) — nur PV-Flächen, Heizzentrale usw. werden übernommen.
+ * @returns {Promise<boolean>} true = zusammengefügt
+ */
+export function gebaeudeZusammenfuegen(zielId, quelleId, opts = {}) {
+  return _gebaeudeZusammenfuegen(zielId, quelleId, opts);
+}
+
+async function _gebaeudeZusammenfuegen(zielId, quelleId, opts = {}) {
   const z = window.gebaeude.find(b => b.id === zielId);
   const q = window.gebaeude.find(b => b.id === quelleId);
-  if (!z?.polygon || !q?.polygon) return;
-  const v = vereinigePolygone(z.polygon, q.polygon);
+  if (!z?.polygon || !q?.polygon) return false;
+  const v = opts.umrissBehalten ? null : vereinigePolygone(z.polygon, q.polygon);
   const nEdges = (window.netzEdges || []).filter(e => e.u === q.id || e.v === q.id).length;
   const nAssets = getAssetsForBuilding(q.id).length;
   const zn = escHtml(z.name || 'Gebäude ' + z.id), qn = escHtml(q.name || 'Gebäude ' + q.id);
   const hinweise = [];
-  if (v.methode === 'huelle') hinweise.push('Die Gebäude berühren sich nicht — der neue Umriss ist die <b>konvexe Hülle</b> beider Grundrisse (Zwischenraum wird mit eingeschlossen).');
+  if (v?.methode === 'huelle') hinweise.push('Eine gemeinsame Kontur ließ sich nicht exakt bilden — der neue Umriss ist die <b>konvexe Hülle</b> beider Grundrisse (Zwischenräume und ggf. Nachbargebäude werden mit eingeschlossen).');
+  if (q.pvFlaechen?.length) hinweise.push(`Die PV-Flächen von „${qn}" werden übernommen.`);
   if (nEdges || nAssets) hinweise.push(`Leitungen (${nEdges}) und Anlagen (${nAssets}) von „${qn}" entfallen mit dem Gebäude.`);
-  const text = `„${qn}" wird in „${zn}" aufgenommen.<br>Neue Grundfläche: <b>${Math.round(v.flaecheM2)} m²</b>.`
+  const text = (v
+    ? `„${qn}" wird in „${zn}" aufgenommen.<br>Neue Grundfläche: <b>${Math.round(v.flaecheM2)} m²</b>.`
+    : `„${qn}" geht in „${zn}" auf; der Umriss von „${zn}" bleibt unverändert.`)
     + (hinweise.length ? '<br><br>' + hinweise.join('<br>') : '');
   const ok = typeof window.epConfirm === 'function'
-    ? await window.epConfirm('Grundrisse zusammenfügen', text, { okText: 'Zusammenfügen', cancelText: 'Abbrechen' })
+    ? await window.epConfirm(v ? 'Grundrisse zusammenfügen' : 'Gebäude aufnehmen', text, { okText: v ? 'Zusammenfügen' : 'Aufnehmen', cancelText: 'Abbrechen' })
     : window.confirm(text.replace(/<[^>]+>/g, ''));
-  if (!ok) return;
+  if (!ok) return false;
 
   // Heizzentrale auf das Ziel umhängen, damit das Löschen des Quellgebäudes das Netz nicht abräumt
   const zentraleSel = document.getElementById('netz-zentrale');
@@ -3073,14 +3087,16 @@ async function _gebaeudeZusammenfuegen(zielId, quelleId) {
     z.pvFlaechen = (z.pvFlaechen || []).concat(q.pvFlaechen);
     q.pvFlaechen = [];
   }
-  z.polygon = v.coords.map(p => L.latLng(p.lat, p.lng));
-  z.flaeche = polygonAreaM2(z.polygon);
-  z._pvModSig = null;
-  attachPolygonLayer(z);
-  if (z.polygon.length >= 3) {
-    const az = detectRoofAzimutFromPolygon(z.polygon);
-    if (az != null && z.dachAutoAzimut) z.dachAzimut = az;
+  if (v) {
+    z.polygon = v.coords.map(p => L.latLng(p.lat, p.lng));
+    z.flaeche = polygonAreaM2(z.polygon);
+    attachPolygonLayer(z);
+    if (z.polygon.length >= 3) {
+      const az = detectRoofAzimutFromPolygon(z.polygon);
+      if (az != null && z.dachAutoAzimut) z.dachAzimut = az;
+    }
   }
+  z._pvModSig = null;
   await removeGebaeude(q.id);
   if (typeof calcAutoEnergy === 'function' && (z.fromOsm || z.fromWfs)) calcAutoEnergy(z);
   updateField(z.id, 'flaeche', z.flaeche);
@@ -3093,7 +3109,8 @@ async function _gebaeudeZusammenfuegen(zielId, quelleId) {
   updateViz();
   renderList();
   if (_grundrissEdit?.gId === z.id) _redrawGrundrissHandles(z);
-  showHint(`✓ Zusammengefügt: ${Math.round(z.flaeche)} m² — weiteres Gebäude anklicken oder Esc`, 0);
+  if (!opts.ohneHinweis) showHint(`✓ Zusammengefügt: ${Math.round(z.flaeche)} m² — weiteres Gebäude anklicken oder Esc`, 0);
+  return true;
 }
 
 export function _rerenderCard(id) {
@@ -3407,6 +3424,10 @@ export function _buildProjectData() {
     pvBelegungsStaende: typeof window.pvbsCapture === 'function' ? window.pvbsCapture() : null,
     // Bäume und Verschattungsschalter (40-baeume.js)
     baeume: typeof window.baumCapture === 'function' ? window.baumCapture() : null,
+    // Vorgaben für neue Dächer (25-pv-modus.js) — gelten auch für die automatische Belegung
+    pvModusVorgabe: window.pvModusVorgabe ? { ...window.pvModusVorgabe } : null,
+    // Grundrissprüfung (41): bewusst belassene Überlappungen
+    grundrissPruefung: typeof window.grundrissCapture === 'function' ? window.grundrissCapture() : null,
     // Blackout-Modus (26): Projekteinstellungen; die Notstromklassen liegen an den Gebäuden
     blackout: typeof window.blackoutCaptureState === 'function' ? window.blackoutCaptureState() : null,
     // Resilienz-Abfrage (27): Metadaten und die eingelesene, ausgefüllte Abfrage
@@ -4241,6 +4262,9 @@ function _applyProjectData(project) {
       if (typeof window.pvbsRestore === 'function') window.pvbsRestore(project.pvBelegungsStaende || null);
       // Bäume + Verschattungsschalter vor der PV-Analyse — der Schalter wirkt auf calcGebKwpKorr
       if (typeof window.baumRestore === 'function') window.baumRestore(project.baeume || null);
+      // Vorgaben für neue Dächer: aus dem Projekt, sonst wieder die Standardwerte
+      window.pvModusVorgabe = project.pvModusVorgabe && typeof project.pvModusVorgabe === 'object' ? { ...project.pvModusVorgabe } : undefined;
+      if (typeof window.grundrissRestore === 'function') window.grundrissRestore(project.grundrissPruefung || null);
       if (typeof window.pvRestoreState === 'function') window.pvRestoreState(project.pvAnalyse || null);
       if (typeof window.blackoutRestoreState === 'function') window.blackoutRestoreState(project.blackout || null);
       if (typeof window.raRestoreState === 'function') window.raRestoreState(project.resilienzAbfrage || null);

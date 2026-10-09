@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dachAusGrundriss } from '../src/lib/dach-grundriss.js';
+import { dachAusGrundriss, dachAusGrundrissGebaeude } from '../src/lib/dach-grundriss.js';
 
 const summeGrund = d => d.flaechen.reduce((s, f) => s + f.grundM2, 0);
 const nachAz = d => [...new Set(d.flaechen.map(f => f.azimut))].sort((a, b) => a - b);
@@ -74,5 +74,34 @@ describe('dachAusGrundriss', () => {
   });
   it('schräge Kanten → null (bisheriges Modell bleibt)', () => {
     expect(dachAusGrundriss([[0, 0], [10, 0], [14, 6], [0, 6]], { form: 'sattel' })).toBeNull();
+  });
+});
+
+describe('dachAusGrundrissGebaeude', () => {
+  // L-Form 40 × 12 m + 12 × 30 m Flügel bei 49° N, 4 Geschosse
+  const M = 111320, LAT = 49, LNG = 8.4, KX = M * Math.cos(LAT * Math.PI / 180);
+  const ll = ([x, y]) => ({ lat: LAT + y / M, lng: LNG + x / KX });
+  const L = [[0, 0], [40, 0], [40, 12], [12, 12], [12, 30], [0, 30]].map(ll);
+
+  it('verwinkelter Grundriss → mehrere Flügel, First deutlich niedriger als ein Dach über alles', () => {
+    const d = dachAusGrundrissGebaeude({ polygon: L, dachform: 'sattel', stockwerke: 4 });
+    expect(d.fluegel).toBeGreaterThanOrEqual(2);
+    expect(d.lod2.quelle).toBe('grundriss');
+    expect(d.lod2.traufeM).toBe(12);
+    // Flügel 12 m tief bei 35°: First ≈ Traufe + 6 · tan 35° ≈ 16,2 m
+    expect(d.lod2.firstM).toBeGreaterThan(15.5);
+    expect(d.lod2.firstM).toBeLessThan(17);
+    expect(d.dachFlaechen.length).toBeGreaterThanOrEqual(4);
+    expect(d.dachFlaechen[0].punkte[0]).toHaveLength(3);   // [lat, lng, h]
+  });
+  it('Neigung und Dachform des Gebäudes gelten, Flachdach ohne First', () => {
+    const steil = dachAusGrundrissGebaeude({ polygon: L, dachform: 'sattel', dachNeigung: 45, stockwerke: 4 });
+    expect(steil.lod2.firstM).toBeCloseTo(18, 0);
+    const flach = dachAusGrundrissGebaeude({ polygon: L, dachform: 'flach', stockwerke: 4 });
+    expect(flach.lod2.firstM).toBeCloseTo(12, 5);
+  });
+  it('schräge Kanten → null (bisheriges Ein-Dach-Modell)', () => {
+    const schief = [[0, 0], [30, 0], [40, 15], [0, 20]].map(ll);
+    expect(dachAusGrundrissGebaeude({ polygon: schief, dachform: 'sattel', stockwerke: 2 })).toBeNull();
   });
 });

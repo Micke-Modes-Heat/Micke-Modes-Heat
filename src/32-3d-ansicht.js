@@ -27,6 +27,7 @@ import {
 import { d3dNetzLinien, d3dStationen, D3D_STATIONEN } from './lib/netz-3d.js';
 import { firstPeilungGrad } from './lib/gebaeude-geometrie.js';
 import { baumOverpassLaden, baeumeAusOverpass, baumDreiecke, BAUM_FARBEN } from './lib/baeume-3d.js';
+import { dachAusGrundrissGebaeude } from './lib/dach-grundriss.js';
 
 const D3D_MAPLIBRE_VERSION = '5.24.0';   // nur für den CDN-Fallback im Dev-Modus
 const D3D_NEIGUNG = 55;
@@ -34,7 +35,7 @@ const D3D_AUSWAHL = '#ff1493';           // wie die Auswahl auf der Arbeitskarte
 const D3D_DACHFARBE = '#a4553f';         // Ziegel — hebt die PV-Module ab
 const D3D_MODULFARBE = '#1f2d78';        // wie das Modulraster der Arbeitskarte
 const D3D_GLAS = 0.35;                   // Deckkraft bei „Gebäude durchsichtig"
-const D3D_DACH_MAX_HINDERNIS = 8;        // m Dachhöhe eines Nachbargebäudes ohne LoD2 (Verschattung)
+const D3D_DACH_MAX_HINDERNIS = 8;        // m Dachhöhe ohne LoD2 und ohne Flügel-Modell (schräger Grundriss)
 // Module nach Verschattung (Jahresfaktor, 40-baeume.js)
 const D3D_SCHATTEN = [
   { ab: 0.95, farbe: '#43a047', label: 'Verschattung unter 5 %' },
@@ -207,6 +208,32 @@ function d3dLod2Geometrie(g, rahmen, traufe) {
   return { dach, wand, ebeneBei };
 }
 
+/* ── Flügel-Modell für Gebäude ohne Dachflächen ───────────────────────────────
+ * Ohne LoD2/berechnete Dachflächen legt das Ebenenmodell EIN Satteldach über den
+ * ganzen Grundriss — bei verwinkelten Gebäuden (L, U, Kamm) ein Riesendach. Für
+ * Darstellung und Verschattung nimmt die Ansicht dann das Flügel-Modell
+ * (lib/dach-grundriss), ohne die Gebäudedaten zu ändern. Zwischengespeichert je
+ * Grundriss und Dachangaben. */
+const _fluegelCache = new Map();
+
+/** Gebäude mit Flügel-Dachflächen (Kopie) oder null (flach, schon Dachflächen, schräger Grundriss). */
+export function d3dFluegelGebaeude(g) {
+  if (!g || g.dachFlaechen?.length || !['sattel', 'walm'].includes(g.dachform || 'sattel')) return null;
+  const p = g.polygon;
+  if (!Array.isArray(p) || p.length < 4 || typeof p[0]?.lat !== 'number') return null;
+  const sig = [p.length, p[0].lat, p[0].lng, p[p.length >> 1].lat, p[p.length >> 1].lng, g.dachform, g.dachNeigung,
+    g.dachAutoAzimut ? '' : g.dachAzimut, g.stockwerke].join('|');
+  let d = _fluegelCache.get(sig);
+  if (d === undefined) {
+    try { d = dachAusGrundrissGebaeude(g); } catch (e) { d = null; }
+    // Ein einzelner Flügel ist das bisherige Satteldach — dafür kein Umweg
+    if (d && d.fluegel < 2) d = null;
+    if (_fluegelCache.size > 2000) _fluegelCache.clear();
+    _fluegelCache.set(sig, d);
+  }
+  return d ? { ...g, dachFlaechen: d.dachFlaechen, dachLod2: d.lod2 } : null;
+}
+
 /**
  * Gebäude als 3D-Modell für Rechnungen außerhalb der Ansicht (Verschattung,
  * 40-baeume.js) — dieselbe Geometrie, die die Ansicht zeichnet: Wand bis zur
@@ -252,11 +279,14 @@ export function d3dGebaeudeModell(g, modulIdx = []) {
       if (q) module.push({ idx, ecken: q.map(([x, y, z]) => [...rahmen.nachLL(x, y), z]) });
     }
   }
-  // Als Hindernis: Traufe + halbe Dachhöhe. Das Ebenenmodell legt ein Satteldach
-  // über den GANZEN Grundriss — bei großen, verwinkelten Gebäuden (Schulen,
-  // Institute) entstehen so Firste von 15–20 m, die es real nicht gibt (dort
-  // sind es Flügel mit eigenen Dächern). Ohne LoD2 daher höchstens 8 m Dachhöhe.
-  const dachH = lod2 ? first - traufe : Math.min(first - traufe, D3D_DACH_MAX_HINDERNIS);
+  // Als Hindernis: Traufe + halbe Dachhöhe. Ohne Dachflächen kommt die Firsthöhe
+  // bei verwinkelten Grundrissen aus dem Flügel-Modell (statt eines Riesendachs
+  // über den ganzen Grundriss); greift es nicht (schräge Kanten), höchstens 8 m.
+  let dachH = first - traufe;
+  if (!lod2 && form !== 'flach') {
+    const fg = d3dFluegelGebaeude(g);
+    dachH = fg ? Math.max(0, fg.dachLod2.firstM - fg.dachLod2.traufeM) : Math.min(dachH, D3D_DACH_MAX_HINDERNIS);
+  }
   return { ring, traufe, first, hoehe: traufe + dachH / 2, module };
 }
 
@@ -324,8 +354,12 @@ function d3dSzeneBauen(daten) {
     const zeigen = _d3d.daecher === 'alle' || (_d3d.daecher === 'angaben' && d3dHatDachangabe(g));
     // Höfe (Löcher) würde das Ebenenmodell überdachen → dort flach lassen
     const form = zeigen && ringe.length === 1 ? echteForm : 'flach';
-    // LoD2-Dachflächen vorhanden → das echte Dach statt des Ebenenmodells
-    const lod2 = zeigen && g.dachFlaechen?.length ? d3dLod2Geometrie(g, rahmen, traufe) : null;
+    // LoD2-Dachflächen vorhanden → das echte Dach statt des Ebenenmodells. Verwinkelte
+    // Grundrisse ohne Dachflächen als Flügel — aber nur unbelegt: belegte Dächer zeigen
+    // das Dach, auf dem die Module platziert sind.
+    const belegt = (g.pvFlaechen || []).some(fl => fl.typ === 'belegung');
+    const fluegel = zeigen && form !== 'flach' && !belegt ? d3dFluegelGebaeude(g) : null;
+    const lod2 = zeigen && (g.dachFlaechen?.length || fluegel) ? d3dLod2Geometrie(fluegel || g, rahmen, traufe) : null;
     const ebenen = lod2 ? [{ a: 0, b: 0, c: traufe }] : d3dDachEbenen(form, pts, {
       azimut: d3dAzimut(g, ring), neigung: g.dachNeigung, traufe,
       first: g.pvRidgeOverride ? rahmen.nachXY(g.pvRidgeOverride.lng, g.pvRidgeOverride.lat) : null,

@@ -683,6 +683,65 @@ function _verursacherName(key) {
     : '🌳 Baum (gelöscht)';
 }
 
+/** Verursacher als reiner Text (Gutachten). */
+function _verursacherText(key) {
+  const id = key.slice(1);
+  if (key[0] === 'g') {
+    const g = (window.gebaeude || []).find(x => String(x.id) === id);
+    return g ? (g.name || 'Gebäude ' + g.id) : 'Nachbargebäude';
+  }
+  const b = _baeume.find(x => String(x.id) === id);
+  return b ? `${ARTEN[b.art]} (${_fmt(b.hoehe, b.hoehe < 10 ? 1 : 0)} m${b.hoeheQuelle === 'vorgabe' ? ', geschätzt' : ''})` : 'Baum';
+}
+
+/**
+ * Zusammenfassung für das Gutachten (17-gutachten-grafik.js, Kapitel 5.4.2).
+ * Alle Energien in MWh/a aus wirksamer Leistung × spezifischem Ertrag — dieselbe
+ * Schätzung wie die Empfehlung im Panel. null, wenn kein Dach gerechnet ist.
+ */
+export function verschattungGutachten() {
+  const mitPv = _mitPv();
+  const st = { aktuell: 0, veraltet: 0, fehlt: 0 };
+  for (const g of mitPv) st[_status(g)]++;
+  if (!st.aktuell && !st.veraltet) return null;
+  const spez = _spez();
+  let ertrag = 0, verlust = 0, sB = 0, sG = 0;
+  for (const g of mitPv) {
+    const e = _eintrag(g);
+    if (!e) continue;
+    const ertragG = (calcGebKwpKorr(g) || 0) / (pvVerschattungFaktor(g) || 1) * spez / 1000;
+    const verlustG = ertragG * (1 - e.faktor);
+    ertrag += ertragG; verlust += verlustG;
+    // Aufteilung nach Verursachern (additiv) auf den Verlust des Dachs hochrechnen
+    let b = 0, gg = 0;
+    for (const v of e.verursacher || []) { if (v.key[0] === 'b') b += v.anteil; else gg += v.anteil; }
+    if (b + gg > 0) { sB += verlustG * b / (b + gg); sG += verlustG * gg / (b + gg); }
+  }
+  const flaechen = _auswertung().map(a => ({
+    gebaeude: a.g.name || 'Gebäude ' + a.g.id, flaeche: a.gr.label, module: a.gr.module, kwp: a.kwp,
+    faktor: a.gr.faktor, bewertung: a.bew,
+    ursache: a.e.verursacher?.[0] ? _verursacherText(a.e.verursacher[0].key) : '',
+    ursacheTyp: a.e.verursacher?.[0]?.key?.[0] === 'b' ? 'baum' : a.e.verursacher?.[0] ? 'gebaeude' : '',
+  })).sort((x, y) => x.faktor - y.faktor);
+  const n = { ok: 0, pruefen: 0, nicht: 0 };
+  for (const f of flaechen) n[f.bewertung]++;
+  return {
+    an: _an,
+    daecher: mitPv.length, status: st,
+    baeume: {
+      gesamt: _baeume.length,
+      osm: _baeume.filter(b => b.quelle === 'osm').length,
+      eigen: _baeume.filter(b => b.quelle !== 'osm').length,
+      geschaetzt: _baeume.filter(b => b.hoeheQuelle === 'vorgabe').length,
+      geschaetztVerursacher: _geschaetzteVerursacher().length,
+    },
+    ertragMwh: ertrag, verlustMwh: verlust, verlustBaeumeMwh: sB, verlustGebaeudeMwh: sG,
+    spez, schwellen: { ..._schwellen }, bewertung: n, flaechen,
+    ueberlappungen: mitPv.filter(g => _eintrag(g)?.ueberlappungen?.length).length,
+    proben: PROBEN_JE_FLAECHE,
+  };
+}
+
 /** Verursacher anklicken: Gebäude bzw. Baum auf der Karte zeigen (Baum: im Bearbeiten-Modus mit Popup). */
 export function baumVerursacherZeigen(key) {
   const id = key.slice(1);
@@ -716,6 +775,9 @@ export function baumGeschaetzteZeigen() {
   showHint(`${liste.length} Bäume mit geschätzter Höhe verschatten PV-Dächer merklich — anklicken und Höhe eintragen.`, 6000);
 }
 
+/** Empfehlungsschwellen (36: Option „stark verschattete Flächen auslassen“). */
+export function verschattungSchwellen() { return { ..._schwellen }; }
+
 export function baumSchwelle(feld, wert) {
   const v = _klemmen(parseFloat(wert) || 0, 1, 90);
   if (feld === 'pruefen') _schwellen.pruefen = Math.min(v, _schwellen.nicht);
@@ -730,28 +792,108 @@ export function baumZeileToggle(gId) {
   baumPanelRender();
 }
 
-/** Satteldachhälfte als Sperrfläche (an derselben Firstlinie wie die Modulplatzierung). */
-function _haelfteSperren(g, vorne) {
+/** Polygone der Satteldachhälfte (an derselben Firstlinie wie die Modulplatzierung). */
+function _haelftePolygone(g, vorne) {
   const bel = (g.pvFlaechen || []).filter(f => f.typ !== 'sperr' && f.polygon && f.polygon.length >= 3);
-  if (!bel.length) return 0;
+  if (!bel.length) return [];
   const alle = bel.flatMap(f => f.polygon);
   const maxLat = Math.max(...alle.map(p => p.lat)), minLat = Math.min(...alle.map(p => p.lat));
   const cosL = Math.cos((maxLat + minLat) / 2 * Math.PI / 180);
   const A = getGebPvModules(g).splitAzimut ?? g.dachAzimut ?? 180;
   const C = g.pvRidgeOverride || _firstMitteLL(alle, A);
-  let n = 0;
-  for (const f of bel) {
-    const h = _clipPolyHalfPlane(f.polygon, C, A, cosL, vorne);
-    if (h.length < 3) continue;
+  return bel.map(f => _clipPolyHalfPlane(f.polygon, C, A, cosL, vorne)).filter(h => h.length >= 3)
+    .map(h => h.map(p => ({ lat: p.lat, lng: p.lng })));
+}
+
+/** Satteldachhälfte als Sperrfläche anlegen. @returns {number[]} ids der Sperrflächen */
+function _haelfteSperren(g, vorne) {
+  const ids = [];
+  for (const poly of _haelftePolygone(g, vorne)) {
     window._gebPvFlCounter = (window._gebPvFlCounter || 0) + 1;
     const fl = { id: window._gebPvFlCounter, typ: 'sperr', auto: 'schatten',
-      polygon: h.map(p => ({ lat: p.lat, lng: p.lng })), flaeche: polygonAreaM2(h) || 0, layer: null, svgLayer: null };
+      polygon: poly, flaeche: polygonAreaM2(poly) || 0, layer: null, svgLayer: null };
     g.pvFlaechen.push(fl);
     attachGebPvLayer(g, fl);
-    n++;
+    ids.push(fl.id);
   }
-  redrawGebPvModules(g);
-  return n;
+  if (ids.length) redrawGebPvModules(g);
+  return ids;
+}
+
+/** Dachflächen eines Ergebnisses mit „nicht belegen". */
+function _schlechteGruppen(e) {
+  return Object.entries(e?.gruppen || {}).filter(([, gr]) => _bewertung(gr.faktor) === 'nicht').map(([k]) => k);
+}
+
+/* ── Für die automatische Belegung (36) ─────────────────────────────────────
+ * Vorschau: Verschattung auf der Rechenkopie aus 25 pvmProbe, stark verschattete
+ * Dachflächen bzw. Satteldachseiten aus der Kopie nehmen (die Kopie ist auch
+ * Grundlage eines Belegungsstands). Übernehmen: dasselbe auf dem echten Dach,
+ * im selben Strg+Z-Schritt wie die Belegung (25 pvmStapelBelegen nachBelegen). */
+
+/** Hindernisse einmal je Lauf. */
+export function verschattungKontext() { return _kontext(); }
+
+/**
+ * Probebelegung prüfen und kürzen.
+ * @returns {null | {faktor:number, ganz:boolean, ausgelassen:string[], verlustPct:number}}
+ *   ganz = das ganze Dach ist zu stark verschattet; faktor = nach dem Kürzen
+ */
+export function verschattungProbe(t, k) {
+  const e = _berechnen(t, k);
+  if (!e) return null;
+  _speichern(t, e);
+  const schlecht = _schlechteGruppen(e);
+  const verlustPct = (1 - e.faktor) * 100;
+  if (!schlecht.length) return { faktor: e.faktor, ganz: false, ausgelassen: [], verlustPct };
+  if (schlecht.length >= Object.keys(e.gruppen || {}).length) return { faktor: e.faktor, ganz: true, ausgelassen: schlecht, verlustPct };
+  for (const key of schlecht) {
+    if (key.startsWith('fl')) { const id = +key.slice(2); t.pvFlaechen = t.pvFlaechen.filter(f => f.id !== id); }
+    else if (key === 'vorne' || key === 'hinten') {
+      for (const poly of _haelftePolygone(t, key === 'vorne')) {
+        t.pvFlaechen = [...t.pvFlaechen, { id: -100 - t.pvFlaechen.length, typ: 'sperr', auto: 'schatten', polygon: poly, flaeche: polygonAreaM2(poly) || 0 }];
+      }
+    }
+  }
+  t._pvModCache = null; t._pvModSig = null;
+  const e2 = _berechnen(t, k);
+  if (e2) _speichern(t, e2);
+  return { faktor: e2?.faktor ?? e.faktor, ganz: false, ausgelassen: schlecht, verlustPct };
+}
+
+/**
+ * Nach dem Belegen eines echten Dachs: stark verschattete Flächen entfernen bzw.
+ * Satteldachseiten sperren, Ergebnis speichern.
+ * @returns {number[]} ids neu angelegter Sperrflächen (für den Strg+Z-Schritt)
+ */
+export function verschattungNachBelegen(g, k) {
+  const e = _berechnen(g, k);
+  if (!e) return [];
+  _speichern(g, e);
+  const schlecht = _schlechteGruppen(e);
+  if (!schlecht.length) return [];
+  const ganz = schlecht.length >= Object.keys(e.gruppen || {}).length;
+  const ids = [];
+  for (const key of ganz ? [] : schlecht) {
+    if (key.startsWith('fl')) window.removeGebPvFlaeche?.(g.id, +key.slice(2));
+    else if (key === 'vorne' || key === 'hinten') ids.push(..._haelfteSperren(g, key === 'vorne'));
+  }
+  if (ganz) for (const fl of (g.pvFlaechen || []).filter(f => f.typ === 'belegung')) window.removeGebPvFlaeche?.(g.id, fl.id);
+  if (_hasBelegung(g)) { const e2 = _berechnen(g, k); if (e2) _speichern(g, e2); }
+  return ids;
+}
+
+/** Hinweis im Panel: belegte, verwinkelte Dächer mit nur einem Satteldach. */
+export function baumFluegelUmstellen() {
+  const liste = window.dachGrundrissKandidatenBelegt?.() || [];
+  if (!liste.length) return;
+  if (!confirm(`${liste.length} belegte Gebäude mit verwinkeltem Grundriss in Flügel zerlegen und neu belegen?\n\n`
+    + 'Jeder Flügel bekommt ein eigenes Dach (Dachform und Neigung wie eingestellt); die Belegung wird je Dachfläche neu angelegt, '
+    + 'eigene Sperrflächen bleiben. Strg+Z im PV-Modus holt die alte Belegung zurück.')) return;
+  const r = window.dachGrundrissFuerGebaeude?.(liste.map(g => g.id));
+  if (!r) return;
+  showHint(`📐 ${r.gebaeude} Gebäude in Flügel zerlegt · ${r.anzahl} Dächer neu belegt (Σ ${_fmt(r.summe)} kWp) — Verschattung wird nachgerechnet.`, 7000);
+  verschattungBerechnen(true);
 }
 
 /** Alle als „nicht belegen" bewerteten Dachflächen aus der Belegung nehmen (ein Planungsschritt). */
@@ -834,7 +976,19 @@ function _empfehlungHtml(auswertung) {
     ${ueber.length ? `<div style="margin-top:5px;padding:4px 6px;border:1px solid ${ROT}55;border-radius:4px;font-size:9.5px;line-height:1.4;"
         title="${escHtml(ueber.map(g => g.name || 'Gebäude ' + g.id).join(', '))}">
         ⚠ Bei <b>${ueber.length}</b> Dächern überlappt der Grundriss mit einem Nachbargebäude (Gebäudeteile oder Doppelerfassung).
-        Das Nachbargebäude zählt dort nicht als Schatten — Gebäudedaten prüfen.</div>` : ''}`;
+        Das Nachbargebäude zählt dort nicht als Schatten — <a style="color:${ROT};cursor:pointer;text-decoration:underline;" data-click="grundrissPanelToggle()">⧉ Grundrisse prüfen</a>.</div>` : ''}`;
+}
+
+/** Belegte, verwinkelte Dächer, die noch mit einem Satteldach über den ganzen Grundriss rechnen. */
+function _fluegelHinweisHtml() {
+  const liste = window.dachGrundrissKandidatenBelegt?.() || [];
+  if (!liste.length) return '';
+  return `<div style="margin-top:6px;padding:4px 6px;border:1px solid ${GELB}55;border-radius:4px;font-size:9.5px;line-height:1.4;"
+      title="${escHtml(liste.map(g => g.name || 'Gebäude ' + g.id).join(', '))}">
+      ⚠ <b>${liste.length}</b> belegte Dächer mit verwinkeltem Grundriss rechnen mit <b>einem</b> Satteldach über den ganzen Grundriss —
+      Ausrichtung, Modulhöhe und Verschattung sind dort ungenau.
+      <button class="btn-xs" style="width:100%;margin-top:4px;border-color:${GELB};color:${GELB};" data-click="baumFluegelUmstellen()"
+        title="Jeder Flügel bekommt ein eigenes Dach; die Belegung wird je Dachfläche neu angelegt (Strg+Z im PV-Modus holt die alte zurück)">📐 In Flügel zerlegen und neu belegen</button></div>`;
 }
 
 function _zeileHtml(g, e, s) {
@@ -936,6 +1090,7 @@ function _html() {
         ${mitPv.length ? `<div style="font-size:9.5px;color:var(--muted);margin-top:3px;">
           ${st.aktuell} aktuell${st.veraltet ? ` · <span style="color:${GELB};">${st.veraltet} veraltet</span>` : ''}${st.fehlt ? ` · ${st.fehlt} nicht gerechnet` : ''}</div>`
           : '<div style="font-size:9.5px;color:var(--muted);margin-top:3px;">Noch keine PV-Dächer belegt.</div>'}
+        ${_fluegelHinweisHtml()}
         ${_empfehlungHtml(auswertung)}
         ${zeilen ? `<div style="max-height:220px;overflow-y:auto;margin-top:6px;padding:3px 6px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">${zeilen}</div>` : ''}
         <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.45;">

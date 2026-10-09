@@ -8316,6 +8316,91 @@ function ggRenderPvAbgrenzungText(cfg, T = GG_THEME) {
   ], T);
 }
 
+/* ── 5.4.2 Verschattung der Dachflächen (40-baeume.js) ──────────────────────
+ * Methode, Ergebnis, Wirkung auf die Auslegungen und Unsicherheiten. Daten aus
+ * window.verschattungGutachten() — derselbe Stand wie im Panel „Bäume &
+ * Verschattung". Erscheint nur, wenn mindestens ein Dach gerechnet ist. */
+const ggVs = () => (typeof window.verschattungGutachten === 'function' ? window.verschattungGutachten() : null);
+const GG_VS_BEWERTUNG = { ok: 'belegen', pruefen: 'prüfen', nicht: 'nicht belegen' };
+/** Sichtbar, sobald ein Dach gerechnet ist — sonst der Grund für den Editor. */
+const ggVsSichtbar = () => (ggVs() ? true : 'Verschattung nicht gerechnet (PV-Modus › Bäume & Verschattung)');
+/** Tabellenzelle: höchstens zwei Zeilen, Rest gekürzt. */
+function ggVsZelle(text, maxZ) {
+  // überlange Einzelwörter (z. B. Institutsnamen) hart kürzen, sonst laufen sie in die Nachbarspalte
+  const z = ggResUmbruch(text, maxZ).map(t => (t.length > maxZ ? t.slice(0, maxZ - 1) + '…' : t));
+  return z.length > 2 ? [z[0], z[1].slice(0, maxZ - 1) + '…'] : z;
+}
+
+function ggRenderPvVerschattungText(cfg, T = GG_THEME) {
+  void cfg;
+  const d = ggVs();
+  if (!d) {
+    return ggTextBlatt([`Eine Untersuchung der Verschattung liegt noch nicht vor ${ggTextFeld('', 'PV-Modus › Bäume & Verschattung › Verschattung berechnen')}.`], T);
+  }
+  const b = d.baeume, s = d.schwellen, n = d.bewertung;
+  const pct = (x, dez = 1) => ggNum(x, dez).replace(/^-0$/, '0');
+  const absaetze = [];
+
+  // 1 — Methode und Datenbasis
+  const baumQuelle = b.gesamt
+    ? `Grundlage sind ${ggNum(b.gesamt)} Bäume im Umfeld der Gebäude`
+      + (b.osm && b.eigen ? `, davon ${ggNum(b.osm)} aus OpenStreetMap übernommen und ${ggNum(b.eigen)} vor Ort erfasst bzw. ergänzt`
+        : b.osm ? ', übernommen aus OpenStreetMap' : ', vor Ort erfasst')
+      + (b.geschaetzt
+        ? `. Für ${ggNum(b.geschaetzt)} Bäume liegt keine Höhenangabe vor; für sie wurden Vorgabewerte angesetzt `
+          + `(Einzelbaum 12 m, Baumreihe 11 m, Wald 20 m, Obstbaum 6 m, jeweils mit geringer Streuung).`
+        : ', jeweils mit Höhe und Kronendurchmesser.')
+    : 'Im Umfeld der Gebäude sind keine Bäume erfasst; untersucht wurde daher nur die Verschattung durch Nachbargebäude.';
+  absaetze.push(`Die belegten Dachflächen wurden auf Verschattung durch Bäume und benachbarte Gebäude untersucht. ${baumQuelle} `
+    + `Die Gebäudehöhen ergeben sich aus der Geschosszahl (3 m je Geschoss) bzw. – soweit vorhanden – aus dem amtlichen 3D-Gebäudemodell (LoD2).`);
+  absaetze.push(`Für jede Dachfläche wird an bis zu ${ggNum(d.proben)} gleichmäßig verteilten Modulpositionen geprüft, ob der Weg zur Sonne `
+    + `bzw. zum Himmel frei ist: für die direkte Strahlung entlang der Sonnenbahn am 15. jedes Monats in halbstündlichen Schritten, `
+    + `für die diffuse Strahlung über den gesamten sichtbaren Himmel (isotrope Verteilung). Direkt- und Diffusanteile werden mit `
+    + `Monatswerten der Globalstrahlung gewichtet ${ggTextFeld('', 'Quelle Strahlungsdaten, z. B. DWD-Testreferenzjahr des Standorts')}; `
+    + `die Bodenreflexion bleibt unverschattet. Baumkronen werden als teilweise lichtdurchlässig angesetzt: Laubbäume lassen im belaubten Zustand `
+    + `(Mai bis September) etwa 20 %, unbelaubt etwa 60 % der Strahlung durch, Nadelbäume ganzjährig etwa 15 %. Nachbargebäude gelten als `
+    + `undurchlässige Baukörper bis zur Traufe zuzüglich der halben Dachhöhe; berücksichtigt sind alle Hindernisse im Umkreis von 200 m. `
+    + `Ergebnis ist je Dachfläche ein Jahresfaktor, um den der Ertrag gegenüber einer unverschatteten Fläche gleicher Ausrichtung sinkt.`);
+
+  // 2 — Ergebnis
+  const ursache = d.verlustBaeumeMwh + d.verlustGebaeudeMwh > 0
+    ? ` Davon gehen rund ${ggNum(d.verlustBaeumeMwh, d.verlustBaeumeMwh < 10 ? 1 : 0)} MWh/a auf Bäume und rund `
+      + `${ggNum(d.verlustGebaeudeMwh, d.verlustGebaeudeMwh < 10 ? 1 : 0)} MWh/a auf Nachbargebäude zurück.`
+    : '';
+  const anteil = d.ertragMwh > 0 ? d.verlustMwh / d.ertragMwh * 100 : 0;
+  absaetze.push(`Über alle ${ggNum(d.status.aktuell + d.status.veraltet)} untersuchten Dächer mindert die Verschattung den rechnerischen `
+    + `Jahresertrag um rund ${ggNum(d.verlustMwh, d.verlustMwh < 10 ? 1 : 0)} MWh/a; das entspricht ${pct(anteil)} % des Ertrags der belegten `
+    + `Dachflächen bei einem spezifischen Ertrag von ${ggNum(d.spez)} kWh/kWp·a.${ursache}`);
+  absaetze.push(`Für die Belegung werden die Dachflächen nach ihrem Verschattungsverlust eingeordnet: ${ggNum(n.ok)} `
+    + `${n.ok === 1 ? 'Fläche verliert' : 'Flächen verlieren'} weniger als ${ggNum(s.pruefen)} % und ${n.ok === 1 ? 'ist' : 'sind'} uneingeschränkt geeignet. `
+    + (n.pruefen
+      ? `${ggNum(n.pruefen)} ${n.pruefen === 1 ? 'Fläche liegt' : 'Flächen liegen'} zwischen ${ggNum(s.pruefen)} und ${ggNum(s.nicht)} %; `
+        + `${n.pruefen === 1 ? 'sie ist' : 'sie sind'} im Zuge der Ausführungsplanung zu prüfen, etwa durch Aufmaß der verschattenden Bäume, `
+        + `modulweise Leistungsoptimierung oder eine angepasste Modulanordnung. `
+      : '')
+    + (n.nicht
+      ? `${ggNum(n.nicht)} ${n.nicht === 1 ? 'Fläche verliert' : 'Flächen verlieren'} ${ggNum(s.nicht)} % oder mehr; für sie wird keine Belegung empfohlen.`
+      : `Keine Fläche erreicht die Schwelle von ${ggNum(s.nicht)} %, ab der eine Belegung nicht empfohlen wird.`)
+    + (n.pruefen + n.nicht ? ' Die betroffenen Flächen sind in der folgenden Tabelle aufgeführt.' : ''));
+
+  // 3 — Wirkung auf die Auslegungen
+  absaetze.push(d.an
+    ? 'Die Verschattungsabschläge sind in den Leistungs- und Ertragsangaben dieses Kapitels enthalten: Die angegebenen Leistungen '
+      + 'sind wirksame Leistungen, die Ausrichtung, Neigung und Verschattung der jeweiligen Dachfläche berücksichtigen.'
+    : `Die Verschattung ist in den Leistungs- und Ertragsangaben dieses Kapitels nicht berücksichtigt; diese stellen insoweit Obergrenzen dar. `
+      + `Der Minderertrag von rund ${ggNum(d.verlustMwh, d.verlustMwh < 10 ? 1 : 0)} MWh/a ist bei der Bewertung zu beachten.`);
+
+  // 4 — Unsicherheiten
+  absaetze.push((b.geschaetztVerursacher
+      ? `Von den Bäumen, die Dachflächen merklich verschatten, ${b.geschaetztVerursacher === 1 ? 'ist einer' : `sind ${ggNum(b.geschaetztVerursacher)}`} nur mit geschätzter Höhe angesetzt. `
+        + 'Ihre Höhen und Kronendurchmesser sind vor der Ausführung aufzunehmen; das Ergebnis kann sich dadurch in beide Richtungen ändern. '
+      : '')
+    + 'Nicht berücksichtigt sind das künftige Wachstum der Bäume, Rückschnitt oder Fällungen, künftige Bebauung sowie Verschattung durch '
+    + 'Dachaufbauten (Schornsteine, Lüftungsanlagen, Attiken) und die Eigenverschattung aufgeständerter Modulreihen; letztere ist über den '
+    + 'Reihenabstand (Flächenbelegungsgrad) pauschal abgebildet. Die Untersuchung ersetzt keine Verschattungsanalyse im Rahmen der Ausführungsplanung.');
+  return ggTextBlatt(absaetze, T);
+}
+
 /** Figur „Einlinienschema Bestandsnetz" — quelle 'variante' oder 'eigene' (übernommene Belegung). */
 function ggEinlinienFigur(id, reihe, quelle, titel, hinweis) {
   return {
@@ -8670,6 +8755,66 @@ function ggPvFiguren() {
       + 'Dachbelegungen, die in der PV-Analyse den Haken „im Gutachten zeigen“ haben. '
       + 'Steht vor der Herleitungs-Abbildung. Der Satz zur 100-kWp-Schwelle gibt einen EEG-Stand wieder — vor Abgabe prüfen.',
       cfg => ggRenderPvGrundlagenText(cfg)),
+    // ── Verschattung der Dachflächen (40-baeume.js) — nur, wenn gerechnet ──
+    {
+      ...pvText('pv-verschattung-text', 12, 'Gutachtentext: Verschattung der Dachflächen',
+        'Methode (Bäume aus OSM/vor Ort, Gebäudehöhen, Sonnenbahn und Himmel, Lichtdurchlässigkeit der Kronen), Ertragsverlust '
+        + 'gesamt und nach Bäumen/Gebäuden, Einordnung der Flächen (belegen/prüfen/nicht belegen) und ob der Abschlag in den Zahlen '
+        + 'des Kapitels steckt. Herkunft: PV-Modus › Bäume & Verschattung. Offene Lücke: Quelle der Strahlungsdaten — das Tool '
+        + 'rechnet mit Richtwerten für Mitte Deutschland (lib/verschattung.js VS_MONATE), reale Quelle wäre z. B. das '
+        + 'DWD-Testreferenzjahr des Standorts. Die Lichtdurchlässigkeit der Kronen sind Literaturspannen, vor Abgabe prüfen.',
+        cfg => ggRenderPvVerschattungText(cfg)),
+      pvText: false,   // Werte kommen nicht aus der PV-Analyse, sondern aus dem Panel „Bäume & Verschattung“
+      sichtbar: ggVsSichtbar,
+    },
+    {
+      id: 'pv-verschattung-tabelle',
+      autoSync: true,
+      reihe: 14,
+      kapitel: GG_PV_KAPITEL,
+      titel: 'Verschattete Dachflächen',
+      datei: 'pv-verschattung-tabelle',
+      sichtbar: ggVsSichtbar,
+      hinweis: 'Alle Dachflächen, deren Verschattungsverlust die Prüfschwelle erreicht (Schwellen im Panel „Bäume & Verschattung"), '
+             + 'schlechteste zuerst — mit Hauptursache und Empfehlung. Herkunft: PV-Modus › Bäume & Verschattung › Verschattung berechnen.',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel: 'Verschattete Dachflächen',
+        leer: 'Keine Dachfläche erreicht die Prüfschwelle — oder die Verschattung ist noch nicht gerechnet.',
+        spalten: [
+          { label: 'Gebäude', weight: 2.1 },
+          { label: 'Dachfläche', weight: 1.7, align: 'left' },
+          { label: 'Leistung', weight: 0.9 },
+          { label: 'Verlust', weight: 0.8 },
+          { label: 'Hauptursache', weight: 2.0, align: 'left' },
+          { label: 'Empfehlung', weight: 1.1, align: 'left' },
+        ],
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const d = ggVs();
+        if (!d) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Verschattung noch nicht gerechnet (PV-Modus › Bäume & Verschattung).'; }
+        const MAX = 25;
+        const betroffen = d.flaechen.filter(f => f.bewertung !== 'ok');
+        const farbe = { pruefen: '#f9a825', nicht: '#e53935' };
+        cfg.zeilen = betroffen.slice(0, MAX).map(f => ({
+          werte: [ggVsZelle(f.gebaeude, 26), ggVsZelle(f.flaeche, 22), ggNum(f.kwp, f.kwp < 10 ? 1 : 0) + ' kWp',
+                  '−' + ggNum((1 - f.faktor) * 100) + ' %', f.ursache ? ggVsZelle(f.ursache, 26) : '—', GG_VS_BEWERTUNG[f.bewertung]],
+          akzent: farbe[f.bewertung],
+        }));
+        // Der Tabellen-Renderer setzt die Fußnote einzeilig — kurz halten
+        cfg.fussnote = `Verlust gegenüber unverschatteter Fläche gleicher Ausrichtung · prüfen ab ${ggNum(d.schwellen.pruefen)} %, `
+          + `nicht belegen ab ${ggNum(d.schwellen.nicht)} % · Leistung ohne Verschattungsabschlag`
+          + (betroffen.length > MAX ? ` · ${betroffen.length - MAX} weitere nicht aufgeführt` : '');
+        const warn = [
+          d.status.veraltet && `${d.status.veraltet} Dächer veraltet (Bäume geändert)`,
+          d.status.fehlt && `${d.status.fehlt} Dächer nicht gerechnet`,
+          d.ueberlappungen && `${d.ueberlappungen} Dächer mit überlappendem Grundriss — Gebäudedaten prüfen`,
+        ].filter(Boolean);
+        return (warn.length ? '⚠ ' : '✓ ') + `${betroffen.length} von ${d.flaechen.length} Dachflächen über der Prüfschwelle.`
+          + (warn.length ? ' ' + warn.join(' · ') + ' — im Panel „Verschattung berechnen".' : '');
+      },
+    },
     pvText('pv-energiebilanz-text', 30, 'Gutachtentext: PV-Energiebilanz',
       'Spannweiten von Jahresertrag, Eigenverbrauchsquote und Autarkie sowie die Abregelung am Einspeiselimit. '
       + 'Steht vor Variantentabelle und Energiebilanz-Abbildung.',

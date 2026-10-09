@@ -31,7 +31,7 @@
 
 import { map } from './02b-gebaeude.js';
 import { polygonAreaM2 } from './02c-karte-werkzeuge.js';
-import { _hasBelegung, calcGebKwpKorr, escHtml } from './03c-gebaeude-io.js';
+import { _hasBelegung, calcGebKwp, calcGebKwpKorr, escHtml, getGebPvModules } from './03c-gebaeude-io.js';
 import { ASSETS, TYPE_RANK, deleteAsset } from './13a-assets-core.js';
 import { pvmPlanungsSchrittMerken, pvmProbe, pvmStapelBelegen, pvModusMarkiereKarte, pvModusRender } from './25-pv-modus.js';
 import { normSchicht, SCHICHT } from './lib/schichten.js';
@@ -45,6 +45,7 @@ const GRAU  = '#9e9e9e';
 const GELB  = '#ffd54f';
 const HELLGRUEN = '#c5e1a5';
 const ORANGE = '#ffa726';
+const BRAUN = '#a1887f';
 
 const UMFAENGE = [
   ['alle',    'Alle Dächer'],
@@ -77,6 +78,10 @@ const _ab = {
   vorrang: 'neubau',          // bei 'gestuft': diese Gruppe immer voll
   grenze: 'kabel',            // 'kabel' = Trafo + NS-Kabel · 'trafo' = nur der Trafo begrenzt
   ohneNetzBelegen: false,
+  /** Verschattung prüfen (40-baeume.js): stark verschattete Flächen auslassen, Erträge mit Verschattung reihen */
+  schatten: true,
+  /** verwinkelte Grundrisse ohne Dachflächen in Flügel zerlegen (lib/dach-grundriss) */
+  fluegel: true,
   /** Netzstand: Jahr, bis zu dem geplante Netzänderungen zählen (null = Rechenjahr der Netzaufnahme) */
   netzJahr: null,
   /** Ertüchtigung: 'keiner' (Bestandsnetz) | 'budget' (bis budgetT T€) | 'alle' */
@@ -98,7 +103,7 @@ const _sig = () => JSON.stringify([window.pvModusVorgabe || null, _ab.umfang, _a
   [..._ab.ohneNutzung].sort(), _ab.menge, _ab.menge === 'gestuft' ? _ab.vorrang : null,
   _ab.menge !== 'max' ? _ab.grenze : null,
   _ab.menge !== 'max' ? [_ab.netzJahr, _ab.ausbau, _ab.ausbau === 'budget' ? _ab.budgetT : null] : null,
-  _ab.bereich ? _ab.bereich.toBBoxString() : null]);
+  _ab.bereich ? _ab.bereich.toBBoxString() : null, _ab.schatten, _ab.fluegel]);
 const _vorrangLabel = (w, stich) => w === 'neubau' ? `Neubauten (nach ${stich})` : (VORRANG.find(v => v[0] === w)?.[1] || w);
 
 const _nordSektor = () => window.pvModusVorgabe?.nordSektor ?? 45;
@@ -226,15 +231,35 @@ export async function pvabVorschau() {
   await _naechsterFrame();
   try {
     const vorrangOk = _ab.menge === 'gestuft' ? _umfangFilter(_ab.vorrang, stich) : null;
+    // Verschattung: Hindernisse (Bäume, Gebäude) einmal je Lauf
+    const vsK = _ab.schatten && typeof window.verschattungKontext === 'function' ? window.verschattungKontext() : null;
+    const vsAn = !!window.pvVerschattungAn?.();
     const zeilen = [];
     for (const g of liste) {
-      const p = pvmProbe(g, { mitKopie: true });   // Kopie: Grundlage eines Belegungsstands (38)
+      // Verwinkelter Grundriss ohne Dachflächen → Flügel (Kopie; ins Projekt erst beim Übernehmen)
+      const fg = _ab.fluegel ? window.d3dFluegelGebaeude?.(g) || null : null;
+      const p = pvmProbe(fg || g, { mitKopie: true });   // Kopie: Grundlage eines Belegungsstands (38)
       const vorrang = !!vorrangOk?.(g);
-      if (!p || !(p.kwp > 0)) zeilen.push({ g, vorrang, kwp: 0, kwpKorr: 0, status: 'leer', grund: 'kein Modul passt' });
-      else zeilen.push({ g, vorrang, kwp: p.kwp, kwpKorr: p.kwpKorr, module: p.module, kopie: p.kopie, status: 'voll', grund: '' });
+      if (!p || !(p.kwp > 0)) { zeilen.push({ g, vorrang, kwp: 0, kwpKorr: 0, status: 'leer', grund: 'kein Modul passt' }); continue; }
+      const z = { g, vorrang, kwp: p.kwp, kwpKorr: p.kwpKorr, module: p.module, kopie: p.kopie, status: 'voll', grund: '',
+        fluegel: fg ? { dachFlaechen: fg.dachFlaechen, dachLod2: fg.dachLod2 } : null };
+      if (vsK) {
+        const vs = window.verschattungProbe(p.kopie, vsK);
+        if (vs?.ganz) { z.status = 'schatten'; z.grund = `Verschattung −${_fmt(vs.verlustPct)} %`; }
+        else if (vs) {
+          z.vs = vs;
+          if (vs.ausgelassen.length) {             // Kopie gekürzt → Leistung neu
+            z.kwp = calcGebKwp(p.kopie) || 0; z.kwpKorr = calcGebKwpKorr(p.kopie) || 0; z.module = getGebPvModules(p.kopie).count || 0;
+          }
+          // Reihenfolge „beste Erträge zuerst“: Verschattung zählt mit (bei eingeschaltetem
+          // Schalter steckt sie schon in kwpKorr)
+          z.vsRang = vsAn ? 1 : vs.faktor;
+        }
+      }
+      zeilen.push(z);
     }
     const netz = _ab.menge !== 'max' ? _netzPruefen(zeilen) : null;
-    _ab.vorschau = { zeilen, sig: _sig(), netz };
+    _ab.vorschau = { zeilen, sig: _sig(), netz, annahmen: window.pvmVorgabeText?.() || '' };
     window.hideHint?.();
   } catch (err) {
     console.error(err);
@@ -413,7 +438,7 @@ function _netzPruefen(zeilen) {
       z.status = 'vorrang';
       if (!angebunden) { z.grund = 'nicht ans Stromnetz angebunden — Netzgrenze unbekannt'; continue; }
     } else if (!angebunden) { z.status = 'ohneNetz'; z.grund = 'nicht ans Stromnetz angebunden'; continue; }
-    (z.vorrang ? vorrang : daecher).push({ id: z.g.id, elementId, kwpMax: z.kwp, ertragFaktor: z.kwpKorr / z.kwp, einspFaktor });
+    (z.vorrang ? vorrang : daecher).push({ id: z.g.id, elementId, kwpMax: z.kwp, ertragFaktor: z.kwpKorr / z.kwp * (z.vsRang ?? 1), einspFaktor });
     nachId.set(z.g.id, z);
   }
 
@@ -497,7 +522,7 @@ function _netzPruefen(zeilen) {
   const pg = _pflichtGruppe();
   if (pg && hatTrafo) {
     const gruppe = vorrang.length ? vorrang : daecher;
-    const gZeilen = zeilen.filter(z => z.status !== 'leer' && (_ab.menge !== 'gestuft' || z.vorrang));
+    const gZeilen = zeilen.filter(z => z.status !== 'leer' && z.status !== 'schatten' && (_ab.menge !== 'gestuft' || z.vorrang));
     engstellen = {
       gruppe: pg,
       liste: gruppe.length ? _engstellen(anwenden(elemente.map(e => ({ ...e }))), gruppe, m, nurTrafo, nachId) : [],
@@ -523,8 +548,14 @@ export async function pvabUebernehmen() {
   await _naechsterFrame();
   _ab.vorschau = null;
   _trafoCache = null;
-  const { anzahl, summe } = pvmStapelBelegen(ziele);
-  window.showHint?.(`✓ ${anzahl} Dächer belegt · Σ ${_fmt(summe)} kWp. Strg+Z nimmt den ganzen Schritt zurück.`, 8000);
+  // Flügel-Dachflächen der Vorschau ins Projekt (abgeleitete Dachdaten, wie „Dachflächen aus Grundriss“)
+  for (const z of v.zeilen.filter(_wirdBelegt)) {
+    if (z.fluegel && !z.g.dachFlaechen?.length) { z.g.dachFlaechen = z.fluegel.dachFlaechen; z.g.dachLod2 = z.fluegel.dachLod2; z.g._pvModSig = null; }
+  }
+  const vsK = _ab.schatten && typeof window.verschattungKontext === 'function' ? window.verschattungKontext() : null;
+  const { anzahl, summe } = pvmStapelBelegen(ziele, vsK ? { nachBelegen: g => window.verschattungNachBelegen(g, vsK) } : {});
+  window.d3dNachViz?.();
+  window.showHint?.(`✓ ${anzahl} Dächer belegt · Σ ${_fmt(summe)} kWp${vsK ? ' · stark verschattete Flächen ausgelassen' : ''}. Strg+Z nimmt den ganzen Schritt zurück.`, 8000);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -560,6 +591,8 @@ function _auslegungBeschreibung(stich, n) {
   const aus = _ab.ohneNutzung.size;
   if (aus) teile.push(`${aus} Nutzungstyp${aus > 1 ? 'en' : ''} ausgenommen`);
   teile.push(window.pvModusVorgabe?.nordSperr !== false ? 'Nordseiten ausgespart' : 'beide Dachseiten');
+  if (_ab.fluegel) teile.push('verwinkelte Grundrisse in Flügel zerlegt');
+  if (_ab.schatten) teile.push(`stark verschattete Flächen ausgelassen (Verlust ≥ ${window.verschattungSchwellen?.().nicht ?? 25} %)`);
   if (_ab.menge === 'max') teile.push('jedes Dach voll, Netz nicht geprüft');
   else {
     teile.push((_ab.menge === 'gestuft' ? `${_vorrangLabel(_ab.vorrang, stich)} immer voll, Rest ` : '')
@@ -801,13 +834,13 @@ export function pvabMarkiereKarte() {
   if (_ab.vorschau) for (const z of _ab.vorschau.zeilen) status.set(z.g.id, z.status);
   else for (const g of _kandidaten().liste) status.set(g.id, 'kandidat');
   const farbe = { kandidat: CYAN, voll: GRUEN, vorrang: HELLGRUEN, vorrangUeber: ORANGE, netz: ROT,
-    ohneNetz: _ab.ohneNetzBelegen ? GRUEN : GRAU, leer: GRAU };
+    ohneNetz: _ab.ohneNetzBelegen ? GRUEN : GRAU, leer: GRAU, schatten: BRAUN };
   for (const g of (window.gebaeude || [])) {
     if (!g.polygonLayer) continue;
     const st = status.get(g.id);
     if (!st) { _stilNeutral(g); continue; }
     const f = farbe[st];
-    g.polygonLayer.setStyle({ color: f, weight: 2, dashArray: st === 'ohneNetz' || st === 'leer' ? '4 4' : '',
+    g.polygonLayer.setStyle({ color: f, weight: 2, dashArray: st === 'ohneNetz' || st === 'leer' || st === 'schatten' ? '4 4' : '',
       fillColor: f, fillOpacity: st === 'kandidat' ? 0.12 : 0.28 });
   }
   return true;
@@ -926,11 +959,20 @@ function _belegenHtml() {
       ${_ab.nutzungOffen ? `<div style="max-height:110px;overflow-y:auto;margin-top:2px;">${typZeilen}</div>` : ''}` : ''}
       <div class="inp-group" style="margin-top:6px;">
         <div class="inp-label">② Belegung</div>
-        <div style="font-size:9px;color:var(--muted);line-height:1.4;">Grundriss als Fläche mit den „Vorgaben für neue Dächer" (unten) — bei LoD2-Daten je Dachfläche mit echter Neigung und Ausrichtung.</div>
-        <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:3px;"
-          title="Beim Satteldach die nach Norden zeigende Hälfte frei lassen (Sektor ±${_nordSektor()}° um Nord, unter „Vorgaben für neue Dächer“ einstellbar). Ohne Haken werden beide Dachseiten belegt.">
-          <input type="checkbox" ${window.pvModusVorgabe?.nordSperr !== false ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
-            data-change="pvmVorgabe('nordSperr',this.checked)"/>Nordseiten aussparen
+        <div style="font-size:9px;color:var(--muted);line-height:1.4;">Grundriss als Fläche mit diesen Annahmen — bei LoD2- oder Flügel-Dachflächen je Dachfläche mit echter Neigung und Ausrichtung. Sie gelten auch für einzeln belegte Dächer („Vorgaben für neue Dächer"). Echte Dachangaben (OSM, LoD2, von Hand) haben Vorrang vor Dachform und Neigung.</div>
+        <div style="margin-top:4px;padding:4px 6px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">
+          ${window.pvmVorgabeFelderHtml?.() || ''}
+        </div>
+        <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:2px;"
+          title="Gebäude mit L-, T-, U- oder Kammform ohne Dachflächen: jeder Flügel bekommt ein eigenes Dach (Dachform und Neigung der Vorgaben) und wird je Dachfläche belegt — statt eines Satteldachs über den ganzen Grundriss. Die berechneten Dachflächen gehen beim Übernehmen ins Projekt.">
+          <input type="checkbox" ${_ab.fluegel ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
+            data-change="pvabSet('fluegel',this.checked)"/>Verwinkelte Grundrisse in Flügel zerlegen
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:2px;"
+          title="Je Dach die Verschattung durch Bäume und Nachbargebäude rechnen (PV-Modus › Bäume &amp; Verschattung): Dachflächen bzw. Satteldachseiten mit einem Verlust ab der Schwelle „nicht belegen“ bleiben frei, ganz verschattete Dächer entfallen. Netzverträglich reiht die Erträge nach Verschattung.">
+          <input type="checkbox" ${_ab.schatten ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
+            data-change="pvabSet('schatten',this.checked)"/>Stark verschattete Flächen auslassen
+          <span style="color:var(--muted);">(≥ ${window.verschattungSchwellen?.().nicht ?? 25} %)</span>
         </label>
       </div>
       <div class="inp-group" style="margin-top:6px;">
@@ -1079,7 +1121,9 @@ function _vorschauHtml(nKand, stich) {
   const gruppe = (...st) => v.zeilen.filter(z => st.includes(z.status));
   const sum = zs => zs.reduce((s, z) => s + z.kwpKorr, 0);
   const vorrang = gruppe('vorrang', 'vorrangUeber'), ueber = gruppe('vorrangUeber');
-  const voll = gruppe('voll'), netz = gruppe('netz'), ohne = gruppe('ohneNetz'), leer = gruppe('leer');
+  const voll = gruppe('voll'), netz = gruppe('netz'), ohne = gruppe('ohneNetz'), leer = gruppe('leer'), schatten = gruppe('schatten');
+  const teilweise = v.zeilen.filter(z => _wirdBelegt(z) && z.vs?.ausgelassen?.length);
+  const fluegelN = v.zeilen.filter(z => _wirdBelegt(z) && z.fluegel).length;
   const belegen = v.zeilen.filter(_wirdBelegt);
   const gestuft = vorrang.length > 0;
   const zusatz = voll.concat(_ab.ohneNetzBelegen ? ohne : []);
@@ -1087,7 +1131,7 @@ function _vorschauHtml(nKand, stich) {
       <span style="width:9px;height:9px;border-radius:2px;background:${farbe};flex:none;"></span>
       <span style="flex:1;">${n} ${text}</span>
       ${kwp != null ? `<span style="font-family:'DM Mono',monospace;">${_fmt(kwp)} kWp</span>` : ''}</div>` : '';
-  const mitGrund = v.zeilen.filter(z => z.status === 'vorrangUeber' || z.status === 'netz'
+  const mitGrund = v.zeilen.filter(z => z.status === 'vorrangUeber' || z.status === 'netz' || z.status === 'schatten'
     || (z.status === 'vorrang' && z.grund) || (z.status === 'ohneNetz' && !_ab.ohneNetzBelegen));
   const gruende = mitGrund.slice(0, 10).map(z => `
       <div style="font-size:9px;color:var(--muted);display:flex;gap:4px;cursor:pointer;" data-click="pvmWaehle(${z.g.id})" title="${escHtml(z.grund)}">
@@ -1108,6 +1152,7 @@ function _vorschauHtml(nKand, stich) {
   return `
     <div style="margin-top:6px;padding:5px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
       ${veraltet ? `<div style="font-size:9px;color:${GELB};margin-bottom:3px;">Auswahl oder Vorgaben geändert — Vorschau neu berechnen.</div>` : ''}
+      ${v.annahmen ? `<div style="font-size:9px;color:var(--muted);line-height:1.35;margin-bottom:4px;" title="Mit diesen Vorgaben wurde die Vorschau gerechnet">Gerechnet mit: ${escHtml(v.annahmen)}</div>` : ''}
       ${zeile(HELLGRUEN, vorrang.length, `${vorrangName} — immer voll`, sum(vorrang))}
       ${zeile(ORANGE, ueber.length, 'davon über der Netzgrenze', sum(ueber), true)}
       ${gestuft ? zeile(GRUEN, zusatz.length, 'zusätzlich, netzverträglich', sum(zusatz))
@@ -1115,6 +1160,9 @@ function _vorschauHtml(nKand, stich) {
       ${zeile(ROT, netz.length, 'Netz zu knapp', sum(netz))}
       ${_ab.ohneNetzBelegen ? '' : zeile(GRAU, ohne.length, 'ohne Netzanbindung', sum(ohne))}
       ${zeile(GRAU, leer.length, 'kein Modul passt', null)}
+      ${zeile(BRAUN, schatten.length, 'zu stark verschattet — bleiben frei', null)}
+      ${teilweise.length ? `<div style="font-size:9px;color:var(--muted);padding-left:14px;">davon ${teilweise.length} Dächer nur teilweise (verschattete Flächen bzw. Dachseiten frei)</div>` : ''}
+      ${fluegelN ? `<div style="font-size:9px;color:var(--muted);padding-left:14px;">${fluegelN} verwinkelte Dächer in Flügel zerlegt</div>` : ''}
       ${gruende ? `<div style="margin-top:4px;max-height:96px;overflow-y:auto;">${gruende}</div>` : ''}
       ${netzInfo}
       <div style="display:flex;gap:4px;margin-top:6px;">
@@ -1164,6 +1212,8 @@ export function pvabSet(feld, wert) {
   else if (feld === 'budgetT') _ab.budgetT = Math.max(0, parseFloat(wert) || 0);
   else if (feld === 'vorrang') _ab.vorrang = VORRANG.some(v => v[0] === wert) ? wert : 'neubau';
   else if (feld === 'ohneNetzBelegen') { _ab.ohneNetzBelegen = !!wert; pvModusRender(); pvModusMarkiereKarte(); return; }
+  else if (feld === 'schatten') _ab.schatten = !!wert;
+  else if (feld === 'fluegel') _ab.fluegel = !!wert;
   else if (feld === 'nutzungOffen') { _ab.nutzungOffen = !_ab.nutzungOffen; pvModusRender(); return; }
   _ab.vorschau = null;                     // andere Auswahl → Karte zeigt gleich die neuen Kandidaten
   if (feld === 'umfang' && wert === 'bereich' && !_ab.bereich) setTimeout(pvabBereichZiehen, 0);

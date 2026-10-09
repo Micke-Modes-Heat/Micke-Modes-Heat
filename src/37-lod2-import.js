@@ -14,10 +14,8 @@
 // 25 pvmStapelBelegen, Modulraster und Ertrag je Fläche: 03c.
 
 import { lod2Dachdaten, lod2Dachform, lod2Parsen, lod2Zone, lod2Zuordnen, wgs84NachUtm } from './lib/lod2-citygml.js';
-import { dachAusGrundriss } from './lib/dach-grundriss.js';
-import { richteRechtwinklig } from './lib/gebaeude-geometrie.js';
-import { d3dRahmen } from './lib/dach-3d.js';
-import { _hasBelegung, getDachDefaultNeigung, redrawGebPvModules } from './03c-gebaeude-io.js';
+import { dachAusGrundrissGebaeude } from './lib/dach-grundriss.js';
+import { _hasBelegung, redrawGebPvModules } from './03c-gebaeude-io.js';
 import { pvmStapelBelegen } from './25-pv-modus.js';
 
 const _warte = () => new Promise(r => setTimeout(r, 30));
@@ -242,28 +240,48 @@ export async function lod2Importieren(files) {
  * Ein-Dach-Modell.
  */
 export function dachAusGrundrissFuer(g) {
-  if (!Array.isArray(g?.polygon) || g.polygon.length < 3) return null;
-  const r = richteRechtwinklig(g.polygon.map(p => ({ lat: p.lat, lng: p.lng })));
-  if (!r || r.diagonaleKanten > 0 || r.abweichungProzent > 5) return null;
-  let la = 0, ln = 0;
-  for (const p of r.coords) { la += p.lat; ln += p.lng; }
-  const rahmen = d3dRahmen(ln / r.coords.length, la / r.coords.length);
-  const form = ['sattel', 'walm', 'pult', 'flach'].includes(g.dachform) ? g.dachform : 'sattel';
-  const traufe = Math.max(1, Math.min(60, parseInt(g.stockwerke, 10) || 1)) * 3;
-  const azimut = form === 'pult' ? (g.dachAzimut ?? null)
-    : (g.dachAzimut != null && !g.dachAutoAzimut ? g.dachAzimut : null);
-  const d = dachAusGrundriss(r.coords.map(p => rahmen.nachXY(p.lng, p.lat)), {
-    form, neigung: form === 'flach' ? 0 : (g.dachNeigung ?? getDachDefaultNeigung(form)), traufe, azimut,
-  });
-  if (!d || !d.flaechen.length) return null;
-  const ll = q => { const [lng, lat] = rahmen.nachLL(q[0], q[1]); return [lat, lng, Math.round(q[2] * 100) / 100]; };
-  return {
-    dachFlaechen: d.flaechen.map((f, i) => ({ id: i + 1, punkte: f.ring.map(ll), neigung: f.neigung, azimut: f.azimut,
-      grundM2: f.grundM2, flaecheM2: Math.round(f.grundM2 / Math.cos(f.neigung * Math.PI / 180) * 10) / 10 })),
-    lod2: { quelle: 'grundriss', gmlId: null, traufeM: traufe, firstM: Math.round(d.firstH * 100) / 100,
-      bodenGeschaetzt: false, waende: d.waende.map(w => w.map(ll)) },
-    fluegel: d.fluegel,
+  return dachAusGrundrissGebaeude(g);
+}
+
+/**
+ * Belegte, verwinkelte Gebäude, die noch mit EINEM Dach über den ganzen Grundriss
+ * rechnen (keine Dachflächen, Sattel/Walm, Flügel-Modell ergibt ≥ 2 Flügel).
+ * @returns {any[]} Gebäude
+ */
+export function dachGrundrissKandidatenBelegt() {
+  return (window.gebaeude || []).filter(g => _hasBelegung(g) && !g.dachFlaechen?.length && g.dachQuelle !== 'lod2'
+    && ['sattel', 'walm'].includes(g.dachform || 'sattel')
+    // zwischengespeichert in der 3D-Ansicht (32) — das Panel fragt bei jedem Zeichnen
+    && (typeof window.d3dFluegelGebaeude === 'function' ? !!window.d3dFluegelGebaeude(g)
+      : (dachAusGrundrissGebaeude(g)?.fluegel || 0) >= 2));
+}
+
+/**
+ * Dachflächen aus dem Grundriss für bestimmte Gebäude setzen — ohne Rückfrage
+ * (der Aufrufer hat gefragt) — und ihre Belegungen auf die Dachflächen
+ * umstellen. Ein Planungsschritt: Strg+Z im PV-Modus holt die alte Belegung
+ * samt PV-Assets zurück (die berechneten Dachflächen bleiben, sie sind abgeleitet).
+ * @param {any[]} gIds
+ * @returns {{gebaeude:number, anzahl:number, summe:number}}
+ */
+export function dachGrundrissFuerGebaeude(gIds) {
+  const ids = new Set(gIds);
+  const ziele = [];
+  for (const g of window.gebaeude || []) {
+    if (!ids.has(g.id) || g.dachQuelle === 'lod2' || g.dachFlaechen?.length) continue;
+    const d = dachAusGrundrissGebaeude(g);
+    if (d) ziele.push({ g, d });
+  }
+  if (!ziele.length) return { gebaeude: 0, anzahl: 0, summe: 0 };
+  let neu = { anzahl: 0, summe: 0 };
+  const lauf = () => {
+    for (const { g, d } of ziele) { g.dachFlaechen = d.dachFlaechen; g.dachLod2 = d.lod2; g._pvModSig = null; }
+    neu = _nachlauf(ziele.map(z => z.g), ziele.filter(z => _hasBelegung(z.g)).map(z => z.g));
   };
+  if (typeof window.runPlanningTransaction === 'function') window.runPlanningTransaction('Dachflächen aus Grundriss', lauf);
+  else lauf();
+  window.pvmPlanungsSchrittMerken?.();
+  return { gebaeude: ziele.length, ...neu };
 }
 
 /** Knopf „📐 Dachflächen aus Grundriss berechnen". */

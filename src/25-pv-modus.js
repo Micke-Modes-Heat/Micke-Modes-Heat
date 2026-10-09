@@ -84,9 +84,33 @@ function _vorgabe() {
       // Nordwest) liegt der Ertragsfaktor unter 70 %. Beim Satteldach wird die
       // betroffene Hälfte automatisch als Sperrfläche ausgespart.
       nordSperr: true, nordSektor: 45,
+      // Flachdach: Aufständerung und Flächenausnutzung (GCR, Anteil Modulfläche an der
+      // Fläche); gcr null = Standard der Aufständerung (Süd 40 %, Ost-West 85 %)
+      ausrichtung: 'sued', gcr: null,
     };
   }
-  return window.pvModusVorgabe;
+  const v = window.pvModusVorgabe;
+  if (!v.ausrichtung) v.ausrichtung = 'sued';           // ältere Projekte ohne Flachdachvorgabe
+  if (v.gcr === undefined) v.gcr = null;
+  return v;
+}
+
+/** Flächenausnutzung eines Flachdachs nach den Vorgaben (%). */
+const _vorgabeGcr = v => (v.gcr != null ? v.gcr : (v.ausrichtung === 'ostwest' ? 85 : 40));
+
+/** Flachdachvorgaben auf ein Gebäude bzw. eine Rechenkopie — eine von Hand gesetzte Ausnutzung bleibt. */
+function _flachVorgabe(g, v) {
+  if (g._pvFlGcrManual) return;
+  g.pvFlAusrichtung = v.ausrichtung || 'sued';
+  g.pvFlGcr = _vorgabeGcr(v);
+}
+
+/** Die Vorgaben in einem Satz — für die Vorschau der automatischen Belegung (36). */
+export function pvmVorgabeText() {
+  const v = _vorgabe();
+  return `${DACHFORMEN[v.dachform] || v.dachform}${v.neigung != null ? ` ${v.neigung}°` : ''} · Belegungsgrad ${v.belegung} %`
+    + ` · Flachdach ${v.ausrichtung === 'ostwest' ? 'Ost-West' : 'Süd'}, Ausnutzung ${_vorgabeGcr(v)} %${v.gcr == null ? ' (Standard)' : ''}`
+    + (v.nordSperr ? ` · Nordseiten ±${v.nordSektor}° frei` : ' · beide Dachseiten');
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -643,6 +667,7 @@ function _erstbelegung(g, neu = 1) {
     if (v.dachform && !g._pvDachformManuell && !g.dachQuelle) g.dachform = v.dachform;
     if (v.belegung != null) g.pvFlBelegung = v.belegung;
     if (v.neigung  != null && !(g.dachQuelle && g.dachNeigung != null)) g.dachNeigung = v.neigung;
+    _flachVorgabe(g, v);
     if (g.dachAzimut == null && Array.isArray(g.polygon) && g.polygon.length >= 3) {
       const az = detectRoofAzimutFromPolygon(g.polygon);
       if (az !== null) { g.dachAzimut = az; g.dachAutoAzimut = true; }
@@ -857,9 +882,12 @@ export function pvmGrundrissAuswahl() {
  * nur einer Stromnetz-Nachrechnung am Ende. Bereits belegte Dächer bleiben unberührt.
  * Gemeinsamer Weg für die Auswahl und die automatische Belegung (36).
  * @param {any[]} ziele Gebäude
+ * @param {{nachBelegen?: (g:any) => number[]}} [opts] nachBelegen: je Dach nach dem Belegen
+ *   (z. B. verschattete Flächen auslassen, 40-baeume.js); liefert ids zusätzlich angelegter
+ *   Flächen, die Strg+Z mit zurücknimmt
  * @returns {{anzahl:number, summe:number}}
  */
-export function pvmStapelBelegen(ziele) {
+export function pvmStapelBelegen(ziele, opts = {}) {
   _assetStandErfassen();
   const schritt = [];
   let summe = 0, anzahl = 0;
@@ -871,7 +899,9 @@ export function pvmStapelBelegen(ziele) {
       const fls = _grundriss(g);
       if (!fls.length) continue;
       const nordIds = _erstbelegung(g, fls.length);
-      schritt.push(..._schritt(g.id, fls.map(f => f.id), nordIds, vorher));
+      const extra = opts.nachBelegen ? (opts.nachBelegen(g) || []) : [];
+      schritt.push(..._schritt(g.id, fls.map(f => f.id), [...nordIds, ...extra], vorher));
+      if (!_hasBelegung(g)) continue;            // nachBelegen hat alles entfernt
       summe += calcGebKwpKorr(g) || 0;
       anzahl++;
     }
@@ -908,6 +938,7 @@ export function pvmProbe(g, opts = {}) {
         return { id: -1 - i, typ: 'belegung', polygon: poly, flaeche: polygonAreaM2(poly) || 0, azimut: f.azimut, neigung: f.neigung };
       }) };
     if (v.belegung != null) t.pvFlBelegung = v.belegung;
+    _flachVorgabe(t, v);
     if (!t.pvFlaechen.length) return { kwp: 0, kwpKorr: 0, module: 0 };
     return erg(t);
   }
@@ -917,6 +948,7 @@ export function pvmProbe(g, opts = {}) {
   if (v.dachform && !g._pvDachformManuell && !g.dachQuelle) t.dachform = v.dachform;
   if (v.belegung != null) t.pvFlBelegung = v.belegung;
   if (v.neigung  != null && !(g.dachQuelle && g.dachNeigung != null)) t.dachNeigung = v.neigung;
+  _flachVorgabe(t, v);
   if (t.dachAzimut == null) {
     const az = detectRoofAzimutFromPolygon(poly);
     if (az !== null) t.dachAzimut = az;
@@ -1146,17 +1178,30 @@ function _vorgabeBlock() {
     return `<div style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--muted);margin-top:8px;cursor:pointer;"
         data-click="pvmVorgabeToggle()" title="Werte, die jedes neu belegte Dach erbt">
       <span style="text-transform:uppercase;letter-spacing:.06em;flex:1;">Vorgaben für neue Dächer</span>
-      <span>${DACHFORMEN[v.dachform] || v.dachform} · ${v.belegung} %${v.neigung != null ? ' · ' + v.neigung + '°' : ''}${v.nordSperr ? ` · Nord ±${v.nordSektor}° aus` : ''}</span>
+      <span>${DACHFORMEN[v.dachform] || v.dachform} · ${v.belegung} %${v.neigung != null ? ' · ' + v.neigung + '°' : ''}${v.nordSperr ? ` · Nord ±${v.nordSektor}° aus` : ''} · Flach ${v.ausrichtung === 'ostwest' ? 'OW' : 'S'} ${_vorgabeGcr(v)} %</span>
       <span>▸</span>
     </div>`;
   }
-  const v = _vorgabe();
   return `
     <div style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--muted);margin-top:8px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;"
       data-click="pvmVorgabeToggle()">
       <span style="flex:1;">Vorgaben für neue Dächer</span><span>▾</span>
     </div>
     <div style="padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);margin-top:3px;">
+      ${pvmVorgabeFelderHtml()}
+      <button class="btn-xs" style="width:100%;margin-top:4px;" data-click="pvmVorgabeAufAlle()"
+        title="Dachform, Neigung, Belegungsgrad und Flachdachvorgaben auf alle Dächer mit Fläche übertragen">↧ Auf alle belegten Dächer übertragen</button>
+    </div>`;
+}
+
+/**
+ * Eingabefelder der Vorgaben — im PV-Modus-Panel und in „Dächer automatisch belegen" (36),
+ * dieselben Werte (window.pvModusVorgabe), dieselben Handler.
+ */
+export function pvmVorgabeFelderHtml() {
+  const v = _vorgabe();
+  const flachAuto = _vorgabeGcr({ ...v, gcr: null });
+  return `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
         <div class="inp-group">
           <div class="inp-label">Dachform</div>
@@ -1184,9 +1229,20 @@ function _vorgabeBlock() {
           style="width:52px;padding:2px 4px;" data-change="pvmVorgabe('nordSektor',this.value)"/>
         <span style="font-size:9px;color:var(--muted);">°</span>
       </div>
-      <button class="btn-xs" style="width:100%;margin-top:4px;" data-click="pvmVorgabeAufAlle()"
-        title="Dachform, Neigung und Belegungsgrad auf alle Dächer mit Fläche übertragen">↧ Auf alle belegten Dächer übertragen</button>
-    </div>`;
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;">
+        <div class="inp-group">
+          <div class="inp-label" title="Aufständerung auf Flachdächern (und flachen LoD2-Dachflächen)">Flachdach</div>
+          <select class="inp-field" data-change="pvmVorgabe('ausrichtung',this.value)">
+            <option value="sued"${v.ausrichtung !== 'ostwest' ? ' selected' : ''}>Süd aufgeständert</option>
+            <option value="ostwest"${v.ausrichtung === 'ostwest' ? ' selected' : ''}>Ost-West</option>
+          </select>
+        </div>
+        <div class="inp-group">
+          <div class="inp-label" title="Anteil der Modulfläche an der Flachdachfläche (GCR). Leer = Standard der Aufständerung: Süd 40 % (Reihenabstand gegen Eigenverschattung), Ost-West 85 %.">Ausnutzung (%)</div>
+          <input class="inp-field" type="number" min="5" max="95" step="5" value="${v.gcr ?? ''}" placeholder="${flachAuto}"
+            data-change="pvmVorgabe('gcr',this.value)"/>
+        </div>
+      </div>`;
 }
 
 function _listenBlock() {
@@ -1366,6 +1422,8 @@ export function pvmVorgabe(feld, wert) {
   else if (feld === 'neigung')    v.neigung  = wert === '' ? null : parseFloat(wert);
   else if (feld === 'nordSperr')  v.nordSperr = !!wert;
   else if (feld === 'nordSektor') v.nordSektor = Math.max(5, Math.min(90, parseFloat(wert) || 45));
+  else if (feld === 'ausrichtung') v.ausrichtung = wert === 'ostwest' ? 'ostwest' : 'sued';
+  else if (feld === 'gcr')        v.gcr = wert === '' || wert == null ? null : Math.max(5, Math.min(95, parseFloat(wert) || 40));
   pvModusRender();
 }
 
@@ -1374,12 +1432,15 @@ export function pvmVorgabeAufAlle() {
   const v = _vorgabe();
   const ziele = _mitPolygon().filter(_hasBelegung);
   if (!ziele.length) { alert('Es gibt noch kein Dach mit Belegungsfläche.'); return; }
-  if (!confirm(`Dachform „${DACHFORMEN[v.dachform]}"${v.neigung != null ? `, Neigung ${v.neigung}°` : ''} und Belegungsgrad ${v.belegung} % ` +
+  if (!confirm(`Dachform „${DACHFORMEN[v.dachform]}"${v.neigung != null ? `, Neigung ${v.neigung}°` : ''}, Belegungsgrad ${v.belegung} % ` +
+               `und für Flachdächer ${v.ausrichtung === 'ostwest' ? 'Ost-West' : 'Süd'} mit ${_vorgabeGcr(v)} % Ausnutzung ` +
                `auf ${ziele.length} Dächer mit Fläche übertragen?\n\nAzimut und gezeichnete Flächen bleiben unverändert.`)) return;
   for (const g of ziele) {
     g.dachform = v.dachform;
     g.pvFlBelegung = v.belegung;
     if (v.neigung != null) g.dachNeigung = v.neigung;
+    g._pvFlGcrManual = false;
+    _flachVorgabe(g, v);
     redrawGebPvModules(g);
     _uebernehmen(g);
     window._rerenderCard?.(g.id);
