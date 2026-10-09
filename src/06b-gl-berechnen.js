@@ -6,6 +6,7 @@ import { polygonAreaM2 } from './02c-karte-werkzeuge.js';
 import { redrawVerbindungslinien } from './03a-erzeuger.js';
 import { hideHint, showHint } from './03c-gebaeude-io.js';
 import { sommerGrundlast, wbKorrigiere } from './lib/witterung.js';
+import { netzBetriebStunden, raumwaermeAusLastgang, raumwaermeImBetrieb } from './lib/tww-dezentral.js';
 import { glGetGesamtMwh, glGetMonatswerte, glGetTempH, glLastgangKw, glRenderPreview, glRenderSplit, glUpdateKlimaStatus, glUpdateStatus } from './06a-gbi-lastgang.js';
 import { onSystemStateUpdated, updateAllDeckungen } from './06c-dispatch-core.js';
 import { CalcEngine } from './08-calc-engine.js';
@@ -64,6 +65,9 @@ async function glBerechnen() {
     const stadt       = document.getElementById('gl-stadt').value;
     const normAt      = readNum('gl-norm-at', -12, -30, 0);
     const netzverlust = readNum('gl-netzverlust', 10, 0, 50);
+    // Trinkwarmwasser dezentral: Netz liefert nur Raumwärme und ist außerhalb der Heizperiode aus
+    const twwDezentral = !!document.getElementById('gl-tww-dezentral')?.checked;
+    const heizgrenze  = readNum('gl-heizgrenze', 15, 8, 20);
     const vl5         = readNum('gl-vl5', 90, 30, 130);
     const vl15        = readNum('gl-vl15', 60, 20, 100);
     const profil1     = document.getElementById('gl-profil1').value || 'HEF33';
@@ -155,7 +159,7 @@ async function glBerechnen() {
       });
 
       const buildingResult=nurGebaeude ? buildBuildingHeatProfiles(
-        gebaeude,synState.tempH,globalYear,getComputedStats,isExcluded) : null;
+        gebaeude,synState.tempH,globalYear,getComputedStats,isExcluded,{ohneSockel:twwDezentral}) : null;
       const buildingMwh=buildingResult
         ? buildingResult.aggregate.reduce((sum,value)=>sum+value,0)/1000
         : 0;
@@ -189,20 +193,51 @@ async function glBerechnen() {
       ? Math.max(0,window._netzAnnualLossMWh)
       : null;
     let nutzwaermeMwh, gesamtMwhMitNV;
+    // Netzbetrieb je Stunde (nur mit dezentralem TWW): Heizperiode aus dem gleitenden 3-Tage-Mittel der Außentemperatur
+    let netzAn = null, twwInfo = null;
+    if (twwDezentral) {
+      const tempBetrieb = synState?.tempH || tempHDwd || (await CalcEngine.run({
+        stadt, normAussentemp: normAt, sigProfil1: profil1, sigProfil2: profil2, gewicht1: gew1, gewicht2: gew2,
+        vlMinus5: vl5, vl15, gesamtenergieMwh: 1, erzeuger: [], energiepreise: {}, kapitalzins: 4,
+        twwNetzAnteil: 0, twwAnteilVonTwwNetz: 0 })).tempH;
+      netzAn = netzBetriebStunden(tempBetrieb, heizgrenze, 3);
+    }
 
     if (nurGebaeude) {
       // Nur Gebäudedaten → Netzverluste AUFSCHLAGEN (Energie + Leistung).
       // Heizlast ergibt sich aus dem Synthese-Lastgang (pMaxKw), nicht aus Σ Einzel-Heizlasten
       // → GLF ist implizit durch die Profilsynthese aus Gesamtenergie abgedeckt
+      if (netzAn) {
+        // Sockel (TWW) ist bereits aus den Gebäudeprofilen entfernt; Raumwärme nur in der Heizperiode
+        const raumMwhVor = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
+        lastgangKw = raumwaermeImBetrieb(lastgangKw, netzAn).kw;
+        twwInfo = { twwMwh: Math.max(0, (gesamt || 0) - raumMwhVor) };
+      }
       nutzwaermeMwh = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
       if (detailedNetworkLossMWh !== null) {
+        // Verluste je Betriebsstunde wie im Ganzjahresbetrieb — außerhalb der Heizperiode keine
         const averageLossKw = detailedNetworkLossMWh * 1000 / lastgangKw.length;
-        for (let i = 0; i < lastgangKw.length; i++) lastgangKw[i] += averageLossKw;
+        for (let i = 0; i < lastgangKw.length; i++) if (!netzAn || netzAn[i]) lastgangKw[i] += averageLossKw;
       } else {
         const aufschlag = 1 / nvFaktor; // z.B. 10% Verlust → Faktor 1.111
         for (let i = 0; i < lastgangKw.length; i++) lastgangKw[i] *= aufschlag;
       }
       gesamtMwhMitNV = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
+    } else if (netzAn) {
+      // Fälle 1–4 mit dezentralem TWW: aus dem Lastgang (inkl. TWW und Verlusten) die Raumwärme herauslösen,
+      // in die Heizperiode legen und nur dort die Netzverluste ansetzen
+      const vorMwh = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
+      const verlustKw = detailedNetworkLossMWh !== null
+        ? Math.min(detailedNetworkLossMWh, vorMwh * 0.5) * 1000 / lastgangKw.length
+        : vorMwh * (nvPct / 100) * 1000 / lastgangKw.length;
+      const { raumKw, twwKw } = raumwaermeAusLastgang(lastgangKw, sommerGrundlast(lastgangKw), verlustKw);
+      const raum = raumwaermeImBetrieb(raumKw, netzAn).kw;
+      lastgangKw = new Float32Array(raum.length);
+      let verlustMwh = 0;
+      for (let i = 0; i < raum.length; i++) { lastgangKw[i] = raum[i] + (netzAn[i] ? verlustKw : 0); if (netzAn[i]) verlustMwh += verlustKw / 1000; }
+      gesamtMwhMitNV = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
+      nutzwaermeMwh = gesamtMwhMitNV - verlustMwh;
+      twwInfo = { twwMwh: twwKw * 8760 / 1000 };
     } else {
       // Fälle 1–4: Eingegebene/hochgeladene Werte enthalten Verluste bereits
       gesamtMwhMitNV = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
@@ -210,6 +245,12 @@ async function glBerechnen() {
         ? Math.max(0,gesamtMwhMitNV - Math.min(detailedNetworkLossMWh,gesamtMwhMitNV * 0.5))
         : gesamtMwhMitNV * nvFaktor;
     }
+    if (netzAn) {
+      let anStunden = 0;
+      for (let i = 0; i < netzAn.length; i++) anStunden += netzAn[i];
+      twwInfo = { ...twwInfo, heizgrenze, betriebStunden: anStunden, ausTage: Math.round((netzAn.length - anStunden) / 24) };
+    }
+    window._twwDezentralInfo = twwInfo;
     const effectiveLossMWh = Math.max(0,gesamtMwhMitNV - nutzwaermeMwh);
     const effectiveLossPct = gesamtMwhMitNV > 0 ? effectiveLossMWh / gesamtMwhMitNV * 100 : 0;
     const lossHint = document.getElementById('gl-netzverlust-hint');
@@ -249,6 +290,8 @@ async function glBerechnen() {
       netzverlustQuelle: detailedNetworkLossMWh !== null ? 'waermenetz' : 'prozentwert',
       netzverlustMwh: effectiveLossMWh,
       nurGebaeude,
+      // Trinkwarmwasser dezentral: Netz nur in der Heizperiode (Betriebsstunden, entfallenes TWW)
+      twwDezentral: twwInfo,
       pMaxKw: Math.max(...lastgangKw),
       tMin: Math.min(...tempState.tempH),
       // Parameter
@@ -259,6 +302,7 @@ async function glBerechnen() {
       // Zeitstempel
       berechnetAm: new Date().toISOString(),
     };
+    window.glTwwDezentralUi?.();
 
     // Basis-Lastgang für jahresweise Skalierung speichern
     window._basisLastgangKw = new Float32Array(lastgangKw);

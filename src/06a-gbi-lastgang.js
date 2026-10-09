@@ -561,7 +561,20 @@ export function captureWaermeGrundlagen() {
     timeSeriesMeta:glTimeSeriesMeta ? structuredClone(glTimeSeriesMeta) : null,
     bestandsanlage:window.getBestandsanlage?.() ?? null,
     witterung:window.getWitterung?.() ?? null,
+    ...(document.getElementById('gl-tww-dezentral')?.checked ? { twwDezentral:true, heizgrenze:value('gl-heizgrenze') } : {}),
   };
+}
+
+/** Sichtbarkeit der Heizgrenze und Kurzinfo zur Sommerabschaltung (TWW dezentral). */
+export function glTwwDezentralUi() {
+  const an = !!document.getElementById('gl-tww-dezentral')?.checked;
+  const wrap = document.getElementById('gl-tww-heizgrenze-wrap');
+  if (wrap) wrap.style.display = an ? '' : 'none';
+  const info = document.getElementById('gl-tww-dezentral-info');
+  const t = window.systemState?.twwDezentral;
+  if (info) info.textContent = an && t
+    ? `Netz an ${t.ausTage} Tagen aus (${Math.round(t.betriebStunden).toLocaleString('de-DE')} Betriebsstunden)` + (t.twwMwh > 0.5 ? ` · ${Math.round(t.twwMwh).toLocaleString('de-DE')} MWh/a TWW dezentral` : '')
+    : '';
 }
 
 export function restoreWaermeGrundlagen(data) {
@@ -592,6 +605,10 @@ export function restoreWaermeGrundlagen(data) {
   set('gl-profil2',source.profil2,'');
   set('gl-gew1',source.gewicht1,'100');
   set('gl-gew2',source.gewicht2,'0');
+  const twwCb = document.getElementById('gl-tww-dezentral');
+  if (twwCb) twwCb.checked = !!source.twwDezentral;
+  set('gl-heizgrenze',source.heizgrenze,'15');
+  glTwwDezentralUi();
 
   glRawCsv=null;
   glRawData=null;
@@ -1058,8 +1075,9 @@ export function glRenderSplit(lastgangKw, verlustPct) {
   // = verbleibende Last ohne Raumwärme → Trinkwarmwasser
   const vf = (verlustPct || 0) / 100;
   const summerNetKwh = (mTotal[5] + mTotal[6] + mTotal[7]) / 3 * (1 - vf);
-  // Auf alle Monate gleich verteilt (TWW = konstante Jahreslast)
-  const mTww = MDAYS.map(d => Math.min(summerNetKwh, mTotal[0])); // cap: nie mehr als Januarverbrauch
+  // Auf alle Monate gleich verteilt (TWW = konstante Jahreslast); bei dezentralem TWW liefert das Netz keins
+  const twwDez = !!window.systemState?.twwDezentral;
+  const mTww = MDAYS.map(() => twwDez ? 0 : Math.min(summerNetKwh, mTotal[0])); // cap: nie mehr als Januarverbrauch
 
   // Netzverluste pro Monat
   const mVerlust = mTotal.map(e => e * vf);

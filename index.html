@@ -1786,6 +1786,11 @@
         <input class="inp-field" type="number" id="gl-vl15" value="60" min="20" max="100" step="1" style="text-align:right;" data-input="syncVLTemps('gl');glBerechnenAuto()"/>
       </div>
     </div>
+    <div class="gl-tww-dezentral">
+      <label title="Wird das Trinkwarmwasser in den Gebäuden erzeugt (z. B. elektrische Durchlauferhitzer), liefert das Wärmenetz nur Raumwärme und ist außerhalb der Heizperiode aus: kein Warmwasseranteil im Wärmelastgang, keine Netzverluste in der abgeschalteten Zeit. Heizperiode: gleitendes 3-Tage-Mittel der Außentemperatur bis zur Heizgrenze. Gilt für das ganze Netz."><input type="checkbox" id="gl-tww-dezentral" data-change="glTwwDezentralUi();glBerechnenAuto()"> Trinkwarmwasser dezentral – Netz außerhalb der Heizperiode aus</label>
+      <span class="gl-tww-heizgrenze" id="gl-tww-heizgrenze-wrap" style="display:none;">Heizgrenze <input class="inp-field" type="number" id="gl-heizgrenze" value="15" min="8" max="20" step="0.5" data-input="glBerechnenAuto()"> °C</span>
+      <span class="gl-tww-info" id="gl-tww-dezentral-info"></span>
+    </div>
   </div>
 
   <!-- 5. Energiesplit: Raumwärme / TWW / Netzverluste -->

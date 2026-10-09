@@ -114,7 +114,8 @@ function constrainPeak(profile,maximumKw) {
   return result;
 }
 
-export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year=2026) {
+// opt.ohneSockel: Trinkwarmwasser dezentral — der wetterunabhängige Sockelanteil entfällt, es bleibt die Raumwärme
+export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year=2026,opt={}) {
   const archetype=archetypeFor(building);
   const weatherRaw=new Float64Array(H);
   const baseRaw=new Float64Array(H);
@@ -142,7 +143,7 @@ export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year
   const result=new Float32Array(H);
   const totalKwh=Math.max(0,Number(annualMwh)||0)*1000;
   normalizeInto(result,weatherRaw,totalKwh,1-archetype.baseShare);
-  normalizeInto(result,baseRaw,totalKwh,archetype.baseShare);
+  if (!opt.ohneSockel) normalizeInto(result,baseRaw,totalKwh,archetype.baseShare);
   const peakConstraint=constrainPeak(result,Number(maximumKw)||0);
   return {
     values:result,
@@ -159,14 +160,14 @@ export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year
   };
 }
 
-export function buildBuildingHeatProfiles(buildings,tempH,year,getStats,isExcluded=()=>false) {
+export function buildBuildingHeatProfiles(buildings,tempH,year,getStats,isExcluded=()=>false,opt={}) {
   const aggregate=new Float32Array(H);
   const profiles=new Map();
   for (const building of buildings || []) {
     if (isExcluded(building.id)) continue;
     const stats=getStats(building,year);
     if (!stats || stats.status==='geplant' || stats.status==='abgerissen' || !(stats.waerme>0)) continue;
-    const profile=buildBuildingHeatProfile(building,tempH,stats.waerme,stats.heizlast,year);
+    const profile=buildBuildingHeatProfile(building,tempH,stats.waerme,stats.heizlast,year,opt);
     profiles.set(building.id,profile);
     for (let i=0;i<H;i++) aggregate[i]+=profile.values[i];
   }

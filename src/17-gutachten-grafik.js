@@ -2849,7 +2849,7 @@ const GG_FIGUREN = [
     hinweis: 'Mittlere Leistung im Juli/August als Grundlast aus Warmwasser und Netzverlusten, aufs Jahr hochgerechnet und aufgeteilt.',
     render: () => {
       const ss = window.systemState;
-      return ggWaermeTextBlatt(lgTextGrundlast({ lastgangKw: ss?.lastgangKw, gesamtMwh: ss?.gesamtMwhMitNV, netzverlustMwh: ss?.netzverlustMwh }));
+      return ggWaermeTextBlatt(lgTextGrundlast({ lastgangKw: ss?.lastgangKw, gesamtMwh: ss?.gesamtMwhMitNV, netzverlustMwh: ss?.netzverlustMwh, twwDezentral: ss?.twwDezentral || null }));
     },
     config: {},
   },

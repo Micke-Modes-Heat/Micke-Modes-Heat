@@ -27,7 +27,13 @@ export function lgTextWitterung(wb, o = {}) {
 }
 
 /** Sommergrundlast Juli/August = Warmwasser + Netzverluste, aufs Jahr hochgerechnet. */
-export function lgTextGrundlast({ lastgangKw, gesamtMwh, netzverlustMwh } = {}) {
+export function lgTextGrundlast({ lastgangKw, gesamtMwh, netzverlustMwh, twwDezentral = null } = {}) {
+  // Trinkwarmwasser dezentral: keine Sommergrundlast, das Netz ist außerhalb der Heizperiode aus
+  if (twwDezentral) {
+    return [absatz('Das Trinkwarmwasser wird dezentral in den Gebäuden bereitet. Das Wärmenetz liefert ausschließlich Raumwärme ',
+      `und wird außerhalb der Heizperiode abgeschaltet, sobald das gleitende Dreitagesmittel der Außentemperatur ${nf(twwDezentral.heizgrenze, twwDezentral.heizgrenze % 1 ? 1 : 0)} °C überschreitet. `,
+      `Damit entfallen an rund ${nf(twwDezentral.ausTage)} Tagen im Jahr sowohl die Wärmelieferung als auch die Netzverluste; der Wärmelastgang enthält keinen Trinkwarmwasseranteil.`)];
+  }
   if (!lastgangKw || lastgangKw.length < 8760 || !(gesamtMwh > 0)) return [];
   const pS = sommerMittel(lastgangKw);
   if (!(pS > 0)) return [];
