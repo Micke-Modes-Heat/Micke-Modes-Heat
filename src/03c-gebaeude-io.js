@@ -3494,35 +3494,54 @@ let _projectFileHandle = null;
 
 function _projectJsonBlob() {
   const project = _buildProjectData();
-  return new Blob([JSON.stringify(project,null,2)],{type:'application/json'});
+  // kompakt: eingerückt stand jede Zahl der Stundenreihen in einer eigenen Zeile (Datei um ein Mehrfaches größer)
+  return new Blob([JSON.stringify(project)],{type:'application/json'});
 }
+const _mb = bytes => (bytes / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' MB';
 
 function _setProjectFileStatus(name = null) {
   const status = document.getElementById('project-file-status');
   if (status) status.textContent = name ? `Datei: ${name}` : 'Noch keine Projektdatei geöffnet';
 }
 
-function _downloadProjectJson(filename = projektExportFilename('projekt', 'json')) {
-  const url = URL.createObjectURL(_projectJsonBlob());
-  const a=document.createElement('a');
-  a.href=url; a.download=filename; a.click();
-  setTimeout(() => URL.revokeObjectURL(url),0);
+async function _downloadProjectJson(filename = projektExportFilename('projekt', 'json')) {
+  const anzeige = projektAnzeige('Projekt wird gespeichert', filename, 0, 'Projektdaten werden zusammengestellt …');
+  try {
+    await _nachZeichnen();
+    const blob = _projectJsonBlob();
+    const url = URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url),0);
+    return blob.size;
+  } finally {
+    anzeige.weg();
+  }
 }
 
 async function _writeProjectHandle(handle) {
-  const writable = await handle.createWritable();
-  await writable.write(_projectJsonBlob());
-  await writable.close();
-  _projectFileHandle = handle;
-  _setProjectFileStatus(handle.name || 'Projektdatei');
-  showHint(`✓ Projekt gespeichert: ${handle.name || 'Projektdatei'}`,3000);
-  return true;
+  const name = handle.name || 'Projektdatei';
+  const anzeige = projektAnzeige('Projekt wird gespeichert', name, 0, 'Projektdaten werden zusammengestellt …');
+  try {
+    await _nachZeichnen();
+    const blob = _projectJsonBlob();
+    anzeige.text(`Datei wird geschrieben … (${_mb(blob.size)})`);
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    _projectFileHandle = handle;
+    _setProjectFileStatus(name);
+    showHint(`✓ Projekt gespeichert: ${name} (${_mb(blob.size)})`,3000);
+    return true;
+  } finally {
+    anzeige.weg();
+  }
 }
 
 export async function saveProjectAs() {
   if (typeof window.showSaveFilePicker !== 'function') {
-    _downloadProjectJson();
-    showHint('Projekt als JSON-Datei heruntergeladen.',3000);
+    const bytes = await _downloadProjectJson();
+    showHint(`Projekt als JSON-Datei heruntergeladen (${_mb(bytes)}).`,3000);
     return true;
   }
   try {
@@ -3561,6 +3580,10 @@ export function exportJSON(){
  * der Spinner ist eine reine CSS-Animation und dreht sich trotzdem weiter. Rückgabe: { text(t), weg() }.
  */
 export function projektLadeAnzeige(dateiName, bytes) {
+  return projektAnzeige('Projekt wird geladen', dateiName, bytes, 'Datei wird gelesen …');
+}
+/** Gemeinsame Anzeige für Laden und Speichern (titel z. B. „Projekt wird gespeichert“). */
+export function projektAnzeige(titel, dateiName, bytes, text) {
   let el = document.getElementById('projekt-lade-anzeige');
   if (!el) {
     el = document.createElement('div');
@@ -3570,8 +3593,8 @@ export function projektLadeAnzeige(dateiName, bytes) {
     document.body.appendChild(el);
   }
   const mb = bytes > 0 ? ` (${(bytes / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB)` : '';
-  el.querySelector('.pla-titel').textContent = 'Projekt wird geladen' + (dateiName ? ': ' + dateiName : '') + mb;
-  el.querySelector('.pla-text').textContent = 'Datei wird gelesen …';
+  el.querySelector('.pla-titel').textContent = titel + (dateiName ? ': ' + dateiName : '') + mb;
+  el.querySelector('.pla-text').textContent = text || '';
   el.classList.add('sichtbar');
   return {
     text(t) { el.querySelector('.pla-text').textContent = t; },
