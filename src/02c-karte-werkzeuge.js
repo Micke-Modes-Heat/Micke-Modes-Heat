@@ -2305,13 +2305,6 @@ function _lwWpAufstellungZeichnen(pt, leistung) {
       color: '#1b5e20', weight: 1, fillColor: '#66bb6a', fillOpacity: 0.85, className: 'lwwp-geraet',
     }).bindTooltip(text, { sticky: true }).addTo(window.lwWpLayerGroup);
   }
-  // Beschriftung unterhalb der Fläche, damit die Größe auf einen Blick abzulesen ist
-  const sued = Math.min(...rechteckEcken(0, 0, m.l, m.b, drehung).map(e => e.nord));
-  L.marker([pt.lat + (sued - 1) * latPerM, pt.lng], {
-    interactive: false, keyboard: false,
-    icon: L.divIcon({ className: 'lwwp-flaeche-label', iconSize: null, iconAnchor: [0, 0],
-      html: `<span${zuKlein ? ' class="zu-klein"' : ''}>${auf.anzahl} × ~${auf.modul.kw} kW · ${nf(auf.flaeche, 0)} m²</span>` }),
-  }).addTo(window.lwWpLayerGroup);
   // Luftrichtung je Reihe: kurze Pfeile vor und hinter der Reihe
   const reihenY = [...new Set(auf.geraete.map(g => g.y))];
   for (const y of reihenY) {

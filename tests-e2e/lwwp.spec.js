@@ -78,7 +78,7 @@ test('dist: Aufstellfläche der Außengeräte — Geräte, Drehung und Speichern
 
   expect(result.geraete).toBe(8);
   expect(result.anzeige).toBe('8 × ~80 kW · 2 Reihen');
-  expect(result.label).toMatch(/^8 × ~80 kW · \d+ m²$/);
+  expect(result.label).toBeUndefined();   // keine Beschriftung „n × kW“ auf der Karte (Angaben im Tooltip)
   expect(result.aufstellung).toEqual({modulKw:80,reihen:2,drehung:20,laenge:null});
   expect(result.nachLaden).toEqual({modulKw:80,reihen:2,drehung:20,laenge:null});
   expect(result.geraeteNachLaden).toBe(8);
