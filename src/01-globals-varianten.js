@@ -10,6 +10,7 @@ import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { splitStromNetzState, mergeStromNetzState, istDelta, migriereZuDelta } from './lib/varianten-delta.js';
 import { HAUPTPLAN_NAME, variantKey, massnahmenHerausnehmen, massnahmenEinsetzen, massnahmeStandardVariante, waermeGeometrie, geometrieGleich, netzMitGeometrie, pvBelegungErfassen, pvBelegungAnwenden, schichtFuerNeu, baujahrFuerNeu } from './lib/varianten-regeln.js';
 import { getSchichtModus } from './lib/schichten.js';
+import { massnahmeJahrAus } from './lib/phasen-core.js';
 
 export let gebaeude = [];
 export function setGebaeude(v) { gebaeude = v; }
@@ -852,9 +853,7 @@ export function _restorePhasenZustand({ phasen: ps } = {}) { phasen = ps || []; 
 // Ist m.jahr gesetzt, gewinnt es (Einzel-Override). Sonst erbt die Maßnahme
 // das jahrVon der zugehörigen Phase. Gibt null zurück wenn beides fehlt.
 export function massnahmeJahr(m) {
-  if (m.jahr) return parseInt(m.jahr);
-  const p = phasen.find(x => x.id === m.phaseId);
-  return p ? parseInt(p.jahrVon) : null;
+  return massnahmeJahrAus(m, phasen);
 }
 
 // ── Persistenz-Helfer für die Varianten-Kernzustände ────────────────────────

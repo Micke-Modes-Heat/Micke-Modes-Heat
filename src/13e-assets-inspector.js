@@ -803,6 +803,7 @@ const MASSN_TYP = {
   Abriss:        { label: 'Abriss',       icon: '🏚', hasNewProps: false },
   Bau:           { label: 'Neubau/Bau',   icon: '🏗', hasNewProps: false },
   Ertuechtigung: { label: 'Ertüchtigung', icon: '⚡', hasNewProps: true  },
+  Sonstiges:     { label: 'Sonstiges',    icon: '•', hasNewProps: false },
 };
 
 function _massnRowHtml(m) {

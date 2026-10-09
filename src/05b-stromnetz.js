@@ -5,7 +5,7 @@
 // ══════════════════════════════════════════════════════════════════
 
 // ── Styled Modal-Dialoge ────────────────────────────────────────
-import { areaLatLngs, bhkw, freiflaechen, gebaeude, geoThermie, lwWp, setStromEdges, setStromNodes, setTrasseCurrentSegStart, setTrassePoints, setTrasseSegments, trassePoints, trasseSegments } from './01-globals-varianten.js';
+import { areaLatLngs, bhkw, freiflaechen, gebaeude, geoThermie, lwWp, massnahmeJahr, setStromEdges, setStromNodes, setTrasseCurrentSegStart, setTrassePoints, setTrasseSegments, trassePoints, trasseSegments } from './01-globals-varianten.js';
 import { getGebStromMwh, map } from './02b-gebaeude.js';
 import { polygonAreaM2, polygonCenter, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { setNetzVisible } from './03b-netz.js';
@@ -245,7 +245,8 @@ function _cableMassnId() { return createId('cm'); }
 
 function _cableMassnRow(m) {
   const s = _CABLE_MASSN_STATUS[m.status] || _CABLE_MASSN_STATUS.geplant;
-  const t = _CABLE_MASSN_TYP[m.typ]       || _CABLE_MASSN_TYP.Austausch;
+  // Engpass-Maßnahmen tragen 'Ertuechtigung' (wie an Assets), das Formular 'Ertuecht'
+  const t = _CABLE_MASSN_TYP[m.typ] || (m.typ === 'Ertuechtigung' ? _CABLE_MASSN_TYP.Ertuecht : _CABLE_MASSN_TYP.Austausch);
   const kosten = m.kosten ? m.kosten.toLocaleString('de-DE') + ' €' : '—';
   return `<div class="ins-massn-row" data-cm-id="${m.id}">
     <span class="ins-massn-dot" style="background:${s.color};" title="${s.label}"></span>
@@ -710,11 +711,9 @@ export function getStromEdgePropsForYear(edge, year, opts = {}) {
   return base;
 }
 
-// Jahr einer Kabel-Maßnahme (analog massnahmeJahr für Assets)
+// Jahr einer Kabel-Maßnahme — dieselbe Regel wie für Assets (lib/phasen-core.js)
 function _cableMassnJahr(m) {
-  if (m.jahr) return parseInt(m.jahr);
-  const p = (window.phasen || []).find(x => x.id === m.phaseId);
-  return p ? parseInt(p.jahrVon) : null;
+  return massnahmeJahr(m);
 }
 
 /**

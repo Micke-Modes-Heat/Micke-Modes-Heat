@@ -16,6 +16,7 @@ export const EK_ARTEN = [
   { key: 'netzanschluss', label: 'Netzanschluss' },
   { key: 'kabel',         label: 'Kabel' },
   { key: 'trafo',         label: 'Trafo' },
+  { key: 'verteilung',    label: 'Verteilung' },
   { key: 'notstrom',      label: 'Notstromaggregat' },
   { key: 'lade',          label: 'Ladepunkte' },
 ];
@@ -27,8 +28,8 @@ export const EK_VORGABEN = Object.freeze({
   anschlussPauschalEur: 0,     // Netzanschlusskosten des Netzbetreibers, pauschal
   ladepunktEur: 2500,          // Normalladepunkt (AC) inkl. Installation
   schnellladepunktEur: 60000,  // Schnellladepunkt (DC) inkl. Installation
-  nutzungsdauer:     Object.freeze({ netzanschluss: 40, kabel: 40, trafo: 30, notstrom: 20, lade: 10 }),
-  instandhaltungPct: Object.freeze({ netzanschluss: 0, kabel: 0.5, trafo: 0.5, notstrom: 1.5, lade: 2 }),
+  nutzungsdauer:     Object.freeze({ netzanschluss: 40, kabel: 40, trafo: 30, verteilung: 30, notstrom: 20, lade: 10 }),
+  instandhaltungPct: Object.freeze({ netzanschluss: 0, kabel: 0.5, trafo: 0.5, verteilung: 1, notstrom: 1.5, lade: 2 }),
 });
 
 function zahl(x, vorgabe, min = 0, max = Infinity) {
@@ -112,4 +113,62 @@ export function ekAuswertung(positionen, kennwerte) {
     jahresreihe,
     ohneJahrEur: summe(pos.filter(p => p.jahr == null).map(p => p.investEur)),
   };
+}
+
+/**
+ * Kostenpositionen des internen Netzes: geplante Maßnahmen vor Vorschlägen.
+ * Was im Projekt als Maßnahme an Trafo, Verteilung oder Kabel steht, geht mit seinem Titel, Jahr und Betrag ein —
+ * auch wenn die Engpass-Analyse heute etwas anderes vorschlagen würde. Nur Engpässe ohne geplante Maßnahme gehen
+ * mit dem Vorschlag der Analyse ein (quelle 'vorschlag'), damit das Gutachten nicht lückenhaft wird.
+ *
+ * engpaesse: [{ id, label, bestand, ms, v: { art, label, investEUR, jahr, ungeloest } | null }]
+ * geplant:   [{ objId, objLabel, art: 'trafo'|'verteilung'|'kabel', m: { id, titel, kosten, jahr (aufgelöst), status } }]
+ * heute:     laufendes Jahr — umgesetzte Maßnahmen davor sind Bestand und keine Investition mehr.
+ *
+ * Rückgabe: { positionen (mit quelle und objId), offen: { bestand, ungeloest, ms, ohneKosten }, vorschlaege: [label],
+ *            abweichend: [{ label, plan, vorschlag }] }
+ */
+export function ekNetzPositionen({ engpaesse = [], geplant = [], heute = new Date().getFullYear() } = {}) {
+  const zaehlt = g => g?.m && g.m.status !== 'abgelehnt' && !(g.m.status === 'umgesetzt' && g.m.jahr != null && g.m.jahr < heute);
+  const plan = new Map();
+  for (const g of geplant.filter(zaehlt)) {
+    if (!plan.has(g.objId)) plan.set(g.objId, []);
+    plan.get(g.objId).push(g);
+  }
+  const positionen = [], vorschlaege = [], abweichend = [];
+  const offen = { bestand: 0, ungeloest: 0, ms: 0, ohneKosten: 0 };
+  const ausPlan = g => {
+    const invest = Number(g.m.kosten) || 0;
+    if (!(invest > 0)) offen.ohneKosten++;
+    positionen.push({ gruppe: 'netz', art: g.art, label: `${g.objLabel}: ${g.m.titel || 'Maßnahme'}`, umfang: g.m.titel || '',
+                      investEur: invest, jahr: g.m.jahr ?? null, quelle: 'plan', objId: g.objId, massnahmeId: g.m.id });
+  };
+
+  for (const e of engpaesse) {
+    const eigene = plan.get(e.id);
+    if (eigene?.length) {
+      eigene.forEach(ausPlan);
+      plan.delete(e.id);
+      const v = e.v;
+      if (v && !v.ungeloest) {
+        const summe = eigene.reduce((t, g) => t + (Number(g.m.kosten) || 0), 0);
+        const jahre = eigene.map(g => g.m.jahr).filter(j => j != null);
+        const jahr = jahre.length ? Math.min(...jahre) : null;
+        if (Math.abs(summe - (Number(v.investEUR) || 0)) > 1 || (v.jahr != null && jahr !== v.jahr)) {
+          abweichend.push({ label: e.label, plan: { investEur: summe, jahr }, vorschlag: { label: v.label, investEur: Number(v.investEUR) || 0, jahr: v.jahr ?? null } });
+        }
+      }
+      continue;
+    }
+    if (e.bestand) { offen.bestand++; continue; }
+    if (e.ms) { offen.ms++; continue; }
+    if (!e.v) continue;
+    if (e.v.ungeloest) { offen.ungeloest++; continue; }
+    positionen.push({ gruppe: 'netz', art: e.v.art, label: `${e.label}: ${e.v.label}`, umfang: e.v.label,
+                      investEur: Number(e.v.investEUR) || 0, jahr: e.v.jahr ?? null, quelle: 'vorschlag', objId: e.id });
+    vorschlaege.push(e.label);
+  }
+  // Geplante Maßnahmen an Betriebsmitteln, die (nicht mehr) als Engpass erscheinen
+  for (const liste of plan.values()) liste.forEach(ausPlan);
+  return { positionen, offen, vorschlaege, abweichend };
 }
