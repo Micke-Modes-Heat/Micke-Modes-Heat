@@ -1,23 +1,28 @@
 // ── 38-pv-belegungsstaende.js — benannte Fassungen der Dachbelegung ─────────
 //
-// Arbeitsweise (Nutzerentscheidungen 07.10.2026):
+// Arbeitsweise (Nutzerentscheidungen 07.10. / 09.10.2026):
 //   • Es gibt NUR gespeicherte Belegungsstände. Die Dachbelegung im Projekt ist
-//     immer genau einer davon („im Projekt"); Änderungen im PV-Modus landen
-//     automatisch in ihm. Belegte Dächer ohne Stand → Stand „Projektbelegung".
+//     entweder genau einer davon („im Projekt") oder ein ungespeicherter ENTWURF —
+//     nach Änderungen im PV-Modus, „Übernehmen" der automatischen Belegung, Laden
+//     oder Variantenwechsel. Der Entwurf liegt auf den Dächern (PV-Assets, Netz,
+//     PV-Analyse rechnen mit ihm), wird aber erst durch Speichern zum Stand:
+//     in den Stand, auf dem er beruht, oder als neuer Stand; Verwerfen holt den
+//     Stand zurück. Kein automatisches Speichern, kein Stand „Projektbelegung".
 //   • Drei Rollen, je genau ein Inhaber:
 //       ✎ Im Projekt     — liegt auf den Dächern: PV-Assets, Stromnetz, Gutachten
+//                           (bei Entwurf: Basis des Entwurfs, nicht auf den Dächern)
 //       👁 Angezeigt      — auf der Karte (Standard: der Stand im Projekt; ein
 //                           anderer nur als lesende Ebene, Projekt unverändert)
 //       ★ PV-Analyse     — Grundlage des Variantenvergleichs (09d potenzialStandId,
-//                           null = der Stand im Projekt)
+//                           null = was auf den Dächern liegt, Stand oder Entwurf)
 //     Dazu ☀ „als Auslegung": zusätzlich als eigene Auslegung mit Speicher rechnen.
 //   • Öffnen (✎) bringt einen Stand ins Projekt (Planungstransaktion, ein Strg+Z-Schritt).
 //
 // Abgleich statt Ereignis-Haken (pvbsAbgleich): bei jedem Zeichnen des Panels,
 // vor dem Speichern und vor der PV-Analyse wird die Projektbelegung mit dem Stand
-// im Projekt verglichen (Signatur, dann genau). Entspricht sie einem anderen
-// Stand (Strg+Z, Variantenwechsel) → der wird „im Projekt". Nach Variantenwechsel
-// oder Laden ohne Treffer → neuer Stand. Sonst → automatisch speichern.
+// im Projekt verglichen (Signatur, dann genau — lib pvbsZuordnen). Entspricht sie
+// einem anderen Stand (Strg+Z, Variantenwechsel) → der wird „im Projekt". Sonst
+// → Entwurf; nach einem Variantenwechsel ohne Treffer ohne Basis.
 //
 // Rechenkern: lib/pv-belegungsstaende.js. Nichts importiert dieses Modul —
 // 25 (Panel), 36 (Vorschau), 09d (PV-Analyse), 03c (Projektdatei) und 01
@@ -28,7 +33,7 @@ import { _hasBelegung, buildPvModuleOverlay, calcGebKwp, calcGebKwpKorr, escHtml
 import { deleteAsset, getAssetsForBuilding } from './13a-assets-core.js';
 import { pvmPlanungsSchrittMerken, pvModusMarkiereKarte, pvModusRender } from './25-pv-modus.js';
 import { pvBelegungAnwenden } from './lib/varianten-regeln.js';
-import { pvbsDachAbweichung, pvbsFelder, pvbsGleich, pvbsNeu, pvbsPlan, pvbsSummen } from './lib/pv-belegungsstaende.js';
+import { pvbsDachAbweichung, pvbsFelder, pvbsNeu, pvbsPlan, pvbsSummen, pvbsZuordnen } from './lib/pv-belegungsstaende.js';
 
 const LILA   = '#b39ddb';
 const GELB   = '#ffd54f';
@@ -39,7 +44,7 @@ const ORANGE = '#ffb74d';
 const _bs = {
   /** @type {any[]} */
   liste: [],
-  /** Stand im Projekt (liegt auf den Dächern, wird bearbeitet) */
+  /** Stand im Projekt (liegt auf den Dächern) bzw. bei Entwurf dessen Basis */
   projektId: null,
   /** aufgeklappte Zeile im Panel */
   offenId: null,
@@ -50,8 +55,12 @@ const _bs = {
 let _ansicht = null;
 /** Signatur der Projektbelegung beim letzten Abgleich */
 let _letzteSig = null;
-/** Belegung kam von außen (Laden, Variantenwechsel): passenden Stand suchen, nicht überschreiben */
+/** Belegung kam von außen (Laden, Variantenwechsel): passenden Stand suchen */
 let _neuAufloesen = true;
+/** Variantenwechsel: ohne passenden Stand ist der bisherige keine Basis mehr */
+let _basisLoesen = false;
+/** Ungespeicherter Entwurf auf den Dächern: null | { daecher, kwpKorr } */
+let _entwurf = null;
 
 const _fmt = (x, d = 0) => (Number.isFinite(x) ? x : 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
 const _geb = () => window.gebaeude || [];
@@ -61,12 +70,17 @@ const _gibtEs = () => { const ids = new Set(_geb().map(g => String(g.id))); retu
 
 export function pvbsListe() { return _bs.liste; }
 export function pvbsStand(id) { return _bs.liste.find(s => s.id === id) || null; }
-/** Stand im Projekt (nach Abgleich) — id oder null. */
-export function pvbsProjektId() { pvbsAbgleich(); return _bs.projektId; }
-/** Grundlage der PV-Analyse: gewählter Stand oder der Stand im Projekt. */
+/** Stand, der auf den Dächern liegt (nach Abgleich) — id oder null (auch bei Entwurf). */
+export function pvbsProjektId() { pvbsAbgleich(); return _entwurf ? null : _bs.projektId; }
+/** Ungespeicherter Entwurf auf den Dächern: { daecher, kwpKorr, basisName } oder null. */
+export function pvbsEntwurfInfo() {
+  pvbsAbgleich();
+  return _entwurf ? { ..._entwurf, basisName: pvbsStand(_bs.projektId)?.name || '' } : null;
+}
+/** Grundlage der PV-Analyse: gewählter Stand oder der Stand im Projekt (null = Entwurf). */
 function _analyseId() {
   const id = window._pvAnalyse?.potenzialStandId;
-  return id && pvbsStand(id) ? id : _bs.projektId;
+  return id && pvbsStand(id) ? id : _entwurf ? null : _bs.projektId;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -106,55 +120,48 @@ function _variantenName() {
   try { return window.aktiverVariantenName?.() || ''; } catch { return ''; }
 }
 
+function _entwurfSumme() {
+  const sum = pvbsSummen(pvbsNeu({ id: 'entwurf', eintraege: _projektEintraege() }));
+  return { daecher: sum.daecher, kwpKorr: sum.kwpKorr };
+}
+
 /**
  * Projektbelegung und „Stand im Projekt" in Einklang bringen. Billig, solange
- * sich nichts geändert hat (Signatur). Siehe Kopfkommentar.
- * @returns {any|null} Stand im Projekt
+ * sich nichts geändert hat (Signatur). Speichert nie — siehe Kopfkommentar.
+ * @returns {any|null} Stand im Projekt bzw. Basis des Entwurfs
  */
 export function pvbsAbgleich() {
   const sig = _projektSig();
   if (sig === _letzteSig && !_neuAufloesen) return pvbsStand(_bs.projektId);
-  const akt = _projektBelegung();
-  const leer = !Object.keys(akt).length;
+  const bearbeitet = !_neuAufloesen && _letzteSig != null;      // echte Änderung im Projekt
   const ps = pvbsStand(_bs.projektId);
-  if (ps && pvbsGleich(ps, akt)) {
-    // Gleiche Flächen — Kennzahlen trotzdem auffrischen (Dachform/Modulmaße ändern kWp)
-    for (const [id, e] of Object.entries(_projektEintraege())) if (ps.geb[id]) Object.assign(ps.geb[id], pvbsNeu({ id: 'x', eintraege: { [id]: e } }).geb[id]);
-  } else {
-    const treffer = _bs.liste.find(s => s !== ps && pvbsGleich(s, akt));
-    if (treffer) {
-      _bs.projektId = treffer.id;                          // Strg+Z, Variantenwechsel zurück, …
-    } else if (_neuAufloesen || !ps) {
-      if (leer) _bs.projektId = null;
-      else {
-        const vn = _variantenName();
-        const s = pvbsNeu({ id: _neueId(), name: vn && vn !== 'Hauptplan' ? `Projektbelegung – ${vn}` : 'Projektbelegung',
-          herkunft: 'projekt', beschreibung: 'aus der Belegung im Projekt übernommen', eintraege: _projektEintraege(), stand: _heute() });
-        _bs.liste.push(s);
-        _bs.projektId = s.id;
-      }
-    } else {
-      // Bearbeitet → automatisch in den Stand im Projekt speichern
-      const neu = pvbsNeu({ id: ps.id, name: ps.name, herkunft: ps.herkunft === 'auto' ? 'bearbeitet' : ps.herkunft,
-        beschreibung: ps.herkunft === 'auto' && !/bearbeitet/.test(ps.beschreibung) ? `${ps.beschreibung}; danach von Hand bearbeitet` : ps.beschreibung,
-        eintraege: _projektEintraege(), stand: _heute(), netz: null });   // Netzprüfung der Vorschau gilt nicht mehr
-      _bs.liste[_bs.liste.indexOf(ps)] = neu;
-      window.pvMarkStale?.();
-      if (_ansicht) {
-        pvbsAnsichtEnde(false);
-        window.showHint?.(`Ansicht beendet — bearbeitet wird „${neu.name}“ (im Projekt), Änderungen werden dort gespeichert.`, 6000);
-      }
+  const z = pvbsZuordnen(_bs.liste, _bs.projektId, _projektBelegung(), _basisLoesen);
+  const vorher = `${_bs.projektId}|${!!_entwurf}`;
+  _bs.projektId = z.projektId;
+  if (z.entwurf) {
+    _entwurf = _entwurfSumme();
+    if (_ansicht && bearbeitet) {
+      pvbsAnsichtEnde(false);
+      window.showHint?.('Ansicht beendet — die Änderungen im Projekt sind ein ungespeicherter Entwurf (📚 Belegungsstände → 💾).', 6000);
     }
-    window._pvBelegungenRefresh?.();
+  } else {
+    _entwurf = null;
+    // Gleiche Flächen — Kennzahlen trotzdem auffrischen (Dachform/Modulmaße ändern kWp)
+    const st = pvbsStand(z.projektId);
+    if (st && st === ps) for (const [id, e] of Object.entries(_projektEintraege())) if (st.geb[id]) Object.assign(st.geb[id], pvbsNeu({ id: 'x', eintraege: { [id]: e } }).geb[id]);
   }
+  if (bearbeitet) window.pvMarkStale?.();
+  if (bearbeitet || vorher !== `${_bs.projektId}|${!!_entwurf}`) window._pvBelegungenRefresh?.();
   _letzteSig = sig;
   _neuAufloesen = false;
+  _basisLoesen = false;
   return pvbsStand(_bs.projektId);
 }
 
 /** 01 nach dem Laden einer Planungsvariante: deren Belegung kam von außen. */
 export function pvbsVarianteGewechselt() {
   _neuAufloesen = true;
+  _basisLoesen = true;
   if (_ansicht) pvbsAnsichtEnde(false);
 }
 
@@ -171,7 +178,7 @@ export function pvbsKennzahlen(id) {
   for (const [gid, e] of Object.entries(s.geb)) if (gibtEs(gid)) dachKwp[gid] = +e.kwpKorr || 0;
   const sum = pvbsSummen(s, gibtEs);
   return { id: s.id, name: s.name, beschreibung: s.beschreibung, stand: s.stand, netz: s.netz,
-    imProjekt: s.id === _bs.projektId,
+    imProjekt: s.id === _bs.projektId && !_entwurf,
     dachKwp, ids: new Set(Object.keys(dachKwp)), summeKwp: sum.kwpKorr, daecher: sum.daecher,
     fehlend: Object.keys(s.geb).length - sum.daecher };
 }
@@ -187,13 +194,14 @@ function _nachAenderung() {
 
 /**
  * Stand aus der Vorschau der automatischen Belegung (36). `zeilen` = Dächer, die
- * „Übernehmen" belegen würde, mit Rechenkopie aus pvmProbe({mitKopie}). Dazu
- * kommt die schon vorhandene Belegung aller übrigen Dächer — der Stand zeigt die
- * ganze Liegenschaft so, wie sie nach dem Übernehmen aussähe.
+ * „Übernehmen" belegen würde, mit Rechenkopie aus pvmProbe({mitKopie}). NUR diese
+ * Dächer (Nutzerentscheidung 09.10.) — die Belegung im Projekt kommt nicht mit,
+ * Stände überschneiden sich so nicht mit ihr. Ausnahme meta.mitProjekt
+ * (Gesamtpotenzial): dazu die schon belegten Dächer aus dem Projekt.
  */
 export function pvbsAusVorschau(zeilen, meta = {}) {
   pvbsAbgleich();
-  const eintraege = _projektEintraege();
+  const eintraege = meta.mitProjekt ? _projektEintraege() : {};
   for (const z of zeilen) {
     if (!z.kopie) continue;
     eintraege[z.g.id] = {
@@ -241,7 +249,7 @@ export function pvbsLoeschen(id) {
   pvbsAbgleich();
   const s = pvbsStand(id);
   if (!s) return;
-  if (s.id === _bs.projektId) {
+  if (s.id === _bs.projektId && !_entwurf) {
     alert(`„${s.name}“ liegt gerade im Projekt und kann nicht gelöscht werden.\n\nErst einen anderen Stand öffnen (✎).`);
     return;
   }
@@ -253,6 +261,7 @@ export function pvbsLoeschen(id) {
     + (nAusl ? `\n\n${nAusl} Auslegung(en) der PV-Analyse hängen daran und werden mit entfernt.` : ''))) return;
   if (_ansicht?.id === id) pvbsAnsichtEnde();
   _bs.liste = _bs.liste.filter(x => x !== s);
+  if (s.id === _bs.projektId) _bs.projektId = null;      // Basis des Entwurfs gelöscht
   if (pot) pva.potenzialStandId = null;
   if (nAusl) {
     const rest = pva.belegungsVarianten.filter(b => b.standId !== id);
@@ -270,7 +279,8 @@ export function pvbsLoeschen(id) {
 export function pvbsAnalyse(id) {
   const pva = window._pvAnalyse;
   if (!pva) return;
-  pva.potenzialStandId = id === _bs.projektId ? null : id;   // null = folgt dem Stand im Projekt
+  // null = folgt dem, was auf den Dächern liegt (Stand im Projekt oder Entwurf)
+  pva.potenzialStandId = !id || (id === _bs.projektId && !_entwurf) ? null : id;
   window.pvMarkStale?.();
   _nachAenderung();
 }
@@ -322,7 +332,7 @@ export function pvbsAnsehen(id) {
   pvbsAbgleich();
   const s = pvbsStand(id);
   if (!s) return;
-  if (id === _bs.projektId || _ansicht?.id === id) { pvbsAnsichtEnde(); return; }
+  if ((id === _bs.projektId && !_entwurf) || _ansicht?.id === id) { pvbsAnsichtEnde(); return; }
   if (_ansicht) pvbsAnsichtEnde(false);
   window.showHint?.(`⏳ „${s.name}“ wird gezeichnet …`, 0);
   setTimeout(() => {
@@ -402,7 +412,7 @@ function _bannerZeigen(s, n) {
   div.innerHTML = `<span style="color:${LILA};">👁 Angezeigt</span>
     <b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(s.name)}</b>
     <span style="color:#b0bec5;font-family:'DM Mono',monospace;white-space:nowrap;">${n} Dächer · ${_fmt(k?.summeKwp)} kWp</span>
-    <span style="color:#90a4ae;font-size:11px;white-space:nowrap;">nur Ansicht · im Projekt: „${escHtml(p?.name || '—')}“</span>
+    <span style="color:#90a4ae;font-size:11px;white-space:nowrap;">nur Ansicht · im Projekt: ${_entwurf ? 'ungespeicherter Entwurf' : `„${escHtml(p?.name || '—')}“`}</span>
     <button data-click="pvbsOeffnen('${s.id}')" style="cursor:pointer;background:transparent;border:1px solid ${GRUEN};border-radius:12px;color:${GRUEN};font-size:11px;padding:1px 9px;">✎ öffnen</button>
     <button data-click="pvbsAnsichtEnde()" style="cursor:pointer;background:transparent;border:1px solid ${LILA};border-radius:12px;color:${LILA};font-size:11px;padding:1px 9px;">Ansicht beenden</button>`;
   document.body.appendChild(div);
@@ -413,16 +423,21 @@ function _bannerZeigen(s, n) {
 // ══════════════════════════════════════════════════════════════════════════
 
 export function pvbsOeffnen(id) {
-  pvbsAbgleich();                                     // offene Änderungen sichern
+  pvbsAbgleich();
   const s = pvbsStand(id);
   if (!s) return;
-  if (id === _bs.projektId) { pvbsAnsichtEnde(); window.showHint?.(`„${s.name}“ liegt bereits im Projekt.`, 4000); return; }
+  if (id === _bs.projektId && !_entwurf) { pvbsAnsichtEnde(); window.showHint?.(`„${s.name}“ liegt bereits im Projekt.`, 4000); return; }
   const alt = pvbsStand(_bs.projektId);
   if (!confirm(`„${s.name}“ zum Bearbeiten öffnen?\n\n`
     + `Die Dächer im Projekt zeigen danach diesen Stand (${Object.keys(s.geb).length} Dächer belegt, übrige leer); `
-    + 'PV-Assets und Stromnetz werden angepasst. Änderungen werden automatisch in ihm gespeichert.'
-    + (alt ? `\n„${alt.name}“ bleibt gespeichert.` : '')
+    + 'PV-Assets und Stromnetz werden angepasst. Änderungen bleiben ein Entwurf, bis du sie speicherst.'
+    + (_entwurf ? '\n\n⚠ Der ungespeicherte Entwurf im Projekt wird dabei ersetzt.' : alt ? `\n„${alt.name}“ bleibt gespeichert.` : '')
     + '\n\nStrg+Z im PV-Modus nimmt den Schritt zurück.')) return;
+  _insProjekt(s, `✎ „${s.name}“ liegt jetzt im Projekt — Änderungen bleiben ein Entwurf, bis du sie speicherst. Strg+Z nimmt das Öffnen zurück.`);
+}
+
+/** Stand auf die Dächer legen (Öffnen, Entwurf verwerfen). */
+function _insProjekt(s, hinweis) {
   pvbsAnsichtEnde(false);
   window.showHint?.(`⏳ „${s.name}“ wird geöffnet …`, 0);
   setTimeout(() => {
@@ -432,7 +447,8 @@ export function pvbsOeffnen(id) {
       window.showHint?.('Öffnen fehlgeschlagen: ' + err.message, 8000);
       return;
     }
-    _bs.projektId = id;
+    _bs.projektId = s.id;
+    _entwurf = null;
     _letzteSig = _projektSig();
     pvmPlanungsSchrittMerken();
     window.pvuNachlauf?.();
@@ -440,10 +456,59 @@ export function pvbsOeffnen(id) {
     window.renderList?.();
     window.renderGebPvPanel?.();
     window.pvMarkStale?.();
-    window.showHint?.(`✎ „${s.name}“ liegt jetzt im Projekt — Änderungen werden automatisch gespeichert. Strg+Z nimmt das Öffnen zurück.`, 7000);
+    window.showHint?.(hinweis, 7000);
     pvModusMarkiereKarte();
     _nachAenderung();
   }, 30);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ENTWURF — speichern, als neuen Stand speichern, verwerfen
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Entwurf in den Stand speichern, auf dem er beruht. */
+export function pvbsEntwurfSpeichern() {
+  pvbsAbgleich();
+  const ps = pvbsStand(_bs.projektId);
+  if (!_entwurf || !ps) return;
+  if (!confirm(`Den Entwurf (${_entwurf.daecher} Dächer · ${_fmt(_entwurf.kwpKorr)} kWp) in „${ps.name}“ speichern?\n\n`
+    + `Der bisherige Inhalt (${Object.keys(ps.geb).length} Dächer) wird überschrieben. Wer ihn behalten will: „als neuer Stand“.`)) return;
+  const bearb = ps.herkunft === 'auto';
+  const neu = pvbsNeu({ id: ps.id, name: ps.name, herkunft: bearb ? 'bearbeitet' : ps.herkunft,
+    beschreibung: bearb && !/bearbeitet/.test(ps.beschreibung) ? `${ps.beschreibung ? ps.beschreibung + '; ' : ''}danach von Hand bearbeitet` : ps.beschreibung,
+    eintraege: _projektEintraege(), stand: _heute(), netz: null });   // Netzprüfung der Vorschau gilt nicht mehr
+  _bs.liste[_bs.liste.indexOf(ps)] = neu;
+  _entwurf = null;
+  window.pvMarkStale?.();
+  window.showHint?.(`💾 Entwurf in „${neu.name}“ gespeichert.`, 5000);
+  _nachAenderung();
+}
+
+/** Entwurf als neuen, benannten Stand speichern — er liegt danach im Projekt. */
+export function pvbsEntwurfAlsStand() {
+  pvbsAbgleich();
+  if (!_entwurf) return;
+  const basis = pvbsStand(_bs.projektId);
+  const vn = _variantenName();
+  const vorschlag = basis ? `${basis.name} (bearbeitet)` : vn && vn !== 'Hauptplan' ? `Projektbelegung – ${vn}` : 'Projektbelegung';
+  const name = prompt('Name des neuen Belegungsstands:', vorschlag);
+  if (name == null) return;
+  const s = pvbsNeu({ id: _neueId(), name: name.trim() || vorschlag, herkunft: 'projekt',
+    beschreibung: basis ? `aus „${basis.name}“ bearbeitet` : 'aus der Belegung im Projekt', eintraege: _projektEintraege(), stand: _heute() });
+  _bs.liste.push(s);
+  _bs.projektId = s.id;
+  _entwurf = null;
+  window.showHint?.(`💾 „${s.name}“ gespeichert — liegt jetzt im Projekt.`, 5000);
+  _nachAenderung();
+}
+
+/** Entwurf verwerfen: der Stand, auf dem er beruht, kommt zurück auf die Dächer. */
+export function pvbsEntwurfVerwerfen() {
+  pvbsAbgleich();
+  const ps = pvbsStand(_bs.projektId);
+  if (!_entwurf || !ps) return;
+  if (!confirm(`Ungespeicherte Änderungen verwerfen und „${ps.name}“ wiederherstellen?\n\nStrg+Z im PV-Modus holt den Entwurf zurück.`)) return;
+  _insProjekt(ps, `↶ Entwurf verworfen — „${ps.name}“ liegt wieder im Projekt. Strg+Z holt den Entwurf zurück.`);
 }
 
 function _oeffnenLauf(s) {
@@ -493,19 +558,21 @@ const _rolle = (farbe, text, titel) => `<span title="${escHtml(titel)}" style="f
 export function pvbsBlockHtml() {
   const ps = pvbsAbgleich();
   const pva = window._pvAnalyse;
-  const anzeigeId = _ansicht?.id || _bs.projektId;
+  const anzeigeId = _ansicht?.id || (_entwurf ? null : _bs.projektId);
   const analyseId = _analyseId();
   const gibtEs = _gibtEs();
 
   const zeile = s => {
     const sum = pvbsSummen(s, gibtEs);
-    const imProjekt = s.id === _bs.projektId;
+    const imProjekt = s.id === _bs.projektId && !_entwurf;
+    const basis = s.id === _bs.projektId && !!_entwurf;
     const angezeigt = s.id === anzeigeId;
     const analyse = s.id === analyseId;
     const ausl = (pva?.belegungsVarianten || []).some(b => b.standId === s.id);
     const offen = _bs.offenId === s.id;
     const rollen = [
-      imProjekt ? _rolle(GRUEN, 'IM PROJEKT', 'Liegt auf den Dächern (PV-Assets, Stromnetz, Gutachten) — Änderungen werden hier gespeichert') : '',
+      imProjekt ? _rolle(GRUEN, 'IM PROJEKT', 'Liegt auf den Dächern (PV-Assets, Stromnetz, Gutachten) — Änderungen werden ein Entwurf, bis du sie speicherst') : '',
+      basis ? _rolle(ORANGE, 'BASIS DES ENTWURFS', 'Der ungespeicherte Entwurf auf den Dächern beruht auf diesem Stand — er selbst ist unverändert') : '',
       angezeigt ? _rolle(LILA, 'ANGEZEIGT', 'Ist gerade auf der Karte zu sehen') : '',
       analyse ? _rolle(GELB, 'PV-ANALYSE', 'Grundlage des Variantenvergleichs in der PV-Analyse') : '',
       ausl ? _rolle(ORANGE, '☀ AUSLEGUNG', 'Wird in der PV-Analyse zusätzlich als eigene Auslegung mit Speicher gerechnet') : '',
@@ -516,7 +583,7 @@ export function pvbsBlockHtml() {
           <span style="flex:1;min-width:0;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${imProjekt ? 'font-weight:600;' : ''}" data-click="pvbsZeile('${s.id}')"
             title="${escHtml(`${s.name}${s.beschreibung ? ' — ' + s.beschreibung : ''} · Stand ${s.stand}`)}">${offen ? '▾' : '▸'} ${escHtml(s.name)}</span>
           ${_knopf(`pvbsAnsehen('${s.id}')`, '👁', angezeigt && !imProjekt ? 'Ansicht beenden' : imProjekt ? 'Liegt im Projekt und ist ohnehin zu sehen' : 'Auf der Karte anzeigen — das Projekt bleibt unverändert', LILA, angezeigt && !imProjekt)}
-          ${imProjekt ? '' : _knopf(`pvbsOeffnen('${s.id}')`, '✎ öffnen', 'Ins Projekt holen und bearbeiten — Änderungen werden automatisch gespeichert (ein Strg+Z-Schritt)', GRUEN)}
+          ${imProjekt || basis ? '' : _knopf(`pvbsOeffnen('${s.id}')`, '✎ öffnen', 'Ins Projekt holen und bearbeiten — Änderungen bleiben ein Entwurf, bis du sie speicherst (ein Strg+Z-Schritt)', GRUEN)}
         </div>
         ${rollen ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin:2px 0 1px 10px;">${rollen}</div>` : ''}
         <div style="font-size:9px;color:var(--muted);padding-left:10px;font-family:'DM Mono',monospace;">${sum.daecher} Dächer · ${_fmt(sum.kwpKorr)} kWp${
@@ -540,19 +607,35 @@ export function pvbsBlockHtml() {
   if (_bs.zu) return `<div style="margin-top:6px;border:1px solid ${LILA}55;border-radius:5px;padding:5px 7px;">${kopf}</div>`;
 
   const name = id => { const s = pvbsStand(id); return s ? `„${escHtml(s.name)}“` : '<span style="color:var(--muted);">—</span>'; };
+  const entwurfName = `<span style="color:${ORANGE};">Entwurf (ungespeichert)</span>`;
   const uebersicht = `
     <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 6px;font-size:9.5px;margin:4px 0 5px;padding:4px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;align-items:baseline;">
-      ${_rolle(GRUEN, 'IM PROJEKT', 'Liegt auf den Dächern')}<span>${name(_bs.projektId)}${ps ? ' <span style="color:var(--muted);">· Änderungen werden hier gespeichert</span>' : ' <span style="color:var(--muted);">· noch keine Dächer belegt</span>'}</span>
-      ${_rolle(LILA, 'ANGEZEIGT', 'Auf der Karte')}<span>${name(anzeigeId)}${_ansicht ? ` <a style="cursor:pointer;color:${LILA};text-decoration:underline;" data-click="pvbsAnsichtEnde()">beenden</a>` : ''}</span>
-      ${_rolle(GELB, 'PV-ANALYSE', 'Grundlage des Variantenvergleichs')}<span>${name(analyseId)}</span>
+      ${_rolle(GRUEN, 'IM PROJEKT', 'Liegt auf den Dächern')}<span>${_entwurf ? entwurfName : ps ? name(_bs.projektId) : '<span style="color:var(--muted);">noch keine Dächer belegt</span>'}</span>
+      ${_rolle(LILA, 'ANGEZEIGT', 'Auf der Karte')}<span>${anzeigeId ? name(anzeigeId) : _entwurf ? entwurfName : name(null)}${_ansicht ? ` <a style="cursor:pointer;color:${LILA};text-decoration:underline;" data-click="pvbsAnsichtEnde()">beenden</a>` : ''}</span>
+      ${_rolle(GELB, 'PV-ANALYSE', 'Grundlage des Variantenvergleichs')}<span>${analyseId ? name(analyseId) : _entwurf ? entwurfName : name(null)}</span>
+    </div>`;
+  // Entwurf: liegt auf den Dächern, ist aber noch kein Stand
+  const entwurf = !_entwurf ? '' : `
+    <div style="margin:4px 0 5px;padding:4px 6px;border:1px dashed ${ORANGE};border-radius:4px;background:${ORANGE}12;font-size:10px;">
+      <div style="display:flex;align-items:baseline;gap:5px;">
+        ${_rolle(ORANGE, 'ENTWURF', 'Liegt auf den Dächern (PV-Assets, Stromnetz, PV-Analyse), ist aber noch kein gespeicherter Stand')}
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ps ? `beruht auf ${name(_bs.projektId)}` : 'neue Belegung'} — ungespeichert</span>
+      </div>
+      <div style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;padding:2px 0 3px;">${_entwurf.daecher} Dächer · ${_fmt(_entwurf.kwpKorr)} kWp</div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px;">
+        ${ps ? _knopf('pvbsEntwurfSpeichern()', '💾 speichern', `In „${ps.name}“ speichern — überschreibt dessen bisherigen Inhalt`, GRUEN) : ''}
+        ${_knopf('pvbsEntwurfAlsStand()', '💾 als neuer Stand', 'Unter neuem Namen speichern — liegt danach im Projekt', GRUEN)}
+        ${ps ? _knopf('pvbsEntwurfVerwerfen()', '↶ verwerfen', `Änderungen verwerfen, „${ps.name}“ zurück auf die Dächer (Strg+Z holt den Entwurf zurück)`, ROT) : ''}
+      </div>
     </div>`;
   const leer = !_bs.liste.length ? `<div style="font-size:9px;color:var(--muted);line-height:1.45;margin-bottom:4px;">
       Noch keine. „⚡ Dächer automatisch belegen“ → Vorschau → „💾 Als Belegungsstand speichern“ — z. B. „Alle Dächer · Maximal“ als Gesamtpotenzial.
-      Sobald Dächer belegt werden, entsteht der Stand „Projektbelegung“ von selbst.</div>` : '';
+      Dächer, die du im Projekt belegst, bleiben ein Entwurf, bis du sie speicherst.</div>` : '';
   return `
     <div style="margin-top:6px;border:1px solid ${LILA}55;border-radius:5px;padding:5px 7px;background:${LILA}0a;">
       ${kopf}
-      ${_bs.liste.length ? uebersicht : ''}
+      ${_bs.liste.length || _entwurf ? uebersicht : ''}
+      ${entwurf}
       ${leer}
       <div style="max-height:300px;overflow-y:auto;">${_bs.liste.map(zeile).join('')}</div>
       <div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.4;">Zeile anklicken für ☆ PV-Analyse · ☀ Auslegung · ⧉ Kopie · Name · Löschen.</div>
@@ -570,7 +653,8 @@ export function pvbsZeile(id) {
 // ══════════════════════════════════════════════════════════════════════════
 
 export function pvbsCapture() {
-  pvbsAbgleich();                                     // letzte Änderungen in den Stand im Projekt
+  pvbsAbgleich();
+  // Ein Entwurf steckt in den Gebäuden selbst; projektId ist dann seine Basis
   return _bs.liste.length ? JSON.parse(JSON.stringify({ liste: _bs.liste, projektId: _bs.projektId })) : null;
 }
 
@@ -581,5 +665,6 @@ export function pvbsRestore(d) {
   _bs.projektId = pid && _bs.liste.some(s => s.id === pid) ? pid : null;
   _bs.offenId = null;
   _letzteSig = null;
+  _entwurf = null;
   _neuAufloesen = true;                                   // Projektbelegung kam aus der Datei — erst zuordnen
 }

@@ -7156,6 +7156,7 @@ function _pvPotenzialKopfHtml() {
     : '';
   const staende = window.pvbsListe?.() || [];
   const projektId = window.pvbsProjektId?.() || null;
+  const entwurf = window.pvbsEntwurfInfo?.() || null;     // ungespeicherte Belegung auf den Dächern (38)
   const potId = window._pvAnalyse.potenzialStandId;
   const name = id => staende.find(st => st.id === id)?.name || '';
   const sel = 'width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;';
@@ -7166,10 +7167,11 @@ function _pvPotenzialKopfHtml() {
     </div>
     <div data-ohne-stale style="margin-bottom:6px;" title="Mit welchem gespeicherten Belegungsstand der Variantenvergleich rechnet — z. B. „Gesamtpotenzial“ aus der automatischen Belegung, ohne die Dächer im Projekt belegen zu müssen.">
       <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">Dächer: Belegungsstand</div>
-      ${staende.length ? `<select data-change="pvaPotenzialStand(this.value)" style="${sel}">
+      ${staende.length || entwurf ? `<select data-change="pvaPotenzialStand(this.value)" style="${sel}">
         ${projektId ? `<option value=""${potId && potId !== projektId ? '' : ' selected'}>„${escHtml(name(projektId))}“ — im Projekt</option>` : ''}
+        ${entwurf ? `<option value=""${potId ? '' : ' selected'}>Entwurf im Projekt (ungespeichert, ${entwurf.daecher} Dächer)</option>` : ''}
         ${staende.filter(st => st.id !== projektId).map(st => `<option value="${st.id}"${st.id === potId ? ' selected' : ''}>„${escHtml(st.name)}“</option>`).join('')}
-      </select>` : '<div style="font-size:10px;color:var(--muted);line-height:1.4;">Noch kein Belegungsstand — sie entstehen im PV-Modus („⚡ Dächer automatisch belegen“ → „💾 Als Belegungsstand speichern“) oder von selbst, sobald Dächer belegt sind.</div>'}
+      </select>` : '<div style="font-size:10px;color:var(--muted);line-height:1.4;">Noch kein Belegungsstand — sie entstehen im PV-Modus („⚡ Dächer automatisch belegen“ → „💾 Als Belegungsstand speichern“) oder aus belegten Dächern im Projekt über „💾 als neuer Stand“.</div>'}
       ${potId && !bd.stand ? '<div style="font-size:10px;color:#ef9a9a;margin-top:3px;">Der gewählte Belegungsstand existiert nicht mehr — es gilt der Stand im Projekt.</div>' : ''}
     </div>
     ${bd.stand ? zeile(`Belegungsstand (${bd.stand.daecher} Dächer)`, bd.stand.kwp) : ''}
