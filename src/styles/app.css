@@ -2819,3 +2819,12 @@ tr.ga-blink td{animation:ga-blink 1.6s ease 2;}
 .qs-ansicht .viz-btn{font-size:9px;padding:2px 8px;}
 #qs-canvas{width:100%;display:block;border-radius:4px;background:rgba(0,0,0,0.12);}
 .leaflet-container.qs-ziehen,.leaflet-container.qs-ziehen .leaflet-interactive{cursor:crosshair!important;}
+
+/* ── Variantenvergleich: grafischer Vergleich ── */
+.vg-kopf{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.vg-ansicht{display:flex;gap:2px;flex-wrap:wrap;}
+.vg-ansicht .viz-btn{font-size:9.5px;padding:3px 9px;}
+.vg-check{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer;}
+.vg-flaeche{position:relative;}
+.vg-flaeche canvas{width:100%;display:block;border-radius:6px;background:var(--surface2);}
+.vg-leer{font-size:11px;color:var(--muted);padding:8px 0;}

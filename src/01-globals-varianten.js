@@ -643,8 +643,9 @@ export function renderVergleich() {
   }
   wrap.innerHTML = html;
 
-  // Pareto-Diagramm rendern
+  // Pareto-Diagramm und grafischer Vergleich rendern
   requestAnimationFrame(() => _renderParetoChart());
+  window.vgRender?.();
 }
 
 export function _renderParetoChart() {
