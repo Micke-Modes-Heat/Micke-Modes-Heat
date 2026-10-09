@@ -15421,7 +15421,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-09';
   if (d.indexOf('__') === 0) d = '';
-  var c = '8ffb208';
+  var c = '147f732';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -73402,8 +73402,8 @@ window._isSingleFileBuild = true;
   /** Emissionsfaktoren nach GEG Anlage 9 in g CO₂-Äquivalent je kWh Endenergie. */
   const BA_CO2_GEG = Object.freeze({ Erdgas: 240, Heizöl: 310, Holzpellets: 20, Holzhackschnitzel: 20, Strom: 560, Fernwärme: 180, Solar: 0 });
 
-  const zahl$6 = v => { const x = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(x) ? x : NaN; };
-  const pos = v => { const x = zahl$6(v); return Number.isFinite(x) && x > 0 ? x : NaN; };
+  const zahl$7 = v => { const x = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(x) ? x : NaN; };
+  const pos = v => { const x = zahl$7(v); return Number.isFinite(x) && x > 0 ? x : NaN; };
   const txt$1 = v => (typeof v === 'string' ? v.trim() : v == null ? '' : String(v).trim());
 
   /** Wo der gemessene Gesamtverbrauch erfasst wird — bestimmt die Verluste vor der Aufteilung auf die Gebäude. */
@@ -76703,7 +76703,7 @@ window._isSingleFileBuild = true;
     return ok.length ? Math.min(...ok) : null;
   };
 
-  const zahl$5 = v => {
+  const zahl$6 = v => {
     const n = parseFloat(String(v ?? '').replace(',', '.'));
     return Number.isFinite(n) ? n : null;
   };
@@ -76832,13 +76832,13 @@ window._isSingleFileBuild = true;
       if (geplant) st.planJahr = minJahr(st.planJahr, ganz$1(a.baujahr ?? g?.baujahr));
       if (a.type === 'NAP') {
         st.hatNap = true;
-        st.napKV = st.napKV ?? zahl$5(a.props?.spannungKV);
+        st.napKV = st.napKV ?? zahl$6(a.props?.spannungKV);
       } else if (a.type === 'Schaltanlage') {
         st.schaltanlagen++;
         if (wahr(a.props?.trennstelle)) st.trennstelle = true;
       } else {
         const ist = propsIst(a), ziel = propsZiel(a);
-        const kva = zahl$5(ziel.leistungKVA), kvaIst = geplant ? null : zahl$5(ist.leistungKVA);
+        const kva = zahl$6(ziel.leistungKVA), kvaIst = geplant ? null : zahl$6(ist.leistungKVA);
         st.trafos.push({ id: a.id, name: a.name || 'Trafo', kva, kvaIst, erzeugung: ziel.netzart === 'erzeugung', geplant,
                          ertuechtigt: !geplant && kva !== kvaIst,
                          planJahr: geplant ? ganz$1(a.baujahr ?? g?.baujahr)
@@ -76877,10 +76877,10 @@ window._isSingleFileBuild = true;
         if (!ca && gebMap.has(String(cur))) gebSet.add(String(cur));
         if (ca && ERZEUGER_TYPEN$1.includes(ca.type)) {
           const p = ca.props || {};
-          const kw = ca.type === 'PV' ? zahl$5(p.leistungKWp)
-                   : ca.type === 'KWK' ? zahl$5(p.leistungElKW)
-                   : ca.type === 'H2' ? zahl$5(p.brennstoffzelleKW)
-                   : zahl$5(p.leistungKW);
+          const kw = ca.type === 'PV' ? zahl$6(p.leistungKWp)
+                   : ca.type === 'KWK' ? zahl$6(p.leistungElKW)
+                   : ca.type === 'H2' ? zahl$6(p.brennstoffzelleKW)
+                   : zahl$6(p.leistungKW);
           const e = st.erzeuger[ca.type] || (st.erzeuger[ca.type] = { anzahl: 0, kw: 0, ohneWert: 0 });
           e.anzahl++;
           if (kw != null && kw > 0) e.kw += kw; else e.ohneWert++;
@@ -76926,10 +76926,10 @@ window._isSingleFileBuild = true;
       // Systeme = modellierte Parallelkanten. nParallel taugt dafür nicht: bei MS-Einleiterkabeln
       // steht dort oft 3 (3×1×185 mm²) für EIN System.
       v.anzahl++;
-      v.kabel.push({ typ: String(ziel.cableType || '').trim(), qs: zahl$5(ziel.crossSection) || null, geschaetzt: !!e.qsGeschaetzt && !geaendert,
-                     typIst: String(ist.cableType || '').trim(), qsIst: zahl$5(ist.crossSection) || null });
+      v.kabel.push({ typ: String(ziel.cableType || '').trim(), qs: zahl$6(ziel.crossSection) || null, geschaetzt: !!e.qsGeschaetzt && !geaendert,
+                     typIst: String(ist.cableType || '').trim(), qsIst: zahl$6(ist.crossSection) || null });
       if (wahr(e.trennstelle)) v.trennstelle = true;
-      v.laengeM += zahl$5(e.lengthM) || 0;
+      v.laengeM += zahl$6(e.lengthM) || 0;
       if (!neu) v.geplant = false;
     }
     const verbListe = [...verbindungen.values()];
@@ -77245,7 +77245,7 @@ window._isSingleFileBuild = true;
       const key = stationKey(a);
       const ab = ganz$1(a.abrissjahr ?? g?.abrissjahr);
       if (stationen.has(key)) {
-        if (a.type === 'Trafo') stationen.get(key).trafosEntfallen.push({ name: a.name || 'Trafo', kva: zahl$5(propsIst(a).leistungKVA), jahr: ab });
+        if (a.type === 'Trafo') stationen.get(key).trafosEntfallen.push({ name: a.name || 'Trafo', kva: zahl$6(propsIst(a).leistungKVA), jahr: ab });
         continue;
       }
       if (!entfalleneStationen.has(key)) {
@@ -77259,7 +77259,7 @@ window._isSingleFileBuild = true;
       st.jahr = minJahr(st.jahr, ab);
       if (a.type === 'NAP') st.hatNap = true;
       else if (a.type === 'Schaltanlage') st.schaltanlagen++;
-      else st.trafos.push({ id: a.id, name: a.name || 'Trafo', kva: zahl$5(propsIst(a).leistungKVA), geplant: false });
+      else st.trafos.push({ id: a.id, name: a.name || 'Trafo', kva: zahl$6(propsIst(a).leistungKVA), geplant: false });
     }
     const kabelEntfallen = [];
     for (const e of kantenEntfallen) {
@@ -77268,7 +77268,7 @@ window._isSingleFileBuild = true;
       const [a, b] = ka < kb ? [ka, kb] : [kb, ka];
       const bp = { cableType: e.cableType, crossSection: e.crossSection };
       const ist = propsIst({ props: bp, massnahmen: e.massnahmen });
-      kabelEntfallen.push({ a, b, jahr: ganz$1(e.abrissjahr), typ: String(ist.cableType || '').trim(), qs: zahl$5(ist.crossSection) || null });
+      kabelEntfallen.push({ a, b, jahr: ganz$1(e.abrissjahr), typ: String(ist.cableType || '').trim(), qs: zahl$6(ist.crossSection) || null });
     }
     const aenderungen = [];
     if (mitPlanung) {
@@ -77403,7 +77403,7 @@ window._isSingleFileBuild = true;
    */
   const SS_ND_TRAFO_VORGABE = 30;
 
-  const zahl$4 = v => {
+  const zahl$5 = v => {
     const n = parseFloat(String(v ?? '').replace(',', '.'));
     return Number.isFinite(n) ? n : null;
   };
@@ -77418,7 +77418,7 @@ window._isSingleFileBuild = true;
    * innerhalb: Alter < ND · erreicht: Alter = ND · überschritten: Alter > ND · null ohne Baujahr.
    */
   function ssNdStatus(baujahr, bezugsjahr, nd = SS_ND_TRAFO_VORGABE) {
-    const bj = ganz(baujahr), j = ganz(bezugsjahr), n = zahl$4(nd);
+    const bj = ganz(baujahr), j = ganz(bezugsjahr), n = zahl$5(nd);
     if (bj == null || j == null || !(n > 0)) return null;
     const alter = j - bj;
     return { alter, rest: n - alter, status: alter < n ? 'innerhalb' : alter === n ? 'erreicht' : 'ueberschritten' };
@@ -77584,17 +77584,17 @@ window._isSingleFileBuild = true;
     const einspAuto = r ? einspeisungAus(r, key) : { wert: null, text: '' };
 
     // MS-Ebene: NAP der Station > NAP im Netz > Eingabe am Steckbrief
-    const napKV = zahl$4(naps[0]?.props?.spannungKV);
+    const napKV = zahl$5(naps[0]?.props?.spannungKV);
     const netzKV = r?.kennzahlen?.napKV ?? null;
     const ms = napKV != null ? { kv: napKV, quelle: 'nap' }
-      : zahl$4(sb.msKV) != null ? { kv: zahl$4(sb.msKV), quelle: 'eingabe' }
+      : zahl$5(sb.msKV) != null ? { kv: zahl$5(sb.msKV), quelle: 'eingabe' }
       : netzKV != null ? { kv: netzKV, quelle: 'netz' } : { kv: null, quelle: null };
 
     const auswahl = (feld, auto) => {
       const v = sb[feld];
       return v ? { wert: v, auto: false } : { wert: auto ?? null, auto: auto != null };
     };
-    const ndJahre = zahl$4(sb.ndTrafo) > 0 ? zahl$4(sb.ndTrafo) : SS_ND_TRAFO_VORGABE;
+    const ndJahre = zahl$5(sb.ndTrafo) > 0 ? zahl$5(sb.ndTrafo) : SS_ND_TRAFO_VORGABE;
 
     const modell = {
       geb: geb ? { id: geb.id, name: geb.name || '', nummer: String(geb.gebaeudenummer || '').trim(), baujahr: ganz(geb.baujahr) } : null,
@@ -77617,7 +77617,7 @@ window._isSingleFileBuild = true;
       },
       naps,
       schaltanlagen: schaltanlagen.map(sa => ({ asset: sa, ...ssSchaltfelder(sa, { assets, edges, gebaeude }) })),
-      trafos: trafos.map(t => ({ asset: t, kva: zahl$4(t.props?.leistungKVA), nd: ssNdStatus(t.baujahr, bezugsjahr, ndJahre) })),
+      trafos: trafos.map(t => ({ asset: t, kva: zahl$5(t.props?.leistungKVA), nd: ssNdStatus(t.baujahr, bezugsjahr, ndJahre) })),
       ndTrafo: ndJahre,
       nshvs: nshvs.map(n => {
         const belegt = ssNshvBelegt(n, { assets, edges });
@@ -99014,7 +99014,7 @@ window._isSingleFileBuild = true;
     return BP_GZF_TYPEN.includes(type) ? gzf : 1;
   }
 
-  const zahl$3 = v => parseFloat(v) || 0;
+  const zahl$4 = v => parseFloat(v) || 0;
 
   /**
    * Gleichzeitigkeitsfaktor aus Eingabe oder Projektdatei: 0,1 … 1, sonst 1,0.
@@ -99051,20 +99051,20 @@ window._isSingleFileBuild = true;
     const ep = a?.props || {};
     let loadKW = 0, genKW = 0;
     switch (a?.type) {
-      case 'Verbraucher': loadKW = zahl$3(ep.leistungKW); break;
-      case 'TWW':         loadKW = zahl$3(ep.leistungKW); break;
+      case 'Verbraucher': loadKW = zahl$4(ep.leistungKW); break;
+      case 'TWW':         loadKW = zahl$4(ep.leistungKW); break;
       case 'Lade':        loadKW = bpLadeLeistung(ep).kw; break;
       // Wärmepumpen: elektrischer Bedarf (Heizleistung ÷ JAZ aus dem Erzeuger-Tab), wie im Stromnetz (05b)
       case 'WP':
       case 'Geo':
-      case 'FG':          loadKW = zahl$3(ep.leistungElKW) || zahl$3(ep.leistungKW); break;
-      case 'Stromkessel': loadKW = zahl$3(ep.leistungKW); break;
-      case 'PV':          genKW  = zahl$3(ep.leistungKWp); break;
-      case 'KWK':         genKW  = zahl$3(ep.leistungElKW); break;
-      case 'Wind':        genKW  = zahl$3(ep.leistungKW); break;
+      case 'FG':          loadKW = zahl$4(ep.leistungElKW) || zahl$4(ep.leistungKW); break;
+      case 'Stromkessel': loadKW = zahl$4(ep.leistungKW); break;
+      case 'PV':          genKW  = zahl$4(ep.leistungKWp); break;
+      case 'KWK':         genKW  = zahl$4(ep.leistungElKW); break;
+      case 'Wind':        genKW  = zahl$4(ep.leistungKW); break;
       case 'Batterie':
-        if ((ep.betriebsmodus || 'einspeisung') === 'verbraucher') loadKW = zahl$3(ep.leistungKW);
-        else genKW = zahl$3(ep.leistungKW);
+        if ((ep.betriebsmodus || 'einspeisung') === 'verbraucher') loadKW = zahl$4(ep.leistungKW);
+        else genKW = zahl$4(ep.leistungKW);
         break;
     }
     const werte = a?.profil?.werte;
@@ -111611,7 +111611,7 @@ ${massTbl}
     instandhaltungPct: Object.freeze({ netzanschluss: 0, kabel: 0.5, trafo: 0.5, verteilung: 1, notstrom: 1.5, lade: 2 }),
   });
 
-  function zahl$2(x, vorgabe, min = 0, max = Infinity) {
+  function zahl$3(x, vorgabe, min = 0, max = Infinity) {
     if (x == null || x === '') return vorgabe;
     const n = Number(String(x).replace(',', '.'));
     return Number.isFinite(n) && n >= min && n <= max ? n : vorgabe;
@@ -111622,13 +111622,13 @@ ${massTbl}
     const q = k && typeof k === 'object' ? k : {};
     const v = EK_VORGABEN;
     const je = (quelle, vorgabe, min, max) =>
-      Object.fromEntries(Object.entries(vorgabe).map(([key, d]) => [key, zahl$2(quelle?.[key], d, min, max)]));
+      Object.fromEntries(Object.entries(vorgabe).map(([key, d]) => [key, zahl$3(quelle?.[key], d, min, max)]));
     return {
-      zinsPct:              zahl$2(q.zinsPct, v.zinsPct, 0, 20),
-      bkzEurKw:             zahl$2(q.bkzEurKw, v.bkzEurKw),
-      anschlussPauschalEur: zahl$2(q.anschlussPauschalEur, v.anschlussPauschalEur),
-      ladepunktEur:         zahl$2(q.ladepunktEur, v.ladepunktEur),
-      schnellladepunktEur:  zahl$2(q.schnellladepunktEur, v.schnellladepunktEur),
+      zinsPct:              zahl$3(q.zinsPct, v.zinsPct, 0, 20),
+      bkzEurKw:             zahl$3(q.bkzEurKw, v.bkzEurKw),
+      anschlussPauschalEur: zahl$3(q.anschlussPauschalEur, v.anschlussPauschalEur),
+      ladepunktEur:         zahl$3(q.ladepunktEur, v.ladepunktEur),
+      schnellladepunktEur:  zahl$3(q.schnellladepunktEur, v.schnellladepunktEur),
       nutzungsdauer:        je(q.nutzungsdauer, v.nutzungsdauer, 1, 100),
       instandhaltungPct:    je(q.instandhaltungPct, v.instandhaltungPct, 0, 20),
     };
@@ -111701,7 +111701,8 @@ ${massTbl}
    * mit dem Vorschlag der Analyse ein (quelle 'vorschlag'), damit das Gutachten nicht lückenhaft wird.
    *
    * engpaesse: [{ id, label, bestand, ms, v: { art, label, investEUR, jahr, ungeloest } | null }]
-   * geplant:   [{ objId, objLabel, art: 'trafo'|'verteilung'|'kabel', m: { id, titel, kosten, jahr (aufgelöst), status } }]
+   * geplant:   [{ objId, objIds?, objLabel, art: 'trafo'|'verteilung'|'kabel', m: { id, titel, kosten, jahr (aufgelöst), status } }]
+   *            objIds: alle Betriebsmittel einer Maßnahme (Maßnahmenliste); sie deckt deren Engpässe ab und zählt einmal.
    * heute:     laufendes Jahr — umgesetzte Maßnahmen davor sind Bestand und keine Investition mehr.
    *
    * Rückgabe: { positionen (mit quelle und objId), offen: { bestand, ungeloest, ms, ohneKosten }, vorschlaege: [label],
@@ -111709,25 +111710,32 @@ ${massTbl}
    */
   function ekNetzPositionen({ engpaesse = [], geplant = [], heute = new Date().getFullYear() } = {}) {
     const zaehlt = g => g?.m && g.m.status !== 'abgelehnt' && !(g.m.status === 'umgesetzt' && g.m.jahr != null && g.m.jahr < heute);
+    const objIds = g => (Array.isArray(g.objIds) && g.objIds.length ? g.objIds : [g.objId]);
+    const gueltig = geplant.filter(zaehlt);
     const plan = new Map();
-    for (const g of geplant.filter(zaehlt)) {
-      if (!plan.has(g.objId)) plan.set(g.objId, []);
-      plan.get(g.objId).push(g);
+    for (const g of gueltig) {
+      for (const id of objIds(g)) {
+        if (!plan.has(id)) plan.set(id, []);
+        plan.get(id).push(g);
+      }
     }
     const positionen = [], vorschlaege = [], abweichend = [];
     const offen = { bestand: 0, ungeloest: 0, ms: 0, ohneKosten: 0 };
+    const verbucht = new Set();
     const ausPlan = g => {
+      if (verbucht.has(g)) return;   // eine Maßnahme an mehreren Betriebsmitteln zählt einmal
+      verbucht.add(g);
       const invest = Number(g.m.kosten) || 0;
       if (!(invest > 0)) offen.ohneKosten++;
+      const ids = objIds(g);
       positionen.push({ gruppe: 'netz', art: g.art, label: `${g.objLabel}: ${g.m.titel || 'Maßnahme'}`, umfang: g.m.titel || '',
-                        investEur: invest, jahr: g.m.jahr ?? null, quelle: 'plan', objId: g.objId, massnahmeId: g.m.id });
+                        investEur: invest, jahr: g.m.jahr ?? null, quelle: 'plan', objId: ids[0], objIds: ids, massnahmeId: g.m.id });
     };
 
     for (const e of engpaesse) {
       const eigene = plan.get(e.id);
       if (eigene?.length) {
         eigene.forEach(ausPlan);
-        plan.delete(e.id);
         const v = e.v;
         if (v && !v.ungeloest) {
           const summe = eigene.reduce((t, g) => t + (Number(g.m.kosten) || 0), 0);
@@ -111744,12 +111752,229 @@ ${massTbl}
       if (!e.v) continue;
       if (e.v.ungeloest) { offen.ungeloest++; continue; }
       positionen.push({ gruppe: 'netz', art: e.v.art, label: `${e.label}: ${e.v.label}`, umfang: e.v.label,
-                        investEur: Number(e.v.investEUR) || 0, jahr: e.v.jahr ?? null, quelle: 'vorschlag', objId: e.id });
+                        investEur: Number(e.v.investEUR) || 0, jahr: e.v.jahr ?? null, quelle: 'vorschlag', objId: e.id, objIds: [e.id] });
       vorschlaege.push(e.label);
     }
     // Geplante Maßnahmen an Betriebsmitteln, die (nicht mehr) als Engpass erscheinen
-    for (const liste of plan.values()) liste.forEach(ausPlan);
+    gueltig.forEach(ausPlan);
     return { positionen, offen, vorschlaege, abweichend };
+  }
+
+  // ── lib/massnahmen-register.js — Maßnahmenliste des Projekts (Ebene 1) ──────────
+  // DOM- und importfrei. Konzept: https://claude.ai/artifact/CjEyqSi1gxsxw8b4GuByLW
+  //
+  // Zwei Ebenen: Ein Eintrag der Liste ist die Maßnahme, wie sie im Gutachten steht
+  // (Nummer, Gewerk, Stand, Anlass, Kosten). Die Wirkungen sind die bisherigen
+  // Objekt-Maßnahmen an Assets, Kabeln und Gebäuden (`obj.massnahmen[]` mit
+  // Ziel-Parametern ab einem Jahr); sie verweisen über `m.massnahmeRef` auf ihren
+  // Eintrag. Die Rechnung liest weiter nur die Wirkungen — deshalb hält der
+  // Abgleich deren gemeinsame Felder (Titel, Jahr, Phase, Status, Geltung, Kosten)
+  // mit dem Eintrag in Deckung.
+  //
+  // Eintrag = { id, nr, titel, gewerk, art, stand, dringlichkeit, jahr, phaseId,
+  //   variante?, anlass: { quelle, ref?, text? }, kosten: { investEur, herkunft },
+  //   begruendung, mehrfach, ohneObjekt, _sync, _wirkung }
+  //   mehrfach   — darf mehrere Objekte betreffen (Cluster-Paket, „an Maßnahme hängen“);
+  //                sonst wird eine kopierte Wirkung zu einer eigenen Maßnahme.
+  //   ohneObjekt — bewusst ohne Wirkung angelegt (Fachplanung, Bestandsaufnahme …);
+  //                sonst verschwindet ein Eintrag mit seiner letzten Wirkung.
+  //   _sync      — Stand der gemeinsamen Felder beim letzten Abgleich; weicht eine
+  //                Wirkung davon ab, wurde sie bearbeitet und gibt die Werte vor.
+  //   _wirkung   — Schlüssel der Wirkungen beim letzten Abgleich (Wiedererkennung ohne Verweis).
+
+
+  const ELEKTRO = new Set(['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS', 'Verbraucher', 'Lade', 'Reserve']);
+  const ERZEUGUNG_STROM = new Set(['PV', 'Batterie', 'Wind', 'H2']);
+  const WAERME = new Set(['WP', 'Geo', 'FG', 'Stromkessel', 'TWW', 'KWK']);
+
+  /** Gewerk aus dem Objekt, an dem die Wirkung hängt. */
+  function mrGewerk(ziel, objTyp) {
+    if (ziel === 'kante') return 'elektro';
+    if (ziel === 'gebaeude') return 'hochbau';
+    if (objTyp === 'Nsa') return 'resilienz';
+    if (ELEKTRO.has(objTyp)) return 'elektro';
+    if (ERZEUGUNG_STROM.has(objTyp)) return 'pv';
+    if (WAERME.has(objTyp)) return 'waerme';
+    return 'allgemein';
+  }
+
+  /** Status der Wirkung (für die Rechnung) aus dem Stand der Maßnahme. */
+  function mrStatusAusStand(stand) {
+    if (stand === 'umgesetzt') return 'umgesetzt';
+    if (stand === 'verworfen') return 'abgelehnt';
+    return 'geplant';
+  }
+
+  /**
+   * Stand aus dem Status einer Wirkung. Ein „geplant“ lässt einen feineren Stand stehen (empfohlen/beschlossen);
+   * eine automatisch erzeugte Maßnahme ist ein Vorschlag, bis jemand sie bearbeitet.
+   */
+  function mrStandAusStatus(m, bisher = null, autoTag = null) {
+    if (m?.status === 'umgesetzt') return 'umgesetzt';
+    if (m?.status === 'abgelehnt') return 'verworfen';
+    if (autoTag && m?.[autoTag]) return 'vorschlag';
+    if (bisher === 'empfohlen' || bisher === 'beschlossen') return bisher;
+    return 'empfohlen';
+  }
+
+  const jahrNorm = j => { const n = parseInt(j, 10); return Number.isFinite(n) && n > 0 ? n : null; };
+  const zahl$2 = x => Number(x) || 0;
+
+  /** Gemeinsame Felder einer Wirkung, so wie der Abgleich sie vergleicht. */
+  function signatur(m, mitKosten, autoTag) {
+    return {
+      titel: String(m?.titel ?? ''),
+      jahr: jahrNorm(m?.jahr),
+      phaseId: m?.phaseId ?? null,
+      status: m?.status || 'geplant',
+      variante: m && 'variante' in m ? (m.variante ?? null) : undefined,
+      kosten: mitKosten ? zahl$2(m?.kosten) : undefined,
+      auto: !!(autoTag && m?.[autoTag]),
+    };
+  }
+  function gleich(a, b) {
+    if (!a || !b) return false;
+    return a.titel === b.titel && a.jahr === b.jahr && a.phaseId === b.phaseId && a.status === b.status
+      && (a.variante === undefined || b.variante === undefined || a.variante === b.variante)
+      && (a.kosten === undefined || b.kosten === undefined || a.kosten === b.kosten)
+      && a.auto === b.auto;
+  }
+
+  function anlassAus(m, autoTag) {
+    if ((autoTag && m?.[autoTag]) || String(m?.id ?? '').startsWith('auto_')) return { quelle: 'engpass' };
+    if (m?.clusterId != null) return { quelle: 'cluster', ref: m.clusterId, text: m.clusterName || '' };
+    return { quelle: 'manuell' };
+  }
+
+  /** Neuer Eintrag aus einer Wirkung (Übernahme der Altdaten, neu angelegte Objekt-Maßnahme). */
+  function mrEintragAusWirkung(id, w, autoTag = null) {
+    const m = w.m;
+    const anlass = anlassAus(m, autoTag);
+    const e = {
+      id, nr: null,
+      titel: String(m?.titel ?? ''),
+      gewerk: mrGewerk(w.ziel, w.objTyp),
+      art: m?.typ || 'Sonstiges',
+      stand: mrStandAusStatus(m, null, autoTag),
+      dringlichkeit: null,
+      jahr: jahrNorm(m?.jahr),
+      phaseId: m?.phaseId ?? null,
+      anlass,
+      kosten: { investEur: zahl$2(m?.kosten), herkunft: anlass.quelle === 'engpass' ? 'kennwert' : null },
+      begruendung: '',
+      mehrfach: false,
+      ohneObjekt: false,
+      _sync: null,
+    };
+    if (m && 'variante' in m) e.variante = m.variante ?? null;
+    return e;
+  }
+
+  /**
+   * Liste und Wirkungen abgleichen. Verändert die Wirkungen (massnahmeRef und gemeinsame Felder) und die
+   * Einträge an Ort und Stelle.
+   *
+   * register:  bisherige Einträge (wird nicht ersetzt, sondern in-place fortgeschrieben)
+   * wirkungen: [{ ziel: 'asset'|'kante'|'gebaeude', objId, objLabel, objTyp, m }] — dieselbe Objekt-Maßnahme darf
+   *            mehrfach vorkommen (Kopien in Varianten-Snapshots); sie zählt einmal und alle Kopien werden geschrieben.
+   * opts:      { neueId: () => string, autoTag }
+   *
+   * Rückgabe: { register, neu, entfernt, getrennt, wirkungenJe: Map(eintragId → [{ ziel, objId, objLabel, objTyp, kopien }]) }
+   */
+  function mrAbgleich(register, wirkungen, opts = {}) {
+    const autoTag = opts.autoTag || null;
+    let seq = 0;
+    const erzeuge = opts.neueId || (() => `mr_${Date.now().toString(36)}_${(seq++).toString(36)}`);
+    const liste = Array.isArray(register) ? register : [];
+    const byId = new Map(liste.map(e => [e.id, e]));
+    const neueId = () => { let id; do id = erzeuge(); while (byId.has(id)); return id; };
+    // Wo stand eine Wirkung beim letzten Abgleich? Fängt Objekt-Maßnahmen auf, die neu erzeugt wurden und dabei
+    // ihren Verweis verloren haben (Cluster-Paket neu anwenden, Fahrplan zurückschreiben) — Nummer bleibt erhalten.
+    const altKey = new Map();
+    for (const e of liste) for (const k of e._wirkung || []) altKey.set(k, e);
+
+    // Wirkungen je Objekt-Maßnahme bündeln (Kopien aus Snapshots zusammen)
+    const gruppen = new Map();
+    for (const w of wirkungen || []) {
+      if (!w?.m || w.m.id == null) continue;
+      const key = `${w.ziel}|${w.objId}|${w.m.id}`;
+      if (!gruppen.has(key)) gruppen.set(key, { ziel: w.ziel, objId: w.objId, objLabel: w.objLabel, objTyp: w.objTyp, kopien: [] });
+      const g = gruppen.get(key);
+      if (!g.kopien.includes(w.m)) g.kopien.push(w.m);
+    }
+
+    // Jede Wirkung einem Eintrag zuordnen
+    const wirkungenJe = new Map();
+    const neue = [];
+    let getrennt = 0;
+    const frei = e => e && (e.mehrfach || !wirkungenJe.get(e.id)?.length);
+    // Wirkungen, die schon beim letzten Abgleich an ihrem Eintrag hingen, zuerst — so behält bei einer Kopie
+    // (Objekt dupliziert, Variante aus einer anderen angelegt) das Original seinen Eintrag und seine Nummer.
+    const bekannt = ([key, g]) => {
+      const ref = g.kopien.map(m => m.massnahmeRef).find(r => r != null);
+      return ref != null && (byId.get(ref)?._wirkung || []).includes(key);
+    };
+    const reihenfolge = [...gruppen].sort((x, y) => Number(bekannt(y)) - Number(bekannt(x)));
+    for (const [key, g] of reihenfolge) {
+      const ref = g.kopien.map(m => m.massnahmeRef).find(r => r != null) ?? null;
+      let e = ref != null ? byId.get(ref) : null;
+      if (e && !frei(e)) { e = null; getrennt++; }   // kopiertes Objekt
+      if (!e && (ref == null || !byId.has(ref)) && frei(altKey.get(key))) e = altKey.get(key);
+      if (!e) {
+        const id = ref != null && !byId.has(ref) ? ref : neueId();
+        e = mrEintragAusWirkung(id, { ...g, m: g.kopien[0] }, autoTag);
+        byId.set(id, e);
+        liste.push(e);
+        neue.push(e);
+      }
+      if (!wirkungenJe.has(e.id)) wirkungenJe.set(e.id, []);
+      wirkungenJe.get(e.id).push(g);
+      for (const m of g.kopien) m.massnahmeRef = e.id;
+    }
+
+    // Einträge, deren letzte Wirkung gelöscht wurde, fallen weg (außer bewusst objektlose)
+    let entfernt = 0;
+    for (let i = liste.length - 1; i >= 0; i--) {
+      const e = liste[i];
+      if (!wirkungenJe.has(e.id) && !e.ohneObjekt) { liste.splice(i, 1); entfernt++; }
+    }
+
+    // Gemeinsame Felder abgleichen: bearbeitete Wirkung gibt vor, dann alle Wirkungen schreiben
+    for (const e of liste) {
+      const gs = wirkungenJe.get(e.id);
+      if (!gs?.length) continue;
+      const einzeln = gs.length === 1;
+      const alle = gs.flatMap(g => g.kopien);
+      const bearbeitet = alle.find(m => !gleich(signatur(m, einzeln, autoTag), e._sync));
+      if (bearbeitet) {
+        e.titel = String(bearbeitet.titel ?? '');
+        e.jahr = jahrNorm(bearbeitet.jahr);
+        e.phaseId = bearbeitet.phaseId ?? null;
+        e.stand = mrStandAusStatus(bearbeitet, e.stand, autoTag);
+        if ('variante' in bearbeitet) e.variante = bearbeitet.variante ?? null;
+        if (einzeln) e.kosten = { ...(e.kosten || {}), investEur: zahl$2(bearbeitet.kosten) };
+      }
+      const status = mrStatusAusStand(e.stand);
+      for (const m of alle) {
+        m.titel = e.titel;
+        m.jahr = e.jahr;
+        m.phaseId = e.phaseId;
+        // Ein Vorschlag bleibt in der Rechnung „geplant“ — der feinere Stand lebt nur am Eintrag
+        m.status = status;
+        if ('variante' in e && 'variante' in m) m.variante = e.variante;
+        if (einzeln) m.kosten = zahl$2(e.kosten?.investEur);
+      }
+      e._sync = signatur(alle[0], einzeln, autoTag);
+      e._wirkung = gs.map(g => `${g.ziel}|${g.objId}|${g.kopien[0].id}`);
+    }
+
+    // Nummern für neue Einträge, chronologisch
+    let max = liste.reduce((x, e) => (Number.isFinite(e.nr) && e.nr > x ? e.nr : x), 0);
+    neue.filter(e => liste.includes(e))
+      .sort((a, b) => (a.jahr ?? 9999) - (b.jahr ?? 9999) || a.titel.localeCompare(b.titel, 'de'))
+      .forEach(e => { e.nr = ++max; });
+
+    return { register: liste, neu: neue.filter(e => liste.includes(e)).length, entfernt, getrennt, wirkungenJe };
   }
 
   // ── lib/resilienz-core.js — Pure Logik der Resilienz-/Blackout-Betrachtung ──
@@ -124951,7 +125176,7 @@ ${massTbl}
         const liste = ggEngpassListe(res);
         // Steht am Betriebsmittel eine Maßnahme, zeigt die Tabelle sie — dieselbe Quelle wie die Kosten in 5.5
         const netz = ggNetzKosten();
-        const geplant = id => netz.positionen.filter(p => p.quelle === 'plan' && p.objId === id);
+        const geplant = id => netz.positionen.filter(p => p.quelle === 'plan' && (p.objIds || [p.objId]).includes(id));
         cfg.zeilen = liste.map(({ item, bestand, ms, v }) => {
           const spannung = String(item.ursache || '').includes('spannung');
           const plan = geplant(item.id);
@@ -129663,18 +129888,35 @@ ${massTbl}
 
   const GG_VERTEILUNG_TYPEN = new Set(['Schaltanlage', 'NSHV', 'UV', 'KVS']);
 
-  /** Im Projekt gespeicherte Maßnahmen an Trafos, Verteilungen und Kabeln (Jahr über Phase aufgelöst). */
+  /**
+   * Im Projekt geplante Maßnahmen an Trafos, Verteilungen und Kabeln. Titel, Betrag, Jahr und Stand kommen aus der
+   * Maßnahmenliste (lib/massnahmen-register.js); eine Maßnahme an mehreren Betriebsmitteln erscheint einmal mit allen.
+   */
   function ggNetzGeplant(namen = new Map()) {
     const w = window;
+    try { w.massnahmenAbgleichen?.(); } catch (e) { }
+    const register = new Map(ggLies(() => w.massnahmenRegister || [], []).map(e => [e.id, e]));
     const jahr = m => (typeof w.massnahmeJahr === 'function' ? w.massnahmeJahr(m) : (parseInt(m.jahr, 10) || null));
-    const out = [];
+    const wirkungen = [];
     for (const a of ggLies(() => w.ASSETS?.items || [], [])) {
       const art = a.type === 'Trafo' ? 'trafo' : GG_VERTEILUNG_TYPEN.has(a.type) ? 'verteilung' : null;
       if (!art) continue;
-      for (const m of a.massnahmen || []) if (m) out.push({ objId: a.id, objLabel: namen.get(a.id) || a.name || a.type, art, m: { ...m, jahr: jahr(m) } });
+      for (const m of a.massnahmen || []) if (m) wirkungen.push({ objId: a.id, objLabel: namen.get(a.id) || a.name || a.type, art, m });
     }
     for (const e of ggLies(() => w.stromEdges || [], [])) {
-      for (const m of e.massnahmen || []) if (m) out.push({ objId: e.id, objLabel: namen.get(e.id) || e.name || 'Kabel', art: 'kabel', m: { ...m, jahr: jahr(m) } });
+      for (const m of e.massnahmen || []) if (m) wirkungen.push({ objId: e.id, objLabel: namen.get(e.id) || e.name || 'Kabel', art: 'kabel', m });
+    }
+    const out = [], jeEintrag = new Map();
+    for (const x of wirkungen) {
+      const e = x.m.massnahmeRef != null ? register.get(x.m.massnahmeRef) : null;
+      if (!e) { out.push({ ...x, m: { ...x.m, jahr: jahr(x.m) } }); continue; }
+      const da = jeEintrag.get(e.id);
+      if (da) { if (!da.objIds.includes(x.objId)) da.objIds.push(x.objId); continue; }
+      const g = { objId: x.objId, objIds: [x.objId], objLabel: x.objLabel, art: x.art,
+        m: { id: e.id, titel: e.titel, kosten: Number(e.kosten?.investEur) || 0, jahr: jahr({ jahr: e.jahr, phaseId: e.phaseId }),
+             status: mrStatusAusStand(e.stand) } };
+      jeEintrag.set(e.id, g);
+      out.push(g);
     }
     return out;
   }
@@ -144335,6 +144577,9 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
           }
         } catch (e) { console.warn('Varianten-Migration übersprungen:', e); }
 
+        // Maßnahmenliste: Altprojekte bekommen sie hier aus den Objekt-Maßnahmen, sonst nur Abgleich
+        try { massnahmenAbgleichen(); } catch (e) { console.warn('Maßnahmenliste:', e); }
+
         // Custom Nutzungstypen wiederherstellen
         if (Array.isArray(project.customNutzungstypen)) {
           NUTZUNGSTYPEN_CUSTOM.length = 0;
@@ -158866,6 +159111,11 @@ out body;>;out skel qt;`;
   // Maßnahmen, die nur in einer Variante gelten und gerade nicht aktiv sind:
   // { [variantKey]: [{ ziel: 'asset'|'kante', id, m }] }
   let massnahmenAblage = {};
+  // Maßnahmenliste des Projekts (Ebene 1, lib/massnahmen-register.js) — variantenübergreifend; die Geltung
+  // steht am Eintrag. Wird aus den Objekt-Maßnahmen fortgeschrieben (massnahmenAbgleichen).
+  let massnahmenRegister = [];
+  // Mit Setter, damit main.js window.massnahmenRegister als Live-Accessor anlegt (sonst veraltet nach Laden/Rückgängig)
+  function setMassnahmenRegister(arr) { massnahmenRegister = Array.isArray(arr) ? arr : []; }
   // Wann sich eine Variante zuletzt geändert hat und wann ihre Kennzahlen
   // gerechnet wurden: { [variantKey]: { geaendert, berechnet } }
   let variantenStand = {};
@@ -158913,6 +159163,7 @@ out body;>;out skel qt;`;
     // Neue Maßnahmen vor dem Speichern ihrer Variante zuordnen — sonst gälten
     // sie nach dem Laden (Altdaten-Regel) für alle.
     _normalisiereNeueMassnahmen(variantKey(activeVariantId));
+    try { massnahmenAbgleichen(); } catch (e) { console.warn('Maßnahmenliste:', e); }
     return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot, stromNetzGemeinsam, ..._capturePhasenZustand(), ..._captureVariantenZusatz() };
   }
   function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs, stromNetzGemeinsam: sg, phasen: ps, ...zusatz } = {}) {
@@ -158932,7 +159183,7 @@ out body;>;out skel qt;`;
   function _captureVariantenZusatz() {
     return {
       gutachtenVariante, hauptplanZweck, hauptplanName, baseGebaeudeAusschluesse: [...baseGebaeudeAusschluesse],
-      baseGebaeudePv, waermeNetzGemeinsam, massnahmenAblage, variantenStand,
+      baseGebaeudePv, waermeNetzGemeinsam, massnahmenAblage, variantenStand, massnahmenRegister,
     };
   }
   function _restoreVariantenZusatz(z = {}) {
@@ -158944,6 +159195,8 @@ out body;>;out skel qt;`;
     waermeNetzGemeinsam = z.waermeNetzGemeinsam || null;
     massnahmenAblage = (z.massnahmenAblage && typeof z.massnahmenAblage === 'object') ? z.massnahmenAblage : {};
     variantenStand = (z.variantenStand && typeof z.variantenStand === 'object') ? z.variantenStand : {};
+    // Altprojekte ohne Liste: massnahmenAbgleichen() legt sie aus den Objekt-Maßnahmen an
+    massnahmenRegister = Array.isArray(z.massnahmenRegister) ? z.massnahmenRegister : [];
   }
 
   // ── Schicht neuer Objekte ────────────────────────────────────────────────────
@@ -159025,6 +159278,60 @@ out body;>;out skel qt;`;
     }
   }
 
+  /**
+   * Alle Wirkungen (Objekt-Maßnahmen) für den Abgleich mit der Maßnahmenliste: live an Assets, Kabeln und
+   * Gebäuden, in der Ablage nicht aktiver Varianten und an Objekten, die nur in einer nicht aktiven Variante
+   * existieren (deren Snapshot). Der Snapshot der aktiven Variante und der gemeinsame Pool sind ältere Kopien
+   * des Live-Zustands und bleiben außen vor.
+   */
+  function _massnahmenWirkungen() {
+    const out = [];
+    const objekte = new Map();
+    const kantenId = e => e.id ?? `${e.u}|${e.v}`;
+    for (const a of (window.ASSETS?.items || [])) {
+      objekte.set(`asset|${a.id}`, { label: a.name, typ: a.type });
+      for (const m of (a.massnahmen || [])) out.push({ ziel: 'asset', objId: a.id, objLabel: a.name, objTyp: a.type, m });
+    }
+    for (const e of (stromEdges || [])) {
+      objekte.set(`kante|${kantenId(e)}`, { label: e.name || 'Kabel', typ: 'Kabel' });
+      for (const m of (e.massnahmen || [])) out.push({ ziel: 'kante', objId: kantenId(e), objLabel: e.name || 'Kabel', objTyp: 'Kabel', m });
+    }
+    for (const g of (gebaeude || [])) {
+      for (const m of (g.massnahmen || [])) out.push({ ziel: 'gebaeude', objId: g.id, objLabel: g.name || `Gebäude ${g.id}`, objTyp: 'Gebäude', m });
+    }
+    const snaps = [];
+    if (activeVariantId !== null && baseStromNetzSnapshot) snaps.push(baseStromNetzSnapshot);
+    for (const v of varianten) if (v.id !== activeVariantId && v.stromnetz) snaps.push(v.stromnetz);
+    for (const s of snaps) {
+      for (const i of (s.items || [])) {
+        objekte.set(`asset|${i.id}`, objekte.get(`asset|${i.id}`) || { label: i.name, typ: i.type });
+        for (const m of (i.massnahmen || [])) out.push({ ziel: 'asset', objId: i.id, objLabel: i.name, objTyp: i.type, m });
+      }
+      for (const e of (s.edges || [])) {
+        for (const m of (e.massnahmen || [])) out.push({ ziel: 'kante', objId: kantenId(e), objLabel: e.name || 'Kabel', objTyp: 'Kabel', m });
+      }
+    }
+    for (const liste of Object.values(massnahmenAblage || {})) {
+      for (const eintrag of (liste || [])) {
+        if (!eintrag?.m) continue;
+        const ziel = eintrag.ziel === 'kante' ? 'kante' : 'asset';
+        const o = objekte.get(`${ziel}|${eintrag.id}`) || {};
+        out.push({ ziel, objId: eintrag.id, objLabel: o.label || String(eintrag.id), objTyp: o.typ || (ziel === 'kante' ? 'Kabel' : ''), m: eintrag.m });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Maßnahmenliste mit den Objekt-Maßnahmen abgleichen: neue Objekt-Maßnahmen bekommen einen Eintrag,
+   * Einträge ohne Wirkung fallen weg, gemeinsame Felder werden in beide Richtungen nachgezogen.
+   * Läuft nach jeder Planungstransaktion, beim Speichern und Laden und bevor das Gutachten liest.
+   */
+  function massnahmenAbgleichen() {
+    _normalisiereNeueMassnahmen();
+    return mrAbgleich(massnahmenRegister, _massnahmenWirkungen(), { neueId: () => createId('mr'), autoTag: ENGPASS_AUTO_TAG });
+  }
+
   /** Merkt, dass sich die aktive Variante geändert hat (Kennzahlen veralten). */
   function markiereVarianteGeaendert(key = variantKey(activeVariantId)) {
     variantenStand[key] = { ...(variantenStand[key] || {}), geaendert: new Date().toISOString() };
@@ -159042,6 +159349,7 @@ out body;>;out skel qt;`;
   /** Aufruf nach jeder abgeschlossenen Planungstransaktion (lib/planning-transaction.js). */
   function _nachPlanungstransaktion(label) {
     _normalisiereNeueMassnahmen();
+    try { massnahmenAbgleichen(); } catch (e) { console.warn('Maßnahmenliste:', e); }
     if (!/^Variante (wechseln|umbenennen)/.test(String(label || ''))) markiereVarianteGeaendert();
     window.variantenUiAktualisieren?.();
   }
@@ -159884,7 +160192,9 @@ out body;>;out skel qt;`;
     markiereVarianteBerechnet: markiereVarianteBerechnet,
     markiereVarianteGeaendert: markiereVarianteGeaendert,
     massnahmeJahr: massnahmeJahr,
+    massnahmenAbgleichen: massnahmenAbgleichen,
     get massnahmenAblage () { return massnahmenAblage; },
+    get massnahmenRegister () { return massnahmenRegister; },
     migriereVariantenFallsNoetig: migriereVariantenFallsNoetig,
     get naEinspeisungen () { return naEinspeisungen; },
     get naMessort () { return naMessort; },
@@ -159968,6 +160278,7 @@ out body;>;out skel qt;`;
     setIsPlacingStromNode: setIsPlacingStromNode,
     setLwWp: setLwWp,
     setLwWpVisible: setLwWpVisible,
+    setMassnahmenRegister: setMassnahmenRegister,
     setNaEinspeisungen: setNaEinspeisungen,
     setNaMessort: setNaMessort,
     setNaMessverfahren: setNaMessverfahren,

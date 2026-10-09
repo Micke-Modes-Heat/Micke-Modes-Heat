@@ -1,5 +1,5 @@
 // ── 03c-gebaeude-io.js — Gebäude-UI, Totals, Chart, Gebäude-PV, Rendering, Projekt-Import/Export, Animation ──
-import { _captureVariantenKernzustand, _expandedIds, _restoreVariantenKernzustand, globalYear, isExcluded, selectedId, stromEdges, migriereVariantenFallsNoetig,
+import { _captureVariantenKernzustand, _expandedIds, _restoreVariantenKernzustand, globalYear, isExcluded, selectedId, stromEdges, migriereVariantenFallsNoetig, massnahmenAbgleichen,
          pdBearbeiterStrom, pdBearbeiterWaerme, pdKaserneName, pdWeNummer, pdLiegenschaftAdresse,
          setPdBearbeiterStrom, setPdBearbeiterWaerme, setPdKaserneName, setPdWeNummer, setPdLiegenschaftAdresse,
          naNetzbetreiberName, naNetzbetreiberAdresse, naSpannungsebene, naUebergabepunkt,
@@ -4474,6 +4474,9 @@ function _applyProjectData(project) {
           }
         }
       } catch (e) { console.warn('Varianten-Migration übersprungen:', e); }
+
+      // Maßnahmenliste: Altprojekte bekommen sie hier aus den Objekt-Maßnahmen, sonst nur Abgleich
+      try { massnahmenAbgleichen(); } catch (e) { console.warn('Maßnahmenliste:', e); }
 
       // Custom Nutzungstypen wiederherstellen
       if (Array.isArray(project.customNutzungstypen)) {

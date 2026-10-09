@@ -11,6 +11,9 @@ import { splitStromNetzState, mergeStromNetzState, istDelta, migriereZuDelta } f
 import { HAUPTPLAN_NAME, variantKey, massnahmenHerausnehmen, massnahmenEinsetzen, massnahmeStandardVariante, waermeGeometrie, geometrieGleich, netzMitGeometrie, pvBelegungErfassen, pvBelegungAnwenden, schichtFuerNeu, baujahrFuerNeu } from './lib/varianten-regeln.js';
 import { getSchichtModus } from './lib/schichten.js';
 import { massnahmeJahrAus } from './lib/phasen-core.js';
+import { mrAbgleich } from './lib/massnahmen-register.js';
+import { ENGPASS_AUTO_TAG } from './lib/engpass-core.js';
+import { createId } from './lib/util.js';
 
 export let gebaeude = [];
 export function setGebaeude(v) { gebaeude = v; }
@@ -820,6 +823,11 @@ export let waermeNetzGemeinsam = null;
 // Maßnahmen, die nur in einer Variante gelten und gerade nicht aktiv sind:
 // { [variantKey]: [{ ziel: 'asset'|'kante', id, m }] }
 export let massnahmenAblage = {};
+// Maßnahmenliste des Projekts (Ebene 1, lib/massnahmen-register.js) — variantenübergreifend; die Geltung
+// steht am Eintrag. Wird aus den Objekt-Maßnahmen fortgeschrieben (massnahmenAbgleichen).
+export let massnahmenRegister = [];
+// Mit Setter, damit main.js window.massnahmenRegister als Live-Accessor anlegt (sonst veraltet nach Laden/Rückgängig)
+export function setMassnahmenRegister(arr) { massnahmenRegister = Array.isArray(arr) ? arr : []; }
 // Wann sich eine Variante zuletzt geändert hat und wann ihre Kennzahlen
 // gerechnet wurden: { [variantKey]: { geaendert, berechnet } }
 export let variantenStand = {};
@@ -867,6 +875,7 @@ export function _captureVariantenKernzustand() {
   // Neue Maßnahmen vor dem Speichern ihrer Variante zuordnen — sonst gälten
   // sie nach dem Laden (Altdaten-Regel) für alle.
   _normalisiereNeueMassnahmen(variantKey(activeVariantId));
+  try { massnahmenAbgleichen(); } catch (e) { console.warn('Maßnahmenliste:', e); }
   return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot, stromNetzGemeinsam, ..._capturePhasenZustand(), ..._captureVariantenZusatz() };
 }
 export function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs, stromNetzGemeinsam: sg, phasen: ps, ...zusatz } = {}) {
@@ -886,7 +895,7 @@ export function _restoreVariantenKernzustand({ varianten: v, activeVariantId: ai
 export function _captureVariantenZusatz() {
   return {
     gutachtenVariante, hauptplanZweck, hauptplanName, baseGebaeudeAusschluesse: [...baseGebaeudeAusschluesse],
-    baseGebaeudePv, waermeNetzGemeinsam, massnahmenAblage, variantenStand,
+    baseGebaeudePv, waermeNetzGemeinsam, massnahmenAblage, variantenStand, massnahmenRegister,
   };
 }
 export function _restoreVariantenZusatz(z = {}) {
@@ -898,6 +907,8 @@ export function _restoreVariantenZusatz(z = {}) {
   waermeNetzGemeinsam = z.waermeNetzGemeinsam || null;
   massnahmenAblage = (z.massnahmenAblage && typeof z.massnahmenAblage === 'object') ? z.massnahmenAblage : {};
   variantenStand = (z.variantenStand && typeof z.variantenStand === 'object') ? z.variantenStand : {};
+  // Altprojekte ohne Liste: massnahmenAbgleichen() legt sie aus den Objekt-Maßnahmen an
+  massnahmenRegister = Array.isArray(z.massnahmenRegister) ? z.massnahmenRegister : [];
 }
 
 // ── Schicht neuer Objekte ────────────────────────────────────────────────────
@@ -979,6 +990,60 @@ function _altMassnahmenAlleVarianten() {
   }
 }
 
+/**
+ * Alle Wirkungen (Objekt-Maßnahmen) für den Abgleich mit der Maßnahmenliste: live an Assets, Kabeln und
+ * Gebäuden, in der Ablage nicht aktiver Varianten und an Objekten, die nur in einer nicht aktiven Variante
+ * existieren (deren Snapshot). Der Snapshot der aktiven Variante und der gemeinsame Pool sind ältere Kopien
+ * des Live-Zustands und bleiben außen vor.
+ */
+function _massnahmenWirkungen() {
+  const out = [];
+  const objekte = new Map();
+  const kantenId = e => e.id ?? `${e.u}|${e.v}`;
+  for (const a of (window.ASSETS?.items || [])) {
+    objekte.set(`asset|${a.id}`, { label: a.name, typ: a.type });
+    for (const m of (a.massnahmen || [])) out.push({ ziel: 'asset', objId: a.id, objLabel: a.name, objTyp: a.type, m });
+  }
+  for (const e of (stromEdges || [])) {
+    objekte.set(`kante|${kantenId(e)}`, { label: e.name || 'Kabel', typ: 'Kabel' });
+    for (const m of (e.massnahmen || [])) out.push({ ziel: 'kante', objId: kantenId(e), objLabel: e.name || 'Kabel', objTyp: 'Kabel', m });
+  }
+  for (const g of (gebaeude || [])) {
+    for (const m of (g.massnahmen || [])) out.push({ ziel: 'gebaeude', objId: g.id, objLabel: g.name || `Gebäude ${g.id}`, objTyp: 'Gebäude', m });
+  }
+  const snaps = [];
+  if (activeVariantId !== null && baseStromNetzSnapshot) snaps.push(baseStromNetzSnapshot);
+  for (const v of varianten) if (v.id !== activeVariantId && v.stromnetz) snaps.push(v.stromnetz);
+  for (const s of snaps) {
+    for (const i of (s.items || [])) {
+      objekte.set(`asset|${i.id}`, objekte.get(`asset|${i.id}`) || { label: i.name, typ: i.type });
+      for (const m of (i.massnahmen || [])) out.push({ ziel: 'asset', objId: i.id, objLabel: i.name, objTyp: i.type, m });
+    }
+    for (const e of (s.edges || [])) {
+      for (const m of (e.massnahmen || [])) out.push({ ziel: 'kante', objId: kantenId(e), objLabel: e.name || 'Kabel', objTyp: 'Kabel', m });
+    }
+  }
+  for (const liste of Object.values(massnahmenAblage || {})) {
+    for (const eintrag of (liste || [])) {
+      if (!eintrag?.m) continue;
+      const ziel = eintrag.ziel === 'kante' ? 'kante' : 'asset';
+      const o = objekte.get(`${ziel}|${eintrag.id}`) || {};
+      out.push({ ziel, objId: eintrag.id, objLabel: o.label || String(eintrag.id), objTyp: o.typ || (ziel === 'kante' ? 'Kabel' : ''), m: eintrag.m });
+    }
+  }
+  return out;
+}
+
+/**
+ * Maßnahmenliste mit den Objekt-Maßnahmen abgleichen: neue Objekt-Maßnahmen bekommen einen Eintrag,
+ * Einträge ohne Wirkung fallen weg, gemeinsame Felder werden in beide Richtungen nachgezogen.
+ * Läuft nach jeder Planungstransaktion, beim Speichern und Laden und bevor das Gutachten liest.
+ */
+export function massnahmenAbgleichen() {
+  _normalisiereNeueMassnahmen();
+  return mrAbgleich(massnahmenRegister, _massnahmenWirkungen(), { neueId: () => createId('mr'), autoTag: ENGPASS_AUTO_TAG });
+}
+
 /** Merkt, dass sich die aktive Variante geändert hat (Kennzahlen veralten). */
 export function markiereVarianteGeaendert(key = variantKey(activeVariantId)) {
   variantenStand[key] = { ...(variantenStand[key] || {}), geaendert: new Date().toISOString() };
@@ -996,6 +1061,7 @@ export function variantenErgebnisStatus(key) {
 /** Aufruf nach jeder abgeschlossenen Planungstransaktion (lib/planning-transaction.js). */
 export function _nachPlanungstransaktion(label) {
   _normalisiereNeueMassnahmen();
+  try { massnahmenAbgleichen(); } catch (e) { console.warn('Maßnahmenliste:', e); }
   if (!/^Variante (wechseln|umbenennen)/.test(String(label || ''))) markiereVarianteGeaendert();
   window.variantenUiAktualisieren?.();
 }

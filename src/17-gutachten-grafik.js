@@ -15,6 +15,7 @@ import { BP_STUFEN, bpStufen, bpLadeLeistung, bpJahresreihe } from './lib/bedarf
 import { sdJahresuebersicht, sdJahresauswertung, sdTrend, sdZeitraumText, sdDauerlinie } from './lib/stromdaten.js';
 import { ENGPASS_GRENZEN, ENGPASS_VORLAUF_J, engpassVersorgung } from './lib/engpass-core.js';
 import { EK_GRUPPEN, EK_ARTEN, EK_VORGABEN, ekNormKennwerte, ekAuswertung, ekNetzPositionen } from './lib/elektro-kosten.js';
+import { mrStatusAusStand } from './lib/massnahmen-register.js';
 import { resilienzZielMatrix, zielKraftstoffL } from './lib/resilienz-core.js';
 import { nuNetzUebersicht } from './lib/netz-uebersicht.js';
 import {
@@ -7564,7 +7565,7 @@ GG_FIGUREN.push(
       const liste = ggEngpassListe(res);
       // Steht am Betriebsmittel eine Maßnahme, zeigt die Tabelle sie — dieselbe Quelle wie die Kosten in 5.5
       const netz = ggNetzKosten();
-      const geplant = id => netz.positionen.filter(p => p.quelle === 'plan' && p.objId === id);
+      const geplant = id => netz.positionen.filter(p => p.quelle === 'plan' && (p.objIds || [p.objId]).includes(id));
       cfg.zeilen = liste.map(({ item, bestand, ms, v }) => {
         const spannung = String(item.ursache || '').includes('spannung');
         const plan = geplant(item.id);
@@ -12297,18 +12298,35 @@ function ggKostenPositionen() {
 
 const GG_VERTEILUNG_TYPEN = new Set(['Schaltanlage', 'NSHV', 'UV', 'KVS']);
 
-/** Im Projekt gespeicherte Maßnahmen an Trafos, Verteilungen und Kabeln (Jahr über Phase aufgelöst). */
+/**
+ * Im Projekt geplante Maßnahmen an Trafos, Verteilungen und Kabeln. Titel, Betrag, Jahr und Stand kommen aus der
+ * Maßnahmenliste (lib/massnahmen-register.js); eine Maßnahme an mehreren Betriebsmitteln erscheint einmal mit allen.
+ */
 function ggNetzGeplant(namen = new Map()) {
   const w = window;
+  try { w.massnahmenAbgleichen?.(); } catch (e) { void e; }
+  const register = new Map(ggLies(() => w.massnahmenRegister || [], []).map(e => [e.id, e]));
   const jahr = m => (typeof w.massnahmeJahr === 'function' ? w.massnahmeJahr(m) : (parseInt(m.jahr, 10) || null));
-  const out = [];
+  const wirkungen = [];
   for (const a of ggLies(() => w.ASSETS?.items || [], [])) {
     const art = a.type === 'Trafo' ? 'trafo' : GG_VERTEILUNG_TYPEN.has(a.type) ? 'verteilung' : null;
     if (!art) continue;
-    for (const m of a.massnahmen || []) if (m) out.push({ objId: a.id, objLabel: namen.get(a.id) || a.name || a.type, art, m: { ...m, jahr: jahr(m) } });
+    for (const m of a.massnahmen || []) if (m) wirkungen.push({ objId: a.id, objLabel: namen.get(a.id) || a.name || a.type, art, m });
   }
   for (const e of ggLies(() => w.stromEdges || [], [])) {
-    for (const m of e.massnahmen || []) if (m) out.push({ objId: e.id, objLabel: namen.get(e.id) || e.name || 'Kabel', art: 'kabel', m: { ...m, jahr: jahr(m) } });
+    for (const m of e.massnahmen || []) if (m) wirkungen.push({ objId: e.id, objLabel: namen.get(e.id) || e.name || 'Kabel', art: 'kabel', m });
+  }
+  const out = [], jeEintrag = new Map();
+  for (const x of wirkungen) {
+    const e = x.m.massnahmeRef != null ? register.get(x.m.massnahmeRef) : null;
+    if (!e) { out.push({ ...x, m: { ...x.m, jahr: jahr(x.m) } }); continue; }
+    const da = jeEintrag.get(e.id);
+    if (da) { if (!da.objIds.includes(x.objId)) da.objIds.push(x.objId); continue; }
+    const g = { objId: x.objId, objIds: [x.objId], objLabel: x.objLabel, art: x.art,
+      m: { id: e.id, titel: e.titel, kosten: Number(e.kosten?.investEur) || 0, jahr: jahr({ jahr: e.jahr, phaseId: e.phaseId }),
+           status: mrStatusAusStand(e.stand) } };
+    jeEintrag.set(e.id, g);
+    out.push(g);
   }
   return out;
 }

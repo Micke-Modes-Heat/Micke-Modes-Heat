@@ -122,7 +122,8 @@ export function ekAuswertung(positionen, kennwerte) {
  * mit dem Vorschlag der Analyse ein (quelle 'vorschlag'), damit das Gutachten nicht lückenhaft wird.
  *
  * engpaesse: [{ id, label, bestand, ms, v: { art, label, investEUR, jahr, ungeloest } | null }]
- * geplant:   [{ objId, objLabel, art: 'trafo'|'verteilung'|'kabel', m: { id, titel, kosten, jahr (aufgelöst), status } }]
+ * geplant:   [{ objId, objIds?, objLabel, art: 'trafo'|'verteilung'|'kabel', m: { id, titel, kosten, jahr (aufgelöst), status } }]
+ *            objIds: alle Betriebsmittel einer Maßnahme (Maßnahmenliste); sie deckt deren Engpässe ab und zählt einmal.
  * heute:     laufendes Jahr — umgesetzte Maßnahmen davor sind Bestand und keine Investition mehr.
  *
  * Rückgabe: { positionen (mit quelle und objId), offen: { bestand, ungeloest, ms, ohneKosten }, vorschlaege: [label],
@@ -130,25 +131,32 @@ export function ekAuswertung(positionen, kennwerte) {
  */
 export function ekNetzPositionen({ engpaesse = [], geplant = [], heute = new Date().getFullYear() } = {}) {
   const zaehlt = g => g?.m && g.m.status !== 'abgelehnt' && !(g.m.status === 'umgesetzt' && g.m.jahr != null && g.m.jahr < heute);
+  const objIds = g => (Array.isArray(g.objIds) && g.objIds.length ? g.objIds : [g.objId]);
+  const gueltig = geplant.filter(zaehlt);
   const plan = new Map();
-  for (const g of geplant.filter(zaehlt)) {
-    if (!plan.has(g.objId)) plan.set(g.objId, []);
-    plan.get(g.objId).push(g);
+  for (const g of gueltig) {
+    for (const id of objIds(g)) {
+      if (!plan.has(id)) plan.set(id, []);
+      plan.get(id).push(g);
+    }
   }
   const positionen = [], vorschlaege = [], abweichend = [];
   const offen = { bestand: 0, ungeloest: 0, ms: 0, ohneKosten: 0 };
+  const verbucht = new Set();
   const ausPlan = g => {
+    if (verbucht.has(g)) return;   // eine Maßnahme an mehreren Betriebsmitteln zählt einmal
+    verbucht.add(g);
     const invest = Number(g.m.kosten) || 0;
     if (!(invest > 0)) offen.ohneKosten++;
+    const ids = objIds(g);
     positionen.push({ gruppe: 'netz', art: g.art, label: `${g.objLabel}: ${g.m.titel || 'Maßnahme'}`, umfang: g.m.titel || '',
-                      investEur: invest, jahr: g.m.jahr ?? null, quelle: 'plan', objId: g.objId, massnahmeId: g.m.id });
+                      investEur: invest, jahr: g.m.jahr ?? null, quelle: 'plan', objId: ids[0], objIds: ids, massnahmeId: g.m.id });
   };
 
   for (const e of engpaesse) {
     const eigene = plan.get(e.id);
     if (eigene?.length) {
       eigene.forEach(ausPlan);
-      plan.delete(e.id);
       const v = e.v;
       if (v && !v.ungeloest) {
         const summe = eigene.reduce((t, g) => t + (Number(g.m.kosten) || 0), 0);
@@ -165,10 +173,10 @@ export function ekNetzPositionen({ engpaesse = [], geplant = [], heute = new Dat
     if (!e.v) continue;
     if (e.v.ungeloest) { offen.ungeloest++; continue; }
     positionen.push({ gruppe: 'netz', art: e.v.art, label: `${e.label}: ${e.v.label}`, umfang: e.v.label,
-                      investEur: Number(e.v.investEUR) || 0, jahr: e.v.jahr ?? null, quelle: 'vorschlag', objId: e.id });
+                      investEur: Number(e.v.investEUR) || 0, jahr: e.v.jahr ?? null, quelle: 'vorschlag', objId: e.id, objIds: [e.id] });
     vorschlaege.push(e.label);
   }
   // Geplante Maßnahmen an Betriebsmitteln, die (nicht mehr) als Engpass erscheinen
-  for (const liste of plan.values()) liste.forEach(ausPlan);
+  gueltig.forEach(ausPlan);
   return { positionen, offen, vorschlaege, abweichend };
 }
