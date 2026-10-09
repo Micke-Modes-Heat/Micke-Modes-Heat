@@ -141,7 +141,9 @@ export function engpassMassnahmenVorschlagen() {
   _vergleich = engpassVergleich(_horizont || {});   // Wirksamkeit nachrechnen
   _render();
   const offen = _massnahmen.ungeloest?.length || 0;
+  const eigen = _massnahmen.beibehalten?.length || 0;
   showHint(`✓ ${_massnahmen.items.length} Maßnahmen vorgeschlagen · ${_eur(_massnahmen.investGesamt)}`
+    + (eigen ? ` · ${eigen} eigene Maßnahme(n) beibehalten` : '')
     + (offen ? ` — ⚠ ${offen} Engpass/Engpässe nicht durch Kabeltausch lösbar.` : ' — im Ausbauplaner sichtbar.'));
   setTimeout(() => { if (typeof window.hideHint === 'function') window.hideHint(); }, 5000);
 }
@@ -222,7 +224,7 @@ function _toolbar(res, nKrit, nOk, nBestand = 0) {
       title="Leitet für jedes kritische Betriebsmittel die günstigste ausreichende Ertüchtigung ab und legt sie als geplante Maßnahme an (erscheint im Ausbauplaner).">
       ⚙ Maßnahmen vorschlagen</button>
     <button style="${btn}border-color:#e57373;color:#e57373;" data-click="engpassMassnahmenZuruecksetzen()"
-      title="Entfernt alle automatisch erzeugten Maßnahmen wieder.">✕ Auto-Maßnahmen</button>
+      title="Entfernt alle automatisch erzeugten Maßnahmen wieder — von Hand bearbeitete bleiben.">✕ Auto-Maßnahmen</button>
     <span style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
       Horizont
       <input type="range" id="engpass-von" min="2020" max="2060" step="1" value="${res.von}"

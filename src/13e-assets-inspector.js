@@ -1,6 +1,7 @@
 // ── 13e-assets-inspector.js — Editor-Panel für selektiertes Asset ──────────
 
 import { createId } from './lib/util.js';
+import { ENGPASS_AUTO_TAG } from './lib/engpass-core.js';
 import { anschlussWirksam } from './lib/anschlussleistung.js';
 
 // Persistiert den Einklapp-Zustand der Sektionen innerhalb einer Session
@@ -947,6 +948,8 @@ function wireMassnahmen(panel, asset) {
     if (editingId) {
       const m = asset.massnahmen.find(x => x.id === editingId);
       if (m) Object.assign(m, { titel, jahr, kosten, typ, status, newProps }, variante !== undefined ? { variante } : {});
+      // Bearbeitet = eigene Maßnahme: „Maßnahmen vorschlagen“ (14h) ersetzt sie nicht mehr
+      if (m) delete m[ENGPASS_AUTO_TAG];
       // dependsOn/phaseId werden durch das Board (M5+) gesetzt, hier nur als Default sichern
       if (!m.dependsOn) m.dependsOn = [];
       if (m.phaseId === undefined) m.phaseId = null;

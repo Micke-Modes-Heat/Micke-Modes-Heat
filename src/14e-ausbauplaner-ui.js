@@ -9,6 +9,7 @@ import { fahrplanTopoSort, fahrplanValidiereReihenfolge } from './14c-phasen.js'
 import { phaseJahrSetzen } from './lib/phasen-core.js';
 import { MASSN_VORLAGEN, MASSN_VORLAGEN_REIHENFOLGE } from './config/massnahmen-vorlagen.js';
 import { clusters, clusterFuerGebaeude } from './14f-cluster-core.js';
+import { ENGPASS_AUTO_TAG } from './lib/engpass-core.js';
 
 // ── Gewerk-Farben (Maßnahmen-Typen) ──────────────────────────────────────────
 const GEWERK_COLOR = {
@@ -376,6 +377,7 @@ export function ausbauDrop(e, phaseId) {
   if (it && it._m) _planningChange('Maßnahme in Phase verschieben', () => {
     it._m.phaseId = phaseId || null;
     it._m.jahr = null;
+    delete it._m[ENGPASS_AUTO_TAG];   // verplant = eigene Maßnahme, „Maßnahmen vorschlagen“ ersetzt sie nicht mehr
   });
   _draggingId = null;
   if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();

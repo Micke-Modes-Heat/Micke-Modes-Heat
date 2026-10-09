@@ -383,3 +383,21 @@ export function engpassAusloeser(item, leaves, jahrFn) {
   }
   return treffer;
 }
+
+/**
+ * Kennzeichen automatisch erzeugter Engpass-Maßnahmen. Wer eine solche Maßnahme bearbeitet, nimmt es weg —
+ * dann gehört sie dem Nutzer und wird beim nächsten „Maßnahmen vorschlagen“ weder gelöscht noch ersetzt.
+ */
+export const ENGPASS_AUTO_TAG = '_autoEngpass';
+
+/** Typen, mit denen ein Betriebsmittel ertüchtigt wird (Asset- und Kabelformular). */
+const ERTUECHTIGUNGS_TYPEN = new Set(['Ertuechtigung', 'Ertuecht', 'Austausch', 'Verlegung']);
+
+/**
+ * Hat das Betriebsmittel schon eine eigene (nicht automatische, nicht abgelehnte) Maßnahme, die den Engpass betrifft?
+ * Zählt: die frühere Auto-Maßnahme mit derselben Id, eine Maßnahme mit Ziel-Parametern oder ein Ertüchtigungs-Typ.
+ */
+export function engpassEigeneMassnahme(obj, autoId) {
+  return (obj?.massnahmen || []).find(m => m && !m[ENGPASS_AUTO_TAG] && m.status !== 'abgelehnt'
+    && (m.id === autoId || (m.newProps && Object.keys(m.newProps).length > 0) || ERTUECHTIGUNGS_TYPEN.has(m.typ))) || null;
+}

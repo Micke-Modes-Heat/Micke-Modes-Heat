@@ -17,6 +17,7 @@ import { nsKabelAuslegen } from './lib/ns-auslegung.js';
 import { anschlussWirksam } from './lib/anschlussleistung.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { createId } from './lib/util.js';
+import { ENGPASS_AUTO_TAG } from './lib/engpass-core.js';
 import { msSpannungen } from './lib/ms-spannung.js';
 import { trafoGruppen, trafoAufteilung, gruppenBetriebsart } from './lib/trafo-parallel.js';
 import { baueTrassenGraph, routeEntlangTrassen } from './lib/trassen-routing.js';
@@ -320,7 +321,7 @@ function _wireCableMassn(panel, edge) {
     if (!edge.massnahmen) edge.massnahmen = [];
     if (editingId) {
       const m = edge.massnahmen.find(x => x.id === editingId);
-      if (m) Object.assign(m, { titel, jahr, kosten, typ, status });
+      if (m) { Object.assign(m, { titel, jahr, kosten, typ, status }); delete m[ENGPASS_AUTO_TAG]; }
     } else {
       edge.massnahmen.push({ id: _cableMassnId(), titel, jahr, kosten, typ, status });
     }

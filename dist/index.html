@@ -15421,7 +15421,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-09';
   if (d.indexOf('__') === 0) d = '';
-  var c = '768bea6';
+  var c = '8ffb208';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -75610,6 +75610,410 @@ window._isSingleFileBuild = true;
     return `${safePrefix}_${Date.now().toString(36)}_${idFallbackCounter.toString(36)}`;
   }
 
+  // ── lib/engpass-core.js — Pure Logik des zeitlichen Engpass-Sweeps ───────────
+  // Importfrei und DOM-frei → direkt in Unit-Tests nutzbar.
+  // Die app-seitige Schicht (Netzberechnung, Karte) liegt in 14h-engpass-sweep.js.
+
+  // Grenzwerte (VDE-Richtwerte, konsistent zu elCalcAssets)
+  const ENGPASS_GRENZEN = {
+    auslastungPct: 100, // Strombelastbarkeit Iz
+    deltaUKumPct:  3,   // kumulierter Spannungsfall Trafo → Stichende (DIN 18015-1)
+    trafoPct:      100, // Trafo-Nennleistung
+  };
+
+  /**
+   * Ermittelt die Jahre, in denen sich am Netz überhaupt etwas ändert ("Stützjahre").
+   * Quellen: baujahr/abrissjahr von Assets und Kabeln, Jahre umgesetzter Maßnahmen.
+   * Zwischen zwei solchen Ereignissen ist das Rechenergebnis konstant — es genügt
+   * also, nur diese Jahre zu rechnen statt jedes einzelne.
+   *
+   * von, bis: Horizont (inklusive). Das Startjahr ist immer enthalten (Ist-Zustand).
+   * assets, edges: Objekte mit {baujahr, abrissjahr, massnahmen}
+   * jahrFn: (massnahme) => number|null — auflösen von Jahr/Phase, injizierbar
+   *
+   * Gibt aufsteigend sortierte, eindeutige Jahre innerhalb [von,bis] zurück.
+   */
+  function engpassStuetzjahre(von, bis, assets, edges, jahrFn) {
+    const jf = jahrFn || (m => (m?.jahr ? parseInt(m.jahr) : null));
+    const set = new Set([von]);
+    const add = y => {
+      const n = parseInt(y);
+      if (Number.isFinite(n) && n > von && n <= bis) set.add(n);
+    };
+    for (const o of [...(assets || []), ...(edges || [])]) {
+      add(o.baujahr);
+      add(o.abrissjahr);
+      for (const m of (o.massnahmen || [])) {
+        if (m.status === 'umgesetzt') add(jf(m));
+      }
+    }
+    return [...set].sort((a, b) => a - b);
+  }
+
+  /**
+   * Bestimmt aus einer Messreihe das erste Engpassjahr und die Ursache.
+   *
+   * reihe: [{ jahr, auslastungPct, deltaUKumPct }] — chronologisch
+   * grenzen: optional (Default ENGPASS_GRENZEN)
+   *
+   * Gibt { engpassJahr, ursache, maxAuslPct, maxDuPct } zurück.
+   * ursache: 'strom' | 'spannung' | 'strom+spannung' | null
+   */
+  function engpassBewerte(reihe, grenzen) {
+    const g = grenzen || ENGPASS_GRENZEN;
+    let engpassJahr = null, ursache = null, maxAuslPct = 0, maxDuPct = 0;
+    for (const r of (reihe || [])) {
+      const a = r.auslastungPct || 0;
+      const d = r.deltaUKumPct  || 0;
+      if (a > maxAuslPct) maxAuslPct = a;
+      if (d > maxDuPct)   maxDuPct   = d;
+      if (engpassJahr !== null) continue;
+      const strom    = a > g.auslastungPct;
+      const spannung = d > g.deltaUKumPct;
+      if (strom || spannung) {
+        engpassJahr = r.jahr;
+        ursache = strom && spannung ? 'strom+spannung' : strom ? 'strom' : 'spannung';
+      }
+    }
+    return { engpassJahr, ursache, maxAuslPct, maxDuPct };
+  }
+
+  /**
+   * Dringlichkeitsklasse aus Engpassjahr relativ zum Bezugsjahr.
+   * 'akut' (schon jetzt) | 'kurz' (<5 J) | 'mittel' (<15 J) | 'lang' | 'keiner'
+   */
+  function engpassKlassifiziere(engpassJahr, bezugsjahr) {
+    if (engpassJahr == null) return 'keiner';
+    const d = engpassJahr - bezugsjahr;
+    if (d <= 0) return 'akut';
+    if (d < 5)  return 'kurz';
+    if (d < 15) return 'mittel';
+    return 'lang';
+  }
+
+  // ── Maßnahmen-Vorschläge für überlastete Kabel ───────────────────────────────
+
+  // Planungs-/Beschaffungsvorlauf: so viele Jahre VOR dem Engpass muss gebaut werden
+  const ENGPASS_VORLAUF_J = 2;
+
+  /**
+   * Nötiger Mindest-"Leitwert" (Querschnitt × Parallelstränge) aus dem Spannungsfall.
+   * ΔU ist in erster Näherung proportional zu R, also zu 1/(A·n) — um von maxDuPct
+   * auf grenzDuPct zu kommen, muss A·n um genau diesen Faktor steigen.
+   * Gibt 0 zurück, wenn der Spannungsfall unkritisch ist.
+   */
+  function engpassNoetigerLeitwert(istQs, istN, maxDuPct, grenzDuPct) {
+    const g = grenzDuPct || ENGPASS_GRENZEN.deltaUKumPct;
+    if (!(maxDuPct > g) || !istQs) return 0;
+    return istQs * Math.max(1, istN || 1) * (maxDuPct / g);
+  }
+
+  /**
+   * Kleinste ausreichende Kombination aus Parallelsträngen und Querschnitt.
+   *
+   * Reihenfolge nach Planungspraxis: ZUERST den Querschnitt eines einzelnen Kabels
+   * bis zum größten verfügbaren hochfahren; reicht das nicht, einen weiteren Strang
+   * legen und dessen Querschnitt wieder von unten hochfahren, usw. Es wird also die
+   * Strangzahl minimiert und erst innerhalb dieser der Querschnitt.
+   *
+   * sections: [{ mm2, Iz, eurM }]
+   * benoetigtA: höchster Strom im Horizont
+   * minLeit: nötiges A·n aus dem Spannungsfall (0 = unkritisch)
+   *
+   * Gibt { n, sec } zurück oder null, wenn selbst maxN Stränge nicht reichen.
+   */
+  function engpassDimensionierung(sections, benoetigtA, minLeit, maxN) {
+    const nMax = maxN || 8;
+    const secs = [...(sections || [])].sort((a, b) => a.mm2 - b.mm2);
+    for (let n = 1; n <= nMax; n++) {
+      const sec = secs.find(s => s.Iz * n >= (benoetigtA || 0)
+                              && (!minLeit || s.mm2 * n >= minLeit));
+      if (sec) return { n, sec };
+    }
+    return null;
+  }
+
+  /**
+   * Kosten einer Kabelmaßnahme: ALLE Stränge erhalten den neuen Querschnitt;
+   * Tiefbau fällt nur für ZUSÄTZLICHE Stränge an (bestehender Graben bleibt).
+   */
+  function engpassKabelKosten(sec, nNeu, nIst, lengthM, tiefbauEurM) {
+    const kabel   = (sec?.eurM || 0) * (lengthM || 0) * nNeu;
+    const tiefbau = (tiefbauEurM || 0) * (lengthM || 0) * Math.max(0, nNeu - (nIst || 1));
+    return Math.round(kabel + tiefbau);
+  }
+
+  /**
+   * Erzeugt Ertüchtigungs-Alternativen für ein überlastetes Kabel.
+   *
+   * ist:    { crossSection, nParallel, cableType, lengthM }
+   * bedarf: { benoetigtA, maxDuPct }   — Maxima über den RESTLICHEN Horizont,
+   *                                      damit nicht zweimal gebaut werden muss
+   * params: { typen, tiefbauEurM, grenzDuPct, maxN }
+   *          typen = { NAYY: { sections }, NYY: { sections } } (injiziert → testbar)
+   *
+   * Je Kabeltyp entsteht genau EINE sinnvoll dimensionierte Variante (kleinste
+   * Strangzahl, darin kleinster Querschnitt) — der eigene Typ zuerst, die übrigen
+   * als Materialalternative. Dazu Lastmanagement als Referenz ohne Bauleistung.
+   *
+   * Rückgabe: [{ id, label, typ, investEUR, newProps, deckungOk, nParallel }]
+   */
+  function engpassKabelAlternativen(ist, bedarf, params) {
+    const { crossSection = 0, nParallel = 1, cableType = 'NAYY', lengthM = 0 } = ist || {};
+    const { benoetigtA = 0, maxDuPct = 0 } = bedarf || {};
+    const { typen = {}, tiefbauEurM = 100, grenzDuPct, maxN } = params || {};
+
+    const nIst    = Math.max(1, nParallel);
+    const minLeit = engpassNoetigerLeitwert(crossSection, nIst, maxDuPct, grenzDuPct);
+    const alt     = [];
+
+    // Eigener Kabeltyp zuerst, danach die übrigen als Materialalternative
+    const reihenfolge = [cableType, ...Object.keys(typen).filter(t => t !== cableType)];
+
+    for (const typ of reihenfolge) {
+      const def = typen[typ];
+      if (!def?.sections?.length) continue;
+      const dim = engpassDimensionierung(def.sections, benoetigtA, minLeit, maxN);
+      if (!dim) continue;
+      const gleicherTyp = typ === cableType;
+      // Keine Verschlechterung / Nulländerung vorschlagen
+      if (gleicherTyp && dim.n === nIst && dim.sec.mm2 <= crossSection) continue;
+
+      const zusatz = dim.n - nIst;
+      const label = dim.n > 1
+        ? `${dim.n} × ${dim.sec.mm2} mm²${gleicherTyp ? '' : ' ' + typ}`
+          + (zusatz > 0 ? ` (+${zusatz} ${zusatz > 1 ? 'Stränge' : 'Strang'})` : ' (gleicher Graben)')
+        : `Querschnitt ${crossSection} → ${dim.sec.mm2} mm²${gleicherTyp ? '' : ' ' + typ} (gleicher Graben)`;
+
+      alt.push({
+        id: `${typ}_${dim.n}x${dim.sec.mm2}`,
+        label,
+        typ: zusatz > 0 ? 'Verlegung' : (gleicherTyp ? 'Ertuechtigung' : 'Austausch'),
+        investEUR: engpassKabelKosten(dim.sec, dim.n, nIst, lengthM, tiefbauEurM),
+        newProps: gleicherTyp
+          ? { crossSection: dim.sec.mm2, nParallel: dim.n }
+          : { cableType: typ, crossSection: dim.sec.mm2, nParallel: dim.n },
+        deckungOk: true,
+        nParallel: dim.n,
+        gleicherTyp,
+      });
+    }
+
+    // Lastmanagement/Abregelung — Referenzoption ohne Bauleistung
+    alt.push({
+      id: 'lastmanagement',
+      label: 'Lastmanagement statt Ausbau (kein Bau)',
+      typ: 'abregelung', investEUR: 0, newProps: {}, deckungOk: false,
+    });
+
+    // Eigener Kabeltyp zuerst, dann weniger Parallelstränge, dann günstiger
+    return alt.sort((a, b) =>
+      (a.gleicherTyp ? 0 : 1) - (b.gleicherTyp ? 0 : 1)
+      || (a.nParallel ?? 99) - (b.nParallel ?? 99)
+      || a.investEUR - b.investEUR);
+  }
+
+  /**
+   * Wählt die Alternative, die automatisch eingeplant wird.
+   *
+   * Vorrang hat der BESTEHENDE Kabeltyp — ein Materialwechsel (Alu → Kupfer) wird
+   * angeboten, aber nicht stillschweigend eingeplant, auch wenn er rechnerisch
+   * günstiger wäre. Innerhalb des Typs: möglichst wenige Parallelstränge, dann Kosten.
+   * Gibt null zurück, wenn keine Bau-Alternative ausreicht (dann bleibt nur Lastmanagement).
+   */
+  function engpassWaehleAlternative(alternativen) {
+    const ok = (alternativen || []).filter(a => a.deckungOk);
+    if (!ok.length) return null;
+    return ok.sort((a, b) =>
+      (a.gleicherTyp ? 0 : 1) - (b.gleicherTyp ? 0 : 1)
+      || (a.nParallel ?? 99) - (b.nParallel ?? 99)
+      || a.investEUR - b.investEUR)[0];
+  }
+
+  /**
+   * Umsetzungsjahr einer Maßnahme: so viele Jahre vor dem Engpass, wie Vorlauf nötig ist —
+   * aber nie vor dem Bezugsjahr (Vergangenheit lässt sich nicht beplanen).
+   */
+  function engpassMassnahmeJahr(engpassJahr, bezugsjahr, vorlaufJ) {
+    if (engpassJahr == null) return null;
+    const v = vorlaufJ != null ? vorlaufJ : ENGPASS_VORLAUF_J;
+    return Math.max(bezugsjahr, engpassJahr - v);
+  }
+
+  // ── Auslöser & Zusammenhänge ─────────────────────────────────────────────────
+  //
+  // Beantwortet: "WARUM wird dieses Betriebsmittel zum Engpass — welcher neue
+  // Verbraucher/Erzeuger hat das ausgelöst?" Nutzt dieselbe Rang-Logik wie die
+  // Lastfluss-Berechnung in 05b-stromnetz.js (_recalcStromNetzInner.bfsDownstream):
+  // downstream = der Endpunkt mit dem höheren typeRank; es wird nie stromaufwärts
+  // gelaufen (Rang sinkt niemals entlang des Pfads).
+
+  const ENGPASS_INFRA_TYPES = new Set(['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS']);
+
+  /**
+   * Alle Verbraucher-/Erzeuger-Assets UND Gebäude-Knoten (ohne eigenes Asset),
+   * die stromabwärts eines Betriebsmittels (Kabel oder Trafo) hängen — Kandidaten
+   * für dessen Auslöser. Infra-Knoten (NAP…KVS) werden nur durchquert, nie gemeldet.
+   *
+   * item: { id, art: 'kabel'|'trafo' }
+   * assets: [{ id, type, name, baujahr, massnahmen }, ...]  (ASSETS.items-artig)
+   * edges:  [{ id, u, v }, ...]                              (stromEdges-artig)
+   * gebaeudeArr: [{ id, name, baujahr }, ...]
+   * typeRank: { [type]: number }  (TYPE_RANK — niedriger = versorgungsseitig)
+   *
+   * Rückgabe: [{ kind:'asset', asset } | { kind:'gebaeude', gebaeude }]
+   */
+  function engpassDownstreamLeaves(item, assets, edges, gebaeudeArr, typeRank) {
+    const assetMap = new Map((assets || []).map(a => [a.id, a]));
+    const edgeArr  = edges || [];
+    const rankOf   = a => a ? (typeRank[a.type] ?? 5) : 5;
+
+    let rootId, visited;
+    if (item.art === 'trafo') {
+      rootId = item.id;
+      visited = new Set([rootId]);
+    } else {
+      const edge = edgeArr.find(e => e.id === item.id);
+      if (!edge) return [];
+      const rankA = rankOf(assetMap.get(edge.u)), rankB = rankOf(assetMap.get(edge.v));
+      const sourceId = rankA <= rankB ? edge.u : edge.v;
+      rootId = rankA <= rankB ? edge.v : edge.u;
+      visited = new Set([sourceId, rootId]); // beide Enden sperren gegen Rückwärtslauf bei Gleichrang
+    }
+
+    const out = [];
+    const queue = [rootId];
+    while (queue.length) {
+      const cur = queue.shift();
+      const curAsset = assetMap.get(cur);
+      const curRank = rankOf(curAsset);
+      if (curAsset && !ENGPASS_INFRA_TYPES.has(curAsset.type)) {
+        out.push({ kind: 'asset', asset: curAsset });
+      } else if (!curAsset) {
+        const g = (gebaeudeArr || []).find(gb => gb.id === cur);
+        if (g) out.push({ kind: 'gebaeude', gebaeude: g });
+      }
+      const neighbors = [...new Set(edgeArr
+        .filter(e => e.u === cur || e.v === cur)
+        .map(e => (e.u === cur ? e.v : e.u)))];
+      for (const nb of neighbors) {
+        if (visited.has(nb)) continue;
+        if (rankOf(assetMap.get(nb)) < curRank) continue; // nie stromaufwärts
+        visited.add(nb);
+        queue.push(nb);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Ermittelt, welcher neu hinzugekommene Verbraucher/Erzeuger (oder welche
+   * Kapazitätserweiterung) den Engpass in `item.engpassJahr` ausgelöst hat:
+   * alle stromabwärtigen Leaf-Knoten, deren Baujahr ODER umgesetzte
+   * Kapazitäts-Maßnahme GENAU in diesem Jahr wirksam wurde (= derselbe Grund,
+   * der das Jahr in engpassStuetzjahre überhaupt erst zum Stützjahr gemacht hat).
+   *
+   * leaves: Ergebnis von engpassDownstreamLeaves
+   * jahrFn: (massnahme) => number|null — wie bei engpassStuetzjahre injizierbar
+   *
+   * Gibt [] zurück, wenn der Engpass schon zu Horizontbeginn bestand oder aus
+   * mehreren gleichzeitigen Ereignissen ohne eindeutige Einzelursache entstand.
+   */
+  /**
+   * Bestandsmangel = das Betriebsmittel ist schon im ERSTEN Jahr des Horizonts
+   * überlastet, ohne dass ein Zubau in genau diesem Jahr die Ursache wäre. Es
+   * wurde also von vornherein zu klein dimensioniert (oder zu klein gezeichnet) —
+   * ein Fehler im Bestandsmodell, keine Folge der geplanten Entwicklung.
+   *
+   * Solche Fälle gehören NICHT in den Ausbaufahrplan: eine „Maßnahme im Startjahr"
+   * für etwas, das nie ausreichend war, verfälscht sowohl den Investitionsverlauf
+   * als auch die Ursache-Wirkungs-Kette (der Zubau erscheint dann als Auslöser
+   * einer Ertüchtigung, die längst überfällig war). Sie werden deshalb getrennt
+   * ausgewiesen und als Korrektur der Bestandsdaten behandelt.
+   *
+   * ausloeser: Ergebnis von engpassAusloeser für dasselbe Betriebsmittel
+   */
+  function engpassIstBestandsmangel(item, von, ausloeser) {
+    if (item?.engpassJahr == null) return false;
+    if (item.engpassJahr > von) return false;      // erst später kritisch → echte Entwicklung
+    return !(ausloeser && ausloeser.length);        // im Startjahr zugebaut → echter Auslöser
+  }
+
+  /**
+   * Versorgende Betriebsmittel eines Verbrauchers/Erzeugers (z. B. Ladepark, Gutachten 3.4.4): Breitensuche vom
+   * Asset stromaufwärts — nur zu Knoten mit gleichem oder niedrigerem typeRank — bis zum ersten Trafo. Die
+   * zuerst erreichte Verteilung (NSHV/UV/KVS) ist die nächstgelegene.
+   * Rückgabe: { verteilung: asset|null, trafo: asset|null }
+   */
+  function engpassVersorgung(startId, assets, edges, typeRank) {
+    const assetMap = new Map((assets || []).map(a => [a.id, a]));
+    const rankOf   = id => { const a = assetMap.get(id); return a ? (typeRank?.[a.type] ?? 5) : 5; };
+    const edgeArr  = edges || [];
+    let verteilung = null, trafo = null;
+    const visited = new Set([startId]);
+    const queue = [startId];
+    while (queue.length) {
+      const cur = queue.shift();
+      const a = assetMap.get(cur);
+      if (a && cur !== startId) {
+        if (a.type === 'Trafo') { trafo = a; break; }
+        if (!verteilung && (a.type === 'NSHV' || a.type === 'UV' || a.type === 'KVS')) verteilung = a;
+      }
+      const curRank = rankOf(cur);
+      for (const e of edgeArr) {
+        if (e.u !== cur && e.v !== cur) continue;
+        const nb = e.u === cur ? e.v : e.u;
+        if (visited.has(nb) || rankOf(nb) > curRank) continue;   // nie stromabwärts
+        visited.add(nb);
+        queue.push(nb);
+      }
+    }
+    return { verteilung, trafo };
+  }
+
+  function engpassAusloeser(item, leaves, jahrFn) {
+    if (item?.engpassJahr == null) return [];
+    const jahr = item.engpassJahr;
+    const jf = jahrFn || (m => (m?.jahr ? parseInt(m.jahr) : null));
+    const treffer = [];
+    for (const l of (leaves || [])) {
+      if (l.kind === 'asset') {
+        const a = l.asset;
+        if (parseInt(a.baujahr) === jahr) {
+          treffer.push({ kind: 'asset', id: a.id, name: a.name, typ: a.type, grund: 'baujahr' });
+          continue;
+        }
+        const m = (a.massnahmen || []).find(mm =>
+          mm.status === 'umgesetzt' && mm.newProps && Object.keys(mm.newProps).length && jf(mm) === jahr);
+        if (m) treffer.push({ kind: 'asset', id: a.id, name: a.name, typ: a.type, grund: 'ausbau', massnahmeTitel: m.titel });
+      } else {
+        const g = l.gebaeude;
+        if (g && parseInt(g.baujahr) === jahr) {
+          treffer.push({ kind: 'gebaeude', id: g.id, name: g.name || `Gebäude ${g.id}`, typ: 'Gebäude', grund: 'baujahr' });
+        }
+      }
+    }
+    return treffer;
+  }
+
+  /**
+   * Kennzeichen automatisch erzeugter Engpass-Maßnahmen. Wer eine solche Maßnahme bearbeitet, nimmt es weg —
+   * dann gehört sie dem Nutzer und wird beim nächsten „Maßnahmen vorschlagen“ weder gelöscht noch ersetzt.
+   */
+  const ENGPASS_AUTO_TAG = '_autoEngpass';
+
+  /** Typen, mit denen ein Betriebsmittel ertüchtigt wird (Asset- und Kabelformular). */
+  const ERTUECHTIGUNGS_TYPEN = new Set(['Ertuechtigung', 'Ertuecht', 'Austausch', 'Verlegung']);
+
+  /**
+   * Hat das Betriebsmittel schon eine eigene (nicht automatische, nicht abgelehnte) Maßnahme, die den Engpass betrifft?
+   * Zählt: die frühere Auto-Maßnahme mit derselben Id, eine Maßnahme mit Ziel-Parametern oder ein Ertüchtigungs-Typ.
+   */
+  function engpassEigeneMassnahme(obj, autoId) {
+    return (obj?.massnahmen || []).find(m => m && !m[ENGPASS_AUTO_TAG] && m.status !== 'abgelehnt'
+      && (m.id === autoId || (m.newProps && Object.keys(m.newProps).length > 0) || ERTUECHTIGUNGS_TYPEN.has(m.typ))) || null;
+  }
+
   // ── lib/ms-spannung.js — MS-Nennspannung je Kabel aus dem speisenden NAP ──────
   // Jedes MS-Kabel rechnet mit der Spannung SEINES Netzanknüpfungspunkts: vom NAP
   // aus wird die Spannung über die MS-Kanten weitergereicht. Kabel ohne Weg zu
@@ -79352,7 +79756,7 @@ window._isSingleFileBuild = true;
       if (!edge.massnahmen) edge.massnahmen = [];
       if (editingId) {
         const m = edge.massnahmen.find(x => x.id === editingId);
-        if (m) Object.assign(m, { titel, jahr, kosten, typ, status });
+        if (m) { Object.assign(m, { titel, jahr, kosten, typ, status }); delete m[ENGPASS_AUTO_TAG]; }
       } else {
         edge.massnahmen.push({ id: _cableMassnId(), titel, jahr, kosten, typ, status });
       }
@@ -111173,392 +111577,6 @@ ${massTbl}
     return { jahre: [mj], referenzId: mj.id };
   }
 
-  // ── lib/engpass-core.js — Pure Logik des zeitlichen Engpass-Sweeps ───────────
-  // Importfrei und DOM-frei → direkt in Unit-Tests nutzbar.
-  // Die app-seitige Schicht (Netzberechnung, Karte) liegt in 14h-engpass-sweep.js.
-
-  // Grenzwerte (VDE-Richtwerte, konsistent zu elCalcAssets)
-  const ENGPASS_GRENZEN = {
-    auslastungPct: 100, // Strombelastbarkeit Iz
-    deltaUKumPct:  3,   // kumulierter Spannungsfall Trafo → Stichende (DIN 18015-1)
-    trafoPct:      100, // Trafo-Nennleistung
-  };
-
-  /**
-   * Ermittelt die Jahre, in denen sich am Netz überhaupt etwas ändert ("Stützjahre").
-   * Quellen: baujahr/abrissjahr von Assets und Kabeln, Jahre umgesetzter Maßnahmen.
-   * Zwischen zwei solchen Ereignissen ist das Rechenergebnis konstant — es genügt
-   * also, nur diese Jahre zu rechnen statt jedes einzelne.
-   *
-   * von, bis: Horizont (inklusive). Das Startjahr ist immer enthalten (Ist-Zustand).
-   * assets, edges: Objekte mit {baujahr, abrissjahr, massnahmen}
-   * jahrFn: (massnahme) => number|null — auflösen von Jahr/Phase, injizierbar
-   *
-   * Gibt aufsteigend sortierte, eindeutige Jahre innerhalb [von,bis] zurück.
-   */
-  function engpassStuetzjahre(von, bis, assets, edges, jahrFn) {
-    const jf = jahrFn || (m => (m?.jahr ? parseInt(m.jahr) : null));
-    const set = new Set([von]);
-    const add = y => {
-      const n = parseInt(y);
-      if (Number.isFinite(n) && n > von && n <= bis) set.add(n);
-    };
-    for (const o of [...(assets || []), ...(edges || [])]) {
-      add(o.baujahr);
-      add(o.abrissjahr);
-      for (const m of (o.massnahmen || [])) {
-        if (m.status === 'umgesetzt') add(jf(m));
-      }
-    }
-    return [...set].sort((a, b) => a - b);
-  }
-
-  /**
-   * Bestimmt aus einer Messreihe das erste Engpassjahr und die Ursache.
-   *
-   * reihe: [{ jahr, auslastungPct, deltaUKumPct }] — chronologisch
-   * grenzen: optional (Default ENGPASS_GRENZEN)
-   *
-   * Gibt { engpassJahr, ursache, maxAuslPct, maxDuPct } zurück.
-   * ursache: 'strom' | 'spannung' | 'strom+spannung' | null
-   */
-  function engpassBewerte(reihe, grenzen) {
-    const g = grenzen || ENGPASS_GRENZEN;
-    let engpassJahr = null, ursache = null, maxAuslPct = 0, maxDuPct = 0;
-    for (const r of (reihe || [])) {
-      const a = r.auslastungPct || 0;
-      const d = r.deltaUKumPct  || 0;
-      if (a > maxAuslPct) maxAuslPct = a;
-      if (d > maxDuPct)   maxDuPct   = d;
-      if (engpassJahr !== null) continue;
-      const strom    = a > g.auslastungPct;
-      const spannung = d > g.deltaUKumPct;
-      if (strom || spannung) {
-        engpassJahr = r.jahr;
-        ursache = strom && spannung ? 'strom+spannung' : strom ? 'strom' : 'spannung';
-      }
-    }
-    return { engpassJahr, ursache, maxAuslPct, maxDuPct };
-  }
-
-  /**
-   * Dringlichkeitsklasse aus Engpassjahr relativ zum Bezugsjahr.
-   * 'akut' (schon jetzt) | 'kurz' (<5 J) | 'mittel' (<15 J) | 'lang' | 'keiner'
-   */
-  function engpassKlassifiziere(engpassJahr, bezugsjahr) {
-    if (engpassJahr == null) return 'keiner';
-    const d = engpassJahr - bezugsjahr;
-    if (d <= 0) return 'akut';
-    if (d < 5)  return 'kurz';
-    if (d < 15) return 'mittel';
-    return 'lang';
-  }
-
-  // ── Maßnahmen-Vorschläge für überlastete Kabel ───────────────────────────────
-
-  // Planungs-/Beschaffungsvorlauf: so viele Jahre VOR dem Engpass muss gebaut werden
-  const ENGPASS_VORLAUF_J = 2;
-
-  /**
-   * Nötiger Mindest-"Leitwert" (Querschnitt × Parallelstränge) aus dem Spannungsfall.
-   * ΔU ist in erster Näherung proportional zu R, also zu 1/(A·n) — um von maxDuPct
-   * auf grenzDuPct zu kommen, muss A·n um genau diesen Faktor steigen.
-   * Gibt 0 zurück, wenn der Spannungsfall unkritisch ist.
-   */
-  function engpassNoetigerLeitwert(istQs, istN, maxDuPct, grenzDuPct) {
-    const g = grenzDuPct || ENGPASS_GRENZEN.deltaUKumPct;
-    if (!(maxDuPct > g) || !istQs) return 0;
-    return istQs * Math.max(1, istN || 1) * (maxDuPct / g);
-  }
-
-  /**
-   * Kleinste ausreichende Kombination aus Parallelsträngen und Querschnitt.
-   *
-   * Reihenfolge nach Planungspraxis: ZUERST den Querschnitt eines einzelnen Kabels
-   * bis zum größten verfügbaren hochfahren; reicht das nicht, einen weiteren Strang
-   * legen und dessen Querschnitt wieder von unten hochfahren, usw. Es wird also die
-   * Strangzahl minimiert und erst innerhalb dieser der Querschnitt.
-   *
-   * sections: [{ mm2, Iz, eurM }]
-   * benoetigtA: höchster Strom im Horizont
-   * minLeit: nötiges A·n aus dem Spannungsfall (0 = unkritisch)
-   *
-   * Gibt { n, sec } zurück oder null, wenn selbst maxN Stränge nicht reichen.
-   */
-  function engpassDimensionierung(sections, benoetigtA, minLeit, maxN) {
-    const nMax = maxN || 8;
-    const secs = [...(sections || [])].sort((a, b) => a.mm2 - b.mm2);
-    for (let n = 1; n <= nMax; n++) {
-      const sec = secs.find(s => s.Iz * n >= (benoetigtA || 0)
-                              && (!minLeit || s.mm2 * n >= minLeit));
-      if (sec) return { n, sec };
-    }
-    return null;
-  }
-
-  /**
-   * Kosten einer Kabelmaßnahme: ALLE Stränge erhalten den neuen Querschnitt;
-   * Tiefbau fällt nur für ZUSÄTZLICHE Stränge an (bestehender Graben bleibt).
-   */
-  function engpassKabelKosten(sec, nNeu, nIst, lengthM, tiefbauEurM) {
-    const kabel   = (sec?.eurM || 0) * (lengthM || 0) * nNeu;
-    const tiefbau = (tiefbauEurM || 0) * (lengthM || 0) * Math.max(0, nNeu - (nIst || 1));
-    return Math.round(kabel + tiefbau);
-  }
-
-  /**
-   * Erzeugt Ertüchtigungs-Alternativen für ein überlastetes Kabel.
-   *
-   * ist:    { crossSection, nParallel, cableType, lengthM }
-   * bedarf: { benoetigtA, maxDuPct }   — Maxima über den RESTLICHEN Horizont,
-   *                                      damit nicht zweimal gebaut werden muss
-   * params: { typen, tiefbauEurM, grenzDuPct, maxN }
-   *          typen = { NAYY: { sections }, NYY: { sections } } (injiziert → testbar)
-   *
-   * Je Kabeltyp entsteht genau EINE sinnvoll dimensionierte Variante (kleinste
-   * Strangzahl, darin kleinster Querschnitt) — der eigene Typ zuerst, die übrigen
-   * als Materialalternative. Dazu Lastmanagement als Referenz ohne Bauleistung.
-   *
-   * Rückgabe: [{ id, label, typ, investEUR, newProps, deckungOk, nParallel }]
-   */
-  function engpassKabelAlternativen(ist, bedarf, params) {
-    const { crossSection = 0, nParallel = 1, cableType = 'NAYY', lengthM = 0 } = ist || {};
-    const { benoetigtA = 0, maxDuPct = 0 } = bedarf || {};
-    const { typen = {}, tiefbauEurM = 100, grenzDuPct, maxN } = params || {};
-
-    const nIst    = Math.max(1, nParallel);
-    const minLeit = engpassNoetigerLeitwert(crossSection, nIst, maxDuPct, grenzDuPct);
-    const alt     = [];
-
-    // Eigener Kabeltyp zuerst, danach die übrigen als Materialalternative
-    const reihenfolge = [cableType, ...Object.keys(typen).filter(t => t !== cableType)];
-
-    for (const typ of reihenfolge) {
-      const def = typen[typ];
-      if (!def?.sections?.length) continue;
-      const dim = engpassDimensionierung(def.sections, benoetigtA, minLeit, maxN);
-      if (!dim) continue;
-      const gleicherTyp = typ === cableType;
-      // Keine Verschlechterung / Nulländerung vorschlagen
-      if (gleicherTyp && dim.n === nIst && dim.sec.mm2 <= crossSection) continue;
-
-      const zusatz = dim.n - nIst;
-      const label = dim.n > 1
-        ? `${dim.n} × ${dim.sec.mm2} mm²${gleicherTyp ? '' : ' ' + typ}`
-          + (zusatz > 0 ? ` (+${zusatz} ${zusatz > 1 ? 'Stränge' : 'Strang'})` : ' (gleicher Graben)')
-        : `Querschnitt ${crossSection} → ${dim.sec.mm2} mm²${gleicherTyp ? '' : ' ' + typ} (gleicher Graben)`;
-
-      alt.push({
-        id: `${typ}_${dim.n}x${dim.sec.mm2}`,
-        label,
-        typ: zusatz > 0 ? 'Verlegung' : (gleicherTyp ? 'Ertuechtigung' : 'Austausch'),
-        investEUR: engpassKabelKosten(dim.sec, dim.n, nIst, lengthM, tiefbauEurM),
-        newProps: gleicherTyp
-          ? { crossSection: dim.sec.mm2, nParallel: dim.n }
-          : { cableType: typ, crossSection: dim.sec.mm2, nParallel: dim.n },
-        deckungOk: true,
-        nParallel: dim.n,
-        gleicherTyp,
-      });
-    }
-
-    // Lastmanagement/Abregelung — Referenzoption ohne Bauleistung
-    alt.push({
-      id: 'lastmanagement',
-      label: 'Lastmanagement statt Ausbau (kein Bau)',
-      typ: 'abregelung', investEUR: 0, newProps: {}, deckungOk: false,
-    });
-
-    // Eigener Kabeltyp zuerst, dann weniger Parallelstränge, dann günstiger
-    return alt.sort((a, b) =>
-      (a.gleicherTyp ? 0 : 1) - (b.gleicherTyp ? 0 : 1)
-      || (a.nParallel ?? 99) - (b.nParallel ?? 99)
-      || a.investEUR - b.investEUR);
-  }
-
-  /**
-   * Wählt die Alternative, die automatisch eingeplant wird.
-   *
-   * Vorrang hat der BESTEHENDE Kabeltyp — ein Materialwechsel (Alu → Kupfer) wird
-   * angeboten, aber nicht stillschweigend eingeplant, auch wenn er rechnerisch
-   * günstiger wäre. Innerhalb des Typs: möglichst wenige Parallelstränge, dann Kosten.
-   * Gibt null zurück, wenn keine Bau-Alternative ausreicht (dann bleibt nur Lastmanagement).
-   */
-  function engpassWaehleAlternative(alternativen) {
-    const ok = (alternativen || []).filter(a => a.deckungOk);
-    if (!ok.length) return null;
-    return ok.sort((a, b) =>
-      (a.gleicherTyp ? 0 : 1) - (b.gleicherTyp ? 0 : 1)
-      || (a.nParallel ?? 99) - (b.nParallel ?? 99)
-      || a.investEUR - b.investEUR)[0];
-  }
-
-  /**
-   * Umsetzungsjahr einer Maßnahme: so viele Jahre vor dem Engpass, wie Vorlauf nötig ist —
-   * aber nie vor dem Bezugsjahr (Vergangenheit lässt sich nicht beplanen).
-   */
-  function engpassMassnahmeJahr(engpassJahr, bezugsjahr, vorlaufJ) {
-    if (engpassJahr == null) return null;
-    const v = vorlaufJ != null ? vorlaufJ : ENGPASS_VORLAUF_J;
-    return Math.max(bezugsjahr, engpassJahr - v);
-  }
-
-  // ── Auslöser & Zusammenhänge ─────────────────────────────────────────────────
-  //
-  // Beantwortet: "WARUM wird dieses Betriebsmittel zum Engpass — welcher neue
-  // Verbraucher/Erzeuger hat das ausgelöst?" Nutzt dieselbe Rang-Logik wie die
-  // Lastfluss-Berechnung in 05b-stromnetz.js (_recalcStromNetzInner.bfsDownstream):
-  // downstream = der Endpunkt mit dem höheren typeRank; es wird nie stromaufwärts
-  // gelaufen (Rang sinkt niemals entlang des Pfads).
-
-  const ENGPASS_INFRA_TYPES = new Set(['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS']);
-
-  /**
-   * Alle Verbraucher-/Erzeuger-Assets UND Gebäude-Knoten (ohne eigenes Asset),
-   * die stromabwärts eines Betriebsmittels (Kabel oder Trafo) hängen — Kandidaten
-   * für dessen Auslöser. Infra-Knoten (NAP…KVS) werden nur durchquert, nie gemeldet.
-   *
-   * item: { id, art: 'kabel'|'trafo' }
-   * assets: [{ id, type, name, baujahr, massnahmen }, ...]  (ASSETS.items-artig)
-   * edges:  [{ id, u, v }, ...]                              (stromEdges-artig)
-   * gebaeudeArr: [{ id, name, baujahr }, ...]
-   * typeRank: { [type]: number }  (TYPE_RANK — niedriger = versorgungsseitig)
-   *
-   * Rückgabe: [{ kind:'asset', asset } | { kind:'gebaeude', gebaeude }]
-   */
-  function engpassDownstreamLeaves(item, assets, edges, gebaeudeArr, typeRank) {
-    const assetMap = new Map((assets || []).map(a => [a.id, a]));
-    const edgeArr  = edges || [];
-    const rankOf   = a => a ? (typeRank[a.type] ?? 5) : 5;
-
-    let rootId, visited;
-    if (item.art === 'trafo') {
-      rootId = item.id;
-      visited = new Set([rootId]);
-    } else {
-      const edge = edgeArr.find(e => e.id === item.id);
-      if (!edge) return [];
-      const rankA = rankOf(assetMap.get(edge.u)), rankB = rankOf(assetMap.get(edge.v));
-      const sourceId = rankA <= rankB ? edge.u : edge.v;
-      rootId = rankA <= rankB ? edge.v : edge.u;
-      visited = new Set([sourceId, rootId]); // beide Enden sperren gegen Rückwärtslauf bei Gleichrang
-    }
-
-    const out = [];
-    const queue = [rootId];
-    while (queue.length) {
-      const cur = queue.shift();
-      const curAsset = assetMap.get(cur);
-      const curRank = rankOf(curAsset);
-      if (curAsset && !ENGPASS_INFRA_TYPES.has(curAsset.type)) {
-        out.push({ kind: 'asset', asset: curAsset });
-      } else if (!curAsset) {
-        const g = (gebaeudeArr || []).find(gb => gb.id === cur);
-        if (g) out.push({ kind: 'gebaeude', gebaeude: g });
-      }
-      const neighbors = [...new Set(edgeArr
-        .filter(e => e.u === cur || e.v === cur)
-        .map(e => (e.u === cur ? e.v : e.u)))];
-      for (const nb of neighbors) {
-        if (visited.has(nb)) continue;
-        if (rankOf(assetMap.get(nb)) < curRank) continue; // nie stromaufwärts
-        visited.add(nb);
-        queue.push(nb);
-      }
-    }
-    return out;
-  }
-
-  /**
-   * Ermittelt, welcher neu hinzugekommene Verbraucher/Erzeuger (oder welche
-   * Kapazitätserweiterung) den Engpass in `item.engpassJahr` ausgelöst hat:
-   * alle stromabwärtigen Leaf-Knoten, deren Baujahr ODER umgesetzte
-   * Kapazitäts-Maßnahme GENAU in diesem Jahr wirksam wurde (= derselbe Grund,
-   * der das Jahr in engpassStuetzjahre überhaupt erst zum Stützjahr gemacht hat).
-   *
-   * leaves: Ergebnis von engpassDownstreamLeaves
-   * jahrFn: (massnahme) => number|null — wie bei engpassStuetzjahre injizierbar
-   *
-   * Gibt [] zurück, wenn der Engpass schon zu Horizontbeginn bestand oder aus
-   * mehreren gleichzeitigen Ereignissen ohne eindeutige Einzelursache entstand.
-   */
-  /**
-   * Bestandsmangel = das Betriebsmittel ist schon im ERSTEN Jahr des Horizonts
-   * überlastet, ohne dass ein Zubau in genau diesem Jahr die Ursache wäre. Es
-   * wurde also von vornherein zu klein dimensioniert (oder zu klein gezeichnet) —
-   * ein Fehler im Bestandsmodell, keine Folge der geplanten Entwicklung.
-   *
-   * Solche Fälle gehören NICHT in den Ausbaufahrplan: eine „Maßnahme im Startjahr"
-   * für etwas, das nie ausreichend war, verfälscht sowohl den Investitionsverlauf
-   * als auch die Ursache-Wirkungs-Kette (der Zubau erscheint dann als Auslöser
-   * einer Ertüchtigung, die längst überfällig war). Sie werden deshalb getrennt
-   * ausgewiesen und als Korrektur der Bestandsdaten behandelt.
-   *
-   * ausloeser: Ergebnis von engpassAusloeser für dasselbe Betriebsmittel
-   */
-  function engpassIstBestandsmangel(item, von, ausloeser) {
-    if (item?.engpassJahr == null) return false;
-    if (item.engpassJahr > von) return false;      // erst später kritisch → echte Entwicklung
-    return !(ausloeser && ausloeser.length);        // im Startjahr zugebaut → echter Auslöser
-  }
-
-  /**
-   * Versorgende Betriebsmittel eines Verbrauchers/Erzeugers (z. B. Ladepark, Gutachten 3.4.4): Breitensuche vom
-   * Asset stromaufwärts — nur zu Knoten mit gleichem oder niedrigerem typeRank — bis zum ersten Trafo. Die
-   * zuerst erreichte Verteilung (NSHV/UV/KVS) ist die nächstgelegene.
-   * Rückgabe: { verteilung: asset|null, trafo: asset|null }
-   */
-  function engpassVersorgung(startId, assets, edges, typeRank) {
-    const assetMap = new Map((assets || []).map(a => [a.id, a]));
-    const rankOf   = id => { const a = assetMap.get(id); return a ? (typeRank?.[a.type] ?? 5) : 5; };
-    const edgeArr  = edges || [];
-    let verteilung = null, trafo = null;
-    const visited = new Set([startId]);
-    const queue = [startId];
-    while (queue.length) {
-      const cur = queue.shift();
-      const a = assetMap.get(cur);
-      if (a && cur !== startId) {
-        if (a.type === 'Trafo') { trafo = a; break; }
-        if (!verteilung && (a.type === 'NSHV' || a.type === 'UV' || a.type === 'KVS')) verteilung = a;
-      }
-      const curRank = rankOf(cur);
-      for (const e of edgeArr) {
-        if (e.u !== cur && e.v !== cur) continue;
-        const nb = e.u === cur ? e.v : e.u;
-        if (visited.has(nb) || rankOf(nb) > curRank) continue;   // nie stromabwärts
-        visited.add(nb);
-        queue.push(nb);
-      }
-    }
-    return { verteilung, trafo };
-  }
-
-  function engpassAusloeser(item, leaves, jahrFn) {
-    if (item?.engpassJahr == null) return [];
-    const jahr = item.engpassJahr;
-    const jf = jahrFn || (m => (m?.jahr ? parseInt(m.jahr) : null));
-    const treffer = [];
-    for (const l of (leaves || [])) {
-      if (l.kind === 'asset') {
-        const a = l.asset;
-        if (parseInt(a.baujahr) === jahr) {
-          treffer.push({ kind: 'asset', id: a.id, name: a.name, typ: a.type, grund: 'baujahr' });
-          continue;
-        }
-        const m = (a.massnahmen || []).find(mm =>
-          mm.status === 'umgesetzt' && mm.newProps && Object.keys(mm.newProps).length && jf(mm) === jahr);
-        if (m) treffer.push({ kind: 'asset', id: a.id, name: a.name, typ: a.type, grund: 'ausbau', massnahmeTitel: m.titel });
-      } else {
-        const g = l.gebaeude;
-        if (g && parseInt(g.baujahr) === jahr) {
-          treffer.push({ kind: 'gebaeude', id: g.id, name: g.name || `Gebäude ${g.id}`, typ: 'Gebäude', grund: 'baujahr' });
-        }
-      }
-    }
-    return treffer;
-  }
-
   // ── lib/elektro-kosten.js — Gutachten 3.5: Investitionen und Jahreskosten der Elektro-Maßnahmen ──
   // DOM- und importfrei. Jahreskosten nach VDI 2067 (vereinfacht): Investition × (Annuitätsfaktor aus
   // Kalkulationszins und Nutzungsdauer + Instandhaltungssatz). Die Kennwerte sind Vorschlagswerte; sie
@@ -137012,6 +137030,7 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
     if (it && it._m) _planningChange('Maßnahme in Phase verschieben', () => {
       it._m.phaseId = phaseId || null;
       it._m.jahr = null;
+      delete it._m[ENGPASS_AUTO_TAG];   // verplant = eigene Maßnahme, „Maßnahmen vorschlagen“ ersetzt sie nicht mehr
     });
     _draggingId = null;
     if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
@@ -195431,6 +195450,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       if (editingId) {
         const m = asset.massnahmen.find(x => x.id === editingId);
         if (m) Object.assign(m, { titel, jahr, kosten, typ, status, newProps }, variante !== undefined ? { variante } : {});
+        // Bearbeitet = eigene Maßnahme: „Maßnahmen vorschlagen“ (14h) ersetzt sie nicht mehr
+        if (m) delete m[ENGPASS_AUTO_TAG];
         // dependsOn/phaseId werden durch das Board (M5+) gesetzt, hier nur als Default sichern
         if (!m.dependsOn) m.dependsOn = [];
         if (m.phaseId === undefined) m.phaseId = null;
@@ -211789,8 +211810,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // ── Maßnahmen automatisch vorschlagen ────────────────────────────────────────
 
   // Kennzeichen für automatisch erzeugte Maßnahmen — erlaubt sauberes Ersetzen
-  // beim erneuten Lauf (statt Duplikate anzuhäufen).
-  const AUTO_TAG = '_autoEngpass';
+  // beim erneuten Lauf (statt Duplikate anzuhäufen). Bearbeitet der Nutzer eine
+  // solche Maßnahme, verliert sie das Kennzeichen und bleibt erhalten.
+  const AUTO_TAG = ENGPASS_AUTO_TAG;
 
   /** Entfernt alle zuvor automatisch erzeugten Engpass-Maßnahmen. */
   function engpassMassnahmenVerwerfen() {
@@ -211886,6 +211908,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
     engpassMassnahmenVerwerfen();
     const items = [];
+    // Betriebsmittel, an denen schon eine eigene Maßnahme steht — die bleibt, es kommt kein Vorschlag dazu
+    const beibehalten = [];
     // Engpässe, die sich mit keiner Standard-Ertüchtigung auflösen lassen.
     // Die dürfen NICHT stillschweigend entfallen — sonst wirkt der Fahrplan
     // vollständig, obwohl der Engpass bestehen bleibt.
@@ -211898,6 +211922,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       if (uebergehen?.has(k.id)) continue;
       const edge = (window.stromEdges || []).find(e => e.id === k.id);
       if (!edge) continue;
+      const eigeneK = engpassEigeneMassnahme(edge, `auto_${k.id}`);
+      if (eigeneK) { beibehalten.push({ id: k.id, art: 'kabel', label: k.label, titel: eigeneK.titel }); continue; }
 
       // Wahl der Ertüchtigung liegt in engpassVorschlag — dieselbe, die das Gutachten anzeigt
       const v = engpassVorschlag(k, res, { vorlaufJ });
@@ -211927,6 +211953,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       if (uebergehen?.has(t.id)) continue;
       const asset = (ASSETS.items || []).find(a => a.id === t.id);
       if (!asset) continue;
+      const eigeneT = engpassEigeneMassnahme(asset, `auto_${t.id}`);
+      if (eigeneT) { beibehalten.push({ id: t.id, art: 'trafo', label: t.label, titel: eigeneT.titel }); continue; }
 
       const v = engpassVorschlag(t, res, { vorlaufJ });
       if (!v || v.ungeloest) continue;   // wie bisher: ohne größere Trafostufe keine Maßnahme
@@ -211944,7 +211972,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
     items.sort((a, b) => (a.jahr ?? 0) - (b.jahr ?? 0));
     ungeloest.sort((a, b) => (a.engpassJahr ?? 0) - (b.engpassJahr ?? 0));
-    return { items, ungeloest, investGesamt: items.reduce((s, i) => s + (i.kosten || 0), 0) };
+    return { items, ungeloest, beibehalten, investGesamt: items.reduce((s, i) => s + (i.kosten || 0), 0) };
   }
 
   // ── Bestandsmängel: von vornherein zu klein dimensioniert ────────────────────
@@ -212236,7 +212264,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     _vergleich = engpassVergleich(_horizont || {});   // Wirksamkeit nachrechnen
     _render$1();
     const offen = _massnahmen.ungeloest?.length || 0;
+    const eigen = _massnahmen.beibehalten?.length || 0;
     showHint(`✓ ${_massnahmen.items.length} Maßnahmen vorgeschlagen · ${_eur$2(_massnahmen.investGesamt)}`
+      + (eigen ? ` · ${eigen} eigene Maßnahme(n) beibehalten` : '')
       + (offen ? ` — ⚠ ${offen} Engpass/Engpässe nicht durch Kabeltausch lösbar.` : ' — im Ausbauplaner sichtbar.'));
     setTimeout(() => { if (typeof window.hideHint === 'function') window.hideHint(); }, 5000);
   }
@@ -212317,7 +212347,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       title="Leitet für jedes kritische Betriebsmittel die günstigste ausreichende Ertüchtigung ab und legt sie als geplante Maßnahme an (erscheint im Ausbauplaner).">
       ⚙ Maßnahmen vorschlagen</button>
     <button style="${btn}border-color:#e57373;color:#e57373;" data-click="engpassMassnahmenZuruecksetzen()"
-      title="Entfernt alle automatisch erzeugten Maßnahmen wieder.">✕ Auto-Maßnahmen</button>
+      title="Entfernt alle automatisch erzeugten Maßnahmen wieder — von Hand bearbeitete bleiben.">✕ Auto-Maßnahmen</button>
     <span style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
       Horizont
       <input type="range" id="engpass-von" min="2020" max="2060" step="1" value="${res.von}"

@@ -471,3 +471,21 @@ describe('engpassIstBestandsmangel', () => {
     expect(engpassIstBestandsmangel(null, 2026, ohne)).toBe(false);
   });
 });
+
+import { ENGPASS_AUTO_TAG, engpassEigeneMassnahme } from '../src/lib/engpass-core.js';
+
+describe('engpassEigeneMassnahme', () => {
+  const auto = { id: 'auto_k1', [ENGPASS_AUTO_TAG]: true, typ: 'Ertuechtigung', status: 'geplant', newProps: { crossSection: 240 } };
+  it('übergeht unbearbeitete Auto-Maßnahmen und abgelehnte', () => {
+    expect(engpassEigeneMassnahme({ massnahmen: [auto] }, 'auto_k1')).toBe(null);
+    expect(engpassEigeneMassnahme({ massnahmen: [{ id: 'm', typ: 'Ertuechtigung', status: 'abgelehnt' }] }, 'auto_k1')).toBe(null);
+    expect(engpassEigeneMassnahme({}, 'auto_k1')).toBe(null);
+  });
+  it('erkennt bearbeitete Auto-Maßnahmen, Ziel-Parameter und Ertüchtigungs-Typen', () => {
+    const bearbeitet = { id: 'auto_k1', typ: 'Sonstiges', status: 'geplant' };
+    expect(engpassEigeneMassnahme({ massnahmen: [auto, bearbeitet] }, 'auto_k1')).toBe(bearbeitet);
+    expect(engpassEigeneMassnahme({ massnahmen: [{ id: 'm', typ: 'Sanierung', status: 'geplant', newProps: { leistungKVA: 1000 } }] }, 'x')).toBeTruthy();
+    expect(engpassEigeneMassnahme({ massnahmen: [{ id: 'm', typ: 'Verlegung', status: 'umgesetzt' }] }, 'x')).toBeTruthy();
+    expect(engpassEigeneMassnahme({ massnahmen: [{ id: 'm', typ: 'Abriss', status: 'geplant', newProps: {} }] }, 'x')).toBe(null);
+  });
+});
