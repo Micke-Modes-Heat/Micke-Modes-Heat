@@ -18,6 +18,7 @@ import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { buildBuildingHeatProfiles } from './lib/building-heat-profiles.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { setThermSpeicherAktiv, thermSpeicherAktiv } from './01-globals-varianten.js';
+import { speicherVerlustProH } from './lib/waermespeicher.js';
 
 export let _glAutoTimer  = null;
 export let _glIsRunning  = false;
@@ -264,8 +265,13 @@ async function glBerechnen() {
         const averageLossKw = detailedNetworkLossMWh * 1000 / lastgangKw.length;
         for (let i = 0; i < lastgangKw.length; i++) if (!netzAn || netzAn[i]) lastgangKw[i] += averageLossKw;
       } else {
-        const aufschlag = 1 / nvFaktor; // z.B. 10% Verlust → Faktor 1.111
-        for (let i = 0; i < lastgangKw.length; i++) lastgangKw[i] *= aufschlag;
+        // Pauschaler Verlust (Anteil an der eingespeisten Wärme), wie beim berechneten Netz als konstanter
+        // Aufschlag je Betriebsstunde: Leitungsverluste hängen kaum von der Last ab (Spitze nicht überhöht)
+        const verlustMwh = nvFaktor > 0 ? nutzwaermeMwh * (1 / nvFaktor - 1) : 0;
+        let stunden = 0;
+        for (let i = 0; i < lastgangKw.length; i++) if (!netzAn || netzAn[i]) stunden++;
+        const verlustKw = stunden > 0 ? verlustMwh * 1000 / stunden : 0;
+        for (let i = 0; i < lastgangKw.length; i++) if (!netzAn || netzAn[i]) lastgangKw[i] += verlustKw;
       }
       gesamtMwhMitNV = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
     } else if (netzAn) {
@@ -780,21 +786,48 @@ export function toggleThermSpeicherPanel() {
 export function tsTypChanged() {
   const typ = document.getElementById('ts-typ')?.value;
   const presets = {
-    puffer:   { dt: 40, verlust: 0.5,  entlade: 200 },
-    gross:    { dt: 40, verlust: 0.1,  entlade: 500 },
-    saisonal: { dt: 30, verlust: 0.02, entlade: 100 },
+    puffer:   { dt: 40, entlade: 200 },
+    gross:    { dt: 40, entlade: 500 },
+    saisonal: { dt: 30, entlade: 100 },
   };
   const p = presets[typ] || presets.puffer;
   document.getElementById('ts-dt').value = p.dt;
-  document.getElementById('ts-verlust').value = p.verlust;
   document.getElementById('ts-entlade-kw').value = p.entlade;
   const ladeEl = document.getElementById('ts-lade-kw');
   if (ladeEl) ladeEl.value = p.entlade;
   // Volumen automatisch aus WP-Leistung berechnen
   const vol = _autoSpeicherVolumen(typ, p.dt);
   document.getElementById('ts-volumen').value = vol;
+  const vEl = document.getElementById('ts-verlust');
+  if (vEl) delete vEl.dataset.manuell;   // neuer Typ: Verlust wieder aus der Kennlinie
+  tsVerlustAuto();
   updateThermSpeicherDisplay();
   updateAllDeckungen();
+}
+
+/**
+ * Stündlicher Verlust aus der Speicherkennlinie (lib/waermespeicher.js, Oberfläche/Volumen), solange der Wert
+ * nicht von Hand eingetragen wurde — z. B. 50 m³ Puffer ≈ 0,05 %/h statt pauschal 0,5 %/h.
+ */
+export function tsVerlustAuto() {
+  const vEl = document.getElementById('ts-verlust');
+  if (!vEl || vEl.dataset.manuell === '1') return;
+  const vol = parseFloat(document.getElementById('ts-volumen')?.value) || 0;
+  const typ = document.getElementById('ts-typ')?.value || 'puffer';
+  if (vol > 0) vEl.value = +speicherVerlustProH(vol, typ).toPrecision(2);
+}
+
+/**
+ * Nach dem Laden eines Projekts/einer Variante: Die früheren Pauschalwerte (Puffer 0,5 · Groß 0,1 · Saisonal
+ * 0,02 %/h) gelten als nicht von Hand gesetzt und werden aus der Kennlinie ersetzt; andere Werte bleiben.
+ */
+export function tsVerlustGeladen() {
+  const vEl = document.getElementById('ts-verlust');
+  if (!vEl) return;
+  const typ = document.getElementById('ts-typ')?.value || 'puffer';
+  const alt = { puffer: 0.5, gross: 0.1, saisonal: 0.02 }[typ];
+  if (Math.abs((parseFloat(vEl.value) || 0) - (alt ?? -1)) < 1e-9) { delete vEl.dataset.manuell; tsVerlustAuto(); }
+  else vEl.dataset.manuell = '1';
 }
 
 // ── Automatische Speichergrößen-Empfehlung ──

@@ -1486,6 +1486,7 @@ export function applyErzeugerState(state) {
     document.getElementById('ts-volumen').value = state.waermespeicher.volumen || 0;
     document.getElementById('ts-dt').value = state.waermespeicher.dt || 40;
     document.getElementById('ts-verlust').value = state.waermespeicher.verlust || 0.5;
+    window.tsVerlustGeladen?.();
     document.getElementById('ts-entlade-kw').value = state.waermespeicher.entladeKw || 200;
     document.getElementById('ts-lade-kw').value = state.waermespeicher.ladeKw || state.waermespeicher.entladeKw || 200;
     thermSpeicherAktiv = (state.waermespeicher.volumen || 0) > 0;

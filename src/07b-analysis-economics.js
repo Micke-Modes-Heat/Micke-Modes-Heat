@@ -16,7 +16,8 @@ import { getThermSpeicherParams } from './06b-gl-berechnen.js';
 import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { euroKompakt, euroTeile } from './lib/euro-format.js';
-import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { ERZEUGER_CFG, ERDGAS_HS_HI } from './config/erzeuger-cfg.js';
+import { vdiDynFaktor, vdiBausteinAnnuitaet, vdiKwkZuschlagFaktor } from './lib/vdi2067.js';
 import { OPT_IH, OPT_INVEST_DEFAULT, OPT_NUTZUNG } from './config/optimizer-defaults.js';
 import { autoGkResult } from './06c-dispatch-core.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, solarthermieAktiv, stromEmF, stromEmFLZ, thermSpeicherAktiv } from './01-globals-varianten.js';
@@ -59,16 +60,13 @@ export function _calcKostenShared(p) {
   var strom = p.strom || {};
   var co2p = p.co2 || {};
 
-  // VDI 2067 Annuität
+  // VDI 2067 Blatt 1: Betrachtungszeitraum T, Ersatzbeschaffung, Restwert, Preisänderungsfaktoren (lib/vdi2067.js)
+  var dyn = p.dyn || {};
+  var vdiW = { zins: zinsFrac, T: dyn.T > 0 ? dyn.T : 20, rK: dyn.rK || 0, rIN: dyn.rIN || 0, rB: dyn.rB || 0, lohn: p.lohn || 45 };
+  var fEnergie = vdiDynFaktor(zinsFrac, vdiW.T, dyn.rV || 0);   // bedarfsgebundene Kosten (Energie, CO₂): a·b_V
+  var kwkZuschlagAnn = 0;   // KWK-Zuschlag annuitätisch (nicht preisdynamisch)
   function annJK(inv, vdi) {
-    var bed = (vdi.bedien || 0) * (p.lohn || 45);
-    if (inv <= 0) return bed;
-    if (vdi.n > 0) {
-      var q = 1 + zinsFrac;
-      var ann = zinsFrac > 0 ? (Math.pow(q, vdi.n) * (q - 1)) / (Math.pow(q, vdi.n) - 1) : 1 / vdi.n;
-      return inv * (ann + (vdi.inst || 0) / 100 + (vdi.wart || 0) / 100) + bed;
-    }
-    return bed;
+    return vdiBausteinAnnuitaet(inv, vdi, vdiW).gesamt;
   }
 
   // ── Bausteine (Kapitalkosten) ──
@@ -213,14 +211,19 @@ export function _calcKostenShared(p) {
       // Brennstoff für die gesamte erzeugte Wärme (auch die in den Speicher geladene Mindestlastwärme)
       var gasK = (erz.erzeugtMwh != null ? erz.erzeugtMwh : wMwh) / etaTh * (prices.gas||10) * 10;
       // BHKW-Erlös
-      var erloes = 0;
+      var erloes = 0, zuschlag = 0;
       if (strom.bhkwStromErloes != null && strom.bhkwStromErloes !== undefined) {
         erloes = strom.bhkwStromErloes;
       } else {
         var _bEig = strom.bhkwEigenMwh || 0;
         var _bEinsp = strom.bhkwEinspMwh || 0;
-        erloes = _bEig * ((prices.strom||35) + (strom.pBhkwKwkEig||4)) * 10
-               + _bEinsp * ((strom.pBhkwEinsp||8) + (strom.pBhkwKwkE||8)) * 10;
+        erloes = _bEig * (prices.strom||35) * 10 + _bEinsp * (strom.pBhkwEinsp||8) * 10;
+        zuschlag = _bEig * (strom.pBhkwKwkEig||4) * 10 + _bEinsp * (strom.pBhkwKwkE||8) * 10;
+      }
+      // KWK-Zuschlag (KWKG: ≤ 3.500 Vbh/a, ≤ 30.000 Vbh gesamt) — fest, ohne Preisänderung, unten annuitätisch
+      if (zuschlag > 0) {
+        var vbhBhkw = (pKw.bhkw || 0) > 0 ? (erz.erzeugtMwh != null ? erz.erzeugtMwh : wMwh) * 1000 / pKw.bhkw : 0;
+        kwkZuschlagAnn += zuschlag * vdiKwkZuschlagFaktor(vbhBhkw, zinsFrac, vdiW.T);
       }
       kosten = gasK - erloes;
     } else if (erz.key === 'gaskessel' || erz.key === '_autoGk') {
@@ -234,6 +237,10 @@ export function _calcKostenShared(p) {
     }
     if (Math.abs(kosten) > 0.1) { energieJk += kosten; energyRows.push({key:erz.key, kosten:kosten}); }
   }
+
+  // Hilfsenergie der Netzpumpen (allgemeiner Strompreis) — wie im Wirtschaftlichkeitspanel
+  var pumpMwh = extra.pumpMwh || 0;
+  if (pumpMwh > 0.01) { var pumpK = pumpMwh * (prices.strom || 35) * 10; energieJk += pumpK; energyRows.push({ key: '_pumpe', kosten: pumpK }); }
 
   // ── CO₂-Kosten ──
   var co2Jk = 0, co2ta = 0, bhkwGutschriftT = 0;
@@ -269,11 +276,23 @@ export function _calcKostenShared(p) {
       co2Jk += tCo2 * pCo2;
     }
   }
+  if (pumpMwh > 0.01) {
+    var pumpT = pumpMwh * (emf.strom || 420) / 1e3;
+    co2ta += pumpT;
+    if (pCo2 > 0 && co2p.alleET !== false) co2Jk += pumpT * pCo2;
+  }
   co2ta = Math.max(0, co2ta - bhkwGutschriftT);
   // wie die Wirtschaftlichkeitsrechnung: CO₂-Kostenansatz auf die Netto-Bilanz (inkl. BHKW-Gutschrift)
   if (pCo2 > 0 && bhkwGutschriftT > 0) co2Jk = Math.max(0, co2Jk - bhkwGutschriftT * pCo2);
 
   // ── Ergebnis ── (PV und Batterie sind keine Wärmeerzeuger: keine Investition, keine Einspeiseerlöse in der WGK)
+  // Energie und CO₂ annuitätisch mit Preisänderung (Jahr-1-Werte × a·b_V)
+  energieJk *= fEnergie; co2Jk *= fEnergie;
+  for (var _er = 0; _er < energyRows.length; _er++) {
+    energyRows[_er].kosten *= fEnergie;
+    if (energyRows[_er].key === 'bhkw') energyRows[_er].kosten -= kwkZuschlagAnn;
+  }
+  energieJk -= kwkZuschlagAnn;
   var jahreskosten = kapitalJk + energieJk + co2Jk;
   var totalWaerme = (p.gesamtMwh || 0) + (p.stMwh || 0);
   var wgk = totalWaerme > 0 ? jahreskosten / totalWaerme / 10 : 0;
@@ -318,22 +337,40 @@ export function _calcKostenShared(p) {
   };
 }
 
-export function _calcBausteinJK(investEur, vdi, zins, lohn) {
-  if (vdi.n > 0) {
-    const q   = 1 + zins / 100;
-    const ann = (zins > 0) ? (q ** vdi.n * (q - 1)) / (q ** vdi.n - 1) : 1 / vdi.n;
-    return investEur * (ann + vdi.inst / 100 + vdi.wart / 100) + vdi.bedien * lohn;
-  }
-  return vdi.bedien * lohn;
+/**
+ * Hilfsenergie der Netzpumpen in MWh/a: Auslegungsleistung der Pumpe (Netzberechnung) über das Jahr mit
+ * drehzahlgeregeltem Betrieb nach dem Proportionalitätsgesetz (P ~ Volumenstrom³ ~ Last³, mindestens 10 %).
+ */
+export function netzPumpenstromMwh() {
+  if (wirtOhneNetz()) return 0;
+  const pKw = window._netzPumpe?.pumpenLeistungKW || 0;
+  const lg = window.systemState?.lastgangKw;
+  if (!(pKw > 0) || !lg?.length) return 0;
+  let max = 0;
+  for (let i = 0; i < lg.length; i++) if (lg[i] > max) max = lg[i];
+  if (!(max > 0)) return 0;
+  let h = 0;
+  for (let i = 0; i < lg.length; i++) { const x = lg[i] / max; if (x > 0) h += Math.max(0.1, x * x * x); }
+  return pKw * h / 1000;
 }
-export function _calcBausteinJKDetail(investEur, vdi, zins, lohn) {
-  const annRate = vdi.n > 0 ? ((zins > 0) ? ((1+zins/100)**vdi.n * (zins/100)) / ((1+zins/100)**vdi.n - 1) : 1/vdi.n) : 0;
-  return {
-    annuitaet: investEur * annRate,
-    instandhaltung: investEur * (vdi.inst || 0) / 100,
-    wartung: investEur * (vdi.wart || 0) / 100,
-    bedienung: (vdi.bedien || 0) * lohn,
-  };
+
+/**
+ * Parameter der VDI-2067-Rechnung aus dem Wirtschaftlichkeitspanel: Betrachtungszeitraum T, Preisänderung
+ * Energie (rV) und Betrieb/Investitionen (rK = rIN = rB), jeweils als Bruchteil.
+ */
+export function vdiDynParams() {
+  const zahl = (id, vorgabe) => { const v = parseFloat(document.getElementById(id)?.value); return Number.isFinite(v) ? v : vorgabe; };
+  const T = Math.min(40, Math.max(5, Math.round(zahl('js-laufzeit', 20))));
+  const rV = zahl('js-eskalation', 2) / 100, rB = zahl('wirt-r-betrieb', 2) / 100;
+  return { T, rV, rK: rB, rIN: rB, rB };
+}
+
+export function _calcBausteinJK(investEur, vdi, zins, lohn, dyn = vdiDynParams()) {
+  return vdiBausteinAnnuitaet(investEur, vdi, { zins: zins / 100, T: dyn.T, rK: dyn.rK, rIN: dyn.rIN, rB: dyn.rB, lohn }).gesamt;
+}
+export function _calcBausteinJKDetail(investEur, vdi, zins, lohn, dyn = vdiDynParams()) {
+  const r = vdiBausteinAnnuitaet(investEur, vdi, { zins: zins / 100, T: dyn.T, rK: dyn.rK, rIN: dyn.rIN, rB: dyn.rB, lohn });
+  return { annuitaet: r.kapital, instandhaltung: r.instandhaltung, wartung: r.wartung, bedienung: r.bedienung };
 }
 
 export function wirtBausteinBlur(el, id) {
@@ -477,7 +514,8 @@ export function calcWirtschaftPanel() {
   // Optionaler Sondervertragspreis für WP-/Stromkessel-Strom (leer = pStrom)
   const _pWpRaw = parseFloat(document.getElementById('wirt-p-strom-wp')?.value);
   const pStromWp = isNaN(_pWpRaw) ? pStrom : _pWpRaw;
-  const pGas   = parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10;
+  const pGasHs = parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10;   // Eingabe je kWh Brennwert
+  const pGas   = pGasHs * ERDGAS_HS_HI;                                               // je kWh Heizwert (wie η)
   const pHko   = parseFloat(document.getElementById('wirt-p-hko')?.value)   || 10;
   const pFw    = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 17;
   const pPk    = parseFloat(document.getElementById('wirt-p-pk')?.value)    || 8;
@@ -764,6 +802,7 @@ export function calcWirtschaftPanel() {
 
   const energyRows = [];
   const _energieJeErz = {}, _energieJeTraeger = {}, _co2JeErz = {};
+  let _kwkZuschlagJahr = 0, _kwkVbh = 0;
   // PV-Eigenstrom-Entlastung getrennt mitführen — für den Gutachtenvergleich „mit / ohne PV-Eigenstrom“
   let _pvEnergieEur = 0, _pvCo2Eur = 0;
   keys.forEach(k => {
@@ -790,10 +829,14 @@ export function calcWirtschaftPanel() {
       const wErz = e.erzeugtMwh ?? wMwh;   // inkl. Mindestlastwärme für den Speicher
       const gasVerb = etaTh > 0 ? wErz / etaTh : wErz;
       const gasK = gasVerb * pGas * 10;
-      const stromErl = window._bhkwStromErloes || 0;
+      // Markterlös des Stroms im Jahr 1; der KWK-Zuschlag folgt annuitätisch mit den KWKG-Grenzen (unten)
+      const stromErl = (window._bhkwStromErloes || 0) - (window._bhkwKwkZuschlagEur || 0);
       kosten = gasK - stromErl;
+      _kwkZuschlagJahr = window._bhkwKwkZuschlagEur || 0;
+      const _bKw = parseFloat(document.getElementById('bhkw-leistung-th')?.value) || window.bhkw?.leistungThKw || 0;
+      _kwkVbh = _bKw > 0 ? wErz * 1000 / _bKw : 0;
       const _bilHint = (window._stromBilanz?.bhkwEigenMwh > 0 || window._stromBilanz?.bhkwEinspMwh > 0) ? '' : ' ⚠ Eigen/Einsp.=60/40 geschätzt – Strom-Panel für genaue Werte';
-      detail = `Gas: ${gasVerb.toFixed(0)} MWh × ${pGas} ct − Strom-Erlös: ${Math.round(stromErl).toLocaleString('de-DE')} €${_bilHint}`;
+      detail = `Gas: ${(gasVerb * ERDGAS_HS_HI).toFixed(0)} MWh (Hs) × ${pGasHs} ct − Strom-Erlös: ${Math.round(stromErl).toLocaleString('de-DE')} €${_bilHint}`;
     } else if (k === 'stromkessel') {
       const skElMwh = eMwh > 0.1 ? eMwh : wMwh;   // η ≈ 1
       const r = _stromKosten(skElMwh);
@@ -803,7 +846,9 @@ export function calcWirtschaftPanel() {
     } else if (ETA[k]) {
       const verb = wMwh / ETA[k];
       kosten = verb * P[k] * 10;
-      detail = `${verb.toFixed(0)} MWh Brennstoff × ${P[k]} ct/kWh`;
+      detail = P[k] === pGas
+        ? `${(verb * ERDGAS_HS_HI).toFixed(0)} MWh Erdgas (Hs) × ${pGasHs} ct/kWh`
+        : `${verb.toFixed(0)} MWh Brennstoff × ${P[k]} ct/kWh`;
     }
     // auch negative Zeilen (BHKW: Stromerlös höher als Gaskosten) — wie in _calcKostenShared
     if (Math.abs(kosten) > 0.5) energyRows.push({ label: DA_LABELS[k]||k, kosten, detail, color: _daColor(k), key: k });
@@ -814,6 +859,14 @@ export function calcWirtschaftPanel() {
     if (_tr) _energieJeTraeger[_tr] = (_energieJeTraeger[_tr] || 0) + kosten;
     if (k === 'bhkw') _energieJeTraeger.gas = (_energieJeTraeger.gas || 0) + (kosten + (window._bhkwStromErloes || 0));
   });
+  // Hilfsenergie: Strom der Netzpumpen (VDI 2067: bedarfsgebundene Kosten), allgemeiner Strompreis
+  const _pumpMwh = netzPumpenstromMwh();
+  if (_pumpMwh > 0.01) {
+    const kosten = _pumpMwh * pStrom * 10;
+    energyRows.push({ label: 'Netzpumpen (Hilfsenergie)', kosten, color: '#90a4ae', key: '_pumpe',
+      detail: `${_pumpMwh.toFixed(1)} MWh Strom × ${pStrom} ct/kWh (Pumpe ${(window._netzPumpe?.pumpenLeistungKW || 0).toFixed(1)} kW, drehzahlgeregelt)` });
+    _energieJeTraeger.strom = (_energieJeTraeger.strom || 0) + kosten;
+  }
   const gesamtEnergie = energyRows.reduce((s, r) => s + r.kosten, 0);
 
   // CO₂-Kosten (alle Energieträger, inkl. WP-Strom)
@@ -873,6 +926,7 @@ export function calcWirtschaftPanel() {
       co2Kosten += tCo2 * pCo2;
       _co2JeErz[k] = (_co2JeErz[k] || 0) + tCo2 * pCo2;
     });
+    if (alleET && _pumpMwh > 0.01) co2Kosten += _pumpMwh * stromEmF / 1e3 * pCo2;   // Pumpenstrom
     if (co2Kosten > 1) {
       energyRows.push({ label: `CO₂-Kosten (${pCo2} €/t)`, kosten: co2Kosten,
         detail: `${alleET ? 'alle Energieträger inkl. WP-Strom' : 'nur fossile Brennstoffe'} × ${pCo2} €/t`, color: '#f9a825' });
@@ -882,7 +936,14 @@ export function calcWirtschaftPanel() {
   // Mit „PV-Strom für Wärmepumpen anrechnen“ steckt ihr Beitrag im Strompreis der WP-Zeilen (PV-Gestehungspreis).
   const pvJk = 0, pvInvestGes = 0;
 
-  const gesamtEnergieMitCo2 = energyRows.reduce((s, r) => s + r.kosten, 0);
+  // Energie- und CO₂-Kosten im Jahr 1 und annuitätisch mit Preisänderung (VDI 2067: × a·b_V)
+  const _dyn = vdiDynParams();
+  const fEnergie = vdiDynFaktor(zins / 100, _dyn.T, _dyn.rV);
+  const gesamtEnergieJahr1 = energyRows.reduce((s, r) => s + r.kosten, 0);
+  // KWK-Zuschlag nach KWKG (≤ 3.500 Vbh/a, ≤ 30.000 Vbh), fest und annuitätisch über den Zeitraum
+  const _kwkFaktor = _kwkZuschlagJahr > 0 ? vdiKwkZuschlagFaktor(_kwkVbh, zins / 100, _dyn.T) : 0;
+  const kwkZuschlagAnn = _kwkZuschlagJahr * _kwkFaktor;
+  const gesamtEnergieMitCo2 = gesamtEnergieJahr1 * fEnergie - kwkZuschlagAnn;
 
   // WGK — zwei Bezugsgrößen:
   // erzeugte Wärme (inkl. Netzverluste) = klassische Erzeuger-WGK,
@@ -902,14 +963,15 @@ export function calcWirtschaftPanel() {
   window._wirtErgebnis = {
     keys: keys.join(',') + (ohneNetz ? '|ohneNetz' : ''),
     bausteine: rows.map(r => ({ id: r.id, invest: r.effVal, n: r.effVdi?.n || 0, inst: r.effVdi?.inst || 0, wart: r.effVdi?.wart || 0, bedien: r.effVdi?.bedien || 0 })),
-    energieJahr: gesamtEnergieMitCo2, lohn,
+    energieJahr: gesamtEnergieJahr1, lohn,
+    kwk: _kwkZuschlagJahr > 0 ? { zuschlagJahr: _kwkZuschlagJahr, vbh: _kwkVbh } : null,
   };
   window._lastInvestGes = gesamtInvest + pvInvestGes;
   window._lastJkGes = gesamtJk + gesamtEnergieMitCo2;
   // Kostenbestandteile für die Gutachtengrafiken (Kostenstruktur, mit/ohne PV-Eigenstrom)
   window._lastWirtKomp = {
     kapitalEur: _sumAnn, betriebEur: _sumInst + _sumWart + _sumBed, jkAnlagenEur: gesamtJk,
-    energieEur: gesamtEnergie, co2Eur: co2Kosten, pvJkEur: pvJk, pvEnergieEur: _pvEnergieEur, pvCo2Eur: _pvCo2Eur, gesamtMwh,
+    energieEur: gesamtEnergie * fEnergie, co2Eur: co2Kosten * fEnergie, pvJkEur: pvJk, pvEnergieEur: _pvEnergieEur * fEnergie, pvCo2Eur: _pvCo2Eur * fEnergie, gesamtMwh,
   };
   window._wirtPKw = pKw; // für Punkt-Marker im Kostenkurven-View
 
@@ -1051,7 +1113,7 @@ export function calcWirtschaftPanel() {
   const _analyseHtml = _wirtKostenanalyseHtml({
     rows, zins, lohn, en, pKw, gesamtMwh, nutzMwh, wgk, jahr: _jahr, gesamtInvest,
     teile: { kapital: _sumAnn, betrieb: _sumInst + _sumWart + _sumBed, inst: _sumInst, wart: _sumWart, bedien: _sumBed,
-      energie: gesamtEnergie, co2: co2Kosten, pv: pvJk },
+      energie: gesamtEnergie * fEnergie, co2: co2Kosten * fEnergie, pv: pvJk },
     energieJeErz: _energieJeErz, energieJeTraeger: _energieJeTraeger, co2JeErz: _co2JeErz,
   });
   const kopfHtml = `
@@ -1118,7 +1180,11 @@ export function calcWirtschaftPanel() {
       </tr></thead>
       <tbody>${enHtml}</tbody>
       <tfoot><tr>
-        <td colspan="2">Energiekosten gesamt</td>
+        <td colspan="2">Energiekosten im 1. Jahr</td>
+        <td>${euroKompakt(gesamtEnergieJahr1, true)}</td>
+        <td>${_wgkCt(gesamtEnergieJahr1)}</td>
+      </tr><tr title="VDI 2067: Jahr-1-Kosten × Annuitätsfaktor × preisdynamischer Barwertfaktor (Preissteigerung ${(_dyn.rV * 100).toLocaleString('de-DE')} %/a über ${_dyn.T} Jahre)">
+        <td colspan="2">annuitätisch über ${_dyn.T} a (× ${fEnergie.toLocaleString('de-DE', { maximumFractionDigits: 3 })})${kwkZuschlagAnn > 0 ? ` abzgl. KWK-Zuschlag ${euroKompakt(kwkZuschlagAnn, true)} (KWKG: ≤ 3.500 Vbh/a, ≤ 30.000 Vbh)` : ''}</td>
         <td>${euroKompakt(gesamtEnergieMitCo2, true)}</td>
         <td>${_wgkCt(gesamtEnergieMitCo2)}</td>
       </tr></tfoot>
@@ -1689,14 +1755,18 @@ export function calcJahresscheiben() {
 
   // Betrachtungszeitraum wie im Feld vorgesehen 5–40 a (sonst läuft der Annuitätsfaktor über: ∞/∞)
   const laufzeit   = Math.min(40, Math.max(5, parseInt(document.getElementById('js-laufzeit')?.value) || 20));
-  const eskalation = (parseFloat(document.getElementById('js-eskalation')?.value) || 2) / 100;
+  const _jsEsk = parseFloat(document.getElementById('js-eskalation')?.value);
+  const eskalation = (Number.isFinite(_jsEsk) ? _jsEsk : 2) / 100;              // Energie und CO₂ (b_V)
+  const _jsRb = parseFloat(document.getElementById('wirt-r-betrieb')?.value);
+  const eskBetrieb = (Number.isFinite(_jsRb) ? _jsRb : 2) / 100;               // Betrieb und Ersatz (b_IN, b_B, r_K)
   const zins  = Number.isFinite(parseFloat(document.getElementById('wirt-zins')?.value)) ? parseFloat(document.getElementById('wirt-zins').value) : 3.5;   // 0 % ist ein gültiger Zins (Vorgabe wie im Feld)
   const diskont    = zins / 100; // Synchron mit Kapitalzins (VDI 2067)
   const dSync = document.getElementById('js-diskont-sync');
   if (dSync) dSync.textContent = zins.toFixed(1);
   const lohn  = parseFloat(document.getElementById('wirt-lohn')?.value) || 45;
   const pStrom = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
-  const pGas   = parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10;
+  const pGasHs = parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10;   // Eingabe je kWh Brennwert
+  const pGas   = pGasHs * ERDGAS_HS_HI;                                               // je kWh Heizwert (wie η)
   const pHko   = parseFloat(document.getElementById('wirt-p-hko')?.value)   || 10;
   const pFw    = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 17;
   const pPk    = parseFloat(document.getElementById('wirt-p-pk')?.value)    || 8;
@@ -1759,7 +1829,8 @@ export function calcJahresscheiben() {
 
   let totalInvest = 0;
   let annualOpex = 0; // Betriebskosten (Inst., Wartung, Bedienung) ohne Energie
-  const reinvestYears = []; // [{year, amount}]
+  const reinvestYears = []; // [{year, amount}] — Beträge zu heutigen Preisen, Preissteigerung beim Ansatz
+  const restwertBausteine = []; // [{invest, n}] — Restwert am Ende des Zeitraums (VDI 2067, linear)
   // Bevorzugt die Bausteine und Energiekosten der Wirtschaftlichkeitsrechnung übernehmen (gleiche Zahlen wie oben)
   const wErg = window._wirtErgebnis;
   const ausPanel = wErg && wErg.keys === keys.join(',') + (wirtOhneNetz() ? '|ohneNetz' : '') && wErg.bausteine.length > 0;
@@ -1775,6 +1846,7 @@ export function calcJahresscheiben() {
       totalInvest += b.invest;
       annualOpex += b.invest * (b.inst + b.wart) / 100 + b.bedien * wErg.lohn;
       if (b.n > 0 && b.n < laufzeit) for (let y = b.n; y < laufzeit; y += b.n) reinvestYears.push({ year: y, amount: b.invest });
+      if (b.n > 0 && b.invest > 0) restwertBausteine.push({ invest: b.invest, n: b.n });
     }
   }
 
@@ -1843,17 +1915,30 @@ export function calcJahresscheiben() {
   const years = [];
   let kumulativ = 0;
   let npv = 0;
+  // Restwert der zuletzt beschafften Anlagen am Ende des Zeitraums (linear, mit Preisstand des Beschaffungsjahrs)
+  const restwert = restwertBausteine.reduce((s, b) => {
+    let letzte = 0;
+    while (letzte + b.n < laufzeit - 1e-9) letzte += b.n;
+    return s + b.invest * Math.pow(1 + eskBetrieb, letzte) * Math.max(0, (letzte + b.n - laufzeit) / b.n);
+  }, 0);
   for (let y = 0; y <= laufzeit; y++) {
-    const invest = y === 0 ? totalInvest : reinvestYears.filter(r => r.year === y).reduce((s, r) => s + r.amount, 0);
-    const energie = y === 0 ? 0 : energyCostYear0 * Math.pow(1 + eskalation, y - 1);
-    const betrieb = y === 0 ? 0 : annualOpex;
-    const total = invest + energie + betrieb;
+    const invest = y === 0 ? totalInvest
+      : reinvestYears.filter(r => r.year === y).reduce((s, r) => s + r.amount, 0) * Math.pow(1 + eskBetrieb, y);
+    let energie = y === 0 ? 0 : energyCostYear0 * Math.pow(1 + eskalation, y - 1);
+    // KWK-Zuschlag (fest): ≤ 3.500 Vbh/a, insgesamt ≤ 30.000 Vbh
+    if (y > 0 && ausPanel && wErg.kwk && wErg.kwk.vbh > 0) {
+      const vbh = wErg.kwk.vbh, jahre = 30000 / Math.min(vbh, 3500);
+      energie -= wErg.kwk.zuschlagJahr * Math.min(1, 3500 / vbh) * Math.min(1, Math.max(0, jahre - (y - 1)));
+    }
+    const betrieb = y === 0 ? 0 : annualOpex * Math.pow(1 + eskBetrieb, y - 1);
+    const rest = y === laufzeit ? -restwert : 0;
+    const total = invest + energie + betrieb + rest;
     kumulativ += total;
     const diskFaktor = Math.pow(1 + diskont, -y);
     npv += total * diskFaktor;
     // Jahreskosten = Annuität(Kapital) + Betrieb + eskalierte Energie
-    const jahreskosten = y === 0 ? 0 : annInvest + annualOpex + energyCostYear0 * Math.pow(1 + eskalation, y - 1);
-    years.push({ y, invest, energie, betrieb, total, kumulativ, npv, diskFaktor, jahreskosten });
+    const jahreskosten = y === 0 ? 0 : annInvest + betrieb + energie;
+    years.push({ y, invest, energie, betrieb, rest, total, kumulativ, npv, diskFaktor, jahreskosten });
   }
 
   // Gesamtwärme (diskontiert, analog LCOE: Wärmemenge wird ebenso diskontiert wie Kosten)
@@ -1872,11 +1957,11 @@ export function calcJahresscheiben() {
   const npvKpi = document.querySelector('#wirt-kpi-npv b');
   if (npvKpi) npvKpi.innerHTML = `${wgkNpv.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}<small>ct/kWh</small>`;
   const npvKpiEm = document.querySelector('#wirt-kpi-npv em');
-  if (npvKpiEm) npvKpiEm.textContent = `${laufzeit} Jahre, Preise +${(eskalation * 100).toLocaleString('de-DE')} %/a`;
+  if (npvKpiEm) npvKpiEm.textContent = `${laufzeit} Jahre, Energie +${(eskalation * 100).toLocaleString('de-DE')} %/a, Betrieb +${(eskBetrieb * 100).toLocaleString('de-DE')} %/a`;
   if (res) {
     res.style.display = 'block';
     res.innerHTML = `
-      <div class="wirt-karte-titel">Barwertbetrachtung über ${laufzeit} Jahre <small>ergänzend zur Annuitätenmethode · Energiepreise +${(eskalation * 100).toLocaleString('de-DE')} %/a</small></div>
+      <div class="wirt-karte-titel">Barwertbetrachtung über ${laufzeit} Jahre <small>gleiche Annahmen wie die Annuitätenmethode · Energie +${(eskalation * 100).toLocaleString('de-DE')} %/a · Betrieb und Ersatz +${(eskBetrieb * 100).toLocaleString('de-DE')} %/a · Restwert ${euroKompakt(restwert)}</small></div>
       <div class="wirt-npv-werte">
         <div><span>Erstinvestition</span><b>${euroKompakt(totalInvest)}</b></div>
         <div><span>Jahreskosten Jahr 1</span><b>${euroKompakt(years[1]?.jahreskosten || 0, true)}</b></div>
@@ -1899,9 +1984,9 @@ export function calcJahresscheiben() {
             </tr></thead>
             <tbody>${years.map(r => `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
               <td style="padding:1px 4px;">${r.y}</td>
-              <td style="text-align:right;padding:1px 4px;${r.invest>0?'color:#ffb74d':''}">${r.invest>0?euroKompakt(r.invest):'—'}</td>
+              <td style="text-align:right;padding:1px 4px;${r.invest>0?'color:#ffb74d':r.rest<0?'color:#81c784':''}" ${r.rest<0?'title="Restwert am Ende des Zeitraums (Gutschrift)"':''}>${r.invest>0?euroKompakt(r.invest):r.rest<0?euroKompakt(r.rest):'—'}</td>
               <td style="text-align:right;padding:1px 4px;">${r.betrieb>0?euroKompakt(r.betrieb):'—'}</td>
-              <td style="text-align:right;padding:1px 4px;">${r.energie>0?euroKompakt(r.energie):'—'}</td>
+              <td style="text-align:right;padding:1px 4px;">${Math.abs(r.energie)>0.5?euroKompakt(r.energie):'—'}</td>
               <td style="text-align:right;padding:1px 4px;">${euroKompakt(r.total)}</td>
               <td style="text-align:right;padding:1px 4px;color:#ce93d8;">${r.jahreskosten>0?euroKompakt(r.jahreskosten):'—'}</td>
               <td style="text-align:right;padding:1px 4px;color:#4fc3f7;">${euroKompakt(r.kumulativ)}</td>

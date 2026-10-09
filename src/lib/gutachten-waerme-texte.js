@@ -237,6 +237,9 @@ export function wtNormalisiere(d = {}) {
     ...v, ...normErz(v.erzeuger),
     investEur: num(v.investEur), jahreskostenEur: num(v.jahreskostenEur), wgkCt: num(v.wgkCt),
     co2T: num(v.co2T), eeAnteilPct: num(v.eeAnteilPct), netzverlustPct: num(v.netzverlustPct),
+    // Bewertungsgrundlage für Emissionsvergleiche: künftiger Strommix (Ø 2030–2050) wie Fazit und Bewertungsmatrix,
+    // ohne diesen Wert der heutige
+    co2LzT: num(v.co2LzT), co2Bew: ok(num(v.co2LzT)) ? num(v.co2LzT) : num(v.co2T),
   }));
   return {
     pMaxKw: num(lg.pMaxKw), nutzMwh: nutz, gesamtMwh: ok(num(lg.gesamtMwh)) ? num(lg.gesamtMwh) : nutz, tMinC: num(lg.tMinC),
@@ -845,13 +848,14 @@ export function wtVariantenvergleich(d) {
   }
 
   // Ökologie
-  const co2 = V.filter(v => ok(v.co2T));
+  const co2 = V.filter(v => ok(v.co2Bew));
+  const co2Basis = co2.some(v => ok(v.co2LzT)) ? ' bei künftigem Strommix (Ø 2030–2050)' : '';
   if (co2.length >= 2) {
-    const best = extrem(co2, 'co2T', 'min'), schlecht = extrem(co2, 'co2T', 'max'), sp = spanne(co2, 'co2T');
-    const rel = schlecht.co2T > 0 ? ((schlecht.co2T - best.co2T) / schlecht.co2T) * 100 : 0;
+    const best = extrem(co2, 'co2Bew', 'min'), schlecht = extrem(co2, 'co2Bew', 'max'), sp = spanne(co2, 'co2Bew');
+    const rel = schlecht.co2Bew > 0 ? ((schlecht.co2Bew - best.co2Bew) / schlecht.co2Bew) * 100 : 0;
     out.push(absatz(rel < WT_SCHWELLEN.gleichwertigPct.co2
-      ? `Die Emissionen der Varianten liegen mit ${nf(sp.min)} bis ${nf(sp.max)} t CO₂e pro Jahr nahezu gleichauf; die Varianten unterscheiden sich ökologisch kaum.`
-      : `Die jährlichen Emissionen liegen zwischen ${nf(sp.min)} t CO₂e (${nameV(best)}) und ${nf(sp.max)} t CO₂e (${nameV(schlecht)}). ${nameV(best)} verursacht damit ${pct(rel)} weniger Emissionen als ${nameV(schlecht)}.`));
+      ? `Die Emissionen der Varianten liegen${co2Basis} mit ${nf(sp.min)} bis ${nf(sp.max)} t CO₂e pro Jahr nahezu gleichauf; die Varianten unterscheiden sich ökologisch kaum.`
+      : `Die jährlichen Emissionen liegen${co2Basis} zwischen ${nf(sp.min)} t CO₂e (${nameV(best)}) und ${nf(sp.max)} t CO₂e (${nameV(schlecht)}). ${nameV(best)} verursacht damit ${pct(rel)} weniger Emissionen als ${nameV(schlecht)}.`));
   }
   const ee = V.filter(v => ok(v.eeAnteilPct));
   if (ee.length >= 2) {
@@ -878,16 +882,16 @@ export function wtVariantenvergleich(d) {
   }
 
   // Zielkonflikt oder Gleichlauf
-  const bestCo2 = extrem(co2, 'co2T', 'min');
+  const bestCo2 = extrem(co2, 'co2Bew', 'min');
   if (bestWgk && bestCo2 && wgk.length >= 2 && co2.length >= 2) {
     if (bestWgk === bestCo2) {
       out.push(absatz(`${nameV(bestWgk)} ist sowohl wirtschaftlich als auch ökologisch die günstigste Variante; ein Zielkonflikt zwischen Kosten und Klimaschutz besteht nicht.`));
-    } else if (ok(bestWgk.co2T) && ok(bestCo2.wgkCt)) {
+    } else if (ok(bestWgk.co2Bew) && ok(bestCo2.wgkCt)) {
       const mehr = bestCo2.wgkCt - bestWgk.wgkCt;
       let satz = `Zwischen Kosten und Klimaschutz besteht ein Zielkonflikt: Die wirtschaftlichste Variante (${nameV(bestWgk)}) ist nicht die emissionsärmste (${nameV(bestCo2)}). `
-        + `Die emissionsärmste Variante verursacht Mehrkosten von ${nf(mehr, 1)} ct/kWh (${pct(bestWgk.wgkCt > 0 ? (mehr / bestWgk.wgkCt) * 100 : 0)}) bei ${nf(bestWgk.co2T - bestCo2.co2T)} t CO₂e geringeren Emissionen pro Jahr.`;
-      if (ok(bestWgk.jahreskostenEur) && ok(bestCo2.jahreskostenEur) && bestWgk.co2T - bestCo2.co2T > 0) {
-        const vermeid = (bestCo2.jahreskostenEur - bestWgk.jahreskostenEur) / (bestWgk.co2T - bestCo2.co2T);
+        + `Die emissionsärmste Variante verursacht Mehrkosten von ${nf(mehr, 1)} ct/kWh (${pct(bestWgk.wgkCt > 0 ? (mehr / bestWgk.wgkCt) * 100 : 0)}) bei ${nf(bestWgk.co2Bew - bestCo2.co2Bew)} t CO₂e geringeren Emissionen pro Jahr${co2Basis}.`;
+      if (ok(bestWgk.jahreskostenEur) && ok(bestCo2.jahreskostenEur) && bestWgk.co2Bew - bestCo2.co2Bew > 0) {
+        const vermeid = (bestCo2.jahreskostenEur - bestWgk.jahreskostenEur) / (bestWgk.co2Bew - bestCo2.co2Bew);
         if (vermeid > 0) satz += ` Das entspricht CO₂-Vermeidungskosten von rund ${nf(vermeid)} €/t CO₂e.`;
       }
       out.push(absatz(satz));
@@ -990,10 +994,10 @@ export function wtEmpfehlung(d) {
   const out = [];
 
   if (V.length >= 2) {
-    const bw = extrem(V, 'wgkCt', 'min'), bc = extrem(V, 'co2T', 'min'), be = extrem(V, 'eeAnteilPct', 'max');
+    const bw = extrem(V, 'wgkCt', 'min'), bc = extrem(V, 'co2Bew', 'min'), be = extrem(V, 'eeAnteilPct', 'max');
     const teile = [];
     if (bw) teile.push(`wirtschaftlich am günstigsten ist ${nameV(bw)} (${nf(bw.wgkCt, 1)} ct/kWh)`);
-    if (bc) teile.push(`die geringsten Emissionen hat ${nameV(bc)} (${nf(bc.co2T)} t CO₂e/a)`);
+    if (bc) teile.push(`die geringsten Emissionen hat ${nameV(bc)} (${nf(bc.co2Bew)} t CO₂e/a${ok(bc.co2LzT) ? ' bei künftigem Strommix' : ''})`);
     if (be && ok(be.eeAnteilPct)) teile.push(`den höchsten Anteil erneuerbarer Energien erreicht ${nameV(be)} (${pct(be.eeAnteilPct, 1)})`);
     if (teile.length) out.push(absatz('Im Variantenvergleich zeigt sich: ', liste(teile), '.'));
     if (bw && bc && bw === bc) {
@@ -1029,12 +1033,12 @@ export function wtFazit(d) {
   out.push(absatz(bedarf, herk ? ` Er beruht auf einem ${herk}.` : '', bedarf ? '' : ['Der Wärmebedarf der Liegenschaft ist ', F('Zusammenfassung des Wärmebedarfs'), '.']));
 
   if (V.length) {
-    const bw = extrem(V, 'wgkCt', 'min'), bc = extrem(V, 'co2T', 'min');
+    const bw = extrem(V, 'wgkCt', 'min'), bc = extrem(V, 'co2Bew', 'min');
     const teile = [];
     if (V.length > 1) teile.push(`Im Variantenvergleich wurden ${V.length} Varianten betrachtet.`);
     else teile.push(`Betrachtet wurde die Variante „${nameV(V[0])}“.`);
     if (V.length > 1 && bw) teile.push(` Wirtschaftlich am günstigsten ist ${nameV(bw)} mit ${nf(bw.wgkCt, 1)} ct/kWh.`);
-    if (V.length > 1 && bc) teile.push(` Die geringsten Emissionen verursacht ${nameV(bc)} mit ${nf(bc.co2T)} t CO₂e pro Jahr.`);
+    if (V.length > 1 && bc) teile.push(` Die geringsten Emissionen verursacht ${nameV(bc)} mit ${nf(bc.co2Bew)} t CO₂e pro Jahr${ok(bc.co2LzT) ? ' bei künftigem Strommix (Ø 2030–2050)' : ''}.`);
     if (V.length === 1) {
       const v = V[0];
       const erg = [];

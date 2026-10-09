@@ -7,6 +7,7 @@ import { estimateBatteryAging } from './lib/battery-aging.js';
 import { optKonzeptSchluessel, optMusterSuche } from './lib/optimierer-suche.js';
 import { bedienModulStunden } from './lib/vdi-bedien.js';
 import { speicherInvestEur } from './lib/waermespeicher.js';
+import { vdiAnnuitaetsfaktor, vdiDynFaktor, vdiBausteinAnnuitaet, vdiKwkZuschlagFaktor } from './lib/vdi2067.js';
 
 /**
  * Quelltext des Optimierer-Workers. Die Rechenkerne (Dispatch, Kosten, PV/Batterie,
@@ -34,6 +35,10 @@ ${optKonzeptSchluessel.toString()}
 ${optMusterSuche.toString()}
 ${bedienModulStunden.toString()}
 ${speicherInvestEur.toString()}
+${vdiAnnuitaetsfaktor.toString()}
+${vdiDynFaktor.toString()}
+${vdiBausteinAnnuitaet.toString()}
+${vdiKwkZuschlagFaktor.toString()}
 
 function _defaultGuetegrad(key) {
   if (key === 'lwwp') return 0.42;
@@ -229,6 +234,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
     pKw: _bPKw,
     erzList: erzListTyped,
     zinsPct: zinssatz * 100,
+    dyn: params.dyn,
     lohn: D.lohn || 45,
     prices: { strom: pStrom, stromWp: pStromWp, gas: pGas, hko: pHko, fw: pFw, pk: pPk, hhs: pHhs },
     etas: { gaskessel: D.etaGk, heizoel: D.etaHko, pellets: D.etaPk, hhs: D.etaHhs, bhkw: D.etaBhkw, bhkwSigma: D.bhkwSkz },
@@ -238,6 +244,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
       nGeb: D.nGeb || 0,
       netzInvest: D.netzInvest || 0,
       ohneNetz: !!D.ohneNetz,
+      pumpMwh: D.pumpMwh || 0,
       stM2: (stMwh || 0) > 0 ? (stM2 || 0) : 0,
       optSpeicherVol: optSpeicherVol || 0,
       tsTyp: D.tsTyp, tsDt: D.tsDt,

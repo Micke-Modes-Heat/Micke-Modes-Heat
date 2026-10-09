@@ -514,6 +514,7 @@ const ECONOMIC_FIELD_IDS = Object.freeze({
   stromCtKwh:'wirt-p-strom', wpStromCtKwh:'wirt-p-strom-wp', gasCtKwh:'wirt-p-gas',
   heizoelCtKwh:'wirt-p-hko', fernwaermeCtKwh:'wirt-p-fw', pelletsCtKwh:'wirt-p-pk',
   hhsCtKwh:'wirt-p-hhs', co2EurT:'wirt-p-co2', kapitalzinsPct:'wirt-zins', lohnEurH:'wirt-lohn',
+  betrachtungA:'js-laufzeit', preisEnergiePct:'js-eskalation', preisBetriebPct:'wirt-r-betrieb',
 });
 
 export function onEconomicScenarioChange() {

@@ -4,7 +4,8 @@
 // die Wirkung auf Kessel-/Spitzenlastwärme und EE-Anteil und die Wirtschaftlichkeit über eine Größenvariation.
 // Das Projekt bleibt unverändert, bis „Als Wärmespeicher übernehmen“ geklickt wird.
 import { _dispatchCore, _quelleTemp, dispatchEingaben, updateAllDeckungen } from './06c-dispatch-core.js';
-import { _collectOptDomParams, _optKennwerte2 } from './10a-optimizer-core.js';
+import { _optKennwerte2, _optWirtParams } from './10a-optimizer-core.js';
+import { _calcBausteinJK } from './07b-analysis-economics.js';
 import { redrawThermSpeicherMap, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
 import {
   speicherAmortisation, speicherInvestEur, speicherKapKwh, speicherKennwerte,
@@ -126,7 +127,8 @@ export function spBerechnen() {
   const E = dispatchEingaben(ss);
   const peakKw = ss.pMaxKw || Math.max(...ss.lastgangKw);
   const jahresMwh = ss.gesamtMwhMitNV || 0;
-  const kp = _collectOptDomParams();
+  // Preise, Zins und VDI-2067-Parameter wie die Wirtschaftlichkeitsrechnung
+  const kp = _optWirtParams();
   const ohne = _lauf(E, null, false);
   const kOhne = _kosten(E, ohne, 0, kp);
   const vols = speicherVolumenStufen(S.art, peakKw, jahresMwh, S.dt);
@@ -145,7 +147,8 @@ export function spBerechnen() {
   const kw = speicherKennwerte(r, ohne, param.kapKwh, KESSEL);
   const invest = speicherInvestEur(volAuswahl, S.art === 'lang' ? 'saisonal' : 'gross');
   // Einsparung ohne Kapitalkosten des Speichers: Energie, CO₂, kleinerer Spitzenkessel
-  const kapitalSpeicher = invest * ((kp.zinssatz > 0 ? kp.zinssatz * Math.pow(1 + kp.zinssatz, 20) / (Math.pow(1 + kp.zinssatz, 20) - 1) : 0.05) + 0.015);
+  // Kapital- und Betriebskosten des Speichers wie im Baustein „Wärmespeicher“ (n 20 a, 1 % + 0,5 %)
+  const kapitalSpeicher = _calcBausteinJK(invest, { n: 20, inst: 1.0, wart: 0.5, bedien: 0 }, kp.zinssatz * 100, 0, kp.dyn);
   const deltaJk = k.jahreskosten - kOhne.jahreskosten;
   const einsparungBetrieb = kapitalSpeicher - deltaJk;
   const auswahl = { vol: volAuswahl, param, kw, wgk: k.wgk, jahreskosten: k.jahreskosten, ee: k.eeAnteil, co2: k.co2ta, invest, deltaJk,

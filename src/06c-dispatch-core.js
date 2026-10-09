@@ -124,6 +124,12 @@ export function getEisSpeicherParams() {
   };
 }
 
+/** Verfügbare WP-Heizleistung relativ zur Nennleistung (wie im Dispatch-Kern). */
+export function wpLeistungsFaktor(key, tQ, tVL) {
+  const ref = { lwwp: 2, geo: 0, fg: 10 }[key] ?? 2;
+  return Math.min(1.1, Math.max(0.3, 1 + 0.02 * (tQ - ref) - 0.0025 * Math.max(0, tVL - 35)));
+}
+
 // ── Quelltemperatur je WP-Typ — identisch mit CalcEngine.quellenTemp() ────
 export function _quelleTemp(key, tAussen, t) {
   if (key === 'lwwp') {
@@ -338,13 +344,12 @@ export function _dispatchCore(cfg) {
   const hatSpeicher = thSp !== null && thSp.kapKwh > 0;
   const hatST = stProfile !== null;
 
-  // COP-Referenz für WPs (A2/W35 Prüfpunkt)
-  const copRef = {};
-  for (const erz of erzList) {
-    if (erz.typ === 'wp') {
-      copRef[erz.key] = ((273.15 + 35) / (35 - 2)) * erz.guetegrad;
-    }
-  }
+  // Verfügbare WP-Heizleistung: Nennleistung am Prüfpunkt (Luft A2, Sole B0, Wasser W10 — je W35), +2 %/K
+  // Quelltemperatur, −0,25 %/K Vorlauf über 35 °C, höchstens 110 % (Verdichter) und mindestens 30 % —
+  // typischer Kennfeldverlauf großer Wärmepumpen (in sich geschlossen: der Optimierer-Worker bettet den Kern ein)
+  const WP_Q_REF = { lwwp: 2, geo: 0, fg: 10 };
+  const wpLeistFaktor = (key, tQ, tVL) =>
+    Math.min(1.1, Math.max(0.3, 1 + 0.02 * (tQ - (WP_Q_REF[key] ?? 2)) - 0.0025 * Math.max(0, tVL - 35)));
 
   // Akkumulatoren (immer)
   // thKwh: Wärme direkt an die Last; ladeKwh: Wärme, die der Erzeuger in den Speicher lädt (erzeugt = beides);
@@ -480,7 +485,7 @@ export function _dispatchCore(cfg) {
         const hub  = Math.max(tVLK - tQK, 0.1);
         cop = Math.min((tVLK / hub) * erz.guetegrad, 8);
         if (erz.key === 'lwwp' && lwwpMinCop > 0 && cop < lwwpMinCop) continue;
-        erreichbarKw = nennKw * (cop / copRef[erz.key]);
+        erreichbarKw = nennKw * wpLeistFaktor(erz.key, tQ, vlH[t]);
         if (eisQuelle) {
           // Quellenwärme = Wärme × (1 − 1/COP); begrenzt durch den zulässigen Vereisungsgrad
           const maxTh = cop > 1 ? eis.verfuegbarKwh() / (1 - 1 / cop) : 0;
@@ -778,17 +783,12 @@ export function _deckungen8760(ss) {
       _spitzenlastStunde = i;
     }
   }
-  // copRef nachberechnen (für Heizlastfall-Dimensionierung)
-  const copRef = {};
-  activeKeys.filter(k => ERZEUGER_CFG[k].typ === 'wp').forEach(k => {
-    copRef[k] = ((273.15 + 35) / (35 - 2)) * _guetegrad(k);
-  });
   const heizlastInfos = {};
   activeKeys.forEach(key => {
     const nennKw = leistungen[key];
     const isWp = ERZEUGER_CFG[key].typ === 'wp';
     let heizlastKw = nennKw;
-    if (isWp && copRef[key] > 0) {
+    if (isWp) {
       const tQ = _quelleTemp(key, tempH[_spitzenlastStunde], _spitzenlastStunde);
       const tVLK = vlH[_spitzenlastStunde] + 273.15;
       const tQK  = tQ + 273.15;
@@ -796,7 +796,7 @@ export function _deckungen8760(ss) {
       const copDesign = (tVLK / hub) * _guetegrad(key);
       const nichtVerfuegbar = (key === 'fg' && tQ < 2)
         || (key === 'lwwp' && lwwpMinCop > 0 && copDesign < lwwpMinCop);
-      heizlastKw = nichtVerfuegbar ? 0 : nennKw * (copDesign / copRef[key]);
+      heizlastKw = nichtVerfuegbar ? 0 : nennKw * wpLeistungsFaktor(key, tQ, vlH[_spitzenlastStunde]);
     }
     heizlastInfos[key] = { nennKw, heizlastKw, spitzenlastKw: _spitzenlastKw, isWp };
   });

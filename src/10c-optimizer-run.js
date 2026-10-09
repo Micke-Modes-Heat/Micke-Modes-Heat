@@ -6,7 +6,7 @@ import { aggregateGebStrom } from './02b-gebaeude.js';
 import { escHtml } from './03c-gebaeude-io.js';
 import { makeStProfile8760 } from './06b-gl-berechnen.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
-import { OPT_FEIN_ANZAHL, OPT_FEIN_EVALS, _collectOptDomParams, _optGetScaledLastgang, _optKennwerte2, _optPvPlan, _optScore } from './10a-optimizer-core.js';
+import { OPT_FEIN_ANZAHL, OPT_FEIN_EVALS, _collectOptDomParams, _optGetScaledLastgang, _optKennwerte2, _optPvPlan, _optScore, _optWirtParams } from './10a-optimizer-core.js';
 import { optGrobPunkte, optRasterStufen, optSuchraum } from './lib/optimierer-suche.js';
 import { OPT_MERIT_ORDER } from './config/optimizer-defaults.js';
 import { _buildOptWorkerCode, _optRenderBarChart, _optRenderRadar, _optRenderScatter } from './10d-optimizer-worker.js';
@@ -88,23 +88,8 @@ export function _runOptWorker(resDiv) {
   const optYear = parseInt(document.getElementById('opt-year')?.value) || (typeof globalYear !== 'undefined' ? globalYear : 2026);
   const lastgang = _optGetScaledLastgang(optYear) || ss.lastgangKw;
 
-  // Wirtschaftsparameter (Fallbacks = HTML-Defaults der wirt-p-* Felder)
-  const _pStromOpt = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
-  const _pWpRawOpt = parseFloat(document.getElementById('wirt-p-strom-wp')?.value);
-  const _zinsRawOpt = parseFloat(document.getElementById('wirt-zins')?.value);
-  const params = {
-    pStrom: _pStromOpt,
-    pStromWp: isNaN(_pWpRawOpt) ? _pStromOpt : _pWpRawOpt, // optionaler WP-Sondervertragspreis
-    pGas: parseFloat(document.getElementById('wirt-p-gas')?.value) || 10,
-    pPk: parseFloat(document.getElementById('wirt-p-pk')?.value) || 8,
-    pHhs: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 6,
-    pHko: parseFloat(document.getElementById('wirt-p-hko')?.value) || 10,
-    pFw: parseFloat(document.getElementById('wirt-p-fw')?.value) || 17,
-    pBhkwEinsp: parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8,
-    pBhkwKwkE: parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8,
-    pBhkwKwkEig: parseFloat(document.getElementById('bhkw-kwk-eigen')?.value) || 4,
-    zinssatz: (isNaN(_zinsRawOpt) ? 3.5 : _zinsRawOpt) / 100,
-  };
+  const params = _optWirtParams();
+
 
   // Quartier-Strom — gleiche Rangfolge wie die Strombilanz (09b): Upload, manuelle Jahressumme, Gebäudedaten
   const quartierH = new Float32Array(8760);

@@ -9,6 +9,13 @@ const SIGLINDE={
   GHD34:{A:1.25696,B:-36.6078453,C:7.321187,D:0.077696,mh:-0.0696826,bh:1.1379702,mw:-0.0008522,bw:0.1921068},
 };
 
+// Raumwärmeanteil der SigLinDe-Tageskurve: ohne den Warmwasser-/Grundlastteil (D und Warmwasser-Gerade mw·θ+bw).
+// Den Warmwasseranteil bildet der eigene Sockel (baseShare) ab — sonst stünde er doppelt im Profil, und bei
+// dezentralem Trinkwarmwasser würde er als Raumwärme in die Heizperiode verschoben.
+function sigRaum(theta,p) {
+  return Math.max(0,sigH(theta,p)-p.D-Math.max(0,p.mw*theta+p.bw));
+}
+
 function sigH(theta,p) {
   const diff=theta-THETA_0;
   const denominator=Math.abs(diff)<1e-10 ? (diff<0 ? -1e-10 : 1e-10) : diff;
@@ -129,7 +136,7 @@ export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year
     const weekDay=(firstDay+day)%7;
     const weekend=weekDay===0 || weekDay===6;
     const dayFactor=weekend ? archetype.weekend : 1;
-    const weather=Math.max(0,sigH(mean,params))*dayFactor;
+    const weather=sigRaum(mean,params)*dayFactor;
     let scheduleSum=0;
     for (const value of archetype.weekday) scheduleSum+=value;
     for (let hour=0;hour<24;hour++) {

@@ -17,10 +17,10 @@ import { getKostenProMKlasse, updateLpErgebnisKpis, updateLpStepProgress } from 
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
 import { clearSolarthermie, clearThermSpeicher, getThermSpeicherParams, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
 import { _dispatchCore, autoGkResult, isErzeugerAktiv, meritOrderKeys, onSystemStateUpdated, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
-import { _calcKostenShared, _parseGeoBohrMeter, batterieLebensdauer, pvWaermeEingaben, wirtPvWp } from './07b-analysis-economics.js';
+import { _calcKostenShared, _parseGeoBohrMeter, batterieLebensdauer, netzPumpenstromMwh, pvWaermeEingaben, vdiDynParams, wirtPvWp } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
-import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { ERZEUGER_CFG, ERDGAS_HS_HI } from './config/erzeuger-cfg.js';
 import { OPT_INVEST_DEFAULT } from './config/optimizer-defaults.js';
 import { activeVariantId, bhkwCo2Gutschrift } from './01-globals-varianten.js';
 import { calcVerdraengungEmF } from './03a-erzeuger.js';
@@ -281,6 +281,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
     pKw: _bPKw,
     erzList: erzListTyped,
     zinsPct: zinssatz * 100,
+    dyn: params.dyn,
     lohn: parseFloat(document.getElementById('wirt-lohn')?.value) || 45,
     prices: { strom: pStrom, stromWp: pStromWp, gas: pGas, hko: pHko, fw: pFw, pk: pPk, hhs: pHhs },
     etas: {
@@ -297,6 +298,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
       nGeb: parseInt(document.getElementById('netz-n-geb')?.value) || 0,
       netzInvest: typeof _calcNetzInvestForOpt === 'function' ? _calcNetzInvestForOpt() : 0,
       ohneNetz: !!window._wirtOhneNetz,
+      pumpMwh: netzPumpenstromMwh(),
       stM2: stM2Opt || (stWaermeMwhOpt > 0 ? (parseFloat(document.getElementById('st-flaeche')?.value) || 0) : 0),
       optSpeicherVol: optSpeicherVol || 0,
       tsTyp: tsOverride?.typ || document.getElementById('ts-typ')?.value || 'puffer',
@@ -495,6 +497,29 @@ export function _calcNetzInvestForOpt() {
   return Math.round(s);
 }
 
+/** Preise und Finanzierung für die Kostenkennwerte (Optimierer, Speicheranalyse) — wie die Wirtschaftlichkeitsrechnung. */
+export function _optWirtParams() {
+  // Fallbacks = HTML-Vorgaben der wirt-p-* Felder
+  const _pStromOpt = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
+  const _pWpRawOpt = parseFloat(document.getElementById('wirt-p-strom-wp')?.value);
+  const _zinsRawOpt = parseFloat(document.getElementById('wirt-zins')?.value);
+  return {
+    pStrom: _pStromOpt,
+    pStromWp: isNaN(_pWpRawOpt) ? _pStromOpt : _pWpRawOpt, // optionaler WP-Sondervertragspreis
+    // Gaspreis je kWh Hs (Eingabe) → je kWh Hi, passend zu den Wirkungsgraden (ERDGAS_HS_HI)
+    pGas: (parseFloat(document.getElementById('wirt-p-gas')?.value) || 10) * ERDGAS_HS_HI,
+    pPk: parseFloat(document.getElementById('wirt-p-pk')?.value) || 8,
+    pHhs: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 6,
+    pHko: parseFloat(document.getElementById('wirt-p-hko')?.value) || 10,
+    pFw: parseFloat(document.getElementById('wirt-p-fw')?.value) || 17,
+    pBhkwEinsp: parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8,
+    pBhkwKwkE: parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8,
+    pBhkwKwkEig: parseFloat(document.getElementById('bhkw-kwk-eigen')?.value) || 4,
+    zinssatz: (isNaN(_zinsRawOpt) ? 3.5 : _zinsRawOpt) / 100,
+    dyn: vdiDynParams(),   // VDI 2067: Zeitraum und Preisänderungen wie die Wirtschaftlichkeitsrechnung
+  };
+}
+
 export function _collectOptDomParams() {
   const f = (id, def) => parseFloat(document.getElementById(id)?.value) || def;
   const s = (id, def) => document.getElementById(id)?.value || def;
@@ -521,7 +546,7 @@ export function _collectOptDomParams() {
   }
   return {
     bhkwSkz: f('bhkw-skz', 0.45), skEta: f('sk-eta', 99) / 100, lwwpMinCop: f('lwwp-min-cop', 0),
-    geoDtAbsenkung: f('geo-dt-absenkung', 0),
+    geoDtAbsenkung: f('geo-dt-absenkung', 4),
     geoTiefe: Math.min(400, Math.max(30, f('geo-tiefe', 100))),
     geoQPerM: Math.min(60, Math.max(10, f('geo-q-perm', 31))),
     tsDt: f('ts-dt', 40), tsVerlust: f('ts-verlust', 0.5), tsEntladeKw: f('ts-entlade-kw', 200), tsLadeKw: f('ts-lade-kw', f('ts-entlade-kw', 200)),
@@ -565,6 +590,7 @@ export function _collectOptDomParams() {
     nGeb: parseInt(document.getElementById('netz-n-geb')?.value) || 0,
     netzInvest: _calcNetzInvestForOpt(),
     ohneNetz: !!window._wirtOhneNetz,
+    pumpMwh: netzPumpenstromMwh(),
   };
 }
 

@@ -1,6 +1,12 @@
 // @ts-check
 // ── Erzeuger-Konfiguration ──────────────────────────────────────────────
 // Mapping Erzeuger-Key → UI-IDs, Farben, Typen, Gütegrade
+/**
+ * Erdgas: Verhältnis Brennwert zu Heizwert (Hs/Hi, Erdgas H). Gas wird je kWh Hs abgerechnet, die Kessel- und
+ * BHKW-Wirkungsgrade beziehen sich auf den Heizwert (Brennwertkessel bis 107 %) — Preis je kWh Hi = Preis Hs × 1,11.
+ */
+export const ERDGAS_HS_HI = 1.11;
+
 export const ERZEUGER_CFG = {
   lwwp:       { label: 'Luft-WP',     leistungId: 'lwwp-leistung', wrapId: 'lwwp-deckung-wrap', color: '#66bb6a', typ: 'wp',  guetegrad: 0.42, guetegradId: 'lwwp-guetegrad' },
   fg:         { label: 'FG-WP',       leistungId: 'fg-leistung',   wrapId: 'fg-deckung-wrap',   color: '#29b6f6', typ: 'wp',  guetegrad: 0.56, guetegradId: 'fg-guetegrad'   },

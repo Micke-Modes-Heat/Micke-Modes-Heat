@@ -100,6 +100,9 @@ export function _calcEmHourly() {
   return { hourly: result, keys: activeKeys };
 }
 
+/** Primärenergiefaktor des durch KWK-Strom verdrängten Netzstroms (DIN V 18599-9, GEG). */
+export const FP_VERDRAENGUNGSSTROM = 2.8;
+
 /* ── PEF-Daten pro Erzeuger berechnen ──────────────────────────────────── */
 export function _calcPefData() {
   const en   = window._dispatchEnergy || {};
@@ -133,7 +136,9 @@ export function _calcPefData() {
     } else {
       endenergieMwh = wMwh;
     }
-    const peMwh = endenergieMwh * fp;
+    let peMwh = endenergieMwh * fp;
+    // KWK: Stromgutschrift nach DIN V 18599-9 / GEG (Verdrängungsstrommix f_p = 2,8), höchstens bis 0
+    if (k === 'bhkw') peMwh = Math.max(0, peMwh - (e.elMwh || 0) * FP_VERDRAENGUNGSSTROM);
     totalPE += peMwh;
     totalEnd += endenergieMwh;
     rows.push({ key: k, label: DA_LABELS[k] || k, color: _daColor(k), wMwh, endenergieMwh, fp, peMwh });

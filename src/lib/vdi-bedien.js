@@ -22,9 +22,12 @@ export function bedienModulStunden(typ, kw) {
     hko:      { modulKw: 2000, jeModul: 20, grund: 0 },
     sk:       { modulKw: 2000, jeModul: 10, grund: 0 },
     pk:       { modulKw: 1000, stufen: [[50, 100], [200, 200], [500, 300], [Infinity, 408]], grund: 0 },
-    pk_lager: { modulKw: 1000, stufen: [[50, 50], [200, 100], [500, 150], [Infinity, 204]], grund: 0 },
+    // Lager: Kessel + Lager zusammen höchstens der VDI-Wert der Gesamtanlage (Pellets 408 h/a, Hackschnitzel
+    // 612 h/a je Modul der größten Stufe) — Pellets fördern automatisch (im Kesselwert enthalten), beim
+    // Hackschnitzellager kommt die Hälfte des Kesselaufwands hinzu
+    pk_lager: { modulKw: 1000, jeModul: 0, grund: 0 },
     hhs:      { modulKw: 1500, stufen: [[50, 150], [200, 250], [500, 350], [Infinity, 408]], grund: 0 },
-    hhs_lager:{ modulKw: 1500, stufen: [[50, 100], [200, 200], [500, 400], [Infinity, 612]], grund: 0 },
+    hhs_lager:{ modulKw: 1500, stufen: [[50, 75], [200, 125], [500, 175], [Infinity, 204]], grund: 0 },
     bhkw_agg: { modulKw: 2000, stufen: [[20, 100], [100, 200], [500, 300], [Infinity, 408]], grund: 0 },
   };
   var t = T[typ];

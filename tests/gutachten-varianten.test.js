@@ -58,7 +58,8 @@ describe('Sensitivität', () => {
   it('Mehrkosten und Text', () => {
     const r = vaSensitivitaet([V1, V2, V3], { strom: 25, gas: 10 });
     const v2 = r.find(x => x.name.startsWith('V2'));
-    expect(v2.sz[2].mehr).toBeCloseTo(2100 * 250 * 0.2 + (3000 / 0.92) * 100 * 0.8, 3);
+    // Erdgas je kWh Hs: Brennstoff (Hi) × 1,11
+    expect(v2.sz[2].mehr).toBeCloseTo(2100 * 250 * 0.2 + (3000 / 0.92) * 1.11 * 100 * 0.8, 3);
     const t = text(vaTextSensitivitaet([V1, V2, V3], { strom: 25, gas: 10 }));
     expect(t).toContain('Energiekrise: Strom +20 %, Gas/Öl +80 %');
     expect(t).toMatch(/Rangfolge (verschiebt|bleibt)/);

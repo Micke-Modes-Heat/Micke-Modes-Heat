@@ -102,16 +102,18 @@ export function abWoche(lastgangKw, jahr, monat = 7) {
 /* ══════════════════════════════════════════════════════════════════════════
  * Luft-Wasser-Wärmepumpe: Stundensimulation und Deckungsgrad-Sweep
  * Gleiche Kennlinie wie die Einsatzplanung (06c-dispatch-core.js): COP = Gütegrad · T_VL / (T_VL − T_Luft),
- * höchstens 8; verfügbare Leistung = Nennleistung (A2/W35) · COP / COP(A2/W35); Rest übernimmt die Spitzenlast.
+ * höchstens 8; verfügbare Leistung = Nennleistung (A2/W35) · (1 + 2 %/K · (T_Luft − 2) − 0,25 %/K · (T_VL − 35)),
+ * zwischen 30 % und 110 %; Rest übernimmt die Spitzenlast.
  * ═══════════════════════════════════════════════════════════════════════ */
 export const AB_WP = Object.freeze({ guete: 0.45, copMax: 8, refQuelle: 2, refVl: 35 });
+/** Verfügbare Heizleistung relativ zur Nennleistung (wie wpLeistungsFaktor im Dispatch-Kern). */
+const abLeistFaktor = (tQ, vl) => Math.min(1.1, Math.max(0.3, 1 + 0.02 * (tQ - AB_WP.refQuelle) - 0.0025 * Math.max(0, vl - AB_WP.refVl)));
 
 /** o: { lastgangKw, tempH, vlH (oder vlC konstant), nennKw, guete, minCop, stunden (true: Stundenwerte zurückgeben) } */
 export function abLwwpSimulation(o) {
   const L = o.lastgangKw, T = o.tempH;
   if (!L || !T || L.length < 8760 || T.length < 8760) return null;
   const g = o.guete > 0 ? o.guete : AB_WP.guete;
-  const copRef = ((273.15 + AB_WP.refVl) / (AB_WP.refVl - AB_WP.refQuelle)) * g;
   const nenn = Math.max(0, o.nennKw || 0);
   let wpKwh = 0, elKwh = 0, gesKwh = 0, restMax = 0, leistungKalt = NaN, tKalt = Infinity;
   const wpH = o.stunden ? new Float32Array(8760) : null, elH = o.stunden ? new Float32Array(8760) : null;
@@ -122,7 +124,7 @@ export function abLwwpSimulation(o) {
     const hub = Math.max(vl + 273.15 - (T[t] + 273.15), 0.1);
     const cop = Math.min(((vl + 273.15) / hub) * g, AB_WP.copMax);
     const sperre = o.minCop > 0 && cop < o.minCop;
-    const verf = sperre ? 0 : nenn * (cop / copRef);
+    const verf = sperre ? 0 : nenn * abLeistFaktor(T[t], vl);
     if (T[t] < tKalt) { tKalt = T[t]; leistungKalt = verf; }
     const p = Math.min(verf, bedarf);
     wpKwh += p;
@@ -149,14 +151,13 @@ export function abLwwpSweep(o, quoten = AB_WP_QUOTEN) {
   const L = o.lastgangKw, T = o.tempH;
   if (!L || !T || L.length < 8760 || T.length < 8760) return [];
   const g = o.guete > 0 ? o.guete : AB_WP.guete;
-  const copRef = ((273.15 + AB_WP.refVl) / (AB_WP.refVl - AB_WP.refQuelle)) * g;
   let nenn100 = 0, gesperrt = false;
   for (let t = 0; t < 8760; t++) {
     if (!(L[t] > 0)) continue;
     const vl = o.vlH ? o.vlH[t] : (o.vlC || 55);
     const cop = Math.min(((vl + 273.15) / Math.max(vl - T[t], 0.1)) * g, AB_WP.copMax);
     if (o.minCop > 0 && cop < o.minCop) { gesperrt = true; continue; }
-    nenn100 = Math.max(nenn100, (L[t] * copRef) / cop);
+    nenn100 = Math.max(nenn100, L[t] / abLeistFaktor(T[t], vl));
   }
   const maxPct = abLwwpSimulation({ ...o, nennKw: nenn100 * 1.000001 }).deckungPct;
   return quoten.map(q => {

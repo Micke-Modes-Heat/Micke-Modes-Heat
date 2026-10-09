@@ -27,21 +27,24 @@ export function getKostenProM(dn, edgeKlasse) {
 
 // ── Physikalisch korrekte Hilfsfunktionen ─────────────────────────────────
 
-// U-Wert abhängig von DN (Typische KMR-Werte, W/(m·K) für VL+RL gesamt)
-// Quelle: Nussbaumer/AGFW, preinsulated KMR pipes
+// Wärmeverlustkoeffizient eines KMR-Rohrs je Meter (W/(m·K)), JE ROHR — Vor- und Rücklauf werden getrennt
+// gerechnet (Trasse = 2 Rohre). Der Koeffizient steigt mit dem Durchmesser (größere Oberfläche), typische
+// Werte erdverlegter Kunststoffmantelrohre der Standard-Dämmserie: DN 20 ≈ 0,11 … DN 100 ≈ 0,22 … DN 500 ≈ 0,40.
+// baseU ist die Eingabe für DN 100; die übrigen Nennweiten werden im selben Verhältnis skaliert.
+const KMR_U_REL = {
+  15: 0.48, 20: 0.50, 25: 0.55, 32: 0.59, 40: 0.64, 50: 0.73, 65: 0.82, 80: 0.91, 100: 1.0, 125: 1.09,
+  150: 1.23, 200: 1.32, 250: 1.41, 300: 1.55, 350: 1.50, 400: 1.64, 450: 1.73, 500: 1.82, 600: 2.0, 700: 2.18, 800: 2.36,
+};
 export function getUWertForDN(dn, baseU) {
-  // baseU ist der User-Eingabewert (Referenz für DN100)
-  // Skalierung: kleinere Rohre → schlechterer U-Wert, größere → besserer
   const ref = baseU || 0.25;
-  const DN_U_FACTORS = {
-    15: 1.6, 20: 1.5, 25: 1.4, 32: 1.3, 40: 1.2, 50: 1.15,
-    65: 1.08, 80: 1.04, 100: 1.0, 125: 0.92, 150: 0.85,
-    200: 0.75, 250: 0.68, 300: 0.62, 350: 0.58, 400: 0.55,
-    450: 0.52, 500: 0.50, 600: 0.46, 700: 0.43, 800: 0.40
-  };
-  const factor = DN_U_FACTORS[dn] || 1.0;
-  return ref * factor;
+  const d = Number(dn) || 100;
+  if (KMR_U_REL[d]) return ref * KMR_U_REL[d];
+  // Zwischenwerte: nächstgelegene Nennweite
+  const naechste = Object.keys(KMR_U_REL).map(Number).reduce((a, b) => (Math.abs(b - d) < Math.abs(a - d) ? b : a));
+  return ref * KMR_U_REL[naechste];
 }
+/** Rohre je Trasse (Vor- und Rücklauf). */
+export const ROHRE_JE_TRASSE = 2;
 
 // Empfohlene Fließgeschwindigkeit abhängig von DN (m/s)
 // Kleine Rohre: langsamer (Geräusch, Druckverlust), große: schneller

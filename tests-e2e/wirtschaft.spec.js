@@ -39,6 +39,10 @@ test('dist: Wirtschaftlichkeit ohne Netzkosten und Barwert mit denselben Baustei
     lz.value = '1000000'; calcJahresscheiben();
     const jsText = document.getElementById('js-result')?.innerText || '';
     lz.value = '20'; calcJahresscheiben();
+    // VDI 2067: Annuitätenmethode und Barwertbetrachtung mit denselben Annahmen → dieselbe WGK
+    calcWirtschaftPanel();
+    const wgkAnn = window._lastWgk;
+    const wgkBarwert = parseFloat(document.querySelector('#wirt-kpi-npv b')?.textContent.replace(',', '.'));
     wirtUmfangSetzen(true);
     const erzeugung = lesen();
     const knopf = document.querySelector('.wirt-umfang button.active')?.dataset.umfang;
@@ -46,11 +50,13 @@ test('dist: Wirtschaftlichkeit ohne Netzkosten und Barwert mit denselben Baustei
     wirtUmfangSetzen(false);
     _loadProject(gespeichert);
     await new Promise(r => setTimeout(r, 0));
-    return { jsText, gesamt, erzeugung, knopf, gespeichertFlag: gespeichert.economicScenario.values.nurErzeugung, nachLaden: window._wirtOhneNetz,
+    return { jsText, wgkAnn, wgkBarwert, gesamt, erzeugung, knopf, gespeichertFlag: gespeichert.economicScenario.values.nurErzeugung, nachLaden: window._wirtOhneNetz,
       knopfNachLaden: document.querySelector('.wirt-umfang button.active')?.dataset.umfang };
   });
 
   expect(result.jsText).toContain('40 Jahre');
+  expect(result.wgkBarwert).toBeCloseTo(result.wgkAnn, 0);
+  expect(Math.abs(result.wgkBarwert - result.wgkAnn)).toBeLessThan(0.06);
   expect(result.jsText).not.toMatch(/NaN|Infinity/);
   expect(result.gesamt.netz).toBe(true);
   expect(result.erzeugung.netz).toBe(false);

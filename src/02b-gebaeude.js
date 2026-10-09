@@ -777,8 +777,10 @@ export function calcHeizlastFromGeometry(g, allGebaeude) {
   var volumen = nutzflaeche * geschosshoehe / 0.8; // Bruttovolumen
   var HV = 0.34 * 0.5 * volumen; // 0.34 Wh/(m³K) × Luftwechselrate × Volumen
 
-  // Normheizlast [kW] bei ΔT = 35K (Auslegung: -12°C außen, 20°C innen, abzgl. interne Gewinne)
-  var deltaT = 32; // etwas reduziert durch interne Gewinne
+  // Normheizlast [kW] nach DIN EN 12831: ΔT = Innentemperatur 20 °C − Normaußentemperatur des Standorts
+  // (Wärme-Grundlagen, Vorgabe −12 °C); interne Gewinne werden bei der Normheizlast nicht abgezogen
+  var normAt = parseFloat(typeof document !== 'undefined' ? document.getElementById('gl-norm-at')?.value : NaN);
+  var deltaT = 20 - (Number.isFinite(normAt) ? normAt : -12);
   var heizlastW = (HT + HV) * deltaT;
   return heizlastW / 1000; // kW
 }

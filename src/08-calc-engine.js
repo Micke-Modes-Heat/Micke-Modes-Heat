@@ -1,3 +1,4 @@
+import { ERDGAS_HS_HI } from './config/erzeuger-cfg.js';
 import { _getEtaMap } from './01-globals-varianten.js';
 import { redrawErzeugerIcons } from './03a-erzeuger.js';
 import { glInit } from './06a-gbi-lastgang.js';
@@ -1177,7 +1178,7 @@ function _sensRenderBump() {
     const multipliers = [0.6, 0.8, 1.0, 1.2, 1.4, 1.6];
     const mLabels = multipliers.map(m => (m * 100 - 100 >= 0 ? '+' : '') + Math.round(m * 100 - 100) + '%');
 
-    const pGas   = parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10;
+    const pGas   = (parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10) * ERDGAS_HS_HI;   // Hs → Hi
     const pStrom = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
     const pHko   = parseFloat(document.getElementById('wirt-p-hko')?.value)   || 10;
     const pFw    = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 17;

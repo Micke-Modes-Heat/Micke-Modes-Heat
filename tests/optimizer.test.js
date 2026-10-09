@@ -22,6 +22,7 @@ beforeAll(() => {
   loadScript('06c-dispatch-core.js');
   loadScript('lib/vdi-bedien.js');
   loadScript('lib/waermespeicher.js');
+  loadScript('lib/vdi2067.js');
   loadScript('07b-analysis-economics.js');
   loadScript('06a-gbi-lastgang.js');
   loadScript('09a-pv-profile.js');
@@ -532,8 +533,9 @@ describe('Ansatz 4: Plausibilität — EE-Anteil Konsistenz', () => {
   });
 
   it('WP allein: nicht auf die Spitzenlast hochskaliert, den Rest deckt der Auto-Gaskessel', () => {
-    const disp = refDispatch(new Float32Array(lastgangKw), tempH, vlH, [{ key: 'lwwp', leistKw: 200 }], 0);
-    expect(disp.erzeugerList[0].leistKw).toBe(200);
+    // 120 kW am Prüfpunkt A2/W35 liefern bei Frost und hohem Vorlauf weniger als die 100 kW Last
+    const disp = refDispatch(new Float32Array(lastgangKw), tempH, vlH, [{ key: 'lwwp', leistKw: 120 }], 0);
+    expect(disp.erzeugerList[0].leistKw).toBe(120);
     expect(disp.autoGkMwh).toBeGreaterThan(0);
     const wp = disp.erzeugerList[0].waermeMwh;
     expect(wp + disp.autoGkMwh).toBeCloseTo(disp.gesamtMwh, 1);
@@ -542,7 +544,7 @@ describe('Ansatz 4: Plausibilität — EE-Anteil Konsistenz', () => {
   });
 
   it('Kessel als letzter Erzeuger bleibt Backup bis zur Spitzenlast', () => {
-    const disp = refDispatch(new Float32Array(lastgangKw), tempH, vlH, [{ key: 'lwwp', leistKw: 200 }, { key: 'gaskessel', leistKw: 1 }], 0);
+    const disp = refDispatch(new Float32Array(lastgangKw), tempH, vlH, [{ key: 'lwwp', leistKw: 120 }, { key: 'gaskessel', leistKw: 1 }], 0);
     expect(disp.autoGkMwh).toBeCloseTo(0, 6);
     expect(disp.erzeugerList[1].waermeMwh).toBeGreaterThan(0);
     expect(disp.erzeugerList[1].leistKw).toBeGreaterThan(1);
@@ -550,7 +552,7 @@ describe('Ansatz 4: Plausibilität — EE-Anteil Konsistenz', () => {
 
   it('50% WP + 50% Gas → EE zwischen 30-70%', () => {
     const disp = refDispatch(new Float32Array(lastgangKw), tempH, vlH, [
-      { key: 'lwwp', leistKw: 80 }, { key: 'gaskessel', leistKw: 200 }
+      { key: 'lwwp', leistKw: 55 }, { key: 'gaskessel', leistKw: 200 }
     ], 0);
     const kw = refKennwerte(disp, 0, 0, 0);
     expect(kw.eeAnteil).toBeGreaterThan(20);

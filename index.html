@@ -2435,7 +2435,7 @@
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
       <div class="inp-group">
         <label class="inp-label">Volumen (m³)</label>
-        <input class="inp-field" type="number" id="ts-volumen" value="50" min="1" step="10" data-input="updateThermSpeicherDisplay();updateAllDeckungen()"/>
+        <input class="inp-field" type="number" id="ts-volumen" value="50" min="1" step="10" data-input="tsVerlustAuto();updateThermSpeicherDisplay();updateAllDeckungen()"/>
       </div>
       <div class="inp-group">
         <label class="inp-label">ΔT Spreizung (K)</label>
@@ -2443,7 +2443,7 @@
       </div>
       <div class="inp-group">
         <label class="inp-label" title="Wärmeverlust pro Stunde in Prozent des aktuellen Ladezustands">Verlustrate (%/h)</label>
-        <input class="inp-field" type="number" id="ts-verlust" value="0.5" min="0.001" max="5" step="0.05" data-input="updateThermSpeicherDisplay();updateAllDeckungen()"/>
+        <input class="inp-field" type="number" id="ts-verlust" value="0.054" min="0.001" max="5" step="0.01" title="Stündlicher Wärmeverlust in % des Inhalts. Ohne eigene Eingabe aus der Speicherkennlinie (Oberfläche/Volumen)." data-input="this.dataset.manuell='1';updateThermSpeicherDisplay();updateAllDeckungen()"/>
       </div>
       <div class="inp-group">
         <label class="inp-label" title="Maximale thermische Entladeleistung (begrenzt durch Wärmetauscher)">Entladeleistung (kW)</label>
@@ -2913,7 +2913,7 @@
       </div>
       <div class="inp-group">
         <label class="inp-label" title="Erwartete mittlere Absenkung der Sole-Eintrittstemperatur gegenüber ungestörtem Erdreich (aus EED o.ä.)">ΔT Sole-Absenkung (K) <span style="color:var(--muted);font-size:9px;">aus Fachplanung</span></label>
-        <input class="inp-field" type="number" id="geo-dt-absenkung" value="0" min="0" max="15" step="0.5" autocomplete="off" data-input="updateAllDeckungen()" title="Sole-Temperaturabsenkung durch Entzugsauskühlung (typ. 3–6 K). 0 = ungestört. Wert aus EED/Fachplanung übernehmen."/>
+        <input class="inp-field" type="number" id="geo-dt-absenkung" value="4" min="0" max="15" step="0.5" autocomplete="off" data-input="updateAllDeckungen()" title="Sole-Temperaturabsenkung durch Entzugsauskühlung (typ. 3–6 K). Vorgabe 4 K (VDI 4640, mittlere Winterbedingung); 0 = ungestörtes Erdreich. Wert aus EED/Fachplanung übernehmen."/>
       </div>
     </div>
     <div style="font-size:9px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;margin:8px 0 6px;">Feldgeometrie manuell überschreiben</div>
@@ -3009,7 +3009,7 @@
       <label class="inp-label">Gleichzeitigkeitsfaktor</label>
       <select class="inp-field" id="netz-gzf-methode" data-change="document.getElementById('netz-gzf-manuell-wrap').style.display=this.value==='manuell'?'':'none'; recalcNetz()">
         <option value="keine">Keine (Σ Normheizlast)</option>
-        <option value="richtwert" selected>Richtwert (AGFW)</option>
+        <option value="richtwert" selected>Richtwert (Winter et al., AGFW)</option>
         <option value="manuell">Manuell</option>
       </select>
     </div>
@@ -3035,8 +3035,8 @@
       <input class="inp-field" type="number" id="netz-t-erdreich" value="4" step="1" data-change="recalcNetz()" title="Erdreichtemperatur in Verlegetiefe (0,8–1 m) im Winter, typ. 3–5 °C. Maßgeblich für die Spitzen-Wärmeverluste der erdverlegten KMR-Rohre – nicht die Lufttemperatur."/>
     </div>
     <div class="inp-group" style="grid-column:1/-1">
-      <label class="inp-label">U-Wert Rohr (W/m·K)</label>
-      <input class="inp-field" type="number" id="netz-u-wert" value="0.25" step="0.05" min="0.05" data-change="recalcNetz()" title="Wärmedurchgangskoeffizient KMR-Rohr, typ. 0.2–0.4"/>
+      <label class="inp-label">Verlustkoeffizient je Rohr bei DN 100 (W/m·K)</label>
+      <input class="inp-field" type="number" id="netz-u-wert" value="0.25" step="0.01" min="0.05" data-change="recalcNetz()" title="Wärmeverlustkoeffizient eines erdverlegten KMR-Rohrs DN 100 (typ. 0,18–0,30 je nach Dämmserie). Andere Nennweiten werden danach skaliert (kleiner DN → kleinerer Wert), Vor- und Rücklauf getrennt gerechnet."/>
     </div>
   </div>
   <div id="netz-loss-display" style="font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);margin-bottom:6px;padding:4px 6px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">Netzverluste: —</div>
@@ -3120,7 +3120,7 @@
         <div class="wirt-felder">
         <label class="wirt-feld"><span>Strom</span><input class="inp-field" type="number" id="wirt-p-strom" value="35" min="0" step="1" data-input="onEconomicManualInput();_onStrompreisChange('wirt-p-strom')"/></label>
         <label class="wirt-feld" title="Arbeitspreis für WP-/Stromkessel-Strom (Sondervertrag, reduzierte Netzentgelte, ggf. §14a EnWG). Leer = allgemeiner Strompreis. Großwärmepumpen zahlen typisch 18–25 ct statt Haushaltstarif."><span>WP-Strom</span><input class="inp-field" type="number" id="wirt-p-strom-wp" placeholder="= Strom" min="0" step="1" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
-        <label class="wirt-feld"><span>Erdgas</span><input class="inp-field" type="number" id="wirt-p-gas" value="10" min="0" step="0.5" data-input="onEconomicManualInput();_onGaspreisChange('wirt-p-gas')"/></label>
+        <label class="wirt-feld" title="Arbeitspreis Erdgas je kWh Brennwert (Hs), wie abgerechnet. Die Rechnung rechnet über Hs/Hi = 1,11 auf den Heizwert um, auf den sich die Kessel- und BHKW-Wirkungsgrade beziehen."><span>Erdgas (Hs)</span><input class="inp-field" type="number" id="wirt-p-gas" value="10" min="0" step="0.5" data-input="onEconomicManualInput();_onGaspreisChange('wirt-p-gas')"/></label>
         <label class="wirt-feld"><span>Heizöl</span><input class="inp-field" type="number" id="wirt-p-hko" value="10" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
         <label class="wirt-feld"><span>Fernwärme</span><input class="inp-field" type="number" id="wirt-p-fw" value="17" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
         <label class="wirt-feld"><span>Pellets</span><input class="inp-field" type="number" id="wirt-p-pk" value="8" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
@@ -3143,12 +3143,13 @@
         </label>
       </div>
       <div class="wirt-block">
-        <div class="wirt-block-titel">Barwertbetrachtung</div>
+        <div class="wirt-block-titel">Betrachtung nach VDI 2067</div>
         <div class="wirt-felder">
-          <label class="wirt-feld"><span>Zeitraum a</span><input class="inp-field" type="number" id="js-laufzeit" value="20" min="5" max="40" step="5" data-input="calcJahresscheiben()"/></label>
-          <label class="wirt-feld"><span>Preissteig. %/a</span><input class="inp-field" type="number" id="js-eskalation" value="2.0" min="0" max="8" step="0.5" data-input="calcJahresscheiben()"/></label>
+          <label class="wirt-feld" title="Betrachtungszeitraum T der Annuitätenmethode und der Barwertbetrachtung (Ersatzbeschaffungen und Restwerte darin)"><span>Zeitraum a</span><input class="inp-field" type="number" id="js-laufzeit" value="20" min="5" max="40" step="5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+          <label class="wirt-feld" title="Preisänderung der Energie- und CO₂-Kosten (bedarfsgebundene Kosten, Faktor b_V)"><span>Preissteig. Energie %/a</span><input class="inp-field" type="number" id="js-eskalation" value="2.0" min="0" max="8" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+          <label class="wirt-feld" title="Preisänderung von Instandsetzung, Wartung, Bedienen und Ersatzbeschaffungen (Faktoren b_IN, b_B, r_K)"><span>Preissteig. Betrieb %/a</span><input class="inp-field" type="number" id="wirt-r-betrieb" value="2.0" min="0" max="8" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
         </div>
-        <div class="wirt-hinweis">Diskontierung = Kapitalzins (<span id="js-diskont-sync"></span> %)</div>
+        <div class="wirt-hinweis">Annuitätenmethode mit Ersatzbeschaffung, Restwert und Preisänderung · Diskontierung = Kapitalzins (<span id="js-diskont-sync"></span> %)</div>
       </div>
       <div class="wirt-block" id="netz-bestand-options">
         <label class="wirt-check"><input type="checkbox" id="netz-sanierung-toggle" data-change="window._netzSanierung=this.checked;document.getElementById('netz-sanierung-detail').style.display=this.checked?'flex':'none';if(typeof calcWirtschaftPanel==='function')calcWirtschaftPanel();"/>

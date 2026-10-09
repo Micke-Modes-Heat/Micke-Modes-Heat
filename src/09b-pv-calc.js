@@ -366,6 +366,8 @@ export function calcStromPanel() {
   const bhkwEigenverbrauchErloes = bhkwEigenMwh * 1000 * (preisB + bhkwKwkEig);  // €/a
   // Globale Referenz für BHKW-Wirtschaftlichkeit
   window._bhkwStromErloes = bhkwEinspeisungserloes + bhkwEigenverbrauchErloes;
+  // davon KWK-Zuschlag (alle Stunden eines Jahres) — die Wirtschaftlichkeit begrenzt ihn nach KWKG
+  window._bhkwKwkZuschlagEur = bhkwEinspMwh * 1000 * bhkwKwkE + bhkwEigenMwh * 1000 * bhkwKwkEig;
   window._pvStromErloes = pvEinspeisungserloes + pvEigenverbrauchErloes;
   window._stromBilanz = { pvEigenMwh, pvEinspMwh, bhkwEigenMwh, bhkwEinspMwh,
     pvToWp, pvToSk, pvToQuartier, bhkwToWp, bhkwToSk, bhkwToQuartier,

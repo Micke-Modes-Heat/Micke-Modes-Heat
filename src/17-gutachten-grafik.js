@@ -3629,7 +3629,7 @@ const GG_FIGUREN = [
         z('Strombedarf', x => `${ggNum(x.stromMwh)} MWh`), z('Spitzenlasterzeuger Wärme', x => `${ggNum(x.spitzeMwh)} MWh`), { highlight: true, werte: ['Spitzenlasterzeuger Leistung', ...r.map(x => (x.restMaxKw < 1 ? 'entfällt' : `${ggNum(x.restMaxKw)} kW`))] },
       ];
       const nicht = ggLwwpSweep().filter(x => !x.erreichbar).map(x => `${x.ziel} %`);
-      cfg.fussnote = 'COP = Gütegrad × T_VL/(T_VL − T_Luft), höchstens 8; Leistung = Nennleistung × COP/COP(A2/W35); Vorlauf aus der Heizkurve der Wärme-Grundlagen'
+      cfg.fussnote = 'COP = Gütegrad × T_VL/(T_VL − T_Luft), höchstens 8; Leistung = Nennleistung (A2/W35) × (1 + 2 %/K · (T_Luft − 2) − 0,25 %/K · (T_VL − 35)), 30–110 %; Vorlauf aus der Heizkurve der Wärme-Grundlagen'
         + (nicht.length ? ` · nicht erreichbar (Mindest-COP): ${nicht.join(', ')}` : '');
       return `✓ ${r.length} Deckungsgrade.`;
     },
@@ -3643,7 +3643,20 @@ const GG_FIGUREN = [
     ausProjekt(cfg) {
       ggGebKopf(cfg);
       const ss = window.systemState, kw = ggLies(() => window.lwWp?.leistungKw, 0);
-      const r = kw > 0 ? abLwwpSimulation({ ...ggLwwpEingaben(), nennKw: kw, stunden: true }) : null;
+      // Wie der Text (4.2): Ergebnis der Einsatzplanung, solange die Luft-WP die einzige Wärmepumpe ist
+      // (Strom je Stunde gibt die Einsatzplanung nur für alle WP zusammen aus); sonst Einzelsimulation
+      const en = ggLies(() => window._dispatchEnergy, {}) || {};
+      const hourly = ggLies(() => window._dispatchHourly?.lwwp, null), elAlle = ggLies(() => window._wpElHourly, null);
+      const nurLwwp = !(en.geo?.elMwh > 0) && !(en.fg?.elMwh > 0);
+      let r;
+      if (kw > 0 && hourly?.length >= 8760 && elAlle?.length >= 8760 && nurLwwp && ss?.lastgangKw) {
+        const pd = ggPotenzialDaten().lwwp;
+        let restMax = 0;
+        for (let t = 0; t < 8760; t++) restMax = Math.max(restMax, ss.lastgangKw[t] - hourly[t]);
+        r = { wpH: hourly, elH: elAlle, deckungPct: pd.deckungPct, jaz: pd.jaz, restMaxKw: restMax };
+      } else {
+        r = kw > 0 ? abLwwpSimulation({ ...ggLwwpEingaben(), nennKw: kw, stunden: true }) : null;
+      }
       if (!r) { cfg.serien = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Luft-WP und Lastgang mit Außentemperatur nötig.'; }
       const idx = Array.from({ length: 8760 }, (_, i) => i).sort((a, b) => ss.lastgangKw[b] - ss.lastgangKw[a]);
       // Mittel über je 12 sortierte Stunden: 730 Stützstellen reichen für die Linie und halten das SVG klein

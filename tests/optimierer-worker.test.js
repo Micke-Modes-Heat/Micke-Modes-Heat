@@ -24,6 +24,7 @@ beforeAll(() => {
   loadScript('06c-dispatch-core.js');
   loadScript('lib/vdi-bedien.js');
   loadScript('lib/waermespeicher.js');
+  loadScript('lib/vdi2067.js');
   loadScript('07b-analysis-economics.js');
   loadScript('lib/pv-battery-core.js');
   loadScript('lib/battery-aging.js');

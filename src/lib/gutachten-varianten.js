@@ -291,7 +291,8 @@ export function vaSensitivitaet(V, preise, szenarien = VA_SZENARIEN) {
     const e = vaEnergie(v);
     // Fernwärme im fossilen Szenario: Fernwärme-Preisgleitklauseln sind überwiegend an Erdgas gekoppelt (Annahme)
     const kosten = { strom: e.strom * (preise.strom || 0) * 10,
-      fossil: e.gas * (preise.gas || 0) * 10 + e.oel * (preise.oel || 0) * 10 + (e.fw || 0) * (preise.fw || 0) * 10,
+      // e.gas: Erdgas auf Heizwert-Basis, Preis je kWh Brennwert → × Hs/Hi (1,11)
+      fossil: e.gas * 1.11 * (preise.gas || 0) * 10 + e.oel * (preise.oel || 0) * 10 + (e.fw || 0) * (preise.fw || 0) * 10,
       bio: e.pellets * (preise.pellets || 0) * 10 + e.hhs * (preise.hhs || 0) * 10 };
     const sz = szenarien.map(s => {
       const mehr = kosten.strom * s.strom / 100 + kosten.fossil * s.fossil / 100 + kosten.bio * s.bio / 100;

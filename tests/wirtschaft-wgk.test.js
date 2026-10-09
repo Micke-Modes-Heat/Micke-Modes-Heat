@@ -9,6 +9,7 @@ beforeAll(() => {
   loadScript('08-calc-engine.js');
   loadScript('lib/vdi-bedien.js');
   loadScript('lib/waermespeicher.js');
+  loadScript('lib/vdi2067.js');
   loadScript('07b-analysis-economics.js');
 });
 
@@ -368,16 +369,23 @@ describe('_calcBausteinJK / _calcBausteinJKDetail', () => {
     expect(jk).toBeLessThan(12000);
   });
 
-  it('Detail gibt einzelne Komponenten zurück', () => {
-    const d = _calcBausteinJKDetail(100000, { n: 20, inst: 1.0, wart: 1.5, bedien: 5 }, 3.5, 45);
+  const ohnePreisaenderung = { T: 20, rV: 0, rK: 0, rIN: 0, rB: 0 };
+  it('Detail gibt einzelne Komponenten zurück (ohne Preisänderung: Jahr-1-Werte)', () => {
+    const d = _calcBausteinJKDetail(100000, { n: 20, inst: 1.0, wart: 1.5, bedien: 5 }, 3.5, 45, ohnePreisaenderung);
     expect(d.annuitaet).toBeGreaterThan(0);
-    expect(d.instandhaltung).toBe(1000);
-    expect(d.wartung).toBe(1500);
-    expect(d.bedienung).toBe(225);
+    expect(d.instandhaltung).toBeCloseTo(1000, 6);
+    expect(d.wartung).toBeCloseTo(1500, 6);
+    expect(d.bedienung).toBeCloseTo(225, 6);
+  });
+
+  it('VDI 2067: Betriebskosten mit 2 %/a Preissteigerung über 20 a ≈ × 1,188', () => {
+    const d = _calcBausteinJKDetail(100000, { n: 20, inst: 1.0, wart: 1.5, bedien: 5 }, 3.5, 45, { T: 20, rV: 0.02, rK: 0.02, rIN: 0.02, rB: 0.02 });
+    expect(d.instandhaltung).toBeCloseTo(1188, 0);
+    expect(d.bedienung).toBeCloseTo(225 * 1.188, 0);
   });
 
   it('Invest 0 → nur Bedienkosten', () => {
-    const jk = _calcBausteinJK(0, { n: 20, inst: 1.0, wart: 1.5, bedien: 10 }, 3.5, 45);
-    expect(jk).toBe(450); // 10h × 45€/h
+    const jk = _calcBausteinJK(0, { n: 20, inst: 1.0, wart: 1.5, bedien: 10 }, 3.5, 45, ohnePreisaenderung);
+    expect(jk).toBeCloseTo(450, 6); // 10h × 45€/h
   });
 });

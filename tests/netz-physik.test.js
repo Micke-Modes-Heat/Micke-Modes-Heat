@@ -39,12 +39,15 @@ describe('getUWertForDN', () => {
     expect(getUWertForDN(100, 0.25)).toBeCloseTo(0.25, 4);
   });
 
-  it('kleiner DN → höherer U-Wert (schlechter isoliert)', () => {
-    expect(getUWertForDN(20, 0.25)).toBeGreaterThan(getUWertForDN(100, 0.25));
+  it('Verlustkoeffizient je Meter steigt mit dem Durchmesser (größere Oberfläche)', () => {
+    expect(getUWertForDN(20, 0.25)).toBeLessThan(getUWertForDN(100, 0.25));
+    expect(getUWertForDN(500, 0.25)).toBeGreaterThan(getUWertForDN(100, 0.25));
+    const dns = [20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300];
+    for (let i = 1; i < dns.length; i++) expect(getUWertForDN(dns[i], 0.25)).toBeGreaterThanOrEqual(getUWertForDN(dns[i - 1], 0.25));
   });
 
-  it('großer DN → niedrigerer U-Wert (besser isoliert)', () => {
-    expect(getUWertForDN(500, 0.25)).toBeLessThan(getUWertForDN(100, 0.25));
+  it('Zwischenwerte: nächstgelegene Nennweite', () => {
+    expect(getUWertForDN(110, 0.25)).toBeCloseTo(getUWertForDN(100, 0.25), 6);
   });
 
   it('Default baseU = 0.25 wenn nicht angegeben', () => {

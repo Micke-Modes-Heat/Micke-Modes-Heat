@@ -3247,6 +3247,7 @@ function _captureEconomicScenario() {
       pelletsCtKwh:n('wirt-p-pk'), hhsCtKwh:n('wirt-p-hhs'), co2EurT:n('wirt-p-co2'),
       co2Alle:!!document.getElementById('wirt-co2-alle')?.checked,
       kapitalzinsPct:n('wirt-zins'), lohnEurH:n('wirt-lohn'),
+      betrachtungA:n('js-laufzeit'), preisEnergiePct:n('js-eskalation'), preisBetriebPct:n('wirt-r-betrieb'),
       ...(window._wirtOhneNetz ? { nurErzeugung: true } : {}),
       ...(window._wirtPvWp ? { pvStromFuerWp: true } : {}),
     },
@@ -4223,6 +4224,7 @@ function _applyProjectData(project) {
         document.getElementById('ts-volumen').value = project.waermespeicher.volumen ?? 0;
         document.getElementById('ts-dt').value = project.waermespeicher.dt ?? 40;
         document.getElementById('ts-verlust').value = project.waermespeicher.verlust ?? 0.5;
+        window.tsVerlustGeladen?.();
         document.getElementById('ts-entlade-kw').value = project.waermespeicher.entladeKw ?? 200;
         document.getElementById('ts-lade-kw').value = project.waermespeicher.ladeKw ?? project.waermespeicher.entladeKw ?? 200;
         setThermSpeicherAktiv((project.waermespeicher.volumen ?? 0) > 0);
@@ -4313,7 +4315,7 @@ function _applyProjectData(project) {
       queueMicrotask(() => { window._wirtUmfangUiSync?.(); window._wirtPvWpUiSync?.(); });
       if (project.economicScenario?.values) {
         const es = project.economicScenario;
-        const ids = {stromCtKwh:'wirt-p-strom',wpStromCtKwh:'wirt-p-strom-wp',gasCtKwh:'wirt-p-gas',heizoelCtKwh:'wirt-p-hko',fernwaermeCtKwh:'wirt-p-fw',pelletsCtKwh:'wirt-p-pk',hhsCtKwh:'wirt-p-hhs',co2EurT:'wirt-p-co2',kapitalzinsPct:'wirt-zins',lohnEurH:'wirt-lohn'};
+        const ids = {stromCtKwh:'wirt-p-strom',wpStromCtKwh:'wirt-p-strom-wp',gasCtKwh:'wirt-p-gas',heizoelCtKwh:'wirt-p-hko',fernwaermeCtKwh:'wirt-p-fw',pelletsCtKwh:'wirt-p-pk',hhsCtKwh:'wirt-p-hhs',co2EurT:'wirt-p-co2',kapitalzinsPct:'wirt-zins',lohnEurH:'wirt-lohn',betrachtungA:'js-laufzeit',preisEnergiePct:'js-eskalation',preisBetriebPct:'wirt-r-betrieb'};
         const sel = document.getElementById('wirt-szenario'); if (sel) sel.value = es.scenarioId || 'manual';
         for (const [key, id] of Object.entries(ids)) {
           const el = document.getElementById(id); if (el && es.values[key] != null) el.value = es.values[key];

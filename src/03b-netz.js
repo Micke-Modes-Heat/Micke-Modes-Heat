@@ -1,5 +1,6 @@
 // ── 03b-netz.js — Netzplanung (Geothermie, Polygon-Zeichnen, Panel-Mgmt, OSM, Netzgraph, Strang-Report, Rohr-BOM) ──
 // ── Geothermie-Sondenfeld ────────────────────────────────────────────────────
+import { glfWinter } from './lib/gleichzeitigkeit.js';
 import { areaPolygon, gebaeude, globalYear, isDrawingTrasse, isExcluded, isPlacingLwWp, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 
 let netzVisible = true;
@@ -25,7 +26,7 @@ import { osmDachAusTags, osmQuerAzimut, osmDachGebaeude, osmDachZuordnen } from 
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
 import { areaEditMarkers, areaLatLngs, cacheVariantResults, currentMode, drawPoints, edgeKey, edgeWaypoints, fliessgewaesser, gasKessel, geoThermie, networkLocked, netzPruningMode, trassePoints, trasseSegments } from './01-globals-varianten.js';
-import { addEdgeMidHandle, getEdgePathPoints, strassenWegeAbPunkt, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getEdgeWaypoints, getKostenProM, getUWertForDN, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, removeEdgeWaypointMarkers, standardDNs } from './02a-netz-physik.js';
+import { addEdgeMidHandle, getEdgePathPoints, strassenWegeAbPunkt, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getEdgeWaypoints, getKostenProM, getUWertForDN, ROHRE_JE_TRASSE, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, removeEdgeWaypointMarkers, standardDNs } from './02a-netz-physik.js';
 import { OSM_SKIP_TYPES, addGebaeude, osmNutzung } from './02b-gebaeude.js';
 import { polygonCenter, redrawFliessgewaesser, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
@@ -3241,7 +3242,7 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
     const method = document.getElementById('netz-gzf-methode')?.value || 'richtwert';
     if (method === 'keine') return 1;
     if (method === 'manuell') return Math.max(0.1,Math.min(1,readNum('netz-gzf-manuell',0.6,0.1,1)));
-    return Math.max(0.45,1 / Math.pow(Math.max(1,count),0.15));
+    return glfWinter(count);   // lib/gleichzeitigkeit.js (Winter et al. 2001)
   };
   const scoreTree = edges => {
     const adjacency = new Map();
@@ -3296,7 +3297,7 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
       const sizedEdge = sized.get(id);
       const length = sizedEdge.edge.dist;
       investment += length * getKostenProM(sizedEdge.dn);
-      lossMWhPerYear += getUWertForDN(sizedEdge.dn,uBase) * length *
+      lossMWhPerYear += getUWertForDN(sizedEdge.dn,uBase) * ROHRE_JE_TRASSE * length *
         Math.max(0,meanPipeTemp - soilMean) / 1000 * 8.76;
       const upstream = parent.get(id);
       pathDp.set(id,(pathDp.get(upstream) || 0) +
@@ -3327,6 +3328,8 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
       const load = Math.max(1,loadById.get(id) || 0);
       if (stretch > 1.6) detourPenalty += Math.pow(stretch - 1.6,2) * load * 300;
       if (stretch > 2.5) detourPenalty += (stretch - 2.5) * load * 1500;
+      // Die Optimierung darf Umwege nicht über das Ausgangsnetz hinaus verlängern (mind. 30 % Spielraum)
+      if (stretch > umwegGrenze + 1e-9) detourPenalty += (stretch - umwegGrenze) * load * 1e6;
     });
     return {
       score:investment + operating + detourPenalty,
@@ -3335,7 +3338,9 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
   };
 
   let current = [...treeEdges];
+  let umwegGrenze = Infinity;
   const before = scoreTree(current);
+  umwegGrenze = Math.max(1.3, before.maxStretch || 1);
   // Eine gezeichnete Haupttrasse ist verbindlich. Die folgenden Varianten bauen den ganzen Baum neu
   // (kürzeste Wege, Zentralabgänge, Routenvarianten) und würden sie dabei verwerfen; mit Vorgabe
   // bleiben deshalb nur die lokalen Tausche, die Vorgabekanten nie entfernen.
@@ -6027,10 +6032,8 @@ function _recalcNetzIntern(){
   function _wGzf(nVerbraucher) {
     if (wGzfMethode === 'keine') return 1.0;
     if (wGzfMethode === 'manuell') return Math.max(0.1, Math.min(1.0, wGzfManuell));
-    // Richtwert Wärme: 1/n^0.15 (AGFW-Näherung, flacher als Strom,
-    // da Heizbedarf stark wetterkorreliert — bei Auslegungstemp. heizen fast alle)
-    if (nVerbraucher <= 1) return 1.0;
-    return Math.max(0.45, 1.0 / Math.pow(nVerbraucher, 0.15));
+    // Richtwert Wärme nach Winter et al. (2001), AGFW-üblich — lib/gleichzeitigkeit.js
+    return glfWinter(nVerbraucher);
   }
 
   const nodeMap = {};
@@ -6411,8 +6414,9 @@ function _recalcNetzIntern(){
   let totalLossKW = 0;
   window.netzEdges.forEach(e => {
     if (e.load > 0 && e.length > 0) {
-      // DN-abhängiger U-Wert (größere Rohre besser gedämmt)
-      const uWert = getUWertForDN(e.dn, uWertBase);
+      // Verlustkoeffizient je Rohr nach DN (steigt mit dem Durchmesser), Vor- und Rücklauf: 2 Rohre je Trasse;
+      // mit der mittleren Rohrtemperatur ist das gleich U·(T_VL − T_E) + U·(T_RL − T_E)
+      const uWert = getUWertForDN(e.dn, uWertBase) * ROHRE_JE_TRASSE;
       e.lossKW = uWert * e.length * deltaT / 1000;
       e.lossKW_annual = uWert * e.length * deltaTMittel / 1000;
       e.lossPerM = uWert * deltaT;
