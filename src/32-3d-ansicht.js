@@ -22,10 +22,11 @@ import {
 } from './lib/gebaeude-3d.js';
 import {
   d3dRahmen, d3dDachEbenen, d3dDachDreiecke, d3dModule, d3dSchattierung,
-  d3dEbeneAusPunkten, d3dPolygon3dDreiecke,
+  d3dEbeneAusPunkten, d3dPolygon3dDreiecke, d3dDachHoehe,
 } from './lib/dach-3d.js';
 import { d3dNetzLinien, d3dStationen, D3D_STATIONEN } from './lib/netz-3d.js';
 import { firstPeilungGrad } from './lib/gebaeude-geometrie.js';
+import { baumOverpassLaden, baeumeAusOverpass, baumDreiecke, BAUM_FARBEN } from './lib/baeume-3d.js';
 
 const D3D_MAPLIBRE_VERSION = '5.24.0';   // nur für den CDN-Fallback im Dev-Modus
 const D3D_NEIGUNG = 55;
@@ -33,12 +34,23 @@ const D3D_AUSWAHL = '#ff1493';           // wie die Auswahl auf der Arbeitskarte
 const D3D_DACHFARBE = '#a4553f';         // Ziegel — hebt die PV-Module ab
 const D3D_MODULFARBE = '#1f2d78';        // wie das Modulraster der Arbeitskarte
 const D3D_GLAS = 0.35;                   // Deckkraft bei „Gebäude durchsichtig"
+const D3D_DACH_MAX_HINDERNIS = 8;        // m Dachhöhe eines Nachbargebäudes ohne LoD2 (Verschattung)
+// Module nach Verschattung (Jahresfaktor, 40-baeume.js)
+const D3D_SCHATTEN = [
+  { ab: 0.95, farbe: '#43a047', label: 'Verschattung unter 5 %' },
+  { ab: 0.85, farbe: '#fdd835', label: '5–15 %' },
+  { ab: 0.70, farbe: '#fb8c00', label: '15–30 %' },
+  { ab: -1, farbe: '#e53935', label: 'über 30 %' },
+];
 
 /** @type {null | {el:HTMLElement, ml:any, ro:ResizeObserver|null, modus:string, faktor:number,
  *   sat:boolean, hoverId:any, popup:any, raf:number, daecher:string, module:boolean,
  *   schicht:any, stat:{daecher:number, module:number}}} */
 let _d3d = null;
 let _ladenPromise = null;
+// Bäume: Schalter und Overpass-Antwort überleben das Schließen der Ansicht (Sitzung)
+let _baumAn = false;
+let _baumCache = null;   // {sig, data}
 
 /* ── MapLibre nachladen ───────────────────────────────────────────────────── */
 
@@ -195,6 +207,59 @@ function d3dLod2Geometrie(g, rahmen, traufe) {
   return { dach, wand, ebeneBei };
 }
 
+/**
+ * Gebäude als 3D-Modell für Rechnungen außerhalb der Ansicht (Verschattung,
+ * 40-baeume.js) — dieselbe Geometrie, die die Ansicht zeichnet: Wand bis zur
+ * Traufe, Dach aus den PV-Angaben (ohne Angabe flach, wie „Dächer mit Angaben
+ * formen"), Module auf der Dachhaut bzw. aufgeständert.
+ * @param {any} g
+ * @param {number[]} [modulIdx] Indizes in getGebPvModules(g).modules, deren Lage gebraucht wird
+ * @returns {null | {ring:number[][], traufe:number, first:number, hoehe:number,
+ *   module:{idx:number, ecken:number[][]}[]}}  ring/ecken in [lng, lat(, z)];
+ *   hoehe = wirksame Höhe als Hindernis (Traufe + halbe Dachhöhe)
+ */
+export function d3dGebaeudeModell(g, modulIdx = []) {
+  const f = d3dFeatures([g]).features[0];
+  if (!f) return null;
+  const ringe = f.geometry.coordinates;
+  const ring = ringe[0].slice(0, -1);
+  let sx = 0, sy = 0;
+  for (const [x, y] of ring) { sx += x; sy += y; }
+  const rahmen = d3dRahmen(sx / ring.length, sy / ring.length);
+  const pts = ring.map(([lng, lat]) => rahmen.nachXY(lng, lat));
+  const traufe = f.properties.hoehe;
+  const echteForm = g.dachform || 'sattel';
+  const form = d3dHatDachangabe(g) && ringe.length === 1 ? echteForm : 'flach';
+  const lod2 = g.dachFlaechen?.length ? d3dLod2Geometrie(g, rahmen, traufe) : null;
+  const ebenen = lod2 ? [{ a: 0, b: 0, c: traufe }] : d3dDachEbenen(form, pts, {
+    azimut: d3dAzimut(g, ring), neigung: g.dachNeigung, traufe,
+    first: g.pvRidgeOverride ? rahmen.nachXY(g.pvRidgeOverride.lng, g.pvRidgeOverride.lat) : null,
+  });
+  let first = traufe;
+  if (lod2) { for (const t of lod2.dach) for (const q of t) first = Math.max(first, q[2]); }
+  else for (const [x, y] of [...pts, [0, 0]]) first = Math.max(first, d3dDachHoehe(ebenen, x, y));
+
+  const module = [];
+  if (modulIdx.length && typeof window.getGebPvModules === 'function') {
+    let res = null;
+    try { res = window.getGebPvModules(g); } catch (e) { void e; }
+    const opt = lod2 ? { ebenen, ebeneBei: lod2.ebeneBei, schraeg: false }
+      : { ebenen, schraeg: echteForm !== 'flach' && form !== 'flach' };
+    for (const idx of modulIdx) {
+      const m = res?.modules?.[idx];
+      if (!m) continue;
+      const q = d3dModule({ bbox: res.bbox, modules: [m] }, rahmen, opt)[0];
+      if (q) module.push({ idx, ecken: q.map(([x, y, z]) => [...rahmen.nachLL(x, y), z]) });
+    }
+  }
+  // Als Hindernis: Traufe + halbe Dachhöhe. Das Ebenenmodell legt ein Satteldach
+  // über den GANZEN Grundriss — bei großen, verwinkelten Gebäuden (Schulen,
+  // Institute) entstehen so Firste von 15–20 m, die es real nicht gibt (dort
+  // sind es Flügel mit eigenen Dächern). Ohne LoD2 daher höchstens 8 m Dachhöhe.
+  const dachH = lod2 ? first - traufe : Math.min(first - traufe, D3D_DACH_MAX_HINDERNIS);
+  return { ring, traufe, first, hoehe: traufe + dachH / 2, module };
+}
+
 let _farbCtx = null;
 /** CSS-Farbe → [r,g,b] 0…1 (über die Canvas-Normalisierung, versteht jedes Format). */
 function d3dRgb(css) {
@@ -242,6 +307,8 @@ function d3dSzeneBauen(daten) {
   const viereck = (rahmen, q, rgb) => { dreieck(rahmen, [q[0], q[1], q[2]], rgb); dreieck(rahmen, [q[0], q[2], q[3]], rgb); };
 
   const dachRgb = d3dRgb(D3D_DACHFARBE), modulRgb = d3dRgb(D3D_MODULFARBE), auswahlRgb = d3dRgb(D3D_AUSWAHL);
+  const schattenRgbs = D3D_SCHATTEN.map(k => d3dRgb(k.farbe));
+  const schattenRgb = f => schattenRgbs[Math.max(0, D3D_SCHATTEN.findIndex(k => f >= k.ab))];
   const nachGid = new Map(daten.features.map(f => [f.properties.gid, f]));
   for (const g of window.gebaeude || []) {
     const f = nachGid.get(g?.id);
@@ -284,11 +351,24 @@ function d3dSzeneBauen(daten) {
       try { res = window.getGebPvModules(g); } catch (e) { void e; }
       // Platziert wurde für die ECHTE Dachform (Schrägdach: auf der Dachhaut,
       // flach: aufgeständert) — so werden die Module auch dargestellt.
-      const quads = d3dModule(res, rahmen, lod2
+      const opt = lod2
         ? { ebenen, ebeneBei: lod2.ebeneBei, schraeg: false }
-        : { ebenen, schraeg: echteForm !== 'flach' && form !== 'flach' });
-      for (const q of quads) viereck(rahmen, q, modulRgb);
-      stat.module += quads.length;
+        : { ebenen, schraeg: echteForm !== 'flach' && form !== 'flach' };
+      // Nach Verschattung färben (40-baeume.js): Faktor je Modul, Modul für Modul
+      const schatten = _d3d.schatten && res?.modules && typeof window.pvVerschattungModulFaktoren === 'function'
+        ? window.pvVerschattungModulFaktoren(g) : null;
+      if (schatten) {
+        res.modules.forEach((m, i) => {
+          const q = d3dModule({ bbox: res.bbox, modules: [m] }, rahmen, opt)[0];
+          if (!q) return;
+          viereck(rahmen, q, schatten[i] != null ? schattenRgb(schatten[i]) : modulRgb);
+          stat.module++;
+        });
+      } else {
+        const quads = d3dModule(res, rahmen, opt);
+        for (const q of quads) viereck(rahmen, q, modulRgb);
+        stat.module += quads.length;
+      }
     }
   }
 
@@ -333,14 +413,17 @@ function d3dDachinfoText() {
   return `${s.daecher} Dächer geformt · ${s.module.toLocaleString('de-DE')} Module`;
 }
 
-/** Custom Layer: zeichnet die vorbereiteten Dreiecke (Position + Farbe je Ecke). */
-function d3dDachSchicht() {
+/**
+ * Custom Layer: zeichnet die vorbereiteten Dreiecke (Position + Farbe je Ecke).
+ * mitGlas: folgt „Gebäude durchsichtig" (Dächer/Module ja, Bäume nein).
+ */
+function d3dDachSchicht(id = 'd3d-daecher', mitGlas = true) {
   const VS = 'attribute vec3 a_pos; attribute vec3 a_col; uniform mat4 u_m; varying vec3 v_col;'
     + 'void main(){ v_col = a_col; gl_Position = u_m * vec4(a_pos, 1.0); }';
   const FS = 'precision mediump float; varying vec3 v_col; uniform float u_a;'
     + 'void main(){ gl_FragColor = vec4(v_col, u_a); }';
   return {
-    id: 'd3d-daecher', type: 'custom', renderingMode: '3d',
+    id, type: 'custom', renderingMode: '3d',
     gl: null, prog: null, buf: null, n: 0, ursprung: null, karte: null,
     onAdd(karte, gl) {
       this.karte = karte; this.gl = gl;
@@ -388,7 +471,7 @@ function d3dDachSchicht() {
       gl.vertexAttribPointer(this.aCol, 3, gl.FLOAT, false, 24, 12);
       // Durchsichtig: mischen und den Tiefenpuffer nicht beschreiben, damit
       // dahinterliegende Dächer/Leitungen durchscheinen
-      const a = _d3d?.glas ? D3D_GLAS : 1;
+      const a = mitGlas && _d3d?.glas ? D3D_GLAS : 1;
       gl.uniform1f(this.uA, a);
       gl.enable(gl.DEPTH_TEST);
       gl.depthFunc(gl.LEQUAL);
@@ -449,6 +532,155 @@ function d3dNetzAktualisieren() {
   if (info) info.textContent = d3dNetzinfoText();
 }
 
+/* ── Bäume ────────────────────────────────────────────────────────────────── */
+// Hat das Projekt Bäume (40-baeume.js, window.baumListe), zeigt die Ansicht
+// genau diese — dieselben, mit denen die Verschattung rechnet. Sonst eine reine
+// Vorschau aus OpenStreetMap (Overpass, nichts wird gespeichert). Geometrie aus
+// lib/baeume-3d.js, eigene WebGL-Ebene (ändert sich nicht mit updateViz, nur
+// mit der Überhöhung und über d3dBaeumeNeu).
+
+const D3D_BAUM_RAND = 150;     // m um die Gebäude
+const D3D_BAUM_MAX_SEITE = 3000;  // m — größere Bestände: nur der sichtbare Ausschnitt
+
+/** Ausschnitt für die Baumabfrage: alle Gebäude + Rand, sonst die aktuelle Ansicht. */
+function d3dBaumBbox() {
+  const g = d3dGrenzen(d3dDaten());
+  let w, s, e, n;
+  if (g) [[w, s], [e, n]] = g;
+  const mMitte = ((s ?? 0) + (n ?? 0)) / 2;
+  const kx = 111320 * Math.cos(mMitte * Math.PI / 180), ky = 111320;
+  const zuGross = g && ((e - w) * kx > D3D_BAUM_MAX_SEITE || (n - s) * ky > D3D_BAUM_MAX_SEITE);
+  if (!g || zuGross) {
+    const b = _d3d?.ml?.getBounds?.();
+    if (!b) return null;
+    const c = b.getCenter();
+    const hx = D3D_BAUM_MAX_SEITE / 2 / (111320 * Math.cos(c.lat * Math.PI / 180)), hy = D3D_BAUM_MAX_SEITE / 2 / ky;
+    return { w: Math.max(b.getWest(), c.lng - hx), e: Math.min(b.getEast(), c.lng + hx),
+             s: Math.max(b.getSouth(), c.lat - hy), n: Math.min(b.getNorth(), c.lat + hy) };
+  }
+  return { w: w - D3D_BAUM_RAND / kx, e: e + D3D_BAUM_RAND / kx, s: s - D3D_BAUM_RAND / ky, n: n + D3D_BAUM_RAND / ky };
+}
+
+/** Bäume des Projekts im Format von baeumeAusOverpass (oder null, wenn es keine gibt). */
+function d3dProjektBaeume() {
+  const liste = typeof window.baumListe === 'function' ? window.baumListe() : null;
+  if (!liste?.length) return null;
+  const bbox = { w: Infinity, s: Infinity, e: -Infinity, n: -Infinity };
+  const zahl = { einzel: 0, reihe: 0, wald: 0, obst: 0, eigen: 0 };
+  for (const b of liste) {
+    bbox.w = Math.min(bbox.w, b.lng); bbox.e = Math.max(bbox.e, b.lng);
+    bbox.s = Math.min(bbox.s, b.lat); bbox.n = Math.max(bbox.n, b.lat);
+    zahl[b.quelle === 'osm' && zahl[b.osmTyp] != null ? b.osmTyp : 'eigen']++;
+  }
+  return { baeume: liste, zahl, ausgeduennt: false, bbox, ausProjekt: true };
+}
+
+/** Haken aus 40-baeume.js: Projektbäume haben sich geändert. */
+export function d3dBaeumeNeu() {
+  if (!_d3d) return;
+  _d3d.baumErgebnis = null;
+  _d3d.baumStatus = '';
+  if (_baumAn) d3dBaeumeLaden();
+  else d3dBaumInfo();
+}
+
+async function d3dBaeumeLaden() {
+  const d3d = _d3d;
+  if (!d3d || d3d.baumStatus === 'laedt') return;
+  const projekt = d3dProjektBaeume();
+  if (projekt) {
+    d3d.baumErgebnis = projekt;
+    d3d.baumStatus = 'fertig';
+    d3dBaumSzeneSetzen();
+    d3dBaumInfo();
+    d3dLegende();
+    return;
+  }
+  const bbox = d3dBaumBbox();
+  if (!bbox) return;
+  const sig = [bbox.s, bbox.w, bbox.n, bbox.e].map(v => v.toFixed(4)).join(',');
+  let data = _baumCache?.sig === sig ? _baumCache.data : null;
+  if (!data) {
+    d3d.baumStatus = 'laedt';
+    d3dBaumInfo();
+    try {
+      data = await baumOverpassLaden(bbox);
+    } catch (e) {
+      if (_d3d !== d3d) return;
+      console.warn('3D-Ansicht: Bäume', e);
+      d3d.baumStatus = 'fehler';
+      d3dBaumInfo();
+      return;
+    }
+    _baumCache = { sig, data };
+    if (_d3d !== d3d) return;   // zwischenzeitlich geschlossen
+  }
+  // Gebäude bei jedem Laden neu ausnehmen (können sich seit der Abfrage geändert haben)
+  const ausschluss = d3dDaten().features.map(f => f.geometry?.coordinates?.[0]).filter(Boolean);
+  try {
+    d3d.baumErgebnis = { ...baeumeAusOverpass(data, { bbox, ausschluss }), bbox };
+    d3d.baumStatus = 'fertig';
+  } catch (e) {
+    console.warn('3D-Ansicht: Bäume', e);
+    d3d.baumStatus = 'fehler';
+  }
+  d3dBaumSzeneSetzen();
+  d3dBaumInfo();
+  d3dLegende();
+}
+
+/** Baum-Dreiecke in die eigene Ebene (relativ zur Ausschnittsmitte, Überhöhung wie Gebäude). */
+function d3dBaumSzeneSetzen() {
+  const schicht = _d3d?.baumSchicht;
+  const ml = window.maplibregl;
+  if (!schicht || !ml) return;
+  const erg = _baumAn ? _d3d.baumErgebnis : null;
+  if (!erg || !erg.baeume.length) { schicht.setzen(new Float32Array(0), null); return; }
+  const b = erg.bbox;
+  const ursprung = ml.MercatorCoordinate.fromLngLat([(b.w + b.e) / 2, (b.s + b.n) / 2], 0);
+  const faktor = _d3d.faktor;
+  const rgb = { laub: d3dRgb(BAUM_FARBEN.laub), nadel: d3dRgb(BAUM_FARBEN.nadel), obst: d3dRgb(BAUM_FARBEN.obst) };
+  const stammRgb = d3dRgb(BAUM_FARBEN.stamm);
+  const werte = [];
+  for (const baum of erg.baeume) {
+    const mc = ml.MercatorCoordinate.fromLngLat([baum.lng, baum.lat], 0);
+    const k = mc.meterInMercatorCoordinateUnits();
+    const dx = mc.x - ursprung.x, dy = mc.y - ursprung.y;
+    const { krone, stamm } = baumDreiecke(baum);
+    const farbe = (rgb[baum.art] || rgb.laub).map(c => Math.min(1, c * (baum.ton || 1)));
+    const ausgeben = (tris, f) => {
+      for (const t of tris) {
+        const s = d3dSchattierung(t);
+        // Mercator-y wächst nach Süden
+        for (const [x, y, z] of t) werte.push(dx + x * k, dy - y * k, z * faktor * k, f[0] * s, f[1] * s, f[2] * s);
+      }
+    };
+    ausgeben(stamm, stammRgb);
+    ausgeben(krone, farbe);
+  }
+  schicht.setzen(new Float32Array(werte), ursprung);
+}
+
+function d3dBaumInfoText() {
+  if (!_d3d || !_baumAn) return '';
+  if (_d3d.baumStatus === 'laedt') return 'Bäume werden aus OpenStreetMap geladen …';
+  if (_d3d.baumStatus === 'fehler') return '⚠ OpenStreetMap nicht erreichbar (offline?) — Haken neu setzen zum Wiederholen.';
+  const erg = _d3d.baumErgebnis;
+  if (!erg) return '';
+  if (!erg.baeume.length) return 'Im Umkreis sind in OSM keine Bäume erfasst.';
+  const z = erg.zahl;
+  const teile = [z.einzel && `${z.einzel} einzeln`, z.reihe && `${z.reihe} in Reihen`,
+    z.wald && `${z.wald.toLocaleString('de-DE')} Wald`, z.obst && `${z.obst} Streuobst`,
+    z.eigen && `${z.eigen} eigene`].filter(Boolean);
+  return `${erg.baeume.length.toLocaleString('de-DE')} Bäume ${erg.ausProjekt ? 'aus dem Projekt' : 'aus OSM, nur Vorschau'} (${teile.join(' · ')})`
+    + (erg.ausgeduennt ? ' · Flächen ausgedünnt' : '');
+}
+
+function d3dBaumInfo() {
+  const el = document.getElementById('d3d-bauminfo');
+  if (el) el.textContent = d3dBaumInfoText();
+}
+
 /* ── Oberfläche ───────────────────────────────────────────────────────────── */
 
 const BTN = 'flex:1;padding:4px 6px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);'
@@ -477,6 +709,8 @@ function d3dPanelHtml() {
   </select>
   <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11px;cursor:pointer;">
     <input type="checkbox" data-d3d="module" ${_d3d.module ? 'checked' : ''}>PV-Module (Dach &amp; Freifläche)</label>
+  <label style="display:flex;align-items:center;gap:6px;margin-top:3px;font-size:11px;cursor:pointer;" title="Module nach dem gerechneten Verschattungsfaktor ihrer Dachfläche färben (PV-Modus → Bäume &amp; Verschattung). Nicht gerechnete Dächer bleiben blau.">
+    <input type="checkbox" data-d3d="schatten" ${_d3d.schatten ? 'checked' : ''}>… nach Verschattung färben</label>
   <div id="d3d-dachinfo" style="font-size:10px;color:var(--muted);margin-top:3px;">${d3dDachinfoText()}</div>
   <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Netze</div>
   <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;" title="Farben wie auf der Karte (DN, Auslastung …); eine dort ausgeblendete Ebene fehlt auch hier">
@@ -486,6 +720,10 @@ function d3dPanelHtml() {
   <div id="d3d-netzinfo" style="font-size:10px;color:var(--muted);margin-top:3px;">${d3dNetzinfoText()}</div>
   <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin-top:5px;" title="Gebäude, Dächer und Module halbtransparent — zeigt die Leitungen, die unter den Gebäuden verlaufen">
     <input type="checkbox" data-d3d="glas" ${_d3d.glas ? 'checked' : ''}>Gebäude durchsichtig</label>
+  <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Umgebung</div>
+  <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;" title="Die Bäume des Projekts (PV-Modus → Bäume &amp; Verschattung). Ohne Projektbäume eine Vorschau aus OpenStreetMap im Umkreis von 150 m um die Gebäude — die wird nicht gespeichert.">
+    <input type="checkbox" data-d3d="baeume" ${_baumAn ? 'checked' : ''}>Bäume</label>
+  <div id="d3d-bauminfo" style="font-size:10px;color:var(--muted);margin-top:3px;">${d3dBaumInfoText()}</div>
   <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Ansicht</div>
   <div style="display:flex;gap:3px;">
     <button data-d3d="2d" style="${BTN}" title="Senkrecht von oben">2D</button>
@@ -529,7 +767,15 @@ function d3dLegende() {
     html += D3D_BAUJAHR_KLASSEN.map(k => zeile(k.farbe, k.label)).join('') + zeile(D3D_NEUTRAL, 'unbekannt');
   }
   if (_d3d.daecher !== 'aus') html += zeile(D3D_DACHFARBE, 'Dachfläche');
-  if (_d3d.module) html += zeile(D3D_MODULFARBE, 'PV-Module');
+  if (_d3d.module && !_d3d.schatten) html += zeile(D3D_MODULFARBE, 'PV-Module');
+  if (_d3d.module && _d3d.schatten) html += D3D_SCHATTEN.map(k => zeile(k.farbe, 'Modul: ' + k.label)).join('') + zeile(D3D_MODULFARBE, 'Modul: nicht gerechnet');
+  const bz = _baumAn && _d3d.baumErgebnis ? _d3d.baumErgebnis.baeume : null;
+  if (bz?.length) {
+    const arten = new Set(bz.map(b => b.art));
+    if (arten.has('laub')) html += zeile(BAUM_FARBEN.laub, 'Laubbaum');
+    if (arten.has('nadel')) html += zeile(BAUM_FARBEN.nadel, 'Nadelbaum');
+    if (arten.has('obst')) html += zeile(BAUM_FARBEN.obst, 'Obstbaum (Streuobst)');
+  }
   if (_d3d.netzW) html += zeile('#e53935', 'Wärmeleitung (Farbe wie Karte)');
   if (_d3d.netzS) html += zeile('#fdd835', 'Stromkabel, gestrichelt (Farbe wie Karte)');
   if (_d3d.netzS) html += zeile(D3D_STATIONEN.Trafo.farbe, 'Station (Trafo, Schaltanlage, NAP)');
@@ -608,6 +854,7 @@ export async function d3dOeffnen() {
     sat: !!(lm && window.esriTile && lm.hasLayer(window.esriTile)),
     daecher: 'angaben', module: true, schicht: null, stat: { daecher: 0, module: 0 },
     netzW: true, netzS: true, netzSig: '', netzTimer: 0, netzZahl: null, glas: false,
+    baumSchicht: null, baumStatus: '', baumErgebnis: null, schatten: false,
   };
   d3dPositionieren();
   if (typeof ResizeObserver === 'function') {
@@ -694,9 +941,13 @@ export async function d3dOeffnen() {
   const einrichten = () => {
     if (!_d3d || _d3d.ml !== karte || _d3d.schicht) return;
     try { karte.setLight({ anchor: 'map', position: [1.3, 210, 35], intensity: 0.45 }); } catch (e) { void e; }
+    // Bäume vor den Dächern: undurchsichtig zuerst, dann die ggf. durchsichtigen Dächer
+    _d3d.baumSchicht = d3dDachSchicht('d3d-baeume', false);
+    karte.addLayer(_d3d.baumSchicht);
     _d3d.schicht = d3dDachSchicht();
     karte.addLayer(_d3d.schicht);
     d3dAnwenden();
+    if (_baumAn) d3dBaeumeLaden();
   };
   if (karte.isStyleLoaded()) einrichten(); else karte.once('style.load', einrichten);
   karte.on('load', () => {
@@ -802,6 +1053,7 @@ function d3dAnwenden() {
   ml.setPaintProperty('d3d-geb', 'fill-extrusion-opacity', _d3d.glas ? D3D_GLAS : 0.93);
   ml.setPaintProperty('d3d-geist', 'fill-extrusion-height', h);
   d3dSzeneSetzen();   // Dächer/Module: Farbe der Giebel und Überhöhung hängen mit dran
+  d3dBaumSzeneSetzen();
   d3dNetzAktualisieren();
   d3dLegende();
 }
@@ -864,7 +1116,15 @@ function d3dEingabeImPanel(ev) {
   if (t.dataset.d3d === 'modus') { _d3d.modus = t.value; d3dAnwenden(); }
   if (t.dataset.d3d === 'daecher') { _d3d.daecher = t.value; d3dAnwenden(); }
   if (t.dataset.d3d === 'module' && ev.type === 'change') { _d3d.module = !!t.checked; d3dAnwenden(); }
+  if (t.dataset.d3d === 'schatten' && ev.type === 'change') { _d3d.schatten = !!t.checked; if (_d3d.schatten) _d3d.module = true; d3dAnwenden(); }
   if (t.dataset.d3d === 'glas' && ev.type === 'change') { _d3d.glas = !!t.checked; d3dAnwenden(); }
+  if (t.dataset.d3d === 'baeume' && ev.type === 'change') {
+    _baumAn = !!t.checked;
+    if (_baumAn && (!_d3d.baumErgebnis || _d3d.baumStatus === 'fehler')) d3dBaeumeLaden();
+    d3dBaumSzeneSetzen();
+    d3dBaumInfo();
+    d3dLegende();
+  }
   if ((t.dataset.d3d === 'netzW' || t.dataset.d3d === 'netzS') && ev.type === 'change') {
     _d3d[t.dataset.d3d] = !!t.checked;
     d3dNetzAktualisieren();
@@ -882,6 +1142,7 @@ function d3dEingabeImPanel(ev) {
 // nicht auf die Export-Spiegelung in main.js verlassen).
 window.d3dUmschalten = d3dUmschalten;
 window.d3dNachViz = d3dNachViz;
+window.d3dBaeumeNeu = d3dBaeumeNeu;
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', d3dKartenknopf, { once: true });

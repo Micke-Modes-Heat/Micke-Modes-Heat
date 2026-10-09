@@ -345,8 +345,15 @@ export function getPvKorrFaktor(g) {
   return Math.round(azFak * tFak * 100) / 100;
 }
 
-// kWp mit Ertragskorrekturfaktor
+// kWp mit Ertragskorrekturfaktor — und, wenn eingeschaltet, mit dem Verschattungs-
+// faktor der aktuellen Belegung (40-baeume.js, über window: 40 importiert dieses Modul)
 export function calcGebKwpKorr(g) {
+  const kwp = _calcGebKwpKorrOhneSchatten(g);
+  const vs = typeof window.pvVerschattungFaktor === 'function' ? window.pvVerschattungFaktor(g) : null;
+  return vs != null ? kwp * vs : kwp;
+}
+
+function _calcGebKwpKorrOhneSchatten(g) {
   // Belegungen mit eigener Ausrichtung (LoD2-Dachflächen): Ertragsfaktor je Fläche,
   // gewichtet nach Modulanzahl.
   if (g.pvModus === 'flaechen' && _hasBelegung(g)) {
@@ -1809,7 +1816,7 @@ function _computeGebPvModules(g) {
 
 // Signatur für den Platzierungs-Cache: Geometrie + alle placement-relevanten Parameter
 // (Flachdach: GCR/Ausrichtung · Schrägdach: Dachform/Neigung/Azimut/Belegungsgrad) + Modulmaße.
-function _gebPvSig(g) {
+export function _gebPvSig(g) {
   const b = document.getElementById('pv-modul-breite')?.value;
   const l = document.getElementById('pv-modul-laenge')?.value;
   const fls = (g.pvFlaechen || []).map(f => `${f.id}:${f.typ}:${Math.round(f.flaeche || 0)}:${f.azimut ?? ''}:${f.neigung ?? ''}`).join(',');
@@ -3341,6 +3348,8 @@ export function _buildProjectData() {
       ...(g.dachLod2 ? { dachLod2: g.dachLod2 } : {}),
       pvModus: g.pvModus || 'flaechen', pvFlGcr: g.pvFlGcr ?? null, pvFlAusrichtung: g.pvFlAusrichtung || 'sued',
       pvFlBelegung: g.pvFlBelegung ?? null, pvBaujahr: g.pvBaujahr ?? null,
+      // Verschattung je Belegungsstand (40-baeume.js)
+      ...(g.pvVerschattung ? { pvVerschattung: g.pvVerschattung } : {}),
       notstrom: g.notstrom || null,
       stationSteckbrief: g.stationSteckbrief || null,
       pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ..._pvFlZusatz(f) })),
@@ -3396,6 +3405,8 @@ export function _buildProjectData() {
     pvAnalyse: typeof window.pvCaptureState === 'function' ? window.pvCaptureState() : null,
     // PV-Belegungsstände (38): benannte Fassungen der Dachbelegung (Potenzial, Auslegungen der PV-Analyse)
     pvBelegungsStaende: typeof window.pvbsCapture === 'function' ? window.pvbsCapture() : null,
+    // Bäume und Verschattungsschalter (40-baeume.js)
+    baeume: typeof window.baumCapture === 'function' ? window.baumCapture() : null,
     // Blackout-Modus (26): Projekteinstellungen; die Notstromklassen liegen an den Gebäuden
     blackout: typeof window.blackoutCaptureState === 'function' ? window.blackoutCaptureState() : null,
     // Resilienz-Abfrage (27): Metadaten und die eingelesene, ausgefüllte Abfrage
@@ -3673,7 +3684,7 @@ function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
     'stromProfil','pvAktiv','pvDachanteil','zustand','dachform','dachAzimut',
     'dachNeigung','dachAutoAzimut','dachQuelle','pvRidgeOverride','pvModus','pvFlGcr',
     'pvFlAusrichtung','pvFlBelegung','pvBaujahr','notstrom','stationSteckbrief',
-    'dachFlaechen','dachLod2',
+    'dachFlaechen','dachLod2','pvVerschattung',
   ];
   fields.forEach(field => {
     if (source[field] !== undefined) target[field] = structuredClone(source[field]);
@@ -3953,6 +3964,8 @@ function _applyProjectData(project) {
             newG.pvFlGcr        = g.pvFlGcr ?? null;
             newG.pvFlAusrichtung = g.pvFlAusrichtung || 'sued';
             newG.pvFlBelegung   = g.pvFlBelegung ?? null;
+            // Verschattung je Belegungsstand (40-baeume.js)
+            if (g.pvVerschattung && typeof g.pvVerschattung === 'object') newG.pvVerschattung = g.pvVerschattung;
             // Notstromklasse (26-blackout-modus.js)
             if (g.notstrom) newG.notstrom = normalisiereNotstrom(g.notstrom);
             // Stations-Steckbrief (34-stations-steckbrief.js)
@@ -4226,6 +4239,8 @@ function _applyProjectData(project) {
       if (typeof window.sgNaRestoreNapGrenzen === 'function') window.sgNaRestoreNapGrenzen(project.napGrenzen || null);
       // Belegungsstände vor der PV-Analyse — deren Potenzial und Auslegungen verweisen darauf
       if (typeof window.pvbsRestore === 'function') window.pvbsRestore(project.pvBelegungsStaende || null);
+      // Bäume + Verschattungsschalter vor der PV-Analyse — der Schalter wirkt auf calcGebKwpKorr
+      if (typeof window.baumRestore === 'function') window.baumRestore(project.baeume || null);
       if (typeof window.pvRestoreState === 'function') window.pvRestoreState(project.pvAnalyse || null);
       if (typeof window.blackoutRestoreState === 'function') window.blackoutRestoreState(project.blackout || null);
       if (typeof window.raRestoreState === 'function') window.raRestoreState(project.resilienzAbfrage || null);

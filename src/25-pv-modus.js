@@ -1135,6 +1135,7 @@ function _aktivBlock(g) {
         : `<span>Fläche</span><span style="font-weight:600;">${basis.toFixed(1)} kWp</span>`}
       <span style="font-weight:600;">= PV</span><span style="color:${GELB};font-weight:600;">${kwp.toFixed(1)} kWp</span>
     </div>` : ''}
+    ${/* Verschattung durch Bäume und Nachbargebäude (40-baeume.js) */ window.baumVerschattungZeileHtml?.(g) || ''}
     ${/* Landesrechtliche PV-Pflicht dieses Dachs (09e, über window — siehe dort). */ ''}
     ${window.pvPflichtBadgeHtml?.(g.id) || ''}`;
 }
@@ -1267,6 +1268,7 @@ function _html() {
            </div>`}
       ${window.pvabBlockHtml?.() || ''}
       ${window.pvbsBlockHtml?.() || ''}
+      ${window.baumBlockHtml?.() || ''}
       ${window.pvAnschlussHinweisHtml?.() || ''}
       <div style="margin-top:8px;">${_aktivBlock(g)}</div>
       ${_vorgabeBlock()}
