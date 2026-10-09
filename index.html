@@ -2253,6 +2253,8 @@
         <span style="color:#8bc34a;">■</span> 40 <span style="color:#2e7d32;">■</span> 35 dB(A)
       </div>
       <label class="lwwp-schall-geb" title="Gebäude schirmen den Schall ab (Beugung nach DIN ISO 9613-2) und reflektieren ihn an Fassaden nahe der Außengeräte. Ausschalten zeigt die Freifeldausbreitung."><input type="checkbox" id="lwwp-schall-gebaeude" checked data-change="lwWpMitGebaeudenSetzen(this.checked)"/> Gebäude berücksichtigen (Abschirmung, Reflexion)</label>
+      <label class="lwwp-gebiet" id="lwwp-spektrum-wrap" title="A-bewertete Schallleistung je Oktave 63 Hz, 125 Hz … 8 kHz (8 Werte, absolut oder relativ, getrennt durch Leerzeichen oder Semikolon) nach Herstellerangabe. Es zählt nur die Form des Spektrums, die Gesamt-Schallleistung bleibt. Leer = typisches Spektrum von Außengeräten mit Axialventilatoren."><span>Oktavspektrum</span>
+        <input class="inp-field" type="text" id="lwwp-spektrum" placeholder="typisch · 63 Hz … 8 kHz in dB(A)" data-change="lwWpSpektrumSetzen(this.value)"/></label>
       <div class="lwwp-schall-hinweis">Überschlägig nach DIN ISO 9613-2 ohne Bodendämpfung (Schallschutz an den Geräten als Einfügungsdämpfung), <span id="lwwp-schall-modell">mit Abschirmung durch Gebäude</span>.
         Zuschläge für Ton- oder Impulshaltigkeit sind nicht enthalten — ersetzt kein Schallgutachten.</div>
     </div>

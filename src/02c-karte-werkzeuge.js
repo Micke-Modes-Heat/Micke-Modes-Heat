@@ -2391,6 +2391,18 @@ export function lwWpMitGebaeudenSetzen(an) {
   updateLwWpDisplay();
   redrawLwWp();
 }
+/** Oktavspektrum der Außengeräte (8 Werte 63 Hz – 8 kHz in dB(A), absolut oder relativ); leer = typisches Spektrum. */
+export function lwWpSpektrumSetzen(text) {
+  if (!window.lwWp) return;
+  const werte = String(text || '').trim().split(/[;\s]+/).filter(Boolean).map(v => Number(v.replace(',', '.')));
+  if (werte.length === 8 && werte.every(Number.isFinite)) window.lwWp.spektrum = werte;
+  else {
+    delete window.lwWp.spektrum;
+    if (String(text || '').trim()) showHint('Oktavspektrum: bitte 8 Werte (63 Hz … 8 kHz) in dB(A) eingeben, getrennt durch Leerzeichen oder Semikolon. Es gilt das typische Spektrum.', 6000);
+  }
+  updateLwWpDisplay();
+  redrawLwWp();
+}
 // Lokale Koordinaten (m) relativ zur Mitte der Aufstellfläche
 function _lwWpLokal() {
   const lat0 = window.lwWp.lat, lng0 = window.lwWp.lng;
@@ -2421,9 +2433,10 @@ export function lwWpSchallSzene() {
   const zuLokal = _lwWpLokal();
   const gebs = lwWpMitGebaeuden() ? _lwWpGebaeudeImBestand() : [];
   const hind = gebs.map(g => hindernis(g.id, g.polygon.map(zuLokal), _gebHoeheM(g)));
-  const schluessel = JSON.stringify([window.lwWp.lat, window.lwWp.lng, hs, quellen, hind.map(h => [h.id, h.h, h.box])]);
+  const spektrum = window.lwWp.spektrum || null;
+  const schluessel = JSON.stringify([window.lwWp.lat, window.lwWp.lng, hs, quellen, spektrum, hind.map(h => [h.id, h.h, h.box])]);
   if (_lwWpSzeneCache?.schluessel === schluessel) return _lwWpSzeneCache.sz;
-  const sz = schallSzene(quellen, hind, hs);
+  const sz = schallSzene(quellen, hind, hs, spektrum);
   _lwWpSzeneCache = { schluessel, sz, iso: null };
   return sz;
 }
@@ -2516,7 +2529,7 @@ export function togglePlaceLwWp() {
 export function placeLwWpAt(latlng) {
   const leistung = parseFloat(document.getElementById('lwwp-leistung').value) || 12;
   const lwa = parseFloat(document.getElementById('lwwp-lwa').value) || 80;
-  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible, ...(window.lwWp?.aufstellung ? { aufstellung: window.lwWp.aufstellung } : {}), ...(window.lwWp?.schallschutz ? { schallschutz: window.lwWp.schallschutz } : {}), ...(window.lwWp?.ohneGebaeude ? { ohneGebaeude: true } : {}) };
+  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible, ...(window.lwWp?.aufstellung ? { aufstellung: window.lwWp.aufstellung } : {}), ...(window.lwWp?.schallschutz ? { schallschutz: window.lwWp.schallschutz } : {}), ...(window.lwWp?.ohneGebaeude ? { ohneGebaeude: true } : {}), ...(window.lwWp?.spektrum ? { spektrum: window.lwWp.spektrum } : {}) };
   document.getElementById('lwwp-man-laenge').value = '';
   document.getElementById('lwwp-man-breite').value = '';
   window.isPlacingLwWp = false;
@@ -2676,8 +2689,12 @@ function _lwWpSchallAnzeigen(auf) {
   if (cbGeb) cbGeb.checked = mitGeb;
   const hinweis = document.getElementById('lwwp-schall-modell');
   if (hinweis) hinweis.textContent = mitGeb
-    ? 'mit Abschirmung durch Gebäude (Beugung über Dach und seitlich, Höhe aus LoD2 bzw. Geschosse × 3 m) und Reflexion an Fassaden nahe der Geräte; Isophonen in 4 m Höhe, an den Gebäuden lautester Fassadenpunkt über alle Geschosse'
-    : 'ohne Abschirmung durch Gebäude, Pegel am nächsten Fassadenpunkt';
+    ? `in Oktavbändern (${window.lwWp.spektrum ? 'Spektrum nach Angabe' : 'typisches Spektrum von Außengeräten mit Axialventilatoren'}) mit Abschirmung durch Gebäude (Beugung über Dach und seitlich, Höhe aus LoD2 bzw. Geschosse × 3 m) und Reflexion an Fassaden nahe der Geräte; Isophonen in 4 m Höhe, an den Gebäuden lautester Fassadenpunkt über alle Geschosse`
+    : 'ohne Abschirmung durch Gebäude (Einzahlwert), Pegel am nächsten Fassadenpunkt';
+  const spEl = document.getElementById('lwwp-spektrum');
+  if (spEl && document.activeElement !== spEl) spEl.value = window.lwWp.spektrum ? window.lwWp.spektrum.map(v => String(v).replace('.', ',')).join(' ') : '';
+  const spWrap = document.getElementById('lwwp-spektrum-wrap');
+  if (spWrap) spWrap.style.display = mitGeb ? '' : 'none';
   const sel = document.getElementById('lwwp-gebiet');
   if (sel) {
     if (!sel.options.length) sel.innerHTML = PT_TA_LAERM.map(([name, tag, nacht]) => `<option value="${escHtml(name)}">${escHtml(name)} (${tag}/${nacht})</option>`).join('');

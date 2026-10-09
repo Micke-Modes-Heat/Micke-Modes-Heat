@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hindernis, streckeImGrundriss, abschirmung, beugungsDaempfung, spiegelquellen, reflexionGueltig, schallSzene, pegel3d, isophonen3d, immissionsort3d } from '../src/lib/schall-hindernisse.js';
+import { hindernis, spektrumNormiert, abschirmungOktaven, OKTAVEN, streckeImGrundriss, abschirmung, beugungsDaempfung, spiegelquellen, reflexionGueltig, schallSzene, pegel3d, isophonen3d, immissionsort3d } from '../src/lib/schall-hindernisse.js';
 import { pegelAm, isophonRadius } from '../src/lib/wp-schall.js';
 
 const rechteck = (x0, y0, x1, y1) => [{ ost: x0, nord: y0 }, { ost: x1, nord: y0 }, { ost: x1, nord: y1 }, { ost: x0, nord: y1 }];
@@ -56,7 +56,9 @@ describe('Gebäude als Schallhindernisse', () => {
   it('Pegel: ohne Gebäude wie bisher; Wand hinter der Quelle bis +3 dB davor, Schatten dahinter', () => {
     const q = [{ ost: 0, nord: 0, lwa: 90 }];
     const frei = schallSzene(q, [], 2);
-    expect(pegel3d(frei, 0, -40, 4).pegel).toBeCloseTo(pegelAm(q, 0, -40), 6);
+    // Oktavbänder: im Freifeld wie die Einzahlrechnung (nur die Luftabsorption ist je Oktave verschieden)
+    expect(pegel3d(frei, 0, -40, 4).pegel).toBeCloseTo(pegelAm(q, 0, -40), 0);
+    expect(Math.abs(pegel3d(frei, 0, -10, 4).pegel - pegelAm(q, 0, -10))).toBeLessThan(0.05);
     const sz = schallSzene(q, [hindernis(1, rechteck(-20, 5, 20, 15), 8)], 2);
     const vorn = pegel3d(sz, 0, -40, 4);
     // Spiegelquelle 50 m statt 40 m entfernt, ρ = 0,8: −2,9 dB gegenüber direkt → +1,8 dB
@@ -88,5 +90,25 @@ describe('Gebäude als Schallhindernisse', () => {
     // Quelle auf dem Dach eines Gebäudes: dieses Gebäude schirmt nicht ab
     const dach = schallSzene([{ ost: 0, nord: 0, lwa: 90 }], [hindernis(9, rechteck(-5, -5, 5, 5), 10)], 12);
     expect(dach.ohne.has(9)).toBe(true);
+  });
+
+  it('Oktavbänder: tiefe Frequenzen werden weniger abgeschirmt, tieffrequentes Spektrum ist hinter Gebäuden lauter', () => {
+    const h = [hindernis(1, rechteck(9.5, -500, 10.5, 500), 5)];
+    const a = abschirmungOktaven(h, 0, 0, 2, 50, 0, 2);
+    expect(a).toHaveLength(OKTAVEN.length);
+    for (let b = 1; b < a.length; b++) expect(a[b]).toBeGreaterThanOrEqual(a[b - 1]);
+    expect(a[0]).toBeLessThan(a[3] - 5);
+    const q = [{ ost: 0, nord: 0, lwa: 90 }];
+    const tief = schallSzene(q, h, 2, [0, 0, -10, -20, -30, -40, -50, -60]);
+    const hoch = schallSzene(q, h, 2, [-60, -50, -40, -30, -20, -10, 0, 0]);
+    const lt = pegel3d(tief, 50, 0, 2), lh = pegel3d(hoch, 50, 0, 2);
+    expect(lt.frei - lt.pegel).toBeLessThan(lh.frei - lh.pegel);
+  });
+
+  it('Spektrum normieren: Summe 0 dB, ungültige Angaben → null', () => {
+    const n = spektrumNormiert([80, 80, 80, 80, 80, 80, 80, 80]);
+    expect(n[0]).toBeCloseTo(-10 * Math.log10(8), 6);
+    expect(spektrumNormiert([1, 2, 3])).toBeNull();
+    expect(spektrumNormiert([1, 2, 3, 4, 5, 6, 7, 'x'])).toBeNull();
   });
 });

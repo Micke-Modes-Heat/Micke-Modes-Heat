@@ -1,17 +1,38 @@
 // ── lib/schall-hindernisse.js — Gebäude als Schallhindernisse (DOM-frei) ──
 // Erweiterung der Ausbreitungsrechnung in lib/wp-schall.js um Abschirmung und Reflexion an Gebäuden, in Anlehnung
-// an DIN ISO 9613-2 (A-bewertet, Einzahlrechnung bei 500 Hz):
+// an DIN ISO 9613-2, gerechnet in Oktavbändern 63 Hz – 8 kHz und A-bewertet summiert:
+// - Quelle: Schallleistung je Oktave aus L_WA und einem Spektrum (typisch für Außengeräte mit Axialventilatoren
+//   oder Herstellerangabe), Luftabsorption je Oktave (ISO 9613-2 Tab. 2, 10 °C / 70 % r. F.).
 // - Abschirmung: Beugung über das Dach (vertikale Schnittebene, „Gummiband“ über alle Gebäude im Weg) und seitlich
 //   um die Gebäude herum (horizontal, Hülle der Grundrisse im Weg); die drei Wege werden energetisch addiert.
-//   D_z = 10 lg(3 + 20/λ · C3 · z · K_met), höchstens 20 dB (einfache) bzw. 25 dB (mehrfache Beugung); dazu die
-//   zusätzliche Ausbreitungsdämpfung auf dem längeren Umweg (wichtig für die seitlichen Wege um lange Gebäude).
+//   D_z = 10 lg(3 + 20/λ · C3 · z · K_met) je Oktave, höchstens 20 dB (einfache) bzw. 25 dB (mehrfache Beugung);
+//   dazu die zusätzliche Ausbreitungsdämpfung auf dem längeren Umweg. Tiefe Frequenzen beugen stärker um die
+//   Gebäude — die Abschirmung fällt dort geringer aus.
 // - Reflexion: Spiegelquellen an Fassaden in Quellnähe (erste Ordnung), Reflexionsverlust 1 dB (ρ = 0,8).
 // Gebäudehöhe: Traufhöhe (konservativ, das Dach schirmt zusätzlich ab). Koordinaten in m (ost, nord).
 
-export const LAMBDA_M = 0.68;            // Wellenlänge bei 500 Hz
+export const LAMBDA_M = 0.68;            // Wellenlänge bei 500 Hz (Einzahlwert)
 export const DZ_MAX_EINFACH = 20, DZ_MAX_MEHRFACH = 25;
 export const REFLEXION_DB = -1;          // ρ = 0,8: Fassade mit Fenstern und kleinen Anbauten
 export const REFLEXION_RADIUS_M = 25;    // Fassaden bis zu diesem Abstand von einer Quelle werfen Spiegelquellen
+
+/** Oktavmittenfrequenzen in Hz. */
+export const OKTAVEN = Object.freeze([63, 125, 250, 500, 1000, 2000, 4000, 8000]);
+const LAMBDAS = OKTAVEN.map(f => 340 / f);
+/** Luftabsorption je Oktave in dB/km (ISO 9613-2 Tab. 2, 10 °C, 70 % r. F.). */
+export const LUFT_DB_JE_KM = Object.freeze([0.1, 0.4, 1.0, 1.9, 3.7, 9.7, 32.8, 117]);
+/**
+ * Typisches A-bewertetes Spektrum großer Luft-Wasser-Außengeräte mit Axialventilatoren, relativ (dB): Schwerpunkt
+ * 250 Hz – 1 kHz, deutlicher tieffrequenter Anteil. Annahme, wenn keine Herstellerangabe vorliegt.
+ */
+export const SPEKTRUM_LWWP_TYPISCH = Object.freeze([-17, -10, -6, -4, -5, -9, -15, -23]);
+
+/** Spektrum (8 A-bewertete Oktavpegel, absolut oder relativ) auf 0 dB Summe normiert; null bei ungültiger Angabe. */
+export function spektrumNormiert(sp) {
+  if (!Array.isArray(sp) || sp.length !== 8 || !sp.every(v => Number.isFinite(Number(v)))) return null;
+  const s = 10 * Math.log10(sp.reduce((a, v) => a + 10 ** (Number(v) / 10), 0));
+  return sp.map(v => Number(v) - s);
+}
 
 import { schallPegel, pegelSumme } from './wp-schall.js';
 
@@ -70,11 +91,11 @@ function gummiband(punkte) {
 }
 
 /** D_z eines Beugungswegs: z Umweg, e Abstand erste–letzte Beugungskante, mehrfach, dss/dsr/d für K_met. */
-export function beugungsDaempfung(z, e, mehrfach, dss, dsr, d, mitKmet = true) {
+export function beugungsDaempfung(z, e, mehrfach, dss, dsr, d, mitKmet = true, lambda = LAMBDA_M) {
   if (!(z > 0)) return 0;
-  const c3 = mehrfach && e > 0 ? (1 + (5 * LAMBDA_M / e) ** 2) / (1 / 3 + (5 * LAMBDA_M / e) ** 2) : 1;
+  const c3 = mehrfach && e > 0 ? (1 + (5 * lambda / e) ** 2) / (1 / 3 + (5 * lambda / e) ** 2) : 1;
   const kmet = mitKmet ? Math.exp(-(1 / 2000) * Math.sqrt(dss * dsr * d / (2 * z))) : 1;
-  const dz = 10 * Math.log10(3 + (20 / LAMBDA_M) * c3 * z * kmet);
+  const dz = 10 * Math.log10(3 + (20 / lambda) * c3 * z * kmet);
   return Math.max(0, Math.min(mehrfach ? DZ_MAX_MEHRFACH : DZ_MAX_EINFACH, dz));
 }
 
@@ -96,14 +117,13 @@ function huelle(pts) {
 }
 
 /**
- * Abschirmung zwischen Quelle S (sx, sy, hs) und Empfänger R (rx, ry, hr) durch die Hindernisse.
- * ohne: Set von Hindernis-IDs, die nicht zählen (Gebäude, in dem Quelle bzw. Empfänger liegt).
- * Ergebnis: { abar (dB, ≥ 0), oben, links, rechts (D_z je Weg), hindernisse: Anzahl im Weg }.
+ * Geometrie der Beugungswege zwischen Quelle S (sx, sy, hs) und Empfänger R (rx, ry, hr), oder null bei
+ * Sichtverbindung. ohne: Set von Hindernis-IDs, die nicht zählen (Gebäude, in dem Quelle bzw. Empfänger liegt).
+ * Ergebnis: { d, oben: {z, e, mehrfach, dss, dsr, l}, seiten: [{z, e, mehrfach, l} | null], hindernisse }.
  */
-export function abschirmung(hind, sx, sy, hs, rx, ry, hr, ohne = null) {
+export function beugungsWege(hind, sx, sy, hs, rx, ry, hr, ohne = null) {
   const d = Math.hypot(rx - sx, ry - sy);
-  const leer = { abar: 0, oben: 0, links: 0, rechts: 0, hindernisse: 0 };
-  if (d < 1) return leer;
+  if (d < 1) return null;
   const imWeg = [];
   for (const o of hind) {
     if (ohne && ohne.has(o.id)) continue;
@@ -111,7 +131,7 @@ export function abschirmung(hind, sx, sy, hs, rx, ry, hr, ohne = null) {
     const s = streckeImGrundriss(o.poly, sx, sy, rx, ry);
     if (s) imWeg.push({ o, ...s });
   }
-  if (!imWeg.length) return leer;
+  if (!imWeg.length) return null;
   // Über das Dach: Profil in der vertikalen Ebene durch S und R
   imWeg.sort((a, b) => a.a1 - b.a1);
   const profil = [{ x: 0, z: hs }];
@@ -121,33 +141,57 @@ export function abschirmung(hind, sx, sy, hs, rx, ry, hr, ohne = null) {
   const band = gummiband(profil);
   const direkt = Math.hypot(d, hr - hs);
   const kanten = band.slice(1, -1);
-  let oben = 0;
-  if (kanten.length) {
-    const z = zugLaenge(band) - direkt;
-    const e = zugLaenge(kanten);
-    const dss = Math.hypot(kanten[0].x, kanten[0].z - hs), dsr = Math.hypot(d - kanten[kanten.length - 1].x, kanten[kanten.length - 1].z - hr);
-    oben = beugungsDaempfung(z, e, kanten.length > 1 && e > 0.5, dss, dsr, d) + umweg(direkt + z, direkt);
-  }
-  if (!(oben > 0)) return leer;   // Sichtverbindung über die Gebäude hinweg
+  if (!kanten.length) return null;
+  const z = zugLaenge(band) - direkt;
+  if (!(z > 0)) return null;   // Sichtverbindung über die Gebäude hinweg
+  const e = zugLaenge(kanten);
+  const oben = { z, e, mehrfach: kanten.length > 1 && e > 0.5, l: direkt + z, direkt,
+    dss: Math.hypot(kanten[0].x, kanten[0].z - hs), dsr: Math.hypot(d - kanten[kanten.length - 1].x, kanten[kanten.length - 1].z - hr) };
   // Seitlich: Hülle der Grundrisse im Weg zusammen mit S und R, beide Seiten der Sichtlinie
   const S = { ost: sx, nord: sy }, R = { ost: rx, nord: ry };
   const hu = huelle([S, R, ...imWeg.flatMap(w => w.o.poly)]);
   const iS = hu.indexOf(S), iR = hu.indexOf(R);
-  const seite = [];
+  const seiten = [null, null];
   if (iS >= 0 && iR >= 0) {
     const n = hu.length;
-    for (const richtung of [1, -1]) {
+    [1, -1].forEach((richtung, si) => {
       const zug = [];
       for (let i = iS; ; i = (i + richtung + n) % n) { zug.push(hu[i]); if (i === iR) break; }
       const l = zug.reduce((s, p, i) => i ? s + Math.hypot(p.ost - zug[i - 1].ost, p.nord - zug[i - 1].nord) : 0, 0);
       const ke = zug.slice(1, -1);
-      const e = ke.reduce((s, p, i) => i ? s + Math.hypot(p.ost - ke[i - 1].ost, p.nord - ke[i - 1].nord) : 0, 0);
-      seite.push(ke.length ? beugungsDaempfung(l - d, e, ke.length > 1 && e > 0.5, 0, 0, d, false) + umweg(l, d) : 0);
-    }
+      const e2 = ke.reduce((s, p, i) => i ? s + Math.hypot(p.ost - ke[i - 1].ost, p.nord - ke[i - 1].nord) : 0, 0);
+      seiten[si] = { z: ke.length ? l - d : 0, e: e2, mehrfach: ke.length > 1 && e2 > 0.5, l };
+    });
   }
-  const [links = DZ_MAX_MEHRFACH, rechts = DZ_MAX_MEHRFACH] = seite;
+  return { d, oben, seiten, hindernisse: imWeg.length };
+}
+
+/** Einfügungsdämpfung der Beugungswege bei Wellenlänge lambda: { abar, oben, links, rechts } in dB. */
+export function wegeDaempfung(w, lambda = LAMBDA_M) {
+  if (!w) return { abar: 0, oben: 0, links: 0, rechts: 0 };
+  const o = w.oben;
+  const oben = beugungsDaempfung(o.z, o.e, o.mehrfach, o.dss, o.dsr, w.d, true, lambda) + umweg(o.l, o.direkt);
+  const [links, rechts] = w.seiten.map(sd => sd
+    ? beugungsDaempfung(sd.z, sd.e, sd.mehrfach, 0, 0, w.d, false, lambda) + umweg(sd.l, w.d)
+    : DZ_MAX_MEHRFACH);
   const summe = 10 ** (-oben / 10) + 10 ** (-links / 10) + 10 ** (-rechts / 10);
-  return { abar: Math.max(0, -10 * Math.log10(summe)), oben, links, rechts, hindernisse: imWeg.length };
+  return { abar: Math.max(0, -10 * Math.log10(summe)), oben, links, rechts };
+}
+
+/**
+ * Abschirmung (Einzahlwert bei 500 Hz) zwischen S und R.
+ * Ergebnis: { abar (dB, ≥ 0), oben, links, rechts (D_z je Weg), hindernisse: Anzahl im Weg }.
+ */
+export function abschirmung(hind, sx, sy, hs, rx, ry, hr, ohne = null) {
+  const w = beugungsWege(hind, sx, sy, hs, rx, ry, hr, ohne);
+  return { ...wegeDaempfung(w), hindernisse: w ? w.hindernisse : 0 };
+}
+
+const NULL_BAENDER = Object.freeze(OKTAVEN.map(() => 0));
+/** Abschirmung je Oktave (8 Werte in dB). */
+export function abschirmungOktaven(hind, sx, sy, hs, rx, ry, hr, ohne = null) {
+  const w = beugungsWege(hind, sx, sy, hs, rx, ry, hr, ohne);
+  return w ? LAMBDAS.map(l => wegeDaempfung(w, l).abar) : NULL_BAENDER;
 }
 
 /**
@@ -175,7 +219,7 @@ export function spiegelquellen(quellen, hind, hs, radiusM = REFLEXION_RADIUS_M, 
         const nx = -ey / Math.sqrt(l2), ny = ex / Math.sqrt(l2);
         const innen = imPolygon(o.poly, mx + nx * 0.2, my + ny * 0.2) ? 1 : -1;
         if (((q.ost - mx) * nx + (q.nord - my) * ny) * innen > 0) continue;
-        out.push({ ost: 2 * fx - q.ost, nord: 2 * fy - q.nord, lwa: q.lwa + REFLEXION_DB, wand: { a, b }, id: o.id, quelle: qi });
+        out.push({ ost: 2 * fx - q.ost, nord: 2 * fy - q.nord, lwa: q.lwa + REFLEXION_DB, lb: q.lb ? q.lb.map(v => v + REFLEXION_DB) : undefined, wand: { a, b }, id: o.id, quelle: qi });
       }
     }
   }
@@ -193,22 +237,38 @@ export function reflexionGueltig(sp, rx, ry) {
 }
 
 /**
- * Rechenszene: Quellen [{ost, nord, lwa}] in Quellhöhe hs, Hindernisse, Spiegelquellen. Gebäude, in denen eine
- * Quelle steht (Dachaufstellung), schirmen nicht ab.
+ * Rechenszene: Quellen [{ost, nord, lwa}] in Quellhöhe hs, Hindernisse, Spiegelquellen. spektrum: 8 A-bewertete
+ * Oktavpegel (absolut oder relativ), sonst das typische Spektrum. Gebäude, in denen eine Quelle steht
+ * (Dachaufstellung), schirmen nicht ab.
  */
-export function schallSzene(quellen, hind, hs) {
-  const ohne = new Set(hind.filter(o => quellen.some(q => imPolygon(o.poly, q.ost, q.nord))).map(o => o.id));
-  const mitte = quellen.length
-    ? { ost: quellen.reduce((s, q) => s + q.ost, 0) / quellen.length, nord: quellen.reduce((s, q) => s + q.nord, 0) / quellen.length }
+export function schallSzene(quellen, hind, hs, spektrum = null) {
+  const rel = spektrumNormiert(spektrum) || spektrumNormiert(SPEKTRUM_LWWP_TYPISCH);
+  const qs = quellen.map(q => ({ ...q, lb: rel.map(v => q.lwa + v) }));
+  const ohne = new Set(hind.filter(o => qs.some(q => imPolygon(o.poly, q.ost, q.nord))).map(o => o.id));
+  const mitte = qs.length
+    ? { ost: qs.reduce((s, q) => s + q.ost, 0) / qs.length, nord: qs.reduce((s, q) => s + q.nord, 0) / qs.length }
     : { ost: 0, nord: 0 };
-  return { quellen, hind, hs, ohne, mitte, spiegel: spiegelquellen(quellen, hind, hs, REFLEXION_RADIUS_M, ohne) };
+  return { quellen: qs, hind, hs, ohne, mitte, spektrum: rel, spiegel: spiegelquellen(qs, hind, hs, REFLEXION_RADIUS_M, ohne) };
+}
+
+// Energie (10^(L/10)) einer Quelle je Oktave am Empfänger im Abstand r, abzüglich Abschirmung a (8 Werte)
+function energie(lb, r, a, frei) {
+  const rr = Math.max(1, r);
+  const basis = -20 * Math.log10(rr) - 8;   // −11 dB Kugel, +3 dB Halbraum
+  let e = 0;
+  for (let b = 0; b < 8; b++) {
+    const l = lb[b] + basis - LUFT_DB_JE_KM[b] * rr / 1000;
+    frei.e += 10 ** (l / 10);
+    e += 10 ** ((l - a[b]) / 10);
+  }
+  return e;
 }
 
 /**
- * Pegel am Empfänger (x, y) in Höhe hr. o.exakt: Abschirmung je Quelle (sonst einmal ab der Mitte der
- * Quellengruppe, für Karten), o.ohne: weitere Hindernis-IDs (z. B. das Gebäude des Empfängers), o.hind: Vorauswahl,
- * o.innenLeer: im Gebäude kein Pegel (−∞).
- * Ergebnis: { pegel, frei (ohne Gebäude), abar (Abschirmung ab Mitte), reflexion (dB Zuschlag) }.
+ * Pegel am Empfänger (x, y) in Höhe hr, Oktavbänder A-bewertet summiert. o.exakt: Abschirmung je Quelle (sonst
+ * einmal ab der Mitte der Quellengruppe, für Karten), o.ohne: weitere Hindernis-IDs (z. B. das Gebäude des
+ * Empfängers), o.hind: Vorauswahl, o.innenLeer: im Gebäude kein Pegel (−∞).
+ * Ergebnis: { pegel, frei (ohne Gebäude), abar (wirksame Abschirmung des direkten Schalls), reflexion (dB Zuschlag) }.
  */
 export function pegel3d(sz, x, y, hr, o = {}) {
   const hind = o.hind || sz.hind;
@@ -220,21 +280,19 @@ export function pegel3d(sz, x, y, hr, o = {}) {
   if (o.ohne || hind.some(h => x >= h.box[0] && x <= h.box[2] && y >= h.box[1] && y <= h.box[3] && imPolygon(h.poly, x, y))) {
     ohne = new Set([...sz.ohne, ...(o.ohne || []), ...hind.filter(h => imPolygon(h.poly, x, y)).map(h => h.id)]);
   }
-  const ab = (sx, sy, extra) => abschirmung(hind, sx, sy, sz.hs, x, y, hr, extra ? new Set([...ohne, extra]) : ohne).abar;
-  const aMitte = ab(sz.mitte.ost, sz.mitte.nord);
-  const direkt = [], frei = [];
-  for (const q of sz.quellen) {
-    const l = schallPegel(q.lwa, Math.hypot(x - q.ost, y - q.nord));
-    frei.push(l);
-    direkt.push(l - (o.exakt ? ab(q.ost, q.nord) : aMitte));
-  }
-  const refl = [];
+  const ab = (sx, sy, extra) => abschirmungOktaven(hind, sx, sy, sz.hs, x, y, hr, extra ? new Set([...ohne, extra]) : ohne);
+  const aMitte = hind.length ? ab(sz.mitte.ost, sz.mitte.nord) : NULL_BAENDER;
+  const frei = { e: 0 }, wegwerf = { e: 0 };
+  let direkt = 0;
+  for (const q of sz.quellen) direkt += energie(q.lb, Math.hypot(x - q.ost, y - q.nord), o.exakt && hind.length ? ab(q.ost, q.nord) : aMitte, frei);
+  let refl = 0;
   for (const sp of sz.spiegel) {
     if (!reflexionGueltig(sp, x, y)) continue;
-    refl.push(schallPegel(sp.lwa, Math.hypot(x - sp.ost, y - sp.nord)) - (o.exakt ? ab(sp.ost, sp.nord, sp.id) : aMitte));
+    refl += energie(sp.lb, Math.hypot(x - sp.ost, y - sp.nord), o.exakt ? ab(sp.ost, sp.nord, sp.id) : aMitte, wegwerf);
   }
-  const ohneRefl = pegelSumme(direkt), pegel = pegelSumme([...direkt, ...refl]);
-  return { pegel, frei: pegelSumme(frei), abar: aMitte, reflexion: refl.length ? pegel - ohneRefl : 0 };
+  const lg = e => e > 0 ? 10 * Math.log10(e) : -Infinity;
+  const pegel = lg(direkt + refl);
+  return { pegel, frei: lg(frei.e), abar: lg(frei.e) - lg(direkt), reflexion: refl > 0 ? pegel - lg(direkt) : 0 };
 }
 
 /**

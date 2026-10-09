@@ -24,6 +24,15 @@ test('dist: Gebäude schirmen den Schall der LW-WP ab', async ({ page }) => {
     const iso = lwWpIsophonen().get(45);
     const radius = winkel => { const p = iso[Math.round(winkel / 360 * iso.length) % iso.length]; return Math.hypot(p.ost, p.nord); };
     const mit = { nord: io.Nord, sued: io['Süd'], rNord: radius(0), rSued: radius(180), hinweis: document.getElementById('lwwp-schall-modell').textContent };
+    // tieffrequentes Herstellerspektrum: hinter dem Riegel weniger Abschirmung
+    lwWpSpektrumSetzen('90 88 80 72 65 58 50 40');
+    const tief = Object.fromEntries(lwWpImmissionsorte(5).map(o => [o.name, o])).Nord;
+    const spektrumFeld = document.getElementById('lwwp-spektrum').value;
+    mit.tiefDaempf = tief.frei - tief.pegel;
+    mit.spektrumFeld = spektrumFeld;
+    const gespSpektrum = _buildProjectData().lwWp.spektrum;
+    mit.gespSpektrum = gespSpektrum;
+    lwWpSpektrumSetzen('');
     lwWpMitGebaeudenSetzen(false);
     const io2 = Object.fromEntries(lwWpImmissionsorte(5).map(o => [o.name, o]));
     const ohne = { nord: io2.Nord.pegel, sued: io2['Süd'].pegel, cb: document.getElementById('lwwp-schall-gebaeude').checked };
@@ -37,6 +46,10 @@ test('dist: Gebäude schirmen den Schall der LW-WP ab', async ({ page }) => {
   expect(r.mit.sued.pegel - r.mit.sued.frei).toBeLessThan(3);
   expect(r.mit.rNord).toBeLessThan(r.mit.rSued * 0.7);
   expect(r.mit.hinweis).toContain('Abschirmung');
+  expect(r.mit.tiefDaempf).toBeLessThan(r.mit.nord.frei - r.mit.nord.pegel);
+  expect(r.mit.tiefDaempf).toBeGreaterThan(5);
+  expect(r.mit.spektrumFeld).toBe('90 88 80 72 65 58 50 40');
+  expect(r.mit.gespSpektrum).toEqual([90, 88, 80, 72, 65, 58, 50, 40]);
   // Ohne Gebäude: Freifeld wie bisher
   expect(r.ohne.nord).toBeCloseTo(r.mit.nord.frei, 0);
   expect(r.ohne.cb).toBe(false);
