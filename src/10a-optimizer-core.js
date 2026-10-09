@@ -219,7 +219,8 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult, wp
 // _calcBausteinKostenOpt ENTFERNT — nutzt jetzt _calcKostenShared
 
 // ── Kennwerte (WGK, CO2, EE-Anteil, Autarkie) — Wrapper um _calcKostenShared ──
-export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, params, stWaermeMwhOpt, stM2Opt, optSpeicherVol) {
+// tsOverride (optional): {typ, dt} des Speichers statt der Eingaben im Wärmespeicher-Panel (Speicheranalyse)
+export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, params, stWaermeMwhOpt, stM2Opt, optSpeicherVol, tsOverride = null) {
   const { erzeugerList, gesamtMwh } = dispatchResult;
   const { pStrom, pStromWp, pGas, pPk, pHhs, pHko, pFw, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz } = params;
 
@@ -287,8 +288,8 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
       ohneNetz: !!window._wirtOhneNetz,
       stM2: stM2Opt || (stWaermeMwhOpt > 0 ? (parseFloat(document.getElementById('st-flaeche')?.value) || 0) : 0),
       optSpeicherVol: optSpeicherVol || 0,
-      tsTyp: document.getElementById('ts-typ')?.value || 'puffer',
-      tsDt: parseFloat(document.getElementById('ts-dt')?.value) || 40,
+      tsTyp: tsOverride?.typ || document.getElementById('ts-typ')?.value || 'puffer',
+      tsDt: tsOverride?.dt || parseFloat(document.getElementById('ts-dt')?.value) || 40,
     },
     pv: _optPvObjekt(pvKwp, batKwh, pvBatResult),
     strom: {

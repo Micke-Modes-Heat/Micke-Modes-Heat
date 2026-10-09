@@ -378,8 +378,11 @@ export function _dispatchCore(cfg) {
     thKwh['solarthermie'] = 0; elKwh['solarthermie'] = 0;
   }
 
-  // Wärmespeicher
-  let thermSOC = 0;
+  // Wärmespeicher — Startfüllung optional (Langzeitspeicher: Füllstand vom Jahresende), Ladefenster der WP
+  // standardmäßig tagsüber 8–18 Uhr, für Speicheranalysen frei wählbar (ladeVon/ladeBis)
+  let thermSOC = hatSpeicher ? Math.min(thSp.kapKwh, Math.max(0, cfg.speicherStartKwh || 0)) : 0;
+  const ladeVon = hatSpeicher && thSp.ladeVon != null ? thSp.ladeVon : 8;
+  const ladeBis = hatSpeicher && thSp.ladeBis != null ? thSp.ladeBis : 18;
   const thermSocH     = (hatSpeicher && recordHourly) ? new Float32Array(n) : null;
   const thermEntladeH = (hatSpeicher && recordHourly) ? new Float32Array(n) : null;
   const thermLadeH    = (hatSpeicher && recordHourly) ? new Float32Array(n) : null;
@@ -595,7 +598,7 @@ export function _dispatchCore(cfg) {
     // ── PHASE 6: Speicher laden — WP tagsüber mit Netzstrom ──
     if (hatSpeicher && thermSOC < thSp.kapKwh && wpReservesThisH.length > 0) {
       const h = t % 24;
-      if (h >= 8 && h < 18) {
+      if (h >= ladeVon && h < ladeBis) {
         let restLade = Math.min(thSp.kapKwh - thermSOC, thSp.ladeKw ?? thSp.entladeKw);
         for (const wp of wpReservesThisH) {
           if (restLade <= 0.1 || wp.reserveKw <= 0.1 || wp.cop <= 0) break;
@@ -640,7 +643,7 @@ export function _dispatchCore(cfg) {
     thermSocH, thermEntladeH, thermLadeH, thermVerlustH,
     thKwhM, elKwhM, wpReservesH,
     // Speicher-Gesamtwerte
-    thermEntladenGes, thermGeladenGes, thermVerlustGes, thermSocMax,
+    thermEntladenGes, thermGeladenGes, thermVerlustGes, thermSocMax, thermSocEnde: thermSOC,
     // Optimizer-Extras
     wpResKwH, wpResCopH, backupPeakKw,
     // Durchreichung
@@ -653,11 +656,12 @@ export function _dispatchCore(cfg) {
 }
 
 // ── Stundenscharfer Dispatch (Hauptpfad) ─────────────────────────────────
-export function _deckungen8760(ss) {
+/**
+ * Eingaben des Haupt-Dispatchs aus systemState und Erzeuger-Panels (Leistungen, Gütegrade, Speicher,
+ * Solarthermie, Eisspeicher). Auch für Analysen, die den Dispatch mit geänderten Annahmen wiederholen.
+ */
+export function dispatchEingaben(ss) {
   const { lastgangKw, tempH, vlH } = ss;
-  window._dimLastgangKw = lastgangKw;
-  window._dimJdlSorted = null;
-
   const activeKeys = meritOrderKeys.filter(k => isErzeugerAktiv(k));
 
   // ── DOM-Werte lesen und erzList bauen ──
@@ -677,8 +681,12 @@ export function _deckungen8760(ss) {
   const skEta      = (parseFloat(document.getElementById('sk-eta')?.value) || 99) / 100;
   const lwwpMinCop = parseFloat(document.getElementById('lwwp-min-cop')?.value) || 0;
 
-  const thSp      = thermSpeicherAktiv ? getThermSpeicherParams() : null;
+  let thSp        = thermSpeicherAktiv ? getThermSpeicherParams() : null;
   const stProfile = solarthermieAktiv ? makeStProfile8760() : null;
+  // Saisonalspeicher: Wärmepumpen dürfen rund um die Uhr laden, und das Jahr beginnt mit dem Füllstand
+  // vom Jahresende (eingeschwungen) — sonst stünde der Speicher im Januar leer
+  const saisonal = !!thSp && document.getElementById('ts-typ')?.value === 'saisonal';
+  if (saisonal) thSp = { ...thSp, ladeVon: 0, ladeBis: 24 };
 
   // Eisspeicher: Der Zustand am 1. Januar folgt aus dem Vorjahr. Ein Vorlauf ohne Aufzeichnung
   // liefert den Jahresendstand; damit startet die eigentliche Rechnung eingeschwungen.
@@ -690,6 +698,20 @@ export function _deckungen8760(ss) {
     });
     eisSpeicher = { ...eisSpeicher, startW: vorlauf.eisStat?.endW };
   }
+  let speicherStartKwh = 0;
+  if (saisonal) {
+    speicherStartKwh = _dispatchCore({
+      lastgangKw, tempH, vlH, erzList, speicherParams: thSp, stProfile, stExcessH: null,
+      bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false, eisSpeicher,
+    }).thermSocEnde || 0;
+  }
+  return { lastgangKw, tempH, vlH, activeKeys, erzList, leistungen, _guetegrad, bhkwSigma, skEta, lwwpMinCop, thSp, stProfile, eisSpeicher, speicherStartKwh };
+}
+
+export function _deckungen8760(ss) {
+  const { lastgangKw, tempH, vlH, activeKeys, erzList, leistungen, _guetegrad, bhkwSigma, skEta, lwwpMinCop, thSp, stProfile, eisSpeicher, speicherStartKwh } = dispatchEingaben(ss);
+  window._dimLastgangKw = lastgangKw;
+  window._dimJdlSorted = null;
 
   // ── Kern-Dispatch aufrufen ──
   const r = _dispatchCore({
@@ -702,7 +724,7 @@ export function _deckungen8760(ss) {
     quelleTemp: _quelleTemp,
     recordHourly: true,
     backupMode: false,
-    eisSpeicher,
+    eisSpeicher, speicherStartKwh,
   });
   window._eisSpeicherErgebnis = r.eisStat;
   window._eisSpeicherState = r.eisH ? { ...r.eisH, reserveMaxKwh: r.eisParam.wMax - r.eisParam.wMin, maxVereisung: r.eisParam.maxVereisung, volumenM3: r.eisParam.volumenM3 } : null;
@@ -814,7 +836,7 @@ export function _deckungen8760(ss) {
       trial.splice(currentIndex, 0, { ...current, leistKw: capacity });
       const result = _dispatchCore({
         lastgangKw, tempH, vlH, erzList: trial, speicherParams: thSp, stProfile, stExcessH: null,
-        bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false, eisSpeicher,
+        bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false, eisSpeicher, speicherStartKwh,
       });
       simulationCache.set(cacheKey, result);
       return result;

@@ -5,6 +5,8 @@ import { _calcKostenShared } from './07b-analysis-economics.js';
 import { pvBatteryStep } from './lib/pv-battery-core.js';
 import { estimateBatteryAging } from './lib/battery-aging.js';
 import { optKonzeptSchluessel, optMusterSuche } from './lib/optimierer-suche.js';
+import { bedienModulStunden } from './lib/vdi-bedien.js';
+import { speicherInvestEur } from './lib/waermespeicher.js';
 
 /**
  * Quelltext des Optimierer-Workers. Die Rechenkerne (Dispatch, Kosten, PV/Batterie,
@@ -30,6 +32,8 @@ ${pvBatteryStep.toString()}
 ${estimateBatteryAging.toString()}
 ${optKonzeptSchluessel.toString()}
 ${optMusterSuche.toString()}
+${bedienModulStunden.toString()}
+${speicherInvestEur.toString()}
 
 function _defaultGuetegrad(key) {
   if (key === 'lwwp') return 0.42;

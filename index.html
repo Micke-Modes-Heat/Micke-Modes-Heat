@@ -1831,6 +1831,7 @@
     <button class="sa-tab"        id="sa-tab-btn-metriken"  data-click="saSetTab('metriken')">Metriken</button>
     <button class="sa-tab"        id="sa-tab-btn-dim"       data-click="saSetTab('dim')">Auslegung</button>
     <button class="sa-tab"        id="sa-tab-btn-split"     data-click="saSetTab('split')">Energiesplit</button>
+    <button class="sa-tab"        id="sa-tab-btn-speicher"  data-click="saSetTab('speicher')" title="Kurz- und Langzeit-Wärmespeicher im aktuellen System untersuchen">Speicher</button>
     <button class="sa-tab"        id="sa-tab-btn-sensitivitaet" data-click="saSetTab('sensitivitaet')">Sensitivität</button>
   </div>
 
@@ -1946,6 +1947,11 @@
       <span><span style="color:#ff8a65;">━ ━</span> 90 % Energiedeckung</span>
       <span><span style="color:#4fc3f7;">───</span> Schieber-Position</span>
     </div>
+  </div>
+
+  <!-- ══ Tab: Wärmespeicher-Analyse ═══════════════════════════════════════ -->
+  <div class="sa-tab-content" id="sa-tab-speicher">
+    <div id="sp-inhalt"></div>
   </div>
 
   <!-- ══ Tab: Energiesplit ════════════════════════════════════════════════ -->
@@ -2422,6 +2428,7 @@
     </div>
   </div>
   <div class="panel-btns">
+    <button class="btn-secondary" data-click="spOeffnen()" title="Größe, Füllstand und Wirtschaftlichkeit von Kurz- und Langzeitspeichern im aktuellen System untersuchen">Speicheranalyse</button>
     <button class="btn-secondary" data-click="clearThermSpeicher()" style="border-color:#e53935;color:#e53935;">Speicher entfernen</button>
     <button class="btn-secondary" data-click="document.getElementById('therm-speicher-panel').style.display='none';">Schließen</button>
   </div>

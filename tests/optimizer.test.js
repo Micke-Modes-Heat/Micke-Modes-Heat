@@ -20,6 +20,8 @@ beforeAll(() => {
   if (!globalThis.performance) globalThis.performance = { now: () => Date.now() };
   loadScript('08-calc-engine.js');
   loadScript('06c-dispatch-core.js');
+  loadScript('lib/vdi-bedien.js');
+  loadScript('lib/waermespeicher.js');
   loadScript('07b-analysis-economics.js');
   loadScript('06a-gbi-lastgang.js');
   loadScript('09a-pv-profile.js');

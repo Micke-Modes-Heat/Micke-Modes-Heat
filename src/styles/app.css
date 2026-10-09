@@ -2763,3 +2763,30 @@ body.trasse-loeschmodus path.leaflet-interactive[stroke="#ff9800"],body.trasse-l
 .gl-tww-dezentral input[type=checkbox]{accent-color:var(--accent);margin:0;}
 .gl-tww-heizgrenze input{width:52px;text-align:right;font-size:10px;padding:2px 4px;}
 .gl-tww-info{font-family:'DM Mono',monospace;color:var(--accent);}
+
+/* ── Speicheranalyse (Einsatzanalyse, Reiter „Speicher“) ── */
+.sp-leer{font-size:11px;color:var(--muted);padding:18px 6px;}
+.sp-steuerung{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:10px;}
+.sp-art{display:flex;gap:2px;}
+.sp-feld{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);}
+.sp-feld .inp-field{width:62px;padding:2px 4px;font-size:10px;text-align:right;}
+.sp-feld small{font-size:9px;}
+.sp-feld-breit input[type=range]{width:130px;accent-color:#26a69a;}
+.sp-check{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer;}
+.sp-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-bottom:8px;}
+.sp-kpi{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:5px 7px;display:flex;flex-direction:column;gap:1px;}
+.sp-kpi span{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+.sp-kpi b{font-family:'DM Mono',monospace;font-size:13px;color:var(--text);font-weight:600;}
+.sp-kpi em{font-style:normal;font-size:9px;color:var(--muted);}
+.sp-fazit{font-size:10.5px;padding:6px 8px;border-radius:5px;margin-bottom:10px;border-left:3px solid;}
+.sp-gut{background:rgba(129,199,132,0.08);border-color:#81c784;}
+.sp-schlecht{background:rgba(229,115,115,0.08);border-color:#e57373;}
+.sp-titelzeile{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
+.sp-ansicht{display:flex;gap:2px;}
+.sp-ansicht .viz-btn,.sp-art .viz-btn{font-size:9px;padding:2px 8px;}
+#sa-tab-speicher canvas{width:100%;display:block;border-radius:4px;background:rgba(0,0,0,0.12);cursor:default;}
+#sp-canvas-variation{cursor:pointer!important;}
+.sp-legende{font-size:9px;color:var(--muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap;}
+.sp-fuss{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;margin-top:10px;font-size:9px;color:var(--muted);line-height:1.4;}
+.sp-fuss .btn-secondary{flex-shrink:0;font-size:10px;}
+.sp-hinweis{font-size:10px;color:#81c784;margin-top:4px;}

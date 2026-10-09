@@ -4,7 +4,8 @@
 
 // ── Wirtschaftlichkeit Hilfsfunktionen ────────────────────────────────────
 import { kostenJeErzeuger, kostentreiber } from './lib/kostenanalyse.js';
-import { bedienStunden } from './lib/vdi-bedien.js';
+import { bedienErlaeuterung, bedienModulStunden, bedienStunden } from './lib/vdi-bedien.js';
+import { speicherInvestEur } from './lib/waermespeicher.js';
 import { eisInvest } from './lib/eisspeicher.js';
 import { _getEtaMap, bhkwCo2Gutschrift, gasEmF, gebaeude, networkLocked, netzEdges } from './01-globals-varianten.js';
 import { updateFliessgewaesserData, updateLwWpDisplay } from './02c-karte-werkzeuge.js';
@@ -81,37 +82,33 @@ export function _calcKostenShared(p) {
 
   // Erzeuger-Hauptkomponenten
   var investFn = p.investFn || function() { return 0; };
-  // Bedienaufwand wächst mit der Anlagengröße (wie lib/vdi-bedien.js; hier lokal, weil die Funktion in den Worker kopiert wird)
-  function bedH(h, kw) { return Math.round(h * Math.max(1, Math.pow((kw || 0) / 100, 0.6))); }
-  if (aktiv('lwwp'))        add('lwwp', investFn('lwwp', pKw.lwwp), {n:20,inst:1.0,wart:1.5,bedien:bedH(5, pKw.lwwp)});
-  if (aktiv('fg'))          add('fg', investFn('fg', pKw.fg), {n:20,inst:2.0,wart:1.0,bedien:bedH(5, pKw.fg)});
-  if (aktiv('geo'))         add('geo_wp', investFn('geo', pKw.geo), {n:20,inst:1.0,wart:1.5,bedien:bedH(5, pKw.geo)});
+  // Bedienaufwand nach Modulanzahl (lib/vdi-bedien.js; der Worker bettet bedienModulStunden mit ein)
+  function bedH(typ, kw) { return bedienModulStunden(typ, kw || 0).stunden; }
+  if (aktiv('lwwp'))        add('lwwp', investFn('lwwp', pKw.lwwp), {n:20,inst:1.0,wart:1.5,bedien:bedH('lwwp', pKw.lwwp)});
+  if (aktiv('fg'))          add('fg', investFn('fg', pKw.fg), {n:20,inst:2.0,wart:1.0,bedien:bedH('fg', pKw.fg)});
+  if (aktiv('geo'))         add('geo_wp', investFn('geo', pKw.geo), {n:20,inst:1.0,wart:1.5,bedien:bedH('geo_wp', pKw.geo)});
   if (aktiv('geo'))         add('geo_sonden', Math.round((extra.bohrMeter||0)*95), {n:50,inst:2.0,wart:1.0,bedien:0});
-  if (aktiv('pellets'))     { var _pkw=pKw.pellets||0; add('pk', investFn('pellets',_pkw), {n:15,inst:3.0,wart:3.0,bedien:_pkw<50?100:_pkw<200?200:_pkw<500?300:408}); }
-  if (aktiv('pellets'))     { var _pkw2=pKw.pellets||0; add('pk_lager', Math.round(_pkw2*100), {n:20,inst:3.0,wart:2.0,bedien:_pkw2<50?50:_pkw2<200?100:_pkw2<500?150:204}); }
-  if (aktiv('hhs'))         { var _hkw=pKw.hhs||0; add('hhs_kessel', investFn('hhs',_hkw), {n:15,inst:3.0,wart:3.0,bedien:_hkw<50?150:_hkw<200?250:_hkw<500?350:408}); }
-  if (aktiv('hhs'))         { var _hkw2=pKw.hhs||0; add('hhs_lager', Math.round(_hkw2*150), {n:30,inst:1.0,wart:1.0,bedien:_hkw2<50?100:_hkw2<200?200:_hkw2<500?400:612}); }
-  if (aktiv('heizoel'))     add('hko', investFn('heizoel', pKw.heizoel), {n:20,inst:1.0,wart:2.0,bedien:bedH(20, pKw.heizoel)});
-  if (aktiv('gaskessel'))   add('gk', investFn('gaskessel', pKw.gaskessel), {n:20,inst:1.0,wart:2.0,bedien:bedH(20, pKw.gaskessel)});
+  if (aktiv('pellets'))     add('pk', investFn('pellets', pKw.pellets||0), {n:15,inst:3.0,wart:3.0,bedien:bedH('pk', pKw.pellets)});
+  if (aktiv('pellets'))     add('pk_lager', Math.round((pKw.pellets||0)*100), {n:20,inst:3.0,wart:2.0,bedien:bedH('pk_lager', pKw.pellets)});
+  if (aktiv('hhs'))         add('hhs_kessel', investFn('hhs', pKw.hhs||0), {n:15,inst:3.0,wart:3.0,bedien:bedH('hhs', pKw.hhs)});
+  if (aktiv('hhs'))         add('hhs_lager', Math.round((pKw.hhs||0)*150), {n:30,inst:1.0,wart:1.0,bedien:bedH('hhs_lager', pKw.hhs)});
+  if (aktiv('heizoel'))     add('hko', investFn('heizoel', pKw.heizoel), {n:20,inst:1.0,wart:2.0,bedien:bedH('hko', pKw.heizoel)});
+  if (aktiv('gaskessel'))   add('gk', investFn('gaskessel', pKw.gaskessel), {n:20,inst:1.0,wart:2.0,bedien:bedH('gk', pKw.gaskessel)});
   // Auto-Spitzenlastkessel: füllt der Dispatch die Deckungslücke mit Gas, muss
   // dieser Kessel auch Invest kosten — sonst erscheinen Gas-Lösungen zu billig
-  if (aktiv('_autoGk'))     add('gk_auto', investFn('gaskessel', pKw._autoGk), {n:20,inst:1.0,wart:2.0,bedien:bedH(20, pKw._autoGk)});
-  if (aktiv('bhkw'))        { var _bkw=pKw.bhkw||0; add('bhkw', investFn('bhkw',_bkw), {n:15,inst:3.0,wart:3.5,bedien:_bkw<20?100:_bkw<100?200:_bkw<500?300:408}); }
+  if (aktiv('_autoGk'))     add('gk_auto', investFn('gaskessel', pKw._autoGk), {n:20,inst:1.0,wart:2.0,bedien:bedH('gk_auto', pKw._autoGk)});
+  if (aktiv('bhkw'))        add('bhkw', investFn('bhkw', pKw.bhkw||0), {n:15,inst:3.0,wart:3.5,bedien:bedH('bhkw_agg', pKw.bhkw)});
   if (aktiv('bhkw'))        add('bhkw_hydr', Math.round((pKw.bhkw||0)*150), {n:25,inst:1.5,wart:1.0,bedien:0});
-  if (aktiv('stromkessel')) add('stromkessel', investFn('stromkessel', pKw.stromkessel) || Math.round((pKw.stromkessel||0)*80), {n:20,inst:1.0,wart:1.0,bedien:0});
+  if (aktiv('stromkessel')) add('stromkessel', investFn('stromkessel', pKw.stromkessel) || Math.round((pKw.stromkessel||0)*80), {n:20,inst:1.0,wart:1.0,bedien:bedH('sk', pKw.stromkessel)});
   if (aktiv('fernwaerme'))  add('fw_pumpe', Math.round((pKw.fernwaerme||0)*80), {n:18,inst:2.0,wart:1.0,bedien:0});
 
   // Solarthermie
   if ((extra.stM2||0) > 0)  add('solarthermie', Math.round(extra.stM2*300), {n:25,inst:1.0,wart:1.0,bedien:0});
 
   // Wärmespeicher
+  // Wärmespeicher: Investition nach Volumen und Bauart (lib/waermespeicher.js; im Worker mit eingebettet)
   if ((extra.optSpeicherVol||0) > 0) {
-    var vol = extra.optSpeicherVol;
-    var eurKwh;
-    if (extra.tsTyp==='saisonal') eurKwh = 40;
-    else if (extra.tsTyp==='gross') eurKwh = 80;
-    else eurKwh = vol > 50 ? 60 : vol > 20 ? 70 : vol > 5 ? 80 : 100;
-    add('thermSpeicher', Math.round(vol * 1.16 * (extra.tsDt||40) * eurKwh), {n:20,inst:1.0,wart:0.5,bedien:0});
+    add('thermSpeicher', speicherInvestEur(extra.optSpeicherVol, extra.tsTyp), {n:20,inst:1.0,wart:0.5,bedien:0});
   }
 
   // Nebenkomponenten
@@ -120,7 +117,7 @@ export function _calcKostenShared(p) {
   // Pufferspeicher (~25 l/kW), soweit ihn kein eigener Wärmespeicher ersetzt — der übernimmt die
   // hydraulische Entkopplung nur mit seinem Volumen (ein 1-m³-Speicher ersetzt keinen 30-m³-Puffer)
   var pufferRestL = sumKw * 25 - (extra.optSpeicherVol || 0) * 1000;
-  if (sumKw > 0 && pufferRestL > 0) add('puffer', Math.round(pufferRestL*7/1000)*1000, {n:20,inst:1.0,wart:1.0,bedien:0});
+  if (sumKw > 0 && pufferRestL > 0) add('puffer', Math.round(speicherInvestEur(pufferRestL/1000, 'puffer')/1000)*1000, {n:20,inst:1.0,wart:1.0,bedien:0});
   var schallKw = (pKw.lwwp||0)+(pKw.bhkw||0);
   if (schallKw > 0.1)      add('schallschutz', Math.round(schallKw*75), {n:25,inst:0.5,wart:0.5,bedien:0});
   var bioKw = (pKw.pellets||0)+(pKw.hhs||0);
@@ -531,56 +528,53 @@ export function calcWirtschaftPanel() {
 
   // Direkte Bausteine
   const BD = [
-    { id:'lwwp',       label:'Luft-WP (Anlage)',        get vdi(){ return {n:20,inst:1.0,wart:1.5,bedien:bedienStunden(5, pKw.lwwp||0)}; },
+    { id:'lwwp',       label:'Luft-WP (Anlage)',        get vdi(){ return {n:20,inst:1.0,wart:1.5,bedien:bedienStunden('lwwp', pKw.lwwp||0)}; },
       aktiv:()=>aktiv('lwwp'),    auto:()=>iKW('LuftWP', pKw.lwwp||0),
       get tooltip(){return iKWtip('LuftWP', pKw.lwwp||0, 'Luft-Wasser-WP inkl. Aufstellung');} },
-    { id:'fg',         label:'Flusswasser-WP (Anlage)',  get vdi(){ return {n:20,inst:2.0,wart:1.0,bedien:bedienStunden(5, pKw.fg||0)}; },
+    { id:'fg',         label:'Flusswasser-WP (Anlage)',  get vdi(){ return {n:20,inst:2.0,wart:1.0,bedien:bedienStunden('fg', pKw.fg||0)}; },
       aktiv:()=>aktiv('fg'),      auto:()=>iKW('FlussWP', pKw.fg||0),
       get tooltip(){return iKWtip('FlussWP', pKw.fg||0, 'WP-Anlage Flusswasser inkl. Wärmetauscher');} },
-    { id:'geo_wp',     label:'Geo-WP (Anlage)',          get vdi(){ return {n:20,inst:1.0,wart:1.5,bedien:bedienStunden(5, pKw.geo||0)}; },
+    { id:'geo_wp',     label:'Geo-WP (Anlage)',          get vdi(){ return {n:20,inst:1.0,wart:1.5,bedien:bedienStunden('geo_wp', pKw.geo||0)}; },
       aktiv:()=>aktiv('geo'),     auto:()=>iKW('GeoWP', pKw.geo||0),
       get tooltip(){return iKWtip('GeoWP', pKw.geo||0, 'WP-Anlage Geothermie ohne Bohrungen');} },
     { id:'geo_sonden', get label(){ return _geoIstEis() ? 'Eisspeicher + Solar-Luftabsorber' : 'Erdsondenbohrungen'; }, vdi:{n:50,inst:2.0,wart:1.0,bedien:0},
       aktiv:()=>aktiv('geo'),     auto:()=>_geoQuellInvest(bohrm),
       get tooltip(){ return _geoIstEis() ? 'Speicher 750 €/m³ inkl. Erdarbeiten + Absorber 350 €/m² inkl. Montage (Annahme, Marktspanne)' : 'Bohrmeter × 95 €/m (Duplex-Erdsonden inkl. Verfüllung, Marktdurchschnitt 2025)'; } },
     { id:'pk',         label:'Pelletkessel',
-      get vdi(){ const kw=pKw.pellets||0; return {n:15,inst:3.0,wart:3.0,bedien:kw<50?100:kw<200?200:kw<500?300:408}; },
+      get vdi(){ return {n:15,inst:3.0,wart:3.0,bedien:bedienStunden('pk', pKw.pellets||0)}; },
       aktiv:()=>aktiv('pellets'), auto:()=>iKW('Pellets', pKw.pellets||0),
-      get tooltip(){const kw=pKw.pellets||0; const bh=kw<50?100:kw<200?200:kw<500?300:408; return iKWtip('Pellets', kw, 'Pelletkessel inkl. Regelung, ohne Lager. Bedienung: '+bh+' h/a');} },
+      get tooltip(){return iKWtip('Pellets', pKw.pellets||0, 'Pelletkessel inkl. Regelung, ohne Lager');} },
     { id:'pk_lager',   label:'Pellet-Lager',
-      get vdi(){ const kw=pKw.pellets||0; return {n:20,inst:3.0,wart:2.0,bedien:kw<50?50:kw<200?100:kw<500?150:204}; },
+      get vdi(){ return {n:20,inst:3.0,wart:2.0,bedien:bedienStunden('pk_lager', pKw.pellets||0)}; },
       aktiv:()=>aktiv('pellets'), auto:()=>Math.round((pKw.pellets||0)*100),
-      get tooltip(){const kw=pKw.pellets||0; const bh=kw<50?50:kw<200?100:kw<500?150:204; return 'Pelletlager inkl. Silo + Förderschnecke, pauschal 100 €/kW. Bedienung: '+bh+' h/a';} },
+      tooltip:'Pelletlager inkl. Silo + Förderschnecke, pauschal 100 €/kW' },
     { id:'hhs',        label:'HHS-Kessel',
-      get vdi(){ const kw=pKw.hhs||0; return {n:15,inst:3.0,wart:3.0,bedien:kw<50?150:kw<200?250:kw<500?350:408}; },
+      get vdi(){ return {n:15,inst:3.0,wart:3.0,bedien:bedienStunden('hhs', pKw.hhs||0)}; },
       aktiv:()=>aktiv('hhs'),     auto:()=>iKW('Hackschnitzel', pKw.hhs||0),
-      get tooltip(){const kw=pKw.hhs||0; const bh=kw<50?150:kw<200?250:kw<500?350:408; return iKWtip('Hackschnitzel', kw, 'HHS-Kessel inkl. Förderung und Regelung. Bedienung: '+bh+' h/a');} },
+      get tooltip(){return iKWtip('Hackschnitzel', pKw.hhs||0, 'HHS-Kessel inkl. Förderung und Regelung');} },
     { id:'hhs_lager',  label:'HHS-Lager',
-      get vdi(){ const kw=pKw.hhs||0; return {n:30, inst:1.0, wart:1.0, bedien:kw<50?100:kw<200?200:kw<500?400:612}; },
+      get vdi(){ return {n:30, inst:1.0, wart:1.0, bedien:bedienStunden('hhs_lager', pKw.hhs||0)}; },
       aktiv:()=>aktiv('hhs'),     auto:()=>Math.round((pKw.hhs||0)*150),
-      get tooltip(){const kw=pKw.hhs||0; const bh=kw<50?100:kw<200?200:kw<500?400:612; return 'HHS-Bunker + Schubboden/Austragung, 150 €/kW. Bedienung: '+bh+' h/a';} },
-    { id:'hko',        label:'Heizölkessel',             get vdi(){ return {n:20,inst:1.0,wart:2.0,bedien:bedienStunden(20, pKw.heizoel||0)}; },
+      tooltip:'HHS-Bunker + Schubboden/Austragung, 150 €/kW' },
+    { id:'hko',        label:'Heizölkessel',             get vdi(){ return {n:20,inst:1.0,wart:2.0,bedien:bedienStunden('hko', pKw.heizoel||0)}; },
       aktiv:()=>aktiv('heizoel'), auto:()=>iKW('Heizoel', pKw.heizoel||0),
       get tooltip(){return iKWtip('Heizoel', pKw.heizoel||0, 'Heizölkessel inkl. Brenner und Regelung');} },
-    { id:'gk',         label:'Gaskessel',                get vdi(){ return {n:20,inst:1.0,wart:2.0,bedien:bedienStunden(20, pKw.gaskessel||0)}; },
+    { id:'gk',         label:'Gaskessel',                get vdi(){ return {n:20,inst:1.0,wart:2.0,bedien:bedienStunden('gk', pKw.gaskessel||0)}; },
       aktiv:()=>aktiv('gaskessel'),
       auto:()=>iKW('Gaskessel', (pKw.gaskessel||0)),
       get tooltip(){return iKWtip('Gaskessel', pKw.gaskessel||0, 'Gaskessel inkl. Brenner und Regelung');} },
-    { id:'gk_auto',    label:'Spitzenlast-Kessel (auto)', get vdi(){ return {n:20,inst:1.0,wart:2.0,bedien:bedienStunden(20, pKw._autoGk||0)}; },
+    { id:'gk_auto',    label:'Spitzenlast-Kessel (auto)', get vdi(){ return {n:20,inst:1.0,wart:2.0,bedien:bedienStunden('gk_auto', pKw._autoGk||0)}; },
       aktiv:()=>keys.includes('_autoGk') && (pKw._autoGk||0) > 0.1,
       auto:()=>iKW('Gaskessel', (pKw._autoGk||0)),
       get tooltip(){return iKWtip('Gaskessel', pKw._autoGk||0, 'Automatischer Spitzenlast-Gaskessel: deckt die Restlast in der stündlichen Einsatzplanung — auch er muss gebaut werden, daher Invest wie Gaskessel');} },
     { id:'bhkw_agg',   label:'BHKW-Aggregat',
-      get vdi(){ const kw=pKw.bhkw||0; return {n:15,inst:3.0,wart:3.5,bedien:kw<20?100:kw<100?200:kw<500?300:408}; },
+      get vdi(){ return {n:15,inst:3.0,wart:3.5,bedien:bedienStunden('bhkw_agg', pKw.bhkw||0)}; },
       aktiv:()=>aktiv('bhkw'),   auto:()=>iKW('BHKW', pKw.bhkw||0),
-      get tooltip(){
-        const kw=pKw.bhkw||0; const bh=kw<20?100:kw<100?200:kw<500?300:408;
-        return iKWtip('BHKW', kw, 'BHKW-Aggregat inkl. Schalldämpfer. Bedienung: '+bh+' h/a (nach Leistung skaliert)');
-      } },
+      get tooltip(){ return iKWtip('BHKW', pKw.bhkw||0, 'BHKW-Aggregat inkl. Schalldämpfer'); } },
     { id:'bhkw_hydr',  label:'BHKW Hydraulik/Abgas',     vdi:{n:25,inst:1.5,wart:1.0,bedien:0},
       aktiv:()=>aktiv('bhkw'),   auto:()=>Math.round((pKw.bhkw||0)*150),
       tooltip:'BHKW-Peripherie: Hydraulik, Abgaswärmetauscher, 150 €/kW_th' },
-    { id:'sk',         label:'Stromkessel',               vdi:{n:20,inst:1.0,wart:1.0,bedien:0},
+    { id:'sk',         label:'Stromkessel',               get vdi(){ return {n:20,inst:1.0,wart:1.0,bedien:bedienStunden('sk', pKw.stromkessel||0)}; },
       aktiv:()=>aktiv('stromkessel'),
       auto:()=>iKW('Stromkessel', pKw.stromkessel||0) || Math.round((pKw.stromkessel||0)*80),
       get tooltip(){return iKWtip('Stromkessel', pKw.stromkessel||0, 'Elektroheizkessel inkl. Anschluss/Hydraulik');} },
@@ -588,30 +582,20 @@ export function calcWirtschaftPanel() {
       aktiv:()=>solarthermieAktiv,
       auto:()=>{ const fl=parseFloat(document.getElementById('st-flaeche')?.value)||0; return Math.round(fl*300); },
       tooltip:'Flachkollektoren ca. 300 €/m² inkl. Montage' },
-    { id:'thermSpeicher',label:'Wärmespeicher',          vdi:{n:20,inst:1.0,wart:0.5,bedien:0},
+    { id:'thermSpeicher',label:'Wärmespeicher',
+      vdi:{n:20,inst:1.0,wart:0.5,bedien:0},
       aktiv:()=>thermSpeicherAktiv,
       auto:()=>{
         const p=getThermSpeicherParams(); if(!p) return 0;
-        const typ=document.getElementById('ts-typ')?.value||'puffer';
-        // €/kWh nach Typ, bei 'puffer' automatisch nach Volumen abstufen
-        let eurProKwh;
-        if (typ==='saisonal') eurProKwh = 40;
-        else if (typ==='gross') eurProKwh = 80;
-        else {
-          // Puffer: große Speicher (>5 m³) sind deutlich günstiger pro kWh
-          eurProKwh = p.vol > 50 ? 60 : p.vol > 20 ? 70 : p.vol > 5 ? 80 : 100;
-        }
-        return Math.round(p.kapKwh*eurProKwh);
+        return speicherInvestEur(p.vol, document.getElementById('ts-typ')?.value||'puffer');
       },
       get tooltip(){
         const p=getThermSpeicherParams();
         const typ=document.getElementById('ts-typ')?.value||'puffer';
-        if (!p) return 'Puffer ~100 €/kWh (klein), ~60-80 €/kWh (>5 m³), Großspeicher 80, Saisonal 40';
-        let eurKwh;
-        if (typ==='saisonal') eurKwh = 40;
-        else if (typ==='gross') eurKwh = 80;
-        else eurKwh = p.vol > 50 ? 60 : p.vol > 20 ? 70 : p.vol > 5 ? 80 : 100;
-        return `${Math.round(p.vol)} m³ × ${eurKwh} €/kWh = ${Math.round(p.kapKwh*eurKwh).toLocaleString('de-DE')} € (Typ: ${typ}, ${eurKwh} €/kWh bei ${Math.round(p.vol)} m³)`;
+        const art = typ==='saisonal' ? 'Erdbecken' : 'Stahltank';
+        if (!p) return 'Stahltank ca. 2.000 €/m³ (1 m³) bis 155 €/m³ (5.000 m³), Erdbecken ca. 100 €/m³ (10.000 m³) bis 56 €/m³ (100.000 m³) — Annahme nach Marktspannen';
+        const inv = speicherInvestEur(p.vol, typ);
+        return `${art}: ${Math.round(p.vol).toLocaleString('de-DE')} m³ × ${Math.round(inv / p.vol).toLocaleString('de-DE')} €/m³ = ${inv.toLocaleString('de-DE')} € (${Math.round(inv / Math.max(1, p.kapKwh))} €/kWh Speicherinhalt) — spezifische Kosten sinken mit der Größe (Annahme nach Marktspannen)`;
       } },
     { id:'fw_pumpe',   label:'FW-Übergabe/Pumpenstation',vdi:{n:18,inst:2.0,wart:1.0,bedien:0},
       aktiv:()=>aktiv('fernwaerme'),auto:()=>Math.round((pKw.fernwaerme||0)*80),
@@ -622,8 +606,8 @@ export function calcWirtschaftPanel() {
       tooltip:'Schornstein für alle Feuerungsanlagen (inkl. BHKW und Spitzenlast-Kessel), 60 €/kW' },
     { id:'puffer',     label:'Pufferspeicher',           vdi:{n:20,inst:1.0,wart:1.0,bedien:0},
       aktiv:()=>sumKw > 0 && _pufferRestL() > 0,
-      auto:()=>Math.round(_pufferRestL() * 7 / 1000) * 1000,
-      tooltip:'~25 L/kW à 7 €/L Speichervolumen (Stahl-Pufferspeicher, inkl. Dämmung + Aufstellung). Ein eigener Wärmespeicher ersetzt den Puffer im Umfang seines Volumens' },
+      auto:()=>Math.round(speicherInvestEur(_pufferRestL() / 1000, 'puffer') / 1000) * 1000,
+      get tooltip(){ const v = _pufferRestL() / 1000; return `~25 L/kW → ${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} m³ Stahl-Pufferspeicher inkl. Dämmung und Aufstellung, ${Math.round(speicherInvestEur(v, 'puffer') / Math.max(v, 0.001)).toLocaleString('de-DE')} €/m³ (Kosten wie Wärmespeicher, sinken mit der Größe). Ein eigener Wärmespeicher ersetzt den Puffer im Umfang seines Volumens`; } },
     { id:'schallschutz',label:'Schallschutz/Einhausung', vdi:{n:25,inst:0.5,wart:0.5,bedien:0},
       aktiv:()=>aktiv('lwwp')||aktiv('bhkw'),
       auto:()=>Math.round(((pKw.lwwp||0)+(pKw.bhkw||0))*75),
@@ -739,8 +723,9 @@ export function calcWirtschaftPanel() {
   const gesamtJk     = rows.reduce((s, r) => s + r.jk,     0);
 
   // Aufschlüsselung der Kapitalkosten in Annuität, Instandhaltung, Wartung, Bedienung
-  let _sumAnn = 0, _sumInst = 0, _sumWart = 0, _sumBed = 0;
+  let _sumAnn = 0, _sumInst = 0, _sumWart = 0, _sumBed = 0, _sumBedH = 0;
   for (const r of rows) {
+    _sumBedH += Number(r.effVdi?.bedien) || 0;
     const d = _calcBausteinJKDetail(r.effVal, r.effVdi, zins, lohn);
     _sumAnn  += d.annuitaet;
     _sumInst += d.instandhaltung;
@@ -931,12 +916,18 @@ export function calcWirtschaftPanel() {
   const fmt  = v => Math.round(v).toLocaleString('de-DE');
   const fmtK = v => (v / 1000).toFixed(1).replace('.', ',');
 
+  // Bedienaufwand je Erzeugerbaustein aus der Modulanzahl — Erläuterung als Tooltip
+  const BEDIEN_KW = { lwwp:'lwwp', fg:'fg', geo_wp:'geo', pk:'pellets', pk_lager:'pellets', hhs:'hhs', hhs_lager:'hhs',
+    hko:'heizoel', gk:'gaskessel', gk_auto:'_autoGk', bhkw_agg:'bhkw', sk:'stromkessel' };
+  const bedienTitel = b => BEDIEN_KW[b.id]
+    ? bedienErlaeuterung(b.id, pKw[BEDIEN_KW[b.id]] || 0) + (ovVdi[b.id]?.bedien !== undefined ? ' — hier manuell überschrieben' : '') + '. Leer lassen = automatisch.'
+    : 'Bedienstunden pro Jahr (VDI 2067). Leer lassen = Vorgabewert.';
   const vdiInput = (b, field, width) => {
     const defVal = b.vdi[field];
     const ovrVal = ovVdi[b.id]?.[field];
     const over   = ovrVal !== undefined;
     const dispVal = over ? ovrVal : defVal;
-    return `<input type="text" value="${dispVal ?? ''}"
+    return `<input type="text" value="${dispVal ?? ''}"${field === 'bedien' ? ` title="${bedienTitel(b).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"` : ''}
       style="width:${width}px;text-align:right;font-size:10px;
         background:${over?'rgba(255,152,0,0.15)':'transparent'};
         border:1px solid ${over?'#ff9800':'var(--border)'};
@@ -997,6 +988,7 @@ export function calcWirtschaftPanel() {
     if (!grpRows.length) continue;
     const grpInvest = grpRows.reduce((s, r) => s + r.effVal, 0);
     const grpJk     = grpRows.reduce((s, r) => s + r.jk, 0);
+    const grpBed    = grpRows.reduce((s, r) => s + (Number(r.effVdi?.bedien) || 0), 0);
     const gi = grpIdx;
     const isOpen = !!_openGrps[gi];
     const subLabel = grpRows.length === 1 ? grpRows[0].label : '(' + grpRows.length + ' Bausteine)';
@@ -1008,7 +1000,8 @@ export function calcWirtschaftPanel() {
         '<span style="font-weight:normal;font-size:9px;color:var(--muted);margin-left:4px;">' + subLabel + '</span>' +
       '</td>' +
       '<td style="text-align:right;font-family:\'DM Mono\',monospace;font-size:11px;">' + euroKompakt(grpInvest) + '</td>' +
-      '<td colspan="3"></td>' +
+      '<td colspan="2"></td>' +
+      '<td style="text-align:right;font-size:10px;color:var(--muted);" title="Bedienstunden der Gruppe pro Jahr">' + (grpBed > 0 ? fmt(grpBed) + ' h' : '') + '</td>' +
       '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + euroKompakt(grpJk, true) + '</td>' +
       '<td style="text-align:right;font-family:\'DM Mono\',monospace;font-size:10px;color:#a5d6a7;">' + _wgkCt(grpJk) + '</td>' +
     '</tr>';
@@ -1039,7 +1032,7 @@ export function calcWirtschaftPanel() {
     { label: 'Kapital (Annuität)', wert: _sumAnn, farbe: '#ffb74d', tip: 'Jährliche Rate aus den Investitionskosten — Zinsen und Tilgung über die Nutzungsdauer (VDI 2067).' },
     { label: 'Instandhaltung', wert: _sumInst, farbe: '#ce93d8' },
     { label: 'Wartung', wert: _sumWart, farbe: '#9575cd' },
-    { label: 'Bedienung', wert: _sumBed, farbe: '#7986cb' },
+    { label: `Bedienung (${Math.round(_sumBedH).toLocaleString('de-DE')} h/a)`, wert: _sumBed, farbe: '#7986cb', tip: 'Bedienaufwand nach VDI 2067 — je Erzeuger aus der Zahl der Module (z. B. Luft-WP-Module bis 800 kW), mal Stundensatz.' },
     { label: 'Energie inkl. CO₂', wert: gesamtEnergieMitCo2, farbe: '#4fc3f7' },
   ].filter(t => Math.abs(t.wert) > 0.5);
   const _teilSumme = _teile.reduce((a, t) => a + Math.max(0, t.wert), 0) || 1;
@@ -1088,7 +1081,8 @@ export function calcWirtschaftPanel() {
       <tfoot><tr>
         <td colspan="2">Kapital- &amp; Betriebskosten</td>
         <td>${euroKompakt(gesamtInvest)}</td>
-        <td></td><td></td><td></td>
+        <td></td><td></td>
+        <td title="Bedienaufwand gesamt: ${fmt(_sumBedH)} h/a × ${lohn} €/h = ${fmt(_sumBed)} €/a (≈ ${(_sumBedH / 1600).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Vollzeitstellen bei 1.600 h/a)">${fmt(_sumBedH)} h</td>
         <td>${euroKompakt(gesamtJk, true)}</td>
         <td>${_wgkCt(gesamtJk)}</td>
       </tr></tfoot>
@@ -1711,23 +1705,23 @@ export function calcJahresscheiben() {
   // Rebuild investment calc
   const nGeb = parseInt(document.getElementById('netz-n-geb')?.value)||0;
   const BD = [
-    { id:'lwwp', aktiv:()=>aktiv('lwwp'), auto:()=>iKW('LuftWP', pKw.lwwp||0), get vdi(){ return {n:20,inst:1.0,wart:1.5,bedien:bedienStunden(5, pKw.lwwp||0)}; } },
-    { id:'fg', aktiv:()=>aktiv('fg'), auto:()=>iKW('FlussWP', pKw.fg||0), get vdi(){ return {n:20,inst:2.0,wart:1.0,bedien:bedienStunden(5, pKw.fg||0)}; } },
-    { id:'geo_wp', aktiv:()=>aktiv('geo'), auto:()=>iKW('GeoWP', pKw.geo||0), get vdi(){ return {n:20,inst:1.0,wart:1.5,bedien:bedienStunden(5, pKw.geo||0)}; } },
+    { id:'lwwp', aktiv:()=>aktiv('lwwp'), auto:()=>iKW('LuftWP', pKw.lwwp||0), get vdi(){ return {n:20,inst:1.0,wart:1.5,bedien:bedienStunden('lwwp', pKw.lwwp||0)}; } },
+    { id:'fg', aktiv:()=>aktiv('fg'), auto:()=>iKW('FlussWP', pKw.fg||0), get vdi(){ return {n:20,inst:2.0,wart:1.0,bedien:bedienStunden('fg', pKw.fg||0)}; } },
+    { id:'geo_wp', aktiv:()=>aktiv('geo'), auto:()=>iKW('GeoWP', pKw.geo||0), get vdi(){ return {n:20,inst:1.0,wart:1.5,bedien:bedienStunden('geo_wp', pKw.geo||0)}; } },
     { id:'geo_sonden', aktiv:()=>aktiv('geo'), auto:()=>_geoQuellInvest(bohrm), vdi:{n:50,inst:2.0,wart:1.0,bedien:0} },
-    { id:'pk', aktiv:()=>aktiv('pellets'), auto:()=>iKW('Pellets', pKw.pellets||0), get vdi(){const kw=pKw.pellets||0; return {n:15,inst:3.0,wart:3.0,bedien:kw<50?100:kw<200?200:kw<500?300:408};} },
-    { id:'pk_lager', aktiv:()=>aktiv('pellets'), auto:()=>Math.round((pKw.pellets||0)*100), get vdi(){const kw=pKw.pellets||0; return {n:20,inst:3.0,wart:2.0,bedien:kw<50?50:kw<200?100:kw<500?150:204};} },
-    { id:'hhs', aktiv:()=>aktiv('hhs'), auto:()=>iKW('Hackschnitzel', pKw.hhs||0), get vdi(){const kw=pKw.hhs||0; return {n:15,inst:3.0,wart:3.0,bedien:kw<50?150:kw<200?250:kw<500?350:408};} },
-    { id:'hhs_lager', aktiv:()=>aktiv('hhs'), auto:()=>Math.round((pKw.hhs||0)*150), get vdi(){const kw=pKw.hhs||0; return {n:30,inst:1.0,wart:1.0,bedien:kw<50?100:kw<200?200:kw<500?400:612};} },
-    { id:'hko', aktiv:()=>aktiv('heizoel'), auto:()=>iKW('Heizoel', pKw.heizoel||0), get vdi(){ return {n:20,inst:1.0,wart:2.0,bedien:bedienStunden(20, pKw.heizoel||0)}; } },
-    { id:'gk', aktiv:()=>aktiv('gaskessel'), auto:()=>iKW('Gaskessel',pKw.gaskessel||0), get vdi(){ return {n:20,inst:1.0,wart:2.0,bedien:bedienStunden(20, pKw.gaskessel||0)}; } },
-    { id:'bhkw_agg', aktiv:()=>aktiv('bhkw'), auto:()=>iKW('BHKW', pKw.bhkw||0), get vdi(){const kw=pKw.bhkw||0; return {n:15,inst:3.0,wart:3.5,bedien:kw<20?100:kw<100?200:kw<500?300:408};} },
+    { id:'pk', aktiv:()=>aktiv('pellets'), auto:()=>iKW('Pellets', pKw.pellets||0), get vdi(){ return {n:15,inst:3.0,wart:3.0,bedien:bedienStunden('pk', pKw.pellets||0)}; } },
+    { id:'pk_lager', aktiv:()=>aktiv('pellets'), auto:()=>Math.round((pKw.pellets||0)*100), get vdi(){ return {n:20,inst:3.0,wart:2.0,bedien:bedienStunden('pk_lager', pKw.pellets||0)}; } },
+    { id:'hhs', aktiv:()=>aktiv('hhs'), auto:()=>iKW('Hackschnitzel', pKw.hhs||0), get vdi(){ return {n:15,inst:3.0,wart:3.0,bedien:bedienStunden('hhs', pKw.hhs||0)}; } },
+    { id:'hhs_lager', aktiv:()=>aktiv('hhs'), auto:()=>Math.round((pKw.hhs||0)*150), get vdi(){ return {n:30,inst:1.0,wart:1.0,bedien:bedienStunden('hhs_lager', pKw.hhs||0)}; } },
+    { id:'hko', aktiv:()=>aktiv('heizoel'), auto:()=>iKW('Heizoel', pKw.heizoel||0), get vdi(){ return {n:20,inst:1.0,wart:2.0,bedien:bedienStunden('hko', pKw.heizoel||0)}; } },
+    { id:'gk', aktiv:()=>aktiv('gaskessel'), auto:()=>iKW('Gaskessel',pKw.gaskessel||0), get vdi(){ return {n:20,inst:1.0,wart:2.0,bedien:bedienStunden('gk', pKw.gaskessel||0)}; } },
+    { id:'bhkw_agg', aktiv:()=>aktiv('bhkw'), auto:()=>iKW('BHKW', pKw.bhkw||0), get vdi(){ return {n:15,inst:3.0,wart:3.5,bedien:bedienStunden('bhkw_agg', pKw.bhkw||0)}; } },
     { id:'bhkw_hydr', aktiv:()=>aktiv('bhkw'), auto:()=>Math.round((pKw.bhkw||0)*150), vdi:{n:25,inst:1.5,wart:1.0,bedien:0} },
-    { id:'sk', aktiv:()=>aktiv('stromkessel'), auto:()=>Math.round((pKw.stromkessel||0)*80), vdi:{n:20,inst:1.0,wart:1.0,bedien:0} },
+    { id:'sk', aktiv:()=>aktiv('stromkessel'), auto:()=>Math.round((pKw.stromkessel||0)*80), get vdi(){ return {n:20,inst:1.0,wart:1.0,bedien:bedienStunden('sk', pKw.stromkessel||0)}; } },
     { id:'fw_pumpe', aktiv:()=>aktiv('fernwaerme'), auto:()=>Math.round((pKw.fernwaerme||0)*80), vdi:{n:18,inst:2.0,wart:1.0,bedien:0} },
     { id:'schornstein', aktiv:()=>aktiv('pellets')||aktiv('hhs')||aktiv('heizoel')||aktiv('gaskessel')||aktiv('bhkw')||(pKw._autoGk||0)>0.1,
       auto:()=>Math.round(((pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw._autoGk||0)+(pKw.bhkw||0))*60), vdi:{n:40,inst:1.0,wart:2.0,bedien:0} },
-    { id:'puffer', aktiv:()=>sumKw>0 && pufferRestL>0, auto:()=>Math.round(pufferRestL*7/1000)*1000, vdi:{n:20,inst:1.0,wart:1.0,bedien:0} },
+    { id:'puffer', aktiv:()=>sumKw>0 && pufferRestL>0, auto:()=>Math.round(speicherInvestEur(pufferRestL/1000, 'puffer')/1000)*1000, vdi:{n:20,inst:1.0,wart:1.0,bedien:0} },
     { id:'schallschutz', aktiv:()=>aktiv('lwwp')||aktiv('bhkw'), auto:()=>Math.round(((pKw.lwwp||0)+(pKw.bhkw||0))*75), vdi:{n:25,inst:0.5,wart:0.5,bedien:0} },
     { id:'entstaubung', aktiv:()=>(pKw.pellets||0)+(pKw.hhs||0)>200,
       auto:()=>{const p=(pKw.pellets||0)+(pKw.hhs||0);return p<=500?20000:p<=1000?30000:40000;}, vdi:{n:15,inst:2.0,wart:3.0,bedien:100} },

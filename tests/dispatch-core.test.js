@@ -221,3 +221,31 @@ describe('_dispatchCore — Randfälle', () => {
     expect(result.thKwh.gaskessel).toBe(0);
   });
 });
+
+describe('_dispatchCore — Speicher: Startfüllung und Ladefenster', () => {
+  const n = 24 * 14;
+  // Last schwankt: tagsüber 50 kW, nachts 250 kW; WP 150 kW, Kessel deckt den Rest
+  const last = new Float32Array(n).map((_, t) => (t % 24 >= 8 && t % 24 < 18 ? 50 : 250));
+  const basis = {
+    lastgangKw: last, tempH: new Float32Array(n).fill(10), vlH: new Float32Array(n).fill(45),
+    erzList: makeErzList([{ key: 'lwwp', typ: 'wp', kw: 150 }, { key: 'gaskessel', kw: 500 }]),
+    stProfile: null, stExcessH: null, bhkwSigma: 0.45, skEta: 0.99, lwwpMinCop: 0,
+    quelleTemp: () => 10, recordHourly: true, backupMode: false,
+  };
+  const sp = { kapKwh: 2000, verlustRate: 0, entladeKw: 500, ladeKw: 500 };
+
+  it('Startfüllung wird übernommen und am Ende zurückgegeben', () => {
+    const r = _dispatchCore({ ...basis, speicherParams: sp, speicherStartKwh: 1500 });
+    expect(r.thermSocH[0]).toBeGreaterThan(0);
+    expect(Number.isFinite(r.thermSocEnde)).toBe(true);
+    const leer = _dispatchCore({ ...basis, speicherParams: sp });
+    expect(r.thermEntladenGes).toBeGreaterThan(leer.thermEntladenGes);
+  });
+
+  it('Ladefenster: ohne Angabe 8–18 Uhr, rund um die Uhr lädt mehr', () => {
+    const tag = _dispatchCore({ ...basis, speicherParams: sp });
+    for (let t = 0; t < n; t++) if (t % 24 < 8 || t % 24 >= 18) expect(tag.thermLadeH[t]).toBe(0);
+    const immer = _dispatchCore({ ...basis, speicherParams: { ...sp, ladeVon: 0, ladeBis: 24 } });
+    expect(immer.thermGeladenGes).toBeGreaterThanOrEqual(tag.thermGeladenGes);
+  });
+});

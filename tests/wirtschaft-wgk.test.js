@@ -7,6 +7,8 @@ beforeAll(() => {
   loadScript('config/optimizer-defaults.js');
   loadScript('01-globals-varianten.js');
   loadScript('08-calc-engine.js');
+  loadScript('lib/vdi-bedien.js');
+  loadScript('lib/waermespeicher.js');
   loadScript('07b-analysis-economics.js');
 });
 
