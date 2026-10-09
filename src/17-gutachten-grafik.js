@@ -7959,7 +7959,7 @@ function ggPvBelegungAbsatz(v) {
         : `Das Netz im Jahr ${ggTextFeld(n.jahr, 'Netzjahr')} nimmt sie ohne Ertüchtigung auf.`) + pruefung
       : `Sie überschreitet${mass.length ? ` auch nach ${nMass}${welche}` : ''} an einzelnen Stellen die Aufnahmefähigkeit des Netzes; dort ist eine weitere Ertüchtigung vorauszusetzen.` + pruefung;
   return `${ggPvName(v)}: ${ggPvFeld(d.daecher, 'Anzahl Dächer')} Dächer mit zusammen ${ggPvFeld(d.neuKwp, 'kWp Belegung')} kWp`
-    + (d.geplantKwp > 0.5 ? `, dazu ${ggPvFeld(d.geplantKwp, 'kWp geplant')} kWp bereits geplante PV, insgesamt ${ggPvFeld(v.pvKwp, 'kWp gesamt')} kWp` : '')
+    + (d.geplantKwp > 0.5 ? `, dazu ${ggPvFeld(d.geplantKwp, 'kWp geplant')} kWp ${d.ausStand ? 'PV außerhalb der Dächer' : 'bereits geplante PV'}, insgesamt ${ggPvFeld(v.pvKwp, 'kWp gesamt')} kWp` : '')
     + '. '
     + (bv.beschreibung ? `Auswahl: ${gEsc(bv.beschreibung)}. ` : '')
     + (v.batKwh > 0
