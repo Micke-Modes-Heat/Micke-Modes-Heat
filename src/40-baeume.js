@@ -20,9 +20,10 @@
 
 import { beginInteraction, cancelInteraction } from './lib/interaction-state.js';
 import { map } from './02b-gebaeude.js';
+import { lsMeldung } from './42-lade-status.js';
 import {
   _hasBelegung, calcGebKwpKorr, getGebPvModules, _gebPvSig, _syncPvAssetIfInSync, escHtml, flyTo, showHint,
-  _clipPolyHalfPlane, _firstMitteLL, attachGebPvLayer, redrawGebPvModules,
+  _clipPolyHalfPlane, pvFirstPunkt, attachGebPvLayer, redrawGebPvModules,
 } from './03c-gebaeude-io.js';
 import { polygonAreaM2 } from './02c-karte-werkzeuge.js';
 import { calcStromPanel } from './09b-pv-calc.js';
@@ -54,7 +55,12 @@ let _offen = false;
 let _laedt = false;
 let _ladeInfo = '';
 /** Empfehlungsschwellen: Verlust durch Verschattung in % */
-const _schwellen = { pruefen: 10, nicht: 25 };
+const _schwellen = { pruefen: 10, nicht: 25, modul: 30 };
+/** Einzelmodule ab diesem Verlust (%) werden bei der Belegung weggelassen (Teilbelegung) */
+const MODUL_PROBEN = 48;          // Module je Dachfläche in der Feinprüfung
+/** Vorsichtig rechnen: Aufschlag auf nur geschätzte Baumhöhen (Schätzfehler, Wachstum) */
+const HOEHEN_AUFSCHLAG = 1.2;
+let _vorsicht = false;
 let _offenGeb = null;         // aufgeklappte Zeile in der Liste
 /** @type {null | {fertig:number, gesamt:number}} */
 let _rechnet = null;
@@ -62,6 +68,9 @@ let _layer = null;
 let _renderer = null;
 const _neu = { art: 'laub', hoehe: 12, krone: 8 };
 const _autoVersucht = new Set();
+/** Setzen: einzeln per Klick oder eine Fläche zeichnen und mit Bäumen füllen */
+let _modus = 'einzeln';
+const _flaeche = { abstand: 6, punkte: [], layer: null, ausGebaeude: true };
 
 const _klemmen = (v, a, b) => Math.max(a, Math.min(b, v));
 const _fmt = (v, d = 0) => (Number(v) || 0).toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -84,7 +93,7 @@ export function baumSig() {
     const s = `${b.lat.toFixed(6)},${b.lng.toFixed(6)},${b.hoehe.toFixed(1)},${b.krone.toFixed(1)},${b.art};`;
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
   }
-  _sigCache = `${_baeume.length}-${(h >>> 0).toString(36)}`;
+  _sigCache = `${_baeume.length}-${(h >>> 0).toString(36)}${_vorsicht ? 'v' : ''}`;
   return _sigCache;
 }
 
@@ -117,6 +126,7 @@ export function baumCapture() {
     verschattungAn: _an,
     sichtbar: _sichtbar,
     schwellen: { ..._schwellen },
+    vorsichtig: _vorsicht,
   };
 }
 
@@ -128,7 +138,8 @@ export function baumRestore(s) {
   _nr = _baeume.reduce((m, b) => Math.max(m, b.id + 1), 1);
   _an = !!s?.verschattungAn;
   _sichtbar = s?.sichtbar !== false;
-  if (s?.schwellen) { _schwellen.pruefen = +s.schwellen.pruefen || 10; _schwellen.nicht = +s.schwellen.nicht || 25; }
+  if (s?.schwellen) { _schwellen.pruefen = +s.schwellen.pruefen || 10; _schwellen.nicht = +s.schwellen.nicht || 25; _schwellen.modul = +s.schwellen.modul || 30; }
+  _vorsicht = !!s?.vorsichtig;
   _sigCache = null;
   _autoVersucht.clear();
   _zeichnen();
@@ -195,12 +206,15 @@ export function baumBearbeitenToggle() {
   beginInteraction({
     id: INTERAKTION,
     label: '🌳 Bäume',
-    hint: 'Karte anklicken = Baum setzen · Baum anklicken = Höhe, Krone, Art ändern oder löschen',
+    hint: 'Karte anklicken = Baum setzen (oder Fläche zeichnen) · Baum anklicken = Höhe, Krone, Art ändern oder löschen',
     cancel: () => _bearbeitenAus(),
   });
   _bearbeiten = true;
   _sichtbar = true;
   map.on('click', _kartenKlick);
+  map.on('dblclick', _kartenDoppelklick);
+  document.addEventListener('keydown', _flaechenTaste);
+  _modusAnwenden();
   _zeichnen();
   _pane();
   baumPanelRender();
@@ -209,15 +223,134 @@ export function baumBearbeitenToggle() {
 function _bearbeitenAus() {
   if (!_bearbeiten) return;
   _bearbeiten = false;
+  _flaecheVerwerfen(true);
   map.off('click', _kartenKlick);
+  map.off('dblclick', _kartenDoppelklick);
+  document.removeEventListener('keydown', _flaechenTaste);
+  _modusAnwenden();
   map.closePopup();
   _zeichnen();
   _pane();
   baumPanelRender();
 }
 
+/* ── Fläche zeichnen und mit Bäumen füllen ───────────────────────────────── */
+
+export function baumModus(m) {
+  _modus = m === 'flaeche' ? 'flaeche' : 'einzeln';
+  _flaecheVerwerfen(true);
+  map.closePopup();
+  _modusAnwenden();
+  baumPanelRender();
+}
+
+/** Fadenkreuz und kein Doppelklick-Zoom, solange eine Fläche gezeichnet wird. */
+function _modusAnwenden() {
+  const zeichnen = _bearbeiten && _modus === 'flaeche';
+  map.getContainer().style.cursor = zeichnen ? 'crosshair' : '';
+  if (zeichnen) map.doubleClickZoom.disable(); else map.doubleClickZoom.enable();
+}
+
+function _flaecheZeichnen() {
+  if (_flaeche.layer) { map.removeLayer(_flaeche.layer); _flaeche.layer = null; }
+  const p = _flaeche.punkte;
+  if (!p.length) return;
+  const stil = { color: GRUEN, weight: 2, dashArray: '5 4', fillColor: GRUEN, fillOpacity: 0.15, interactive: false };
+  _flaeche.layer = L.layerGroup([
+    p.length >= 3 ? L.polygon(p, stil) : L.polyline(p, stil),
+    ...p.map(q => L.circleMarker(q, { radius: 3, color: GRUEN, fillColor: '#fff', fillOpacity: 1, weight: 2, interactive: false })),
+  ]).addTo(map);
+}
+
+function _flaecheVerwerfen(still) {
+  _flaeche.punkte = [];
+  _flaecheZeichnen();
+  if (!still) baumPanelRender();
+}
+
+function _kartenDoppelklick(e) {
+  if (!_bearbeiten || _modus !== 'flaeche') return;
+  L.DomEvent.stop(e);
+  _flaeche.punkte.pop();   // der zweite Klick des Doppelklicks hat den Punkt doppelt gesetzt
+  baumFlaecheFuellen();
+}
+
+function _flaechenTaste(ev) {
+  if (!_bearbeiten || _modus !== 'flaeche' || !_flaeche.punkte.length) return;
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(ev.target?.tagName || '')) return;
+  if (ev.key === 'Enter') { ev.preventDefault(); baumFlaecheFuellen(); }
+  else if (ev.key === 'Backspace') { ev.preventDefault(); _flaeche.punkte.pop(); _flaecheZeichnen(); baumPanelRender(); }
+}
+
+function _imRing(x, y, ring) {
+  let in_ = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) in_ = !in_;
+  }
+  return in_;
+}
+
+/** Fläche (≥ 3 Punkte) in versetzten Reihen mit leicht gestreuten Bäumen füllen. */
+export function baumFlaecheFuellen() {
+  const pts = _flaeche.punkte;
+  if (pts.length < 3) { showHint('Für eine Fläche mindestens 3 Punkte setzen.', 4000); return 0; }
+  const abstand = _klemmen(+_flaeche.abstand || 6, 1, 50);
+  const lat0 = pts.reduce((s, q) => s + q.lat, 0) / pts.length;
+  const lng0 = pts.reduce((s, q) => s + q.lng, 0) / pts.length;
+  const kx = M_PRO_GRAD * Math.cos(lat0 * Math.PI / 180);
+  const xy = q => [(q.lng - lng0) * kx, (q.lat - lat0) * M_PRO_GRAD];
+  const ring = pts.map(xy);
+  const sperren = _flaeche.ausGebaeude
+    ? _gebaeudeMitPolygon().map(g => _ringLL(g).map(([lng, lat]) => [(lng - lng0) * kx, (lat - lat0) * M_PRO_GRAD])).filter(r => r.length >= 3)
+    : [];
+  const xs = ring.map(r => r[0]), ys = ring.map(r => r[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const zeile = abstand * 0.866;
+  if (((x1 - x0) / abstand + 1) * ((y1 - y0) / zeile + 1) > 4 * MAX_BAEUME) {
+    showHint('Fläche zu groß für diesen Abstand — Abstand erhöhen oder die Fläche verkleinern.', 6000);
+    return 0;
+  }
+  const neu = [];
+  let r = 0;
+  for (let y = y0; y <= y1; y += zeile, r++) {
+    for (let x = x0 + (r % 2 ? abstand / 2 : 0); x <= x1; x += abstand) {
+      const px = x + (Math.random() - 0.5) * abstand * 0.3, py = y + (Math.random() - 0.5) * abstand * 0.3;
+      if (!_imRing(px, py, ring) || sperren.some(s => _imRing(px, py, s))) continue;
+      neu.push(_normal({
+        lat: lat0 + py / M_PRO_GRAD, lng: lng0 + px / kx, hoehe: _neu.hoehe, krone: _neu.krone, art: _neu.art,
+        quelle: 'manuell', hoeheQuelle: 'manuell', drehung: Math.random() * Math.PI * 2, ton: 1,
+      }));
+    }
+  }
+  if (!neu.length) { showHint('In dieser Fläche passt bei diesem Abstand kein Baum.', 5000); return 0; }
+  if (_baeume.length + neu.length > MAX_BAEUME) {
+    showHint(`Zu viele Bäume (${_fmt(_baeume.length + neu.length)}, höchstens ${_fmt(MAX_BAEUME)}) — Abstand erhöhen.`, 6000);
+    return 0;
+  }
+  _baeume.push(...neu);
+  _flaecheVerwerfen(true);
+  _geaendert();
+  showHint(`🌳 ${_fmt(neu.length)} Bäume in der Fläche gesetzt (Abstand ${_fmt(abstand, 1)} m)`
+    + (sperren.length ? ', Gebäudegrundrisse ausgespart' : '') + '.', 6000);
+  return neu.length;
+}
+
+export function baumFlaecheOption(feld, wert) {
+  if (feld === 'abstand') _flaeche.abstand = _klemmen(parseFloat(wert) || 6, 1, 50);
+  if (feld === 'ausGebaeude') _flaeche.ausGebaeude = !!wert;
+}
+
+export function baumFlaecheAbbrechen() { _flaecheVerwerfen(false); }
+
 function _kartenKlick(e) {
   if (!_bearbeiten || !e?.latlng) return;
+  if (_modus === 'flaeche') {
+    _flaeche.punkte.push(e.latlng);
+    _flaecheZeichnen();
+    baumPanelRender();
+    return;
+  }
   const krone = _neu.krone;
   const b = _normal({
     lat: e.latlng.lat, lng: e.latlng.lng, hoehe: _neu.hoehe, krone, art: _neu.art,
@@ -321,10 +454,11 @@ function _bbox() {
   return { w: w - RAND_M / kx, e: e + RAND_M / kx, s: s - RAND_M / M_PRO_GRAD, n: n + RAND_M / M_PRO_GRAD };
 }
 
+/** @returns {Promise<number|null>} Anzahl übernommener Bäume, null wenn nichts geschah */
 export async function baumOsmUebernehmen() {
-  if (_laedt) return;
+  if (_laedt) return null;
   const bbox = _bbox();
-  if (!bbox) { showHint('Erst Gebäude anlegen — Bäume werden im Umkreis von 150 m um die Gebäude geholt.', 5000); return; }
+  if (!bbox) { showHint('Erst Gebäude anlegen — Bäume werden im Umkreis von 150 m um die Gebäude geholt.', 5000); return null; }
   _laedt = true;
   _ladeInfo = 'verbinde …';
   baumPanelRender();
@@ -336,12 +470,13 @@ export async function baumOsmUebernehmen() {
           + (m.fehler ? ` — zuletzt: ${m.fehler}` : '');
         const el = document.getElementById('baum-ladeinfo');
         if (el) el.textContent = _ladeInfo;
+        lsMeldung(_ladeInfo);
       },
     });
   } catch (e) {
     console.warn('Bäume aus OSM', e);
     showHint(`⚠ ${e?.message || 'OpenStreetMap nicht erreichbar'}. Die Overpass-Server sind zeitweise überlastet — in ein paar Minuten erneut versuchen.`, 8000);
-    return;
+    return null;
   } finally {
     _laedt = false;
     _ladeInfo = '';
@@ -359,7 +494,7 @@ export async function baumOsmUebernehmen() {
     .filter(t => !bleiben.some(b => nah(b, t)))
     .map(t => _normal({ ...t, id: undefined, quelle: 'osm', osmTyp: t.quelle }));
   if (altOsm && !confirm(`${_fmt(altOsm)} bisher übernommene OSM-Bäume durch ${_fmt(neu.length)} aktuelle ersetzen?`
-    + (bleiben.length ? `\n${_fmt(bleiben.length)} eigene oder bearbeitete Bäume bleiben.` : ''))) return;
+    + (bleiben.length ? `\n${_fmt(bleiben.length)} eigene oder bearbeitete Bäume bleiben.` : ''))) return null;
   _baeume.length = 0;
   _baeume.push(...bleiben, ...neu);
   _sichtbar = true;
@@ -369,6 +504,7 @@ export async function baumOsmUebernehmen() {
   showHint(`🌳 ${_fmt(neu.length)} Bäume übernommen (${z.einzel} einzeln, ${z.reihe} in Reihen, ${_fmt(z.wald)} Wald, ${z.obst} Streuobst)`
     + (erg.ausgeduennt ? ' — Flächen ausgedünnt' : '')
     + (ohneHoehe ? `. ${_fmt(ohneHoehe)} ohne Höhenangabe (gestrichelt) — für die Verschattung lohnt es, die Bäume vor den PV-Dächern nachzumessen.` : '.'), 9000);
+  return neu.length;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -403,6 +539,18 @@ export function pvVerschattungAn() { return _an; }
 function _gruppen(res) {
   return (res?.modules || []).map((m, i) => m.flId != null ? 'fl' + m.flId
     : res.frontCount != null ? (i < res.frontCount ? 'vorne' : 'hinten') : 'dach');
+}
+
+/**
+ * Für die 3D-Ansicht (über 25 pvmDachflaecheInfo): Verschattung einer Gruppe
+ * ('fl<id>' | 'vorne' | 'hinten' | 'dach') der aktuellen Belegung, sonst null.
+ * @returns {null | {faktor:number, status:string}}
+ */
+export function pvVerschattungGruppe(g, key) {
+  const e = _eintrag(g);
+  if (!e) return null;
+  const faktor = e.gruppen?.[key]?.faktor ?? (key === 'dach' ? e.faktor : null);
+  return Number.isFinite(faktor) ? { faktor, status: _status(g) } : null;
 }
 
 /** Für die 3D-Ansicht: Faktor je Modul (Index wie getGebPvModules(g).modules) oder null. */
@@ -448,11 +596,38 @@ function _kontext() {
     const m = d3dGebaeudeModell(g);
     if (m) hindernisGeb.push({ id: g.id, ring: m.ring.map(([lng, lat]) => xy(lng, lat)), hoehe: m.hoehe });
   }
-  const hind = vsHindernisse({
-    baeume: _baeume.map(b => { const [x, y] = xy(b.lng, b.lat); return { id: b.id, x, y, art: b.art, krone: baumKrone(b) }; }),
+  // Nur geschätzte Höhen (Vorgabe) bekommen den Aufschlag; f = 1 → unverändert
+  const hindernisse = f => vsHindernisse({
+    baeume: _baeume.map(b => {
+      const [x, y] = xy(b.lng, b.lat);
+      const hoehe = b.hoeheQuelle === 'vorgabe' ? b.hoehe * f : b.hoehe;
+      return { id: b.id, x, y, art: b.art, krone: baumKrone(f === 1 ? b : { ...b, hoehe }) };
+    }),
     gebaeude: hindernisGeb,
   });
-  return { xy, hind, lat0 };
+  const hind = hindernisse(_vorsicht ? HOEHEN_AUFSCHLAG : 1);
+  // Gegenprobe für die Unsicherheit der Höhen: das jeweils andere Szenario, erst bei Bedarf
+  let alt = null;
+  return { xy, hind, lat0, hindAlt: () => alt || (alt = hindernisse(_vorsicht ? 1 : HOEHEN_AUFSCHLAG)) };
+}
+
+/** Prüfpunkte (Modulmitte + Normale) für die Module `idx` (Index in getGebPvModules(g).modules). */
+function _pruefpunkte(g, k, keys, idx, gewicht = () => 1) {
+  const modell = d3dGebaeudeModell(g, idx);
+  if (!modell?.module.length) return { punkte: [], modell: null };
+  const punkte = [];
+  for (const { idx: i, ecken } of modell.module) {
+    const q = ecken.map(([lng, lat, z]) => [...k.xy(lng, lat), z]);
+    const u = [q[1][0] - q[0][0], q[1][1] - q[0][1], q[1][2] - q[0][2]];
+    const v = [q[3][0] - q[0][0], q[3][1] - q[0][1], q[3][2] - q[0][2]];
+    let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const l = Math.hypot(...n) || 1;
+    n = n.map(c => c / l);
+    if (n[2] < 0) n = n.map(c => -c);
+    const p = [0, 1, 2].map(c => q.reduce((s, e) => s + e[c], 0) / q.length + n[c] * 0.05);
+    punkte.push({ id: i, p, n, gruppe: keys[i], gewicht: gewicht(i) });
+  }
+  return { punkte, modell };
 }
 
 function _berechnen(g, k) {
@@ -466,31 +641,129 @@ function _berechnen(g, k) {
     const s = vsStichprobe(liste.length, PROBEN_JE_FLAECHE);
     for (const j of s) { idx.push(liste[j]); gewicht.set(liste[j], liste.length / s.length); }
   }
-  const modell = d3dGebaeudeModell(g, idx);
-  if (!modell?.module.length) return null;
-  const punkte = [];
-  for (const { idx: i, ecken } of modell.module) {
-    const q = ecken.map(([lng, lat, z]) => [...k.xy(lng, lat), z]);
-    const u = [q[1][0] - q[0][0], q[1][1] - q[0][1], q[1][2] - q[0][2]];
-    const v = [q[3][0] - q[0][0], q[3][1] - q[0][1], q[3][2] - q[0][2]];
-    let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-    const l = Math.hypot(...n) || 1;
-    n = n.map(c => c / l);
-    if (n[2] < 0) n = n.map(c => -c);
-    const p = [0, 1, 2].map(c => q.reduce((s, e) => s + e[c], 0) / q.length + n[c] * 0.05);
-    punkte.push({ p, n, gruppe: keys[i], gewicht: gewicht.get(i) || 1 });
-  }
-  const hind = { baeume: k.hind.baeume, gebaeude: k.hind.gebaeude.filter(o => o.id !== g.id) };
+  const { punkte } = _pruefpunkte(g, k, keys, idx, i => gewicht.get(i) || 1);
+  if (!punkte.length) return null;
   const lat = _ringLL(g)[0]?.[1] ?? k.lat0;
-  const r = vsFaktoren(punkte, hind, lat);
+  const ohneEigenes = h => ({ baeume: h.baeume, gebaeude: h.gebaeude.filter(o => o.id !== g.id) });
+  const r = vsFaktoren(punkte, ohneEigenes(k.hind), lat);
   const gruppen = {};
-  for (const [key, gr] of Object.entries(r.gruppen)) gruppen[key] = { ...gr, label: _gruppenLabel(g, key, res) };
-  return {
+  for (const [key, gr] of Object.entries(r.gruppen)) {
+    const f = r.proben.filter(p => p.gruppe === key).map(p => p.faktor);
+    gruppen[key] = { ...gr, label: _gruppenLabel(g, key, res), minFaktor: f.length ? Math.min(...f) : gr.faktor };
+  }
+  const e = {
     faktor: r.faktor, faktorBaeume: r.faktorBaeume, faktorGebaeude: r.faktorGebaeude, gruppen,
     verursacher: r.verursacher.map(v => ({ key: v.key, anteil: Math.round(v.anteil * 10000) / 10000 })),
     ueberlappungen: r.ueberlappungen,
     baumSig: baumSig(), proben: punkte.length, datum: new Date().toISOString(),
   };
+  // Unsicherheit der geschätzten Höhen: nur nötig, wenn ein Baum mit Vorgabehöhe mitverschattet
+  const geschaetzt = r.verursacher.some(v => v.key[0] === 'b' && _baeume.find(b => String(b.id) === v.key.slice(1))?.hoeheQuelle === 'vorgabe');
+  if (geschaetzt) {
+    const r2 = vsFaktoren(punkte, ohneEigenes(k.hindAlt()), lat);
+    e.faktorAlt = r2.faktor;
+    for (const [key, gr] of Object.entries(r2.gruppen)) {
+      if (!gruppen[key]) continue;
+      gruppen[key].faktorAlt = gr.faktor;
+      if (_bewertung(gr.faktor) !== _bewertung(gruppen[key].faktor)) gruppen[key].unsicher = true;
+    }
+  }
+  return e;
+}
+
+/**
+ * Teilbelegung: Module, die für sich ≥ Modulgrenze verlieren, finden. Erst die Stichprobe
+ * aus _berechnen (min. Probenfaktor je Dachfläche) entscheidet, welche Flächen genauer
+ * geprüft werden (bis MODUL_PROBEN Module); jedes Modul erbt den Faktor der nächsten Probe.
+ * @returns {{schlecht:number[], gesamt:number, polygone:{lat:number,lng:number}[][]}}
+ *   schlecht = Modulindizes; polygone = Sperrflächen (waagrechte Reihen benachbarter Module zusammengefasst)
+ */
+function _modulSchlecht(g, k, e) {
+  const leer = { schlecht: [], gesamt: 0, polygone: [] };
+  const grenze = _schwellen.modul;
+  if (!(grenze > 0 && grenze < 100)) return leer;
+  const res = getGebPvModules(g);
+  const n = res?.modules?.length || 0;
+  if (!n) return leer;
+  const keys = _gruppen(res);
+  // Flächen, in denen mindestens eine Probe schon die halbe Grenze erreicht (dazwischen kann mehr liegen)
+  const verdacht = new Set(Object.entries(e.gruppen || {})
+    .filter(([, gr]) => !(gr.minFaktor > 1 - grenze / 200)).map(([key]) => key));
+  if (!verdacht.size) return { ...leer, gesamt: n };
+  const alle = keys.map((key, i) => (verdacht.has(key) ? i : -1)).filter(i => i >= 0);
+  const voll = _pruefpunkte(g, k, keys, alle);
+  if (!voll.punkte.length) return { ...leer, gesamt: n };
+  const mitte = new Map(voll.punkte.map(p => [p.id, p.p]));
+  const modellEcken = new Map(voll.modell.module.map(m => [m.idx, m.ecken]));
+  // Feinprüfung: bis MODUL_PROBEN Module je Fläche
+  const probeIdx = [];
+  for (const key of verdacht) {
+    const liste = alle.filter(i => keys[i] === key);
+    for (const j of vsStichprobe(liste.length, MODUL_PROBEN)) probeIdx.push(liste[j]);
+  }
+  const probenPunkte = voll.punkte.filter(p => probeIdx.includes(p.id)).map(p => ({ ...p, gewicht: 1 }));
+  const lat = _ringLL(g)[0]?.[1] ?? k.lat0;
+  const r = vsFaktoren(probenPunkte, { baeume: k.hind.baeume, gebaeude: k.hind.gebaeude.filter(o => o.id !== g.id) }, lat);
+  const probe = r.proben;
+  const faktor = new Map();
+  for (const i of alle) {
+    let best = null, bd = Infinity;
+    for (const pr of probe) {
+      if (pr.gruppe !== keys[i]) continue;
+      const a = mitte.get(i), b = mitte.get(pr.id);
+      const d = (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2;
+      if (d < bd) { bd = d; best = pr; }
+    }
+    faktor.set(i, best ? best.faktor : 1);
+  }
+  const schlecht = alle.filter(i => (1 - faktor.get(i)) * 100 >= grenze);
+  // Sperrflächen: unmittelbar benachbarte schlechte Module einer Reihe zu einem Viereck
+  const polygone = [];
+  const ll = ([lng, lat]) => ({ lat, lng });
+  let lauf = null;
+  const abschluss = () => {
+    if (!lauf) return;
+    const a = modellEcken.get(lauf.erste), z = modellEcken.get(lauf.letzte);
+    polygone.push([ll(a[0]), ll(z[1]), ll(z[2]), ll(a[3])]);
+    lauf = null;
+  };
+  for (const i of schlecht) {
+    const ecken = modellEcken.get(i);
+    if (lauf && lauf.letzte === i - 1 && keys[i - 1] === keys[i]) {
+      const [x0, y0] = k.xy(...modellEcken.get(lauf.letzte)[1]), [x1, y1] = k.xy(ecken[0][0], ecken[0][1]);
+      if (Math.hypot(x1 - x0, y1 - y0) < 0.1) { lauf.letzte = i; continue; }
+    }
+    abschluss();
+    lauf = { erste: i, letzte: i };
+  }
+  abschluss();
+  return { schlecht, gesamt: n, polygone };
+}
+
+/**
+ * Teilbelegung auf ein Dach anwenden: Sperrflächen für die schlechten Module.
+ * @param {boolean} echt  echtes Dach (Kartenebene, fortlaufende Ids) oder Rechenkopie
+ * @returns {number[]} ids neu angelegter Sperrflächen
+ */
+function _moduleSperren(g, polygone, echt) {
+  const ids = [];
+  for (const poly of polygone) {
+    if (echt) {
+      window._gebPvFlCounter = (window._gebPvFlCounter || 0) + 1;
+      const fl = { id: window._gebPvFlCounter, typ: 'sperr', auto: 'schatten',
+        polygon: poly, flaeche: polygonAreaM2(poly) || 0, layer: null, svgLayer: null };
+      g.pvFlaechen.push(fl);
+      attachGebPvLayer(g, fl);
+      ids.push(fl.id);
+    } else {
+      const id = -100 - g.pvFlaechen.length;
+      g.pvFlaechen = [...g.pvFlaechen, { id, typ: 'sperr', auto: 'schatten', polygon: poly, flaeche: polygonAreaM2(poly) || 0 }];
+      ids.push(id);
+    }
+  }
+  g._pvModCache = null; g._pvModSig = null;
+  if (echt && ids.length) redrawGebPvModules(g);
+  return ids;
 }
 
 function _speichern(g, e) {
@@ -782,8 +1055,21 @@ export function baumSchwelle(feld, wert) {
   const v = _klemmen(parseFloat(wert) || 0, 1, 90);
   if (feld === 'pruefen') _schwellen.pruefen = Math.min(v, _schwellen.nicht);
   if (feld === 'nicht') _schwellen.nicht = Math.max(v, _schwellen.pruefen);
+  if (feld === 'modul') _schwellen.modul = _klemmen(v, 5, 95);
   window.pvModusRender?.();
   baumPanelRender();
+}
+
+/** Vorsichtig rechnen: geschätzte Baumhöhen mit Aufschlag. Bisherige Ergebnisse gelten dann als veraltet. */
+export function baumVorsichtig(an) {
+  const neu = !!an;
+  if (neu === _vorsicht) return;
+  _vorsicht = neu;
+  _sigCache = null;
+  _autoVersucht.clear();
+  window.pvModusRender?.();
+  baumPanelRender();
+  if (_mitPv().length) showHint(`Höhenaufschlag ${neu ? 'an' : 'aus'} — „Verschattung berechnen" rechnet die Dächer neu.`, 4500);
 }
 
 export function baumZeileToggle(gId) {
@@ -800,7 +1086,7 @@ function _haelftePolygone(g, vorne) {
   const maxLat = Math.max(...alle.map(p => p.lat)), minLat = Math.min(...alle.map(p => p.lat));
   const cosL = Math.cos((maxLat + minLat) / 2 * Math.PI / 180);
   const A = getGebPvModules(g).splitAzimut ?? g.dachAzimut ?? 180;
-  const C = g.pvRidgeOverride || _firstMitteLL(alle, A);
+  const C = pvFirstPunkt(g, A, alle);   // wie die Platzierung (03c): Mitte des Grundrisses
   return bel.map(f => _clipPolyHalfPlane(f.polygon, C, A, cosL, vorne)).filter(h => h.length >= 3)
     .map(h => h.map(p => ({ lat: p.lat, lng: p.lng })));
 }
@@ -840,13 +1126,24 @@ export function verschattungKontext() { return _kontext(); }
  *   ganz = das ganze Dach ist zu stark verschattet; faktor = nach dem Kürzen
  */
 export function verschattungProbe(t, k) {
-  const e = _berechnen(t, k);
+  let e = _berechnen(t, k);
   if (!e) return null;
+  const verlustPct = (1 - e.faktor) * 100;
+  // Teilbelegung: einzelne stark verschattete Module weglassen, dann neu rechnen
+  const m = _modulSchlecht(t, k, e);
+  const modulAus = [];
+  if (m.schlecht.length) {
+    if (m.schlecht.length >= m.gesamt) { _speichern(t, e); return { faktor: e.faktor, ganz: true, ausgelassen: ['module'], verlustPct, moduleAus: m.schlecht.length }; }
+    _moduleSperren(t, m.polygone, false);
+    modulAus.push('module');
+    e = _berechnen(t, k);
+    if (!e) return { faktor: 0, ganz: true, ausgelassen: ['module'], verlustPct, moduleAus: m.schlecht.length };
+  }
   _speichern(t, e);
   const schlecht = _schlechteGruppen(e);
-  const verlustPct = (1 - e.faktor) * 100;
-  if (!schlecht.length) return { faktor: e.faktor, ganz: false, ausgelassen: [], verlustPct };
-  if (schlecht.length >= Object.keys(e.gruppen || {}).length) return { faktor: e.faktor, ganz: true, ausgelassen: schlecht, verlustPct };
+  const moduleAus = m.schlecht.length;
+  if (!schlecht.length) return { faktor: e.faktor, ganz: false, ausgelassen: modulAus, verlustPct, moduleAus };
+  if (schlecht.length >= Object.keys(e.gruppen || {}).length) return { faktor: e.faktor, ganz: true, ausgelassen: schlecht, verlustPct, moduleAus };
   for (const key of schlecht) {
     if (key.startsWith('fl')) { const id = +key.slice(2); t.pvFlaechen = t.pvFlaechen.filter(f => f.id !== id); }
     else if (key === 'vorne' || key === 'hinten') {
@@ -858,7 +1155,7 @@ export function verschattungProbe(t, k) {
   t._pvModCache = null; t._pvModSig = null;
   const e2 = _berechnen(t, k);
   if (e2) _speichern(t, e2);
-  return { faktor: e2?.faktor ?? e.faktor, ganz: false, ausgelassen: schlecht, verlustPct };
+  return { faktor: e2?.faktor ?? e.faktor, ganz: false, ausgelassen: [...modulAus, ...schlecht], verlustPct, moduleAus };
 }
 
 /**
@@ -867,13 +1164,22 @@ export function verschattungProbe(t, k) {
  * @returns {number[]} ids neu angelegter Sperrflächen (für den Strg+Z-Schritt)
  */
 export function verschattungNachBelegen(g, k) {
-  const e = _berechnen(g, k);
+  let e = _berechnen(g, k);
   if (!e) return [];
+  const ids = [];
+  // Teilbelegung: einzelne stark verschattete Module sperren (wie in verschattungProbe)
+  const m = _modulSchlecht(g, k, e);
+  if (m.schlecht.length && m.schlecht.length < m.gesamt) {
+    ids.push(..._moduleSperren(g, m.polygone, true));
+    e = _berechnen(g, k) || e;
+  } else if (m.schlecht.length) {
+    for (const fl of (g.pvFlaechen || []).filter(f => f.typ === 'belegung')) window.removeGebPvFlaeche?.(g.id, fl.id);
+    return ids;
+  }
   _speichern(g, e);
   const schlecht = _schlechteGruppen(e);
-  if (!schlecht.length) return [];
+  if (!schlecht.length) return ids;
   const ganz = schlecht.length >= Object.keys(e.gruppen || {}).length;
-  const ids = [];
   for (const key of ganz ? [] : schlecht) {
     if (key.startsWith('fl')) window.removeGebPvFlaeche?.(g.id, +key.slice(2));
     else if (key === 'vorne' || key === 'hinten') ids.push(..._haelfteSperren(g, key === 'vorne'));
@@ -964,6 +1270,9 @@ function _empfehlungHtml(auswertung) {
       prüfen ab <input class="inp-field" type="number" min="1" max="90" value="${_schwellen.pruefen}" style="width:40px;padding:1px 3px;" data-change="baumSchwelle('pruefen',this.value)"/> %
       · nicht ab <input class="inp-field" type="number" min="1" max="90" value="${_schwellen.nicht}" style="width:40px;padding:1px 3px;" data-change="baumSchwelle('nicht',this.value)"/> %
     </div>
+    <div style="display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--muted);margin-top:3px;" title="Bei der automatischen Belegung (und „aus der Belegung nehmen“) bleiben einzelne Module frei, die für sich mindestens diesen Jahresverlust haben — der Rest des Dachs wird belegt (Teilbelegung)">
+      einzelne Module auslassen ab <input class="inp-field" type="number" min="5" max="95" value="${_schwellen.modul}" style="width:40px;padding:1px 3px;" data-change="baumSchwelle('modul',this.value)"/> %
+    </div>
     <div style="font-size:10px;margin-top:4px;" title="Wirksame Leistung × ${_fmt(_spez(), 0)} kWh/kWp × Verlustanteil, über alle gerechneten Dachflächen">
       Ertragsverlust durch Verschattung: <b>≈ ${_fmt(verlust, verlust < 10 ? 1 : 0)} MWh/a</b>
       <span style="color:var(--muted);">(${_fmt(ertrag > 0 ? verlust / ertrag * 100 : 0, 1)} % des Dachertrags)</span></div>
@@ -1000,6 +1309,7 @@ function _zeileHtml(g, e, s) {
       <span style="width:10px;color:var(--muted);">${e ? (offen ? '▾' : '▸') : ''}</span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(g.name || 'Gebäude ' + g.id)}</span>
       ${e?.ueberlappungen?.length ? `<span style="color:${ROT};" title="Grundriss überlappt mit Nachbargebäude">⧉</span>` : ''}
+      ${e && Object.values(e.gruppen || {}).some(x => x.unsicher) ? `<span style="color:${GELB};" title="Bewertung hängt an geschätzten Baumhöhen (kippt bei ±${Math.round((HOEHEN_AUFSCHLAG - 1) * 100)} %) — aufklappen">❓</span>` : ''}
       ${e ? `<span style="font-family:'DM Mono',monospace;color:${BEWERTUNG[_bewertung(e.faktor)].farbe};">${_pct(e.faktor)}</span>
              <span style="width:11px;text-align:center;color:${BEWERTUNG[bew].farbe};" title="schlechteste Dachfläche: ${BEWERTUNG[bew].text}">${BEWERTUNG[bew].sym}</span>` : ''}
       <span style="width:11px;text-align:center;color:var(--muted);" title="${{ aktuell: 'aktuell', veraltet: 'Bäume seitdem geändert', fehlt: 'für diese Belegung nicht gerechnet' }[s]}">${{ aktuell: '', veraltet: '⟳', fehlt: '·' }[s]}</span>
@@ -1008,7 +1318,7 @@ function _zeileHtml(g, e, s) {
   const flaechen = Object.values(e.gruppen || {}).map(gr => {
     const b = BEWERTUNG[_bewertung(gr.faktor)];
     return `<div style="display:flex;gap:5px;"><span style="flex:1;">${escHtml(gr.label)} · ${gr.module} Mod.</span>
-      <span style="color:${b.farbe};">${_pct(gr.faktor)} ${b.sym} ${b.text}</span></div>`;
+      <span style="color:${b.farbe};">${gr.unsicher ? `<span style="color:${GELB};" title="Die Bewertung kippt, wenn die geschätzten Baumhöhen um ${Math.round((HOEHEN_AUFSCHLAG - 1) * 100)} % abweichen (Gegenrechnung: ${_pct(gr.faktorAlt)}) — Höhen nachtragen">❓ </span>` : ''}${_pct(gr.faktor)} ${b.sym} ${b.text}</span></div>`;
   }).join('');
   const urs = (e.verursacher || []).map(v => `
       <div style="display:flex;gap:5px;cursor:pointer;" data-click="baumVerursacherZeigen('${v.key}')" title="Auf der Karte zeigen">
@@ -1060,14 +1370,32 @@ function _html() {
       </div>
       ${_laedt ? `<div id="baum-ladeinfo" style="font-size:9.5px;color:var(--muted);margin-top:3px;">${escHtml(_ladeInfo)}</div>` : ''}
       ${_bearbeiten ? `
+      <div style="display:flex;gap:4px;margin-top:5px;">
+        ${[['einzeln', '● Einzeln'], ['flaeche', '⬠ Fläche füllen']].map(([m, l]) => `<button class="btn-xs" style="flex:1;${_modus === m ? `border-color:${GRUEN};color:${GRUEN};background:${GRUEN}1f;` : ''}"
+          data-click="baumModus('${m}')" title="${m === 'einzeln' ? 'Jeder Klick setzt einen Baum' : 'Umriss anklicken, Doppelklick oder Enter füllt die Fläche mit Bäumen'}">${l}</button>`).join('')}
+      </div>
       <div style="margin-top:5px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">
-        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Neuer Baum</div>
+        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">${_modus === 'flaeche' ? 'Bäume in der Fläche' : 'Neuer Baum'}</div>
         <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:4px;font-size:9.5px;color:var(--muted);">
           <span>Art</span><span>Höhe m</span><span>Krone m</span>
           <select class="inp-field" style="padding:2px;" data-change="baumVorgabe('art',this.value)">${Object.entries(ARTEN).map(([k, l]) =>
             `<option value="${k}"${_neu.art === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
           ${feld('hoehe', _neu.hoehe, 1, 60, 0.5)}${feld('krone', _neu.krone, 0.5, 30, 0.5)}
         </div>
+        ${_modus === 'flaeche' ? `
+        <div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:9.5px;color:var(--muted);">
+          <span title="Mittlerer Abstand zwischen den Baumstämmen (versetzte Reihen)">Abstand m</span>
+          <input class="inp-field" type="number" min="1" max="50" step="0.5" value="${_flaeche.abstand}" style="width:60px;padding:2px 4px;"
+            data-change="baumFlaecheOption('abstand',this.value)"/>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;" title="Keine Bäume auf Gebäudegrundrissen">
+            <input type="checkbox" ${_flaeche.ausGebaeude ? 'checked' : ''} style="accent-color:${GRUEN};" data-change="baumFlaecheOption('ausGebaeude',this.checked)"/>Gebäude aussparen</label>
+        </div>
+        <div style="font-size:9.5px;color:var(--muted);margin-top:4px;">${_flaeche.punkte.length
+          ? `${_flaeche.punkte.length} ${_flaeche.punkte.length === 1 ? 'Punkt' : 'Punkte'} · Doppelklick oder Enter = füllen · ⌫ = letzter Punkt zurück`
+          : 'Umriss der Fläche Punkt für Punkt anklicken.'}</div>
+        ${_flaeche.punkte.length ? `<div style="display:flex;gap:4px;margin-top:4px;">
+          <button class="btn-xs" style="flex:1;border-color:${GRUEN};color:${GRUEN};" ${_flaeche.punkte.length < 3 ? 'disabled' : ''} data-click="baumFlaecheFuellen()">🌳 Fläche füllen</button>
+          <button class="btn-xs" data-click="baumFlaecheAbbrechen()">Verwerfen</button></div>` : ''}` : ''}
       </div>` : ''}
       <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
         <label style="display:flex;align-items:center;gap:4px;flex:1;font-size:10px;cursor:pointer;">
@@ -1082,6 +1410,10 @@ function _html() {
           title="Der Faktor je Dach mindert die wirksame Leistung (kWp × Ertragsfaktor) — und damit PV-Asset, Stromnetz, PV-Analyse und Gutachten">
           <input type="checkbox" ${_an ? 'checked' : ''} style="accent-color:${GRUEN};" data-change="verschattungUmschalten(this.checked)"/>
           <b>im Ertrag berücksichtigen</b></label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:10px;cursor:pointer;margin-top:3px;"
+          title="Bäume, deren Höhe nur geschätzt ist (gestrichelt), werden ${Math.round((HOEHEN_AUFSCHLAG - 1) * 100)} % höher gerechnet — Schätzfehler und Wachstum bis zum Betrieb. Gemessene und eingetragene Höhen bleiben unverändert.">
+          <input type="checkbox" ${_vorsicht ? 'checked' : ''} style="accent-color:${GRUEN};" data-change="baumVorsichtig(this.checked)"/>
+          vorsichtig rechnen <span style="color:var(--muted);">(geschätzte Höhen +${Math.round((HOEHEN_AUFSCHLAG - 1) * 100)} %)</span></label>
         <button class="btn-xs" style="width:100%;margin-top:5px;border-color:${GRUEN};color:${GRUEN};" ${_rechnet || !mitPv.length ? 'disabled' : ''}
           data-click="verschattungBerechnen(${offen ? 'true' : 'false'})"
           title="Je Dach eine Stichprobe von Modulen gegen Baumkronen und Nachbargebäude rechnen">

@@ -58,6 +58,16 @@ describe('vsFaktoren', () => {
   it('ohne Hindernisse = 1', () => {
     expect(faktor({}).faktor).toBe(1);
   });
+  it('liefert den Faktor je Prüfpunkt (Teilbelegung): verschatteter Punkt schlechter als freier', () => {
+    const hind = vsHindernisse({ baeume: [baum(0, -8, 18, 10)] });
+    const r = vsFaktoren([
+      { id: 7, p: [0, 0, 6], n: sued30, gruppe: 'a', gewicht: 1 },
+      { id: 8, p: [0, 60, 6], n: sued30, gruppe: 'a', gewicht: 1 },
+    ], hind, LAT);
+    expect(r.proben.map(p => p.id)).toEqual([7, 8]);
+    expect(r.proben[0].faktor).toBeLessThan(0.85);
+    expect(r.proben[1].faktor).toBeGreaterThan(0.99);
+  });
   it('hoher Baum im Süden mindert deutlich, im Norden kaum', () => {
     const sued = faktor({ baeume: [baum(0, -8, 18, 10)] }).faktor;
     const nord = faktor({ baeume: [baum(0, 8, 18, 10)] }).faktor;

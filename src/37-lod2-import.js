@@ -328,6 +328,28 @@ export async function dachGrundrissBerechnen() {
 }
 
 /**
+ * Dachflächen aus dem Grundriss ohne Rückfrage — für frisch importierte
+ * Gebäude (OSM-Import, Haken „Dachflächen aus Grundriss"). Gebäude mit LoD2
+ * oder PV-Belegung bleiben unberührt; schräge Grundrisse behalten das
+ * bisherige Modell.
+ * @param {any[]} gebs
+ * @returns {{anzahl:number, schief:number}}
+ */
+export function dachGrundrissStill(gebs) {
+  const ziele = [];
+  let schief = 0;
+  for (const g of gebs || []) {
+    if (!Array.isArray(g?.polygon) || g.polygon.length < 3 || g.dachQuelle === 'lod2' || _hasBelegung(g)) continue;
+    const d = dachAusGrundrissFuer(g);
+    if (!d) { schief++; continue; }
+    g.dachFlaechen = d.dachFlaechen; g.dachLod2 = d.lod2; g._pvModSig = null;
+    ziele.push(g);
+  }
+  if (ziele.length) _nachlauf(ziele, []);
+  return { anzahl: ziele.length, schief };
+}
+
+/**
  * Berechnete Dachflächen nach einer Änderung (Dachform, Neigung, Azimut,
  * Grundriss) neu ableiten. Belegungen, die aus Dachflächen entstanden sind,
  * werden auf die neuen Flächen übertragen. Klappt die Berechnung nicht mehr

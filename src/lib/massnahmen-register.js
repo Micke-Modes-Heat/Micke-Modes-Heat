@@ -127,7 +127,8 @@ export function mrEintragAusWirkung(id, w, autoTag = null) {
  *            mehrfach vorkommen (Kopien in Varianten-Snapshots); sie zählt einmal und alle Kopien werden geschrieben.
  * opts:      { neueId: () => string, autoTag }
  *
- * Rückgabe: { register, neu, entfernt, getrennt, wirkungenJe: Map(eintragId → [{ ziel, objId, objLabel, objTyp, kopien }]) }
+ * Rückgabe: { register, neu, entfernt, getrennt, zusammengefuehrt,
+ *            wirkungenJe: Map(eintragId → [{ ziel, objId, objLabel, objTyp, kopien }]) }
  */
 export function mrAbgleich(register, wirkungen, opts = {}) {
   const autoTag = opts.autoTag || null;
@@ -151,9 +152,45 @@ export function mrAbgleich(register, wirkungen, opts = {}) {
     if (!g.kopien.includes(w.m)) g.kopien.push(w.m);
   }
 
+  const neue = [];
+
+  // Cluster-Pakete: alle Wirkungen eines Pakets (gleicher Cluster, gleiche Art) bilden EINE Maßnahme. Ziel ist der
+  // älteste bekannte Eintrag (kleinste Nummer), sonst ein neuer; die übrigen Einträge verlieren ihre Wirkungen.
+  let zusammengefuehrt = 0;
+  const pakete = new Map();
+  for (const [key, g] of gruppen) {
+    const m0 = g.kopien[0];
+    if (m0?.clusterId == null) continue;
+    const pk = `${m0.clusterId}|${m0.typ || ''}`;
+    if (!pakete.has(pk)) pakete.set(pk, []);
+    pakete.get(pk).push([key, g]);
+  }
+  for (const glieder of pakete.values()) {
+    const kandidaten = new Set();
+    for (const [key, g] of glieder) {
+      const ref = g.kopien.map(m => m.massnahmeRef).find(r => r != null);
+      if (ref != null && byId.has(ref)) kandidaten.add(byId.get(ref));
+      else if (altKey.has(key)) kandidaten.add(altKey.get(key));
+    }
+    let ziel = [...kandidaten].sort((a, b) => (a.nr ?? Infinity) - (b.nr ?? Infinity))[0];
+    if (!ziel) {
+      const g0 = glieder[0][1];
+      ziel = mrEintragAusWirkung(neueId(), { ...g0, m: g0.kopien[0] }, autoTag);
+      byId.set(ziel.id, ziel);
+      liste.push(ziel);
+      neue.push(ziel);
+    }
+    if (!ziel.mehrfach) {
+      // Erstes Bündeln: Kosten der bisherigen Einzelmaßnahmen gehen in die Paketmaßnahme
+      ziel.mehrfach = true;
+      ziel.kosten = { ...(ziel.kosten || {}), investEur: glieder.reduce((t, [, g]) => t + zahl(g.kopien[0].kosten), 0) };
+    }
+    zusammengefuehrt += Math.max(0, kandidaten.size - 1);
+    for (const [, g] of glieder) for (const m of g.kopien) m.massnahmeRef = ziel.id;
+  }
+
   // Jede Wirkung einem Eintrag zuordnen
   const wirkungenJe = new Map();
-  const neue = [];
   let getrennt = 0;
   const frei = e => e && (e.mehrfach || !wirkungenJe.get(e.id)?.length);
   // Wirkungen, die schon beim letzten Abgleich an ihrem Eintrag hingen, zuerst — so behält bei einer Kopie
@@ -222,7 +259,7 @@ export function mrAbgleich(register, wirkungen, opts = {}) {
     .sort((a, b) => (a.jahr ?? 9999) - (b.jahr ?? 9999) || a.titel.localeCompare(b.titel, 'de'))
     .forEach(e => { e.nr = ++max; });
 
-  return { register: liste, neu: neue.filter(e => liste.includes(e)).length, entfernt, getrennt, wirkungenJe };
+  return { register: liste, neu: neue.filter(e => liste.includes(e)).length, entfernt, getrennt, zusammengefuehrt, wirkungenJe };
 }
 
 export const MR_DRINGLICHKEIT = Object.freeze({ sofort: 'sofort', kurz: 'kurzfristig', mittel: 'mittelfristig', lang: 'langfristig' });

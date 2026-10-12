@@ -357,7 +357,8 @@ export function vsPunkt(punkt, hind, sonne, himmel) {
  * @param {number} latDeg
  * @returns {{faktor:number, faktorBaeume:number, faktorGebaeude:number,
  *   gruppen: Record<string, {faktor:number, module:number}>,
- *   verursacher: {key:string, anteil:number}[], ueberlappungen: any[]}}
+ *   verursacher: {key:string, anteil:number}[], ueberlappungen: any[],
+ *   proben: {id:any, gruppe:string, faktor:number}[]}}   proben: Faktor je einzelnem Prüfpunkt
  *   verursacher: größte Verluste je Hindernis als Anteil am unverschatteten Ertrag
  *   ueberlappungen: ids der Gebäude, in deren Grundriss Prüfpunkte liegen
  */
@@ -367,10 +368,12 @@ export function vsFaktoren(punkte, hind, latDeg, maxVerursacher = 6) {
   const gruppen = {};
   const verlust = new Map();
   const ueberlappt = new Set();
+  const proben = [];
   for (const pt of punkte) {
     const nah = vsNahe(hind, pt.p[0], pt.p[1]);
     const r = vsPunkt(pt, nah, sonne, himmel);
     const w = pt.gewicht || 1;
+    proben.push({ id: pt.id, gruppe: pt.gruppe, faktor: r.ohne > 0 ? Math.min(1, r.mit / r.ohne) : 1 });
     summe.ohne += w * r.ohne; summe.mit += w * r.mit; summe.b += w * r.nurBaeume; summe.g += w * r.nurGebaeude;
     const gr = gruppen[pt.gruppe] || (gruppen[pt.gruppe] = { ohne: 0, mit: 0, module: 0 });
     gr.ohne += w * r.ohne; gr.mit += w * r.mit; gr.module += w;
@@ -386,7 +389,7 @@ export function vsFaktoren(punkte, hind, latDeg, maxVerursacher = 6) {
     .sort((a, b) => b.anteil - a.anteil)
     .slice(0, maxVerursacher);
   return { faktor: q(summe.mit, summe.ohne), faktorBaeume: q(summe.b, summe.ohne),
-    faktorGebaeude: q(summe.g, summe.ohne), gruppen: aus, verursacher, ueberlappungen: [...ueberlappt] };
+    faktorGebaeude: q(summe.g, summe.ohne), gruppen: aus, verursacher, ueberlappungen: [...ueberlappt], proben };
 }
 
 /**

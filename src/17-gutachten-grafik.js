@@ -1566,10 +1566,18 @@ function ggFahrplanDaten() {
   const vid = variante && variante.id !== 'base' ? variante.id : null;
   const massn = [...ggLies(() => (w.ASSETS?.items || []).flatMap(a => a.massnahmen || []), []),
     ...ggLies(() => (w.gebaeude || []).flatMap(g => g.massnahmen || []), [])].filter(m => m && m.phaseId);
+  try { w.massnahmenAbgleichen?.(); } catch (e) { void e; }
+  const register = new Map(ggLies(() => w.massnahmenRegister || [], []).map(e => [e.id, e]));
   const ausbau = ggLies(() => (w.phasen || []), []).filter(p => p && (p.variantId == null || p.variantId === vid))
     .map(p => {
-      const m = massn.filter(x => x.phaseId === p.id);
-      return { name: p.name || 'Ausbaustufe', von: parseInt(p.jahrVon, 10), bis: parseInt(p.jahrBis, 10), anzahl: m.length, kostenEur: m.reduce((a, x) => a + (Number(x.kosten) || 0), 0) };
+      // Je Maßnahme der Liste einmal zählen — ein Cluster-Paket ist eine Maßnahme, seine Kosten stehen am Eintrag
+      const jeMassnahme = new Map();
+      for (const x of massn.filter(y => y.phaseId === p.id)) {
+        const e = x.massnahmeRef != null ? register.get(x.massnahmeRef) : null;
+        if (!jeMassnahme.has(e ? e.id : x)) jeMassnahme.set(e ? e.id : x, e ? (Number(e.kosten?.investEur) || 0) : (Number(x.kosten) || 0));
+      }
+      return { name: p.name || 'Ausbaustufe', von: parseInt(p.jahrVon, 10), bis: parseInt(p.jahrBis, 10), anzahl: jeMassnahme.size,
+               kostenEur: [...jeMassnahme.values()].reduce((t, k) => t + k, 0) };
     })
     .filter(p => Number.isFinite(p.von)).sort((a, b) => a.von - b.von);
   return { variante, ausbau };

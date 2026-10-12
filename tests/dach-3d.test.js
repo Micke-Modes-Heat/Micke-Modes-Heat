@@ -163,3 +163,21 @@ describe('LoD2-Flächen im Raum', () => {
     expect(d3dPolygon3dDreiecke([[0, 0, 0], [0, 0, 6], [0, 4, 9], [0, 8, 6], [0, 8, 0]])).toHaveLength(3);
   });
 });
+
+describe('d3dDachDreiecke — Ebene je Dreieck (Anklicken in 3D)', () => {
+  it('Satteldach: jedes Dreieck gehört zu Vorder- (0) oder Rückseite (1), je auf ihrer Seite des Firsts', () => {
+    const e = d3dDachEbenen('sattel', RECHTECK, { azimut: 180, neigung: 35, traufe: 6 });
+    const { dach, ebene } = d3dDachDreiecke(RECHTECK, e, 6);
+    expect(ebene).toHaveLength(dach.length);
+    expect(new Set(ebene)).toEqual(new Set([0, 1]));
+    dach.forEach((t, i) => {
+      const yMitte = (t[0][1] + t[1][1] + t[2][1]) / 3;
+      // Vorderseite fällt nach Süden (Azimut 180) → liegt südlich des Firsts (y < 0)
+      expect(ebene[i] === 0 ? yMitte < 0 : yMitte > 0).toBe(true);
+    });
+  });
+  it('Flachdach: keine Dreiecke, leere Zuordnung', () => {
+    const r = d3dDachDreiecke(RECHTECK, d3dDachEbenen('flach', RECHTECK, { traufe: 6 }), 6);
+    expect(r.ebene).toEqual([]);
+  });
+});

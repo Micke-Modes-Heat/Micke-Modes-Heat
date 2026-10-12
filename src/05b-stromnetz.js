@@ -10,6 +10,7 @@ import { getGebStromMwh, map } from './02b-gebaeude.js';
 import { polygonAreaM2, polygonCenter, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { setNetzVisible } from './03b-netz.js';
 import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-io.js';
+import { lsMeldung } from './42-lade-status.js';
 import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js';
 import { KABEL_TYPEN, TRAFO_GROESSEN, MS_I_MAX_A, MS_SECTIONS, kabelTypOptionen } from './config/netz-kosten.js';
 import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
@@ -1297,8 +1298,27 @@ export function _nsKIz() {
   return calcKizTemp(tBoden) * calcKizGruppe(nKabel) * (KIZ_VERLEGEART[verlegeart] ?? 1.0);
 }
 
+// Sammelvorgänge (viele Assets/Kabel löschen): removeStromNode und removeStromEdge
+// rechnen sonst JE Aufruf das ganze Netz — bei ~2.400 Dach-PV-Anlagen Minuten. Innerhalb
+// von stromRecalcAufschieben merkt sich recalcStromNetz nur, dass es fällig ist.
+let _recalcAufgeschoben = 0;
+let _recalcFaellig = false;
+
+/** fn ausführen, Netzrechnungen darin auf eine einzige danach zusammenfassen. */
+export function stromRecalcAufschieben(fn) {
+  _recalcAufgeschoben++;
+  try { return fn(); }
+  finally {
+    if (--_recalcAufgeschoben === 0 && _recalcFaellig) {
+      _recalcFaellig = false;
+      recalcStromNetz();
+    }
+  }
+}
+
 // ── Berechnung: recalcStromNetz() ───────────────────────────────
 export function recalcStromNetz() {
+  if (_recalcAufgeschoben > 0) { _recalcFaellig = true; return; }
   if (!window.stromEdges.length && !window.stromNodes.length) return;
   if (_recalcStromBusy) return; // Rekursionsschutz
   _recalcStromBusy = true;
@@ -3003,6 +3023,8 @@ function _setOsmStreetProgress({visible = true,completed = 0,total = 1,ways = 0,
   if (count) count.textContent = `${completed} / ${total} Teilbereiche`;
   if (statusNode) statusNode.textContent =
     `${status || 'OpenStreetMap wird abgefragt'}${ways ? ` · ${ways} Straßen gefunden` : ''}`;
+  // Ladeübersicht (42-lade-status.js) — wirkt nur während eines Gebäudeimports
+  lsMeldung(`${completed} / ${total} Teilbereiche${ways ? ` · ${ways} Straßen` : ''}${status ? ` · ${status}` : ''}`);
 }
 
 export async function loadOsmStrassen() {
@@ -3269,6 +3291,40 @@ export function adoptAllOsmStrassen(domain = 'strom') {
   redrawTrasse();
   if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
   return adopted;
+}
+
+/**
+ * Geladene OSM-Straßen als echte Trassen übernehmen (OSM-Import, Haken
+ * „Straßen als Trassen"). Anders als die Routinggrundlage 'osm-street' werden
+ * sie wie gezeichnete Trassen dargestellt, gespeichert und lassen sich
+ * bearbeiten. Bereits übernommene Wege (osmWayId) entstehen nicht doppelt.
+ * @param {string[]} domains ['strom'], ['waerme'] oder beide
+ * @returns {number} Anzahl neuer Trassenstränge
+ */
+export function osmStrassenAlsTrassen(domains = ['strom']) {
+  if (!_osmStrassenLayer) return 0;
+  const vorhanden = new Set(window.trasseSegments
+    .filter(seg => seg.source === 'osm-trasse')
+    .map(seg => `${(seg.domains || []).slice().sort().join('+')}:${seg.osmWayId}`));
+  const schluessel = domains.slice().sort().join('+');
+  let neu = 0;
+  _osmStrassenLayer.getLayers().forEach(pl => {
+    if (!Array.isArray(pl._osmPts) || pl._osmPts.length < 2) return;
+    if (vorhanden.has(`${schluessel}:${pl._osmWayId}`)) return;
+    const startIdx = window.trassePoints.length;
+    for (const pt of pl._osmPts) window.trassePoints.push(pt);
+    window.trasseSegments.push({ start: startIdx, end: window.trassePoints.length - 1, domains: [...domains], source: 'osm-trasse', osmWayId: pl._osmWayId });
+    neu++;
+  });
+  setTrasseCurrentSegStart(window.trassePoints.length);
+  if (neu) {
+    window.trasseVisible = true;
+    const checkbox = document.getElementById('el-trasse-visible');
+    if (checkbox) checkbox.checked = true;
+  }
+  redrawTrasse();
+  if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
+  return neu;
 }
 
 export async function loadAndAdoptOsmStrassen() {

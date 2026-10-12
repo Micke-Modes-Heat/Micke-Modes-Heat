@@ -74,6 +74,7 @@ export function ausbauRender() {
 // die phaseId der Maßnahme am Asset überschreibt (Kopplung mit dem Bulk-Modus).
 
 function _buildPlan() {
+  try { window.massnahmenAbgleichen?.(); } catch (e) { console.warn('Maßnahmenliste:', e); }
   const items = [];
   // Elektro-Asset-Maßnahmen
   for (const a of ASSETS.items) {
@@ -120,7 +121,27 @@ function _buildPlan() {
       });
     }
   }
-  _plan = { items };
+  _plan = { items: _pakete(items) };
+}
+
+// Maßnahmen, die mehrere Objekte betreffen (Cluster-Paket, „an Maßnahme hängen“), erscheinen als EIN Balken mit
+// Titel und Kosten aus der Maßnahmenliste; Verschieben setzt die Phase aller ihrer Objekt-Maßnahmen.
+function _pakete(items) {
+  const reg = new Map((window.massnahmenRegister || []).map(e => [e.id, e]));
+  const out = [], jeEintrag = new Map(), umleiten = new Map();
+  for (const it of items) {
+    const e = it._m?.massnahmeRef != null ? reg.get(it._m.massnahmeRef) : null;
+    if (e) it.nr = e.nr;
+    if (!e?.mehrfach) { out.push(it); continue; }
+    const da = jeEintrag.get(e.id);
+    if (da) { da._ms.push(it._m); umleiten.set(it.id, da.id); continue; }
+    const g = { ...it, titel: e.titel || it.titel, kosten: Number(e.kosten?.investEur) || 0, _ms: [it._m] };
+    jeEintrag.set(e.id, g);
+    out.push(g);
+  }
+  for (const g of jeEintrag.values()) if (g._ms.length > 1) g.titel = `${g.titel} (${g._ms.length} Objekte)`;
+  if (umleiten.size) for (const it of out) it.dependsOn = [...new Set((it.dependsOn || []).map(d => umleiten.get(d) || d))].filter(d => d !== it.id);
+  return out;
 }
 
 // ── Swimlane-Achsen: Gewerk (Maßnahmen-Typ) oder Cluster ──────────────────────
@@ -317,7 +338,7 @@ function _cellHtml(items, phaseId) {
     const gwIcon  = MASSN_VORLAGEN[it.typ]?.icon || '';
     const jahrTxt = it.jahr ? ` · ${it.jahr}` : '';
     const kostenTxt = it.kosten ? ` (${(it.kosten/1000).toFixed(0)} k€)` : '';
-    const praefix = _gruppierung === 'cluster' && gwIcon ? gwIcon + ' ' : '';
+    const praefix = (it.nr != null ? `M${String(it.nr).padStart(2, '0')} ` : '') + (_gruppierung === 'cluster' && gwIcon ? gwIcon + ' ' : '');
     return `<div class="ausb-bar" id="ausb-bar-${_cssId(it.id)}"
       data-item-id="${esc(it.id)}" draggable="true" ondragstart="ausbauDragStart(event,'${esc(it.id)}')"
       title="${esc(it.titel)} — ${esc(gwLabel)}${kostenTxt}${jahrTxt}${err?' ⚠ Reihenfolge verletzt!':''}"
@@ -375,9 +396,11 @@ export function ausbauDrop(e, phaseId) {
   if (!itemId) return;
   const it = _plan.items.find(x => x.id === itemId);
   if (it && it._m) _planningChange('Maßnahme in Phase verschieben', () => {
-    it._m.phaseId = phaseId || null;
-    it._m.jahr = null;
-    delete it._m[ENGPASS_AUTO_TAG];   // verplant = eigene Maßnahme, „Maßnahmen vorschlagen“ ersetzt sie nicht mehr
+    for (const m of (it._ms || [it._m])) {
+      m.phaseId = phaseId || null;
+      m.jahr = null;
+      delete m[ENGPASS_AUTO_TAG];   // verplant = eigene Maßnahme, „Maßnahmen vorschlagen“ ersetzt sie nicht mehr
+    }
   });
   _draggingId = null;
   if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();

@@ -256,6 +256,18 @@ export function pvnaVollausbau(eingabe) {
  * }
  */
 export function pvnaTreppe(eingabe, opts = {}) {
+  const g = pvnaTreppeSchritte(eingabe, opts);
+  let r;
+  while (!(r = g.next()).done);
+  return r.value;
+}
+
+/**
+ * Wie pvnaTreppe, aber als Generator: liefert nach jeder probeweisen Füllung
+ * { anteil } (0…1, grobe Schätzung: Schritte höchstens so viele wie Maßnahmen)
+ * und gibt am Ende das Ergebnis zurück. Für Aufrufer, die zwischendurch zeichnen wollen.
+ */
+export function* pvnaTreppeSchritte(eingabe, opts = {}) {
   const maxSchritte = opts.maxSchritte || 100;
   const basisEl = (eingabe?.elemente || []).map(e => ({ ...e }));
   const elById = new Map(basisEl.map(e => [e.id, e]));
@@ -268,6 +280,7 @@ export function pvnaTreppe(eingabe, opts = {}) {
       duProKwPct: e.massnahme.duProKwPct ?? e.duProKwPct };
   });
 
+  const nMax = Math.max(1, basisEl.filter(e => e.massnahme).length);
   const umgesetzt = new Set();
   let aktuell = basis;
   const schritte = [];
@@ -277,7 +290,9 @@ export function pvnaTreppe(eingabe, opts = {}) {
     const offen = basisEl.filter(e => e.massnahme && !umgesetzt.has(e.id));
     if (!offen.length) break;
     let best = null;
-    for (const kand of offen) {
+    for (let ki = 0; ki < offen.length; ki++) {
+      const kand = offen[ki];
+      yield { anteil: Math.min(0.99, (n + ki / offen.length) / nMax) };
       // Zwei Kandidaten je Maßnahme: allein, und als Bündel mit den offenen Maßnahmen
       // auf dem Weg zum Trafo (ein neues Hausanschlusskabel nützt nichts, solange der
       // Trafo davor voll ist). Das Bündel allein würde vorgelagerte Maßnahmen auch
@@ -313,6 +328,7 @@ export function pvnaTreppe(eingabe, opts = {}) {
       let res = fuellen(b);
       if (res.summeKwp - aktuell.summeKwp > 1e-6) {
         for (const id of [...b].sort((x, y) => invest(y) - invest(x))) {
+          yield { anteil: Math.min(0.99, (n + 0.9) / nMax) };
           const ohne = new Set([...b].filter(x => x !== id));
           const r2 = fuellen(ohne);
           if (r2.summeKwp >= res.summeKwp - 1e-6) { b = ohne; res = r2; }

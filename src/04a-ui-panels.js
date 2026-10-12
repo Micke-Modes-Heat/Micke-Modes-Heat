@@ -1737,6 +1737,9 @@ export function updateLpGebietStatus() {
   if (typeof gebaeude !== 'undefined' && gebaeude.length > 0) {
     parts.push(gebaeude.length + ' Gebäude geladen');
   }
+  // Stand des letzten Imports mit Link auf die Ladeübersicht (42-lade-status.js)
+  var lade = typeof window.ladeStatusKurz === 'function' ? window.ladeStatusKurz() : '';
+  if (lade) parts.push(lade);
   el.innerHTML = parts.length ? parts.join(' · ') : '';
 }
 

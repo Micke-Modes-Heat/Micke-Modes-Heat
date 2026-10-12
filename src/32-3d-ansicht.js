@@ -22,8 +22,13 @@ import {
 } from './lib/gebaeude-3d.js';
 import {
   d3dRahmen, d3dDachEbenen, d3dDachDreiecke, d3dModule, d3dSchattierung,
-  d3dEbeneAusPunkten, d3dPolygon3dDreiecke, d3dDachHoehe,
+  d3dEbeneAusPunkten, d3dPolygon3dDreiecke, d3dDachHoehe, d3dTriangulieren,
 } from './lib/dach-3d.js';
+import {
+  pickSammler, pickMatrix, sehstrahl, naechsterTreffer, ebeneAzimut,
+  ebeneAusDreieck, ebeneFallrichtung, ebeneZ, strahlEbene, rechteckAufEbene, projiziere,
+  rechteckAchsen, eckeEinrasten,
+} from './lib/d3d-pick.js';
 import { d3dNetzLinien, d3dStationen, D3D_STATIONEN } from './lib/netz-3d.js';
 import { firstPeilungGrad } from './lib/gebaeude-geometrie.js';
 import { baumOverpassLaden, baeumeAusOverpass, baumDreiecke, BAUM_FARBEN } from './lib/baeume-3d.js';
@@ -36,6 +41,10 @@ const D3D_DACHFARBE = '#a4553f';         // Ziegel — hebt die PV-Module ab
 const D3D_MODULFARBE = '#1f2d78';        // wie das Modulraster der Arbeitskarte
 const D3D_GLAS = 0.35;                   // Deckkraft bei „Gebäude durchsichtig"
 const D3D_DACH_MAX_HINDERNIS = 8;        // m Dachhöhe ohne LoD2 und ohne Flügel-Modell (schräger Grundriss)
+const D3D_SPERRFARBE = '#e53935';        // Sperrflächen beim Bearbeiten (wie im PV-Modus)
+const D3D_SPERR_HUB = 0.05;              // m über der Dachhaut, unter den Modulen
+// Sperrflächen, die eine ganze Satteldachseite freihalten — erscheinen als fehlende Module, nicht rot
+const D3D_SEITEN_SPERRE = new Set(['nord', 'seite', 'schatten']);
 // Module nach Verschattung (Jahresfaktor, 40-baeume.js)
 const D3D_SCHATTEN = [
   { ab: 0.95, farbe: '#43a047', label: 'Verschattung unter 5 %' },
@@ -187,11 +196,13 @@ function d3dLod2Geometrie(g, rahmen, traufe) {
   // (Geschosse × 3 m) — die kann sich seit der Berechnung geändert haben
   const dz = g.dachLod2?.quelle === 'grundriss' ? traufe - (g.dachLod2.traufeM || traufe) : 0;
   const lok = q => { const [x, y] = rahmen.nachXY(q[1], q[0]); return [x, y, q[2] + dz]; };
-  const dach = [], wand = [], ebenen = [];
+  const dach = [], wand = [], ebenen = [], flaechen = [];
   for (const f of g.dachFlaechen || []) {
     if (!Array.isArray(f.punkte) || f.punkte.length < 3) continue;
     const pts = f.punkte.map(lok);
-    dach.push(...d3dPolygon3dDreiecke(pts));
+    const dreiecke = d3dPolygon3dDreiecke(pts);
+    dach.push(...dreiecke);
+    flaechen.push({ id: f.id, dreiecke });   // je Dachfläche — zum Anklicken
     const e = d3dEbeneAusPunkten(pts);
     if (e) ebenen.push({ ...e, ring: pts, schraeg: !(f.neigung < 10) });
   }
@@ -205,7 +216,7 @@ function d3dLod2Geometrie(g, rahmen, traufe) {
     }
     return best;
   };
-  return { dach, wand, ebeneBei };
+  return { dach, wand, ebeneBei, flaechen };
 }
 
 /* ── Flügel-Modell für Gebäude ohne Dachflächen ───────────────────────────────
@@ -326,17 +337,34 @@ function d3dSzeneBauen(daten) {
   const ursprung = ml.MercatorCoordinate.fromLngLat(mitte, 0);
   const faktor = _d3d.faktor;
   const werte = [];
+  // Dachflächen bearbeiten: dieselben Dreiecke zusätzlich im Pick-Raum sammeln
+  // (lib/d3d-pick — Meter um den Ursprung), je Dachfläche mit Schlüssel (25
+  // pvmDachflaecheInfo), Wände als Hindernis (Schlüssel null).
+  const sammler = _d3d.bearbeiten ? pickSammler() : null;
+  const mu = ursprung.meterInMercatorCoordinateUnits();
+  let pickAn = false;
+  const zuPick = mc => [(mc.x - ursprung.x) / mu, (mc.y - ursprung.y) / mu, (mc.z - ursprung.z) / mu];
+  const pick = (gid, key) => { pickAn = !!sammler; sammler?.beginne(gid, key); };
   const dreieck = (rahmen, t, rgb) => {
     const s = d3dSchattierung(t);
+    const p = pickAn ? [] : null;
     for (const [x, y, z] of t) {
       const [lng, lat] = rahmen.nachLL(x, y);
       const mc = ml.MercatorCoordinate.fromLngLat([lng, lat], z * faktor);
       werte.push(mc.x - ursprung.x, mc.y - ursprung.y, mc.z - ursprung.z, rgb[0] * s, rgb[1] * s, rgb[2] * s);
+      if (p) p.push(zuPick(mc));
     }
+    if (p) sammler.dreieck(p[0], p[1], p[2]);
+  };
+  // Nur anklickbar, nicht gezeichnet (Oberseite flacher Dächer = extrudierte Wand, Wände)
+  const nurPick = (rahmen, t) => {
+    const p = t.map(([x, y, z]) => { const [lng, lat] = rahmen.nachLL(x, y); return zuPick(ml.MercatorCoordinate.fromLngLat([lng, lat], z * faktor)); });
+    sammler.dreieck(p[0], p[1], p[2]);
   };
   const viereck = (rahmen, q, rgb) => { dreieck(rahmen, [q[0], q[1], q[2]], rgb); dreieck(rahmen, [q[0], q[2], q[3]], rgb); };
 
   const dachRgb = d3dRgb(D3D_DACHFARBE), modulRgb = d3dRgb(D3D_MODULFARBE), auswahlRgb = d3dRgb(D3D_AUSWAHL);
+  const sperrRgb = d3dRgb(D3D_SPERRFARBE);
   const schattenRgbs = D3D_SCHATTEN.map(k => d3dRgb(k.farbe));
   const schattenRgb = f => schattenRgbs[Math.max(0, D3D_SCHATTEN.findIndex(k => f >= k.ab))];
   const nachGid = new Map(daten.features.map(f => [f.properties.gid, f]));
@@ -369,16 +397,54 @@ function d3dSzeneBauen(daten) {
       : _d3d.modus === 'einheitlich' ? '#c9cdd3' : f.properties.farbe);
     if (lod2) {
       const wRgb = wandRgb();
-      for (const t of lod2.dach) dreieck(rahmen, t, istAuswahl ? auswahlRgb : dachRgb);
+      // Flügel der Ansicht ('fg') sind noch keine Dachflächen des Gebäudes ('df')
+      for (const fl of lod2.flaechen) {
+        pick(g.id, (fluegel ? 'fg:' : 'df:') + fl.id);
+        for (const t of fl.dreiecke) dreieck(rahmen, t, istAuswahl ? auswahlRgb : dachRgb);
+      }
+      pick(g.id, null);
       for (const t of lod2.wand) dreieck(rahmen, t, wRgb);
       if (lod2.dach.length) stat.daecher++;
     } else if (form !== 'flach') {
-      const { dach, wand } = d3dDachDreiecke(pts, ebenen, traufe);
+      const { dach, wand, ebene } = d3dDachDreiecke(pts, ebenen, traufe);
       const wRgb = wandRgb();
-      for (const t of dach) dreieck(rahmen, t, istAuswahl ? auswahlRgb : dachRgb);
+      // Satteldach: jede Seite für sich (Schlüssel = Azimut der Fläche), sonst das ganze Dach
+      const sattel = echteForm === 'sattel' && ebenen.length === 2;
+      const schluessel = ebenen.map(e => sattel ? 'seite:' + (Math.round(ebeneAzimut(e) ?? 0) % 360) : 'dach');
+      dach.forEach((t, i) => { pick(g.id, schluessel[ebene[i]]); dreieck(rahmen, t, istAuswahl ? auswahlRgb : dachRgb); });
+      pick(g.id, null);
       for (const t of wand) dreieck(rahmen, t, wRgb);
       if (dach.length) stat.daecher++;
+    } else if (sammler) {
+      sammler.beginne(g.id, 'dach');
+      for (const t of d3dTriangulieren(pts)) nurPick(rahmen, t.map(([x, y]) => [x, y, traufe]));
     }
+    // Beim Bearbeiten: von Hand gesetzte Sperrflächen rot auf dem Dach, anklickbar (Schlüssel 'sp:<id>')
+    if (sammler) {
+      const dachZ = (x, y) => {
+        if (lod2) { const e = lod2.ebeneBei(x, y); return e ? e.a * x + e.b * y + e.c : traufe; }
+        return form !== 'flach' ? Math.max(traufe, d3dDachHoehe(ebenen, x, y)) : traufe;
+      };
+      for (const fl of g.pvFlaechen || []) {
+        if (fl.typ !== 'sperr' || D3D_SEITEN_SPERRE.has(fl.auto) || !(fl.polygon?.length >= 3)) continue;
+        const ring = fl.polygon.map(p => rahmen.nachXY(p.lng, p.lat));
+        pick(g.id, 'sp:' + fl.id);
+        for (const t of d3dTriangulieren(ring)) dreieck(rahmen, t.map(([x, y]) => [x, y, dachZ(x, y) + D3D_SPERR_HUB]), sperrRgb);
+      }
+    }
+    if (sammler) {
+      // Wände der Extrusion verdecken Dächer dahinter
+      sammler.beginne(g.id, null);
+      for (const r of ringe) {
+        const q = r.slice(0, -1).map(([lng, lat]) => rahmen.nachXY(lng, lat));
+        for (let k = 0; k < q.length; k++) {
+          const a = q[k], b = q[(k + 1) % q.length];
+          nurPick(rahmen, [[a[0], a[1], 0], [b[0], b[1], 0], [b[0], b[1], traufe]]);
+          nurPick(rahmen, [[a[0], a[1], 0], [b[0], b[1], traufe], [a[0], a[1], traufe]]);
+        }
+      }
+    }
+    pickAn = false;   // Module sind nicht anklickbar (die Dachfläche darunter schon)
     if (_d3d.module && typeof window.getGebPvModules === 'function'
         && (g.pvFlaechen || []).some(fl => fl.typ === 'belegung')) {
       let res = null;
@@ -427,7 +493,7 @@ function d3dSzeneBauen(daten) {
       stat.module += quads.length;
     }
   }
-  return { daten: new Float32Array(werte), ursprung, stat };
+  return { daten: new Float32Array(werte), ursprung, stat, pick: sammler ? { flaechen: sammler.flaechen, mu } : null };
 }
 
 function d3dSzeneSetzen(daten) {
@@ -437,6 +503,10 @@ function d3dSzeneSetzen(daten) {
   catch (e) { console.warn('3D-Ansicht: Dächer/Module', e); return; }
   _d3d.stat = szene.stat;
   _d3d.schicht.setzen(szene.daten, szene.ursprung);
+  _d3d.pick = szene.pick ? { ...szene.pick, ursprung: szene.ursprung } : null;
+  if (!(_d3d.ecken?.griff >= 0)) d3dEckenAufbauen();
+  d3dMarkierungSetzen();
+  d3dFlaecheInfo();
   const info = document.getElementById('d3d-dachinfo');
   if (info) info.textContent = d3dDachinfoText();
 }
@@ -489,8 +559,9 @@ function d3dDachSchicht(id = 'd3d-daecher', mitGlas = true) {
       this.karte?.triggerRepaint();
     },
     render(gl, opt) {
-      if (!this.n || !this.ursprung) return;
       const m = opt?.defaultProjectionData?.mainMatrix || opt?.modelViewProjectionMatrix || opt;
+      this.matrix = m ? Array.from(m) : null;   // für das Anklicken (d3dTreffer), in double
+      if (!this.n || !this.ursprung) return;
       const { x: ox, y: oy, z: oz } = this.ursprung;
       // Matrix · Verschiebung(Ursprung) in double rechnen, erst dann auf float32
       const u = new Float32Array(16);
@@ -521,6 +592,504 @@ function d3dDachSchicht(id = 'd3d-daecher', mitGlas = true) {
       this.gl = null; this.buf = null; this.prog = null; this.n = 0;
     },
   };
+}
+
+/* ── Dachflächen bearbeiten ───────────────────────────────────────────────── */
+// Schalter „☀ Dachflächen bearbeiten": Überfahren hebt die Dachfläche unter der
+// Maus hervor, Klick wählt sie, das Panel zeigt Ausrichtung/Fläche/Belegung und
+// belegt bzw. lässt frei. Was eine Fläche im Datenmodell ist und was Belegen
+// bedeutet, entscheidet der PV-Modus (25 pvmDachflaecheInfo / pvmDachflaecheSetzen)
+// — hier nur Geometrie und Bedienung (Blatt-Modul, alles über window.*).
+
+const D3D_HOVER = '#ffffff';
+const D3D_GEWAEHLT = '#ffd54f';
+const D3D_MARK_HUB = 0.08;   // m über der Dachhaut, unter den Modulen (0,12 m)
+
+/** Dachfläche unter einem Bildschirmpunkt: {gid, key} oder null (auch hinter einer Wand). */
+function d3dTreffer(punkt) {
+  const p = _d3d?.pick, m = _d3d?.schicht?.matrix, karte = _d3d?.ml;
+  if (!p || !m || !karte || !p.ursprung) return null;
+  const c = karte.getCanvas();
+  const s = sehstrahl(pickMatrix(m, p.ursprung, p.mu), punkt.x, punkt.y, c.clientWidth, c.clientHeight);
+  const t = naechsterTreffer(s, p.flaechen);
+  return t && t.key ? { gid: t.gid, key: t.key } : null;
+}
+
+/** Fläche der aktuellen Pick-Daten zu {gid, key} — Satteldachseiten auch bei leicht verändertem Azimut. */
+function d3dPickFlaeche(ziel) {
+  const fl = _d3d?.pick?.flaechen;
+  if (!ziel || !fl) return null;
+  const genau = fl.find(f => f.gid === ziel.gid && f.key === ziel.key);
+  if (genau || !ziel.key.startsWith('seite:')) return genau || null;
+  const az = +ziel.key.slice(6);
+  return fl.find(f => f.gid === ziel.gid && f.key?.startsWith('seite:')
+    && Math.min(Math.abs(+f.key.slice(6) - az), 360 - Math.abs(+f.key.slice(6) - az)) < 15) || null;
+}
+
+/** Hervorhebung (Überfahren weiß, Auswahl gelb) in einer eigenen Ebene über der Dachhaut. */
+function d3dMarkierungSetzen() {
+  const schicht = _d3d?.markSchicht, p = _d3d?.pick;
+  if (!schicht) return;
+  if (!p || !_d3d.bearbeiten) { schicht.setzen(new Float32Array(0), null); return; }
+  const werte = [];
+  const dazu = (f, rgb) => {
+    if (!f) return;
+    const t = f.tris;
+    for (let i = 0; i + 2 < t.length; i += 3) {
+      werte.push(t[i] * p.mu, t[i + 1] * p.mu, (t[i + 2] + D3D_MARK_HUB * _d3d.faktor) * p.mu, rgb[0], rgb[1], rgb[2]);
+    }
+  };
+  const gewaehlt = d3dPickFlaeche(_d3d.auswahl);
+  const hover = d3dPickFlaeche(_d3d.hover);
+  if (hover && hover !== gewaehlt) dazu(hover, d3dRgb(D3D_HOVER).map(x => x * 0.9));
+  dazu(gewaehlt, d3dRgb(D3D_GEWAEHLT));
+  // Vorschau des Rechtecks, das gerade gezeichnet wird (etwas höher als die Markierung)
+  const z = _d3d.zeichnen;
+  if (z?.ecken) {
+    const rgb = d3dRgb(z.typ === 'sperr' ? D3D_SPERRFARBE : D3D_GEWAEHLT);
+    const hub = 2 * D3D_MARK_HUB * _d3d.faktor;
+    const e = z.ecken;
+    for (const q of [e[0], e[1], e[2], e[0], e[2], e[3]]) werte.push(q[0] * p.mu, q[1] * p.mu, (q[2] + hub) * p.mu, rgb[0], rgb[1], rgb[2]);
+  }
+  d3dEckenZeichnen(werte, p);
+  schicht.setzen(new Float32Array(werte), p.ursprung);
+}
+
+/* ── Ecken verschieben ─────────────────────────────────────────────────────────
+ * Ist eine Fläche gewählt (Sperrfläche 'sp:<id>' oder Belegungsfläche 'bf:<id>',
+ * Letztere über die Liste „Flächen auf diesem Dach"), zeigt die Markierungsebene
+ * ihren Umriss und Griffe an den Ecken. Griff ziehen: Strahl gegen die Dachebene
+ * unter der Ecke, Höhe danach wieder von der Dachhaut (auch über den First).
+ * Loslassen speichert (25 pvmFlaecheEckenSetzen, ein Planungsschritt). */
+const D3D_GRIFF = 0.45;          // m Kantenlänge der Griffe
+const D3D_UMRISS = 0.14;         // m Linienbreite des Umrisses
+const D3D_ECKEN_HUB = 0.22;      // m über der Dachhaut (über den Modulen)
+const D3D_GRIFF_PX = 12;         // Fangradius in Bildschirmpixeln
+const D3D_MITTE = 0.3;           // m Kantenlänge der Kantenmitten-Griffe (ziehen = neue Ecke)
+const D3D_MITTE_FARBE = '#90a4ae';
+const D3D_EINGERASTET = '#4dd0e1';   // gezogener Griff, solange er eingerastet ist
+
+/** {lat,lng} → Pick-Raum [x, y]. */
+function d3dZuPick(q) {
+  const p = _d3d.pick;
+  const mc = window.maplibregl.MercatorCoordinate.fromLngLat([q.lng, q.lat], 0);
+  return [(mc.x - p.ursprung.x) / p.mu, (mc.y - p.ursprung.y) / p.mu];
+}
+
+/**
+ * Rastziele für Ecke i (beim Greifen einmal): Randkanten und Ecken der Dachflächen
+ * (Dreieckskanten, die in ihrer Fläche nur einmal vorkommen — Traufe, First, Ortgang,
+ * Kehle), Ecken der übrigen Flächen des Dachs, Nachbarecken mit den Dachachsen.
+ */
+function d3dRastziele(e, i) {
+  const kanten = [], punkte = [];
+  const rund = v => Math.round(v * 1000);
+  for (const f of _d3d.pick.flaechen) {
+    if (f.gid !== e.gid || !f.key || f.key.startsWith('sp:')) continue;
+    const zaehl = new Map();
+    const t = f.tris;
+    for (let k = 0; k + 8 < t.length; k += 9) {
+      const ecken = [[t[k], t[k + 1]], [t[k + 3], t[k + 4]], [t[k + 6], t[k + 7]]];
+      for (let m = 0; m < 3; m++) {
+        const a = ecken[m], b = ecken[(m + 1) % 3];
+        const ka = rund(a[0]) + ',' + rund(a[1]), kb = rund(b[0]) + ',' + rund(b[1]);
+        const sch = ka < kb ? ka + '|' + kb : kb + '|' + ka;
+        const z = zaehl.get(sch);
+        if (z) z.n++; else zaehl.set(sch, { n: 1, a, b });
+      }
+    }
+    for (const { n, a, b } of zaehl.values()) {
+      if (n !== 1 || Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.05) continue;
+      kanten.push([a, b]);
+      punkte.push(a, b);
+    }
+  }
+  const g = (window.gebaeude || []).find(x => x.id === e.gid);
+  for (const f of g?.pvFlaechen || []) {
+    if (f.id === e.flId || !(f.polygon?.length >= 3)) continue;
+    for (const q of f.polygon) punkte.push(d3dZuPick(q));
+  }
+  const n = e.xy.length;
+  let az = ebeneFallrichtung(e.ebene);
+  if (az == null) {
+    const first = g?.polygon?.length >= 3 ? firstPeilungGrad(g.polygon) : null;
+    az = first == null ? 180 : (first + 90) % 360;
+  }
+  return { punkte, kanten, nachbarn: [e.xy[(i - 1 + n) % n], e.xy[(i + 1) % n]], achsen: rechteckAchsen(az) };
+}
+
+/** Höhe der Dachhaut eines Gebäudes über (x, y) im Pick-Raum (senkrechter Strahl) samt Ebene. */
+function d3dDachBei(gid, x, y) {
+  const fl = (_d3d?.pick?.flaechen || []).filter(f => f.gid === gid && f.key && !f.key.startsWith('sp:'));
+  const t = naechsterTreffer({ o: [x, y, 1e5], d: [0, 0, -1] }, fl);
+  return t ? { z: t.punkt[2], ebene: ebeneAusDreieck(t.flaeche.tris, t.tri) } : null;
+}
+
+/** Zustand der Ecken zur aktuellen Auswahl aufbauen (nach Auswahl und nach jedem Szenenaufbau). */
+function d3dEckenAufbauen() {
+  const a = _d3d?.auswahl, p = _d3d?.pick;
+  _d3d.ecken = null;
+  if (!a || !p || !(a.key.startsWith('sp:') || a.key.startsWith('bf:'))) return;
+  const g = (window.gebaeude || []).find(x => x.id === a.gid);
+  const fl = (g?.pvFlaechen || []).find(f => f.id === +a.key.slice(3));
+  if (!fl || !(fl.polygon?.length >= 3)) return;
+  const xy = fl.polygon.map(d3dZuPick);
+  const z = xy.map(([x, y]) => d3dDachBei(a.gid, x, y)?.z);
+  const zMittel = z.filter(v => v != null).reduce((s, v, _, arr) => s + v / arr.length, 0);
+  _d3d.ecken = { gid: a.gid, flId: fl.id, typ: fl.typ, xy, z: z.map(v => v ?? zMittel), griff: -1, ebene: null, bewegt: false };
+}
+
+/** Umriss + Griffe in die Markierung (Pick-Raum-Werte → Mercator relativ zum Ursprung). */
+function d3dEckenZeichnen(werte, p) {
+  const e = _d3d?.ecken;
+  if (!e) return;
+  const hub = D3D_ECKEN_HUB * _d3d.faktor;
+  const push = (q, rgb) => werte.push(q[0] * p.mu, q[1] * p.mu, q[2] * p.mu, rgb[0], rgb[1], rgb[2]);
+  const quad = (a, b, c, d, rgb) => { for (const q of [a, b, c, a, c, d]) push(q, rgb); };
+  const linie = d3dRgb(e.typ === 'sperr' ? D3D_SPERRFARBE : D3D_GEWAEHLT);
+  const n = e.xy.length;
+  for (let i = 0; i < n; i++) {
+    const a = [...e.xy[i], e.z[i] + hub], b = [...e.xy[(i + 1) % n], e.z[(i + 1) % n] + hub];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const nx = -(b[1] - a[1]) / l * D3D_UMRISS / 2, ny = (b[0] - a[0]) / l * D3D_UMRISS / 2;
+    quad([a[0] + nx, a[1] + ny, a[2]], [b[0] + nx, b[1] + ny, b[2]], [b[0] - nx, b[1] - ny, b[2]], [a[0] - nx, a[1] - ny, a[2]], linie);
+  }
+  const weiss = d3dRgb('#ffffff'), aktiv = d3dRgb(D3D_GEWAEHLT), grau = d3dRgb(D3D_MITTE_FARBE), tuerkis = d3dRgb(D3D_EINGERASTET);
+  const h = D3D_GRIFF / 2;
+  e.xy.forEach(([x, y], i) => {
+    const zz = e.z[i] + hub + 0.02 * _d3d.faktor;
+    const farbe = i === e.griff && e.eingerastet ? tuerkis : i === e.griff || i === e.ueber ? aktiv : weiss;
+    quad([x - h, y - h, zz], [x + h, y - h, zz], [x + h, y + h, zz], [x - h, y + h, zz], farbe);
+  });
+  // Kantenmitten (nicht während eines Zugs — die Kanten ändern sich gerade)
+  if (e.griff >= 0) return;
+  const hm = D3D_MITTE / 2;
+  d3dMitten(e).forEach(([x, y, z], i) => {
+    const zz = z + hub + 0.02 * _d3d.faktor;
+    quad([x - hm, y - hm, zz], [x + hm, y - hm, zz], [x + hm, y + hm, zz], [x - hm, y + hm, zz], i === e.ueberMitte ? aktiv : grau);
+  });
+}
+
+/** Mitten der Kanten [x,y,z] (Höhe von der Dachhaut, sonst gemittelt). */
+function d3dMitten(e) {
+  const n = e.xy.length;
+  return e.xy.map(([x, y], i) => {
+    const [x2, y2] = e.xy[(i + 1) % n];
+    const mx = (x + x2) / 2, my = (y + y2) / 2;
+    return [mx, my, d3dDachBei(e.gid, mx, my)?.z ?? (e.z[i] + e.z[(i + 1) % n]) / 2];
+  });
+}
+
+/** Index des Punkts (Pick-Raum, angehoben) unter dem Bildschirmpunkt oder -1. */
+function d3dPunktBei(punkt, punkte) {
+  const p = _d3d?.pick, m = _d3d?.schicht?.matrix, karte = _d3d?.ml;
+  if (!p || !m || !karte) return -1;
+  const c = karte.getCanvas(), pm = pickMatrix(m, p.ursprung, p.mu);
+  const hub = D3D_ECKEN_HUB * _d3d.faktor;
+  let best = -1, bestD = D3D_GRIFF_PX;
+  punkte.forEach(([x, y, z], i) => {
+    const s = projiziere(pm, [x, y, z + hub], c.clientWidth, c.clientHeight);
+    if (!s) return;
+    const d = Math.hypot(s[0] - punkt.x, s[1] - punkt.y);
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return best;
+}
+
+/** Kantenmitte unter einem Bildschirmpunkt (Index der Kante) oder -1. */
+function d3dMitteBei(punkt) {
+  const e = _d3d?.ecken;
+  return e ? d3dPunktBei(punkt, d3dMitten(e)) : -1;
+}
+
+/** Ecke löschen (Rechtsklick, Entf) — mindestens drei bleiben. */
+function d3dEckeLoeschen(i) {
+  const e = _d3d?.ecken;
+  if (!e || i < 0) return;
+  if (e.xy.length <= 3) { window.showHint?.('Eine Fläche braucht mindestens drei Ecken.', 3000); return; }
+  e.xy.splice(i, 1);
+  e.z.splice(i, 1);
+  e.ueber = -1;
+  const ok = window.pvmFlaecheEckenSetzen?.(e.gid, e.flId, e.xy.map(d3dZuLatLng), 'Ecke gelöscht');
+  if (!ok) d3dEckenAufbauen();
+  d3dMarkierungSetzen();
+  d3dFlaecheInfo();
+}
+
+/** Griff unter einem Bildschirmpunkt (Index) oder -1. */
+function d3dGriffBei(punkt) {
+  const e = _d3d?.ecken;
+  return e ? d3dPunktBei(punkt, e.xy.map(([x, y], i) => [x, y, e.z[i]])) : -1;
+}
+
+/** Ziehen: neue Lage der Ecke unter dem Mauspunkt — eingerastet, außer mit Alt. */
+function d3dEckeZiehen(punkt, frei) {
+  const e = _d3d.ecken;
+  const q = strahlEbene(d3dStrahl(punkt), e.ebene);
+  if (!q) return;
+  let xy = [q[0], q[1]];
+  e.eingerastet = false;
+  if (!frei && e.rast) {
+    const r = eckeEinrasten(xy, e.rast, { fang: D3D_FANG });
+    xy = r.p;
+    e.eingerastet = !!r.art;
+  }
+  const dach = d3dDachBei(e.gid, xy[0], xy[1]);
+  e.xy[e.griff] = xy;
+  e.z[e.griff] = dach ? dach.z : ebeneZ(e.ebene, xy[0], xy[1]);
+  e.bewegt = true;
+  d3dMarkierungSetzen();
+}
+
+/** Loslassen: speichern (oder bei zu kleiner Fläche verwerfen). */
+function d3dEckeLoslassen() {
+  const e = _d3d?.ecken;
+  if (!e || e.griff < 0) return;
+  e.griff = -1;
+  e.eingerastet = false;
+  _d3d.ml?.dragPan.enable();
+  const eingefuegt = e.eingefuegt;
+  e.eingefuegt = false;
+  if (!e.bewegt && !eingefuegt) { d3dMarkierungSetzen(); return; }
+  _d3d.klickSperre = true;    // der Klick nach dem Ziehen wählt nichts anderes aus
+  const ok = window.pvmFlaecheEckenSetzen?.(e.gid, e.flId, e.xy.map(d3dZuLatLng), eingefuegt ? 'Ecke eingefügt' : 'Ecken verschoben');
+  if (!ok) d3dEckenAufbauen();
+  d3dMarkierungSetzen();
+  d3dFlaecheInfo();
+}
+
+/* ── Rechteck auf der Dachfläche zeichnen (Stufe 2) ───────────────────────────
+ * 1. Klick: Dachfläche + erste Ecke — die Ebene des getroffenen Dreiecks und ihre
+ * Falllinie legen Lage und Ausrichtung fest. Danach folgt die Vorschau der Maus
+ * auf dieser Ebene (Strahl–Ebene, auch über die Kante hinaus), begrenzt auf die
+ * Fläche und an Traufe/First/Ortgang eingerastet. 2. Klick: Fläche anlegen (25
+ * pvmFlaecheAus3d). Das Werkzeug bleibt an; Esc beendet es. */
+const D3D_FANG = 0.35;   // m Einrasten an der Kante der Dachfläche
+
+function d3dZeichnenStart(typ) {
+  if (!_d3d) return;
+  _d3d.zeichnen = _d3d.zeichnen?.typ === typ ? null : { typ, start: null, ecken: null };
+  d3dHoverVergessen();
+  d3dMarkierungSetzen();
+  d3dFlaecheInfo();
+  if (_d3d.ml) _d3d.ml.getCanvas().style.cursor = _d3d.zeichnen ? 'crosshair' : '';
+}
+
+function d3dZeichnenEnde() {
+  if (!_d3d?.zeichnen) return false;
+  _d3d.zeichnen = null;
+  d3dMarkierungSetzen();
+  d3dFlaecheInfo();
+  if (_d3d.ml) _d3d.ml.getCanvas().style.cursor = '';
+  return true;
+}
+
+/** Strahl durch einen Bildschirmpunkt im Pick-Raum. */
+function d3dStrahl(punkt) {
+  const p = _d3d?.pick, m = _d3d?.schicht?.matrix, karte = _d3d?.ml;
+  if (!p || !m || !karte) return null;
+  const c = karte.getCanvas();
+  return sehstrahl(pickMatrix(m, p.ursprung, p.mu), punkt.x, punkt.y, c.clientWidth, c.clientHeight);
+}
+
+/** Pick-Raum [x,y] → {lat,lng}. */
+function d3dZuLatLng(q) {
+  const p = _d3d.pick;
+  const ll = new window.maplibregl.MercatorCoordinate(p.ursprung.x + q[0] * p.mu, p.ursprung.y + q[1] * p.mu, 0).toLngLat();
+  return { lat: ll.lat, lng: ll.lng };
+}
+
+/** Erster Klick: Dachfläche, Ebene, Ausrichtung, Grenzen. */
+function d3dZeichnenErsterPunkt(punkt) {
+  const s = d3dStrahl(punkt);
+  const t = s && naechsterTreffer(s, _d3d.pick.flaechen);
+  if (!t || !t.key || t.key.startsWith('sp:')) {
+    window.showHint?.('Erste Ecke auf eine Dachfläche setzen.', 2500);
+    return;
+  }
+  const ebene = ebeneAusDreieck(t.flaeche.tris, t.tri);
+  let az = ebeneFallrichtung(ebene);
+  if (az == null) {
+    // Flache Fläche: am Grundriss ausrichten (Längsachse), wie die Module auf dem Flachdach
+    const g = (window.gebaeude || []).find(x => x.id === t.gid);
+    const first = g?.polygon?.length >= 3 ? firstPeilungGrad(g.polygon) : null;
+    az = first == null ? 180 : (first + 90) % 360;
+  }
+  // Grenzen: Eckpunkte der Fläche, die auf dieser Ebene liegen (Walm-/Flügeldach: nur die getroffene Ebene)
+  const tr = t.flaeche.tris, grenzen = [];
+  for (let i = 0; i + 2 < tr.length; i += 3) {
+    if (Math.abs(tr[i + 2] - ebeneZ(ebene, tr[i], tr[i + 1])) < 0.05) grenzen.push([tr[i], tr[i + 1]]);
+  }
+  _d3d.zeichnen.start = { gid: t.gid, key: t.key, ebene, az, grenzen, p1: t.punkt };
+  _d3d.zeichnen.ecken = null;
+  _d3d.auswahl = { gid: t.gid, key: t.key };
+  d3dFlaecheInfo();
+}
+
+/** Vorschau zur Mausposition. */
+function d3dZeichnenVorschau(punkt) {
+  const st = _d3d?.zeichnen?.start;
+  if (!st) return;
+  const p2 = strahlEbene(d3dStrahl(punkt), st.ebene);
+  if (!p2) return;
+  const r = rechteckAufEbene(st.p1, p2, st.az, st.ebene, { grenzen: st.grenzen, fang: D3D_FANG });
+  _d3d.zeichnen.ecken = r.ecken;
+  _d3d.zeichnen.masse = r;
+  d3dMarkierungSetzen();
+  const el = document.getElementById('d3d-zeichnen-mass');
+  if (el) el.textContent = d3dMassText();
+}
+
+/** Zweiter Klick: Fläche anlegen. */
+function d3dZeichnenFertig(punkt) {
+  d3dZeichnenVorschau(punkt);
+  const z = _d3d.zeichnen, st = z?.start;
+  if (!st || !z.ecken) return;
+  const punkte = z.ecken.map(d3dZuLatLng);
+  const typ = z.typ;
+  z.start = null; z.ecken = null;
+  d3dMarkierungSetzen();
+  window.pvmFlaecheAus3d?.(st.gid, st.key, punkte, typ);
+  _d3d.auswahl = { gid: st.gid, key: st.key };
+  d3dFlaecheInfo();
+}
+
+function d3dEsc(s) {
+  return typeof window.escHtml === 'function' ? window.escHtml(s)
+    : String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+}
+
+const _kw = x => (Math.round(x * 10) / 10).toLocaleString('de-DE');
+const d3dHimmel = az => ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'][Math.round((((az % 360) + 360) % 360) / 45) % 8];
+
+/** Abschnitt „Dachfläche" im Panel: Zeichenwerkzeuge + angeklickte Fläche. */
+function d3dFlaecheHtml() {
+  if (!_d3d?.bearbeiten) return '';
+  return d3dWerkzeugHtml() + d3dFlaecheInfoHtml();
+}
+
+function d3dWerkzeugHtml() {
+  const z = _d3d.zeichnen;
+  const knopf = (aktion, typ, text, farbe, titel) => {
+    const an = z?.typ === typ;
+    return `<button data-d3d="${aktion}" title="${d3dEsc(titel)}"
+      style="${BTN}padding:3px 6px;${an ? `border-color:${farbe};color:${farbe};background:${farbe}22;font-weight:600;` : ''}">${text}</button>`;
+  };
+  const hinweis = !z ? '' : `<div style="font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35;">
+      ${z.start ? '2. Klick: gegenüberliegende Ecke' : '1. Klick: erste Ecke auf die Dachfläche'}
+      <span id="d3d-zeichnen-mass" style="color:var(--text);">${d3dMassText()}</span> · rastet an Traufe/First ein · Esc beendet</div>`;
+  return `<div style="display:flex;gap:3px;margin-top:5px;">
+      ${knopf('zeichne-sperr', 'sperr', '▭ Sperrfläche', D3D_SPERRFARBE, 'Rechteck auf der Dachfläche aussparen (Kamin, Gaube, Dachfenster) — zwei Klicks, an der Falllinie ausgerichtet')}
+      ${knopf('zeichne-belegung', 'belegung', '▭ Belegung', D3D_GEWAEHLT, 'Rechteck auf der Dachfläche mit Modulen belegen — zwei Klicks, an der Falllinie ausgerichtet')}
+    </div>${hinweis}`;
+}
+
+function d3dMassText() {
+  const m = _d3d?.zeichnen?.masse;
+  return m && _d3d.zeichnen.start ? ` · ${_kw(m.laenge)} × ${_kw(m.breite)} m im Grundriss` : '';
+}
+
+function d3dFlaecheInfoHtml() {
+  const a = _d3d.auswahl;
+  const i = a && typeof window.pvmDachflaecheInfo === 'function' ? window.pvmDachflaecheInfo(a.gid, a.key) : null;
+  if (!i) {
+    return `<div style="font-size:10px;color:var(--muted);line-height:1.45;margin-top:4px;">
+      Dachfläche anklicken — Überfahren zeigt Ausrichtung und Fläche. Belegen und Freilassen gelten für die aktive Variante; Strg+Z bzw. ↶ nimmt es zurück.</div>`;
+  }
+  const knopf = (aktion, text, titel, farbe = '') => `<button data-d3d="${aktion}" title="${d3dEsc(titel)}"
+    style="${BTN}flex:none;padding:3px 7px;${farbe ? `border-color:${farbe};color:${farbe};` : ''}">${text}</button>`;
+  const zeile = (l, w) => `<span style="color:var(--muted);">${l}</span><span style="text-align:right;">${w}</span>`;
+  const flaeche = i.sperrId != null || i.belegId != null;   // einzelne Fläche statt Dachfläche
+  const status = i.belegt
+    ? `<span style="color:${D3D_GEWAEHLT};">☀ belegt</span> · ${i.module} Module · ${_kw(i.kwp)} kWp`
+    : '<span style="color:var(--muted);">○ frei</span>';
+  return `
+    <div style="margin-top:5px;padding:6px 7px;border:1px solid ${D3D_GEWAEHLT}66;border-radius:6px;background:${D3D_GEWAEHLT}0d;">
+      <div style="font-weight:600;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${d3dEsc(i.name)}">${d3dEsc(i.name)}</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">${d3dEsc(i.art)}</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:1px 8px;font-size:10.5px;">
+        ${flaeche ? zeile('Fläche', `${_kw(i.flaecheM2)} m² <span style="color:var(--muted);">im Grundriss</span>`) : `
+        ${zeile('Ausrichtung', i.azimut == null ? 'flach' : `${Math.round(i.azimut)}° ${d3dHimmel(i.azimut)}`)}
+        ${zeile('Neigung', `${Math.round(i.neigung)}°`)}
+        ${zeile('Fläche', `${Math.round(i.flaecheM2)} m²${Math.abs(i.flaecheM2 - i.grundM2) > 1 ? ` <span style="color:var(--muted);">(Grund ${Math.round(i.grundM2)})</span>` : ''}`)}
+        ${zeile('Ertrag', `${i.ertragPct} % <span style="color:var(--muted);">von Süd 35°</span>`)}
+        ${i.schattenPct != null ? zeile('Verschattung', `${_kw(i.schattenPct)} %`) : ''}`}
+      </div>
+      ${flaeche ? '' : `<div style="font-size:10.5px;margin-top:4px;">${status}</div>`}
+      <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;">
+        ${flaeche ? knopf('fl-weg', i.sperrId != null ? '🗑 Sperrfläche entfernen' : '🗑 Fläche entfernen',
+            i.sperrId != null ? 'Diese Sperrfläche löschen — dort werden wieder Module gesetzt' : 'Diese Belegungsfläche löschen (die letzte samt PV-Asset)', '#e53935')
+          + knopf('undo', '↶', 'Letzten Schritt zurücknehmen') : `
+        ${i.belegt
+          ? knopf('fl-aus', '⛔ Freilassen', 'Diese Fläche nicht belegen (Satteldachseite: Sperrfläche, Dachfläche: Belegungsfläche entfernen)', '#e53935')
+          : knopf('fl-an', '☀ Belegen', 'Diese Fläche mit Modulen belegen — nach den Belegungsregeln (Rand, Modullage, Belegungsgrad)', D3D_GEWAEHLT)}
+        ${i.dachBelegt
+          ? knopf('dach-leeren', '🗑 Dach leeren', 'Alle Flächen dieses Dachs entfernen (samt PV-Asset)')
+          : knopf('dach-regeln', '⊞ Ganzes Dach', 'Das ganze Dach nach den Belegungsregeln belegen (wie „Grundriss als Fläche" im PV-Modus)')}
+        ${i.zerlegbar ? knopf('dach-zerlegen', '📐 Zerlegen', 'Dach aus dem Grundriss in einzelne Dachflächen zerlegen (Flügel, Kehlen) — dann ist jede Fläche einzeln belegbar') : ''}
+        ${knopf('undo', '↶', 'Letzten Schritt zurücknehmen (wie Strg+Z im PV-Modus)')}`}
+      </div>
+      ${flaeche ? `<div style="font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.35;">Weiße Ecke ziehen = verschieben (folgt der Dachhaut, rastet an Traufe/First/Kanten und an den Nachbarecken ein — türkis; Alt = frei) · graue Kantenmitte ziehen oder klicken = neue Ecke · Rechtsklick oder Entf auf einer Ecke = löschen.</div>` : ''}
+      ${i.hinweis ? `<div style="font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.35;">${d3dEsc(i.hinweis)}</div>` : ''}
+      ${flaeche ? '' : d3dFlaechenListeHtml(a.gid)}
+    </div>`;
+}
+
+/** „Flächen auf diesem Dach" — Belegungs- und Sperrflächen zum Auswählen (Ecken verschieben). */
+function d3dFlaechenListeHtml(gid) {
+  const liste = typeof window.pvmFlaechenAmDach === 'function' ? window.pvmFlaechenAmDach(gid) : [];
+  if (!liste.length) return '';
+  return `<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:4px;">
+      <div style="font-size:9.5px;color:var(--muted);margin-bottom:2px;">Flächen auf diesem Dach — ✎ zeigt die Ecken</div>
+      ${liste.map(f => `<div style="display:flex;align-items:center;gap:5px;font-size:10px;padding:1px 0;">
+        <span style="color:${f.typ === 'sperr' ? D3D_SPERRFARBE : D3D_GEWAEHLT};">${f.typ === 'sperr' ? '⛔' : '☀'}</span>
+        <span style="flex:1;">${d3dEsc(f.text)}</span>
+        <span style="color:var(--muted);font-family:'DM Mono',monospace;">${_kw(f.m2)} m²</span>
+        <button data-d3d="flaeche-waehlen" data-key="${f.key}" title="Diese Fläche wählen und ihre Ecken verschieben"
+          style="${BTN}flex:none;padding:1px 6px;">✎</button></div>`).join('')}
+    </div>`;
+}
+
+function d3dFlaecheInfo() {
+  const el = document.getElementById('d3d-flaeche');
+  if (el) el.innerHTML = d3dFlaecheHtml();
+}
+
+/** Klick in der Karte bei „Dachflächen bearbeiten". */
+function d3dFlaecheWaehlen(punkt) {
+  const t = d3dTreffer(punkt);
+  _d3d.auswahl = t;
+  d3dHoverVergessen();
+  d3dEckenAufbauen();
+  if (t && window.pvModusAktiv) { window.pvModusGeb = t.gid; window.pvModusRender?.(); }
+  d3dMarkierungSetzen();
+  d3dFlaecheInfo();
+}
+
+/** Tooltip der überfahrenen Fläche verwerfen (Inhalt ist nach Klick/Änderung veraltet). */
+function d3dHoverVergessen() {
+  _d3d.hover = null;
+  _d3d.hoverHtml = '';
+  _d3d.popup?.remove();
+}
+
+/** Aktionen aus dem Abschnitt „Dachfläche". */
+function d3dFlaecheAktion(aktion) {
+  const a = _d3d?.auswahl;
+  if (_d3d) d3dHoverVergessen();
+  if (aktion === 'undo') { window.pvmUndo?.(); d3dFlaecheInfo(); return; }
+  if (!a) return;
+  if (aktion === 'fl-an' || aktion === 'fl-aus') {
+    const neu = window.pvmDachflaecheSetzen?.(a.gid, a.key, aktion === 'fl-an');
+    if (neu) _d3d.auswahl = { gid: a.gid, key: neu };
+  }
+  if (aktion === 'dach-regeln') window.pvmDachNachRegeln?.(a.gid);
+  if (aktion === 'dach-leeren') window.pvmDachLeeren?.(a.gid);
+  if (aktion === 'dach-zerlegen') { window.pvmDachZerlegen?.(a.gid); _d3d.auswahl = null; }
+  if (aktion === 'fl-weg' && /^(sp|bf):/.test(a.key)) { window.pvmFlaeche3dEntfernen?.(a.gid, +a.key.slice(3)); _d3d.auswahl = null; }
+  d3dEckenAufbauen();
+  d3dMarkierungSetzen();
+  d3dFlaecheInfo();
 }
 
 /* ── Netze ────────────────────────────────────────────────────────────────── */
@@ -710,9 +1279,20 @@ function d3dBaumInfoText() {
     + (erg.ausgeduennt ? ' · Flächen ausgedünnt' : '');
 }
 
+/** Info plus — bei der reinen OSM-Vorschau — Knopf zum Übernehmen ins Projekt (nur dort wird gespeichert). */
+function d3dBaumInfoHtml() {
+  const text = d3dBaumInfoText().replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const erg = _d3d?.baumErgebnis;
+  const vorschau = _baumAn && _d3d?.baumStatus === 'fertig' && erg && !erg.ausProjekt && erg.baeume.length;
+  return text + (vorschau && typeof window.baumOsmUebernehmen === 'function'
+    ? ` <button class="btn-secondary" data-click="baumOsmUebernehmen()" style="font-size:10px;padding:1px 6px;margin-top:3px;"
+        title="Bäume aus OpenStreetMap ins Projekt übernehmen — erst dann werden sie mit dem Projekt gespeichert und für die Verschattung genutzt">🌳 Ins Projekt übernehmen</button>`
+    : '');
+}
+
 function d3dBaumInfo() {
   const el = document.getElementById('d3d-bauminfo');
-  if (el) el.textContent = d3dBaumInfoText();
+  if (el) el.innerHTML = d3dBaumInfoHtml();
 }
 
 /* ── Oberfläche ───────────────────────────────────────────────────────────── */
@@ -746,6 +1326,10 @@ function d3dPanelHtml() {
   <label style="display:flex;align-items:center;gap:6px;margin-top:3px;font-size:11px;cursor:pointer;" title="Module nach dem gerechneten Verschattungsfaktor ihrer Dachfläche färben (PV-Modus → Bäume &amp; Verschattung). Nicht gerechnete Dächer bleiben blau.">
     <input type="checkbox" data-d3d="schatten" ${_d3d.schatten ? 'checked' : ''}>… nach Verschattung färben</label>
   <div id="d3d-dachinfo" style="font-size:10px;color:var(--muted);margin-top:3px;">${d3dDachinfoText()}</div>
+  <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;cursor:pointer;font-weight:600;color:${D3D_GEWAEHLT};"
+    title="Dachflächen anklicken: Ausrichtung, Fläche, Ertrag und Belegung ansehen, einzeln belegen oder freilassen (nach den Belegungsregeln des PV-Modus)">
+    <input type="checkbox" data-d3d="bearbeiten" ${_d3d.bearbeiten ? 'checked' : ''}>☀ Dachflächen bearbeiten</label>
+  <div id="d3d-flaeche">${d3dFlaecheHtml()}</div>
   <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Netze</div>
   <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;" title="Farben wie auf der Karte (DN, Auslastung …); eine dort ausgeblendete Ebene fehlt auch hier">
     <input type="checkbox" data-d3d="netzW" ${_d3d.netzW ? 'checked' : ''}>Wärmenetz</label>
@@ -757,7 +1341,7 @@ function d3dPanelHtml() {
   <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Umgebung</div>
   <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;" title="Die Bäume des Projekts (PV-Modus → Bäume &amp; Verschattung). Ohne Projektbäume eine Vorschau aus OpenStreetMap im Umkreis von 150 m um die Gebäude — die wird nicht gespeichert.">
     <input type="checkbox" data-d3d="baeume" ${_baumAn ? 'checked' : ''}>Bäume</label>
-  <div id="d3d-bauminfo" style="font-size:10px;color:var(--muted);margin-top:3px;">${d3dBaumInfoText()}</div>
+  <div id="d3d-bauminfo" style="font-size:10px;color:var(--muted);margin-top:3px;">${d3dBaumInfoHtml()}</div>
   <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Ansicht</div>
   <div style="display:flex;gap:3px;">
     <button data-d3d="2d" style="${BTN}" title="Senkrecht von oben">2D</button>
@@ -889,6 +1473,8 @@ export async function d3dOeffnen() {
     daecher: 'angaben', module: true, schicht: null, stat: { daecher: 0, module: 0 },
     netzW: true, netzS: true, netzSig: '', netzTimer: 0, netzZahl: null, glas: false,
     baumSchicht: null, baumStatus: '', baumErgebnis: null, schatten: false,
+    // Dachflächen bearbeiten: Pick-Daten der Szene, Überfahren/Auswahl {gid, key}, Markierungsebene
+    bearbeiten: false, pick: null, hover: null, auswahl: null, markSchicht: null, pickRaf: 0,
   };
   d3dPositionieren();
   if (typeof ResizeObserver === 'function') {
@@ -980,6 +1566,8 @@ export async function d3dOeffnen() {
     karte.addLayer(_d3d.baumSchicht);
     _d3d.schicht = d3dDachSchicht();
     karte.addLayer(_d3d.schicht);
+    _d3d.markSchicht = d3dDachSchicht('d3d-markierung', false);
+    karte.addLayer(_d3d.markSchicht);
     d3dAnwenden();
     if (_baumAn) d3dBaeumeLaden();
   };
@@ -1004,6 +1592,41 @@ export async function d3dOeffnen() {
   const esc = typeof window.escHtml === 'function' ? window.escHtml : (s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]));
   karte.on('mousemove', e => {
     if (!_d3d || !karte.getLayer('d3d-geb')) return;
+    if (_d3d.bearbeiten) {
+      // Dachfläche unter der Maus — höchstens einmal je Bild rechnen
+      hoverAus();
+      _d3d.letzterPunkt = e.point;
+      _d3d.letzteLngLat = e.lngLat;
+      _d3d.letztesAlt = !!e.originalEvent?.altKey;
+      if (_d3d.pickRaf) return;
+      _d3d.pickRaf = requestAnimationFrame(() => {
+        if (!_d3d) return;
+        _d3d.pickRaf = 0;
+        if (_d3d.zeichnen?.start) { d3dZeichnenVorschau(_d3d.letzterPunkt); return; }
+        if (_d3d.ecken?.griff >= 0) { d3dEckeZiehen(_d3d.letzterPunkt, _d3d.letztesAlt); return; }
+        if (_d3d.ecken && !_d3d.zeichnen) {
+          const i = d3dGriffBei(_d3d.letzterPunkt);
+          const j = i < 0 ? d3dMitteBei(_d3d.letzterPunkt) : -1;
+          if (i !== (_d3d.ecken.ueber ?? -1) || j !== (_d3d.ecken.ueberMitte ?? -1)) {
+            _d3d.ecken.ueber = i; _d3d.ecken.ueberMitte = j; d3dMarkierungSetzen();
+          }
+          if (i >= 0 || j >= 0) { karte.getCanvas().style.cursor = i >= 0 ? 'move' : 'copy'; _d3d.popup?.remove(); return; }
+        }
+        const t = d3dTreffer(_d3d.letzterPunkt);
+        const neu = (t?.gid ?? null) !== (_d3d.hover?.gid ?? null) || (t?.key ?? null) !== (_d3d.hover?.key ?? null);
+        _d3d.hover = t;
+        karte.getCanvas().style.cursor = t ? 'pointer' : '';
+        if (!t) { _d3d.popup?.remove(); if (neu) d3dMarkierungSetzen(); return; }
+        if (neu) {
+          d3dMarkierungSetzen();
+          const i = window.pvmDachflaecheInfo?.(t.gid, t.key);
+          _d3d.hoverHtml = i ? `<b>${esc(i.name)}</b><br>${esc(window.pvmDachflaecheKurz?.(i) || '')}<br>`
+            + (i.belegt ? `☀ ${i.module} Module · ${_kw(i.kwp)} kWp` : '○ frei') : '';
+        }
+        if (_d3d.hoverHtml) _d3d.popup.setLngLat(_d3d.letzteLngLat).setHTML(_d3d.hoverHtml).addTo(karte);
+      });
+      return;
+    }
     const box = [[e.point.x - 4, e.point.y - 4], [e.point.x + 4, e.point.y + 4]];
     const f = karte.queryRenderedFeatures(e.point, { layers: ['d3d-geb'] })[0];
     if (!f) {
@@ -1027,14 +1650,76 @@ export async function d3dOeffnen() {
   });
   karte.getCanvas().addEventListener('mouseleave', () => {
     hoverAus();
+    if (_d3d?.hover) { _d3d.hover = null; d3dMarkierungSetzen(); }
     karte.getCanvas().style.cursor = '';
     _d3d?.popup?.remove();
   });
+  // Griff greifen: Kartenverschieben für diesen Zug aus (preventDefault), Loslassen am Fenster
+  karte.on('mousedown', e => {
+    if (!_d3d?.bearbeiten || !_d3d.ecken || _d3d.zeichnen) return;
+    if (e.originalEvent?.button > 0) return;   // rechts: Drehen bzw. Ecke löschen (contextmenu)
+    const ek = _d3d.ecken;
+    let i = d3dGriffBei(e.point);
+    if (i < 0) {
+      // Kantenmitte: dort eine Ecke einfügen und gleich weiterziehen
+      const j = d3dMitteBei(e.point);
+      if (j < 0) return;
+      const [mx, my, mz] = d3dMitten(ek)[j];
+      ek.xy.splice(j + 1, 0, [mx, my]);
+      ek.z.splice(j + 1, 0, mz);
+      ek.eingefuegt = true;
+      ek.ueberMitte = -1;
+      i = j + 1;
+    }
+    e.preventDefault();
+    karte.dragPan.disable();
+    const [x, y] = ek.xy[i];
+    ek.griff = i;
+    ek.bewegt = false;
+    ek.ebene = d3dDachBei(ek.gid, x, y)?.ebene || { n: [0, 0, 1], p: [x, y, ek.z[i]] };
+    ek.rast = d3dRastziele(ek, i);
+    ek.eingerastet = false;
+    d3dMarkierungSetzen();
+  });
+  karte.on('contextmenu', e => {
+    if (!_d3d?.bearbeiten || !_d3d.ecken || _d3d.zeichnen) return;
+    const i = d3dGriffBei(e.point);
+    if (i < 0) return;
+    e.preventDefault();
+    e.originalEvent?.preventDefault?.();
+    d3dEckeLoeschen(i);
+  });
+  _d3d.loslassen = () => d3dEckeLoslassen();
+  window.addEventListener('mouseup', _d3d.loslassen);
+  // Esc beendet das Zeichenwerkzeug — im Window-Capture, also vor dem Esc-Handler
+  // des PV-Modus (Document-Capture), der sonst gleich den ganzen Modus beendet
+  _d3d.tasten = ev => {
+    // Entf/Rücktaste über einer Ecke: Ecke löschen (nicht beim Tippen in Eingabefeldern)
+    if ((ev.key === 'Delete' || ev.key === 'Backspace') && _d3d?.ecken?.ueber >= 0 && _d3d.ecken.griff < 0
+        && !/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target?.tagName || '') && !ev.target?.isContentEditable) {
+      d3dEckeLoeschen(_d3d.ecken.ueber);
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      return;
+    }
+    if (ev.key !== 'Escape' || !_d3d?.zeichnen) return;
+    if (_d3d.zeichnen.start) { _d3d.zeichnen.start = null; _d3d.zeichnen.ecken = null; d3dMarkierungSetzen(); d3dFlaecheInfo(); }
+    else d3dZeichnenEnde();
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+  };
+  window.addEventListener('keydown', _d3d.tasten, true);
   // Netze ändern sich auch ohne updateViz (Netzberechnung, Kabelauslegung,
   // Farbmodus der Leitungen) — solange die Ansicht offen ist, jede Sekunde abgleichen.
   _d3d.netzTimer = setInterval(() => d3dNetzAktualisieren(), 1000);
   // Klick = Gebäude auf der Arbeitskarte auswählen
   karte.on('click', e => {
+    if (_d3d?.klickSperre) { _d3d.klickSperre = false; return; }
+    if (_d3d?.bearbeiten && _d3d.zeichnen) {
+      if (_d3d.zeichnen.start) d3dZeichnenFertig(e.point); else d3dZeichnenErsterPunkt(e.point);
+      return;
+    }
+    if (_d3d?.bearbeiten) { d3dFlaecheWaehlen(e.point); return; }
     const f = karte.queryRenderedFeatures(e.point, { layers: ['d3d-geb', 'd3d-geist'] })[0];
     if (!f || typeof window.selectFromMap !== 'function') return;
     window.selectFromMap(f.properties.gid);
@@ -1044,8 +1729,11 @@ export async function d3dOeffnen() {
 
 export function d3dSchliessen() {
   if (!_d3d) return;
-  const { el, ml, ro, raf, netzTimer } = _d3d;
+  const { el, ml, ro, raf, netzTimer, pickRaf, tasten, loslassen } = _d3d;
   if (netzTimer) clearInterval(netzTimer);
+  if (tasten) window.removeEventListener('keydown', tasten, true);
+  if (loslassen) window.removeEventListener('mouseup', loslassen);
+  if (pickRaf) cancelAnimationFrame(pickRaf);
   // Ausschnitt an die Arbeitskarte zurückgeben (Neigung/Drehung bleiben in 3D)
   if (ml && window.map?.setView) {
     try {
@@ -1141,6 +1829,18 @@ function d3dKlickImPanel(ev) {
     case 'karte': d3dHintergrund(false); break;
     case 'sat': d3dHintergrund(true); break;
     case 'png': d3dPng(); break;
+    case 'fl-an': case 'fl-aus': case 'dach-regeln': case 'dach-leeren': case 'dach-zerlegen': case 'undo': case 'fl-weg':
+      d3dFlaecheAktion(t.dataset.d3d); break;
+    case 'flaeche-waehlen':
+      if (_d3d.auswahl) {
+        _d3d.auswahl = { gid: _d3d.auswahl.gid, key: t.dataset.key };
+        d3dEckenAufbauen();
+        d3dMarkierungSetzen();
+        d3dFlaecheInfo();
+      }
+      break;
+    case 'zeichne-sperr': d3dZeichnenStart('sperr'); break;
+    case 'zeichne-belegung': d3dZeichnenStart('belegung'); break;
   }
 }
 
@@ -1152,6 +1852,14 @@ function d3dEingabeImPanel(ev) {
   if (t.dataset.d3d === 'module' && ev.type === 'change') { _d3d.module = !!t.checked; d3dAnwenden(); }
   if (t.dataset.d3d === 'schatten' && ev.type === 'change') { _d3d.schatten = !!t.checked; if (_d3d.schatten) _d3d.module = true; d3dAnwenden(); }
   if (t.dataset.d3d === 'glas' && ev.type === 'change') { _d3d.glas = !!t.checked; d3dAnwenden(); }
+  if (t.dataset.d3d === 'bearbeiten' && ev.type === 'change') {
+    _d3d.bearbeiten = !!t.checked;
+    _d3d.hover = null; _d3d.auswahl = null; _d3d.zeichnen = null;
+    _d3d.popup?.remove();
+    if (_d3d.ml) _d3d.ml.getCanvas().style.cursor = '';
+    d3dSzeneSetzen();      // Pick-Daten sammeln bzw. verwerfen
+    d3dFlaecheInfo();
+  }
   if (t.dataset.d3d === 'baeume' && ev.type === 'change') {
     _baumAn = !!t.checked;
     if (_baumAn && (!_d3d.baumErgebnis || _d3d.baumStatus === 'fehler')) d3dBaeumeLaden();

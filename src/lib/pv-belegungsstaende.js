@@ -7,7 +7,8 @@
 //
 //   stand = { id, name, herkunft: 'auto'|'projekt'|'kopie', beschreibung, stand,
 //             geb: { [gebId]: { felder, dach?, kwp, kwpKorr, module } },
-//             netz?: { geprueft, vertraeglich, nurTrafo, jahr } }
+//             netz?: { geprueft, vertraeglich, nurTrafo, jahr, duGrenzePct, ausbau, engstellen } }
+//             (engstellen: Kurzform aus 36 _engstellenKompakt, Stand der Vorschau)
 
 import { PV_BELEGUNG_FELDER } from './varianten-regeln.js';
 
@@ -97,7 +98,8 @@ export function pvbsGleich(stand, aktuell) {
  * Neuen Stand bauen.
  * @param {{ id:string, name:string, herkunft?:string, beschreibung?:string,
  *           eintraege: Record<string, {felder:any, dach?:any, kwp?:number, kwpKorr?:number, module?:number}>,
- *           netz?:any, stand?:string }} p
+ *           netz?:any, stand?:string, regeln?:any }} p
+ *   regeln: Belegungsregeln beim Entstehen (25 pvmRegelnSnapshot)
  */
 export function pvbsNeu(p) {
   const geb = {};
@@ -114,6 +116,7 @@ export function pvbsNeu(p) {
     id: p.id, name: String(p.name || 'Belegungsstand').slice(0, 80),
     herkunft: p.herkunft || 'projekt', beschreibung: p.beschreibung || '',
     stand: p.stand || '', geb, netz: p.netz || null,
+    ...(p.regeln ? { regeln: pvbsKlon(p.regeln) } : {}),
   };
 }
 

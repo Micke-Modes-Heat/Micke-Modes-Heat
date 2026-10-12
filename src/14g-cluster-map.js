@@ -82,6 +82,8 @@ export function clusterRenderPanel() {
   const el = document.getElementById('cluster-content');
   if (!el) return;
   const geb = window.gebaeude || [];
+  try { window.massnahmenAbgleichen?.(); } catch (e) { console.warn('Maßnahmenliste:', e); }
+  const register = window.massnahmenRegister || [];
 
   const kopf = `
     <div style="display:flex;gap:6px;align-items:center;margin:10px 0 8px;flex-wrap:wrap;">
@@ -106,6 +108,20 @@ export function clusterRenderPanel() {
     .map(c => {
       const n   = clusterMitgliedIds(c, geb).length;
       const nM  = clusterMassnahmenAnzahl(c, geb);
+      // Je Paket-Art eine Maßnahme der Maßnahmenliste — mit Nummer und Kosten für das ganze Paket
+      const paketeHtml = register
+        .filter(e => e.anlass?.quelle === 'cluster' && e.anlass.ref === c.id)
+        .sort((a, b) => (a.nr ?? 0) - (b.nr ?? 0))
+        .map(e => `
+          <div style="display:flex;align-items:center;gap:6px;font-size:11px;margin:3px 0;">
+            <span style="font-family:ui-monospace,Consolas,monospace;font-size:10px;color:var(--accent);font-weight:600;">M${String(e.nr ?? '').padStart(2, '0')}</span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);">${MASSN_LABEL[e.art] || _esc(e.art)} · ${e._wirkung?.length || 0} Geb.</span>
+            <input type="number" min="0" step="1000" value="${Number(e.kosten?.investEur) || ''}" placeholder="Kosten €"
+                   title="Investition für das ganze Paket (zählt im Gutachten einmal)"
+                   onchange="clusterPaketKosten('${_esc(e.id)}',this.value)"
+                   style="width:92px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 4px;">
+            <span style="color:var(--muted);">€</span>
+          </div>`).join('');
       const typChecks = CLUSTER_MASSN_TYPEN.map(t => `
         <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--fg);cursor:pointer;">
           <input type="checkbox" data-cl-typ="${c.id}" value="${t}"> ${MASSN_LABEL[t] || t}
@@ -137,6 +153,7 @@ export function clusterRenderPanel() {
         </div>
         <div style="border-top:1px dashed var(--border);margin-top:7px;padding-top:6px;">
           <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Maßnahmenpaket auf ${n} Mitglied(er)${nM ? ` · <b style="color:var(--fg);">${nM} Maßnahme(n) aktiv</b>` : ''}</div>
+          ${paketeHtml}
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:5px;">${typChecks}</div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
             <button class="ins-link-btn" style="margin:0;padding:2px 8px;" onclick="clusterPaketAnwenden('${c.id}')">→ auf Mitglieder anwenden</button>
@@ -289,6 +306,17 @@ export function clusterPaketAnwenden(id) {
   clusterRenderPanel();
   _refreshFahrplan();
   if (_zeitAktiv) { _zeitBarRender(); clusterRenderLayers(); }
+}
+
+/** Kosten eines Cluster-Pakets (Eintrag der Maßnahmenliste) — gelten für das ganze Paket. */
+export function clusterPaketKosten(eintragId, wert) {
+  const e = (window.massnahmenRegister || []).find(x => x.id === eintragId);
+  if (!e) return;
+  const n = Math.max(0, parseFloat(String(wert).replace(',', '.')) || 0);
+  _clusterChange('Paketkosten ändern', () => {
+    e.kosten = { ...(e.kosten || {}), investEur: n, herkunft: e.kosten?.herkunft || (n > 0 ? 'schaetzung' : null) };
+  });
+  _refreshFahrplan();
 }
 
 export function clusterPaketEntfernen(id) {

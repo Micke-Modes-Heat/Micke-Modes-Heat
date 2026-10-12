@@ -211,7 +211,7 @@ export function pvbsAusVorschau(zeilen, meta = {}) {
     };
   }
   const s = pvbsNeu({ id: _neueId(), name: meta.name, herkunft: 'auto', beschreibung: meta.beschreibung,
-    eintraege, netz: meta.netz || null, stand: _heute() });
+    eintraege, netz: meta.netz || null, stand: _heute(), regeln: window.pvmRegelnSnapshot?.() });
   _bs.liste.push(s);
   if (meta.potenzial) pvbsAnalyse(s.id);
   _nachAenderung();
@@ -433,7 +433,19 @@ export function pvbsOeffnen(id) {
     + 'PV-Assets und Stromnetz werden angepasst. Änderungen bleiben ein Entwurf, bis du sie speicherst.'
     + (_entwurf ? '\n\n⚠ Der ungespeicherte Entwurf im Projekt wird dabei ersetzt.' : alt ? `\n„${alt.name}“ bleibt gespeichert.` : '')
     + '\n\nStrg+Z im PV-Modus nimmt den Schritt zurück.')) return;
+  // Mit anderen Belegungsregeln entstanden (Modul, Rand, Lage …) → die Module fielen sonst anders aus
+  const abw = window.pvmRegelnAbweichung?.(s.regeln) || [];
+  if (abw.length && confirm(`„${s.name}“ entstand mit anderen Belegungsregeln:\n\n• ${abw.join('\n• ')}\n\n`
+      + 'OK = die Regeln des Stands übernehmen (gelten dann für alle Dächer)\nAbbrechen = mit den aktuellen Regeln öffnen')) {
+    window.pvmRegelnSetzen?.(s.regeln);
+  }
   _insProjekt(s, `✎ „${s.name}“ liegt jetzt im Projekt — Änderungen bleiben ein Entwurf, bis du sie speicherst. Strg+Z nimmt das Öffnen zurück.`);
+}
+
+/** Hinweis in der Zeile, wenn der Stand mit anderen Belegungsregeln entstand. */
+function _regelnHinweis(s) {
+  const abw = window.pvmRegelnAbweichung?.(s.regeln) || [];
+  return abw.length ? ` · <span style="color:${ORANGE};" title="${escHtml('Mit anderen Belegungsregeln entstanden:\n' + abw.join('\n'))}">⚙ andere Regeln</span>` : '';
 }
 
 /** Stand auf die Dächer legen (Öffnen, Entwurf verwerfen). */
@@ -476,7 +488,7 @@ export function pvbsEntwurfSpeichern() {
   const bearb = ps.herkunft === 'auto';
   const neu = pvbsNeu({ id: ps.id, name: ps.name, herkunft: bearb ? 'bearbeitet' : ps.herkunft,
     beschreibung: bearb && !/bearbeitet/.test(ps.beschreibung) ? `${ps.beschreibung ? ps.beschreibung + '; ' : ''}danach von Hand bearbeitet` : ps.beschreibung,
-    eintraege: _projektEintraege(), stand: _heute(), netz: null });   // Netzprüfung der Vorschau gilt nicht mehr
+    eintraege: _projektEintraege(), stand: _heute(), netz: null, regeln: window.pvmRegelnSnapshot?.() });   // Netzprüfung der Vorschau gilt nicht mehr
   _bs.liste[_bs.liste.indexOf(ps)] = neu;
   _entwurf = null;
   window.pvMarkStale?.();
@@ -494,7 +506,8 @@ export function pvbsEntwurfAlsStand() {
   const name = prompt('Name des neuen Belegungsstands:', vorschlag);
   if (name == null) return;
   const s = pvbsNeu({ id: _neueId(), name: name.trim() || vorschlag, herkunft: 'projekt',
-    beschreibung: basis ? `aus „${basis.name}“ bearbeitet` : 'aus der Belegung im Projekt', eintraege: _projektEintraege(), stand: _heute() });
+    beschreibung: basis ? `aus „${basis.name}“ bearbeitet` : 'aus der Belegung im Projekt', eintraege: _projektEintraege(), stand: _heute(),
+    regeln: window.pvmRegelnSnapshot?.() });
   _bs.liste.push(s);
   _bs.projektId = s.id;
   _entwurf = null;
@@ -555,6 +568,38 @@ const _knopf = (klick, inhalt, titel, farbe, an = false) => `<button class="btn-
 const _rolle = (farbe, text, titel) => `<span title="${escHtml(titel)}" style="font-size:8.5px;font-weight:700;letter-spacing:.04em;padding:0 5px;border-radius:7px;
     background:${farbe};color:#10131a;white-space:nowrap;">${text}</span>`;
 
+/**
+ * Engstellen der Pflichtgruppe, wie sie die Vorschau beim Speichern sah (36
+ * _engstellenKompakt). Gilt nur für diesen Stand des Netzes — Hinweis darauf.
+ */
+function _engstellenHtml(s) {
+  const es = s.netz?.engstellen;
+  if (!es) return '';
+  const T = x => _fmt((x || 0) / 1000);
+  const fehlt = Math.max(0, (es.noetigKwp || 0) - (es.passtKwp || 0));
+  const kopf = `<div style="color:var(--text);">🚧 Engstellen für ${escHtml(es.gruppe)} <span style="color:var(--muted);">(Netz ${escHtml(String(s.netz.jahr ?? '—'))}, Vorschau vom ${escHtml(s.stand)})</span></div>
+      <div style="color:var(--muted);">${es.noetigN} Dächer · ${_fmt(es.noetigKwp)} kWp nötig — ${_fmt(es.passtKwp)} kWp passen${fehlt > 0.5 ? `, <span style="color:${ROT};">${_fmt(fehlt)} kWp nicht</span>` : ''}</div>`;
+  const rahmen = (farbe, inhalt) => `<div style="margin:2px 0 3px 10px;padding:2px 5px;border-left:2px solid ${farbe};font-size:9px;line-height:1.45;">${inhalt}</div>`;
+  if (!es.liste?.length) return rahmen(GRUEN, `${kopf}<div style="color:${GRUEN};">✓ Keine Engstelle — die ganze Gruppe passt ins Netz.</div>`);
+  const zeilen = es.liste.map(e => {
+    const wert = e.ueberKw > 0.5 ? `+${_fmt(e.ueberKw)} kW` : `ΔU ${_fmt(e.duMaxPct, 1)} %`;
+    const a = e.abhilfe;
+    const abhilfe = a
+      ? `<span style="color:${a.loest ? GRUEN : ORANGE};">⚒ ${a.kombi ? 'zusammen: ' : ''}${escHtml(a.label)} · ${T(a.investEUR)} T€${a.loest ? '' : ' (reicht nicht ganz)'}</span>`
+      : `<span style="color:${ORANGE};">${e.unbekannt ? 'Querschnitt unbekannt — erst Kabeldaten prüfen' : 'keine Standardlösung — Netzplanung nötig'}</span>`;
+    const r = e.abregelung;
+    const abregeln = !r ? '' : r.unmoeglich ? ' · Abregeln hilft nicht'
+      : ` · oder abregeln auf ${_fmt(r.anteilPct)} % (−${_fmt(r.verlustPct, 1)} % Ertrag)`;
+    return `<div style="border-top:1px solid var(--border);padding:1px 0;">
+        <div style="display:flex;gap:4px;"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(e.label)}">${e.typ === 'trafo' ? '🔌' : '〰'} ${escHtml(e.label)}</span>
+          <span style="font-family:'DM Mono',monospace;color:${ROT};">${wert}</span></div>
+        <div style="color:var(--muted);">${e.nDaecher} ${e.nDaecher === 1 ? 'Dach' : 'Dächer'} dahinter · ${_fmt(e.kwpKorr)} kWp${abregeln}</div>
+        <div>${abhilfe}</div></div>`;
+  }).join('');
+  return rahmen(ROT, `${kopf}<div style="max-height:150px;overflow-y:auto;margin-top:2px;">${zeilen}</div>
+      <div style="color:var(--muted);">Stand der Vorschau — ändert sich das Netz, die Vorschau neu rechnen und erneut speichern.</div>`);
+}
+
 export function pvbsBlockHtml() {
   const ps = pvbsAbgleich();
   const pva = window._pvAnalyse;
@@ -587,7 +632,9 @@ export function pvbsBlockHtml() {
         </div>
         ${rollen ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin:2px 0 1px 10px;">${rollen}</div>` : ''}
         <div style="font-size:9px;color:var(--muted);padding-left:10px;font-family:'DM Mono',monospace;">${sum.daecher} Dächer · ${_fmt(sum.kwpKorr)} kWp${
-          s.netz?.geprueft ? (s.netz.vertraeglich ? ` · <span style="color:${GRUEN};">netzverträglich</span>` : ` · <span style="color:${ORANGE};">über Netzgrenze</span>`) : ''}</div>
+          s.netz?.geprueft ? (s.netz.vertraeglich ? ` · <span style="color:${GRUEN};">netzverträglich</span>` : ` · <span style="color:${ORANGE};">über Netzgrenze</span>`) : ''}${
+          s.netz?.engstellen?.liste?.length ? ` · <span style="color:${ROT};" title="Aufklappen zeigt die Engstellen">🚧 ${s.netz.engstellen.liste.length}</span>` : ''}${
+          _regelnHinweis(s)}</div>
         ${offen ? `
         <div style="display:flex;flex-wrap:wrap;gap:3px;padding:4px 0 2px 10px;">
           ${_knopf(`pvbsAnalyse('${s.id}')`, analyse ? '★ PV-Analyse' : '☆ für PV-Analyse', 'Mit diesem Stand rechnet die PV-Analyse ihren Variantenvergleich', GELB, analyse)}
@@ -596,7 +643,8 @@ export function pvbsBlockHtml() {
           ${_knopf(`pvbsUmbenennen('${s.id}')`, '✎ Name', 'Umbenennen', '')}
           ${imProjekt ? '' : _knopf(`pvbsLoeschen('${s.id}')`, '🗑', 'Stand löschen (die Dächer im Projekt bleiben unverändert)', ROT)}
         </div>
-        ${s.beschreibung ? `<div style="font-size:9px;color:var(--muted);padding:0 0 2px 10px;line-height:1.35;">${escHtml(s.beschreibung)}</div>` : ''}` : ''}
+        ${s.beschreibung ? `<div style="font-size:9px;color:var(--muted);padding:0 0 2px 10px;line-height:1.35;">${escHtml(s.beschreibung)}</div>` : ''}
+        ${_engstellenHtml(s)}` : ''}
       </div>`;
   };
 
