@@ -22,15 +22,16 @@ export function optKombinationen(keys, maxN) {
 }
 
 /**
- * Anlagenkonzept einer bewerteten Konfiguration: die gewählten Erzeuger plus der
- * Gaskessel, sobald der Spitzenlastkessel tatsächlich gebraucht (und bezahlt) wird.
+ * Anlagenkonzept einer bewerteten Konfiguration: die gewählten Erzeuger plus der Kessel der
+ * gewählten Spitzenkessel-Art (agkKey, Standard Gaskessel), sobald der Spitzenlastkessel
+ * gebraucht (und bezahlt) wird — Restwärme oder Reserveleistung im Auslegungsfall.
  * „Luft-WP + Gaskessel“ und „Luft-WP + Spitzenlastkessel (auto)“ sind dasselbe Konzept.
  * Schwellen wie in der Kostenrechnung (_calcKostenShared/_optKennwerte2).
  */
-export function optKonzeptSchluessel(keys, autoGkMwh, autoGkPeakKw) {
+export function optKonzeptSchluessel(keys, autoGkMwh, autoGkPeakKw, agkKey = 'gaskessel') {
   const s = {};
   for (const k of keys) s[k] = true;
-  if ((autoGkPeakKw || 0) > 0.1) s.gaskessel = true;
+  if ((autoGkPeakKw || 0) > 0.1) s[agkKey] = true;
   return Object.keys(s).sort().join('+');
 }
 
@@ -126,19 +127,20 @@ export function optMusterSuche(start, dims, bewerte, maxEval) {
 
 /**
  * Suchraum der Erzeugerkombinationen.
- * Ist der Gaskessel Kandidat, ist er der Spitzenlastkessel: er wird nicht als eigene
+ * Ist der Kessel der gewählten Spitzenkessel-Art (agkKey, Standard Gaskessel) Kandidat, ist er der Spitzenlastkessel: er wird nicht als eigene
  * Leistungsachse gesucht, sondern deckt (wie der Auto-Gaskessel der Hauptberechnung)
  * genau den Rest — sonst entstünden zwei gleiche Konzepte („X + Gaskessel“ und
  * „X + Spitzenkessel auto“). Ohne Gaskessel-Kandidat deckt der letzte Kessel der
  * Kombination als Backup die Spitze (Leistung ergibt sich aus dem Einsatz).
  * @param {{aktiv:string[], constraints:Object, jahr:number, peak:number,
- *   typen:Object, meritOrder:string[], maxN?:number}} p
+ *   typen:Object, meritOrder:string[], maxN?:number, agkKey?:string}} p
  */
 export function optSuchraum(p) {
-  const gasImplizit = p.aktiv.indexOf('gaskessel') >= 0;
+  const agkKey = p.agkKey || 'gaskessel';
+  const gasImplizit = p.aktiv.indexOf(agkKey) >= 0;
   const rang = k => { const i = p.meritOrder.indexOf(k); return i < 0 ? 99 : i; };
   const nachRang = (a, b) => rang(a) - rang(b);
-  const basis = p.aktiv.filter(k => !(gasImplizit && k === 'gaskessel')).sort(nachRang);
+  const basis = p.aktiv.filter(k => !(gasImplizit && k === agkKey)).sort(nachRang);
   const listen = optKombinationen(basis, p.maxN || 3).map(keys => keys.slice().sort(nachRang));
   if (gasImplizit) listen.unshift([]);
   const kombis = listen.map(keys => {
@@ -158,7 +160,7 @@ export function optSuchraum(p) {
     });
     return { keys, grenzen, backupIdx };
   });
-  return { gasImplizit, backupMode: !gasImplizit, kombis };
+  return { gasImplizit, agkKey, backupMode: !gasImplizit, kombis };
 }
 
 /**

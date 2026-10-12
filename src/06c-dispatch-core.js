@@ -20,11 +20,17 @@ import { updateFliessgewaesserData, updateLwWpData } from './02c-karte-werkzeuge
 import { updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay } from './03a-erzeuger.js';
 import { _glIsRunning } from './06b-gl-berechnen.js';
 import { erstelleEisZustand, eisQuellTempNaeherung } from './lib/eisspeicher.js';
+import { spitzenkesselSpec } from './lib/spitzenkessel.js';
 
 export let meritOrderKeys = [];
 export let autoGkResult = null; // { leistungKw, deckungPct, waermeMwh } | false | null
 export function setMeritOrderKeys(keys) { meritOrderKeys = keys; }
 export function setAutoGkResult(val) { autoGkResult = val; }
+/** Art des automatischen Spitzenlastkessels (Auswahl unter der Merit-Order, Standard Erdgas) — lib/spitzenkessel.js */
+export function spitzenkessel() {
+  const art = typeof document !== 'undefined' ? document.getElementById('agk-art')?.value : null;
+  return typeof spitzenkesselSpec === 'function' ? spitzenkesselSpec(art) : { art: 'gas', key: 'gaskessel', strom: false, verbrennung: true, fossil: true };
+}
 
 // ERZEUGER_CFG → src/config/erzeuger-cfg.js
 
@@ -323,6 +329,7 @@ export function updateAllDeckungen() {
 //   auslegung,                    — {kw, normAt, vorlauf} Auslegungsspitze (lib/auslegung.js) oder null:
 //                                   was die Erzeuger bei Normaußentemperatur nicht sicher leisten, muss der
 //                                   Spitzenkessel (bzw. im Optimierer der Backup-Erzeuger) bereitstellen
+//   agkStromEta,                  — > 0: Spitzenkessel ist ein Stromkessel mit diesem Wirkungsgrad (Strom in skElH)
 // }
 // ═══════════════════════════════════════════════════════════════════════════
 export function _dispatchCore(cfg) {
@@ -334,6 +341,7 @@ export function _dispatchCore(cfg) {
     quelleTemp, recordHourly, backupMode,
     eisSpeicher = null,
     auslegung = null,
+    agkStromEta = 0,
   } = cfg;
   // Eisspeicher (optional): Zustand der Quelle der Sole-WP ('geo') über das Jahr
   const eis = eisSpeicher && eisSpeicher.volumenM3 > 0 ? erstelleEisZustand(eisSpeicher) : null;
@@ -407,7 +415,7 @@ export function _dispatchCore(cfg) {
   const kesselErz    = hatSpeicher ? erzList.filter(e => KESSEL_KEYS.has(e.key))  : [];
 
   // Auto-GK (Spitzenlast-Backup)
-  let autoGkKwh = 0, autoGkPeakKw = 0;
+  let autoGkKwh = 0, autoGkPeakKw = 0, autoGkElKwh = 0;
 
   // Backup-Erzeuger (Optimizer: letzter Erzeuger hat unbegrenzte Kapazität) — nur ein Kessel bzw. Fernwärme.
   // Wärmepumpen, BHKW und Solarthermie werden nicht auf die Spitzenlast hochskaliert; den Rest deckt wie in der
@@ -607,6 +615,7 @@ export function _dispatchCore(cfg) {
     const resKw = Math.max(0, residual);
     autoGkKwh += resKw;
     if (resKw > autoGkPeakKw) autoGkPeakKw = resKw;
+    if (agkStromEta > 0 && resKw > 0) { const el = resKw / agkStromEta; skElH[t] += el; autoGkElKwh += el; }
     if (recordHourly) residualH[t] = resKw;
 
     // ── PHASE 6: Speicher laden — WP tagsüber mit Netzstrom ──
@@ -681,7 +690,7 @@ export function _dispatchCore(cfg) {
 
   return {
     thKwh, elKwh, gesamtKwh, ladeKwh, verworfenKwh,
-    autoGkKwh, autoGkPeakKw, gesichertKw, autoGkAuslegungKw,
+    autoGkKwh, autoGkPeakKw, gesichertKw, autoGkAuslegungKw, autoGkElKwh,
     wpElH, bhkwElH, skElH,
     // Stündlich (nur recordHourly)
     hourly, residualH,
@@ -753,11 +762,13 @@ export function dispatchEingaben(ss) {
   // Auslegungsspitze bei Normaußentemperatur: Mindestleistung des Spitzenkessels (lib/auslegung.js)
   const _a = auslegungsSpitzeAktuell(ss);
   const auslegung = _a ? { kw: _a.kw, normAt: _a.normAt, vorlauf: _a.vorlauf } : null;
-  return { lastgangKw, tempH, vlH, activeKeys, erzList, leistungen, _guetegrad, bhkwSigma, skEta, lwwpMinCop, thSp, stProfile, eisSpeicher, speicherStartKwh, auslegung };
+  // Spitzenlastkessel als Stromkessel: sein Strom geht wie beim Stromkessel in die Strombilanz
+  const agkStromEta = spitzenkessel().strom ? skEta : 0;
+  return { lastgangKw, tempH, vlH, activeKeys, erzList, leistungen, _guetegrad, bhkwSigma, skEta, lwwpMinCop, thSp, stProfile, eisSpeicher, speicherStartKwh, auslegung, agkStromEta };
 }
 
 export function _deckungen8760(ss) {
-  const { lastgangKw, tempH, vlH, activeKeys, erzList, leistungen, _guetegrad, bhkwSigma, skEta, lwwpMinCop, thSp, stProfile, eisSpeicher, speicherStartKwh, auslegung } = dispatchEingaben(ss);
+  const { lastgangKw, tempH, vlH, activeKeys, erzList, leistungen, _guetegrad, bhkwSigma, skEta, lwwpMinCop, thSp, stProfile, eisSpeicher, speicherStartKwh, auslegung, agkStromEta } = dispatchEingaben(ss);
   window._dimLastgangKw = lastgangKw;
   window._dimJdlSorted = null;
 
@@ -772,7 +783,7 @@ export function _deckungen8760(ss) {
     quelleTemp: _quelleTemp,
     recordHourly: true,
     backupMode: false,
-    eisSpeicher, speicherStartKwh, auslegung,
+    eisSpeicher, speicherStartKwh, auslegung, agkStromEta,
   });
   window._eisSpeicherErgebnis = r.eisStat;
   window._eisSpeicherState = r.eisH ? { ...r.eisH, reserveMaxKwh: r.eisParam.wMax - r.eisParam.wMin, maxVereisung: r.eisParam.maxVereisung, volumenM3: r.eisParam.volumenM3 } : null;
@@ -884,7 +895,7 @@ export function _deckungen8760(ss) {
       trial.splice(currentIndex, 0, { ...current, leistKw: capacity });
       const result = _dispatchCore({
         lastgangKw, tempH, vlH, erzList: trial, speicherParams: thSp, stProfile, stExcessH: null,
-        bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false, eisSpeicher, speicherStartKwh, auslegung,
+        bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false, eisSpeicher, speicherStartKwh, auslegung, agkStromEta,
       });
       simulationCache.set(cacheKey, result);
       return result;
@@ -991,7 +1002,7 @@ export function _deckungen8760(ss) {
   if (hatST) window._dispatchEnergy['solarthermie'] = _eintrag('solarthermie', 0);
   if (hatSpeicher) window._dispatchEnergy['_thermSpeicher'] = { waermeMwh: thKwh['_thermSpeicher'] / 1000, elMwh: 0,
     geladenMwh: thermGeladenGes / 1000, verlustMwh: thermVerlustGes / 1000 };
-  if (_agkAktiv) window._dispatchEnergy['_autoGk'] = { waermeMwh: autoGkKwh / 1000, elMwh: 0 };
+  if (_agkAktiv) window._dispatchEnergy['_autoGk'] = { waermeMwh: autoGkKwh / 1000, elMwh: (r.autoGkElKwh || 0) / 1000 };
 
   calcStromPanel();
   calcWirtschaftPanel();

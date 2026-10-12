@@ -48,3 +48,53 @@ test('dist: Auslegungsspitze aus Normheizlasten bestimmt Kachel, Spitzenkessel u
   expect(r.gutachtenKw).toBeCloseTo(r.a.kw, 6);
   expect(pageErrors).toEqual([]);
 });
+
+// Art des automatischen Spitzenlastkessels: Standard Erdgas, wählbar Heizöl/Strom — Kosten, Strombilanz, Gutachten, Speichern
+test('dist: Spitzenlastkessel wählbar (Erdgas, Heizöl, Strom)', async ({ page }) => {
+  test.setTimeout(120000);
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(String(error)));
+  await page.setViewportSize({ width: 1500, height: 1000 });
+  await page.route(/tile\.openstreetmap\.org/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.placeLwWpAt === 'function' && typeof window.spitzenkessel === 'function');
+  const r = await page.evaluate(async () => {
+    clearNetz(); setGebaeude([]);
+    const poly = (lat, lng) => [L.latLng(lat - .00006, lng - .0001), L.latLng(lat - .00006, lng + .0001), L.latLng(lat + .00006, lng + .0001), L.latLng(lat + .00006, lng - .0001)];
+    for (let i = 0; i < 8; i++) { const g = addGebaeude({ id: 400 + i, name: 'S' + i, baujahr: 1975, coords: poly(52.09 + (i % 4) * 0.0006, 8 + Math.floor(i / 4) * 0.001), skipAutoCreate: true }); g.waerme = '400'; g.heizlast = '200'; g.nutzung = 'mfh'; g.flaeche = 2000; }
+    populateZentraleSelect(); document.getElementById('netz-zentrale').value = '400';
+    setNetworkLocked(false); autoGenerateNetz({ strategy: 'quick' });
+    await glBerechnenJetzt();
+    document.getElementById('lwwp-leistung').value = 400; placeLwWpAt(L.latLng(52.0899, 8.0003));
+    await glBerechnenJetzt();
+    const lauf = art => {
+      document.getElementById('agk-art').value = art; updateAllDeckungen();
+      const en = window._dispatchEnergy._autoGk;
+      const ids = window._wirtErgebnis.bausteine.map(b => b.id);
+      const v = ggWaermeDaten().varianten.find(x => x.aktiv);
+      return { w: en?.waermeMwh, el: en?.elMwh, ids, erz: v?.erzeuger.map(e => [e.key, e.name || '']),
+        standard: spitzenkessel().art, zustand: captureErzeugerState().spitzenkesselArt };
+    };
+    const standard = spitzenkessel().art;
+    const gas = lauf('gas'), oel = lauf('heizoel'), strom = lauf('strom');
+    // älterer Variantenstand ohne Angabe → Erdgas
+    const st = captureErzeugerState(); delete st.spitzenkesselArt; applyErzeugerState(st);
+    return { standard, gas, oel, strom, nachLaden: document.getElementById('agk-art').value, skEta: (parseFloat(document.getElementById('sk-eta')?.value) || 99) / 100 };
+  });
+  expect(r.standard).toBe('gas');
+  expect(r.gas.w).toBeGreaterThan(1);
+  expect(r.gas.el).toBe(0);
+  expect(r.gas.ids).toEqual(expect.arrayContaining(['gk_auto', 'schornstein']));
+  expect(r.gas.erz).toContainEqual(['_autoGk', '']);
+  // Heizöl: im Gutachten als Ölkessel (fossil, Heizöl)
+  expect(r.oel.erz).toContainEqual(['heizoel', 'Spitzenlast-Ölkessel']);
+  expect(r.oel.ids).toContain('schornstein');
+  // Strom: Strom = Wärme / η, kein Schornstein, im Gutachten als Elektrodenkessel
+  expect(r.strom.el).toBeCloseTo(r.strom.w / r.skEta, 3);
+  expect(r.strom.ids).toContain('gk_auto');
+  expect(r.strom.ids).not.toContain('schornstein');
+  expect(r.strom.erz).toContainEqual(['stromkessel', 'Spitzenlast-Elektrodenkessel']);
+  expect(r.strom.zustand).toBe('strom');
+  expect(r.nachLaden).toBe('gas');
+  expect(pageErrors).toEqual([]);
+});

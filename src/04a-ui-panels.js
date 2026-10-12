@@ -1715,10 +1715,10 @@ export function updateLpMeritOrder() {
     const prio = keys.length + 1;
     const agk = autoGkResult;
     let detail = '';
-    if (agk) detail = ' · ' + Math.round(agk.waermeMwh).toLocaleString('de-DE') + ' MWh';
+    if (agk) detail = ' · ' + Math.round(agk.leistungKw).toLocaleString('de-DE') + ' kW · ' + Math.round(agk.waermeMwh).toLocaleString('de-DE') + ' MWh';
     html += '<div class="lp-mo-item" style="border-left-color:#78909c;border-left-style:dashed;opacity:0.75;">'
       + '<span class="mo-prio">' + prio + '.</span>'
-      + '<span class="mo-name">Auto-Gaskessel' + detail + ' <span class="htip" data-tip="Virtueller Reservekessel: Zeigt, wie viel Leistung die installierten Erzeuger nicht abdecken können. Wenn dieser Wert > 0 ist, fehlt Erzeugerkapazität.">?</span></span>'
+      + '<span class="mo-name">Spitzenlastkessel (auto)' + detail + ' <span class="htip" data-tip="Automatischer Spitzenlastkessel der gewählten Art (unten): deckt die Restlast der Einsatzplanung und die Leistung, die den Erzeugern bei Normaußentemperatur fehlt. Er wird mit Investition und Betrieb gerechnet.">?</span></span>'
       + '</div>';
   }
   container.innerHTML = html;

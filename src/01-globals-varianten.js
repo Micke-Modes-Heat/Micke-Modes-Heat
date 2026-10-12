@@ -8,7 +8,7 @@ import { applyWaermeNetzGraph, calcGeoThermie, captureWaermeNetzGraph, clearGeo,
 import { escHtml, renderList, updateTotals } from './03c-gebaeude-io.js';
 import { currentViewMode, setViewMode } from './04a-ui-panels.js';
 import { _attachSTLayer, clearSolarthermie, clearThermSpeicher, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
-import { autoGkResult, isErzeugerAktiv, meritOrderKeys, setAutoGkResult, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
+import { autoGkResult, isErzeugerAktiv, meritOrderKeys, setAutoGkResult, spitzenkessel, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { splitStromNetzState, mergeStromNetzState, istDelta, migriereZuDelta } from './lib/varianten-delta.js';
 import { HAUPTPLAN_NAME, variantKey, massnahmenHerausnehmen, massnahmenEinsetzen, massnahmeStandardVariante, waermeGeometrie, geometrieGleich, netzMitGeometrie, pvBelegungErfassen, pvBelegungAnwenden, schichtFuerNeu, baujahrFuerNeu } from './lib/varianten-regeln.js';
@@ -274,7 +274,7 @@ export function co2EinsatzAktuell(lz = false, detail = false) {
   const eta = { ..._getEtaMap(), stromkessel: num('sk-eta', 99) / 100, bhkwTh: (num('bhkw-eta', 88) / 100) / (1 + sigma) };
   const ef = { gas: gasEmF, oel: heizoelEmF, pellets: pelletsEmF, hhs: hhsEmF, fw: fernwaermeEmF, strom: lz ? stromEmFLZ : stromEmF };
   const bhkw = { gutschrift: bhkwCo2Gutschrift, sigma, verdraengungEf: calcVerdraengungEmF() };
-  const r = co2AusEinsatz(window._dispatchEnergy || {}, ef, eta, bhkw);
+  const r = co2AusEinsatz(window._dispatchEnergy || {}, ef, eta, bhkw, spitzenkessel().key);
   return detail ? r : r.t;
 }
 
@@ -334,12 +334,16 @@ export function cacheVariantResults() {
   if (gasKessel) { const w = parseFloat(document.getElementById('gk-waerme')?.value)||0; const eta = parseFloat(document.getElementById('gk-eta')?.value)||92;
     const gkCo2 = w > 0 ? (w / (eta/100) * gasEmF / 1000).toFixed(1) + ' t/a (fossil)' : '—';
     erzeugerList.push({ typ: 'Gaskessel', leistungKw: gasKessel.leistungKw, wgk: '—', invest: 0, co2: gkCo2, co2lz: gkCo2 }); }
-  else if (autoGkResult && autoGkResult.leistungKw > 0) {
-    // Auto-GK (Spitzenlastkessel aus Dispatch-Residual) als Gaskessel eintragen
-    const agk = autoGkResult;
-    const eta = parseFloat(document.getElementById('gk-eta')?.value) || 92;
-    const agkCo2 = agk.waermeMwh > 0 ? (agk.waermeMwh / (eta/100) * gasEmF / 1000).toFixed(1) + ' t/a (fossil)' : '—';
-    erzeugerList.push({ typ: 'Gaskessel (Auto)', leistungKw: agk.leistungKw, waermeMwh: agk.waermeMwh, wgk: '—', invest: 0, co2: agkCo2, co2lz: agkCo2 });
+  if (autoGkResult && autoGkResult.leistungKw > 0) {
+    // Auto-GK (Spitzenlastkessel: Restlast der Einsatzplanung und Reserve im Auslegungsfall) mit der gewählten Art
+    // (lib/spitzenkessel.js) — auch neben einem eigenen Gaskessel, dessen Leistung dann nicht ausreicht
+    const agk = autoGkResult, art = spitzenkessel();
+    const eta = _getEtaMap()._autoGk;
+    const t = efStrom => {
+      const ef = art.strom ? efStrom : art.key === 'heizoel' ? heizoelEmF : gasEmF;
+      return agk.waermeMwh > 0 ? (agk.waermeMwh / eta * ef / 1000).toFixed(1) + (art.fossil ? ' t/a (fossil)' : ' t/a') : '—';
+    };
+    erzeugerList.push({ typ: 'Gaskessel (Auto)', agkArt: art.art, name: art.name, leistungKw: agk.leistungKw, waermeMwh: agk.waermeMwh, wgk: '—', invest: 0, co2: t(stromEmF), co2lz: t(stromEmFLZ) });
   }
   if (bhkw) { const w = parseFloat(document.getElementById('bhkw-waerme')?.value)||0; const sigma = parseFloat(document.getElementById('bhkw-skz')?.value)||0.45; const etaGes = parseFloat(document.getElementById('bhkw-eta')?.value)||88; const etaTh = (1+sigma) > 0 ? (etaGes/100)/(1+sigma) : 0.4;
     const elMwhBhkw = w * sigma;
@@ -413,6 +417,7 @@ export function cacheVariantResults() {
     key: k, leistungKw: _detailLeistung[k] || 0, waermeMwh: dispEn[k]?.waermeMwh || 0, elMwh: dispEn[k]?.elMwh || 0,
     erzeugtMwh: _erzeugtMwh(dispEn, k), anLastMwh: k === '_thermSpeicher' ? undefined : _anLast[k],
     speicherM3: k === '_thermSpeicher' ? (parseFloat(document.getElementById('ts-volumen')?.value) || undefined) : undefined,
+    agkArt: k === '_autoGk' ? spitzenkessel().art : undefined,   // Art des Spitzenlastkessels dieser Variante
   }));
   // Netzkennwerte je Variante (Gutachten: Tabelle nur, wenn sich die Varianten unterscheiden)
   const _kanten = netzEdges.filter(e => !e.pruned);
@@ -520,7 +525,7 @@ export function renderVergleich() {
   const _co2Liste = pro => {
     const e = Object.entries(pro || {}).filter(([, t]) => t > 0.05).sort((a, b) => b[1] - a[1]);
     if (!e.length) return '—';
-    const name = k => k === '_autoGk' ? 'Spitzenlast-GK' : (ERZEUGER_CFG[k]?.label || k);
+    const name = k => k === '_autoGk' ? 'Spitzenlastkessel' : (ERZEUGER_CFG[k]?.label || k);
     return e.map(([k, t]) => `${name(k)} ${Math.round(t).toLocaleString('de-DE')} t`).join(' · ');
   };
   const rows = [
@@ -840,7 +845,11 @@ export function _getEtaMap() {
     heizoel: (parseFloat(document.getElementById('hko-eta')?.value) || 90) / 100,
     pellets: (parseFloat(document.getElementById('pk-eta')?.value) || 88) / 100,
     hhs: (parseFloat(document.getElementById('hhs-eta')?.value) || 85) / 100,
-    _autoGk: 0.92, fernwaerme: 1.0
+    // automatischer Spitzenlastkessel: Wirkungsgrad des gewählten Kesseltyps (lib/spitzenkessel.js)
+    _autoGk: { gaskessel: (parseFloat(document.getElementById('gk-eta')?.value) || 92) / 100,
+      heizoel: (parseFloat(document.getElementById('hko-eta')?.value) || 90) / 100,
+      stromkessel: (parseFloat(document.getElementById('sk-eta')?.value) || 99) / 100 }[spitzenkessel().key],
+    fernwaerme: 1.0
   };
 }
 
@@ -1328,6 +1337,7 @@ export function captureErzeugerState() {
     waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: parseFloat(document.getElementById('ts-volumen')?.value)||0, dt: parseFloat(document.getElementById('ts-dt')?.value)||40, verlust: parseFloat(document.getElementById('ts-verlust')?.value)||0.5, entladeKw: parseFloat(document.getElementById('ts-entlade-kw')?.value)||200, ladeKw: parseFloat(document.getElementById('ts-lade-kw')?.value)||parseFloat(document.getElementById('ts-entlade-kw')?.value)||200 } : null,
     // Merit-Order und Wirtschaftlichkeits-Overrides mit sichern
     meritOrderKeys: [...meritOrderKeys],
+    spitzenkesselArt: document.getElementById('agk-art')?.value || 'gas',
     wirtVdiOverrides: JSON.parse(JSON.stringify(window._wirtVdiOverrides || {})),
     wirtBausteineOverrides: JSON.parse(JSON.stringify(window._wirtBausteineOverrides || {})),
   };
@@ -1493,6 +1503,9 @@ export function applyErzeugerState(state) {
     updateThermSpeicherDisplay();
     document.getElementById('therm-speicher-panel').style.display = 'block';
   }
+  // Art des automatischen Spitzenlastkessels (ältere Stände: Erdgas)
+  const agkSel = document.getElementById('agk-art');
+  if (agkSel) agkSel.value = ['gas', 'heizoel', 'strom'].includes(state?.spitzenkesselArt) ? state.spitzenkesselArt : 'gas';
   // Merit-Order wiederherstellen (clearXxx() hat sie via moBeiDeaktivierung() geleert)
   if (state && state.meritOrderKeys) {
     setMeritOrderKeys(state.meritOrderKeys.filter(k => isErzeugerAktiv(k)));

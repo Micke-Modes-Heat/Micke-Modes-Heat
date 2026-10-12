@@ -16,7 +16,7 @@ import { showHint } from './03c-gebaeude-io.js';
 import { getKostenProMKlasse, updateLpErgebnisKpis, updateLpStepProgress } from './04a-ui-panels.js';
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
 import { auslegungsSpitzeAktuell, clearSolarthermie, clearThermSpeicher, getThermSpeicherParams, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
-import { _dispatchCore, autoGkResult, isErzeugerAktiv, meritOrderKeys, onSystemStateUpdated, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
+import { _dispatchCore, autoGkResult, isErzeugerAktiv, spitzenkessel, meritOrderKeys, onSystemStateUpdated, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
 import { _calcKostenShared, _parseGeoBohrMeter, batterieLebensdauer, netzPumpenstromMwh, pvWaermeEingaben, vdiDynParams, wirtPvWp } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
@@ -125,6 +125,7 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
     recordHourly: false,
     backupMode: true,
     auslegung: _optAuslegung(),
+    agkStromEta: spitzenkessel().strom ? skEta : 0,
   };
   if (saisonal) args.speicherStartKwh = _dispatchCore(args).thermSocEnde || 0;
   const r = _dispatchCore(args);
@@ -147,6 +148,7 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
     erzeugerList,
     autoGkMwh: r.autoGkKwh / 1000,
     autoGkPeakKw: r.autoGkPeakKw,
+    autoGkElMwh: (r.autoGkElKwh || 0) / 1000,
     gesamtMwh: r.gesamtKwh / 1000,
     wpElH: r.wpElH, bhkwElH: r.bhkwElH, skElH: r.skElH,
     speicherEntladenMwh: r.thermEntladenGes / 1000,
@@ -284,7 +286,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
     key: e.key, waermeMwh: e.waermeMwh, elMwh: e.elMwh, ladeMwh: e.ladeMwh || 0, erzeugtMwh: e.erzeugtMwh ?? e.waermeMwh,
     typ: (typeof ERZEUGER_CFG !== 'undefined' && ERZEUGER_CFG[e.key]) ? ERZEUGER_CFG[e.key].typ : null
   }));
-  if (_bPKw._autoGk) erzListTyped.push({ key: '_autoGk', waermeMwh: _agkMwh, elMwh: 0, typ: 'fix' });
+  if (_bPKw._autoGk) erzListTyped.push({ key: '_autoGk', waermeMwh: _agkMwh, elMwh: dispatchResult.autoGkElMwh || 0, typ: 'fix' });
 
   // BHKW-Erlös-Daten
   const bhkwEigMwh = pvBatResult ? (pvBatResult.bhkwEigenMwh || 0) : 0;
@@ -292,6 +294,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
 
   const result = _calcKostenShared({
     pKw: _bPKw,
+    agkKey: typeof spitzenkessel === 'function' ? spitzenkessel().key : 'gaskessel',
     erzList: erzListTyped,
     zinsPct: zinssatz * 100,
     dyn: params.dyn,
@@ -463,7 +466,7 @@ export function _optUpdateEstimate() {
   const q = document.getElementById('opt-quality')?.value || 'standard';
   const typen = {}; for (const [k, v] of Object.entries(ERZEUGER_CFG)) typen[k] = v.typ;
   // Suchraum wie im Lauf, mit normierter Spitzenlast (die Punktzahl hängt nur von den Anteilen ab)
-  const raum = optSuchraum({ aktiv, constraints: {}, jahr: 0, peak: 1000, typen, meritOrder: OPT_MERIT_ORDER });
+  const raum = optSuchraum({ aktiv, constraints: {}, jahr: 0, peak: 1000, typen, meritOrder: OPT_MERIT_ORDER, agkKey: spitzenkessel().key });
   const stufen = optRasterStufen(q);
   let punkte = 0;
   for (const k of raum.kombis) punkte += optGrobPunkte(k.grenzen, stufen, 1000).length;
@@ -560,6 +563,7 @@ export function _collectOptDomParams() {
   return {
     bhkwSkz: f('bhkw-skz', 0.45), skEta: f('sk-eta', 99) / 100, lwwpMinCop: f('lwwp-min-cop', 0),
     auslegung: _optAuslegung(),
+    agkKey: spitzenkessel().key, agkStromEta: spitzenkessel().strom ? f('sk-eta', 99) / 100 : 0,
     geoDtAbsenkung: f('geo-dt-absenkung', 4),
     geoTiefe: Math.min(400, Math.max(30, f('geo-tiefe', 100))),
     geoQPerM: Math.min(60, Math.max(10, f('geo-q-perm', 31))),
@@ -758,16 +762,24 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
     }
   }
 
-  // Spitzenlastkessel der Optimierung als echten Gaskessel übernehmen — gleiche Leistung,
-  // damit Einsatz und Kosten der Variante exakt der Ergebniskarte entsprechen
-  const _agkMwh = result.sim?.autoGkMwh || 0, _agkKw = result.sim?.autoGkPeakKw || 0;
-  if (_agkKw > 0.1 && !result.config.some(c => c.key === 'gaskessel')) {
-    const leist = Math.ceil(_agkKw);
-    document.getElementById('gk-leistung').value = leist;
-    window.gasKessel = { leistungKw: leist };
-    const b = document.getElementById('btn-activate-gaskessel'); if (b) b.style.display = 'none';
-    const sec = document.getElementById('gaskessel-data-section'); if (sec) sec.style.display = 'block';
-    if (!meritOrderKeys.includes('gaskessel')) meritOrderKeys.push('gaskessel');
+  // Spitzenlastkessel der Optimierung als echten Erzeuger der gewählten Art übernehmen (Gas-, Öl- oder Stromkessel) —
+  // gleiche Leistung, damit Einsatz und Kosten der Variante exakt der Ergebniskarte entsprechen. Steht ein Kessel
+  // dieser Art schon im Ergebnis, wird er um die Leistung des Spitzenlastkessels vergrößert.
+  const _agkKw = result.sim?.autoGkPeakKw || 0;
+  const _agk = spitzenkessel();
+  const _agkFelder = { gaskessel: ['gk-leistung', 'gasKessel', 'btn-activate-gaskessel', 'gaskessel-data-section'],
+    heizoel: ['hko-leistung', 'heizoelKessel', 'btn-activate-heizoel', 'heizoel-data-section'],
+    stromkessel: ['sk-leistung', 'stromkessel', 'btn-activate-stromkessel', 'stromkessel-data-section'] }[_agk.key];
+  const _agkIdx = result.config.findIndex(c => c.key === _agk.key);
+  const _agkVorhanden = _agkIdx >= 0;
+  if (_agkKw > 0.1 && _agkFelder) {
+    const vorhKw = _agkVorhanden ? (result.erzLeistKw?.[_agkIdx] ?? result.config[_agkIdx].leistKw ?? 0) : 0;
+    const leist = Math.ceil(_agkKw) + Math.round(vorhKw);
+    document.getElementById(_agkFelder[0]).value = leist;
+    window[_agkFelder[1]] = { ...(window[_agkFelder[1]] || {}), leistungKw: leist };
+    const b = document.getElementById(_agkFelder[2]); if (b) b.style.display = 'none';
+    const sec = document.getElementById(_agkFelder[3]); if (sec) sec.style.display = 'block';
+    if (!meritOrderKeys.includes(_agk.key)) meritOrderKeys.push(_agk.key);
   }
 
   // Solarthermie-Fläche aus Optimierungsergebnis übernehmen

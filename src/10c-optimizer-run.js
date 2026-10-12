@@ -117,7 +117,7 @@ export function _runOptWorker(resDiv) {
   for (let t = 0; t < 8760; t++) { if (lastgang[t] > peak) peak = lastgang[t]; waermeMwh += lastgang[t]; }
   // Leistungsraster bezogen auf die Auslegungsspitze (Normaußentemperatur), mindestens die Spitze des Lastgangs
   peak = Math.max(1, peak, dom.auslegung?.kw || 0); waermeMwh /= 1000;
-  const raum = optSuchraum({ aktiv, constraints, jahr: optYear, peak, typen: dom.ERZEUGER_TYP, meritOrder: OPT_MERIT_ORDER });
+  const raum = optSuchraum({ aktiv, constraints, jahr: optYear, peak, typen: dom.ERZEUGER_TYP, meritOrder: OPT_MERIT_ORDER, agkKey: dom.agkKey });
   const stufen = optRasterStufen(quality);
   const kombis = raum.kombis.map(k => ({ ...k, punkte: optGrobPunkte(k.grenzen, stufen, peak) }));
 
@@ -135,7 +135,8 @@ export function _runOptWorker(resDiv) {
   const ts = achse(tsAktiv, constraints.ts, Math.max(10, peak * 0.5 * 3 / (1.16 * dom.tsDt) * 3));
   const suche = {
     peak, backupMode: raum.backupMode, gasImplizit: raum.gasImplizit, kombis, pv, bat, st, ts,
-    gasMaxKw: raum.gasImplizit ? (constraints.gaskessel.maxKw || 0) : 0,
+    // Höchstleistung des Kessels, den der Spitzenlastkessel vertritt (gewählte Art)
+    gasMaxKw: raum.gasImplizit ? (constraints[raum.agkKey]?.maxKw || 0) : 0,
     minSchrittErz: Math.max(1, Math.round(peak * 0.005)),
     maxEvalFein: OPT_FEIN_EVALS[quality] || 350,
     anzahlFein: OPT_FEIN_ANZAHL[quality] || 6,
@@ -300,7 +301,7 @@ export function _runOptWorker(resDiv) {
  */
 export function _optAusgangsSeed(raum, achsen) {
   const live = (window._dispatchActiveKeys || []).filter(k => k !== '_autoGk' && ERZEUGER_CFG[k]);
-  const keys = live.filter(k => !(raum.gasImplizit && k === 'gaskessel'));
+  const keys = live.filter(k => !(raum.gasImplizit && k === raum.agkKey));
   if (!live.length) return null;
   const k = raum.kombis.find(kk => kk.keys.length === keys.length && kk.keys.every(x => keys.includes(x)));
   if (!k) return null;

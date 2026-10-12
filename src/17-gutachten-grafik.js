@@ -1480,6 +1480,20 @@ function ggEisDaten() {
   };
 }
 
+/**
+ * Automatischer Spitzenlastkessel einer Variante → Schlüssel seines Kesseltyps (lib/spitzenkessel.js), damit Energieträger,
+ * fossiler Anteil, Resilienz und Primärenergie in den Textbausteinen stimmen; Erdgas bleibt '_autoGk'.
+ */
+function ggAgkNormal(liste, artAktiv) {
+  return (liste || []).map(e => {
+    if (e.key !== '_autoGk') return e;
+    const art = e.agkArt || artAktiv || 'gas';
+    if (art === 'heizoel') return { ...e, key: 'heizoel', name: 'Spitzenlast-Ölkessel' };
+    if (art === 'strom') return { ...e, key: 'stromkessel', name: 'Spitzenlast-Elektrodenkessel' };
+    return e;
+  });
+}
+
 /** Kurznamen der Variantenübersicht → Erzeugerschlüssel des Dispatch (für ältere Zwischenstände ohne `erzeugerDetail`). */
 const GG_TYP_KEY = { LWWP: 'lwwp', Geothermie: 'geo', 'Fließgewässer-WP': 'fg', Gaskessel: 'gaskessel', 'Gaskessel (Auto)': '_autoGk', 'BHKW/KWK': 'bhkw', Stromkessel: 'stromkessel' };
 
@@ -1871,6 +1885,7 @@ export function ggWaermeDaten() {
     key, leistungKw: leistung[key] || 0, waermeMwh: en[key]?.waermeMwh || 0, elMwh: en[key]?.elMwh || 0,
     erzeugtMwh: deErzeugt(en, key), anLastMwh: key === '_thermSpeicher' ? undefined : _anLastAktiv[key],
     speicherM3: key === '_thermSpeicher' ? ggFeldZahl('ts-volumen') : undefined,
+    agkArt: key === '_autoGk' ? ggLies(() => w.spitzenkessel?.().art, 'gas') : undefined,
   }));
 
   // Netz: Länge, angeschlossene Gebäude, Hydraulik
@@ -1903,9 +1918,9 @@ export function ggWaermeDaten() {
   const gebName = id => { const g = ggLies(() => (w.gebaeude || []).find(x => x.id === id), null); return g?.name || `Gebäude ${id}`; };
   const varianten = Object.entries(vr).filter(([, r]) => r && Array.isArray(r.erzeuger) && (r.erzeugerDetail?.length || r.erzeuger.length)).map(([id, r]) => {
     const aktiv = id === aktivKey;
-    const detail = aktiv && erzeugerAktiv.length ? erzeugerAktiv
+    const detail = ggAgkNormal(aktiv && erzeugerAktiv.length ? erzeugerAktiv
       : r.erzeugerDetail?.length ? r.erzeugerDetail
-        : r.erzeuger.map(e => ({ key: GG_TYP_KEY[e.typ], name: GG_TYP_KEY[e.typ] ? undefined : e.typ, leistungKw: e.leistungKw, waermeMwh: e.waermeMwh }));
+        : r.erzeuger.map(e => ({ key: GG_TYP_KEY[e.typ], name: GG_TYP_KEY[e.typ] ? undefined : e.typ, leistungKw: e.leistungKw, waermeMwh: e.waermeMwh, agkArt: e.agkArt })));
     return {
       id, name: id === 'base' ? ggLies(() => w.variantenName?.('base'), '') || 'Hauptplan' : (r.label || id), aktiv, erzeuger: detail,
       investEur: r.investGes || undefined, jahreskostenEur: r.jkGes || undefined, wgkCt: r.wgkNum || undefined,
@@ -2316,8 +2331,8 @@ const GG_FIGUREN = [
       const hat = k => (en[k]?.waermeMwh || 0) > 0;
       const nAssets = t => { try { return window.listAssets?.({ type: t }).length || 0; } catch (e) { void e; return 0; } };
       return {
-        heizoel:   hat('heizoel'),
-        erdgas:    hat('gaskessel') || hat('bhkw') || hat('_autoGk'),
+        heizoel:   hat('heizoel') || (hat('_autoGk') && window.spitzenkessel?.().key === 'heizoel'),
+        erdgas:    hat('gaskessel') || hat('bhkw') || (hat('_autoGk') && (window.spitzenkessel?.().key || 'gaskessel') === 'gaskessel'),
         biofest:   hat('pellets') || hat('hhs'),
         bioliquid: false,          // im Tool nicht modelliert
         biogas:    false,          // im Tool nicht modelliert

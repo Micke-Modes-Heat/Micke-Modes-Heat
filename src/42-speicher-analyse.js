@@ -95,7 +95,7 @@ function _params(vol, peakKw) {
 function _lauf(E, param, aufzeichnen) {
   const basis = {
     lastgangKw: E.lastgangKw, tempH: E.tempH, vlH: E.vlH, erzList: E.erzList, stProfile: E.stProfile, stExcessH: null,
-    bhkwSigma: E.bhkwSigma, skEta: E.skEta, lwwpMinCop: E.lwwpMinCop, quelleTemp: _quelleTemp, backupMode: false, eisSpeicher: E.eisSpeicher, auslegung: E.auslegung,
+    bhkwSigma: E.bhkwSigma, skEta: E.skEta, lwwpMinCop: E.lwwpMinCop, quelleTemp: _quelleTemp, backupMode: false, eisSpeicher: E.eisSpeicher, auslegung: E.auslegung, agkStromEta: E.agkStromEta,
   };
   if (!param) return _dispatchCore({ ...basis, speicherParams: null, recordHourly: aufzeichnen });
   // Eingeschwungen: das Jahr beginnt mit dem Füllstand vom Jahresende (wichtig für Langzeitspeicher)
@@ -114,7 +114,7 @@ function _kosten(E, r, vol, kp) {
   const stMwh = (r.thKwh.solarthermie || 0) / 1000;
   // Kollektoren gehören in allen Läufen (mit und ohne Speicher) zur Anlage
   const stM2 = E.stProfile ? (parseFloat(el('st-flaeche')?.value) || 0) : 0;
-  const k = _optKennwerte2({ erzeugerList, gesamtMwh: r.gesamtKwh / 1000 - stMwh, autoGkMwh: r.autoGkKwh / 1000, autoGkPeakKw: r.autoGkPeakKw,
+  const k = _optKennwerte2({ erzeugerList, gesamtMwh: r.gesamtKwh / 1000 - stMwh, autoGkMwh: r.autoGkKwh / 1000, autoGkPeakKw: r.autoGkPeakKw, autoGkElMwh: (r.autoGkElKwh || 0) / 1000,
     speicherEntladenMwh: (r.thermEntladenGes || 0) / 1000, stLadeMwh: (r.ladeKwh?.solarthermie || 0) / 1000 },
   0, 0, null, kp, stMwh, stM2, vol || 0, { typ: S.art === 'lang' ? 'saisonal' : 'gross', dt: S.dt });
   return k;

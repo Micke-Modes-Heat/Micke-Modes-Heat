@@ -500,6 +500,14 @@
         <div id="lp-merit-order">
           <div style="font-size:10px;color:var(--muted);padding:4px;">Noch keine Erzeuger aktiv</div>
         </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:6px;font-size:10px;color:var(--muted);">
+          <label for="agk-art">Spitzenlastkessel (automatisch) <span class="htip" data-tip="Deckt die Restlast der Einsatzplanung und die Leistung, die den Erzeugern bei Normaußentemperatur fehlt. Die Art bestimmt Investition, Energieträger, CO₂ und Primärenergie.">?</span></label>
+          <select class="inp-field" id="agk-art" style="font-size:10px;padding:2px 4px;width:90px;" data-change="updateAllDeckungen()">
+            <option value="gas" selected>Erdgas</option>
+            <option value="heizoel">Heizöl</option>
+            <option value="strom">Strom</option>
+          </select>
+        </div>
       </div>
 
       <!-- ══ Tab 4: Elektro ════════════════════════════════════ -->

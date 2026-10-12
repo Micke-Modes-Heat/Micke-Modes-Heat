@@ -4,6 +4,7 @@
 // ══════════════════════════════════════════════════════════════════
 import { _getEtaMap, fernwaermeEmF, freiflaechen, gasEmF, gebaeude, heizoelEmF, hhsEmF, netzEdges, pelletsEmF, stromEmF } from './01-globals-varianten.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
+import { spitzenkessel } from './06c-dispatch-core.js';
 import { getGebStromMwh } from './02b-gebaeude.js';
 import { calcFFKwp } from './03a-erzeuger.js';
 import { calcGebKwp } from './03c-gebaeude-io.js';
@@ -88,41 +89,42 @@ export function _buildSankeyData(perBuilding) {
     if (!d || !(dE > 0)) return;
     const label = LABEL[k] || k;
     const eCol = ECOLOR[k] || '#78909c';
+    const kk = k === '_autoGk' ? spitzenkessel().key : k;   // Spitzenlastkessel: Energieträger der gewählten Art
 
     // Brennstoff-Input (Primärenergie)
     let brennstoffMwh = 0;
-    if (['gaskessel', '_autoGk'].includes(k)) {
+    if (kk === 'gaskessel') {
       const eta = parseFloat(document.getElementById('gk-eta')?.value) / 100 || 0.92;
       brennstoffMwh = dE / eta;
       flows.push({ from: 'Erdgas', to: label, value: brennstoffMwh, color: C_ERDGAS });
-    } else if (k === 'heizoel') {
+    } else if (kk === 'heizoel') {
       brennstoffMwh = dE / (_getEtaMap().heizoel || 0.90);
       flows.push({ from: 'Heizöl', to: label, value: brennstoffMwh, color: C_HEIZOEL });
-    } else if (k === 'pellets') {
+    } else if (kk === 'pellets') {
       brennstoffMwh = dE / _getEtaMap().pellets;
       flows.push({ from: 'Pellets', to: label, value: brennstoffMwh, color: C_PELLETS });
-    } else if (k === 'hhs') {
+    } else if (kk === 'hhs') {
       brennstoffMwh = dE / _getEtaMap().hhs;
       flows.push({ from: 'Hackschnitzel', to: label, value: brennstoffMwh, color: C_HHS });
-    } else if (k === 'bhkw') {
+    } else if (kk === 'bhkw') {
       const bhkwEtaGes = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
       const bhkwSigma  = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
       const eta_th = bhkwEtaGes / (1 + bhkwSigma);
       brennstoffMwh = dE / eta_th;
       flows.push({ from: 'Erdgas', to: label, value: brennstoffMwh, color: C_ERDGAS });
-    } else if (k === 'fernwaerme') {
+    } else if (kk === 'fernwaerme') {
       flows.push({ from: 'Fernwärme-Netz', to: label, value: d.waermeMwh, color: C_FERNWAERME });
-    } else if (['lwwp', 'fg', 'geo'].includes(k)) {
+    } else if (['lwwp', 'fg', 'geo'].includes(kk)) {
       const elMwh = d.elMwh || (dE / 3.0);
       const umwelt = dE - elMwh;
       // Strom-Quelle (Netz vs. PV) wird unten aufgeteilt
       flows.push({ from: '_strom_wp', to: label, value: elMwh, color: C_STROM, _isElPlaceholder: true });
       if (umwelt > 0) flows.push({ from: 'Umweltwärme', to: label, value: umwelt, color: C_UMWELT });
-    } else if (k === 'stromkessel') {
+    } else if (kk === 'stromkessel') {
       flows.push({ from: '_strom_sk', to: label, value: d.elMwh || d.waermeMwh, color: C_STROM, _isElPlaceholder: true });
-    } else if (k === 'solarthermie') {
+    } else if (kk === 'solarthermie') {
       flows.push({ from: 'Solarstrahlung', to: label, value: dE, color: C_SOLAR });
-    } else if (k === '_thermSpeicher') {
+    } else if (kk === '_thermSpeicher') {
       // Speicher-Entladung: keine Eingangsseite
     }
 
@@ -195,17 +197,21 @@ export function _buildSankeyData(perBuilding) {
   // ── Strom-Verbrauch aufschlüsseln: stündlich berechnete Aufteilung aus calcStromPanel ──
   const sb = window._stromBilanz || {};
 
-  // Platzhalter-Flows durch echte Quellen ersetzen (WP, Stromkessel)
+  // Platzhalter-Flows durch echte Quellen ersetzen (WP, Stromkessel). Mehrere Verbraucher derselben Gruppe
+  // (z. B. zwei Wärmepumpen, Stromkessel und Spitzenlast-Stromkessel) teilen sich die Quellen nach ihrem Strom.
+  const _elSumme = { _strom_wp: 0, _strom_sk: 0 };
+  for (const f of flows) if (f._isElPlaceholder) _elSumme[f.from] += f.value || 0;
   for (let fi = flows.length - 1; fi >= 0; fi--) {
     const f = flows[fi];
     if (!f._isElPlaceholder) continue;
     const target = f.to;
     const isWp = f.from === '_strom_wp';
+    const anteil = _elSumme[f.from] > 0 ? (f.value || 0) / _elSumme[f.from] : 1;
     flows.splice(fi, 1);
     // Stündlich berechnete Anteile verwenden
-    const nA = isWp ? (sb.netzToWp || 0) : (sb.netzToSk || 0);
-    const pvA = isWp ? (sb.pvToWp || 0) : (sb.pvToSk || 0);
-    const bhA = isWp ? (sb.bhkwToWp || 0) : (sb.bhkwToSk || 0);
+    const nA = (isWp ? (sb.netzToWp || 0) : (sb.netzToSk || 0)) * anteil;
+    const pvA = (isWp ? (sb.pvToWp || 0) : (sb.pvToSk || 0)) * anteil;
+    const bhA = (isWp ? (sb.bhkwToWp || 0) : (sb.bhkwToSk || 0)) * anteil;
     // Fallback: wenn keine stündlichen Daten, gesamten Strom als Netzbezug
     if (nA < 0.01 && pvA < 0.01 && bhA < 0.01 && f.value > 0.05) {
       flows.push({ from: 'Strom (Netz)', to: target, value: f.value, color: C_STROM });
@@ -265,26 +271,27 @@ export function _buildSankeyCO2Data() {
     if (k === '_thermSpeicher') return; // Speicher hat keine eigenen Emissionen
     const label = LABEL[k] || k;
     const col = COLOR[k] || '#90a4ae';
+    const kk = k === '_autoGk' ? spitzenkessel().key : k;
     let co2_t = 0; // Tonnen CO2/a
 
-    if (['gaskessel', '_autoGk'].includes(k)) {
+    if (kk === 'gaskessel') {
       const eta = parseFloat(document.getElementById('gk-eta')?.value) / 100 || 0.92;
       const brennstoffMwh = d.waermeMwh / eta;
       co2_t = brennstoffMwh * 1000 * gasEmF / 1e6;
       flows.push({ from: 'Erdgas', to: label, value: co2_t, color: '#ff9800' });
-    } else if (k === 'heizoel') {
+    } else if (kk === 'heizoel') {
       const brennstoffMwh = d.waermeMwh / (_getEtaMap().heizoel || 0.90);
       co2_t = brennstoffMwh * 1000 * heizoelEmF / 1e6;
       flows.push({ from: 'Heizöl', to: label, value: co2_t, color: '#546e7a' });
-    } else if (k === 'pellets') {
+    } else if (kk === 'pellets') {
       const brennstoffMwh = d.waermeMwh / _getEtaMap().pellets;
       co2_t = brennstoffMwh * 1000 * pelletsEmF / 1e6;
       flows.push({ from: 'Pellets', to: label, value: co2_t, color: '#d7ccc8' });
-    } else if (k === 'hhs') {
+    } else if (kk === 'hhs') {
       const brennstoffMwh = d.waermeMwh / _getEtaMap().hhs;
       co2_t = brennstoffMwh * 1000 * hhsEmF / 1e6;
       flows.push({ from: 'Hackschnitzel', to: label, value: co2_t, color: '#a1887f' });
-    } else if (k === 'bhkw') {
+    } else if (kk === 'bhkw') {
       const bhkwEtaGes = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
       const bhkwSigma  = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
       const eta_th = bhkwEtaGes / (1 + bhkwSigma);
@@ -297,14 +304,14 @@ export function _buildSankeyCO2Data() {
         flows.push({ from: label, to: 'KWK-Gutschrift', value: gutschrift, color: '#81c784' });
         co2_t -= gutschrift; // Netto-Effekt
       }
-    } else if (k === 'fernwaerme') {
+    } else if (kk === 'fernwaerme') {
       co2_t = d.waermeMwh * 1000 * fernwaermeEmF / 1e6;
       flows.push({ from: 'Fernwärme-Netz', to: label, value: co2_t, color: '#e53935' });
     } else if (['lwwp', 'fg', 'geo'].includes(k)) {
       const elMwh = d.elMwh || (d.waermeMwh / 3.0);
       co2_t = elMwh * 1000 * stromEmF / 1e6;
       flows.push({ from: 'Strom-Mix', to: label, value: co2_t, color: '#42a5f5' });
-    } else if (k === 'stromkessel') {
+    } else if (kk === 'stromkessel') {
       const elMwh = d.elMwh || d.waermeMwh;
       co2_t = elMwh * 1000 * stromEmF / 1e6;
       flows.push({ from: 'Strom-Mix', to: label, value: co2_t, color: '#42a5f5' });

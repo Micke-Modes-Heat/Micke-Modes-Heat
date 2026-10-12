@@ -3408,6 +3408,7 @@ export function _buildProjectData() {
       calendarFadePctPerYear:_finiteNumberOr(document.getElementById('bat-calendar-fade')?.value,1.5),cycleLife:_finiteNumberOr(document.getElementById('bat-cycle-life')?.value,6000),
       eolCapacityPct:_finiteNumberOr(document.getElementById('bat-eol-pct')?.value,80),aging:window._batteryAging ? {...window._batteryAging}:null},
     meritOrderKeys: [...meritOrderKeys],
+    spitzenkesselArt: document.getElementById('agk-art')?.value || 'gas',
     kaelte: _captureKaelte(),
     pelletsKessel: pelletsKessel ? { leistungKw: pelletsKessel.leistungKw, eta: document.getElementById('pk-eta').value, waerme: document.getElementById('pk-waerme').value, lat: pelletsKessel.lat, lng: pelletsKessel.lng } : null,
     heizhackschnitzel: heizhackschnitzel ? { leistungKw: heizhackschnitzel.leistungKw, eta: document.getElementById('hhs-eta').value, waerme: document.getElementById('hhs-waerme').value, lat: heizhackschnitzel.lat, lng: heizhackschnitzel.lng } : null,
@@ -4318,6 +4319,9 @@ function _applyProjectData(project) {
       if (project.meritOrderKeys) {
         setMeritOrderKeys(project.meritOrderKeys.filter(k => isErzeugerAktiv(k)));
       }
+      // Art des automatischen Spitzenlastkessels (ältere Projekte: Erdgas)
+      { const agkSel = document.getElementById('agk-art');
+        if (agkSel) agkSel.value = ['gas', 'heizoel', 'strom'].includes(project.spitzenkesselArt) ? project.spitzenkesselArt : 'gas'; }
       if (project.pelletsKessel) {
         setPelletsKessel({ leistungKw: project.pelletsKessel.leistungKw ?? 300 });
         if (project.pelletsKessel.lat != null) { pelletsKessel.lat = project.pelletsKessel.lat; pelletsKessel.lng = project.pelletsKessel.lng; }

@@ -4,7 +4,7 @@
 // ── Tab state ──────────────────────────────────────────────────────────────
 import { CalcEngine } from './08-calc-engine.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
-import { autoGkResult } from './06c-dispatch-core.js';
+import { autoGkResult, spitzenkessel } from './06c-dispatch-core.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { runSensitivitaet } from './08-calc-engine.js';
 
@@ -26,7 +26,7 @@ export const DA_LABELS = {
   heizoel:'Heizölkessel', gaskessel:'Gaskessel',
   bhkw:'BHKW/KWK', stromkessel:'Stromkessel',
   solarthermie:'Solarthermie', _thermSpeicher:'Wärmespeicher',
-  _autoGk:'Gaskessel (auto)', _residual:'Nicht gedeckt',
+  _autoGk:'Spitzenlastkessel (auto)', _residual:'Nicht gedeckt',
 };
 // Farbe immer aus ERZEUGER_CFG holen (Konsistenz mit Karte), Fallback falls noch nicht init
 // ── Logo-Balken an aktiven Energiemix anpassen ──────────────────────────
@@ -369,12 +369,12 @@ export function _daAchsText(ctx, text, x, y, H) {
 export function _daLegend(elId, keys, showResidual) {
   const el = document.getElementById(elId);
   if (!el) return;
-  // Wenn gaskessel + _autoGk beide aktiv: nur einen Gaskessel-Eintrag zeigen
-  const hasManualGk = keys.includes('gaskessel');
+  // Wenn gaskessel + _autoGk (als Gaskessel) beide aktiv: nur einen Gaskessel-Eintrag zeigen
+  const hasManualGk = keys.includes('gaskessel') && spitzenkessel().key === 'gaskessel';
   const items = keys
     .filter(k => !(k === '_autoGk' && hasManualGk)) // _autoGk bei manuellem GK nicht extra auflisten
     .map(k => {
-      const label = (k === 'gaskessel' && keys.includes('_autoGk'))
+      const label = (k === 'gaskessel' && hasManualGk && keys.includes('_autoGk'))
         ? 'Gaskessel (teil-auto)'  // manuell + auto zusammen
         : (DA_LABELS[k] || k);
       return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:10px;">

@@ -6,7 +6,7 @@ import { _getEtaMap, bhkwCo2Gutschrift, gasEmF, pefGas } from './01-globals-vari
 import { calcVerdraengungEmF } from './03a-erzeuger.js';
 import { glKannBerechnen } from './06b-gl-berechnen.js';
 import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
-import { autoGkResult, meritOrderKeys } from './06c-dispatch-core.js';
+import { autoGkResult, meritOrderKeys, spitzenkessel } from './06c-dispatch-core.js';
 import { DAYS_PER_YEAR } from './lib/physik-konstanten.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pefFernwaerme, pefHeizoel, pefHhs, pefPellets, pefStrom, pefWP, pelletsEmF, stromEmF } from './01-globals-varianten.js';
 import { _glIsRunning, glBerechnenDebounced } from './06b-gl-berechnen.js';
@@ -48,22 +48,25 @@ export function _calcEmHourly() {
   const activeKeys = [];
   const N = 8760;
 
+  // automatischer Spitzenlastkessel: Faktoren des gewählten Kesseltyps (lib/spitzenkessel.js)
+  const _agkKey = spitzenkessel().key;
   for (const k of keys) {
     const h = hourly[k];
     const e = en[k];
     if (!h && !e) continue;
-    const emf = EMF[k] || 0;
+    const kk = k === '_autoGk' ? _agkKey : k;
+    const emf = EMF[kk] || 0;
     if (emf === 0) continue;
 
     const co2h = new Float64Array(N);
 
     if (h && h.length >= N) {
       // Stundenscharfe Berechnung
-      if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') {
+      if (kk === 'lwwp' || kk === 'fg' || kk === 'geo' || kk === 'stromkessel') {
         // WP/Stromkessel: h[t] = Wärme kW, el = Wärme/COP
         const wMwh = e?.waermeMwh || 0;
         const eMwh = e?.elMwh || 0;
-        const ratio = wMwh > 0 ? eMwh / wMwh : (k === 'stromkessel' ? 1 : 0.25);
+        const ratio = wMwh > 0 ? eMwh / wMwh : (kk === 'stromkessel' ? 1 : 0.25);
         for (let t = 0; t < N; t++) co2h[t] = h[t] * ratio * emf / 1e3; // kgCO₂/h
       } else if (k === 'bhkw') {
         const etaGes = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
@@ -75,18 +78,18 @@ export function _calcEmHourly() {
         for (let t = 0; t < N; t++) co2h[t] = Math.max(0, h[t] / etaTh * emf / 1e3 - h[t] * gutschrift);
       } else if (k === 'fernwaerme') {
         for (let t = 0; t < N; t++) co2h[t] = h[t] * emf / 1e3;
-      } else if (ETA[k]) {
-        const eta = ETA[k];
+      } else if (ETA[kk]) {
+        const eta = ETA[kk];
         for (let t = 0; t < N; t++) co2h[t] = h[t] / eta * emf / 1e3;
       }
     } else if (e) {
       // Kein Stundenprofil → gleichmäßig verteilen (Fallback)
       const wMwh = e.waermeMwh || 0;
       let tCo2;
-      if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') {
+      if (kk === 'lwwp' || kk === 'fg' || kk === 'geo' || kk === 'stromkessel') {
         tCo2 = (e.elMwh || 0) * emf / 1e3;
-      } else if (ETA[k]) {
-        tCo2 = wMwh / ETA[k] * emf / 1e3;
+      } else if (ETA[kk]) {
+        tCo2 = wMwh / ETA[kk] * emf / 1e3;
       } else { tCo2 = wMwh * emf / 1e3; }
       const perH = tCo2 * 1000 / N; // kgCO₂/h
       for (let t = 0; t < N; t++) co2h[t] = perH;
@@ -119,20 +122,22 @@ export function _calcPefData() {
   const rows = [];
   let totalPE = 0, totalEnd = 0;
 
+  const _agkKey = spitzenkessel().key;
   for (const k of keys) {
     const e = en[k]; if (!e) continue;
     const wMwh = e.waermeMwh || 0;
     if (wMwh < 0.01) continue;
-    const fp = PEF_MAP[k] || 1.0;
+    const kk = k === '_autoGk' ? _agkKey : k;
+    const fp = PEF_MAP[kk] || 1.0;
     let endenergieMwh;
-    if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') {
+    if (kk === 'lwwp' || kk === 'fg' || kk === 'geo' || kk === 'stromkessel') {
       endenergieMwh = e.elMwh || 0;
     } else if (k === 'bhkw') {
       const etaGes = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
       const sigma  = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
       endenergieMwh = (e.erzeugtMwh ?? wMwh) / (etaGes / (1 + sigma));   // inkl. Mindestlastwärme für den Speicher
-    } else if (ETA[k]) {
-      endenergieMwh = wMwh / ETA[k];
+    } else if (ETA[kk]) {
+      endenergieMwh = wMwh / ETA[kk];
     } else {
       endenergieMwh = wMwh;
     }
@@ -847,11 +852,11 @@ export function renderAnalyseDispatch() {
   if (canStack) {
     const legEl = canvas.parentElement?.querySelector('.av-lastgang-legend');
     if (legEl) {
-      const hasManualGk = keys.includes('gaskessel');
+      const hasManualGk = keys.includes('gaskessel') && spitzenkessel().key === 'gaskessel';
       legEl.innerHTML = keys
         .filter(k => !(k === '_autoGk' && hasManualGk))
         .map(k => {
-          const label = (k === 'gaskessel' && keys.includes('_autoGk')) ? 'Gaskessel (teil-auto)' : (DA_LABELS?.[k] || k);
+          const label = (k === 'gaskessel' && hasManualGk && keys.includes('_autoGk')) ? 'Gaskessel (teil-auto)' : (DA_LABELS?.[k] || k);
           const c = typeof _daColor === 'function' ? _daColor(k) : (DA_COLORS_FALLBACK[k] || '#aaa');
           return `<span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;border-radius:1px;background:${c};"></span>${label}</span>`;
         }).join('');

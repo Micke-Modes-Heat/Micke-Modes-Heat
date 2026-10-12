@@ -19,7 +19,7 @@ import { euroKompakt, euroTeile } from './lib/euro-format.js';
 import { ERZEUGER_CFG, ERDGAS_HS_HI } from './config/erzeuger-cfg.js';
 import { vdiDynFaktor, vdiBausteinAnnuitaet, vdiKwkZuschlagFaktor } from './lib/vdi2067.js';
 import { OPT_IH, OPT_INVEST_DEFAULT, OPT_NUTZUNG } from './config/optimizer-defaults.js';
-import { autoGkResult } from './06c-dispatch-core.js';
+import { autoGkResult, spitzenkessel } from './06c-dispatch-core.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, solarthermieAktiv, stromEmF, stromEmFLZ, thermSpeicherAktiv } from './01-globals-varianten.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { runSensitivitaet } from './08-calc-engine.js';
@@ -59,6 +59,10 @@ export function _calcKostenShared(p) {
   var pv = p.pv || {};
   var strom = p.strom || {};
   var co2p = p.co2 || {};
+  // Art des automatischen Spitzenlastkessels: gleichartiger Erzeuger für Investition, Energie und CO₂ (lib/spitzenkessel.js)
+  var agkKey = p.agkKey || 'gaskessel';
+  var agkBedien = agkKey === 'heizoel' ? 'hko' : agkKey === 'stromkessel' ? 'sk' : 'gk_auto';
+  var ek = function(k) { return k === '_autoGk' ? agkKey : k; };
 
   // VDI 2067 Blatt 1: Betrachtungszeitraum T, Ersatzbeschaffung, Restwert, Preisänderungsfaktoren (lib/vdi2067.js)
   var dyn = p.dyn || {};
@@ -92,9 +96,10 @@ export function _calcKostenShared(p) {
   if (aktiv('hhs'))         add('hhs_lager', Math.round((pKw.hhs||0)*150), {n:30,inst:1.0,wart:1.0,bedien:bedH('hhs_lager', pKw.hhs)});
   if (aktiv('heizoel'))     add('hko', investFn('heizoel', pKw.heizoel), {n:20,inst:1.0,wart:2.0,bedien:bedH('hko', pKw.heizoel)});
   if (aktiv('gaskessel'))   add('gk', investFn('gaskessel', pKw.gaskessel), {n:20,inst:1.0,wart:2.0,bedien:bedH('gk', pKw.gaskessel)});
-  // Auto-Spitzenlastkessel: füllt der Dispatch die Deckungslücke mit Gas, muss
-  // dieser Kessel auch Invest kosten — sonst erscheinen Gas-Lösungen zu billig
-  if (aktiv('_autoGk'))     add('gk_auto', investFn('gaskessel', pKw._autoGk), {n:20,inst:1.0,wart:2.0,bedien:bedH('gk_auto', pKw._autoGk)});
+  // Auto-Spitzenlastkessel: deckt Restlast und Reserve im Auslegungsfall — muss auch Invest kosten, sonst erscheinen
+  // Lösungen mit Lücke zu billig; Investition und Bedienung wie der gewählte Kesseltyp
+  if (aktiv('_autoGk'))     add('gk_auto', agkKey === 'stromkessel' ? (investFn('stromkessel', pKw._autoGk) || Math.round((pKw._autoGk||0)*80)) : investFn(agkKey, pKw._autoGk),
+    agkKey === 'stromkessel' ? {n:20,inst:1.0,wart:1.0,bedien:bedH(agkBedien, pKw._autoGk)} : {n:20,inst:1.0,wart:2.0,bedien:bedH(agkBedien, pKw._autoGk)});
   if (aktiv('bhkw'))        add('bhkw', investFn('bhkw', pKw.bhkw||0), {n:15,inst:3.0,wart:3.5,bedien:bedH('bhkw_agg', pKw.bhkw)});
   if (aktiv('bhkw'))        add('bhkw_hydr', Math.round((pKw.bhkw||0)*150), {n:25,inst:1.5,wart:1.0,bedien:0});
   if (aktiv('stromkessel')) add('stromkessel', investFn('stromkessel', pKw.stromkessel) || Math.round((pKw.stromkessel||0)*80), {n:20,inst:1.0,wart:1.0,bedien:bedH('sk', pKw.stromkessel)});
@@ -110,7 +115,7 @@ export function _calcKostenShared(p) {
   }
 
   // Nebenkomponenten
-  var combustKw = (pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw._autoGk||0)+(pKw.bhkw||0);
+  var combustKw = (pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(agkKey !== 'stromkessel' ? (pKw._autoGk||0) : 0)+(pKw.bhkw||0);
   if (combustKw > 0.1)     add('schornstein', Math.round(combustKw*60), {n:40,inst:1.0,wart:2.0,bedien:0});
   // Pufferspeicher (~25 l/kW), soweit ihn kein eigener Wärmespeicher ersetzt — der übernimmt die
   // hydraulische Entkopplung nur mit seinem Volumen (ein 1-m³-Speicher ersetzt keinen 30-m³-Puffer)
@@ -157,7 +162,7 @@ export function _calcKostenShared(p) {
   var bhkwElMwh = 0;
   for (var _e=0; _e<erzList.length; _e++) {
     var _erz = erzList[_e];
-    if (_erz.typ === 'wp' || _erz.key === 'stromkessel') wpSkStromMwh += (_erz.elMwh||0);
+    if (_erz.typ === 'wp' || ek(_erz.key) === 'stromkessel') wpSkStromMwh += (_erz.elMwh||0);
     if (_erz.typ === 'kwk') bhkwElMwh += (_erz.elMwh||0);
   }
   // ── PV-Strom für Wärmepumpen und Stromkessel (nur mit pv.modus === 'wp', sonst bleibt PV außen vor) ──
@@ -197,15 +202,16 @@ export function _calcKostenShared(p) {
     var erz = erzList[_j];
     var wMwh = erz.waermeMwh || 0;
     var eMwh = erz.elMwh || 0;
+    var k1 = ek(erz.key);
     if (wMwh < 0.1 && eMwh < 0.1) continue;
     var kosten = 0;
-    if (erz.key === 'lwwp' || erz.key === 'fg' || erz.key === 'geo') {
+    if (k1 === 'lwwp' || k1 === 'fg' || k1 === 'geo') {
       kosten = stromKosten(eMwh);
-    } else if (erz.key === 'fernwaerme') {
+    } else if (k1 === 'fernwaerme') {
       kosten = wMwh * (prices.fw||17) * 10;
-    } else if (erz.key === 'stromkessel') {
+    } else if (k1 === 'stromkessel') {
       kosten = stromKosten(eMwh > 0.1 ? eMwh : wMwh);
-    } else if (erz.typ === 'kwk' || erz.key === 'bhkw') {
+    } else if (erz.typ === 'kwk' || k1 === 'bhkw') {
       var bhkwSigma = etas.bhkwSigma || 0.45;
       var etaTh = (etas.bhkw||0.88) / (1 + bhkwSigma);
       // Brennstoff für die gesamte erzeugte Wärme (auch die in den Speicher geladene Mindestlastwärme)
@@ -226,13 +232,13 @@ export function _calcKostenShared(p) {
         kwkZuschlagAnn += zuschlag * vdiKwkZuschlagFaktor(vbhBhkw, zinsFrac, vdiW.T);
       }
       kosten = gasK - erloes;
-    } else if (erz.key === 'gaskessel' || erz.key === '_autoGk') {
+    } else if (k1 === 'gaskessel') {
       kosten = wMwh / (etas.gaskessel||0.92) * (prices.gas||10) * 10;
-    } else if (erz.key === 'heizoel') {
+    } else if (k1 === 'heizoel') {
       kosten = wMwh / (etas.heizoel||0.90) * (prices.hko||10) * 10;
-    } else if (erz.key === 'pellets') {
+    } else if (k1 === 'pellets') {
       kosten = wMwh / (etas.pellets||0.88) * (prices.pk||8) * 10;
-    } else if (erz.key === 'hhs') {
+    } else if (k1 === 'hhs') {
       kosten = wMwh / (etas.hhs||0.85) * (prices.hhs||6) * 10;
     }
     if (Math.abs(kosten) > 0.1) { energieJk += kosten; energyRows.push({key:erz.key, kosten:kosten}); }
@@ -248,31 +254,31 @@ export function _calcKostenShared(p) {
   var emf = co2p.emf || {};
   for (var _c=0; _c<erzList.length; _c++) {
     var erz2 = erzList[_c];
-    var wM = erz2.waermeMwh||0, eM = erz2.elMwh||0;
+    var wM = erz2.waermeMwh||0, eM = erz2.elMwh||0, k2 = ek(erz2.key);
     var tCo2 = 0;
-    if (erz2.typ === 'wp' || erz2.key === 'stromkessel') {
+    if (erz2.typ === 'wp' || k2 === 'stromkessel') {
       // nur der Netzbezug verursacht CO₂ — PV-Strom (falls angerechnet) nicht
       var pvA = pvTeil(eM);
       tCo2 = Math.max(0, eM - pvA.d - pvA.b) * (emf.strom||420) / 1e3;
-    } else if (erz2.key === 'gaskessel' || erz2.key === '_autoGk') {
+    } else if (k2 === 'gaskessel') {
       tCo2 = wM / (etas.gaskessel||0.92) * (emf.gas||240) / 1e3;
-    } else if (erz2.typ === 'kwk' || erz2.key === 'bhkw') {
+    } else if (erz2.typ === 'kwk' || k2 === 'bhkw') {
       var etaThCo2 = (etas.bhkw||0.88) / (1 + (etas.bhkwSigma||0.45));
       var wErzBhkw = erz2.erzeugtMwh != null ? erz2.erzeugtMwh : wM;
       tCo2 = wErzBhkw / etaThCo2 * (emf.gas||240) / 1e3;
       // Stromgutschrift (verdrängter Netzstrom) — unten von Emissionsbilanz und CO₂-Kostenansatz abgezogen
       if (co2p.bhkwGutschrift) bhkwGutschriftT += wErzBhkw * (etas.bhkwSigma||0.45) * (co2p.verdraengungEf || emf.strom || 420) / 1e3;
-    } else if (erz2.key === 'heizoel') {
+    } else if (k2 === 'heizoel') {
       tCo2 = wM / (etas.heizoel||0.90) * (emf.heizoel||310) / 1e3;
-    } else if (erz2.key === 'pellets') {
+    } else if (k2 === 'pellets') {
       tCo2 = wM / (etas.pellets||0.88) * (emf.pellets||20) / 1e3;
-    } else if (erz2.key === 'hhs') {
+    } else if (k2 === 'hhs') {
       tCo2 = wM / (etas.hhs||0.85) * (emf.hhs||20) / 1e3;
-    } else if (erz2.key === 'fernwaerme') {
+    } else if (k2 === 'fernwaerme') {
       tCo2 = wM * (emf.fernwaerme||200) / 1e3;
     }
     co2ta += tCo2;
-    if (pCo2 > 0 && (co2p.alleET !== false || erz2.key === 'gaskessel' || erz2.key === '_autoGk' || erz2.key === 'heizoel' || erz2.key === 'bhkw')) {
+    if (pCo2 > 0 && (co2p.alleET !== false || k2 === 'gaskessel' || k2 === 'heizoel' || k2 === 'bhkw')) {
       co2Jk += tCo2 * pCo2;
     }
   }
@@ -558,6 +564,7 @@ export function calcWirtschaftPanel() {
     if (typeof CalcEngine !== 'undefined') return Math.round(kw * CalcEngine.investEurProKw(tech, kw));
     return 0;
   };
+  const _agk = spitzenkessel();
   // Tooltip-Helfer: zeigt spez. Kosten + Kurvenbereich (Dezentral/Zentral/Übergang)
   const iKWtip = (tech, kw, extra) => {
     if (typeof CalcEngine === 'undefined' || !kw) return extra || '';
@@ -610,10 +617,12 @@ export function calcWirtschaftPanel() {
       aktiv:()=>aktiv('gaskessel'),
       auto:()=>iKW('Gaskessel', (pKw.gaskessel||0)),
       get tooltip(){return iKWtip('Gaskessel', pKw.gaskessel||0, 'Gaskessel inkl. Brenner und Regelung');} },
-    { id:'gk_auto',    label:'Spitzenlast-Kessel (auto)', get vdi(){ return {n:20,inst:1.0,wart:2.0,bedien:bedienStunden('gk_auto', pKw._autoGk||0)}; },
+    // Automatischer Spitzenlastkessel: Investition, Wartung und Bedienung wie der gewählte Kesseltyp (lib/spitzenkessel.js)
+    { id:'gk_auto',    get label(){ return `Spitzenlastkessel (auto, ${_agk.label})`; },
+      get vdi(){ return {n:20,inst:1.0,wart:_agk.strom ? 1.0 : 2.0,bedien:bedienStunden(_agk.bedien, pKw._autoGk||0)}; },
       aktiv:()=>keys.includes('_autoGk') && (pKw._autoGk||0) > 0.1,
-      auto:()=>iKW('Gaskessel', (pKw._autoGk||0)),
-      get tooltip(){return iKWtip('Gaskessel', pKw._autoGk||0, 'Automatischer Spitzenlast-Gaskessel: deckt die Restlast in der stündlichen Einsatzplanung — auch er muss gebaut werden, daher Invest wie Gaskessel');} },
+      auto:()=>_agk.strom ? (iKW('Stromkessel', pKw._autoGk||0) || Math.round((pKw._autoGk||0)*80)) : iKW(_agk.ce, (pKw._autoGk||0)),
+      get tooltip(){return iKWtip(_agk.ce, pKw._autoGk||0, `Automatischer ${_agk.name}: deckt die Restlast der stündlichen Einsatzplanung und die Leistung, die den übrigen Erzeugern bei Normaußentemperatur fehlt — auch er muss gebaut werden, daher Invest wie ${_agk.label}`);} },
     { id:'bhkw_agg',   label:'BHKW-Aggregat',
       get vdi(){ return {n:15,inst:3.0,wart:3.5,bedien:bedienStunden('bhkw_agg', pKw.bhkw||0)}; },
       aktiv:()=>aktiv('bhkw'),   auto:()=>iKW('BHKW', pKw.bhkw||0),
@@ -648,8 +657,8 @@ export function calcWirtschaftPanel() {
       aktiv:()=>aktiv('fernwaerme'),auto:()=>Math.round((pKw.fernwaerme||0)*80),
       tooltip:'Fernwärme-Übergabestation inkl. WT, Regelung, Pumpe, pauschal 80 €/kW (AGFW-Richtwert)' },
     { id:'schornstein',label:'Schornstein/Abgasanlage',  vdi:{n:40,inst:1.0,wart:2.0,bedien:0},
-      aktiv:()=>aktiv('pellets')||aktiv('hhs')||aktiv('heizoel')||aktiv('gaskessel')||aktiv('bhkw')||(pKw._autoGk||0)>0.1,
-      auto:()=>Math.round(((pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw._autoGk||0)+(pKw.bhkw||0))*60),
+      aktiv:()=>aktiv('pellets')||aktiv('hhs')||aktiv('heizoel')||aktiv('gaskessel')||aktiv('bhkw')||(_agk.verbrennung && (pKw._autoGk||0)>0.1),
+      auto:()=>Math.round(((pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(_agk.verbrennung ? (pKw._autoGk||0) : 0)+(pKw.bhkw||0))*60),
       tooltip:'Schornstein für alle Feuerungsanlagen (inkl. BHKW und Spitzenlast-Kessel), 60 €/kW' },
     { id:'puffer',     label:'Pufferspeicher',           vdi:{n:20,inst:1.0,wart:1.0,bedien:0},
       aktiv:()=>sumKw > 0 && _pufferRestL() > 0,
@@ -784,9 +793,11 @@ export function calcWirtschaftPanel() {
   // PV-Strom zählt nur, wenn „PV-Strom für Wärmepumpen anrechnen“ aktiv ist — dann zum PV-Gestehungspreis
   // (gleiche Regel wie _calcKostenShared, siehe pvWaermePreise)
   let _wpSkElMwh = 0;
+  // Automatischer Spitzenlastkessel: Energie und CO₂ wie der gewählte Kesseltyp (lib/spitzenkessel.js)
+  const _agkKey = spitzenkessel().key;
   keys.forEach(k => {
     const e = en[k] || {};
-    if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') _wpSkElMwh += (e.elMwh || 0);
+    if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel' || (k === '_autoGk' && _agkKey === 'stromkessel')) _wpSkElMwh += (e.elMwh || 0);
   });
   const _zinsFracPv = zins / 100;
   const _pvW = pvWaermePreise(pvWaermeEingaben(), _zinsFracPv, _wpSkElMwh);
@@ -812,7 +823,8 @@ export function calcWirtschaftPanel() {
     if (wMwh < 0.1) return;
     let kosten = 0, detail = '';
     const ETA = _getEtaMap();
-    const P   = { gaskessel:pGas, heizoel:pHko, pellets:pPk, hhs:pHhs, _autoGk:pGas };
+    const P   = { gaskessel:pGas, heizoel:pHko, pellets:pPk, hhs:pHhs };
+    const kk  = k === '_autoGk' ? _agkKey : k;
     if (k === 'lwwp' || k === 'fg' || k === 'geo') {
       const r = _stromKosten(eMwh);
       kosten = r.kosten;
@@ -837,25 +849,25 @@ export function calcWirtschaftPanel() {
       _kwkVbh = _bKw > 0 ? wErz * 1000 / _bKw : 0;
       const _bilHint = (window._stromBilanz?.bhkwEigenMwh > 0 || window._stromBilanz?.bhkwEinspMwh > 0) ? '' : ' ⚠ Eigen/Einsp.=60/40 geschätzt – Strom-Panel für genaue Werte';
       detail = `Gas: ${(gasVerb * ERDGAS_HS_HI).toFixed(0)} MWh (Hs) × ${pGasHs} ct − Strom-Erlös: ${Math.round(stromErl).toLocaleString('de-DE')} €${_bilHint}`;
-    } else if (k === 'stromkessel') {
+    } else if (kk === 'stromkessel') {
       const skElMwh = eMwh > 0.1 ? eMwh : wMwh;   // η ≈ 1
       const r = _stromKosten(skElMwh);
       kosten = r.kosten;
       _pvEnergieEur += r.pvMwh * pStromWp * 10 - r.pvEur;
       detail = _stromDetail(skElMwh, r);
-    } else if (ETA[k]) {
-      const verb = wMwh / ETA[k];
-      kosten = verb * P[k] * 10;
-      detail = P[k] === pGas
+    } else if (ETA[kk] && P[kk] != null) {
+      const verb = wMwh / ETA[kk];
+      kosten = verb * P[kk] * 10;
+      detail = kk === 'gaskessel'
         ? `${(verb * ERDGAS_HS_HI).toFixed(0)} MWh Erdgas (Hs) × ${pGasHs} ct/kWh`
-        : `${verb.toFixed(0)} MWh Brennstoff × ${P[k]} ct/kWh`;
+        : `${verb.toFixed(0)} MWh Brennstoff × ${P[kk]} ct/kWh`;
     }
     // auch negative Zeilen (BHKW: Stromerlös höher als Gaskosten) — wie in _calcKostenShared
     if (Math.abs(kosten) > 0.5) energyRows.push({ label: DA_LABELS[k]||k, kosten, detail, color: _daColor(k), key: k });
     // für die Kostenanalyse: Kosten je Erzeuger und je Energieträger (BHKW: Gasbezug ohne Stromerlös)
     if (Math.abs(kosten) > 0) _energieJeErz[k] = (_energieJeErz[k] || 0) + kosten;
-    const _tr = (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') ? 'strom'
-      : (k === 'gaskessel' || k === '_autoGk') ? 'gas' : k === 'heizoel' ? 'oel' : (k === 'pellets' || k === 'hhs') ? 'biomasse' : k === 'fernwaerme' ? 'fw' : null;
+    const _tr = (kk === 'lwwp' || kk === 'fg' || kk === 'geo' || kk === 'stromkessel') ? 'strom'
+      : kk === 'gaskessel' ? 'gas' : kk === 'heizoel' ? 'oel' : (kk === 'pellets' || kk === 'hhs') ? 'biomasse' : kk === 'fernwaerme' ? 'fw' : null;
     if (_tr) _energieJeTraeger[_tr] = (_energieJeTraeger[_tr] || 0) + kosten;
     if (k === 'bhkw') _energieJeTraeger.gas = (_energieJeTraeger.gas || 0) + (kosten + (window._bhkwStromErloes || 0));
   });
@@ -880,7 +892,6 @@ export function calcWirtschaftPanel() {
     const alleET = document.getElementById('wirt-co2-alle')?.checked !== false;
     const emfMap = {
       gaskessel:   { emf: gasEmF,        eta: _getEtaMap().gaskessel, typ: 'verbrennung', fossil: true  },
-      _autoGk:     { emf: gasEmF,        eta: _getEtaMap().gaskessel, typ: 'verbrennung', fossil: true  },
       heizoel:     { emf: heizoelEmF,    eta: _getEtaMap().heizoel,   typ: 'verbrennung', fossil: true  },
       pellets:     { emf: pelletsEmF,    eta: _getEtaMap().pellets, typ: 'verbrennung', fossil: false },
       hhs:         { emf: hhsEmF,        eta: _getEtaMap().hhs,     typ: 'verbrennung', fossil: false },
@@ -891,6 +902,7 @@ export function calcWirtschaftPanel() {
       stromkessel: { emf: stromEmF,      eta: null,  typ: 'strom',       fossil: false },
       bhkw:        { emf: gasEmF,        eta: null,  typ: 'bhkw',        fossil: true  },
     };
+    emfMap._autoGk = emfMap[_agkKey];
     keys.forEach(k => {
       const e   = en[k] || {};
       const cfg = emfMap[k];
@@ -1015,10 +1027,10 @@ export function calcWirtschaftPanel() {
   const INVEST_GROUPS = [
     { label:'Wärmepumpen',     color:'#66bb6a', ids:['lwwp','fg','geo_wp','geo_sonden'] },
     { label:'Biomasse',        color:'#ff7043', ids:['pk','pk_lager','hhs','hhs_lager'] },
-    { label:'Verbrennung/Gas', color:'#78909c', ids:['hko','gk','gk_auto'] },
+    { label:'Verbrennung/Gas', color:'#78909c', ids:_agk.strom ? ['hko','gk'] : ['hko','gk','gk_auto'] },
     { label:'BHKW',            color:'#ab47bc', ids:['bhkw_agg','bhkw_hydr'] },
     { label:'Solarthermie',     color:'#ef6c00', ids:['solarthermie'] },
-    { label:'Stromkessel',      color:'#ff69b4', ids:['sk'] },
+    { label:'Stromkessel',      color:'#ff69b4', ids:_agk.strom ? ['sk','gk_auto'] : ['sk'] },
     { label:'Sonstige',        color:'var(--muted)', ids:['thermSpeicher','fw_pumpe','puffer','schornstein','schallschutz','entstaubung','huest','heizzentrale','netzanschluss','fg_entnahme','waermenetz'] },
     { label:'Nebenkosten',     color:'#ff9800', ids:['bauteil','hydr_elt','planung','unvorg'] },
   ];
@@ -1300,6 +1312,7 @@ const _KURVEN_TECHS = [
   { ce:'Stromkessel',   label:'Stromkessel', color:'#ff8f00' },
 ];
 // Zuordnung Erzeuger-Key (pKw) → CalcEngine-Tech für die Punkt-Marker
+// (_autoGk: gewählte Art des Spitzenlastkessels, siehe Punkt-Marker unten)
 const _KURVEN_KEY2CE = { lwwp:'LuftWP', fg:'FlussWP', geo:'GeoWP', gaskessel:'Gaskessel', _autoGk:'Gaskessel', heizoel:'Heizoel', bhkw:'BHKW', pellets:'Pellets', hhs:'Hackschnitzel', stromkessel:'Stromkessel' };
 
 // Gruppen-Zeile auf-/zuklappen — als benannte Funktion, weil der data-click-
@@ -1393,7 +1406,7 @@ export function _wirtRenderKurven() {
   const pKw = window._wirtPKw || {};
   const dots = [];
   for (const key in pKw) {
-    const ce = _KURVEN_KEY2CE[key];
+    const ce = key === '_autoGk' ? spitzenkessel().ce : _KURVEN_KEY2CE[key];
     const kw = pKw[key] || 0;
     if (!ce || kw < 0.5 || hidden[ce]) continue;
     const eur = CalcEngine.investEurProKw(ce, kw);
@@ -1561,6 +1574,9 @@ export function _renderWirtCo2Chart(keys, en) {
                   _autoGk:gasEmF, fernwaerme:fernwaermeEmF, lwwp:stromEmF, fg:stromEmF, geo:stromEmF, stromkessel:stromEmF, bhkw:gasEmF };
   const EMF_2050  = { gaskessel:gasEmF, heizoel:heizoelEmF, pellets:pelletsEmF, hhs:hhsEmF,
                    _autoGk:gasEmF, fernwaerme:fernwaermeEmF, lwwp:stromEmFLZ, fg:stromEmFLZ, geo:stromEmFLZ, stromkessel:stromEmFLZ, bhkw:gasEmF };
+  // automatischer Spitzenlastkessel: Faktor und Rechenweg des gewählten Kesseltyps (lib/spitzenkessel.js)
+  const _agkKey = spitzenkessel().key;
+  EMF_HEUTE._autoGk = EMF_HEUTE[_agkKey]; EMF_2050._autoGk = EMF_2050[_agkKey];
   const ETA_BHKW_SIGMA = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
   const ETA_BHKW_GES   = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
   const ETA_BHKW_TH    = ETA_BHKW_GES / (1 + ETA_BHKW_SIGMA);
@@ -1579,7 +1595,7 @@ export function _renderWirtCo2Chart(keys, en) {
     if (k === 'bhkw') {
       const gutschriftBase = bhkwCo2Gutschrift ? (wMwh * ETA_BHKW_SIGMA) : 0;
       calcCo2 = (emf) => Math.max(0, wMwh / ETA_BHKW_TH * emf / 1e3 - gutschriftBase * calcVerdraengungEmF() / 1e3);
-    } else if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') {
+    } else if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel' || (k === '_autoGk' && _agkKey === 'stromkessel')) {
       calcCo2 = (emf) => eMwh * emf / 1e3;
     } else if (k === 'fernwaerme') {
       calcCo2 = (emf) => wMwh * emf / 1e3;
@@ -1784,6 +1800,7 @@ export function calcJahresscheiben() {
   const pufferRestL = sumKw * 25 - (thermSpeicherAktiv ? (getThermSpeicherParams()?.vol || 0) * 1000 : 0);
   const bohrm = _parseGeoBohrMeter();
   const iKW = (tech, kw) => typeof CalcEngine !== 'undefined' ? Math.round(kw * CalcEngine.investEurProKw(tech, kw)) : 0;
+  const _agk = spitzenkessel();
 
   // Simplified: get total invest and annual costs from calcWirtschaftPanel results
   // Rebuild investment calc
@@ -1803,8 +1820,10 @@ export function calcJahresscheiben() {
     { id:'bhkw_hydr', aktiv:()=>aktiv('bhkw'), auto:()=>Math.round((pKw.bhkw||0)*150), vdi:{n:25,inst:1.5,wart:1.0,bedien:0} },
     { id:'sk', aktiv:()=>aktiv('stromkessel'), auto:()=>Math.round((pKw.stromkessel||0)*80), get vdi(){ return {n:20,inst:1.0,wart:1.0,bedien:bedienStunden('sk', pKw.stromkessel||0)}; } },
     { id:'fw_pumpe', aktiv:()=>aktiv('fernwaerme'), auto:()=>Math.round((pKw.fernwaerme||0)*80), vdi:{n:18,inst:2.0,wart:1.0,bedien:0} },
-    { id:'schornstein', aktiv:()=>aktiv('pellets')||aktiv('hhs')||aktiv('heizoel')||aktiv('gaskessel')||aktiv('bhkw')||(pKw._autoGk||0)>0.1,
-      auto:()=>Math.round(((pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw._autoGk||0)+(pKw.bhkw||0))*60), vdi:{n:40,inst:1.0,wart:2.0,bedien:0} },
+    { id:'gk_auto', aktiv:()=>aktiv('_autoGk'), auto:()=>_agk.strom ? (iKW('Stromkessel', pKw._autoGk||0) || Math.round((pKw._autoGk||0)*80)) : iKW(_agk.ce, pKw._autoGk||0),
+      get vdi(){ return {n:20,inst:1.0,wart:_agk.strom ? 1.0 : 2.0,bedien:bedienStunden(_agk.bedien, pKw._autoGk||0)}; } },
+    { id:'schornstein', aktiv:()=>aktiv('pellets')||aktiv('hhs')||aktiv('heizoel')||aktiv('gaskessel')||aktiv('bhkw')||(_agk.verbrennung && (pKw._autoGk||0)>0.1),
+      auto:()=>Math.round(((pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(_agk.verbrennung ? (pKw._autoGk||0) : 0)+(pKw.bhkw||0))*60), vdi:{n:40,inst:1.0,wart:2.0,bedien:0} },
     { id:'puffer', aktiv:()=>sumKw>0 && pufferRestL>0, auto:()=>Math.round(speicherInvestEur(pufferRestL/1000, 'puffer')/1000)*1000, vdi:{n:20,inst:1.0,wart:1.0,bedien:0} },
     { id:'schallschutz', aktiv:()=>aktiv('lwwp')||aktiv('bhkw'), auto:()=>Math.round(((pKw.lwwp||0)+(pKw.bhkw||0))*75), vdi:{n:25,inst:0.5,wart:0.5,bedien:0} },
     { id:'entstaubung', aktiv:()=>(pKw.pellets||0)+(pKw.hhs||0)>200,
@@ -1894,14 +1913,15 @@ export function calcJahresscheiben() {
   // Annual energy costs (year 0 prices)
   let energyCostYear0 = 0;
   const ETA = _getEtaMap();
-  const P   = { gaskessel:pGas, heizoel:pHko, pellets:pPk, hhs:pHhs, _autoGk:pGas };
+  const P   = { gaskessel:pGas, heizoel:pHko, pellets:pPk, hhs:pHhs };
   keys.forEach(k => {
     const e = en[k] || {};
     const wMwh = e.waermeMwh || 0; const eMwh = e.elMwh || 0;
+    const kk = k === '_autoGk' ? _agk.key : k;
     if (wMwh < 0.1) return;
-    if (k === 'lwwp' || k === 'fg' || k === 'geo') energyCostYear0 += eMwh * pStrom * 10;
-    else if (k === 'fernwaerme') energyCostYear0 += wMwh * pFw * 10;
-    else if (ETA[k]) energyCostYear0 += (wMwh / ETA[k]) * P[k] * 10;
+    if (kk === 'lwwp' || kk === 'fg' || kk === 'geo' || kk === 'stromkessel') energyCostYear0 += (eMwh > 0.1 ? eMwh : wMwh) * pStrom * 10;
+    else if (kk === 'fernwaerme') energyCostYear0 += wMwh * pFw * 10;
+    else if (ETA[kk] && P[kk] != null) energyCostYear0 += (wMwh / ETA[kk]) * P[kk] * 10;
   });
 
   if (ausPanel) energyCostYear0 = wErg.energieJahr;   // inkl. WP-Stromtarif und CO₂-Kosten

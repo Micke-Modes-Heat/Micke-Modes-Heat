@@ -104,6 +104,7 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
     recordHourly: false,
     backupMode: !!backupMode,
     auslegung: D.auslegung || null,
+    agkStromEta: D.agkStromEta || 0,
   };
   if (saisonal) args.speicherStartKwh = _dispatchCore(args).thermSocEnde || 0;
   const r = _dispatchCore(args);
@@ -120,6 +121,7 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
     erzeugerList,
     autoGkMwh: r.autoGkKwh / 1000,
     autoGkPeakKw: r.autoGkPeakKw,
+    autoGkElMwh: (r.autoGkElKwh || 0) / 1000,
     gesamtMwh: r.gesamtKwh / 1000,
     wpElH: r.wpElH, bhkwElH: r.bhkwElH, skElH: r.skElH,
     speicherEntladenMwh: r.thermEntladenGes / 1000,
@@ -211,7 +213,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
   const _agkMwh = dispR.autoGkMwh || 0, _agkKw = dispR.autoGkPeakKw || 0;
   if (_agkKw > 0.1) _bPKw._autoGk = Math.ceil(_agkKw);
   const erzListTyped = erzeugerList.map(erz => ({ key: erz.key, waermeMwh: erz.waermeMwh, elMwh: erz.elMwh, ladeMwh: erz.ladeMwh || 0, erzeugtMwh: erz.erzeugtMwh ?? erz.waermeMwh, typ: D.ERZEUGER_TYP[erz.key] }));
-  if (_bPKw._autoGk) erzListTyped.push({ key: '_autoGk', waermeMwh: _agkMwh, elMwh: 0, typ: 'fix' });
+  if (_bPKw._autoGk) erzListTyped.push({ key: '_autoGk', waermeMwh: _agkMwh, elMwh: dispR.autoGkElMwh || 0, typ: 'fix' });
 
   const bhkwEigMwh = pvBatR ? (pvBatR.bhkwEigenMwh || 0) : 0;
   const bhkwEinspMwh = pvBatR ? (pvBatR.bhkwEinspMwh || 0) : 0;
@@ -234,6 +236,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
 
   const result = _calcKostenShared({
     pKw: _bPKw,
+    agkKey: D.agkKey || 'gaskessel',
     erzList: erzListTyped,
     zinsPct: zinssatz * 100,
     dyn: params.dyn,
@@ -349,7 +352,7 @@ self.onmessage = function(e) {
     const E = einsatz(keys, gens, stM2, tsVol);
     const pvBat = pvBatSim8760(pvKwp, batKwh, E.demandH, E.disp.bhkwElH, pvProfile, E.disp, E.wpSkH);
     const kw = kennwerte(E.disp, pvKwp, batKwh, pvBat, params, E.stMwh, stM2, tsVol);
-    const kanon = optKonzeptSchluessel(keys, E.disp.autoGkMwh, E.disp.autoGkPeakKw);
+    const kanon = optKonzeptSchluessel(keys, E.disp.autoGkMwh, E.disp.autoGkPeakKw, D.agkKey || 'gaskessel');
     let sc = score(kw, ziel);
     // Höchstleistung des Gaskessels gilt auch für den Spitzenlastkessel
     if (S.gasMaxKw > 0 && E.disp.autoGkPeakKw > S.gasMaxKw + 0.5) sc = Infinity;
