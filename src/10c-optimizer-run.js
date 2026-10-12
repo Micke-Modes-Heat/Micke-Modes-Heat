@@ -115,7 +115,8 @@ export function _runOptWorker(resDiv) {
   // ── Suchraum ──
   let peak = 0, waermeMwh = 0;
   for (let t = 0; t < 8760; t++) { if (lastgang[t] > peak) peak = lastgang[t]; waermeMwh += lastgang[t]; }
-  peak = Math.max(1, peak); waermeMwh /= 1000;
+  // Leistungsraster bezogen auf die Auslegungsspitze (Normaußentemperatur), mindestens die Spitze des Lastgangs
+  peak = Math.max(1, peak, dom.auslegung?.kw || 0); waermeMwh /= 1000;
   const raum = optSuchraum({ aktiv, constraints, jahr: optYear, peak, typen: dom.ERZEUGER_TYP, meritOrder: OPT_MERIT_ORDER });
   const stufen = optRasterStufen(quality);
   const kombis = raum.kombis.map(k => ({ ...k, punkte: optGrobPunkte(k.grenzen, stufen, peak) }));

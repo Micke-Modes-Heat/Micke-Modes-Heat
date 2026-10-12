@@ -23,7 +23,7 @@ import { attachFFLayer, clearFernwaerme, clearGasKessel, clearHeizoelKessel, cle
 import { addNetzEdge, applyWaermeNetzGraph, autoGenerateNetz, calcGeoThermie, captureWaermeNetzGraph, clearNetz, recalcNetz, redrawGeo, syncVLTemps } from './03b-netz.js';
 import { applyEdgePrunedStyle, updatePruningSummary } from './04a-ui-panels.js';
 import { addStromEdge, addStromNode, clearStromNetz, recalcStromNetz, stromNodeClick } from './05b-stromnetz.js';
-import { _attachSTLayer, clearSolarthermie, clearThermSpeicher, glBerechnenDebounced, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
+import { _attachSTLayer, clearSolarthermie, clearThermSpeicher, glBerechnenDebounced, spitzenlastKachel, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
 import { moBeiAktivierung } from './06c-dispatch-core.js';
 import { _onGaspreisChange, _onStrompreisChange, onPvVergModellChange } from './09a-pv-profile.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
@@ -51,20 +51,7 @@ export function updateTotals(){
   });
   document.getElementById('tot-waerme').textContent=tw?tw.toLocaleString('de-DE',{maximumFractionDigits:1}):'—';
   document.getElementById('tc-waerme').title='Summe Wärmebedarf aller Gebäude (ohne Netzverluste)';
-  const ss = window.systemState;
-  const hatSpitzenlast = Number.isFinite(ss?.pMaxKw) && ss.pMaxKw > 0;
-  document.getElementById('tot-hl').textContent = hatSpitzenlast
-    ? Math.round(ss.pMaxKw).toLocaleString('de-DE')
-    : th ? Math.round(th).toLocaleString('de-DE') : '—';
-  document.getElementById('tot-hl-lbl').textContent = hatSpitzenlast
-    ? 'Netz-Spitzenlast (kW)'
-    : 'Normheizlast (kW)';
-  document.getElementById('tot-hl-sub').textContent = hatSpitzenlast && th
-    ? `Σ Gebäude: ${Math.round(th).toLocaleString('de-DE')} kW`
-    : '';
-  document.getElementById('tc-hl').title = hatSpitzenlast
-    ? `Maßgebende Spitzenlast aus dem berechneten Lastgang inklusive Netzverlusten: ${Math.round(ss.pMaxKw)} kW.\nSumme der Gebäude-Normheizlasten (DIN 12831): ${Math.round(th)} kW.`
-    : 'Summe der Gebäude-Normheizlasten (DIN 12831).\nNach der Lastgangberechnung wird hier die maßgebende Netz-Spitzenlast angezeigt.';
+  spitzenlastKachel(th);
   // Strom-Totals
   let ts=0, tsl=0;
   if (window.elQuartierH) {

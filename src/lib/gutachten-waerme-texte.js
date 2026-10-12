@@ -218,7 +218,8 @@ function normErz(liste) {
 
 /**
  * Erwartete Form (alles optional):
- *   lastgang   { pMaxKw, nutzMwh, gesamtMwh, netzverlustPct, netzverlustMwh, tMinC, jdlKw }   // für das Jahr projekt.lastgangJahr
+ *   lastgang   { pMaxKw, nutzMwh, gesamtMwh, netzverlustPct, netzverlustMwh, tMinC, jdlKw,   // für das Jahr projekt.lastgangJahr
+ *                auslegung: { kw, quelle, lastgangKw, summeHeizlastKw, anzahl, glf, verlustKw, normAt, tSpitze, thetaInnen } }
  *   projekt    { basisJahr, lastgangJahr, anzahl: { gesamt, bestand, neubau, abriss, saniert },
  *                bedarfsverlauf: [{ jahr, bedarfMwh, heizlastKw }], ereignisse: [{ jahr, art: 'neubau'|'abriss'|'sanierung', anzahl, deltaMwh }] }
  *   herkunft   { lastgang: 'import'|'importMonate'|'monate'|'monateGesamt'|'gesamt'|'gebaeude', zeitreihe: { intervallMin, quelle, qualitaet },
@@ -243,6 +244,9 @@ export function wtNormalisiere(d = {}) {
   }));
   return {
     pMaxKw: num(lg.pMaxKw), nutzMwh: nutz, gesamtMwh: ok(num(lg.gesamtMwh)) ? num(lg.gesamtMwh) : nutz, tMinC: num(lg.tMinC),
+    // Auslegungsspitze bei Normaußentemperatur (lib/auslegung.js); ohne sie die Spitze des Lastgangs
+    auslegung: ok(num(lg.auslegung?.kw)) && num(lg.auslegung.kw) > 0 ? lg.auslegung : null,
+    auslKw: ok(num(lg.auslegung?.kw)) && num(lg.auslegung.kw) > 0 ? num(lg.auslegung.kw) : num(lg.pMaxKw),
     jdlKw: lg.jdlKw || null,
     netzverlustPct: num(lg.netzverlustPct), netzverlustMwh: num(lg.netzverlustMwh),
     // Ist-Stichjahr (3.1), falls abweichend vom Lastgangjahr; sonst dieselben Werte
@@ -311,6 +315,39 @@ function herkunftLastgangAbsaetze(n) {
 }
 
 /** Schlusssatz zur Belastbarkeit je nach Herkunft. */
+/**
+ * Auslegungsspitze bei Normaußentemperatur (3.2.5). Beim gemessenen Lastgang beschreibt der eigene Baustein
+ * „Spitzenlast und Auslegungsheizlast“ die Extrapolation; hier dann nichts.
+ */
+function auslegungAbsaetze(n) {
+  const a = n.auslegung;
+  const art = n.herkunft.lastgang;
+  if (!a || art === 'import' || art === 'importMonate') return [];
+  const nat = ok(num(a.normAt)) ? `der Norm-Außentemperatur von ${nf(num(a.normAt), 1)} °C` : 'der Norm-Außentemperatur';
+  const lgKw = num(a.lastgangKw);
+  const einl = `Die Spitze des Lastgangs gilt für die Witterung des zugrunde gelegten Jahres. Für die Auslegung der Wärmeerzeugung ist die Leistung bei ${nat} maßgebend. `;
+  const folge = ' Einsatzplanung, Energiemengen und Jahresdauerlinie beruhen weiterhin auf dem Lastgang. Die Wärmeerzeugung muss jedoch auch die Auslegungsspitze sicher bereitstellen; maßgebend ist dabei die Leistung der Erzeuger bei der Norm-Außentemperatur.';
+  if (a.quelle === 'heizlast') {
+    const roh = num(a.summeHeizlastKw) * num(a.glf) + num(a.verlustKw);
+    return [absatz(einl,
+      `Sie ergibt sich aus der Summe der Normheizlasten nach DIN EN 12831 der ${nf(num(a.anzahl))} Gebäude von ${nf(num(a.summeHeizlastKw))} kW, dem Gleichzeitigkeitsfaktor von ${nf(num(a.glf), 2)} und der Netzverlustleistung von ${nf(num(a.verlustKw))} kW`,
+      ok(roh) && roh < num(a.kw) - 0.5
+        ? ` zu rund ${nf(roh)} kW. Da die Spitze des Lastgangs mit ${nf(lgKw)} kW darüber liegt, wird sie als Auslegungsspitze angesetzt.`
+        : ` zu einer Auslegungsspitze von rund ${nf(num(a.kw))} kW${ok(lgKw) ? ` (Spitze des Lastgangs: ${nf(lgKw)} kW)` : ''}.`,
+      folge)];
+  }
+  if (a.quelle === 'hochrechnung') {
+    return [absatz(einl,
+      `Die Spitze des Lastgangs von ${nf(lgKw)} kW tritt bei einem Tagesmittel der Außentemperatur von ${nf(num(a.tSpitze), 1)} °C auf. `,
+      `Linear auf ${nat} hochgerechnet – im Verhältnis der Temperaturdifferenzen zur Innentemperatur von ${nf(num(a.thetaInnen))} °C – ergibt sich eine Auslegungsspitze von rund ${nf(num(a.kw))} kW.`,
+      folge)];
+  }
+  if (ok(num(a.normAt))) {
+    return [absatz(`Der Lastgang reicht bereits bis zu ${nat}; die Spitze des Lastgangs von ${nf(lgKw)} kW ist daher zugleich die Auslegungsspitze.`)];
+  }
+  return [];
+}
+
 function belastbarkeitAbsatz(n) {
   const art = n.herkunft.lastgang;
   if (art === 'import' || art === 'importMonate') {
@@ -431,9 +468,10 @@ export function wtDimensionierungWea(d) {
   out.push(...herkunftLastgangAbsaetze(n));
 
   if (ok(n.pMaxKw) && n.pMaxKw > 0) {
-    const bedarf = ok(n.gesamtMwh) ? ` Der Jahreswärmebedarf einschließlich Netzverlusten beträgt ${nf(n.gesamtMwh)} MWh, die maßgebende Spitzenlast ${nf(n.pMaxKw)} kW`
+    const spName = n.auslegung ? 'die Spitze des Lastgangs' : 'die maßgebende Spitzenlast';
+    const bedarf = ok(n.gesamtMwh) ? ` Der Jahreswärmebedarf einschließlich Netzverlusten beträgt ${nf(n.gesamtMwh)} MWh, ${spName} ${nf(n.pMaxKw)} kW`
       + (ok(n.tMinC) ? ` (tiefste Außentemperatur im Lastgang ${nf(n.tMinC, 1)} °C)` : '') + '.'
-      : ` Die maßgebende Spitzenlast beträgt ${nf(n.pMaxKw)} kW.`;
+      : ` ${n.auslegung ? 'Die Spitze des Lastgangs' : 'Die maßgebende Spitzenlast'} beträgt ${nf(n.pMaxKw)} kW.`;
     const p = [ok(jahr) ? `Der Soll-Lastgang ist für das Jahr ${jahr} berechnet.` : 'Der Soll-Lastgang berücksichtigt den Stand der baulichen Entwicklung im Betrachtungsjahr.', bedarf];
     if (ok(n.gesamtMwh) && n.gesamtMwh > 0) {
       const h = (n.gesamtMwh * 1000) / n.pMaxKw;
@@ -462,9 +500,13 @@ export function wtDimensionierungWea(d) {
     out.push(absatz('Die maßgebende Spitzenlast beträgt ', F('Spitzenlast in kW'), ' kW bei einem Jahreswärmebedarf von ', F('Jahreswärmebedarf in MWh'), ' MWh.'));
   }
 
+  out.push(...auslegungAbsaetze(n));
   const bel = belastbarkeitAbsatz(n);
   if (bel.length) out.push(bel);
-  out.push(absatz('Die Auslegungsleistung der Wärmeerzeugungsanlage (WEA) richtet sich nach dieser Spitzenlast zuzüglich einer Reserve von ', F('Reserve in %'), ' %. Die Wahl des Versorgungssystems erfolgt erst im Variantenvergleich (Kapitel 7).'));
+  out.push(absatz(n.auslegung
+    ? `Die Auslegungsleistung der Wärmeerzeugungsanlage (WEA) richtet sich nach der Auslegungsspitze von rund ${nf(n.auslKw)} kW zuzüglich einer Reserve von `
+    : 'Die Auslegungsleistung der Wärmeerzeugungsanlage (WEA) richtet sich nach dieser Spitzenlast zuzüglich einer Reserve von ',
+  F('Reserve in %'), ' %. Die Wahl des Versorgungssystems erfolgt erst im Variantenvergleich (Kapitel 7).'));
   return out;
 }
 
@@ -667,17 +709,17 @@ function leistungsAbsaetze(v, pMax) {
   if (!ok(pMax) || pMax <= 0 || v.instKw <= 0) return out;
   const q = v.instKw / pMax;
   const kl = wtLeistungsKlasse(q);
-  const basis = `Die installierte thermische Leistung beträgt insgesamt ${nf(v.instKw)} kW, die Spitzenlast ${nf(pMax)} kW.`;
+  const basis = `Die installierte thermische Leistung beträgt insgesamt ${nf(v.instKw)} kW, die Auslegungsspitze ${nf(pMax)} kW.`;
   if (kl === 'unterdeckung') {
-    out.push(absatz(`${basis} Die Spitzenlast kann damit nicht vollständig gedeckt werden; es verbleibt eine Unterdeckung von ${nf(pMax - v.instKw)} kW (${pct((1 - q) * 100, 1)}). Zur Sicherstellung der Versorgung bei Auslegungstemperatur ist die Leistung zu erhöhen, etwa durch einen zusätzlichen Spitzenlasterzeuger oder eine mobile Heizzentrale.`));
+    out.push(absatz(`${basis} Die Auslegungsspitze kann damit nicht vollständig gedeckt werden; es verbleibt eine Unterdeckung von ${nf(pMax - v.instKw)} kW (${pct((1 - q) * 100, 1)}). Zur Sicherstellung der Versorgung bei Auslegungstemperatur ist die Leistung zu erhöhen, etwa durch einen zusätzlichen Spitzenlasterzeuger oder eine mobile Heizzentrale.`));
   } else if (kl === 'knapp') {
-    out.push(absatz(`${basis} Die Spitzenlast wird damit nur knapp unterschritten. Eine nennenswerte Reserve besteht nicht; Betriebsstörungen oder Lastzuwächse im Netz können zu einer Unterversorgung führen.`));
+    out.push(absatz(`${basis} Die Auslegungsspitze wird damit nur knapp unterschritten. Eine nennenswerte Reserve besteht nicht; Betriebsstörungen oder Lastzuwächse im Netz können zu einer Unterversorgung führen.`));
   } else if (kl === 'ausreichend') {
-    out.push(absatz(`${basis} Die Spitzenlast wird damit abgedeckt, die Leistungsreserve beträgt ${pct((q - 1) * 100, 1)}.`));
+    out.push(absatz(`${basis} Die Auslegungsspitze wird damit abgedeckt, die Leistungsreserve beträgt ${pct((q - 1) * 100, 1)}.`));
   } else if (kl === 'komfortabel') {
-    out.push(absatz(`${basis} Die Spitzenlast wird mit einer komfortablen Reserve von ${pct((q - 1) * 100, 1)} abgedeckt; zusätzliche Anschlüsse oder ein erhöhter Bedarf lassen sich damit aufnehmen.`));
+    out.push(absatz(`${basis} Die Auslegungsspitze wird mit einer komfortablen Reserve von ${pct((q - 1) * 100, 1)} abgedeckt; zusätzliche Anschlüsse oder ein erhöhter Bedarf lassen sich damit aufnehmen.`));
   } else {
-    out.push(absatz(`${basis} Die Anlage ist mit dem ${nf(q, 1)}-Fachen der Spitzenlast deutlich überdimensioniert. Die Erzeuger arbeiten überwiegend im Teillastbereich; zu prüfen ist, ob eine kleinere Auslegung oder eine Aufteilung auf mehrere Module wirtschaftlicher ist.`));
+    out.push(absatz(`${basis} Die Anlage ist mit dem ${nf(q, 1)}-Fachen der Auslegungsspitze deutlich überdimensioniert. Die Erzeuger arbeiten überwiegend im Teillastbereich; zu prüfen ist, ob eine kleinere Auslegung oder eine Aufteilung auf mehrere Module wirtschaftlicher ist.`));
   }
   if (v.erz.length === 1) {
     out.push(absatz(`Mit nur einem Erzeuger besteht keine Redundanz. Bei einem Ausfall von ${mitArtikel(v.groesster)} ist die Wärmeversorgung nicht gesichert; eine Reserveerzeugung (z. B. mobile Heizzentrale oder Anschlussmöglichkeit dafür) ist vorzusehen.`));
@@ -685,11 +727,11 @@ function leistungsAbsaetze(v, pMax) {
     const rest = v.instKw - v.groesster.leistungKw;
     const teil = rest / pMax;
     if (teil >= 1) {
-      out.push(absatz(`Auch bei Ausfall des größten Erzeugers (${v.groesster.name}, ${nf(v.groesster.leistungKw)} kW) bleibt die Spitzenlast gedeckt (Restleistung ${nf(rest)} kW). Die Variante erfüllt damit das N-1-Kriterium.`));
+      out.push(absatz(`Auch bei Ausfall des größten Erzeugers (${v.groesster.name}, ${nf(v.groesster.leistungKw)} kW) bleibt die Auslegungsspitze gedeckt (Restleistung ${nf(rest)} kW). Die Variante erfüllt damit das N-1-Kriterium.`));
     } else if (teil >= WT_SCHWELLEN.n1Teil) {
-      out.push(absatz(`Bei Ausfall des größten Erzeugers (${v.groesster.name}, ${nf(v.groesster.leistungKw)} kW) stehen noch ${nf(rest)} kW zur Verfügung; das entspricht ${pct(teil * 100)} der Spitzenlast. Das N-1-Kriterium wird nicht vollständig erfüllt. In der Auslegungsspitze wäre ein Lastabwurf oder eine Absenkung der Netztemperatur nötig; eine Reserveerzeugung ist zu prüfen.`));
+      out.push(absatz(`Bei Ausfall des größten Erzeugers (${v.groesster.name}, ${nf(v.groesster.leistungKw)} kW) stehen noch ${nf(rest)} kW zur Verfügung; das entspricht ${pct(teil * 100)} der Auslegungsspitze. Das N-1-Kriterium wird nicht vollständig erfüllt. In der Auslegungsspitze wäre ein Lastabwurf oder eine Absenkung der Netztemperatur nötig; eine Reserveerzeugung ist zu prüfen.`));
     } else {
-      out.push(absatz(`Bei Ausfall des größten Erzeugers (${v.groesster.name}, ${nf(v.groesster.leistungKw)} kW) stehen nur noch ${nf(rest)} kW (${pct(teil * 100)} der Spitzenlast) zur Verfügung. Das N-1-Kriterium wird deutlich verfehlt; für die Versorgungssicherheit ist eine Reserveerzeugung vorzusehen.`));
+      out.push(absatz(`Bei Ausfall des größten Erzeugers (${v.groesster.name}, ${nf(v.groesster.leistungKw)} kW) stehen nur noch ${nf(rest)} kW (${pct(teil * 100)} der Auslegungsspitze) zur Verfügung. Das N-1-Kriterium wird deutlich verfehlt; für die Versorgungssicherheit ist eine Reserveerzeugung vorzusehen.`));
     }
   }
   return out;
@@ -820,7 +862,7 @@ export function wtVariantenvergleich(d) {
   }
 
   // Einleitung
-  const bedarfsSatz = ok(n.gesamtMwh) ? ` Grundlage ist der Soll-Bedarf aus Kapitel 3.2 (${nf(n.gesamtMwh)} MWh/a${ok(n.pMaxKw) ? `, Spitzenlast ${nf(n.pMaxKw)} kW` : ''}).` : ' Grundlage ist der Soll-Bedarf aus Kapitel 3.2.';
+  const bedarfsSatz = ok(n.gesamtMwh) ? ` Grundlage ist der Soll-Bedarf aus Kapitel 3.2 (${nf(n.gesamtMwh)} MWh/a${ok(n.auslKw) ? `, Auslegungsspitze ${nf(n.auslKw)} kW` : ''}).` : ' Grundlage ist der Soll-Bedarf aus Kapitel 3.2.';
   if (V.length === 1) {
     out.push(absatz(`Betrachtet wird eine Variante der Wärmeversorgung, „${nameV(V[0])}“.${bedarfsSatz} Weitere Varianten sind `, F('Weitere Varianten oder Begründung für die Betrachtung einer Variante'), '.'));
   } else {
@@ -836,7 +878,7 @@ export function wtVariantenvergleich(d) {
 
   // Beschreibung je Variante
   const gesehen = new Set();
-  for (const v of V) out.push(...variantenBeschreibung(v, n.pMaxKw, gesehen));
+  for (const v of V) out.push(...variantenBeschreibung(v, n.auslKw, gesehen));
 
   if (V.length === 1) {
     const v = V[0];
@@ -1024,7 +1066,7 @@ export function wtFazit(d) {
   const V = n.varianten;
   const out = [];
   const typSatz = { neubau: ' Die Liegenschaft besteht ausschließlich aus geplanten Neubauten.', gemischt: ' Die Liegenschaft besteht aus Bestandsgebäuden und geplanten Neubauten.', bestand: '' }[n.typ] || '';
-  const bedarf = ok(n.gesamtMwh) ? `Der Wärmebedarf der Liegenschaft beträgt im Soll-Zustand rund ${nf(n.gesamtMwh)} MWh pro Jahr bei einer Spitzenlast von ${nf(n.pMaxKw)} kW.${typSatz}` : '';
+  const bedarf = ok(n.gesamtMwh) ? `Der Wärmebedarf der Liegenschaft beträgt im Soll-Zustand rund ${nf(n.gesamtMwh)} MWh pro Jahr bei einer Auslegungsspitze von ${nf(n.auslKw)} kW.${typSatz}` : '';
   const herk = {
     import: 'gemessenen Lastgang', importMonate: 'gemessenen, auf Monatsverbräuche skalierten Lastgang',
     monate: 'synthetischen, auf Monatsverbräuche gestützten Lastgang', monateGesamt: 'synthetischen, auf Monatsverbräuche gestützten Lastgang',

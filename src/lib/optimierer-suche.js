@@ -30,7 +30,7 @@ export function optKombinationen(keys, maxN) {
 export function optKonzeptSchluessel(keys, autoGkMwh, autoGkPeakKw) {
   const s = {};
   for (const k of keys) s[k] = true;
-  if ((autoGkMwh || 0) > 0.05 && (autoGkPeakKw || 0) > 0.1) s.gaskessel = true;
+  if ((autoGkPeakKw || 0) > 0.1) s.gaskessel = true;
   return Object.keys(s).sort().join('+');
 }
 

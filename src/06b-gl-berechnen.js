@@ -19,6 +19,8 @@ import { buildBuildingHeatProfiles } from './lib/building-heat-profiles.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { setThermSpeicherAktiv, thermSpeicherAktiv } from './01-globals-varianten.js';
 import { speicherVerlustProH } from './lib/waermespeicher.js';
+import { auslegungsSpitze, tagesmittel365, vorlaufNachHeizkurve } from './lib/auslegung.js';
+import { glfWinter } from './lib/gleichzeitigkeit.js';
 
 export let _glAutoTimer  = null;
 export let _glIsRunning  = false;
@@ -40,6 +42,81 @@ export function glBerechnenDebounced(delay = 1000) {
     if (_glIsRunning) { glBerechnenDebounced(Math.max(delay, 200)); return; }
     await glBerechnen();
   }, delay);
+}
+
+// ── Auslegungsspitze (Normaußentemperatur) ────────────────────────────────
+/**
+ * Auslegungsspitze des aktuellen Lastgangs (lib/auslegung.js). Beim Lastgang aus Gebäudedaten: Σ Normheizlast der
+ * eingerechneten Gebäude im Betrachtungsjahr × Gleichzeitigkeit (Einstellung des Wärmenetzes) + Netzverlustleistung;
+ * fehlt eine Heizlast oder ist der Lastgang eingegeben/gemessen: Hochrechnung auf die Normaußentemperatur.
+ * Dazu die Vorlauftemperatur im Auslegungsfall (Heizkurve). null ohne Lastgang.
+ */
+export function auslegungsSpitzeAktuell(ss = window.systemState) {
+  if (!ss?.lastgangKw?.length) return null;
+  let heizlastenKw = null;
+  if (ss.nurGebaeude) {
+    const hl = [];
+    let vollstaendig = true;
+    for (const g of gebaeude) {
+      if (isExcluded(g.id)) continue;
+      const st = getComputedStats(g, globalYear) || {};
+      if (!((+st.waerme || 0) > 0)) continue;
+      if ((+st.heizlast || 0) > 0) hl.push(+st.heizlast); else { vollstaendig = false; break; }
+    }
+    if (vollstaendig && hl.length) heizlastenKw = hl;
+  }
+  const n = heizlastenKw?.length || 0;
+  const methode = document.getElementById('netz-gzf-methode')?.value || 'richtwert';
+  const glf = methode === 'keine' ? 1
+    : methode === 'manuell' ? Math.max(0.1, Math.min(1, readNum('netz-gzf-manuell', 0.6, 0.1, 1)))
+    : glfWinter(n);
+  // Netzverlust in der Spitze: berechnetes Wärmenetz (Erdreich im Winter), sonst Jahresverlust je Betriebsstunde
+  let verlustKw = 0;
+  const kanten = ss.netzverlustQuelle === 'waermenetz' ? (window.netzEdges || []) : [];
+  const netzKw = kanten.reduce((s, e) => s + (e.lossKW || 0), 0);
+  if (netzKw > 0) verlustKw = netzKw;
+  else if (ss.netzverlustMwh > 0) verlustKw = ss.netzverlustMwh * 1000 / (ss.twwDezentral?.betriebStunden || ss.lastgangKw.length);
+  // Tagesmittel zum Lastgang: beim eingelesenen Lastgang die des Messjahres (Witterungsbereinigung, wie im Gutachten
+  // 3.2.5; ohne sie bleibt es bei der Spitze des Lastgangs), sonst die des Klimajahrs
+  let tageT = null;
+  if (glLastgangKw) {
+    const wb = window.getWitterung?.() || {};
+    if (wb.ergebnis?.messjahr === wb.messjahr && wb.ergebnis?.tageT?.length === 365) tageT = Array.from(wb.ergebnis.tageT);
+  } else {
+    tageT = tagesmittel365(ss.tempH);
+  }
+  const a = auslegungsSpitze({ lastgangKw: ss.lastgangKw, tageT, normAt: ss.normAussentemp, heizlastenKw, glf, verlustKw });
+  const vl5 = Number.isFinite(ss.vlMinus5) ? ss.vlMinus5 : 90, vl15 = Number.isFinite(ss.vl15) ? ss.vl15 : 70;
+  a.vorlauf = vorlaufNachHeizkurve(a.normAt ?? -12, vl5, vl15);
+  return a;
+}
+
+/** Kennzahlen-Kachel Spitzenlast: Auslegungsspitze, darunter Spitze des Lastgangs und Σ Normheizlast. */
+export function spitzenlastKachel(summeHeizlastKw) {
+  const wert = document.getElementById('tot-hl'), lbl = document.getElementById('tot-hl-lbl');
+  const sub = document.getElementById('tot-hl-sub'), kachel = document.getElementById('tc-hl');
+  if (!wert || !lbl || !sub || !kachel) return;
+  const de = v => Math.round(v).toLocaleString('de-DE');
+  const a = auslegungsSpitzeAktuell();
+  if (!a) {
+    wert.textContent = summeHeizlastKw ? de(summeHeizlastKw) : '—';
+    lbl.textContent = 'Normheizlast (kW)';
+    sub.textContent = '';
+    kachel.title = 'Summe der Gebäude-Normheizlasten (DIN EN 12831).\nNach der Lastgangberechnung wird hier die Auslegungsspitze angezeigt.';
+    return;
+  }
+  wert.textContent = de(a.kw);
+  lbl.textContent = 'Auslegungsspitze (kW)';
+  sub.textContent = `Lastgang ${de(a.lastgangKw)} kW` + (summeHeizlastKw ? ` · Σ Gebäude ${de(summeHeizlastKw)} kW` : '');
+  const nat = a.normAt != null ? a.normAt.toLocaleString('de-DE') : '—';
+  const herleitung = a.quelle === 'heizlast'
+    ? `Σ Normheizlast ${de(a.summeHeizlastKw)} kW × Gleichzeitigkeit ${a.glf.toFixed(2).replace('.', ',')} + Netzverluste ${de(a.verlustKw)} kW`
+    : a.quelle === 'hochrechnung'
+      ? `Spitze des Lastgangs ${de(a.lastgangKw)} kW, linear auf die Normaußentemperatur hochgerechnet (Tagesmittel am Spitzentag ${a.tSpitze.toFixed(1).replace('.', ',')} °C)`
+      : 'Spitze des Lastgangs (liegt bereits bei oder über der Normaußentemperatur)';
+  kachel.title = `Auslegungsspitze bei Normaußentemperatur ${nat} °C: ${de(a.kw)} kW\n${herleitung}.\n`
+    + `Spitze des Lastgangs (Einsatzplanung, Klima-/Messjahr): ${de(a.lastgangKw)} kW.\n`
+    + 'Die Auslegungsspitze bestimmt die Mindestleistung der Wärmeerzeugung (Spitzenlastkessel).';
 }
 
 // ── Eingangsstand des Lastgangs ───────────────────────────────────────────
@@ -385,13 +462,8 @@ async function glBerechnen() {
     document.getElementById('tot-waerme').textContent =
       Math.round(gesamtMwhMitNV).toLocaleString('de-DE', {maximumFractionDigits: 1});
     document.getElementById('tc-waerme').title = `${Math.round(gesamtMwhMitNV)} MWh/a inkl. Netzverluste (Lastgang).\nOhne Verluste: ${Math.round(nutzwaermeMwh)} MWh/a`;
-    document.getElementById('tot-hl').textContent =
-      Math.round(window.systemState.pMaxKw).toLocaleString('de-DE', {maximumFractionDigits: 1});
-    document.getElementById('tot-hl-lbl').textContent = 'Netz-Spitzenlast (kW)';
-    const normheizlastKw = gebaeude.reduce((s,g) => s + (getComputedStats(g,globalYear).heizlast||0), 0);
-    document.getElementById('tot-hl-sub').textContent =
-      `Σ Gebäude: ${Math.round(normheizlastKw).toLocaleString('de-DE')} kW`;
-    document.getElementById('tc-hl').title = `Maßgebende Spitzenlast aus dem berechneten Lastgang inklusive Netzverlusten: ${Math.round(window.systemState.pMaxKw)} kW.\nSumme der Gebäude-Normheizlasten (DIN 12831): ${Math.round(normheizlastKw)} kW.`;
+    const normheizlastKw = gebaeude.reduce((s,g) => isExcluded(g.id) ? s : s + (getComputedStats(g,globalYear).heizlast||0), 0);
+    spitzenlastKachel(normheizlastKw);
 
     // Status aktualisieren
     const dot = document.getElementById('gl-status-dot');

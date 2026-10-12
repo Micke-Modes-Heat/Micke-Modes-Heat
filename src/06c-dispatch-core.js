@@ -9,7 +9,7 @@ import { _epKey, closeErzeugerPopup, redrawErzeugerIcons, showErzeugerPopup } fr
 import { calcGeoThermie, eisPanelAnzeigen } from './03b-netz.js';
 import { updateLpMeritOrder } from './04a-ui-panels.js';
 import { recalcStromNetz } from './05b-stromnetz.js';
-import { getThermSpeicherParams, glBerechnenDebounced, glKannBerechnen, makeStProfile8760 } from './06b-gl-berechnen.js';
+import { auslegungsSpitzeAktuell, getThermSpeicherParams, glBerechnenDebounced, glKannBerechnen, makeStProfile8760 } from './06b-gl-berechnen.js';
 import { _updateLogoBars, daUpdateIfOpen, saCurrentTab, saSetTab } from './07a-analysis-charts.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { calcStromPanel } from './09b-pv-calc.js';
@@ -232,7 +232,7 @@ export function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hi
     const leistungLabel = isWp
       ? `Nenn ${nennKw.toFixed(0)} kW · Heizlast ${heizlastKw.toFixed(0)} kW`
       : `${nennKw.toFixed(0)} kW`;
-    heizlastHtml = _stackedBar(allDeckungen, 'hlPct', myHlPct, 'Anteil Netz-Spitzenlast', leistungLabel);
+    heizlastHtml = _stackedBar(allDeckungen, 'hlPct', myHlPct, 'Anteil Auslegungsspitze', leistungLabel);
   }
 
   let requirementHtml = '';
@@ -320,6 +320,9 @@ export function updateAllDeckungen() {
 //   quelleTemp,                   — function(key, tAussen, t) → Quelltemp °C
 //   recordHourly,                 — true: stündl. Profile + Monats-COP aufzeichnen
 //   backupMode,                   — true: letzter Erzeuger hat unbegrenzte Kapazität
+//   auslegung,                    — {kw, normAt, vorlauf} Auslegungsspitze (lib/auslegung.js) oder null:
+//                                   was die Erzeuger bei Normaußentemperatur nicht sicher leisten, muss der
+//                                   Spitzenkessel (bzw. im Optimierer der Backup-Erzeuger) bereitstellen
 // }
 // ═══════════════════════════════════════════════════════════════════════════
 export function _dispatchCore(cfg) {
@@ -330,6 +333,7 @@ export function _dispatchCore(cfg) {
     bhkwSigma, skEta, lwwpMinCop,
     quelleTemp, recordHourly, backupMode,
     eisSpeicher = null,
+    auslegung = null,
   } = cfg;
   // Eisspeicher (optional): Zustand der Quelle der Sole-WP ('geo') über das Jahr
   const eis = eisSpeicher && eisSpeicher.volumenM3 > 0 ? erstelleEisZustand(eisSpeicher) : null;
@@ -645,9 +649,39 @@ export function _dispatchCore(cfg) {
     }
   }
 
+  // ── Auslegungsfall: gesicherte Leistung bei Normaußentemperatur ──
+  // Wärmepumpen mit der Leistung bei der Quelltemperatur des Auslegungsfalls (Fließgewässer unter 2 °C und Luft-WP
+  // unter dem Mindest-COP fallen aus), Kessel, BHKW, Stromkessel und Fernwärme mit Nennleistung; Solarthermie und
+  // Speicher zählen nicht. Der Rest bis zur Auslegungsspitze ist die Mindestleistung des Spitzenkessels.
+  let gesichertKw = null, autoGkAuslegungKw = 0;
+  if (auslegung && auslegung.kw > 0) {
+    let tSp = 0, pSp = -1;
+    for (let t = 0; t < n; t++) if (lastgangKw[t] > pSp) { pSp = lastgangKw[t]; tSp = t; }
+    const tA = Number.isFinite(auslegung.normAt) ? auslegung.normAt : tempH[tSp];
+    const tVL = Number.isFinite(auslegung.vorlauf) ? auslegung.vorlauf : vlH[tSp];
+    gesichertKw = 0;
+    for (const erz of erzList) {
+      const nennKw = erz.leistKw;
+      if (!(nennKw > 0) || (backupMode && erz === backupErz)) continue;
+      if (erz.typ === 'wp') {
+        const tQ = quelleTemp(erz.key, tA, tSp);
+        if (erz.key === 'fg' && tQ < 2) continue;
+        const tVLK = tVL + 273.15;
+        const cop = Math.min((tVLK / Math.max(tVLK - (tQ + 273.15), 0.1)) * erz.guetegrad, 8);
+        if (erz.key === 'lwwp' && lwwpMinCop > 0 && cop < lwwpMinCop) continue;
+        gesichertKw += nennKw * wpLeistFaktor(erz.key, tQ, tVL);
+      } else {
+        gesichertKw += nennKw;
+      }
+    }
+    const fehlt = Math.max(0, auslegung.kw - gesichertKw);
+    if (backupErz) { if (fehlt > backupPeakKw) backupPeakKw = fehlt; }
+    else { autoGkAuslegungKw = fehlt; if (fehlt > autoGkPeakKw) autoGkPeakKw = fehlt; }
+  }
+
   return {
     thKwh, elKwh, gesamtKwh, ladeKwh, verworfenKwh,
-    autoGkKwh, autoGkPeakKw,
+    autoGkKwh, autoGkPeakKw, gesichertKw, autoGkAuslegungKw,
     wpElH, bhkwElH, skElH,
     // Stündlich (nur recordHourly)
     hourly, residualH,
@@ -716,11 +750,14 @@ export function dispatchEingaben(ss) {
       bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false, eisSpeicher,
     }).thermSocEnde || 0;
   }
-  return { lastgangKw, tempH, vlH, activeKeys, erzList, leistungen, _guetegrad, bhkwSigma, skEta, lwwpMinCop, thSp, stProfile, eisSpeicher, speicherStartKwh };
+  // Auslegungsspitze bei Normaußentemperatur: Mindestleistung des Spitzenkessels (lib/auslegung.js)
+  const _a = auslegungsSpitzeAktuell(ss);
+  const auslegung = _a ? { kw: _a.kw, normAt: _a.normAt, vorlauf: _a.vorlauf } : null;
+  return { lastgangKw, tempH, vlH, activeKeys, erzList, leistungen, _guetegrad, bhkwSigma, skEta, lwwpMinCop, thSp, stProfile, eisSpeicher, speicherStartKwh, auslegung };
 }
 
 export function _deckungen8760(ss) {
-  const { lastgangKw, tempH, vlH, activeKeys, erzList, leistungen, _guetegrad, bhkwSigma, skEta, lwwpMinCop, thSp, stProfile, eisSpeicher, speicherStartKwh } = dispatchEingaben(ss);
+  const { lastgangKw, tempH, vlH, activeKeys, erzList, leistungen, _guetegrad, bhkwSigma, skEta, lwwpMinCop, thSp, stProfile, eisSpeicher, speicherStartKwh, auslegung } = dispatchEingaben(ss);
   window._dimLastgangKw = lastgangKw;
   window._dimJdlSorted = null;
 
@@ -735,7 +772,7 @@ export function _deckungen8760(ss) {
     quelleTemp: _quelleTemp,
     recordHourly: true,
     backupMode: false,
-    eisSpeicher, speicherStartKwh,
+    eisSpeicher, speicherStartKwh, auslegung,
   });
   window._eisSpeicherErgebnis = r.eisStat;
   window._eisSpeicherState = r.eisH ? { ...r.eisH, reserveMaxKwh: r.eisParam.wMax - r.eisParam.wMin, maxVereisung: r.eisParam.maxVereisung, volumenM3: r.eisParam.volumenM3 } : null;
@@ -783,22 +820,27 @@ export function _deckungen8760(ss) {
       _spitzenlastStunde = i;
     }
   }
+  // Heizlastfall = Auslegungsfall: Auslegungsspitze bei Normaußentemperatur (lib/auslegung.js), WP-Leistung bei der
+  // Quelltemperatur und Vorlauftemperatur dieses Falls — wie die gesicherte Leistung im Dispatch-Kern
+  const _auslKw = auslegung?.kw > 0 ? auslegung.kw : _spitzenlastKw;
+  const _tA = Number.isFinite(auslegung?.normAt) ? auslegung.normAt : tempH[_spitzenlastStunde];
+  const _tVL = Number.isFinite(auslegung?.vorlauf) ? auslegung.vorlauf : vlH[_spitzenlastStunde];
   const heizlastInfos = {};
   activeKeys.forEach(key => {
     const nennKw = leistungen[key];
     const isWp = ERZEUGER_CFG[key].typ === 'wp';
     let heizlastKw = nennKw;
     if (isWp) {
-      const tQ = _quelleTemp(key, tempH[_spitzenlastStunde], _spitzenlastStunde);
-      const tVLK = vlH[_spitzenlastStunde] + 273.15;
+      const tQ = _quelleTemp(key, _tA, _spitzenlastStunde);
+      const tVLK = _tVL + 273.15;
       const tQK  = tQ + 273.15;
       const hub  = Math.max(tVLK - tQK, 0.1);
-      const copDesign = (tVLK / hub) * _guetegrad(key);
+      const copDesign = Math.min((tVLK / hub) * _guetegrad(key), 8);
       const nichtVerfuegbar = (key === 'fg' && tQ < 2)
         || (key === 'lwwp' && lwwpMinCop > 0 && copDesign < lwwpMinCop);
-      heizlastKw = nichtVerfuegbar ? 0 : nennKw * wpLeistungsFaktor(key, tQ, vlH[_spitzenlastStunde]);
+      heizlastKw = nichtVerfuegbar ? 0 : nennKw * wpLeistungsFaktor(key, tQ, _tVL);
     }
-    heizlastInfos[key] = { nennKw, heizlastKw, spitzenlastKw: _spitzenlastKw, isWp };
+    heizlastInfos[key] = { nennKw, heizlastKw, spitzenlastKw: _auslKw, isWp };
   });
 
   // ── Deckungsanteile rendern ──
@@ -814,7 +856,7 @@ export function _deckungen8760(ss) {
     const cfg = ERZEUGER_CFG[key];
     const wpMwh      = thKwh[key] / 1000;
     const deckungPct = gesamtKwh > 0 ? thKwh[key] / gesamtKwh * 100 : 0;
-    const hlPct = _spitzenlastKw > 0 ? (heizlastInfos[key].heizlastKw / _spitzenlastKw * 100) : 0;
+    const hlPct = _auslKw > 0 ? (heizlastInfos[key].heizlastKw / _auslKw * 100) : 0;
     prioCnt++;
     allDeckungen.push({ key, label: cfg.label, color: cfg.color, pct: deckungPct, mwh: wpMwh, hlPct, prio: prioCnt });
   });
@@ -842,7 +884,7 @@ export function _deckungen8760(ss) {
       trial.splice(currentIndex, 0, { ...current, leistKw: capacity });
       const result = _dispatchCore({
         lastgangKw, tempH, vlH, erzList: trial, speicherParams: thSp, stProfile, stExcessH: null,
-        bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false, eisSpeicher, speicherStartKwh,
+        bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false, eisSpeicher, speicherStartKwh, auslegung,
       });
       simulationCache.set(cacheKey, result);
       return result;
@@ -905,8 +947,11 @@ export function _deckungen8760(ss) {
   });
 
   // ── Auto-GK ──
-  if (autoGkKwh > 0.1) {
-    setAutoGkResult({ leistungKw: Math.round(autoGkPeakKw), deckungPct: gesamtKwh > 0 ? autoGkKwh / gesamtKwh * 100 : 0, waermeMwh: autoGkKwh / 1000 });
+  // auch ohne Energie, wenn die übrigen Erzeuger die Auslegungsspitze nicht sicher decken (Reserveleistung)
+  const _agkAktiv = autoGkKwh > 0.1 || r.autoGkAuslegungKw > 0.5;
+  if (_agkAktiv) {
+    setAutoGkResult({ leistungKw: Math.round(autoGkPeakKw), deckungPct: gesamtKwh > 0 ? autoGkKwh / gesamtKwh * 100 : 0, waermeMwh: autoGkKwh / 1000,
+      auslegungKw: r.autoGkAuslegungKw || 0, auslegungsSpitzeKw: auslegung?.kw || 0, gesichertKw: r.gesichertKw });
   } else {
     setAutoGkResult(false);
   }
@@ -928,7 +973,7 @@ export function _deckungen8760(ss) {
   } else {
     dispKeys.push(...activeKeys);
   }
-  if (autoGkKwh > 0.1) {
+  if (_agkAktiv) {
     hourly['_autoGk'] = residualH;
     dispKeys.push('_autoGk');
   }
@@ -946,7 +991,7 @@ export function _deckungen8760(ss) {
   if (hatST) window._dispatchEnergy['solarthermie'] = _eintrag('solarthermie', 0);
   if (hatSpeicher) window._dispatchEnergy['_thermSpeicher'] = { waermeMwh: thKwh['_thermSpeicher'] / 1000, elMwh: 0,
     geladenMwh: thermGeladenGes / 1000, verlustMwh: thermVerlustGes / 1000 };
-  if (autoGkKwh > 0.1) window._dispatchEnergy['_autoGk'] = { waermeMwh: autoGkKwh / 1000, elMwh: 0 };
+  if (_agkAktiv) window._dispatchEnergy['_autoGk'] = { waermeMwh: autoGkKwh / 1000, elMwh: 0 };
 
   calcStromPanel();
   calcWirtschaftPanel();

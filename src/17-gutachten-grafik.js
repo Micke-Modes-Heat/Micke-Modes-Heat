@@ -1553,7 +1553,7 @@ function ggVariantenDaten() {
   const bEta = ggFeldZahl('bhkw-eta'), bSkz = ggFeldZahl('bhkw-skz');
   if (Number.isFinite(bEta) && bEta > 0) eta.bhkwTh = bEta / 100 / (1 + (Number.isFinite(bSkz) ? bSkz : 0.45));
   return {
-    varianten: d.varianten.map(v => ({ ...v, eta })), eta, pMaxKw: d.lastgang.pMaxKw, gesamtMwh: d.lastgang.gesamtMwh,
+    varianten: d.varianten.map(v => ({ ...v, eta })), eta, pMaxKw: d.lastgang.auslegung?.kw > 0 ? d.lastgang.auslegung.kw : d.lastgang.pMaxKw, gesamtMwh: d.lastgang.gesamtMwh,
     preise: { strom: Number.isFinite(stromWp) ? stromWp : ggFeldZahl('wirt-p-strom'), gas: ggFeldZahl('wirt-p-gas'), oel: ggFeldZahl('wirt-p-hko'), pellets: ggFeldZahl('wirt-p-pk'), hhs: ggFeldZahl('wirt-p-hhs'), fw: ggFeldZahl('wirt-p-fw') },
     ef: { gas: num(ggLies(() => w.gasEmF)), oel: num(ggLies(() => w.heizoelEmF)), pellets: num(ggLies(() => w.pelletsEmF)), strom: num(ggLies(() => w.stromEmF)), stromLz: num(ggLies(() => w.stromEmFLZ)) },
     co2PreisEurT: ggFeldZahl('wirt-p-co2'), co2Quelle: VA_CO2_QUELLE,
@@ -1854,6 +1854,8 @@ export function ggWaermeDaten() {
   const lastgang = ss ? {
     pMaxKw: ss.pMaxKw, nutzMwh: ss.nutzwaermeMwh, gesamtMwh: ss.gesamtMwhMitNV,
     netzverlustPct: ss.netzverlustPct, netzverlustMwh: ss.netzverlustMwh, tMinC: ss.tMin, jdlKw: ss.jahresdauerlinie,
+    // Auslegungsspitze bei Normaußentemperatur (lib/auslegung.js) — maßgebend für Leistungsprüfung und Resilienz
+    auslegung: ggLies(() => w.auslegungsSpitzeAktuell?.(), null),
   } : {};
 
   // Erzeuger der aktiven Variante direkt aus dem Dispatch; die übrigen Varianten kommen aus ihrem Zwischenstand
@@ -3313,7 +3315,7 @@ const GG_FIGUREN = [
     render: () => {
       const ss = window.systemState;
       const mittel = ss?.lastgangKw?.length ? ss.lastgangKw.reduce((a, b) => a + b, 0) / ss.lastgangKw.length : NaN;
-      return ggWaermeTextBlatt(faTextHeizoeltank({ maxKw: ss?.pMaxKw, mittelKw: mittel }));
+      return ggWaermeTextBlatt(faTextHeizoeltank({ maxKw: ggLies(() => window.auslegungsSpitzeAktuell?.()?.kw, null) || ss?.pMaxKw, mittelKw: mittel }));
     },
     config: {},
   },

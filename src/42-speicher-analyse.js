@@ -95,7 +95,7 @@ function _params(vol, peakKw) {
 function _lauf(E, param, aufzeichnen) {
   const basis = {
     lastgangKw: E.lastgangKw, tempH: E.tempH, vlH: E.vlH, erzList: E.erzList, stProfile: E.stProfile, stExcessH: null,
-    bhkwSigma: E.bhkwSigma, skEta: E.skEta, lwwpMinCop: E.lwwpMinCop, quelleTemp: _quelleTemp, backupMode: false, eisSpeicher: E.eisSpeicher,
+    bhkwSigma: E.bhkwSigma, skEta: E.skEta, lwwpMinCop: E.lwwpMinCop, quelleTemp: _quelleTemp, backupMode: false, eisSpeicher: E.eisSpeicher, auslegung: E.auslegung,
   };
   if (!param) return _dispatchCore({ ...basis, speicherParams: null, recordHourly: aufzeichnen });
   // Eingeschwungen: das Jahr beginnt mit dem Füllstand vom Jahresende (wichtig für Langzeitspeicher)

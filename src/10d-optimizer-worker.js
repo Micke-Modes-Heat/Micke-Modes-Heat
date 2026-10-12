@@ -103,6 +103,7 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
     quelleTemp: _quelleTemp,
     recordHourly: false,
     backupMode: !!backupMode,
+    auslegung: D.auslegung || null,
   };
   if (saisonal) args.speicherStartKwh = _dispatchCore(args).thermSocEnde || 0;
   const r = _dispatchCore(args);
@@ -205,9 +206,10 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
 
   const _bPKw = {};
   for (const erz of erzeugerList) _bPKw[erz.key] = erz.leistKw;
-  // Spitzenlastkessel (Rest, den die gewählten Erzeuger nicht decken) wie in der Wirtschaftlichkeit
+  // Spitzenlastkessel (Rest, den die gewählten Erzeuger nicht decken, mindestens die fehlende Leistung im
+  // Auslegungsfall) wie in der Wirtschaftlichkeit
   const _agkMwh = dispR.autoGkMwh || 0, _agkKw = dispR.autoGkPeakKw || 0;
-  if (_agkMwh > 0.05 && _agkKw > 0.1) _bPKw._autoGk = Math.ceil(_agkKw);
+  if (_agkKw > 0.1) _bPKw._autoGk = Math.ceil(_agkKw);
   const erzListTyped = erzeugerList.map(erz => ({ key: erz.key, waermeMwh: erz.waermeMwh, elMwh: erz.elMwh, ladeMwh: erz.ladeMwh || 0, erzeugtMwh: erz.erzeugtMwh ?? erz.waermeMwh, typ: D.ERZEUGER_TYP[erz.key] }));
   if (_bPKw._autoGk) erzListTyped.push({ key: '_autoGk', waermeMwh: _agkMwh, elMwh: 0, typ: 'fix' });
 
@@ -350,7 +352,7 @@ self.onmessage = function(e) {
     const kanon = optKonzeptSchluessel(keys, E.disp.autoGkMwh, E.disp.autoGkPeakKw);
     let sc = score(kw, ziel);
     // Höchstleistung des Gaskessels gilt auch für den Spitzenlastkessel
-    if (S.gasMaxKw > 0 && E.disp.autoGkMwh > 0.05 && E.disp.autoGkPeakKw > S.gasMaxKw + 0.5) sc = Infinity;
+    if (S.gasMaxKw > 0 && E.disp.autoGkPeakKw > S.gasMaxKw + 0.5) sc = Infinity;
     return { score: sc, kw, kanon, E, pvBat, x };
   }
 

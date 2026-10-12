@@ -3,12 +3,13 @@
 // DOM-frei. Eingaben kommen aus systemState, der Witterungsbereinigung (34-witterung.js) und der Bestandsanlage.
 import { F, wtHilfen, wtDeckungsleistung } from './gutachten-waerme-texte.js';
 import { sommerMittel } from './witterung.js';
+import { THETA_INNEN_HOCHRECHNUNG, spitzeHochrechnen } from './auslegung.js';
 
 const { ok, nf, pct, absatz } = wtHilfen;
 const L = kw => (kw >= 1000 ? `${nf(kw / 1000, 2)} MW` : `${nf(kw)} kW`);
 
 /** Bezugstemperatur der linearen Extrapolation (Innentemperatur, bei der die Heizlast null wird), °C. */
-export const LG_INNEN = 22;
+export const LG_INNEN = THETA_INNEN_HOCHRECHNUNG;
 
 /** Witterungsbereinigung des Lastgangs (wb = window._wbInfo) oder Hinweis auf das Messjahr. */
 export function lgTextWitterung(wb, o = {}) {
@@ -56,19 +57,11 @@ export function lgTextGrundlast({ lastgangKw, gesamtMwh, netzverlustMwh, twwDeze
  * o: { lastgangKw, tageT (365 Tagesmittel des Messjahres), normAtC, auffaelligeNutzung, bestandThermKw }
  */
 export function lgSpitzenlast(lastgangKw, tageT, normAtC) {
-  if (!lastgangKw || lastgangKw.length < 8760) return null;
-  let pMax = 0, hMax = 0;
-  for (let h = 0; h < 8760; h++) if (lastgangKw[h] > pMax) { pMax = lastgangKw[h]; hMax = h; }
-  const tag = Math.floor(hMax / 24);
-  const tSpitze = Array.isArray(tageT) && tageT.length === 365 ? tageT[tag] : NaN;
-  const tMin = Array.isArray(tageT) && tageT.length === 365 ? Math.min(...tageT) : NaN;
-  const grund = sommerMittel(lastgangKw);
-  // Linear über die Temperaturdifferenz zur Innentemperatur: P(T_Norm) = P(T_Spitze) · (22 − T_Norm) / (22 − T_Spitze)
-  let pNorm = NaN;
-  if (ok(tSpitze) && ok(normAtC) && tSpitze < LG_INNEN) {
-    pNorm = normAtC < tSpitze ? pMax * (LG_INNEN - normAtC) / (LG_INNEN - tSpitze) : pMax;
-  }
-  return { pMax, tag, tSpitze, tMin, normAtC, pNorm, grund };
+  // Linear über die Temperaturdifferenz zur Innentemperatur: P(T_Norm) = P(T_Spitze) · (22 − T_Norm) / (22 − T_Spitze);
+  // dieselbe Rechnung wie die Auslegungsspitze der Anwendung (lib/auslegung.js)
+  const s = spitzeHochrechnen(lastgangKw, tageT, normAtC);
+  if (!s) return null;
+  return { pMax: s.pMax, tag: s.tag, tSpitze: s.tSpitze, tMin: s.tMin, normAtC, pNorm: s.pNorm, grund: sommerMittel(lastgangKw) };
 }
 
 export function lgTextSpitzenlast(o = {}) {

@@ -15,8 +15,9 @@ describe('optKonzeptSchluessel', () => {
   it('Spitzenlastkessel und Gaskessel sind dasselbe Konzept', () => {
     expect(optKonzeptSchluessel(['lwwp'], 120, 300)).toBe(optKonzeptSchluessel(['lwwp', 'gaskessel'], 0, 0));
   });
-  it('ohne Restwärme kein Gaskessel', () => {
-    expect(optKonzeptSchluessel(['pellets'], 0.01, 50)).toBe('pellets');
+  it('ohne Spitzenlastkessel kein Gaskessel; Reserveleistung für die Auslegungsspitze zählt auch ohne Wärme', () => {
+    expect(optKonzeptSchluessel(['pellets'], 0, 0)).toBe('pellets');
+    expect(optKonzeptSchluessel(['pellets'], 0, 50)).toBe('gaskessel+pellets');
   });
 });
 

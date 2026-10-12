@@ -15,7 +15,7 @@ import { calcGeoThermie, clearGeo, redrawGeo } from './03b-netz.js';
 import { showHint } from './03c-gebaeude-io.js';
 import { getKostenProMKlasse, updateLpErgebnisKpis, updateLpStepProgress } from './04a-ui-panels.js';
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
-import { clearSolarthermie, clearThermSpeicher, getThermSpeicherParams, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
+import { auslegungsSpitzeAktuell, clearSolarthermie, clearThermSpeicher, getThermSpeicherParams, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
 import { _dispatchCore, autoGkResult, isErzeugerAktiv, meritOrderKeys, onSystemStateUpdated, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
 import { _calcKostenShared, _parseGeoBohrMeter, batterieLebensdauer, netzPumpenstromMwh, pvWaermeEingaben, vdiDynParams, wirtPvWp } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
@@ -73,6 +73,17 @@ export function _readGuetegrad(key) {
   return isNaN(v) || v <= 0 ? _defaultGuetegrad(key) : v;
 }
 
+// Auslegungsspitze für den Optimierer (Dispatch-Kern: Mindestleistung des Backup-/Spitzenkessels); je Lastgang und Jahr einmal
+let _auslCache = null;
+export function _optAuslegung() {
+  const ss = window.systemState;
+  if (_auslCache && _auslCache.ref === ss?.lastgangKw && _auslCache.jahr === globalYear) return _auslCache.val;
+  const a = typeof auslegungsSpitzeAktuell === 'function' ? auslegungsSpitzeAktuell(ss) : null;
+  const val = a ? { kw: a.kw, normAt: a.normAt, vorlauf: a.vorlauf } : null;
+  _auslCache = { ref: ss?.lastgangKw, jahr: globalYear, val };
+  return val;
+}
+
 // ── Optimizer-Dispatch: dünner Wrapper um _dispatchCore ──────────────────
 // Signatur bleibt identisch für alle 10 Aufrufstellen im Optimizer.
 // Intern wird der gemeinsame Kern (_dispatchCore aus 06-system-dispatch.js) genutzt.
@@ -113,6 +124,7 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
     quelleTemp: _quelleTemp,
     recordHourly: false,
     backupMode: true,
+    auslegung: _optAuslegung(),
   };
   if (saisonal) args.speicherStartKwh = _dispatchCore(args).thermSocEnde || 0;
   const r = _dispatchCore(args);
@@ -237,9 +249,10 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
   // Peak-Leistungen für Bausteine
   const _bPKw = {};
   for (const erz of erzeugerList) _bPKw[erz.key] = erz.leistKw;
-  // Auto-Spitzenlastkessel (Rest, den die gewählten Erzeuger nicht decken) wie in der normalen Wirtschaftlichkeit
+  // Auto-Spitzenlastkessel (Rest, den die gewählten Erzeuger nicht decken, mindestens die fehlende Leistung im
+  // Auslegungsfall) wie in der normalen Wirtschaftlichkeit
   const _agkMwh = dispatchResult.autoGkMwh || 0, _agkKw = dispatchResult.autoGkPeakKw || 0;
-  if (_agkMwh > 0.05 && _agkKw > 0.1) _bPKw._autoGk = Math.ceil(_agkKw);
+  if (_agkKw > 0.1) _bPKw._autoGk = Math.ceil(_agkKw);
   const _bInvestFn = (key, kw) => kw > 0.1 ? Math.round(kw * _optInvestProKw(key, kw)) : 0;
 
   // Dynamische Bohrmeter für Geo
@@ -546,6 +559,7 @@ export function _collectOptDomParams() {
   }
   return {
     bhkwSkz: f('bhkw-skz', 0.45), skEta: f('sk-eta', 99) / 100, lwwpMinCop: f('lwwp-min-cop', 0),
+    auslegung: _optAuslegung(),
     geoDtAbsenkung: f('geo-dt-absenkung', 4),
     geoTiefe: Math.min(400, Math.max(30, f('geo-tiefe', 100))),
     geoQPerM: Math.min(60, Math.max(10, f('geo-q-perm', 31))),
@@ -747,7 +761,7 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
   // Spitzenlastkessel der Optimierung als echten Gaskessel übernehmen — gleiche Leistung,
   // damit Einsatz und Kosten der Variante exakt der Ergebniskarte entsprechen
   const _agkMwh = result.sim?.autoGkMwh || 0, _agkKw = result.sim?.autoGkPeakKw || 0;
-  if (_agkMwh > 0.05 && _agkKw > 0.1 && !result.config.some(c => c.key === 'gaskessel')) {
+  if (_agkKw > 0.1 && !result.config.some(c => c.key === 'gaskessel')) {
     const leist = Math.ceil(_agkKw);
     document.getElementById('gk-leistung').value = leist;
     window.gasKessel = { leistungKw: leist };
@@ -850,7 +864,11 @@ export function updateFooterStatus() {
   // Heizlast (mit Quellenangabe)
   if (ss?.pMaxKw > 0) {
     let hlQuelle = hatLg ? 'Lastgang' : (ss?.nurGebaeude ? 'Gebäude' : 'Synthese');
-    _fsTxt(fsHL, Math.round(ss.pMaxKw).toLocaleString('de-DE') + ' kW (' + hlQuelle + ')');
+    // Auslegungsspitze bei Normaußentemperatur; in Klammern die Spitze des Lastgangs (Einsatzplanung)
+    const ausl = _optAuslegung();
+    _fsTxt(fsHL, ausl && ausl.kw > ss.pMaxKw + 0.5
+      ? Math.round(ausl.kw).toLocaleString('de-DE') + ' kW Auslegung (' + hlQuelle + ' ' + Math.round(ss.pMaxKw).toLocaleString('de-DE') + ' kW)'
+      : Math.round(ss.pMaxKw).toLocaleString('de-DE') + ' kW (' + hlQuelle + ')');
     _fsDot(fsHL, true);
   } else if (gebKw > 0) {
     _fsTxt(fsHL, '~' + Math.round(gebKw).toLocaleString('de-DE') + ' kW (Gebäude)');

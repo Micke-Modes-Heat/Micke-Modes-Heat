@@ -527,10 +527,10 @@ export function calcWirtschaftPanel() {
     const cfg = ERZEUGER_CFG[k];
     const konfigKw = cfg?.leistungId ? (parseFloat(document.getElementById(cfg.leistungId)?.value) || 0) : 0;
     if (k === '_autoGk') {
-      // Auto-GK: Dispatch-Peak verwenden (keine konfigurierte Leistung)
+      // Auto-GK: Dispatch-Peak, mindestens die im Auslegungsfall fehlende Leistung (keine konfigurierte Leistung)
       const arr = window._dispatchHourly?.[k];
       if (arr && arr.length > 0) {
-        let m = 0; for (let i = 0; i < arr.length; i++) if (arr[i] > m) m = arr[i]; pKw[k] = m;
+        let m = autoGkResult?.auslegungKw || 0; for (let i = 0; i < arr.length; i++) if (arr[i] > m) m = arr[i]; pKw[k] = m;
       } else if (autoGkResult) {
         pKw[k] = autoGkResult.leistungKw || 0;
       } else {
@@ -1776,7 +1776,7 @@ export function calcJahresscheiben() {
   const pKw = {};
   keys.forEach(k => {
     const arr = window._dispatchHourly?.[k];
-    if (arr && arr.length > 0) { let m = 0; for (let i = 0; i < arr.length; i++) if (arr[i] > m) m = arr[i]; pKw[k] = m; }
+    if (arr && arr.length > 0) { let m = k === '_autoGk' ? (autoGkResult?.auslegungKw || 0) : 0; for (let i = 0; i < arr.length; i++) if (arr[i] > m) m = arr[i]; pKw[k] = m; }
     else { const cfg = ERZEUGER_CFG[k]; pKw[k] = cfg?.leistungId ? (parseFloat(document.getElementById(cfg.leistungId)?.value) || 0) : 0; }
   });
   const aktiv = k => keys.includes(k) && (pKw[k] || 0) > 0.1;
