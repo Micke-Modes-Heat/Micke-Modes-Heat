@@ -28,6 +28,7 @@ import {
   raDateiname, raLesen, raPruefung, raAnforderungen,
   raExportJson, raRueckfragenText, raRueckfragenMappe, raDauerText, raText,
   raLesenErhebung, RA_ERHEBUNG_KENNUNG_PRAEFIX,
+  raMappeSchlank, raDateinameSchlank,
 } from './lib/resilienz-abfrage.js';
 import { raErhebungStart, raErhebungHtml, raErhebungAusHtml, raErhebungDateiname } from './lib/resilienz-app.js';
 import RA_APP_VORLAGE from './resilienz-app/vorlage.html?raw';
@@ -36,6 +37,7 @@ import { escHtml, showHint } from './03c-gebaeude-io.js';
 
 const PANEL_ID = 'resilienz-abfrage-panel';
 const GRUEN = '#3f9c3f';
+const VIOLETT = '#6a4c93';
 
 /** Projektzustand des Moduls. */
 export function raZustand() {
@@ -132,20 +134,25 @@ async function _herunterladen(mappe, dateiname) {
   return true;
 }
 
-export async function raDateiErzeugen() {
+/** @param {'schlank'} [variante]  schlanke Fassung: nur Betreiber-Fragen + gekennzeichnete Auftraggeber-Punkte */
+export async function raDateiErzeugen(variante) {
   const z = raZustand();
   const meta = { ...z.meta };
   if (!meta.stand) meta.stand = _heutigesDatum();
   const mitGebaeuden = z.meta.ohneVorbelegung !== 'ja';
   const geb = mitGebaeuden ? _gebaeude() : [];
-  const funktionen = raVorbelegung(geb);
-  const kategorien = raKategorieVorbelegung(geb);
+  const schlank = variante === 'schlank';
+  // Die schlanke Fassung kennt keine Kategorien und keine Betriebszeit.
+  const funktionen = schlank ? raVorbelegung(geb).map(({ kategorie, betrieb, ...f }) => f) : raVorbelegung(geb);
+  const kategorien = schlank ? [] : raKategorieVorbelegung(geb);
   try {
-    const ok = await _herunterladen(raMappe({ meta, funktionen, kategorien, leerzeilen: 40 }), raDateiname(meta));
+    const mappe = schlank ? raMappeSchlank({ meta, funktionen, leerzeilen: 40 })
+      : raMappe({ meta, funktionen, kategorien, leerzeilen: 40 });
+    const ok = await _herunterladen(mappe, schlank ? raDateinameSchlank(meta) : raDateiname(meta));
     if (!ok) return;
     z.meta.stand = meta.stand;
-    showHint(`✓ Abfragedatei erzeugt — ${funktionen.length} Funktionszeilen und ${kategorien.length} Kategorien `
-      + 'vorbelegt, 40 Zeilen frei.', 7000);
+    showHint(`✓ ${schlank ? 'Schlanke Abfragedatei' : 'Abfragedatei'} erzeugt — ${funktionen.length} Funktionszeilen`
+      + `${schlank ? '' : ` und ${kategorien.length} Kategorien`} vorbelegt, 40 Zeilen frei.`, 7000);
     raPanelRender();
   } catch (e) {
     console.error('Resilienz-Abfrage: Erzeugen fehlgeschlagen', e);
@@ -170,7 +177,8 @@ export async function raBeispielErzeugen() {
  * Empfänger braucht nur einen Browser; er speichert die Datei mit seinen
  * Angaben und schickt sie zurück — sie wird wie die .xlsx eingelesen.
  */
-export function raErhebungErzeugen() {
+/** @param {'schlank'} [variante]  schlanke Fassung (siehe raDateiErzeugen) */
+export function raErhebungErzeugen(variante) {
   const z = raZustand();
   const meta = { ...z.meta };
   if (!meta.stand) meta.stand = _heutigesDatum();
@@ -179,11 +187,12 @@ export function raErhebungErzeugen() {
     const stand = raErhebungStart({
       meta,
       gebaeude: geb.map(g => ({ id: g.id, name: g.name, nutzung: g.nutzung, polygon: g.polygon })),
+      variante,
     });
     const html = raErhebungHtml({ vorlage: RA_APP_VORLAGE, app: RA_APP_SKRIPT, stand });
     const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
     const a = document.createElement('a');
-    a.href = url; a.download = raErhebungDateiname(meta); a.click();
+    a.href = url; a.download = raErhebungDateiname(meta, variante); a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     z.meta.stand = meta.stand;
     const mitUmriss = stand.gebaeude.filter(g => g.umriss).length;
@@ -434,6 +443,19 @@ function _erzeugenAnsicht(z) {
         title="Erfundene, vollständig ausgefüllte Abfrage — zum Mitschicken oder um das Einlesen auszuprobieren">
         📄 Beispieldatei (ausgefüllt)</button>
       <span style="font-size:8.5px;color:var(--muted);">${escHtml(RA_KENNUNG)}</span>
+    </div>
+    <div style="margin-top:10px;padding:8px 10px;border:1px solid ${VIOLETT};border-radius:6px;background:rgba(106,76,147,.08);">
+      <div style="font-size:9.5px;color:var(--muted);line-height:1.6;margin-bottom:7px;">
+        <b style="color:var(--text);">Schlanke Fassung — zur Abstimmung mit dem Auftraggeber.</b>
+        Der Betreiber beantwortet je Funktion nur drei Fragen: <i>Ab wann wird ein Ausfall kritisch?</i> (ergibt A–D),
+        <i>Wie lange ohne Netz?</i> und <i>Hängt ab von</i>. Lagen, Vorgaben und Zuständigkeit legt der Auftraggeber fest —
+        sie bleiben enthalten, sind aber <b style="color:${VIOLETT};">violett</b> gekennzeichnet. Technik (Krisenlast, NEA, USV,
+        Bestand) wird nicht abgefragt — das erhebt die Planung bei der Begehung. Beide Dateien werden unten wie die vollen eingelesen.
+      </div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;">
+        <button data-click="raErhebungErzeugen('schlank')" style="${_btn(VIOLETT, true)}">🧭 Werkzeug schlank (.html)</button>
+        <button data-click="raDateiErzeugen('schlank')" style="${_btn(VIOLETT)}">📋 Abfrage schlank (.xlsx)</button>
+      </div>
     </div>`);
 }
 

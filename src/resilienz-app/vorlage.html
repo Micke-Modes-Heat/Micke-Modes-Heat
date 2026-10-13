@@ -12,6 +12,7 @@
   --text: #1c2420; --leise: #5d6a62; --leiser: #8a958e;
   --gruen: #2e7d32; --gruen-hell: #e8f3e8; --gruen-mittel: #6fae72;
   --orange: #e8890c; --orange-hell: #fff4e3; --rot: #d32f2f; --blau: #1e88e5; --blau-hell: #e7f1fc;
+  --violett: #6a4c93; --violett-hell: #f4effa;
   --schatten: 0 1px 2px rgba(20,40,25,.06), 0 4px 14px rgba(20,40,25,.06);
   --radius: 10px;
 }
@@ -210,6 +211,22 @@ details.abschnitt summary { cursor: pointer; font-weight: 600; color: var(--leis
 .reiter button.an { border-color: var(--gruen); background: var(--gruen-hell); color: var(--gruen); font-weight: 600; }
 .block { border-top: 1px solid var(--linie); padding-top: 12px; margin-top: 4px; }
 .block-titel { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--leiser); font-weight: 700; margin-bottom: 10px; }
+/* Schlanke Fassung: wer füllt aus — Betreiber/Nutzer (grün) oder Auftraggeber (violett) */
+.rolle { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 1px 8px; border-radius: 9px; color: #fff;
+  vertical-align: middle; margin-left: 6px; letter-spacing: .2px; text-transform: none; }
+.rolle.nutzer { background: var(--gruen); }
+.rolle.ag { background: var(--violett); }
+.schritt .rolle { font-size: 9.5px; padding: 0 6px; margin-left: 4px; }
+.block.rolle-ag, .karte-box.rolle-ag { border-left: 4px solid var(--violett); background: var(--violett-hell);
+  padding-left: 10px; border-radius: 0 8px 8px 0; }
+details.block.rolle-ag summary { cursor: pointer; }
+.hinweis.ag { background: var(--violett-hell); border-color: #d8cbea; color: #3d2a5a; }
+.rollen-weg { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rollen-weg > div { border-radius: 8px; padding: 10px 12px; border: 1px solid var(--linie); }
+.rollen-weg > div.ag { background: var(--violett-hell); border-color: #d8cbea; }
+.rollen-weg > div.nutzer { background: var(--gruen-hell); border-color: #cfe3cf; }
+.rollen-weg ul { margin: 6px 0 0 18px; padding: 0; font-size: 13px; }
+.rollen-weg .weg-nicht { grid-column: 1 / -1; background: var(--flaeche2); color: var(--leise); font-size: 13px; }
 .liste-zeile {
   display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--linie);
   border-radius: 8px; margin-bottom: 6px; background: #fff;

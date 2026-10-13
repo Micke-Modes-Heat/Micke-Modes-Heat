@@ -223,3 +223,34 @@ describe('Übertragene Angaben (quelle)', () => {
     expect(herkunft).toHaveLength(2);
   });
 });
+
+describe('Schlanke Fassung', () => {
+  const st = APP.raErhebungStart({ meta: { lieg: 'Musterkaserne' }, gebaeude: GEB, uid: 'u1', variante: 'schlank' });
+
+  it('markiert den Stand und lässt die Betriebszeit weg', () => {
+    expect(st.variante).toBe('schlank');
+    expect(st.funktionen.every(f => !f.betrieb)).toBe(true);
+    expect(APP.raErhebungDateiname({ lieg: 'X', stand: '2026-10-13' }, 'schlank')).toBe('Resilienzerhebung_schlank_X_2026-10-13.html');
+  });
+
+  it('Konfiguration bringt Rollen und Antworten mit', () => {
+    const K = APP.raErhebungKonfig();
+    expect(K.rollen.ag.label).toBe('Auftraggeber');
+    expect(K.kritisch.map(k => k.klasse)).toEqual(['A', 'B', 'C', 'D']);
+    expect(K.allgemeinSchlank.every(f => f.rolle)).toBe(true);
+  });
+
+  it('liest „kritisch" aus dem Werkzeug-Stand', () => {
+    const stand = { ...st, funktionen: [{ ...st.funktionen[0], kritisch: 'sofort', autarkie_text: '7 Tage', herkunft: 'vorgegeben' }] };
+    const d = RA.raLesenErhebung(stand);
+    expect(d.variante).toBe('schlank');
+    expect(d.funktionen[0].klasse).toBe('A');
+    expect(d.funktionen[0].ausw_s).toBe('Auftrag gefährdet');
+  });
+
+  it('die zusammengesetzte Datei ist gültiges Skript', () => {
+    const html = APP.raErhebungHtml({ vorlage: VORLAGE, app: SKRIPT, stand: st });
+    expect(APP.raErhebungAusHtml(html).variante).toBe('schlank');
+    expect(html).toContain('(schlank)');
+  });
+});

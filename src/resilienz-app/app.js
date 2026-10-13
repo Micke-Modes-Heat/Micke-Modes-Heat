@@ -18,6 +18,13 @@
 //
 // Die Einordnung A–D wird hier nur zur Anzeige berechnet — dieselbe Regel wie
 // raKlasseVorschlag(). Maßgeblich ist die Einordnung beim Einlesen.
+//
+// Schlanke Fassung (S.variante === 'schlank'): zur Abstimmung des Vorgehens mit
+// dem Auftraggeber. Der Betreiber beantwortet je Funktion nur „Ab wann
+// kritisch?", „Wie lange ohne Netz?" und „Hängt ab von"; was der Auftraggeber
+// festlegt (Lagen, Vorgaben, Zuständigkeit), bleibt sichtbar, ist aber violett
+// gekennzeichnet und zählt nicht als offener Punkt des Betreibers. Technik
+// (Krisenlast, Ersatzversorgung, Bestand) fehlt ganz — das erhebt die Planung.
 
 (function () {
   'use strict';
@@ -45,7 +52,15 @@
   S.kategorien = [];
   K.katalog = K.katalog || [];
 
-  const SCHRITTE = [
+  const SCHLANK = S.variante === 'schlank';
+  const ROLLE = K.rollen || { nutzer: { label: 'Betreiber / Nutzer' }, ag: { label: 'Auftraggeber' } };
+  const SCHRITTE = SCHLANK ? [
+    { key: 'start',     titel: 'Start' },
+    { key: 'katalog',   titel: 'Beispiele' },
+    { key: 'karte',     titel: 'Liegenschaft' },
+    { key: 'szenarien', titel: 'Lagen', rolle: 'ag' },
+    { key: 'abschluss', titel: 'Abschluss' },
+  ] : [
     { key: 'start',     titel: 'Start' },
     { key: 'szenarien', titel: 'Lagen' },
     { key: 'katalog',   titel: 'Beispiele' },
@@ -53,14 +68,18 @@
     { key: 'bestand',   titel: 'Vorhandene Technik' },
     { key: 'abschluss', titel: 'Abschluss' },
   ];
+  /** Index eines Schritts über seinen Schlüssel — die Reihenfolge hängt von der Variante ab. */
+  const si = key => Math.max(0, SCHRITTE.findIndex(s => s.key === key));
+  const rolleMarke = r => `<span class="rolle ${r}" title="${r === 'ag' ? 'legt der Auftraggeber fest' : 'füllt der Betreiber bzw. Nutzer aus'}">${esc(ROLLE[r]?.label || r)}</span>`;
   const KLASSE = Object.fromEntries(K.klassen.map(k => [k.key, k]));
   const ORDNUNG = { A: 0, B: 1, C: 2, D: 3 };
   /** Was „Übertragen" kopiert. Krisenlast und Ersatzversorgung gehören zum Gebäude und bleiben. */
-  const KOPIERFELDER = ['name', 'betrieb', 'ausw_s', 'ausw_4h', 'ausw_3d', 'autarkie_text', 'sz', 'reduziert', 'abh', 'herkunft'];
+  const KOPIERFELDER = ['name', 'betrieb', 'kritisch', 'ausw_s', 'ausw_4h', 'ausw_3d', 'autarkie_text', 'sz', 'reduziert', 'abh', 'herkunft'];
   /** Was der Beispielkatalog vorbelegt — ohne Herkunft: die gibt der Betreiber an. */
   const KATALOGFELDER = ['betrieb', 'ausw_s', 'ausw_4h', 'ausw_3d', 'autarkie_text', 'sz', 'reduziert', 'abh'];
   const ABH = ['Wärme', 'Wasser', 'IT-Netz', 'Kommunikation', 'Personal'];
-  const GEWICHT = { 'Auftrag gefährdet': 'w-rot', 'eingeschränkt': 'w-orange', 'unbekannt': 'w-grau' };
+  const GEWICHT = { 'Auftrag gefährdet': 'w-rot', 'eingeschränkt': 'w-orange', 'unbekannt': 'w-grau',
+    'sofort': 'w-rot', 'nach Stunden': 'w-orange' };
   const HG = {
     karte:    { url: (z, x, y) => `https://tile.openstreetmap.de/${z}/${x}/${y}.png`, max: 18, quelle: '© OpenStreetMap-Mitwirkende' },
     luftbild: { url: (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`,
@@ -107,7 +126,17 @@
     if (d === 'Auftrag gefährdet' || d === 'eingeschränkt') return 'C';
     return 'D';
   }
+  /** Schlanke Fassung: Antwort „Ab wann kritisch?" → die drei Zeitschnitte (wie raAuswAusKritisch). */
+  function kritischAnwenden(f) {
+    const k = (K.kritisch || []).find(x => x.wert === f.kritisch);
+    const a = f.kritisch === 'unbekannt' ? ['unbekannt', 'unbekannt', 'unbekannt'] : k ? k.ausw : ['', '', ''];
+    f.ausw_s = a[0]; f.ausw_4h = a[1]; f.ausw_3d = a[2];
+  }
+  const kritischAusKlasse = kl => (K.kritisch || []).find(x => x.klasse === kl)?.wert || '';
+
   function klassenGrund(f) {
+    const kr = (K.kritisch || []).find(x => x.wert === f.kritisch);
+    if (kr) return kr.klasse === 'D' ? 'weil ein Ausfall für den Auftrag nicht kritisch ist' : `weil ein Ausfall ${kr.wert} kritisch wird`;
     const s = f.ausw_s, h = f.ausw_4h, d = f.ausw_3d;
     if (s === 'Auftrag gefährdet') return 'weil schon ein Ausfall von Sekunden den Auftrag gefährdet';
     if (h === 'Auftrag gefährdet') return 'weil ein Ausfall von 4 Stunden den Auftrag gefährdet';
@@ -119,6 +148,13 @@
   /** Was einer Funktion noch fehlt (leere Liste = vollständig). */
   function fehlt(f) {
     const out = [];
+    if (SCHLANK) {
+      if (!f.name) out.push('Bezeichnung');
+      if (!f.kritisch && !f.ausw_s) out.push('ab wann kritisch');
+      if (!f.autarkie_text) out.push('Dauer ohne Netz');
+      if (!f.herkunft) out.push(f.katalog ? 'Prüfung der Beispielwerte (Herkunft)' : 'Herkunft der Angaben');
+      return out;
+    }
     if (!f.name) out.push('Bezeichnung');
     if (!f.ausw_s) out.push('Auswirkung nach Sekunden');
     if (!f.ausw_4h) out.push('Auswirkung nach 4 Stunden');
@@ -197,6 +233,7 @@
   function katalogUebernehmen(f, eintrag) {
     if (hatAngaben(f) && !confirm(`Die bisherigen Antworten von „${f.name || f.id}" durch das Beispiel „${eintrag.name}" ersetzen?`)) return;
     for (const k of KATALOGFELDER) f[k] = kopie(eintrag[k]);
+    if (SCHLANK) f.kritisch = kritischAusKlasse(klasse(eintrag));
     if (!f.name || /noch festzulegen/i.test(f.name)) f.name = eintrag.name;
     f.herkunft = '';
     f.katalog = eintrag.name;
@@ -588,6 +625,23 @@
         ${seg(zk, f, 'herkunft', L.L_Herkunft)}</div>`;
   }
 
+  /** Schlanke Fassung: die Fragen an den Betreiber. */
+  function schlankFragen(zk, f) {
+    const L = K.listen;
+    return `
+      <div class="feld"><div class="label">Ab wann wird ein Stromausfall für den Auftrag kritisch?</div>
+        <span class="erkl">sofort = schon Sekunden sind zu viel · nach Stunden · nach Tagen · gar nicht = die Aufgabe ruht im Krisenfall.</span>
+        ${seg(zk, f, 'kritisch', L.L_Kritisch, { gewichtet: true })}</div>
+      <div class="feld"><div class="label">Wie lange muss die Aufgabe ohne öffentliches Netz weiterlaufen?</div>
+        ${seg(zk, f, 'autarkie_text', L.L_Autarkie)}</div>
+      <div class="feld"><div class="label">Hängt ab von <span style="font-weight:400;color:var(--leiser)">(freiwillig)</span></div>
+        <span class="erkl">Was muss außer Strom noch funktionieren, damit die Aufgabe läuft?</span>
+        ${abhChips(zk, f)}</div>
+      <div class="feld"><div class="label">Woher stammen diese Angaben?</div>
+        ${f.katalog && !f.herkunft ? '<span class="erkl" style="color:var(--orange)">Bitte angeben, sobald Sie die Beispielwerte geprüft haben.</span>' : ''}
+        ${seg(zk, f, 'herkunft', L.L_Herkunft)}</div>`;
+  }
+
   function technikFragen(zk, f) {
     const L = K.listen;
     return `
@@ -643,16 +697,40 @@
           ${m.ansprechpartner ? `<div class="feld"><div class="label">Rückfragen an</div>${esc(m.ansprechpartner)}</div>` : ''}
           ${m.stelle ? `<div class="feld"><div class="label">Erhebende Stelle</div>${esc(m.stelle)}</div>` : ''}
         </div></div>` : ''}
-      <div class="karte-box"><h2>Allgemeines</h2>
+      ${SCHLANK ? startSchlank() : `<div class="karte-box"><h2>Allgemeines</h2>
         <p class="unterzeile">Grunddaten der Liegenschaft und der Stand der Vorgaben.</p>
-        ${fragenForm('allgemein', K.allgemein, S.allgemein)}</div>
+        ${fragenForm('allgemein', K.allgemein, S.allgemein)}</div>`}
     </div>`;
+  }
+
+  /** Start der schlanken Fassung: wer macht was, dann Allgemeines je Rolle. */
+  function startSchlank() {
+    const felder = K.allgemeinSchlank || [];
+    return `<div class="karte-box"><h2>Wer macht was?</h2>
+        <div class="rollen-weg">
+          <div class="nutzer"><b>${rolleMarke('nutzer')}</b>
+            <ul><li>Welche Aufgaben gibt es in den Gebäuden?</li><li>Ab wann wird ein Stromausfall kritisch?</li>
+              <li>Wie lange muss es ohne öffentliches Netz gehen?</li></ul></div>
+          <div class="ag"><b>${rolleMarke('ag')}</b>
+            <ul><li>Gegen welche Lagen wird vorgesorgt, und wie lange?</li><li>Welche Vorgaben gibt es, wer ist zuständig?</li>
+              <li>Freigabe der Angaben</li></ul></div>
+          <div class="weg-nicht"><b>Nicht abgefragt:</b> Leistungen, vorhandene Netzersatzanlagen, USV, Tankinhalte — das ermittelt die
+            Fachplanung selbst bei der Begehung und aus den Messdaten.</div>
+        </div></div>
+      <div class="karte-box"><h2>Allgemeines ${rolleMarke('nutzer')}</h2>
+        ${fragenForm('allgemein', felder.filter(f => f.rolle !== 'ag'), S.allgemein)}</div>
+      <div class="karte-box rolle-ag"><h2>Vorgaben und Zuständigkeit ${rolleMarke('ag')}</h2>
+        <p class="unterzeile">Legt der Auftraggeber fest — hier zur Abstimmung. Als Betreiber können Sie das leer lassen.</p>
+        ${fragenForm('allgemein', felder.filter(f => f.rolle === 'ag'), S.allgemein)}</div>`;
   }
 
   // ── Schritt 2: Lagen (Szenarien) ──────────────────────────────────────────
   function seiteSzenarien() {
     return `<div class="seite">
-      <h1>Für welche Lagen soll vorgesorgt werden?</h1>
+      <h1>Für welche Lagen soll vorgesorgt werden?${SCHLANK ? ' ' + rolleMarke('ag') : ''}</h1>
+      ${SCHLANK ? `<div class="hinweis ag"><b>Legt der Auftraggeber fest.</b> Gegen welche Ereignisse die Liegenschaft abgesichert
+        wird und mit welcher Dauer, ist eine Entscheidung des Auftraggebers — die Seite dient der gemeinsamen Abstimmung.
+        Als Betreiber müssen Sie hier nichts eintragen.</div>` : ''}
       <p class="unterzeile">Sieben Referenzlagen. Bitte je Lage angeben, ob sie für die Liegenschaft eine Rolle spielt und mit
         welcher Dauer gerechnet werden soll. Später ordnen Sie jeder Aufgabe zu, in welchen Lagen sie weiterlaufen muss.</p>
       ${S.szenarien.map(s => {
@@ -683,11 +761,12 @@
       <div class="art-kopf">${marke(klasse(e))}<b style="flex:1;min-width:0">${esc(e.name)}
         ${n ? `<span class="art-zahl" style="display:block;font-weight:400">${n}× in dieser Liegenschaft</span>` : ''}</b></div>
       <table class="katalog-tab">
+        ${SCHLANK ? zeile('kritisch ab', ausw(kritischAusKlasse(klasse(e)))) : `
         ${zeile('Ausfall nach Sekunden', ausw(e.ausw_s))}
         ${zeile('nach 4 Stunden', ausw(e.ausw_4h))}
-        ${zeile('nach 3 Tagen', ausw(e.ausw_3d))}
+        ${zeile('nach 3 Tagen', ausw(e.ausw_3d))}`}
         ${zeile('ohne Netz weiterlaufen', esc(e.autarkie_text))}
-        ${zeile('Lagen', sz.length ? sz.map(id => `<span title="${esc(kurzSz(id))}">${id}</span>`).join(' ') : '—')}
+        ${SCHLANK ? '' : zeile('Lagen', sz.length ? sz.map(id => `<span title="${esc(kurzSz(id))}">${id}</span>`).join(' ') : '—')}
         ${zeile('hängt ab von', esc(e.abh || '—'))}
       </table>
       <p class="katalog-warum">${esc(e.warum)}</p>
@@ -858,8 +937,14 @@
       ${textFeld(zk, f, 'name', 'Aufgabe / Funktion', { liste: 'dl-funktionen', platzhalter: 'z. B. Führung / IT / Kommunikation',
     erkl: 'Was wird hier geleistet? Nicht die Anlage, sondern die Aufgabe.' })}
       ${katalogBlock(f)}
+      ${SCHLANK ? `
+      <div class="block"><div class="block-titel">Auswirkung eines Ausfalls ${rolleMarke('nutzer')}</div>${schlankFragen(zk, f)}</div>
+      <details class="block rolle-ag" ${hatKreuz(f.sz) ? 'open' : ''}><summary class="block-titel">In welchen Lagen muss die Aufgabe
+        weiterlaufen? ${rolleMarke('ag')}</summary>
+        <span class="erkl" style="display:block;margin-bottom:6px">Legt der Auftraggeber fest — darf leer bleiben.</span>${szChips(zk, f)}</details>`
+    : `
       <div class="block"><div class="block-titel">Auswirkung eines Ausfalls</div>${auswirkungsFragen(zk, f)}</div>
-      <div class="block"><div class="block-titel">Technik vor Ort</div>${technikFragen(zk, f)}</div>
+      <div class="block"><div class="block-titel">Technik vor Ort</div>${technikFragen(zk, f)}</div>`}
       <div class="block">${textFeld(zk, f, 'bem', 'Bemerkung', { mehrzeilig: true })}</div>`;
   }
 
@@ -872,8 +957,8 @@
       return `<h2>Angaben übertragen</h2>
         <p class="unterzeile" style="margin-bottom:10px">Von <b>${esc(von?.name || '')}</b> (${esc(von ? ortVon(von) : '')}).
           Klicken Sie auf dem Plan die Gebäude an, die dieselben Antworten bekommen sollen; ein zweiter Klick nimmt ein Gebäude wieder heraus.</p>
-        <div class="hinweis">Übertragen werden Aufgabe, Auswirkungen, Dauer, Lagen, Abhängigkeiten und Herkunft. <b>Krisenlast und
-          Ersatzversorgung bleiben am Gebäude.</b> Eine gleichnamige Funktion im Zielgebäude wird überschrieben, sonst kommt eine hinzu.
+        <div class="hinweis">Übertragen werden Aufgabe, Auswirkungen, Dauer, Lagen, Abhängigkeiten und Herkunft.${SCHLANK ? '' : ` <b>Krisenlast und
+          Ersatzversorgung bleiben am Gebäude.</b>`} Eine gleichnamige Funktion im Zielgebäude wird überschrieben, sonst kommt eine hinzu.
           Danach kann jedes Gebäude einzeln angepasst werden.</div>
         ${ziele.map(g => `<div class="liste-zeile"><span class="name">${esc(g.name)}<small>${esc(fktImGeb(g.id).map(x => x.name).join(', ') || 'keine Funktion')}</small></span>
           <button class="knopf klein leise" data-act="zielWeg" data-geb="${esc(gid(g.id))}">✕</button></div>`).join('')
@@ -988,17 +1073,34 @@
    */
   function offenePunkte() {
     const out = [];
+    if (!S.allgemein.lieg) out.push({ ref: 'Allgemeines', text: 'Die Liegenschaft ist nicht bezeichnet.', ziel: { schritt: si('start') } });
+    // Schlanke Fassung: was der Auftraggeber festlegt, steht auf der Abschlussseite getrennt.
+    if (!SCHLANK) out.push(...punkteAuftraggeber());
+    return [...out, ...offeneFunktionen()];
+  }
+
+  /** Was der Auftraggeber festlegt — in der schlanken Fassung getrennt ausgewiesen. */
+  function punkteAuftraggeber() {
+    const out = [];
     const a = S.allgemein;
     const leer = v => !v || v === 'unbekannt';
-    if (!a.lieg) out.push({ ref: 'Allgemeines', text: 'Die Liegenschaft ist nicht bezeichnet.', ziel: { schritt: 0 } });
-    if (!a.zustaendig) out.push({ ref: 'Allgemeines', text: 'Die für die Resilienz zuständige Stelle ist nicht benannt.', ziel: { schritt: 0 } });
-    if (leer(a.vorgaben)) out.push({ ref: 'Allgemeines', text: 'Offen, ob es Vorgaben zur Energie- bzw. Notstromversorgung gibt.', ziel: { schritt: 0 } });
-    else if (a.vorgaben === 'ja' && !a.vorgaben_bez) out.push({ ref: 'Allgemeines', text: 'Vorgaben vorhanden, aber Bezeichnung und Stelle fehlen.', ziel: { schritt: 0 } });
-    if (leer(a.liste_kf)) out.push({ ref: 'Allgemeines', text: 'Offen, ob es eine abgestimmte Liste kritischer Funktionen gibt.', ziel: { schritt: 0 } });
+    const ref = SCHLANK ? 'Auftraggeber' : 'Allgemeines';
+    const start = { schritt: si('start') };
+    if (!a.zustaendig) out.push({ ref, text: 'Die für die Resilienz zuständige Stelle ist nicht benannt.', ziel: start });
+    if (leer(a.vorgaben)) out.push({ ref, text: 'Offen, ob es Vorgaben zur Energie- bzw. Notstromversorgung gibt.', ziel: start });
+    else if (a.vorgaben === 'ja' && !a.vorgaben_bez) out.push({ ref, text: 'Vorgaben vorhanden, aber Bezeichnung und Stelle fehlen.', ziel: start });
+    if (leer(a.liste_kf)) out.push({ ref, text: 'Offen, ob es eine abgestimmte Liste kritischer Funktionen gibt.', ziel: start });
+    const lagen = { schritt: si('szenarien') };
     for (const s of S.szenarien) {
-      if (leer(s.relevant)) out.push({ ref: s.id, text: 'Relevanz der Lage ist offen.', ziel: { schritt: 1 } });
-      else if (s.relevant === 'ja' && !s.dauer) out.push({ ref: s.id, text: 'Angenommene Dauer fehlt.', ziel: { schritt: 1 } });
+      if (leer(s.relevant)) out.push({ ref: s.id, text: 'Relevanz der Lage ist offen.', ziel: lagen });
+      else if (s.relevant === 'ja' && !s.dauer) out.push({ ref: s.id, text: 'Angenommene Dauer fehlt.', ziel: lagen });
     }
+    return out;
+  }
+
+  function offeneFunktionen() {
+    const out = [];
+    const karte = si('karte');
     const gruppen = new Map();
     const leise = [];
     for (const f of S.funktionen) {
@@ -1011,9 +1113,9 @@
         gruppen.set(wurzel.id, gr);
       }
       const au = f.autarkie_text;
-      if (au && !['keine', 'unbekannt'].includes(au) && f.pk == null) {
+      if (!SCHLANK && au && !['keine', 'unbekannt'].includes(au) && f.pk == null) {
         leise.push({ ref: f.id, text: `${f.name || f.id} (${ortVon(f)}): Krisenlast unbekannt — eine grobe Schätzung hilft schon.`,
-          ziel: { schritt: 3, geb: f.gebId, f: f.id }, leise: true });
+          ziel: { schritt: karte, geb: f.gebId, f: f.id }, leise: true });
       }
     }
     for (const gr of gruppen.values()) {
@@ -1021,7 +1123,7 @@
       const was = fStand(f) === 'leer' ? 'noch nicht beschrieben.' : `fehlt ${[...gr.felder].join(', ')}.`;
       out.push({ ref: f.id, text: `${f.name || f.id} (${ortVon(f)})${n ? ` und ${n} übertragene ${n === 1 ? 'Funktion' : 'Funktionen'}` : ''}: `
         + `${was}${n ? ' Einmal an der Vorlage ergänzen und erneut übertragen.' : ''}`,
-      ziel: { schritt: 3, geb: f.gebId, f: f.id } });
+      ziel: { schritt: karte, geb: f.gebId, f: f.id } });
     }
     return [...out, ...leise];
   }
@@ -1029,10 +1131,11 @@
   function seiteAbschluss() {
     const fp = fortschritt();
     const op = offenePunkte();
+    const ag = SCHLANK ? punkteAuftraggeber() : [];
     const jeKl = { A: 0, B: 0, C: 0, D: 0, offen: 0 };
     for (const f of S.funktionen) { const k = klasse(f); if (k) jeKl[k]++; else jeKl.offen++; }
     const m = S.meta;
-    UI.offen = op;
+    UI.offen = [...op, ...ag];
     return `<div class="seite">
       <h1>Abschluss</h1>
       <p class="unterzeile">Prüfen Sie, was noch offen ist, ergänzen Sie die Rückmeldung — und senden Sie die gespeicherte Datei zurück.
@@ -1049,6 +1152,11 @@
         ${op.length ? `<ul class="offen-liste">${op.map((p, i) => `<li><span class="ref" style="${p.leise ? 'color:var(--leiser)' : ''}">${esc(p.ref)}</span>
           <span class="txt">${esc(p.text)}</span><button class="knopf klein" data-act="sprung" data-i="${i}">ergänzen →</button></li>`).join('')}</ul>`
     : '<div style="color:var(--gruen);font-weight:600">✓ Alles beantwortet — vielen Dank!</div>'}</div>
+      ${SCHLANK ? `<div class="karte-box rolle-ag"><h2>Zur Abstimmung mit dem Auftraggeber ${rolleMarke('ag')}</h2>
+        <p class="unterzeile">Diese Punkte legt der Auftraggeber fest. Sie sind keine offenen Punkte des Betreibers.</p>
+        ${ag.length ? `<ul class="offen-liste">${ag.map((p, i) => `<li><span class="ref">${esc(p.ref)}</span>
+          <span class="txt">${esc(p.text)}</span><button class="knopf klein" data-act="sprung" data-i="${op.length + i}">ansehen →</button></li>`).join('')}</ul>`
+    : '<div style="color:var(--gruen);font-weight:600">✓ Vom Auftraggeber festgelegt.</div>'}</div>` : ''}
       <div class="karte-box"><h2>Rückmeldung</h2>
         <p class="unterzeile">Was offen bleibt, und wer die Angaben freigibt.</p>
         ${fragenForm('rueckmeldung', K.rueckmeldung, S.rueckmeldung)}</div>
@@ -1071,7 +1179,7 @@
       const g = f.gebId != null ? gebNach(f.gebId) : null;
       return `<tr><td>${esc(f.id)}</td><td>${esc(f.name)}</td><td>${esc(g ? g.name : (f.geb || '—'))}</td>
         <td><b>${k || '–'}</b></td><td>${esc(f.autarkie_text || '—')}</td><td>${esc(kreuze(f.sz).join(' ') || '—')}</td>
-        <td>${f.pk != null ? esc(String(f.pk).replace('.', ',')) + ' kW' : '—'}</td><td>${esc(f.herkunft || '—')}</td></tr>`;
+        ${SCHLANK ? '' : `<td>${f.pk != null ? esc(String(f.pk).replace('.', ',')) + ' kW' : '—'}</td>`}<td>${esc(f.herkunft || '—')}</td></tr>`;
     }).join('');
     return `<h1>Resilienz-Erhebung${lieg ? ' · ' + esc(lieg) : ''}</h1>
       <p>Stand ${esc(new Date().toLocaleDateString('de-DE'))} · ausgefüllt von ${esc(S.allgemein.stelle || '—')} (${esc(S.allgemein.bearb || '—')}) ·
@@ -1079,7 +1187,7 @@
       ${miniPlanSvg(860, 330)}
       <p style="font-size:9pt">Einordnung (Vorschlag): ${K.klassen.map(k => `<b style="color:${k.farbe}">${k.key}</b> ${esc(k.label)}`).join(' · ')}</p>
       <table><thead><tr><th>ID</th><th>Funktion</th><th>Gebäude</th><th>Einordnung</th><th>Dauer ohne Netz</th>
-        <th>Lagen</th><th>Krisenlast</th><th>Herkunft</th></tr></thead><tbody>${zeilen}</tbody></table>
+        <th>Lagen</th>${SCHLANK ? '' : '<th>Krisenlast</th>'}<th>Herkunft</th></tr></thead><tbody>${zeilen}</tbody></table>
       <p style="font-size:9pt">Offene Punkte: ${offenePunkte().length}. Die Einordnung ist ein Vorschlag und wird mit der zuständigen Stelle abgestimmt.</p>`;
   }
 
@@ -1087,7 +1195,7 @@
   function schrittStand(i) {
     const a = S.allgemein;
     switch (SCHRITTE[i].key) {
-      case 'start': return (a.lieg && a.zustaendig) ? 'fertig' : '';
+      case 'start': return (a.lieg && (SCHLANK || a.zustaendig)) ? 'fertig' : '';
       case 'szenarien': return S.szenarien.every(s => s.relevant && s.relevant !== 'unbekannt') ? 'fertig' : '';
       case 'karte': { const fp = fortschritt(); return fp.fkt && fp.fktFertig === fp.fkt ? 'fertig' : ''; }
       default: return '';
@@ -1105,7 +1213,7 @@
     nav.innerHTML = SCHRITTE.map((s, i) => {
       const st = schrittStand(i), t = schrittText(i);
       return `<button class="schritt ${i === UI.schritt ? 'aktiv' : ''} ${st}" data-act="schritt" data-i="${i}">
-        <span class="nr">${st === 'fertig' && i !== UI.schritt ? '✓' : i + 1}</span>${esc(s.titel)}${t ? ` <span class="stand">${t}</span>` : ''}</button>`;
+        <span class="nr">${st === 'fertig' && i !== UI.schritt ? '✓' : i + 1}</span>${esc(s.titel)}${s.rolle ? rolleMarke(s.rolle) : ''}${t ? ` <span class="stand">${t}</span>` : ''}</button>`;
     }).join('');
   }
   function kopfInfo() {
@@ -1118,12 +1226,13 @@
   function render() {
     const lieg = S.allgemein.lieg || S.meta.lieg || '';
     const istKarte = SCHRITTE[UI.schritt].key === 'karte';
-    const seiten = [seiteStart, seiteSzenarien, seiteKatalog, seiteKarte, seiteBestand, seiteAbschluss];
+    const seiten = { start: seiteStart, szenarien: seiteSzenarien, katalog: seiteKatalog, karte: seiteKarte,
+      bestand: seiteBestand, abschluss: seiteAbschluss };
     const vor = SCHRITTE[UI.schritt + 1], zur = SCHRITTE[UI.schritt - 1];
     $('app').style.cssText = 'display:flex;flex-direction:column;height:100vh';
     $('app').innerHTML = `
       <header class="kopf">
-        <div class="marke">Resilienz-Erhebung<small>Ausfall der Stromversorgung</small></div>
+        <div class="marke">Resilienz-Erhebung<small>Ausfall der Stromversorgung${SCHLANK ? ' · schlanke Fassung' : ''}</small></div>
         <div class="lieg">${esc(lieg)}</div>
         <span class="sichern-info" id="sichern-info"></span>
         <button class="knopf" data-act="speichern" title="Speichert diese Datei mit allen Angaben neu">💾 Datei speichern</button>
@@ -1133,7 +1242,7 @@
         <button class="knopf klein voll" data-act="bannerLaden">Zwischenstand fortsetzen</button>
         <button class="knopf klein leise" data-act="bannerWeg">Datei-Stand behalten</button></div>` : ''}
       <nav class="schritte" id="schritte"></nav>
-      <main style="overflow-y:auto" id="inhalt">${seiten[UI.schritt]()}</main>
+      <main style="overflow-y:auto" id="inhalt">${seiten[SCHRITTE[UI.schritt].key]()}</main>
       <footer class="fuss">
         <button class="knopf leise" data-act="schritt" data-i="${UI.schritt - 1}" ${zur ? '' : 'disabled'}>◀ ${zur ? esc(zur.titel) : 'Zurück'}</button>
         <span class="mitte">Eingaben werden in diesem Browser zwischengespeichert. Zum Zurücksenden: 💾 Datei speichern.</span>
@@ -1183,6 +1292,7 @@
       const o = ziel(d.ziel);
       if (!o) return;
       o[d.feld] = o[d.feld] === d.wert ? '' : d.wert;
+      if (d.feld === 'kritisch') kritischAnwenden(o);
       geaendert(); nachAktion();
     },
     szUmschalten: d => {

@@ -16,6 +16,7 @@ import {
   RA_SZENARIEN, RA_LISTEN, RA_KLASSEN, RA_KLASSEN_KEYS, RA_FUNKTION_SPALTEN, RA_FUNKTION_VORLAGEN, RA_KATALOG,
   RA_ALLGEMEIN_FELDER, RA_BESTAND_FELDER, RA_RUECKMELDUNG_FELDER, RA_ERHEBUNG_KENNUNG,
   raVorbelegung, raKategorieVorbelegung, raText,
+  RA_ROLLEN, RA_KRITISCH, RA_ALLGEMEIN_SCHLANK,
 } from './resilienz-abfrage.js';
 
 /** Platzhalter in src/resilienz-app/vorlage.html. */
@@ -44,6 +45,10 @@ export function raErhebungKonfig() {
     katalog: RA_KATALOG,
     titel,
     allgemein: RA_ALLGEMEIN_FELDER,
+    // schlanke Fassung (stand.variante === 'schlank')
+    allgemeinSchlank: RA_ALLGEMEIN_SCHLANK,
+    rollen: RA_ROLLEN,
+    kritisch: RA_KRITISCH,
     bestand: RA_BESTAND_FELDER,
     rueckmeldung: RA_RUECKMELDUNG_FELDER,
   };
@@ -72,6 +77,8 @@ function _uid() {
  * @param {object} [opt.meta]      lieg, stand, stelle, bearb, empfaenger, ansprechpartner
  * @param {Array<{id:any,name?:string,nutzung?:string,polygon?:Array}>} [opt.gebaeude]
  * @param {string} [opt.uid]       feste Kennung (Tests)
+ * @param {'schlank'} [opt.variante] schlanke Fassung: nur Auswirkungs-Fragen (Betreiber)
+ *                                  und gekennzeichnete Auftraggeber-Punkte, keine Technik
  */
 export function raErhebungStart(opt = {}) {
   const meta = { ...(opt.meta || {}) };
@@ -81,14 +88,16 @@ export function raErhebungStart(opt = {}) {
   // bekommen ihre Angaben per Übertragen bzw. aus dem Beispielkatalog. Die
   // Betriebszeit, die sonst in der Kategorie stünde, kommt darum in die Zeile.
   const betriebNach = new Map(raKategorieVorbelegung(geb).map(k => [k.kategorie, k.betrieb]));
+  const schlank = opt.variante === 'schlank';
   const funktionen = raVorbelegung(geb).map(({ kategorie, ...f }, i) => ({
-    ...f, betrieb: f.betrieb || betriebNach.get(kategorie) || '',
+    ...f, betrieb: schlank ? '' : f.betrieb || betriebNach.get(kategorie) || '',
     gebId: i < geb.length ? geb[i].id ?? null : null, sz: {},
   }));
   const allgemein = {};
   for (const f of RA_ALLGEMEIN_FELDER) if (raText(meta[f.feld])) allgemein[f.feld] = raText(meta[f.feld]);
   return {
     kennung: RA_ERHEBUNG_KENNUNG,
+    ...(schlank ? { variante: 'schlank' } : {}),
     uid: opt.uid || _uid(),
     meta: {
       lieg: raText(meta.lieg), stand: raText(meta.stand), stelle: raText(meta.stelle),
@@ -132,7 +141,7 @@ export function raErhebungHtml({ vorlage, app, stand }) {
   for (const p of Object.values(P)) {
     if (!String(vorlage || '').includes(p)) throw new Error(`Vorlage des Erhebungs-Werkzeugs: Platzhalter ${p} fehlt.`);
   }
-  const titel = `Resilienz-Erhebung${stand?.meta?.lieg ? ' – ' + stand.meta.lieg : ''}`;
+  const titel = `Resilienz-Erhebung${stand?.variante === 'schlank' ? ' (schlank)' : ''}${stand?.meta?.lieg ? ' – ' + stand.meta.lieg : ''}`;
   // Ersetzen mit Funktion: „$" im Inhalt darf nicht als Muster gelesen werden.
   return vorlage
     .replace(P.app, () => String(app || '').replace(/<\/script/gi, '<\\/script'))
@@ -153,9 +162,9 @@ export function raErhebungAusHtml(text) {
 }
 
 /** Dateiname der Erhebungsdatei. */
-export function raErhebungDateiname(meta) {
+export function raErhebungDateiname(meta, variante) {
   const datum = (meta?.stand && /^\d{4}-\d{2}-\d{2}$/.test(meta.stand))
     ? meta.stand : new Date().toISOString().slice(0, 10);
   const lieg = raText(meta?.lieg).replace(/[^\wäöüÄÖÜß-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
-  return `Resilienzerhebung_${lieg ? lieg + '_' : ''}${datum}.html`;
+  return `Resilienzerhebung_${variante === 'schlank' ? 'schlank_' : ''}${lieg ? lieg + '_' : ''}${datum}.html`;
 }

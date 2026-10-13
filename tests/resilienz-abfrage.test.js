@@ -986,3 +986,73 @@ describe('Aufbau und Aussehen der Mappe', () => {
     expect(an.verbunden.some(v => v.startsWith('B1:'))).toBe(false);
   });
 });
+
+// ── Schlanke Fassung ────────────────────────────────────────────────────────
+
+describe('Schlanke Abfragedatei', () => {
+  const B = RA.RA_BLATT_SCHLANK;
+  const SP = RA.RA_FUNKTION_SPALTEN_SCHLANK;
+  const neu = () => RA.raMappeSchlank({
+    meta: { lieg: 'Musterhausen', stand: '2026-10-13' },
+    funktionen: RA.raVorbelegung([]).map(({ kategorie, betrieb, ...f }) => f),
+    leerzeilen: 3,
+  });
+
+  it('hat nur Betreiber- und Auftraggeber-Blätter, keine Technik', () => {
+    const m = neu();
+    const namen = m.blaetter.map(b => b.name);
+    expect(namen).toEqual([B.anleitung, B.allgemeines, B.funktionen, B.szenarien, B.rueckmeldung, B.beispiele, B.listen]);
+    const kopf = blattVon(m, B.funktionen).zeilen[RA.RA_KOPFZEILE].map(z => z.w).join(' | ');
+    expect(kopf).not.toMatch(/Krisenlast|Ersatzversorgung|Betriebszeit/);
+    expect(blattVon(m, B.anleitung).zeilen[0][2].w).toBe(RA.RA_SCHLANK_KENNUNG);
+  });
+
+  it('kennzeichnet Auftraggeber-Spalten und -Fragen violett', () => {
+    const m = neu();
+    const fb = blattVon(m, B.funktionen);
+    const c = SP.findIndex(s => s.feld === 'sz_S1');
+    expect(fb.zeilen[RA.RA_KOPFZEILE][c].s).toBe(XS.kopfAg);
+    expect(fb.zeilen[RA.RA_KOPFZEILE + 1][c].s).toBe(XS.eingabeAg);
+    expect(fb.zeilen[RA.RA_KOPFZEILE + 1][SP.findIndex(s => s.feld === 'kritisch')].s).toBe(XS.eingabe);
+    const ab = blattVon(m, B.allgemeines);
+    const i = RA.RA_ALLGEMEIN_SCHLANK.findIndex(f => f.feld === 'zustaendig');
+    expect(ab.zeilen[RA.RA_FRAGE_START + i][1].s).toBe(XS.eingabeAg);
+    expect(ab.zeilen[RA.RA_FRAGE_START + i][2].w).toBe('Auftraggeber');
+    expect(blattVon(m, B.szenarien).tabFarbe).toBe('FF6A4C93');
+  });
+
+  it('liest „Ab wann kritisch?" als Einordnung und Zeitschnitte zurück', async () => {
+    const m = neu();
+    const zeile = blattVon(m, B.funktionen).zeilen[RA.RA_KOPFZEILE + 1];
+    const setze = (feld, w) => { zeile[SP.findIndex(s => s.feld === feld)].w = w; };
+    setze('kritisch', 'nach Stunden'); setze('autarkie', '3 Tage'); setze('herkunft', 'Einschätzung Nutzer'); setze('sz_S2', 'x');
+    const lagen = blattVon(m, B.szenarien).zeilen[RA.RA_KOPFZEILE + 2];
+    lagen[2].w = 'ja'; lagen[3].w = '14 Tage';
+    const ab = blattVon(m, B.allgemeines);
+    ab.zeilen[RA.RA_FRAGE_START + RA.RA_ALLGEMEIN_SCHLANK.findIndex(f => f.feld === 'zustaendig')][1].w = 'Kommando X';
+
+    const d = await durchReichen(m);
+    expect(d.variante).toBe('schlank');
+    expect(d.fehler).toEqual([]);
+    const f = d.funktionen[0];
+    expect(f.kritisch).toBe('nach Stunden');
+    expect(f.klasse).toBe('B');
+    expect(f.klasse_grund).toMatch(/nach Stunden/);
+    expect([f.ausw_s, f.ausw_4h, f.ausw_3d]).toEqual(['eingeschränkt', 'Auftrag gefährdet', 'Auftrag gefährdet']);
+    expect(f.autarkie_h).toBe(72);
+    expect(f.sz.S2).toBe(1);
+    expect(d.szenarien.find(s => s.id === 'S2')).toMatchObject({ relevant: 'ja', dauer: '14 Tage' });
+    expect(d.allgemein.zustaendig).toBe('Kommando X');
+    // keine Technik-Rückfragen in der schlanken Fassung
+    const p = RA.raPruefung(d);
+    expect(p.offene_punkte.some(x => x.feld === 'pk' || x.feld === 'sz')).toBe(false);
+  });
+
+  it('jede Antwort ergibt die passende Einordnung', () => {
+    for (const k of RA.RA_KRITISCH) {
+      expect(RA.raKlasseVorschlag({ kritisch: k.wert }).klasse).toBe(k.klasse);
+      expect(RA.raKlasseVorschlag(RA.raAuswAusKritisch(k.wert)).klasse).toBe(k.klasse);
+      expect(RA.raKritischAusKlasse(k.klasse)).toBe(k.wert);
+    }
+  });
+});
