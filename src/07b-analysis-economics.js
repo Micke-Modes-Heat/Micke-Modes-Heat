@@ -91,7 +91,8 @@ export function _calcKostenShared(p) {
   if (aktiv('lwwp'))        add('lwwp', investFn('lwwp', pKw.lwwp), {n:20,inst:1.0,wart:1.5,bedien:bedH('lwwp', pKw.lwwp)});
   if (aktiv('fg'))          add('fg', investFn('fg', pKw.fg), {n:20,inst:2.0,wart:1.0,bedien:bedH('fg', pKw.fg)});
   if (aktiv('geo'))         add('geo_wp', investFn('geo', pKw.geo), {n:20,inst:1.0,wart:1.5,bedien:bedH('geo_wp', pKw.geo)});
-  if (aktiv('geo'))         add('geo_sonden', Math.round((extra.bohrMeter||0)*95), {n:50,inst:2.0,wart:1.0,bedien:0});
+  // Wärmequelle der Geo-WP: Erdsonden (Bohrmeter × 95 €/m) oder Eisspeicher mit Absorber (extra.geoQuellEur)
+  if (aktiv('geo'))         add('geo_sonden', Number.isFinite(extra.geoQuellEur) ? extra.geoQuellEur : Math.round((extra.bohrMeter||0)*95), {n:50,inst:2.0,wart:1.0,bedien:0});
   if (aktiv('pellets'))     add('pk', investFn('pellets', pKw.pellets||0), {n:15,inst:3.0,wart:3.0,bedien:bedH('pk', pKw.pellets)});
   if (aktiv('pellets'))     add('pk_lager', Math.round((pKw.pellets||0)*100), {n:20,inst:3.0,wart:2.0,bedien:bedH('pk_lager', pKw.pellets)});
   if (aktiv('hhs'))         add('hhs_kessel', investFn('hhs', pKw.hhs||0), {n:15,inst:3.0,wart:3.0,bedien:bedH('hhs', pKw.hhs)});

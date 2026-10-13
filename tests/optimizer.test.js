@@ -22,6 +22,7 @@ beforeAll(() => {
   loadScript('06c-dispatch-core.js');
   loadScript('lib/vdi-bedien.js');
   loadScript('lib/waermespeicher.js');
+  loadScript('lib/eisspeicher.js');
   loadScript('lib/vdi2067.js');
   loadScript('07b-analysis-economics.js');
   loadScript('06a-gbi-lastgang.js');
@@ -115,7 +116,8 @@ describe('Ansatz 1: _optInvestProKw', () => {
 function refDispatch(lastgangKw, tempH, vlH, erzList, speicherVol) {
   let thSp = null;
   if (speicherVol > 0) {
-    thSp = { kapKwh: speicherVol * 1.16 * 40, verlustRate: 0.005, entladeKw: 200 };
+    // Verlust aus der Kennlinie (leeres Eingabefeld), wie Hauptrechnung und Optimierer
+    thSp = { kapKwh: speicherVol * 1.16 * 40, verlustRate: speicherVerlustProH(speicherVol, 'puffer') / 100, entladeKw: 200 };
   }
   for (const erz of erzList) {
     if (!erz.guetegrad) erz.guetegrad = _defaultGuetegrad(erz.key);

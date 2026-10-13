@@ -942,7 +942,9 @@ export function getThermSpeicherParams() {
   const vol = parseFloat(document.getElementById('ts-volumen')?.value) || 0;
   if (vol <= 0) return null;
   const dt = parseFloat(document.getElementById('ts-dt')?.value) || 40;
-  const verlustPctH = parseFloat(document.getElementById('ts-verlust')?.value) || 0.5;
+  // Verlust: Eingabe, leer → Kennlinie nach Volumen und Bauart (nicht pauschal 0,5 %/h)
+  const vEin = parseFloat(document.getElementById('ts-verlust')?.value);
+  const verlustPctH = Number.isFinite(vEin) && vEin >= 0 ? vEin : speicherVerlustProH(vol, document.getElementById('ts-typ')?.value || 'puffer');
   const entladeKw = parseFloat(document.getElementById('ts-entlade-kw')?.value) || 200;
   const ladeKw = parseFloat(document.getElementById('ts-lade-kw')?.value) || entladeKw;
   const kapKwh = vol * 1.16 * dt; // V × ρc/3600 × ΔT ≈ V × 1.16 × ΔT

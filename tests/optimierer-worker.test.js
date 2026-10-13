@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { runInNewContext } from 'vm';
+import { runInNewContext, createContext, runInContext } from 'vm';
 import { loadScript } from './load-script.js';
 
 // Führt den echten Worker-Quelltext (wie im Browser) mit einem synthetischen Jahr aus.
@@ -24,6 +24,7 @@ beforeAll(() => {
   loadScript('06c-dispatch-core.js');
   loadScript('lib/vdi-bedien.js');
   loadScript('lib/waermespeicher.js');
+  loadScript('lib/eisspeicher.js');
   loadScript('lib/vdi2067.js');
   loadScript('07b-analysis-economics.js');
   loadScript('lib/pv-battery-core.js');
@@ -130,3 +131,36 @@ describe('Optimierer-Worker: vollständiger Lauf', () => {
     expect(ohne.kw.wgk - mit.kw.wgk).toBeLessThan(2);
   }, 60000);
 });
+
+describe('Optimierer-Worker: Eisspeicher als Quelle der Geo-WP', () => {
+  it('rechnet die Quelle wie die Hauptrechnung (Vereisungsgrenze, eingeschwungener Start) und mit den Kosten des Eisspeichers', () => {
+    const J = jahr();
+    const ctx = createContext({ self: { postMessage() {} }, Math, Float32Array, Map, Set, Number, Infinity, Object, Array, Date, isFinite, console });
+    runInContext(_buildOptWorkerCode(), ctx);
+    ctx.__d = { ...dom(), guetegrade: { geo: 0.5 }, eisSpeicher: { volumenM3: 20, absorberM2: 50, maxVereisungPct: 85, wpKw: 200 } };
+    runInContext('D = __d;', ctx);
+    const r = ctx.dispatch8760(J.last, J.tempH, J.vlH, [{ key: 'geo', leistKw: 200 }], 0, null, false);
+    // Hauptrechnung: derselbe Dispatch-Kern mit Vorlauf für den Zustand am 1. Januar
+    const basis = { lastgangKw: J.last, tempH: J.tempH, vlH: J.vlH, erzList: [{ key: 'geo', typ: 'wp', leistKw: 200, guetegrad: 0.5 }],
+      speicherParams: null, stProfile: null, stExcessH: null, bhkwSigma: 0.45, skEta: 0.99, lwwpMinCop: 0,
+      quelleTemp: () => 10, recordHourly: false, backupMode: false };
+    const eis = { volumenM3: 20, absorberM2: 50, maxVereisungPct: 85 };
+    const vor = _dispatchCore({ ...basis, eisSpeicher: eis });
+    const haupt = _dispatchCore({ ...basis, eisSpeicher: { ...eis, startW: vor.eisStat.endW } });
+    const geo = r.erzeugerList.find(e => e.key === 'geo');
+    expect(geo.waermeMwh).toBeCloseTo(haupt.thKwh.geo / 1000, 6);
+    // Ohne Eisspeicher (Erdsonden) deckt die Geo-WP mehr — der kleine Eisspeicher begrenzt sie
+    runInContext('D = { ...__d, eisSpeicher: null };', ctx);
+    const sonden = ctx.dispatch8760(J.last, J.tempH, J.vlH, [{ key: 'geo', leistKw: 200 }], 0, null, false);
+    expect(sonden.erzeugerList.find(e => e.key === 'geo').waermeMwh).toBeGreaterThan(geo.waermeMwh + 1);
+    // Kosten: halbe Geo-WP-Leistung → halber Eisspeicher (20 m³ und 50 m² je 200 kW)
+    runInContext('D = __d;', ctx);
+    expect(ctx._eisFuer([{ key: 'geo', leistKw: 100 }])).toEqual({ volumenM3: 10, absorberM2: 25, maxVereisungPct: 85 });
+    expect(ctx.eisInvest(10, 25)).toBe(eisInvest(10, 25));
+    const k = _calcKostenShared({ pKw: { geo: 100 }, zinsPct: 3.5, lohn: 45, prices: { strom: 30 }, etas: {}, investFn: () => 0,
+      co2: { pCo2: 0, emf: {} }, erzList: [{ key: 'geo', typ: 'wp', waermeMwh: 100, elMwh: 25 }], gesamtMwh: 100,
+      extra: { bohrMeter: 1000, geoQuellEur: eisInvest(10, 25) } });
+    expect(k.bausteinRows.find(b => b.id === 'geo_sonden').inv).toBe(eisInvest(10, 25));
+  }, 60000);
+});
+

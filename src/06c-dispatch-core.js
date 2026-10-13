@@ -400,6 +400,8 @@ export function _dispatchCore(cfg) {
   let thermSOC = hatSpeicher ? Math.min(thSp.kapKwh, Math.max(0, cfg.speicherStartKwh || 0)) : 0;
   const ladeVon = hatSpeicher && thSp.ladeVon != null ? thSp.ladeVon : 8;
   const ladeBis = hatSpeicher && thSp.ladeBis != null ? thSp.ladeBis : 18;
+  // Ladeleistung je Stunde für alle Quellen zusammen (Solarthermie, BHKW, WP)
+  const ladeMaxKw = !hatSpeicher ? 0 : Number.isFinite(thSp.ladeKw) ? thSp.ladeKw : Number.isFinite(thSp.entladeKw) ? thSp.entladeKw : Infinity;
   const thermSocH     = (hatSpeicher && recordHourly) ? new Float32Array(n) : null;
   const thermEntladeH = (hatSpeicher && recordHourly) ? new Float32Array(n) : null;
   const thermLadeH    = (hatSpeicher && recordHourly) ? new Float32Array(n) : null;
@@ -435,6 +437,7 @@ export function _dispatchCore(cfg) {
   for (let t = 0; t < n; t++) {
     if (recordHourly && curMonth < 11 && t >= MONTH_START_H[curMonth + 1]) curMonth++;
     let residual = lastgangKw[t];
+    let ladeFrei = ladeMaxKw;
     if (eis) eis.regenerieren(t, tempH[t]);
     gesamtKwh += residual;
     if (backupMode) backupHourKw = 0;
@@ -459,8 +462,9 @@ export function _dispatchCore(cfg) {
       // ST-Überschuss → Speicher
       const stExcess = stOut - stDeck;
       if (hatSpeicher && stExcess > 0.001) {
-        const laden = Math.min(stExcess, thSp.kapKwh - thermSOC);
+        const laden = Math.min(stExcess, thSp.kapKwh - thermSOC, ladeFrei);
         if (laden > 0.001) {
+          ladeFrei -= laden;
           thermSOC += laden;
           if (recordHourly) thermLadeH[t] += laden;
           thermGeladenGes += laden;
@@ -471,15 +475,16 @@ export function _dispatchCore(cfg) {
 
     // ── PHASE 1b: ST-Überschuss → Speicher (Optimizer — Lastgang bereits reduziert) ──
     if (!hatST && stExcessH && hatSpeicher && stExcessH[t] > 0.001) {
-      const laden = Math.min(stExcessH[t], thSp.kapKwh - thermSOC);
-      if (laden > 0.001) { thermSOC += laden; thermGeladenGes += laden; ladeKwh['solarthermie'] += laden; }
+      const laden = Math.min(stExcessH[t], thSp.kapKwh - thermSOC, ladeFrei);
+      if (laden > 0.001) { ladeFrei -= laden; thermSOC += laden; thermGeladenGes += laden; ladeKwh['solarthermie'] += laden; }
     }
 
     // ── PHASE 2: Merit-Order — Nicht-Kessel (oder alle wenn kein Speicher) ──
     const wpReservesThisH = [];
     for (const erz of nonKesselErz) {
-      // Optimizer: Early-Exit wenn Bedarf gedeckt (Performance)
-      if (!recordHourly && residual <= 0.001) break;
+      // Optimizer: Early-Exit wenn Bedarf gedeckt (Performance) — nicht, solange der Speicher laden kann (BHKW-Mindestlast,
+      // Ladereserve der WP), sonst rechnet der Optimierer anders als die Hauptrechnung
+      if (!recordHourly && residual <= 0.001 && !(hatSpeicher && thSp.kapKwh - thermSOC > 0.1 && ladeFrei > 0.1)) break;
 
       const nennKw = erz.leistKw;
       if (nennKw <= 0) continue;
@@ -515,17 +520,22 @@ export function _dispatchCore(cfg) {
         const minLastKw = nennKw * 0.5;
         if (residual >= minLastKw) {
           pTh = Math.min(erreichbarKw, Math.max(0, residual));
-        } else if (hatSpeicher && (thSp.kapKwh - thermSOC) > 0.1) {
-          // Wenig Bedarf, Speicher hat Platz → Mindestlast fahren
-          pTh = Math.min(erreichbarKw, minLastKw);
-          const ueberschuss = Math.max(0, pTh - residual);
-          if (ueberschuss > 0.001) {
-            const laden = Math.min(ueberschuss, thSp.kapKwh - thermSOC);
-            thermSOC += laden;
-            if (recordHourly) thermLadeH[t] += laden;
-            thermGeladenGes += laden;
-            ladeKwh[erz.key] += laden;
-            verworfenKwh[erz.key] += ueberschuss - laden;
+        } else if (hatSpeicher) {
+          // Wenig Bedarf: Mindestlast nur, wenn der Speicher den ganzen Überschuss aufnimmt (Platz und Ladeleistung) —
+          // sonst bleibt das BHKW aus (keine Wärme über einen Notkühler)
+          const pMin = Math.min(erreichbarKw, minLastKw);
+          const ueberschuss = Math.max(0, pMin - Math.max(0, residual));
+          if (pMin > 0.001 && ueberschuss <= Math.min(thSp.kapKwh - thermSOC, ladeFrei) + 1e-9) {
+            pTh = pMin;
+            if (ueberschuss > 0.001) {
+              ladeFrei -= ueberschuss;
+              thermSOC += ueberschuss;
+              if (recordHourly) thermLadeH[t] += ueberschuss;
+              thermGeladenGes += ueberschuss;
+              ladeKwh[erz.key] += ueberschuss;
+            }
+          } else {
+            pTh = 0;
           }
         } else {
           pTh = 0;
@@ -534,6 +544,11 @@ export function _dispatchCore(cfg) {
         pTh = isBackup ? Math.max(0, residual) : Math.min(erreichbarKw, Math.max(0, residual));
       }
 
+      // WP-Reserve für die Speicherbeladung (Phase 6) — auch eine WP, die in dieser Stunde nicht gebraucht wird
+      if (erz.typ === 'wp' && cop > 0) {
+        const reserveKw = Math.max(0, erreichbarKw - Math.max(0, pTh));
+        if (reserveKw > 0.1) wpReservesThisH.push({ erz, key: erz.key, reserveKw, cop });
+      }
       if (pTh < 0.001) continue;
       // An die Last geht höchstens die Restlast; ein BHKW-Überschuss (Mindestlast) ist oben als Ladung gezählt
       const anLast = Math.min(pTh, Math.max(0, residual));
@@ -550,11 +565,6 @@ export function _dispatchCore(cfg) {
         if (recordHourly && elKwhM[erz.key]) {
           elKwhM[erz.key][curMonth] += elH;
           thKwhM[erz.key][curMonth] += pTh;
-        }
-        // WP-Reserve für Speicherbeladung
-        const reserveKw = Math.max(0, erreichbarKw - pTh);
-        if (reserveKw > 0.1) {
-          wpReservesThisH.push({ erz, key: erz.key, reserveKw, cop });
         }
       }
       if (erz.typ === 'kwk' && pTh > 0.001) {
@@ -622,7 +632,7 @@ export function _dispatchCore(cfg) {
     if (hatSpeicher && thermSOC < thSp.kapKwh && wpReservesThisH.length > 0) {
       const h = t % 24;
       if (h >= ladeVon && h < ladeBis) {
-        let restLade = Math.min(thSp.kapKwh - thermSOC, thSp.ladeKw ?? thSp.entladeKw);
+        let restLade = Math.min(thSp.kapKwh - thermSOC, ladeFrei);
         for (const wp of wpReservesThisH) {
           if (restLade <= 0.1 || wp.reserveKw <= 0.1 || wp.cop <= 0) break;
           let ladeKw = Math.min(wp.reserveKw, restLade);

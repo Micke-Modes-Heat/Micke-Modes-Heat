@@ -18,6 +18,8 @@ import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastga
 import { auslegungsSpitzeAktuell, clearSolarthermie, clearThermSpeicher, getThermSpeicherParams, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
 import { _dispatchCore, autoGkResult, isErzeugerAktiv, spitzenkessel, meritOrderKeys, onSystemStateUpdated, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
 import { huestInvestEur } from './lib/netz-hausstationen.js';
+import { eisInvest } from './lib/eisspeicher.js';
+import { speicherVerlustProH } from './lib/waermespeicher.js';
 import { _calcKostenShared, _parseGeoBohrMeter, batterieLebensdauer, netzPumpenstromMwh, pvWaermeEingaben, vdiDynParams, wirtPvWp } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
@@ -97,7 +99,10 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
   let thSp = null;
   if (typeof optSpeicherVol === 'number' && optSpeicherVol > 0) {
     const dt = parseFloat(document.getElementById('ts-dt')?.value) || 40;
-    const verlustPctH = parseFloat(document.getElementById('ts-verlust')?.value) || 0.5;
+    // Verlust je untersuchtem Volumen aus der Kennlinie, außer von Hand eingegeben (wie im Worker)
+    const vEl = document.getElementById('ts-verlust');
+    const verlustPctH = vEl?.dataset.manuell === '1' && Number.isFinite(parseFloat(vEl.value)) ? parseFloat(vEl.value)
+      : speicherVerlustProH(optSpeicherVol, document.getElementById('ts-typ')?.value || 'puffer');
     const entladeKw = parseFloat(document.getElementById('ts-entlade-kw')?.value) || 200;
     const ladeKw = parseFloat(document.getElementById('ts-lade-kw')?.value) || entladeKw;
     thSp = { vol: optSpeicherVol, dt, kapKwh: optSpeicherVol * 1.16 * dt, verlustRate: verlustPctH / 100, entladeKw, ladeKw };
@@ -258,10 +263,12 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
   if (_agkKw > 0.1) _bPKw._autoGk = Math.ceil(_agkKw);
   const _bInvestFn = (key, kw) => kw > 0.1 ? Math.round(kw * _optInvestProKw(key, kw)) : 0;
 
-  // Dynamische Bohrmeter für Geo
+  // Dynamische Bohrmeter für Geo; Quelle Eisspeicher: dessen Investition (mit der Geo-WP-Leistung skaliert)
   let _dynBohrMeter = typeof _parseGeoBohrMeter === 'function' ? _parseGeoBohrMeter() : 0;
   const _geoErz = erzeugerList.find(e => e.key === 'geo');
-  if (_geoErz && _geoErz.leistKw > 0 && _dynBohrMeter < 1) {
+  const _eisVar = _optEisFuer(erzeugerList);
+  const _geoQuellEur = _eisVar ? eisInvest(_eisVar.volumenM3, _eisVar.absorberM2) : undefined;
+  if (_geoErz && _geoErz.leistKw > 0 && _dynBohrMeter < 1 && !_eisVar) {
     const _geoErzeugt = _geoErz.erzeugtMwh ?? _geoErz.waermeMwh;
     const jaz = (_geoErz.elMwh > 0) ? _geoErzeugt / _geoErz.elMwh : 4.0;
     const tiefe = Math.min(400, Math.max(30, parseFloat(document.getElementById('geo-tiefe')?.value) || 100));
@@ -312,6 +319,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
     investFn: _bInvestFn,
     extra: {
       bohrMeter: _dynBohrMeter,
+      geoQuellEur: _geoQuellEur,
       nGeb: _optHst().anzahl,
       huestEur: huestInvestEur(_optHst().anschlussKw),
       netzInvest: typeof _calcNetzInvestForOpt === 'function' ? _calcNetzInvestForOpt() : 0,
@@ -499,6 +507,19 @@ export const OPT_FEIN_EVALS = { schnell: 150, standard: 350, gruendlich: 700 };
   _optUpdateEstimate();
 })();
 
+/** Eisspeicher als Quelle der Geo-WP: Auslegung des Panels, mit der Leistung der Geo-WP der Variante skaliert (oder null). */
+export function _optEisSpeicher() {
+  const e = typeof window.getEisSpeicherParams === 'function' ? window.getEisSpeicherParams() : null;
+  return e ? { ...e, wpKw: parseFloat(document.getElementById('geo-heizlast')?.value) || 0 } : null;
+}
+function _optEisFuer(erzeugerList) {
+  const e = _optEisSpeicher();
+  const geo = e && erzeugerList.find(x => x.key === 'geo');
+  if (!geo || !(geo.leistKw > 0)) return null;
+  const f = e.wpKw > 0 ? geo.leistKw / e.wpKw : 1;
+  return { volumenM3: e.volumenM3 * f, absorberM2: e.absorberM2 * f, maxVereisungPct: e.maxVereisungPct };
+}
+
 /** Hausübergabestationen des Wärmenetzes (03b netzHausstationen): Anzahl und Anschlussleistung je Gebäude. */
 function _optHst() {
   return typeof window.netzHausstationen === 'function' ? window.netzHausstationen() : { anzahl: 0, anschlussKw: [] };
@@ -572,9 +593,10 @@ export function _collectOptDomParams() {
     auslegung: _optAuslegung(),
     agkKey: spitzenkessel().key, agkStromEta: spitzenkessel().strom ? f('sk-eta', 99) / 100 : 0,
     geoDtAbsenkung: f('geo-dt-absenkung', 4),
+    eisSpeicher: _optEisSpeicher(),
     geoTiefe: Math.min(400, Math.max(30, f('geo-tiefe', 100))),
     geoQPerM: Math.min(60, Math.max(10, f('geo-q-perm', 31))),
-    tsDt: f('ts-dt', 40), tsVerlust: f('ts-verlust', 0.5), tsEntladeKw: f('ts-entlade-kw', 200), tsLadeKw: f('ts-lade-kw', f('ts-entlade-kw', 200)),
+    tsDt: f('ts-dt', 40), tsVerlust: f('ts-verlust', 0.5), tsVerlustManuell: document.getElementById('ts-verlust')?.dataset.manuell === '1', tsEntladeKw: f('ts-entlade-kw', 200), tsLadeKw: f('ts-lade-kw', f('ts-entlade-kw', 200)),
     tsTyp: s('ts-typ', 'puffer'),
     etaGk: f('gk-eta', 92) / 100, etaHko: f('hko-eta', 90) / 100,
     etaPk: f('pk-eta', 88) / 100, etaHhs: f('hhs-eta', 85) / 100,
@@ -804,6 +826,8 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
   if (result.tsVol > 0) {
     const tsVolEl = document.getElementById('ts-volumen');
     if (tsVolEl) tsVolEl.value = result.tsVol;
+    // Verlust zum neuen Volumen aus der Kennlinie (wie im Optimierer gerechnet), außer von Hand eingegeben
+    if (typeof window.tsVerlustAuto === 'function') window.tsVerlustAuto();
     window.thermSpeicherAktiv = true;
     if (typeof updateThermSpeicherDisplay === 'function') updateThermSpeicherDisplay();
   } else {

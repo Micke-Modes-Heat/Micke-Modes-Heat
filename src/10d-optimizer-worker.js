@@ -6,8 +6,9 @@ import { pvBatteryStep } from './lib/pv-battery-core.js';
 import { estimateBatteryAging } from './lib/battery-aging.js';
 import { optKonzeptSchluessel, optMusterSuche } from './lib/optimierer-suche.js';
 import { bedienModulStunden } from './lib/vdi-bedien.js';
-import { speicherInvestEur } from './lib/waermespeicher.js';
+import { speicherInvestEur, speicherVerlustProH } from './lib/waermespeicher.js';
 import { vdiAnnuitaetsfaktor, vdiDynFaktor, vdiBausteinAnnuitaet, vdiKwkZuschlagFaktor } from './lib/vdi2067.js';
+import { EIS, G_PEAK, SONNE, MONATSSTART_TAG, monatAusTag, eisEinstrahlung, eisErdreichTemp, eisGeometrie, eisParameter, erstelleEisZustand, eisInvest } from './lib/eisspeicher.js';
 
 /**
  * Quelltext des Optimierer-Workers. Die Rechenkerne (Dispatch, Kosten, PV/Batterie,
@@ -35,10 +36,34 @@ ${optKonzeptSchluessel.toString()}
 ${optMusterSuche.toString()}
 ${bedienModulStunden.toString()}
 ${speicherInvestEur.toString()}
+${speicherVerlustProH.toString()}
 ${vdiAnnuitaetsfaktor.toString()}
 ${vdiDynFaktor.toString()}
 ${vdiBausteinAnnuitaet.toString()}
 ${vdiKwkZuschlagFaktor.toString()}
+
+// Eisspeicher als Quelle der Sole-WP (lib/eisspeicher.js, wie im Hauptthread)
+const EIS = ${JSON.stringify(EIS)};
+const G_PEAK = ${JSON.stringify(G_PEAK)};
+const SONNE = ${JSON.stringify(SONNE)};
+const MONATSSTART_TAG = ${JSON.stringify(MONATSSTART_TAG)};
+${monatAusTag.toString()}
+${eisEinstrahlung.toString()}
+${eisErdreichTemp.toString()}
+${eisGeometrie.toString()}
+${eisParameter.toString()}
+${erstelleEisZustand.toString()}
+${eisInvest.toString()}
+
+// Eisspeicher dieser Variante: Auslegung des Panels, mit der Leistung der Geo-WP skaliert (oder null)
+function _eisFuer(erzeugerList) {
+  const e = D.eisSpeicher;
+  if (!e) return null;
+  const geo = erzeugerList.find(x => x.key === 'geo');
+  if (!geo || !(geo.leistKw > 0)) return null;
+  const f = e.wpKw > 0 ? geo.leistKw / e.wpKw : 1;
+  return { volumenM3: e.volumenM3 * f, absorberM2: e.absorberM2 * f, maxVereisungPct: e.maxVereisungPct };
+}
 
 function _defaultGuetegrad(key) {
   if (key === 'lwwp') return 0.42;
@@ -83,7 +108,9 @@ function _investProKw(key, kw) {
 function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stExcessH, backupMode) {
   let thSp = null;
   if (typeof optSpeicherVol === 'number' && optSpeicherVol > 0) {
-    thSp = { kapKwh: optSpeicherVol * 1.16 * D.tsDt, verlustRate: D.tsVerlust / 100, entladeKw: D.tsEntladeKw, ladeKw: D.tsLadeKw ?? D.tsEntladeKw };
+    // Verlust je untersuchtem Volumen aus der Kennlinie (lib/waermespeicher.js), außer von Hand eingegeben
+    const verlustPct = D.tsVerlustManuell ? D.tsVerlust : speicherVerlustProH(optSpeicherVol, D.tsTyp);
+    thSp = { kapKwh: optSpeicherVol * 1.16 * D.tsDt, verlustRate: verlustPct / 100, entladeKw: D.tsEntladeKw, ladeKw: D.tsLadeKw ?? D.tsEntladeKw };
   }
   for (const erz of erzeugerList) {
     if (!erz.typ) erz.typ = D.ERZEUGER_TYP[erz.key] || 'fix';
@@ -106,6 +133,12 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
     auslegung: D.auslegung || null,
     agkStromEta: D.agkStromEta || 0,
   };
+  // Eisspeicher: eingeschwungener Zustand am 1. Januar aus einem Vorlauf (wie dispatchEingaben im Hauptthread)
+  const eisSp = _eisFuer(erzeugerList);
+  if (eisSp) {
+    args.eisSpeicher = eisSp;
+    args.eisSpeicher = { ...eisSp, startW: _dispatchCore(args).eisStat?.endW };
+  }
   if (saisonal) args.speicherStartKwh = _dispatchCore(args).thermSocEnde || 0;
   const r = _dispatchCore(args);
   for (const erz of erzeugerList) {
@@ -218,10 +251,12 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
   const bhkwEigMwh = pvBatR ? (pvBatR.bhkwEigenMwh || 0) : 0;
   const bhkwEinspMwh = pvBatR ? (pvBatR.bhkwEinspMwh || 0) : 0;
 
-  // Erdsonden nach Leistung und Jahresentzug der Geo-WP dieser Variante
+  // Erdsonden nach Leistung und Jahresentzug der Geo-WP dieser Variante; Quelle Eisspeicher: dessen Investition
   let _dynBohrMeter = D.bohrMeter || 0;
   const _geoErz = erzeugerList.find(e => e.key === 'geo');
-  if (_geoErz && _geoErz.leistKw > 0 && _dynBohrMeter < 1) {
+  const _eisVar = _eisFuer(erzeugerList);
+  const _geoQuellEur = _eisVar ? eisInvest(_eisVar.volumenM3, _eisVar.absorberM2) : undefined;
+  if (_geoErz && _geoErz.leistKw > 0 && _dynBohrMeter < 1 && !_eisVar) {
     const _geoErzeugt = _geoErz.erzeugtMwh ?? _geoErz.waermeMwh;
     const _geoJaz = (_geoErz.elMwh > 0) ? _geoErzeugt / _geoErz.elMwh : 4.0;
     const _proSondeKw = D.geoQPerM * D.geoTiefe / 1000;
@@ -246,6 +281,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
     investFn: function(key, kw) { return kw > 0.1 ? Math.round(kw * _investProKw(key, kw)) : 0; },
     extra: {
       bohrMeter: _dynBohrMeter,
+      geoQuellEur: _geoQuellEur,
       nGeb: D.nGeb || 0,
       huestEur: D.huestEur,
       netzInvest: D.netzInvest || 0,
