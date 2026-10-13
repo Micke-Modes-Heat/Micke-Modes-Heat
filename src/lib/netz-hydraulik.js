@@ -14,6 +14,33 @@ export const KMR_STAHLROHR = Object.freeze({
   600: [610.0, 7.1], 700: [711.0, 8.0], 800: [813.0, 8.8],
 });
 
+/**
+ * Auslegungsregeln der Nennweitenwahl: Maßgebend ist das Druckgefälle (Verteilleitung, Hausanschluss); die
+ * Fließgeschwindigkeit ist nur Obergrenze und steigt mit der Nennweite (übliche Planungswerte für KMR): bis DN 32 der
+ * Bezugswert (Voreinstellung 1,0 m/s), bis DN 65 × 1,5, bis DN 150 × 2, bis DN 300 × 2,5, darüber × 3.
+ * Mindestnennweite DN 20 (kleinste Nennweite nach DIN EN 253), Hausanschlüsse DN 25 (Trinkwassererwärmung im
+ * Durchflussprinzip).
+ */
+export const V_GRENZE_STUFEN = Object.freeze([[32, 1.0], [65, 1.5], [150, 2.0], [300, 2.5], [Infinity, 3.0]]);
+export function vGrenzeMs(dn, vBezug = 1) {
+  const stufe = V_GRENZE_STUFEN.find(([bis]) => (Number(dn) || 0) <= bis);
+  return (vBezug > 0 ? vBezug : 1) * stufe[1];
+}
+export const DN_MIN = 20;
+export const DN_MIN_HAUSANSCHLUSS = 25;
+
+/**
+ * Förderhöhe der Netzpumpe aus dem Rohrleitungsdruckverlust des ungünstigsten Pfads (Vor- und Rücklauf): Zuschlag für
+ * Formstücke und Armaturen, Differenzdruck an der Hausstation (am ungünstigsten Anschluss konstant geregelt) und
+ * Druckverlust der Heizzentrale (Verteiler, Wärmetauscher, Armaturen).
+ */
+export const ZUSCHLAG_EINZELWIDERSTAENDE = 0.2;
+export const DP_HAUSSTATION_PA = 50000;
+export const DP_HEIZZENTRALE_PA = 50000;
+export function foerderDruckPa(rohrDpPa) {
+  return Math.max(0, rohrDpPa) * (1 + ZUSCHLAG_EINZELWIDERSTAENDE) + DP_HAUSSTATION_PA + DP_HEIZZENTRALE_PA;
+}
+
 /** Innendurchmesser in m; Nennweiten außerhalb der Tabelle: DN als Näherung. */
 export function rohrInnenM(dn) {
   const r = KMR_STAHLROHR[Number(dn)];
@@ -97,17 +124,20 @@ export function netzPumpe(massenstrom, dpPa, stoff = wasserStoffwerte(70)) {
 }
 
 /**
- * Äquivalente Volllaststunden der drehzahlgeregelten Netzpumpe aus dem Lastgang: Proportionalitätsgesetz
- * P ~ V̇³ ~ (Last/Auslegungslast)³, mindestens 10 % der Auslegungsleistung, solange das Netz läuft.
+ * Äquivalente Volllaststunden der drehzahlgeregelten Netzpumpe aus dem Lastgang. Differenzdruckregelung am
+ * ungünstigsten Anschluss: Der Differenzdruck dort bleibt konstant (Anteil aKonst an der Auslegungsförderhöhe), der
+ * Rest fällt quadratisch mit dem Volumenstrom: P/P_ausl = x·(a + (1−a)·x²) mit x = Last/Auslegungslast; a = 0 ist das
+ * reine Proportionalitätsgesetz (P ~ x³). Mindestens 10 % der Auslegungsleistung, solange das Netz läuft.
  * refKw = Last, für die die Pumpe ausgelegt ist (nie unter der Spitze des Lastgangs).
  */
-export function pumpenVolllaststunden(lastgangKw, refKw = 0) {
+export function pumpenVolllaststunden(lastgangKw, refKw = 0, aKonst = 0) {
   if (!lastgangKw?.length) return 0;
   let max = 0;
   for (let i = 0; i < lastgangKw.length; i++) if (lastgangKw[i] > max) max = lastgangKw[i];
   const ref = Math.max(max, Number(refKw) || 0);
   if (!(ref > 0)) return 0;
+  const a = Math.min(1, Math.max(0, Number(aKonst) || 0));
   let h = 0;
-  for (let i = 0; i < lastgangKw.length; i++) { const x = lastgangKw[i] / ref; if (x > 0) h += Math.max(0.1, x * x * x); }
+  for (let i = 0; i < lastgangKw.length; i++) { const x = lastgangKw[i] / ref; if (x > 0) h += Math.max(0.1, x * (a + (1 - a) * x * x)); }
   return h;
 }

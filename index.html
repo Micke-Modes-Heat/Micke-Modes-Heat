@@ -3039,8 +3039,8 @@
       <input class="inp-field" type="number" id="netz-rl" value="60" data-change="syncVLTemps('netz');recalcNetz();if(window.glBerechnenDebounced&&window.glKannBerechnen&&window.glKannBerechnen())window.glBerechnenDebounced()"/>
     </div>
     <div class="inp-group">
-      <label class="inp-label">Ziel-Fließgeschw. (m/s)</label>
-      <input class="inp-field" type="number" id="netz-v" value="1.0" min="0.3" max="2.0" step="0.1" data-change="recalcNetz()" title="Auslegungswert; zulässiger Einstellbereich 0,3 bis 2,0 m/s"/>
+      <label class="inp-label">Max. Fließgeschw. bis DN 32 (m/s)</label>
+      <input class="inp-field" type="number" id="netz-v" value="1.0" min="0.3" max="2.0" step="0.1" data-change="recalcNetz()" title="Obergrenze der Fließgeschwindigkeit für Nennweiten bis DN 32 (Einstellbereich 0,3 bis 2,0 m/s). Größere Nennweiten dürfen schneller fließen: bis DN 65 × 1,5, bis DN 150 × 2, bis DN 300 × 2,5, darüber × 3. Maßgebend für die Nennweite ist in der Regel der Druckverlust."/>
     </div>
   </div>
 

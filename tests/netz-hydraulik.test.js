@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   rohrInnenM, rohrQuerschnittM2, wasserStoffwerte, rohrHydraulik, massenstromKgS, rohrLeistungKw,
   foerderhoeheM, pumpenWirkungsgrad, netzPumpe, pumpenVolllaststunden, KMR_STAHLROHR,
+  vGrenzeMs, foerderDruckPa, DP_HAUSSTATION_PA, DP_HEIZZENTRALE_PA, DN_MIN, DN_MIN_HAUSANSCHLUSS,
 } from '../src/lib/netz-hydraulik.js';
 
 describe('Netzhydraulik', () => {
@@ -80,5 +81,26 @@ describe('Netzhydraulik', () => {
     // Bezug nie unter der Lastgangspitze
     expect(pumpenVolllaststunden(lg, 10)).toBeCloseTo(pumpenVolllaststunden(lg), 9);
     expect(pumpenVolllaststunden(null)).toBe(0);
+  });
+
+  it('Auslegungsregeln: Geschwindigkeit steigt mit der Nennweite, Förderdruck mit Zuschlägen, Mindestnennweiten', () => {
+    expect(vGrenzeMs(25)).toBe(1.0);
+    expect(vGrenzeMs(65, 1)).toBe(1.5);
+    expect(vGrenzeMs(150, 1)).toBe(2.0);
+    expect(vGrenzeMs(300, 1)).toBe(2.5);
+    expect(vGrenzeMs(350, 1.2)).toBeCloseTo(3.6, 9);
+    expect(foerderDruckPa(100000)).toBe(120000 + DP_HAUSSTATION_PA + DP_HEIZZENTRALE_PA);
+    expect(foerderDruckPa(-5)).toBe(DP_HAUSSTATION_PA + DP_HEIZZENTRALE_PA);
+    expect(DN_MIN).toBe(20);
+    expect(DN_MIN_HAUSANSCHLUSS).toBe(25);
+  });
+
+  it('Pumpenteillast mit konstantem Differenzdruck-Anteil', () => {
+    const lg = new Float32Array(8760).fill(500);
+    lg[0] = 1000;
+    // x = 0,5: rein kubisch 0,125; mit a = 0,4: 0,5·(0,4 + 0,6·0,25) = 0,275
+    expect(pumpenVolllaststunden(lg, 1000, 0)).toBeCloseTo(1 + 8759 * 0.125, 3);
+    expect(pumpenVolllaststunden(lg, 1000, 0.4)).toBeCloseTo(1 + 8759 * 0.275, 3);
+    expect(pumpenVolllaststunden(lg, 1000, 0.4)).toBeGreaterThan(pumpenVolllaststunden(lg, 1000, 0));
   });
 });

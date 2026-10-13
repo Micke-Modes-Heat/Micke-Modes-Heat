@@ -6,7 +6,7 @@ import { map } from './02b-gebaeude.js';
 import { netzEditMode, recalcNetz } from './03b-netz.js';
 import { KMR_KOSTEN } from './config/netz-kosten.js';
 import { dijkstraBisZiel, stichEntfernen } from './lib/netz-strang.js';
-import { rohrLeistungKw } from './lib/netz-hydraulik.js';
+import { rohrLeistungKw, vGrenzeMs } from './lib/netz-hydraulik.js';
 
 export let overlayLayer = null;
 
@@ -49,17 +49,10 @@ export function getUWertForDN(dn, baseU) {
 /** Rohre je Trasse (Vor- und Rücklauf). */
 export const ROHRE_JE_TRASSE = 2;
 
-// Empfohlene Fließgeschwindigkeit abhängig von DN (m/s)
-// Kleine Rohre: langsamer (Geräusch, Druckverlust), große: schneller
+// Zulässige Fließgeschwindigkeit abhängig von DN (m/s): Obergrenze, steigend mit der Nennweite (lib/netz-hydraulik.js);
+// maßgebend für die Nennweite ist in der Regel das Druckgefälle
 export function getVFlowForDN(dn, baseV) {
-  const ref = baseV || 1.0;
-  if (dn <= 25)  return ref * 0.5;
-  if (dn <= 40)  return ref * 0.6;
-  if (dn <= 65)  return ref * 0.75;
-  if (dn <= 100) return ref * 0.9;
-  if (dn <= 200) return ref * 1.0;
-  if (dn <= 400) return ref * 1.2;
-  return ref * 1.5;  // DN450+
+  return vGrenzeMs(dn, baseV || 1.0);
 }
 
 // Echte Polyline-Länge berechnen (mit Waypoints)

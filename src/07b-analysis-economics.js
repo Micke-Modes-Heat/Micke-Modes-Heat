@@ -361,7 +361,7 @@ export function netzPumpenstromMwh() {
   const pKw = pumpe?.pumpenLeistungKW || 0;
   const lg = window.systemState?.lastgangKw;
   if (!(pKw > 0) || !lg?.length) return 0;
-  return pKw * pumpenVolllaststunden(lg, (pumpe.lastKw || 0) + (pumpe.verlustKw || 0)) / 1000;
+  return pKw * pumpenVolllaststunden(lg, (pumpe.lastKw || 0) + (pumpe.verlustKw || 0), pumpe.dpKonstantAnteil || 0) / 1000;
 }
 
 /**

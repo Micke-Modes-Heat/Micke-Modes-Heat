@@ -4,6 +4,7 @@ import { loadScript } from './load-script.js';
 beforeAll(() => {
   // Config muss zuerst geladen werden (KMR_KOSTEN wird referenziert)
   loadScript('config/netz-kosten.js');
+  loadScript('lib/netz-hydraulik.js');
   loadScript('02a-netz-physik.js');
 });
 
@@ -60,12 +61,12 @@ describe('getVFlowForDN', () => {
     expect(getVFlowForDN(20, 1.0)).toBeLessThan(getVFlowForDN(200, 1.0));
   });
 
-  it('DN200 → Referenzgeschwindigkeit', () => {
-    expect(getVFlowForDN(200, 1.0)).toBe(1.0);
-  });
-
-  it('DN600 → schneller als Referenz', () => {
-    expect(getVFlowForDN(600, 1.0)).toBeGreaterThan(1.0);
+  it('bis DN 32 → Bezugswert, steigend bis zum Dreifachen ab DN 350', () => {
+    expect(getVFlowForDN(32, 1.0)).toBe(1.0);
+    expect(getVFlowForDN(50, 1.0)).toBe(1.5);
+    expect(getVFlowForDN(100, 1.0)).toBe(2.0);
+    expect(getVFlowForDN(200, 1.0)).toBe(2.5);
+    expect(getVFlowForDN(600, 0.8)).toBeCloseTo(2.4, 9);
   });
 });
 

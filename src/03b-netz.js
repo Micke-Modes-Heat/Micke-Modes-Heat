@@ -44,7 +44,7 @@ import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen, besteAs
 import { strangGruppen, sackgassenEntfernen, quartierJeGebaeude, hauptstraenge } from './lib/netz-quartiere.js';
 import { zentraleJeGebaeude, kuppelVerbindungen } from './lib/netz-zentralen.js';
 import { EIS, eisAuslegungVorschlag, eisBewertung, eisGeometrie, eisInvest } from './lib/eisspeicher.js';
-import { CP_WASSER, rohrHydraulik, rohrQuerschnittM2, wasserStoffwerte, netzPumpe, pumpenVolllaststunden } from './lib/netz-hydraulik.js';
+import { CP_WASSER, rohrHydraulik, rohrQuerschnittM2, wasserStoffwerte, netzPumpe, pumpenVolllaststunden, foerderDruckPa, DP_HAUSSTATION_PA, DN_MIN, DN_MIN_HAUSANSCHLUSS } from './lib/netz-hydraulik.js';
 
 /** Netztemperaturen im Jahr (°C): ab dem Jahr der geplanten Absenkung die abgesenkten Werte. */
 export function netzTemperaturen(jahr = globalYear) {
@@ -3273,7 +3273,12 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
   const electricityPrice = readNum('wirt-p-strom',35,0,200) / 100;
   // Pumpenenergie: äquivalente Volllaststunden der drehzahlgeregelten Pumpe aus dem Lastgang (kubisch, mind. 10 %);
   // ohne Lastgang Näherung 50 % der Vollbenutzungsstunden
-  const pumpHours = pumpenVolllaststunden(window.systemState?.lastgangKw) || 0.5 * Math.max(1,getNetzVBH() || 1800);
+  const _pumpHours = new Map();
+  const pumpHoursFor = aKonst => {
+    const k = Math.round(aKonst * 20) / 20;   // gerundet zwischenspeichern (viele Varianten)
+    if (!_pumpHours.has(k)) _pumpHours.set(k, pumpenVolllaststunden(window.systemState?.lastgangKw, 0, k) || 0.5 * Math.max(1,getNetzVBH() || 1800));
+    return _pumpHours.get(k);
+  };
   const loadById = new Map(buildingNodes.map(node => [node.id,node.load || 0]));
   const requiredIds = new Set(buildingNodes.map(node => node.id));
   const edgeKeyOf = edge => String(edge.u) < String(edge.v)
@@ -3498,7 +3503,9 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
       const houseConnection = count === 1 &&
         (edge.uNode?.type === 'geb' || edge.vNode?.type === 'geb');
       const dpLimit = houseConnection ? dpService : dpMain;
+      const dnMin = houseConnection ? DN_MIN_HAUSANSCHLUSS : DN_MIN;
       const dn = standardDNs.find(candidate => {
+        if (candidate < dnMin) return false;
         const hydraulic = hydraulicsFor(designLoad,candidate);
         return hydraulic.velocity <= getVFlowForDN(candidate,vFlow) &&
           hydraulic.dpPerM <= dpLimit;
@@ -3522,12 +3529,13 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
         sizedEdge.hydraulic.dpPerM * length * 2);
       pathLength.set(id,(pathLength.get(upstream) || 0) + length);
     });
-    const maxPathDp = Math.max(0,...[...requiredIds].map(id => pathDp.get(id) || 0)) + 50000;
+    const maxPathDp = foerderDruckPa(Math.max(0,...[...requiredIds].map(id => pathDp.get(id) || 0)));
     // Volumenstrom der Pumpe: Σ Normheizlast × Gleichzeitigkeit über alle Abnehmer
     const rootLoad = (loads.get(zId) || 0) * gzf(consumers.get(zId) || 0);
     const pumpKW = netzPumpe(rootLoad / (cp * dt),maxPathDp,stoff).pKw;
+    // Pumpenenergie mit konstantem Differenzdruck am ungünstigsten Anschluss (Anteil an der Förderhöhe)
     const operating = lifetimeYears *
-      (lossMWhPerYear * heatPrice + pumpKW * pumpHours * electricityPrice);
+      (lossMWhPerYear * heatPrice + pumpKW * pumpHoursFor(maxPathDp > 0 ? DP_HAUSSTATION_PA / maxPathDp : 0) * electricityPrice);
     let detourPenalty = 0;
     let maxStretch = 1;
     requiredIds.forEach(id => {
@@ -6545,8 +6553,10 @@ function _recalcNetzIntern(){
           (e.uNode?.type === 'geb' || e.vNode?.type === 'geb');
         e.dpLimit = e.isHouseConnection ? dpLimitService : dpLimitMain;
 
+        const dnMin = e.isHouseConnection ? DN_MIN_HAUSANSCHLUSS : DN_MIN;
         if ((!networkLocked && !e.dnOverride) || e.dn === 0) {
             e.dn = standardDNs.find(dn => {
+              if (dn < dnMin) return false;
               const candidate = sizingFor(e.load,e,dn);
               return candidate.velocity <= getVFlowForDN(dn,vFlow) && candidate.dpPerM <= e.dpLimit;
             }) || standardDNs[standardDNs.length - 1];
@@ -6558,7 +6568,9 @@ function _recalcNetzIntern(){
           e.isHouseConnection = e._nVerbraucher <= 1 &&
             (e.uNode?.type === 'geb' || e.vNode?.type === 'geb');
           e.dpLimit = e.isHouseConnection ? dpLimitService : dpLimitMain;
+          const dnMinZ = e.isHouseConnection ? DN_MIN_HAUSANSCHLUSS : DN_MIN;
           e.dn = standardDNs.find(dn => {
+            if (dn < dnMinZ) return false;
             const candidate = sizingFor(0,e,dn);
             return candidate.velocity <= getVFlowForDN(dn,vFlow) && candidate.dpPerM <= e.dpLimit;
           }) || standardDNs[standardDNs.length - 1];
@@ -6599,20 +6611,20 @@ function _recalcNetzIntern(){
     }
   });
 
-  // Kritischer Pfad je Versorgungszone: größter Druckverlust von der Zentrale zu einem Abnehmer (Vor- und
-  // Rücklauf) zuzüglich 50 kPa Differenzdruck an der Hausstation (Übergabestation und Regelreserve)
-  const DP_HAUSSTATION_PA = 50000;
+  // Kritischer Pfad je Versorgungszone: Förderdruck zum ungünstigsten Abnehmer = Rohrleitungsdruckverlust (Vor- und
+  // Rücklauf) mit Zuschlag für Formstücke und Armaturen + Differenzdruck Hausstation + Heizzentrale (lib/netz-hydraulik.js)
   const zonen = new Map(wurzeln.filter(w => nodeMap[w]).map(w => [w, { maxPathDp: 0, maxPathNode: null }]));
   order.forEach(nodeId => {
     if (wurzeln.includes(nodeId) || !parentEdge[nodeId]) return;
-    let pathDp = 0;
+    const bNode = gebMap.get(nodeId);
+    if (!bNode || !nodeMap[nodeId] || !(nodeMap[nodeId].load > 0)) return;
+    let rohrDp = 0;
     let curr = nodeId;
     while (parentEdge[curr]) {
-      pathDp += parentEdge[curr].e.dpTotal || 0;
+      rohrDp += parentEdge[curr].e.dpTotal || 0;
       curr = parentEdge[curr].pNodeId;
     }
-    const bNode = gebMap.get(nodeId);
-    if (bNode && nodeMap[nodeId] && nodeMap[nodeId].load > 0) pathDp += DP_HAUSSTATION_PA;
+    const pathDp = foerderDruckPa(rohrDp);
     const zone = zonen.get(wurzelVon.get(nodeId));
     if (zone && pathDp > zone.maxPathDp) { zone.maxPathDp = pathDp; zone.maxPathNode = nodeId; }
   });
@@ -6649,6 +6661,8 @@ function _recalcNetzIntern(){
     mDotGesamt: summe('mDotGesamt'),
     vDotGesamt: summe('vDotGesamt'), // m³/h
     lastKw: summe('lastKw'),         // Auslegungslast der Pumpen (Σ Normheizlast × Gleichzeitigkeit)
+    // Anteil des konstant geregelten Differenzdrucks (Hausstation) an der Förderhöhe — Teillast der Pumpe
+    dpKonstantAnteil: kritZone.kritPfadDp > 0 ? DP_HAUSSTATION_PA / kritZone.kritPfadDp : 0,
     maxPathNode: kritZone.maxPathNode,
     zonen: pumpeJeZone,
     dpExceededCount: window.netzEdges.filter(edge => edge.dpExceeded).length,

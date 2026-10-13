@@ -1982,7 +1982,7 @@ export function ggWaermeDaten() {
   const vDn = dn => ggLies(() => (vBezug > 0 && typeof w.getVFlowForDN === 'function' ? w.getVFlowForDN(dn, vBezug) : undefined));
   const hydraulik = kanten.length ? {
     dpNetzPaM: ggFeldZahl('netz-dp-main'), dpAnschlussPaM: ggFeldZahl('netz-dp-service'),
-    vKleinMs: vDn(25), vGrossMs: vDn(450), foerderhoeheBar: ggLies(() => w._netzPumpe?.foerderhoeheBar),
+    vKleinMs: vDn(32), vGrossMs: vDn(350), foerderhoeheBar: ggLies(() => w._netzPumpe?.foerderhoeheBar),
   } : undefined;
   if (hydraulik) Object.keys(hydraulik).forEach(k => { if (!Number.isFinite(hydraulik[k])) delete hydraulik[k]; });
   const netz = {

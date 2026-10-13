@@ -28,10 +28,11 @@ export const WPG_EE_ZIELE = [{ jahr: 2030, pct: 30 }, { jahr: 2040, pct: 80 }, {
 
 /**
  * Auslegungsregeln der Netzhydraulik im Tool (Voreinstellung; Pa/m je Leitung, m/s): Druckgefälle Verteilleitung und
- * Hausanschluss, zulässige Fließgeschwindigkeit je Nennweite (kleine Nennweiten bis DN 25 bzw. ab DN 450),
- * Differenzdruck an der Hausstation. foerderhoeheBar: netzseitige Förderhöhe am ungünstigsten Anschluss (berechnet).
+ * Hausanschluss, zulässige Fließgeschwindigkeit je Nennweite (Nennweiten bis DN 32 bzw. ab DN 350), Differenzdruck an
+ * der Hausstation, Druckverlust Heizzentrale, Zuschlag für Formstücke und Armaturen. foerderhoeheBar: Förderhöhe der
+ * Netzpumpe am ungünstigsten Anschluss (berechnet).
  */
-export const WT_HYDRAULIK_STANDARD = { dpNetzPaM: 150, dpAnschlussPaM: 250, vKleinMs: 0.5, vGrossMs: 1.5, hausstationBar: 0.5 };
+export const WT_HYDRAULIK_STANDARD = { dpNetzPaM: 150, dpAnschlussPaM: 250, vKleinMs: 1.0, vGrossMs: 3.0, hausstationBar: 0.5, heizzentraleBar: 0.5, zuschlagPct: 20 };
 
 export const WT_SCHWELLEN = {
   vollbenutzungH: { spitzig: 1800, gleichmaessig: 3000 },   // Wärmenetze mit Heizlast und Warmwasser liegen typisch dazwischen
@@ -608,10 +609,10 @@ export function wtWvn(d) {
 
   // Hydraulik
   const ue = num(z.ueberschreitungen), fh = num(hyd.foerderhoeheBar);
-  const h = [`Die Nennweiten werden so gewählt, dass in der Verteilleitung ein Druckverlust von ${nf(hyd.dpNetzPaM)} Pa/m und im Hausanschluss von ${nf(hyd.dpAnschlussPaM)} Pa/m `
-    + `nicht überschritten wird und die Fließgeschwindigkeit die für die Nennweite zulässige Geschwindigkeit nicht übersteigt (von ${nf(hyd.vKleinMs, 1)} m/s bei Nennweiten bis DN 25 bis ${nf(hyd.vGrossMs, 1)} m/s ab DN 450). `
+  const h = [`Die Nennweiten werden nach dem Druckverlust gewählt: höchstens ${nf(hyd.dpNetzPaM)} Pa/m in der Verteilleitung und ${nf(hyd.dpAnschlussPaM)} Pa/m im Hausanschluss. `
+    + `Die Fließgeschwindigkeit bleibt dabei unter der für die Nennweite zulässigen Geschwindigkeit (von ${nf(hyd.vKleinMs, 1)} m/s bei Nennweiten bis DN 32 bis ${nf(hyd.vGrossMs, 1)} m/s ab DN 350). `
     + `Für die Hausstation wird eine Druckreserve von ${nf(hyd.hausstationBar, 1)} bar angesetzt. `];
-  if (ok(fh) && fh > 0) h.push(`Netzseitig ergibt sich am hydraulisch ungünstigsten Anschluss eine Förderhöhe von rund ${nf(fh, 1)} bar (Vor- und Rücklauf einschließlich Hausstation, ohne die Druckverluste in der Heizzentrale). `);
+  if (ok(fh) && fh > 0) h.push(`Die Förderhöhe der Netzpumpe am hydraulisch ungünstigsten Anschluss beträgt rund ${nf(fh, 1)} bar (Vor- und Rücklauf mit ${nf(hyd.zuschlagPct)} % Zuschlag für Formstücke und Armaturen, ${nf(hyd.hausstationBar, 1)} bar Hausstation, ${nf(hyd.heizzentraleBar, 1)} bar Heizzentrale). `);
   if (ok(ue)) {
     if (ue <= 0) h.push('Die hydraulische Prüfung zeigt keine Überschreitung der Grenzwerte.');
     else if (bestandsnetz) h.push(`Die hydraulische Prüfung zeigt bei ${nf(ue)} ${kleinN(ue, 'Leitungsabschnitt', 'Leitungsabschnitten')} eine Überschreitung der Grenzwerte für Druckverlust oder Fließgeschwindigkeit. Da die Nennweiten des Bestands nicht verändert werden, sind diese Abschnitte zu markieren und im Einzelfall zu prüfen, ob eine Anpassung erforderlich ist.`);
@@ -642,7 +643,8 @@ export function wtHausstation(d) {
     out.push(absatz('Die Wärmeübergabe an die Gebäude erfolgt über Hausstationen. Die Zahl der anzuschließenden Gebäude beträgt ', F('Anzahl Hausstationen'), '.'));
   }
 
-  out.push(absatz(`Für die Hausstationen wird eine Druckreserve von ${nf(hyd.hausstationBar, 1)} bar angesetzt, damit der Differenzdruck auch am hydraulisch ungünstigsten Anschluss ausreicht.`));
+  out.push(absatz(`Für die Hausstationen wird eine Druckreserve von ${nf(hyd.hausstationBar, 1)} bar angesetzt, damit der Differenzdruck auch am hydraulisch ungünstigsten Anschluss ausreicht. `
+    + 'Die Anschlussleistung entspricht der Normheizlast des Gebäudes ohne gesonderten Zuschlag für die Trinkwassererwärmung; die Hausanschlussleitungen werden mindestens in DN 25 ausgeführt, sodass auch eine Trinkwassererwärmung im Durchflussprinzip versorgt werden kann.'));
 
   if (ok(vl)) {
     const kl = wtVorlaufKlasse(vl);

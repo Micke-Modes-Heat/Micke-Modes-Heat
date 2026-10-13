@@ -3,6 +3,7 @@ import { loadScript } from './load-script.js';
 
 beforeAll(() => {
   loadScript('config/netz-kosten.js');
+  loadScript('lib/netz-hydraulik.js');
   loadScript('02a-netz-physik.js');
 });
 

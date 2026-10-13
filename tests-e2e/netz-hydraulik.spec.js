@@ -70,8 +70,8 @@ test('dist: Netzhydraulik — Absenkung, Pumpe, Auslastung, Gutachten', async ({
   expect(r.mit2040.pumpe.mDotGesamt / r.ohne.pumpe.mDotGesamt).toBeCloseTo(1.5, 1);
   // Gutachten: Grenzwerte aus den Eingaben, Förderhöhe, Engpässe nach Druck oder Geschwindigkeit
   expect(r.netz.hydraulik.dpNetzPaM).toBe(150);
-  expect(r.netz.hydraulik.vKleinMs).toBeCloseTo(0.5, 9);
-  expect(r.netz.hydraulik.vGrossMs).toBeCloseTo(1.5, 9);
+  expect(r.netz.hydraulik.vKleinMs).toBeCloseTo(1.0, 9);
+  expect(r.netz.hydraulik.vGrossMs).toBeCloseTo(3.0, 9);
   expect(r.netz.hydraulik.foerderhoeheBar).toBeCloseTo(r.foerder, 9);
   expect(r.netz.ueberschreitungen).toBe(r.anzahlBottleneck);
   expect(pageErrors).toEqual([]);
