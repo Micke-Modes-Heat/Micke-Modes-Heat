@@ -1582,10 +1582,18 @@ function ggFahrplanDaten() {
   const vid = variante && variante.id !== 'base' ? variante.id : null;
   const massn = [...ggLies(() => (w.ASSETS?.items || []).flatMap(a => a.massnahmen || []), []),
     ...ggLies(() => (w.gebaeude || []).flatMap(g => g.massnahmen || []), [])].filter(m => m && m.phaseId);
+  try { w.massnahmenAbgleichen?.(); } catch (e) { void e; }
+  const register = new Map(ggLies(() => w.massnahmenRegister || [], []).map(e => [e.id, e]));
   const ausbau = ggLies(() => (w.phasen || []), []).filter(p => p && (p.variantId == null || p.variantId === vid))
     .map(p => {
-      const m = massn.filter(x => x.phaseId === p.id);
-      return { name: p.name || 'Ausbaustufe', von: parseInt(p.jahrVon, 10), bis: parseInt(p.jahrBis, 10), anzahl: m.length, kostenEur: m.reduce((a, x) => a + (Number(x.kosten) || 0), 0) };
+      // Je Maßnahme der Liste einmal zählen — ein Cluster-Paket ist eine Maßnahme, seine Kosten stehen am Eintrag
+      const jeMassnahme = new Map();
+      for (const x of massn.filter(y => y.phaseId === p.id)) {
+        const e = x.massnahmeRef != null ? register.get(x.massnahmeRef) : null;
+        if (!jeMassnahme.has(e ? e.id : x)) jeMassnahme.set(e ? e.id : x, e ? (Number(e.kosten?.investEur) || 0) : (Number(x.kosten) || 0));
+      }
+      return { name: p.name || 'Ausbaustufe', von: parseInt(p.jahrVon, 10), bis: parseInt(p.jahrBis, 10), anzahl: jeMassnahme.size,
+               kostenEur: [...jeMassnahme.values()].reduce((t, k) => t + k, 0) };
     })
     .filter(p => Number.isFinite(p.von)).sort((a, b) => a.von - b.von);
   return { variante, ausbau };
@@ -1668,7 +1676,7 @@ function ggFrageKontextNeu() {
   // ★ Gutachtenvariante aus dem Variantenmenü: Vorgabe für die empfohlene Variante (Fragebogen 9.1)
   const g = ggLies(() => window.gutachtenVariante, null);
   const stern = g == null ? '' : ggLies(() => window.variantenName?.(g), '') || '';
-  return { inVariante, varianten: v.map(x => x.name), stern };
+  return { inVariante, varianten: v.map(x => x.name), stern, pvAuslegungen: ggLies(() => ggPvAuslegungsOptionen(), []) };
 }
 /** Antwort auf eine Frage des Fragebogens oder ihre Vorgabe. */
 export function ggFrage(id) {
@@ -1726,7 +1734,30 @@ const GG_REGELN = {
   'lastgang-korrelation': () => { const wb = ggLies(() => window.getWitterung?.(), {}) || {}; return ggWenn(String(ggLies(() => ggWaermeHerkunft().lastgang, '')).startsWith('import') && wb.ergebnis?.messjahr === wb.messjahr && !!wb.ergebnis?.tageT, 'kein gemessener Lastgang mit Tagestemperaturen'); },
   'verbrauch-aufteilung-text': () => ggWenn(!!ggVerbrauchsaufteilung(), 'keine Messung oder keine Gebäudewerte'),
   'verbrauch-aufteilung-tabelle': () => ggWenn(!!ggVerbrauchsaufteilung(), 'keine Messung oder keine Gebäudewerte'),
+  // Elektro: Abbildungen, die ohne eine Rechnung im Tool nur einen Leerhinweis zeigen würden
+  'pv-variantenvergleich': () => ggWenn(ggPvKanon().length > 0, 'PV-Varianten nicht berechnet (☀ PV-Analyse)'),
+  'pv-energiebilanz': () => ggWenn(ggPvKanon().length > 0, 'PV-Varianten nicht berechnet (☀ PV-Analyse)'),
+  'pv-wirtschaftlichkeit': () => ggWenn(ggPvKanon().length > 0, 'PV-Varianten nicht berechnet (☀ PV-Analyse)'),
+  'pv-herleitung': () => ggWenn(ggPvKanon().length > 0, 'PV-Varianten nicht berechnet (☀ PV-Analyse)'),
+  'pv-rueckspeisung': () => ggWenn(ggPvKanon().length > 0, 'PV-Varianten nicht berechnet (☀ PV-Analyse)'),
+  'res-jahresraster': () => ggWenn(!!window._pvResReco, 'keine Resilienz-Rechnung (☀ PV-Analyse › Kapitel 6.1)'),
+  'res-fensterverlauf': () => ggWenn(!!window._pvResReco, 'keine Resilienz-Rechnung (☀ PV-Analyse › Kapitel 6.1)'),
+  'pv-resilienz': () => ggWenn(!!window._pvResReco, 'keine Resilienz-Rechnung (☀ PV-Analyse › Kapitel 6.1)'),
+  'res-varianten': () => ggWenn(!!window._pvResVarianten?.zeilen?.length, 'kein Variantenvergleich in der Resilienz-Rechnung (☀ PV-Analyse › Kapitel 6.1)'),
+  'res-ziele-matrix': () => ggWenn(!!ggResZiele()?.bewertungen?.length, 'keine Schutzziele (🛡 Blackout-Modus › Ziele)'),
 };
+
+/**
+ * Leertext einer Abbildung für Dokument und Word: Leertexte sind „Sachaussage — Anweisung im Tool“
+ * („Keine Netzersatzanlagen im Bestand — Notstromaggregat im Elektro-Tab erfassen.“). Die Anweisung
+ * gehört nur in die Einzelansicht; ins Gutachten kommt die Sachaussage.
+ */
+function ggDokLeer(text) {
+  const t = String(text || '').trim();
+  if (!t) return t;
+  const satz = t.split(' — ')[0].trim().replace(/[.:,;]+$/, '');
+  return satz ? satz + '.' : '';
+}
 
 /**
  * Plausibilitätsprüfung vor dem Export (C3): Lücken und auffällige Werte im Projekt, die Texte und Abbildungen
@@ -1785,6 +1816,46 @@ export function ggPlausiPruefung() {
     }
     const auf = ggVerbrauchsaufteilung();
     if (auf && (auf.faktor > 1.5 || auf.faktor < 0.67)) add('info', `Gebäudewerte weichen stark vom gemessenen Verbrauch ab (Faktor ${ggNum(auf.faktor, 2)}) – Typkennwerte oder Messpunkt prüfen.`);
+  } catch (e) { void e; }
+  try {
+    // PV (5.4.2/5.5): Rechenstand, Grundlage und weiterverfolgte Auslegung
+    const s = w._pvAnalyse;
+    if (s?.berechnet) {
+      if (s.stale) add('warn', 'PV-Analyse: Eingaben nach der letzten Berechnung geändert – Kapitel 5.4.2 und 5.5 zeigen den alten Stand („Varianten neu berechnen“).');
+      const g = ggPvGrundlage();
+      if (g.entwurf) add('warn', `PV: Die Dachbelegung im Projekt ist ein ungespeicherter Entwurf${g.entwurf.basisName ? ` (Basis „${g.entwurf.basisName}“)` : ''} – vor dem Export im PV-Modus unter 📚 Belegungsstände speichern oder verwerfen.`);
+      const fehlt = (s.belegungsVarianten || []).filter(bv => bv.gutachten && w.pvaBelegungDaten?.(bv)?.fehltStand);
+      if (fehlt.length) add('warn', `PV: ${fehlt.length} Dachbelegung(en) mit Haken „im Gutachten zeigen“ hängen an einem gelöschten Belegungsstand und fehlen im Gutachten.`);
+      const a = ggPvAuswahl();
+      if (a.ungueltig) add('warn', `PV: Die gewählte Auslegung für Kapitel 5.5 steht nicht mehr im Gutachten – es gilt die Vorgabe „${a.v?.label || 'Wirtschaftlich optimiert'}“ (Fragebogen 5.4.2).`);
+      if (ggVs() && g.abweichend.length) add('info', `PV: Die Verschattung ist nur für die Belegung im Projekt gerechnet; ${ggAufzaehlung(g.abweichend.map(x => `„${x}“`))} beruh${g.abweichend.length === 1 ? 't' : 'en'} auf anderen Dachbelegungen.`);
+    }
+  } catch (e) { void e; }
+  try {
+    // Elektrotechnik (Kapitel 5): Grundlagen, die viele Texte tragen, und Netzdaten, die auf Erfassungsfehler deuten.
+    // Nur vorhandene Ergebnisse lesen — die Prüfung startet keinen Engpass-Sweep.
+    if (!Array.isArray(w.elQuartierH) && !w.elQuartierH?.length) add('warn', 'Strom: Kein Referenzjahr für den Stromlastgang (⚡ Strom-Grundlagen › Messjahre) – Kapitel 5.2 bis 5.4 bleiben leer.');
+    if (!(w.elNapMaxBezugKw > 0)) add('warn', 'Strom: Vereinbarte Anschlussleistung fehlt (⚡ Strom-Grundlagen › Netzanschluss) – 5.1.1, 5.3.4, 5.4.1, 5.4.4 und 5.5 bleiben mit Platzhaltern.');
+    const geplanteErzeugung = ggLies(() => ggAnlagenIst(['PV', 'KWK', 'Wind', 'Batterie']).geplant.length, 0);
+    if (!(w.elNapMaxEinspKw > 0) && (geplanteErzeugung > 0 || ggPvKanon().length)) add('info', 'Strom: Einspeisezusage fehlt (⚡ Strom-Grundlagen › Netzanschluss) – die Rückspeisung in 5.3.4, 5.4.1 und 5.4.2 lässt sich nicht bewerten.');
+    if (!w._pvResReco) add('info', 'Strom: Keine Resilienz-Rechnung (☀ PV-Analyse › Kapitel 6.1) – Kapitel 5.4.3 bleibt mit Platzhaltern, Notstromkosten fehlen in 5.5.');
+    const res = typeof w.engpassLetztesErgebnis === 'function' ? w.engpassLetztesErgebnis() : null;
+    if (res?.proJahr?.length) {
+      const maengel = ggLies(() => w.engpassBestandsmaengel?.(res) || [], []);
+      const extrem = maengel.filter(b => (b.item?.maxAuslPct || 0) > 200);
+      if (extrem.length) {
+        const max = Math.max(...extrem.map(b => b.item.maxAuslPct));
+        add('warn', `Strom: ${extrem.length} Betriebsmittel sind schon im Bestand über 200 % ausgelastet (bis ${ggNum(max)} %) – das deutet auf Erfassungsfehler (Kabelquerschnitt, Trafoleistung, Zuordnung der Lasten) und verfälscht 5.4.1 und 5.5.`);
+      }
+      const heute = new Date().getFullYear();
+      const frueh = ggEngpassListe(res).filter(e => !e.bestand && e.item.engpassJahr - 2 < heute);
+      if (frueh.length) add('info', `Strom: ${frueh.length} ${frueh.length === 1 ? 'Engpass tritt' : 'Engpässe treten'} bis ${heute + 1} auf – die Regel „Ertüchtigung 2 Jahre vor dem Engpassjahr“ ergibt dort ein Umsetzungsjahr in der Vergangenheit.`);
+    } else if (ggLies(() => (w.listAssets?.() || []).some(a => a.type === 'Trafo'), false)) {
+      add('info', 'Strom: Noch kein Engpass-Sweep in dieser Sitzung – Kapitel 5.4.1 rechnet ihn beim Zeichnen des Dokuments.');
+    }
+    // MS-Kabel mit Niederspannungstyp (NYY, NAYY, NYCWY …) sind fast immer falsch erfasst
+    const ns = ggLies(() => ggNetzUebersichtDaten().r.verbindungen.filter(v => /\bN?A?YC?W?Y\b/.test(ggNuVerbKabel(v) || '')).length, 0);
+    if (ns) add('warn', `Strom: ${ns} ${ns === 1 ? 'Mittelspannungsverbindung' : 'Mittelspannungsverbindungen'} mit Niederspannungskabeltyp (z. B. NYY) – Kabeltyp im Kabel-Editor prüfen (Tabelle „Übersicht MS-Kabel“ in 5.1.2).`);
   } catch (e) { void e; }
   return out;
 }
@@ -4256,12 +4327,13 @@ const GG_FIGUREN = [
   // ── Entwicklung der Anschlussleistung ───────────────
   {
     id: 'anschlussleistung-entwicklung',
+    autoSync: true,   // nutzt den Sweep, den der Text 5.4.1 ohnehin rechnet (ggEngpassErgebnis) — sonst bliebe die Abbildung im Dokument leer
     reihe: 25,   // nach dem Text zum internen Netz, vor der Engpass-Tabelle
     kapitel: '5.4.1 Netzanschluss und internes Stromnetz',
     titel: 'Entwicklung der Anschlussleistung',
     datei: 'anschlussleistung-entwicklung',
     hinweis: 'Höchstlast am Liegenschaftsanschluss über den Planungshorizont, gegen Anschlusswert und '
-           + 'Einspeisezusage. „Aus Projekt übernehmen“ startet dafür den Engpass-Sweep — das rechnet '
+           + 'Einspeisezusage. Ohne vorhandenes Ergebnis wird dafür der Engpass-Sweep gestartet — er rechnet '
            + 'das Netz für jedes Stützjahr durch und dauert einen Moment. Rechnet über das Netzmodell '
            + '(Trafo-Spitzen) und weicht deshalb von der resultierenden Anschlussleistung in 5.3.4 ab.',
     render: cfg => ggRenderGanglinie(cfg),
@@ -6184,11 +6256,17 @@ function ggAnlagenIst(typen) {
   const bestand = [], geplant = [];
   for (const a of alle) {
     const g = gebListe.find(x => x.id === a.buildingId) || null;
-    const bj = parseInt(a.baujahr ?? g?.baujahr);
+    const bjEigen = parseInt(a.baujahr);
+    const bjGeb = parseInt(g?.baujahr);
     const ab = parseInt(a.abrissjahr ?? g?.abrissjahr);
     if (Number.isFinite(ab) && ab < heute) continue;
-    const e = { a, g, p: a.props || {}, bj: Number.isFinite(bj) ? bj : null };
-    const plan = a.schicht === 'entwicklung' || a.schicht === 'entscheidung' || (e.bj != null && e.bj > heute);
+    let bj = Number.isFinite(bjEigen) ? bjEigen : Number.isFinite(bjGeb) ? bjGeb : null;
+    const plan = a.schicht === 'entwicklung' || a.schicht === 'entscheidung' || (bj != null && bj > heute);
+    // Eine geplante Anlage kann kein Baujahr in der Vergangenheit haben. Das entsteht, wenn sie das Baujahr ihres
+    // Bestandsgebäudes übernimmt (createAsset in 13a, auch schon gespeichert) — sonst „Investition 1970“ in 5.5.
+    // Sie bleibt dann ohne Jahr; ein geplanter Neubau gibt sein (künftiges) Baujahr weiter.
+    if (plan && bj != null && bj < heute) bj = null;
+    const e = { a, g, p: a.props || {}, bj };
     (plan ? geplant : bestand).push(e);
   }
   const gebIdx = e => (e.g ? gebListe.indexOf(e.g) : 1e9);
@@ -6567,7 +6645,7 @@ GG_FIGUREN.push(
 /* ══════════════════════════════════════════════════════════════════════════
  * 3f) RENDERER — „Wasserfall": Leistungsbilanz in Stufen
  *
- * Für die Bedarfsprognose Strom (3.3.1–5.3.3): Ausgangswert, Rückbau, Zubau,
+ * Für die Bedarfsprognose Strom (5.3.1–5.3.3): Ausgangswert, Rückbau, Zubau,
  * Summe — jede Säule setzt dort an, wo die vorige endet.
  * cfg.balken = [{ label, sub?, wert, art }] mit art
  *   'basis'    steht auf der Nulllinie, Höhe = wert
@@ -6678,7 +6756,7 @@ export function ggRenderWasserfall(cfg, T = GG_THEME) {
   return ggFinishSvg(out, W, G.height);
 }
 
-// ── Bedarfsprognose Strom (3.3.1–5.3.3) ──────────────────────────────────────
+// ── Bedarfsprognose Strom (5.3.1–5.3.3) ──────────────────────────────────────
 // Quelle: window.napBedarfsStand() aus der NAP-Analyse (13o) — Messbasis,
 // Gleichzeitigkeitsfaktor und Maßnahmen-Haken werden dort eingestellt. Gerechnet
 // wird mit lib/bedarfsprognose.js, derselben Rechnung wie die Lastentwicklung im
@@ -6776,12 +6854,12 @@ function ggBedarfDelta(s) {
     + (s.startKw > 0 ? ` beziehungsweise ${ggBedarfFeld(Math.abs(d) / s.startKw * 100, 'Veränderung %')} %` : '');
 }
 
-/* ── Gutachtentexte 3.3.1–5.3.3 ─────────────────────────────────────────────
+/* ── Gutachtentexte 5.3.1–5.3.3 ─────────────────────────────────────────────
  * Zahlen aus derselben Rechnung wie Wasserfall und Tabelle (ggBedarfRechnung). Gelbe
  * Platzhalter sind Angaben, die das Tool nicht erfasst — sie werden in Word ergänzt.
  * Verweise relativ („folgende Abbildung“), weil Textbausteine keine Abbildungsnummern kennen. */
 
-/** 3.3.1 — Messbasis, Planungsgrundlage, Rückbau und Neubau. */
+/** 5.3.1 — Messbasis, Planungsgrundlage, Rückbau und Neubau. */
 function ggRenderBedarfGebaeudeText(cfg, T = GG_THEME) {
   void cfg;
   const { st, r } = ggBedarfRechnung();
@@ -6835,11 +6913,11 @@ function ggRenderBedarfGebaeudeText(cfg, T = GG_THEME) {
   }
 
   absaetze.push('Der zusätzliche Strombedarf aus dem Wärmekonzept und aus der Ladeinfrastruktur wird in den Kapiteln '
-    + '3.3.2 und 5.3.3 gesondert ausgewiesen und in Kapitel 5.3.4 zur resultierenden Anschlussleistung zusammengeführt.');
+    + '5.3.2 und 5.3.3 gesondert ausgewiesen und in Kapitel 5.3.4 zur resultierenden Anschlussleistung zusammengeführt.');
   return ggTextBlatt(absaetze, T);
 }
 
-/** 3.3.2 — elektrische Wärmeerzeuger der aktiven Variante. */
+/** 5.3.2 — elektrische Wärmeerzeuger der aktiven Variante. */
 function ggRenderBedarfWaermeText(cfg, T = GG_THEME) {
   void cfg;
   const { st, r } = ggBedarfRechnung();
@@ -6881,7 +6959,7 @@ function ggRenderBedarfWaermeText(cfg, T = GG_THEME) {
   return ggTextBlatt(absaetze, T);
 }
 
-/** 3.3.3 — Ladepunkte, installierte Leistung, Gleichzeitigkeit. */
+/** 5.3.3 — Ladepunkte, installierte Leistung, Gleichzeitigkeit. */
 function ggRenderBedarfLadeText(cfg, T = GG_THEME) {
   void cfg;
   const { st, r } = ggBedarfRechnung();
@@ -6944,7 +7022,7 @@ function ggRenderBedarfLadeText(cfg, T = GG_THEME) {
 function ggBedarfStandHtml(key) {
   const { fehler, st, r } = ggBedarfRechnung();
   if (fehler) return `<div style="font-size:11px;color:#e0a126;">${gEsc(fehler)}</div>`;
-  const gesamt = key === 'resultierend';   // 3.3.4 fasst alle Stufen zusammen
+  const gesamt = key === 'resultierend';   // 5.3.4 fasst alle Stufen zusammen
   const stufe = gesamt ? null : r.stufen.find(s => s.key === key);
   const typen = gesamt ? BP_STUFEN.flatMap(s => s.typen) : BP_STUFEN.find(s => s.key === key)?.typen || [];
   // Geplante Anlagen ohne Baujahr nach dem Messjahr zählen weder in der NAP-Analyse noch hier
@@ -6991,11 +7069,11 @@ const GG_BEDARF_TEXT_RENDER = {
   gebaeude: ggRenderBedarfGebaeudeText, waerme: ggRenderBedarfWaermeText, lade: ggRenderBedarfLadeText,
 };
 const GG_BEDARF_TEXT_HINWEIS = {
-  gebaeude: 'Einleitung zu 3.3.1: Messbasis, Planungsgrundlage, Rückbau und Neubau mit ihrer Wirkung auf die Leistung. '
+  gebaeude: 'Einleitung zu 5.3.1: Messbasis, Planungsgrundlage, Rückbau und Neubau mit ihrer Wirkung auf die Leistung. '
           + 'Planungsgrundlage und Herkunft der Neubau-Leistungen erfasst das Tool nicht — sie bleiben als Platzhalter offen.',
-  waerme:   'Einleitung zu 3.3.2: elektrische Wärmeerzeuger der aktiven Variante und ihr Zusatzbedarf. Der Variantenname '
+  waerme:   'Einleitung zu 5.3.2: elektrische Wärmeerzeuger der aktiven Variante und ihr Zusatzbedarf. Der Variantenname '
           + 'kommt aus der Kopfleiste; im Hauptplan bleibt er als Platzhalter offen.',
-  lade:     'Einleitung zu 3.3.3: Standorte, Ladepunkte, installierte Leistung, Gleichzeitigkeit und Zusatzbedarf. '
+  lade:     'Einleitung zu 5.3.3: Standorte, Ladepunkte, installierte Leistung, Gleichzeitigkeit und Zusatzbedarf. '
           + 'Die Grundlage der Bedarfsermittlung erfasst das Tool nicht — sie bleibt als Platzhalter offen.',
 };
 
@@ -7164,8 +7242,8 @@ function ggBedarfFiguren() {
 }
 GG_FIGUREN.push(...ggBedarfFiguren());
 
-/* ── 3.3.4 Resultierende Anschlussleistung und Lastgang ────────────────────────
- * Zusammenführung der Stufen 3.3.1–5.3.3 (statisch, maßgeblich) und Abgleich mit der vereinbarten
+/* ── 5.3.4 Resultierende Anschlussleistung und Lastgang ────────────────────────
+ * Zusammenführung der Stufen 5.3.1–5.3.3 (statisch, maßgeblich) und Abgleich mit der vereinbarten
  * Anschlussleistung. Geplante Erzeugung mindert den Bezug nicht und steht als Einspeiseleistung
  * getrennt (lib/bedarfsprognose.js); der zeitgleich überlagerte Endausbau-Lastgang der NAP-Analyse
  * erscheint nur als Vergleichswert im Text. */
@@ -7276,7 +7354,7 @@ GG_FIGUREN.push(
     kapitel: GG_KAP_RESULTIEREND,
     titel: 'Gutachtentext: Resultierende Anschlussleistung',
     datei: 'bedarf-resultierend-text',
-    hinweis: 'Zusammenführung von 3.3.1–5.3.3 zur resultierenden Anschlussleistung und Abgleich mit der vereinbarten '
+    hinweis: 'Zusammenführung von 5.3.1–5.3.3 zur resultierenden Anschlussleistung und Abgleich mit der vereinbarten '
            + 'Anschlussleistung (⚡ Strom-Grundlagen › NAP-Grenzen „Max. Bezug“). Geplante Erzeugung mindert den Bezug nicht; '
            + 'ihre Einspeiseleistung wird der Einspeisezusage („Max. Einspeisung“) gegenübergestellt. Die Höchstlast des '
            + 'überlagerten Endausbau-Lastgangs aus der NAP-Analyse erscheint nur als Vergleichswert.',
@@ -7554,7 +7632,7 @@ GG_FIGUREN.push(
   {
     id: 'netzanschluss-variante-text',
     istText: true,
-    bedarfText: 'resultierend',   // Einzelansicht zeigt denselben Stand wie 3.3.4
+    bedarfText: 'resultierend',   // Einzelansicht zeigt denselben Stand wie 5.3.4
     reihe: 5,
     kapitel: GG_KAP_NETZ,
     titel: 'Gutachtentext: Variante Netzanschluss',
@@ -7948,6 +8026,79 @@ function ggPvKanon() {
 /** Kurzform der Variantenlabel für Achsen/Kategorien (voller Name steht in Tabellen). */
 const GG_PV_KURZ = { 'gesetzlich': 'PV-Pflicht', 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'netz-eigen': 'Bestandsnetz (eigen)', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
                       'autarkie': 'Autarkie', 'max-pv': 'Max. PV-Ausbau' };
+/** Achsen-/Kategoriename einer Auslegung — Dachbelegungen tragen den Namen ihres Belegungsstands, der wird gekürzt. */
+function ggPvKurz(v) {
+  const k = GG_PV_KURZ[v.id];
+  if (k) return k;
+  const l = String(v.label || '');
+  return /^belegung-/.test(v.id) && l.length > 20 ? l.slice(0, 19).trimEnd() + '…' : l;
+}
+/** Auslegungen im Gutachten als Auswahl [[id, Name]] — leer, solange nicht gerechnet. */
+function ggPvAuslegungsOptionen() {
+  return ggPvBasis() ? ggPvKanon().map(v => [v.id, v.label]) : [];
+}
+/**
+ * Weiterverfolgte Auslegung (Fragebogen „pv-auslegung“, Vorgabe „Wirtschaftlich optimiert“):
+ * geht in die Kosten 5.5 ein. ungueltig = gewählte Auslegung steht nicht mehr im Gutachten.
+ */
+function ggPvAuswahl() {
+  const opt = ggPvAuslegungsOptionen();
+  const antworten = ggLies(() => window.gutFragenLesen?.(), {}) || {};
+  const roh = antworten['pv-auslegung'];
+  const id = gfAntwort(antworten, 'pv-auslegung', { pvAuslegungen: opt });
+  const gibtEs = !!roh && opt.some(o => o[0] === roh);
+  return { id, v: ggPvVariante(id), vonHand: gibtEs, ungueltig: !!roh && opt.length > 0 && !gibtEs };
+}
+/** Auswahl der weiterverfolgten Auslegung für die Einzelansicht (Kosten 5.5 und PV-Bausteine). */
+function ggPvAuswahlHtml() {
+  const opt = ggPvAuslegungsOptionen();
+  const box = inhalt => `<div style="margin-top:8px;font-size:11px;line-height:1.5;">${inhalt}</div>`;
+  if (!opt.length) return box('<span style="color:var(--muted);">PV-Auslegung für 5.5: erst nach „Varianten berechnen“ in der PV-Analyse wählbar.</span>');
+  const a = ggPvAuswahl();
+  const auswahl = ggLies(() => window.gutHatDokument?.(), false)
+    ? `<select data-change="ggPvAuslegungSetzen(this.value)" style="font-family:inherit;font-size:11px;padding:3px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);max-width:260px;">
+        ${opt.map(([id, l]) => `<option value="${gEsc(id)}"${id === a.id ? ' selected' : ''}>${gEsc(l)}${id === 'wirt-opt' ? ' (Vorgabe)' : ''}</option>`).join('')}</select>`
+    : `<b>${gEsc(a.v?.label || '—')}</b> <span style="color:var(--muted);font-size:10px;">(ändern, sobald unter 📄 Dokument ein Gutachten angelegt ist)</span>`;
+  return box(`<span style="color:var(--muted);">Weiterverfolgte PV-Auslegung (Kosten 5.5):</span> ${auswahl}`
+    + (a.ungueltig ? '<div style="color:#e0a126;font-size:10px;">Die gewählte Auslegung steht nicht mehr im Gutachten — es gilt die Vorgabe.</div>' : '')
+    + '<div style="color:var(--muted);font-size:10px;">Gilt für dieses Gutachten (Fragebogen 5.4.2). Dachbelegungen erscheinen hier, sobald sie in der PV-Analyse den Haken „im Gutachten zeigen“ haben.</div>');
+}
+/** Einzelansicht der PV-Texte: auf welchen Dachbelegungen das Kapitel beruht. */
+function ggPvGrundlageHtml() {
+  const g = ggPvGrundlage();
+  const zeile = (text, farbe = 'var(--muted)') => `<div style="font-size:10px;color:${farbe};line-height:1.5;">${text}</div>`;
+  let html = g.entwurf
+    ? zeile(`⚠ Im Projekt liegt ein ungespeicherter Entwurf der Dachbelegung${g.entwurf.basisName ? ` (Basis „${gEsc(g.entwurf.basisName)}“)` : ''} — im PV-Modus unter 📚 Belegungsstände speichern oder verwerfen.`, '#e0a126')
+    : g.projekt ? zeile(`Belegung im Projekt: Stand „${gEsc(g.projekt.name)}“ (${ggNum(g.projekt.daecher)} Dächer, ${ggNum(g.projekt.summeKwp)} kWp).`) : '';
+  if (g.potenzial) html += zeile(`PV-Potenzial der Analyse: Stand „${gEsc(g.potenzial.name)}“ — weicht von der Belegung im Projekt ab.`);
+  if (g.belegungen.length) html += zeile(`Dachbelegungen als eigene Auslegung: ${gEsc(g.belegungen.join(', '))}.`);
+  if (g.abweichend.length && ggVs()) html += zeile('Die Verschattung ist nur für die Belegung im Projekt gerechnet — der Gutachtentext weist darauf hin.');
+  return html ? `<div style="margin-top:6px;">${html}</div>` : '';
+}
+/** Auswahl aus der Einzelansicht — schreibt in den Fragebogen des Gutachten-Dokuments (21). */
+export function ggPvAuslegungSetzen(id) {
+  if (typeof window.gutSetFrage !== 'function') return;
+  window.gutSetFrage('pv-auslegung', id);
+  ggRenderPanel();
+}
+/**
+ * Welche Dachbelegungen hinter dem PV-Kapitel stehen (38): Stand im Projekt bzw. ungespeicherter
+ * Entwurf, ein abweichender Stand als PV-Potenzial, Dachbelegungs-Auslegungen anderer Stände.
+ * `abweichend` = Namen, die nicht der Belegung im Projekt entsprechen (dort fehlt z. B. die Verschattung).
+ */
+function ggPvGrundlage() {
+  const w = window, s = w._pvAnalyse || {};
+  const entwurf = ggLies(() => w.pvbsEntwurfInfo?.(), null);
+  const projektId = ggLies(() => w.pvbsProjektId?.(), null);
+  const projekt = projektId ? ggLies(() => w.pvbsKennzahlen?.(projektId), null) : null;
+  const potRoh = s.potenzialStandId ? ggLies(() => w.pvbsKennzahlen?.(s.potenzialStandId), null) : null;
+  const potenzial = potRoh && potRoh.id !== projektId ? potRoh : null;
+  const belegungen = ggPvKanon().filter(v => /^belegung-/.test(v.id))
+    .filter(v => { const bv = ggPvBelegung(v.id); return !bv?.standId || bv.standId !== projektId; })
+    .map(v => v.label);
+  const abweichend = [...(potenzial ? [`${potenzial.name} (PV-Potenzial)`] : []), ...belegungen];
+  return { entwurf, projekt, potenzial, belegungen, abweichend };
+}
 const GG_RES_MODE_LBL = { 'gen': 'Nur Notstrom', 'bat-gen': 'Speicher + Notstrom',
                            'pv-bat-gen': 'PV + Speicher + Notstrom', 'pv-bat': 'Nur PV + Speicher' };
 const GG_PVAH_MONAT_TAGE = [31,28,31,30,31,30,31,31,30,31,30,31];
@@ -8009,6 +8160,50 @@ function ggPvSpeicherRegelText(v) {
   }[regel] || 'vorgegeben';
 }
 
+/** Belegungsregeln (25 pvmRegelnSnapshot) des PV-Potenzials: gewählter Belegungsstand, sonst die aktuellen. */
+function ggPvRegeln() {
+  const s = window._pvAnalyse;
+  const st = s?.potenzialStandId ? ggLies(() => window.pvbsKennzahlen?.(s.potenzialStandId), null) : null;
+  return st?.regeln || ggLies(() => window.pvmRegelnSnapshot?.(), null);
+}
+const ggPvMass = x => String(Math.round((+x || 0) * 1000) / 1000).replace('.', ',');
+/** Regeln, die die Modulzahl jedes Dachs bestimmen, als Kurzform — zum Vergleich zweier Belegungen. */
+function ggPvRegelnKurz(gl) {
+  if (!gl) return '';
+  return `Module ${ggPvMass(gl.modulBreite)} × ${ggPvMass(gl.modulLaenge)} m mit ${ggNum(gl.modulWp)} Wp, `
+    + `${gl.modulLage === 'quer' ? 'quer' : 'hochkant'}, Randabstand ${ggPvMass(gl.randabstand)} m`
+    + (gl.mindestModule > 0 ? `, mindestens ${ggNum(gl.mindestModule)} Module je Dachfläche` : '');
+}
+/** 5.4.2: nach welchen Regeln die Dachflächen rechnerisch belegt sind (Absatz) — '' ohne Regeln. */
+function ggPvRegelnAbsatz(r) {
+  const gl = r?.global, v = r?.vorgaben || {};
+  if (!gl) return '';
+  const gcr = v.gcr != null ? v.gcr : v.ausrichtung === 'ostwest' ? 85 : 40;
+  return `Für die rechnerische Belegung wurden Module mit ${ggPvMass(gl.modulBreite)} × ${ggPvMass(gl.modulLaenge)} m und `
+    + `${ggNum(gl.modulWp)} Wp angesetzt, auf Schrägdächern ${gl.modulLage === 'quer' ? 'quer' : 'hochkant'} verlegt, mit `
+    + `${ggPvMass(gl.randabstand)} m Abstand zum Rand der Belegungsfläche`
+    + (gl.mindestModule > 0 ? `; Dachflächen bzw. Satteldachseiten, auf denen weniger als ${ggNum(gl.mindestModule)} Module Platz finden, bleiben frei` : '')
+    + '.'
+    + (v.nordSperr ? ` Bei Satteldächern bleibt in der Regel die nach Norden weisende Dachseite (±${ggNum(v.nordSektor ?? 45)}° um Nord) frei.` : '')
+    + ` Flachdächer sind, soweit nicht im Einzelfall anders festgelegt, mit ${v.ausrichtung === 'ostwest' ? 'Ost-West' : 'Süd'}-Aufständerung `
+    + `und einer Flächenausnutzung von ${ggNum(gcr)} % angesetzt. Gebäude, deren Rückbau geplant ist, werden nicht belegt.`;
+}
+
+/** Netz-Engstellen, an denen der volle Ausbau der Auswahl einer Dachbelegung scheitert (36 → Stand.netz.engstellen). */
+function ggPvEngstellenSatz(n, mitErtuechtigung) {
+  const es = n?.engstellen;
+  if (!n?.geprueft || !es?.liste?.length) return '';
+  const MAX = 4;
+  const stellen = es.liste.slice(0, MAX).map(e => `${gEsc(e.label)} (${e.ueberKw > 0.5
+    ? `${ggNum(e.ueberKw)} kW über der Belastbarkeit` : `Spannungsanhebung ${ggNum(e.duMaxPct, 1)} %`})`);
+  const abhilfe = [...new Set(es.liste.filter(e => e.abhilfe?.label).slice(0, MAX).map(e => gEsc(e.abhilfe.label)))];
+  return ` Für den vollständigen Ausbau aller Dächer der Auswahl „${gEsc(es.gruppe)}“ (${ggNum(es.noetigKwp)} kWp) reicht das Netz`
+    + `${mitErtuechtigung ? ' auch nach dieser Ertüchtigung' : ''} nicht aus; aufgenommen werden rund ${ggNum(es.passtKwp)} kWp. `
+    + `Begrenzend ${es.liste.length === 1 ? 'ist' : 'sind'} ${ggAufzaehlung(stellen)}`
+    + (es.liste.length > MAX ? ` sowie ${es.liste.length - MAX} weitere Stellen` : '') + '.'
+    + (abhilfe.length ? ` Als Abhilfe ${abhilfe.length === 1 ? 'kommt' : 'kommen'} ${ggAufzaehlung(abhilfe)} in Betracht.` : '');
+}
+
 /** Ein Absatz je Dachbelegung im Gutachten: welche Dächer, wie viel PV, welcher Speicher, Netzbezug. */
 function ggPvBelegungAbsatz(v) {
   const bv = ggPvBelegung(v.id) || {};
@@ -8026,6 +8221,9 @@ function ggPvBelegungAbsatz(v) {
         ? `Das Netz im Jahr ${ggTextFeld(n.jahr, 'Netzjahr')} nimmt sie nach ${nMass} auf${welche}.`
         : `Das Netz im Jahr ${ggTextFeld(n.jahr, 'Netzjahr')} nimmt sie ohne Ertüchtigung auf.`) + pruefung
       : `Sie überschreitet${mass.length ? ` auch nach ${nMass}${welche}` : ''} an einzelnen Stellen die Aufnahmefähigkeit des Netzes; dort ist eine weitere Ertüchtigung vorauszusetzen.` + pruefung;
+  // Andere Belegungsregeln als das PV-Potenzial (ein Stand merkt sich seine Regeln)
+  const eigene = ggPvRegelnKurz(bv.regeln?.global), basis = ggPvRegelnKurz(ggPvRegeln()?.global);
+  const regeln = eigene && basis && eigene !== basis ? ` Ihr liegen abweichende Belegungsregeln zugrunde (${eigene}).` : '';
   return `${ggPvName(v)}: ${ggPvFeld(d.daecher, 'Anzahl Dächer')} Dächer mit zusammen ${ggPvFeld(d.neuKwp, 'kWp Belegung')} kWp`
     + (d.geplantKwp > 0.5 ? `, dazu ${ggPvFeld(d.geplantKwp, 'kWp geplant')} kWp ${d.ausStand ? 'PV außerhalb der Dächer' : 'bereits geplante PV'}, insgesamt ${ggPvFeld(v.pvKwp, 'kWp gesamt')} kWp` : '')
     + '. '
@@ -8033,7 +8231,7 @@ function ggPvBelegungAbsatz(v) {
     + (v.batKwh > 0
       ? `Der Speicher hat ${ggPvFeld(v.batKwh, 'kWh Speicher')} kWh; er ist ${ggPvSpeicherRegelText(v)}.`
       : bv.speicher === 'ohne' ? 'Ein Speicher ist nicht vorgesehen.' : 'Ein Speicher bringt bei dieser Belegung keinen Vorteil und entfällt.')
-    + ` ${netz}`;
+    + ` ${netz}${ggPvEngstellenSatz(n, mass.length > 0)}${regeln}`;
 }
 
 /** 3.4.2 Teil 1 — Datenbasis, PV-Potenzial und die fünf Auslegungen. */
@@ -8081,6 +8279,10 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
     + `Die Erzeugung wurde auf Basis ${profil || ggTextFeld('', 'Erzeugungsprofil')} für jeden Zeitschritt des Jahres `
     + `berechnet und dem Lastgang gegenübergestellt. Die statische Eignung der Dachflächen ist im Zuge der weiteren `
     + `Planung nachzuweisen.`);
+  if (!b || (!b.potenzialOverride && (q.stand || q.gebKwp > 0 || q.assetKwp > 0))) {
+    const regeln = ggPvRegelnAbsatz(ggPvRegeln());
+    if (regeln) absaetze.push(regeln);
+  }
 
   const belegungen = kanon.filter(v => /^belegung-/.test(v.id));
   const anzahl = b ? kanon.length - belegungen.length : 5;
@@ -8166,6 +8368,18 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
       + `untersucht. Anders als bei den Auslegungen oben ist hier gebäudescharf festgelegt, welche Dächer belegt werden; `
       + `der Speicher wird zur jeweiligen PV-Leistung bemessen:`);
     for (const v of belegungen) absaetze.push(ggPvBelegungAbsatz(v));
+    // Gesetzliche Pflicht und eine Belegung der Pflicht-Dächer stehen sonst unkommentiert nebeneinander
+    const pflichtBel = belegungen.filter(v => {
+      const bv = ggPvBelegung(v.id) || {};
+      return /pflicht/i.test(`${v.label} ${bv.beschreibung || ''} ${bv.netz?.engstellen?.gruppe || ''}`);
+    });
+    if (pflichtBel.length && ggPvVariante('gesetzlich')) {
+      const pf = window._pvAnalyse.pflicht || {};
+      absaetze.push(`Die Auslegung ${ggPvName(ggPvVariante('gesetzlich'))} beziffert die nach ${ggTextFeld(pf.norm, 'Rechtsgrundlage PV-Pflicht')} `
+        + `mindestens geforderte Leistung; ${pflichtBel.length === 1 ? 'die Dachbelegung' : 'die Dachbelegungen'} `
+        + `${ggAufzaehlung(pflichtBel.map(ggPvName))} ${pflichtBel.length === 1 ? 'zeigt' : 'zeigen'} dagegen gebäudescharf, welche Leistung `
+        + 'auf den betroffenen Dächern nach den oben genannten Belegungsregeln tatsächlich Platz findet. Beide Werte können deshalb voneinander abweichen.');
+    }
   }
   if (!b || H.evOpt || H.wirtOpt || H.autarkie) {
     absaetze.push('Die folgende Abbildung zeigt für die optimierten Auslegungen, wie sich die jeweilige Größe aus dem '
@@ -8364,12 +8578,110 @@ function ggRenderPvNetzText(cfg, T = GG_THEME) {
 /** 3.4.2 Teil 5 — Abgrenzung zu 3.5 und Modellgrenzen. */
 function ggRenderPvAbgrenzungText(cfg, T = GG_THEME) {
   void cfg;
+  const gew = ggPvAuswahl().v;
   return ggTextBlatt([
-    `Die wirtschaftliche Bewertung folgt in Kapitel 5.5. Die Berechnung beruht auf einem einzigen Wetterjahr und `
+    (gew ? `Für die weitere Planung wird die Auslegung ${ggPvName(gew)} zugrunde gelegt (${ggNum(gew.pvKwp)} kWp`
+      + `${gew.batKwh > 0 ? `, Speicher ${ggNum(gew.batKwh)} kWh` : ', ohne Speicher'}); ihre Kosten gehen in Kapitel 5.5 ein. ` : '')
+    + `Die wirtschaftliche Bewertung folgt in Kapitel 5.5. Die Berechnung beruht auf einem einzigen Wetterjahr und `
       + `berücksichtigt keine Alterung von Modulen und Speichern. Die Leistungsbegrenzung der Wechselrichter ist nicht `
       + `abgebildet, die Rückspeiseleistungen sind deshalb eher zu hoch als zu niedrig angesetzt. Alle `
       + `Berechnungsannahmen stehen in Anlage ${ggTextFeld('', 'Nr. Anlage Berechnungsannahmen')}.`,
   ], T);
+}
+
+/* ── 5.4.2 Verschattung der Dachflächen (40-baeume.js) ──────────────────────
+ * Methode, Ergebnis, Wirkung auf die Auslegungen und Unsicherheiten. Daten aus
+ * window.verschattungGutachten() — derselbe Stand wie im Panel „Bäume &
+ * Verschattung". Erscheint nur, wenn mindestens ein Dach gerechnet ist. */
+const ggVs = () => (typeof window.verschattungGutachten === 'function' ? window.verschattungGutachten() : null);
+const GG_VS_BEWERTUNG = { ok: 'belegen', pruefen: 'prüfen', nicht: 'nicht belegen' };
+/** Sichtbar, sobald ein Dach gerechnet ist — sonst der Grund für den Editor. */
+const ggVsSichtbar = () => (ggVs() ? true : 'Verschattung nicht gerechnet (PV-Modus › Bäume & Verschattung)');
+/** Tabellenzelle: höchstens zwei Zeilen, Rest gekürzt. */
+function ggVsZelle(text, maxZ) {
+  // überlange Einzelwörter (z. B. Institutsnamen) hart kürzen, sonst laufen sie in die Nachbarspalte
+  const z = ggResUmbruch(text, maxZ).map(t => (t.length > maxZ ? t.slice(0, maxZ - 1) + '…' : t));
+  return z.length > 2 ? [z[0], z[1].slice(0, maxZ - 1) + '…'] : z;
+}
+
+function ggRenderPvVerschattungText(cfg, T = GG_THEME) {
+  void cfg;
+  const d = ggVs();
+  if (!d) {
+    return ggTextBlatt([`Eine Untersuchung der Verschattung liegt noch nicht vor ${ggTextFeld('', 'PV-Modus › Bäume & Verschattung › Verschattung berechnen')}.`], T);
+  }
+  const b = d.baeume, s = d.schwellen, n = d.bewertung;
+  const pct = (x, dez = 1) => ggNum(x, dez).replace(/^-0$/, '0');
+  const absaetze = [];
+
+  // 1 — Methode und Datenbasis
+  const baumQuelle = b.gesamt
+    ? `Grundlage sind ${ggNum(b.gesamt)} Bäume im Umfeld der Gebäude`
+      + (b.osm && b.eigen ? `, davon ${ggNum(b.osm)} aus OpenStreetMap übernommen und ${ggNum(b.eigen)} vor Ort erfasst bzw. ergänzt`
+        : b.osm ? ', übernommen aus OpenStreetMap' : ', vor Ort erfasst')
+      + (b.geschaetzt
+        ? `. Für ${ggNum(b.geschaetzt)} Bäume liegt keine Höhenangabe vor; für sie wurden Vorgabewerte angesetzt `
+          + `(Einzelbaum 12 m, Baumreihe 11 m, Wald 20 m, Obstbaum 6 m, jeweils mit geringer Streuung).`
+        : ', jeweils mit Höhe und Kronendurchmesser.')
+    : 'Im Umfeld der Gebäude sind keine Bäume erfasst; untersucht wurde daher nur die Verschattung durch Nachbargebäude.';
+  absaetze.push(`Die belegten Dachflächen wurden auf Verschattung durch Bäume und benachbarte Gebäude untersucht. ${baumQuelle} `
+    + `Die Gebäudehöhen ergeben sich aus der Geschosszahl (3 m je Geschoss) bzw. – soweit vorhanden – aus dem amtlichen 3D-Gebäudemodell (LoD2).`);
+  absaetze.push(`Für jede Dachfläche wird an bis zu ${ggNum(d.proben)} gleichmäßig verteilten Modulpositionen geprüft, ob der Weg zur Sonne `
+    + `bzw. zum Himmel frei ist: für die direkte Strahlung entlang der Sonnenbahn am 15. jedes Monats in halbstündlichen Schritten, `
+    + `für die diffuse Strahlung über den gesamten sichtbaren Himmel (isotrope Verteilung). Direkt- und Diffusanteile werden mit `
+    + `Monatswerten der Globalstrahlung gewichtet ${ggTextFeld('', 'Quelle Strahlungsdaten, z. B. DWD-Testreferenzjahr des Standorts')}; `
+    + `die Bodenreflexion bleibt unverschattet. Baumkronen werden als teilweise lichtdurchlässig angesetzt: Laubbäume lassen im belaubten Zustand `
+    + `(Mai bis September) etwa 20 %, unbelaubt etwa 60 % der Strahlung durch, Nadelbäume ganzjährig etwa 15 %. Nachbargebäude gelten als `
+    + `undurchlässige Baukörper bis zur Traufe zuzüglich der halben Dachhöhe; berücksichtigt sind alle Hindernisse im Umkreis von 200 m. `
+    + `Ergebnis ist je Dachfläche ein Jahresfaktor, um den der Ertrag gegenüber einer unverschatteten Fläche gleicher Ausrichtung sinkt.`);
+
+  // 2 — Ergebnis
+  const ursache = d.verlustBaeumeMwh + d.verlustGebaeudeMwh > 0
+    ? ` Davon gehen rund ${ggNum(d.verlustBaeumeMwh, d.verlustBaeumeMwh < 10 ? 1 : 0)} MWh/a auf Bäume und rund `
+      + `${ggNum(d.verlustGebaeudeMwh, d.verlustGebaeudeMwh < 10 ? 1 : 0)} MWh/a auf Nachbargebäude zurück.`
+    : '';
+  const anteil = d.ertragMwh > 0 ? d.verlustMwh / d.ertragMwh * 100 : 0;
+  absaetze.push(`Über alle ${ggNum(d.status.aktuell + d.status.veraltet)} untersuchten Dächer mindert die Verschattung den rechnerischen `
+    + `Jahresertrag um rund ${ggNum(d.verlustMwh, d.verlustMwh < 10 ? 1 : 0)} MWh/a; das entspricht ${pct(anteil)} % des Ertrags der belegten `
+    + `Dachflächen bei einem spezifischen Ertrag von ${ggNum(d.spez)} kWh/kWp·a.${ursache}`);
+  absaetze.push(`Für die Belegung werden die Dachflächen nach ihrem Verschattungsverlust eingeordnet: ${ggNum(n.ok)} `
+    + `${n.ok === 1 ? 'Fläche verliert' : 'Flächen verlieren'} weniger als ${ggNum(s.pruefen)} % und ${n.ok === 1 ? 'ist' : 'sind'} uneingeschränkt geeignet. `
+    + (n.pruefen
+      ? `${ggNum(n.pruefen)} ${n.pruefen === 1 ? 'Fläche liegt' : 'Flächen liegen'} zwischen ${ggNum(s.pruefen)} und ${ggNum(s.nicht)} %; `
+        + `${n.pruefen === 1 ? 'sie ist' : 'sie sind'} im Zuge der Ausführungsplanung zu prüfen, etwa durch Aufmaß der verschattenden Bäume, `
+        + `modulweise Leistungsoptimierung oder eine angepasste Modulanordnung. `
+      : '')
+    + (n.nicht
+      ? `${ggNum(n.nicht)} ${n.nicht === 1 ? 'Fläche verliert' : 'Flächen verlieren'} ${ggNum(s.nicht)} % oder mehr; für sie wird keine Belegung empfohlen.`
+      : `Keine Fläche erreicht die Schwelle von ${ggNum(s.nicht)} %, ab der eine Belegung nicht empfohlen wird.`)
+    + (n.pruefen + n.nicht ? ' Die betroffenen Flächen sind in der folgenden Tabelle aufgeführt.' : ''));
+
+  // 3 — Wirkung auf die Auslegungen. Gerechnet ist nur die Belegung im Projekt (40); beruhen Potenzial oder
+  // Dachbelegungs-Auslegungen auf anderen Belegungsständen (38), gilt der Abschlag dort nicht für jedes Dach.
+  const gr = ggLies(() => (ggPvBasis() ? ggPvGrundlage() : null), null);
+  const andere = [];
+  if (gr?.potenzial) andere.push('das PV-Potenzial und die daraus abgeleiteten Auslegungen');
+  if (gr?.belegungen.length) andere.push(`${gr.belegungen.length === 1 ? 'die Dachbelegung' : 'die Dachbelegungen'} ${ggAufzaehlung(gr.belegungen.map(n => `„${gEsc(n)}“`))}`);
+  const fremd = andere.length
+    ? ` Untersucht wurden die Dachflächen der derzeit geplanten Belegung. ${ggAufzaehlung(andere).replace(/^./, c => c.toUpperCase())} `
+      + `${andere.length === 1 && !gr?.potenzial && gr?.belegungen.length === 1 ? 'beruht' : 'beruhen'} auf einer abweichenden Belegung; `
+      + 'für Dachflächen, die nur dort belegt sind, liegt keine Verschattungsuntersuchung vor.'
+    : '';
+  absaetze.push((d.an
+    ? 'Die Verschattungsabschläge sind in den Leistungs- und Ertragsangaben dieses Kapitels enthalten: Die angegebenen Leistungen '
+      + 'sind wirksame Leistungen, die Ausrichtung, Neigung und Verschattung der jeweiligen Dachfläche berücksichtigen.'
+    : `Die Verschattung ist in den Leistungs- und Ertragsangaben dieses Kapitels nicht berücksichtigt; diese stellen insoweit Obergrenzen dar. `
+      + `Der Minderertrag von rund ${ggNum(d.verlustMwh, d.verlustMwh < 10 ? 1 : 0)} MWh/a ist bei der Bewertung zu beachten.`) + fremd);
+
+  // 4 — Unsicherheiten
+  absaetze.push((b.geschaetztVerursacher
+      ? `Von den Bäumen, die Dachflächen merklich verschatten, ${b.geschaetztVerursacher === 1 ? 'ist einer' : `sind ${ggNum(b.geschaetztVerursacher)}`} nur mit geschätzter Höhe angesetzt. `
+        + 'Ihre Höhen und Kronendurchmesser sind vor der Ausführung aufzunehmen; das Ergebnis kann sich dadurch in beide Richtungen ändern. '
+      : '')
+    + 'Nicht berücksichtigt sind das künftige Wachstum der Bäume, Rückschnitt oder Fällungen, künftige Bebauung sowie Verschattung durch '
+    + 'Dachaufbauten (Schornsteine, Lüftungsanlagen, Attiken) und die Eigenverschattung aufgeständerter Modulreihen; letztere ist über den '
+    + 'Reihenabstand (Flächenbelegungsgrad) pauschal abgebildet. Die Untersuchung ersetzt keine Verschattungsanalyse im Rahmen der Ausführungsplanung.');
+  return ggTextBlatt(absaetze, T);
 }
 
 /** Figur „Einlinienschema Bestandsnetz" — quelle 'variante' oder 'eigene' (übernommene Belegung). */
@@ -8726,6 +9038,66 @@ function ggPvFiguren() {
       + 'Dachbelegungen, die in der PV-Analyse den Haken „im Gutachten zeigen“ haben. '
       + 'Steht vor der Herleitungs-Abbildung. Der Satz zur 100-kWp-Schwelle gibt einen EEG-Stand wieder — vor Abgabe prüfen.',
       cfg => ggRenderPvGrundlagenText(cfg)),
+    // ── Verschattung der Dachflächen (40-baeume.js) — nur, wenn gerechnet ──
+    {
+      ...pvText('pv-verschattung-text', 12, 'Gutachtentext: Verschattung der Dachflächen',
+        'Methode (Bäume aus OSM/vor Ort, Gebäudehöhen, Sonnenbahn und Himmel, Lichtdurchlässigkeit der Kronen), Ertragsverlust '
+        + 'gesamt und nach Bäumen/Gebäuden, Einordnung der Flächen (belegen/prüfen/nicht belegen) und ob der Abschlag in den Zahlen '
+        + 'des Kapitels steckt. Herkunft: PV-Modus › Bäume & Verschattung. Offene Lücke: Quelle der Strahlungsdaten — das Tool '
+        + 'rechnet mit Richtwerten für Mitte Deutschland (lib/verschattung.js VS_MONATE), reale Quelle wäre z. B. das '
+        + 'DWD-Testreferenzjahr des Standorts. Die Lichtdurchlässigkeit der Kronen sind Literaturspannen, vor Abgabe prüfen.',
+        cfg => ggRenderPvVerschattungText(cfg)),
+      pvText: false,   // Werte kommen nicht aus der PV-Analyse, sondern aus dem Panel „Bäume & Verschattung“
+      sichtbar: ggVsSichtbar,
+    },
+    {
+      id: 'pv-verschattung-tabelle',
+      autoSync: true,
+      reihe: 14,
+      kapitel: GG_PV_KAPITEL,
+      titel: 'Verschattete Dachflächen',
+      datei: 'pv-verschattung-tabelle',
+      sichtbar: ggVsSichtbar,
+      hinweis: 'Alle Dachflächen, deren Verschattungsverlust die Prüfschwelle erreicht (Schwellen im Panel „Bäume & Verschattung"), '
+             + 'schlechteste zuerst — mit Hauptursache und Empfehlung. Herkunft: PV-Modus › Bäume & Verschattung › Verschattung berechnen.',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel: 'Verschattete Dachflächen',
+        leer: 'Keine Dachfläche erreicht die Prüfschwelle — oder die Verschattung ist noch nicht gerechnet.',
+        spalten: [
+          { label: 'Gebäude', weight: 2.1 },
+          { label: 'Dachfläche', weight: 1.7, align: 'left' },
+          { label: 'Leistung', weight: 0.9 },
+          { label: 'Verlust', weight: 0.8 },
+          { label: 'Hauptursache', weight: 2.0, align: 'left' },
+          { label: 'Empfehlung', weight: 1.1, align: 'left' },
+        ],
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const d = ggVs();
+        if (!d) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Verschattung noch nicht gerechnet (PV-Modus › Bäume & Verschattung).'; }
+        const MAX = 25;
+        const betroffen = d.flaechen.filter(f => f.bewertung !== 'ok');
+        const farbe = { pruefen: '#f9a825', nicht: '#e53935' };
+        cfg.zeilen = betroffen.slice(0, MAX).map(f => ({
+          werte: [ggVsZelle(f.gebaeude, 26), ggVsZelle(f.flaeche, 22), ggNum(f.kwp, f.kwp < 10 ? 1 : 0) + ' kWp',
+                  '−' + ggNum((1 - f.faktor) * 100) + ' %', f.ursache ? ggVsZelle(f.ursache, 26) : '—', GG_VS_BEWERTUNG[f.bewertung]],
+          akzent: farbe[f.bewertung],
+        }));
+        // Der Tabellen-Renderer setzt die Fußnote einzeilig — kurz halten
+        cfg.fussnote = `Verlust gegenüber unverschatteter Fläche gleicher Ausrichtung · prüfen ab ${ggNum(d.schwellen.pruefen)} %, `
+          + `nicht belegen ab ${ggNum(d.schwellen.nicht)} % · Leistung ohne Verschattungsabschlag`
+          + (betroffen.length > MAX ? ` · ${betroffen.length - MAX} weitere nicht aufgeführt` : '');
+        const warn = [
+          d.status.veraltet && `${d.status.veraltet} Dächer veraltet (Bäume geändert)`,
+          d.status.fehlt && `${d.status.fehlt} Dächer nicht gerechnet`,
+          d.ueberlappungen && `${d.ueberlappungen} Dächer mit überlappendem Grundriss — Gebäudedaten prüfen`,
+        ].filter(Boolean);
+        return (warn.length ? '⚠ ' : '✓ ') + `${betroffen.length} von ${d.flaechen.length} Dachflächen über der Prüfschwelle.`
+          + (warn.length ? ' ' + warn.join(' · ') + ' — im Panel „Verschattung berechnen".' : '');
+      },
+    },
     pvText('pv-energiebilanz-text', 30, 'Gutachtentext: PV-Energiebilanz',
       'Spannweiten von Jahresertrag, Eigenverbrauchsquote und Autarkie sowie die Abregelung am Einspeiselimit. '
       + 'Steht vor Variantentabelle und Energiebilanz-Abbildung.',
@@ -8755,8 +9127,9 @@ function ggPvFiguren() {
              + 'Leistungsschalter; eigenes MS-Netz mit Trafostationen im Ring (offene Trennstelle), PV, Batterie und BHKW auf '
              + 'der NS-Seite; EZA-Regler mit Fernwirktechnik und Direktvermarkter führt alle Einheiten über ein eigenes '
              + 'LWL-Steuernetz (2 Fasern BWI-Netz), zum Leitsystem nur über eine IT-sichere Schnittstelle; gestrichelt die '
-             + 'Liegenschaftsgrenze. Nennspannung aus dem NAP, Zahl der Trafostationen, PV-/Batterie-/BHKW-Leistung und '
-             + 'Einspeisegrenze aus dem Projekt.',
+             + 'Liegenschaftsgrenze. Nennspannung aus dem NAP, Zahl der Trafostationen, BHKW-Leistung und '
+             + 'Einspeisegrenze aus dem Projekt; PV und Speicher aus der weiterverfolgten Auslegung (wie Kosten 5.5), '
+             + 'ohne PV-Berechnung aus den Anlagen im Projekt.',
       render: cfg => ggRenderEzaPrinzip(cfg),
       config: {
         eyebrow: 'Elektrotechnisches Gutachten · Netzintegration PV',
@@ -8772,11 +9145,14 @@ function ggPvFiguren() {
         const summe = (typ, key) => items.filter(a => a.type === typ)
           .reduce((s, a) => s + (parseFloat(a.props?.[key]) || 0), 0);
         const einsp = parseFloat(window.elNapMaxEinspKw) || 0;
+        // PV und Speicher der weiterverfolgten Auslegung (wie Kosten 5.5), sonst die Anlagen im Projekt
+        const gew = ggPvAuswahl().v;
+        const crate = window._pvAnalyse?.basis?.batCRate || 0.5;
         cfg.werte = {
           uKv: uKv > 1 ? uKv : 20,
           stationen: items.filter(a => a.type === 'Trafo').length || null,
-          pvKwp: summe('PV', 'leistungKWp') || null,
-          batKw: summe('Batterie', 'leistungKW') || null,
+          pvKwp: (gew ? gew.pvKwp : summe('PV', 'leistungKWp')) || null,
+          batKw: (gew ? gew.batKwh * crate : summe('Batterie', 'leistungKW')) || null,
           kwkKw: summe('KWK', 'leistungElKW') || null,
           einspKw: einsp > 0 ? einsp : null,
         };
@@ -8784,7 +9160,7 @@ function ggPvFiguren() {
         cfg.fussnote = GG_EZA_FUSSNOTE;
         const teile = [`MS ${ggNum(cfg.werte.uKv, cfg.werte.uKv % 1 ? 1 : 0)} kV`];
         if (cfg.werte.stationen) teile.push(`${cfg.werte.stationen} Trafostationen`);
-        if (cfg.werte.pvKwp) teile.push(`${ggNum(cfg.werte.pvKwp)} kWp PV`);
+        if (cfg.werte.pvKwp) teile.push(`${ggNum(cfg.werte.pvKwp)} kWp PV${gew ? ` („${gew.label}“)` : ''}`);
         if (cfg.werte.einspKw) teile.push(`Einspeisegrenze ${ggNum(cfg.werte.einspKw)} kW`);
         return `✓ ${teile.join(', ')}.` + (nap ? '' : ' (kein NAP im Netzmodell — Nennspannung 20 kV angenommen)');
       },
@@ -8798,10 +9174,11 @@ function ggPvFiguren() {
       kapitel: '5.4.2 PV-Anlage und Batteriespeicher',
       titel: 'PV-Varianten im Vergleich',
       datei: 'pv-variantenvergleich',
-      hinweis: 'Die 5 kanonischen PV-Varianten aus der ☀ PV-Analyse nebeneinander — jede beantwortet '
-             + 'genau eine Stakeholder-Frage (Minimal, Eigenverbrauch, Wirtschaftlichkeit, Autarkie, '
-             + 'maximaler Ausbau). Bewusst OHNE Wirtschaftlichkeitskennzahlen: Kapitel 5.4.2 beschreibt '
-             + 'die Auslegungen, bewertet wird in 3.5. Grundlage: „Varianten berechnen" in der PV-Analyse.',
+      hinweis: 'Die Auslegungen aus der ☀ PV-Analyse nebeneinander — die festen beantworten je genau eine '
+             + 'Stakeholder-Frage (u. a. Minimal, Eigenverbrauch, Wirtschaftlichkeit, Autarkie, maximaler Ausbau), dazu '
+             + 'die Dachbelegungen aus dem PV-Modus mit Haken „im Gutachten zeigen“. Bewusst OHNE '
+             + 'Wirtschaftlichkeitskennzahlen: Kapitel 5.4.2 beschreibt die Auslegungen, bewertet wird in 5.5. '
+             + 'Grundlage: „Varianten berechnen" in der PV-Analyse.',
       render: cfg => ggRenderTabelle(cfg),
       config: {
         eyebrow: 'Elektrotechnisches Gutachten', titel: 'PV-Varianten im Vergleich',
@@ -8925,7 +9302,7 @@ function ggPvFiguren() {
           return { v, ev, nb, es, ct, wEv, wEs, bedarf: ev + nb };
         });
         const windAktiv = rows.some(r => r.wEv + r.wEs > 0.01);
-        const kat = kanon.map(v => `${v.icon} ${GG_PV_KURZ[v.id] || v.label}`);
+        const kat = kanon.map(v => `${v.icon} ${ggPvKurz(v)}`);
 
         cfg.kategorien = kat;
         cfg.gruppen = [
@@ -8963,6 +9340,7 @@ function ggPvFiguren() {
     {
       id: 'pv-wirtschaftlichkeit',
       autoSync: true,
+      pvWahl: true,   // Einzelansicht: Auswahl der weiterverfolgten Auslegung (hervorgehobene Zeile)
       reihe: 40,   // 3.5: nach Kostentext, Kostentabelle und den beiden Kostendiagrammen
       kapitel: '5.5 Wirtschaftlichkeit und Investitionskosten',
       titel: 'Wirtschaftlichkeit je PV-Variante',
@@ -8989,6 +9367,7 @@ function ggPvFiguren() {
         if (!kanon.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Noch keine PV-Varianten berechnet.'; }
         const p = window._pvAnalyse?.lastParams;
         const nutz = p?.pvLife || 20;
+        const gewaehlt = ggPvAuswahl().id;
         cfg.zeilen = kanon.map(v => {
           const ueberschuss = -v.wirt.nettoJk;
           const kw = v.wirt.kapitalwert;
@@ -8998,7 +9377,7 @@ function ggPvFiguren() {
                     isFinite(v.wirt.amort) ? ggNum(v.wirt.amort, 1) + ' a' : '> ' + ggNum(nutz) + ' a',
                     kw != null ? (kw >= 0 ? '+' : '−') + ggNum(Math.abs(kw)) + ' €' : '—',
                     v.wirt.lcoeCt != null ? ggNum(v.wirt.lcoeCt, 1) + ' ct/kWh' : '—'],
-            highlight: v.id === 'wirt-opt', akzent: v.farbe,
+            highlight: v.id === gewaehlt, akzent: v.farbe,
           };
         });
         cfg.fussnote = 'Investition inkl. Netzanschluss-Infrastruktur. Jahresüberschuss = Erlöse (Eigenverbrauchs'
@@ -9006,7 +9385,7 @@ function ggPvFiguren() {
                       + 'Amortisation statisch: Investition ÷ jährlicher Rückfluss (Erlöse − laufende Betriebskosten). '
                       + 'Kapitalwert: Barwert des Jahresüberschusses über ' + ggNum(nutz) + ' Jahre bei '
                       + ggNum((p?.zins || 0.035) * 100, 1) + ' % Zins. Stromgestehungskosten: Jahreskosten ÷ genutzter '
-                      + 'Energie (Eigenverbrauch + Einspeisung). Hervorgehoben: höchster Jahres-Netto-Überschuss.';
+                      + 'Energie (Eigenverbrauch + Einspeisung). Hervorgehoben: weiterverfolgte Auslegung, deren Kosten in die Kostenübersicht eingehen.';
         return `✓ ${kanon.length} PV-Varianten aus der PV-Analyse übernommen.`;
       },
     },
@@ -9144,7 +9523,7 @@ function ggPvFiguren() {
 
         const T = GG_THEME;
         const ampelFarbe = { gruen: T.accents.gruen, gelb: T.energy.gas, rot: T.energy.waerme, na: T.text.faint };
-        cfg.kategorien = kanon.map(v => `${v.icon} ${GG_PV_KURZ[v.id] || v.label}`);
+        cfg.kategorien = kanon.map(v => `${v.icon} ${ggPvKurz(v)}`);
         cfg.balken = kanon.map(v => ({ wert: v.rueck.maxKw, farbe: ampelFarbe[v.rueck.ampel] || T.text.faint }));
 
         const r0 = kanon[0].rueck;
@@ -9298,7 +9677,7 @@ function ggPvFiguren() {
       kapitel: '8.2 Bewertung Resilienz',
       titel: 'Resilienz je Ausbauvariante',
       datei: 'resilienz-varianten',
-      hinweis: 'Was die fünf PV-Auslegungen aus Kapitel 5.4.2 im Blackout leisten: wie viel des '
+      hinweis: 'Was die PV-Auslegungen aus Kapitel 5.4.2 (samt Dachbelegungen mit Haken „im Gutachten zeigen“) im Blackout leisten: wie viel des '
              + 'Ausfallfensters sie im Mittel über ALLE Ausfallzeitpunkte des Jahres aus PV und Speicher '
              + 'allein tragen und ab wann das Notstromaggregat einspringen muss. Die Aggregatleistung '
              + 'ist dagegen am ungünstigsten Zeitpunkt der jeweiligen Variante bemessen. '
@@ -9322,7 +9701,7 @@ function ggPvFiguren() {
         if (!v?.zeilen?.length) { cfg.kategorien = []; cfg.gruppen = []; return '⚠ Noch kein Variantenvergleich vorhanden.'; }
 
         const durH = v.durH;
-        cfg.kategorien = v.zeilen.map(z => `${z.icon} ${GG_PV_KURZ[z.id] || z.label}`);
+        cfg.kategorien = v.zeilen.map(z => `${z.icon} ${ggPvKurz(z)}`);
         // Bewusst der MITTELWERT über alle Ausfallzeitpunkte, nicht der Worst Case:
         // dort steht die Batterie ohnehin leer, alle Varianten sähen gleich aus.
         const mittel = z => Math.min(durH, z.bridgeMittel ?? z.bridgeH ?? 0);
@@ -11940,7 +12319,7 @@ GG_FIGUREN.push(
 );
 
 /* ── 3.4.4 Ladeinfrastruktur (Variantenbildung) ──────────────────────────────
- * Ergänzt 3.3.3 (Standorte, Ladepunkte, Zusatzbedarf), statt es zu wiederholen: Ausbaustufen nach Baujahr,
+ * Ergänzt 5.3.3 (Standorte, Ladepunkte, Zusatzbedarf), statt es zu wiederholen: Ausbaustufen nach Baujahr,
  * ungesteuertes Laden gegenüber Lademanagement (Begrenzung auf die Reserve der Anschlussleistung aus 5.3.4),
  * Netzanbindung aus dem Netzmodell (versorgende Verteilung/Trafo, ausgelöste Engpässe) und rechtliche
  * Rahmenbedingungen mit Platzhaltern. Lademanagement selbst simuliert das Tool nicht. */
@@ -12000,7 +12379,7 @@ function ggLadeStufen(alle) {
   return [...map.values()];
 }
 
-/** Leistungsrahmen für das Lademanagement aus der Stufenrechnung (3.3.3/3.3.4) und der vereinbarten Anschlussleistung. */
+/** Leistungsrahmen für das Lademanagement aus der Stufenrechnung (5.3.3/5.3.4) und der vereinbarten Anschlussleistung. */
 function ggLadeReserve() {
   const { st, r } = ggBedarfRechnung();
   if (!r) return null;
@@ -12162,7 +12541,7 @@ function ggLadeStandHtml() {
       ? `${alle.filter(z => !z.geplant).length} Bestand · ${alle.filter(z => z.geplant).length} geplant`
       : gelb('keine Ladeinfrastruktur im Elektro-Tab'))
     + zeile('Ausbaustufen', stufen.length ? gEsc(stufen.map(s => s.key).join(' · ')) : '—')
-    + zeile('Zusatzbedarf (3.3.3)', rv ? `${ggNum(rv.ladeKw)} kW` : '—')
+    + zeile('Zusatzbedarf (5.3.3)', rv ? `${ggNum(rv.ladeKw)} kW` : '—')
     + zeile('Für Laden verfügbar', rv?.cap != null ? `${ggNum(Math.max(0, rv.verfuegbar))} kW bei ${ggNum(rv.cap)} kVA` : gelb('Anschlussleistung fehlt'))
     + zeile('Netzmodell', res ? `nicht angebunden: ${alle.filter(z => !z.angebunden).length} · `
         + `mit ausgelöstem Engpass: ${alle.filter(z => z.engpaesse.length).length}` : gelb('kein Netzmodell — Netzanbindung als Platzhalter'));
@@ -12216,7 +12595,7 @@ GG_FIGUREN.push(
     config: {
       eyebrow: 'Elektrotechnisches Gutachten',
       titel: 'Netzanbindung der Ladeinfrastruktur',
-      leer: 'Keine Ladeinfrastruktur im Elektro-Tab.',
+      leer: 'Keine Ladeinfrastruktur vorhanden oder geplant — Ladepunkte im Elektro-Tab erfassen.',
       spalten: [
         { label: 'Ladepark',      weight: 1.4, align: 'left', mono: false },
         { label: 'Standort',      weight: 1.0, align: 'left', mono: false },
@@ -12268,8 +12647,8 @@ GG_FIGUREN.push(
 
 /* ── 3.5 Wirtschaftlichkeit und Investitionskosten ──────────────────────────────
  * Kostenpositionen aus 5.4.1–5.4.4: Netzanschluss (Mehrleistung × Baukostenzuschuss), internes Netz
- * (geplante Maßnahmen an Trafos/Verteilungen/Kabeln, sonst Vorschläge der Engpass-Analyse), PV/Speicher (wirtschaftlich optimierte Variante der PV-Analyse,
- * Jahreskosten von dort), Notstrom (Resilienz-Rechnung), Ladeinfrastruktur (Ladepunkte × Kennwert).
+ * (geplante Maßnahmen an Trafos/Verteilungen/Kabeln, sonst Vorschläge der Engpass-Analyse), PV/Speicher (weiterverfolgte Auslegung
+ * der PV-Analyse, Fragebogen „pv-auslegung“, Vorgabe wirtschaftlich optimiert; Jahreskosten von dort), Notstrom (Resilienz-Rechnung), Ladeinfrastruktur (Ladepunkte × Kennwert).
  * Jahreskosten nach VDI 2067 über lib/elektro-kosten.js. Die Kennwerte hängen an der Config der Kostentabelle
  * und werden als deren Figur-Einstellung gespeichert. */
 const GG_KAP_WIRT = '5.5 Wirtschaftlichkeit und Investitionskosten';
@@ -12314,8 +12693,9 @@ function ggKostenPositionen() {
   n(netz.offen.ms, 'Engpässe im Mittelspannungsnetz');
   n(netz.offen.ohneKosten, netz.offen.ohneKosten === 1 ? 'geplante Netzmaßnahme ohne Kostenangabe' : 'geplante Netzmaßnahmen ohne Kostenangabe');
 
-  // PV und Batteriespeicher (3.4.2): wirtschaftlich optimierte Variante, Jahreskosten aus der PV-Analyse
-  const pv = ggPvKanon().find(v => v.id === 'wirt-opt') || null;
+  // PV und Batteriespeicher (5.4.2): weiterverfolgte Auslegung (Fragebogen, Vorgabe wirtschaftlich optimiert),
+  // Jahreskosten aus der PV-Analyse
+  const pv = ggPvAuswahl().v;
   if (pv?.wirt?.investGes > 0) {
     const pvJahre = ggAnlagenIst(['PV', 'Batterie']).geplant.map(e => e.bj).filter(j => j != null);
     const p = window._pvAnalyse?.lastParams;
@@ -12432,8 +12812,12 @@ function ggRenderKostenText(cfg, T = GG_THEME) {
   }
 
   if (pv?.wirt?.investGes > 0) {
-    absaetze.push(`Für PV und Batteriespeicher geht die wirtschaftlich optimierte Variante „${gEsc(pv.label)}“ aus Kapitel 5.4.2 ein; `
-      + 'ihre Jahreskosten stammen aus der PV-Analyse und enthalten die netzseitige Infrastruktur der Anlage. Da PV und Speicher '
+    const art = /^belegung-/.test(pv.id) ? 'die gebäudescharfe Dachbelegung' : 'die Auslegung';
+    absaetze.push(`Für PV und Batteriespeicher geht ${art} „${gEsc(pv.label)}“ aus Kapitel 5.4.2 ein`
+      + ` (${ggNum(pv.pvKwp)} kWp${pv.batKwh > 0 ? `, Speicher ${ggNum(pv.batKwh)} kWh` : ', ohne Speicher'}`
+      + `${pv.id === 'wirt-opt' ? '; höchster jährlicher Netto-Überschuss' : ''}); `
+      + 'ihre Jahreskosten stammen aus der PV-Analyse und enthalten die netzseitige Infrastruktur der Anlage'
+      + (pv.netzausbau?.massnahmen?.length ? ' einschließlich der für diese Belegung nötigen Netzertüchtigung' : '') + '. Da PV und Speicher '
       + 'zusätzlich Erlöse erzielen, ist ihre Wirtschaftlichkeit mit Kapitalwert und Stromgestehungskosten gesondert in der Tabelle '
       + '„Wirtschaftlichkeit je PV-Variante“ dargestellt.');
   }
@@ -12476,7 +12860,7 @@ function ggKostenStandHtml() {
     return `<div style="margin-bottom:6px;">${kopf}</div>`
       + `<div style="font-size:11px;line-height:1.6;">Investition gesamt ${ggEuro(a.summeInvestEur)} · Jahreskosten ${ggEuro(a.summeJahreskostenEur)}/a · ${a.positionen.length} Positionen</div>`
       + (offen.length ? `<div style="font-size:10px;color:#e0a126;margin-top:4px;line-height:1.5;">Nicht beziffert: ${gEsc(offen.join(' · '))}</div>` : '')
-      + abgleich;
+      + abgleich + ggPvAuswahlHtml();
   }
   // Feldbereich mit fester Höhe und eigenem Scrollbalken — auch aufgeklappt bleibt die Vorschau sichtbar
   let html = `<div style="margin-bottom:4px;">${kopf}</div>`
@@ -12494,8 +12878,8 @@ function ggKostenStandHtml() {
   if (offen.length) {
     html += `<div style="font-size:10px;color:#e0a126;margin-top:4px;line-height:1.5;">Nicht beziffert: ${gEsc(offen.join(' · '))}</div>`;
   }
-  return html + abgleich + '<div style="margin-top:6px;font-size:10px;color:var(--muted);line-height:1.5;">PV und Speicher: Investition und '
-    + 'Jahreskosten der wirtschaftlich optimierten Variante aus der PV-Analyse (dort eigener Zins). Notstrom: Kostensatz der '
+  return html + abgleich + ggPvAuswahlHtml() + '<div style="margin-top:6px;font-size:10px;color:var(--muted);line-height:1.5;">PV und Speicher: Investition und '
+    + 'Jahreskosten der weiterverfolgten Auslegung aus der PV-Analyse (dort eigener Zins). Notstrom: Kostensatz der '
     + 'Resilienz-Rechnung. Internes Netz: die im Projekt geplanten Maßnahmen an Trafos, Verteilungen und Kabeln mit ihren '
     + 'Beträgen und Jahren; Engpässe ohne Maßnahme mit dem Vorschlag der Engpass-Analyse.</div>';
 }
@@ -12849,16 +13233,19 @@ export function ggRenderFigurFuerDokument(id, opts = {}) {
   const arten = ggTeilArten(figur, opts);
   const blatt = ggIstBlatt(figur);
   const vorherLayout = figur.config.layout, vorherKennzahlen = figur.config.kennzahlen;
+  const vorherLeer = figur.config.leer;
   if (blatt) {
     figur.config.layout = opts.layout === 'voll' ? 'voll' : 'reduziert';
     figur.config.kennzahlen = opts.kennzahlen !== false;
   }
+  if (vorherLeer) figur.config.leer = ggDokLeer(vorherLeer);   // ohne Anweisung ans Tool, s. ggDokLeer
   try {
     const teile = [{ art: arten[0], el: figur.render(figur.config) }];
     if (arten[1]) teile.push({ art: arten[1], el: ggRenderKennzahlen(figur.config) });
     return { teile, meldung, titel: figur.config.titel || figur.titel, tabelleTitel: figur.config.tabelleTitel || 'Kennzahlen' };
   } finally {
     if (blatt) { figur.config.layout = vorherLayout; figur.config.kennzahlen = vorherKennzahlen; }
+    if (vorherLeer) figur.config.leer = vorherLeer;
   }
 }
 
@@ -12909,7 +13296,7 @@ export function ggFigurWordDaten(id, teilIdx = 0) {
       art: 'tabelle',
       spalten: cfg.spalten.map((c, i) => ({ label: c.label || '', gewicht: c.weight || 1, align: ggSpaltenDefaults(c, i).align })),
       zeilen: (cfg.zeilen || []).map(z => ({ werte: z.werte || [], highlight: !!z.highlight })),
-      fussnote: cfg.fussnote || '', leer: cfg.leer || '',
+      fussnote: cfg.fussnote || '', leer: ggDokLeer(cfg.leer),
     };
   }
   if (teilIdx > 0) {
@@ -12921,7 +13308,7 @@ export function ggFigurWordDaten(id, teilIdx = 0) {
         const { zahl, einheit } = ggSplitWert(r.wert);
         return { werte: [r.label || '', zahl, einheit, r.prozent || ''], highlight: !!r.highlight };
       }),
-      leer: cfg.leer || '',
+      leer: ggDokLeer(cfg.leer),
     };
   }
   return { art: 'bild' };
@@ -13168,7 +13555,10 @@ export function ggRenderPanel() {
         ? `<div style="font-size:11px;color:var(--muted);line-height:1.6;">Werte aus ☀ PV-Analyse · Berechnungsstand ${gEsc(s.standText || '—')}`
           + (s.stale ? ` · <span style="color:#e0a126;">Eingaben seither geändert — dort „Varianten neu berechnen“.</span>` : '')
           + `</div><div style="font-size:10px;color:var(--muted);margin-top:4px;">Gelbe Platzhalter erfasst das Tool nicht (z. B. Speichertechnologie, Aufstellort) — in Word ergänzen.</div>`
+          + ggPvGrundlageHtml() + ggPvAuswahlHtml()
         : `<div style="font-size:11px;color:#e0a126;">Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen“ klicken.</div>`;
+    } else if (figur.pvWahl) {
+      html += ggPvAuswahlHtml();
     } else if (figur.kostenFigur) {
       // Kostenkennwerte (3.5) — hier eingetragen, gelten für alle Kostenbausteine
       html += ggKostenStandHtml();

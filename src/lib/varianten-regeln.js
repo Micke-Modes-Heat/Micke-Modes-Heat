@@ -50,6 +50,29 @@ export function baujahrFuerNeu({ jahr, basisjahr } = {}) {
 }
 
 /**
+ * Darf ein Objekt das Baujahr seines Gebäudes übernehmen? Bestand ja; ein geplantes Objekt
+ * (Schicht Entwicklung/Entscheidung) nur, wenn das Gebäude selbst erst ab heute entsteht (Neubau).
+ * Sonst bekäme eine geplante PV-Anlage auf einem Gebäude von 1970 das Baujahr 1970 — im
+ * Gutachten erschiene ihre Investition dann im Jahr 1970. Rückgabe: Baujahr oder null.
+ */
+export function baujahrVomGebaeude({ schicht, gebBaujahr, basisjahr } = {}) {
+  const g = parseInt(gebBaujahr), b = Number(basisjahr);
+  if (!Number.isFinite(g)) return null;
+  if (normSchicht(schicht) === SCHICHT.BESTAND) return g;
+  return Number.isFinite(b) && g >= b ? g : null;
+}
+
+/**
+ * Gespeichertes Baujahr, das ein geplantes Objekt früher fälschlich vom Gebäude geerbt hat
+ * (gleiches Jahr wie das Gebäude, vor dem Basisjahr) — beim Laden zu verwerfen.
+ * Am Rechnen ändert das nichts: Ohne Baujahr und mit einem vergangenen ist das Objekt ab sofort aktiv.
+ */
+export function istGeerbtesAltBaujahr({ schicht, baujahr, gebBaujahr, basisjahr } = {}) {
+  const j = parseInt(baujahr), g = parseInt(gebBaujahr), b = Number(basisjahr);
+  return normSchicht(schicht) !== SCHICHT.BESTAND && Number.isFinite(j) && j === g && Number.isFinite(b) && j < b;
+}
+
+/**
  * Wirkungsbereich einer Schicht: 'alle' (gemeinsamer Stamm) oder 'variante'.
  */
 export function wirkungAusSchicht(schicht) {

@@ -47,6 +47,8 @@ export const XS = Object.freeze({
   gut:        11,   // gesperrt, hellgrün: Anforderung heute erfüllt
   luecke:     12,   // gesperrt, hellorange: Lücke, Maßnahme nötig
   info:       13,   // gesperrt, hellgrau: nur zur Information (wird nicht eingelesen)
+  kopfAg:     14,   // Tabellenkopf der Auftraggeber-Spalten: weiß auf violett
+  eingabeAg:  15,   // hellviolett, entsperrt: legt der Auftraggeber fest
 });
 
 const F_DUNKEL = 'FF266426';   // LKEBw dunkel
@@ -59,6 +61,8 @@ const F_BLAU   = 'FFDCEBF7';   // Beispielwerte
 const F_GUT    = 'FFE2F0D9';   // erfüllt
 const F_LUECKE = 'FFFCE4D6';   // Lücke
 const F_INFO   = 'FFF0F0F0';   // Infozellen
+const F_AG     = 'FF6A4C93';   // Auftraggeber (Kopf)
+const F_AG_HELL= 'FFEDE7F6';   // Auftraggeber (Eingabe)
 
 const KOPF = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
@@ -78,6 +82,7 @@ function _stylesXml() {
     '<fill><patternFill patternType="none"/></fill>',
     '<fill><patternFill patternType="gray125"/></fill>',
     solid(F_DUNKEL), solid(F_GELB), solid(F_TINT), solid(F_HELL), solid(F_BLAU), solid(F_GUT), solid(F_LUECKE), solid(F_INFO),
+    solid(F_AG), solid(F_AG_HELL),
   ];
   const kante = s => `<${s} style="thin"><color rgb="${F_LINIE}"/></${s}>`;
   const borders = [
@@ -111,6 +116,10 @@ function _stylesXml() {
       + '<alignment vertical="top" wrapText="1"/></xf>',
     '<xf numFmtId="0" fontId="3" fillId="9" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
       + '<alignment vertical="top"/></xf>',
+    '<xf numFmtId="0" fontId="2" fillId="10" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
+      + '<alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="0" fillId="11" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1" applyProtection="1">'
+      + '<alignment vertical="top" wrapText="1"/><protection locked="0"/></xf>',
   ];
   return KOPF + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
     + `<fonts count="${fonts.length}">${fonts.join('')}</fonts>`

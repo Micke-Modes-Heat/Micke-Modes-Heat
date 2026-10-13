@@ -179,12 +179,12 @@ export function d3dTriangulieren(pts) {
  * @param {number[][]} pts Grundriss [x,y]
  * @param {{a:number,b:number,c:number}[]} ebenen
  * @param {number} traufe
- * @returns {{dach:number[][][], wand:number[][][]}}
+ * @returns {{dach:number[][][], wand:number[][][], ebene:number[]}} ebene[i] = Index der Ebene von dach[i]
  */
 export function d3dDachDreiecke(pts, ebenen, traufe) {
-  const dach = [], wand = [];
+  const dach = [], wand = [], ebene = [];
   const ring = bereinigen(pts);
-  if (ring.length < 3 || ebenen.length === 1 && ebenen[0].a === 0 && ebenen[0].b === 0) return { dach, wand };
+  if (ring.length < 3 || ebenen.length === 1 && ebenen[0].a === 0 && ebenen[0].b === 0) return { dach, wand, ebene };
   const h = (x, y) => d3dDachHoehe(ebenen, x, y);
 
   // Dachflächen: Grundriss auf den Bereich zuschneiden, in dem die Ebene die niedrigste ist
@@ -197,6 +197,7 @@ export function d3dDachDreiecke(pts, ebenen, traufe) {
     if (teil.length < 3 || Math.abs(flaecheXY(teil)) < 1e-4) return;
     for (const t of d3dTriangulieren(teil)) {
       dach.push(t.map(([x, y]) => [x, y, ei.a * x + ei.b * y + ei.c]));
+      ebene.push(i);
     }
   });
 
@@ -229,7 +230,7 @@ export function d3dDachDreiecke(pts, ebenen, traufe) {
       if (h0 - traufe >= 0.02) wand.push([u0, o1, o0]);
     }
   }
-  return { dach, wand };
+  return { dach, wand, ebene };
 }
 
 /**

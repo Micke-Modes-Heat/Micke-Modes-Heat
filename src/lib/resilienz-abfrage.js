@@ -76,6 +76,8 @@ export const RA_LISTEN = Object.freeze({
   L_Leistung:   Object.freeze(['gemessen', 'geschätzt', 'unbekannt']),
   L_Ersatz:     Object.freeze(['keine', 'USV', 'NEA', 'USV+NEA', 'mobil', 'unbekannt']),
   L_Herkunft:   Object.freeze(['vorgegeben', 'Einschätzung Nutzer', 'unbekannt']),
+  // nur schlanke Fassung: eine Frage statt der drei Zeitschnitte
+  L_Kritisch:   Object.freeze(['sofort', 'nach Stunden', 'nach Tagen', 'gar nicht', 'unbekannt']),
 });
 
 // ── Spalten des Kernblatts „3 Funktionen" ───────────────────────────────────
@@ -638,28 +640,34 @@ function _hinweisVerbinden(blatt, spalten) {
   return blatt;
 }
 
-/** Ein Frage-Antwort-Blatt aufbauen. */
+/**
+ * Ein Frage-Antwort-Blatt aufbauen. Tragen die Felder eine `rolle` (schlanke
+ * Fassung), kommt Spalte C „Wer" dazu; Antworten des Auftraggebers sind violett.
+ */
 function _frageBlatt(name, ueberschrift, hinweis, felder, meta) {
-  const B_FRAGE = 58, B_ANTWORT = 80;
+  const mitRolle = felder.some(f => f.rolle);
+  const B_FRAGE = 58, B_ANTWORT = mitRolle ? 62 : 80;
   const zeilen = [_titel(ueberschrift), _hinweis(hinweis), []];
   const zeilenHoehe = {};
   const pruefungen = [];
   felder.forEach((f, i) => {
     const r = RA_FRAGE_START + i;
     const vorbelegt = meta?.[f.feld];
+    const ag = f.rolle === 'ag';
     zeilen[r] = [
       { w: f.frage, s: XS.text },
-      { w: vorbelegt ?? null, s: f.art === 'zahl' ? XS.eingabeZahl : XS.eingabe },
+      { w: vorbelegt ?? null, s: ag ? XS.eingabeAg : f.art === 'zahl' ? XS.eingabeZahl : XS.eingabe },
     ];
+    if (mitRolle) zeilen[r].push({ w: RA_ROLLEN[f.rolle]?.label ?? null, s: ag ? XS.kopfAg : XS.kopf });
     const h = Math.max(f.hoehe || 0, _hoeheFuer([f.frage, B_FRAGE], [vorbelegt, B_ANTWORT]));
     if (h > 15) zeilenHoehe[r] = h;
     if (f.liste) pruefungen.push({ bereich: `B${r + 1}`, liste: f.liste, titel: 'Auswahl', hinweis: 'Bitte einen Wert aus der Liste wählen.' });
   });
   return _hinweisVerbinden({
     name, zeilen, zeilenHoehe, pruefungen,
-    spalten: [{ breite: B_FRAGE }, { breite: B_ANTWORT }],
+    spalten: [{ breite: B_FRAGE }, { breite: B_ANTWORT }, ...(mitRolle ? [{ breite: 18 }] : [])],
     fixZeilen: RA_FRAGE_START,
-  }, 2);
+  }, mitRolle ? 3 : 2);
 }
 
 /** Reiterfarben: gelb = füllt der Empfänger aus, blau = Beispiel bzw. Auswertung der erhebenden Stelle. */
@@ -781,18 +789,21 @@ function _anleitungBlatt(meta) {
   };
 }
 
-/** Blatt „2 Szenarien": S1–S7, je Zeile Relevanz, Dauer, Herkunft, Bemerkung. */
-function _szenarienBlatt(vorbelegung) {
+/**
+ * Blatt „2 Szenarien": S1–S7, je Zeile Relevanz, Dauer, Herkunft, Bemerkung.
+ * opt (schlanke Fassung): name, ueberschrift, hinweis, ag — das Blatt gehört dem Auftraggeber (violett).
+ */
+function _szenarienBlatt(vorbelegung, opt = {}) {
   const vor = new Map((vorbelegung || []).map(s => [s.id, s]));
-  const E = v => ({ w: v == null || v === '' ? null : v, s: XS.eingabe });
+  const E = v => ({ w: v == null || v === '' ? null : v, s: opt.ag ? XS.eingabeAg : XS.eingabe });
   const kopf = ['ID', 'Referenzszenario', 'Relevant für die Liegenschaft?',
     'Angenommene Dauer', 'Herkunft der Angabe', 'Bemerkung'];
   const zeilen = [
-    _titel('2 Szenarien'),
-    _hinweis('Welche Ausfälle sind für diese Liegenschaft zu unterstellen und wie lange dauern sie? '
+    _titel(opt.ueberschrift || '2 Szenarien'),
+    _hinweis(opt.hinweis || 'Welche Ausfälle sind für diese Liegenschaft zu unterstellen und wie lange dauern sie? '
       + 'Die Dauer bitte als Zeitangabe eintragen (z. B. „4 h", „3 Tage", „14 Tage").'),
     [],
-    kopf.map(t => ({ w: t, s: XS.kopf })),
+    kopf.map(t => ({ w: t, s: opt.ag ? XS.kopfAg : XS.kopf })),
   ];
   RA_SZENARIEN.forEach((s, i) => {
     const v = vor.get(s.id) || {};
@@ -803,7 +814,7 @@ function _szenarienBlatt(vorbelegung) {
   });
   const von = RA_KOPFZEILE + 2, bis = RA_KOPFZEILE + 1 + RA_SZENARIEN.length;
   return _hinweisVerbinden({
-    name: RA_BLATT.szenarien, zeilen,
+    name: opt.name || RA_BLATT.szenarien, zeilen,
     spalten: [{ breite: 6 }, { breite: 54 }, { breite: 16 }, { breite: 16 }, { breite: 18 }, { breite: 34 }],
     zeilenHoehe: { [RA_KOPFZEILE]: 32 },
     fixZeilen: RA_KOPFZEILE + 1,
@@ -1494,6 +1505,270 @@ export function raDateiname(meta) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// Schlanke Fassung — zur Abstimmung des Vorgehens mit dem Auftraggeber
+// ══════════════════════════════════════════════════════════════════════════
+// Gefragt wird nur, was allein der Gefragte weiß. Zwei Rollen:
+//   Betreiber / Nutzer — je Funktion: ab wann kritisch, wie lange ohne Netz,
+//                        wovon abhängig.
+//   Auftraggeber       — gegen welche Lagen vorgesorgt wird, Vorgaben,
+//                        zuständige Stelle. Bleibt enthalten, ist aber
+//                        violett gekennzeichnet.
+// Technik (Krisenlast, vorhandene NEA/USV, Tanks, Betriebszeit) fehlt ganz —
+// das ermittelt die Fachplanung bei der Begehung bzw. aus dem Lastgang.
+// Eingelesen wird mit raLesen() (erkennt die Kennung) bzw. raLesenErhebung();
+// die Funktionen tragen danach dieselben Felder wie aus der vollen Abfrage.
+
+export const RA_SCHLANK_PRAEFIX = 'MMH-RESILIENZ-ABFRAGE-SCHLANK';
+export const RA_SCHLANK_KENNUNG = `${RA_SCHLANK_PRAEFIX} v1`;
+
+export const RA_ROLLEN = Object.freeze({
+  nutzer: Object.freeze({ key: 'nutzer', label: 'Betreiber / Nutzer', farbe: '#2e7d32',
+    aufgabe: 'beschreibt, welche Aufgaben bei einem Stromausfall weiterlaufen müssen und wie lange' }),
+  ag:     Object.freeze({ key: 'ag', label: 'Auftraggeber', farbe: '#6a4c93',
+    aufgabe: 'legt fest, gegen welche Lagen vorgesorgt wird, und benennt Vorgaben und zuständige Stelle' }),
+});
+
+/**
+ * „Ab wann wird ein Ausfall kritisch?" → Einordnung und die drei Zeitschnitte
+ * der vollen Abfrage (damit alles Weitere unverändert rechnet).
+ */
+export const RA_KRITISCH = Object.freeze([
+  Object.freeze({ wert: 'sofort',       klasse: 'A', ausw: [_AG, _AG, _AG],             grund: 'Ausfall wird sofort kritisch' }),
+  Object.freeze({ wert: 'nach Stunden', klasse: 'B', ausw: [_EI, _AG, _AG],             grund: 'Ausfall wird nach Stunden kritisch' }),
+  Object.freeze({ wert: 'nach Tagen',   klasse: 'C', ausw: ['keine', _EI, _AG],         grund: 'Ausfall wird nach Tagen kritisch' }),
+  Object.freeze({ wert: 'gar nicht',    klasse: 'D', ausw: ['keine', 'keine', 'keine'], grund: 'Ausfall ist für den Auftrag nicht kritisch' }),
+]);
+
+/** Die drei Zeitschnitte zu einer Antwort auf „Ab wann kritisch?" ({} bei leer). */
+export function raAuswAusKritisch(wert) {
+  const w = raAusListe(wert, 'L_Kritisch');
+  if (w === 'unbekannt') return { ausw_s: 'unbekannt', ausw_4h: 'unbekannt', ausw_3d: 'unbekannt' };
+  const k = RA_KRITISCH.find(x => x.wert === w);
+  return k ? { ausw_s: k.ausw[0], ausw_4h: k.ausw[1], ausw_3d: k.ausw[2] } : {};
+}
+
+/** Antwort auf „Ab wann kritisch?" zu einer Einordnung A–D. */
+export const raKritischAusKlasse = klasse => RA_KRITISCH.find(k => k.klasse === klasse)?.wert || '';
+
+export const RA_BLATT_SCHLANK = Object.freeze({
+  anleitung:    RA_BLATT.anleitung,
+  allgemeines:  '1 Allgemeines',
+  funktionen:   '2 Funktionen',
+  szenarien:    '3 Lagen (Auftraggeber)',
+  rueckmeldung: '4 Rückmeldung',
+  beispiele:    'Beispiele',
+  listen:       RA_BLATT.listen,
+});
+
+/** Allgemeines der schlanken Fassung — Fragetexte wie in der vollen, damit das Einlesen gleich bleibt. */
+const _ROLLE_ALLGEMEIN = { lieg: 'nutzer', stelle: 'nutzer', bearb: 'nutzer', stand: 'nutzer',
+  zustaendig: 'ag', vorgaben: 'ag', vorgaben_bez: 'ag', liste_kf: 'ag', liste_kf_bez: 'ag' };
+export const RA_ALLGEMEIN_SCHLANK = Object.freeze(RA_ALLGEMEIN_FELDER
+  .filter(f => _ROLLE_ALLGEMEIN[f.feld])
+  .map(f => Object.freeze({ ...f, rolle: _ROLLE_ALLGEMEIN[f.feld] })));
+
+export const RA_FUNKTION_SPALTEN_SCHLANK = Object.freeze([
+  _SP('id',       'ID',       { breite: 7, hinweis: 'Laufende Nummer, bleibt beim Einlesen erhalten' }),
+  _SP('name',     'Funktion', { breite: 28, hinweis: 'Was wird hier geleistet? Nicht die Anlage, sondern die Aufgabe' }),
+  _SP('geb',      'Gebäude',  { breite: 22 }),
+  _SP('kritisch', 'Ab wann wird ein Stromausfall für den Auftrag kritisch?', { breite: 18, liste: 'L_Kritisch',
+    hinweis: 'sofort / nach Stunden / nach Tagen / gar nicht — „unbekannt" ist zulässig' }),
+  _SP('autarkie', 'Wie lange muss die Funktion ohne öffentliches Netz weiterlaufen?', { breite: 18, liste: 'L_Autarkie' }),
+  _SP('abh',      'Hängt außer Strom ab von (Wärme / Wasser / IT-Netz / Kommunikation / Personal)', { breite: 26 }),
+  _SP('herkunft', 'Herkunft der Angaben', { breite: 16, liste: 'L_Herkunft' }),
+  _SP('bem',      'Bemerkung', { breite: 28 }),
+  ...RA_SZENARIEN.map(s => _SP('sz_' + s.id, s.id, { breite: 5, liste: 'L_Kreuz', szenario: s.id, hinweis: s.name, rolle: 'ag' })),
+]);
+
+const _TAB_AG = 'FF6A4C93';
+
+/** Blatt „0 Anleitung" der schlanken Fassung — kurz; Kennung wie in der vollen in C1. */
+function _anleitungSchlank(meta) {
+  const breiten = [3, 30, 10, 66, 22];
+  const B_TEXT = 30 + 66 + 22;
+  const zeilen = [], verbunden = [], zeilenHoehe = {};
+  const zeile = (zellen, hoehe) => { if (hoehe > 15) zeilenHoehe[zeilen.length] = hoehe; zeilen.push(zellen); };
+  const text = (t, s = XS.fliess) => {
+    verbunden.push(`B${zeilen.length + 1}:E${zeilen.length + 1}`);
+    zeile([null, { w: t, s }, { w: null, s }, { w: null, s }, { w: null, s }], _hoeheFuer([t, B_TEXT]));
+  };
+  const abschnitt = t => { zeile([]); text(t, XS.abschnitt); };
+  const tabelle = (b, d, e, s = XS.text, sE = s) => {
+    zeile([null, { w: b, s }, { w: null, s }, { w: d, s }, { w: e ?? null, s: sE }], _hoeheFuer([b, 30], [d, 66], [e, 22]));
+  };
+  const B = RA_BLATT_SCHLANK, N = RA_ROLLEN.nutzer.label, AG = RA_ROLLEN.ag.label;
+
+  zeile([null, { w: 'Abfrage: Resilienzanforderungen der Liegenschaft (schlanke Fassung)', s: XS.titel },
+    { w: RA_SCHLANK_KENNUNG, s: XS.standard }]);
+  text(meta?.lieg ? `Liegenschaft: ${meta.lieg}` : `Liegenschaft: [bitte auf Blatt „${B.allgemeines}" eintragen]`, XS.fett);
+  text(`Stand der Vorlage: ${meta?.stand || ''}${meta?.empfaenger ? `   ·   Empfänger: ${meta.empfaenger}` : ''}`, XS.hinweis);
+
+  abschnitt('Worum geht es?');
+  text('Für das Energiekonzept der Liegenschaft brauchen wir eine Antwort auf eine Frage: Welche Aufgaben müssen bei '
+    + 'einem Stromausfall weiterlaufen — ab wann wird es kritisch, und wie lange muss es ohne öffentliches Netz gehen? '
+    + 'Gefragt wird nach Auswirkungen, nicht nach Technik.');
+  text('Leistungen, vorhandene Netzersatzanlagen, USV oder Tankinhalte werden hier nicht abgefragt — das ermittelt die '
+    + 'Fachplanung selbst bei der Begehung und aus den Messdaten.', XS.hinweis);
+
+  abschnitt('Wer füllt was aus?');
+  tabelle('Blatt', 'Inhalt', 'Wer', XS.kopf);
+  tabelle(B.allgemeines, 'Liegenschaft und ausfüllende Stelle (gelb); Vorgaben und zuständige Stelle (violett)', `${N} · ${AG}`);
+  tabelle(B.funktionen, 'Je Funktion drei Fragen (gelb). Die Spalten S1–S7 (violett): in welchen Lagen die Funktion '
+    + 'weiterlaufen muss', `${N} · Lagen: ${AG}`);
+  tabelle(B.szenarien, 'Gegen welche Lagen vorgesorgt wird und mit welcher Dauer', AG, XS.text, XS.eingabeAg);
+  tabelle(B.rueckmeldung, 'Offene Punkte, Rückfragen und Freigabe', `${N} · Freigabe: ${AG}`);
+  tabelle(B.beispiele, 'Typische Funktionen mit Musterantworten zum Nachschlagen', '—');
+  text(`Gelbe Zellen: ${N}. Violette Zellen: ${AG} — diese Punkte legt der Auftraggeber fest; sie stehen hier, `
+    + 'damit das Vorgehen gemeinsam abgestimmt werden kann.', XS.hinweis);
+
+  abschnitt('Die drei Fragen je Funktion');
+  tabelle('Frage', 'Antworten und was daraus folgt', 'Einordnung', XS.kopf);
+  tabelle('Ab wann wird ein Stromausfall kritisch?', 'sofort — der Auftrag ist schon nach Sekunden gefährdet', 'A · unterbrechungsfrei');
+  tabelle('', 'nach Stunden — einige Stunden sind überbrückbar, dann nicht mehr', 'B · kleiner 4 h');
+  tabelle('', 'nach Tagen — erst ein längerer Ausfall wird zum Problem', 'C · kleiner 3 Tage');
+  tabelle('', 'gar nicht — die Aufgabe ruht im Krisenfall (auch das ist eine wertvolle Angabe)', 'D · keine Vorgabe');
+  tabelle('Wie lange ohne öffentliches Netz?', 'keine · 1 Tag · 3 Tage · 7 Tage · 14 Tage · länger — wie lange es gehen muss, '
+    + 'nicht wie lange es heute geht', '');
+  tabelle('Hängt ab von (freiwillig)', 'Was außer Strom noch funktionieren muss: Wärme, Wasser, IT-Netz, Kommunikation, Personal', '');
+
+  abschnitt('Hinweise');
+  text('• Nur gelbe und violette Zellen sind zum Ausfüllen freigegeben. Viele Zellen haben eine Auswahlliste.');
+  text('• „unbekannt" ist eine zulässige Antwort. Eine offene Lücke ist wertvoller als eine geratene Angabe.');
+  text('• Gleichartige Gebäude (z. B. alle Unterkünfte) dürfen dieselben Antworten bekommen — einfach Zeilen kopieren.');
+  text('• Keine eingestuften Inhalte eintragen. Gibt es eingestufte Vorgaben, nur nennen, DASS es sie gibt und welche Stelle '
+    + 'sie herausgegeben hat.');
+
+  abschnitt('Rückfragen');
+  text(meta?.ansprechpartner || '[Ansprechpartner, Dienststelle, Telefon, E-Mail]', meta?.ansprechpartner ? XS.fliess : XS.hinweis);
+  zeile([]);
+  text('Bitte die ausgefüllte Datei unverändert als .xlsx zurücksenden — sie wird maschinell ausgewertet. '
+    + 'Blätter oder Spalten bitte nicht löschen oder umbenennen.', XS.hinweis);
+
+  return {
+    name: B.anleitung, zeilen, verbunden, zeilenHoehe,
+    spalten: breiten.map((breite, i) => ({ breite, ...(i === RA_KENNUNG_ZELLE.spalte ? { verborgen: true } : {}) })),
+  };
+}
+
+/** Blatt „2 Funktionen" der schlanken Fassung: gelb Betreiber, violett Lagen (Auftraggeber). */
+function _funktionenSchlank(funktionen, leerzeilen) {
+  const sp = RA_FUNKTION_SPALTEN_SCHLANK;
+  const blatt = _tabellenBlatt({
+    name: RA_BLATT_SCHLANK.funktionen,
+    ueberschrift: '2 Funktionen',
+    hinweis: 'Eine Zeile je Funktion — gefragt ist die Auswirkung eines Ausfalls, nicht die Technik. Die Vorbelegung '
+      + 'ist ein Vorschlag: bitte streichen, ändern und ergänzen. Die violetten Spalten S1–S7 legt der Auftraggeber fest '
+      + '(„x" = die Funktion muss in dieser Lage weiterlaufen); sie dürfen leer bleiben.',
+    spalten: sp,
+    daten: funktionen || [],
+    leerzeilen,
+    idVon: raFunktionsId,
+    fixSpalten: 2,
+  });
+  const ersteAg = sp.findIndex(s => s.rolle === 'ag');
+  const L = c => spalteZuBuchstabe(c);
+  // Zeile 3: Rollenband über den beiden Spaltengruppen
+  blatt.zeilen[RA_KOPFZEILE - 1] = sp.map((s, c) => ({
+    w: c === 0 ? `Füllt aus: ${RA_ROLLEN.nutzer.label}` : c === ersteAg ? `Legt fest: ${RA_ROLLEN.ag.label}` : null,
+    s: s.rolle === 'ag' ? XS.kopfAg : XS.kopf,
+  }));
+  blatt.verbunden = [...(blatt.verbunden || []), `A${RA_KOPFZEILE}:${L(ersteAg - 1)}${RA_KOPFZEILE}`,
+    `${L(ersteAg)}${RA_KOPFZEILE}:${L(sp.length - 1)}${RA_KOPFZEILE}`];
+  blatt.zeilenHoehe = { ...(blatt.zeilenHoehe || {}), [RA_KOPFZEILE - 1]: 20 };
+  for (let r = RA_KOPFZEILE; r < blatt.zeilen.length; r++) {
+    const z = blatt.zeilen[r];
+    if (!z) continue;
+    sp.forEach((s, c) => {
+      if (s.rolle === 'ag' && z[c]) z[c] = { ...z[c], s: r === RA_KOPFZEILE ? XS.kopfAg : XS.eingabeAg };
+    });
+  }
+  return blatt;
+}
+
+/** Blatt „Beispiele": der Beispielkatalog mit den Antworten der schlanken Fassung. Wird nicht eingelesen. */
+function _beispieleSchlank() {
+  const kopf = ['Funktion', 'Ab wann kritisch?', 'Wie lange ohne Netz?', 'Hängt ab von', 'Einordnung', 'Warum so?'];
+  const breiten = [28, 16, 16, 26, 11, 70];
+  const zeilen = [
+    _titel('Beispiele'),
+    _hinweis('Typische Funktionen und wie sie beantwortet sein könnten. Keine Vorgabe — nur zum Nachschlagen; '
+      + 'dieses Blatt wird nicht eingelesen.'),
+    [],
+    kopf.map(t => ({ w: t, s: XS.kopf })),
+  ];
+  const zeilenHoehe = { [RA_KOPFZEILE]: 20 };
+  for (const e of RA_KATALOG) {
+    const k = raKlasseVorschlag(e).klasse;
+    const werte = [e.name, raKritischAusKlasse(k), e.autarkie_text, e.abh || '—', k, e.warum];
+    zeilenHoehe[zeilen.length] = _hoeheFuer(...werte.map((w, i) => [w, breiten[i]]));
+    zeilen.push(werte.map(w => ({ w, s: XS.beispiel })));
+  }
+  return _hinweisVerbinden({ name: RA_BLATT_SCHLANK.beispiele, zeilen, zeilenHoehe,
+    spalten: breiten.map(breite => ({ breite })), fixZeilen: RA_KOPFZEILE + 1 }, 6);
+}
+
+/**
+ * Die schlanke Abfragemappe — Übergabe an xlsxDateien().
+ * @param {object} [opt]  meta, funktionen (raVorbelegung), szenarien, rueckmeldung, leerzeilen (Vorgabe 40)
+ */
+export function raMappeSchlank(opt = {}) {
+  const meta = opt.meta || {};
+  const B = RA_BLATT_SCHLANK;
+  const { blatt: listen, namen } = _listenBlatt();
+  const farbe = { [B.anleitung]: _TAB.anleitung, [B.szenarien]: _TAB_AG, [B.beispiele]: _TAB.beispiel };
+  return {
+    titel: `Resilienzabfrage (schlank) ${meta.lieg || ''}`.trim(),
+    autor: meta.stelle || 'Micke-Heat',
+    namen,
+    blaetter: [
+      _anleitungSchlank(meta),
+      _frageBlatt(B.allgemeines, '1 Allgemeines',
+        `Gelb: ${RA_ROLLEN.nutzer.label}. Violett: ${RA_ROLLEN.ag.label} — Vorgaben und Zuständigkeit legt der Auftraggeber fest.`,
+        RA_ALLGEMEIN_SCHLANK, meta),
+      _funktionenSchlank(opt.funktionen || [], opt.leerzeilen ?? 40),
+      _szenarienBlatt(opt.szenarien, {
+        ag: true, name: B.szenarien, ueberschrift: '3 Lagen — legt der Auftraggeber fest',
+        hinweis: 'Gegen welche Ereignisse soll die Liegenschaft abgesichert werden, und wie lange? Das entscheidet der '
+          + 'Auftraggeber; das Blatt dient der Abstimmung. Dauer als Zeitangabe (z. B. „4 h", „3 Tage", „14 Tage").',
+      }),
+      _frageBlatt(B.rueckmeldung, '4 Rückmeldung', 'Was offen bleibt, und wer die Angaben freigibt.',
+        RA_RUECKMELDUNG_FELDER, opt.rueckmeldung || null),
+      _beispieleSchlank(),
+      listen,
+    ].map(b => (b.versteckt ? b : { ...b, tabFarbe: farbe[b.name] || _TAB.eingabe, quer: true })),
+  };
+}
+
+/** Dateiname der schlanken Abfragedatei. */
+export const raDateinameSchlank = meta => raDateiname(meta).replace(/^Resilienzabfrage_/, 'Resilienzabfrage_schlank_');
+
+/** Schlanke Abfragedatei einlesen (aus raLesen, erkannt an der Kennung). */
+function _leseSchlank(blaetter, kennung) {
+  const B = RA_BLATT_SCHLANK;
+  const fehler = [];
+  const vNr = Number(/v(\d+)\s*$/.exec(kennung)?.[1]) || null;
+  const fn = _findeBlatt(blaetter, B.funktionen);
+  let funktionen = [];
+  if (!fn) fehler.push(`Blatt „${B.funktionen}" fehlt — ohne dieses Blatt gibt es nichts auszuwerten.`);
+  else {
+    const { idx, fehlend } = _spaltenZuordnen(fn[RA_KOPFZEILE], RA_FUNKTION_SPALTEN_SCHLANK);
+    fehler.push(..._spaltenFehler(fehlend, B.funktionen, vNr));
+    funktionen = _leseFunktionen(fn, idx, [], RA_FUNKTION_SPALTEN_SCHLANK);
+  }
+  const sz = _findeBlatt(blaetter, B.szenarien);
+  if (!sz) fehler.push(`Blatt „${B.szenarien}" fehlt.`);
+  return {
+    kennung, version: vNr, variante: 'schlank', fehler,
+    allgemein:    _leseFragen(_findeBlatt(blaetter, B.allgemeines) || [], RA_ALLGEMEIN_FELDER),
+    szenarien:    _leseSzenarien(sz || []),
+    kategorien:   [],
+    funktionen,
+    bestand:      _leseFragen([], RA_BESTAND_FELDER),
+    rueckmeldung: _leseFragen(_findeBlatt(blaetter, B.rueckmeldung) || [], RA_RUECKMELDUNG_FELDER),
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // Baustein 2: ausgefüllte Datei einlesen und bewerten
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -1571,6 +1846,9 @@ export const RA_KLASSEN_KEYS = Object.freeze(['A', 'B', 'C', 'D']);
  * @returns {{klasse:'A'|'B'|'C'|'D', grund:string, sicher:boolean}}
  */
 export function raKlasseVorschlag(f) {
+  // Schlanke Fassung: „Ab wann wird ein Ausfall kritisch?" gibt die Einordnung direkt.
+  const kr = RA_KRITISCH.find(k => k.wert === raAusListe(f?.kritisch, 'L_Kritisch'));
+  if (kr) return { klasse: kr.klasse, grund: kr.grund, sicher: true };
   const s = raAusListe(f?.ausw_s, 'L_Auswirkung');
   const h = raAusListe(f?.ausw_4h, 'L_Auswirkung');
   const d = raAusListe(f?.ausw_3d, 'L_Auswirkung');
@@ -1645,7 +1923,7 @@ function _leseSzenarien(zeilen) {
 
 /** Eine Funktionszeile gilt als leer, wenn weder Bezeichnung noch eine Auswirkung steht. */
 function _zeileLeer(f) {
-  return !f.name && !f.geb && !f.kategorie && !f.ausw_s && !f.ausw_4h && !f.ausw_3d
+  return !f.name && !f.geb && !f.kategorie && !f.kritisch && !f.ausw_s && !f.ausw_4h && !f.ausw_3d
     && !f.autarkie_text && f.pk == null && !f.bem;
 }
 
@@ -1744,6 +2022,7 @@ function _erbeAusKategorie(f, nachName) {
 function _funktionAbschliessen(f, nachName, i) {
   f.id = f.id || raFunktionsId(i);
   _erbeAusKategorie(f, nachName);
+  if (f.kritisch && !f.ausw_s && !f.ausw_4h && !f.ausw_3d) Object.assign(f, raAuswAusKritisch(f.kritisch));
   f.autarkie_h = raAutarkieStunden(f.autarkie_text);
   const v = raKlasseVorschlag(f);
   f.klasse_vorschlag = v.klasse;
@@ -1753,10 +2032,10 @@ function _funktionAbschliessen(f, nachName, i) {
   return f;
 }
 
-function _leseFunktionen(zeilen, idx, kategorien) {
+function _leseFunktionen(zeilen, idx, kategorien, spalten = RA_FUNKTION_SPALTEN) {
   const nachName = new Map((kategorien || []).map(k => [_schluessel(k.kategorie), k]));
   const out = [];
-  for (const f of _leseZeilen(zeilen, RA_FUNKTION_SPALTEN, idx)) {
+  for (const f of _leseZeilen(zeilen, spalten, idx)) {
     if (_zeileLeer(f)) continue;
     out.push(_funktionAbschliessen(f, nachName, out.length));
   }
@@ -1773,6 +2052,7 @@ export function raLesen(blaetter) {
   const fehler = [];
   const anleitung = _findeBlatt(blaetter, RA_BLATT.anleitung);
   const kennung = raText(anleitung?.[RA_KENNUNG_ZELLE.zeile]?.[RA_KENNUNG_ZELLE.spalte]);
+  if (kennung.startsWith(RA_SCHLANK_PRAEFIX)) return _leseSchlank(blaetter, kennung);
   const version = /v(\d+)\s*$/.exec(kennung)?.[1];
   const vNr = Number(version) || null;
 
@@ -1884,6 +2164,7 @@ export function raLesenErhebung(stand) {
     // Im Werkzeug von einer anderen Funktion übertragen bzw. aus dem Beispielkatalog begonnen
     if (raText(roh?.quelle)) f.quelle = raText(roh.quelle);
     if (raText(roh?.katalog)) f.katalog = raText(roh.katalog);
+    if (raText(roh?.kritisch)) f.kritisch = raAusListe(roh.kritisch, 'L_Kritisch');
     funktionen.push(_funktionAbschliessen(f, nachName, funktionen.length));
   }
 
@@ -1901,6 +2182,7 @@ export function raLesenErhebung(stand) {
 
   return {
     kennung, version: vNr, fehler,
+    ...(stand?.variante === 'schlank' ? { variante: 'schlank' } : {}),
     allgemein:    _normFragen(stand?.allgemein, RA_ALLGEMEIN_FELDER),
     szenarien,
     kategorien,
@@ -1919,12 +2201,15 @@ const _fehlt = v => !v || v === 'unbekannt';
  * Bewusst nur Buchführung: es wird nichts ergänzt und nichts geschätzt.
  */
 export function raPruefung(daten) {
+  // Schlanke Fassung: Technik (Krisenlast) erhebt die Planung selbst, Lagen je
+  // Funktion legt der Auftraggeber fest — beides ist dort keine offene Frage.
+  const schlank = daten?.variante === 'schlank';
   const offen = [];
   const hinweise = [];
   const P = (ref, text, feld) => offen.push({ ref, text, feld: feld || '' });
 
   const a = daten?.allgemein || {};
-  if (!raText(a.zustaendig)) P('Allgemeines', 'Die für die Resilienz zuständige Stelle ist nicht benannt.', 'zustaendig');
+  if (!raText(a.zustaendig)) P(schlank ? 'Auftraggeber' : 'Allgemeines', 'Die für die Resilienz zuständige Stelle ist nicht benannt.', 'zustaendig');
   if (!raText(a.lieg)) P('Allgemeines', 'Die Liegenschaft ist nicht bezeichnet.', 'lieg');
   if (_fehlt(a.vorgaben)) P('Allgemeines', 'Unklar, ob es Vorgaben zur Energie- bzw. Notstromversorgung gibt.', 'vorgaben');
   else if (a.vorgaben === 'ja' && !raText(a.vorgaben_bez)) {
@@ -1994,7 +2279,7 @@ export function raPruefung(daten) {
     if (_fehlt(f.autarkie_text)) {
       PF(f, ref, bez, 'autarkie', 'Keine Angabe, wie lange die Funktion ohne Netz weiterlaufen muss.');
     }
-    if (f.autarkie_h > 0 && f.pk == null) {
+    if (!schlank && f.autarkie_h > 0 && f.pk == null) {
       P(ref, `${bez}: Autarkie über ${raDauerText(f.autarkie_h)} gefordert, Krisenlast aber unbekannt — `
         + 'Messung bzw. Schätzung erforderlich.', 'pk');
     }
@@ -2005,7 +2290,7 @@ export function raPruefung(daten) {
       P(ref, `${bez}: Krisenlast angegeben, aber unklar, ob gemessen oder geschätzt.`, 'pk_art');
     }
     const kreuze = RA_SZENARIO_IDS.filter(id => f.sz?.[id]);
-    if (!kreuze.length && f.klasse_vorschlag !== 'D') {
+    if (!schlank && !kreuze.length && f.klasse_vorschlag !== 'D') {
       PF(f, ref, bez, 'sz', 'Kein Szenario angekreuzt — unklar, wofür die Anforderung gilt.');
     }
     if (_fehlt(f.herkunft)) PF(f, ref, bez, 'herkunft', 'Herkunft der Angaben ist offen.');

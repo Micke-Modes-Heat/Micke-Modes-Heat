@@ -54,10 +54,12 @@ export function autoCreateBuildingAssets(g, opts = {}) {
   if (ASSETS.items.some(a => a.buildingId === g.id)) return [];
 
   const positions = _positionsInBuilding(g.polygon, DEFAULT_TYPES.length);
+  // Baujahr bewusst nicht mitgeben: createAsset übernimmt es vom Gebäude nur, wenn es zur Schicht passt
+  // (Bestand, oder geplanter Neubau) — sonst bekäme ein geplantes Objekt das Baujahr des Altbaus.
   const base = {
     buildingId: g.id,
-    baujahr:    g.baujahr    || null,
     abrissjahr: g.abrissjahr || null,
+    schichtWieGebaeude: true,   // Grundausstattung gehört zur Schicht des Gebäudes, auch im Bestand
   };
 
   const created = [];

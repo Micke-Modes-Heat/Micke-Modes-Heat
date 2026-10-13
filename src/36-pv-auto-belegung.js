@@ -31,12 +31,13 @@
 
 import { map } from './02b-gebaeude.js';
 import { polygonAreaM2 } from './02c-karte-werkzeuge.js';
-import { _hasBelegung, calcGebKwpKorr, escHtml } from './03c-gebaeude-io.js';
+import { _hasBelegung, calcGebKwp, calcGebKwpKorr, escHtml, getGebPvModules } from './03c-gebaeude-io.js';
 import { ASSETS, TYPE_RANK, deleteAsset } from './13a-assets-core.js';
 import { pvmPlanungsSchrittMerken, pvmProbe, pvmStapelBelegen, pvModusMarkiereKarte, pvModusRender } from './25-pv-modus.js';
 import { normSchicht, SCHICHT } from './lib/schichten.js';
-import { pvnaAbrissGeplant, pvnaEinstellungen, pvnaIstNeubau, pvnaJahre, pvnaMassnahmenErmitteln, pvnaModell } from './28-pv-netzaufnahme.js';
-import { pvnaFuellen, pvnaTreppe, pvnaVollausbau } from './lib/pv-netzaufnahme-core.js';
+import { pvnaAbrissGeplant, pvnaEinstellungen, pvnaIstNeubau, pvnaJahre, pvnaMassnahmenErmitteln, pvnaModell, pvnaProfilForm } from './28-pv-netzaufnahme.js';
+import { pvnaAbregelung, pvnaFuellen, pvnaTreppeSchritte, pvnaVollausbau } from './lib/pv-netzaufnahme-core.js';
+import { pvOrientationMix } from './09a-pv-profile.js';
 
 const CYAN  = '#4dd0e1';
 const GRUEN = '#66bb6a';
@@ -45,6 +46,7 @@ const GRAU  = '#9e9e9e';
 const GELB  = '#ffd54f';
 const HELLGRUEN = '#c5e1a5';
 const ORANGE = '#ffa726';
+const BRAUN = '#a1887f';
 
 const UMFAENGE = [
   ['alle',    'Alle Dächer'],
@@ -77,6 +79,10 @@ const _ab = {
   vorrang: 'neubau',          // bei 'gestuft': diese Gruppe immer voll
   grenze: 'kabel',            // 'kabel' = Trafo + NS-Kabel · 'trafo' = nur der Trafo begrenzt
   ohneNetzBelegen: false,
+  /** Verschattung prüfen (40-baeume.js): stark verschattete Flächen auslassen, Erträge mit Verschattung reihen */
+  schatten: true,
+  /** verwinkelte Grundrisse ohne Dachflächen in Flügel zerlegen (lib/dach-grundriss) */
+  fluegel: true,
   /** Netzstand: Jahr, bis zu dem geplante Netzänderungen zählen (null = Rechenjahr der Netzaufnahme) */
   netzJahr: null,
   /** Ertüchtigung: 'keiner' (Bestandsnetz) | 'budget' (bis budgetT T€) | 'alle' */
@@ -84,6 +90,8 @@ const _ab = {
   budgetT: 100,
   /** @type {null | {zeilen:any[], sig:string, netz:any}} */
   vorschau: null,
+  /** Engstellen der Vorschau mit aufgeklapptem Rechenweg (Index in der Liste) */
+  engAuf: new Set(),
 };
 let _bereichLayer = null;
 /** Trafo-Zuordnung (Gebäude-ID → Trafo-Asset-ID) für den Umfang „Netzgebiet". */
@@ -98,7 +106,7 @@ const _sig = () => JSON.stringify([window.pvModusVorgabe || null, _ab.umfang, _a
   [..._ab.ohneNutzung].sort(), _ab.menge, _ab.menge === 'gestuft' ? _ab.vorrang : null,
   _ab.menge !== 'max' ? _ab.grenze : null,
   _ab.menge !== 'max' ? [_ab.netzJahr, _ab.ausbau, _ab.ausbau === 'budget' ? _ab.budgetT : null] : null,
-  _ab.bereich ? _ab.bereich.toBBoxString() : null]);
+  _ab.bereich ? _ab.bereich.toBBoxString() : null, _ab.schatten, _ab.fluegel]);
 const _vorrangLabel = (w, stich) => w === 'neubau' ? `Neubauten (nach ${stich})` : (VORRANG.find(v => v[0] === w)?.[1] || w);
 
 const _nordSektor = () => window.pvModusVorgabe?.nordSektor ?? 45;
@@ -219,29 +227,97 @@ function _kandidaten() {
 // Hinweis „⏳ …" erst zeichnen lassen; Timer statt rAF (pausiert in verdeckten Tabs)
 const _naechsterFrame = () => new Promise(r => setTimeout(r, 30));
 
+/**
+ * Deutliche Fortschrittsanzeige (Kartenmitte, mit Balken) für die lange Rechnung.
+ * Rückgabe: { set(text, anteil0bis1), weg() }. Eigenes Element, unabhängig vom Panel,
+ * weil pvModusRender erst nach der Rechnung läuft.
+ */
+function _rechenAnzeige(titel) {
+  if (!document.getElementById('pvab-rechen-css')) {
+    const st = document.createElement('style');
+    st.id = 'pvab-rechen-css';
+    st.textContent = '@keyframes pvabDreh{to{transform:rotate(360deg)}}';
+    document.head.appendChild(st);
+  }
+  const el = document.createElement('div');
+  el.id = 'pvab-rechen';
+  el.style.cssText = 'position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:100000;min-width:300px;max-width:420px;'
+    + 'background:#1b2330;color:#e8eef6;border:2px solid ' + CYAN + ';border-radius:10px;padding:16px 20px;'
+    + 'box-shadow:0 8px 32px rgba(0,0,0,.5);font-size:13px;pointer-events:none;';
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:12px;">
+      <span style="width:22px;height:22px;border:3px solid rgba(255,255,255,.2);border-top-color:${CYAN};border-radius:50%;animation:pvabDreh .8s linear infinite;flex:none;"></span>
+      <div style="font-weight:600;font-size:14px;">${titel}</div></div>
+    <div data-t style="margin-top:9px;font-size:12px;opacity:.85;"></div>
+    <div style="margin-top:8px;height:8px;border-radius:4px;background:rgba(255,255,255,.15);overflow:hidden;">
+      <div data-b style="height:100%;width:0;background:${CYAN};transition:width .15s;"></div></div>
+    <div style="margin-top:8px;font-size:11px;opacity:.6;">Bitte warten — die Karte reagiert währenddessen nicht.</div>`;
+  document.body.appendChild(el);
+  return {
+    set(text, anteil) {
+      el.querySelector('[data-t]').textContent = text;
+      if (anteil != null) el.querySelector('[data-b]').style.width = Math.round(Math.max(0, Math.min(1, anteil)) * 100) + '%';
+    },
+    weg() { el.remove(); },
+  };
+}
+
 export async function pvabVorschau() {
   const { liste, stich } = _kandidaten();
   if (!liste.length) { alert('Keine passenden Dächer — Umfang oder Mindestgröße anpassen.'); return; }
-  window.showHint?.(`⏳ Probebelegung von ${liste.length} Dächern …`, 0);
+  if (document.getElementById('pvab-rechen')) return;   // läuft schon
+  const anz = _rechenAnzeige('Vorschau wird berechnet …');
+  anz.set(`Probebelegung von ${liste.length} Dächern`, 0);
   await _naechsterFrame();
+  let tZeichnen = performance.now();
   try {
     const vorrangOk = _ab.menge === 'gestuft' ? _umfangFilter(_ab.vorrang, stich) : null;
+    // Verschattung: Hindernisse (Bäume, Gebäude) einmal je Lauf
+    const vsK = _ab.schatten && typeof window.verschattungKontext === 'function' ? window.verschattungKontext() : null;
+    const vsAn = !!window.pvVerschattungAn?.();
     const zeilen = [];
     for (const g of liste) {
-      const p = pvmProbe(g, { mitKopie: true });   // Kopie: Grundlage eines Belegungsstands (38)
+      // Anzeige regelmäßig zeichnen lassen (sonst friert der Balken ein)
+      if (performance.now() - tZeichnen > 120) {
+        anz.set(`Dach ${zeilen.length + 1} von ${liste.length}`, zeilen.length / liste.length * 0.85);
+        await _naechsterFrame();
+        tZeichnen = performance.now();
+      }
+      // Verwinkelter Grundriss ohne Dachflächen → Flügel (Kopie; ins Projekt erst beim Übernehmen)
+      const fg = _ab.fluegel ? window.d3dFluegelGebaeude?.(g) || null : null;
+      const p = pvmProbe(fg || g, { mitKopie: true });   // Kopie: Grundlage eines Belegungsstands (38)
       const vorrang = !!vorrangOk?.(g);
-      if (!p || !(p.kwp > 0)) zeilen.push({ g, vorrang, kwp: 0, kwpKorr: 0, status: 'leer', grund: 'kein Modul passt' });
-      else zeilen.push({ g, vorrang, kwp: p.kwp, kwpKorr: p.kwpKorr, module: p.module, kopie: p.kopie, status: 'voll', grund: '' });
+      if (!p || !(p.kwp > 0)) { zeilen.push({ g, vorrang, kwp: 0, kwpKorr: 0, status: 'leer', grund: 'kein Modul passt' }); continue; }
+      const z = { g, vorrang, kwp: p.kwp, kwpKorr: p.kwpKorr, module: p.module, kopie: p.kopie, status: 'voll', grund: '',
+        fluegel: fg ? { dachFlaechen: fg.dachFlaechen, dachLod2: fg.dachLod2 } : null };
+      if (vsK) {
+        const vs = window.verschattungProbe(p.kopie, vsK);
+        if (vs?.ganz) { z.status = 'schatten'; z.grund = `Verschattung −${_fmt(vs.verlustPct)} %`; }
+        else if (vs) {
+          z.vs = vs;
+          if (vs.ausgelassen.length) {             // Kopie gekürzt → Leistung neu
+            z.kwp = calcGebKwp(p.kopie) || 0; z.kwpKorr = calcGebKwpKorr(p.kopie) || 0; z.module = getGebPvModules(p.kopie).count || 0;
+          }
+          // Reihenfolge „beste Erträge zuerst“: Verschattung zählt mit (bei eingeschaltetem
+          // Schalter steckt sie schon in kwpKorr)
+          z.vsRang = vsAn ? 1 : vs.faktor;
+        }
+      }
+      zeilen.push(z);
     }
-    const netz = _ab.menge !== 'max' ? _netzPruefen(zeilen) : null;
-    _ab.vorschau = { zeilen, sig: _sig(), netz };
-    window.hideHint?.();
+    // Netzprüfung meldet ihren Fortschritt in den Bereich 0,85 … 0,98 des Balkens
+    const melde = async (text, a) => { anz.set(text, 0.85 + 0.13 * a); await _naechsterFrame(); tZeichnen = performance.now(); };
+    const netz = _ab.menge !== 'max' ? await _netzPruefen(zeilen, melde) : null;
+    anz.set('Ergebnis wird aufbereitet …', 0.98);
+    await _naechsterFrame();
+    _ab.vorschau = { zeilen, sig: _sig(), netz, annahmen: window.pvmVorgabeText?.() || '' };
+    _ab.engAuf = new Set();
   } catch (err) {
     console.error(err);
     window.showHint?.('Vorschau fehlgeschlagen: ' + err.message, 6000);
   }
   pvModusRender();
   pvModusMarkiereKarte();
+  anz.weg();
 }
 
 function _begrenzerText(b, info) {
@@ -255,15 +331,19 @@ function _begrenzerText(b, info) {
 }
 
 /**
- * Gruppe, die voll gebaut werden MUSS (Neubauten · PV-Pflicht · Auswahl) — gestuft
- * die Vorrang-Gruppe, netzverträglich der Umfang selbst. Für sie listet die
- * Vorschau die Engstellen. null = keine solche Gruppe.
+ * Gruppe, deren Vollausbau die Engstellenliste prüft — gestuft die Vorrang-Gruppe,
+ * netzverträglich der ganze Umfang (seit 09.10.2026 jeder Umfang, nicht nur
+ * Neubauten/PV-Pflicht/Auswahl: auch bei „alle Dächer" ist die Frage, woran die
+ * Dächer mit „Netz zu knapp" scheitern). null = keine Netzprüfung.
  */
 function _pflichtGruppe() {
   if (_ab.menge === 'gestuft') return _ab.vorrang;
-  if (_ab.menge === 'netz' && VORRANG.some(v => v[0] === _ab.umfang)) return _ab.umfang;
+  if (_ab.menge === 'netz') return _ab.umfang;
   return null;
 }
+
+/** Name der geprüften Gruppe: Vorrang-Gruppen wie gehabt, sonst der Umfang („alle Dächer", „Netzgebiet …"). */
+const _gruppenLabel = (w, stich) => (VORRANG.some(v => v[0] === w) ? _vorrangLabel(w, stich) : _umfangKurz(stich));
 
 /**
  * Engstellen der Pflichtgruppe (Nutzerwunsch 07.10.2026): Was verhindert, dass ALLE
@@ -275,13 +355,26 @@ function _pflichtGruppe() {
  *   Spannung: ΔU an einem Dach > Grenze → dem Kabel mit dem größten Beitrag auf
  *             seinem Pfad zugeschrieben
  * Abhilfe: Maßnahme wie in der Ausbautreppe, bemessen auf genau diese Gruppe.
+ *   Spannung: jedes Kabel auf dem Weg ist eine Alternative (28 hängt an jedes
+ *   eine Ertüchtigung, die die Grenze allein einhalten soll) — gewählt wird die
+ *   günstigste, die alle zugeschriebenen Dächer wirklich löst.
+ * Abregeln: Anteil der vollen Einspeisung der Dächer dahinter, den die Stelle
+ *   noch trägt, und der Ertragsverlust bei dieser Kappung (stündlich, Profil
+ *   wie die Netzaufnahme). Spannung als Näherung: alle Dächer der Gruppe
+ *   gleichmäßig gekappt.
+ * Rechenweg: Kennwerte, Einspeisung, Dächer dahinter, ΔU-Beiträge — für die
+ *   aufklappbare Herleitung in der Vorschau.
  */
 function _engstellen(els, gruppe, m, nurTrafo, nachId) {
   const eing = { elemente: els.map(e => ({ ...e })), daecher: gruppe,
     pruefpunkte: m.eingabe.pruefpunkte, duGrenzePct: m.eingabe.duGrenzePct };
   const voll = pvnaVollausbau(eing);
-  const nurVorlast = pvnaVollausbau({ ...eing, daecher: [] }).flussKw;
+  // nur die schon geplante PV: Dächer der Gruppe mit 0 kWp, damit ihre Prüfpunkte bleiben
+  const vorlastRes = pvnaVollausbau({ ...eing, daecher: gruppe.map(d => ({ ...d, kwpMax: 0 })) });
+  const nurVorlast = vorlastRes.flussKw;
   const elById = new Map(eing.elemente.map(e => [e.id, e]));
+  const original = new Map(m.eingabe.elemente.map(e => [e.id, e]));
+  const einsp = m.info.einspFaktor;
   const pfad = id => {
     const p = [], ges = new Set();
     for (let c = id; c != null && elById.has(c) && !ges.has(c); c = elById.get(c).parentId) { ges.add(c); p.push(c); }
@@ -293,7 +386,7 @@ function _engstellen(els, gruppe, m, nurTrafo, nachId) {
     if (!treffer.has(id)) {
       const e = elById.get(id), inf = m.info.elInfo.get(id);
       treffer.set(id, { id, typ: e.typ, label: inf?.label || id, kapKw: e.kapKw == null ? Infinity : +e.kapKw,flussKw: voll.flussKw.get(id) || 0,
-        vorlastKw: nurVorlast.get(id) || 0, strom: false, duMaxPct: 0, gebIds: new Set(),
+        vorlastKw: nurVorlast.get(id) || 0, strom: false, duMaxPct: 0, gebIds: new Set(), duDaecher: [],
         unbekannt: !!(inf?.kab?.unbekannt || inf?.kab?.ersatz) });
     }
     return treffer.get(id);
@@ -314,6 +407,7 @@ function _engstellen(els, gruppe, m, nurTrafo, nachId) {
     if (knapp == null) continue;
     const t = eintrag(knapp);
     t.duMaxPct = Math.max(t.duMaxPct, du);
+    t.duDaecher.push({ id: d.id, du });
   }
   if (!treffer.size) return [];
   // Dächer der Gruppe hinter jeder Engstelle
@@ -323,18 +417,126 @@ function _engstellen(els, gruppe, m, nurTrafo, nachId) {
   const mEing = { ...eing, elemente: eing.elemente.map(e => ({ ...e })), ganzOderGar: true };
   pvnaMassnahmenErmitteln(mEing, m.info, { ohneKabel: nurTrafo });
   const massnahme = new Map(mEing.elemente.filter(e => e.massnahme).map(e => [e.id, e.massnahme]));
+  const labelVon = id => m.info.elInfo.get(id)?.label || id;
+
+  // ΔU am Dach r, wenn nur das Element cid ertüchtigt wird
+  const duNach = (r, cid) => {
+    const mm = massnahme.get(cid), e = elById.get(cid);
+    if (!pfadJeDach.get(r.id).includes(cid) || mm?.duProKwPct == null) return r.du;
+    return r.du - ((+e.duProKwPct || 0) - mm.duProKwPct) * (voll.flussKw.get(cid) || 0);
+  };
+  // Löst die Ertüchtigung von cid die Engstelle t allein (Strom am Element selbst, ΔU an allen zugeschriebenen Dächern)?
+  const loest = (t, cid) => {
+    const mm = massnahme.get(cid);
+    if (!mm || mm.teil) return false;
+    if (cid === t.id && t.strom && mm.kapKw != null && mm.kapKw < t.flussKw - 0.01) return false;
+    return t.duDaecher.every(r => duNach(r, cid) <= grenze + 1e-6);
+  };
+  const option = (t, cid) => {
+    const mm = massnahme.get(cid);
+    const investEUR = +mm.investEUR || 0;
+    return { elementId: cid, label: mm.label, investEUR, teil: !!mm.teil,
+      loest: loest(t, cid), eigen: cid === t.id, posten: [{ elementId: cid, investEUR }] };
+  };
+  // Reicht kein Kabel allein: günstigste Kombination (größte ΔU-Senkung je Euro zuerst),
+  // bis alle zugeschriebenen Dächer die Grenze einhalten. null, wenn auch alle zusammen nicht reichen.
+  const kombination = (t, kand) => {
+    const du = new Map(t.duDaecher.map(r => [r.id, r.du]));
+    const senkung = (r, cid) => {
+      const mm = massnahme.get(cid), e = elById.get(cid);
+      if (!pfadJeDach.get(r.id).includes(cid) || mm?.duProKwPct == null) return 0;
+      return Math.max(0, ((+e.duProKwPct || 0) - mm.duProKwPct) * (voll.flussKw.get(cid) || 0));
+    };
+    const ok = () => t.duDaecher.every(r => du.get(r.id) <= grenze + 1e-6);
+    const offen = [...kand], gewaehlt = [];
+    while (!ok() && offen.length) {
+      let best = -1, bestWert = -1;
+      offen.forEach((cid, i) => {
+        const nutzen = t.duDaecher.reduce((s, r) => s + Math.min(senkung(r, cid), Math.max(0, du.get(r.id) - grenze)), 0);
+        const wert = nutzen / Math.max(1, +massnahme.get(cid).investEUR || 0);
+        if (nutzen > 1e-9 && wert > bestWert) { bestWert = wert; best = i; }
+      });
+      if (best < 0) break;
+      const cid = offen.splice(best, 1)[0];
+      for (const r of t.duDaecher) du.set(r.id, du.get(r.id) - senkung(r, cid));
+      gewaehlt.push(cid);
+    }
+    if (!ok() || gewaehlt.length < 2) return null;
+    const teile = gewaehlt.map(cid => option(t, cid));
+    return { elementId: gewaehlt.join('+'), label: teile.map(o => o.label).join(' + '),
+      investEUR: teile.reduce((s, o) => s + o.investEUR, 0), teil: false, loest: true, kombi: true,
+      eigen: gewaehlt.includes(t.id), posten: teile.flatMap(o => o.posten) };
+  };
+
+  // Abregeln: gleiches Profil wie die Netzaufnahme (hochgeladenes vor synthetischem, Süd = vorsichtig)
+  const spezSued = pvOrientationMix().spezSued || 950;
+  const form = pvnaProfilForm(false);
 
   const liste = [...treffer.values()].map(t => {
     const pos = m.info.elPos.get(t.id);
-    const vorPos = m.info.elPos.get(elById.get(t.id)?.parentId);
-    const mm = massnahme.get(t.id);
+    const e = elById.get(t.id);
+    const vorPos = m.info.elPos.get(e?.parentId);
+    const zeilen = [...t.gebIds].map(id => nachId.get(id)).filter(Boolean);
+    const kwpKorr = zeilen.reduce((s, z) => s + (z.kwpKorr || 0), 0);
+    const kwpNenn = zeilen.reduce((s, z) => s + (z.kwp || 0), 0);
+
+    // Abhilfe und Alternativen
+    let abhilfe = null, alternativen = [];
+    if (t.strom || !t.duDaecher.length) {
+      if (massnahme.has(t.id)) abhilfe = option(t, t.id);
+    } else {
+      const kand = new Set();
+      for (const r of t.duDaecher) for (const eid of pfadJeDach.get(r.id)) {
+        if (massnahme.has(eid) && elById.get(eid)?.typ === 'kabel') kand.add(eid);
+      }
+      alternativen = [...kand].map(cid => option(t, cid))
+        .sort((a, b) => (b.loest - a.loest) || (b.eigen - a.eigen) || a.investEUR - b.investEUR);
+      const kombi = alternativen[0] && !alternativen[0].loest ? kombination(t, kand) : null;
+      abhilfe = kombi || alternativen.shift() || null;
+    }
+
+    // Abregeln: Anteil der vollen Einspeisung, den die Stelle trägt
+    let anteil = 1;
+    if (t.strom) anteil = Math.min(anteil, (t.kapKw - t.vorlastKw) / Math.max(1e-9, t.flussKw - t.vorlastKw));
+    for (const r of t.duDaecher) {
+      const v = vorlastRes.duPct.get('dach:' + r.id) || 0;
+      anteil = Math.min(anteil, (grenze - v) / Math.max(1e-9, r.du - v));
+    }
+    let abregelung = null;
+    if (kwpNenn > 0) {
+      abregelung = anteil <= 0.001 ? { unmoeglich: true } : {
+        anteilPct: anteil * 100, kwJeKwp: anteil * einsp, naeherung: t.duDaecher.length > 0,
+        ...pvnaAbregelung(form, spezSued * kwpKorr / kwpNenn, kwpNenn, anteil * kwpNenn * einsp) };
+    }
+
+    // Rechenweg
+    const inf = m.info.elInfo.get(t.id), orig = original.get(t.id);
+    const daecher = zeilen.map(z => ({ name: _name(z.g), kwp: z.kwp || 0, kw: (z.kwp || 0) * einsp }))
+      .sort((a, b) => b.kw - a.kw);
+    let spannung = null;
+    if (t.duDaecher.length) {
+      const r = t.duDaecher.reduce((a, b) => (b.du > a.du ? b : a));
+      spannung = { dach: _name(nachId.get(r.id)?.g), duPct: r.du,
+        vorlastPct: vorlastRes.duPct.get('dach:' + r.id) || 0,
+        beitraege: pfadJeDach.get(r.id)
+          .map(eid => ({ label: labelVon(eid), pct: (+elById.get(eid).duProKwPct || 0) * (voll.flussKw.get(eid) || 0), eigen: eid === t.id }))
+          .filter(b => b.pct > 1e-4).sort((a, b) => b.pct - a.pct) };
+    }
+    const rechen = {
+      kva: inf?.kva ?? null, gruppe: inf?.gruppe?.art || null, kabelText: inf?.kabelText || '',
+      izA: Number.isFinite(t.kapKw) ? t.kapKw * m.info.I_je_kW : null,
+      duProKwPct: +e?.duProKwPct || 0,
+      ertuechtigt: !!orig && (orig.kapKw !== e?.kapKw || orig.duProKwPct !== e?.duProKwPct),
+      einspFaktor: einsp, kwpNenn, einspKw: Math.max(0, t.flussKw - t.vorlastKw),
+      daecher: daecher.slice(0, 6), nDaecher: daecher.length, spannung,
+    };
+
     return { ...t,
-      gebIds: [...t.gebIds],
-      kwpKorr: [...t.gebIds].reduce((s, id) => s + (nachId.get(id)?.kwpKorr || 0), 0),
+      gebIds: [...t.gebIds], kwpKorr,
       ueberKw: Math.max(0, t.flussKw - t.kapKw),
       // Kabel: Mitte zwischen Anfangs- und Endknoten, Trafo: sein Standort
       pos: pos && vorPos && t.typ === 'kabel' ? { lat: (pos.lat + vorPos.lat) / 2, lng: (pos.lng + vorPos.lng) / 2 } : pos || null,
-      abhilfe: mm ? { label: mm.label, investEUR: +mm.investEUR || 0, teil: !!mm.teil } : null };
+      abhilfe, alternativen, abregelung, rechen };
   });
   // Trafos zuerst, dann nach Überlast bzw. Spannung
   return liste.sort((a, b) => (a.typ === 'trafo' ? 0 : 1) - (b.typ === 'trafo' ? 0 : 1)
@@ -357,7 +559,8 @@ function _engstellen(els, gruppe, m, nurTrafo, nachId) {
  *               aber bemessen auf GENAU diese Dächer (28 pvnaMassnahmenErmitteln):
  *               keine · bis Budget (kumuliert, Stufe für Stufe nach kWp je €) · alle.
  */
-function _netzPruefen(zeilen) {
+async function _netzPruefen(zeilen, melde = async () => {}) {
+  await melde('Netzmodell wird aufgebaut …', 0);
   const ein = pvnaEinstellungen();
   const { ziel } = pvnaJahre(ein);
   const basisJahr = _ab.netzJahr ?? ziel;
@@ -366,6 +569,7 @@ function _netzPruefen(zeilen) {
   // Netzjahr gesetzt = „Netz wie geplant": auch geplante Maßnahmen (Trafo-Tausch, Kabel) zählen
   const m = pvnaModell({ ...ein, quelle: 'alle', flaechen: 'alle', jahr, inklGeplant: _ab.netzJahr != null });
   const { knotenEl, dachInfo, einspFaktor } = m.info;
+  await melde('Vorlast und Anschlüsse werden zugeordnet …', 0.12);
   _trafoCache = m.info.knotenTrafo || null;
   _trafoLeiter = m.info.trafoLeiter || new Map();
   const kandIds = new Set(zeilen.map(z => z.g.id));
@@ -413,7 +617,7 @@ function _netzPruefen(zeilen) {
       z.status = 'vorrang';
       if (!angebunden) { z.grund = 'nicht ans Stromnetz angebunden — Netzgrenze unbekannt'; continue; }
     } else if (!angebunden) { z.status = 'ohneNetz'; z.grund = 'nicht ans Stromnetz angebunden'; continue; }
-    (z.vorrang ? vorrang : daecher).push({ id: z.g.id, elementId, kwpMax: z.kwp, ertragFaktor: z.kwpKorr / z.kwp, einspFaktor });
+    (z.vorrang ? vorrang : daecher).push({ id: z.g.id, elementId, kwpMax: z.kwp, ertragFaktor: z.kwpKorr / z.kwp * (z.vsRang ?? 1), einspFaktor });
     nachId.set(z.g.id, z);
   }
 
@@ -434,10 +638,20 @@ function _netzPruefen(zeilen) {
   if (_ab.ausbau !== 'keiner' && hatTrafo) {
     const eing = { elemente: mitVorrang, daecher, pruefpunkte: m.eingabe.pruefpunkte,
       duGrenzePct: m.eingabe.duGrenzePct, ganzOderGar: true };
+    await melde('Ertüchtigungsmaßnahmen werden ermittelt …', 0.16);
     pvnaMassnahmenErmitteln(eing, m.info, { ohneKabel: nurTrafo });
     // Steht nur die Vorrang-Gruppe auf der Liste, trägt die Treppe nichts bei — ihre
     // Engpässe dann direkt ertüchtigen (sie wird ohnehin belegt).
-    const treppe = pvnaTreppe(eing);
+    // Ausbautreppe: der rechenintensive Teil — echter Fortschritt je probeweiser Füllung
+    const gen = pvnaTreppeSchritte(eing);
+    let tT = performance.now(), lauf;
+    while (!(lauf = gen.next()).done) {
+      if (performance.now() - tT > 150) {
+        await melde(`Ausbaustufen werden berechnet … ${Math.round(lauf.value.anteil * 100)} %`, 0.2 + 0.6 * lauf.value.anteil);
+        tT = performance.now();
+      }
+    }
+    const treppe = lauf.value;
     const budget = _ab.ausbau === 'budget' ? Math.max(0, +_ab.budgetT || 0) * 1000 : Infinity;
     const gewaehlt = [];
     for (const st of treppe.schritte) {
@@ -470,6 +684,7 @@ function _netzPruefen(zeilen) {
   const anwenden = els => els.map(e => (umgesetzt.get(e.id)
     ? { ...e, kapKw: umgesetzt.get(e.id).kapKw ?? e.kapKw, duProKwPct: umgesetzt.get(e.id).duProKwPct ?? e.duProKwPct } : e));
 
+  await melde('Dächer werden ins Netz eingepasst …', 0.82);
   const fuellen = (els, ds) => pvnaFuellen({ elemente: els, daecher: ds, pruefpunkte: m.eingabe.pruefpunkte,
     duGrenzePct: m.eingabe.duGrenzePct, ganzOderGar: true });
   if (vorrang.length) {
@@ -492,12 +707,13 @@ function _netzPruefen(zeilen) {
   }
   if (ausbau) ausbau.mitKwp = mitKwp;
 
+  await melde('Engstellen werden bestimmt …', 0.92);
   // Engstellen der Pflichtgruppe: gestuft die Vorrang-Gruppe, sonst der ganze Umfang
   let engstellen = null;
   const pg = _pflichtGruppe();
   if (pg && hatTrafo) {
     const gruppe = vorrang.length ? vorrang : daecher;
-    const gZeilen = zeilen.filter(z => z.status !== 'leer' && (_ab.menge !== 'gestuft' || z.vorrang));
+    const gZeilen = zeilen.filter(z => z.status !== 'leer' && z.status !== 'schatten' && (_ab.menge !== 'gestuft' || z.vorrang));
     engstellen = {
       gruppe: pg,
       liste: gruppe.length ? _engstellen(anwenden(elemente.map(e => ({ ...e }))), gruppe, m, nurTrafo, nachId) : [],
@@ -523,8 +739,14 @@ export async function pvabUebernehmen() {
   await _naechsterFrame();
   _ab.vorschau = null;
   _trafoCache = null;
-  const { anzahl, summe } = pvmStapelBelegen(ziele);
-  window.showHint?.(`✓ ${anzahl} Dächer belegt · Σ ${_fmt(summe)} kWp. Strg+Z nimmt den ganzen Schritt zurück.`, 8000);
+  // Flügel-Dachflächen der Vorschau ins Projekt (abgeleitete Dachdaten, wie „Dachflächen aus Grundriss“)
+  for (const z of v.zeilen.filter(_wirdBelegt)) {
+    if (z.fluegel && !z.g.dachFlaechen?.length) { z.g.dachFlaechen = z.fluegel.dachFlaechen; z.g.dachLod2 = z.fluegel.dachLod2; z.g._pvModSig = null; }
+  }
+  const vsK = _ab.schatten && typeof window.verschattungKontext === 'function' ? window.verschattungKontext() : null;
+  const { anzahl, summe } = pvmStapelBelegen(ziele, vsK ? { nachBelegen: g => window.verschattungNachBelegen(g, vsK) } : {});
+  window.d3dNachViz?.();
+  window.showHint?.(`✓ ${anzahl} Dächer belegt · Σ ${_fmt(summe)} kWp${vsK ? ' · stark verschattete Flächen ausgelassen' : ''}. Strg+Z nimmt den ganzen Schritt zurück.`, 8000);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -560,6 +782,8 @@ function _auslegungBeschreibung(stich, n) {
   const aus = _ab.ohneNutzung.size;
   if (aus) teile.push(`${aus} Nutzungstyp${aus > 1 ? 'en' : ''} ausgenommen`);
   teile.push(window.pvModusVorgabe?.nordSperr !== false ? 'Nordseiten ausgespart' : 'beide Dachseiten');
+  if (_ab.fluegel) teile.push('verwinkelte Grundrisse in Flügel zerlegt');
+  if (_ab.schatten) teile.push(`stark verschattete Module ausgelassen (Verlust ≥ ${window.verschattungSchwellen?.().modul ?? 30} % je Modul), Flächen ab ${window.verschattungSchwellen?.().nicht ?? 25} %`);
   if (_ab.menge === 'max') teile.push('jedes Dach voll, Netz nicht geprüft');
   else {
     teile.push((_ab.menge === 'gestuft' ? `${_vorrangLabel(_ab.vorrang, stich)} immer voll, Rest ` : '')
@@ -602,7 +826,9 @@ export function pvabAlsStand() {
     const ohne = _ab.ohneNetzBelegen ? v.zeilen.filter(z => z.status === 'ohneNetz').length : 0;
     const vertraeglich = !ueber && !ohne && !n.ohneTrafo;
     const a = n.ausbau?.massnahmen?.length ? n.ausbau : null;
-    netz = { geprueft: true, vertraeglich, nurTrafo: !!n.nurTrafo, jahr: n.jahr,
+    netz = { geprueft: true, vertraeglich, nurTrafo: !!n.nurTrafo, jahr: n.jahr, duGrenzePct: n.duGrenzePct,
+      // Engstellen der Pflichtgruppe zum Zeitpunkt der Vorschau (38 zeigt sie am Stand)
+      engstellen: _engstellenKompakt(n.engstellen, stich),
       // Ertüchtigung: Kosten gehen in der PV-Analyse statt der Netzbau-Pauschalen ein (09d netzausbauEUR)
       ausbau: a ? { investEUR: a.investEUR, massnahmen: a.massnahmen.map(m => ({ label: m.label, investEUR: m.investEUR })) } : null,
       text: vertraeglich
@@ -746,10 +972,11 @@ export function pvabEntfernen() {
     + (pv.length ? `${pv.length} PV-Asset(s) werden mit gelöscht.` : 'Es hängen keine PV-Assets daran.')
     + (geteilt ? `\n${geteilt} davon gehören zu Bestand/Entwicklung — sie verschwinden in allen Varianten.` : '')
     + `\n\nStrg+Z im PV-Modus nimmt den ganzen Schritt zurück.`)) return;
-  const lauf = () => {
+  // deleteAsset rechnet je Aufruf das Netz neu (05b removeStromNode/-Edge) — gesammelt einmal
+  const lauf = () => (window.stromRecalcAufschieben || (fn => fn()))(() => {
     for (const a of pv) deleteAsset(a.id, true);
     pvBelegungEntfernen([...ids]);
-  };
+  });
   try {
     if (typeof window.runPlanningTransaction === 'function') window.runPlanningTransaction('PV-Belegung entfernen', lauf);
     else lauf();
@@ -801,13 +1028,13 @@ export function pvabMarkiereKarte() {
   if (_ab.vorschau) for (const z of _ab.vorschau.zeilen) status.set(z.g.id, z.status);
   else for (const g of _kandidaten().liste) status.set(g.id, 'kandidat');
   const farbe = { kandidat: CYAN, voll: GRUEN, vorrang: HELLGRUEN, vorrangUeber: ORANGE, netz: ROT,
-    ohneNetz: _ab.ohneNetzBelegen ? GRUEN : GRAU, leer: GRAU };
+    ohneNetz: _ab.ohneNetzBelegen ? GRUEN : GRAU, leer: GRAU, schatten: BRAUN };
   for (const g of (window.gebaeude || [])) {
     if (!g.polygonLayer) continue;
     const st = status.get(g.id);
     if (!st) { _stilNeutral(g); continue; }
     const f = farbe[st];
-    g.polygonLayer.setStyle({ color: f, weight: 2, dashArray: st === 'ohneNetz' || st === 'leer' ? '4 4' : '',
+    g.polygonLayer.setStyle({ color: f, weight: 2, dashArray: st === 'ohneNetz' || st === 'leer' || st === 'schatten' ? '4 4' : '',
       fillColor: f, fillOpacity: st === 'kandidat' ? 0.12 : 0.28 });
   }
   return true;
@@ -926,11 +1153,20 @@ function _belegenHtml() {
       ${_ab.nutzungOffen ? `<div style="max-height:110px;overflow-y:auto;margin-top:2px;">${typZeilen}</div>` : ''}` : ''}
       <div class="inp-group" style="margin-top:6px;">
         <div class="inp-label">② Belegung</div>
-        <div style="font-size:9px;color:var(--muted);line-height:1.4;">Grundriss als Fläche mit den „Vorgaben für neue Dächer" (unten) — bei LoD2-Daten je Dachfläche mit echter Neigung und Ausrichtung.</div>
-        <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:3px;"
-          title="Beim Satteldach die nach Norden zeigende Hälfte frei lassen (Sektor ±${_nordSektor()}° um Nord, unter „Vorgaben für neue Dächer“ einstellbar). Ohne Haken werden beide Dachseiten belegt.">
-          <input type="checkbox" ${window.pvModusVorgabe?.nordSperr !== false ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
-            data-change="pvmVorgabe('nordSperr',this.checked)"/>Nordseiten aussparen
+        <div style="font-size:9px;color:var(--muted);line-height:1.4;">Grundriss als Fläche mit diesen Annahmen — bei LoD2- oder Flügel-Dachflächen je Dachfläche mit echter Neigung und Ausrichtung. Sie gelten auch für einzeln belegte Dächer („Vorgaben für neue Dächer"). Echte Dachangaben (OSM, LoD2, von Hand) haben Vorrang vor Dachform und Neigung.</div>
+        <div style="margin-top:4px;padding:4px 6px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">
+          ${window.pvmVorgabeFelderHtml?.() || ''}
+        </div>
+        <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:2px;"
+          title="Gebäude mit L-, T-, U- oder Kammform ohne Dachflächen: jeder Flügel bekommt ein eigenes Dach (Dachform und Neigung der Vorgaben) und wird je Dachfläche belegt — statt eines Satteldachs über den ganzen Grundriss. Die berechneten Dachflächen gehen beim Übernehmen ins Projekt.">
+          <input type="checkbox" ${_ab.fluegel ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
+            data-change="pvabSet('fluegel',this.checked)"/>Verwinkelte Grundrisse in Flügel zerlegen
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:2px;"
+          title="Je Dach die Verschattung durch Bäume und Nachbargebäude rechnen (PV-Modus › Bäume &amp; Verschattung): Einzelne Module mit einem Jahresverlust ab der Modulgrenze bleiben frei (Teilbelegung), Dachflächen bzw. Satteldachseiten ab der Schwelle „nicht belegen“ ebenfalls, ganz verschattete Dächer entfallen. Netzverträglich reiht die Erträge nach Verschattung.">
+          <input type="checkbox" ${_ab.schatten ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
+            data-change="pvabSet('schatten',this.checked)"/>Stark verschattete Module/Flächen auslassen
+          <span style="color:var(--muted);">(Modul ≥ ${window.verschattungSchwellen?.().modul ?? 30} %)</span>
         </label>
       </div>
       <div class="inp-group" style="margin-top:6px;">
@@ -1016,7 +1252,7 @@ function _engstellenHtml(n, stich) {
   const es = n?.engstellen;
   if (!es || !es.noetigN) return '';
   const T = x => _fmt((x || 0) / 1000);
-  const name = escHtml(_vorrangLabel(es.gruppe, stich));
+  const name = escHtml(_gruppenLabel(es.gruppe, stich));
   const fehlt = Math.max(0, es.noetigKwp - es.passtKwp);
   const kopf = `<div style="color:var(--text);"><b>🚧 Engstellen für ${name}</b></div>
       <div style="color:var(--muted);">${es.noetigN} Dächer · ${_fmt(es.noetigKwp)} kWp nötig — ${_fmt(es.passtKwp)} kWp passen ins Netz${fehlt > 0.5 ? `, <span style="color:${ROT};">${_fmt(fehlt)} kWp nicht</span>` : ''}${n.ausbau?.massnahmen?.length ? ' (nach der gewählten Ertüchtigung)' : ''}</div>`;
@@ -1032,26 +1268,131 @@ function _engstellenHtml(n, stich) {
       e.duMaxPct > 0 ? `Spannungsanhebung bis ${_fmt(e.duMaxPct, 1)} % > ${_fmt(n.duGrenzePct, 1)} %` : '',
       `${e.gebIds.length} ${e.gebIds.length === 1 ? 'Dach' : 'Dächer'} dahinter · ${_fmt(e.kwpKorr)} kWp`,
     ].filter(Boolean).join(' · ');
-    const abhilfe = e.abhilfe
-      ? `<span style="color:${GRUEN};">⚒ ${escHtml(e.abhilfe.label)} · ${T(e.abhilfe.investEUR)} T€${e.abhilfe.teil ? ' (reicht nicht ganz)' : ''}</span>`
-      : `<span style="color:#ffb74d;">${e.unbekannt ? 'Querschnitt unbekannt bzw. Ersatzwert — erst Kabeldaten prüfen' : 'keine Standardlösung — Netzplanung nötig'}</span>`;
-    return `<div style="padding:2px 0;border-top:1px solid var(--border);cursor:pointer;" data-click="pvabEngstelleZeigen(${i})" title="Auf der Karte zeigen">
-        <div style="display:flex;gap:4px;color:var(--text);">
-          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(e.label)}">${e.typ === 'trafo' ? '🔌' : '〰'} ${escHtml(e.label)}</span>
-          <span style="font-family:'DM Mono',monospace;color:${ROT};">${wert}</span>
+    const auf = _ab.engAuf.has(i);
+    return `<div style="padding:2px 0;border-top:1px solid var(--border);">
+        <div style="cursor:pointer;" data-click="pvabEngstelleZeigen(${i})" title="Auf der Karte zeigen">
+          <div style="display:flex;gap:4px;color:var(--text);">
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(e.label)}">${e.typ === 'trafo' ? '🔌' : '〰'} ${escHtml(e.label)}</span>
+            <span style="font-family:'DM Mono',monospace;color:${ROT};">${wert}</span>
+          </div>
+          <div style="color:var(--muted);">${was}</div>
         </div>
-        <div style="color:var(--muted);">${was}</div>
-        <div>${abhilfe}</div>
+        <div>${_abhilfeHtml(e, T)}</div>
+        ${_alternativenHtml(e, T)}
+        ${_abregelHtml(e)}
+        <div style="cursor:pointer;color:${CYAN};" data-click="pvabEngstelleAuf(${i})">${auf ? '▾' : '▸'} Rechenweg</div>
+        ${auf ? _rechenwegHtml(e, n) : ''}
       </div>`;
   }).join('');
+  // Summe ohne Doppelte: dasselbe Kabel kann für mehrere Spannungs-Engstellen die Abhilfe sein
   const mitAbhilfe = es.liste.filter(e => e.abhilfe);
+  const jeElement = new Map(mitAbhilfe.flatMap(e => e.abhilfe.posten.map(p => [p.elementId, p.investEUR])));
+  const ungeloest = es.liste.filter(e => !e.abhilfe || !e.abhilfe.loest).length;
   const summe = mitAbhilfe.length
-    ? `<div style="color:var(--muted);margin-top:2px;">Abhilfe zusammen ≈ ${T(mitAbhilfe.reduce((s, e) => s + e.abhilfe.investEUR, 0))} T€ (${mitAbhilfe.length} von ${es.liste.length} Engstellen)${mitAbhilfe.length < es.liste.length ? ' — der Rest braucht eine eigene Netzplanung' : ''}.</div>` : '';
+    ? `<div style="color:var(--muted);margin-top:2px;">Abhilfe zusammen ≈ ${T([...jeElement.values()].reduce((s, x) => s + x, 0))} T€ (${jeElement.size} Maßnahme${jeElement.size === 1 ? '' : 'n'} für ${es.liste.length} Engstelle${es.liste.length === 1 ? '' : 'n'})${ungeloest ? ` — ${ungeloest} davon nicht vollständig gelöst, dort ist eine eigene Netzplanung nötig` : ''}.</div>` : '';
   return `<div style="margin-top:5px;padding:3px 5px;border-left:2px solid ${ROT};font-size:9px;line-height:1.45;">
       ${kopf}${ohne}
-      <div style="max-height:180px;overflow-y:auto;margin-top:3px;">${zeilen}</div>
+      <div style="max-height:260px;overflow-y:auto;margin-top:3px;">${zeilen}</div>
       ${summe}
     </div>`;
+}
+
+function _abhilfeHtml(e, T) {
+  const a = e.abhilfe;
+  if (!a) {
+    return `<span style="color:#ffb74d;">${e.unbekannt ? 'Querschnitt unbekannt bzw. Ersatzwert — erst Kabeldaten prüfen' : 'keine Standardlösung — Netzplanung nötig'}</span>`;
+  }
+  if (a.kombi) {
+    return `<span style="color:${GRUEN};" title="Kein Kabel allein senkt die Spannung genug — diese Ertüchtigungen zusammen halten die Grenze ein">⚒ zusammen: ${escHtml(a.label)} · ${T(a.investEUR)} T€</span>`;
+  }
+  const wo = a.eigen ? '' : ' (anderes Kabel auf dem Weg zum Trafo)';
+  const rest = a.teil ? ' (reicht nicht ganz)' : !a.loest ? ' (reicht allein nicht)' : '';
+  return `<span style="color:${a.loest ? GRUEN : '#ffb74d'};">⚒ ${escHtml(a.label)} · ${T(a.investEUR)} T€${wo}${rest}</span>`;
+}
+
+/** Spannungs-Engstellen: andere Kabel auf dem Weg, deren Ertüchtigung ebenfalls hilft. */
+function _alternativenHtml(e, T) {
+  const alt = e.alternativen || [];
+  if (!alt.length) return '';
+  const zeile = a => `<div style="padding-left:10px;color:var(--muted);">· ${escHtml(a.label)} · ${T(a.investEUR)} T€ ${a.loest ? `<span style="color:${GRUEN};">löst allein</span>` : '— reicht allein nicht'}</div>`;
+  return `<div style="color:var(--muted);">oder:</div>${alt.slice(0, 3).map(zeile).join('')}${alt.length > 3 ? `<div style="padding-left:10px;color:var(--muted);">… ${alt.length - 3} weitere</div>` : ''}`;
+}
+
+function _abregelHtml(e) {
+  const r = e.abregelung;
+  if (!r) return '';
+  if (r.unmoeglich) return `<div style="color:var(--muted);">↘ Abregeln hilft nicht — schon die geplante PV lastet die Stelle aus.</div>`;
+  const nah = r.naeherung ? ' Spannung als Näherung: alle Dächer der Gruppe gleich stark gekappt.' : '';
+  return `<div style="color:var(--muted);" title="Statt zu ertüchtigen: alle Dächer dahinter voll bauen und ihre Einspeisung auf ${_fmt(r.kwJeKwp, 2)} kW/kWp begrenzen. Stündlich mit dem PV-Profil der Netzaufnahme gerechnet (Südprofil, vorsichtig).${nah}">
+      ↘ oder abregeln: Einspeisung auf ${_fmt(r.anteilPct)} % (${_fmt(r.kwJeKwp, 2)} kW/kWp) → ${_fmt(r.verlustPct, 1)} % Ertragsverlust (${_fmt(r.abgeregeltMwh, 1)} MWh/a, ${_fmt(r.stundenAbgeregelt)} h)</div>`;
+}
+
+/** Aufklappbare Herleitung einer Engstelle: Kennwerte → Einspeisung → Vergleich mit der Grenze. */
+function _rechenwegHtml(e, n) {
+  const r = e.rechen;
+  if (!r) return '';
+  const zeile = (k, v) => `<div style="display:flex;gap:4px;"><span style="flex:0 0 74px;color:var(--muted);">${k}</span><span style="flex:1;">${v}</span></div>`;
+  const out = [];
+  out.push(zeile('Lastfall', `alle Dächer der Gruppe speisen voll ein, keine gleichzeitige Last · Netz ${n.jahr}`));
+  if (e.typ === 'trafo') {
+    out.push(zeile('Trafo', r.ertuechtigt
+      ? `nach der gewählten Ertüchtigung: ${_fmt(e.kapKw)} kW`
+      : r.gruppe   // Trafogruppe an gemeinsamer NSHV (28): Leistung nach Betriebsart
+        ? `${_fmt(r.kva)} kVA zusammen, ${r.gruppe === 'parallel' ? 'Parallelbetrieb (Aufteilung nach Sr/uk)' : 'N-1 (ohne den stärksten anderen Trafo)'} = ${_fmt(e.kapKw)} kW`
+        : `${_fmt(r.kva)} kVA × 0,9 (cos φ) = ${_fmt(e.kapKw)} kW`));
+  } else {
+    out.push(zeile('Kabel', `${escHtml(r.kabelText || '—')}${r.ertuechtigt ? ' — mit der gewählten Ertüchtigung gerechnet' : ''}`));
+    if (r.izA != null) out.push(zeile('Belastbar', `I<sub>z,eff</sub> ${_fmt(r.izA)} A ≙ ${_fmt(e.kapKw)} kW bei 400 V`));
+    if (r.duProKwPct > 0) out.push(zeile('ΔU je kW', `${_fmt(r.duProKwPct, 4)} % (Länge, Querschnitt, Reaktanz)`));
+  }
+  // Modulleistung (Nennwert) — die Kopfzeilen zeigen ertragskorrigierte kWp
+  out.push(zeile('Einspeisung', `${r.nDaecher} ${r.nDaecher === 1 ? 'Dach' : 'Dächer'} · ${_fmt(r.kwpNenn)} kWp Modulleistung × ${_fmt(r.einspFaktor, 2)} kW/kWp = `
+    + (e.vorlastKw > 0.5 ? `${_fmt(r.einspKw)} kW + ${_fmt(e.vorlastKw)} kW schon geplante PV = ` : '') + `<b>${_fmt(e.flussKw)} kW</b>`));
+  if (e.strom) {
+    out.push(zeile('Vergleich', `${_fmt(e.flussKw)} kW > ${_fmt(e.kapKw)} kW → <span style="color:${ROT};">${_fmt(e.flussKw / e.kapKw * 100)} % Auslastung</span>`));
+  }
+  if (r.daecher.length) {
+    out.push(zeile('Größte Dächer', r.daecher.map(d => `${escHtml(d.name)} ${_fmt(d.kwp)} kWp`).join(' · ')
+      + (r.nDaecher > r.daecher.length ? ` · … ${r.nDaecher - r.daecher.length} weitere` : '')));
+  }
+  const s = r.spannung;
+  if (s) {
+    out.push(zeile('Spannung', `am Dach ${escHtml(s.dach)}: ${_fmt(s.duPct, 2)} % > ${_fmt(n.duGrenzePct, 1)} % (VDE-AR-N 4105)`
+      + (s.vorlastPct > 0.005 ? `, davon ${_fmt(s.vorlastPct, 2)} % schon durch geplante PV` : '')));
+    out.push(zeile('ΔU-Anteile', s.beitraege.slice(0, 5).map(b =>
+      `<span style="${b.eigen ? `color:${ROT};` : ''}">${escHtml(b.label)} ${_fmt(b.pct, 2)} %</span>`).join(' · ')
+      + (s.beitraege.length > 5 ? ' · …' : '')
+      + '<br><span style="color:var(--muted);">Als Engstelle gilt das Kabel mit dem größten Anteil (rot).</span>'));
+  }
+  return `<div style="margin:2px 0 3px 8px;padding:3px 5px;background:var(--surface);border-radius:3px;line-height:1.5;">${out.join('')}</div>`;
+}
+
+/** Rechenweg einer Engstelle auf- bzw. zuklappen. */
+export function pvabEngstelleAuf(i) {
+  if (_ab.engAuf.has(i)) _ab.engAuf.delete(i);
+  else _ab.engAuf.add(i);
+  pvModusRender();
+}
+
+/**
+ * Kurzform der Engstellen für den Belegungsstand (38) — gespeichert im Projekt,
+ * ohne Rechenweg und Kartenlage.
+ */
+function _engstellenKompakt(es, stich) {
+  if (!es || !es.noetigN) return null;
+  const zahl = x => (Number.isFinite(x) ? Math.round(x * 100) / 100 : null);
+  const opt = a => (a ? { label: a.label, investEUR: a.investEUR, teil: !!a.teil, loest: !!a.loest, kombi: !!a.kombi } : null);
+  return {
+    gruppe: _gruppenLabel(es.gruppe, stich),
+    noetigN: es.noetigN, noetigKwp: zahl(es.noetigKwp), passtKwp: zahl(es.passtKwp), ohneNetz: es.ohneNetz || 0,
+    liste: es.liste.map(e => ({
+      label: e.label, typ: e.typ, kapKw: zahl(e.kapKw), flussKw: zahl(e.flussKw), vorlastKw: zahl(e.vorlastKw),
+      ueberKw: zahl(e.ueberKw), duMaxPct: zahl(e.duMaxPct), nDaecher: e.gebIds.length, kwpKorr: zahl(e.kwpKorr),
+      unbekannt: !!e.unbekannt, abhilfe: opt(e.abhilfe), alternativen: (e.alternativen || []).slice(0, 3).map(opt),
+      abregelung: !e.abregelung ? null : e.abregelung.unmoeglich ? { unmoeglich: true }
+        : { anteilPct: zahl(e.abregelung.anteilPct), verlustPct: zahl(e.abregelung.verlustPct), abgeregeltMwh: zahl(e.abregelung.abgeregeltMwh) },
+    })),
+  };
 }
 
 let _engstelleMarker = null;
@@ -1079,7 +1420,9 @@ function _vorschauHtml(nKand, stich) {
   const gruppe = (...st) => v.zeilen.filter(z => st.includes(z.status));
   const sum = zs => zs.reduce((s, z) => s + z.kwpKorr, 0);
   const vorrang = gruppe('vorrang', 'vorrangUeber'), ueber = gruppe('vorrangUeber');
-  const voll = gruppe('voll'), netz = gruppe('netz'), ohne = gruppe('ohneNetz'), leer = gruppe('leer');
+  const voll = gruppe('voll'), netz = gruppe('netz'), ohne = gruppe('ohneNetz'), leer = gruppe('leer'), schatten = gruppe('schatten');
+  const teilweise = v.zeilen.filter(z => _wirdBelegt(z) && z.vs?.ausgelassen?.length);
+  const fluegelN = v.zeilen.filter(z => _wirdBelegt(z) && z.fluegel).length;
   const belegen = v.zeilen.filter(_wirdBelegt);
   const gestuft = vorrang.length > 0;
   const zusatz = voll.concat(_ab.ohneNetzBelegen ? ohne : []);
@@ -1087,7 +1430,7 @@ function _vorschauHtml(nKand, stich) {
       <span style="width:9px;height:9px;border-radius:2px;background:${farbe};flex:none;"></span>
       <span style="flex:1;">${n} ${text}</span>
       ${kwp != null ? `<span style="font-family:'DM Mono',monospace;">${_fmt(kwp)} kWp</span>` : ''}</div>` : '';
-  const mitGrund = v.zeilen.filter(z => z.status === 'vorrangUeber' || z.status === 'netz'
+  const mitGrund = v.zeilen.filter(z => z.status === 'vorrangUeber' || z.status === 'netz' || z.status === 'schatten'
     || (z.status === 'vorrang' && z.grund) || (z.status === 'ohneNetz' && !_ab.ohneNetzBelegen));
   const gruende = mitGrund.slice(0, 10).map(z => `
       <div style="font-size:9px;color:var(--muted);display:flex;gap:4px;cursor:pointer;" data-click="pvmWaehle(${z.g.id})" title="${escHtml(z.grund)}">
@@ -1108,6 +1451,7 @@ function _vorschauHtml(nKand, stich) {
   return `
     <div style="margin-top:6px;padding:5px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
       ${veraltet ? `<div style="font-size:9px;color:${GELB};margin-bottom:3px;">Auswahl oder Vorgaben geändert — Vorschau neu berechnen.</div>` : ''}
+      ${v.annahmen ? `<div style="font-size:9px;color:var(--muted);line-height:1.35;margin-bottom:4px;" title="Mit diesen Vorgaben wurde die Vorschau gerechnet">Gerechnet mit: ${escHtml(v.annahmen)}</div>` : ''}
       ${zeile(HELLGRUEN, vorrang.length, `${vorrangName} — immer voll`, sum(vorrang))}
       ${zeile(ORANGE, ueber.length, 'davon über der Netzgrenze', sum(ueber), true)}
       ${gestuft ? zeile(GRUEN, zusatz.length, 'zusätzlich, netzverträglich', sum(zusatz))
@@ -1115,6 +1459,9 @@ function _vorschauHtml(nKand, stich) {
       ${zeile(ROT, netz.length, 'Netz zu knapp', sum(netz))}
       ${_ab.ohneNetzBelegen ? '' : zeile(GRAU, ohne.length, 'ohne Netzanbindung', sum(ohne))}
       ${zeile(GRAU, leer.length, 'kein Modul passt', null)}
+      ${zeile(BRAUN, schatten.length, 'zu stark verschattet — bleiben frei', null)}
+      ${teilweise.length ? `<div style="font-size:9px;color:var(--muted);padding-left:14px;">davon ${teilweise.length} Dächer nur teilweise (verschattete Flächen bzw. Dachseiten frei)</div>` : ''}
+      ${fluegelN ? `<div style="font-size:9px;color:var(--muted);padding-left:14px;">${fluegelN} verwinkelte Dächer in Flügel zerlegt</div>` : ''}
       ${gruende ? `<div style="margin-top:4px;max-height:96px;overflow-y:auto;">${gruende}</div>` : ''}
       ${netzInfo}
       <div style="display:flex;gap:4px;margin-top:6px;">
@@ -1164,6 +1511,8 @@ export function pvabSet(feld, wert) {
   else if (feld === 'budgetT') _ab.budgetT = Math.max(0, parseFloat(wert) || 0);
   else if (feld === 'vorrang') _ab.vorrang = VORRANG.some(v => v[0] === wert) ? wert : 'neubau';
   else if (feld === 'ohneNetzBelegen') { _ab.ohneNetzBelegen = !!wert; pvModusRender(); pvModusMarkiereKarte(); return; }
+  else if (feld === 'schatten') _ab.schatten = !!wert;
+  else if (feld === 'fluegel') _ab.fluegel = !!wert;
   else if (feld === 'nutzungOffen') { _ab.nutzungOffen = !_ab.nutzungOffen; pvModusRender(); return; }
   _ab.vorschau = null;                     // andere Auswahl → Karte zeigt gleich die neuen Kandidaten
   if (feld === 'umfang' && wert === 'bereich' && !_ab.bereich) setTimeout(pvabBereichZiehen, 0);

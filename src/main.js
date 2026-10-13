@@ -124,6 +124,9 @@ import * as quartierSonde from './44-quartier-sonde.js';
 import * as variantenGrafik from './45-varianten-grafik.js';
 import * as heizzentralen from './46-heizzentralen.js';
 import * as waermeSchema from './47-waerme-schema.js';
+import * as baeume from './40-baeume.js';
+import * as grundrissPruefung from './41-grundriss-pruefung.js';
+import * as ladeStatus from './42-lade-status.js';
 import * as variantenRegeln from './lib/varianten-regeln.js';
 
 // Expose all exports on window for data-* event handlers in HTML
@@ -142,7 +145,7 @@ const modules = [
   napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap, engpassSweep, engpassPanel,
-  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, pvBelegungsStaende, pvAnschluss, lod2Import, quartierHerausloesen, netzQuartiere, speicherAnalyse, gebaeudeAnalyse, quartierSonde, variantenGrafik, heizzentralen, waermeSchema, variantenRegeln,
+  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, pvBelegungsStaende, pvAnschluss, lod2Import, quartierHerausloesen, netzQuartiere, speicherAnalyse, gebaeudeAnalyse, quartierSonde, variantenGrafik, heizzentralen, waermeSchema, baeume, grundrissPruefung, ladeStatus, variantenRegeln,
 ];
 window.pdfjsLib = pdfjsLib;
 lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});

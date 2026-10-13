@@ -3,6 +3,9 @@
 import { map } from './02b-gebaeude.js';
 import { ASSETS, ASSET_CFG, createAsset } from './13a-assets-core.js';
 import { drawAssetMarker, setAssetLayerVisible, isAssetLayerVisible } from './13b-assets-render.js';
+import { verschalteStationsAssets } from './05b-stromnetz.js';
+
+const STATIONS_TYPEN = new Set(['NAP', 'Schaltanlage', 'Trafo', 'NSHV']);
 import { beginInteraction, cancelInteraction } from './lib/interaction-state.js';
 
 // State: welcher Asset-Typ wird gerade platziert?
@@ -89,7 +92,11 @@ function onMapClickForAsset(e) {
   // Gebäude-Zuordnung: welches Gebäude liegt an der Klick-Position?
   const buildingId = findBuildingAt(e.latlng);
   const asset = createAsset(pendingType, e.latlng.lat, e.latlng.lng, { buildingId });
-  if (asset) drawAssetMarker(asset);
+  if (asset) {
+    drawAssetMarker(asset);
+    // Netzkomponenten im selben Gebäude (NAP, Schaltanlage, Trafo, NSHV) automatisch verschalten
+    if (buildingId != null && STATIONS_TYPEN.has(asset.type)) verschalteStationsAssets(buildingId);
+  }
   // Cursor bleibt — User kann mehrere gleichen Typs platzieren
 }
 

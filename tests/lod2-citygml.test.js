@@ -110,7 +110,9 @@ describe('lod2Dachdaten + Zuordnung', () => {
   it('Dachform/Neigung/Azimut fürs Tool', () => {
     expect(d.dachform).toBe('sattel');
     expect(d.dachNeigung).toBe(37);
-    expect(d.dachAzimut).toBe(180);
+    // gitterparallel gebaut, 63 km westlich des Mittelmeridians: geografisch
+    // 179° (Meridiankonvergenz ≈ −0,8°)
+    expect(d.dachAzimut).toBe(179);
   });
   it('ordnet über den Grundriss zu', () => {
     const ll = (x, y) => utmNachWgs84(E0 + x, N0 + y, 32);

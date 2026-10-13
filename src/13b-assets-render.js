@@ -256,6 +256,11 @@ function hasPendingMassnahmen(asset) {
 // derselben Assets innerhalb eines Gebäudes.
 function sizeAtZoom(z) { return chipSizeAtZoom(z); }
 
+// Chip-Größe der letzten Zeichnung — bei einem Zoomschritt wird nur dann alles
+// neu gezeichnet, wenn sich die Größe tatsächlich geändert hat (ab ~Zoom 19
+// ist sie auf CHIP_MAX_PX geklammert, unter ~Zoom 16 auf CHIP_MIN_PX).
+let _letzteChipPx = null;
+
 // Assets eines Gebäudes nach Typ gruppieren, sortiert nach Versorgungs-Rang.
 // Liefert [{ type, cfg, count, assets }] für die Chip-Darstellung.
 function _groupByType(assets) {
@@ -356,6 +361,7 @@ function drawBuildingGroup(buildingId) {
   // Ist nichts sichtbar, wird der Container unsichtbar gemacht — nicht entfernt.
   const sichtbareAssets = assets.filter(a => schichtSichtbar(normSchicht(a.schicht)));
   const chip   = chipSizeAtZoom(map.getZoom());
+  _letzteChipPx = chip;
   const fs     = Math.round(chip * 0.6);
   const groups = _groupByType(sichtbareAssets);
   const shown  = groups.slice(0, MAX_TYPE_CHIPS);
@@ -815,6 +821,7 @@ function drawSingleMarker(asset) {
   const opacity = status === 'active' ? 1 : 0.35;
   const border  = status === 'planned' ? 'dashed' : 'solid';
   const size    = sizeAtZoom(map.getZoom());
+  _letzteChipPx = size;
   const fontSize = Math.max(8, Math.round(size * 0.6));
   const borderW  = 1;
 
@@ -994,7 +1001,8 @@ setTimeout(() => {
   map.on('zoomend', () => {
     applyLayerVisibility();
     // Chip-/Marker-Größe an neue Zoomstufe anpassen (nur wenn Layer sichtbar)
-    if (layerVisible && map.getZoom() >= ASSET_COLLAPSED_ZOOM) redrawBuildingGroups();
-    if (layerVisible) redrawStandaloneMarkers();
+    if (!layerVisible || chipSizeAtZoom(map.getZoom()) === _letzteChipPx) return;
+    if (map.getZoom() >= ASSET_COLLAPSED_ZOOM) redrawBuildingGroups();
+    redrawStandaloneMarkers();
   });
 }, 0);

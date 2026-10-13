@@ -277,7 +277,7 @@ export function napLoadFromStromGrundlagen() {
 }
 
 /**
- * Stand der Bedarfsprognose für die Gutachten-Abbildungen 3.3.1–3.3.3 (17):
+ * Stand der Bedarfsprognose für die Gutachten-Abbildungen 5.3.1–5.3.3 (17):
  * Basis-Höchstlast, Gleichzeitigkeit und Maßnahmenliste samt Haken — genau das,
  * womit die Lastentwicklung unten im NAP-Panel rechnet. War die NAP-Analyse
  * noch nie offen, wird die Messung aus den Strom-Grundlagen übernommen wie beim
@@ -383,7 +383,7 @@ function _activeBottomBaseData() {
 function _activeData() { return _activeTopData(); }
 
 // ── Leistung eines Assets ────────────────────────────────────────────────────
-// Liegt in lib/bedarfsprognose.js, weil die Gutachten-Abbildungen 3.3.1–3.3.3
+// Liegt in lib/bedarfsprognose.js, weil die Gutachten-Abbildungen 5.3.1–5.3.3
 // exakt dieselben Leistungen zeigen müssen wie die Lastentwicklung hier.
 const _assetPower = bpAssetLeistung;
 
@@ -391,7 +391,7 @@ const _assetPower = bpAssetLeistung;
 export function napBuildMassnahmen() {
   const dataYear = _N.baseMeasuredData?.year || _N.data?.year || _yr();
   // Neubau/Abriss gegenüber dem Datenjahr, Haken bleiben erhalten — dieselbe
-  // Liste speist die Gutachten-Abbildungen 3.3.1–3.3.3 (napBedarfsStand).
+  // Liste speist die Gutachten-Abbildungen 5.3.1–5.3.3 (napBedarfsStand).
   _N.massnahmen = bpMassnahmen(_allAssets(), dataYear, _N.massnahmen);
 }
 
@@ -428,7 +428,7 @@ function _napCalcYearlyLoads() {
   for (let yr = minY; yr <= endY; yr++) {
     // Neubau wirkt zwischen Bau- und Abrissjahr, Abriss ab Abrissjahr negativ
     const { addLoad, addGen } = bpLastJahr(list, yr, gzf);
-    // Erzeugung mindert den Bezug nicht (dimensionierungssicher, wie Gutachten 3.3.4) — Einspeisung bleibt getrennt in addGen
+    // Erzeugung mindert den Bezug nicht (dimensionierungssicher, wie Gutachten 5.3.4) — Einspeisung bleibt getrennt in addGen
     rows.push({ year: yr, basePeak, addLoad, addGen, total: basePeak + addLoad });
   }
   return rows;
@@ -697,7 +697,7 @@ export function napHasMeasuredData() {
 // Überlagert den gemessenen Bestands-Lastgang additiv mit allen Neubau-/Abriss-
 // Maßnahmen, deren Bau- bzw. Abrissjahr bis (inkl.) bisJahr liegt.
 // Standardmäßig unabhängig vom Checkbox-Status der Maßnahmenliste (PV-Analyse); mit nurAngehakt
-// nur die angehakten Einträge — dieselbe Auswahl wie die Stufenrechnung (Gutachten 3.3.4).
+// nur die angehakten Einträge — dieselbe Auswahl wie die Stufenrechnung (Gutachten 5.3.4).
 // Gibt null zurück wenn keine Messung oder keine relevanten Maßnahmen vorhanden.
 // nurLast: nur die Verbrauchsseite überlagern (Erzeugung neuer Anlagen bleibt außen vor) —
 // für die PV-Analyse, die PV selbst auslegt; sonst rechnet sie geplante PV doppelt und
@@ -774,7 +774,7 @@ export function napGetEndausbauLastgang(bisJahr, { nurAngehakt = false, nurLast 
 }
 
 /**
- * Vergleichswert für Gutachten 3.3.4: Höchstlast des zeitgleich überlagerten Endausbau-Lastgangs
+ * Vergleichswert für Gutachten 5.3.4: Höchstlast des zeitgleich überlagerten Endausbau-Lastgangs
  * (Referenzjahr + Profile der angehakten Maßnahmen bis zum Zieljahr, Erzeugung zeitgleich gegengerechnet).
  * Maßgeblich bleibt die statische Stufenrechnung. null ohne Messung oder ohne Maßnahmen.
  */
@@ -1061,7 +1061,7 @@ function _napRenderSidebar() {
         <span style="color:#777;">⬇ Einspeisung Zubau (Nennleistung, ohne GZF)</span>
         <span style="color:#a5d6a7;font-weight:600;">${totalAddGen.toFixed(0)} kW</span>
       </div>
-      <div style="font-size:9px;color:#666;margin-top:3px;">Erzeugung mindert den Bezug nicht (dimensionierungssicher, wie Gutachten 3.3.4).</div>
+      <div style="font-size:9px;color:#666;margin-top:3px;">Erzeugung mindert den Bezug nicht (dimensionierungssicher, wie Gutachten 5.3.4).</div>
     </div>`}
 </div>`;
 

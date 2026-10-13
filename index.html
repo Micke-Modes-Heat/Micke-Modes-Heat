@@ -292,9 +292,10 @@
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" id="btn-osm-import" data-click="showOsmPanel()" style="border-color:#66bb6a;color:#66bb6a;grid-column:1/-1;">↓ OSM-Import (OpenStreetMap)</button>
           <button class="lp-tool-btn" id="btn-osm-dach" data-click="dachformenAusOsmErgaenzen({nachfragen:true})" style="border-color:#a1887f;color:#bcaaa4;grid-column:1/-1;" title="Dachform, Neigung und Richtung (roof:shape, roof:angle, roof:direction) aus OpenStreetMap für alle Gebäude ohne eigene Dachangabe übernehmen — z. B. nach einem Import aus dem amtlichen Kataster, das keine Dachform liefert">🏠 Dachformen aus OSM ergänzen</button>
-          <button class="lp-tool-btn" id="btn-lod2-import" data-click="lod2DateiWaehlen()" style="border-color:#8d6e63;color:#d7ccc8;grid-column:1/-1;" title="Amtliches 3D-Gebäudemodell (LoD2, CityGML .gml/.xml oder .zip vom Geoportal des Landes) laden: jede Dachfläche mit echter Neigung und Ausrichtung — für PV-Belegung und 3D-Ansicht">🏠 Dachflächen aus LoD2 laden …</button>
+          <button class="lp-tool-btn" id="btn-lod2-import" data-click="lod2Laden()" style="border-color:#8d6e63;color:#d7ccc8;grid-column:1/-1;" title="Amtliches 3D-Gebäudemodell (LoD2) laden — in NRW, Niedersachsen und Baden-Württemberg direkt vom Landesdienst, sonst als CityGML-Datei (.gml/.xml oder .zip vom Geoportal des Landes): jede Dachfläche mit echter Neigung und Ausrichtung — für PV-Belegung und 3D-Ansicht">🏠 Dachflächen aus LoD2 laden …</button>
           <button class="lp-tool-btn" id="btn-dach-grundriss" data-click="dachGrundrissBerechnen()" style="border-color:#8d6e63;color:#d7ccc8;grid-column:1/-1;" title="Für Gebäude ohne LoD2 (auch geplante Neubauten): Dachflächen aus dem rechtwinkligen Grundriss berechnen — L-, T- und U-Formen mit Kehlen und Giebeln, nach Dachform und Neigung des Gebäudes. Mit Auswahl in der Gebäudeliste nur für die ausgewählten Gebäude.">📐 Dachflächen aus Grundriss berechnen</button>
           <button class="lp-tool-btn" id="btn-quartier-herausloesen" data-click="quartierHerausloesen()" style="border-color:#ffb300;color:#ffcc80;grid-column:1/-1;" title="Einen Teil der Liegenschaft als eigenes Projekt speichern — z. B. ein Quartier, das früher gebaut wird oder eine eigene Zentrale bekommt. Bereich auf der Karte umfahren oder vorher Gebäude in der Liste anhaken. Das geöffnete Projekt bleibt unverändert.">✂ Quartier als eigenes Projekt herauslösen …</button>
+          <button class="lp-tool-btn" id="btn-grundriss-pruefen" data-click="grundrissPanelToggle()" style="border-color:#ffb74d;color:#ffcc80;grid-column:1/-1;" title="Überlappende Grundrisse finden — Doppelerfassungen (OSM und Kataster), Gebäudeteile als eigene Gebäude, Teilüberlappungen. Sie verfälschen Wärme- und Strombedarf, Dachpotenzial und Verschattung. Je Fall: zeigen, zusammenfügen, eines löschen oder bewusst so lassen.">⧉ Grundrisse prüfen</button>
         </div>
       </div>
 
@@ -1497,6 +1498,22 @@
     <input class="inp-field" type="number" id="osm-min-flaeche" value="30" min="0" max="500" step="5" style="width:90px;"
       data-input="const a=document.getElementById('osm-min-flaeche-area');if(a)a.value=this.value;">
   </div>
+  <div class="osm-import-zusaetze" style="margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border);">
+    <div class="inp-label" style="margin-bottom:4px;">Zusätzlich mitladen</div>
+    <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Amtliches 3D-Gebäudemodell (LoD2) mitladen: jede Dachfläche mit echter Neigung, Ausrichtung und Höhe — für PV-Belegung und 3D-Ansicht. Automatisch in NRW, Niedersachsen und Baden-Württemberg; in anderen Ländern über „🏠 Dachflächen aus LoD2 laden …“ als Datei. Gebäude ohne LoD2-Dach bekommen, wenn angehakt, die Dachflächen aus dem Grundriss.">
+      <input type="checkbox" id="osm-opt-lod2" data-change="osmImportOptionSync(this)">🏠 3D-Dachflächen (LoD2, amtlich) — NRW, NI, BW</label>
+    <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Je Gebäude die einzelnen Dachflächen (Satteldach, L/T/U-Flügel mit Kehlen) aus dem Grundriss und der Dachform berechnen — wie „📐 Dachflächen aus Grundriss berechnen“. Schräge oder runde Grundrisse behalten das einfache Dachmodell.">
+      <input type="checkbox" id="osm-opt-dach" data-change="osmImportOptionSync(this)">📐 Dachflächen aus den Grundrissen berechnen</label>
+    <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Straßen und Wege aus OpenStreetMap als Trassen übernehmen (werden mit dem Projekt gespeichert und lassen sich bearbeiten).">
+      <input type="checkbox" id="osm-opt-strassen" data-change="osmImportOptionSync(this)">🛣️ Straßen als Trassen für
+      <select class="inp-field" id="osm-opt-strassen-sparte" data-change="osmImportOptionSync(this)" style="width:auto;padding:1px 4px;font-size:11px;">
+        <option value="strom">Elektro</option>
+        <option value="waerme">Wärme</option>
+        <option value="beide">Wärme + Elektro</option>
+      </select></label>
+    <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Bäume im Umkreis von 150 m aus OpenStreetMap ins Projekt übernehmen (für die PV-Verschattung; werden mit dem Projekt gespeichert).">
+      <input type="checkbox" id="osm-opt-baeume" data-change="osmImportOptionSync(this)">🌳 Bäume aus OpenStreetMap</label>
+  </div>
   <div class="panel-btns">
     <button class="btn-confirm" data-click="loadOsmBuildings()">Jetzt laden</button>
     <button class="btn-secondary" data-click="hidePanels()">Abbrechen</button>
@@ -1516,6 +1533,22 @@
     <label class="inp-label" title="Kleinere Polygone (Dachaufbauten, Anbauten, Schuppen) werden nicht als eigenes Gebäude geladen. 0 = alles laden.">Mindest-Grundfläche je Gebäude (m²)</label>
     <input class="inp-field" type="number" id="osm-min-flaeche-area" value="30" min="0" max="500" step="5" style="width:90px;"
       data-input="const a=document.getElementById('osm-min-flaeche');if(a)a.value=this.value;">
+  </div>
+  <div class="osm-import-zusaetze" style="margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border);">
+    <div class="inp-label" style="margin-bottom:4px;">Zusätzlich mitladen</div>
+    <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Amtliches 3D-Gebäudemodell (LoD2) mitladen: jede Dachfläche mit echter Neigung, Ausrichtung und Höhe — für PV-Belegung und 3D-Ansicht. Automatisch in NRW, Niedersachsen und Baden-Württemberg; in anderen Ländern über „🏠 Dachflächen aus LoD2 laden …“ als Datei. Gebäude ohne LoD2-Dach bekommen, wenn angehakt, die Dachflächen aus dem Grundriss.">
+      <input type="checkbox" id="osm-opt-lod2-area" data-change="osmImportOptionSync(this)">🏠 3D-Dachflächen (LoD2, amtlich) — NRW, NI, BW</label>
+    <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Je Gebäude die einzelnen Dachflächen (Satteldach, L/T/U-Flügel mit Kehlen) aus dem Grundriss und der Dachform berechnen — wie „📐 Dachflächen aus Grundriss berechnen“. Schräge oder runde Grundrisse behalten das einfache Dachmodell.">
+      <input type="checkbox" id="osm-opt-dach-area" data-change="osmImportOptionSync(this)">📐 Dachflächen aus den Grundrissen berechnen</label>
+    <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Straßen und Wege aus OpenStreetMap als Trassen übernehmen (werden mit dem Projekt gespeichert und lassen sich bearbeiten).">
+      <input type="checkbox" id="osm-opt-strassen-area" data-change="osmImportOptionSync(this)">🛣️ Straßen als Trassen für
+      <select class="inp-field" id="osm-opt-strassen-sparte-area" data-change="osmImportOptionSync(this)" style="width:auto;padding:1px 4px;font-size:11px;">
+        <option value="strom">Elektro</option>
+        <option value="waerme">Wärme</option>
+        <option value="beide">Wärme + Elektro</option>
+      </select></label>
+    <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Bäume im Umkreis von 150 m aus OpenStreetMap ins Projekt übernehmen (für die PV-Verschattung; werden mit dem Projekt gespeichert).">
+      <input type="checkbox" id="osm-opt-baeume-area" data-change="osmImportOptionSync(this)">🌳 Bäume aus OpenStreetMap</label>
   </div>
   <div class="panel-btns">
     <button class="btn-confirm amber" data-click="loadOsmBuildings()">Gebäude laden</button>
@@ -3205,17 +3238,17 @@
       <div class="inp-group" style="margin:0">
         <label class="inp-label">Breite (m)</label>
         <input class="inp-field" type="number" id="pv-modul-breite" value="1.1" min="0.5" max="2.5" step="0.05"
-          data-input="onPvModulChange()"/>
+          data-input="onPvModulChange()" data-change="pvModulFeldPruefen(this)"/>
       </div>
       <div class="inp-group" style="margin:0">
         <label class="inp-label">Länge (m)</label>
         <input class="inp-field" type="number" id="pv-modul-laenge" value="1.7" min="0.5" max="3.0" step="0.05"
-          data-input="onPvModulChange()"/>
+          data-input="onPvModulChange()" data-change="pvModulFeldPruefen(this)"/>
       </div>
       <div class="inp-group" style="margin:0">
         <label class="inp-label">Leistung (Wp)</label>
         <input class="inp-field" type="number" id="pv-modul-wp" value="450" min="100" max="800" step="5"
-          data-input="onPvModulChange()"/>
+          data-input="onPvModulChange()" data-change="pvModulFeldPruefen(this)"/>
       </div>
     </div>
     <div id="pv-modul-info" style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:8px;"></div>

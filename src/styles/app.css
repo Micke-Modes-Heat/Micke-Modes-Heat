@@ -2204,6 +2204,28 @@ body.gm-fokus #view-tabs{display:none;}
 @media(max-width:1100px){#pv-modus-panel{right:12px;}}
 @media(max-width:760px){#pv-modus-panel{top:auto;bottom:70px;right:8px;left:8px;width:auto;max-height:46vh;}}
 
+/* ── Bäume & Verschattung (40-baeume.js) — neben dem PV-Modus-Panel ───────── */
+#baum-panel{position:fixed;top:76px;right:626px;width:262px;z-index:10035;
+  background:rgba(21,27,22,.97);border:1px solid #81c784;border-radius:10px;
+  box-shadow:0 6px 24px rgba(0,0,0,.5);color:var(--text);font-size:11px;
+  max-height:calc(100vh - 150px);display:flex;flex-direction:column;}
+#baum-panel .pvm-head{display:flex;align-items:center;gap:6px;padding:7px 9px;border-bottom:1px solid var(--border);flex-shrink:0;}
+#baum-panel .pvm-head-title{flex:1;color:#81c784;font-weight:600;font-size:11.5px;letter-spacing:.02em;}
+#baum-panel .pvm-head .btn-xs{border-color:#81c784;color:#81c784;}
+#baum-panel .pvm-body{padding:8px 9px 10px;overflow-y:auto;}
+@media(max-width:1250px){#baum-panel{right:12px;top:auto;bottom:60px;max-height:50vh;}}
+
+/* ── Grundrisse prüfen (41-grundriss-pruefung.js) ─────────────────────────── */
+#grundriss-panel{position:fixed;top:76px;right:352px;width:300px;z-index:10036;
+  background:rgba(30,25,18,.97);border:1px solid #ffb74d;border-radius:10px;
+  box-shadow:0 6px 24px rgba(0,0,0,.5);color:var(--text);font-size:11px;
+  max-height:calc(100vh - 150px);display:flex;flex-direction:column;}
+#grundriss-panel .pvm-head{display:flex;align-items:center;gap:6px;padding:7px 9px;border-bottom:1px solid var(--border);flex-shrink:0;}
+#grundriss-panel .pvm-head-title{flex:1;color:#ffb74d;font-weight:600;font-size:11.5px;letter-spacing:.02em;}
+#grundriss-panel .pvm-head .btn-xs{border-color:#ffb74d;color:#ffb74d;}
+#grundriss-panel .pvm-body{padding:8px 9px 10px;overflow-y:auto;}
+@media(max-width:1100px){#grundriss-panel{right:12px;}}
+
 /* ── Blackout-Modus (26-blackout-modus.js) ─────────────────────────────────
    Gleiches Muster wie der PV-Modus: bleibt offen, gehört nicht zu hidePanels(). */
 #blackout-modus-panel{position:fixed;top:76px;right:352px;width:330px;z-index:10035;
@@ -2853,3 +2875,43 @@ tr.ga-blink td{animation:ga-blink 1.6s ease 2;}
 #ws-panel.visible{display:flex;}
 #ws-panel.sld-fullscreen{left:0;width:100%!important;z-index:900;}
 #ws-canvas-wrap{flex:1;overflow:auto;background:#0b0e18;}
+/* ── Plangebiet & Laden — Statusübersicht (42-lade-status.js) ─────────────── */
+#lade-status-panel{position:fixed;bottom:84px;left:292px;width:330px;z-index:10034;
+  background:rgba(24,20,30,.97);border:1px solid #ab47bc;border-radius:10px;
+  box-shadow:0 6px 24px rgba(0,0,0,.5);color:var(--text);font-size:11px;
+  max-height:calc(100vh - 200px);display:flex;flex-direction:column;}
+#lade-status-panel.ls-klein{width:300px;}
+#lade-status-panel.ls-klein .ls-kopf{padding-bottom:7px;font-weight:normal;}
+#lade-status-panel .ls-akt{padding:0 10px 7px;color:var(--muted);font-size:10px;overflow-wrap:anywhere;}
+#lade-status-panel .ls-head{display:flex;align-items:center;gap:6px;padding:7px 9px;border-bottom:1px solid var(--border);flex-shrink:0;}
+#lade-status-panel .ls-head-title{flex:1;color:#ce93d8;font-weight:600;font-size:11.5px;letter-spacing:.02em;}
+#lade-status-panel .ls-head .btn-xs{border-color:#ce93d8;color:#ce93d8;}
+#lade-status-panel .ls-kopf{padding:6px 10px 2px;font-weight:600;color:var(--text);}
+#lade-status-panel.ls-phase-laeuft .ls-kopf{color:#4fc3f7;}
+#lade-status-panel.ls-phase-fertig .ls-kopf{color:#81c784;}
+#lade-status-panel.ls-phase-fehler .ls-kopf{color:#ef9a9a;}
+#lade-status-panel .ls-chips{display:flex;flex-wrap:wrap;gap:4px;padding:4px 10px 6px;border-bottom:1px solid var(--border);}
+#lade-status-panel .ls-chip{font-size:9.5px;padding:1px 6px;border-radius:9px;border:1px solid var(--border);color:var(--muted);white-space:nowrap;}
+#lade-status-panel .ls-chip.ls-fertig{border-color:#66bb6a;color:#81c784;}
+#lade-status-panel .ls-chip.ls-laeuft{border-color:#29b6f6;color:#4fc3f7;}
+#lade-status-panel .ls-chip.ls-fehler{border-color:#e53935;color:#ef9a9a;}
+#lade-status-panel .ls-body{padding:4px 6px 8px;overflow-y:auto;}
+#lade-status-panel .ls-row{display:flex;gap:7px;align-items:flex-start;padding:5px 4px;border-radius:6px;}
+#lade-status-panel .ls-row + .ls-row{border-top:1px solid rgba(255,255,255,.04);}
+#lade-status-panel .ls-ico{width:14px;flex-shrink:0;text-align:center;font-size:12px;line-height:15px;color:var(--muted);}
+#lade-status-panel .ls-main{flex:1;min-width:0;}
+#lade-status-panel .ls-t{color:var(--text);line-height:15px;}
+#lade-status-panel .ls-i{color:var(--muted);font-size:10px;line-height:1.4;overflow-wrap:anywhere;}
+#lade-status-panel .ls-unter{margin-top:2px;font-size:9.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace;line-height:1.45;}
+#lade-status-panel .ls-st{display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;font-size:9.5px;color:var(--muted);line-height:15px;}
+#lade-status-panel .ls-zeit{font-variant-numeric:tabular-nums;opacity:.8;}
+#lade-status-panel .ls-fertig .ls-ico,#lade-status-panel .ls-fertig .ls-st span:first-child{color:#81c784;}
+#lade-status-panel .ls-leer .ls-ico,#lade-status-panel .ls-leer .ls-st span:first-child{color:#ffb74d;}
+#lade-status-panel .ls-fehler .ls-ico,#lade-status-panel .ls-fehler .ls-st span:first-child{color:#ef5350;}
+#lade-status-panel .ls-fehler .ls-i{color:#ef9a9a;}
+#lade-status-panel .ls-laeuft{background:rgba(41,182,246,.08);}
+#lade-status-panel .ls-laeuft .ls-st span:first-child{color:#4fc3f7;}
+#lade-status-panel .ls-uebersprungen .ls-t,#lade-status-panel .ls-uebersprungen .ls-ico{opacity:.5;}
+#lade-status-panel .ls-spin{display:inline-block;width:10px;height:10px;margin-top:2px;border:2px solid rgba(79,195,247,.3);border-top-color:#4fc3f7;border-radius:50%;animation:ls-spin .8s linear infinite;}
+@keyframes ls-spin{to{transform:rotate(360deg);}}
+@media(max-width:900px){#lade-status-panel{left:12px!important;right:12px;width:auto;bottom:60px;max-height:50vh;}}

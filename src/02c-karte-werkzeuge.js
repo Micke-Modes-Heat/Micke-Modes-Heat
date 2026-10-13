@@ -5,6 +5,7 @@ import { cancelDrawFF, finishDrawFF, redrawErzeugerIcons, redrawFernwaerme, redr
 import { rechteckKlick, rechteckVorschau, _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, confirmAutoGenerateNetz, confirmManualWaermeNetzFromTrasse, createStreetOrientedWaermeNetz, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
 import { _rerenderCard, hideHint, renderList, showHint, updateTotals } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, updateLpGebietStatus } from './04a-ui-panels.js';
+import { ladeStatusVorschau, ladeStatusZuruecksetzen } from './42-lade-status.js';
 import { setNetzSubTab, stromNodeClick } from './05b-stromnetz.js';
 import { moBeiAktivierung, moBeiDeaktivierung } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
@@ -841,6 +842,7 @@ export function clearArea() {
   hidePanels();
   document.getElementById('btn-draw-area').classList.remove('active');
   cleanupDrawAreaEvents();
+  ladeStatusZuruecksetzen();
   if (typeof updateLpGebietStatus === 'function') updateLpGebietStatus();
 }
 
@@ -868,6 +870,7 @@ export function toggleDrawArea() {
   areaDrawLifecycle = createLifecycleScope('draw-area');
   areaDrawLifecycle.mapOn(map,'click',onDrawAreaClick);
   areaDrawLifecycle.mapOn(map,'contextmenu',onDrawAreaCancel);
+  ladeStatusVorschau({ oeffnen: true, klein: true });
 }
 
 export function onDrawAreaClick(e) {
@@ -892,6 +895,7 @@ export function onDrawAreaClick(e) {
   window.areaPoints.push(e.latlng);
   if (window.areaPolyline) map.removeLayer(window.areaPolyline);
   window.areaPolyline = L.polyline([...window.areaPoints], {color: '#ab47bc', weight: 2, dashArray: '8 4'}).addTo(map);
+  ladeStatusVorschau();
 }
 
 export function onDrawAreaCancel(e) {
@@ -907,6 +911,7 @@ export function onDrawAreaCancel(e) {
       if (window.areaStartMarker) { map.removeLayer(window.areaStartMarker); window.areaStartMarker = null; }
     }
   }
+  ladeStatusVorschau();
 }
 
 export function finishAreaDraw() {
@@ -927,11 +932,13 @@ export function finishAreaDraw() {
       window.areaLatLngs[index] = e.target.getLatLng();
       window.areaPolygon.setLatLngs(window.areaLatLngs);
     });
+    marker.on('dragend', () => ladeStatusVorschau());
     window.areaEditMarkers.push(marker);
   });
 
   cleanupDrawAreaEvents();
   showAreaEditPanel();
+  ladeStatusVorschau({ oeffnen: true });
 }
 
 // ── Windgebiet: eigenständiges Zeichengebiet für die Windkraft-Standortanalyse ──
@@ -1281,10 +1288,21 @@ map.on('dblclick',e=>{
   }
 });
 
+// Während Zoomen/Verschieben ruhen die Fließanimationen der Leitungen
+// (sie ändern pro Bild den Stil Hunderter SVG-Pfade und konkurrieren mit dem
+// Kartenrendering); nach dem Ende laufen sie von selbst weiter.
+map.on('movestart zoomstart', () => { window.kartePausiert = true; });
+map.on('moveend zoomend', () => { window.kartePausiert = false; });
+
+// Aufwändige Neuberechnung erst, wenn der Zoom (z. B. Mausrad-Serie) zur Ruhe kommt.
+let _zoomVizTimer = null;
 map.on('zoomend', function() {
-  if (!window.isDrawingTrasse &&
-      (window.currentViz === 'circle' || window.currentViz === 'bar' || window.labelsVisible)) updateViz();
-  if (window.fliessgewaesser) redrawFliessgewaesser();
+  clearTimeout(_zoomVizTimer);
+  _zoomVizTimer = setTimeout(() => {
+    if (!window.isDrawingTrasse &&
+        (window.currentViz === 'circle' || window.currentViz === 'bar' || window.labelsVisible)) updateViz();
+    if (window.fliessgewaesser) redrawFliessgewaesser();
+  }, 150);
 });
 
 document.addEventListener('keydown',e=>{

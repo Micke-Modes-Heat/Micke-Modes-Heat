@@ -10,6 +10,7 @@ import { getGebStromMwh, map } from './02b-gebaeude.js';
 import { polygonAreaM2, polygonCenter, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { setNetzVisible } from './03b-netz.js';
 import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-io.js';
+import { lsMeldung } from './42-lade-status.js';
 import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js';
 import { KABEL_TYPEN, TRAFO_GROESSEN, MS_I_MAX_A, MS_SECTIONS, kabelTypOptionen } from './config/netz-kosten.js';
 import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
@@ -22,7 +23,7 @@ import { msSpannungen } from './lib/ms-spannung.js';
 import { trafoGruppen, trafoAufteilung, gruppenBetriebsart } from './lib/trafo-parallel.js';
 import { baueTrassenGraph, routeEntlangTrassen } from './lib/trassen-routing.js';
 import { mergeOsmElements, splitOsmBbox, subdivideOsmBbox } from './lib/osm-bbox-tiles.js';
-import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus, getAssetPropsForYear } from './13a-assets-core.js';
+import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus, getAssetPropsForYear, getAssetsForBuilding } from './13a-assets-core.js';
 import { collapseAssetSpider, redrawAllAssets, refreshTrafoAuslastung } from './13b-assets-render.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
 import { schichtAusEndpunkten, normSchicht, SCHICHT } from './lib/schichten.js';
@@ -566,6 +567,53 @@ export function addStromEdge(uId, vId) {
   _refreshEdgeYears(edge);
   startAnimStrom();
   return edge;
+}
+
+/**
+ * NAP → Schaltanlage → Trafo → NSHV innerhalb EINES Gebäudes verschalten.
+ * Legt nur fehlende Leitungen an (idempotent), fasst vorhandene nicht an.
+ * MS-Ebene (NAP/SA/Trafo-Primär) als msLevel mit MS-Erdkabel, NS-Ebene Trafo → NSHV.
+ * Ohne Schaltanlage hängt der Trafo direkt am NAP; kommt eine Schaltanlage dazu,
+ * fällt diese Direktleitung weg (sonst entstünde eine Masche in der Station).
+ * @returns {number} Anzahl neu angelegter Leitungen
+ */
+export function verschalteStationsAssets(gebId) {
+  if (gebId == null) return 0;
+  const kand = getAssetsForBuilding(gebId).filter(a => a.domain === 'strom' || a.domain === 'hybrid');
+  const von = t => kand.filter(a => a.type === t);
+  const naps = von('NAP'), sas = von('Schaltanlage'), trafos = von('Trafo'), nshvs = von('NSHV');
+  const kanteZw = (a, b) => (window.stromEdges || []).find(e =>
+    (e.u === a.id && e.v === b.id) || (e.u === b.id && e.v === a.id));
+  let neu = 0;
+  const verbinde = (u, v, ms) => {
+    if (!u || !v || u.id === v.id || kanteZw(u, v)) return;
+    const e = addStromEdge(u.id, v.id);
+    if (!e) return;
+    if (ms) {
+      e.msLevel = true;
+      e.cableType = 'NA2XS2Y';
+      e.layer?.setStyle({ color: '#ff9800', weight: 4, opacity: 0.95, dashArray: null });
+      e.outlineLayer?.setStyle({ color: '#0a0e1a', weight: 7, opacity: 0.4, dashArray: null });
+    }
+    neu++;
+  };
+  if (naps.length && sas.length) sas.forEach(sa => verbinde(naps[0], sa, true));
+  else if (naps.length && trafos.length) trafos.forEach(t => verbinde(naps[0], t, true));
+  if (sas.length && trafos.length) {
+    trafos.forEach(t => {
+      verbinde(sas[0], t, true);
+      // Direktleitung NAP → Trafo ist durch den Weg über die Schaltanlage ersetzt
+      naps.forEach(n => { const alt = kanteZw(n, t); if (alt && kanteZw(sas[0], t)) removeStromEdge(alt); });
+    });
+  }
+  if (trafos.length && nshvs.length) {
+    nshvs.forEach((h, i) => {
+      // NSHV, die schon an irgendeinem Trafo dieses Gebäudes hängt, bleibt wie sie ist
+      if (trafos.some(t => kanteZw(t, h))) return;
+      verbinde(trafos[Math.min(i, trafos.length - 1)], h, false);
+    });
+  }
+  return neu;
 }
 
 // Bau-/Abrissjahr eines Kabels aus seinen beiden Endpunkten ableiten:
@@ -1297,8 +1345,27 @@ export function _nsKIz() {
   return calcKizTemp(tBoden) * calcKizGruppe(nKabel) * (KIZ_VERLEGEART[verlegeart] ?? 1.0);
 }
 
+// Sammelvorgänge (viele Assets/Kabel löschen): removeStromNode und removeStromEdge
+// rechnen sonst JE Aufruf das ganze Netz — bei ~2.400 Dach-PV-Anlagen Minuten. Innerhalb
+// von stromRecalcAufschieben merkt sich recalcStromNetz nur, dass es fällig ist.
+let _recalcAufgeschoben = 0;
+let _recalcFaellig = false;
+
+/** fn ausführen, Netzrechnungen darin auf eine einzige danach zusammenfassen. */
+export function stromRecalcAufschieben(fn) {
+  _recalcAufgeschoben++;
+  try { return fn(); }
+  finally {
+    if (--_recalcAufgeschoben === 0 && _recalcFaellig) {
+      _recalcFaellig = false;
+      recalcStromNetz();
+    }
+  }
+}
+
 // ── Berechnung: recalcStromNetz() ───────────────────────────────
 export function recalcStromNetz() {
+  if (_recalcAufgeschoben > 0) { _recalcFaellig = true; return; }
   if (!window.stromEdges.length && !window.stromNodes.length) return;
   if (_recalcStromBusy) return; // Rekursionsschutz
   _recalcStromBusy = true;
@@ -3003,6 +3070,8 @@ function _setOsmStreetProgress({visible = true,completed = 0,total = 1,ways = 0,
   if (count) count.textContent = `${completed} / ${total} Teilbereiche`;
   if (statusNode) statusNode.textContent =
     `${status || 'OpenStreetMap wird abgefragt'}${ways ? ` · ${ways} Straßen gefunden` : ''}`;
+  // Ladeübersicht (42-lade-status.js) — wirkt nur während eines Gebäudeimports
+  lsMeldung(`${completed} / ${total} Teilbereiche${ways ? ` · ${ways} Straßen` : ''}${status ? ` · ${status}` : ''}`);
 }
 
 export async function loadOsmStrassen() {
@@ -3269,6 +3338,40 @@ export function adoptAllOsmStrassen(domain = 'strom') {
   redrawTrasse();
   if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
   return adopted;
+}
+
+/**
+ * Geladene OSM-Straßen als echte Trassen übernehmen (OSM-Import, Haken
+ * „Straßen als Trassen"). Anders als die Routinggrundlage 'osm-street' werden
+ * sie wie gezeichnete Trassen dargestellt, gespeichert und lassen sich
+ * bearbeiten. Bereits übernommene Wege (osmWayId) entstehen nicht doppelt.
+ * @param {string[]} domains ['strom'], ['waerme'] oder beide
+ * @returns {number} Anzahl neuer Trassenstränge
+ */
+export function osmStrassenAlsTrassen(domains = ['strom']) {
+  if (!_osmStrassenLayer) return 0;
+  const vorhanden = new Set(window.trasseSegments
+    .filter(seg => seg.source === 'osm-trasse')
+    .map(seg => `${(seg.domains || []).slice().sort().join('+')}:${seg.osmWayId}`));
+  const schluessel = domains.slice().sort().join('+');
+  let neu = 0;
+  _osmStrassenLayer.getLayers().forEach(pl => {
+    if (!Array.isArray(pl._osmPts) || pl._osmPts.length < 2) return;
+    if (vorhanden.has(`${schluessel}:${pl._osmWayId}`)) return;
+    const startIdx = window.trassePoints.length;
+    for (const pt of pl._osmPts) window.trassePoints.push(pt);
+    window.trasseSegments.push({ start: startIdx, end: window.trassePoints.length - 1, domains: [...domains], source: 'osm-trasse', osmWayId: pl._osmWayId });
+    neu++;
+  });
+  setTrasseCurrentSegStart(window.trassePoints.length);
+  if (neu) {
+    window.trasseVisible = true;
+    const checkbox = document.getElementById('el-trasse-visible');
+    if (checkbox) checkbox.checked = true;
+  }
+  redrawTrasse();
+  if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
+  return neu;
 }
 
 export async function loadAndAdoptOsmStrassen() {

@@ -106,3 +106,20 @@ describe('Empfohlene Variante und ★ Gutachtenvariante', () => {
     expect(gfAntwort({ empfehlung: 'Hauptplan' }, 'empfehlung', { varianten: ['Hauptplan', 'V1'], stern: 'V1' })).toBe('Hauptplan');
   });
 });
+
+describe('Weiterverfolgte PV-Auslegung (Kosten 5.5)', () => {
+  const opt = [['minimal', 'Minimal'], ['wirt-opt', 'Wirtschaftlich optimiert'], ['belegung-2', 'PV-Pflicht-Fälle']];
+  it('Vorgabe ist „Wirtschaftlich optimiert“, sonst die erste Auslegung', () => {
+    expect(gfAntwort({}, 'pv-auslegung', { pvAuslegungen: opt })).toBe('wirt-opt');
+    expect(gfAntwort({}, 'pv-auslegung', { pvAuslegungen: [['minimal', 'Minimal']] })).toBe('minimal');
+    expect(gfAntwort({}, 'pv-auslegung', {})).toBe('wirt-opt');
+  });
+  it('gewählte Dachbelegung gilt, eine nicht mehr vorhandene fällt auf die Vorgabe zurück', () => {
+    expect(gfAntwort({ 'pv-auslegung': 'belegung-2' }, 'pv-auslegung', { pvAuslegungen: opt })).toBe('belegung-2');
+    expect(gfAntwort({ 'pv-auslegung': 'belegung-7' }, 'pv-auslegung', { pvAuslegungen: opt })).toBe('wirt-opt');
+  });
+  it('steht im Fragebogen zu Kapitel 5.4.2 und wird gespeichert', () => {
+    expect(gfFragenZuKapitel('5.4.2').map(f => f.id)).toContain('pv-auslegung');
+    expect(gfNormalisieren({ 'pv-auslegung': 'belegung-2' })).toEqual({ 'pv-auslegung': 'belegung-2' });
+  });
+});

@@ -27,7 +27,8 @@ function wireSectionToggles(panel) {
   });
 }
 
-import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAsset, deleteAsset, pvFlaechenZumAsset, computeTwwKw, TWW_DEFAULTS } from './13a-assets-core.js';
+import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAsset, deleteAsset, pvFlaechenZumAsset, computeTwwKw, TWW_DEFAULTS, setzeAssetSchicht } from './13a-assets-core.js';
+import { verschalteStationsAssets } from './05b-stromnetz.js';
 import { drawAssetMarker, redrawAllAssets, updateLadeParking, zoomToWindEignungsflaeche } from './13b-assets-render.js';
 import { openSlpEditor } from './13i-slp-editor.js';
 import { globalYear } from './01-globals-varianten.js';
@@ -1536,10 +1537,13 @@ function wireEvents(panel, asset) {
         drawAssetMarker(asset);
       } else if (f === 'buildingId') {
         asset.buildingId = inp.value || null;
+        if (asset.buildingId != null && ['NAP', 'Schaltanlage', 'Trafo', 'NSHV'].includes(asset.type)) {
+          verschalteStationsAssets(asset.buildingId);
+        }
         renderInspector(asset);   // automatischer Name folgt dem neuen Gebäude
         redrawAllAssets();
       } else if (f === 'schicht') {
-        asset.schicht = normSchicht(inp.value);
+        setzeAssetSchicht(asset, inp.value);   // verwirft ein vom Bestandsgebäude geerbtes Baujahr
         renderInspector(asset);   // Farbmarkierung des Feldes mitziehen
         redrawAllAssets();
       }

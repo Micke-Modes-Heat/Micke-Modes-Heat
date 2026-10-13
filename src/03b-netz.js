@@ -19,6 +19,8 @@ import { _initYearSliderFromBaujahr, drawChart, hideHint, renderList, showHint, 
 import { _hideForDraw, _restoreAfterDraw, autoAssignEdgeCosts } from './04a-ui-panels.js';
 import { glLastgangKw } from './06a-gbi-lastgang.js';
 import { detectBundesland } from './lib/bundeslaender.js';
+import { ladeStatusStart, ladeStatusVorschau, lsSchritt, lsMeldung, lsUnter, lsRest } from './42-lade-status.js';
+import { lod2Dienst } from './lib/lod2-dienste.js';
 import { readNum } from './lib/util.js';
 import { clipBuildingEndpoint, crossesForeignBuilding } from './lib/netz-building-obstacles.js';
 import { bereinigeKleinbauten, rechteckAusDreiPunkten } from './lib/gebaeude-geometrie.js';
@@ -701,11 +703,13 @@ export function toggleOverlayPanel() {
 export function showOsmPanel(){
   if(areaPolygon) { showAreaEditPanel(); return; }
   hidePanels();
+  osmImportOptionenLaden();
   document.getElementById('osm-panel').classList.add('visible');
 }
 
 export function showAreaEditPanel(){
   hidePanels();
+  osmImportOptionenLaden();
   document.getElementById('area-edit-panel').classList.add('visible');
 }
 
@@ -2020,6 +2024,12 @@ export function _detectBundesland(lat, lon) {
   return detectBundesland(lat, lon);
 }
 
+/** Woher die Grundrisse an dieser Stelle kommen (für die Ladeübersicht, 42-lade-status.js). */
+export function ladeQuelle(lat, lon) {
+  const bl = detectBundesland(lat, lon);
+  return { bl, kataster: bl === 'sh' || !!(bl && WFS_CONFIG[bl]), lod2: !!lod2Dienst(bl) };
+}
+
 function _wfsBuildUrl(cfg, bbox4326) {
   // bbox: [south, west, north, east] in EPSG:4326
   var params = [
@@ -2060,11 +2070,13 @@ function _shGemeindeschluessel(lat, lon) {
 function _wfsFetchBuildingsSH(bbox4326) {
   var center = [(bbox4326[0] + bbox4326[2]) / 2, (bbox4326[1] + bbox4326[3]) / 2];
   showHint('⏳ Ermittle Gemeinde (SH)…');
+  lsMeldung('Gemeinde ermitteln (Nominatim) …');
   return _shGemeindeschluessel(center[0], center[1])
     .catch(function(err) { console.warn('SH-Gemeindeermittlung fehlgeschlagen:', err.message); return null; })
     .then(function(ags) {
       if (!ags) return null;
       showHint('⏳ Lade Gebäude vom Katasteramt (SH)…');
+      lsMeldung('Gebäude der Gemeinde ' + ags + ' laden …');
       var ctrl = new AbortController();
       var timer = setTimeout(function() { ctrl.abort(); }, 30000);
       var url = 'https://service.gdi-sh.de/WFS_SH_ALKIS_vereinf_OpenGBD?service=WFS&version=2.0.0'
@@ -2107,6 +2119,7 @@ export function _wfsFetchBuildings(bbox4326) {
   var cfg = WFS_CONFIG[blId];
   var blName = blId.toUpperCase();
   showHint('⏳ Lade Gebäude vom Katasteramt (' + blName + ')…');
+  lsMeldung('Anfrage an ' + cfg.url.replace(/^https?:\/\//, '').split('/')[0] + ' …');
 
   var ctrl = new AbortController();
   var timer = setTimeout(function() { ctrl.abort(); }, 25000);
@@ -2517,6 +2530,7 @@ function _overpassSingleAttempt(query) {
     if (done) return;
     var lines = serverStatus.map(function(s, i) { return _overpassServerNames[i] + ': ' + s; });
     showHint('⏳ OSM-Laden (' + elapsed + 's)  —  ' + lines.join('  |  '));
+    lsUnter(lines);
   }
 
   return new Promise(function(resolve) {
@@ -2579,6 +2593,7 @@ export function _overpassFetchWithRetry(query) {
       if (_overpassCancelled) { resolve(null); return; }
       if (retryNum > 0) {
         showHint('🔁 Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ' — Server werden erneut angefragt…');
+        lsMeldung('Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ' — Server werden erneut angefragt');
       }
       _overpassSingleAttempt(query).then(function(data) {
         if (_overpassCancelled) { resolve(null); return; }
@@ -2587,6 +2602,7 @@ export function _overpassFetchWithRetry(query) {
         } else if (retryNum < MAX_RETRIES) {
           var wait = 2 + retryNum * 2; // 2s, 4s, 6s Pause
           showHint('⚠ Alle Server fehlgeschlagen — neuer Versuch in ' + wait + 's… (Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ')');
+          lsMeldung('Alle Server fehlgeschlagen — neuer Versuch in ' + wait + ' s (' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ')');
           setTimeout(function() { attempt(retryNum + 1); }, wait * 1000);
         } else {
           showHint('⚠ OSM-Server nicht erreichbar nach ' + (MAX_RETRIES + 1) + ' Versuchen — bitte Gebiet verkleinern oder später erneut versuchen');
@@ -2630,17 +2646,32 @@ export async function loadOsmBuildings(){
 
   let toAdd = [];
   let ausWfs = false;
+  let mitZusaetzen = false;
+
+  // Ladeübersicht (42-lade-status.js): alle Schritte dieses Imports als Liste
+  const quelle = ladeQuelle((bbox[0]+bbox[2])/2, (bbox[1]+bbox[3])/2);
+  const lauf = ladeStatusStart({ gebiet: { ring: snapArea }, bl: quelle.bl, kataster: quelle.kataster, lod2: quelle.lod2, optionen: osmImportOptionen() });
+  const ls = (id, zustand, info) => lsSchritt(id, zustand, info, lauf);
 
   try{
     // ── 1. WFS versuchen (amtliches Kataster, schnell & zuverlässig) ──
+    if (quelle.kataster) ls('kataster', 'laeuft', 'Anfrage an das Katasteramt …');
     const wfsData = await _wfsFetchBuildings(bbox);
     if (wfsData && wfsData.features && wfsData.features.length > 0) {
       toAdd = parseWfsGeoJson(wfsData, snapArea);
       ausWfs = toAdd.length > 0;
     }
+    if (quelle.kataster) {
+      if (ausWfs) ls('kataster', 'fertig', `${toAdd.length} Grundrisse erhalten`);
+      else ls('kataster', 'leer', wfsData ? 'Keine Gebäude im Plangebiet — weiter mit OpenStreetMap'
+        : 'Keine Antwort oder keine Gebäude — weiter mit OpenStreetMap');
+    }
+    if (ausWfs) ls('osm', 'uebersprungen', 'Nicht nötig — das Kataster hat geliefert');
 
     // ── 2. Overpass-Fallback (Bayern, Ausland, oder WFS leer) ──
     if (toAdd.length === 0) {
+      ls('osm', 'laeuft', 'Overpass-Server werden parallel angefragt …');
+      ls('dachform', 'uebersprungen', 'Nicht nötig — Dachform kommt mit den OSM-Gebäuden');
       const blId = _detectBundesland((bbox[0]+bbox[2])/2, (bbox[1]+bbox[3])/2);
       if (wfsData !== null) {
         showHint('⏳ WFS ohne Ergebnis — versuche OpenStreetMap…');
@@ -2660,39 +2691,55 @@ out body;>;out skel qt;`;
       if (data) {
         toAdd = parseOsmData(data, snapArea);
       }
+      if (!data) ls('osm', 'fehler', 'Overpass-Server nicht erreichbar (4 Versuche) — Gebiet verkleinern oder später erneut versuchen');
+      else ls('osm', toAdd.length ? 'fertig' : 'leer', toAdd.length ? `${toAdd.length} Gebäude erhalten` : 'Keine Gebäude im Gebiet');
     }
 
     // ── Kleinbauten (Dachaufbauten, Anbauten, Schuppen) nicht als eigenes Gebäude führen ──
     let kleinInfo = '';
     if (toAdd.length > 0) {
+      ls('klein', 'laeuft');
       const minFl = parseFloat(document.getElementById('osm-min-flaeche')?.value);
-      const bereinigt = bereinigeKleinbauten(toAdd, { minFlaecheM2: Number.isFinite(minFl) ? minFl : 30 });
+      const minM2 = Number.isFinite(minFl) ? minFl : 30;
+      const vorher = toAdd.length;
+      const bereinigt = bereinigeKleinbauten(toAdd, { minFlaecheM2: minM2 });
       toAdd = bereinigt.items;
       if (bereinigt.verworfen || bereinigt.angefuegt) {
         kleinInfo = ` (${bereinigt.verworfen} Kleinbauten verworfen, ${bereinigt.angefuegt} an Nachbargebäude angefügt)`;
       }
+      ls('klein', 'fertig', (bereinigt.verworfen || bereinigt.angefuegt)
+        ? `${vorher} → ${toAdd.length} Gebäude · ${bereinigt.verworfen} verworfen, ${bereinigt.angefuegt} angefügt (< ${minM2} m²)`
+        : `Nichts zu bereinigen (Grenze ${minM2} m²)`);
     }
 
     if(toAdd.length === 0){
       showHint('Keine neuen Gebäude gefunden');
       setTimeout(hideHint,3500);
+      lsRest('Keine Gebäude geladen', lauf);
       btn.classList.remove('loading');
       return;
     }
 
     // ── 3. Baujahr-Anreicherung aus externen Quellen (Hamburg KWP, NRW Energieatlas) ──
     const blIdForEnrich = _detectBundesland((bbox[0]+bbox[2])/2, (bbox[1]+bbox[3])/2);
+    ls('baujahr', 'laeuft');
     try {
       const enrichedCount = await _enrichBaujahrFromSources(bbox, blIdForEnrich, toAdd);
+      ls('baujahr', enrichedCount > 0 ? 'fertig' : 'leer', enrichedCount > 0
+        ? `Baujahr für ${enrichedCount} Gebäude ergänzt` : 'Keine Angaben gefunden — Baujahr aus den Grundrissdaten bzw. Standard');
       if (enrichedCount > 0) {
         showHint('✓ Baujahr für ' + enrichedCount + ' Gebäude angereichert — lade auf Karte…');
         await new Promise(r => setTimeout(r, 400));
       }
-    } catch (e) { console.warn('Baujahr-Anreicherung übersprungen:', e.message); }
+    } catch (e) {
+      console.warn('Baujahr-Anreicherung übersprungen:', e.message);
+      ls('baujahr', 'fehler', 'Abfrage fehlgeschlagen: ' + e.message);
+    }
 
     // Gebäude in Häppchen einfügen — Polygone erscheinen batch-weise auf der Karte
     const CHUNK = 20;
     const neue = [];
+    ls('einfuegen', 'laeuft', `0 / ${toAdd.length} Gebäude`);
     set_batchImporting(true);
     for(let i = 0; i < toAdd.length; i += CHUNK){
       toAdd.slice(i, i + CHUNK).forEach(opts => {
@@ -2708,9 +2755,11 @@ out body;>;out skel qt;`;
         }
       });
       showHint(`OSM: ${Math.min(i + CHUNK, toAdd.length)} / ${toAdd.length} Gebäude…`);
+      lsMeldung(`${Math.min(i + CHUNK, toAdd.length)} / ${toAdd.length} Gebäude`);
       await new Promise(r => setTimeout(r, 0));
     }
     set_batchImporting(false);
+    ls('einfuegen', 'fertig', `${neue.length} Gebäude angelegt (${ausWfs ? 'Kataster' : 'OpenStreetMap'})`);
 
     // Sofort Erfolgsmeldung + ausblenden
     showHint(`✓ ${toAdd.length} Gebäude geladen${kleinInfo}`);
@@ -2729,21 +2778,184 @@ out body;>;out skel qt;`;
     if (areaPolygon) { map.removeLayer(areaPolygon); }
     areaEditMarkers.forEach(m => map.removeLayer(m));
 
-    // Amtliche WFS-Grundrisse haben keine Dachform → aus OSM (roof:shape)
-    // nachtragen. Läuft im Hintergrund weiter; ein Fehler ändert am Import nichts.
-    if (ausWfs) {
+    // Zusätze aus dem Importdialog (Dachflächen, Straßen, Bäume) laufen nach
+    // den Gebäuden nacheinander; sie warten auf die Dachformen aus OSM, weil
+    // die Dachflächen aus der Dachform des Gebäudes entstehen.
+    const zusaetze = osmImportOptionen();
+    if (zusaetze.lod2 || zusaetze.dach || zusaetze.strassen || zusaetze.baeume) {
+      mitZusaetzen = true;
+      await new Promise(r => setTimeout(r, kleinInfo ? 3000 : 1200));
+      await _osmImportZusaetze(neue, ausWfs, zusaetze, lauf);
+    } else if (ausWfs) {
+      // Amtliche WFS-Grundrisse haben keine Dachform → aus OSM (roof:shape)
+      // nachtragen. Läuft im Hintergrund weiter; ein Fehler ändert am Import nichts.
+      ls('dachform', 'laeuft', 'Startet gleich im Hintergrund …');
       setTimeout(() => {
-        dachformenAusOsmErgaenzen({ gebaeude: neue, still: true })
-          .catch(e => console.warn('Dachformen aus OSM übersprungen:', e?.message || e));
+        _dachformSchritt(neue, lauf)
+          .catch(e => {
+            console.warn('Dachformen aus OSM übersprungen:', e?.message || e);
+            lsSchritt('dachform', 'fehler', 'Übersprungen: ' + (e?.message || e), lauf);
+          });
       }, kleinInfo ? 5200 : 2200);
     }
   }catch(err){
     set_batchImporting(false);
     showHint('⚠ Fehler: '+err.message);setTimeout(hideHint,4000);console.error(err);
+    _lsFehlerAbbruch(lauf, err);
   }
   btn.classList.remove('loading');
   // Sicherheit: Hint spätestens nach 3s ausblenden falls er hängenbleibt
-  setTimeout(function(){ const h=document.getElementById('hint'); if(h && !h.classList.contains('hidden') && (h.textContent.indexOf('geladen')>-1 || h.textContent.indexOf('Gebäude')>-1)) hideHint(); }, 3000);
+  // (nicht nach den Zusätzen — deren Zusammenfassung soll stehen bleiben)
+  if (!mitZusaetzen) setTimeout(function(){ const h=document.getElementById('hint'); if(h && !h.classList.contains('hidden') && (h.textContent.indexOf('geladen')>-1 || h.textContent.indexOf('Gebäude')>-1)) hideHint(); }, 3000);
+}
+
+/* ── Zusätze beim OSM-Import ──────────────────────────────────────────────
+   Haken im Importdialog (osm-panel und area-edit-panel tragen dieselben
+   Felder, Endung -area; osmImportOptionSync hält sie gleich). Die Wahl wird
+   im Browser gemerkt. */
+
+const _OSM_OPT_IDS = ['osm-opt-lod2', 'osm-opt-dach', 'osm-opt-strassen', 'osm-opt-strassen-sparte', 'osm-opt-baeume'];
+const _OSM_OPT_SPEICHER = 'mmh-osm-import-optionen';
+
+/** Haken des anderen Dialogs nachziehen und die Wahl merken. */
+export function osmImportOptionSync(el) {
+  if (!el?.id) return;
+  const partnerId = el.id.endsWith('-area') ? el.id.slice(0, -5) : `${el.id}-area`;
+  const partner = document.getElementById(partnerId);
+  if (partner) {
+    if (el.type === 'checkbox') partner.checked = el.checked;
+    else partner.value = el.value;
+  }
+  try { localStorage.setItem(_OSM_OPT_SPEICHER, JSON.stringify(osmImportOptionen())); } catch (e) { /* ohne Speicher */ }
+  ladeStatusVorschau();
+}
+
+/** Gemerkte Wahl in beide Dialoge eintragen (beim Start). */
+export function osmImportOptionenLaden() {
+  let w = null;
+  try { w = JSON.parse(localStorage.getItem(_OSM_OPT_SPEICHER) || 'null'); } catch (e) { w = null; }
+  if (!w) return;
+  const setzen = (id, v) => {
+    for (const el of [document.getElementById(id), document.getElementById(`${id}-area`)]) {
+      if (!el) continue;
+      if (el.type === 'checkbox') el.checked = !!v; else if (v) el.value = v;
+    }
+  };
+  setzen('osm-opt-lod2', w.lod2);
+  setzen('osm-opt-dach', w.dach);
+  setzen('osm-opt-strassen', w.strassen);
+  setzen('osm-opt-strassen-sparte', w.sparte);
+  setzen('osm-opt-baeume', w.baeume);
+}
+
+/** @returns {{lod2:boolean, dach:boolean, strassen:boolean, sparte:string, baeume:boolean}} */
+export function osmImportOptionen() {
+  const an = id => !!document.getElementById(id)?.checked;
+  return {
+    lod2: an('osm-opt-lod2'),
+    dach: an('osm-opt-dach'),
+    strassen: an('osm-opt-strassen'),
+    sparte: document.getElementById('osm-opt-strassen-sparte')?.value || 'strom',
+    baeume: an('osm-opt-baeume'),
+  };
+}
+
+/** Laufenden Schritt als Fehler markieren, alles Offene als abgebrochen (Ladeübersicht). */
+function _lsFehlerAbbruch(lauf, err) {
+  // lsSchritt ohne Laufnummer trifft nur den Schritt, der gerade läuft
+  for (const id of ['kataster', 'osm', 'klein', 'baujahr', 'einfuegen', 'lod2', 'dachform', 'dach', 'strassen', 'baeume']) {
+    lsSchritt(id, 'fehler', 'Fehler: ' + (err?.message || err));
+  }
+  lsRest('Abgebrochen nach Fehler', lauf);
+}
+
+/** Dachformen aus OSM als Schritt der Ladeübersicht. */
+async function _dachformSchritt(neue, lauf) {
+  lsSchritt('dachform', 'laeuft', 'Dachangaben (roof:shape) in OpenStreetMap suchen …', lauf);
+  const n = await dachformenAusOsmErgaenzen({ gebaeude: neue, still: true });
+  lsSchritt('dachform', n > 0 ? 'fertig' : 'leer', n > 0
+    ? `Dachform für ${n} von ${neue.length} Gebäuden übernommen` : 'Keine passenden Dachangaben in OSM — Standard-Dachform', lauf);
+  return n;
+}
+
+async function _osmImportZusaetze(neue, ausWfs, opt, lauf) {
+  const meldungen = [`✓ ${neue.length} Gebäude`];
+  const ls = (id, zustand, info) => lsSchritt(id, zustand, info, lauf);
+  // LoD2 zuerst: Gebäude mit amtlichem Dach brauchen weder OSM-Dachform noch
+  // Dachflächen aus dem Grundriss (beide überspringen dachQuelle 'lod2')
+  if (opt.lod2) {
+    ls('lod2', 'laeuft', 'Landesdienst anfragen …');
+    showHint('⏳ 3D-Dachflächen (LoD2) vom Landesdienst laden …', 0);
+    try {
+      const r = await window.lod2BeimImport?.(neue, { meldung: lsMeldung });
+      if (!r) ls('lod2', 'uebersprungen', 'Kein automatischer Dienst für dieses Land');
+      else {
+        meldungen.push(`${r.gebaeude} Gebäude mit LoD2-Dach`);
+        ls('lod2', r.gebaeude ? 'fertig' : 'leer', (r.gebaeude
+          ? `${r.gebaeude} Gebäude · ${r.flaechen} Dachflächen (${r.dienst.name})` : `Keine LoD2-Dächer im Gebiet (${r.dienst.name})`)
+          + (r.ohneLod2 ? ` · ${r.ohneLod2} ohne LoD2-Dach` : '')
+          + (r.fehler ? ` · ⚠ ${r.fehler} von ${r.anfragen} Anfragen ohne Antwort` : ''));
+      }
+    } catch (e) {
+      console.error('LoD2 beim Import', e);
+      meldungen.push('⚠ LoD2 nicht geladen');
+      ls('lod2', 'fehler', 'Landesdienst nicht erreichbar: ' + (e?.message || e));
+    }
+  }
+  // Dachform aus OSM für die übrigen — die Dachflächen entstehen aus ihr
+  if (ausWfs) {
+    try { await _dachformSchritt(neue, lauf); }
+    catch (e) {
+      console.warn('Dachformen aus OSM übersprungen:', e?.message || e);
+      ls('dachform', 'fehler', 'Übersprungen: ' + (e?.message || e));
+    }
+  }
+  if (opt.dach) {
+    if (typeof window.dachGrundrissStill === 'function') {
+      showHint('⏳ Dachflächen aus den Grundrissen berechnen …', 0);
+      ls('dach', 'laeuft', `${neue.length} Grundrisse …`);
+      await new Promise(r => setTimeout(r, 30));
+      try {
+        const d = window.dachGrundrissStill(neue);
+        meldungen.push(`${d.anzahl} Dächer aus Grundriss` + (d.schief ? ` (${d.schief} Grundrisse zu schräg — einfaches Dachmodell)` : ''));
+        ls('dach', d.anzahl ? 'fertig' : 'leer', `${d.anzahl} Dächer berechnet` + (d.schief ? ` · ${d.schief} zu schräg (einfaches Dachmodell)` : ''));
+      } catch (e) {
+        console.error('Dachflächen aus Grundriss', e);
+        meldungen.push('⚠ Dachflächen nicht berechnet');
+        ls('dach', 'fehler', 'Nicht berechnet: ' + (e?.message || e));
+      }
+    } else ls('dach', 'uebersprungen', 'Modul nicht geladen');
+  }
+  if (opt.strassen) {
+    const domains = opt.sparte === 'beide' ? ['waerme', 'strom'] : [opt.sparte === 'waerme' ? 'waerme' : 'strom'];
+    const sparte = domains.length > 1 ? 'Wärme- und Elektro' : domains[0] === 'waerme' ? 'Wärme' : 'Elektro';
+    let n = 0;
+    ls('strassen', 'laeuft', 'Straßen aus OpenStreetMap laden …');
+    try {
+      const geladen = await window.loadOsmStrassen?.();
+      if (geladen) n = window.osmStrassenAlsTrassen?.(domains) || 0;
+      window.clearOsmStrassen?.();
+      meldungen.push(geladen ? `${n} Straßen als ${sparte}trassen`
+        : '⚠ Straßen nicht geladen (OSM nicht erreichbar)');
+      if (geladen) ls('strassen', n ? 'fertig' : 'leer', `${geladen} Straßenzüge geladen · ${n} als ${sparte}trassen übernommen`);
+      else ls('strassen', 'fehler', 'Nicht geladen — OSM nicht erreichbar oder keine Straßen im Gebiet');
+    } catch (e) {
+      console.error('Straßen als Trassen', e);
+      meldungen.push('⚠ Straßen nicht übernommen');
+      ls('strassen', 'fehler', 'Nicht übernommen: ' + (e?.message || e));
+    }
+  }
+  if (opt.baeume) {
+    if (typeof window.baumOsmUebernehmen === 'function') {
+      showHint('⏳ Bäume aus OpenStreetMap laden …', 0);
+      ls('baeume', 'laeuft', 'Verbinde …');
+      const n = await window.baumOsmUebernehmen();
+      meldungen.push(n == null ? '⚠ Bäume nicht geladen' : `${n.toLocaleString('de-DE')} Bäume`);
+      ls('baeume', n == null ? 'fehler' : n ? 'fertig' : 'leer',
+        n == null ? 'Nicht geladen — OSM nicht erreichbar oder abgebrochen' : `${n.toLocaleString('de-DE')} Bäume übernommen`);
+    } else ls('baeume', 'uebersprungen', 'Modul nicht geladen');
+  }
+  showHint(meldungen.join(' · '), 9000);
 }
 
 /**
@@ -2776,6 +2988,7 @@ export async function dachformenAusOsmErgaenzen(opts = {}) {
   try { data = await _overpassFetchWithRetry(query); } catch (err) { data = null; }
   if (!data) {
     showHint('OpenStreetMap nicht erreichbar — Dachformen nicht ergänzt.'); setTimeout(hideHint, 4000);
+    lsSchritt('dachform', 'fehler', 'OpenStreetMap nicht erreichbar — Dachformen nicht ergänzt');
     return 0;
   }
   const treffer = osmDachZuordnen(kandidaten, osmDachGebaeude(data));

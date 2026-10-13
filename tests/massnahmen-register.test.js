@@ -182,3 +182,45 @@ describe('Dringlichkeit', () => {
     expect(mrDringlichkeit({ jahr: 2040 }, 2026)).toBe('lang');
   });
 });
+
+describe('mrAbgleich — Cluster-Pakete', () => {
+  const paket = (geb, typ = 'Sanierung', extra = {}) => w('gebaeude', geb, { id: `clm_${geb}_${typ}`, titel: `${typ} Cluster D`, typ, status: 'geplant', jahr: 2032, kosten: 0, clusterId: 'cD', clusterName: 'D', ...extra }, 'Gebäude');
+
+  it('bündelt alle Gebäude eines Pakets zu einer Maßnahme, je Art getrennt', () => {
+    const reg = [];
+    const ws = [paket('g1'), paket('g2'), paket('g3'), paket('g1', 'Abriss')];
+    mrAbgleich(reg, ws, { neueId: ids() });
+    expect(reg).toHaveLength(2);
+    const san = reg.find(e => e.art === 'Sanierung');
+    expect(san).toMatchObject({ mehrfach: true, anlass: { quelle: 'cluster', ref: 'cD' } });
+    expect(san._wirkung).toHaveLength(3);
+    expect(new Set(ws.slice(0, 3).map(x => x.m.massnahmeRef))).toEqual(new Set([san.id]));
+  });
+
+  it('führt bereits einzeln übernommene Paket-Maßnahmen zusammen (kleinste Nummer, Kosten summiert)', () => {
+    const reg = [];
+    const ws = [paket('g1', 'Sanierung', { kosten: 1000 }), paket('g2', 'Sanierung', { kosten: 2000 })];
+    // Stand nach Schritt 2a: je Gebäude ein Eintrag — hier ohne clusterId simuliert und danach markiert
+    const ohne = ws.map(x => ({ ...x, m: Object.assign(x.m, { clusterId: undefined }) }));
+    mrAbgleich(reg, ohne, { neueId: ids() });
+    expect(reg).toHaveLength(2);
+    const nrErste = Math.min(...reg.map(e => e.nr));
+    ws.forEach(x => { x.m.clusterId = 'cD'; });
+    const r = mrAbgleich(reg, ws, { neueId: ids() });
+    expect(r.zusammengefuehrt).toBe(1);
+    expect(reg).toHaveLength(1);
+    expect(reg[0]).toMatchObject({ nr: nrErste, mehrfach: true, kosten: { investEur: 3000 } });
+  });
+
+  it('ein neu angewendetes Paket behält seine Maßnahme; ein neues Mitglied kommt dazu', () => {
+    const reg = [];
+    mrAbgleich(reg, [paket('g1'), paket('g2')], { neueId: ids() });
+    const id = reg[0].id;
+    reg[0].kosten.investEur = 50000;   // im Cluster-Panel eingetragen
+    const neu = [paket('g1', 'Sanierung', { jahr: 2034 }), paket('g2', 'Sanierung', { jahr: 2034 }), paket('g4', 'Sanierung', { jahr: 2034 })];
+    mrAbgleich(reg, neu, { neueId: ids() });
+    expect(reg).toHaveLength(1);
+    expect(reg[0]).toMatchObject({ id, jahr: 2034, kosten: { investEur: 50000 } });
+    expect(reg[0]._wirkung).toHaveLength(3);
+  });
+});

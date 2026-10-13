@@ -19,8 +19,15 @@
 //      denen eine Flügelebene oben liegt — exakt als Polygone berechnet.
 //
 // Rein, ohne DOM/Karte. Koordinaten lokal in Metern: x Ost, y Nord.
+// dachAusGrundrissGebaeude macht dasselbe für ein Gebäude (Grundriss in lat/lng,
+// Dachangaben am Gebäude) und liefert die Datenform des LoD2-Imports.
+
+import { richteRechtwinklig } from './gebaeude-geometrie.js';
+import { d3dRahmen } from './dach-3d.js';
 
 const RAD = Math.PI / 180;
+/** Vorgabeneigung je Dachform — wie getDachDefaultNeigung in 03c. */
+const NEIGUNG_VORGABE = { flach: 5, sattel: 35, walm: 30, pult: 15 };
 const EPS = 1e-6;
 
 /* ── kleine Geometrie ──────────────────────────────────────────────────────── */
@@ -405,4 +412,39 @@ export function dachAusGrundriss(grundriss, opt = {}) {
 
   const firstH = flaechen.reduce((m, f) => Math.max(m, ...f.ring.map(p => p[2])), traufe);
   return { flaechen, waende, firstH, fluegel: fl.fluegel || 1 };
+}
+
+/**
+ * Dachflächen aus dem Grundriss eines Gebäudes — Datenform wie der LoD2-Import
+ * (g.dachFlaechen + g.dachLod2 mit quelle 'grundriss'). null, wenn der Grundriss
+ * nicht rechtwinklig genug ist (schräge Kanten, Rundungen) — dann bleibt das
+ * Ein-Dach-Modell. Genutzt von 37 (Knopf, Nachführen), der 3D-Ansicht und der
+ * Verschattung (Höhe von Nachbargebäuden) sowie der automatischen Belegung.
+ * @param {{polygon:{lat:number,lng:number}[], dachform?:string, dachNeigung?:number|null,
+ *   dachAzimut?:number|null, dachAutoAzimut?:boolean, stockwerke?:any}} g
+ * @returns {null | {dachFlaechen:any[], lod2:any, fluegel:number}}
+ */
+export function dachAusGrundrissGebaeude(g) {
+  if (!Array.isArray(g?.polygon) || g.polygon.length < 3) return null;
+  const r = richteRechtwinklig(g.polygon.map(p => ({ lat: p.lat, lng: p.lng })));
+  if (!r || r.diagonaleKanten > 0 || r.abweichungProzent > 5) return null;
+  let la = 0, ln = 0;
+  for (const p of r.coords) { la += p.lat; ln += p.lng; }
+  const rahmen = d3dRahmen(ln / r.coords.length, la / r.coords.length);
+  const form = ['sattel', 'walm', 'pult', 'flach'].includes(g.dachform) ? g.dachform : 'sattel';
+  const traufe = Math.max(1, Math.min(60, parseInt(g.stockwerke, 10) || 1)) * 3;
+  const azimut = form === 'pult' ? (g.dachAzimut ?? null)
+    : (g.dachAzimut != null && !g.dachAutoAzimut ? g.dachAzimut : null);
+  const d = dachAusGrundriss(r.coords.map(p => rahmen.nachXY(p.lng, p.lat)), {
+    form, neigung: form === 'flach' ? 0 : (g.dachNeigung ?? NEIGUNG_VORGABE[form] ?? 35), traufe, azimut,
+  });
+  if (!d || !d.flaechen.length) return null;
+  const ll = q => { const [lng, lat] = rahmen.nachLL(q[0], q[1]); return [lat, lng, Math.round(q[2] * 100) / 100]; };
+  return {
+    dachFlaechen: d.flaechen.map((f, i) => ({ id: i + 1, punkte: f.ring.map(ll), neigung: f.neigung, azimut: f.azimut,
+      grundM2: f.grundM2, flaecheM2: Math.round(f.grundM2 / Math.cos(f.neigung * RAD) * 10) / 10 })),
+    lod2: { quelle: 'grundriss', gmlId: null, traufeM: traufe, firstM: Math.round(d.firstH * 100) / 100,
+      bodenGeschaetzt: false, waende: d.waende.map(w => w.map(ll)) },
+    fluegel: d.fluegel,
+  };
 }

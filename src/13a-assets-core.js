@@ -2,11 +2,11 @@
 // Datenstruktur & CRUD für Anlagen. Neutral benannt (ASSETS, nicht EL.assets),
 // damit Wärme-Erzeuger später in dasselbe System einziehen können.
 
-import { globalYear, massnahmeJahr, schichtFuerNeuesObjekt, baujahrFuerNeuesObjekt, activeVariantId } from './01-globals-varianten.js';
+import { globalYear, massnahmeJahr, schichtFuerNeuesObjekt, baujahrFuerNeuesObjekt, basisJahr, activeVariantId } from './01-globals-varianten.js';
 import { createId } from './lib/util.js';
 import { bildeAssetName, deuteAltenNamen, deuteNamensEingabe } from './lib/asset-namen.js';
-import { istSchicht, SCHICHT } from './lib/schichten.js';
-import { kategorieFuerAsset, massnahmeGiltIn, variantKey } from './lib/varianten-regeln.js';
+import { istSchicht, normSchicht, SCHICHT } from './lib/schichten.js';
+import { baujahrVomGebaeude, istGeerbtesAltBaujahr, kategorieFuerAsset, massnahmeGiltIn, variantKey } from './lib/varianten-regeln.js';
 
 // ── Asset-Typ-Katalog ──────────────────────────────────────────────────────
 // domain: 'strom' | 'waerme' | 'hybrid' (z.B. WP, BHKW später)
@@ -236,22 +236,27 @@ export function createAsset(type, lat, lng, opts = {}) {
   // Planungsschicht ebenso: explizit (Wiederherstellung) > Gebäude > Eingabemodus.
   // Ein Asset an einem geplanten Neubau gehört zur selben Schicht wie das Gebäude.
   let schicht    = istSchicht(opts.schicht) ? opts.schicht : null;
-  if (opts.buildingId && (!baujahr || !abrissjahr || !schicht)) {
-    const geb = (typeof window !== 'undefined' && window.gebaeude)
-      ? window.gebaeude.find(g => g.id === opts.buildingId) : null;
-    if (geb) {
-      if (!baujahr    && geb.baujahr)    baujahr    = geb.baujahr;
-      if (!abrissjahr && geb.abrissjahr) abrissjahr = geb.abrissjahr;
-      if (!schicht    && istSchicht(geb.schicht)) schicht = geb.schicht;
-    }
+  const geb = (opts.buildingId && typeof window !== 'undefined' && window.gebaeude)
+    ? window.gebaeude.find(g => g.id === opts.buildingId) || null : null;
+  if (geb) {
+    if (!abrissjahr && geb.abrissjahr) abrissjahr = geb.abrissjahr;
+    // Nur die Schicht eines GEPLANTEN Gebäudes geht über — ein Bestandsgebäude macht eine im Planjahr
+    // gesetzte Anlage nicht zum Bestand (sonst Bestand + Baujahr des Altbaus, s. Regel unten).
+    // opts.schichtWieGebaeude: Grundausstattung des Gebäudes (UV, Verbraucher) folgt ihm immer, auch im Bestand.
+    if (!schicht && istSchicht(geb.schicht) && (geb.schicht !== SCHICHT.BESTAND || opts.schichtWieGebaeude)) schicht = geb.schicht;
   }
   // Sonst aus Slider-Jahr und Anlagenart ableiten (Verbraucher = Bedarf, Rest =
-  // Planungsentscheidung); ein in der Zukunft gesetztes Objekt bekommt das
-  // Slider-Jahr als Baujahr.
+  // Planungsentscheidung).
   const neuAngelegt = !opts.id && !istSchicht(opts.schicht);
-  if (!schicht) {
-    schicht = schichtFuerNeuesObjekt(kategorieFuerAsset(cfg.kategorie));
-    if (!baujahr && schicht !== SCHICHT.BESTAND) baujahr = baujahrFuerNeuesObjekt();
+  if (!schicht) schicht = schichtFuerNeuesObjekt(kategorieFuerAsset(cfg.kategorie));
+  // Baujahr erst nach der Schicht: Bestand übernimmt das Gebäude-Baujahr, ein geplantes Objekt nur das
+  // eines Neubaus (lib/varianten-regeln.js) — sonst das Slider-Jahr, wenn es in der Zukunft liegt.
+  if (!baujahr) {
+    baujahr = baujahrVomGebaeude({ schicht, gebBaujahr: geb?.baujahr, basisjahr: basisJahr() });
+    if (!baujahr && neuAngelegt && schicht !== SCHICHT.BESTAND) baujahr = baujahrFuerNeuesObjekt();
+  } else if (opts.id && istGeerbtesAltBaujahr({ schicht, baujahr, gebBaujahr: geb?.baujahr, basisjahr: basisJahr() })) {
+    // Altstand: früher fälschlich vom Bestandsgebäude geerbt (z. B. geplante PV mit Baujahr 1970)
+    baujahr = null;
   }
 
   const asset = {
@@ -284,6 +289,21 @@ export function createAsset(type, lat, lng, opts = {}) {
   // Rückmeldung „wo ist das gelandet?“ — nur für frisch angelegte Objekte.
   if (neuAngelegt && typeof window !== 'undefined') window.variantenNeuMeldung?.(asset);
   return asset;
+}
+
+/**
+ * Planungsschicht eines Assets nachträglich setzen (Inspektor, Sammeländerung, Excel). Wird ein Bestandsobjekt
+ * zum geplanten, verliert es ein vom Bestandsgebäude geerbtes Baujahr — ein geplantes Objekt mit Baujahr 1970
+ * erschiene sonst im Gutachten als Investition 1970. Ohne Baujahr ist es wie vorher ab sofort aktiv.
+ */
+export function setzeAssetSchicht(asset, schicht) {
+  if (!asset) return;
+  asset.schicht = normSchicht(schicht);
+  if (asset.baujahr == null) return;
+  const geb = _gebaeudeZu(asset.buildingId);
+  if (istGeerbtesAltBaujahr({ schicht: asset.schicht, baujahr: asset.baujahr, gebBaujahr: geb?.baujahr, basisjahr: basisJahr() })) {
+    asset.baujahr = null;
+  }
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  variantKey, kategorieFuerAsset, schichtFuerNeu, baujahrFuerNeu, wirkungAusSchicht,
+  variantKey, kategorieFuerAsset, schichtFuerNeu, baujahrFuerNeu, baujahrVomGebaeude, istGeerbtesAltBaujahr, wirkungAusSchicht,
   massnahmeStandardVariante, massnahmeGiltIn, massnahmenHerausnehmen, massnahmenEinsetzen,
   waermeGeometrie, geometrieGleich, netzMitGeometrie,
   pvBelegungErfassen, pvBelegungAnwenden,
@@ -28,6 +28,24 @@ describe('Schicht neuer Objekte', () => {
   it('Baujahr = Slider-Jahr nur in der Zukunft', () => {
     expect(baujahrFuerNeu({ jahr: 2032, basisjahr: 2026 })).toBe(2032);
     expect(baujahrFuerNeu({ jahr: 2026, basisjahr: 2026 })).toBeNull();
+  });
+  it('Gebäude-Baujahr: Bestand übernimmt es, Geplantes nur von einem Neubau', () => {
+    expect(baujahrVomGebaeude({ schicht: SCHICHT.BESTAND, gebBaujahr: 1970, basisjahr: 2026 })).toBe(1970);
+    expect(baujahrVomGebaeude({ schicht: undefined, gebBaujahr: '1970', basisjahr: 2026 })).toBe(1970);
+    // geplante PV auf einem Gebäude von 1970 → kein Baujahr 1970 (sonst „Investition 1970" im Gutachten)
+    expect(baujahrVomGebaeude({ schicht: SCHICHT.ENTSCHEIDUNG, gebBaujahr: 1970, basisjahr: 2026 })).toBeNull();
+    expect(baujahrVomGebaeude({ schicht: SCHICHT.ENTWICKLUNG, gebBaujahr: 1970, basisjahr: 2026 })).toBeNull();
+    expect(baujahrVomGebaeude({ schicht: SCHICHT.ENTWICKLUNG, gebBaujahr: 2029, basisjahr: 2026 })).toBe(2029);
+    expect(baujahrVomGebaeude({ schicht: SCHICHT.ENTSCHEIDUNG, gebBaujahr: 2026, basisjahr: 2026 })).toBe(2026);
+    expect(baujahrVomGebaeude({ schicht: SCHICHT.BESTAND, gebBaujahr: null, basisjahr: 2026 })).toBeNull();
+  });
+  it('Altstand: geplantes Objekt mit geerbtem vergangenen Gebäude-Baujahr erkennen', () => {
+    expect(istGeerbtesAltBaujahr({ schicht: SCHICHT.ENTSCHEIDUNG, baujahr: 1970, gebBaujahr: 1970, basisjahr: 2026 })).toBe(true);
+    expect(istGeerbtesAltBaujahr({ schicht: SCHICHT.ENTSCHEIDUNG, baujahr: '1970', gebBaujahr: '1970', basisjahr: 2026 })).toBe(true);
+    expect(istGeerbtesAltBaujahr({ schicht: SCHICHT.BESTAND, baujahr: 1970, gebBaujahr: 1970, basisjahr: 2026 })).toBe(false);
+    expect(istGeerbtesAltBaujahr({ schicht: SCHICHT.ENTSCHEIDUNG, baujahr: 2030, gebBaujahr: 1970, basisjahr: 2026 })).toBe(false);
+    expect(istGeerbtesAltBaujahr({ schicht: SCHICHT.ENTSCHEIDUNG, baujahr: 2028, gebBaujahr: 2028, basisjahr: 2026 })).toBe(false);
+    expect(istGeerbtesAltBaujahr({ schicht: SCHICHT.ENTSCHEIDUNG, baujahr: 1985, gebBaujahr: 1970, basisjahr: 2026 })).toBe(false);
   });
   it('Wirkung: nur Entscheidungen sind variantenspezifisch', () => {
     expect(wirkungAusSchicht(SCHICHT.ENTSCHEIDUNG)).toBe('variante');
