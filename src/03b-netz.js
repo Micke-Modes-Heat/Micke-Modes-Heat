@@ -3273,7 +3273,9 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
   const dpService = readNum('netz-dp-service',250,50,500);
   const uBase = readNum('netz-u-wert',0.25,0.05,2);
   const soilMean = readNum('netz-t-mittel',10,-20,30);
-  const meanPipeTemp = (vlTemp + rlTemp) / 2;
+  // Wärmeverluste der Varianten mit den Netztemperaturen des Basisjahres (Hydraulik mit der kleinsten Spreizung)
+  const tBasis = netzTemperaturen(WAERME_NETZ_BASISJAHR);
+  const meanPipeTemp = (tBasis.vl + tBasis.rl) / 2;
   const heatPrice = 80; // konservativer Fallback, solange keine belastbaren WGK vorliegen
   const electricityPrice = readNum('wirt-p-strom',35,0,200) / 100;
   // Pumpenenergie: äquivalente Volllaststunden der drehzahlgeregelten Pumpe aus dem Lastgang (kubisch, mind. 10 %);
