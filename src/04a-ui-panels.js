@@ -1083,7 +1083,7 @@ export function showEdgePopup(e, mouseEvt) {
     .map(dn => `<option value="${dn}" ${e.dn===dn?'selected':''}>${dn===0?'Auto':'DN '+dn}</option>`)
     .join('');
 
-  const kostKlasse = e.kostKlasse || 'mittel';
+  const kostKlasse = e.kostKlasse || window.kostenSzenarioAktuell?.() || 'mittel';
   const kostAuto   = !e.kostOverride;
   popup.innerHTML = `
     <div class="edge-popup-title">
@@ -1113,7 +1113,7 @@ export function showEdgePopup(e, mouseEvt) {
       <span>Last: <span style="color:var(--text)">${(e.load||0).toFixed(1)} kW</span>${e._gzf < 1 ? ` <span style="color:var(--muted);font-size:9px">(GZF ${e._gzf.toFixed(2)})</span>` : ''}</span>
       <span>Länge: <span style="color:var(--text)">${Math.round(e.length||0)} m</span></span>
       <span>WLD: <span style="color:${getWLDColor(getWLD(e))}">${getWLD(e).toFixed(2)} MWh/(m·a)</span></span>
-      <span>Kosten: <span style="color:#4fc3f7">${Math.round((getKostenProMKlasse(e.dn, e.kostKlasse||'mittel'))*(e.length||0)).toLocaleString('de-DE')} €</span></span>
+      <span>Kosten: <span style="color:#4fc3f7">${Math.round((getKostenProMKlasse(e.dn, e.kostKlasse||window.kostenSzenarioAktuell?.()||'mittel'))*(e.length||0)).toLocaleString('de-DE')} €</span></span>
     </div>
     ${e.buildingConflict ? `<div style="margin-top:7px;padding:6px 8px;border:1px solid rgba(249,168,37,.55);border-radius:5px;background:rgba(249,168,37,.1);color:#ffd180;font-size:9px;line-height:1.45;">
       ⚠ Automatischer Rückfall: Dieser Verlauf kreuzt einen Gebäudegrundriss. Das Netz wäre ohne diesen Abschnitt nicht vollständig verbunden. Bitte den Abschnitt bei Bedarf manuell umlegen.
@@ -1835,13 +1835,15 @@ export function updateLpNetzSummary() {
     return;
   }
   if (hint) hint.style.display = 'none';
+  // Aktive Leitungen; Verlust im Betrieb; Wärmeliniendichte = Wärmeabsatz der angeschlossenen Gebäude im Jahr / Trassenlänge
   let totalLen = 0, totalLoss = 0;
-  netzEdges.forEach(e => { totalLen += (e.length || 0); totalLoss += (e.lossKW_annual || 0); });
-  const lossMWh = totalLoss * 8.76;
-  const connIds = new Set(netzEdges.flatMap(e => [e.u, e.v]));
-  const connGeb = gebaeude.filter(g => connIds.has(g.id));
-  const totalW = connGeb.reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
-  const wld = totalLen > 0 ? ((totalW + lossMWh) / (totalLen / 1000)).toFixed(1) : '—';
+  netzEdges.forEach(e => { if (e.pruned) return; totalLen += (e.length || 0); totalLoss += (e.lossKW_annual || 0); });
+  const lossMWh = totalLoss * 8.76 * (window.netzBetriebsAnteil?.() ?? 1);
+  const connIds = new Set(netzEdges.filter(e => !e.pruned).flatMap(e => [e.u, e.v]));
+  const zentralen = window.netzZentralenIds?.() || [];
+  const connGeb = gebaeude.filter(g => connIds.has(g.id) && !zentralen.includes(g.id) && !(window.isExcluded?.(g.id)));
+  const totalW = typeof window.netzVerbrauchMwh === 'function' ? window.netzVerbrauchMwh() : connGeb.reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
+  const wld = totalLen > 0 ? (totalW / (totalLen / 1000)).toFixed(1) : '—';
   const pct = (totalW + lossMWh) > 0 ? (lossMWh / (totalW + lossMWh) * 100).toFixed(1) + ' %' : '—';
   setVal('lp-netz-laenge', (totalLen).toFixed(0) + ' m');
   setVal('lp-netz-verluste', lossMWh.toFixed(1) + ' MWh/a');

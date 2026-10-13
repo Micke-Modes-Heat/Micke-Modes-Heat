@@ -34,6 +34,8 @@ export const GL_MONTH_HOURS = [744,672,744,720,744,720,744,744,720,744,720,744];
 
 export let gbiData = [];        // parsed CSV rows as objects
 export let gbiColumns = {};     // {name:colIdx, nutzung:colIdx, baujahr:colIdx, zustand:colIdx, flaeche:colIdx}
+/** Spaltenzuordnung von Hand ändern (Auswahl im Import-Dialog). */
+export function gbiSpalteSetzen(key, idx) { gbiColumns[key] = Number.isFinite(idx) ? idx : -1; }
 export let gbiHeaders = [];     // raw CSV headers
 export let gbiRawRows = [];     // raw CSV rows (arrays)
 export let gbiMatches = [];     // [{csvIdx, gebId, score, status:'auto'|'manual'|'rejected'}]
@@ -152,7 +154,7 @@ export function gbiShowMapping() {
   var html = '';
   fields.forEach(function(f) {
     html += '<div class="inp-group"><label class="inp-label">' + f.label + '</label>'
-      + '<select class="inp-field" id="gbi-col-' + f.key + '" data-change="gbiColumns[\'' + f.key + '\']=parseInt(this.value)">'
+      + '<select class="inp-field" id="gbi-col-' + f.key + '" data-change="gbiSpalteSetzen(\'' + f.key + '\', parseInt(this.value))">'
       + opts.replace('value="' + gbiColumns[f.key] + '"', 'value="' + gbiColumns[f.key] + '" selected')
       + '</select></div>';
   });

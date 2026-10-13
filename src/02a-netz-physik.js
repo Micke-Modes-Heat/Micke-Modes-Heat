@@ -16,6 +16,8 @@ export const standardDNs = [15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 
 
 export let kostenSzenario = 'mittel'; // 'niedrig' | 'mittel' | 'hoch'
 export function setKostenSzenario(v) { kostenSzenario = v; }
+/** Kostenszenario für Leitungen ohne eigene Kostenklasse (Auswahl im Netz-Panel). */
+export function kostenSzenarioAktuell() { return kostenSzenario; }
 export let netzColorMode = 'wld'; // 'wld' | 'temp' | 'dn' | 'auslastung' | 'abkuehlung'
 
 export function getKostenProM(dn, edgeKlasse) {
@@ -83,10 +85,12 @@ export function getNetzVBH() {
 }
 
 export function getWLD(edge) {
-  // Wärmeliniendichte in MWh/(m·a) = Jahreswärme der angeschlossenen Abnehmer / Trassenlänge
-  const VBH = getNetzVBH();
+  // Wärmeliniendichte in MWh/(m·a) = Jahreswärme der nachgelagerten Abnehmer (Netzberechnung, mit Sanierung und
+  // Status) / Länge des Abschnitts; vor der ersten Netzberechnung Näherung Σ Normheizlast × Vollbenutzungsstunden
   if (!edge.length || edge.length <= 0) return 0;
-  const waerme_mwh = ((edge.loadRaw || edge.load) * VBH) / 1000; // kW * h / 1000 = MWh
+  const waerme_mwh = Number.isFinite(edge.waermeMwh) && edge.waermeMwh > 0
+    ? edge.waermeMwh
+    : ((edge.loadRaw || edge.load) * getNetzVBH()) / 1000; // kW * h / 1000 = MWh
   return waerme_mwh / edge.length;
 }
 

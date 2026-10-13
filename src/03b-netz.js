@@ -72,12 +72,7 @@ export function toggleGeoPanel() {
 }
 
 export function geoUseNetworkValues() {
-  const zId = parseInt(document.getElementById('netz-zentrale').value);
-  const lastKw = window.calculatedLoad && window.calculatedLoad[zId] ? window.calculatedLoad[zId] : 0;
-  const connectedIds = new Set(window.netzEdges.flatMap(e => [e.u, e.v]));
-  const verbrauchMWh = gebaeude.filter(g => connectedIds.has(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
-  const lossAnnual = window.netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0);
-  const erzeugungMWh = verbrauchMWh + lossAnnual * 8.76;
+  const { kw: lastKw, mwh: erzeugungMWh } = netzErzeugerVorgabe();
   if (lastKw > 0) document.getElementById('geo-heizlast').value = Math.round(lastKw);
   if (erzeugungMWh > 0) document.getElementById('geo-waerme').value = Math.round(erzeugungMWh);
   calcGeoThermie();
@@ -1157,11 +1152,9 @@ export function netzWorkspaceAktualisieren() {
     ? `${status.offen} Gebäude ohne Anschluss · Griff auf einen Netzstrang ziehen`
     : 'Griff eines Gebäudes auf einen anderen Netzstrang ziehen';
   // ④ Bewertung
-  // Wärmeliniendichte wie in der Kennwertliste: (Wärme angeschlossener Gebäude + Netzverluste) / Trassenlänge
+  // Wärmeliniendichte wie in der Kennwertliste: Wärmeabsatz der angeschlossenen Gebäude im Jahr / Trassenlänge
   const kenn = _netzKennzahlen();
-  const verbunden = new Set((window.netzEdges || []).flatMap(edge => [edge.u, edge.v]));
-  const waermeMwh = gebaeude.filter(building => verbunden.has(building.id)).reduce((summe, building) => summe + (parseFloat(building.waerme) || 0), 0);
-  const wld = kenn.laengeM > 0 ? (waermeMwh + kenn.verlustMwh) / (kenn.laengeM / 1000) : 0;
+  const wld = kenn.laengeM > 0 ? netzVerbrauchMwh(globalYear) / (kenn.laengeM / 1000) : 0;
   setText('na-sum-4', status.abschnitte
     ? `${fmt(status.laengeM)} m · WLD ${fmt(wld)} kWh/(m·a) · Hydraulik ${status.hydraulik.length ? '⚠' : '✓'}`
     : '—');
@@ -3781,6 +3774,7 @@ export function autoGenerateNetz(options = {}){
     // Die Zentrale ist der hydraulische Startknoten und muss auch dann Teil des
     // Graphen sein, wenn das Zentralengebäude selbst keinen Wärmebedarf hat (ebenso weitere Zentralen).
     if (g.id === zId || wurzelnAufbau.includes(g.id)) return true;
+    if (isExcluded(g.id)) return false;   // ausgeschlossene Gebäude werden nicht versorgt
     return networkLocked
       ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast > 0
       : _maxBuildingLoad(g,planningYears) > 0;
@@ -4255,8 +4249,9 @@ export function autoGenerateNetz(options = {}){
     const zp = allePunkte.find(n => n.id === gruppe.zentrale);
     let kanten = gruppePlanen([zp, ...allePunkte.filter(n => ids.has(n.id))], gruppe.zentrale);
     if (kanten === false) return false;
-    // Eigene Stränge: nur der Teil von Trasse und Straßen, der die Gebäude der Gruppe erreicht
-    if (quartiere.length) kanten = sackgassenEntfernen(kanten, id => id !== gruppe.zentrale && !ids.has(id));
+    // Eigene Stränge bzw. mehrere Zentralen: nur der Teil von Trasse und Straßen, der die Gebäude der Gruppe erreicht —
+    // sonst legt jede Gruppe die ganze gezeichnete Haupttrasse ein weiteres Mal
+    if (quartiere.length || gruppen.length > 1) kanten = sackgassenEntfernen(kanten, id => id !== gruppe.zentrale && !ids.has(id));
     mstEdges.push(...kanten);
     if (!zonenKnoten.has(gruppe.zentrale)) zonenKnoten.set(gruppe.zentrale, new Map());
     kanten.forEach(k => [k.uNode, k.vNode].forEach(n => { if (n?.pt) zonenKnoten.get(gruppe.zentrale).set(n.id, n); }));
@@ -4436,7 +4431,7 @@ export function toteLeitungen(entfernen = false) {
   const zentralen = new Set(netzZentralenIds());
   const gebMap = new Map(gebaeude.map(g => [g.id, g]));
   // Verbraucher: Gebäude mit Wärmebedarf jetzt oder in einem anderen Planungsjahr (Neubau, Sanierung)
-  const jahre = [globalYear, 2030, 2035, 2040, 2045, 2050];
+  const jahre = _netzPlanningYears();
   const merk = new Map();
   const istVerbraucher = id => {
     if (merk.has(id)) return merk.get(id);
@@ -5242,6 +5237,7 @@ export function captureWaermeNetzGraph(){
     return {
       u: e.u, v: e.v,
       dn: Number(e.dn) || 0,
+      ...(e.dnOverride ? {dnOverride:true} : {}),
       ...(e.visibleFromYear != null && Number.isFinite(Number(e.visibleFromYear))
         ? {visibleFromYear:Number(e.visibleFromYear)} : {}),
       ...(e.visibleUntilYear != null && Number.isFinite(Number(e.visibleUntilYear))
@@ -5287,6 +5283,7 @@ export function applyWaermeNetzGraph(graph, {recalculate = true} = {}){
     if (!uNode || !vNode) return;
     const edge = _makeNetzEdge(uNode, vNode, Number(data.dn) || 0);
     edge.pruned = data.pruned === true;
+    edge.dnOverride = data.dnOverride === true;
     edge.buildingConflict = data.buildingConflict === true;
     edge.kostKlasse = data.kostKlasse || null;
     edge.kostOverride = data.kostOverride === true;
@@ -5305,6 +5302,7 @@ export function applyWaermeNetzGraph(graph, {recalculate = true} = {}){
       removeEdgeWaypointMarkers(edge);
       addEdgeMidHandle(edge);
     }
+    edge.length = calcEdgeLength(edge) || edge.length;
   });
   if (recalculate) recalcNetz();
 }
@@ -6162,20 +6160,65 @@ export function toggleNetzRewireMode() {
   return setNetzRewireMode(!netzRewireMode);
 }
 
+// Vorlauf des Netzes (Auslegung) und Vorlauf der Heizkurve bei −5 °C (gleitende Fahrweise darunter konstant) sind
+// dieselbe Größe und bleiben gekoppelt. Der Rücklauf des Netzes ist eine andere Größe als der Heizkurven-Vorlauf
+// bei +15 °C und wird nicht übertragen.
 export function syncVLTemps(source) {
-  if (source === 'netz') {
-    document.getElementById('gl-vl5').value = document.getElementById('netz-vl').value;
-    document.getElementById('gl-vl15').value = document.getElementById('netz-rl').value;
-  } else {
-    document.getElementById('netz-vl').value = document.getElementById('gl-vl5').value;
-    document.getElementById('netz-rl').value = document.getElementById('gl-vl15').value;
-  }
+  if (source === 'netz') document.getElementById('gl-vl5').value = document.getElementById('netz-vl').value;
+  else document.getElementById('netz-vl').value = document.getElementById('gl-vl5').value;
 }
 
 /**
  * Alle Heizzentralen des Wärmenetzes (Gebäude-IDs). Die Auswahl „Heizzentrale“ ist die aktive (Hauptzentrale);
  * weitere Zentralen speisen in dasselbe Netz ein (window.weitereZentralen = [{ id, name }]).
  */
+/**
+ * Anteil der Betriebsstunden des Netzes am Jahr: 1; bei dezentralem Trinkwarmwasser nur die Heizperiode (aus dem
+ * Lastgang, 06b). Der Jahresverlust des berechneten Netzes fällt nur in diesen Stunden an.
+ */
+export function netzBetriebsAnteil() {
+  const h = window.systemState?.twwDezentral?.betriebStunden;
+  return document.getElementById('gl-tww-dezentral')?.checked && h > 0 ? Math.min(1, h / 8760) : 1;
+}
+
+/** Wärmebedarf der an das Netz angeschlossenen Gebäude im Jahr (MWh/a): mit Sanierung und Status, ohne ausgeschlossene. */
+export function netzVerbrauchMwh(jahr = globalYear) {
+  const verbunden = new Set((window.netzEdges || []).filter(e => !e.pruned).flatMap(e => [e.u, e.v]));
+  return gebaeude.filter(g => verbunden.has(g.id) && !isExcluded(g.id))
+    .reduce((s, g) => s + (getComputedStats(g, jahr).waerme || 0), 0);
+}
+
+/**
+ * Vorgabe für „Aus Netzberechnung übernehmen“ (ein Erzeuger deckt das Netz): Leistung = Auslegungsspitze (Σ Normheizlast
+ * × Gleichzeitigkeit + Netzverlustleistung, lib/auslegung.js), sonst Pumpenauslegungslast + Verlustleistung; Wärme =
+ * Bedarf der angeschlossenen Gebäude im Jahr + Jahresverlust im Betrieb.
+ */
+export function netzErzeugerVorgabe() {
+  const a = typeof window.auslegungsSpitzeAktuell === 'function' ? window.auslegungsSpitzeAktuell() : null;
+  const p = window._netzPumpe;
+  const kw = a?.kw > 0 ? a.kw : (p?.lastKw || 0) + (p?.verlustKw || 0);
+  const verlustMwh = (Number(window._netzAnnualLossMWh) || 0) * netzBetriebsAnteil();
+  return { kw, mwh: netzVerbrauchMwh() + verlustMwh };
+}
+
+/**
+ * Hausübergabestationen des Wärmenetzes: angeschlossene, nicht ausgeschlossene Gebäude (ohne Heizzentralen), die in
+ * einem der Planungsjahre Wärme aus dem Netz beziehen. Anschlussleistung = größte Normheizlast der Planungsjahre.
+ * Ergebnis: { anzahl, anschlussKw: [kW je Station] }.
+ */
+export function netzHausstationen() {
+  const kanten = (window.netzEdges || []).filter(e => !e.pruned);
+  if (!kanten.length) return { anzahl: 0, anschlussKw: [] };
+  const verbunden = new Set(kanten.flatMap(e => [e.u, e.v]));
+  const wurzeln = netzZentralenIds();
+  const jahre = _netzPlanningYears();
+  const anschlussKw = gebaeude
+    .filter(g => verbunden.has(g.id) && !wurzeln.includes(g.id) && !isExcluded(g.id))
+    .map(g => _maxBuildingLoad(g, jahre))
+    .filter(kw => kw > 0);
+  return { anzahl: anschlussKw.length, anschlussKw };
+}
+
 export function netzZentralenIds() {
   const ids = [];
   const haupt = parseInt(document.getElementById('netz-zentrale')?.value, 10);
@@ -6376,12 +6419,18 @@ function _recalcNetzIntern(){
   });
   window.netzEdges.forEach(e => { if (e.strandId == null) e.strandId = 0; });
 
-  window.netzEdges.forEach(e => { e.load = 0; e.loadRaw = 0; e._nVerbraucher = 0; e._gzf = 1.0; });
+  window.netzEdges.forEach(e => { e.load = 0; e.loadRaw = 0; e._nVerbraucher = 0; e._gzf = 1.0; e.waermeMwh = 0; });
 
   // Summierte Rohlasten und Verbraucheranzahl pro Knoten
   // calculatedLoad bleibt global zugänglich für lwwpUseNetworkValues etc.
   window.calculatedLoad = {};
   const nVerb = {};
+  // Jahreswärmebedarf der Abnehmer (Sanierung, Status) — Grundlage der Wärmeliniendichte je Kante
+  const waermeSum = {};
+  Object.keys(nodeMap).forEach(k => {
+    const gk = gebMap.get(Number(k));
+    waermeSum[k] = gk && !wurzeln.includes(gk.id) && !isExcluded(gk.id) ? (getComputedStats(gk, globalYear).waerme || 0) : 0;
+  });
   Object.keys(nodeMap).forEach(k => {
     window.calculatedLoad[k] = nodeMap[k].load;
     const isVerb = nodeMap[k].load > 0;
@@ -6394,6 +6443,8 @@ function _recalcNetzIntern(){
     if(pInfo){
       window.calculatedLoad[pInfo.pNodeId] += window.calculatedLoad[curr];
       nVerb[pInfo.pNodeId] += nVerb[curr];
+      waermeSum[pInfo.pNodeId] += waermeSum[curr];
+      pInfo.e.waermeMwh = waermeSum[curr];   // Jahreswärme der nachgelagerten Abnehmer (MWh/a)
       // Kante: Rohlast (Σ Normheizlast) und GZF-Last
       const nV = nVerb[curr];
       const raw = window.calculatedLoad[curr];
@@ -6636,7 +6687,9 @@ function _recalcNetzIntern(){
   });
 
   const totalLossKW_annual = window.netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0);
+  // Ganzjahreswert: Grundlage des Lastgangs (06b verteilt ihn auf die Betriebsstunden); angezeigt wird der Wert im Betrieb
   const totalLossJahrMWh = totalLossKW_annual * 8.76;
+  const betriebsAnteil = netzBetriebsAnteil();
   window._netzPumpe.verlustKw = totalLossKW;   // Bezug des Jahrespumpenstroms: Pumpenlast + Verlustleistung
   // Zentrale Verlustquelle für Lastgang und Kennzahlen. Sobald ein
   // berechnetes Netz existiert, ersetzt dieser leitungsgenaue Jahreswert den
@@ -6650,7 +6703,7 @@ function _recalcNetzIntern(){
     zonen.forEach(z => {
       const k = window._netzJeZentrale[z];
       if (!k) return;
-      k.verlustMWh += (e.lossKW_annual || 0) * 8.76 / zonen.length;
+      k.verlustMWh += (e.lossKW_annual || 0) * 8.76 * betriebsAnteil / zonen.length;
       k.laengeM += (e.length || 0) / zonen.length;
     });
   });
@@ -6662,17 +6715,18 @@ function _recalcNetzIntern(){
     const k = window._netzJeZentrale[z];
     k.gebIds.push(g.id); k.heizlastKw += st.heizlast || 0; k.waermeMwh += st.waerme || 0;
   });
-  const connectedIds = new Set(window.netzEdges.flatMap(e => [e.u, e.v]));
-  const totalVerbrauchMWh = gebaeude.filter(g => connectedIds.has(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
-  const totalErzeugungMWh = totalLossJahrMWh + totalVerbrauchMWh;
-  const lossPct = totalVerbrauchMWh > 0 ? (totalLossJahrMWh / totalErzeugungMWh * 100).toFixed(1) : '—';
+  // Bedarf der angeschlossenen Gebäude im betrachteten Jahr (Sanierung, Status, ohne ausgeschlossene) und Verlust im Betrieb
+  const totalVerbrauchMWh = netzVerbrauchMwh(globalYear);
+  const verlustBetriebMWh = totalLossJahrMWh * betriebsAnteil;
+  const totalErzeugungMWh = verlustBetriebMWh + totalVerbrauchMWh;
+  const lossPct = totalVerbrauchMWh > 0 ? (verlustBetriebMWh / totalErzeugungMWh * 100).toFixed(1) : '—';
   const lossDisp = document.getElementById('netz-loss-display');
-  if (lossDisp) lossDisp.textContent = `Netzverluste: ${totalLossKW.toFixed(1)} kW | ${totalLossJahrMWh.toFixed(0)} MWh/a (${lossPct} % der Erzeugung) | ΔT: ${deltaT.toFixed(0)} K`;
+  if (lossDisp) lossDisp.textContent = `Netzverluste: ${totalLossKW.toFixed(1)} kW | ${verlustBetriebMWh.toFixed(0)} MWh/a (${lossPct} % der Erzeugung) | ΔT: ${deltaT.toFixed(0)} K`;
   const summaryDiv = document.getElementById('netz-summary');
   if (summaryDiv) {
     if (totalVerbrauchMWh > 0) {
       summaryDiv.style.display = 'grid';
-      summaryDiv.innerHTML = `<span style="color:var(--muted)">Gebäudebedarf</span><span>${totalVerbrauchMWh.toFixed(0)} MWh/a</span><span style="color:var(--muted)">+ Netzverluste</span><span style="color:#f9a825">${totalLossJahrMWh.toFixed(0)} MWh/a</span><span style="color:var(--muted);border-top:1px solid var(--border);padding-top:3px;margin-top:2px">= Zentrale erzeugt</span><span style="color:var(--accent);font-weight:bold;border-top:1px solid var(--border);padding-top:3px;margin-top:2px">${totalErzeugungMWh.toFixed(0)} MWh/a</span>`;
+      summaryDiv.innerHTML = `<span style="color:var(--muted)">Gebäudebedarf</span><span>${totalVerbrauchMWh.toFixed(0)} MWh/a</span><span style="color:var(--muted)">+ Netzverluste</span><span style="color:#f9a825">${verlustBetriebMWh.toFixed(0)} MWh/a</span><span style="color:var(--muted);border-top:1px solid var(--border);padding-top:3px;margin-top:2px">= Zentrale erzeugt</span><span style="color:var(--accent);font-weight:bold;border-top:1px solid var(--border);padding-top:3px;margin-top:2px">${totalErzeugungMWh.toFixed(0)} MWh/a</span>`;
     } else {
       summaryDiv.style.display = 'none';
     }
@@ -6723,8 +6777,8 @@ function _recalcNetzIntern(){
       curr = parentEdge[curr].pNodeId;
     }
     g.netzVerlustKW = Math.round(attributed * 100) / 100;
-    g.netzVerlustJahrMWh = Math.round(attributedAnnual * 8.76 * 10) / 10;
-    const waermeJahr = parseFloat(g.waerme) || 0;
+    g.netzVerlustJahrMWh = Math.round(attributedAnnual * 8.76 * betriebsAnteil * 10) / 10;
+    const waermeJahr = getComputedStats(g, globalYear).waerme || 0;
     g.netzVerlustRatioPct = waermeJahr > 0 ? Math.round(g.netzVerlustJahrMWh / waermeJahr * 1000) / 10 : null;
   });
 
@@ -6763,7 +6817,7 @@ function _recalcNetzIntern(){
     subtreeLoad[parent]   += subtreeLoad[curr];
     subtreeLength[parent] += subtreeLength[curr] + edge.length;
     subtreeKosten[parent] += subtreeKosten[curr] + (edge.kosten || 0);
-    subtreeLoss[parent]   += subtreeLoss[curr] + (edge.lossKW_annual || 0) * 8.76;
+    subtreeLoss[parent]   += subtreeLoss[curr] + (edge.lossKW_annual || 0) * 8.76 * betriebsAnteil;
   }
 
   // Auf Kanten übertragen: Subtree-Werte = Werte des Kindknotens
@@ -6773,12 +6827,13 @@ function _recalcNetzIntern(){
     const edge = parentEdge[nodeId].e;
     const stLen = subtreeLength[nodeId] + edge.length;
     const stLoadKW = subtreeLoad[nodeId];
-    const stWaerme = stLoadKW * VBH / 1000;
+    // Jahreswärme der nachgelagerten Abnehmer (nicht Σ Normheizlast × Vollbenutzungsstunden des Lastgangs)
+    const stWaerme = Number.isFinite(edge.waermeMwh) ? edge.waermeMwh : stLoadKW * VBH / 1000;
     edge.subtreeWLD = stLen > 0 ? stWaerme / stLen : 0;
     edge.subtreeKosten = subtreeKosten[nodeId] + (edge.kosten || 0);
     edge.subtreeWaermeMWh = stWaerme;
     edge.subtreeLength = stLen;
-    edge.subtreeLoss = subtreeLoss[nodeId] + (edge.lossKW_annual || 0) * 8.76;
+    edge.subtreeLoss = subtreeLoss[nodeId] + (edge.lossKW_annual || 0) * 8.76 * betriebsAnteil;
     // Verbraucher zählen
     let consumers = 0;
     const countSub = (nId) => {
@@ -6797,8 +6852,7 @@ function _recalcNetzIntern(){
   const _netzN = 50;  // Nutzungsdauer Wärmenetz nach VDI 2067 (konsistent mit Wirtschaftlichkeits-Panel)
   const annFaktor = _netzZins > 0 ? _netzZins * Math.pow(1 + _netzZins, _netzN) / (Math.pow(1 + _netzZins, _netzN) - 1) : 1 / _netzN;
   // Erzeugungskosten an der Zentrale (€/MWh) – für Verlustbewertung
-  const wgkZentraleEl = document.getElementById('fs-wgk');
-  const wgkZentrale = parseFloat(wgkZentraleEl?.textContent) || 80;
+  const wgkZentrale = window._lastWgk > 0 ? window._lastWgk * 10 : 80;   // ct/kWh → €/MWh
 
   window.netzEdges.forEach(e => {
     if (e.subtreeWaermeMWh > 0) {
@@ -7179,10 +7233,7 @@ export function updateRohrListe() {
 
   // Netz-WLD = Summe Verbraucher-Jahreswärme / Gesamttrassenlänge
   // (nicht Summe Kantenlast, da Stammleitung akkumulierte Last trägt)
-  const connIds = new Set(window.netzEdges.flatMap(e => [e.u, e.v]));
-  const totalConsumerKW = gebaeude.filter(g => connIds.has(g.id))
-    .reduce((s, g) => s + (getComputedStats(g, globalYear).heizlast || 0), 0);
-  const totalWaerme = totalConsumerKW * 1800 / 1000;
+  const totalWaerme = netzVerbrauchMwh(globalYear);
   const wldGesamt = totalLength > 0 ? totalWaerme / totalLength : 0;
   const wldColor = getWLDColor(wldGesamt);
   const szenarioLabel = {niedrig:'Niedrig',mittel:'Mittel',hoch:'Hoch'}[kostenSzenario];
@@ -7204,7 +7255,7 @@ export function updateRohrListe() {
   
   Object.keys(rohre).sort((a,b) => Number(a) - Number(b)).forEach(dn => {
     const r = rohre[dn];
-    const euM = getKostenProM(Number(dn));
+    const euM = r.length > 0 ? Math.round(r.kosten / r.length) : getKostenProM(Number(dn));   // Kostenklassen je Abschnitt
     html += `<tr>
       <td>KMR DN ${dn}</td>
       <td>${Math.round(r.length)}</td>
@@ -7230,14 +7281,14 @@ export function exportRohreCSV() {
     if (e.load > 0 && e.dn > 0) {
       if (!rohre[e.dn]) rohre[e.dn] = { length: 0, kosten: 0 };
       rohre[e.dn].length += e.length;
-      rohre[e.dn].kosten += getKostenProM(e.dn) * e.length;
+      rohre[e.dn].kosten += getKostenProM(e.dn, e.kostKlasse) * e.length;   // Kostenklasse je Abschnitt wie in der Rohrliste
     }
   });
   
   let csvContent = `DN (mm);Laenge (m);Euro_pro_m (${kostenSzenario});Kosten (EUR)\n`;
   Object.keys(rohre).sort((a,b) => Number(a) - Number(b)).forEach(dn => {
     const r = rohre[dn];
-    csvContent += `${dn};${Math.round(r.length)};${getKostenProM(Number(dn))};${Math.round(r.kosten)}\n`;
+    csvContent += `${dn};${Math.round(r.length)};${r.length > 0 ? Math.round(r.kosten / r.length) : getKostenProM(Number(dn))};${Math.round(r.kosten)}\n`;
   });
   
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

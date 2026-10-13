@@ -247,6 +247,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
     extra: {
       bohrMeter: _dynBohrMeter,
       nGeb: D.nGeb || 0,
+      huestEur: D.huestEur,
       netzInvest: D.netzInvest || 0,
       ohneNetz: !!D.ohneNetz,
       pumpMwh: D.pumpMwh || 0,

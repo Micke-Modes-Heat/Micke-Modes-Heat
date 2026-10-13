@@ -8,6 +8,7 @@ import { bedienErlaeuterung, bedienModulStunden, bedienStunden } from './lib/vdi
 import { speicherInvestEur } from './lib/waermespeicher.js';
 import { eisInvest } from './lib/eisspeicher.js';
 import { pumpenVolllaststunden } from './lib/netz-hydraulik.js';
+import { huestInvestEur } from './lib/netz-hausstationen.js';
 import { _getEtaMap, bhkwCo2Gutschrift, gasEmF, gebaeude, networkLocked, netzEdges } from './01-globals-varianten.js';
 import { updateFliessgewaesserData, updateLwWpDisplay } from './02c-karte-werkzeuge.js';
 import { calcVerdraengungEmF, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
@@ -126,11 +127,14 @@ export function _calcKostenShared(p) {
   if (schallKw > 0.1)      add('schallschutz', Math.round(schallKw*75), {n:25,inst:0.5,wart:0.5,bedien:0});
   var bioKw = (pKw.pellets||0)+(pKw.hhs||0);
   if (bioKw > 200)          add('entstaubung', bioKw<=500?20000:bioKw<=1000?30000:40000, {n:15,inst:2.0,wart:3.0,bedien:100});
+  // Hausübergabestationen und Heizzentrale nur bei Netzprojekten: Anzahl und Investition der Stationen aus dem
+  // Netz (je Gebäude nach Anschlussleistung, extra.huestEur), nicht aus der Erzeugerleistung
   var nGeb = extra.nGeb || 0;
-  if (nGeb > 1) {
+  if (nGeb > 0) {
     var avgKw = sumKw > 0 ? sumKw / nGeb : 50;
+    var huestEur = Number.isFinite(extra.huestEur) ? extra.huestEur : nGeb * (avgKw<30?5000:avgKw<100?8000:avgKw<300?12000:15000);
     // „Nur Wärmeerzeugung“: Hausübergabestationen gehören zum Netz (wie WIRT_NETZ_BAUSTEINE)
-    if (!extra.ohneNetz) add('huest', nGeb * (avgKw<30?5000:avgKw<100?8000:avgKw<300?12000:15000), {n:25,inst:1.0,wart:1.0,bedien:0});
+    if (!extra.ohneNetz && huestEur > 0) add('huest', huestEur, {n:25,inst:1.0,wart:1.0,bedien:0});
     // Heizzentrale/Technikgebäude — bei Netzprojekten eigener Posten,
     // die 5 % Bauteil-Zuschlag decken kein eigenes Gebäude
     if (sumKw > 0) add('heizzentrale', Math.round(sumKw * (sumKw<500?300:sumKw<2000?225:150)), {n:50,inst:1.0,wart:0.5,bedien:0});
@@ -555,6 +559,8 @@ export function calcWirtschaftPanel() {
   const aktiv = k => keys.includes(k) && (pKw[k] || 0) > 0.1;
   // installierte Erzeugerleistung — Speicher-Entladung und Solarthermie sind keine Erzeuger (wie im Optimierer)
   const sumKw  = keys.reduce((s, k) => s + (k === '_thermSpeicher' || k === 'solarthermie' ? 0 : (pKw[k] || 0)), 0);
+  // Hausübergabestationen des Wärmenetzes (Anzahl, Anschlussleistung je Gebäude)
+  const _hst = typeof window.netzHausstationen === 'function' ? window.netzHausstationen() : { anzahl: 0, anschlussKw: [] };
   // Puffervolumen (~25 l/kW), soweit es der Wärmespeicher nicht ersetzt — wie _calcKostenShared
   const _pufferRestL = () => sumKw * 25 - (thermSpeicherAktiv ? (getThermSpeicherParams()?.vol || 0) * 1000 : 0);
   const bohrm  = _parseGeoBohrMeter();
@@ -680,22 +686,12 @@ export function calcWirtschaftPanel() {
       },
       tooltip:'Elektrofilter/Entstaubung für Biomassekessel >200 kW (1. BImSchV). Staffelung: ≤500kW: 20.000€, ≤1MW: 30.000€, >1MW: 40.000€' },
     { id:'huest',       label:'Hausübergabestationen',   vdi:{n:25,inst:1.0,wart:1.0,bedien:0},
-      aktiv:()=>{
-        const nGeb=parseInt(document.getElementById('netz-n-geb')?.value)||0;
-        return nGeb>1; // Nur bei Nah-/Fernwärmenetz (>1 Gebäude)
-      },
-      auto:()=>{
-        const nGeb=parseInt(document.getElementById('netz-n-geb')?.value)||0;
-        const avgKw=sumKw>0&&nGeb>1?sumKw/nGeb:50;
-        const eurProSt=avgKw<30?5000:avgKw<100?8000:avgKw<300?12000:15000;
-        return nGeb>1?nGeb*eurProSt:0;
-      },
-      tooltip:'Dezentrale Hausübergabestationen (HÜST) im Wärmenetz. Staffelung nach Größe: <30kW: 5.000€, <100kW: 8.000€, <300kW: 12.000€, ≥300kW: 15.000€ je Station (AGFW 2024)' },
+      // Stationen der angeschlossenen Gebäude des Wärmenetzes, je Station nach Anschlussleistung (Normheizlast)
+      aktiv:()=>_hst.anzahl>0,
+      auto:()=>huestInvestEur(_hst.anschlussKw),
+      tooltip:'Dezentrale Hausübergabestationen (HÜST) der angeschlossenen Gebäude. Staffelung je Station nach der Heizlast des Gebäudes: <30kW: 5.000€, <100kW: 8.000€, <300kW: 12.000€, ≥300kW: 15.000€ (Richtwerte 2024)' },
     { id:'heizzentrale',label:'Heizzentrale (Gebäude)',  vdi:{n:50,inst:1.0,wart:0.5,bedien:0},
-      aktiv:()=>{
-        const nGeb=parseInt(document.getElementById('netz-n-geb')?.value)||0;
-        return nGeb>1 && sumKw>0; // nur bei Netzprojekten: eigenes Technikgebäude
-      },
+      aktiv:()=>_hst.anzahl>0 && sumKw>0, // nur bei Netzprojekten: eigenes Technikgebäude
       auto:()=>Math.round(sumKw * (sumKw<500?300:sumKw<2000?225:150)),
       tooltip:'Technikgebäude/Heizzentrale inkl. Erschließung: 300 €/kW (<500 kW), 225 €/kW (<2 MW), 150 €/kW (≥2 MW) — eigener Posten, die 5 % Bauteil-Zuschlag decken kein Gebäude. Grundstückskauf nicht enthalten' },
     { id:'netzanschluss',label:'Elektro-Netzanschluss', vdi:{n:40,inst:0.5,wart:0,bedien:0},
@@ -718,12 +714,12 @@ export function calcWirtschaftPanel() {
           if(!window._netzSanierung) return 0;
           const pct = (parseFloat(document.getElementById('netz-sanierung-pct')?.value) || 40) / 100;
           let s=0;netzEdges.forEach(e=>{if(e.pruned)return;
-            const kpm=typeof getKostenProMKlasse==='function'?getKostenProMKlasse(e.dn,e.kostKlasse||'mittel'):0;
+            const kpm=typeof getKostenProMKlasse==='function'?getKostenProMKlasse(e.dn,e.kostKlasse||window.kostenSzenarioAktuell?.()||'mittel'):0;
             s+=kpm*(e.length||0);});
           return Math.round(s * pct);
         }
         let s=0;netzEdges.forEach(e=>{if(e.pruned)return;
-          const kpm=typeof getKostenProMKlasse==='function'?getKostenProMKlasse(e.dn,e.kostKlasse||'mittel'):0;
+          const kpm=typeof getKostenProMKlasse==='function'?getKostenProMKlasse(e.dn,e.kostKlasse||window.kostenSzenarioAktuell?.()||'mittel'):0;
           s+=kpm*(e.length||0);});return Math.round(s);
       },
       get tooltip(){
@@ -1803,7 +1799,7 @@ export function calcJahresscheiben() {
 
   // Simplified: get total invest and annual costs from calcWirtschaftPanel results
   // Rebuild investment calc
-  const nGeb = parseInt(document.getElementById('netz-n-geb')?.value)||0;
+  const _hst = typeof window.netzHausstationen === 'function' ? window.netzHausstationen() : { anzahl: 0, anschlussKw: [] };
   const BD = [
     { id:'lwwp', aktiv:()=>aktiv('lwwp'), auto:()=>iKW('LuftWP', pKw.lwwp||0), get vdi(){ return {n:20,inst:1.0,wart:1.5,bedien:bedienStunden('lwwp', pKw.lwwp||0)}; } },
     { id:'fg', aktiv:()=>aktiv('fg'), auto:()=>iKW('FlussWP', pKw.fg||0), get vdi(){ return {n:20,inst:2.0,wart:1.0,bedien:bedienStunden('fg', pKw.fg||0)}; } },
@@ -1827,8 +1823,8 @@ export function calcJahresscheiben() {
     { id:'schallschutz', aktiv:()=>aktiv('lwwp')||aktiv('bhkw'), auto:()=>Math.round(((pKw.lwwp||0)+(pKw.bhkw||0))*75), vdi:{n:25,inst:0.5,wart:0.5,bedien:0} },
     { id:'entstaubung', aktiv:()=>(pKw.pellets||0)+(pKw.hhs||0)>200,
       auto:()=>{const p=(pKw.pellets||0)+(pKw.hhs||0);return p<=500?20000:p<=1000?30000:40000;}, vdi:{n:15,inst:2.0,wart:3.0,bedien:100} },
-    { id:'huest', aktiv:()=>nGeb>1,
-      auto:()=>{const avg=sumKw>0&&nGeb>1?sumKw/nGeb:50;const e=avg<30?5000:avg<100?8000:avg<300?12000:15000;return nGeb>1?nGeb*e:0;}, vdi:{n:25,inst:1.0,wart:1.0,bedien:0} },
+    { id:'huest', aktiv:()=>_hst.anzahl>0, auto:()=>huestInvestEur(_hst.anschlussKw), vdi:{n:25,inst:1.0,wart:1.0,bedien:0} },
+    { id:'heizzentrale', aktiv:()=>_hst.anzahl>0 && sumKw>0, auto:()=>Math.round(sumKw * (sumKw<500?300:sumKw<2000?225:150)), vdi:{n:50,inst:1.0,wart:0.5,bedien:0} },
     { id:'netzanschluss', aktiv:()=>(pKw.lwwp||0)+(pKw.fg||0)+(pKw.geo||0)+(pKw.stromkessel||0)>500,
       auto:()=>Math.round(((pKw.lwwp||0)+(pKw.fg||0)+(pKw.geo||0)+(pKw.stromkessel||0))*40), vdi:{n:40,inst:0.5,wart:0,bedien:0} },
     { id:'fg_entnahme', aktiv:()=>aktiv('fg'), auto:()=>Math.round((pKw.fg||0)*300), vdi:{n:30,inst:2.0,wart:1.0,bedien:100} },
@@ -1838,10 +1834,10 @@ export function calcJahresscheiben() {
           if(!window._netzSanierung)return 0;
           const pct=(parseFloat(document.getElementById('netz-sanierung-pct')?.value)||40)/100;
           let s=0;netzEdges.forEach(e=>{if(e.pruned)return;
-            const kpm=typeof getKostenProMKlasse==='function'?getKostenProMKlasse(e.dn,e.kostKlasse||'mittel'):0;s+=kpm*(e.length||0);});return Math.round(s*pct);
+            const kpm=typeof getKostenProMKlasse==='function'?getKostenProMKlasse(e.dn,e.kostKlasse||window.kostenSzenarioAktuell?.()||'mittel'):0;s+=kpm*(e.length||0);});return Math.round(s*pct);
         }
         let s=0;netzEdges.forEach(e=>{if(e.pruned)return;
-          const kpm=typeof getKostenProMKlasse==='function'?getKostenProMKlasse(e.dn,e.kostKlasse||'mittel'):0;s+=kpm*(e.length||0);});return Math.round(s);},
+          const kpm=typeof getKostenProMKlasse==='function'?getKostenProMKlasse(e.dn,e.kostKlasse||window.kostenSzenarioAktuell?.()||'mittel'):0;s+=kpm*(e.length||0);});return Math.round(s);},
       vdi:{n:50,inst:1.0,wart:0,bedien:40} },
   ];
 

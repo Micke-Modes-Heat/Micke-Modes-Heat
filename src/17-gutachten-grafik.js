@@ -1964,8 +1964,18 @@ export function ggWaermeDaten() {
   const verbunden = new Set(kanten.flatMap(e => [e.u, e.v]));
   // Angeschlossen im betrachteten Jahr: ohne ausgeschlossene, geplante und abgerissene Gebäude; Heizlast mit Sanierung
   const statJahr = g => ggLies(() => w.getComputedStats(g, w.globalYear), null);
+  // Hausstationen: mit Wärmebedarf, ohne Heizzentralen und reine Durchleitungsgebäude
+  const zentralen = ggLies(() => w.netzZentralenIds?.() || [], []);
   const angeschlossen = ggLies(() => (w.gebaeude || []).filter(g => verbunden.has(g.id) && !(typeof w.isExcluded === 'function' && w.isExcluded(g.id))
-    && !['geplant', 'abgerissen'].includes(statJahr(g)?.status)), []);
+    && !zentralen.includes(g.id) && !['geplant', 'abgerissen'].includes(statJahr(g)?.status)
+    && ((statJahr(g)?.heizlast ?? parseFloat(g.heizlast)) > 0 || (statJahr(g)?.waerme ?? parseFloat(g.waerme)) > 0)), []);
+  // Netztemperaturen des betrachteten Jahres; geplante Absenkung (Jahr und Temperaturen vorher/nachher)
+  const tNetz = ggLies(() => w.netzTemperaturen?.(w.globalYear), null);
+  const planJahr = ggFeldZahl('netz-plan-jahr');
+  const absenkung = Number.isFinite(planJahr) && planJahr > 0 ? ggLies(() => {
+    const vor = w.netzTemperaturen(planJahr - 1), nach = w.netzTemperaturen(planJahr);
+    return nach.vl !== vor.vl || nach.rl !== vor.rl ? { jahr: planJahr, vlVorC: vor.vl, rlVorC: vor.rl, vlNachC: nach.vl, rlNachC: nach.rl } : undefined;
+  }) : undefined;
   // Hydraulik: Grenzwerte aus den Eingaben, Engpässe nach Druckgefälle oder Geschwindigkeit, Förderhöhe der Netzpumpe
   const mitDruck = kanten.filter(e => (e.load || 0) > 0 && Number.isFinite(e.dpPerM) && Number.isFinite(e.dpLimit));
   const vBezug = ggFeldZahl('netz-v');
@@ -1976,9 +1986,10 @@ export function ggWaermeDaten() {
   } : undefined;
   if (hydraulik) Object.keys(hydraulik).forEach(k => { if (!Number.isFinite(hydraulik[k])) delete hydraulik[k]; });
   const netz = {
-    laengeM: kanten.length ? kanten.reduce((s, e) => s + (e.length || 0), 0) : undefined,
+    // Trassenlänge der verlegten Leitungen (mit Nennweite, wie im Netzinvest; ohne deaktivierte und tote Abschnitte)
+    laengeM: kanten.length ? kanten.reduce((s, e) => s + ((e.dn || 0) > 0 ? (e.length || 0) : 0), 0) : undefined,
     anzahlAnschluesse: angeschlossen.length || undefined,
-    vlC: ggFeldZahl('netz-vl'), rlC: ggFeldZahl('netz-rl'),
+    vlC: tNetz?.vl ?? ggFeldZahl('netz-vl'), rlC: tNetz?.rl ?? ggFeldZahl('netz-rl'), absenkung,
     bestand: kanten.length ? !!w.networkLocked : undefined,
     ueberschreitungen: mitDruck.length ? mitDruck.filter(e => e.hydraulicBottleneck || e.dpPerM > e.dpLimit * 1.0001).length : undefined,
     hydraulik,

@@ -17,6 +17,7 @@ import { getKostenProMKlasse, updateLpErgebnisKpis, updateLpStepProgress } from 
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
 import { auslegungsSpitzeAktuell, clearSolarthermie, clearThermSpeicher, getThermSpeicherParams, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
 import { _dispatchCore, autoGkResult, isErzeugerAktiv, spitzenkessel, meritOrderKeys, onSystemStateUpdated, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
+import { huestInvestEur } from './lib/netz-hausstationen.js';
 import { _calcKostenShared, _parseGeoBohrMeter, batterieLebensdauer, netzPumpenstromMwh, pvWaermeEingaben, vdiDynParams, wirtPvWp } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
@@ -311,7 +312,8 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
     investFn: _bInvestFn,
     extra: {
       bohrMeter: _dynBohrMeter,
-      nGeb: parseInt(document.getElementById('netz-n-geb')?.value) || 0,
+      nGeb: _optHst().anzahl,
+      huestEur: huestInvestEur(_optHst().anschlussKw),
       netzInvest: typeof _calcNetzInvestForOpt === 'function' ? _calcNetzInvestForOpt() : 0,
       ohneNetz: !!window._wirtOhneNetz,
       pumpMwh: netzPumpenstromMwh(),
@@ -497,13 +499,18 @@ export const OPT_FEIN_EVALS = { schnell: 150, standard: 350, gruendlich: 700 };
   _optUpdateEstimate();
 })();
 
+/** Hausübergabestationen des Wärmenetzes (03b netzHausstationen): Anzahl und Anschlussleistung je Gebäude. */
+function _optHst() {
+  return typeof window.netzHausstationen === 'function' ? window.netzHausstationen() : { anzahl: 0, anschlussKw: [] };
+}
+
 export function _calcNetzInvestForOpt() {
   if (typeof netzEdges === 'undefined' || !netzEdges.length) return 0;
   if (typeof networkLocked !== 'undefined' && networkLocked && !window._netzSanierung) return 0;
   let s = 0;
   netzEdges.forEach(function(e) {
     if (e.pruned) return;
-    const kpm = typeof getKostenProMKlasse === 'function' ? getKostenProMKlasse(e.dn, e.kostKlasse || 'mittel') : 0;
+    const kpm = typeof getKostenProMKlasse === 'function' ? getKostenProMKlasse(e.dn, e.kostKlasse || window.kostenSzenarioAktuell?.() || 'mittel') : 0;
     s += kpm * (e.length || 0);
   });
   if (typeof networkLocked !== 'undefined' && networkLocked && window._netzSanierung) {
@@ -605,7 +612,8 @@ export function _collectOptDomParams() {
     // Wirtschaft-Bausteine: zusätzliche Daten für vollständige WGK-Berechnung
     lohn: f('wirt-lohn', 45),
     bohrMeter: typeof _parseGeoBohrMeter === 'function' ? _parseGeoBohrMeter() : 0,
-    nGeb: parseInt(document.getElementById('netz-n-geb')?.value) || 0,
+    nGeb: _optHst().anzahl,
+    huestEur: huestInvestEur(_optHst().anschlussKw),
     netzInvest: _calcNetzInvestForOpt(),
     ohneNetz: !!window._wirtOhneNetz,
     pumpMwh: netzPumpenstromMwh(),

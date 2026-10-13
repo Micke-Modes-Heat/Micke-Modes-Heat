@@ -322,6 +322,16 @@ describe('2.2.2 WVN', () => {
     expect(text(wtWvn({ netz: { ...netz, ueberschreitungen: 1 } }))).toContain('1 Leitungsabschnitt');
     expect(text(wtWvn({ netz: { ...netz, hydraulik: { dpNetzPaM: 200 } } }))).toContain('200 Pa/m');
   });
+  it('nennt die geplante Absenkung der Netztemperaturen', () => {
+    const ab = { jahr: 2035, vlVorC: 90, rlVorC: 60, vlNachC: 60, rlNachC: 40 };
+    const vorher = text(wtWvn({ netz: { ...netz, vlC: 90, rlC: 60, absenkung: ab } }));
+    expect(vorher).toContain('Ab 2035 ist eine Absenkung auf 60 °C / 40 °C geplant');
+    expect(vorher).toContain('berücksichtigen die Absenkung');
+    const nachher = text(wtWvn({ netz: { ...netz, vlC: 60, rlC: 40, absenkung: ab } }));
+    expect(nachher).toContain('Bis 2034 wird das Netz mit 90 °C / 60 °C betrieben');
+    expect(nachher).toContain('Niedertemperaturnetz');
+    expect(text(wtWvn({ netz }))).not.toContain('Absenkung auf');
+  });
 });
 
 describe('2.2.3 WH', () => {

@@ -1,7 +1,7 @@
 import { co2AusEinsatz } from './lib/co2-einsatz.js';
 import { eeAnteilPct, erzeugtMwh as _erzeugtMwh, waermeAnLastJeErzeuger } from './lib/dispatch-energie.js';
 import { euroKompakt } from './lib/euro-format.js';
-import { map } from './02b-gebaeude.js';
+import { getComputedStats, map } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, redrawFliessgewaesser, redrawLwWp, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
 import { calcVerdraengungEmF, clearBhkw, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
 import { applyWaermeNetzGraph, calcGeoThermie, captureWaermeNetzGraph, clearGeo, recalcNetz, redrawGeo, syncVLTemps } from './03b-netz.js';
@@ -303,12 +303,14 @@ export function variantenKennzahlenFreigeben() { _cacheSperre = Math.max(0, _cac
 export function cacheVariantResults() {
   if (_cacheSperre > 0) return;
   const key = activeVariantId || 'base';
-  const connectedIds = new Set(netzEdges.flatMap(e => [e.u, e.v]));
-  const netzVerbrauch = gebaeude.filter(g => connectedIds.has(g.id) && !isExcluded(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
+  // Bedarf im betrachteten Jahr (Sanierung, Status), ohne ausgeschlossene Gebäude; Netzverlust im Betrieb (bei
+  // dezentralem Trinkwarmwasser nur in der Heizperiode, wie im Lastgang)
+  const _bedarf = g => getComputedStats(g, globalYear)?.waerme || 0;
+  const netzVerbrauch = typeof window.netzVerbrauchMwh === 'function' ? window.netzVerbrauchMwh(globalYear) : 0;
   // Fallback: wenn kein Netz gezeichnet, alle Gebäude zählen (wie im Dispatch)
-  const alleVerbrauch = gebaeude.filter(g => !isExcluded(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
+  const alleVerbrauch = gebaeude.filter(g => !isExcluded(g.id)).reduce((s, g) => s + _bedarf(g), 0);
   let totalVerbrauch = netzVerbrauch > 0 ? netzVerbrauch : alleVerbrauch;
-  let totalLoss = netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0) * 8.76;
+  let totalLoss = netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0) * 8.76 * (window.netzBetriebsAnteil?.() ?? 1);
   // Fallback 2: weder Netz noch Gebäude (Bedarf direkt eingegeben) →
   // Werte aus der Grundlagenberechnung, statt irreführende Nullen zu zeigen.
   // Verluste = Differenz Erzeugung − Nutzwärme (aus dem Netzverlust-%-Feld).
@@ -320,8 +322,8 @@ export function cacheVariantResults() {
     lastgangBasis = true;
   }
   const totalErzeugung = totalVerbrauch + totalLoss;
-  const vlTemp = parseFloat(document.getElementById('netz-vl').value) || 90;
-  const rlTemp = parseFloat(document.getElementById('netz-rl').value) || 60;
+  // Netztemperaturen des betrachteten Jahres (geplante Absenkung)
+  const { vl: vlTemp, rl: rlTemp } = window.netzTemperaturen?.() || { vl: parseFloat(document.getElementById('netz-vl').value) || 90, rl: parseFloat(document.getElementById('netz-rl').value) || 60 };
   const erzeugerList = [];
   const co2Val = (waermeMwh, jaz) => waermeMwh > 0 ? (waermeMwh / jaz * stromEmF   / 1000).toFixed(1) + ' t/a' : '—';
   const co2LZVal = (waermeMwh, jaz) => waermeMwh > 0 ? (waermeMwh / jaz * stromEmFLZ / 1000).toFixed(1) + ' t/a' : '—';
@@ -423,8 +425,10 @@ export function cacheVariantResults() {
   const _kanten = netzEdges.filter(e => !e.pruned);
   const _verbunden = new Set(_kanten.flatMap(e => [e.u, e.v]));
   const netzKennwerte = _kanten.length ? {
-    laengeM: _kanten.reduce((s, e) => s + (e.length || 0), 0),
-    anschluesse: gebaeude.filter(g => _verbunden.has(g.id) && !isExcluded(g.id)).length,
+    // wie im Gutachten: verlegte Leitungen (mit Nennweite); Anschlüsse = Gebäude mit Wärmebedarf im Jahr, ohne Heizzentralen
+    laengeM: _kanten.reduce((s, e) => s + ((e.dn || 0) > 0 ? (e.length || 0) : 0), 0),
+    anschluesse: gebaeude.filter(g => _verbunden.has(g.id) && !isExcluded(g.id) && !(window.netzZentralenIds?.() || []).includes(g.id)
+      && ((getComputedStats(g, globalYear)?.heizlast || 0) > 0 || _bedarf(g) > 0)).length,
     verlusteMwh: totalLoss, verlustePct: totalErzeugung > 0 ? totalLoss / totalErzeugung * 100 : 0,
     dnMax: _kanten.reduce((m, e) => Math.max(m, parseInt(e.dn, 10) || 0), 0), vlC: vlTemp, rlC: rlTemp,
   } : null;

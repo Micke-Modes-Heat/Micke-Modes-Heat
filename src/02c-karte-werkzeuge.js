@@ -2862,12 +2862,8 @@ function _lwWpLwaSync() {
 }
 
 export function lwwpUseNetworkValues() {
-  const zId = parseInt(document.getElementById('netz-zentrale').value);
-  const lastKw = calculatedLoad && calculatedLoad[zId] ? calculatedLoad[zId] : 0;
-  const connectedIds = new Set(netzEdges.flatMap(e => [e.u, e.v]));
-  const verbrauchMWh = gebaeude.filter(g => connectedIds.has(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
-  const lossAnnual = netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0);
-  const erzeugungMWh = verbrauchMWh + lossAnnual * 8.76;
+  // Auslegungsspitze und Wärme der angeschlossenen Gebäude + Netzverlust (03b netzErzeugerVorgabe)
+  const { kw: lastKw, mwh: erzeugungMWh } = window.netzErzeugerVorgabe?.() || { kw: 0, mwh: 0 };
   if (lastKw > 0) document.getElementById('lwwp-leistung').value = Math.round(lastKw);
   if (erzeugungMWh > 0) document.getElementById('lwwp-waerme').value = Math.round(erzeugungMWh);
   updateLwWpData();

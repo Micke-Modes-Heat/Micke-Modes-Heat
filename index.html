@@ -1496,7 +1496,7 @@
   <div class="inp-group" style="margin:4px 0 4px;">
     <label class="inp-label" title="Kleinere Polygone (Dachaufbauten, Anbauten, Schuppen) werden nicht als eigenes Gebäude geladen: angrenzende werden in den Grundriss des Nachbargebäudes eingerechnet, freistehende verworfen. 0 = alles laden.">Mindest-Grundfläche je Gebäude (m²)</label>
     <input class="inp-field" type="number" id="osm-min-flaeche" value="30" min="0" max="500" step="5" style="width:90px;"
-      data-input="const a=document.getElementById('osm-min-flaeche-area');if(a)a.value=this.value;">
+      data-input="document.getElementById('osm-min-flaeche-area')&&(document.getElementById('osm-min-flaeche-area').value=this.value);">
   </div>
   <div class="osm-import-zusaetze" style="margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border);">
     <div class="inp-label" style="margin-bottom:4px;">Zusätzlich mitladen</div>
@@ -1527,12 +1527,12 @@
   <div class="inp-group" style="margin:8px 0 4px;">
     <label class="inp-label" title="Wird für Gebäude ohne Baujahr in OSM verwendet">Standard-Baujahr (Fallback)</label>
     <input class="inp-field" type="number" id="osm-default-baujahr-area" value="1970" min="1850" max="2024" step="1" style="width:90px;"
-      data-input="const a=document.getElementById('osm-default-baujahr');if(a)a.value=this.value;">
+      data-input="document.getElementById('osm-default-baujahr')&&(document.getElementById('osm-default-baujahr').value=this.value);">
   </div>
   <div class="inp-group" style="margin:4px 0 4px;">
     <label class="inp-label" title="Kleinere Polygone (Dachaufbauten, Anbauten, Schuppen) werden nicht als eigenes Gebäude geladen. 0 = alles laden.">Mindest-Grundfläche je Gebäude (m²)</label>
     <input class="inp-field" type="number" id="osm-min-flaeche-area" value="30" min="0" max="500" step="5" style="width:90px;"
-      data-input="const a=document.getElementById('osm-min-flaeche');if(a)a.value=this.value;">
+      data-input="document.getElementById('osm-min-flaeche')&&(document.getElementById('osm-min-flaeche').value=this.value);">
   </div>
   <div class="osm-import-zusaetze" style="margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border);">
     <div class="inp-label" style="margin-bottom:4px;">Zusätzlich mitladen</div>
@@ -1572,12 +1572,12 @@
     <tbody>
       <tr title="Strommix Deutschland, letzter veröffentlichter UBA-Wert (2024)">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Strom aktuell</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="strom-emf" value="363" min="0" max="1000" step="1" style="width:100%;text-align:right;" data-change="stromEmF=parseFloat(this.value)||363; updateAllEmF();"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="strom-emf" value="363" min="0" max="1000" step="1" style="width:100%;text-align:right;" data-change="window.stromEmF=parseFloat(this.value)||363; updateAllEmF();"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">UBA 2024</td>
       </tr>
       <tr title="Strommix Deutschland Ø 2030–2050 (iinas 2025, NECP-Szenario)">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Strom Ø 2030–50</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="strom-emf-lz" value="72" min="0" max="1000" step="1" style="width:100%;text-align:right;" data-change="stromEmFLZ=parseFloat(this.value)||72; updateAllEmF();"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="strom-emf-lz" value="72" min="0" max="1000" step="1" style="width:100%;text-align:right;" data-change="window.stromEmFLZ=parseFloat(this.value)||72; updateAllEmF();"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">iinas/NECP</td>
       </tr>
       <tr>
@@ -1593,12 +1593,12 @@
   <td style="padding:3px 4px;">
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <label class="tog" style="font-size:9px;color:var(--muted);" title="CO₂-Gutschrift für BHKW-Stromerzeugung (verdrängt Netzstrom)">
-        <input type="checkbox" id="bhkw-co2-gutschrift-toggle" checked data-change="bhkwCo2Gutschrift=this.checked;updateBhkwDisplay();_renderWirtCo2Chart(window._dispatchActiveKeys||[],window._dispatchEnergy||{})"/>
+        <input type="checkbox" id="bhkw-co2-gutschrift-toggle" checked data-change="window.bhkwCo2Gutschrift=this.checked;updateBhkwDisplay();_renderWirtCo2Chart(window._dispatchActiveKeys||[],window._dispatchEnergy||{})"/>
         <span class="tog-track"></span>
         <span class="tog-label">BHKW-Gutschrift</span>
       </label>
       <label class="tog" style="font-size:9px;color:var(--muted);" title="CO₂-Gutschrift für PV-Netzeinspeisung (verdrängt Netzstrom)">
-        <input type="checkbox" id="pv-co2-gutschrift-toggle" checked data-change="pvCo2Gutschrift=this.checked;calcStromPanel()"/>
+        <input type="checkbox" id="pv-co2-gutschrift-toggle" checked data-change="window.pvCo2Gutschrift=this.checked;calcStromPanel()"/>
         <span class="tog-track"></span>
         <span class="tog-label">PV-Gutschrift</span>
       </label>
@@ -1607,27 +1607,27 @@
 </tr>
       <tr style="border-top:1px solid var(--border);" title="Erdgas inkl. Vorkette (GEG Anlage 9, 2024)">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Erdgas</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="gas-emf" value="240" min="0" max="600" step="1" style="width:100%;text-align:right;" data-change="gasEmF=parseFloat(this.value)||240; updateAllEmF();"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="gas-emf" value="240" min="0" max="600" step="1" style="width:100%;text-align:right;" data-change="window.gasEmF=parseFloat(this.value)||240; updateAllEmF();"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 9</td>
       </tr>
       <tr title="Heizöl EL inkl. Vorkette (GEG Anlage 9, 2024)">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Heizöl EL</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="heizoel-emf" value="310" min="0" max="600" step="1" style="width:100%;text-align:right;" data-change="heizoelEmF=parseFloat(this.value)||310; updateAllEmF();"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="heizoel-emf" value="310" min="0" max="600" step="1" style="width:100%;text-align:right;" data-change="window.heizoelEmF=parseFloat(this.value)||310; updateAllEmF();"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 9</td>
       </tr>
       <tr title="Fernwärme, Standardwert Gas-KWK ≥70% (GEG Anlage 9). Netzspezifischer Wert im Fernwärme-Panel überschreibbar.">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Fernwärme</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="fernwaerme-emf" value="180" min="0" max="600" step="1" style="width:100%;text-align:right;" data-change="fernwaermeEmF=parseFloat(this.value)||180; updateAllEmF(); const _fwEl=document.getElementById('fw-co2f'); if(_fwEl) _fwEl.value=this.value;"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="fernwaerme-emf" value="180" min="0" max="600" step="1" style="width:100%;text-align:right;" data-change="window.fernwaermeEmF=parseFloat(this.value)||180; updateAllEmF(); const _fwEl=document.getElementById('fw-co2f'); if(_fwEl) _fwEl.value=this.value;"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 9</td>
       </tr>
       <tr style="border-top:1px solid var(--border);" title="Holzpellets, biogene Emissionen (GEG Anlage 9, 2024)">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Holzpellets</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pellets-emf" value="20" min="0" max="200" step="1" style="width:100%;text-align:right;" data-change="pelletsEmF=parseFloat(this.value)||20; updateAllEmF();"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pellets-emf" value="20" min="0" max="200" step="1" style="width:100%;text-align:right;" data-change="window.pelletsEmF=parseFloat(this.value)||20; updateAllEmF();"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 9</td>
       </tr>
       <tr title="Holzhackschnitzel, biogene Emissionen (GEG Anlage 9, 2024)">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Hackschnitzel</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="hhs-emf" value="20" min="0" max="200" step="1" style="width:100%;text-align:right;" data-change="hhsEmF=parseFloat(this.value)||20; updateAllEmF();"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="hhs-emf" value="20" min="0" max="200" step="1" style="width:100%;text-align:right;" data-change="window.hhsEmF=parseFloat(this.value)||20; updateAllEmF();"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 9</td>
       </tr>
     </tbody>
@@ -1645,37 +1645,37 @@
       <tbody>
         <tr title="Strom Netz-Mix, nicht-erneuerbarer Anteil (GEG Anlage 4, 2024)">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Strom (Netz)</td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-strom" value="1.8" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="pefStrom=parseFloat(this.value)||1.8;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-strom" value="1.8" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="window.pefStrom=parseFloat(this.value)||1.8;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
         <tr title="Strom für Wärmepumpen mit elektrischer Nennleistung ≥ 500 kW (GEG Anlage 4, 2024). Gilt für LWwP und Geothermie-WP in dieser Größenklasse.">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Strom WP ≥ 500 kW<sub style="font-size:8px;">el</sub></td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-wp" value="1.2" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="pefWP=parseFloat(this.value)||1.2;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-wp" value="1.2" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="window.pefWP=parseFloat(this.value)||1.2;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
         <tr title="Erdgas, nicht-erneuerbarer Anteil (GEG Anlage 4, 2024)">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Erdgas</td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-gas" value="1.1" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="pefGas=parseFloat(this.value)||1.1;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-gas" value="1.1" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="window.pefGas=parseFloat(this.value)||1.1;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
         <tr title="Heizöl EL, nicht-erneuerbarer Anteil (GEG Anlage 4, 2024)">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Heizöl EL</td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-heizoel" value="1.1" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="pefHeizoel=parseFloat(this.value)||1.1;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-heizoel" value="1.1" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="window.pefHeizoel=parseFloat(this.value)||1.1;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
         <tr style="border-top:1px solid var(--border);" title="Holzpellets, nicht-erneuerbarer Anteil (GEG Anlage 4, 2024)">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Holzpellets</td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-pellets" value="0.2" min="0" max="2" step="0.1" style="width:100%;text-align:right;" data-change="pefPellets=parseFloat(this.value)||0.2;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-pellets" value="0.2" min="0" max="2" step="0.1" style="width:100%;text-align:right;" data-change="window.pefPellets=parseFloat(this.value)||0.2;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
         <tr title="Holzhackschnitzel, nicht-erneuerbarer Anteil (GEG Anlage 4, 2024)">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Hackschnitzel</td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-hhs" value="0.2" min="0" max="2" step="0.1" style="width:100%;text-align:right;" data-change="pefHhs=parseFloat(this.value)||0.2;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-hhs" value="0.2" min="0" max="2" step="0.1" style="width:100%;text-align:right;" data-change="window.pefHhs=parseFloat(this.value)||0.2;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
         <tr title="Fernwärme, Mindestwert nicht-erneuerbar (GEG Anlage 4, 2024). Netzspezifischer Wert ggf. überschreiben.">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Fernwärme</td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-fernwaerme" value="0.3" min="0" max="3" step="0.1" style="width:100%;text-align:right;" data-change="pefFernwaerme=parseFloat(this.value)||0.3; const _fpEl=document.getElementById('fw-pef'); if(_fpEl) _fpEl.value=this.value;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-fernwaerme" value="0.3" min="0" max="3" step="0.1" style="width:100%;text-align:right;" data-change="window.pefFernwaerme=parseFloat(this.value)||0.3; const _fpEl=document.getElementById('fw-pef'); if(_fpEl) _fpEl.value=this.value;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
       </tbody>
@@ -3114,7 +3114,7 @@
   
   <div class="inp-group" style="margin-bottom:12px">
     <label class="inp-label">Kostenszenario (KMR, €/m inkl. Verlegung)</label>
-    <select class="inp-field" id="kosten-szenario" data-change="kostenSzenario=this.value; recalcNetz();" style="font-family:inherit;font-size:12px;padding:6px;font-weight:normal;">
+    <select class="inp-field" id="kosten-szenario" data-change="setKostenSzenario(this.value); recalcNetz();" style="font-family:inherit;font-size:12px;padding:6px;font-weight:normal;">
       <option value="niedrig">Niedrig (günstig)</option>
       <option value="mittel" selected>Mittel (Standard)</option>
       <option value="hoch">Hoch (aufwändig)</option>

@@ -592,6 +592,15 @@ export function wtWvn(d) {
       : sp >= WT_SCHWELLEN.spreizungK.gering
         ? 'Die Spreizung liegt im üblichen Bereich.'
         : 'Die geringe Spreizung führt zu großen Volumenströmen, höheren Druckverlusten und erhöhter Pumpenenergie; der hydraulische Abgleich der Anlagen ist zu prüfen.');
+    // Geplante Absenkung der Netztemperaturen: Zeitpunkt, Werte und Auslegung der Nennweiten
+    const ab = z.absenkung;
+    if (ab && ok(num(ab.jahr)) && ok(num(ab.vlNachC)) && ok(num(ab.rlNachC))) {
+      const nachher = vl === num(ab.vlNachC) && rl === num(ab.rlNachC);
+      p.push(nachher
+        ? ` Bis ${num(ab.jahr) - 1} wird das Netz mit ${nf(num(ab.vlVorC))} °C / ${nf(num(ab.rlVorC))} °C betrieben; die Absenkung auf die genannten Werte ist ab ${num(ab.jahr)} geplant.`
+        : ` Ab ${num(ab.jahr)} ist eine Absenkung auf ${nf(num(ab.vlNachC))} °C / ${nf(num(ab.rlNachC))} °C geplant (Spreizung ${nf(num(ab.vlNachC) - num(ab.rlNachC))} K).`);
+      p.push(' Die Nennweiten sind auf den größten Volumenstrom aller Planungsjahre ausgelegt und berücksichtigen die Absenkung.');
+    }
     out.push(absatz(...p));
   } else {
     out.push(absatz('Das Netz ist für eine Vorlauftemperatur von ', F('Vorlauftemperatur in °C'), ' °C und eine Rücklauftemperatur von ', F('Rücklauftemperatur in °C'), ' °C ausgelegt.'));
