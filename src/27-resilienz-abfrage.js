@@ -28,9 +28,11 @@ import {
   raDateiname, raLesen, raPruefung, raAnforderungen,
   raExportJson, raRueckfragenText, raRueckfragenMappe, raDauerText, raText,
   raLesenErhebung, RA_ERHEBUNG_KENNUNG_PRAEFIX,
-  raMappeSchlank, raDateinameSchlank,
+  raMappeSchlank, raDateinameSchlank, raBeispielMappeSchlank, RA_BEISPIEL_SCHLANK_DATEINAME,
 } from './lib/resilienz-abfrage.js';
-import { raErhebungStart, raErhebungHtml, raErhebungAusHtml, raErhebungDateiname } from './lib/resilienz-app.js';
+import {
+  raErhebungStart, raErhebungHtml, raErhebungAusHtml, raErhebungDateiname, raErhebungBeispielSchlank,
+} from './lib/resilienz-app.js';
 import RA_APP_VORLAGE from './resilienz-app/vorlage.html?raw';
 import RA_APP_SKRIPT from './resilienz-app/app.js?raw';
 import { escHtml, showHint } from './03c-gebaeude-io.js';
@@ -160,10 +162,15 @@ export async function raDateiErzeugen(variante) {
   }
 }
 
-/** Vollständig ausgefüllte Beispieldatei — zum Mitschicken oder zum Ausprobieren des Einlesens. */
-export async function raBeispielErzeugen() {
+/**
+ * Vollständig ausgefüllte Beispieldatei — zum Mitschicken oder zum Ausprobieren des Einlesens.
+ * @param {'schlank'} [variante]  schlanke Fassung, mit den Reitern 5–7 (Ableitungen)
+ */
+export async function raBeispielErzeugen(variante) {
   try {
-    if (await _herunterladen(raBeispielMappe(), RA_BEISPIEL_DATEINAME)) {
+    const schlank = variante === 'schlank';
+    if (await _herunterladen(schlank ? raBeispielMappeSchlank() : raBeispielMappe(),
+      schlank ? RA_BEISPIEL_SCHLANK_DATEINAME : RA_BEISPIEL_DATEINAME)) {
       showHint('✓ Beispieldatei erzeugt — erfundene Liegenschaft, lässt sich auch einlesen.', 6000);
     }
   } catch (e) {
@@ -202,6 +209,21 @@ export function raErhebungErzeugen(variante) {
   } catch (e) {
     console.error('Resilienz-Abfrage: Erhebungs-Werkzeug fehlgeschlagen', e);
     showHint('⚠ Erhebungs-Werkzeug konnte nicht erzeugt werden: ' + e.message, 8000);
+  }
+}
+
+/** Das ausgefüllte Beispiel der schlanken Fassung als HTML-Werkzeug (Musterkaserne mit Lageplan). */
+export function raBeispielHtmlErzeugen() {
+  try {
+    const html = raErhebungHtml({ vorlage: RA_APP_VORLAGE, app: RA_APP_SKRIPT, stand: raErhebungBeispielSchlank() });
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'Resilienzerhebung_schlank_BEISPIEL_ausgefuellt.html'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showHint('✓ Beispiel-Werkzeug erzeugt — erfundene Musterkaserne, vollständig ausgefüllt.', 6000);
+  } catch (e) {
+    console.error('Resilienz-Abfrage: Beispiel-Werkzeug fehlgeschlagen', e);
+    showHint('⚠ Beispiel-Werkzeug konnte nicht erzeugt werden: ' + e.message, 8000);
   }
 }
 
@@ -455,6 +477,11 @@ function _erzeugenAnsicht(z) {
       <div style="display:flex;gap:7px;flex-wrap:wrap;">
         <button data-click="raErhebungErzeugen('schlank')" style="${_btn(VIOLETT, true)}">🧭 Werkzeug schlank (.html)</button>
         <button data-click="raDateiErzeugen('schlank')" style="${_btn(VIOLETT)}">📋 Abfrage schlank (.xlsx)</button>
+        <button data-click="raBeispielErzeugen('schlank')" style="${_btn(VIOLETT)}"
+          title="Erfundene Musterkaserne, vollständig ausgefüllt — mit den Reitern 5–7: Anforderungen, Ausfallbilder je Lage, Ableitungen">
+          📄 Beispiel schlank (.xlsx)</button>
+        <button data-click="raBeispielHtmlErzeugen()" style="${_btn(VIOLETT)}"
+          title="Dasselbe Beispiel als ausgefülltes Erhebungs-Werkzeug mit Lageplan">🗺 Beispiel schlank (.html)</button>
       </div>
     </div>`);
 }

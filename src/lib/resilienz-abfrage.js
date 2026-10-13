@@ -78,6 +78,8 @@ export const RA_LISTEN = Object.freeze({
   L_Herkunft:   Object.freeze(['vorgegeben', 'Einschätzung Nutzer', 'unbekannt']),
   // nur schlanke Fassung: eine Frage statt der drei Zeitschnitte
   L_Kritisch:   Object.freeze(['sofort', 'nach Stunden', 'nach Tagen', 'gar nicht', 'unbekannt']),
+  // nur schlanke Fassung: Geltungsbereich einer Lage (legt der Auftraggeber fest)
+  L_Bereich:    Object.freeze(['ganze Liegenschaft', 'Teilbereiche', 'unbekannt']),
 });
 
 // ── Spalten des Kernblatts „3 Funktionen" ───────────────────────────────────
@@ -791,13 +793,16 @@ function _anleitungBlatt(meta) {
 
 /**
  * Blatt „2 Szenarien": S1–S7, je Zeile Relevanz, Dauer, Herkunft, Bemerkung.
- * opt (schlanke Fassung): name, ueberschrift, hinweis, ag — das Blatt gehört dem Auftraggeber (violett).
+ * opt (schlanke Fassung): name, ueberschrift, hinweis, ag — das Blatt gehört dem Auftraggeber (violett);
+ * mitBereich — zwei Spalten mehr: Geltungsbereich (ganze Liegenschaft / Teilbereiche) und welche Gebäude.
  */
 function _szenarienBlatt(vorbelegung, opt = {}) {
   const vor = new Map((vorbelegung || []).map(s => [s.id, s]));
   const E = v => ({ w: v == null || v === '' ? null : v, s: opt.ag ? XS.eingabeAg : XS.eingabe });
-  const kopf = ['ID', 'Referenzszenario', 'Relevant für die Liegenschaft?',
-    'Angenommene Dauer', 'Herkunft der Angabe', 'Bemerkung'];
+  const B = !!opt.mitBereich;
+  const kopf = ['ID', 'Referenzszenario', 'Relevant für die Liegenschaft?', 'Angenommene Dauer',
+    ...(B ? ['Gilt für', 'Welche Gebäude / Bereiche (wie auf dem Lageplan, durch Komma getrennt)'] : []),
+    'Herkunft der Angabe', 'Bemerkung'];
   const zeilen = [
     _titel(opt.ueberschrift || '2 Szenarien'),
     _hinweis(opt.hinweis || 'Welche Ausfälle sind für diese Liegenschaft zu unterstellen und wie lange dauern sie? '
@@ -809,20 +814,24 @@ function _szenarienBlatt(vorbelegung, opt = {}) {
     const v = vor.get(s.id) || {};
     zeilen[RA_KOPFZEILE + 1 + i] = [
       { w: s.id, s: XS.text }, { w: s.name, s: XS.text },
-      E(v.relevant), E(v.dauer), E(v.herkunft), E(v.bem),
+      E(v.relevant), E(v.dauer), ...(B ? [E(v.bereich), E(v.bereiche)] : []), E(v.herkunft), E(v.bem),
     ];
   });
   const von = RA_KOPFZEILE + 2, bis = RA_KOPFZEILE + 1 + RA_SZENARIEN.length;
   return _hinweisVerbinden({
     name: opt.name || RA_BLATT.szenarien, zeilen,
-    spalten: [{ breite: 6 }, { breite: 54 }, { breite: 16 }, { breite: 16 }, { breite: 18 }, { breite: 34 }],
-    zeilenHoehe: { [RA_KOPFZEILE]: 32 },
+    spalten: [{ breite: 6 }, { breite: B ? 44 : 54 }, { breite: 16 }, { breite: B ? 15 : 14 },
+      ...(B ? [{ breite: 17 }, { breite: 40 }] : []), { breite: 18 }, { breite: B ? 40 : 34 }],
+    zeilenHoehe: { [RA_KOPFZEILE]: B ? 46 : 32 },
     fixZeilen: RA_KOPFZEILE + 1,
     pruefungen: [
       { bereich: `C${von}:C${bis}`, liste: 'L_Relevant', titel: 'Relevanz', hinweis: 'ja / nein / unbekannt' },
-      { bereich: `E${von}:E${bis}`, liste: 'L_Herkunft', titel: 'Herkunft', hinweis: 'Vorgabe der zuständigen Stelle oder Einschätzung vor Ort?' },
+      ...(B ? [{ bereich: `E${von}:E${bis}`, liste: 'L_Bereich', titel: 'Gilt für',
+        hinweis: 'Ganze Liegenschaft absichern oder nur Teilbereiche? Bei Teilbereichen die Gebäude in der nächsten Spalte nennen.' }] : []),
+      { bereich: `${B ? 'G' : 'E'}${von}:${B ? 'G' : 'E'}${bis}`, liste: 'L_Herkunft', titel: 'Herkunft',
+        hinweis: 'Vorgabe der zuständigen Stelle oder Einschätzung vor Ort?' },
     ],
-  }, 6);
+  }, B ? 8 : 6);
 }
 
 /**
@@ -1515,6 +1524,10 @@ export function raDateiname(meta) {
 //                        violett gekennzeichnet.
 // Technik (Krisenlast, vorhandene NEA/USV, Tanks, Betriebszeit) fehlt ganz —
 // das ermittelt die Fachplanung bei der Begehung bzw. aus dem Lastgang.
+// Lagen gibt es NICHT je Funktion: Für die Funktion ist ein Stromausfall ein
+// Stromausfall. Die Lage bestimmt nur Dauer (Auftraggeber) und Ausdehnung —
+// welche Gebäude betroffen sind, folgt aus der Netztopologie (Planung).
+// Je Funktion bleibt nur „nur im Krisenfall gebraucht?" (Notunterkunft o. Ä.).
 // Eingelesen wird mit raLesen() (erkennt die Kennung) bzw. raLesenErhebung();
 // die Funktionen tragen danach dieselben Felder wie aus der vollen Abfrage.
 
@@ -1574,10 +1587,11 @@ export const RA_FUNKTION_SPALTEN_SCHLANK = Object.freeze([
   _SP('kritisch', 'Ab wann wird ein Stromausfall für den Auftrag kritisch?', { breite: 18, liste: 'L_Kritisch',
     hinweis: 'sofort / nach Stunden / nach Tagen / gar nicht — „unbekannt" ist zulässig' }),
   _SP('autarkie', 'Wie lange muss die Funktion ohne öffentliches Netz weiterlaufen?', { breite: 18, liste: 'L_Autarkie' }),
+  _SP('nurKrise', 'Wird die Aufgabe nur im Krisenfall gebraucht?', { breite: 15, liste: 'L_JaNein',
+    hinweis: 'z. B. Sporthalle als Notunterkunft — wofür, bitte in der Bemerkung' }),
   _SP('abh',      'Hängt außer Strom ab von (Wärme / Wasser / IT-Netz / Kommunikation / Personal)', { breite: 26 }),
   _SP('herkunft', 'Herkunft der Angaben', { breite: 16, liste: 'L_Herkunft' }),
-  _SP('bem',      'Bemerkung', { breite: 28 }),
-  ...RA_SZENARIEN.map(s => _SP('sz_' + s.id, s.id, { breite: 5, liste: 'L_Kreuz', szenario: s.id, hinweis: s.name, rolle: 'ag' })),
+  _SP('bem',      'Bemerkung', { breite: 30 }),
 ]);
 
 const _TAB_AG = 'FF6A4C93';
@@ -1613,15 +1627,18 @@ function _anleitungSchlank(meta) {
   abschnitt('Wer füllt was aus?');
   tabelle('Blatt', 'Inhalt', 'Wer', XS.kopf);
   tabelle(B.allgemeines, 'Liegenschaft und ausfüllende Stelle (gelb); Vorgaben und zuständige Stelle (violett)', `${N} · ${AG}`);
-  tabelle(B.funktionen, 'Je Funktion drei Fragen (gelb). Die Spalten S1–S7 (violett): in welchen Lagen die Funktion '
-    + 'weiterlaufen muss', `${N} · Lagen: ${AG}`);
-  tabelle(B.szenarien, 'Gegen welche Lagen vorgesorgt wird und mit welcher Dauer', AG, XS.text, XS.eingabeAg);
+  tabelle(B.funktionen, 'Je Funktion wenige Fragen: ab wann kritisch, wie lange ohne Netz, nur im Krisenfall gebraucht', N);
+  tabelle(B.szenarien, 'Gegen welche Lagen vorgesorgt wird, mit welcher Dauer und ob für die ganze Liegenschaft oder nur '
+    + 'für Teilbereiche', AG, XS.text, XS.eingabeAg);
   tabelle(B.rueckmeldung, 'Offene Punkte, Rückfragen und Freigabe', `${N} · Freigabe: ${AG}`);
   tabelle(B.beispiele, 'Typische Funktionen mit Musterantworten zum Nachschlagen', '—');
   text(`Gelbe Zellen: ${N}. Violette Zellen: ${AG} — diese Punkte legt der Auftraggeber fest; sie stehen hier, `
     + 'damit das Vorgehen gemeinsam abgestimmt werden kann.', XS.hinweis);
+  text('Lagen werden nicht je Funktion abgefragt: Für eine Funktion ist ein Stromausfall ein Stromausfall, gleich aus welchem '
+    + 'Grund. Die Lage bestimmt, wie lange er dauert (legt der Auftraggeber fest) und welche Gebäude er trifft — das ergibt '
+    + 'sich aus dem Aufbau des Netzes und wird von der Fachplanung ermittelt.', XS.hinweis);
 
-  abschnitt('Die drei Fragen je Funktion');
+  abschnitt('Die Fragen je Funktion');
   tabelle('Frage', 'Antworten und was daraus folgt', 'Einordnung', XS.kopf);
   tabelle('Ab wann wird ein Stromausfall kritisch?', 'sofort — der Auftrag ist schon nach Sekunden gefährdet', 'A · unterbrechungsfrei');
   tabelle('', 'nach Stunden — einige Stunden sind überbrückbar, dann nicht mehr', 'B · kleiner 4 h');
@@ -1629,6 +1646,8 @@ function _anleitungSchlank(meta) {
   tabelle('', 'gar nicht — die Aufgabe ruht im Krisenfall (auch das ist eine wertvolle Angabe)', 'D · keine Vorgabe');
   tabelle('Wie lange ohne öffentliches Netz?', 'keine · 1 Tag · 3 Tage · 7 Tage · 14 Tage · länger — wie lange es gehen muss, '
     + 'nicht wie lange es heute geht', '');
+  tabelle('Nur im Krisenfall gebraucht?', 'ja — die Aufgabe entsteht erst in der Krise (z. B. Sporthalle als Notunterkunft, '
+    + 'Führungsstelle wächst auf); wofür, bitte in der Bemerkung', '');
   tabelle('Hängt ab von (freiwillig)', 'Was außer Strom noch funktionieren muss: Wärme, Wasser, IT-Netz, Kommunikation, Personal', '');
 
   abschnitt('Hinweise');
@@ -1650,38 +1669,24 @@ function _anleitungSchlank(meta) {
   };
 }
 
-/** Blatt „2 Funktionen" der schlanken Fassung: gelb Betreiber, violett Lagen (Auftraggeber). */
+/** Blatt „2 Funktionen" der schlanken Fassung — nur Betreiber (gelb). */
 function _funktionenSchlank(funktionen, leerzeilen) {
   const sp = RA_FUNKTION_SPALTEN_SCHLANK;
   const blatt = _tabellenBlatt({
     name: RA_BLATT_SCHLANK.funktionen,
     ueberschrift: '2 Funktionen',
     hinweis: 'Eine Zeile je Funktion — gefragt ist die Auswirkung eines Ausfalls, nicht die Technik. Die Vorbelegung '
-      + 'ist ein Vorschlag: bitte streichen, ändern und ergänzen. Die violetten Spalten S1–S7 legt der Auftraggeber fest '
-      + '(„x" = die Funktion muss in dieser Lage weiterlaufen); sie dürfen leer bleiben.',
+      + 'ist ein Vorschlag: bitte streichen, ändern und ergänzen. Gleichartige Gebäude dürfen dieselben Antworten bekommen.',
     spalten: sp,
     daten: funktionen || [],
     leerzeilen,
     idVon: raFunktionsId,
     fixSpalten: 2,
   });
-  const ersteAg = sp.findIndex(s => s.rolle === 'ag');
-  const L = c => spalteZuBuchstabe(c);
-  // Zeile 3: Rollenband über den beiden Spaltengruppen
-  blatt.zeilen[RA_KOPFZEILE - 1] = sp.map((s, c) => ({
-    w: c === 0 ? `Füllt aus: ${RA_ROLLEN.nutzer.label}` : c === ersteAg ? `Legt fest: ${RA_ROLLEN.ag.label}` : null,
-    s: s.rolle === 'ag' ? XS.kopfAg : XS.kopf,
-  }));
-  blatt.verbunden = [...(blatt.verbunden || []), `A${RA_KOPFZEILE}:${L(ersteAg - 1)}${RA_KOPFZEILE}`,
-    `${L(ersteAg)}${RA_KOPFZEILE}:${L(sp.length - 1)}${RA_KOPFZEILE}`];
+  // Zeile 3: Rollenband — wer dieses Blatt ausfüllt
+  blatt.zeilen[RA_KOPFZEILE - 1] = sp.map((s, c) => ({ w: c === 0 ? `Füllt aus: ${RA_ROLLEN.nutzer.label}` : null, s: XS.kopf }));
+  blatt.verbunden = [...(blatt.verbunden || []), `A${RA_KOPFZEILE}:${spalteZuBuchstabe(sp.length - 1)}${RA_KOPFZEILE}`];
   blatt.zeilenHoehe = { ...(blatt.zeilenHoehe || {}), [RA_KOPFZEILE - 1]: 20 };
-  for (let r = RA_KOPFZEILE; r < blatt.zeilen.length; r++) {
-    const z = blatt.zeilen[r];
-    if (!z) continue;
-    sp.forEach((s, c) => {
-      if (s.rolle === 'ag' && z[c]) z[c] = { ...z[c], s: r === RA_KOPFZEILE ? XS.kopfAg : XS.eingabeAg };
-    });
-  }
   return blatt;
 }
 
@@ -1727,9 +1732,10 @@ export function raMappeSchlank(opt = {}) {
         RA_ALLGEMEIN_SCHLANK, meta),
       _funktionenSchlank(opt.funktionen || [], opt.leerzeilen ?? 40),
       _szenarienBlatt(opt.szenarien, {
-        ag: true, name: B.szenarien, ueberschrift: '3 Lagen — legt der Auftraggeber fest',
-        hinweis: 'Gegen welche Ereignisse soll die Liegenschaft abgesichert werden, und wie lange? Das entscheidet der '
-          + 'Auftraggeber; das Blatt dient der Abstimmung. Dauer als Zeitangabe (z. B. „4 h", „3 Tage", „14 Tage").',
+        ag: true, mitBereich: true, name: B.szenarien, ueberschrift: '3 Lagen — legt der Auftraggeber fest',
+        hinweis: 'Gegen welche Ereignisse soll abgesichert werden, wie lange — und für die ganze Liegenschaft oder nur für '
+          + 'Teilbereiche (z. B. Sabotage: nur Führung und Wache)? Das entscheidet der Auftraggeber; das Blatt dient der '
+          + 'Abstimmung. Dauer als Zeitangabe (z. B. „4 h", „3 Tage", „14 Tage").',
       }),
       _frageBlatt(B.rueckmeldung, '4 Rückmeldung', 'Was offen bleibt, und wer die Angaben freigibt.',
         RA_RUECKMELDUNG_FELDER, opt.rueckmeldung || null),
@@ -1760,12 +1766,339 @@ function _leseSchlank(blaetter, kennung) {
   return {
     kennung, version: vNr, variante: 'schlank', fehler,
     allgemein:    _leseFragen(_findeBlatt(blaetter, B.allgemeines) || [], RA_ALLGEMEIN_FELDER),
-    szenarien:    _leseSzenarien(sz || []),
+    szenarien:    _leseSzenarien(sz || [], true),
     kategorien:   [],
     funktionen,
     bestand:      _leseFragen([], RA_BESTAND_FELDER),
     rueckmeldung: _leseFragen(_findeBlatt(blaetter, B.rueckmeldung) || [], RA_RUECKMELDUNG_FELDER),
   };
+}
+
+// ── Schlanke Fassung: Geltungsbereich einer Lage ─────────────────────────────
+// Der Auftraggeber legt je Lage fest, ob die ganze Liegenschaft abgesichert
+// wird oder nur Teilbereiche (z. B. „Sabotage: nur Führung und Wache"). Das ist
+// keine Lage je Funktion (die gibt es nicht mehr), sondern der Schutzumfang.
+// Gebäude werden so benannt wie auf dem Lageplan, durch Komma getrennt.
+
+/** Gebäudeangaben eines Teilbereichs als Liste. */
+export const raBereichListe = text => String(text || '').split(/[,;\n]/).map(s => raText(s)).filter(Boolean);
+
+/** Liegt eine Funktion im Geltungsbereich einer Lage? „Geb. 1" passt auf „Geb. 1 Stabsgebäude", nicht auf „Geb. 10 …". */
+export function raImGeltungsbereich(f, lage) {
+  if (raAusListe(lage?.bereich, 'L_Bereich') !== 'Teilbereiche') return true;
+  const geb = _schluessel(f?.geb);
+  if (!geb) return false;
+  return raBereichListe(lage.bereiche).some(t => {
+    const k = _schluessel(t);
+    return geb === k || geb.startsWith(k + ' ') || geb.startsWith(k + ',');
+  });
+}
+
+// ── Schlanke Fassung: Beispiel ──────────────────────────────────────────────
+// Erfundene, vollständig ausgefüllte schlanke Abfrage zur Musterkaserne Ulm
+// (Gebäude wie im Lageplan von RA_BEISPIEL_SCHLANK_GEBAEUDE in
+// lib/resilienz-app.js). `auswertung` ist handgeschrieben und steht für das,
+// was die Planung aus Netz und Begehung beisteuert: Abhängigkeiten,
+// Ausfallbild je Lage, Lösungsprinzip, Maßnahmen.
+
+const _FS = (id, name, geb, kritisch, autarkie, nurKrise, abh, herkunft, bem = '', quelle = '') =>
+  Object.freeze({ id, name, geb, kritisch, autarkie, nurKrise, abh, herkunft, bem, ...(quelle ? { quelle } : {}) });
+const _UNTERKUNFT = [10, 11, 12, 13, 14, 15, 16, 17].map((n, i) => _FS(`F${String(5 + i).padStart(2, '0')}`, 'Unterkunft',
+  `Geb. ${n} Unterkunft`, 'nach Tagen', '3 Tage', 'nein', 'Wärme, Wasser', 'Einschätzung Nutzer',
+  i ? '' : 'Im Krisenfall nur Licht, Heizung und Sanitär', i ? 'F05' : ''));
+const _KERN = 'Geb. 1 Stabsgebäude, Geb. 2 Wache, Geb. 3 Sanitätsbereich';
+
+export const RA_BEISPIEL_SCHLANK = Object.freeze({
+  allgemein: Object.freeze({
+    lieg: 'Musterkaserne Ulm (BEISPIEL)', stelle: 'Standortverwaltung Musterstadt', bearb: 'M. Mustermann', stand: '2026-10-13',
+    zustaendig: 'Kommando Musterbereich, Dezernat Infrastruktur',
+    vorgaben: 'ja', vorgaben_bez: 'Weisung zur Notstromversorgung, Kommando Musterbereich (eingestuft — Inhalt hier nicht wiedergegeben)',
+    liste_kf: 'nein', liste_kf_bez: '',
+  }),
+  szenarien: Object.freeze([
+    { id: 'S1', relevant: 'ja', dauer: '4 h', bereich: 'ganze Liegenschaft', bereiche: '', herkunft: 'vorgegeben',
+      bem: 'Zwei kurze Netzausfälle in den letzten fünf Jahren' },
+    { id: 'S2', relevant: 'ja', dauer: '14 Tage', bereich: 'ganze Liegenschaft', bereiche: '', herkunft: 'vorgegeben',
+      bem: 'Bemessungsfall aus der Weisung' },
+    { id: 'S3', relevant: 'ja', dauer: '7 Tage', bereich: 'Teilbereiche', bereiche: `${_KERN}, Geb. 40 Heizzentrale`,
+      herkunft: 'vorgegeben', bem: 'Nur der Kernbereich muss ohne Nachlieferung von Diesel auskommen' },
+    { id: 'S4', relevant: 'ja', dauer: '24 h', bereich: 'Teilbereiche', bereiche: _KERN, herkunft: 'vorgegeben',
+      bem: 'Reparatur eines Kabels oder Trafos dauert bis 24 h — nur der Kernbereich soll das ohne längere Unterbrechung überstehen' },
+    { id: 'S5', relevant: 'ja', dauer: '72 h', bereich: 'Teilbereiche', bereiche: 'Geb. 1 Stabsgebäude, Geb. 2 Wache',
+      herkunft: 'vorgegeben', bem: 'Führung und Wache auch bei einem Anschlag auf Übergabe- oder Trafostation' },
+    { id: 'S6', relevant: 'nein', dauer: '', bereich: '', bereiche: '', herkunft: 'vorgegeben',
+      bem: 'Keine fernwirktechnische Anbindung, Gebäudeleittechnik nur lokal' },
+    { id: 'S7', relevant: 'ja', dauer: '2 Tage', bereich: 'Teilbereiche', bereiche: 'Geb. 40 Heizzentrale', herkunft: 'vorgegeben',
+      bem: 'Heizzentrale liegt in der Senke am Bach (HQ100)' },
+  ].map(Object.freeze)),
+  funktionen: Object.freeze([
+    _FS('F01', 'Führung / IT / Serverraum', 'Geb. 1 Stabsgebäude', 'sofort', '14 Tage', 'nein', 'IT-Netz, Kommunikation, Personal',
+      'vorgegeben', 'Serverraum mit Klimatisierung im EG'),
+    _FS('F02', 'Wache / Zugangskontrolle', 'Geb. 2 Wache', 'nach Stunden', '14 Tage', 'nein', 'Kommunikation, Personal', 'vorgegeben'),
+    _FS('F03', 'Sanitätsbereich', 'Geb. 3 Sanitätsbereich', 'nach Stunden', '7 Tage', 'nein', 'Wärme, Wasser, Personal', 'vorgegeben',
+      'Bettenstation mit 12 Betten'),
+    _FS('F04', 'Küche / Verpflegung', 'Geb. 4 Truppenküche', 'nach Tagen', '3 Tage', 'nein', 'Wasser, Wärme, Personal',
+      'Einschätzung Nutzer', 'Kaltverpflegung reicht für einen Tag'),
+    ..._UNTERKUNFT,
+    _FS('F13', 'Werkstatt / Instandsetzung', 'Geb. 30 Werkhalle', 'nach Tagen', '7 Tage', 'nein', 'Personal', 'Einschätzung Nutzer'),
+    _FS('F14', 'Werkstatt / Instandsetzung', 'Geb. 31 Werkhalle', 'nach Tagen', '7 Tage', 'nein', 'Personal', 'Einschätzung Nutzer',
+      '', 'F13'),
+    _FS('F15', 'Notunterkunft / Sammelstelle', 'Geb. 32 Werkhalle', 'nach Stunden', '7 Tage', 'ja', 'Wärme, Wasser, Personal',
+      'vorgegeben', 'Im Katastrophenfall Sammelstelle für bis zu 200 Personen (Amtshilfe für den Landkreis); im Alltag Lagerhalle'),
+    _FS('F16', 'Wärmeversorgung (Heizzentrale)', 'Geb. 40 Heizzentrale', 'nach Tagen', '7 Tage', 'nein', 'Wasser',
+      'Einschätzung Nutzer', 'Gaskessel — ohne Strom laufen Brenner und Pumpen nicht'),
+    _FS('F17', 'Lager', 'Geb. 41 Lager', 'gar nicht', 'keine', 'nein', '', 'Einschätzung Nutzer'),
+  ]),
+  rueckmeldung: Object.freeze({
+    offen: 'Ob die Unterkünfte unter die 14-Tage-Vorgabe der Weisung fallen, ist offen — hier mit 3 Tagen eingeschätzt.',
+    rueckfragen: 'Wer betreibt die Notunterkunft Geb. 32 im Krisenfall — Standort oder Landkreis?',
+    freigabe_stelle: 'Kommando Musterbereich, Dezernat Infrastruktur', freigabe_name: 'Oberstleutnant Beispiel',
+    freigabe_datum: '2026-10-20',
+  }),
+  // ── Was die Planung beisteuert (handgeschrieben) ──
+  auswertung: Object.freeze({
+    abhaengigkeiten: Object.freeze([
+      Object.freeze({ id: 'F16', klasse: 'B', warum: 'Sanitätsbereich (B) und Notunterkunft (B) brauchen Wärme — die Heizzentrale '
+        + 'übernimmt die strengste Einordnung der Funktionen, die von ihr abhängen.' }),
+    ]),
+    ausfall: Object.freeze({
+      S1: 'Ganze Liegenschaft ohne Netz, bis 4 h.',
+      S2: 'Ganze Liegenschaft ohne Netz, bis 14 Tage — alle drei Trafostationen stromlos.',
+      S3: 'Wie S2, zusätzlich kein Diesel-Nachschub: der Tankinhalt muss 7 Tage reichen.',
+      S4: 'Der Kernbereich (Geb. 1–3) hängt per Stichkabel an Trafostation T1. Fällt T1 oder das Kabel aus, sind Geb. 1–3 '
+        + 'bis 24 h ohne Strom; die übrige Liegenschaft ist nicht betroffen.',
+      S5: 'Übergabestation am Haupttor ausgefallen: Liegenschaft ohne Netz. Eine NEA im selben Raum wäre mit betroffen.',
+      S7: 'Schaltanlage der Heizzentrale (UG) überflutet: Wärme fällt aus, Strom der übrigen Gebäude nicht betroffen.',
+    }),
+    prinzip: Object.freeze({
+      S1: 'Klasse A unterbrechungsfrei (USV); alles andere überbrückt, bis die NEA läuft oder das Netz zurück ist.',
+      S2: 'A/B: stationäre NEA an Trafostation T1 für Kernbereich und Heizzentrale. C: Einspeisepunkte für mobile NEA je Station. '
+        + 'D: abwerfen.',
+      S3: 'Tank der NEA Kernbereich für 7 Tage auslegen; C-Bereiche erst wieder, wenn Nachschub kommt.',
+      S4: 'Zweite Einspeisung für den Kernbereich (Ring T1–T2 schließen) — oder die NEA aus S2 deckt den Fall mit ab.',
+      S5: 'NEA Kernbereich räumlich getrennt von Übergabe- und Trafostation aufstellen, Zutritt sichern.',
+      S7: 'Schaltanlage und Einspeisepunkt der Heizzentrale hochwassersicher (über HQ100) anordnen.',
+    }),
+    massnahmen: Object.freeze([
+      ['M01', 'USV für Serverraum und Führungsräume Geb. 1 (mindestens 15 min)', 'F01', 'S1, S2, S4, S5',
+        'Klasse A: keine Unterbrechung zulässig — auch nicht für die 10–15 s Anlaufzeit einer NEA.'],
+      ['M02', 'Stationäre NEA an Trafostation T1 für den Kernbereich und die Heizzentrale', 'F01, F02, F03, F16', 'S2, S5',
+        'Klasse A/B müssen 7–14 Tage laufen; alle vier Gebäude hängen an T1.'],
+      ['M03', 'Tank der NEA für 7 Tage, Nachtankplanung für Tag 8–14', 'F01, F02, F03, F16', 'S3, S2',
+        'S3 verlangt 7 Tage ohne Nachlieferung für den Kernbereich; Führung und Wache brauchen 14 Tage.'],
+      ['M04', 'Ring T1–T2 schließen (zweite Einspeisung Kernbereich)', 'F01, F02, F03', 'S4',
+        'Der Kernbereich soll einen Kabel- oder Trafoausfall überstehen; heute Stichanschluss.'],
+      ['M05', 'Einspeisepunkte für mobile NEA an T2 und T3 (Küche, Unterkünfte, Werkhallen)', 'F04–F14', 'S2',
+        'Klasse C: 3–7 Tage, Unterbrechung bis zu Tagen zulässig — eine stationäre Anlage ist nicht nötig.'],
+      ['M06', 'Notunterkunft Geb. 32: vorbereiteter Einspeisepunkt und fest zugeordnete mobile NEA', 'F15', 'S2',
+        'Wird nur im Krisenfall gebraucht, dann aber binnen Stunden (B) — Anschluss vorbereiten statt Anlage dauerhaft vorhalten.'],
+      ['M07', 'NEA-Standort getrennt von der Übergabestation, Zutrittsschutz', 'F01, F02', 'S5',
+        'Führung und Wache sollen 72 h einen Anschlag auf die Übergabe überstehen.'],
+      ['M08', 'Schaltanlage der Heizzentrale hochwassersicher verlegen', 'F16', 'S7',
+        'Heizzentrale ist für 2 Tage Hochwasser abzusichern; heute Schaltanlage im UG.'],
+      ['M09', 'Lastabwurf im Blackout: Lager Geb. 41 und nicht benötigte Abgänge abschalten', 'F17', 'S2',
+        'Kein Auftragsbezug — jede abgeworfene Last verkleinert NEA und Tank.'],
+    ].map(([nr, text, fuer, lagen, warum]) => Object.freeze({ nr, text, fuer, lagen, warum }))),
+  }),
+});
+
+/** Das Beispiel in der Arbeitsstruktur von raLesen() — wie eingelesen. */
+export function raBeispielDatenSchlank() {
+  const B = RA_BEISPIEL_SCHLANK;
+  const funktionen = B.funktionen.map((roh, i) => _funktionAbschliessen(
+    { ...roh, autarkie_text: roh.autarkie, sz: {} }, new Map(), i));
+  const name = new Map(RA_SZENARIEN.map(s => [s.id, s.name]));
+  return {
+    variante: 'schlank', kennung: RA_SCHLANK_KENNUNG, fehler: [],
+    allgemein: { ...B.allgemein },
+    szenarien: B.szenarien.map(s => ({ ...s, name: name.get(s.id) })),
+    kategorien: [], funktionen, bestand: {}, rueckmeldung: { ...B.rueckmeldung },
+  };
+}
+
+/**
+ * Ableitung der schlanken Fassung: je Funktion die Anforderung (nach
+ * Abhängigkeiten) und je relevanter Lage, wie lange sie dort laufen muss —
+ * min(Dauer der Lage, Dauer der Funktion), nur im Geltungsbereich der Lage.
+ * @param {object} daten  raLesen()/raBeispielDatenSchlank()
+ * @param {{abhaengigkeiten?:Array<{id,klasse,warum}>}} [planung]
+ */
+export function raAbleitungSchlank(daten, planung = {}) {
+  const lagen = (daten?.szenarien || []).filter(s => s.relevant === 'ja')
+    .map(s => ({ ...s, h: raAutarkieStunden(s.dauer) }));
+  const hoch = new Map((planung.abhaengigkeiten || []).map(a => [a.id, a]));
+  const funktionen = (daten?.funktionen || []).map(f => {
+    const k0 = f.klasse || f.klasse_vorschlag;
+    const h = hoch.get(f.id);
+    const klasse = h && RA_KLASSEN_KEYS.indexOf(h.klasse) < RA_KLASSEN_KEYS.indexOf(k0) ? h.klasse : k0;
+    const bedarf = klasse !== 'D' && f.autarkie_h !== 0;
+    const jeLage = {};
+    for (const l of lagen) {
+      const im = raImGeltungsbereich(f, l);
+      const stunden = !bedarf || !im ? null
+        : f.autarkie_h == null ? l.h : l.h == null ? f.autarkie_h : Math.min(l.h, f.autarkie_h);
+      jeLage[l.id] = { im, h: stunden, bedarf: bedarf && im };
+    }
+    return { f, klasse0: k0, klasse, hoch: klasse !== k0 ? h : null, bedarf,
+      unterbrechung: RA_KLASSEN[klasse]?.unterbrechung || '', prinzip: RA_KLASSEN_LEITREGEL[klasse] || '', jeLage };
+  });
+  return { lagen, funktionen };
+}
+
+const _SCHLANK_WEG = ['① Bedarf (Betreiber)', '② Abhängigkeiten', '③ Lage × Geltungsbereich', '④ Ausfallbild (Netz)', '⑤ Maßnahmen'];
+
+function _kopfSchlank(bau, n, titel, schritt, worum) {
+  bau.zeile([{ w: titel, s: XS.titel }]);
+  bau.zeile([{ w: `Füllt aus: Fachplanung  ·  ${worum}`, s: XS.fett, n }]);
+  bau.zeile([{ w: 'Weg zur Maßnahme:  ' + _SCHLANK_WEG.map((t, i) => (schritt.includes(i + 1) ? `[ ${t} ]` : t)).join('  →  '),
+    s: XS.abschnitt, n }]);
+  bau.zeile([{ w: 'Diesen Reiter füllt nicht der Betreiber aus. Er zeigt am erfundenen Beispiel, was die Fachplanung aus den '
+    + 'Antworten von Betreiber und Auftraggeber ableitet — zusammen mit dem, was sie selbst aus Netz und Begehung kennt.',
+  s: XS.hinweis, n }]);
+  bau.leer();
+}
+
+/** Reiter „5 Anforderungen": Bedarf je Funktion, Hochstufung, und je Lage, wie lange — die Matrix ist abgeleitet, nicht abgefragt. */
+function _anforderungenSchlank(A) {
+  const lagen = A.lagen;
+  const breiten = [6, 26, 21, 12, 11, 12, 15, 10, 8, ...lagen.map(() => 9), 30];
+  const n = breiten.length;
+  const bau = _zeilenBauer(breiten);
+  _kopfSchlank(bau, n, '5 Anforderungen', [1, 2, 3], 'aus Bedarf, Abhängigkeiten und Geltungsbereich der Lagen');
+  bau.zeile([{ w: 'Je Lage: wie lange die Funktion dort laufen muss = die kürzere von „Dauer der Lage" und „muss laufen". '
+    + '„—" = außerhalb des Geltungsbereichs der Lage oder kein Bedarf. Die Spalten S… legt der Auftraggeber über Dauer '
+    + 'und Geltungsbereich fest — je Funktion wird nichts angekreuzt.', s: XS.hinweis, n }]);
+  bau.leer();
+  // Lagen-Steckbrief über den Matrixspalten
+  bau.zeile([{ w: '', s: XS.standard, n: 9 }, ...lagen.map(l => ({ w: `${l.dauer || '?'}`, s: XS.kopfAg })),
+    { w: 'Dauer der Lage', s: XS.hinweis }]);
+  bau.zeile([{ w: '', s: XS.standard, n: 9 }, ...lagen.map(l => ({
+    w: raAusListe(l.bereich, 'L_Bereich') === 'Teilbereiche' ? 'Teil' : 'alle', s: XS.kopfAg })),
+  { w: 'Geltungsbereich (alle = ganze Liegenschaft)', s: XS.hinweis }]);
+  bau.zeile(['ID', 'Funktion', 'Gebäude', 'kritisch ab (Betreiber)', 'Einordnung (Betreiber)', 'für die Planung', 'Unterbrechung zulässig',
+    'muss laufen', 'nur Krise', ...lagen.map(l => l.id), 'Prinzip der Versorgung'].map((w, i) => ({
+    w, s: i >= 9 && i < 9 + lagen.length ? XS.kopfAg : XS.kopf })), 46);
+  for (const z of A.funktionen) {
+    const f = z.f;
+    bau.zeile([
+      { w: f.id, s: XS.text }, { w: f.name, s: XS.text }, { w: f.geb, s: XS.text },
+      { w: f.kritisch || '—', s: XS.text }, { w: z.klasse0, s: XS.text },
+      { w: z.hoch ? `${z.klasse} ↑` : z.klasse, s: z.hoch ? XS.luecke : XS.text },
+      { w: z.bedarf ? z.unterbrechung : '—', s: XS.text },
+      { w: z.bedarf ? raDauerText(f.autarkie_h) : '—', s: XS.text },
+      { w: f.nurKrise === 'ja' ? 'ja' : '', s: XS.text },
+      ...lagen.map(l => { const c = z.jeLage[l.id]; return c.h != null ? { w: raDauerText(c.h), s: XS.gut } : { w: '—', s: XS.info }; }),
+      { w: z.prinzip, s: XS.text },
+    ]);
+  }
+  bau.leer();
+  for (const z of A.funktionen.filter(x => x.hoch)) {
+    bau.zeile([{ w: `↑ ${z.f.id} ${z.f.name}: vom Betreiber als ${z.klasse0} eingeordnet, für die Planung ${z.klasse}. ${z.hoch.warum}`,
+      s: XS.hinweis, n }]);
+  }
+  return _blattAus('5 Anforderungen', bau, breiten);
+}
+
+/** Reiter „6 Ausfallbilder": je Lage, was im Netz ausfällt, wen das trifft und wie man es löst. */
+function _ausfallbilderSchlank(A, P) {
+  const breiten = [7, 24, 12, 18, 42, 40, 44];
+  const n = breiten.length;
+  const bau = _zeilenBauer(breiten);
+  _kopfSchlank(bau, n, '6 Ausfallbilder je Lage', [3, 4], 'welche Gebäude eine Lage trifft, folgt aus dem Netz');
+  bau.zeile(['Lage', 'Bezeichnung', 'Dauer', 'Gilt für (Auftraggeber)', 'Was fällt aus? (Netz — Fachplanung)',
+    'Betroffen mit Anforderung (aus Reiter 5)', 'Lösungsprinzip'].map((w, i) => ({ w, s: i <= 3 ? XS.kopfAg : XS.kopf })), 30);
+  for (const l of A.lagen) {
+    const betroffen = A.funktionen.filter(z => z.jeLage[l.id]?.bedarf);
+    const gruppen = RA_KLASSEN_KEYS.map(k => {
+      const fs = betroffen.filter(z => z.klasse === k);
+      if (!fs.length) return '';
+      const namen = [...new Set(fs.map(z => z.f.name))].map(nm => {
+        const anz = fs.filter(z => z.f.name === nm).length;
+        return anz > 1 ? `${nm} (${anz}×)` : nm;
+      });
+      return `${k}: ${namen.join(', ')}`;
+    }).filter(Boolean).join('\n');
+    const teil = raAusListe(l.bereich, 'L_Bereich') === 'Teilbereiche';
+    bau.zeile([
+      { w: l.id, s: XS.text }, { w: l.name, s: XS.text }, { w: l.dauer, s: XS.text },
+      { w: teil ? `Teilbereiche: ${raBereichListe(l.bereiche).join(', ')}` : 'ganze Liegenschaft', s: XS.text },
+      { w: P.ausfall?.[l.id] || '[Fachplanung]', s: XS.beispiel },
+      { w: gruppen || '—', s: XS.gut },
+      { w: P.prinzip?.[l.id] || '[Fachplanung]', s: XS.beispiel },
+    ]);
+  }
+  const nicht = RA_SZENARIEN.filter(s => !A.lagen.some(l => l.id === s.id));
+  if (nicht.length) {
+    bau.leer();
+    bau.zeile([{ w: `Nicht betrachtet (vom Auftraggeber als nicht relevant bzw. offen gekennzeichnet): ${nicht.map(s => `${s.id} ${s.name}`).join(' · ')}`,
+      s: XS.hinweis, n }]);
+  }
+  bau.leer();
+  bau.zeile([{ w: 'Blau = steuert die Fachplanung bei (Netztopologie, Begehung). Grün = aus den Antworten abgeleitet.', s: XS.hinweis, n }]);
+  return _blattAus('6 Ausfallbilder', bau, breiten);
+}
+
+/** Reiter „7 Ableitungen": Kernaussagen und Maßnahmen. */
+function _ableitungenSchlank(A, P) {
+  const breiten = [7, 52, 22, 16, 64];
+  const n = breiten.length;
+  const bau = _zeilenBauer(breiten);
+  _kopfSchlank(bau, n, '7 Ableitungen', [5], 'was daraus für die Liegenschaft folgt');
+  bau.zeile([{ w: 'Kernaussagen', s: XS.abschnitt, n }]);
+  const mit = A.funktionen;
+  const zahl = k => mit.filter(z => z.klasse === k).length;
+  const geb = k => new Set(mit.filter(z => z.klasse === k).map(z => z.f.geb)).size;
+  const kurz = { A: 'unterbrechungsfrei (USV) und stationär', B: 'stationäre bzw. fest zugeordnete NEA',
+    C: 'Einspeisepunkt für eine mobile NEA genügt', D: 'kann im Krisenfall abgeworfen werden' };
+  for (const k of RA_KLASSEN_KEYS) {
+    if (!zahl(k)) continue;
+    bau.zeile([{ w: `• ${geb(k)} Gebäude mit Einordnung ${k} (${zahl(k)} ${zahl(k) === 1 ? 'Funktion' : 'Funktionen'}): ${kurz[k]}.`,
+      s: XS.fliess, n }]);
+  }
+  const teil = A.lagen.filter(l => raAusListe(l.bereich, 'L_Bereich') === 'Teilbereiche');
+  if (teil.length) {
+    bau.zeile([{ w: `• ${teil.map(l => l.id).join(', ')} gelten nur für Teilbereiche — die Maßnahmen dafür bleiben auf diese Gebäude `
+      + 'beschränkt, statt die ganze Liegenschaft gegen jede Lage auszulegen.', s: XS.fliess, n }]);
+  }
+  const krise = mit.filter(z => z.f.nurKrise === 'ja');
+  if (krise.length) {
+    bau.zeile([{ w: `• Nur im Krisenfall gebraucht: ${krise.map(z => `${z.f.name} (${z.f.geb})`).join(', ')} — Anschluss vorbereiten `
+      + 'statt Anlage dauerhaft vorhalten.', s: XS.fliess, n }]);
+  }
+  for (const z of mit.filter(x => x.hoch)) {
+    bau.zeile([{ w: `• ${z.f.name} wird über Abhängigkeiten ${z.klasse} statt ${z.klasse0} — sonst fiele mit ihr die Funktion aus, `
+      + 'die sie versorgt.', s: XS.fliess, n }]);
+  }
+  bau.leer();
+  bau.zeile([{ w: 'Maßnahmen', s: XS.abschnitt, n }]);
+  bau.zeile(['Nr.', 'Maßnahme', 'für Funktionen', 'wegen Lage', 'Begründung'].map(w => ({ w, s: XS.kopf })));
+  for (const m of P.massnahmen || []) {
+    bau.zeile([{ w: m.nr, s: XS.text }, { w: m.text, s: XS.beispiel }, { w: m.fuer, s: XS.text }, { w: m.lagen, s: XS.text },
+      { w: m.warum, s: XS.text }]);
+  }
+  bau.leer();
+  bau.zeile([{ w: 'Über die Maßnahmen entscheidet der Auftraggeber. Leistungen und Kosten ermittelt die Fachplanung im nächsten '
+    + 'Schritt aus Lastgang und Netzberechnung.', s: XS.hinweis, n }]);
+  return _blattAus('7 Ableitungen', bau, breiten);
+}
+
+/** Dateiname der schlanken Beispieldatei. */
+export const RA_BEISPIEL_SCHLANK_DATEINAME = 'Resilienzabfrage_schlank_BEISPIEL_ausgefuellt.xlsx';
+
+/** Schlanke Beispieldatei: vollständig ausgefüllt, dazu die Reiter 5–7 mit den Ableitungen. Lässt sich einlesen. */
+export function raBeispielMappeSchlank() {
+  const B = RA_BEISPIEL_SCHLANK;
+  const m = raMappeSchlank({
+    meta: { ...B.allgemein, ansprechpartner: 'Beispiel — hier stehen Name, Dienststelle, Telefon und E-Mail' },
+    funktionen: B.funktionen, szenarien: B.szenarien, rueckmeldung: B.rueckmeldung, leerzeilen: 3,
+  });
+  m.titel = 'Resilienzabfrage (schlank) BEISPIEL';
+  const A = raAbleitungSchlank(raBeispielDatenSchlank(), B.auswertung);
+  const neu = [_anforderungenSchlank(A), _ausfallbilderSchlank(A, B.auswertung), _ableitungenSchlank(A, B.auswertung)]
+    .map(b => ({ ...b, tabFarbe: _TAB.auswertung, quer: true }));
+  const i = m.blaetter.findIndex(b => b.name === RA_BLATT_SCHLANK.beispiele);
+  m.blaetter.splice(i, 0, ...neu);
+  return m;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1902,7 +2235,7 @@ function _leseFragen(zeilen, felder) {
   return out;
 }
 
-function _leseSzenarien(zeilen) {
+function _leseSzenarien(zeilen, mitBereich = false) {
   const nachId = new Map();
   for (const z of zeilen || []) {
     const id = raText(z?.[0]).toUpperCase();
@@ -1915,8 +2248,9 @@ function _leseSzenarien(zeilen) {
       name: raText(z[1]) || s.name,
       relevant: raAusListe(z[2], 'L_Relevant'),
       dauer: raText(z[3]),
-      herkunft: raAusListe(z[4], 'L_Herkunft'),
-      bem: raText(z[5]),
+      ...(mitBereich ? { bereich: raAusListe(z[4], 'L_Bereich'), bereiche: raText(z[5]) } : {}),
+      herkunft: raAusListe(z[mitBereich ? 6 : 4], 'L_Herkunft'),
+      bem: raText(z[mitBereich ? 7 : 5]),
     };
   });
 }
@@ -2165,6 +2499,7 @@ export function raLesenErhebung(stand) {
     if (raText(roh?.quelle)) f.quelle = raText(roh.quelle);
     if (raText(roh?.katalog)) f.katalog = raText(roh.katalog);
     if (raText(roh?.kritisch)) f.kritisch = raAusListe(roh.kritisch, 'L_Kritisch');
+    if (raText(roh?.nurKrise)) f.nurKrise = raAusListe(roh.nurKrise, 'L_JaNein');
     funktionen.push(_funktionAbschliessen(f, nachName, funktionen.length));
   }
 
@@ -2175,6 +2510,7 @@ export function raLesenErhebung(stand) {
       id: s.id, name: s.name,
       relevant: raAusListe(z.relevant, 'L_Relevant'),
       dauer: raText(z.dauer),
+      ...(stand?.variante === 'schlank' ? { bereich: raAusListe(z.bereich, 'L_Bereich'), bereiche: raText(z.bereiche) } : {}),
       herkunft: raAusListe(z.herkunft, 'L_Herkunft'),
       bem: raText(z.bem),
     };
@@ -2220,6 +2556,9 @@ export function raPruefung(daten) {
   for (const s of daten?.szenarien || []) {
     if (_fehlt(s.relevant)) P(s.id, `Szenario „${s.name}": Relevanz für die Liegenschaft ist offen.`, 'relevant');
     else if (s.relevant === 'ja' && !raText(s.dauer)) P(s.id, `Szenario „${s.name}": angenommene Dauer fehlt.`, 'dauer');
+    if (schlank && s.relevant === 'ja' && s.bereich === 'Teilbereiche' && !raText(s.bereiche)) {
+      P(s.id, `Szenario „${s.name}": gilt für Teilbereiche, aber welche Gebäude, ist nicht angegeben.`, 'bereiche');
+    }
     if (s.relevant === 'ja' && _fehlt(s.herkunft)) {
       P(s.id, `Szenario „${s.name}": unklar, ob die Annahme vorgegeben oder eingeschätzt ist.`, 'herkunft');
     }

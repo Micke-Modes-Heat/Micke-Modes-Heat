@@ -241,16 +241,30 @@ describe('Schlanke Fassung', () => {
   });
 
   it('liest „kritisch" aus dem Werkzeug-Stand', () => {
-    const stand = { ...st, funktionen: [{ ...st.funktionen[0], kritisch: 'sofort', autarkie_text: '7 Tage', herkunft: 'vorgegeben' }] };
+    const stand = { ...st, funktionen: [{ ...st.funktionen[0], kritisch: 'sofort', nurKrise: 'nein', autarkie_text: '7 Tage', herkunft: 'vorgegeben' }] };
     const d = RA.raLesenErhebung(stand);
     expect(d.variante).toBe('schlank');
     expect(d.funktionen[0].klasse).toBe('A');
     expect(d.funktionen[0].ausw_s).toBe('Auftrag gefährdet');
+    expect(d.funktionen[0].nurKrise).toBe('nein');
   });
 
   it('die zusammengesetzte Datei ist gültiges Skript', () => {
     const html = APP.raErhebungHtml({ vorlage: VORLAGE, app: SKRIPT, stand: st });
     expect(APP.raErhebungAusHtml(html).variante).toBe('schlank');
     expect(html).toContain('(schlank)');
+  });
+});
+
+describe('Beispiel der schlanken Fassung', () => {
+  const st = APP.raErhebungBeispielSchlank();
+  it('ist ausgefüllt, mit Lageplan und gelesen ohne offene Betreiber-Punkte', () => {
+    expect(st.variante).toBe('schlank');
+    expect(st.gebaeude.every(g => g.umriss)).toBe(true);
+    expect(st.funktionen.every(f => f.gebId != null)).toBe(true);
+    const d = RA.raLesenErhebung(st);
+    expect(d.funktionen.find(f => f.id === 'F01').klasse).toBe('A');
+    expect(d.szenarien.find(s => s.id === 'S3').bereich).toBe('Teilbereiche');
+    expect(RA.raPruefung(d).offene_punkte.filter(p => p.ref !== 'Allgemeines')).toEqual([]);
   });
 });
