@@ -444,13 +444,89 @@ export function pegel3d(sz, x, y, hr, o = {}) {
     reflexion: refl > 0 ? pegel - lg(direkt) : 0 };
 }
 
+/* ── Isophonen ───────────────────────────────────────────────────────────── */
+const LEER = -999;
+
 /**
- * Isophonen mit Gebäuden: je Strahl ab der Mitte der Quellengruppe wird der Pegel abgetastet (Abschirmung ab der
- * Mitte) und der äußerste Punkt je Zielpegel gesucht. Ergebnis: Map ziel → [{ost, nord}] (leer, wenn der Pegel
- * schon an der Quelle unterschritten wird oder über maxM hinausreicht).
+ * Höhenlinien (Marching Squares) des Pegelfelds `werte` ((n+1)² Knoten, Zeile für Zeile ab (x0, y0), Zellgröße cell)
+ * für den Pegel z: Ringe um alle Gebiete mit Pegel ≥ z, auch Inseln und Aussparungen (Schatten hinter Gebäuden).
+ * Ergebnis: [[{ost, nord}, …], …] — für Füllung mit gerade/ungerade-Regel gedacht.
  */
-export function isophonen3d(sz, ziele, o = {}) {
-  const strahlen = o.strahlen ?? 180, hr = o.hr ?? 4, maxM = o.maxM ?? 3000;
+export function pegelHoehenlinien(werte, n, z, x0, y0, cell) {
+  const idx = (i, j) => j * (n + 1) + i;
+  const punkt = new Map(), nachbar = new Map();
+  const kante = (i, j, waagrecht) => {
+    const id = 2 * idx(i, j) + (waagrecht ? 0 : 1);
+    if (!punkt.has(id)) {
+      const a = werte[idx(i, j)], b = werte[waagrecht ? idx(i + 1, j) : idx(i, j + 1)];
+      const t = b === a ? 0.5 : Math.min(1, Math.max(0, (z - a) / (b - a)));
+      punkt.set(id, { ost: x0 + (i + (waagrecht ? t : 0)) * cell, nord: y0 + (j + (waagrecht ? 0 : t)) * cell });
+    }
+    return id;
+  };
+  const verbinden = (a, b) => {
+    if (!nachbar.has(a)) nachbar.set(a, []);
+    if (!nachbar.has(b)) nachbar.set(b, []);
+    nachbar.get(a).push(b); nachbar.get(b).push(a);
+  };
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const v0 = werte[idx(i, j)], v1 = werte[idx(i + 1, j)], v2 = werte[idx(i + 1, j + 1)], v3 = werte[idx(i, j + 1)];
+    const fall = (v0 >= z ? 1 : 0) | (v1 >= z ? 2 : 0) | (v2 >= z ? 4 : 0) | (v3 >= z ? 8 : 0);
+    if (fall === 0 || fall === 15) continue;
+    const unten = () => kante(i, j, true), rechts = () => kante(i + 1, j, false);
+    const oben = () => kante(i, j + 1, true), links = () => kante(i, j, false);
+    switch (fall) {
+      case 1: case 14: verbinden(links(), unten()); break;
+      case 2: case 13: verbinden(unten(), rechts()); break;
+      case 3: case 12: verbinden(links(), rechts()); break;
+      case 4: case 11: verbinden(rechts(), oben()); break;
+      case 6: case 9: verbinden(unten(), oben()); break;
+      case 7: case 8: verbinden(links(), oben()); break;
+      default: {   // Sattel (5: v0 und v2 innen, 10: v1 und v3 innen): Mittelwert entscheidet, ob die Innenecken zusammenhängen
+        const innen = (v0 + v1 + v2 + v3) / 4 >= z;
+        if ((fall === 5) === innen) { verbinden(unten(), rechts()); verbinden(links(), oben()); }
+        else { verbinden(links(), unten()); verbinden(rechts(), oben()); }
+      }
+    }
+  }
+  const besucht = new Set(), ringe = [];
+  for (const start of nachbar.keys()) {
+    if (besucht.has(start)) continue;
+    const ring = [];
+    let vor = -1, cur = start;
+    while (cur !== undefined && !besucht.has(cur)) {
+      besucht.add(cur);
+      ring.push(punkt.get(cur));
+      const n2 = nachbar.get(cur);
+      const next = n2.find(x => x !== vor && !besucht.has(x));
+      vor = cur; cur = next;
+    }
+    if (ring.length < 3) continue;
+    // Einzelne Rasterzellen (Rauschen am Rand des Pegelfelds) ausblenden: Fläche unter 4 Zellen
+    let f = 0;
+    for (let i = 0; i < ring.length; i++) { const a = ring[i], b = ring[(i + 1) % ring.length]; f += a.ost * b.nord - b.ost * a.nord; }
+    if (Math.abs(f) / 2 >= 4 * cell * cell) ringe.push(ring);
+  }
+  return ringe;
+}
+
+/** Liegt (x, y) in der Fläche, die die Ringe einschließen (gerade/ungerade-Regel, Aussparungen zählen mit)? */
+export function imRingen(ringe, x, y) {
+  let innen = false;
+  for (const ring of ringe) if (imPolygon(ring, x, y)) innen = !innen;
+  return innen;
+}
+
+/**
+ * Isophonen als Pegelraster mit Höhenlinien: der Pegel (4 m Höhe, Abschirmung und Bewuchs ab der Mitte der
+ * Quellengruppe) wird auf einem Raster um die Quellen berechnet, die Linien folgen dem Pegelfeld. Schatten hinter
+ * Gebäuden erscheinen als Aussparungen und Inseln, Schneisen zwischen den Gebäuden als Ausläufer — ohne die Zacken einer
+ * Strahlabtastung. Das Raster wird auf etwa 25.000 Punkte begrenzt (Zelle ≥ 4 m).
+ * Ergebnis: Map ziel → Ringe [[{ost, nord}, …], …] (leer, wenn der Pegel schon an der Quelle unterschritten wird oder
+ * über maxM hinausreicht).
+ */
+export function isophonenKarte(sz, ziele, o = {}) {
+  const hr = o.hr ?? 4, maxM = o.maxM ?? 3000;
   const lwaSum = pegelSumme(sz.quellen.map(q => q.lwa));
   const tiefster = Math.min(...ziele);
   // Reichweite im Freifeld (+ 3 dB für Reflexionen) als Obergrenze
@@ -458,33 +534,22 @@ export function isophonen3d(sz, ziele, o = {}) {
   while (rMax < maxM && schallPegel(lwaSum + 3, rMax) >= tiefster) rMax *= 1.25;
   rMax = Math.min(maxM, rMax + 20);
   const out = new Map(ziele.map(z => [z, []]));
-  const ueber = new Set();
   const m = sz.mitte;
-  for (let i = 0; i < strahlen; i++) {
-    const a = 2 * Math.PI * i / strahlen, dx = Math.sin(a), dy = Math.cos(a);
-    const ex = m.ost + dx * rMax, ey = m.nord + dy * rMax;
-    const hind = sz.hind.filter(h => boxTrifft(h.box, m.ost, m.nord, ex, ey));
-    const pegel = r => pegel3d(sz, m.ost + dx * r, m.nord + dy * r, hr, { hind, innenLeer: true }).pegel;
-    const proben = [];
-    for (let r = 1; r <= rMax; r += Math.max(1, r * 0.03)) proben.push([r, pegel(r)]);
-    for (const z of ziele) {
-      let k = -1;
-      for (let j = proben.length - 1; j >= 0; j--) if (proben[j][1] >= z) { k = j; break; }
-      if (k === proben.length - 1 && proben[k][0] >= maxM - 1) { ueber.add(z); continue; }
-      let r;
-      if (k < 0) r = 0;
-      else if (k === proben.length - 1) r = proben[k][0];
-      else {
-        let lo = proben[k][0], hi = proben[k + 1][0];
-        for (let n = 0; n < 12 && hi - lo > 0.1; n++) { const mm = (lo + hi) / 2; if (pegel(mm) >= z) lo = mm; else hi = mm; }
-        r = hi;
-      }
-      out.get(z).push({ ost: m.ost + dx * r, nord: m.nord + dy * r });
-    }
+  const cell = Math.max(o.zelle ?? 4, rMax / 80);
+  const n = Math.ceil(2 * (rMax + cell) / cell);
+  const x0 = m.ost - n * cell / 2, y0 = m.nord - n * cell / 2;
+  const hind = sz.hind.filter(h => h.box[2] >= m.ost - rMax && h.box[0] <= m.ost + rMax && h.box[3] >= m.nord - rMax && h.box[1] <= m.nord + rMax);
+  const werte = new Float32Array((n + 1) * (n + 1)).fill(LEER);
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
+    const x = x0 + i * cell, y = y0 + j * cell;
+    if (Math.hypot(x - m.ost, y - m.nord) > rMax) continue;
+    const p = pegel3d(sz, x, y, hr, { hind }).pegel;
+    werte[j * (n + 1) + i] = Number.isFinite(p) ? p : LEER;
   }
   for (const z of ziele) {
-    const p = out.get(z);
-    if (ueber.has(z) || p.every(q => Math.hypot(q.ost - m.ost, q.nord - m.nord) < 0.5)) out.set(z, []);
+    // reicht der Freifeldpegel über den Rechenbereich hinaus, wird keine Linie gezeichnet („> 3 km“)
+    if (schallPegel(lwaSum + 3, maxM) >= z || pegel3d(sz, m.ost, m.nord, hr, { hind }).pegel < z) continue;
+    out.set(z, pegelHoehenlinien(werte, n, z, x0, y0, cell));
   }
   return out;
 }

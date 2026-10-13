@@ -31,6 +31,8 @@ test('dist: Bäume dämpfen den Schall der LW-WP (Bewuchs)', async ({ page }) =>
       return liste;
     };
     const ohneBaeume = ort();
+    updateLwWpDisplay();
+    const leer = { info: document.getElementById('lwwp-baeume-info').textContent, knopf: getComputedStyle(document.getElementById('lwwp-baeume-osm')).display };
     baumRestore({ liste: streifen('nadel') });
     updateLwWpDisplay();   // die Anzeige zieht nach einer Baumänderung verzögert nach
     const standard = { art: lwWpBaeumeArt(), ...ort(), info: document.getElementById('lwwp-baeume-info').textContent };
@@ -39,7 +41,8 @@ test('dist: Bäume dämpfen den Schall der LW-WP (Bewuchs)', async ({ page }) =>
     const aus = ort();
     baumRestore({ liste: streifen('laub') });
     lwWpBaeumeSetzen('nadel');
-    const laubStandard = ort();
+    updateLwWpDisplay();
+    const laubStandard = { ...ort(), info: document.getElementById('lwwp-baeume-info').textContent };
     lwWpBaeumeSetzen('alle');
     const laubAlle = ort();
     updateLwWpDisplay();
@@ -49,8 +52,11 @@ test('dist: Bäume dämpfen den Schall der LW-WP (Bewuchs)', async ({ page }) =>
     clearLwWp(); _loadProject(gespeichert);
     const nachLaden = lwWpBaeumeArt();
     const isophone = lwWpIsophonen().get(45);
-    return { ohneBaeume, standard, nadel, aus, laubStandard, laubAlle, hinweis, gespArt, nachLaden, iso: !!isophone };
+    return { leer, ohneBaeume, standard, nadel, aus, laubStandard, laubAlle, hinweis, gespArt, nachLaden, iso: !!isophone?.length };
   });
+  // Ohne Projektbäume: Hinweis auf die 3D-Vorschau und Schaltfläche zum Übernehmen
+  expect(r.leer.info).toContain('nur als Vorschau');
+  expect(r.leer.knopf).not.toBe('none');
   // Standard „nur Nadelbäume“: Streifen aus Nadelbäumen dämpft die Gebäude dahinter, die freie Seite nicht
   expect(r.standard.art).toBe('nadel');
   expect(r.nadel.Nord.bewuchs).toBeGreaterThan(0.3);
@@ -63,6 +69,7 @@ test('dist: Bäume dämpfen den Schall der LW-WP (Bewuchs)', async ({ page }) =>
   expect(r.aus.Nord.bewuchs || 0).toBe(0);
   // Laubbäume zählen erst mit „alle Bäume“
   expect(r.laubStandard.Nord.pegel).toBeCloseTo(r.ohneBaeume.Nord.pegel, 1);
+  expect(r.laubStandard.info).toContain('keine Nadelbäume dabei');
   expect(r.laubAlle.Nord.bewuchs).toBeGreaterThan(0.3);
   expect(r.hinweis).toContain('Bewuchs');
   expect(r.gespArt).toBe('alle');

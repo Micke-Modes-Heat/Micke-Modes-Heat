@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { hindernis, spektrumNormiert, abschirmungOktaven, OKTAVEN, streckeImGrundriss, abschirmung, beugungsDaempfung, spiegelquellen, reflexionGueltig, schallSzene, pegel3d, isophonen3d, immissionsort3d } from '../src/lib/schall-hindernisse.js';
+import { hindernis, spektrumNormiert, abschirmungOktaven, OKTAVEN, streckeImGrundriss, abschirmung, beugungsDaempfung, spiegelquellen, reflexionGueltig, schallSzene, pegel3d, isophonenKarte, pegelHoehenlinien, imRingen, immissionsort3d } from '../src/lib/schall-hindernisse.js';
 import { pegelAm, isophonRadius } from '../src/lib/wp-schall.js';
+import { imPolygon as imPolygonTest } from '../src/lib/schall-hindernisse.js';
 
 const rechteck = (x0, y0, x1, y1) => [{ ost: x0, nord: y0 }, { ost: x1, nord: y0 }, { ost: x1, nord: y1 }, { ost: x0, nord: y1 }];
 
@@ -68,15 +69,37 @@ describe('Gebäude als Schallhindernisse', () => {
     expect(hinten.frei - hinten.pegel).toBeGreaterThan(10);
   });
 
-  it('Isophonen: ohne Gebäude wie die Freifeld-Isophone, im Schatten eines Gebäudes kürzer', () => {
+  it('Höhenlinien (Marching Squares): Kreisfläche, Aussparung und Insel', () => {
+    // Pegelfeld: 60 − Abstand/2 um (0, 0) → Linie 50 dB bei Radius 20; dazu eine Aussparung (Loch) und eine Insel
+    const n = 80, cell = 1, x0 = -40, y0 = -40;
+    const f = (x, y) => 60 - Math.hypot(x, y) / 2 - (Math.hypot(x - 8, y) < 4 ? 30 : 0) + (Math.hypot(x - 30, y - 30) < 3 ? 30 : 0);
+    const w = new Float32Array((n + 1) * (n + 1));
+    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) w[j * (n + 1) + i] = f(x0 + i * cell, y0 + j * cell);
+    const ringe = pegelHoehenlinien(w, n, 50, x0, y0, cell);
+    expect(imRingen(ringe, -10, 0)).toBe(true);        // innerhalb
+    expect(imRingen(ringe, 8, 0)).toBe(false);         // Aussparung (Schatten)
+    expect(imRingen(ringe, 30, 30)).toBe(true);        // Insel
+    expect(imRingen(ringe, 25, -25)).toBe(false);      // draußen
+    // Linie der Kreisfläche liegt bei Radius 20 (± Rasterfehler)
+    const kreis = ringe.find(r => imPolygonTest(r, -10, 0));
+    const abst = kreis.map(p => Math.hypot(p.ost, p.nord)).filter(d => d > 12);
+    expect(Math.max(...abst)).toBeLessThan(21);
+    expect(Math.max(...abst)).toBeGreaterThan(19);
+  });
+
+  it('Isophonen: ohne Gebäude ein Kreis wie die Freifeld-Isophone, hinter einem hohen Gebäude eine Aussparung', () => {
     const q = [{ ost: 0, nord: 0, lwa: 95 }];
-    const frei = isophonen3d(schallSzene(q, [], 2), [45], { strahlen: 36, hr: 2 }).get(45);
+    const frei = isophonenKarte(schallSzene(q, [], 2), [45], { hr: 2 }).get(45);
     const rFrei = isophonRadius(q, 45);
-    for (const p of frei) expect(Math.hypot(p.ost, p.nord)).toBeCloseTo(rFrei, -1);
+    expect(frei.length).toBe(1);
+    for (const p of frei[0]) expect(Math.abs(Math.hypot(p.ost, p.nord) - rFrei)).toBeLessThan(rFrei / 80 * 2);
     const sz = schallSzene(q, [hindernis(1, rechteck(-15, 10, 15, 25), 10)], 2);
-    const iso = isophonen3d(sz, [45], { strahlen: 36, hr: 4 }).get(45);
-    const nord = iso[0], sued = iso[18];
-    expect(Math.hypot(nord.ost, nord.nord)).toBeLessThan(Math.hypot(sued.ost, sued.nord) * 0.6);
+    const iso = isophonenKarte(sz, [45], { hr: 4 }).get(45);
+    // 30 m hinter der Gebäudemitte im Schatten (nördlich) unter 45 dB, auf der freien Seite gleich weit weg darüber
+    expect(imRingen(iso, 0, 32)).toBe(false);
+    expect(imRingen(iso, 0, -32)).toBe(true);
+    expect(pegel3d(sz, 0, 32, 4).pegel).toBeLessThan(45);
+    expect(pegel3d(sz, 0, -32, 4).pegel).toBeGreaterThan(45);
   });
 
   it('Immissionsort: Gebäude im Schatten leiser als frei, obere Geschosse weniger abgeschirmt', () => {

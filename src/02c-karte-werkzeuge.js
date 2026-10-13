@@ -17,7 +17,7 @@ import { createLifecycleScope } from './lib/lifecycle.js';
 import { wpAufstellungForm, rechteckEcken, WP_MODULE } from './lib/wp-aufstellung.js';
 import { wpSchallQuellen, lwaGesamt, pegelAm, isophone, isophonRadius, naechsterFassadenpunkt, WP_SCHALLSCHUTZ, schallschutzDb, quellenMitSchallschutz } from './lib/wp-schall.js';
 import { PT_TA_LAERM } from './lib/gutachten-potenzial.js';
-import { hindernis, schallSzene, pegel3d, isophonen3d, immissionsort3d } from './lib/schall-hindernisse.js';
+import { hindernis, schallSzene, pegel3d, isophonenKarte, immissionsort3d } from './lib/schall-hindernisse.js';
 
 /** @type {import('./lib/lifecycle.js').LifecycleScope|null} */
 let areaDrawLifecycle = null;
@@ -2420,6 +2420,12 @@ export function lwWpBaeumeSetzen(art) {
   updateLwWpDisplay();
   redrawLwWp();
 }
+/** Bäume aus OpenStreetMap ins Projekt übernehmen (Baum-Werkzeug); danach rechnet der Schall mit ihnen. */
+export async function lwWpBaeumeAusOsm() {
+  if (typeof window.baumOsmUebernehmen !== 'function') return;
+  await window.baumOsmUebernehmen();
+  if (window.lwWp) { updateLwWpDisplay(); redrawLwWp(); }
+}
 let _lwWpBaumTimer = null;
 /** Der Baumbestand hat sich geändert (40-baeume.js): Schallanzeige und Isophonen der Luft-WP neu rechnen. */
 export function lwWpBaeumeGeaendert() {
@@ -2490,14 +2496,17 @@ export function lwWpSchallSzene() {
   return sz;
 }
 const LWWP_SCHALL_STUFEN = [55, 50, 45, 40, 35];
-/** Isophonen je Stufe als [{ost, nord}] (Empfängerhöhe 4 m); mit Gebäuden abgeschirmt, sonst Freifeld. */
+/**
+ * Isophonen je Stufe als Ringe [[{ost, nord}, …], …] (Empfängerhöhe 4 m): mit Gebäuden und Bäumen als Höhenlinien des
+ * Pegelfelds (Schatten hinter Gebäuden als Aussparungen), sonst Freifeldkreis.
+ */
 export function lwWpIsophonen() {
   const sz = lwWpSchallSzene();
   if (!sz || !sz.quellen.length) return new Map();
   if (_lwWpSzeneCache.iso) return _lwWpSzeneCache.iso;
   const iso = (sz.hind.length || sz.baeume.n)
-    ? isophonen3d(sz, LWWP_SCHALL_STUFEN, { hr: 4 })
-    : new Map(LWWP_SCHALL_STUFEN.map(z => [z, isophone(sz.quellen, z)]));
+    ? isophonenKarte(sz, LWWP_SCHALL_STUFEN, { hr: 4 })
+    : new Map(LWWP_SCHALL_STUFEN.map(z => { const l = isophone(sz.quellen, z); return [z, l.length ? [l] : []]; }));
   _lwWpSzeneCache.iso = iso;
   return iso;
 }
@@ -2624,9 +2633,9 @@ export function redrawLwWp() {
   const schallFarben = ['#b71c1c', '#e65100', '#f9a825', '#8bc34a', '#2e7d32'];
   const isophonen = lwWpIsophonen();
   for (let i = schallStufen.length - 1; i >= 0; i--) {
-    const linie = isophonen.get(schallStufen[i]) || [];
-    if (linie.length < 3) continue;
-    const flaeche = L.polygon(linie.map(zuLatLng), { color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12, className: 'lwwp-isophone' })
+    const ringe = (isophonen.get(schallStufen[i]) || []).filter(r => r.length >= 3);
+    if (!ringe.length) continue;
+    const flaeche = L.polygon(ringe.map(r => r.map(zuLatLng)), { color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12, className: 'lwwp-isophone' })
       .addTo(window.lwWpSchallLayerGroup);
     flaeche.bindTooltip('', { sticky: true, direction: 'top', opacity: 0.9 });
     flaeche.on('mousemove', ev => {
@@ -2711,8 +2720,8 @@ function _lwWpSchallAnzeigen(auf) {
   const isophonen = lwWpIsophonen();
   const mitte = lwWpSchallSzene().mitte;
   const radien = LWWP_SCHALL_STUFEN.map(lp => {
-    const linie = isophonen.get(lp) || [];
-    const r = linie.length ? Math.max(...linie.map(q => Math.hypot(q.ost - mitte.ost, q.nord - mitte.nord))) : (isophonRadius(quellen, lp) >= 2999 ? 3000 : 0);
+    const punkte = (isophonen.get(lp) || []).flat();
+    const r = punkte.length ? punkte.reduce((m, q) => Math.max(m, Math.hypot(q.ost - mitte.ost, q.nord - mitte.nord)), 0) : (isophonRadius(quellen, lp) >= 2999 ? 3000 : 0);
     return `<span>${lp} dB(A)</span><span>${r >= 2999 ? '&gt; 3 km' : r > 0 ? nf(r) + ' m' : '—'}</span>`;
   }).join('');
   const orte = lwWpImmissionsorte(5);
@@ -2749,9 +2758,13 @@ function _lwWpSchallAnzeigen(auf) {
   const baumInfo = document.getElementById('lwwp-baeume-info');
   if (baumInfo) {
     const gesamt = szeneAnzeige.baeumeGesamt || 0, art = lwWpBaeumeArt();
-    baumInfo.textContent = !gesamt ? 'Keine Bäume im Projekt (unter „Bäume“ setzen oder aus OpenStreetMap übernehmen).'
+    const gewertet = szeneAnzeige.baeume.n;
+    baumInfo.textContent = !gesamt ? 'Keine Bäume im Projekt. Die 3D-Ansicht zeigt Bäume ohne Projektbäume nur als Vorschau — für den Schall zählen nur Bäume im Projekt (setzen oder aus OpenStreetMap übernehmen).'
       : art === 'aus' ? `${nf(gesamt)} Bäume im Projekt, ohne Wirkung auf den Schall.`
-        : `${nf(gesamt)} Bäume im Projekt, ${nf(szeneAnzeige.baeume.n)} davon im Schallweg berücksichtigt${art === 'nadel' ? ' (nur Nadelbäume)' : ''}.`;
+        : `${nf(gesamt)} Bäume im Projekt, ${nf(gewertet)} davon im Schallweg berücksichtigt${art === 'nadel' ? ' (nur Nadelbäume)' : ''}.`
+          + (art === 'nadel' && !gewertet ? ' Es sind keine Nadelbäume dabei (OpenStreetMap-Bäume gelten ohne Angabe als Laubbäume) — „alle Bäume“ wählen, wenn der Bewuchs ganzjährig dicht ist.' : '');
+    const osmBtn = document.getElementById('lwwp-baeume-osm');
+    if (osmBtn) osmBtn.style.display = gesamt ? 'none' : '';
   }
   const hinweis = document.getElementById('lwwp-schall-modell');
   if (hinweis) {

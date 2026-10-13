@@ -2301,6 +2301,7 @@
           <option value="aus">nicht berücksichtigen</option>
         </select></label>
       <div class="lwwp-schall-hinweis" id="lwwp-baeume-info" style="margin-top:-4px;"></div>
+      <button class="btn-secondary" id="lwwp-baeume-osm" data-click="lwWpBaeumeAusOsm()" style="display:none;font-size:10px;padding:3px 8px;" title="Holt die Bäume im Umkreis von 150 m um die Gebäude aus OpenStreetMap und legt sie im Projekt an (wie im Baum-Werkzeug). Die 3D-Ansicht zeigt Bäume ohne Projektbäume nur als Vorschau — für die Schallrechnung zählen nur Bäume im Projekt.">🌳 Bäume aus OpenStreetMap ins Projekt übernehmen</button>
       <label class="lwwp-gebiet" id="lwwp-spektrum-wrap" title="A-bewertete Schallleistung je Oktave 63 Hz, 125 Hz … 8 kHz (8 Werte, absolut oder relativ, getrennt durch Leerzeichen oder Semikolon) nach Herstellerangabe. Es zählt nur die Form des Spektrums, die Gesamt-Schallleistung bleibt. Leer = typisches Spektrum von Außengeräten mit Axialventilatoren."><span>Oktavspektrum</span>
         <input class="inp-field" type="text" id="lwwp-spektrum" placeholder="typisch · 63 Hz … 8 kHz in dB(A)" data-change="lwWpSpektrumSetzen(this.value)"/></label>
       <div class="lwwp-schall-hinweis">Überschlägig nach DIN ISO 9613-2 ohne Bodendämpfung (Schallschutz an den Geräten als Einfügungsdämpfung), <span id="lwwp-schall-modell">mit Abschirmung durch Gebäude</span>.

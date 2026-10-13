@@ -22,7 +22,10 @@ test('dist: Gebäude schirmen den Schall der LW-WP ab', async ({ page }) => {
     placeLwWpAt(L.latLng(lat0, lng0));
     const io = Object.fromEntries(lwWpImmissionsorte(5).map(o => [o.name, o]));
     const iso = lwWpIsophonen().get(45);
-    const radius = winkel => { const p = iso[Math.round(winkel / 360 * iso.length) % iso.length]; return Math.hypot(p.ost, p.nord); };
+    // Isophone = Ringe (gerade/ungerade-Regel): äußerster Abstand in Richtung winkel (0° = Nord), in dem der Pegel noch ≥ 45 dB ist
+    const imPoly = (poly, x, y) => { let in_ = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if ((a.nord > y) !== (b.nord > y) && x < (b.ost - a.ost) * (y - a.nord) / (b.nord - a.nord) + a.ost) in_ = !in_; } return in_; };
+    const innen = (x, y) => iso.reduce((n, r) => n + (imPoly(r, x, y) ? 1 : 0), 0) % 2 === 1;
+    const radius = winkel => { const w = winkel * Math.PI / 180; let letzter = 0; for (let r = 2; r < 3000; r += 2) if (innen(Math.sin(w) * r, Math.cos(w) * r)) letzter = r; return letzter; };
     const mit = { nord: io.Nord, sued: io['Süd'], rNord: radius(0), rSued: radius(180), hinweis: document.getElementById('lwwp-schall-modell').textContent };
     // tieffrequentes Herstellerspektrum: hinter dem Riegel weniger Abschirmung
     lwWpSpektrumSetzen('90 88 80 72 65 58 50 40');
