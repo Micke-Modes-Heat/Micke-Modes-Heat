@@ -1276,6 +1276,8 @@ export function gutStandardtextDaten() {
 /* ── Fragebogen (C1) und ausgefüllte Platzhalter (C2) ─────────────────────── */
 /** Antworten des Fragebogens — 17 liest sie über window.gutFragenLesen für Texte und Sichtbarkeit. */
 export function gutFragenLesen() { return _gut.dok?.fragen || {}; }
+/** Gibt es ein Gutachten-Dokument? Ohne Dokument kann der Fragebogen nicht beantwortet werden (17 Einzelansicht). */
+export function gutHatDokument() { return !!_gut.dok; }
 /** Verweistabelle Standardnummer → Nummer im Dokument (C5); zwischengespeichert, solange sich die Gliederung nicht ändert. */
 let _verweisCache = { schluessel: '', map: new Map() };
 export function gutVerweisNummern() {

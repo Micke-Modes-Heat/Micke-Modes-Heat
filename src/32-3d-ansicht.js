@@ -27,12 +27,13 @@ import {
 import {
   pickSammler, pickMatrix, sehstrahl, naechsterTreffer, ebeneAzimut,
   ebeneAusDreieck, ebeneFallrichtung, ebeneZ, strahlEbene, rechteckAufEbene, projiziere,
-  rechteckAchsen, eckeEinrasten,
+  rechteckAchsen, eckeEinrasten, viereckHalten,
 } from './lib/d3d-pick.js';
 import { d3dNetzLinien, d3dStationen, D3D_STATIONEN } from './lib/netz-3d.js';
 import { firstPeilungGrad } from './lib/gebaeude-geometrie.js';
 import { baumOverpassLaden, baeumeAusOverpass, baumDreiecke, BAUM_FARBEN } from './lib/baeume-3d.js';
 import { dachAusGrundrissGebaeude } from './lib/dach-grundriss.js';
+import { kachelBereich, texturKoordinate, kachelUrl } from './lib/d3d-dachfoto.js';
 
 const D3D_MAPLIBRE_VERSION = '5.24.0';   // nur für den CDN-Fallback im Dev-Modus
 const D3D_NEIGUNG = 55;
@@ -506,6 +507,7 @@ function d3dSzeneSetzen(daten) {
   _d3d.pick = szene.pick ? { ...szene.pick, ursprung: szene.ursprung } : null;
   if (!(_d3d.ecken?.griff >= 0)) d3dEckenAufbauen();
   d3dMarkierungSetzen();
+  d3dFotoGeometrie();
   d3dFlaecheInfo();
   const info = document.getElementById('d3d-dachinfo');
   if (info) info.textContent = d3dDachinfoText();
@@ -639,10 +641,22 @@ function d3dMarkierungSetzen() {
       werte.push(t[i] * p.mu, t[i + 1] * p.mu, (t[i + 2] + D3D_MARK_HUB * _d3d.faktor) * p.mu, rgb[0], rgb[1], rgb[2]);
     }
   };
+  // Mit Luftbild nur den Umriss — die Füllung verdeckte genau das Bild, das man abzeichnen will
+  const umriss = (f, rgb) => {
+    if (!f) return;
+    const w = 0.12, hub = 2 * D3D_MARK_HUB * _d3d.faktor;
+    for (const [a, b] of d3dRandkanten(f)) {
+      const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      const nx = -(b[1] - a[1]) / l * w / 2, ny = (b[0] - a[0]) / l * w / 2;
+      const q = [[a[0] + nx, a[1] + ny, a[2]], [b[0] + nx, b[1] + ny, b[2]], [b[0] - nx, b[1] - ny, b[2]], [a[0] - nx, a[1] - ny, a[2]]];
+      for (const v of [q[0], q[1], q[2], q[0], q[2], q[3]]) werte.push(v[0] * p.mu, v[1] * p.mu, (v[2] + hub) * p.mu, rgb[0], rgb[1], rgb[2]);
+    }
+  };
+  const markiere = _d3d.foto?.an ? umriss : dazu;
   const gewaehlt = d3dPickFlaeche(_d3d.auswahl);
   const hover = d3dPickFlaeche(_d3d.hover);
-  if (hover && hover !== gewaehlt) dazu(hover, d3dRgb(D3D_HOVER).map(x => x * 0.9));
-  dazu(gewaehlt, d3dRgb(D3D_GEWAEHLT));
+  if (hover && hover !== gewaehlt) markiere(hover, d3dRgb(D3D_HOVER).map(x => x * 0.9));
+  markiere(gewaehlt, d3dRgb(D3D_GEWAEHLT));
   // Vorschau des Rechtecks, das gerade gezeichnet wird (etwas höher als die Markierung)
   const z = _d3d.zeichnen;
   if (z?.ecken) {
@@ -683,23 +697,9 @@ function d3dZuPick(q) {
  */
 function d3dRastziele(e, i) {
   const kanten = [], punkte = [];
-  const rund = v => Math.round(v * 1000);
   for (const f of _d3d.pick.flaechen) {
     if (f.gid !== e.gid || !f.key || f.key.startsWith('sp:')) continue;
-    const zaehl = new Map();
-    const t = f.tris;
-    for (let k = 0; k + 8 < t.length; k += 9) {
-      const ecken = [[t[k], t[k + 1]], [t[k + 3], t[k + 4]], [t[k + 6], t[k + 7]]];
-      for (let m = 0; m < 3; m++) {
-        const a = ecken[m], b = ecken[(m + 1) % 3];
-        const ka = rund(a[0]) + ',' + rund(a[1]), kb = rund(b[0]) + ',' + rund(b[1]);
-        const sch = ka < kb ? ka + '|' + kb : kb + '|' + ka;
-        const z = zaehl.get(sch);
-        if (z) z.n++; else zaehl.set(sch, { n: 1, a, b });
-      }
-    }
-    for (const { n, a, b } of zaehl.values()) {
-      if (n !== 1 || Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.05) continue;
+    for (const [a, b] of d3dRandkanten(f)) {
       kanten.push([a, b]);
       punkte.push(a, b);
     }
@@ -716,6 +716,29 @@ function d3dRastziele(e, i) {
     az = first == null ? 180 : (first + 90) % 360;
   }
   return { punkte, kanten, nachbarn: [e.xy[(i - 1 + n) % n], e.xy[(i + 1) % n]], achsen: rechteckAchsen(az) };
+}
+
+/**
+ * Randkanten einer Pick-Fläche: Dreieckskanten, die in ihr nur einmal vorkommen
+ * (Traufe, First, Ortgang, Kehle) — [[x,y,z],[x,y,z]] im Pick-Raum.
+ */
+function d3dRandkanten(f) {
+  const rund = v => Math.round(v * 1000);
+  const zaehl = new Map();
+  const t = f.tris;
+  for (let k = 0; k + 8 < t.length; k += 9) {
+    const ecken = [[t[k], t[k + 1], t[k + 2]], [t[k + 3], t[k + 4], t[k + 5]], [t[k + 6], t[k + 7], t[k + 8]]];
+    for (let m = 0; m < 3; m++) {
+      const a = ecken[m], b = ecken[(m + 1) % 3];
+      const ka = rund(a[0]) + ',' + rund(a[1]), kb = rund(b[0]) + ',' + rund(b[1]);
+      const sch = ka < kb ? ka + '|' + kb : kb + '|' + ka;
+      const z = zaehl.get(sch);
+      if (z) z.n++; else zaehl.set(sch, { n: 1, a, b });
+    }
+  }
+  const out = [];
+  for (const { n, a, b } of zaehl.values()) if (n === 1 && Math.hypot(b[0] - a[0], b[1] - a[1]) >= 0.05) out.push([a, b]);
+  return out;
 }
 
 /** Höhe der Dachhaut eines Gebäudes über (x, y) im Pick-Raum (senkrechter Strahl) samt Ebene. */
@@ -822,8 +845,8 @@ function d3dGriffBei(punkt) {
   return e ? d3dPunktBei(punkt, e.xy.map(([x, y], i) => [x, y, e.z[i]])) : -1;
 }
 
-/** Ziehen: neue Lage der Ecke unter dem Mauspunkt — eingerastet, außer mit Alt. */
-function d3dEckeZiehen(punkt, frei) {
+/** Ziehen: neue Lage der Ecke unter dem Mauspunkt — eingerastet, außer mit Alt; Shift hält die Viereckform. */
+function d3dEckeZiehen(punkt, frei, halten) {
   const e = _d3d.ecken;
   const q = strahlEbene(d3dStrahl(punkt), e.ebene);
   if (!q) return;
@@ -834,9 +857,17 @@ function d3dEckeZiehen(punkt, frei) {
     xy = r.p;
     e.eingerastet = !!r.art;
   }
-  const dach = d3dDachBei(e.gid, xy[0], xy[1]);
-  e.xy[e.griff] = xy;
-  e.z[e.griff] = dach ? dach.z : ebeneZ(e.ebene, xy[0], xy[1]);
+  const neu = halten && e.start?.length === 4 ? viereckHalten(e.start, e.griff, xy) : null;
+  if (neu) {
+    // Nachbarn laufen mit — Höhe je Ecke wieder von der Dachhaut
+    e.xy = neu;
+    e.z = neu.map(([x, y]) => d3dDachBei(e.gid, x, y)?.z ?? ebeneZ(e.ebene, x, y));
+  } else {
+    if (e.start) e.start[e.griff] = [xy[0], xy[1]];   // ohne Shift: die Form ändert sich frei
+    const dach = d3dDachBei(e.gid, xy[0], xy[1]);
+    e.xy[e.griff] = xy;
+    e.z[e.griff] = dach ? dach.z : ebeneZ(e.ebene, xy[0], xy[1]);
+  }
   e.bewegt = true;
   d3dMarkierungSetzen();
 }
@@ -847,7 +878,9 @@ function d3dEckeLoslassen() {
   if (!e || e.griff < 0) return;
   e.griff = -1;
   e.eingerastet = false;
+  e.start = null;
   _d3d.ml?.dragPan.enable();
+  _d3d.ml?.boxZoom.enable();
   const eingefuegt = e.eingefuegt;
   e.eingefuegt = false;
   if (!e.bewegt && !eingefuegt) { d3dMarkierungSetzen(); return; }
@@ -978,7 +1011,12 @@ function d3dWerkzeugHtml() {
   const hinweis = !z ? '' : `<div style="font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35;">
       ${z.start ? '2. Klick: gegenüberliegende Ecke' : '1. Klick: erste Ecke auf die Dachfläche'}
       <span id="d3d-zeichnen-mass" style="color:var(--text);">${d3dMassText()}</span> · rastet an Traufe/First ein · Esc beendet</div>`;
-  return `<div style="display:flex;gap:3px;margin-top:5px;">
+  const f = _d3d.foto || {};
+  const foto = `<label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10.5px;cursor:pointer;"
+      title="Luftbild (Esri) rund um das gewählte Gebäude senkrecht auf die Dächer legen — zum Nachzeichnen von Gauben, Kaminen und Dachfenstern. Module dafür ausblenden (Haken PV-Module). Luftbilder sind keine True Orthophotos: das Dach kann im Bild 1–3 m versetzt liegen.">
+      <input type="checkbox" data-d3d="dachfoto" ${f.an ? 'checked' : ''}>🛰 Luftbild auf den Dächern
+      <span style="color:var(--muted);font-size:9.5px;">${f.an ? (f.status ? d3dEsc(f.status) : 'Gebäude anklicken') : ''}</span></label>`;
+  return foto + `<div style="display:flex;gap:3px;margin-top:5px;">
       ${knopf('zeichne-sperr', 'sperr', '▭ Sperrfläche', D3D_SPERRFARBE, 'Rechteck auf der Dachfläche aussparen (Kamin, Gaube, Dachfenster) — zwei Klicks, an der Falllinie ausgerichtet')}
       ${knopf('zeichne-belegung', 'belegung', '▭ Belegung', D3D_GEWAEHLT, 'Rechteck auf der Dachfläche mit Modulen belegen — zwei Klicks, an der Falllinie ausgerichtet')}
     </div>${hinweis}`;
@@ -1029,7 +1067,7 @@ function d3dFlaecheInfoHtml() {
         ${i.zerlegbar ? knopf('dach-zerlegen', '📐 Zerlegen', 'Dach aus dem Grundriss in einzelne Dachflächen zerlegen (Flügel, Kehlen) — dann ist jede Fläche einzeln belegbar') : ''}
         ${knopf('undo', '↶', 'Letzten Schritt zurücknehmen (wie Strg+Z im PV-Modus)')}`}
       </div>
-      ${flaeche ? `<div style="font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.35;">Weiße Ecke ziehen = verschieben (folgt der Dachhaut, rastet an Traufe/First/Kanten und an den Nachbarecken ein — türkis; Alt = frei) · graue Kantenmitte ziehen oder klicken = neue Ecke · Rechtsklick oder Entf auf einer Ecke = löschen.</div>` : ''}
+      ${flaeche ? `<div style="font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.35;">Weiße Ecke ziehen = verschieben (folgt der Dachhaut, rastet an Traufe/First/Kanten und an den Nachbarecken ein — türkis; Alt = frei; Shift = Rechteckform halten) · graue Kantenmitte ziehen oder klicken = neue Ecke · Rechtsklick oder Entf auf einer Ecke = löschen.</div>` : ''}
       ${i.hinweis ? `<div style="font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.35;">${d3dEsc(i.hinweis)}</div>` : ''}
       ${flaeche ? '' : d3dFlaechenListeHtml(a.gid)}
     </div>`;
@@ -1061,6 +1099,7 @@ function d3dFlaecheWaehlen(punkt) {
   _d3d.auswahl = t;
   d3dHoverVergessen();
   d3dEckenAufbauen();
+  d3dFotoNachAuswahl();
   if (t && window.pvModusAktiv) { window.pvModusGeb = t.gid; window.pvModusRender?.(); }
   d3dMarkierungSetzen();
   d3dFlaecheInfo();
@@ -1090,6 +1129,164 @@ function d3dFlaecheAktion(aktion) {
   d3dEckenAufbauen();
   d3dMarkierungSetzen();
   d3dFlaecheInfo();
+}
+
+/* ── Luftbild auf den Dächern ───────────────────────────────────────────────
+ * Beim Bearbeiten: Luftbildkacheln (Esri, Zoom bis 19) rund um das gewählte
+ * Gebäude zu einer Textur zusammensetzen und senkrecht von oben auf die
+ * Dachflächen legen (lib/d3d-dachfoto) — zum Nachzeichnen von Gauben, Kaminen,
+ * Dachfenstern als Sperrflächen. Eigene Ebene zwischen Dach und Sperrflächen/
+ * Markierung/Modulen. Luftbilder sind keine True Orthophotos: Dächer können im
+ * Bild um 1–3 m neben dem Grundriss liegen. */
+const D3D_FOTO_HUB = 0.03;    // m über der Dachhaut (Sperrflächen 0,05, Markierung 0,08, Module 0,12)
+const D3D_FOTO_RAND = 25;     // m Luftbild rund um das gewählte Gebäude
+
+function d3dFotoSchicht() {
+  const VS = 'attribute vec3 a_pos; attribute vec2 a_uv; uniform mat4 u_m; varying vec2 v_uv;'
+    + 'void main(){ v_uv = a_uv; gl_Position = u_m * vec4(a_pos, 1.0); }';
+  const FS = 'precision mediump float; varying vec2 v_uv; uniform sampler2D u_t;'
+    + 'void main(){ gl_FragColor = vec4(texture2D(u_t, v_uv).rgb, 1.0); }';
+  return {
+    id: 'd3d-dachfoto', type: 'custom', renderingMode: '3d',
+    gl: null, prog: null, buf: null, tex: null, n: 0, ursprung: null, karte: null,
+    onAdd(karte, gl) {
+      this.karte = karte; this.gl = gl;
+      const sh = (typ, src) => {
+        const x = gl.createShader(typ); gl.shaderSource(x, src); gl.compileShader(x);
+        if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x) || 'Shader');
+        return x;
+      };
+      const pr = gl.createProgram();
+      gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS));
+      gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS));
+      gl.linkProgram(pr);
+      if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr) || 'Programm');
+      this.prog = pr;
+      this.aPos = gl.getAttribLocation(pr, 'a_pos');
+      this.aUv = gl.getAttribLocation(pr, 'a_uv');
+      this.uM = gl.getUniformLocation(pr, 'u_m');
+      this.uT = gl.getUniformLocation(pr, 'u_t');
+      this.buf = gl.createBuffer();
+      this.tex = gl.createTexture();
+      if (this._warten) { const w = this._warten; this._warten = null; this.setzen(w.daten, w.ursprung, w.bild); }
+    },
+    /** daten [x,y,z,u,v]* relativ zum Ursprung; bild nur, wenn sich das Luftbild geändert hat. */
+    setzen(daten, ursprung, bild) {
+      if (!this.gl) { this._warten = { daten, ursprung, bild: bild || this._warten?.bild }; return; }
+      const gl = this.gl;
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+      gl.bufferData(gl.ARRAY_BUFFER, daten, gl.STATIC_DRAW);
+      this.n = daten.length / 5;
+      this.ursprung = ursprung;
+      if (bild) {
+        gl.bindTexture(gl.TEXTURE_2D, this.tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bild);
+        // beliebige Kantenlänge (kein 2er-Potenz-Zwang in WebGL 1): ohne Mipmaps, Rand festhalten
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      }
+      this.karte?.triggerRepaint();
+    },
+    render(gl, opt) {
+      if (!this.n || !this.ursprung) return;
+      const m = opt?.defaultProjectionData?.mainMatrix || opt?.modelViewProjectionMatrix || opt;
+      const { x: ox, y: oy, z: oz } = this.ursprung;
+      const u = new Float32Array(16);
+      for (let i = 0; i < 12; i++) u[i] = m[i];
+      for (let r = 0; r < 4; r++) u[12 + r] = m[r] * ox + m[4 + r] * oy + m[8 + r] * oz + m[12 + r];
+      gl.useProgram(this.prog);
+      gl.uniformMatrix4fv(this.uM, false, u);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+      gl.enableVertexAttribArray(this.aPos);
+      gl.vertexAttribPointer(this.aPos, 3, gl.FLOAT, false, 20, 0);
+      gl.enableVertexAttribArray(this.aUv);
+      gl.vertexAttribPointer(this.aUv, 2, gl.FLOAT, false, 20, 12);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.tex);
+      gl.uniform1i(this.uT, 0);
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthFunc(gl.LEQUAL);
+      gl.depthMask(true);
+      gl.disable(gl.CULL_FACE);
+      gl.disable(gl.BLEND);
+      gl.drawArrays(gl.TRIANGLES, 0, this.n);
+    },
+    onRemove(karte, gl) {
+      if (this.buf) gl.deleteBuffer(this.buf);
+      if (this.tex) gl.deleteTexture(this.tex);
+      if (this.prog) gl.deleteProgram(this.prog);
+      this.gl = null; this.buf = null; this.tex = null; this.prog = null; this.n = 0;
+    },
+  };
+}
+
+/** Luftbild für die Umgebung eines Gebäudes laden (Kacheln → Canvas). */
+async function d3dFotoLaden(gid) {
+  const f = _d3d?.foto;
+  const g = (window.gebaeude || []).find(x => x.id === gid);
+  if (!f || !g?.polygon?.length || !_d3d.esriVorlage) return;
+  const lat0 = g.polygon[0].lat, dLat = D3D_FOTO_RAND / 111320, dLng = D3D_FOTO_RAND / (111320 * Math.cos(lat0 * Math.PI / 180));
+  const b = {
+    minLng: Math.min(...g.polygon.map(q => q.lng)) - dLng, maxLng: Math.max(...g.polygon.map(q => q.lng)) + dLng,
+    minLat: Math.min(...g.polygon.map(q => q.lat)) - dLat, maxLat: Math.max(...g.polygon.map(q => q.lat)) + dLat,
+  };
+  const k = kachelBereich(b, 19, 6);
+  const lauf = (f.lauf || 0) + 1;
+  Object.assign(f, { lauf, gid, status: 'lädt', k: null });
+  d3dFlaecheInfo();
+  const canvas = document.createElement('canvas');
+  canvas.width = k.nx * 256; canvas.height = k.ny * 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#6b6b6b';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  let fehler = 0;
+  const kacheln = [];
+  for (let y = k.y0; y <= k.y1; y++) for (let x = k.x0; x <= k.x1; x++) kacheln.push([x, y]);
+  await Promise.all(kacheln.map(([x, y]) => new Promise(res => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { ctx.drawImage(img, (x - k.x0) * 256, (y - k.y0) * 256); res(); };
+    img.onerror = () => { fehler++; res(); };
+    img.src = kachelUrl(_d3d.esriVorlage, k.z, x, y);
+  })));
+  if (!_d3d || _d3d.foto !== f || f.lauf !== lauf) return;   // geschlossen oder überholt
+  Object.assign(f, { k, bild: canvas, neu: true, status: fehler ? `${kacheln.length - fehler}/${kacheln.length} Kacheln` : 'geladen' });
+  d3dFotoGeometrie();
+  d3dFlaecheInfo();
+}
+
+/** Dachdreiecke im Luftbildbereich mit Texturkoordinaten in die Ebene. */
+function d3dFotoGeometrie() {
+  const f = _d3d?.foto, p = _d3d?.pick, schicht = _d3d?.fotoSchicht;
+  if (!schicht) return;
+  if (!f?.an || !f.k || !p || !_d3d.bearbeiten) { schicht.setzen(new Float32Array(0), null); return; }
+  const werte = [];
+  const hub = D3D_FOTO_HUB * _d3d.faktor;
+  for (const fl of p.flaechen) {
+    if (!fl.key || fl.key.startsWith('sp:')) continue;
+    const t = fl.tris;
+    for (let i = 0; i + 8 < t.length; i += 9) {
+      const ecken = [];
+      for (let j = 0; j < 9; j += 3) {
+        const uv = texturKoordinate(p.ursprung.x + t[i + j] * p.mu, p.ursprung.y + t[i + j + 1] * p.mu, f.k);
+        if (uv[0] < 0 || uv[0] > 1 || uv[1] < 0 || uv[1] > 1) { ecken.length = 0; break; }
+        ecken.push(t[i + j] * p.mu, t[i + j + 1] * p.mu, (t[i + j + 2] + hub) * p.mu, uv[0], uv[1]);
+      }
+      if (ecken.length === 15) werte.push(...ecken);
+    }
+  }
+  schicht.setzen(new Float32Array(werte), p.ursprung, f.neu ? f.bild : null);
+  f.neu = false;
+}
+
+/** Schalter „Luftbild auf den Dächern" oder neue Auswahl: laden, wenn ein anderes Gebäude gewählt ist. */
+function d3dFotoNachAuswahl() {
+  const f = _d3d?.foto, a = _d3d?.auswahl;
+  if (!f?.an) { d3dFotoGeometrie(); return; }
+  if (a && a.gid !== f.gid) d3dFotoLaden(a.gid);
+  else d3dFotoGeometrie();
 }
 
 /* ── Netze ────────────────────────────────────────────────────────────────── */
@@ -1475,6 +1672,7 @@ export async function d3dOeffnen() {
     baumSchicht: null, baumStatus: '', baumErgebnis: null, schatten: false,
     // Dachflächen bearbeiten: Pick-Daten der Szene, Überfahren/Auswahl {gid, key}, Markierungsebene
     bearbeiten: false, pick: null, hover: null, auswahl: null, markSchicht: null, pickRaf: 0,
+    foto: { an: false }, fotoSchicht: null, esriVorlage: null,
   };
   d3dPositionieren();
   if (typeof ResizeObserver === 'function') {
@@ -1497,6 +1695,7 @@ export async function d3dOeffnen() {
 
   const osmUrl = window.osmTile?._url || 'https://tile.openstreetmap.de/{z}/{x}/{y}.png';
   const esriUrl = window.esriTile?._url || 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+  _d3d.esriVorlage = d3dKachelUrls(esriUrl, window.esriTile?.options?.subdomains)[0];
   const daten = d3dDaten();
   const mitte = lm?.getCenter?.() || { lat: 51, lng: 10 };
   let drehung = 0;
@@ -1566,6 +1765,8 @@ export async function d3dOeffnen() {
     karte.addLayer(_d3d.baumSchicht);
     _d3d.schicht = d3dDachSchicht();
     karte.addLayer(_d3d.schicht);
+    _d3d.fotoSchicht = d3dFotoSchicht();
+    karte.addLayer(_d3d.fotoSchicht);
     _d3d.markSchicht = d3dDachSchicht('d3d-markierung', false);
     karte.addLayer(_d3d.markSchicht);
     d3dAnwenden();
@@ -1598,12 +1799,13 @@ export async function d3dOeffnen() {
       _d3d.letzterPunkt = e.point;
       _d3d.letzteLngLat = e.lngLat;
       _d3d.letztesAlt = !!e.originalEvent?.altKey;
+      _d3d.letztesShift = !!e.originalEvent?.shiftKey;
       if (_d3d.pickRaf) return;
       _d3d.pickRaf = requestAnimationFrame(() => {
         if (!_d3d) return;
         _d3d.pickRaf = 0;
         if (_d3d.zeichnen?.start) { d3dZeichnenVorschau(_d3d.letzterPunkt); return; }
-        if (_d3d.ecken?.griff >= 0) { d3dEckeZiehen(_d3d.letzterPunkt, _d3d.letztesAlt); return; }
+        if (_d3d.ecken?.griff >= 0) { d3dEckeZiehen(_d3d.letzterPunkt, _d3d.letztesAlt, _d3d.letztesShift); return; }
         if (_d3d.ecken && !_d3d.zeichnen) {
           const i = d3dGriffBei(_d3d.letzterPunkt);
           const j = i < 0 ? d3dMitteBei(_d3d.letzterPunkt) : -1;
@@ -1679,6 +1881,8 @@ export async function d3dOeffnen() {
     ek.ebene = d3dDachBei(ek.gid, x, y)?.ebene || { n: [0, 0, 1], p: [x, y, ek.z[i]] };
     ek.rast = d3dRastziele(ek, i);
     ek.eingerastet = false;
+    ek.start = ek.xy.map(q => [q[0], q[1]]);   // Form beim Greifen — Shift hält sie
+    karte.boxZoom.disable();                    // Shift + Ziehen wäre sonst Rahmen-Zoom
     d3dMarkierungSetzen();
   });
   karte.on('contextmenu', e => {
@@ -1852,6 +2056,12 @@ function d3dEingabeImPanel(ev) {
   if (t.dataset.d3d === 'module' && ev.type === 'change') { _d3d.module = !!t.checked; d3dAnwenden(); }
   if (t.dataset.d3d === 'schatten' && ev.type === 'change') { _d3d.schatten = !!t.checked; if (_d3d.schatten) _d3d.module = true; d3dAnwenden(); }
   if (t.dataset.d3d === 'glas' && ev.type === 'change') { _d3d.glas = !!t.checked; d3dAnwenden(); }
+  if (t.dataset.d3d === 'dachfoto' && ev.type === 'change') {
+    _d3d.foto.an = !!t.checked;
+    d3dFotoNachAuswahl();
+    d3dMarkierungSetzen();
+    d3dFlaecheInfo();
+  }
   if (t.dataset.d3d === 'bearbeiten' && ev.type === 'change') {
     _d3d.bearbeiten = !!t.checked;
     _d3d.hover = null; _d3d.auswahl = null; _d3d.zeichnen = null;

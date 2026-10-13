@@ -1,4 +1,4 @@
-// Vitest-Tests für lib/bedarfsprognose.js — gemeinsame Rechnung von NAP-Analyse und Gutachten 3.3.1–3.3.3.
+// Vitest-Tests für lib/bedarfsprognose.js — gemeinsame Rechnung von NAP-Analyse und Gutachten 5.3.1–5.3.3.
 import { describe, it, expect } from 'vitest';
 import {
   BP_STUFEN, bpStufeVonTyp, bpAssetLeistung, bpMassnahmen, bpWirkungImJahr,
@@ -143,7 +143,7 @@ describe('bpStufen', () => {
   ];
 
   it('ordnet Typen den Gutachtenstufen zu', () => {
-    expect(BP_STUFEN.map(s => s.kapitel)).toEqual(['3.3.1', '3.3.2', '3.3.3']);
+    expect(BP_STUFEN.map(s => s.kapitel)).toEqual(['5.3.1', '5.3.2', '5.3.3']);
     expect(bpStufeVonTyp('TWW')).toBe('waerme');
     expect(bpStufeVonTyp('Geo')).toBe('waerme');
     expect(bpStufeVonTyp('Stromkessel')).toBe('waerme');

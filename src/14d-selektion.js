@@ -2,7 +2,7 @@
 // M5: assetSelection-State; Shift+Click + Box-Selektion auf Karte;
 //     Checkboxen in Sidebar; schwebende Bulk-Bar mit Sammelaktionen.
 
-import { ASSETS, ASSET_CFG, TYPE_RANK, deleteAsset, pvFlaechenZumAsset } from './13a-assets-core.js';
+import { ASSETS, ASSET_CFG, TYPE_RANK, deleteAsset, pvFlaechenZumAsset, setzeAssetSchicht } from './13a-assets-core.js';
 import { phasen, massnahmeJahr, setPhasen } from './01-globals-varianten.js';
 import { MASSN_VORLAGEN, MASSN_VORLAGEN_REIHENFOLGE } from './config/massnahmen-vorlagen.js';
 import { redrawAllAssets } from './13b-assets-render.js';
@@ -594,7 +594,8 @@ export function selBulkApplyAll() {
     // Nachträgliche Korrektur der Planungsschicht — der Rückweg aus einem
     // falsch gewählten Eingabemodus. Reine Zuordnung, keine Berechnung.
     if (istSchicht(schicht)) {
-      for (const a of selGetAssets()) a.schicht = schicht;
+      // Ohne neues Baujahr im Dialog: ein vom Bestandsgebäude geerbtes Baujahr fällt mit weg (setzeAssetSchicht)
+      for (const a of selGetAssets()) { if (isNaN(bauJahr)) setzeAssetSchicht(a, schicht); else a.schicht = schicht; }
       changed++;
     }
   });

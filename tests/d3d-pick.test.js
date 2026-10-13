@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   invertiere4, pickMatrix, sehstrahl, strahlDreieck, strahlQuader, pickSammler, naechsterTreffer,
-  ebeneAzimut, ebeneNeigung, projiziere, ebeneAusDreieck, ebeneZ, strahlEbene, ebeneFallrichtung, rechteckAufEbene, rechteckAchsen, eckeEinrasten,
+  ebeneAzimut, ebeneNeigung, projiziere, ebeneAusDreieck, ebeneZ, strahlEbene, ebeneFallrichtung, rechteckAufEbene, rechteckAchsen, eckeEinrasten, viereckHalten,
 } from '../src/lib/d3d-pick.js';
 
 // Spaltenweise 4×4-Hilfen
@@ -211,5 +211,26 @@ describe('eckeEinrasten', () => {
   });
   it('nichts in Reichweite → unverändert', () => {
     expect(eckeEinrasten([5, 2.5], { punkte, kanten, nachbarn: [[1, 1]], achsen }, { fang: 0.3 })).toEqual({ p: [5, 2.5], art: null });
+  });
+});
+
+describe('viereckHalten (Shift)', () => {
+  const R = [[0, 0], [6, 0], [6, 3], [0, 3]];
+  it('Rechteck bleibt Rechteck, gegenüberliegende Ecke bleibt', () => {
+    const r = viereckHalten(R, 2, [8, 4]);
+    expect(r).toEqual([[0, 0], [8, 0], [8, 4], [0, 4]]);
+  });
+  it('gedrehtes Rechteck (45°) behält Richtung der Kanten', () => {
+    const c = Math.SQRT1_2;
+    const G = [[0, 0], [2 * c, 2 * c], [2 * c - c, 2 * c + c], [-c, c]];   // 2 × 1, um 45° gedreht
+    const r = viereckHalten(G, 2, [0, 3]);
+    // Kanten an der festen Ecke 0 bleiben senkrecht zueinander
+    const a = [r[1][0] - r[0][0], r[1][1] - r[0][1]], b = [r[3][0] - r[0][0], r[3][1] - r[0][1]];
+    expect(a[0] * b[0] + a[1] * b[1]).toBeCloseTo(0, 9);
+    expect(r[2]).toEqual([0, 3]);
+    expect(r[0]).toEqual([0, 0]);
+  });
+  it('nicht vier Ecken → null', () => {
+    expect(viereckHalten([[0, 0], [1, 0], [0, 1]], 0, [2, 2])).toBeNull();
   });
 });

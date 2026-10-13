@@ -16,7 +16,7 @@ import { calcStromPanel } from './09b-pv-calc.js';
 import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, createAsset, deleteAsset, clearAssets } from './13a-assets-core.js';
 import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
 import { ELSLP_CUSTOM, ELSLP_WPM2, getElSlpProfiles, getElSlpGruppen, getElSlpById, getElSlpWpm2, showElSlpModal } from './13k-elslp-registry.js';
-import { activeVariantId, edgeKey, freiflaechen, lwWp, lwWpVisible, networkLocked, netzEdges, renderVariantenBar, stromNetzVisible, stromNodes, updateVariantBanner } from './01-globals-varianten.js';
+import { activeVariantId, basisJahr, edgeKey, freiflaechen, lwWp, lwWpVisible, networkLocked, netzEdges, renderVariantenBar, stromNetzVisible, stromNodes, updateVariantBanner } from './01-globals-varianten.js';
 import { _invalidateStats, addGebaeude, attachPolygonLayer, calcAutoEnergy, removeGebaeude, toggleNetworkLock, ensureSatellite, setGlobalYear, updateField } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, clearTrasse, polygonAreaM2, polygonCenter, redrawFliessgewaesser, redrawLwWp, redrawTrasse, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
 import { attachFFLayer, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons, redrawFernwaerme, redrawGasKessel, redrawHeizoelKessel, redrawHhs, redrawPellets, renderFFPanel, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
@@ -33,6 +33,7 @@ import { setFliessgewaesserVisible } from './02c-karte-werkzeuge.js';
 import { PROJECT_SCHEMA_VERSION, prepareProjectForImport } from './lib/project-schema.js';
 import { schichtBackfill, SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
 import { repairPhasen } from './lib/phasen-core.js';
+import { baujahrVomGebaeude } from './lib/varianten-regeln.js';
 import { bandIntervalle, rechteckTrifftPolygon, vereinigeIntervalle } from './lib/pv-raster.js';
 import { drehFunktion, firstPeilungGrad, formAbbildung, peilungGrad, richteRechtwinklig, uebertrageForm, vereinigePolygone } from './lib/gebaeude-geometrie.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
@@ -651,14 +652,16 @@ export function _syncPvAssetIfInSync(g, prevKwp, opts = {}) {
 }
 
 // Bautermin der Dach-PV. Liegt am Gebäude (g.pvBaujahr) und wird auf das PV-Asset
-// gespiegelt; leeres Feld → die Anlage erbt wieder das Gebäude-Baujahr.
+// gespiegelt; leeres Feld → die Anlage erbt wieder das Gebäude-Baujahr (eine geplante Anlage nur das eines
+// Neubaus, s. baujahrVomGebaeude — sonst stünde eine geplante PV auf einem Altbau im Baujahr des Altbaus).
 window.updateGebPvBaujahr = function(gId, val) {
   const g = window.gebaeude?.find(x => x.id === gId);
   if (!g) return;
   const v = parseInt(val, 10);
   g.pvBaujahr = (Number.isInteger(v) && v >= 1800 && v <= 2100) ? v : null;
   getAssetsForBuilding(gId).filter(a => a.type === 'PV').forEach(a => {
-    a.baujahr = g.pvBaujahr != null ? g.pvBaujahr : (g.baujahr ?? null);
+    a.baujahr = g.pvBaujahr != null ? g.pvBaujahr
+      : baujahrVomGebaeude({ schicht: a.schicht, gebBaujahr: g.baujahr, basisjahr: basisJahr() });
     drawAssetMarker(a);
   });
   if (typeof recalcStromNetz === 'function') recalcStromNetz();

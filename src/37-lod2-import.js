@@ -14,6 +14,8 @@
 // 25 pvmStapelBelegen, Modulraster und Ertrag je Fläche: 03c.
 
 import { lod2Dachdaten, lod2Dachform, lod2Parsen, lod2Zone, lod2Zuordnen, wgs84NachUtm } from './lib/lod2-citygml.js';
+import { LOD2_SEITE, lod2Ausschnitt, lod2BwUrl, lod2Dienst, lod2NaechsteSeite, lod2NiKacheln, lod2NiSucheUrl, lod2NrwUrl, lod2Teilstuecke, lod2WfsZahlen } from './lib/lod2-dienste.js';
+import { detectBundesland } from './lib/bundeslaender.js';
 import { dachAusGrundrissGebaeude } from './lib/dach-grundriss.js';
 import { _hasBelegung, redrawGebPvModules } from './03c-gebaeude-io.js';
 import { pvmStapelBelegen } from './25-pv-modus.js';
@@ -150,48 +152,59 @@ function _nachlauf(gebs, umstellen) {
 }
 
 /**
- * Dateien lesen, zuordnen, nach Rückfrage übernehmen.
- * @param {File[]} files
+ * Ein CityGML-Text → Dachdaten der Gebäude im Projektgebiet (an `stand`
+ * angehängt). `stand.gesehen` hält die gml:ids — Teilstücke und Folgeseiten der
+ * Dienste überlappen sich am Rand.
+ * @param {string} text
+ * @param {any[]} gebs
+ * @param {{daten:any[], gesamt:number, ohneZone:number, gesehen:Set<string>, bereiche:Record<number,Function>}} stand
  */
-export async function lod2Importieren(files) {
-  const gebs = (window.gebaeude || []).filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3);
-  window.showHint?.('⏳ LoD2-Datei wird gelesen …', 0);
-  await _warte();
-  let daten = [], gesamt = 0, ohneZone = 0;
-  try {
-    const bereiche = {};
-    for (const { text } of await _texte(files)) {
-      const zone = lod2Zone(text);
-      if (!zone) { ohneZone++; continue; }
-      bereiche[zone] = bereiche[zone] || _projektBereich(gebs, zone);
-      const r = lod2Parsen(text, { imBereich: bereiche[zone] });
-      gesamt += r.gesamt;
-      for (const geb of r.gebaeude) {
-        const d = lod2Dachdaten(geb, zone);
-        if (d.dachFlaechen.length) daten.push(d);
-      }
-      await _warte();
-    }
-  } catch (err) {
-    console.error(err);
-    window.hideHint?.();
-    alert('LoD2-Datei konnte nicht gelesen werden:\n' + err.message);
-    return;
+function _lesen(text, gebs, stand) {
+  const zone = lod2Zone(text);
+  if (!zone) { if (/<(?:\w+:)?Building[\s>]/.test(text)) stand.ohneZone++; return; }
+  stand.bereiche[zone] = stand.bereiche[zone] || _projektBereich(gebs, zone);
+  const r = lod2Parsen(text, { imBereich: stand.bereiche[zone] });
+  stand.gesamt += r.gesamt;
+  for (const geb of r.gebaeude) {
+    if (stand.gesehen.has(geb.id)) continue;
+    stand.gesehen.add(geb.id);
+    const d = lod2Dachdaten(geb, zone);
+    if (d.dachFlaechen.length) stand.daten.push(d);
   }
-  window.hideHint?.();
-  if (!daten.length) {
-    alert(gesamt
-      ? `Die Datei enthält ${gesamt} Gebäude, aber keins liegt im Projektgebiet.\n\nStimmt die Kachel? Die Kachelnummer im Geoportal muss das Gebiet der geladenen Gebäude abdecken.`
-      : ohneZone
-        ? 'Kein bekanntes Koordinatensystem gefunden. Unterstützt: ETRS89/UTM Zone 32 oder 33 (EPSG:25832/25833) — so liefern die Länder LoD2 aus.'
-        : 'In der Datei wurden keine Gebäude mit Dachflächen (bldg:RoofSurface) gefunden.');
-    return;
-  }
+}
 
+const _neuerStand = () => ({ daten: [], gesamt: 0, ohneZone: 0, gesehen: new Set(), bereiche: {} });
+
+/** Dachdaten den Projektgebäuden zuordnen. */
+function _ziele(daten, gebs) {
   const { zuordnung, ohne } = lod2Zuordnen(daten, gebs);
   const nachId = new Map(gebs.map(g => [g.id, g]));
   const ziele = [...zuordnung.entries()].map(([gid, idx]) => ({ g: nachId.get(gid), d: _zusammen(idx.map(i => daten[i])) }));
-  const flaechen = ziele.reduce((s, z) => s + z.d.dachFlaechen.length, 0);
+  return { ziele, ohne, flaechen: ziele.reduce((s, z) => s + z.d.dachFlaechen.length, 0) };
+}
+
+/** Dachdaten an die Gebäude schreiben und alles nachziehen. */
+function _schreiben(ziele, umstellen) {
+  for (const { g, d } of ziele) {
+    g.dachFlaechen = d.dachFlaechen;
+    g.dachLod2 = { ...d.lod2, quelle: 'lod2' };
+    g.dachform = d.dachform;
+    if (d.dachNeigung != null) g.dachNeigung = d.dachNeigung;
+    if (d.dachAzimut != null) { g.dachAzimut = d.dachAzimut; g.dachAutoAzimut = false; }
+    g.dachQuelle = 'lod2';
+    delete g.pvRidgeOverride;
+    g._pvModSig = null;
+  }
+  return _nachlauf(ziele.map(z => z.g), umstellen);
+}
+
+/**
+ * Nach Rückfrage übernehmen (Datei-Import und Knopf „vom Landesdienst").
+ * @param {any[]} daten
+ * @param {any[]} gebs
+ */
+async function _rueckfrageUndUebernehmen(daten, gebs) {
+  const { ziele, ohne, flaechen } = _ziele(daten, gebs);
   const schonLod2 = ziele.filter(z => z.g.dachQuelle === 'lod2').length;
   const belegt = ziele.filter(z => _hasBelegung(z.g));
   if (!confirm(`LoD2: ${daten.length} Gebäude im Projektgebiet gefunden.\n\n`
@@ -210,20 +223,173 @@ export async function lod2Importieren(files) {
 
   window.showHint?.('⏳ Dachflächen werden übernommen …', 0);
   await _warte();
-  for (const { g, d } of ziele) {
-    g.dachFlaechen = d.dachFlaechen;
-    g.dachLod2 = { ...d.lod2, quelle: 'lod2' };
-    g.dachform = d.dachform;
-    if (d.dachNeigung != null) g.dachNeigung = d.dachNeigung;
-    if (d.dachAzimut != null) { g.dachAzimut = d.dachAzimut; g.dachAutoAzimut = false; }
-    g.dachQuelle = 'lod2';
-    delete g.pvRidgeOverride;
-    g._pvModSig = null;
-  }
-  const neu = _nachlauf(ziele.map(z => z.g), umstellen ? belegt.map(z => z.g) : []);
+  const neu = _schreiben(ziele, umstellen ? belegt.map(z => z.g) : []);
   window.hideHint?.();
   window.showHint?.(`✓ LoD2: ${ziele.length} Gebäude mit ${flaechen} Dachflächen`
     + (umstellen ? ` · ${neu.anzahl} Dächer neu belegt (Σ ${Math.round(neu.summe)} kWp)` : ''), 8000);
+}
+
+/**
+ * Dateien lesen, zuordnen, nach Rückfrage übernehmen.
+ * @param {File[]} files
+ */
+export async function lod2Importieren(files) {
+  const gebs = (window.gebaeude || []).filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3);
+  window.showHint?.('⏳ LoD2-Datei wird gelesen …', 0);
+  await _warte();
+  const stand = _neuerStand();
+  try {
+    for (const { text } of await _texte(files)) {
+      _lesen(text, gebs, stand);
+      await _warte();
+    }
+  } catch (err) {
+    console.error(err);
+    window.hideHint?.();
+    alert('LoD2-Datei konnte nicht gelesen werden:\n' + err.message);
+    return;
+  }
+  window.hideHint?.();
+  if (!stand.daten.length) {
+    alert(stand.gesamt
+      ? `Die Datei enthält ${stand.gesamt} Gebäude, aber keins liegt im Projektgebiet.\n\nStimmt die Kachel? Die Kachelnummer im Geoportal muss das Gebiet der geladenen Gebäude abdecken.`
+      : stand.ohneZone
+        ? 'Kein bekanntes Koordinatensystem gefunden. Unterstützt: ETRS89/UTM Zone 32 oder 33 (EPSG:25832/25833) und OGC CRS84 — so liefern die Länder LoD2 aus.'
+        : 'In der Datei wurden keine Gebäude mit Dachflächen (bldg:RoofSurface) gefunden.');
+    return;
+  }
+  await _rueckfrageUndUebernehmen(stand.daten, gebs);
+}
+
+/* ── Automatisch vom Landesdienst (NRW, Niedersachsen, BW) ────────────────── */
+// Dienste und Adressen: lib/lod2-dienste.js. Jede Antwort wird sofort gelesen
+// und verworfen — eine Liegenschaft kann zusammen über 100 MB CityGML ergeben.
+
+const _ZEITLIMIT_MS = 90000;
+
+async function _abruf(url) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(_ZEITLIMIT_MS) });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r;
+}
+
+/**
+ * LoD2 für die Gebäude vom Dienst des Landes holen und lesen.
+ * @param {any[]} gebs  Gebäude mit Grundriss (bestimmen Ausschnitt und Vorfilter)
+ * @param {{bl?:string|null, meldung?:(t:string)=>void}} [opts]
+ * @returns {Promise<{dienst:any, daten:any[], gesamt:number, anfragen:number, fehler:number}|null>}
+ *   null, wenn das Land keinen Dienst hat
+ */
+export async function lod2DienstLaden(gebs, opts = {}) {
+  const ziel = (gebs || []).filter(g => Array.isArray(g?.polygon) && g.polygon.length >= 3);
+  const bbox = lod2Ausschnitt(ziel);
+  let bl = opts.bl;
+  if (bl === undefined && bbox) bl = detectBundesland((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2);
+  const dienst = lod2Dienst(bl);
+  if (!dienst || !bbox) return null;
+  const meldung = opts.meldung || (() => {});
+  const stand = _neuerStand();
+  let anfragen = 0, fehler = 0, letzterFehler = null;
+  const versuch = async (fn) => {
+    anfragen++;
+    try { await fn(); } catch (e) { fehler++; letzterFehler = e; console.warn('LoD2-Abruf', e?.message || e); }
+    await _warte();
+  };
+  const mb = n => (n / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 });
+  let bytes = 0;
+  const lesen = text => { bytes += text.length; _lesen(text, ziel, stand); };
+
+  if (dienst.id === 'ni') {
+    meldung('Kacheln suchen (LGLN) …');
+    const stac = await (await _abruf(lod2NiSucheUrl(bbox))).json();
+    const kacheln = lod2NiKacheln(stac);
+    for (let i = 0; i < kacheln.length; i++) {
+      meldung(`Kachel ${i + 1} / ${kacheln.length} · ${stand.daten.length} Gebäude · ${mb(bytes)} MB`);
+      await versuch(async () => lesen(await (await _abruf(kacheln[i].url)).text()));
+    }
+  } else {
+    const teile = lod2Teilstuecke(bbox);
+    for (let i = 0; i < teile.length; i++) {
+      const vor = `Teilstück ${i + 1} / ${teile.length}`;
+      if (dienst.id === 'nw') {
+        let url = lod2NrwUrl(teile[i]);
+        for (let seite = 1; url && seite <= 20; seite++) {
+          meldung(`${vor}${seite > 1 ? ` · Seite ${seite}` : ''} · ${stand.daten.length} Gebäude · ${mb(bytes)} MB`);
+          let naechste = null;
+          await versuch(async () => {
+            const r = await _abruf(url);
+            naechste = lod2NaechsteSeite(r.headers.get('Link'));
+            lesen(await r.text());
+          });
+          url = naechste;
+        }
+      } else {
+        let start = 0;
+        for (let seite = 1; seite <= 20; seite++) {
+          meldung(`${vor}${seite > 1 ? ` · Seite ${seite}` : ''} · ${stand.daten.length} Gebäude · ${mb(bytes)} MB`);
+          let weiter = false;
+          await versuch(async () => {
+            const text = await (await _abruf(lod2BwUrl(teile[i], start))).text();
+            const { zurueck } = lod2WfsZahlen(text);
+            lesen(text);
+            if (zurueck != null && zurueck >= LOD2_SEITE) { start += zurueck; weiter = true; }
+          });
+          if (!weiter) break;
+        }
+      }
+    }
+  }
+  if (anfragen && fehler === anfragen) throw letzterFehler || new Error('Dienst nicht erreichbar');
+  return { dienst, daten: stand.daten, gesamt: stand.gesamt, anfragen, fehler };
+}
+
+/**
+ * Beim Gebäudeimport (03b, Haken „3D-Dachflächen"): holen und ohne Rückfrage
+ * übernehmen — die Gebäude sind neu, Belegungen gibt es noch keine.
+ * @returns {Promise<{dienst:any, gebaeude:number, flaechen:number, ohneLod2:number, fehler:number, anfragen:number}|null>}
+ */
+export async function lod2BeimImport(neue, opts = {}) {
+  const r = await lod2DienstLaden(neue, opts);
+  if (!r) return null;
+  const gebs = neue.filter(g => Array.isArray(g?.polygon) && g.polygon.length >= 3);
+  const { ziele, flaechen } = _ziele(r.daten, gebs);
+  const frei = ziele.filter(z => !_hasBelegung(z.g));
+  if (frei.length) _schreiben(frei, []);
+  return { dienst: r.dienst, gebaeude: frei.length, flaechen, ohneLod2: gebs.length - ziele.length, fehler: r.fehler, anfragen: r.anfragen };
+}
+
+/**
+ * Knopf „🏠 Dachflächen aus LoD2 laden …": Hat das Land einen Dienst, wird
+ * angeboten, direkt von dort zu laden; sonst (oder auf Wunsch) Dateiauswahl.
+ */
+export async function lod2Laden() {
+  const gebs = (window.gebaeude || []).filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3);
+  const bbox = lod2Ausschnitt(gebs);
+  const dienst = bbox ? lod2Dienst(detectBundesland((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)) : null;
+  if (!gebs.length || !dienst
+      || !confirm(`Für ${dienst.name} gibt es LoD2 direkt vom Landesdienst (${dienst.quelle}).\n\n`
+        + `OK = für die ${gebs.length} Gebäude automatisch laden\nAbbrechen = CityGML-Datei auswählen`)) {
+    lod2DateiWaehlen();
+    return;
+  }
+  window.showHint?.('⏳ LoD2 vom Landesdienst laden …', 0);
+  let r;
+  try {
+    r = await lod2DienstLaden(gebs, { meldung: t => window.showHint?.(`⏳ LoD2 ${dienst.name}: ${t}`, 0) });
+  } catch (err) {
+    window.hideHint?.();
+    alert(`LoD2 konnte nicht vom Landesdienst geladen werden (${err?.message || err}).\n\nAlternativ die Kachel im Geoportal herunterladen und als Datei importieren.`);
+    return;
+  }
+  window.hideHint?.();
+  if (!r?.daten.length) {
+    alert(r?.gesamt
+      ? `Der Landesdienst kennt ${r.gesamt} Gebäude im Ausschnitt, aber keins mit LoD2-Dachflächen.`
+      : 'Der Landesdienst hat für dieses Gebiet keine LoD2-Gebäude geliefert.');
+    return;
+  }
+  if (r.fehler) window.showHint?.(`⚠ ${r.fehler} von ${r.anfragen} Anfragen ohne Antwort — Randbereiche können fehlen.`, 6000);
+  await _rueckfrageUndUebernehmen(r.daten, gebs);
 }
 
 /* ── Dachflächen aus dem Grundriss (ohne LoD2) ────────────────────────────── */

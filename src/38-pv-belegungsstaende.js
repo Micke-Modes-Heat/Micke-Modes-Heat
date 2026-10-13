@@ -178,6 +178,7 @@ export function pvbsKennzahlen(id) {
   for (const [gid, e] of Object.entries(s.geb)) if (gibtEs(gid)) dachKwp[gid] = +e.kwpKorr || 0;
   const sum = pvbsSummen(s, gibtEs);
   return { id: s.id, name: s.name, beschreibung: s.beschreibung, stand: s.stand, netz: s.netz,
+    herkunft: s.herkunft, regeln: s.regeln || null,     // Gutachten 5.4.2: Belegungsregeln des Stands
     imProjekt: s.id === _bs.projektId && !_entwurf,
     dachKwp, ids: new Set(Object.keys(dachKwp)), summeKwp: sum.kwpKorr, daecher: sum.daecher,
     fehlend: Object.keys(s.geb).length - sum.daecher };

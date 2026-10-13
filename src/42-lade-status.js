@@ -57,7 +57,7 @@ function _quelle(gebiet) {
   } else if (window.map?.getCenter) {
     ({ lat, lng } = window.map.getCenter());
   }
-  return window.ladeQuelle?.(lat, lng) || { bl: null, kataster: false };
+  return window.ladeQuelle?.(lat, lng) || { bl: null, kataster: false, lod2: false };
 }
 
 /**
@@ -74,7 +74,7 @@ export function ladeStatusVorschau(opts = {}) {
   }
   const gebiet = _gebiet();
   const q = _quelle(gebiet);
-  _schritte = lsPlan({ gebiet, bl: q.bl, kataster: q.kataster, optionen: window.osmImportOptionen?.() || {} });
+  _schritte = lsPlan({ gebiet, bl: q.bl, kataster: q.kataster, lod2: q.lod2, optionen: window.osmImportOptionen?.() || {} });
   // Ohne Zeichnung heißt der erste Schritt in der Vorschau noch „offen"
   if (!gebiet.zeichnet && !gebiet.ring) lsSetze(_schritte, 'gebiet', 'offen', lsGebietStand(gebiet).info);
   _lauf = 0; _laufStart = null; _laufEnde = null;
@@ -95,7 +95,7 @@ export function ladeStatusZuruecksetzen() {
 
 /**
  * Import beginnt.
- * @param {{gebiet:any, bl:string|null, kataster:boolean, optionen:any}} o
+ * @param {{gebiet:any, bl:string|null, kataster:boolean, lod2?:boolean, optionen:any}} o
  * @returns {number} Laufnummer
  */
 export function ladeStatusStart(o) {

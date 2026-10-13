@@ -62,10 +62,28 @@ export function wgs84NachUtm(lat, lng, zone) {
   return { E, N: Nn };
 }
 
+/**
+ * Geografische Koordinaten in Länge-Breite-Höhe (OGC CRS84/CRS84h) — so liefert
+ * die OGC API von Geobasis NRW (lib/lod2-dienste.js). Gelesen wird dann in UTM
+ * umgerechnet, damit Neigung und Fläche in Metern entstehen.
+ */
+export function lod2Geografisch(text) {
+  const m = String(text || '').match(/srsName\s*=\s*"([^"]*)"/);
+  return !!m && /CRS84/i.test(m[1]);
+}
+
+/** Erste Länge eines CRS84-Textes → UTM-Zone 32 bzw. 33 (Grenze 12° O). */
+function _zoneAusLaenge(text) {
+  const m = String(text).match(/<(?:\w+:)?pos(?:List)?[^>]*>\s*(-?[\d.]+)/);
+  const lng = m ? Number(m[1]) : NaN;
+  return Number.isFinite(lng) ? (lng < 12 ? 32 : 33) : null;
+}
+
 /** UTM-Zone aus dem srsName (EPSG:25832, urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH, …). */
 export function lod2Zone(text) {
   const m = String(text || '').match(/srsName\s*=\s*"([^"]*)"/);
   const srs = m ? m[1] : '';
+  if (/CRS84/i.test(srs)) return _zoneAusLaenge(text);
   if (/25833|UTM_?33|UTM33/i.test(srs)) return 33;
   if (/25832|UTM_?32|UTM32/i.test(srs)) return 32;
   if (/3044|4647/.test(srs)) return 32;        // ETRS89/UTM 32 mit Zonenvorsatz
@@ -144,6 +162,7 @@ const ROOF_TYPE = {
  */
 export function lod2Parsen(text, opts = {}) {
   const zone = lod2Zone(text);
+  const geo = lod2Geografisch(text);
   const gebaeude = [];
   let gesamt = 0;
   for (const b of _bloecke(text, 'Building')) {
@@ -172,9 +191,21 @@ export function lod2Parsen(text, opts = {}) {
       ziel.push(...ringe);
     }
     if (!flaechen.dach.length) continue;
-    // Ostwerte mit Zonenvorsatz (32xxxxxxx) auf reine UTM-Ostwerte bringen
+    // per xlink mehrfach verwendete Ringe nur einmal umrechnen
+    const umgerechnet = new Set();
     for (const liste of [flaechen.dach, flaechen.wand, flaechen.boden]) {
-      for (const r of liste) for (const p of r) if (p[0] > 1e7) p[0] -= Math.floor(p[0] / 1e6) * 1e6;
+      for (const r of liste) for (const p of r) {
+        if (geo) {
+          // CRS84: Länge, Breite → UTM der Zone (Höhe bleibt)
+          if (zone == null || umgerechnet.has(p)) continue;
+          umgerechnet.add(p);
+          const u = wgs84NachUtm(p[1], p[0], zone);
+          p[0] = u.E; p[1] = u.N;
+        } else if (p[0] > 1e7) {
+          // Ostwerte mit Zonenvorsatz (32xxxxxxx) auf reine UTM-Ostwerte bringen
+          p[0] -= Math.floor(p[0] / 1e6) * 1e6;
+        }
+      }
     }
     const p0 = flaechen.dach[0][0];
     if (opts.imBereich && !opts.imBereich(p0[0], p0[1])) continue;
@@ -264,13 +295,18 @@ export function lod2Dachdaten(geb, zone) {
   const bodenGeschaetzt = !Number.isFinite(boden) || boden >= zMinDach;
   if (bodenGeschaetzt) boden = zMinDach - 3;
   const nachLL = p => { const ll = utmNachWgs84(p[0], p[1], zone); return [ll.lat, ll.lng, Math.round((p[2] - boden) * 100) / 100]; };
+  // Meridiankonvergenz: Gitternord (UTM) weicht abseits des Mittelmeridians von
+  // geografisch Nord ab (NRW bei 6° O: ≈ −2,4°) — Azimut auf geografisch Nord bringen
+  const ll0 = utmNachWgs84(geb.dach[0][0][0], geb.dach[0][0][1], zone);
+  const konvergenz = Math.atan(Math.tan((ll0.lng - (zone * 6 - 183)) * RAD) * Math.sin(ll0.lat * RAD)) / RAD;
+  const geoAzimut = a => ((Math.round(a + konvergenz) % 360) + 360) % 360;
 
   const dachFlaechen = [];
   geb.dach.forEach((r, i) => {
     const k = kw[i];
     if (!(k.grundM2 > 0.05) || k.neigung > 80) return;   // senkrechte/entartete Teile
     dachFlaechen.push({ id: i + 1, punkte: r.map(nachLL), neigung: Math.round(k.neigung * 10) / 10,
-      azimut: Math.round(k.azimut), flaecheM2: Math.round(k.flaecheM2 * 10) / 10, grundM2: Math.round(k.grundM2 * 10) / 10 });
+      azimut: geoAzimut(k.azimut), flaecheM2: Math.round(k.flaecheM2 * 10) / 10, grundM2: Math.round(k.grundM2 * 10) / 10 });
   });
   // Wände nur oberhalb der Traufe (Giebel, Versätze) — darunter zeichnet die 3D-Ansicht die Grundrisswand
   const waende = [];

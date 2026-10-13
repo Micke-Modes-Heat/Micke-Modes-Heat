@@ -117,7 +117,7 @@ function _findLinked(key) {
 // ── Automatisches Baujahr ─────────────────────────────────────────────────────
 // Elektrische Wärmeerzeuger gehören zum Wärmekonzept und sind damit geplant. Ohne
 // eigenes Baujahr erbten sie das der Heizzentrale (createAsset) und zählten als
-// Bestand — in der NAP-Analyse und im Gutachten 3.3.2 fehlte ihr Strombedarf.
+// Bestand — in der NAP-Analyse und im Gutachten 5.3.2 fehlte ihr Strombedarf.
 const AUTO_BAUJAHR_KEYS = ['lwwp', 'geo', 'fg', 'stromkessel'];
 
 /** Startjahr der ersten Ausbaustufe (projektweit oder aktive Variante), sonst das nächste Kalenderjahr. */

@@ -27,9 +27,9 @@ describe('lsGebietStand', () => {
 });
 
 describe('lsPlan', () => {
-  it('stellt zehn Schritte auf; nicht gewählte Zusätze sind übersprungen', () => {
+  it('stellt elf Schritte auf; nicht gewählte Zusätze sind übersprungen', () => {
     const s = plan();
-    expect(s.map(x => x.id)).toEqual(['gebiet', 'kataster', 'osm', 'klein', 'baujahr', 'einfuegen', 'dachform', 'dach', 'strassen', 'baeume']);
+    expect(s.map(x => x.id)).toEqual(['gebiet', 'kataster', 'osm', 'klein', 'baujahr', 'einfuegen', 'lod2', 'dachform', 'dach', 'strassen', 'baeume']);
     expect(zustand(s, 'gebiet')).toBe('fertig');
     expect(zustand(s, 'kataster')).toBe('offen');
     expect(zustand(s, 'baujahr')).toBe('uebersprungen');     // BW: keine Baujahr-Quelle
@@ -44,6 +44,15 @@ describe('lsPlan', () => {
     expect(zustand(nw, 'baujahr')).toBe('offen');
     expect(nw.find(x => x.id === 'strassen').titel).toContain('Wärme + Elektro');
     expect(zustand(nw, 'baeume')).toBe('offen');
+  });
+  it('LoD2: offen mit Dienst, sonst übersprungen mit Hinweis auf den Datei-Import', () => {
+    const mit = plan({ lod2: true, optionen: { lod2: true, dach: true } });
+    expect(zustand(mit, 'lod2')).toBe('offen');
+    expect(mit.find(x => x.id === 'dach').info).toContain('ohne LoD2');
+    const ohne = plan({ bl: 'by', kataster: false, lod2: false, optionen: { lod2: true } });
+    expect(zustand(ohne, 'lod2')).toBe('uebersprungen');
+    expect(ohne.find(x => x.id === 'lod2').info).toContain('Bayern');
+    expect(zustand(plan(), 'lod2')).toBe('uebersprungen');
   });
   it('ohne Plangebiet wird der Kartenausschnitt geladen', () => {
     const s = plan({ gebiet: {} });

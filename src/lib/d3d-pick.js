@@ -360,3 +360,29 @@ export function eckeEinrasten(q, ziele, opt = {}) {
   if (achsPunkt) return { p: achsPunkt, art: 'achse' };
   return { p: [q[0], q[1]], art: null };
 }
+
+/**
+ * Viereck beim Ziehen einer Ecke in seiner Form halten (Shift): die gegenüberliegende
+ * Ecke O bleibt, die Kanten von O aus behalten ihre Richtung (e1 zu Nachbar 1, e2 zu
+ * Nachbar 2) — beim Rechteck bleibt es also ein Rechteck. Die gezogene Ecke landet
+ * genau auf p; die Nachbarn laufen mit.
+ * @param {number[][]} start Ecken [x,y] beim Greifen (genau 4)
+ * @param {number} i gezogene Ecke
+ * @param {number[]} p neue Lage [x,y]
+ * @returns {number[][]|null} neue Ecken oder null (entartet / nicht 4 Ecken)
+ */
+export function viereckHalten(start, i, p) {
+  if (!Array.isArray(start) || start.length !== 4) return null;
+  const o = start[(i + 2) % 4], n1 = start[(i + 1) % 4], n2 = start[(i + 3) % 4];
+  const e1 = [n1[0] - o[0], n1[1] - o[1]], e2 = [n2[0] - o[0], n2[1] - o[1]];
+  const det = e1[0] * e2[1] - e1[1] * e2[0];
+  if (Math.abs(det) < 1e-9) return null;
+  // p − o = s·e1 + t·e2
+  const dx = p[0] - o[0], dy = p[1] - o[1];
+  const s = (dx * e2[1] - dy * e2[0]) / det, t = (e1[0] * dy - e1[1] * dx) / det;
+  const out = start.map(q => [q[0], q[1]]);
+  out[i] = [p[0], p[1]];
+  out[(i + 1) % 4] = [o[0] + s * e1[0], o[1] + s * e1[1]];
+  out[(i + 3) % 4] = [o[0] + t * e2[0], o[1] + t * e2[1]];
+  return out;
+}

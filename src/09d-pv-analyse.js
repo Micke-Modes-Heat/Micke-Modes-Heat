@@ -164,6 +164,7 @@ export function pvaBelegungDaten(bv) {
   const k = window.pvbsKennzahlen?.(bv.standId);
   if (!k) return { ...bv, dachKwp: {}, summeKwp: 0, ausStand: true, fehltStand: true };
   return { ...bv, name: k.name, beschreibung: k.beschreibung, stand: k.stand, netz: k.netz || null,
+    herkunft: k.herkunft, regeln: k.regeln || null,
     dachKwp: k.dachKwp, summeKwp: k.summeKwp, ausStand: true, fehltStand: false };
 }
 
@@ -172,13 +173,20 @@ function _pvBelegungInfo(id) {
   if (!nr) return null;
   const bv = pvaBelegungDaten((window._pvAnalyse?.belegungsVarianten || []).find(b => b.nr === nr));
   const sp = _pvSpeicherRegel(bv?.speicher);
+  // Belegungsstand (38): legt ALLE Dächer fest, kann automatisch, von Hand oder in 3D entstanden sein;
+  // ohne Stand: Momentaufnahme einer Vorschau (36) plus die schon geplante PV der übrigen Gebäude
+  const herkunft = bv?.herkunft === 'auto' ? 'automatisch belegt' : bv?.herkunft ? 'im PV-Modus festgelegt' : 'automatisch belegt';
+  const netz = !bv?.netz?.geprueft
+    ? 'Eine Netzprüfung liegt für diese Belegung nicht vor (nur Stände aus der netzverträglichen Vorschau tragen eine; nach Änderungen am Stand entfällt sie).'
+    : `Die Netzprüfung stammt aus der Vorschau${bv.stand ? ` (${bv.stand})` : ''} — ändert sich das Netz, die Vorschau neu rechnen und erneut speichern.`;
   return {
     label: bv?.name || `Dachbelegung ${nr}`, farbe: _pvBelegungFarbe(nr), icon: '▦',
     frage:     'Was bringt diese Dachbelegung — mit passend ausgelegtem Speicher?',
-    ziel:      'Im PV-Modus automatisch belegte Dächer zusätzlich zur schon geplanten PV',
-    herleitung:`Dächer im PV-Modus automatisch belegt${bv?.beschreibung ? ` (${bv.beschreibung})` : ''}; dazu die bereits geplante PV aller übrigen Gebäude. Speicher „${sp[1]}": ${sp[2]}.`,
-    bewertung: 'Zeigt eine konkrete, gebäudescharfe Belegung neben den optimierten Auslegungen. Die Netzprüfung stammt aus der Vorschau beim Übernehmen'
-      + (bv?.stand ? ` (${bv.stand})` : '') + ' — ändert sich das Netz, die Vorschau neu rechnen und erneut übernehmen.',
+    ziel:      bv?.ausStand ? 'Gebäudescharfe Dachbelegung aus einem Belegungsstand' : 'Im PV-Modus automatisch belegte Dächer zusätzlich zur schon geplanten PV',
+    herleitung: bv?.ausStand
+      ? `Dächer laut Belegungsstand, ${herkunft}${bv.beschreibung ? ` (${bv.beschreibung})` : ''}; der Stand legt alle Dächer fest, dazu kommt nur PV außerhalb der Dächer (Freiflächen, Anlagen ohne Gebäude). Speicher „${sp[1]}": ${sp[2]}.`
+      : `Dächer im PV-Modus automatisch belegt${bv?.beschreibung ? ` (${bv.beschreibung})` : ''}; dazu die bereits geplante PV aller übrigen Gebäude. Speicher „${sp[1]}": ${sp[2]}.`,
+    bewertung: `Zeigt eine konkrete, gebäudescharfe Belegung neben den optimierten Auslegungen. ${netz}`,
   };
 }
 
@@ -7205,10 +7213,10 @@ function _pvBelegungenHtml() {
     <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
       <span style="color:${PV_BELEGUNG_FARBEN[0]};font-size:12px;">▦</span>
       <span style="font-size:11px;font-weight:600;color:var(--text);">Dachbelegungen aus dem PV-Modus</span>
-      <span class="htip" data-tip="Jede Vorschau aus „⚡ Dächer automatisch belegen“ lässt sich als eigene Auslegung übernehmen, ohne das Projekt zu belegen. Gerechnet wird mit den Dächern der Vorschau plus der schon geplanten PV aller übrigen Gebäude; der Speicher wird je Belegung nach der gewählten Regel ausgelegt.">?</span>
+      <span class="htip" data-tip="Jeder Belegungsstand aus dem PV-Modus lässt sich als eigene Auslegung rechnen, ohne das Projekt zu ändern. Ein Stand legt alle Dächer fest; dazu kommt nur PV außerhalb der Dächer (Freiflächen, Anlagen ohne Gebäude). Der Speicher wird je Belegung nach der gewählten Regel ausgelegt.">?</span>
     </div>`;
   if (!liste.length) {
-    return kopf + `<div style="font-size:10.5px;color:var(--muted);line-height:1.5;">Noch keine. Im PV-Modus unter „⚡ Dächer automatisch belegen“ eine Vorschau rechnen und „☀ Als Auslegung in die PV-Analyse“ wählen.</div>`;
+    return kopf + `<div style="font-size:10.5px;color:var(--muted);line-height:1.5;">Noch keine. Im PV-Modus unter „📚 Belegungsstände“ bei einem Stand „☀ als Auslegung“ wählen.</div>`;
   }
   const f0 = x => Math.round(+x || 0).toLocaleString('de-DE');
   const sel = 'padding:3px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10.5px;';

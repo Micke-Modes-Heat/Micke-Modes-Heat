@@ -18,7 +18,7 @@
 //
 // Erzeugung (Entscheidung 09/2026, dimensionierungssicher): PV, KWK, Wind und Batterien im
 // Einspeisebetrieb mindern die Bezugsleistung NICHT — zum Zeitpunkt der Höchstlast ist ihre
-// Leistung nicht gesichert. Ihre Einspeiseleistung wird getrennt ausgewiesen (Gutachten 3.3.4) —
+// Leistung nicht gesichert. Ihre Einspeiseleistung wird getrennt ausgewiesen (Gutachten 5.3.4) —
 // mit voller Nennleistung ohne Gleichzeitigkeitsfaktor, weil z. B. PV-Anlagen zeitgleich einspeisen.
 // Notstromaggregate laufen nur bei Netzausfall und zählen weder als Last noch als Erzeugung.
 //
@@ -33,12 +33,12 @@ const VERBRAUCHER_TYPEN = ['Verbraucher', 'Lade', 'TWW', 'WP', 'Geo', 'FG', 'Str
 /**
  * Stufen der Bedarfsprognose in Gutachten-Reihenfolge. Jede Stufe baut auf der
  * vorigen auf. Übrige Verbraucher (z. B. Batterie im Ladebetrieb) laufen unter
- * „sonstige" und gehen erst in die resultierende Anschlussleistung (3.3.4) ein.
+ * „sonstige" und gehen erst in die resultierende Anschlussleistung (5.3.4) ein.
  */
 export const BP_STUFEN = [
-  { key: 'gebaeude', kapitel: '3.3.1', label: 'Gebäude',           typen: ['Verbraucher'] },
-  { key: 'waerme',   kapitel: '3.3.2', label: 'Wärmekonzept',      typen: ['WP', 'Geo', 'FG', 'Stromkessel', 'TWW'] },
-  { key: 'lade',     kapitel: '3.3.3', label: 'Ladeinfrastruktur', typen: ['Lade'] },
+  { key: 'gebaeude', kapitel: '5.3.1', label: 'Gebäude',           typen: ['Verbraucher'] },
+  { key: 'waerme',   kapitel: '5.3.2', label: 'Wärmekonzept',      typen: ['WP', 'Geo', 'FG', 'Stromkessel', 'TWW'] },
+  { key: 'lade',     kapitel: '5.3.3', label: 'Ladeinfrastruktur', typen: ['Lade'] },
 ];
 
 export function bpStufeVonTyp(type) {

@@ -19,6 +19,7 @@ import { _hideForDraw, _restoreAfterDraw, autoAssignEdgeCosts } from './04a-ui-p
 import { glLastgangKw } from './06a-gbi-lastgang.js';
 import { detectBundesland } from './lib/bundeslaender.js';
 import { ladeStatusStart, ladeStatusVorschau, lsSchritt, lsMeldung, lsUnter, lsRest } from './42-lade-status.js';
+import { lod2Dienst } from './lib/lod2-dienste.js';
 import { readNum } from './lib/util.js';
 import { clipBuildingEndpoint, crossesForeignBuilding } from './lib/netz-building-obstacles.js';
 import { bereinigeKleinbauten, rechteckAusDreiPunkten } from './lib/gebaeude-geometrie.js';
@@ -1941,7 +1942,7 @@ export function _detectBundesland(lat, lon) {
 /** Woher die Grundrisse an dieser Stelle kommen (für die Ladeübersicht, 42-lade-status.js). */
 export function ladeQuelle(lat, lon) {
   const bl = detectBundesland(lat, lon);
-  return { bl, kataster: bl === 'sh' || !!(bl && WFS_CONFIG[bl]) };
+  return { bl, kataster: bl === 'sh' || !!(bl && WFS_CONFIG[bl]), lod2: !!lod2Dienst(bl) };
 }
 
 function _wfsBuildUrl(cfg, bbox4326) {
@@ -2564,7 +2565,7 @@ export async function loadOsmBuildings(){
 
   // Ladeübersicht (42-lade-status.js): alle Schritte dieses Imports als Liste
   const quelle = ladeQuelle((bbox[0]+bbox[2])/2, (bbox[1]+bbox[3])/2);
-  const lauf = ladeStatusStart({ gebiet: { ring: snapArea }, bl: quelle.bl, kataster: quelle.kataster, optionen: osmImportOptionen() });
+  const lauf = ladeStatusStart({ gebiet: { ring: snapArea }, bl: quelle.bl, kataster: quelle.kataster, lod2: quelle.lod2, optionen: osmImportOptionen() });
   const ls = (id, zustand, info) => lsSchritt(id, zustand, info, lauf);
 
   try{
@@ -2696,7 +2697,7 @@ out body;>;out skel qt;`;
     // den Gebäuden nacheinander; sie warten auf die Dachformen aus OSM, weil
     // die Dachflächen aus der Dachform des Gebäudes entstehen.
     const zusaetze = osmImportOptionen();
-    if (zusaetze.dach || zusaetze.strassen || zusaetze.baeume) {
+    if (zusaetze.lod2 || zusaetze.dach || zusaetze.strassen || zusaetze.baeume) {
       mitZusaetzen = true;
       await new Promise(r => setTimeout(r, kleinInfo ? 3000 : 1200));
       await _osmImportZusaetze(neue, ausWfs, zusaetze, lauf);
@@ -2728,7 +2729,7 @@ out body;>;out skel qt;`;
    Felder, Endung -area; osmImportOptionSync hält sie gleich). Die Wahl wird
    im Browser gemerkt. */
 
-const _OSM_OPT_IDS = ['osm-opt-dach', 'osm-opt-strassen', 'osm-opt-strassen-sparte', 'osm-opt-baeume'];
+const _OSM_OPT_IDS = ['osm-opt-lod2', 'osm-opt-dach', 'osm-opt-strassen', 'osm-opt-strassen-sparte', 'osm-opt-baeume'];
 const _OSM_OPT_SPEICHER = 'mmh-osm-import-optionen';
 
 /** Haken des anderen Dialogs nachziehen und die Wahl merken. */
@@ -2755,16 +2756,18 @@ export function osmImportOptionenLaden() {
       if (el.type === 'checkbox') el.checked = !!v; else if (v) el.value = v;
     }
   };
+  setzen('osm-opt-lod2', w.lod2);
   setzen('osm-opt-dach', w.dach);
   setzen('osm-opt-strassen', w.strassen);
   setzen('osm-opt-strassen-sparte', w.sparte);
   setzen('osm-opt-baeume', w.baeume);
 }
 
-/** @returns {{dach:boolean, strassen:boolean, sparte:string, baeume:boolean}} */
+/** @returns {{lod2:boolean, dach:boolean, strassen:boolean, sparte:string, baeume:boolean}} */
 export function osmImportOptionen() {
   const an = id => !!document.getElementById(id)?.checked;
   return {
+    lod2: an('osm-opt-lod2'),
     dach: an('osm-opt-dach'),
     strassen: an('osm-opt-strassen'),
     sparte: document.getElementById('osm-opt-strassen-sparte')?.value || 'strom',
@@ -2775,7 +2778,7 @@ export function osmImportOptionen() {
 /** Laufenden Schritt als Fehler markieren, alles Offene als abgebrochen (Ladeübersicht). */
 function _lsFehlerAbbruch(lauf, err) {
   // lsSchritt ohne Laufnummer trifft nur den Schritt, der gerade läuft
-  for (const id of ['kataster', 'osm', 'klein', 'baujahr', 'einfuegen', 'dachform', 'dach', 'strassen', 'baeume']) {
+  for (const id of ['kataster', 'osm', 'klein', 'baujahr', 'einfuegen', 'lod2', 'dachform', 'dach', 'strassen', 'baeume']) {
     lsSchritt(id, 'fehler', 'Fehler: ' + (err?.message || err));
   }
   lsRest('Abgebrochen nach Fehler', lauf);
@@ -2793,7 +2796,28 @@ async function _dachformSchritt(neue, lauf) {
 async function _osmImportZusaetze(neue, ausWfs, opt, lauf) {
   const meldungen = [`✓ ${neue.length} Gebäude`];
   const ls = (id, zustand, info) => lsSchritt(id, zustand, info, lauf);
-  // Dachform zuerst — die Dachflächen entstehen aus ihr
+  // LoD2 zuerst: Gebäude mit amtlichem Dach brauchen weder OSM-Dachform noch
+  // Dachflächen aus dem Grundriss (beide überspringen dachQuelle 'lod2')
+  if (opt.lod2) {
+    ls('lod2', 'laeuft', 'Landesdienst anfragen …');
+    showHint('⏳ 3D-Dachflächen (LoD2) vom Landesdienst laden …', 0);
+    try {
+      const r = await window.lod2BeimImport?.(neue, { meldung: lsMeldung });
+      if (!r) ls('lod2', 'uebersprungen', 'Kein automatischer Dienst für dieses Land');
+      else {
+        meldungen.push(`${r.gebaeude} Gebäude mit LoD2-Dach`);
+        ls('lod2', r.gebaeude ? 'fertig' : 'leer', (r.gebaeude
+          ? `${r.gebaeude} Gebäude · ${r.flaechen} Dachflächen (${r.dienst.name})` : `Keine LoD2-Dächer im Gebiet (${r.dienst.name})`)
+          + (r.ohneLod2 ? ` · ${r.ohneLod2} ohne LoD2-Dach` : '')
+          + (r.fehler ? ` · ⚠ ${r.fehler} von ${r.anfragen} Anfragen ohne Antwort` : ''));
+      }
+    } catch (e) {
+      console.error('LoD2 beim Import', e);
+      meldungen.push('⚠ LoD2 nicht geladen');
+      ls('lod2', 'fehler', 'Landesdienst nicht erreichbar: ' + (e?.message || e));
+    }
+  }
+  // Dachform aus OSM für die übrigen — die Dachflächen entstehen aus ihr
   if (ausWfs) {
     try { await _dachformSchritt(neue, lauf); }
     catch (e) {

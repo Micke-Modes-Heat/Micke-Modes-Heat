@@ -23,7 +23,7 @@ import { msSpannungen } from './lib/ms-spannung.js';
 import { trafoGruppen, trafoAufteilung, gruppenBetriebsart } from './lib/trafo-parallel.js';
 import { baueTrassenGraph, routeEntlangTrassen } from './lib/trassen-routing.js';
 import { mergeOsmElements, splitOsmBbox, subdivideOsmBbox } from './lib/osm-bbox-tiles.js';
-import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus, getAssetPropsForYear } from './13a-assets-core.js';
+import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus, getAssetPropsForYear, getAssetsForBuilding } from './13a-assets-core.js';
 import { collapseAssetSpider, redrawAllAssets, refreshTrafoAuslastung } from './13b-assets-render.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
 import { schichtAusEndpunkten, normSchicht, SCHICHT } from './lib/schichten.js';
@@ -567,6 +567,53 @@ export function addStromEdge(uId, vId) {
   _refreshEdgeYears(edge);
   startAnimStrom();
   return edge;
+}
+
+/**
+ * NAP → Schaltanlage → Trafo → NSHV innerhalb EINES Gebäudes verschalten.
+ * Legt nur fehlende Leitungen an (idempotent), fasst vorhandene nicht an.
+ * MS-Ebene (NAP/SA/Trafo-Primär) als msLevel mit MS-Erdkabel, NS-Ebene Trafo → NSHV.
+ * Ohne Schaltanlage hängt der Trafo direkt am NAP; kommt eine Schaltanlage dazu,
+ * fällt diese Direktleitung weg (sonst entstünde eine Masche in der Station).
+ * @returns {number} Anzahl neu angelegter Leitungen
+ */
+export function verschalteStationsAssets(gebId) {
+  if (gebId == null) return 0;
+  const kand = getAssetsForBuilding(gebId).filter(a => a.domain === 'strom' || a.domain === 'hybrid');
+  const von = t => kand.filter(a => a.type === t);
+  const naps = von('NAP'), sas = von('Schaltanlage'), trafos = von('Trafo'), nshvs = von('NSHV');
+  const kanteZw = (a, b) => (window.stromEdges || []).find(e =>
+    (e.u === a.id && e.v === b.id) || (e.u === b.id && e.v === a.id));
+  let neu = 0;
+  const verbinde = (u, v, ms) => {
+    if (!u || !v || u.id === v.id || kanteZw(u, v)) return;
+    const e = addStromEdge(u.id, v.id);
+    if (!e) return;
+    if (ms) {
+      e.msLevel = true;
+      e.cableType = 'NA2XS2Y';
+      e.layer?.setStyle({ color: '#ff9800', weight: 4, opacity: 0.95, dashArray: null });
+      e.outlineLayer?.setStyle({ color: '#0a0e1a', weight: 7, opacity: 0.4, dashArray: null });
+    }
+    neu++;
+  };
+  if (naps.length && sas.length) sas.forEach(sa => verbinde(naps[0], sa, true));
+  else if (naps.length && trafos.length) trafos.forEach(t => verbinde(naps[0], t, true));
+  if (sas.length && trafos.length) {
+    trafos.forEach(t => {
+      verbinde(sas[0], t, true);
+      // Direktleitung NAP → Trafo ist durch den Weg über die Schaltanlage ersetzt
+      naps.forEach(n => { const alt = kanteZw(n, t); if (alt && kanteZw(sas[0], t)) removeStromEdge(alt); });
+    });
+  }
+  if (trafos.length && nshvs.length) {
+    nshvs.forEach((h, i) => {
+      // NSHV, die schon an irgendeinem Trafo dieses Gebäudes hängt, bleibt wie sie ist
+      if (trafos.some(t => kanteZw(t, h))) return;
+      verbinde(trafos[Math.min(i, trafos.length - 1)], h, false);
+    });
+  }
+  return neu;
 }
 
 // Bau-/Abrissjahr eines Kabels aus seinen beiden Endpunkten ableiten:

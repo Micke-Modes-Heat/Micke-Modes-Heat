@@ -1,7 +1,7 @@
 // @ts-check
 // ── lib/lade-status.js — Ablauf „Plangebiet zeichnen → Bereich laden" ────────
 //
-// Der Gebäudeimport (03b-netz.js loadOsmBuildings) läuft in bis zu zehn
+// Der Gebäudeimport (03b-netz.js loadOsmBuildings) läuft in bis zu elf
 // Schritten, die bisher nur nacheinander als Hinweiszeile unten auf der Karte
 // auftauchten. Dieses Modul hält sie als eine Schrittliste mit Zustand, damit
 // die Übersicht (42-lade-status.js) jederzeit zeigt, was geladen ist, was
@@ -95,7 +95,8 @@ export function lsGebietStand(g) {
  *   gebiet: {zeichnet?:boolean, punkte?:number, ring?:{lat:number,lng:number}[]|null},
  *   bl: string|null,           // Bundesland-Schlüssel oder null (Ausland)
  *   kataster: boolean,         // gibt es einen WFS-Dienst für das Land?
- *   optionen: {dach?:boolean, strassen?:boolean, sparte?:string, baeume?:boolean},
+ *   lod2?: boolean,            // LoD2 automatisch abrufbar (lib/lod2-dienste.js)?
+ *   optionen: {lod2?:boolean, dach?:boolean, strassen?:boolean, sparte?:string, baeume?:boolean},
  * }} o
  * @returns {LsSchritt[]}
  */
@@ -123,8 +124,13 @@ export function lsPlan(o) {
       ? _schritt('baujahr', `Baujahr · ${bjQuelle}`)
       : _schritt('baujahr', 'Baujahr ergänzen', 'uebersprungen', `Keine Quelle für ${blName} — Standard-Baujahr`),
     _schritt('einfuegen', 'Gebäude auf die Karte'),
-    _schritt('dachform', 'Dachformen · OpenStreetMap', 'offen', 'Nur für Kataster-Grundrisse (ohne Dachform)'),
-    opt.dach ? _schritt('dach', 'Dachflächen aus Grundriss') : _schritt('dach', 'Dachflächen aus Grundriss', 'uebersprungen', 'Nicht gewählt'),
+    !opt.lod2 ? _schritt('lod2', '3D-Dachflächen · LoD2', 'uebersprungen', 'Nicht gewählt')
+      : o.lod2 ? _schritt('lod2', '3D-Dachflächen · LoD2', 'offen', `Amtliches Gebäudemodell ${blName}`)
+        : _schritt('lod2', '3D-Dachflächen · LoD2', 'uebersprungen',
+          `Kein automatischer Dienst für ${blName} — LoD2-Datei über „Dachflächen aus LoD2 laden …" importieren`),
+    _schritt('dachform', 'Dachformen · OpenStreetMap', 'offen',
+      opt.lod2 && o.lod2 ? 'Nur für Kataster-Grundrisse ohne LoD2-Dach' : 'Nur für Kataster-Grundrisse (ohne Dachform)'),
+    opt.dach ? _schritt('dach', 'Dachflächen aus Grundriss', 'offen', opt.lod2 && o.lod2 ? 'Für Gebäude ohne LoD2-Dach' : '') : _schritt('dach', 'Dachflächen aus Grundriss', 'uebersprungen', 'Nicht gewählt'),
     opt.strassen ? _schritt('strassen', `Straßen als Trassen · ${sparte}`) : _schritt('strassen', 'Straßen als Trassen', 'uebersprungen', 'Nicht gewählt'),
     opt.baeume ? _schritt('baeume', 'Bäume · 150 m Umkreis') : _schritt('baeume', 'Bäume · 150 m Umkreis', 'uebersprungen', 'Nicht gewählt'),
   ];
