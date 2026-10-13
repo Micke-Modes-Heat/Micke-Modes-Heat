@@ -2409,6 +2409,34 @@ export function lwWpMitGebaeudenSetzen(an) {
   updateLwWpDisplay();
   redrawLwWp();
 }
+/**
+ * Bäume im Schallweg (Bewuchsdämpfung nach DIN ISO 9613-2 Anhang A, nur dichter Bewuchs): 'aus', 'nadel' (nur Nadelbäume
+ * als dauerhaft dichter Bewuchs — Standard, auf der sicheren Seite) oder 'alle' (auch Laub- und Obstbäume, belaubt).
+ */
+export function lwWpBaeumeArt() { const a = window.lwWp?.baeume; return a === 'aus' || a === 'alle' ? a : 'nadel'; }
+export function lwWpBaeumeSetzen(art) {
+  if (!window.lwWp) return;
+  if (art === 'aus' || art === 'alle') window.lwWp.baeume = art; else delete window.lwWp.baeume;
+  updateLwWpDisplay();
+  redrawLwWp();
+}
+let _lwWpBaumTimer = null;
+/** Der Baumbestand hat sich geändert (40-baeume.js): Schallanzeige und Isophonen der Luft-WP neu rechnen. */
+export function lwWpBaeumeGeaendert() {
+  if (!window.lwWp) return;
+  clearTimeout(_lwWpBaumTimer);
+  _lwWpBaumTimer = setTimeout(() => { if (window.lwWp) { updateLwWpDisplay(); redrawLwWp(); } }, 120);
+}
+// Bäume des Projekts (40-baeume.js) als Schallhindernisse in lokalen Koordinaten, nach der gewählten Art gefiltert
+function _lwWpBaeume(zuLokal) {
+  const art = lwWpBaeumeArt();
+  const liste = typeof window.baumListe === 'function' ? window.baumListe() : [];
+  const gesamt = liste.length;
+  if (art === 'aus' || !gesamt) return { baeume: [], gesamt };
+  const baeume = liste.filter(b => art === 'alle' || b.art === 'nadel')
+    .map(b => ({ ...zuLokal(b), hoehe: b.hoehe, krone: b.krone, art: b.art }));
+  return { baeume, gesamt };
+}
 /** Oktavspektrum der Außengeräte (8 Werte 63 Hz – 8 kHz in dB(A), absolut oder relativ); leer = typisches Spektrum. */
 export function lwWpSpektrumSetzen(text) {
   if (!window.lwWp) return;
@@ -2452,9 +2480,12 @@ export function lwWpSchallSzene() {
   const gebs = lwWpMitGebaeuden() ? _lwWpGebaeudeImBestand() : [];
   const hind = gebs.map(g => hindernis(g.id, g.polygon.map(zuLokal), _gebHoeheM(g)));
   const spektrum = window.lwWp.spektrum || null;
-  const schluessel = JSON.stringify([window.lwWp.lat, window.lwWp.lng, hs, quellen, spektrum, hind.map(h => [h.id, h.h, h.box])]);
+  const { baeume, gesamt: baeumeGesamt } = _lwWpBaeume(zuLokal);
+  const baumKey = baeume.length ? `${lwWpBaeumeArt()}:${baeume.length}:${typeof window.baumSig === 'function' ? window.baumSig() : ''}` : '';
+  const schluessel = JSON.stringify([window.lwWp.lat, window.lwWp.lng, hs, quellen, spektrum, hind.map(h => [h.id, h.h, h.box]), baumKey]);
   if (_lwWpSzeneCache?.schluessel === schluessel) return _lwWpSzeneCache.sz;
-  const sz = schallSzene(quellen, hind, hs, spektrum);
+  const sz = schallSzene(quellen, hind, hs, spektrum, baeume);
+  sz.baeumeGesamt = baeumeGesamt;
   _lwWpSzeneCache = { schluessel, sz, iso: null };
   return sz;
 }
@@ -2464,7 +2495,7 @@ export function lwWpIsophonen() {
   const sz = lwWpSchallSzene();
   if (!sz || !sz.quellen.length) return new Map();
   if (_lwWpSzeneCache.iso) return _lwWpSzeneCache.iso;
-  const iso = sz.hind.length
+  const iso = (sz.hind.length || sz.baeume.n)
     ? isophonen3d(sz, LWWP_SCHALL_STUFEN, { hr: 4 })
     : new Map(LWWP_SCHALL_STUFEN.map(z => [z, isophone(sz.quellen, z)]));
   _lwWpSzeneCache.iso = iso;
@@ -2474,12 +2505,12 @@ export function lwWpIsophonen() {
 export function lwWpPegelAm(ost, nord) {
   const sz = lwWpSchallSzene();
   if (!sz) return -Infinity;
-  return sz.hind.length ? pegel3d(sz, ost, nord, 4).pegel : pegelAm(sz.quellen, ost, nord);
+  return (sz.hind.length || sz.baeume.n) ? pegel3d(sz, ost, nord, 4).pegel : pegelAm(sz.quellen, ost, nord);
 }
 /**
  * Pegel an den Gebäuden, lauteste zuerst. Ohne Gebäudeeinfluss: nächster Fassadenpunkt. Mit Gebäuden: lautester
  * Fassadenpunkt über alle Geschosse, Abschirmung je Außengerät, Reflexionen an Fassaden nahe der Geräte.
- * Ergebnis: [{ id, name, abstand, pegel, frei, geschoss }].
+ * Bäume im Schallweg dämpfen zusätzlich (Bewuchs). Ergebnis: [{ id, name, abstand, pegel, frei, geschoss, bewuchs }].
  */
 export function lwWpImmissionsorte(anzahl = 5) {
   if (!window.lwWp) return [];
@@ -2490,10 +2521,10 @@ export function lwWpImmissionsorte(anzahl = 5) {
     const f = naechsterFassadenpunkt(poly);
     return { g, poly, id: g.id, name: g.name || ('Gebäude ' + g.id), abstand: f.d, pegel: pegelAm(sz.quellen, f.ost, f.nord) };
   }).filter(k => !sz.ohne.has(k.id)).sort((a, b) => b.pegel - a.pegel);
-  if (!sz.hind.length) return kandidaten.slice(0, anzahl).map(({ id, name, abstand, pegel }) => ({ id, name, abstand, pegel, frei: pegel, geschoss: 0 }));
+  if (!sz.hind.length && !sz.baeume.n) return kandidaten.slice(0, anzahl).map(({ id, name, abstand, pegel }) => ({ id, name, abstand, pegel, frei: pegel, geschoss: 0, bewuchs: 0 }));
   return kandidaten.slice(0, Math.max(anzahl * 4, 20)).map(k => {
     const io = immissionsort3d(sz, { id: k.id, poly: k.poly, geschosse: _gebGeschosse(k.g) });
-    return { id: k.id, name: k.name, abstand: k.abstand, pegel: io.pegel, frei: io.frei, geschoss: io.geschoss };
+    return { id: k.id, name: k.name, abstand: k.abstand, pegel: io.pegel, frei: io.frei, geschoss: io.geschoss, bewuchs: io.bewuchs || 0 };
   }).sort((a, b) => b.pegel - a.pegel).slice(0, anzahl);
 }
 export function toggleLwWpPanel() {
@@ -2547,7 +2578,7 @@ export function togglePlaceLwWp() {
 export function placeLwWpAt(latlng) {
   const leistung = parseFloat(document.getElementById('lwwp-leistung').value) || 12;
   const lwa = parseFloat(document.getElementById('lwwp-lwa').value) || 80;
-  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible, ...(window.lwWp?.aufstellung ? { aufstellung: window.lwWp.aufstellung } : {}), ...(window.lwWp?.schallschutz ? { schallschutz: window.lwWp.schallschutz } : {}), ...(window.lwWp?.ohneGebaeude ? { ohneGebaeude: true } : {}), ...(window.lwWp?.spektrum ? { spektrum: window.lwWp.spektrum } : {}) };
+  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible, ...(window.lwWp?.aufstellung ? { aufstellung: window.lwWp.aufstellung } : {}), ...(window.lwWp?.schallschutz ? { schallschutz: window.lwWp.schallschutz } : {}), ...(window.lwWp?.ohneGebaeude ? { ohneGebaeude: true } : {}), ...(window.lwWp?.baeume ? { baeume: window.lwWp.baeume } : {}), ...(window.lwWp?.spektrum ? { spektrum: window.lwWp.spektrum } : {}) };
   document.getElementById('lwwp-man-laenge').value = '';
   document.getElementById('lwwp-man-breite').value = '';
   window.isPlacingLwWp = false;
@@ -2686,11 +2717,19 @@ function _lwWpSchallAnzeigen(auf) {
   }).join('');
   const orte = lwWpImmissionsorte(5);
   const mitGeb = lwWpMitGebaeuden();
+  const szeneAnzeige = lwWpSchallSzene();
+  const baeumeAktiv = szeneAnzeige.baeume.n > 0;
+  const mit3d = mitGeb || baeumeAktiv;
   const ortZeilen = orte.map(o => {
     const klasse = o.pegel > g.tag ? 'ueber' : o.pegel > g.nacht ? 'nacht' : 'ok';
     const daempf = o.frei - o.pegel;
-    const info = mitGeb ? `ohne Gebäudeeinfluss ${nf(o.frei, 1)} dB(A) · ${daempf >= 0 ? 'Abschirmung −' + nf(daempf, 1) : 'Reflexion +' + nf(-daempf, 1)} dB · lautester Punkt im ${o.geschoss ? o.geschoss + '. OG' : 'EG'}` : '';
-    return `<span class="lwwp-io-name" title="${escHtml(o.name)}">${escHtml(o.name)}</span><span>${nf(o.abstand)} m</span><span class="lwwp-io-pegel ${klasse}"${info ? ` title="${escHtml(info)}"` : ''}>${nf(o.pegel, 1)} dB(A)${mitGeb && Math.abs(daempf) >= 0.5 ? `<small class="lwwp-io-daempf">${daempf > 0 ? '−' : '+'}${nf(Math.abs(daempf))}</small>` : ''}</span>`;
+    const bew = o.bewuchs || 0;
+    const ohneBew = daempf - bew;   // Abschirmung bzw. Reflexion durch Gebäude (Bewuchs getrennt)
+    const teile = [];
+    if (mitGeb) teile.push(ohneBew >= 0 ? 'Abschirmung −' + nf(ohneBew, 1) + ' dB' : 'Reflexion +' + nf(-ohneBew, 1) + ' dB');
+    if (bew >= 0.05) teile.push('Bewuchs −' + nf(bew, 1) + ' dB');
+    const info = mit3d ? `ohne Gebäude- und Bewuchseinfluss ${nf(o.frei, 1)} dB(A)${teile.length ? ' · ' + teile.join(' · ') : ''} · lautester Punkt im ${o.geschoss ? o.geschoss + '. OG' : 'EG'}` : '';
+    return `<span class="lwwp-io-name" title="${escHtml(o.name)}">${escHtml(o.name)}</span><span>${nf(o.abstand)} m</span><span class="lwwp-io-pegel ${klasse}"${info ? ` title="${escHtml(info)}"` : ''}>${nf(o.pegel, 1)} dB(A)${mit3d && Math.abs(daempf) >= 0.5 ? `<small class="lwwp-io-daempf">${daempf > 0 ? '−' : '+'}${nf(Math.abs(daempf))}</small>` : ''}</span>`;
   }).join('');
   el.innerHTML = `<div class="lwwp-schall-quelle">${quellen.length} × ${nf(quellen[0].lwa + schutz, 1)} dB(A) (${quelle})${schutz > 0 ? ` − ${nf(schutz)} dB Schallschutz` : ''} → <b>${nf(gesamt, 1)} dB(A)</b> gesamt</div>
     <div class="lwwp-schall-radien"><span class="kopf">Pegel</span><span class="kopf">bis Abstand</span>${radien}</div>
@@ -2705,14 +2744,26 @@ function _lwWpSchallAnzeigen(auf) {
   }
   const cbGeb = document.getElementById('lwwp-schall-gebaeude');
   if (cbGeb) cbGeb.checked = mitGeb;
+  const selBaum = document.getElementById('lwwp-baeume');
+  if (selBaum) selBaum.value = lwWpBaeumeArt();
+  const baumInfo = document.getElementById('lwwp-baeume-info');
+  if (baumInfo) {
+    const gesamt = szeneAnzeige.baeumeGesamt || 0, art = lwWpBaeumeArt();
+    baumInfo.textContent = !gesamt ? 'Keine Bäume im Projekt (unter „Bäume“ setzen oder aus OpenStreetMap übernehmen).'
+      : art === 'aus' ? `${nf(gesamt)} Bäume im Projekt, ohne Wirkung auf den Schall.`
+        : `${nf(gesamt)} Bäume im Projekt, ${nf(szeneAnzeige.baeume.n)} davon im Schallweg berücksichtigt${art === 'nadel' ? ' (nur Nadelbäume)' : ''}.`;
+  }
   const hinweis = document.getElementById('lwwp-schall-modell');
-  if (hinweis) hinweis.textContent = mitGeb
-    ? `in Oktavbändern (${window.lwWp.spektrum ? 'Spektrum nach Angabe' : 'typisches Spektrum von Außengeräten mit Axialventilatoren'}) mit Abschirmung durch Gebäude (Beugung über Dach und seitlich, Höhe aus LoD2 bzw. Geschosse × 3 m) und Reflexion an Fassaden nahe der Geräte; Isophonen in 4 m Höhe, an den Gebäuden lautester Fassadenpunkt über alle Geschosse`
-    : 'ohne Abschirmung durch Gebäude (Einzahlwert), Pegel am nächsten Fassadenpunkt';
+  if (hinweis) {
+    const bewuchsText = baeumeAktiv ? ' sowie Dämpfung durch dichten Bewuchs (Weglänge durch die Baumkronen, DIN ISO 9613-2 Anhang A: erst ab 10 m Weg, höchstens der Wert bei 200 m)' : '';
+    hinweis.textContent = mit3d
+      ? `in Oktavbändern (${window.lwWp.spektrum ? 'Spektrum nach Angabe' : 'typisches Spektrum von Außengeräten mit Axialventilatoren'})${mitGeb ? ' mit Abschirmung durch Gebäude (Beugung über Dach und seitlich, Höhe aus LoD2 bzw. Geschosse × 3 m) und Reflexion an Fassaden nahe der Geräte' : ''}${mitGeb && baeumeAktiv ? ',' : ''}${bewuchsText}; Isophonen in 4 m Höhe, an den Gebäuden lautester Fassadenpunkt über alle Geschosse`
+      : 'ohne Abschirmung durch Gebäude (Einzahlwert), Pegel am nächsten Fassadenpunkt';
+  }
   const spEl = document.getElementById('lwwp-spektrum');
   if (spEl && document.activeElement !== spEl) spEl.value = window.lwWp.spektrum ? window.lwWp.spektrum.map(v => String(v).replace('.', ',')).join(' ') : '';
   const spWrap = document.getElementById('lwwp-spektrum-wrap');
-  if (spWrap) spWrap.style.display = mitGeb ? '' : 'none';
+  if (spWrap) spWrap.style.display = mit3d ? '' : 'none';
   const sel = document.getElementById('lwwp-gebiet');
   if (sel) {
     if (!sel.options.length) sel.innerHTML = PT_TA_LAERM.map(([name, tag, nacht]) => `<option value="${escHtml(name)}">${escHtml(name)} (${tag}/${nacht})</option>`).join('');

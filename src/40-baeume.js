@@ -145,6 +145,7 @@ export function baumRestore(s) {
   _zeichnen();
   window.d3dBaeumeNeu?.();
   baumPanelRender();
+  window.lwWpBaeumeGeaendert?.();
 }
 
 function _geaendert() {
@@ -154,6 +155,7 @@ function _geaendert() {
   window.d3dBaeumeNeu?.();
   baumPanelRender();
   window.pvModusRender?.();
+  window.lwWpBaeumeGeaendert?.();   // Schallrechnung der Luft-WP (Bewuchsdämpfung) neu
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

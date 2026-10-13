@@ -112,3 +112,118 @@ describe('Gebäude als Schallhindernisse', () => {
     expect(spektrumNormiert([1, 2, 3, 4, 5, 6, 7, 'x'])).toBeNull();
   });
 });
+
+import { bewuchsDaempfungWeg, baumKoerper, baumSehne, baumBestand, bewuchsWeg, bewuchsDaempfung, BEWUCHS_DB_JE_M, LUFT_DB_JE_KM, SPEKTRUM_LWWP_TYPISCH } from '../src/lib/schall-hindernisse.js';
+import { baumKrone } from '../src/lib/baeume-3d.js';
+
+describe('Bewuchs — DIN ISO 9613-2 Anhang A', () => {
+  it('Tabelle A.1: unter 10 m keine Dämpfung, 10–20 m feste Werte, darüber dB/m, ab 200 m gedeckelt', () => {
+    expect(bewuchsDaempfungWeg(0).every(v => v === 0)).toBe(true);
+    expect(bewuchsDaempfungWeg(9.99).every(v => v === 0)).toBe(true);
+    expect(Array.from(bewuchsDaempfungWeg(10))).toEqual([0, 0, 1, 1, 1, 1, 2, 3]);
+    expect(Array.from(bewuchsDaempfungWeg(19.9))).toEqual([0, 0, 1, 1, 1, 1, 2, 3]);
+    const b50 = bewuchsDaempfungWeg(50);
+    expect(b50[4]).toBeCloseTo(3, 9);      // 1 kHz: 0,06 dB/m · 50 m
+    expect(b50[7]).toBeCloseTo(6, 9);      // 8 kHz: 0,12 dB/m · 50 m
+    expect(bewuchsDaempfungWeg(500)[4]).toBeCloseTo(BEWUCHS_DB_JE_M[4] * 200, 9);
+    expect(bewuchsDaempfungWeg(NaN).every(v => v === 0)).toBe(true);
+  });
+
+  // Unabhängige Prüfung der Sehne: dichtes Abtasten der Strecke gegen die Körperform
+  const innen = (bk, x, y, z) => {
+    const dx = x - bk.ost, dy = y - bk.nord, rad = Math.hypot(dx, dy);
+    if (bk.form === 'ellipsoid') return (rad / bk.r) ** 2 + ((z - bk.zc) / bk.rz) ** 2 <= 1;
+    return z >= bk.z0 && z <= bk.z1 && rad <= bk.r * (bk.z1 - z) / (bk.z1 - bk.z0);
+  };
+  const sehneAbgetastet = (bk, s, d) => {
+    const N = 40000; let n = 0;
+    for (let i = 0; i < N; i++) { const t = (i + 0.5) / N; if (innen(bk, s[0] + t * d[0], s[1] + t * d[1], s[2] + t * d[2])) n++; }
+    return n / N * Math.hypot(...d);
+  };
+  const laenge = (t, d) => (t ? (t[1] - t[0]) * Math.hypot(...d) : 0);
+
+  it('Sehne durch Ellipsoid- und Kegelkrone stimmt mit dichter Abtastung überein', () => {
+    const laub = baumKoerper({ ost: 3, nord: -2, hoehe: 14, krone: 9, art: 'laub' });
+    const nadel = baumKoerper({ ost: -4, nord: 5, hoehe: 18, krone: 6, art: 'nadel' });
+    expect(laub.form).toBe('ellipsoid');
+    expect(nadel.form).toBe('kegel');
+    let n = 0;
+    for (const bk of [laub, nadel]) {
+      for (let k = 0; k < 40; k++) {
+        const w = k * 2.399963;   // goldener Winkel: gleichmäßig über Richtungen
+        const s = [bk.ost + 30 * Math.cos(w), bk.nord + 30 * Math.sin(w), 1 + (k % 7) * 1.8];
+        const e = [bk.ost - 30 * Math.cos(w + 0.1) + (k % 5) - 2, bk.nord - 30 * Math.sin(w + 0.1), 1 + ((k * 3) % 11) * 1.5];
+        const d = [e[0] - s[0], e[1] - s[1], e[2] - s[2]];
+        const ana = laenge(baumSehne(bk, s[0], s[1], s[2], d[0], d[1], d[2]), d);
+        const num = sehneAbgetastet(bk, s, d);
+        expect(Math.abs(ana - num)).toBeLessThan(0.02);
+        if (ana > 0.5) n++;
+      }
+    }
+    expect(n).toBeGreaterThan(10);   // die Strahlen treffen die Kronen auch tatsächlich
+  });
+
+  it('Sehne: waagrecht durch die Kronenmitte = Kronendurchmesser, Strahl daneben = 0', () => {
+    const bk = baumKoerper({ ost: 0, nord: 0, hoehe: 12, krone: 8, art: 'laub' });
+    const zc = baumKrone({ hoehe: 12, krone: 8, art: 'laub' }).zc;
+    expect(laenge(baumSehne(bk, -20, 0, zc, 40, 0, 0), [40, 0, 0])).toBeCloseTo(8, 6);
+    expect(laenge(baumSehne(bk, -20, 2, zc, 40, 0, 0), [40, 0, 0])).toBeCloseTo(2 * Math.sqrt(16 - 4), 6);
+    expect(baumSehne(bk, -20, 4.5, zc, 40, 0, 0)).toBeNull();
+    expect(baumSehne(bk, -20, 0, 0.5, 40, 0, 0)).toBeNull();   // unter der Krone (Stammbereich)
+  });
+
+  const reihe = (abstand, n) => Array.from({ length: n }, (_, i) => ({ ost: 20 + i * abstand, nord: 0, hoehe: 12, krone: 8, art: 'nadel' }));
+  const hoehe = baumKrone({ hoehe: 12, krone: 8, art: 'nadel' });
+  const hKern = (hoehe.z0 + hoehe.z1) / 2 - 3;   // im unteren, breiten Teil des Kegels
+
+  it('Weg durch Bewuchs: überlappende Kronen zählen einmal, ein einzelner Baum bleibt unter 10 m', () => {
+    const einzel = baumBestand(reihe(8, 1));
+    expect(bewuchsWeg(einzel, 0, 0, hKern, 60, 0, hKern)).toBeLessThan(8.001);
+    expect(bewuchsDaempfung(einzel, 0, 0, hKern, 60, 0, hKern).every(v => v === 0)).toBe(true);
+    // auf der Achse durch den Kegel in Höhe hKern ist die Kronenbreite kleiner als der Durchmesser; Abstand = Breite → berührend
+    const b = baumKoerper(reihe(8, 1)[0]);
+    const sehne = laenge(baumSehne(b, 0, 0, hKern, 60, 0, 0), [60, 0, 0]);
+    expect(sehne).toBeGreaterThan(4);
+    const dicht = baumBestand(reihe(sehne, 6));
+    expect(bewuchsWeg(dicht, 0, 0, hKern, 100, 0, hKern)).toBeCloseTo(6 * sehne, 2);
+    // gleiche Bäume im halben Abstand überlappen: Vereinigung statt Summe
+    const ueberlappt = baumBestand(reihe(sehne / 2, 6));
+    expect(bewuchsWeg(ueberlappt, 0, 0, hKern, 100, 0, hKern)).toBeCloseTo(5 * sehne / 2 + sehne, 2);
+    // Strahl neben der Reihe, hoch darüber: nichts
+    expect(bewuchsWeg(dicht, 0, 20, hKern, 100, 20, hKern)).toBe(0);
+    expect(bewuchsWeg(dicht, 0, 0, 40, 100, 0, 40)).toBe(0);
+    expect(bewuchsWeg(null, 0, 0, 2, 10, 0, 2)).toBe(0);
+  });
+
+  it('Pegel: dichter Waldstreifen dämpft nach Tabelle, ohne Bäume unverändert, Abschirmung bleibt getrennt', () => {
+    const q = [{ ost: 0, nord: 0, lwa: 90 }];
+    // Quelle in 4 m Höhe: Fichtenkronen beginnen erst bei ca. 3 m, darunter läuft der Schall durch den Stammbereich
+    const ohne = schallSzene(q, [], 4);
+    const leer = schallSzene(q, [], 4, null, []);
+    expect(pegel3d(leer, 120, 0, 4).pegel).toBe(pegel3d(ohne, 120, 0, 4).pegel);
+    expect(pegel3d(leer, 120, 0, 4).bewuchs).toBe(0);
+    // 12 dicht stehende Fichten (je 8 m Krone, 6 m Abstand → überlappend) bilden einen Streifen quer zur Ausbreitung
+    const streifen = Array.from({ length: 12 }, (_, i) => ({ ost: 40 + (i % 2) * 2, nord: -33 + i * 6, hoehe: 25, krone: 14, art: 'nadel' }));
+    const mit = schallSzene(q, [], 4, null, streifen);
+    const a = pegel3d(ohne, 120, 0, 5), b = pegel3d(mit, 120, 0, 5);
+    const df = bewuchsWeg(mit.baeume, 0, 0, 4, 120, 0, 5);
+    expect(df).toBeGreaterThan(10);
+    // erwartete Wirkung nach Tabelle, energetisch über das Spektrum
+    const band = bewuchsDaempfungWeg(df);
+    const rel = SPEKTRUM_LWWP_TYPISCH;
+    const s = 10 * Math.log10(rel.reduce((x, v) => x + 10 ** (v / 10), 0));
+    let e0 = 0, e1 = 0;
+    rel.forEach((v, i) => { const l = 90 + v - s - 20 * Math.log10(120) - 8 - LUFT_DB_JE_KM[i] * 120 / 1000; e0 += 10 ** (l / 10); e1 += 10 ** ((l - band[i]) / 10); });
+    expect(a.pegel - b.pegel).toBeCloseTo(10 * Math.log10(e0 / e1), 1);
+    expect(b.bewuchs).toBeCloseTo(a.pegel - b.pegel, 6);
+    expect(b.pegel).toBeLessThan(a.pegel);
+    expect(b.frei).toBeCloseTo(a.frei, 6);
+    // zusammen mit einem Gebäude: beide Anteile wirken, die Bewuchsdämpfung steht getrennt im Ergebnis
+    const geb = [hindernis(1, rechteck(20, -15, 30, 15), 8)];
+    const beide = schallSzene(q, geb, 4, null, streifen), nurGeb = schallSzene(q, geb, 4);
+    const c = pegel3d(beide, 120, 0, 5), d = pegel3d(nurGeb, 120, 0, 5);
+    expect(c.pegel).toBeLessThan(d.pegel);
+    expect(c.bewuchs).toBeGreaterThan(0);
+    expect(pegel3d(beide, 120, 0, 5, { exakt: true }).bewuchs).toBeCloseTo(c.bewuchs, 6);
+  });
+});

@@ -9,6 +9,10 @@
 //   dazu die zusätzliche Ausbreitungsdämpfung auf dem längeren Umweg. Tiefe Frequenzen beugen stärker um die
 //   Gebäude — die Abschirmung fällt dort geringer aus.
 // - Reflexion: Spiegelquellen an Fassaden in Quellnähe (erste Ordnung), Reflexionsverlust 1 dB (ρ = 0,8).
+// - Bewuchs: Dämpfung durch dichten Baumbestand nach DIN ISO 9613-2 Anhang A (Tab. A.1) je Oktave aus der Weglänge
+//   des Schallstrahls durch die Baumkronen (3D, Kronenform wie in der 3D-Ansicht: Ellipsoid bzw. Kegel). Die Norm
+//   rechnet nur mit dichtem Bewuchs, durch den man nicht hindurchsehen kann: bis 10 m Weg keine Dämpfung, darüber
+//   die Tabellenwerte, über 200 m gilt der Wert bei 200 m. Bäume schirmen nicht ab (keine Beugung).
 // Gebäudehöhe: Traufhöhe (konservativ, das Dach schirmt zusätzlich ab). Koordinaten in m (ost, nord).
 
 export const LAMBDA_M = 0.68;            // Wellenlänge bei 500 Hz (Einzahlwert)
@@ -35,6 +39,7 @@ export function spektrumNormiert(sp) {
 }
 
 import { schallPegel, pegelSumme } from './wp-schall.js';
+import { baumKrone } from './baeume-3d.js';
 
 const kreuz = (ax, ay, bx, by) => ax * by - ay * bx;
 
@@ -188,6 +193,137 @@ export function abschirmung(hind, sx, sy, hs, rx, ry, hr, ohne = null) {
 }
 
 const NULL_BAENDER = Object.freeze(OKTAVEN.map(() => 0));
+
+/* ── Bewuchs (DIN ISO 9613-2 Anhang A, Tab. A.1) ─────────────────────────── */
+/** Dämpfung in dB je Oktave bei 10 m ≤ Weg ≤ 20 m durch dichten Bewuchs. */
+export const BEWUCHS_DB_10_20 = Object.freeze([0, 0, 1, 1, 1, 1, 2, 3]);
+/** Dämpfung in dB/m je Oktave bei 20 m ≤ Weg ≤ 200 m (darüber gilt der Wert bei 200 m). */
+export const BEWUCHS_DB_JE_M = Object.freeze([0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.09, 0.12]);
+const BEWUCHS_MIN_M = 10, BEWUCHS_MAX_M = 200;
+
+/** Dämpfung je Oktave (8 Werte, dB) für die Weglänge dfM durch dichten Bewuchs; unter 10 m keine. */
+export function bewuchsDaempfungWeg(dfM) {
+  if (!(dfM >= BEWUCHS_MIN_M)) return NULL_BAENDER;
+  if (dfM < 20) return BEWUCHS_DB_10_20;
+  return BEWUCHS_DB_JE_M.map(r => r * Math.min(dfM, BEWUCHS_MAX_M));
+}
+
+/**
+ * Baumkörper für die Schallrechnung. b: { ost, nord, hoehe, krone (Kronendurchmesser), art ('laub' | 'nadel' | 'obst') },
+ * Koordinaten in m. Kronenform wie baumKrone() der 3D-Ansicht (Ellipsoid bzw. Kegel, Fußpunkt auf z = 0).
+ */
+export function baumKoerper(b) {
+  const k = baumKrone({ hoehe: b.hoehe, krone: b.krone, art: b.art });
+  return { ost: b.ost, nord: b.nord, r: k.r, ...k, art: b.art };
+}
+
+/** Zusammenhängender Abschnitt [t0, t1] ⊂ [0, 1] der Strecke P(t) = S + t·D im Baumkörper, oder null. */
+export function baumSehne(bk, sx, sy, sz, dx, dy, dz) {
+  const ux = sx - bk.ost, uy = sy - bk.nord;
+  const klemmen = (a, b) => { const lo = Math.max(0, a), hi = Math.min(1, b); return hi > lo ? [lo, hi] : null; };
+  if (bk.form === 'ellipsoid') {
+    const ax = ux / bk.r, ay = uy / bk.r, az = (sz - bk.zc) / bk.rz;
+    const vx = dx / bk.r, vy = dy / bk.r, vz = dz / bk.rz;
+    const a = vx * vx + vy * vy + vz * vz, b = 2 * (ax * vx + ay * vy + az * vz), c = ax * ax + ay * ay + az * az - 1;
+    if (a < 1e-12) return null;
+    const disc = b * b - 4 * a * c;
+    if (disc <= 0) return null;
+    const w = Math.sqrt(disc);
+    return klemmen((-b - w) / (2 * a), (-b + w) / (2 * a));
+  }
+  // Kegel: Spitze bei z1, Grundkreis (Radius r) bei z0; innen: z0 ≤ z ≤ z1 und Radius ≤ k·(z1 − z)
+  const k = bk.r / (bk.z1 - bk.z0), k2 = k * k, h = bk.z1 - sz;
+  let zlo = 0, zhi = 1;
+  if (Math.abs(dz) < 1e-12) { if (sz < bk.z0 || sz > bk.z1) return null; }
+  else {
+    const t0 = (bk.z0 - sz) / dz, t1 = (bk.z1 - sz) / dz;
+    zlo = Math.min(t0, t1); zhi = Math.max(t0, t1);
+  }
+  const A = dx * dx + dy * dy - k2 * dz * dz;
+  const B = 2 * (ux * dx + uy * dy) + 2 * k2 * h * dz;
+  const C = ux * ux + uy * uy - k2 * h * h;
+  const teile = [];
+  if (Math.abs(A) < 1e-12) {
+    if (Math.abs(B) < 1e-12) { if (C <= 0) teile.push([-Infinity, Infinity]); }
+    else if (B > 0) teile.push([-Infinity, -C / B]); else teile.push([-C / B, Infinity]);
+  } else {
+    const disc = B * B - 4 * A * C;
+    if (disc <= 0) { if (A < 0) teile.push([-Infinity, Infinity]); }
+    else {
+      const w = Math.sqrt(disc), r1 = (-B - w) / (2 * A), r2 = (-B + w) / (2 * A);
+      const lo = Math.min(r1, r2), hi = Math.max(r1, r2);
+      if (A > 0) teile.push([lo, hi]); else { teile.push([-Infinity, lo]); teile.push([hi, Infinity]); }
+    }
+  }
+  let t0 = Infinity, t1 = -Infinity;
+  for (const [a, b] of teile) {
+    const lo = Math.max(a, zlo, 0), hi = Math.min(b, zhi, 1);
+    if (hi > lo) { t0 = Math.min(t0, lo); t1 = Math.max(t1, hi); }
+  }
+  return t1 > t0 ? [t0, t1] : null;
+}
+
+const BAUM_ZELLE_M = 25;
+/** Baumbestand für die Strahlverfolgung: Körper plus Rasterindex (Zelle 25 m) über die waagrechte Ausdehnung der Kronen. */
+export function baumBestand(baeume) {
+  const koerper = baeume.map(baumKoerper);
+  const raster = new Map();
+  koerper.forEach((bk, i) => {
+    const x0 = Math.floor((bk.ost - bk.r) / BAUM_ZELLE_M), x1 = Math.floor((bk.ost + bk.r) / BAUM_ZELLE_M);
+    const y0 = Math.floor((bk.nord - bk.r) / BAUM_ZELLE_M), y1 = Math.floor((bk.nord + bk.r) / BAUM_ZELLE_M);
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+      const key = x * 100003 + y;
+      let l = raster.get(key);
+      if (!l) raster.set(key, l = []);
+      l.push(i);
+    }
+  });
+  return { n: koerper.length, koerper, raster };
+}
+
+/**
+ * Weglänge in m, die der Strahl S (hs) → R (hr) durch Baumkronen läuft (überlappende Kronen zählen einmal).
+ * Rasterdurchlauf entlang der Strecke (Amanatides/Woo), danach je Baum die exakte Sehne.
+ */
+export function bewuchsWeg(bestand, sx, sy, hs, rx, ry, hr) {
+  if (!bestand || !bestand.n) return 0;
+  const dx = rx - sx, dy = ry - sy, dz = hr - hs;
+  const laenge = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (laenge < 1e-9) return 0;
+  const kandidaten = new Set();
+  const sammeln = (cx, cy) => { const l = bestand.raster.get(cx * 100003 + cy); if (l) for (const i of l) kandidaten.add(i); };
+  let cx = Math.floor(sx / BAUM_ZELLE_M), cy = Math.floor(sy / BAUM_ZELLE_M);
+  const ex = Math.floor(rx / BAUM_ZELLE_M), ey = Math.floor(ry / BAUM_ZELLE_M);
+  const sxStep = dx > 0 ? 1 : -1, syStep = dy > 0 ? 1 : -1;
+  const tDeltaX = Math.abs(dx) > 1e-12 ? Math.abs(BAUM_ZELLE_M / dx) : Infinity;
+  const tDeltaY = Math.abs(dy) > 1e-12 ? Math.abs(BAUM_ZELLE_M / dy) : Infinity;
+  let tMaxX = Math.abs(dx) > 1e-12 ? ((dx > 0 ? (cx + 1) * BAUM_ZELLE_M - sx : sx - cx * BAUM_ZELLE_M) / Math.abs(dx)) : Infinity;
+  let tMaxY = Math.abs(dy) > 1e-12 ? ((dy > 0 ? (cy + 1) * BAUM_ZELLE_M - sy : sy - cy * BAUM_ZELLE_M) / Math.abs(dy)) : Infinity;
+  for (let n = 0; n < 100000; n++) {
+    sammeln(cx, cy);
+    if (cx === ex && cy === ey) break;
+    if (tMaxX < tMaxY) { cx += sxStep; tMaxX += tDeltaX; } else { cy += syStep; tMaxY += tDeltaY; }
+    if (tMaxX > 1 && tMaxY > 1 && !(cx === ex && cy === ey)) { sammeln(ex, ey); break; }
+  }
+  const abschnitte = [];
+  for (const i of kandidaten) {
+    const t = baumSehne(bestand.koerper[i], sx, sy, hs, dx, dy, dz);
+    if (t) abschnitte.push(t);
+  }
+  if (!abschnitte.length) return 0;
+  abschnitte.sort((a, b) => a[0] - b[0]);
+  let summe = 0, von = abschnitte[0][0], bis = abschnitte[0][1];
+  for (let i = 1; i < abschnitte.length; i++) {
+    const [a, b] = abschnitte[i];
+    if (a > bis) { summe += bis - von; von = a; bis = b; } else if (b > bis) bis = b;
+  }
+  return (summe + bis - von) * laenge;
+}
+
+/** Bewuchsdämpfung je Oktave (8 Werte, dB) für den Strahl S (hs) → R (hr) durch den Baumbestand. */
+export function bewuchsDaempfung(bestand, sx, sy, hs, rx, ry, hr) {
+  return bewuchsDaempfungWeg(bewuchsWeg(bestand, sx, sy, hs, rx, ry, hr));
+}
 /** Abschirmung je Oktave (8 Werte in dB). */
 export function abschirmungOktaven(hind, sx, sy, hs, rx, ry, hr, ohne = null) {
   const w = beugungsWege(hind, sx, sy, hs, rx, ry, hr, ohne);
@@ -239,16 +375,17 @@ export function reflexionGueltig(sp, rx, ry) {
 /**
  * Rechenszene: Quellen [{ost, nord, lwa}] in Quellhöhe hs, Hindernisse, Spiegelquellen. spektrum: 8 A-bewertete
  * Oktavpegel (absolut oder relativ), sonst das typische Spektrum. Gebäude, in denen eine Quelle steht
- * (Dachaufstellung), schirmen nicht ab.
+ * (Dachaufstellung), schirmen nicht ab. baeume: [{ost, nord, hoehe, krone, art}] — Bewuchsdämpfung nach Anhang A.
  */
-export function schallSzene(quellen, hind, hs, spektrum = null) {
+export function schallSzene(quellen, hind, hs, spektrum = null, baeume = []) {
   const rel = spektrumNormiert(spektrum) || spektrumNormiert(SPEKTRUM_LWWP_TYPISCH);
   const qs = quellen.map(q => ({ ...q, lb: rel.map(v => q.lwa + v) }));
   const ohne = new Set(hind.filter(o => qs.some(q => imPolygon(o.poly, q.ost, q.nord))).map(o => o.id));
   const mitte = qs.length
     ? { ost: qs.reduce((s, q) => s + q.ost, 0) / qs.length, nord: qs.reduce((s, q) => s + q.nord, 0) / qs.length }
     : { ost: 0, nord: 0 };
-  return { quellen: qs, hind, hs, ohne, mitte, spektrum: rel, spiegel: spiegelquellen(qs, hind, hs, REFLEXION_RADIUS_M, ohne) };
+  return { quellen: qs, hind, hs, ohne, mitte, spektrum: rel, spiegel: spiegelquellen(qs, hind, hs, REFLEXION_RADIUS_M, ohne),
+    baeume: baumBestand(baeume || []) };
 }
 
 // Energie (10^(L/10)) einer Quelle je Oktave am Empfänger im Abstand r, abzüglich Abschirmung a (8 Werte)
@@ -268,31 +405,43 @@ function energie(lb, r, a, frei) {
  * Pegel am Empfänger (x, y) in Höhe hr, Oktavbänder A-bewertet summiert. o.exakt: Abschirmung je Quelle (sonst
  * einmal ab der Mitte der Quellengruppe, für Karten), o.ohne: weitere Hindernis-IDs (z. B. das Gebäude des
  * Empfängers), o.hind: Vorauswahl, o.innenLeer: im Gebäude kein Pegel (−∞).
- * Ergebnis: { pegel, frei (ohne Gebäude), abar (wirksame Abschirmung des direkten Schalls), reflexion (dB Zuschlag) }.
+ * Ergebnis: { pegel, frei (ohne Gebäude und Bewuchs), abar (wirksame Abschirmung und Bewuchsdämpfung des direkten
+ * Schalls), bewuchs (davon durch Bewuchs, dB), reflexion (dB Zuschlag) }.
  */
 export function pegel3d(sz, x, y, hr, o = {}) {
   const hind = o.hind || sz.hind;
   // Für Karten: in Gebäuden gibt es keinen Außenpegel — die Isophone endet an der Fassade
   if (o.innenLeer && hind.some(h => !sz.ohne.has(h.id) && x >= h.box[0] && x <= h.box[2] && y >= h.box[1] && y <= h.box[3] && imPolygon(h.poly, x, y))) {
-    return { pegel: -Infinity, frei: -Infinity, abar: 0, reflexion: 0 };
+    return { pegel: -Infinity, frei: -Infinity, abar: 0, bewuchs: 0, reflexion: 0 };
   }
   let ohne = sz.ohne;
   if (o.ohne || hind.some(h => x >= h.box[0] && x <= h.box[2] && y >= h.box[1] && y <= h.box[3] && imPolygon(h.poly, x, y))) {
     ohne = new Set([...sz.ohne, ...(o.ohne || []), ...hind.filter(h => imPolygon(h.poly, x, y)).map(h => h.id)]);
   }
-  const ab = (sx, sy, extra) => abschirmungOktaven(hind, sx, sy, sz.hs, x, y, hr, extra ? new Set([...ohne, extra]) : ohne);
-  const aMitte = hind.length ? ab(sz.mitte.ost, sz.mitte.nord) : NULL_BAENDER;
+  const bestand = sz.baeume && sz.baeume.n ? sz.baeume : null;
+  const gebaeude = (sx, sy, extra) => abschirmungOktaven(hind, sx, sy, sz.hs, x, y, hr, extra ? new Set([...ohne, extra]) : ohne);
+  const bewuchs = (sx, sy) => bestand ? bewuchsDaempfung(bestand, sx, sy, sz.hs, x, y, hr) : NULL_BAENDER;
+  const summe = (g, f) => g === NULL_BAENDER ? f : f === NULL_BAENDER ? g : g.map((v, i) => v + f[i]);
+  const ab = (sx, sy, extra) => summe(hind.length ? gebaeude(sx, sy, extra) : NULL_BAENDER, bewuchs(sx, sy));
+  const aMitte = ab(sz.mitte.ost, sz.mitte.nord);
+  const aMitteGeb = !bestand ? aMitte : hind.length ? gebaeude(sz.mitte.ost, sz.mitte.nord) : NULL_BAENDER;   // nur Gebäude (ohne Bewuchs)
+  const einzeln = o.exakt && (hind.length || bestand);
   const frei = { e: 0 }, wegwerf = { e: 0 };
-  let direkt = 0;
-  for (const q of sz.quellen) direkt += energie(q.lb, Math.hypot(x - q.ost, y - q.nord), o.exakt && hind.length ? ab(q.ost, q.nord) : aMitte, frei);
+  let direkt = 0, direktOhneBewuchs = 0;
+  for (const q of sz.quellen) {
+    const d = Math.hypot(x - q.ost, y - q.nord);
+    direkt += energie(q.lb, d, einzeln ? ab(q.ost, q.nord) : aMitte, frei);
+    if (bestand) direktOhneBewuchs += energie(q.lb, d, einzeln ? (hind.length ? gebaeude(q.ost, q.nord) : NULL_BAENDER) : aMitteGeb, wegwerf);
+  }
   let refl = 0;
   for (const sp of sz.spiegel) {
     if (!reflexionGueltig(sp, x, y)) continue;
-    refl += energie(sp.lb, Math.hypot(x - sp.ost, y - sp.nord), o.exakt ? ab(sp.ost, sp.nord, sp.id) : aMitte, wegwerf);
+    refl += energie(sp.lb, Math.hypot(x - sp.ost, y - sp.nord), einzeln ? ab(sp.ost, sp.nord, sp.id) : aMitte, wegwerf);
   }
   const lg = e => e > 0 ? 10 * Math.log10(e) : -Infinity;
   const pegel = lg(direkt + refl);
-  return { pegel, frei: lg(frei.e), abar: lg(frei.e) - lg(direkt), reflexion: refl > 0 ? pegel - lg(direkt) : 0 };
+  return { pegel, frei: lg(frei.e), abar: lg(frei.e) - lg(direkt), bewuchs: bestand ? Math.max(0, lg(direktOhneBewuchs) - lg(direkt)) : 0,
+    reflexion: refl > 0 ? pegel - lg(direkt) : 0 };
 }
 
 /**
