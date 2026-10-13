@@ -19,6 +19,7 @@ test('dist: Bäume dämpfen den Schall der LW-WP (Bewuchs)', async ({ page }) =>
     neu(3, 'Süd', 0, -100, 20, 10, 2);        // freie Sicht
     document.getElementById('lwwp-leistung').value = 2000;
     placeLwWpAt(L.latLng(lat0, lng0));
+    lwWpAusbreitungSetzen('3d');   // Bäume wirken nur in der Ausbreitung mit Gebäuden und Bäumen
     const ort = () => Object.fromEntries(lwWpImmissionsorte(5).map(o => [o.name, o]));
     // dichter Streifen aus 5 versetzten Reihen (65 Bäume) nördlich der Geräte, y = 35 … 59 m
     const streifen = art => {

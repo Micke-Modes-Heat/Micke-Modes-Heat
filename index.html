@@ -2293,7 +2293,10 @@
         <span style="color:#b71c1c;">■</span> 55 <span style="color:#e65100;">■</span> 50 <span style="color:#f9a825;">■</span> 45
         <span style="color:#8bc34a;">■</span> 40 <span style="color:#2e7d32;">■</span> 35 dB(A)
       </div>
-      <label class="lwwp-schall-geb" title="Gebäude schirmen den Schall ab (Beugung nach DIN ISO 9613-2) und reflektieren ihn an Fassaden nahe der Außengeräte. Ausschalten zeigt die Freifeldausbreitung."><input type="checkbox" id="lwwp-schall-gebaeude" checked data-change="lwWpMitGebaeudenSetzen(this.checked)"/> Gebäude berücksichtigen (Abschirmung, Reflexion)</label>
+      <div class="lwwp-ausbreitung" role="group" aria-label="Ausbreitung der Isophonen">
+        <button type="button" class="aktiv" id="lwwp-ausbreitung-kreis" aria-pressed="true" data-click="lwWpAusbreitungSetzen('kreis')" title="Kreisrunde Freifeldausbreitung um die Außengeräte, ohne Gebäude und Bäume (Standard). Pegel an den Gebäuden am nächsten Fassadenpunkt.">○ Kreisrund (Freifeld)</button>
+        <button type="button" id="lwwp-ausbreitung-3d" aria-pressed="false" data-click="lwWpAusbreitungSetzen('3d')" title="Gebäude schirmen den Schall ab (Beugung nach DIN ISO 9613-2) und reflektieren ihn an Fassaden nahe der Außengeräte, Bäume dämpfen als dichter Bewuchs. Die Isophonen werden aus einem Pegelraster abgeleitet und sind nicht mehr kreisrund.">▦ Mit Gebäuden &amp; Bäumen</button>
+      </div>
       <label class="lwwp-gebiet" id="lwwp-baeume-wrap" title="Dichter Baumbestand dämpft den Schall (DIN ISO 9613-2 Anhang A): je Oktave aus der Weglänge des Schallstrahls durch die Baumkronen, erst ab 10 m Weg, höchstens der Wert bei 200 m. Nadelbäume gelten als dauerhaft dichter Bewuchs (Standard, auf der sicheren Seite). Laubbäume dämpfen belaubt, im Winter kaum — nur wählen, wenn der Bewuchs ganzjährig dicht ist."><span>Bäume im Schallweg</span>
         <select class="inp-field" id="lwwp-baeume" data-change="lwWpBaeumeSetzen(this.value)">
           <option value="nadel">nur Nadelbäume</option>

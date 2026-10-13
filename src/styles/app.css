@@ -2722,7 +2722,10 @@ body.trasse-loeschmodus path.leaflet-interactive[stroke="#ff9800"],body.trasse-l
 .lwwp-schall-quelle{font-family:'DM Mono',monospace;font-size:10px;color:var(--text)}
 .lwwp-schall-radien{display:grid;grid-template-columns:auto 1fr;gap:1px 12px;font-family:'DM Mono',monospace;font-size:10px}
 .lwwp-schall-radien .kopf,.lwwp-schall-orte-kopf{color:var(--muted);font-family:inherit;font-size:9px}
-.lwwp-schall-geb{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);margin:4px 0 2px;cursor:pointer}
+.lwwp-ausbreitung{display:flex;margin:6px 0 2px;border:1px solid var(--border);border-radius:5px;overflow:hidden}
+.lwwp-ausbreitung button{flex:1;padding:3px 6px;border:0;background:var(--surface2);color:var(--muted);font:inherit;font-size:10px;cursor:pointer;white-space:nowrap}
+.lwwp-ausbreitung button+button{border-left:1px solid var(--border)}
+.lwwp-ausbreitung button.aktiv{background:var(--accent);color:#111}
 .lwwp-io-daempf{margin-left:4px;font-size:8px;color:var(--muted)}
 .lwwp-schall-orte{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:1px 8px;font-family:'DM Mono',monospace;font-size:10px}
 .lwwp-io-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
