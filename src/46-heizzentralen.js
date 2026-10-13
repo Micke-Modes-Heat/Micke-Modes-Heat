@@ -5,6 +5,9 @@
 // Einsatz für das ganze Netz — jeder Erzeuger hat einen Standort (Zentrale). Daraus folgt stündlich, was jede
 // Zentrale einspeist und was über die Verbindungsleitungen fließt.
 
+import { getVFlowForDN } from './02a-netz-physik.js';
+import { rohrLeistungKw, wasserStoffwerte } from './lib/netz-hydraulik.js';
+
 const ERZ_OBJ = { lwwp: 'lwWp', geo: 'geoThermie', fg: 'fliessgewaesser', gaskessel: 'gasKessel', heizoel: 'heizoelKessel',
   pellets: 'pelletsKessel', hhs: 'heizhackschnitzel', bhkw: 'bhkw', stromkessel: 'stromkessel', fernwaerme: 'fernwaerme' };
 const ERZ_NAME = { lwwp: 'Luft-WP', geo: 'Geo-WP', fg: 'Flusswasser-WP', gaskessel: 'Gaskessel', heizoel: 'Heizölkessel',
@@ -196,9 +199,11 @@ export function heizzentralenAuswertung() {
   }
   // Übertragbare Leistung der Verbindungsleitungen (DN, zulässige Geschwindigkeit)
   const kuppel = (window.netzEdges || []).filter(e => e.kuppel && !e.pruned);
-  const vlTemp = parseFloat(document.getElementById('netz-vl')?.value) || 90, rlTemp = parseFloat(document.getElementById('netz-rl')?.value) || 60;
-  const dt = Math.max(1, vlTemp - rlTemp), v = parseFloat(document.getElementById('netz-v')?.value) || 1;
-  const kapazitaet = kuppel.map(e => { const a = Math.PI * Math.pow((e.dn || 0) / 2000, 2); return a * v * 975 * 4.184 * dt; });
+  // Innendurchmesser, zulässige Geschwindigkeit der Nennweite, Netztemperaturen des betrachteten Jahres
+  const t = window.netzTemperaturen?.() || { vl: 90, rl: 60, dt: 30 };
+  const v = parseFloat(document.getElementById('netz-v')?.value) || 1;
+  const stoff = wasserStoffwerte((t.vl + t.rl) / 2);
+  const kapazitaet = kuppel.map(e => (e.dn > 0 ? rohrLeistungKw(e.dn, getVFlowForDN(e.dn, v), t.dt, stoff) : 0));
   return { zentralen, erzeuger, ueber, kuppel: kuppel.length, kuppelKapazitaetKw: kapazitaet.length ? Math.min(...kapazitaet) : 0, kuppelAuslegungKw: kuppel[0]?.load || 0 };
 }
 

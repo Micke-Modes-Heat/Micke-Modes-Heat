@@ -6,6 +6,7 @@ import { map } from './02b-gebaeude.js';
 import { netzEditMode, recalcNetz } from './03b-netz.js';
 import { KMR_KOSTEN } from './config/netz-kosten.js';
 import { dijkstraBisZiel, stichEntfernen } from './lib/netz-strang.js';
+import { rohrLeistungKw } from './lib/netz-hydraulik.js';
 
 export let overlayLayer = null;
 
@@ -116,12 +117,9 @@ export function setNetzColorMode(mode) {
 export function getEdgeColor(e, vlTemp, dt, vFlow) {
   if (!e.load || e.load <= 0) return '#555';
 
-  const cp = 4.184;
-  const actualArea = Math.PI * Math.pow((e.dn / 1000) / 2, 2);
-  const mDot = e.load / (cp * dt);
-  const maxMDot = actualArea * vFlow * 1000;
-  const maxLoad = maxMDot * cp * dt;
-  const auslastung = (e.load / maxLoad) * 100;
+  // Auslastung aus der Netzberechnung (Geschwindigkeit gegen die zulässige Geschwindigkeit der Nennweite)
+  const auslastung = Number.isFinite(e.utilizationPct) ? e.utilizationPct
+    : (e.load / rohrLeistungKw(e.dn, getVFlowForDN(e.dn, vFlow), dt)) * 100;
 
   switch (netzColorMode) {
     case 'wld': {

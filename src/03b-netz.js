@@ -44,6 +44,19 @@ import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen, besteAs
 import { strangGruppen, sackgassenEntfernen, quartierJeGebaeude, hauptstraenge } from './lib/netz-quartiere.js';
 import { zentraleJeGebaeude, kuppelVerbindungen } from './lib/netz-zentralen.js';
 import { EIS, eisAuslegungVorschlag, eisBewertung, eisGeometrie, eisInvest } from './lib/eisspeicher.js';
+import { CP_WASSER, rohrHydraulik, rohrQuerschnittM2, wasserStoffwerte, netzPumpe, pumpenVolllaststunden } from './lib/netz-hydraulik.js';
+
+/** Netztemperaturen im Jahr (°C): ab dem Jahr der geplanten Absenkung die abgesenkten Werte. */
+export function netzTemperaturen(jahr = globalYear) {
+  let vl = parseFloat(document.getElementById('netz-vl')?.value) || 90;
+  let rl = parseFloat(document.getElementById('netz-rl')?.value) || 60;
+  const planJahr = parseInt(document.getElementById('netz-plan-jahr')?.value);
+  if (planJahr && jahr >= planJahr) {
+    vl = parseFloat(document.getElementById('netz-plan-vl')?.value) || vl;
+    rl = parseFloat(document.getElementById('netz-plan-rl')?.value) || rl;
+  }
+  return { vl, rl, dt: Math.max(1, vl - rl) };
+}
 
 export function toggleGeoPanel() {
   const p = document.getElementById('geo-panel');
@@ -3217,6 +3230,9 @@ function _netzDisplayPoints(uNode, vNode, waypoints = []) {
 
 function _netzPlanningYears() {
   const years = new Set([WAERME_NETZ_BASISJAHR,globalYear]);
+  // Jahr der geplanten Absenkung der Netztemperaturen: ab dann kleinere Spreizung, größere Volumenströme
+  const planJahr = parseInt(document.getElementById('netz-plan-jahr')?.value, 10);
+  if (Number.isFinite(planJahr) && planJahr > WAERME_NETZ_BASISJAHR) years.add(planJahr);
   gebaeude.forEach(g => {
     const events = [
       Number.parseInt(g.baujahr,10),
@@ -3243,13 +3259,15 @@ function _maxBuildingLoad(g, years = _netzPlanningYears()) {
 // hydraulisch neu dimensioniert und über ihre Lebenszykluskosten bewertet.
 function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,strategy) {
   const lifetimeYears = 20;
-  const cp = 4.184;
-  const rhoWater = 975;
-  const nuWater = 0.000000415;
-  const roughness = 0.00005;
-  const vlTemp = readNum('netz-vl',90,20,150);
-  const rlTemp = readNum('netz-rl',60,0,140);
-  const dt = Math.max(1,vlTemp - rlTemp);
+  const cp = CP_WASSER;
+  // Auslegung für den ungünstigsten Planungszustand: Lasten je Gebäude als Maximum der Planungsjahre, Spreizung
+  // als kleinste der Planungsjahre (geplante Absenkung der Netztemperaturen), wie in der Netzberechnung
+  const temps = _netzPlanningYears().map(netzTemperaturen);
+  const tAusl = temps.reduce((a, b) => (b.dt < a.dt ? b : a));
+  const vlTemp = tAusl.vl;
+  const rlTemp = tAusl.rl;
+  const dt = tAusl.dt;
+  const stoff = wasserStoffwerte((vlTemp + rlTemp) / 2);
   const vFlow = readNum('netz-v',1,0.3,2);
   const dpMain = readNum('netz-dp-main',150,50,500);
   const dpService = readNum('netz-dp-service',250,50,500);
@@ -3258,7 +3276,9 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
   const meanPipeTemp = (vlTemp + rlTemp) / 2;
   const heatPrice = 80; // konservativer Fallback, solange keine belastbaren WGK vorliegen
   const electricityPrice = readNum('wirt-p-strom',35,0,200) / 100;
-  const annualHours = Math.max(1,getNetzVBH() || 1800);
+  // Pumpenenergie: äquivalente Volllaststunden der drehzahlgeregelten Pumpe aus dem Lastgang (kubisch, mind. 10 %);
+  // ohne Lastgang Näherung 50 % der Vollbenutzungsstunden
+  const pumpHours = pumpenVolllaststunden(window.systemState?.lastgangKw) || 0.5 * Math.max(1,getNetzVBH() || 1800);
   const loadById = new Map(buildingNodes.map(node => [node.id,node.load || 0]));
   const requiredIds = new Set(buildingNodes.map(node => node.id));
   const edgeKeyOf = edge => String(edge.u) < String(edge.v)
@@ -3440,17 +3460,7 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
     }
     return connected;
   };
-  const hydraulicsFor = (load,dn) => {
-    const diameter = dn / 1000;
-    const area = Math.PI * Math.pow(diameter / 2,2);
-    const massFlow = load / (cp * dt);
-    const velocity = (massFlow / rhoWater) / area;
-    const reynolds = velocity * diameter / nuWater;
-    const lambda = reynolds < 2300
-      ? 64 / Math.max(reynolds,100)
-      : 0.25 / Math.pow(Math.log10(roughness / (3.7 * diameter) + 5.74 / Math.pow(reynolds,0.9)),2);
-    return {velocity,dpPerM:lambda * rhoWater * Math.pow(velocity,2) / (2 * diameter)};
-  };
+  const hydraulicsFor = (load,dn) => rohrHydraulik(load / (cp * dt),dn,stoff);
   const gzf = count => {
     const method = document.getElementById('netz-gzf-methode')?.value || 'richtwert';
     if (method === 'keine') return 1;
@@ -3518,18 +3528,11 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
       pathLength.set(id,(pathLength.get(upstream) || 0) + length);
     });
     const maxPathDp = Math.max(0,...[...requiredIds].map(id => pathDp.get(id) || 0)) + 50000;
-    const rootLoad = loads.get(zId) || 0;
-    const rootFlowM3s = (rootLoad / (cp * dt) / rhoWater);
-    const hydraulicKW = rootFlowM3s * maxPathDp / 1000;
-    const efficiency = hydraulicKW < 0.1 ? 0.25
-      : hydraulicKW < 0.5 ? 0.4
-      : hydraulicKW < 2 ? 0.55
-      : hydraulicKW < 10 ? 0.65
-      : hydraulicKW < 50 ? 0.73
-      : hydraulicKW < 200 ? 0.78 : 0.82;
-    const pumpKW = hydraulicKW / efficiency;
+    // Volumenstrom der Pumpe: Σ Normheizlast × Gleichzeitigkeit über alle Abnehmer
+    const rootLoad = (loads.get(zId) || 0) * gzf(consumers.get(zId) || 0);
+    const pumpKW = netzPumpe(rootLoad / (cp * dt),maxPathDp,stoff).pKw;
     const operating = lifetimeYears *
-      (lossMWhPerYear * heatPrice + pumpKW * annualHours * electricityPrice);
+      (lossMWhPerYear * heatPrice + pumpKW * pumpHours * electricityPrice);
     let detourPenalty = 0;
     let maxStretch = 1;
     requiredIds.forEach(id => {
@@ -6225,16 +6228,7 @@ function _recalcNetzIntern(){
     return;
   }
 
-  let vlTemp = parseFloat(document.getElementById('netz-vl').value) || 90;
-  let rlTemp = parseFloat(document.getElementById('netz-rl').value) || 60;
-
-  const planJahr = parseInt(document.getElementById('netz-plan-jahr').value);
-  if (planJahr && globalYear >= planJahr) {
-    vlTemp = parseFloat(document.getElementById('netz-plan-vl').value) || vlTemp;
-    rlTemp = parseFloat(document.getElementById('netz-plan-rl').value) || rlTemp;
-  }
-
-  const dt = Math.max(1, vlTemp - rlTemp);
+  const { vl: vlTemp, rl: rlTemp, dt } = netzTemperaturen(globalYear);
   const vFlow = readNum('netz-v', 1.0, 0.3, 2.0);
   const dpLimitMain = readNum('netz-dp-main', 150, 50, 500);
   const dpLimitService = readNum('netz-dp-service', 250, 50, 500);
@@ -6437,8 +6431,11 @@ function _recalcNetzIntern(){
   // ungünstigsten zeitlichen Zustand dimensioniert. Beim Bestandsnetz wird
   // dieser Wert ausschließlich für neue, noch undimensionierte Anschlüsse
   // verwendet; erfasste DN werden nicht automatisch verändert.
-  window.netzEdges.forEach(e => { e.designLoad = 0; e.designLoadRaw = 0; e.designYear = null; });
+  // Maßgebend ist der größte Massenstrom: Last des Jahres / (cp · Spreizung des Jahres) — eine geplante Absenkung
+  // der Netztemperaturen (kleinere Spreizung) vergrößert die Nennweiten.
+  window.netzEdges.forEach(e => { e.designLoad = 0; e.designLoadRaw = 0; e.designYear = null; e.designMdot = 0; e.designTm = null; });
   _netzPlanningYears().forEach(year => {
+    const tJahr = netzTemperaturen(year);
     const yearLoad = {};
     const yearConsumers = {};
     Object.keys(nodeMap).forEach(id => {
@@ -6454,10 +6451,13 @@ function _recalcNetzIntern(){
       const raw = yearLoad[nodeId] || 0;
       const count = yearConsumers[nodeId] || 0;
       const designLoad = raw * _wGzf(count);
-      if (designLoad > pInfo.e.designLoad) {
+      const designMdot = designLoad / (CP_WASSER * tJahr.dt);
+      if (designMdot > pInfo.e.designMdot) {
         pInfo.e.designLoad = designLoad;
         pInfo.e.designLoadRaw = raw;
         pInfo.e.designYear = year;
+        pInfo.e.designMdot = designMdot;
+        pInfo.e.designTm = (tJahr.vl + tJahr.rl) / 2;
       }
       yearLoad[pInfo.pNodeId] = (yearLoad[pInfo.pNodeId] || 0) + raw;
       yearConsumers[pInfo.pNodeId] = (yearConsumers[pInfo.pNodeId] || 0) + count;
@@ -6468,24 +6468,21 @@ function _recalcNetzIntern(){
   const kuppelKw = kuppelUebergabeKw();
   window.netzEdges.filter(e => e.kuppel).forEach(e => {
     e.load = kuppelKw; e.loadRaw = kuppelKw; e._nVerbraucher = 0; e._gzf = 1;
-    e.designLoad = kuppelKw; e.designLoadRaw = kuppelKw;
+    e.designLoad = kuppelKw; e.designLoadRaw = kuppelKw; e.designMdot = kuppelKw / (CP_WASSER * dt); e.designTm = null;
     e.tempIn = vlTemp; e.tempOut = vlTemp;
   });
 
-  const cp = 4.184;
-  const rhoWater = 975; // kg/m³ bei ~70°C
-  const nuWater = 0.000000415; // kinematische Viskosität m²/s bei ~70°C
-  const kRough = 0.00005; // Rohrrauhigkeit Stahl/KMR [m]
-  const hydraulicsFor = (load,dn) => {
-    const dInner = dn / 1000;
-    const area = Math.PI * Math.pow(dInner / 2,2);
-    const massFlow = load / (cp * dt);
-    const velocity = (massFlow / rhoWater) / area;
-    const reynolds = velocity * dInner / nuWater;
-    const lambda = reynolds < 2300
-      ? 64 / Math.max(reynolds,100)
-      : 0.25 / Math.pow(Math.log10(kRough / (3.7 * dInner) + 5.74 / Math.pow(reynolds,0.9)),2);
-    return {velocity,dpPerM:lambda * rhoWater * Math.pow(velocity,2) / (2 * dInner),reynolds,lambda};
+  const cp = CP_WASSER;
+  // Stoffwerte des Wassers bei der mittleren Netztemperatur; Innendurchmesser der KMR-Stahlrohre (lib/netz-hydraulik.js)
+  const stoff = wasserStoffwerte((vlTemp + rlTemp) / 2);
+  const rhoWater = stoff.rho;
+  const hydraulicsFor = (load,dn) => rohrHydraulik(load / (cp * dt),dn,stoff);
+  // Auslegung: größter Massenstrom aus aktuellem Jahr und Planungsjahren, Stoffwerte des maßgebenden Jahres
+  const sizingFor = (load,e,dn) => {
+    const mJetzt = load / (cp * dt);
+    return (e.designMdot || 0) > mJetzt
+      ? rohrHydraulik(e.designMdot,dn,e.designTm != null ? wasserStoffwerte(e.designTm) : stoff)
+      : rohrHydraulik(mJetzt,dn,stoff);
   };
   // Rohr-Dimensionierung mit DN-abhängiger Fließgeschwindigkeit (2 Iterationen für Konvergenz)
   for (let iter = 0; iter < 2; iter++) {
@@ -6496,9 +6493,8 @@ function _recalcNetzIntern(){
         e.dpLimit = e.isHouseConnection ? dpLimitService : dpLimitMain;
 
         if ((!networkLocked && !e.dnOverride) || e.dn === 0) {
-            const sizingLoad = Math.max(e.load,e.designLoad || 0);
             e.dn = standardDNs.find(dn => {
-              const candidate = hydraulicsFor(sizingLoad,dn);
+              const candidate = sizingFor(e.load,e,dn);
               return candidate.velocity <= getVFlowForDN(dn,vFlow) && candidate.dpPerM <= e.dpLimit;
             }) || standardDNs[standardDNs.length - 1];
         }
@@ -6510,7 +6506,7 @@ function _recalcNetzIntern(){
             (e.uNode?.type === 'geb' || e.vNode?.type === 'geb');
           e.dpLimit = e.isHouseConnection ? dpLimitService : dpLimitMain;
           e.dn = standardDNs.find(dn => {
-            const candidate = hydraulicsFor(e.designLoad,dn);
+            const candidate = sizingFor(0,e,dn);
             return candidate.velocity <= getVFlowForDN(dn,vFlow) && candidate.dpPerM <= e.dpLimit;
           }) || standardDNs[standardDNs.length - 1];
         } else if (!networkLocked) {
@@ -6550,66 +6546,60 @@ function _recalcNetzIntern(){
     }
   });
 
-  // Kritischer Pfad: maximaler Druckverlust von Zentrale zu einem Abnehmer
-  let maxPathDp = 0;
-  let maxPathNode = null;
+  // Kritischer Pfad je Versorgungszone: größter Druckverlust von der Zentrale zu einem Abnehmer (Vor- und
+  // Rücklauf) zuzüglich 50 kPa Differenzdruck an der Hausstation (Übergabestation und Regelreserve)
+  const DP_HAUSSTATION_PA = 50000;
+  const zonen = new Map(wurzeln.filter(w => nodeMap[w]).map(w => [w, { maxPathDp: 0, maxPathNode: null }]));
   order.forEach(nodeId => {
-    if (nodeId === zId || !parentEdge[nodeId]) return;
+    if (wurzeln.includes(nodeId) || !parentEdge[nodeId]) return;
     let pathDp = 0;
     let curr = nodeId;
     while (parentEdge[curr]) {
       pathDp += parentEdge[curr].e.dpTotal || 0;
       curr = parentEdge[curr].pNodeId;
     }
-    // Hausstationsdruckverlust: ~30 kPa pro Übergabestation
     const bNode = gebMap.get(nodeId);
-    if (bNode && nodeMap[nodeId] && nodeMap[nodeId].load > 0) {
-      pathDp += 50000; // 50 kPa Hausstation / verfügbare Regelreserve
-    }
-    if (pathDp > maxPathDp) {
-      maxPathDp = pathDp;
-      maxPathNode = nodeId;
-    }
+    if (bNode && nodeMap[nodeId] && nodeMap[nodeId].load > 0) pathDp += DP_HAUSSTATION_PA;
+    const zone = zonen.get(wurzelVon.get(nodeId));
+    if (zone && pathDp > zone.maxPathDp) { zone.maxPathDp = pathDp; zone.maxPathNode = nodeId; }
   });
 
-  // Pumpenparameter
-  const foerderhoehePa = maxPathDp; // Pa
-  const foerderhoeheMWS = foerderhoehePa / 9810; // mWS (Meter Wassersäule)
-  const foerderhoeheBar = foerderhoehePa / 100000; // bar
-  // Volumenstrom an der Zentrale (gesamter Netzvolumenstrom)
-  const zentraleEdges = window.netzEdges.filter(e => e.u === zId || e.v === zId);
-  const totalLoadKW = zentraleEdges.reduce((s, e) => s + (e.load || 0), 0);
-  const mDotGesamt = totalLoadKW / (cp * dt); // kg/s
-  const vDotGesamt = mDotGesamt / rhoWater; // m³/s
-  // Pumpenleistung: P = (V̇ * Δp) / η_pumpe
-  // Gesamtwirkungsgrad (Motor × Hydraulik × Mechanik) leistungsabhängig gestaffelt
-  // Quellen: Wilo/Grundfos Datenblätter, Hocheffizienz-Nassläufer IE4/IE5
-  const pHydraulisch = vDotGesamt * foerderhoehePa; // hydraulische Leistung [W]
-  const pHydKW = pHydraulisch / 1000;
-  let etaPumpe;
-  if (pHydKW < 0.1)       etaPumpe = 0.25; // Kleinstpumpen (< 100 W hydr.)
-  else if (pHydKW < 0.5)  etaPumpe = 0.40; // kleine Umwälzpumpen
-  else if (pHydKW < 2)    etaPumpe = 0.55; // kleine Nahwärmenetze
-  else if (pHydKW < 10)   etaPumpe = 0.65; // mittlere Netze
-  else if (pHydKW < 50)   etaPumpe = 0.73; // größere Quartiere
-  else if (pHydKW < 200)  etaPumpe = 0.78; // große Netze, optimaler Betriebspunkt
-  else                     etaPumpe = 0.82; // Großpumpen (> 200 kW hydr.)
+  // Netzpumpe je Zentrale: Volumenstrom aus Σ Normheizlast × Gleichzeitigkeit über alle Abnehmer der Zone (nicht
+  // die Summe der Abgänge mit je eigener Gleichzeitigkeit), Förderhöhe aus dem kritischen Pfad, P = V̇·Δp/η
+  const pumpeJeZone = {};
+  zonen.forEach((z, w) => {
+    const abg = window.netzEdges.filter(e => !e.kuppel && !e.pruned && baumKanten.has(e) && (e.u === w || e.v === w));
+    const raw = abg.reduce((s, e) => s + (e.loadRaw || 0), 0);
+    const nAbn = abg.reduce((s, e) => s + (e._nVerbraucher || 0), 0);
+    const lastKw = raw * _wGzf(nAbn);
+    const mDot = lastKw / (cp * dt);
+    const p = netzPumpe(mDot, z.maxPathDp, stoff);
+    pumpeJeZone[w] = {
+      kritPfadDp: z.maxPathDp, foerderhoeheMWS: p.foerderhoeheM, foerderhoeheBar: z.maxPathDp / 100000,
+      pumpenLeistungKW: p.pKw, etaPumpe: p.eta, pHydKw: p.pHydKw, mDotGesamt: mDot, vDotGesamt: p.vDotM3s * 3600,
+      lastKw, maxPathNode: z.maxPathNode,
+    };
+  });
+  const zonenPumpen = Object.values(pumpeJeZone);
+  const kritZone = zonenPumpen.reduce((a, b) => (!a || b.kritPfadDp > a.kritPfadDp ? b : a), null)
+    || { kritPfadDp: 0, foerderhoeheMWS: 0, foerderhoeheBar: 0, maxPathNode: null };
+  const summe = key => zonenPumpen.reduce((s, z) => s + (z[key] || 0), 0);
+  const pumpenLeistungKW = summe('pumpenLeistungKW');
 
-  const pumpenLeistungW = pHydraulisch / etaPumpe;
-  const pumpenLeistungKW = pumpenLeistungW / 1000;
-
-  // Ergebnisse am recalcNetz-Scope verfügbar machen
+  // Ergebnisse am recalcNetz-Scope verfügbar machen (mehrere Zentralen: Summen, Förderhöhe der ungünstigsten Zone)
   window._netzPumpe = {
-    kritPfadDp: foerderhoehePa,
-    foerderhoeheMWS: foerderhoeheMWS,
-    foerderhoeheBar: foerderhoeheBar,
-    pumpenLeistungKW: pumpenLeistungKW,
-    etaPumpe: etaPumpe,
-    mDotGesamt: mDotGesamt,
-    vDotGesamt: vDotGesamt * 3600, // m³/h
-    maxPathNode: maxPathNode
-    ,dpExceededCount: window.netzEdges.filter(edge => edge.dpExceeded).length
-    ,bottleneckCount: window.netzEdges.filter(edge => edge.hydraulicBottleneck).length
+    kritPfadDp: kritZone.kritPfadDp,
+    foerderhoeheMWS: kritZone.foerderhoeheMWS,
+    foerderhoeheBar: kritZone.foerderhoeheBar,
+    pumpenLeistungKW,
+    etaPumpe: pumpenLeistungKW > 0 ? summe('pHydKw') / pumpenLeistungKW : 0,
+    mDotGesamt: summe('mDotGesamt'),
+    vDotGesamt: summe('vDotGesamt'), // m³/h
+    lastKw: summe('lastKw'),         // Auslegungslast der Pumpen (Σ Normheizlast × Gleichzeitigkeit)
+    maxPathNode: kritZone.maxPathNode,
+    zonen: pumpeJeZone,
+    dpExceededCount: window.netzEdges.filter(edge => edge.dpExceeded).length,
+    bottleneckCount: window.netzEdges.filter(edge => edge.hydraulicBottleneck).length,
   };
 
   // readNum statt parseFloat: parseFloat liefert bei leerem Feld NaN, und
@@ -6645,6 +6635,7 @@ function _recalcNetzIntern(){
 
   const totalLossKW_annual = window.netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0);
   const totalLossJahrMWh = totalLossKW_annual * 8.76;
+  window._netzPumpe.verlustKw = totalLossKW;   // Bezug des Jahrespumpenstroms: Pumpenlast + Verlustleistung
   // Zentrale Verlustquelle für Lastgang und Kennzahlen. Sobald ein
   // berechnetes Netz existiert, ersetzt dieser leitungsgenaue Jahreswert den
   // pauschalen Prozentansatz aus den Wärme-Grundlagendaten.
@@ -6836,9 +6827,8 @@ function _recalcNetzIntern(){
       (e.visibleUntilYear != null && globalYear >= e.visibleUntilYear);
 
     if(e.load > 0){
-      const actualArea = Math.PI * Math.pow((e.dn / 1000) / 2, 2);
-      const mDot = e.load / (cp * dt); 
-      const actualVel = (mDot / rhoWater) / actualArea;
+      // Auslastung = Geschwindigkeit / zulässige Geschwindigkeit der Nennweite (Innendurchmesser)
+      const actualArea = rohrQuerschnittM2(e.dn);
       const allowedVelocity = e.velocityLimit || getVFlowForDN(e.dn,vFlow);
       const maxMDot = actualArea * allowedVelocity * rhoWater;
       const maxLoad = maxMDot * cp * dt;
@@ -6880,7 +6870,7 @@ function _recalcNetzIntern(){
         ttHtml += `Last (Σ ${e._nVerbraucher} Gebäude): ${e.load.toFixed(1)} kW<br>`;
       }
       const utilizationColor = auslastung <= 80 ? '#4caf50' : auslastung <= 100 ? '#f9a825' : '#f44336';
-      ttHtml += `Leitungsauslastung: <span style="color:${utilizationColor}">${auslastung.toFixed(1)} %</span> · ${actualVel.toFixed(2)} m/s<br>`;
+      ttHtml += `Leitungsauslastung: <span style="color:${utilizationColor}">${auslastung.toFixed(1)} %</span> · ${(e._vActual || 0).toFixed(2)} m/s<br>`;
       ttHtml += `${_m}Kapazität: ${maxLoad.toFixed(0)} kW bei ${allowedVelocity.toFixed(2)} m/s zulässiger Zielgeschwindigkeit${_me}<br>`;
       if (!networkLocked && e.designYear != null) {
         ttHtml += `${_m}Dimensioniert für ${e.designLoad.toFixed(1)} kW im maßgebenden Jahr ${e.designYear}${_me}<br>`;

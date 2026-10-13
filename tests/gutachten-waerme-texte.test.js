@@ -319,7 +319,7 @@ describe('2.2.2 WVN', () => {
     expect(text(wtWvn({ netz }))).toContain('250 Pa/m');
     expect(text(wtWvn({ netz: { ...netz, ueberschreitungen: 0 } }))).toContain('keine Überschreitung');
     expect(text(wtWvn({ projekt: bestandProjekt, netz: { ...netz, bestand: true, ueberschreitungen: 3 } }))).toContain('nicht verändert');
-    expect(text(wtWvn({ netz: { ...netz, ueberschreitungen: 1 } }))).toContain('1 Strang');
+    expect(text(wtWvn({ netz: { ...netz, ueberschreitungen: 1 } }))).toContain('1 Leitungsabschnitt');
     expect(text(wtWvn({ netz: { ...netz, hydraulik: { dpNetzPaM: 200 } } }))).toContain('200 Pa/m');
   });
 });

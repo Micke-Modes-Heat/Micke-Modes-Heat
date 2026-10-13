@@ -145,8 +145,10 @@ export function wsZentraleDaten(zentraleId) {
     .map(([id, e], i) => ({ id, nr: i + 1, dn: e.dn, last: e.load, laenge: e.length, gebaeude: unterbaum.get(id) || 0, strand: e.strandId }))
     .sort((a, b) => b.last - a.last);
   const kuppel = (window.netzEdges || []).filter(e => e.kuppel && !e.pruned && (window._netzWurzelVon?.get(e.u) === z.id || window._netzWurzelVon?.get(e.v) === z.id));
-  const vl = parseFloat(document.getElementById('netz-vl')?.value) || 90, rl = parseFloat(document.getElementById('netz-rl')?.value) || 60;
-  return { z, zentralen, erzeuger, speicher, abgaenge, kuppel, vl, rl, pumpe: window._netzPumpe || null };
+  // Netztemperaturen des betrachteten Jahres (geplante Absenkung), Netzpumpe dieser Zentrale (Versorgungszone)
+  const t = window.netzTemperaturen?.() || { vl: parseFloat(document.getElementById('netz-vl')?.value) || 90, rl: parseFloat(document.getElementById('netz-rl')?.value) || 60 };
+  const p = window._netzPumpe || null;
+  return { z, zentralen, erzeuger, speicher, abgaenge, kuppel, vl: t.vl, rl: t.rl, pumpe: p?.zonen?.[z.id] || p };
 }
 
 const SYMBOL = { wp: 'WP', fix: 'K', kwk: 'BHKW', st: 'ST' };

@@ -1966,13 +1966,22 @@ export function ggWaermeDaten() {
   const statJahr = g => ggLies(() => w.getComputedStats(g, w.globalYear), null);
   const angeschlossen = ggLies(() => (w.gebaeude || []).filter(g => verbunden.has(g.id) && !(typeof w.isExcluded === 'function' && w.isExcluded(g.id))
     && !['geplant', 'abgerissen'].includes(statJahr(g)?.status)), []);
-  const mitDruck = kanten.filter(e => Number.isFinite(e.dpPerM) && Number.isFinite(e.dpLimit));
+  // Hydraulik: Grenzwerte aus den Eingaben, Engpässe nach Druckgefälle oder Geschwindigkeit, Förderhöhe der Netzpumpe
+  const mitDruck = kanten.filter(e => (e.load || 0) > 0 && Number.isFinite(e.dpPerM) && Number.isFinite(e.dpLimit));
+  const vBezug = ggFeldZahl('netz-v');
+  const vDn = dn => ggLies(() => (vBezug > 0 && typeof w.getVFlowForDN === 'function' ? w.getVFlowForDN(dn, vBezug) : undefined));
+  const hydraulik = kanten.length ? {
+    dpNetzPaM: ggFeldZahl('netz-dp-main'), dpAnschlussPaM: ggFeldZahl('netz-dp-service'),
+    vKleinMs: vDn(25), vGrossMs: vDn(450), foerderhoeheBar: ggLies(() => w._netzPumpe?.foerderhoeheBar),
+  } : undefined;
+  if (hydraulik) Object.keys(hydraulik).forEach(k => { if (!Number.isFinite(hydraulik[k])) delete hydraulik[k]; });
   const netz = {
     laengeM: kanten.length ? kanten.reduce((s, e) => s + (e.length || 0), 0) : undefined,
     anzahlAnschluesse: angeschlossen.length || undefined,
     vlC: ggFeldZahl('netz-vl'), rlC: ggFeldZahl('netz-rl'),
     bestand: kanten.length ? !!w.networkLocked : undefined,
-    ueberschreitungen: mitDruck.length ? mitDruck.filter(e => e.dpPerM > e.dpLimit * 1.0001).length : undefined,
+    ueberschreitungen: mitDruck.length ? mitDruck.filter(e => e.hydraulicBottleneck || e.dpPerM > e.dpLimit * 1.0001).length : undefined,
+    hydraulik,
   };
   const gebaeude = {
     anzahl: angeschlossen.length || undefined,

@@ -26,8 +26,12 @@
 /** Mindestanteile erneuerbarer Energien und unvermeidbarer Abwärme in Wärmenetzen nach WPG. */
 export const WPG_EE_ZIELE = [{ jahr: 2030, pct: 30 }, { jahr: 2040, pct: 80 }, { jahr: 2045, pct: 100 }];
 
-/** Auslegungsregeln der Netzhydraulik im Tool (Pa/m je Leitung, m/s). */
-export const WT_HYDRAULIK_STANDARD = { dpNetzPaM: 150, dpAnschlussPaM: 250, vZielMs: 1.0, vMinMs: 0.3, vMaxMs: 2.0, hausstationBar: 0.5 };
+/**
+ * Auslegungsregeln der Netzhydraulik im Tool (Voreinstellung; Pa/m je Leitung, m/s): Druckgefälle Verteilleitung und
+ * Hausanschluss, zulässige Fließgeschwindigkeit je Nennweite (kleine Nennweiten bis DN 25 bzw. ab DN 450),
+ * Differenzdruck an der Hausstation. foerderhoeheBar: netzseitige Förderhöhe am ungünstigsten Anschluss (berechnet).
+ */
+export const WT_HYDRAULIK_STANDARD = { dpNetzPaM: 150, dpAnschlussPaM: 250, vKleinMs: 0.5, vGrossMs: 1.5, hausstationBar: 0.5 };
 
 export const WT_SCHWELLEN = {
   vollbenutzungH: { spitzig: 1800, gleichmaessig: 3000 },   // Wärmenetze mit Heizlast und Warmwasser liegen typisch dazwischen
@@ -594,14 +598,15 @@ export function wtWvn(d) {
   }
 
   // Hydraulik
-  const ue = num(z.ueberschreitungen);
+  const ue = num(z.ueberschreitungen), fh = num(hyd.foerderhoeheBar);
   const h = [`Die Nennweiten werden so gewählt, dass in der Verteilleitung ein Druckverlust von ${nf(hyd.dpNetzPaM)} Pa/m und im Hausanschluss von ${nf(hyd.dpAnschlussPaM)} Pa/m `
-    + `nicht überschritten wird; die Fließgeschwindigkeit wird auf ${nf(hyd.vZielMs, 1)} m/s ausgelegt (zulässiger Bereich ${nf(hyd.vMinMs, 1)} bis ${nf(hyd.vMaxMs, 1)} m/s). `
+    + `nicht überschritten wird und die Fließgeschwindigkeit die für die Nennweite zulässige Geschwindigkeit nicht übersteigt (von ${nf(hyd.vKleinMs, 1)} m/s bei Nennweiten bis DN 25 bis ${nf(hyd.vGrossMs, 1)} m/s ab DN 450). `
     + `Für die Hausstation wird eine Druckreserve von ${nf(hyd.hausstationBar, 1)} bar angesetzt. `];
+  if (ok(fh) && fh > 0) h.push(`Netzseitig ergibt sich am hydraulisch ungünstigsten Anschluss eine Förderhöhe von rund ${nf(fh, 1)} bar (Vor- und Rücklauf einschließlich Hausstation, ohne die Druckverluste in der Heizzentrale). `);
   if (ok(ue)) {
     if (ue <= 0) h.push('Die hydraulische Prüfung zeigt keine Überschreitung der Grenzwerte.');
-    else if (bestandsnetz) h.push(`Die hydraulische Prüfung zeigt bei ${nf(ue)} ${kleinN(ue, 'Strang', 'Strängen')} eine Überschreitung der Grenzwerte. Da die Nennweiten des Bestands nicht verändert werden, sind diese Stränge zu markieren und im Einzelfall zu prüfen, ob eine Anpassung erforderlich ist.`);
-    else h.push(`Die hydraulische Prüfung zeigte bei ${nf(ue)} ${kleinN(ue, 'Strang', 'Strängen')} eine Überschreitung der Grenzwerte, die durch Anpassung der Nennweite behoben werden muss.`);
+    else if (bestandsnetz) h.push(`Die hydraulische Prüfung zeigt bei ${nf(ue)} ${kleinN(ue, 'Leitungsabschnitt', 'Leitungsabschnitten')} eine Überschreitung der Grenzwerte für Druckverlust oder Fließgeschwindigkeit. Da die Nennweiten des Bestands nicht verändert werden, sind diese Abschnitte zu markieren und im Einzelfall zu prüfen, ob eine Anpassung erforderlich ist.`);
+    else h.push(`Die hydraulische Prüfung zeigte bei ${nf(ue)} ${kleinN(ue, 'Leitungsabschnitt', 'Leitungsabschnitten')} eine Überschreitung der Grenzwerte für Druckverlust oder Fließgeschwindigkeit, die durch Anpassung der Nennweite behoben werden muss.`);
   }
   out.push(absatz(...h));
   return out;

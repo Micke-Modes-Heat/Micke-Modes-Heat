@@ -7,6 +7,7 @@ import { kostenJeErzeuger, kostentreiber } from './lib/kostenanalyse.js';
 import { bedienErlaeuterung, bedienModulStunden, bedienStunden } from './lib/vdi-bedien.js';
 import { speicherInvestEur } from './lib/waermespeicher.js';
 import { eisInvest } from './lib/eisspeicher.js';
+import { pumpenVolllaststunden } from './lib/netz-hydraulik.js';
 import { _getEtaMap, bhkwCo2Gutschrift, gasEmF, gebaeude, networkLocked, netzEdges } from './01-globals-varianten.js';
 import { updateFliessgewaesserData, updateLwWpDisplay } from './02c-karte-werkzeuge.js';
 import { calcVerdraengungEmF, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
@@ -346,18 +347,16 @@ export function _calcKostenShared(p) {
 /**
  * Hilfsenergie der Netzpumpen in MWh/a: Auslegungsleistung der Pumpe (Netzberechnung) über das Jahr mit
  * drehzahlgeregeltem Betrieb nach dem Proportionalitätsgesetz (P ~ Volumenstrom³ ~ Last³, mindestens 10 %).
+ * Bezug ist die Last, für die die Pumpe ausgelegt ist (Σ Normheizlast × Gleichzeitigkeit + Verlustleistung),
+ * nicht die Spitze des Klimajahrs.
  */
 export function netzPumpenstromMwh() {
   if (wirtOhneNetz()) return 0;
-  const pKw = window._netzPumpe?.pumpenLeistungKW || 0;
+  const pumpe = window._netzPumpe;
+  const pKw = pumpe?.pumpenLeistungKW || 0;
   const lg = window.systemState?.lastgangKw;
   if (!(pKw > 0) || !lg?.length) return 0;
-  let max = 0;
-  for (let i = 0; i < lg.length; i++) if (lg[i] > max) max = lg[i];
-  if (!(max > 0)) return 0;
-  let h = 0;
-  for (let i = 0; i < lg.length; i++) { const x = lg[i] / max; if (x > 0) h += Math.max(0.1, x * x * x); }
-  return pKw * h / 1000;
+  return pKw * pumpenVolllaststunden(lg, (pumpe.lastKw || 0) + (pumpe.verlustKw || 0)) / 1000;
 }
 
 /**
