@@ -1007,12 +1007,15 @@ describe('Schlanke Abfragedatei', () => {
     expect(blattVon(m, B.anleitung).zeilen[0][2].w).toBe(RA.RA_SCHLANK_KENNUNG);
   });
 
-  it('kennzeichnet Auftraggeber-Spalten und -Fragen violett', () => {
+  it('fragt keine Lagen je Funktion ab', () => {
+    expect(SP.some(s => s.szenario)).toBe(false);
+    expect(SP.map(s => s.feld)).toContain('nurKrise');
+  });
+
+  it('kennzeichnet Auftraggeber-Fragen violett', () => {
     const m = neu();
     const fb = blattVon(m, B.funktionen);
-    const c = SP.findIndex(s => s.feld === 'sz_S1');
-    expect(fb.zeilen[RA.RA_KOPFZEILE][c].s).toBe(XS.kopfAg);
-    expect(fb.zeilen[RA.RA_KOPFZEILE + 1][c].s).toBe(XS.eingabeAg);
+    expect(fb.zeilen[RA.RA_KOPFZEILE + 1].every(z => z.s !== XS.eingabeAg)).toBe(true);
     expect(fb.zeilen[RA.RA_KOPFZEILE + 1][SP.findIndex(s => s.feld === 'kritisch')].s).toBe(XS.eingabe);
     const ab = blattVon(m, B.allgemeines);
     const i = RA.RA_ALLGEMEIN_SCHLANK.findIndex(f => f.feld === 'zustaendig');
@@ -1025,7 +1028,7 @@ describe('Schlanke Abfragedatei', () => {
     const m = neu();
     const zeile = blattVon(m, B.funktionen).zeilen[RA.RA_KOPFZEILE + 1];
     const setze = (feld, w) => { zeile[SP.findIndex(s => s.feld === feld)].w = w; };
-    setze('kritisch', 'nach Stunden'); setze('autarkie', '3 Tage'); setze('herkunft', 'Einschätzung Nutzer'); setze('sz_S2', 'x');
+    setze('kritisch', 'nach Stunden'); setze('autarkie', '3 Tage'); setze('herkunft', 'Einschätzung Nutzer'); setze('nurKrise', 'ja');
     const lagen = blattVon(m, B.szenarien).zeilen[RA.RA_KOPFZEILE + 2];
     lagen[2].w = 'ja'; lagen[3].w = '14 Tage';
     const ab = blattVon(m, B.allgemeines);
@@ -1040,7 +1043,8 @@ describe('Schlanke Abfragedatei', () => {
     expect(f.klasse_grund).toMatch(/nach Stunden/);
     expect([f.ausw_s, f.ausw_4h, f.ausw_3d]).toEqual(['eingeschränkt', 'Auftrag gefährdet', 'Auftrag gefährdet']);
     expect(f.autarkie_h).toBe(72);
-    expect(f.sz.S2).toBe(1);
+    expect(f.nurKrise).toBe('ja');
+    expect(Object.values(f.sz).some(Boolean)).toBe(false);
     expect(d.szenarien.find(s => s.id === 'S2')).toMatchObject({ relevant: 'ja', dauer: '14 Tage' });
     expect(d.allgemein.zustaendig).toBe('Kommando X');
     // keine Technik-Rückfragen in der schlanken Fassung
@@ -1054,5 +1058,43 @@ describe('Schlanke Abfragedatei', () => {
       expect(RA.raKlasseVorschlag(RA.raAuswAusKritisch(k.wert)).klasse).toBe(k.klasse);
       expect(RA.raKritischAusKlasse(k.klasse)).toBe(k.wert);
     }
+  });
+});
+
+describe('Schlanke Fassung: Geltungsbereich, Beispiel und Ableitung', () => {
+  it('Geltungsbereich: „Geb. 1" trifft Geb. 1, nicht Geb. 10', () => {
+    const lage = { bereich: 'Teilbereiche', bereiche: 'Geb. 1, Geb. 2 Wache' };
+    expect(RA.raImGeltungsbereich({ geb: 'Geb. 1 Stabsgebäude' }, lage)).toBe(true);
+    expect(RA.raImGeltungsbereich({ geb: 'Geb. 10 Unterkunft' }, lage)).toBe(false);
+    expect(RA.raImGeltungsbereich({ geb: 'Geb. 2 Wache' }, lage)).toBe(true);
+    expect(RA.raImGeltungsbereich({ geb: 'Geb. 10 Unterkunft' }, { bereich: 'ganze Liegenschaft' })).toBe(true);
+  });
+
+  it('die Beispieldatei liest sich zurück wie das Beispiel', async () => {
+    const d = await durchReichen(RA.raBeispielMappeSchlank());
+    const soll = RA.raBeispielDatenSchlank();
+    expect(d.fehler).toEqual([]);
+    expect(d.funktionen.map(f => [f.id, f.klasse, f.autarkie_h, f.nurKrise]))
+      .toEqual(soll.funktionen.map(f => [f.id, f.klasse, f.autarkie_h, f.nurKrise]));
+    expect(d.szenarien.find(s => s.id === 'S5')).toMatchObject({ bereich: 'Teilbereiche', bereiche: 'Geb. 1 Stabsgebäude, Geb. 2 Wache' });
+    expect(RA.raPruefung(d).offene_punkte.filter(p => p.ref !== 'Allgemeines')).toEqual([]);
+  });
+
+  it('hat die Reiter 5–7 mit den Ableitungen', () => {
+    const namen = RA.raBeispielMappeSchlank().blaetter.map(b => b.name);
+    expect(namen).toEqual(expect.arrayContaining(['5 Anforderungen', '6 Ausfallbilder', '7 Ableitungen']));
+  });
+
+  it('leitet je Lage die Dauer im Geltungsbereich ab und stuft über Abhängigkeiten hoch', () => {
+    const A = RA.raAbleitungSchlank(RA.raBeispielDatenSchlank(), RA.RA_BEISPIEL_SCHLANK.auswertung);
+    const z = id => A.funktionen.find(x => x.f.id === id);
+    expect(A.lagen.map(l => l.id)).toEqual(['S1', 'S2', 'S3', 'S4', 'S5', 'S7']);
+    expect(z('F01').jeLage.S1.h).toBe(4);           // min(4 h, 14 Tage)
+    expect(z('F01').jeLage.S3.h).toBe(168);         // Kernbereich, 7 Tage
+    expect(z('F05').jeLage.S3.h).toBe(null);        // Unterkunft: außerhalb des Geltungsbereichs
+    expect(z('F05').jeLage.S2.h).toBe(72);          // min(14 Tage, 3 Tage)
+    expect(z('F16').klasse).toBe('B');              // Heizzentrale über Abhängigkeiten
+    expect(z('F16').klasse0).toBe('C');
+    expect(z('F17').bedarf).toBe(false);            // Lager: abwerfen
   });
 });

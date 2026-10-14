@@ -25,6 +25,8 @@
 // festlegt (Lagen, Vorgaben, Zuständigkeit), bleibt sichtbar, ist aber violett
 // gekennzeichnet und zählt nicht als offener Punkt des Betreibers. Technik
 // (Krisenlast, Ersatzversorgung, Bestand) fehlt ganz — das erhebt die Planung.
+// Lagen gibt es dort nicht je Funktion (welche Gebäude eine Lage trifft, folgt
+// aus dem Netz); stattdessen „nur im Krisenfall gebraucht?".
 
 (function () {
   'use strict';
@@ -74,7 +76,7 @@
   const KLASSE = Object.fromEntries(K.klassen.map(k => [k.key, k]));
   const ORDNUNG = { A: 0, B: 1, C: 2, D: 3 };
   /** Was „Übertragen" kopiert. Krisenlast und Ersatzversorgung gehören zum Gebäude und bleiben. */
-  const KOPIERFELDER = ['name', 'betrieb', 'kritisch', 'ausw_s', 'ausw_4h', 'ausw_3d', 'autarkie_text', 'sz', 'reduziert', 'abh', 'herkunft'];
+  const KOPIERFELDER = ['name', 'betrieb', 'kritisch', 'nurKrise', 'ausw_s', 'ausw_4h', 'ausw_3d', 'autarkie_text', 'sz', 'reduziert', 'abh', 'herkunft'];
   /** Was der Beispielkatalog vorbelegt — ohne Herkunft: die gibt der Betreiber an. */
   const KATALOGFELDER = ['betrieb', 'ausw_s', 'ausw_4h', 'ausw_3d', 'autarkie_text', 'sz', 'reduziert', 'abh'];
   const ABH = ['Wärme', 'Wasser', 'IT-Netz', 'Kommunikation', 'Personal'];
@@ -634,6 +636,10 @@
         ${seg(zk, f, 'kritisch', L.L_Kritisch, { gewichtet: true })}</div>
       <div class="feld"><div class="label">Wie lange muss die Aufgabe ohne öffentliches Netz weiterlaufen?</div>
         ${seg(zk, f, 'autarkie_text', L.L_Autarkie)}</div>
+      <div class="feld"><div class="label">Wird die Aufgabe nur im Krisenfall gebraucht?</div>
+        <span class="erkl">z. B. Sporthalle als Notunterkunft oder eine Führungsstelle, die erst im Krisenfall aufwächst —
+          wofür, bitte in der Bemerkung.</span>
+        ${seg(zk, f, 'nurKrise', L.L_JaNein)}</div>
       <div class="feld"><div class="label">Hängt ab von <span style="font-weight:400;color:var(--leiser)">(freiwillig)</span></div>
         <span class="erkl">Was muss außer Strom noch funktionieren, damit die Aufgabe läuft?</span>
         ${abhChips(zk, f)}</div>
@@ -715,7 +721,8 @@
             <ul><li>Gegen welche Lagen wird vorgesorgt, und wie lange?</li><li>Welche Vorgaben gibt es, wer ist zuständig?</li>
               <li>Freigabe der Angaben</li></ul></div>
           <div class="weg-nicht"><b>Nicht abgefragt:</b> Leistungen, vorhandene Netzersatzanlagen, USV, Tankinhalte — das ermittelt die
-            Fachplanung selbst bei der Begehung und aus den Messdaten.</div>
+            Fachplanung selbst bei der Begehung und aus den Messdaten. Ebenso, <b>welche Gebäude eine Lage trifft</b>: Für eine Aufgabe
+            ist ein Stromausfall ein Stromausfall, gleich aus welchem Grund — wie weit er reicht, folgt aus dem Aufbau des Netzes.</div>
         </div></div>
       <div class="karte-box"><h2>Allgemeines ${rolleMarke('nutzer')}</h2>
         ${fragenForm('allgemein', felder.filter(f => f.rolle !== 'ag'), S.allgemein)}</div>
@@ -730,9 +737,12 @@
       <h1>Für welche Lagen soll vorgesorgt werden?${SCHLANK ? ' ' + rolleMarke('ag') : ''}</h1>
       ${SCHLANK ? `<div class="hinweis ag"><b>Legt der Auftraggeber fest.</b> Gegen welche Ereignisse die Liegenschaft abgesichert
         wird und mit welcher Dauer, ist eine Entscheidung des Auftraggebers — die Seite dient der gemeinsamen Abstimmung.
-        Als Betreiber müssen Sie hier nichts eintragen.</div>` : ''}
+        Als Betreiber müssen Sie hier nichts eintragen. Je Lage legt der Auftraggeber auch fest, ob die <b>ganze Liegenschaft</b>
+        abgesichert wird oder nur <b>Teilbereiche</b> (z. B. Sabotage: nur Führung und Wache). Welche Gebäude eine Lage im Netz
+        tatsächlich trifft, ermittelt die Fachplanung.</div>` : ''}
       <p class="unterzeile">Sieben Referenzlagen. Bitte je Lage angeben, ob sie für die Liegenschaft eine Rolle spielt und mit
-        welcher Dauer gerechnet werden soll. Später ordnen Sie jeder Aufgabe zu, in welchen Lagen sie weiterlaufen muss.</p>
+        welcher Dauer gerechnet werden soll.${SCHLANK ? '' : ' Später ordnen Sie jeder Aufgabe zu, in welchen Lagen sie weiterlaufen muss.'}</p>
+      ${SCHLANK ? `<datalist id="dl-gebaeude">${S.gebaeude.map(g => `<option value="${esc(g.name)}">`).join('')}</datalist>` : ''}
       ${S.szenarien.map(s => {
     const def = K.szenarien.find(x => x.id === s.id) || { name: s.id };
     return `<div class="karte-box sz-karte ${s.relevant === 'nein' ? 'nein' : ''}">
@@ -743,12 +753,23 @@
               <div class="feld"><div class="label">Relevant für die Liegenschaft?</div>${seg('sz|' + s.id, s, 'relevant', K.listen.L_Relevant)}</div>
               ${s.relevant === 'nein' ? '<div></div>' : textFeld('sz|' + s.id, s, 'dauer', 'Angenommene Dauer', { platzhalter: 'z. B. 72 h, 14 Tage' })}
             </div>
+            ${SCHLANK && s.relevant !== 'nein' ? geltungsbereich(s) : ''}
             ${s.relevant === 'nein' ? '' : `<div class="feld"><div class="label">Woher stammt die Annahme?</div>${seg('sz|' + s.id, s, 'herkunft', K.listen.L_Herkunft)}</div>`}
             <details class="abschnitt" ${s.bem ? 'open' : ''}><summary>Bemerkung</summary>
               <div style="margin-top:8px">${textFeld('sz|' + s.id, s, 'bem', 'Bemerkung', { mehrzeilig: true })}</div></details>
           </div></div>`;
   }).join('')}
     </div>`;
+  }
+
+  /** Schlanke Fassung: ganze Liegenschaft oder Teilbereiche — und welche Gebäude. */
+  function geltungsbereich(s) {
+    const zk = 'sz|' + s.id;
+    return `<div class="feld"><div class="label">Gilt für</div>
+        <span class="erkl">Soll die ganze Liegenschaft gegen diese Lage abgesichert werden oder nur einzelne Gebäude bzw. Bereiche?</span>
+        ${seg(zk, s, 'bereich', K.listen.L_Bereich)}</div>
+      ${s.bereich === 'Teilbereiche' ? textFeld(zk, s, 'bereiche', 'Welche Gebäude bzw. Bereiche?', { liste: 'dl-gebaeude',
+    platzhalter: 'z. B. Geb. 1 Stabsgebäude, Geb. 2 Wache', erkl: 'So benennen wie auf dem Lageplan, durch Komma getrennt.' }) : ''}`;
   }
 
   // ── Schritt 3: Beispielkatalog ────────────────────────────────────────────
@@ -938,10 +959,7 @@
     erkl: 'Was wird hier geleistet? Nicht die Anlage, sondern die Aufgabe.' })}
       ${katalogBlock(f)}
       ${SCHLANK ? `
-      <div class="block"><div class="block-titel">Auswirkung eines Ausfalls ${rolleMarke('nutzer')}</div>${schlankFragen(zk, f)}</div>
-      <details class="block rolle-ag" ${hatKreuz(f.sz) ? 'open' : ''}><summary class="block-titel">In welchen Lagen muss die Aufgabe
-        weiterlaufen? ${rolleMarke('ag')}</summary>
-        <span class="erkl" style="display:block;margin-bottom:6px">Legt der Auftraggeber fest — darf leer bleiben.</span>${szChips(zk, f)}</details>`
+      <div class="block"><div class="block-titel">Auswirkung eines Ausfalls ${rolleMarke('nutzer')}</div>${schlankFragen(zk, f)}</div>`
     : `
       <div class="block"><div class="block-titel">Auswirkung eines Ausfalls</div>${auswirkungsFragen(zk, f)}</div>
       <div class="block"><div class="block-titel">Technik vor Ort</div>${technikFragen(zk, f)}</div>`}
@@ -957,7 +975,7 @@
       return `<h2>Angaben übertragen</h2>
         <p class="unterzeile" style="margin-bottom:10px">Von <b>${esc(von?.name || '')}</b> (${esc(von ? ortVon(von) : '')}).
           Klicken Sie auf dem Plan die Gebäude an, die dieselben Antworten bekommen sollen; ein zweiter Klick nimmt ein Gebäude wieder heraus.</p>
-        <div class="hinweis">Übertragen werden Aufgabe, Auswirkungen, Dauer, Lagen, Abhängigkeiten und Herkunft.${SCHLANK ? '' : ` <b>Krisenlast und
+        <div class="hinweis">Übertragen werden Aufgabe, Auswirkungen, Dauer, ${SCHLANK ? 'Krisenfall' : 'Lagen'}, Abhängigkeiten und Herkunft.${SCHLANK ? '' : ` <b>Krisenlast und
           Ersatzversorgung bleiben am Gebäude.</b>`} Eine gleichnamige Funktion im Zielgebäude wird überschrieben, sonst kommt eine hinzu.
           Danach kann jedes Gebäude einzeln angepasst werden.</div>
         ${ziele.map(g => `<div class="liste-zeile"><span class="name">${esc(g.name)}<small>${esc(fktImGeb(g.id).map(x => x.name).join(', ') || 'keine Funktion')}</small></span>
@@ -1094,6 +1112,10 @@
     for (const s of S.szenarien) {
       if (leer(s.relevant)) out.push({ ref: s.id, text: 'Relevanz der Lage ist offen.', ziel: lagen });
       else if (s.relevant === 'ja' && !s.dauer) out.push({ ref: s.id, text: 'Angenommene Dauer fehlt.', ziel: lagen });
+      if (SCHLANK && s.relevant === 'ja' && !s.bereich) out.push({ ref: s.id, text: 'Offen, ob die Lage für die ganze Liegenschaft oder Teilbereiche gilt.', ziel: lagen });
+      else if (SCHLANK && s.relevant === 'ja' && s.bereich === 'Teilbereiche' && !String(s.bereiche || '').trim()) {
+        out.push({ ref: s.id, text: 'Gilt für Teilbereiche — welche Gebäude, fehlt noch.', ziel: lagen });
+      }
     }
     return out;
   }
@@ -1178,7 +1200,7 @@
       const k = klasse(f);
       const g = f.gebId != null ? gebNach(f.gebId) : null;
       return `<tr><td>${esc(f.id)}</td><td>${esc(f.name)}</td><td>${esc(g ? g.name : (f.geb || '—'))}</td>
-        <td><b>${k || '–'}</b></td><td>${esc(f.autarkie_text || '—')}</td><td>${esc(kreuze(f.sz).join(' ') || '—')}</td>
+        <td><b>${k || '–'}</b></td><td>${esc(f.autarkie_text || '—')}</td><td>${esc((SCHLANK ? f.nurKrise : kreuze(f.sz).join(' ')) || '—')}</td>
         ${SCHLANK ? '' : `<td>${f.pk != null ? esc(String(f.pk).replace('.', ',')) + ' kW' : '—'}</td>`}<td>${esc(f.herkunft || '—')}</td></tr>`;
     }).join('');
     return `<h1>Resilienz-Erhebung${lieg ? ' · ' + esc(lieg) : ''}</h1>
@@ -1187,7 +1209,7 @@
       ${miniPlanSvg(860, 330)}
       <p style="font-size:9pt">Einordnung (Vorschlag): ${K.klassen.map(k => `<b style="color:${k.farbe}">${k.key}</b> ${esc(k.label)}`).join(' · ')}</p>
       <table><thead><tr><th>ID</th><th>Funktion</th><th>Gebäude</th><th>Einordnung</th><th>Dauer ohne Netz</th>
-        <th>Lagen</th>${SCHLANK ? '' : '<th>Krisenlast</th>'}<th>Herkunft</th></tr></thead><tbody>${zeilen}</tbody></table>
+        <th>${SCHLANK ? 'nur Krisenfall' : 'Lagen'}</th>${SCHLANK ? '' : '<th>Krisenlast</th>'}<th>Herkunft</th></tr></thead><tbody>${zeilen}</tbody></table>
       <p style="font-size:9pt">Offene Punkte: ${offenePunkte().length}. Die Einordnung ist ein Vorschlag und wird mit der zuständigen Stelle abgestimmt.</p>`;
   }
 
