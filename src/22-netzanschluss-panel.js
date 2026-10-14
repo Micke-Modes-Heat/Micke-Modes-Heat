@@ -139,6 +139,7 @@ function panelHtml() {
 export function sgNaRender() {
   const wrap = $(WRAP_ID);
   if (wrap) wrap.innerHTML = panelHtml();
+  if (typeof window.naModulRender === 'function') window.naModulRender();   // Netzanschluss-Modul vergleicht mit den NAP-Grenzen (nur wenn offen)
 }
 
 /** ⚡ Strom-Grundlagen öffnen und zum Abschnitt „Netzanschluss" springen (Absprung aus dem Gutachten-Reiter). */

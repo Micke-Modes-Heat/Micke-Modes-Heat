@@ -271,6 +271,12 @@ function _html() { return `
         title:'Ertrag, Abstände, Eignungsfläche und Szenarien-Vergleich aller Windkraftanlagen' })}
     </div>
 
+    ${_sub('Netzanschluss')}
+    <div class="lp-tool-grid">
+      ${_tile('🔌 Netzanschluss', 'naModulToggle()', { id:'btn-na-modul-toggle',
+        title:'Reicht der heutige Netzanschluss? Bedarf je Jahr gegen die vereinbarte Leistung, typische Anschlussebene, Wege bis zum Direktanschluss an ein Umspannwerk, Textbaustein und Leistungstabelle' })}
+    </div>
+
     ${_sub('Resilienz')}
     <div class="lp-tool-grid">
       ${_tile('🛡 Blackout-Modus', 'blackoutModusToggle()', { id:'btn-blackout-modus-toggle',
