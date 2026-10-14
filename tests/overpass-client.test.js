@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { overpassAbfrage, serverTimeoutS, abfrageSchluessel, pauseNachAntwort, OVERPASS_SERVER, overpassPausen } from '../src/lib/overpass-client.js';
+import { overpassAbfrage, serverTimeoutS, abfrageSchluessel, pauseNachAntwort, OVERPASS_SERVER, overpassPausen, seiteLokal } from '../src/lib/overpass-client.js';
 
 const antwort = (status, daten = { elements: [{ id: 1 }] }, kopf = {}) => ({
   ok: status >= 200 && status < 300, status, headers: { get: k => kopf[k] ?? null }, json: async () => daten,
@@ -40,6 +40,16 @@ describe('Overpass-Zugriff', () => {
     const abrufen = async () => { gleichzeitig++; maxGleich = Math.max(maxGleich, gleichzeitig); await new Promise(r => setTimeout(r, 5)); gleichzeitig--; return antwort(200); };
     await Promise.all([1, 2, 3].map(i => overpassAbfrage(`[timeout:5];node(${i});out;`, { abrufen, warten: async () => {} })));
     expect(maxGleich).toBe(1);
+  });
+
+  it('lokal geöffnete Datei: Server mit Herkunftspflicht wird übersprungen', async () => {
+    expect(seiteLokal({ protocol: 'file:', origin: 'null' })).toBe(true);
+    expect(seiteLokal({ protocol: 'https:', origin: 'https://x.de' })).toBe(false);
+    const aufrufe = [], meldungen = [];
+    const abrufen = async url => { aufrufe.push(url); return antwort(200); };
+    await overpassAbfrage('[timeout:5];node(77);out;', { abrufen, lokal: true, status: (n, t) => meldungen.push(n + ' ' + t), warten: async () => {} });
+    expect(aufrufe).toEqual([OVERPASS_SERVER[1].url]);
+    expect(meldungen.some(m => m.startsWith('overpass-api.de ⏭'))).toBe(true);
   });
 
   it('Laufzeitfehler des Servers zählt als Fehlschlag; alle gescheitert → null', async () => {

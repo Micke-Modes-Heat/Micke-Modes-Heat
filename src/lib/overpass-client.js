@@ -8,9 +8,11 @@
 //   • nach 429/504 bzw. Zeitüberschreitung pausiert der betroffene Server (Retry-After, sonst 60 s bzw. 20 s),
 //   • Antworten werden im Browser zwischengespeichert (IndexedDB, 30 Tage) — dasselbe Gebiet wird nicht erneut
 //     angefragt (Neu laden mit { frisch: true } bzw. osmZwischenspeicherLeeren()).
+//   • overpass-api.de verlangt seit 2026 bei Anfragen aus dem Browser eine Herkunftsangabe (HTTP-Referer) und lehnt
+//     sonst mit 406 ab. Eine lokal geöffnete Datei (file://) sendet keine — dann wird dieser Server übersprungen.
 
 export const OVERPASS_SERVER = Object.freeze([
-  { name: 'overpass-api.de', url: 'https://overpass-api.de/api/interpreter' },
+  { name: 'overpass-api.de', url: 'https://overpass-api.de/api/interpreter', brauchtHerkunft: true },
   { name: 'private.coffee', url: 'https://overpass.private.coffee/api/interpreter' },
   { name: 'kumi.systems', url: 'https://overpass.kumi.systems/api/interpreter' },
   { name: 'maps.mail.ru', url: 'https://maps.mail.ru/osm/tools/overpass/api/interpreter' },
@@ -86,6 +88,11 @@ export async function osmZwischenspeicherLeeren() {
   try { d.transaction('antworten', 'readwrite').objectStore('antworten').clear(); } catch (e) { void e; }
 }
 
+/** true, wenn die Seite als lokale Datei geöffnet ist (keine Herkunftsangabe, Origin „null“). */
+export function seiteLokal(ort = typeof location !== 'undefined' ? location : null) {
+  return !!ort && (ort.protocol === 'file:' || ort.origin === 'null');
+}
+
 /** Gesperrte Server mit Restpause (s) — für Hinweise in der Oberfläche. */
 export function overpassPausen() {
   const jetzt = Date.now();
@@ -99,7 +106,8 @@ export function overpassPausen() {
  */
 export function overpassAbfrage(abfrage, opt = {}) {
   const { frisch = false, status = () => {}, abgebrochen = () => false, abrufen = (...a) => fetch(...a),
-    runden = 2, maxWartenS = 45, warten = ms => new Promise(r => setTimeout(r, ms)) } = opt;
+    runden = 2, maxWartenS = 45, warten = ms => new Promise(r => setTimeout(r, ms)), lokal = seiteLokal() } = opt;
+  const server = OVERPASS_SERVER.filter(s => !(lokal && s.brauchtHerkunft));
   const schluessel = abfrageSchluessel(abfrage);
   const lauf = async () => {
     if (!frisch) {
@@ -107,8 +115,9 @@ export function overpassAbfrage(abfrage, opt = {}) {
       if (alt) { status('Zwischenspeicher', '✓ ' + (alt.elements?.length ?? 0) + ' Elemente (gespeichert)'); return alt; }
     }
     const clientMs = (serverTimeoutS(abfrage) + 15) * 1000;
+    for (const s of OVERPASS_SERVER) if (lokal && s.brauchtHerkunft) status(s.name, '⏭ nur bei Aufruf über eine Webadresse (Datei lokal geöffnet)');
     for (let runde = 0; runde < runden; runde++) {
-      for (const s of OVERPASS_SERVER) {
+      for (const s of server) {
         if (abgebrochen()) return null;
         const rest = (pauseBis.get(s.url) || 0) - Date.now();
         if (rest > 0) { status(s.name, '⏸ Pause ' + Math.ceil(rest / 1000) + ' s'); continue; }
@@ -139,7 +148,6 @@ export function overpassAbfrage(abfrage, opt = {}) {
           const zeit = e?.name === 'AbortError';
           if (zeit) pauseBis.set(s.url, Date.now() + pauseNachAntwort('timeout'));
           // „Failed to fetch“: vom Browser blockiert (CORS, Netzwerk, Proxy) — Hinweis auf lokal geöffnete Datei
-          const lokal = typeof location !== 'undefined' && location.protocol === 'file:';
           status(s.name, '✗ ' + (zeit ? 'Zeitüberschreitung' : 'vom Browser blockiert' + (lokal ? ' (Datei lokal geöffnet)' : '') + (e?.message ? ': ' + e.message : '')));
         } finally {
           clearTimeout(timer);
@@ -147,7 +155,7 @@ export function overpassAbfrage(abfrage, opt = {}) {
       }
       // Alle Server pausiert oder gescheitert: auf den ersten freien warten (begrenzt), dann zweiter Durchgang
       if (runde < runden - 1) {
-        const naechste = Math.min(...OVERPASS_SERVER.map(s => (pauseBis.get(s.url) || 0) - Date.now()));
+        const naechste = Math.min(...server.map(s => (pauseBis.get(s.url) || 0) - Date.now()));
         const ms = Math.min(maxWartenS * 1000, Math.max(3000, naechste));
         status('Warten', '⏳ neuer Versuch in ' + Math.ceil(ms / 1000) + ' s');
         await warten(ms);
