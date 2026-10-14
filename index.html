@@ -294,6 +294,7 @@
           <button class="lp-tool-btn" id="btn-osm-dach" data-click="dachformenAusOsmErgaenzen({nachfragen:true})" style="border-color:#a1887f;color:#bcaaa4;grid-column:1/-1;" title="Dachform, Neigung und Richtung (roof:shape, roof:angle, roof:direction) aus OpenStreetMap für alle Gebäude ohne eigene Dachangabe übernehmen — z. B. nach einem Import aus dem amtlichen Kataster, das keine Dachform liefert">🏠 Dachformen aus OSM ergänzen</button>
           <button class="lp-tool-btn" id="btn-lod2-import" data-click="lod2Laden()" style="border-color:#8d6e63;color:#d7ccc8;grid-column:1/-1;" title="Amtliches 3D-Gebäudemodell (LoD2) laden — in NRW, Niedersachsen und Baden-Württemberg direkt vom Landesdienst, sonst als CityGML-Datei (.gml/.xml oder .zip vom Geoportal des Landes): jede Dachfläche mit echter Neigung und Ausrichtung — für PV-Belegung und 3D-Ansicht">🏠 Dachflächen aus LoD2 laden …</button>
           <button class="lp-tool-btn" id="btn-dach-grundriss" data-click="dachGrundrissBerechnen()" style="border-color:#8d6e63;color:#d7ccc8;grid-column:1/-1;" title="Für Gebäude ohne LoD2 (auch geplante Neubauten): Dachflächen aus dem rechtwinkligen Grundriss berechnen — L-, T- und U-Formen mit Kehlen und Giebeln, nach Dachform und Neigung des Gebäudes. Mit Auswahl in der Gebäudeliste nur für die ausgewählten Gebäude.">📐 Dachflächen aus Grundriss berechnen</button>
+          <button class="lp-tool-btn" id="btn-quartier-herausloesen" data-click="quartierHerausloesen()" style="border-color:#ffb300;color:#ffcc80;grid-column:1/-1;" title="Einen Teil der Liegenschaft als eigenes Projekt speichern — z. B. ein Quartier, das früher gebaut wird oder eine eigene Zentrale bekommt. Bereich auf der Karte umfahren oder vorher Gebäude in der Liste anhaken. Das geöffnete Projekt bleibt unverändert.">✂ Quartier als eigenes Projekt herauslösen …</button>
           <button class="lp-tool-btn" id="btn-grundriss-pruefen" data-click="grundrissPanelToggle()" style="border-color:#ffb74d;color:#ffcc80;grid-column:1/-1;" title="Überlappende Grundrisse finden — Doppelerfassungen (OSM und Kataster), Gebäudeteile als eigene Gebäude, Teilüberlappungen. Sie verfälschen Wärme- und Strombedarf, Dachpotenzial und Verschattung. Je Fall: zeigen, zusammenfügen, eines löschen oder bewusst so lassen.">⧉ Grundrisse prüfen</button>
         </div>
       </div>
@@ -353,7 +354,8 @@
               </div>
               <div class="na-trasse-werkzeuge" id="na-trasse-werkzeuge">
                 <button type="button" class="btn-secondary trasse-draw-btn" id="btn-draw-trasse-waerme" data-click="startGuidedTrasseCreation()">✎ Haupttrasse zeichnen</button>
-                <button type="button" class="btn-secondary danger" data-netz-braucht="trasse" data-click="confirmClearTrasse()">Haupttrasse löschen</button>
+                <button type="button" class="btn-secondary" id="btn-trasse-loeschmodus" data-netz-braucht="trasse" data-click="trasseLoeschModusUmschalten()" title="Einzelne Trassenabschnitte durch Anklicken entfernen (auch per Rechtsklick auf einen Abschnitt). Rückgängig über den Hinweis unten.">🗑 Abschnitte löschen</button>
+                <button type="button" class="btn-secondary danger" data-netz-braucht="trasse" data-click="confirmClearTrasse()">Ganze Haupttrasse löschen</button>
               </div>
               <div class="na-struktur">
                 <span class="na-label">Hausanschlüsse</span>
@@ -375,6 +377,13 @@
           </div>
           </details>
               </div>
+              <details class="na-quartiere" id="na-quartiere">
+                <summary>Eigene Hauptstränge je Quartier <span class="na-quartiere-anzahl" id="na-quartiere-anzahl"></span></summary>
+                <p class="na-quartiere-hinweis">Quartiere, die jeweils über einen eigenen Strang direkt ab der Heizzentrale versorgt werden.
+                  Bereich auf der Karte umfahren — oder vorher Gebäude anhaken.</p>
+                <div id="na-quartier-liste" class="na-quartier-liste"></div>
+                <button type="button" class="btn-secondary" id="btn-netz-quartier" data-click="netzQuartierHinzufuegen()">＋ Quartier festlegen</button>
+              </details>
               <div id="na-grundlagen" class="na-grundlagen"></div>
               <button type="button" class="na-haupt" id="btn-netz-berechnen" data-click="netzBerechnen()">Netz berechnen</button>
               <details class="na-mehr">
@@ -492,6 +501,14 @@
         <div id="lp-merit-order">
           <div style="font-size:10px;color:var(--muted);padding:4px;">Noch keine Erzeuger aktiv</div>
         </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:6px;font-size:10px;color:var(--muted);">
+          <label for="agk-art">Spitzenlastkessel (automatisch) <span class="htip" data-tip="Deckt die Restlast der Einsatzplanung und die Leistung, die den Erzeugern bei Normaußentemperatur fehlt. Die Art bestimmt Investition, Energieträger, CO₂ und Primärenergie.">?</span></label>
+          <select class="inp-field" id="agk-art" style="font-size:10px;padding:2px 4px;width:90px;" data-change="updateAllDeckungen()">
+            <option value="gas" selected>Erdgas</option>
+            <option value="heizoel">Heizöl</option>
+            <option value="strom">Strom</option>
+          </select>
+        </div>
       </div>
 
       <!-- ══ Tab 4: Elektro ════════════════════════════════════ -->
@@ -536,7 +553,9 @@
           <button class="lp-tool-btn" data-click="toggleStromPanel()" style="border-color:#ffd54f;color:#ffd54f;">⚡ Strom-Bilanz</button>
           <button class="lp-tool-btn" data-click="toggleStatusPanel()" style="border-color:#90caf9;color:#90caf9;">📊 Status</button>
           <button class="lp-tool-btn" data-click="setViewMode('analyse')" style="border-color:#4fc3f7;color:#4fc3f7;">📈 Systemanalyse</button>
-          <button class="lp-tool-btn" data-click="showSankey()" style="border-color:#ce93d8;color:#ce93d8;grid-column:1/-1;">🔀 Sankey-Diagramm</button>
+          <button class="lp-tool-btn" data-click="showSankey()" style="border-color:#ce93d8;color:#ce93d8;">🔀 Sankey-Diagramm</button>
+          <button class="lp-tool-btn" id="btn-waerme-schema" data-click="wsToggle()" style="border-color:#ff8f00;color:#ffb74d;grid-column:1/-1;" title="Netzschema (Strangplan) und Hydraulikschema der Heizzentrale">🗺 Wärmenetz- &amp; Zentralenschema</button>
+          <button class="lp-tool-btn" id="btn-quartier-sonde" data-click="qsToggle()" style="border-color:#4fc3f7;color:#4fc3f7;" title="Bereich auf der Karte aufziehen und Lastgang, Dauerlinie und Kennwerte dieser Gebäude ansehen">🔍 Quartier sondieren</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Vergleich</div>
         <div class="lp-tool-grid">
@@ -653,6 +672,28 @@
     </div>
   </div>
 
+  <!-- ══ Schemata Wärmenetz / Heizzentrale ══ -->
+  <div id="ws-panel">
+    <div class="sld-head">
+      <span class="sld-head-titel">🔥 Wärme-Schemata</span>
+      <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
+        <button class="sld-head-btn" data-click="wsZoom(-0.2)" title="Verkleinern">−</button>
+        <button class="sld-head-btn" data-click="wsZoom(0)" title="Zoom zurücksetzen" id="ws-zoom-label">100%</button>
+        <button class="sld-head-btn" data-click="wsZoom(0.2)" title="Vergrößern">+</button>
+        <button class="sld-head-btn" data-click="wsExportSvg()" title="Als SVG-Datei speichern">SVG</button>
+        <button class="sld-head-btn" data-click="wsDrucken()" title="Druckansicht (als PDF speichern)">📄 PDF</button>
+        <button class="sld-head-btn" id="ws-btn-fs" data-click="wsVollbild()" title="Vollbild">⛶</button>
+        <button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:0 3px;line-height:1;" data-click="wsToggle()" title="Schließen">✕</button>
+      </div>
+    </div>
+    <div class="sld-suchleiste">
+      <button class="sld-head-btn ws-tab active" data-ansicht="netz" data-click="wsAnsicht('netz')">Netzschema</button>
+      <button class="sld-head-btn ws-tab" data-ansicht="zentrale" data-click="wsAnsicht('zentrale')">Heizzentrale</button>
+      <span id="ws-zentrale-wahl" style="display:flex;gap:4px;"></span>
+    </div>
+    <div class="sld-canvas-wrap" id="ws-canvas-wrap"><div id="ws-canvas"></div></div>
+  </div>
+
   <div id="erzeuger-status" style="position:absolute;top:10px;right:350px;z-index:500;display:flex;gap:5px;align-items:flex-start;pointer-events:none;"></div>
 
   <!-- Asset-Inspector (Editor-Panel bei Marker-Klick) -->
@@ -694,6 +735,7 @@
     </div>
     <div id="geb-overview-kpis" class="geb-overview-kpis"></div>
     <div id="geb-overview-analysis" class="geb-overview-analysis"></div>
+    <div id="geb-dyn-analyse" class="geb-dyn-analyse"></div>
     <div class="geb-overview-tools">
       <input id="geb-table-filter" type="search" placeholder="Gebäude, Nutzung oder Quelle suchen …"
         data-input="setGebaeudeTableFilter(this.value)">
@@ -706,6 +748,7 @@
       am Eckpunkt <span class="geb-fuell-muster"></span> ziehen überträgt Werte · <kbd>Strg</kbd>+<kbd>D</kbd> nach unten ausfüllen ·
       <kbd>Strg</kbd>+<kbd>C</kbd>/<kbd>V</kbd> mit Excel austauschen · <kbd>Enter</kbd> nächste Zeile · <kbd>Shift</kbd>+Klick auf Haken wählt einen Bereich aus
     </div>
+    <div id="geb-ohne-nutzung" class="geb-ohne-nutzung" style="display:none"></div>
     <div id="geb-table-bulk" class="geb-table-bulk"></div>
     <div class="geb-overview-table-wrap">
       <table class="geb-overview-table">
@@ -734,11 +777,11 @@
       <button class="btn-secondary" data-click="setViewMode('karte')" style="font-size:11px;">← Zurück zur Karte</button>
     </div>
     <div class="analyse-kpi-bar" id="analyse-kpi-bar">
-      <div class="analyse-kpi"><div class="analyse-kpi-val" id="av-kpi-waerme">—</div><div class="analyse-kpi-lbl">Wärmebedarf MWh/a <span class="htip" data-tip="Gesamter Wärmebedarf des Quartiers pro Jahr, inkl. Netzverluste.">?</span></div></div>
-      <div class="analyse-kpi"><div class="analyse-kpi-val" id="av-kpi-pmax">—</div><div class="analyse-kpi-lbl">Spitzenlast kW <span class="htip" data-tip="Höchste Wärmeleistung, die in einer einzelnen Stunde des Jahres benötigt wird — bestimmt die nötige Erzeuger-Gesamtleistung.">?</span></div></div>
-      <div class="analyse-kpi"><div class="analyse-kpi-val" id="av-kpi-wgk">—</div><div class="analyse-kpi-lbl">WGK ct/kWh <span class="htip" data-tip="Wärmegestehungskosten: Was kostet eine kWh Wärme aus dem Gesamtsystem? Enthält Investition, Wartung, Energie — abzgl. Stromerlöse.">?</span></div></div>
-      <div class="analyse-kpi"><div class="analyse-kpi-val" id="av-kpi-co2">—</div><div class="analyse-kpi-lbl">CO₂ t/a <span class="htip" data-tip="Jährliche CO₂-Emissionen aller Erzeuger. Wärmepumpen: indirekt über Strommix. BHKW: Gutschrift für verdrängten Netzstrom.">?</span></div></div>
-      <div class="analyse-kpi"><div class="analyse-kpi-val" id="av-kpi-ee">—</div><div class="analyse-kpi-lbl">EE-Anteil % <span class="htip" data-tip="Anteil erneuerbarer Energien an der Wärmeversorgung (WP, Pellets, HHS, Solarthermie, Speicher). Ziel: mind. 65%.">?</span></div></div>
+      <div class="analyse-kpi" style="--kpi-c:#ef8a3c;"><div class="analyse-kpi-lbl">Wärmebedarf <span class="htip" data-tip="Gesamter Wärmebedarf des Quartiers pro Jahr, inkl. Netzverluste.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-waerme">—</span><small>MWh/a</small></div></div>
+      <div class="analyse-kpi" style="--kpi-c:#e53935;"><div class="analyse-kpi-lbl">Spitzenlast <span class="htip" data-tip="Höchste Wärmeleistung, die in einer einzelnen Stunde des Jahres benötigt wird — bestimmt die nötige Erzeuger-Gesamtleistung.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-pmax">—</span><small>kW</small></div></div>
+      <div class="analyse-kpi" style="--kpi-c:#ffb300;"><div class="analyse-kpi-lbl">Wärmegestehungskosten <span class="htip" data-tip="Was kostet eine kWh Wärme aus dem Gesamtsystem? Enthält Investition, Wartung, Energie — abzgl. Stromerlöse.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-wgk">—</span><small>ct/kWh</small></div></div>
+      <div class="analyse-kpi" style="--kpi-c:#90a4ae;"><div class="analyse-kpi-lbl">CO₂-Emissionen <span class="htip" data-tip="Jährliche CO₂-Emissionen aller Erzeuger. Wärmepumpen: indirekt über Strommix. BHKW: Gutschrift für verdrängten Netzstrom.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-co2">—</span><small>t/a</small></div></div>
+      <div class="analyse-kpi" style="--kpi-c:#43a047;"><div class="analyse-kpi-lbl">Erneuerbarer Anteil <span class="htip" data-tip="Anteil erneuerbarer Energien an der Wärmeversorgung (WP, Pellets, HHS, Solarthermie, Speicher). Ziel: mind. 65 %.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-ee">—</span><small>%</small></div><div class="analyse-kpi-bar-mini"><i id="av-kpi-ee-bar"></i><b title="Ziel 65 %"></b></div></div>
     </div>
     <div class="analyse-section-tabs" id="analyse-view-tabs">
       <button class="analyse-section-tab active" data-section="uebersicht" data-click="setAnalyseSection('uebersicht')">Übersicht</button>
@@ -746,50 +789,41 @@
       <button class="analyse-section-tab" data-section="wirtschaft" data-click="setAnalyseSection('wirtschaft')">Wirtschaftlichkeit</button>
       <button class="analyse-section-tab" data-section="strom" data-click="setAnalyseSection('strom')">Strom</button>
       <button class="analyse-section-tab" data-section="emissionen" data-click="setAnalyseSection('emissionen')">Emissionen</button>
-      <button class="analyse-section-tab" data-section="ausbauplaner" data-click="setAnalyseSection('ausbauplaner')" style="color:#4fc3f7;" title="Ausbauplaner — Maßnahmen-Fahrplan für Anlagen, Netzkomponenten und Gebäude">📅 Ausbauplaner</button>
+      <span class="analyse-tab-trenner">Werkzeuge</span>
+      <button class="analyse-section-tab" data-section="ausbauplaner" data-click="setAnalyseSection('ausbauplaner')" title="Ausbauplaner — Maßnahmen-Fahrplan für Anlagen, Netzkomponenten und Gebäude">📅 Ausbauplaner</button>
     </div>
 
     <!-- ── Übersicht (Dashboard) ─────────────────────────────── -->
     <div id="analyse-dispatch-grid" class="analyse-full-grid">
       <div class="analyse-full-card full-width">
-        <div class="analyse-full-card-title">Gestapelter Wärme-Lastgang (8760 h) <span class="htip" data-tip="Zeigt für jede Stunde des Jahres, welcher Erzeuger wie viel Wärme liefert. Die Flächen sind gestapelt — die Gesamthöhe entspricht dem Bedarf.">?</span></div>
-        <div class="av-lastgang-legend" style="display:flex;flex-wrap:wrap;gap:6px;font-size:10px;margin-bottom:3px;"></div>
+        <div class="analyse-full-card-title">Wärme-Lastgang nach Erzeugern <span class="analyse-card-sub">8.760 Stunden</span> <span class="htip" data-tip="Zeigt für jede Stunde des Jahres, welcher Erzeuger wie viel Wärme liefert. Die Flächen sind gestapelt — die Gesamthöhe entspricht dem Bedarf.">?</span></div>
+        <div class="av-lastgang-legend analyse-legende"></div>
         <canvas id="av-lastgang-canvas" height="200" style="cursor:crosshair;"></canvas>
+      </div>
+      <div class="analyse-full-card">
+        <div class="analyse-full-card-title">Erzeugermix</div>
+        <div id="av-erzeuger-table"></div>
       </div>
       <div class="analyse-full-card">
         <div class="analyse-full-card-title">Jahresdauerlinie <span class="htip" data-tip="Der Lastgang, nach Leistung sortiert (höchste zuerst). Zeigt, wie viele Stunden pro Jahr eine bestimmte Leistung überschritten wird. Wichtig für die Erzeuger-Dimensionierung.">?</span></div>
         <canvas id="av-jdl-canvas" height="180"></canvas>
-      </div>
-      <div class="analyse-full-card full-width">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div class="analyse-full-card-title" id="ekrone-title">3D-Teppich — stündliche Einsatzplanung (365 × 24 h)</div>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <div style="display:flex;gap:1px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden;">
-              <button class="ekrone-mode-btn active" data-mode="carpet" data-click="_setEkroneMode('carpet')" style="font-size:9px;padding:2px 8px;border:none;background:rgba(77,208,225,0.15);color:#4dd0e1;cursor:pointer;font-family:inherit;">Teppich</button>
-              <button class="ekrone-mode-btn" data-mode="helix" data-click="_setEkroneMode('helix')" style="font-size:9px;padding:2px 8px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;">Helix</button>
-            </div>
-            <span style="font-size:9px;color:var(--muted);cursor:pointer;" data-click="window._ekroneState={az:0.6,el:0.45,zoom:1};_renderEnergiekrone();">&#x21BA; Reset</span>
-          </div>
-        </div>
-        <canvas id="energiekrone-canvas" height="360" style="width:100%;display:block;border-radius:6px;cursor:grab;"></canvas>
-        <div id="energiekrone-legend" style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;margin-top:4px;"></div>
-        <div id="energiekrone-tooltip" style="display:none;position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:10px;color:var(--text);pointer-events:none;z-index:9000;box-shadow:0 4px 16px rgba(0,0,0,.4);font-family:'DM Mono',monospace;"></div>
-      </div>
-      <div class="analyse-full-card">
-        <div class="analyse-full-card-title">Metriken</div>
-        <div id="av-metriken-content" style="font-size:10px;color:var(--muted);">Daten werden geladen…</div>
+        <div id="av-metriken-content" class="analyse-metriken">Daten werden geladen…</div>
       </div>
       <div class="analyse-full-card full-width" id="wirt-co2-chart-wrap" style="display:none;">
-        <div class="analyse-full-card-title">CO₂-Emissionen — Entwicklung bis 2050
-          <span id="wirt-co2-total" style="float:right;font-size:9px;font-weight:normal;text-transform:none;letter-spacing:0;color:var(--text);"></span>
+        <div class="analyse-full-card-title">CO₂-Emissionen bis 2050
+          <span id="wirt-co2-total" class="analyse-card-sub"></span>
         </div>
         <canvas id="wirt-co2-canvas" height="160" style="width:100%;display:block;border-radius:6px;"></canvas>
-        <div id="wirt-co2-legend" style="display:flex;flex-wrap:wrap;gap:6px;font-size:9px;margin-top:4px;"></div>
+        <div id="wirt-co2-legend" class="analyse-legende"></div>
       </div>
-      <div class="analyse-full-card full-width">
-        <div class="analyse-full-card-title">Erzeuger-Übersicht</div>
-        <div id="av-erzeuger-table"></div>
-      </div>
+      <details class="analyse-full-card full-width analyse-aufklapp" id="energiekrone-details">
+        <summary class="analyse-full-card-title"><span id="ekrone-title">3D-Ansicht der Einsatzplanung <span class="analyse-card-sub">365 Tage × 24 h</span></span>
+          <span class="analyse-card-sub" style="cursor:pointer;" data-click="event.preventDefault();window._ekroneState={az:0.6,el:0.45,zoom:1};_renderEnergiekrone();">&#x21BA; Ansicht zurücksetzen</span>
+        </summary>
+        <canvas id="energiekrone-canvas" height="360" style="width:100%;display:block;border-radius:6px;cursor:grab;"></canvas>
+        <div id="energiekrone-legend" class="analyse-legende"></div>
+        <div id="energiekrone-tooltip" style="display:none;position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:10px;color:var(--text);pointer-events:none;z-index:9000;box-shadow:0 4px 16px rgba(0,0,0,.4);font-family:'DM Mono',monospace;"></div>
+      </details>
     </div>
 
     <!-- ── Wärme-Analyse ─────────────────────────────────────── -->
@@ -951,18 +985,6 @@
           <input class="inp-field" type="number" id="opt-max-heizoel" min="0" placeholder="kW" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
           <input class="inp-field" type="number" id="opt-bis-heizoel" min="2024" max="2060" placeholder="Jahr" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
 
-          <input type="checkbox" id="opt-cand-pv" checked style="accent-color:#ffd54f;">
-          <label for="opt-cand-pv" style="display:flex;align-items:center;gap:4px;cursor:pointer;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffd54f;flex-shrink:0;"></span>PV (Zusatz)</label>
-          <input class="inp-field" type="number" id="opt-min-pv" min="0" placeholder="kWp" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
-          <input class="inp-field" type="number" id="opt-max-pv" min="0" placeholder="kWp" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
-          <span></span>
-
-          <input type="checkbox" id="opt-cand-bat" checked style="accent-color:#b39ddb;">
-          <label for="opt-cand-bat" style="display:flex;align-items:center;gap:4px;cursor:pointer;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#b39ddb;flex-shrink:0;"></span>Batterie (Zusatz)</label>
-          <input class="inp-field" type="number" id="opt-min-bat" min="0" placeholder="kWh" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
-          <input class="inp-field" type="number" id="opt-max-bat" min="0" placeholder="kWh" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
-          <span></span>
-
           <input type="checkbox" id="opt-cand-st" checked style="accent-color:#ef6c00;">
           <label for="opt-cand-st" style="display:flex;align-items:center;gap:4px;cursor:pointer;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef6c00;flex-shrink:0;"></span>Solarthermie</label>
           <input class="inp-field" type="number" id="opt-min-st" min="0" placeholder="m²" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
@@ -999,17 +1021,18 @@
           <option value="gruendlich">Gr&#x00fc;ndlich</option>
         </select>
         <span id="opt-estimate" style="display:block;margin-top:4px;font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);"></span>
-        <div style="font-size:10px;font-weight:600;color:var(--text);margin-top:10px;margin-bottom:4px;">Max. Amortisation PV+Bat <span class="htip" data-tip="Maximale Amortisationszeit f&#x00fc;r jedes zus&#x00e4;tzliche PV-Inkrement. Wenn sich das n&#x00e4;chste St&#x00fc;ck PV-Anlage nicht mehr innerhalb dieser Zeit amortisiert, wird die PV nicht weiter vergr&#x00f6;&#x00df;ert. Verhindert unrealistisch gro&#x00df;e PV-Anlagen.">?</span></div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <input type="number" class="inp-field" id="opt-pv-max-amort" value="10" min="3" max="25" step="1" style="font-size:10px;padding:2px 4px;width:55px;">
-          <span style="font-size:9px;color:var(--muted);">Jahre</span>
+        <div style="font-size:10px;font-weight:600;color:var(--text);margin-top:10px;margin-bottom:4px;">Betrachtungsumfang <span class="htip" data-tip="Nur Wärmeerzeugung: Wärmenetz (Leitungen) und Hausübergabestationen bleiben in den Wärmegestehungskosten unberücksichtigt. Gilt wie in der Wirtschaftlichkeit für alle Varianten; bestehende Ergebnisse werden sofort neu bewertet.">?</span></div>
+        <div class="wirt-umfang" role="group" aria-label="Betrachtungsumfang der Optimierung">
+          <button type="button" class="active" data-umfang="gesamt" data-click="wirtUmfangSetzen(false)">Gesamtsystem</button>
+          <button type="button" data-umfang="erzeugung" data-click="wirtUmfangSetzen(true)">Nur Wärmeerzeugung</button>
         </div>
+        <label class="wirt-pv-wp-label" title="PV und Batterie sind keine Wärmeerzeuger und bleiben standardmäßig außerhalb der Wärmegestehungskosten. Eingeschaltet bezieht die Wärmepumpe den PV-Strom, den sie laut Stundenbilanz direkt oder über die Batterie erhält, zum PV-Gestehungspreis statt zum Netzpreis. Die PV-Größe kommt aus der PV-Planung und wird nicht mitoptimiert; Einspeisung und Eigenverbrauch der Gebäude bleiben auf der Stromseite."><input type="checkbox" class="wirt-pv-wp" data-change="wirtPvWpSetzen(this.checked)"> PV-Strom für Wärmepumpen anrechnen</label>
       </div>
 
       <!-- Spalte 3: Button -->
-      <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;">
+      <div style="display:flex;flex-direction:column;align-self:start;">
         <button class="btn-confirm" id="btn-opt-start" data-click="if(_optRunning){_optAbbrechen()}else{runOptimierung()}" style="width:100%;padding:10px 20px;font-size:12px;">&#x26A1; Beste Varianten suchen</button>
-        <div style="margin-top:6px;padding:7px;border:1px solid rgba(255,152,0,.35);border-radius:5px;color:#ffb74d;font-size:9px;line-height:1.45;">Heuristische Raster- und Top-Kandidaten-Suche: Das Ergebnis ist die beste gefundene Variante im geprüften Suchraum, kein mathematischer Nachweis des globalen Optimums.</div>
+        <div style="margin-top:6px;padding:7px;border:1px solid rgba(255,152,0,.35);border-radius:5px;color:#ffb74d;font-size:9px;line-height:1.45;">Rastersuche mit anschließender Mustersuche je Anlagenkonzept: Das Ergebnis ist die beste gefundene Variante im Suchraum, kein mathematischer Nachweis des globalen Optimums. Die aktuelle Planung dient als zusätzlicher Startpunkt.</div>
       </div>
     </div>
 
@@ -1049,30 +1072,18 @@
         </div>
 
         <div style="margin-bottom:12px;">
-          <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x2778; PV + Batterie dimensionieren</div>
-          <div>F&#x00fc;r jede W&#x00e4;rme-Variante wird die <b>optimale PV-Anlagengr&#x00f6;&#x00df;e</b> ermittelt. Dazu wird die PV schrittweise vergr&#x00f6;&#x00df;ert und gepr&#x00fc;ft: <b>Amortisiert sich das n&#x00e4;chste St&#x00fc;ck PV noch</b> innerhalb der eingestellten Frist (Standard: 12&thinsp;Jahre)? Sobald nein &rarr; Stopp. Dies wird f&#x00fc;r verschiedene Batterie-Gr&#x00f6;&#x00df;en wiederholt, da eine Batterie den nutzbaren PV-Eigenverbrauch erh&#x00f6;ht.
-            <ul style="margin:4px 0 4px 16px;padding:0;">
-              <li><b>Kleine PV:</b> Fast der gesamte Strom wird selbst verbraucht &rarr; schnelle Amortisation.</li>
-              <li><b>Gr&#x00f6;&#x00df;ere PV:</b> Immer mehr Strom wird eingespeist (weniger Eigenverbrauch) &rarr; Amortisation wird schlechter.</li>
-              <li><b>Mit Batterie:</b> &#x00dc;bersch&#x00fc;sse werden gespeichert statt eingespeist &rarr; mehr Eigenverbrauch &rarr; gr&#x00f6;&#x00df;ere PV sinnvoll.</li>
-            </ul>
-          </div>
+          <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x2778; PV und Batterie</div>
+          <div>PV und Batterie sind keine Wärmeerzeuger und werden hier <b>nicht dimensioniert</b> &mdash; das geschieht in der PV-Analyse. Standardmäßig bleiben sie außerhalb der Wärmegestehungskosten. Mit &bdquo;PV-Strom für Wärmepumpen anrechnen&ldquo; gehen PV und Batterie <b>wie geplant</b> in die Stundenbilanz ein: Die Wärmepumpe bezieht ihren PV-Strom zum PV-Gestehungspreis statt zum Netzpreis; Einspeisung und Eigenverbrauch der Gebäude bleiben auf der Stromseite.</div>
         </div>
 
         <div style="margin-bottom:12px;">
-          <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x2779; Ranking &amp; Top-Kandidaten</div>
-          <div>Alle Varianten werden nach dem gew&#x00e4;hlten Optimierungsziel sortiert (z.B. niedrigste W&#x00e4;rmegestehungskosten). Die <b>besten 3&ndash;5 Varianten</b> kommen in die Feinphase.</div>
+          <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x2779; Anlagenkonzepte</div>
+          <div>Ist der Gaskessel Kandidat, deckt er als Spitzenlastkessel genau den Rest &mdash; wie der automatische Kessel der Einsatzplanung. &bdquo;Luft-WP + Gaskessel&ldquo; erscheint daher nur einmal. Je Anlagenkonzept wird nur die beste Variante gezeigt.</div>
         </div>
 
         <div style="margin-bottom:12px;">
-          <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x277A; Feinphase &mdash; Verfeinern</div>
-          <div>Die Top-Kandidaten werden nochmals genauer optimiert:
-            <ul style="margin:4px 0 4px 16px;padding:0;">
-              <li><b>Solarthermie:</b> Verschiedene Kollektorfl&#x00e4;chen testen</li>
-              <li><b>Thermischer Speicher:</b> Verschiedene Speichervolumen testen</li>
-              <li><b>PV + Batterie:</b> Feinere Abstufungen, gleiches Amortisationsprinzip</li>
-            </ul>
-          </div>
+          <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x277A; Feinphase &mdash; Mustersuche</div>
+          <div>Die besten Konzepte (5/8/12 je nach Genauigkeit) und die <b>aktuelle Planung</b> werden weiter optimiert: Leistungen aller Erzeuger, Solarthermie und Wärmespeicher werden gemeinsam schrittweise verändert, solange das Ziel besser wird, dann mit halber Schrittweite (bis 0,5&thinsp;% der Spitzenlast). Alle Ergebnisse werden danach mit demselben Code wie die Wirtschaftlichkeit nachgerechnet.</div>
         </div>
 
         <div style="margin-bottom:4px;">
@@ -1110,8 +1121,10 @@
     <div id="vergleich-uebersicht" style="overflow-x:auto;margin-bottom:18px;"></div>
     <div class="vergleich-abschnitt">Wärme · Kennzahlen <span style="font-weight:400;text-transform:none;letter-spacing:0;">— beste Werte je Zeile <span style="color:#66bb6a;">grün</span></span></div>
     <div id="vergleich-view-table-wrap" style="overflow-x:auto;margin-bottom:14px;"></div>
+    <div class="vergleich-abschnitt">Grafischer Vergleich <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted);">— Ansicht wählen</span></div>
+    <div id="vergleich-grafik-wrap" style="margin-bottom:18px;"></div>
     <div id="vergleich-pareto-wrap" style="margin-bottom:18px;">
-      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">CO₂ gegen Wärmegestehungskosten</div>
+      <div class="vergleich-abschnitt">CO₂ (Ø 2030–2050) gegen Wärmegestehungskosten <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted);">— links unten ist besser</span></div>
       <canvas id="vergleich-pareto-canvas" height="240" style="width:100%;display:block;background:var(--surface2);border-radius:6px;cursor:pointer;"></canvas>
       <div id="vergleich-pareto-legend" style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;margin-top:4px;"></div>
     </div>
@@ -1483,7 +1496,7 @@
   <div class="inp-group" style="margin:4px 0 4px;">
     <label class="inp-label" title="Kleinere Polygone (Dachaufbauten, Anbauten, Schuppen) werden nicht als eigenes Gebäude geladen: angrenzende werden in den Grundriss des Nachbargebäudes eingerechnet, freistehende verworfen. 0 = alles laden.">Mindest-Grundfläche je Gebäude (m²)</label>
     <input class="inp-field" type="number" id="osm-min-flaeche" value="30" min="0" max="500" step="5" style="width:90px;"
-      data-input="const a=document.getElementById('osm-min-flaeche-area');if(a)a.value=this.value;">
+      data-input="document.getElementById('osm-min-flaeche-area')&&(document.getElementById('osm-min-flaeche-area').value=this.value);">
   </div>
   <div class="osm-import-zusaetze" style="margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border);">
     <div class="inp-label" style="margin-bottom:4px;">Zusätzlich mitladen</div>
@@ -1514,12 +1527,12 @@
   <div class="inp-group" style="margin:8px 0 4px;">
     <label class="inp-label" title="Wird für Gebäude ohne Baujahr in OSM verwendet">Standard-Baujahr (Fallback)</label>
     <input class="inp-field" type="number" id="osm-default-baujahr-area" value="1970" min="1850" max="2024" step="1" style="width:90px;"
-      data-input="const a=document.getElementById('osm-default-baujahr');if(a)a.value=this.value;">
+      data-input="document.getElementById('osm-default-baujahr')&&(document.getElementById('osm-default-baujahr').value=this.value);">
   </div>
   <div class="inp-group" style="margin:4px 0 4px;">
     <label class="inp-label" title="Kleinere Polygone (Dachaufbauten, Anbauten, Schuppen) werden nicht als eigenes Gebäude geladen. 0 = alles laden.">Mindest-Grundfläche je Gebäude (m²)</label>
     <input class="inp-field" type="number" id="osm-min-flaeche-area" value="30" min="0" max="500" step="5" style="width:90px;"
-      data-input="const a=document.getElementById('osm-min-flaeche');if(a)a.value=this.value;">
+      data-input="document.getElementById('osm-min-flaeche')&&(document.getElementById('osm-min-flaeche').value=this.value);">
   </div>
   <div class="osm-import-zusaetze" style="margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border);">
     <div class="inp-label" style="margin-bottom:4px;">Zusätzlich mitladen</div>
@@ -1559,12 +1572,12 @@
     <tbody>
       <tr title="Strommix Deutschland, letzter veröffentlichter UBA-Wert (2024)">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Strom aktuell</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="strom-emf" value="363" min="0" max="1000" step="1" style="width:100%;text-align:right;" data-change="stromEmF=parseFloat(this.value)||363; updateAllEmF();"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="strom-emf" value="363" min="0" max="1000" step="1" style="width:100%;text-align:right;" data-change="window.stromEmF=parseFloat(this.value)||363; updateAllEmF();"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">UBA 2024</td>
       </tr>
       <tr title="Strommix Deutschland Ø 2030–2050 (iinas 2025, NECP-Szenario)">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Strom Ø 2030–50</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="strom-emf-lz" value="72" min="0" max="1000" step="1" style="width:100%;text-align:right;" data-change="stromEmFLZ=parseFloat(this.value)||72; updateAllEmF();"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="strom-emf-lz" value="72" min="0" max="1000" step="1" style="width:100%;text-align:right;" data-change="window.stromEmFLZ=parseFloat(this.value)||72; updateAllEmF();"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">iinas/NECP</td>
       </tr>
       <tr>
@@ -1580,12 +1593,12 @@
   <td style="padding:3px 4px;">
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <label class="tog" style="font-size:9px;color:var(--muted);" title="CO₂-Gutschrift für BHKW-Stromerzeugung (verdrängt Netzstrom)">
-        <input type="checkbox" id="bhkw-co2-gutschrift-toggle" checked data-change="bhkwCo2Gutschrift=this.checked;updateBhkwDisplay();_renderWirtCo2Chart(window._dispatchActiveKeys||[],window._dispatchEnergy||{})"/>
+        <input type="checkbox" id="bhkw-co2-gutschrift-toggle" checked data-change="window.bhkwCo2Gutschrift=this.checked;updateBhkwDisplay();_renderWirtCo2Chart(window._dispatchActiveKeys||[],window._dispatchEnergy||{})"/>
         <span class="tog-track"></span>
         <span class="tog-label">BHKW-Gutschrift</span>
       </label>
       <label class="tog" style="font-size:9px;color:var(--muted);" title="CO₂-Gutschrift für PV-Netzeinspeisung (verdrängt Netzstrom)">
-        <input type="checkbox" id="pv-co2-gutschrift-toggle" checked data-change="pvCo2Gutschrift=this.checked;calcStromPanel()"/>
+        <input type="checkbox" id="pv-co2-gutschrift-toggle" checked data-change="window.pvCo2Gutschrift=this.checked;calcStromPanel()"/>
         <span class="tog-track"></span>
         <span class="tog-label">PV-Gutschrift</span>
       </label>
@@ -1594,27 +1607,27 @@
 </tr>
       <tr style="border-top:1px solid var(--border);" title="Erdgas inkl. Vorkette (GEG Anlage 9, 2024)">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Erdgas</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="gas-emf" value="240" min="0" max="600" step="1" style="width:100%;text-align:right;" data-change="gasEmF=parseFloat(this.value)||240; updateAllEmF();"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="gas-emf" value="240" min="0" max="600" step="1" style="width:100%;text-align:right;" data-change="window.gasEmF=parseFloat(this.value)||240; updateAllEmF();"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 9</td>
       </tr>
       <tr title="Heizöl EL inkl. Vorkette (GEG Anlage 9, 2024)">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Heizöl EL</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="heizoel-emf" value="310" min="0" max="600" step="1" style="width:100%;text-align:right;" data-change="heizoelEmF=parseFloat(this.value)||310; updateAllEmF();"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="heizoel-emf" value="310" min="0" max="600" step="1" style="width:100%;text-align:right;" data-change="window.heizoelEmF=parseFloat(this.value)||310; updateAllEmF();"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 9</td>
       </tr>
       <tr title="Fernwärme, Standardwert Gas-KWK ≥70% (GEG Anlage 9). Netzspezifischer Wert im Fernwärme-Panel überschreibbar.">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Fernwärme</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="fernwaerme-emf" value="180" min="0" max="600" step="1" style="width:100%;text-align:right;" data-change="fernwaermeEmF=parseFloat(this.value)||180; updateAllEmF(); const _fwEl=document.getElementById('fw-co2f'); if(_fwEl) _fwEl.value=this.value;"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="fernwaerme-emf" value="180" min="0" max="600" step="1" style="width:100%;text-align:right;" data-change="window.fernwaermeEmF=parseFloat(this.value)||180; updateAllEmF(); const _fwEl=document.getElementById('fw-co2f'); if(_fwEl) _fwEl.value=this.value;"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 9</td>
       </tr>
       <tr style="border-top:1px solid var(--border);" title="Holzpellets, biogene Emissionen (GEG Anlage 9, 2024)">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Holzpellets</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pellets-emf" value="20" min="0" max="200" step="1" style="width:100%;text-align:right;" data-change="pelletsEmF=parseFloat(this.value)||20; updateAllEmF();"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pellets-emf" value="20" min="0" max="200" step="1" style="width:100%;text-align:right;" data-change="window.pelletsEmF=parseFloat(this.value)||20; updateAllEmF();"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 9</td>
       </tr>
       <tr title="Holzhackschnitzel, biogene Emissionen (GEG Anlage 9, 2024)">
         <td style="padding:3px 4px 3px 0;color:var(--text);">Hackschnitzel</td>
-        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="hhs-emf" value="20" min="0" max="200" step="1" style="width:100%;text-align:right;" data-change="hhsEmF=parseFloat(this.value)||20; updateAllEmF();"/></td>
+        <td style="padding:3px 4px;"><input class="inp-field" type="number" id="hhs-emf" value="20" min="0" max="200" step="1" style="width:100%;text-align:right;" data-change="window.hhsEmF=parseFloat(this.value)||20; updateAllEmF();"/></td>
         <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 9</td>
       </tr>
     </tbody>
@@ -1632,37 +1645,37 @@
       <tbody>
         <tr title="Strom Netz-Mix, nicht-erneuerbarer Anteil (GEG Anlage 4, 2024)">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Strom (Netz)</td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-strom" value="1.8" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="pefStrom=parseFloat(this.value)||1.8;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-strom" value="1.8" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="window.pefStrom=parseFloat(this.value)||1.8;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
         <tr title="Strom für Wärmepumpen mit elektrischer Nennleistung ≥ 500 kW (GEG Anlage 4, 2024). Gilt für LWwP und Geothermie-WP in dieser Größenklasse.">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Strom WP ≥ 500 kW<sub style="font-size:8px;">el</sub></td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-wp" value="1.2" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="pefWP=parseFloat(this.value)||1.2;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-wp" value="1.2" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="window.pefWP=parseFloat(this.value)||1.2;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
         <tr title="Erdgas, nicht-erneuerbarer Anteil (GEG Anlage 4, 2024)">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Erdgas</td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-gas" value="1.1" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="pefGas=parseFloat(this.value)||1.1;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-gas" value="1.1" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="window.pefGas=parseFloat(this.value)||1.1;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
         <tr title="Heizöl EL, nicht-erneuerbarer Anteil (GEG Anlage 4, 2024)">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Heizöl EL</td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-heizoel" value="1.1" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="pefHeizoel=parseFloat(this.value)||1.1;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-heizoel" value="1.1" min="0" max="5" step="0.1" style="width:100%;text-align:right;" data-change="window.pefHeizoel=parseFloat(this.value)||1.1;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
         <tr style="border-top:1px solid var(--border);" title="Holzpellets, nicht-erneuerbarer Anteil (GEG Anlage 4, 2024)">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Holzpellets</td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-pellets" value="0.2" min="0" max="2" step="0.1" style="width:100%;text-align:right;" data-change="pefPellets=parseFloat(this.value)||0.2;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-pellets" value="0.2" min="0" max="2" step="0.1" style="width:100%;text-align:right;" data-change="window.pefPellets=parseFloat(this.value)||0.2;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
         <tr title="Holzhackschnitzel, nicht-erneuerbarer Anteil (GEG Anlage 4, 2024)">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Hackschnitzel</td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-hhs" value="0.2" min="0" max="2" step="0.1" style="width:100%;text-align:right;" data-change="pefHhs=parseFloat(this.value)||0.2;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-hhs" value="0.2" min="0" max="2" step="0.1" style="width:100%;text-align:right;" data-change="window.pefHhs=parseFloat(this.value)||0.2;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
         <tr title="Fernwärme, Mindestwert nicht-erneuerbar (GEG Anlage 4, 2024). Netzspezifischer Wert ggf. überschreiben.">
           <td style="padding:3px 4px 3px 0;color:var(--text);">Fernwärme</td>
-          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-fernwaerme" value="0.3" min="0" max="3" step="0.1" style="width:100%;text-align:right;" data-change="pefFernwaerme=parseFloat(this.value)||0.3; const _fpEl=document.getElementById('fw-pef'); if(_fpEl) _fpEl.value=this.value;"/></td>
+          <td style="padding:3px 4px;"><input class="inp-field" type="number" id="pef-fernwaerme" value="0.3" min="0" max="3" step="0.1" style="width:100%;text-align:right;" data-change="window.pefFernwaerme=parseFloat(this.value)||0.3; const _fpEl=document.getElementById('fw-pef'); if(_fpEl) _fpEl.value=this.value;"/></td>
           <td style="padding:3px 0 3px 4px;color:var(--muted);font-size:9px;white-space:nowrap;">GEG Anl. 4</td>
         </tr>
       </tbody>
@@ -1784,17 +1797,17 @@
     <div class="gl-preview-wrap" id="gl-preview-wrap" style="display:none;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
         <div class="gl-preview-title" id="gl-preview-title" style="margin-bottom:0;"></div>
-        <button data-click="glClearLastgang()" title="Lastgang entfernen"
+        <button id="gl-preview-entfernen" data-click="glClearLastgang()" title="Hochgeladenen Lastgang entfernen"
           style="font-size:9px;padding:2px 6px;background:#4a1a1a;border:1px solid #7a3030;border-radius:3px;color:#ef9a9a;cursor:pointer;">✕ entfernen</button>
       </div>
       <svg id="gl-preview-svg" width="100%" height="60" viewBox="0 0 400 60" preserveAspectRatio="none"></svg>
     </div>
-    <div id="wb-box" class="wb-box"></div>
+    <div id="wb-box" class="wb-box" style="display:none;"></div>
   </div>
 
   <!-- 4. Lastprofil SigLinDe -->
-  <div class="gl-section" id="gl-slp-section">
-    <div class="gl-section-title">Synthetisches Lastprofil (SigLinDe)</div>
+  <details class="gl-section gl-aufklapp" id="gl-slp-section">
+    <summary class="gl-section-title">Synthetisches Lastprofil (SigLinDe) <span style="font-size:9px;color:var(--muted);text-transform:none;letter-spacing:0;font-weight:400;">Ersatz, wenn keine Gebäudedaten vorliegen</span></summary>
     <div style="font-size:9px;color:var(--muted);line-height:1.45;margin-bottom:7px;">Fallback für Projekte ohne auswertbare Gebäudedaten. Sind Wärmebedarfe je Gebäude vorhanden, werden automatisch gebäudespezifische SigLinDe- und Nutzungsprofile summiert.</div>
     <div class="gl-grid2" style="margin-bottom:6px;">
       <div class="inp-group">
@@ -1818,18 +1831,19 @@
           data-input="document.getElementById('gl-gew1').value = Math.max(0, 100 - (parseInt(this.value)||0)); glBerechnenAuto()"/>
       </div>
     </div>
-  </div>
+  </details>
 
   <!-- 5. Netz & Heizkurve -->
   <div class="gl-section">
     <div class="gl-section-title">Netz &amp; Heizkurve</div>
     <div class="gl-grid3">
       <div class="inp-group">
-        <label class="inp-label" style="display:flex;justify-content:space-between;">
+        <label class="inp-label">
           Netzverluste (%)
-          <span id="gl-netzverlust-hint" style="color:var(--muted);font-size:9px;font-style:italic;"></span>
+          
         </label>
         <input class="inp-field" type="number" id="gl-netzverlust" value="10" min="0" max="40" step="1" style="text-align:right;" data-input="document.getElementById('gl-netzverlust-hint').textContent='';glBerechnenAuto()"/>
+        <span id="gl-netzverlust-hint" style="color:var(--muted);font-size:9px;font-style:italic;display:block;margin-top:2px;text-transform:none;letter-spacing:0;"></span>
       </div>
       <div class="inp-group">
         <label class="inp-label">VL bei −5°C</label>
@@ -1839,6 +1853,11 @@
         <label class="inp-label">VL bei +15°C</label>
         <input class="inp-field" type="number" id="gl-vl15" value="60" min="20" max="100" step="1" style="text-align:right;" data-input="syncVLTemps('gl');glBerechnenAuto()"/>
       </div>
+    </div>
+    <div class="gl-tww-dezentral">
+      <label title="Wird das Trinkwarmwasser in den Gebäuden erzeugt (z. B. elektrische Durchlauferhitzer), liefert das Wärmenetz nur Raumwärme und ist außerhalb der Heizperiode aus: kein Warmwasseranteil im Wärmelastgang, keine Netzverluste in der abgeschalteten Zeit. Heizperiode: gleitendes 3-Tage-Mittel der Außentemperatur bis zur Heizgrenze. Gilt für das ganze Netz."><input type="checkbox" id="gl-tww-dezentral" data-change="glTwwDezentralUi();glBerechnenAuto()"> Trinkwarmwasser dezentral – Netz außerhalb der Heizperiode aus</label>
+      <span class="gl-tww-heizgrenze" id="gl-tww-heizgrenze-wrap" style="display:none;">Heizgrenze <input class="inp-field" type="number" id="gl-heizgrenze" value="15" min="8" max="20" step="0.5" data-input="glBerechnenAuto()"> °C</span>
+      <span class="gl-tww-info" id="gl-tww-dezentral-info"></span>
     </div>
   </div>
 
@@ -1880,6 +1899,8 @@
     <button class="sa-tab"        id="sa-tab-btn-metriken"  data-click="saSetTab('metriken')">Metriken</button>
     <button class="sa-tab"        id="sa-tab-btn-dim"       data-click="saSetTab('dim')">Auslegung</button>
     <button class="sa-tab"        id="sa-tab-btn-split"     data-click="saSetTab('split')">Energiesplit</button>
+    <button class="sa-tab"        id="sa-tab-btn-speicher"  data-click="saSetTab('speicher')" title="Kurz- und Langzeit-Wärmespeicher im aktuellen System untersuchen">Speicher</button>
+    <button class="sa-tab"        id="sa-tab-btn-zentralen" data-click="saSetTab('zentralen')" title="Mehrere Heizzentralen: Erzeuger-Standorte, Einspeisung je Zentrale, Übergabe über die Verbindungsleitung">Zentralen</button>
     <button class="sa-tab"        id="sa-tab-btn-sensitivitaet" data-click="saSetTab('sensitivitaet')">Sensitivität</button>
   </div>
 
@@ -1900,7 +1921,7 @@
     <div id="lg-wrap-8760">
       <div id="da-legend" style="display:flex;flex-wrap:wrap;gap:6px;font-size:10px;margin-bottom:4px;"></div>
       <div style="position:relative;">
-        <canvas id="da-canvas" height="220" style="width:100%;display:block;cursor:crosshair;border-radius:4px;user-select:none;"></canvas>
+        <canvas id="da-canvas" height="220" data-hoch="340" style="width:100%;display:block;cursor:crosshair;border-radius:4px;user-select:none;"></canvas>
         <div id="da-tooltip" style="display:none;position:absolute;background:rgba(20,22,30,0.95);border:1px solid var(--border);
              border-radius:4px;padding:6px 8px;font-size:10px;font-family:'DM Mono',monospace;pointer-events:none;z-index:10;white-space:nowrap;"></div>
       </div>
@@ -1920,25 +1941,25 @@
   <!-- ══ Tab: Jahresdauerlinie ════════════════════════════════════════ -->
   <div class="sa-tab-content" id="sa-tab-jdl">
     <div id="da-kpi-row" class="sa-kpi-row">
-      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-pmax">—</div><div class="sa-kpi-lbl">P<sub>max</sub> kW</div></div>
-      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-p65">—</div><div class="sa-kpi-lbl">P<sub>65%</sub> kW</div></div>
-      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-p90">—</div><div class="sa-kpi-lbl">P<sub>90%</sub> kW</div></div>
-      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-energie">—</div><div class="sa-kpi-lbl">MWh/a</div></div>
-      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-tmin">—</div><div class="sa-kpi-lbl">T<sub>min</sub> °C</div></div>
+      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-pmax">—</div><div class="sa-kpi-lbl">Spitzenlast kW</div></div>
+      <div class="sa-kpi" title="Leistung, die in 10 % der Jahresstunden überschritten wird — Richtwert für Spitzenlasterzeuger"><div class="sa-kpi-val" id="da-kpi-p90">—</div><div class="sa-kpi-lbl">an 876 h überschritten · kW</div></div>
+      <div class="sa-kpi" title="Leistung, die in 35 % der Jahresstunden überschritten wird — Richtwert für die Grundlast"><div class="sa-kpi-val" id="da-kpi-p65">—</div><div class="sa-kpi-lbl">an 3.066 h überschritten · kW</div></div>
+      <div class="sa-kpi"><div class="sa-kpi-val" id="da-kpi-energie">—</div><div class="sa-kpi-lbl">Wärmemenge MWh/a</div></div>
+      <div class="sa-kpi" title="Tiefste Stundentemperatur des gewählten Klimajahres"><div class="sa-kpi-val" id="da-kpi-tmin">—</div><div class="sa-kpi-lbl">tiefste Außentemp. °C</div></div>
     </div>
     <div class="sa-svg-wrap">
       <div class="sa-svg-title">Jahresdauerlinie — nach Erzeugern</div>
       <div id="da-legend-jdl" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;font-size:10px;"></div>
-      <canvas id="da-canvas-jdl" height="200" style="width:100%;display:block;border-radius:4px;"></canvas>
+      <canvas id="da-canvas-jdl" height="200" data-hoch="320" style="width:100%;display:block;border-radius:4px;"></canvas>
     </div>
   </div>
 
   <!-- ══ Tab: Kälteste Woche ══════════════════════════════════════════ -->
   <div class="sa-tab-content" id="sa-tab-woche">
     <div class="sa-svg-wrap">
-      <div class="sa-svg-title">Kälteste Woche (168 h) — nach Erzeugern</div>
+      <div class="sa-svg-title" id="da-woche-titel">Kälteste Woche (168 h) — nach Erzeugern</div>
       <div id="da-legend-woche" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;font-size:10px;"></div>
-      <canvas id="da-canvas-woche" height="200" style="width:100%;display:block;border-radius:4px;"></canvas>
+      <canvas id="da-canvas-woche" height="200" data-hoch="300" style="width:100%;display:block;border-radius:4px;"></canvas>
     </div>
     <div class="sa-svg-wrap" style="margin-bottom:0;">
       <div class="sa-svg-title">Außentemperatur kälteste Woche (°C)</div>
@@ -1960,8 +1981,12 @@
           </label>
         </div>
       </div>
-      <canvas id="da-canvas-tempvl" height="240" style="width:100%;display:block;border-radius:4px;cursor:crosshair;"></canvas>
+      <canvas id="da-canvas-tempvl" height="240" data-hoch="320" style="width:100%;display:block;border-radius:4px;cursor:crosshair;"></canvas>
       <div id="da-legend-tempvl" style="display:flex;gap:12px;font-size:9px;margin-top:4px;"></div>
+    </div>
+    <div class="sa-svg-wrap">
+      <div class="sa-svg-title">Auswertung je Wärmepumpe</div>
+      <div id="wp-analyse"></div>
     </div>
   </div>
 
@@ -1997,6 +2022,16 @@
     </div>
   </div>
 
+  <!-- ══ Tab: Mehrere Heizzentralen ═══════════════════════════════════════ -->
+  <div class="sa-tab-content" id="sa-tab-zentralen">
+    <div id="hz-analyse"></div>
+  </div>
+
+  <!-- ══ Tab: Wärmespeicher-Analyse ═══════════════════════════════════════ -->
+  <div class="sa-tab-content" id="sa-tab-speicher">
+    <div id="sp-inhalt"></div>
+  </div>
+
   <!-- ══ Tab: Energiesplit ════════════════════════════════════════════════ -->
   <div class="sa-tab-content" id="sa-tab-split">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;gap:12px;">
@@ -2019,7 +2054,7 @@
     <div id="split-wrap-balken">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
         <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:10px;color:var(--muted);">KW</span>
+          <span style="font-size:10px;color:var(--muted);">Woche anzeigen</span>
           <input type="range" id="split-kw-slider" min="1" max="52" value="1" step="1"
                  style="width:120px;accent-color:#e53935;" data-input="splitOnKwSlider(+this.value)">
           <span id="split-kw-label" style="font-size:10px;font-family:'DM Mono',monospace;min-width:40px;">KW 1</span>
@@ -2154,14 +2189,14 @@
 
 <div class="float-panel cyan-border" id="lwwp-panel">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'lwwp-panel')"><span style="color:#00bcd4;font-size:12px">🌬 Luft-Wasser-Wärmepumpe</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleLwWpPanel()">✕</span></div>
-  <div class="panel-info">Platzierung auf der Karte. Platzbedarf und Schallausbreitung (Freifeld) werden automatisch berechnet.</div>
+  <div class="panel-info">Platzierung auf der Karte. Platzbedarf und Schallausbreitung der Außengeräte werden automatisch berechnet.</div>
   <div class="inp-group" style="margin-bottom:10px;">
     <input type="checkbox" id="lwwp-visible" checked data-change="setLwWpVisible(this.checked)"/>
     <label for="lwwp-visible" style="font-size:12px; cursor:pointer;">Luft-Wasser-WP anzeigen</label>
   </div>
   <div class="inp-group" style="margin-bottom:10px;">
     <input type="checkbox" id="lwwp-schall-visible" checked data-change="setSchallVisible(this.checked)"/>
-    <label for="lwwp-schall-visible" style="font-size:12px; cursor:pointer;">Schallringe anzeigen</label>
+    <label for="lwwp-schall-visible" style="font-size:12px; cursor:pointer;">Isophonen (Schall) anzeigen</label>
   </div>
   <div class="panel-btns" style="margin-bottom:10px;">
     <button class="btn-secondary" id="btn-place-lwwp" data-click="togglePlaceLwWp()" style="width:100%;">Auf Karte platzieren</button>
@@ -2173,8 +2208,8 @@
         <input class="inp-field" type="number" id="lwwp-leistung" value="100" min="1" step="1" data-change="updateLwWpData()" data-input="updateLwWpData(); updateAllDeckungen()"/>
       </div>
       <div class="inp-group">
-        <label class="inp-label">LWA Schall (dB) <span style="font-size:8px;color:var(--muted);">(auto)</span></label>
-        <input class="inp-field" type="number" id="lwwp-lwa" value="80" min="40" max="100" step="1"
+        <label class="inp-label" title="Schallleistungspegel aller Außengeräte zusammen. Automatisch aus Gerätegröße und Anzahl (Großgeräte nach Herstellerangabe); eigener Wert überschreibt, Doppelklick setzt zurück.">Schallleistung L<sub>WA</sub> dB(A) <span style="font-size:8px;color:var(--muted);">(auto)</span></label>
+        <input class="inp-field" type="number" id="lwwp-lwa" value="80" min="40" max="120" step="0.1"
           data-change="this._userEdited=true;updateLwWpData()"
           ondblclick="this._userEdited=false;updateLwWpData()" title="Doppelklick → Auto-Berechnung zurücksetzen"/>
       </div>
@@ -2212,17 +2247,33 @@
         <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Einsatzplanung</span></label>
         <input class="inp-field" type="number" id="lwwp-waerme" value="" placeholder="wird berechnet…" step="1" readonly/>
       </div>
-      <div class="inp-group">
-        <label class="inp-label" title="Überschreibt automatisch berechnete Länge">Länge manuell (m)</label>
-        <input class="inp-field" type="number" id="lwwp-man-laenge" placeholder="auto" step="0.5" min="0.5" data-input="redrawLwWp();updateLwWpDisplay();"/>
+    </div>
+    <div class="lwwp-aufstellung">
+      <div class="lwwp-aufstellung-titel">Aufstellung der Außengeräte <span class="htip" data-tip="Überschlägige Anordnung: typische Gerätegrößen mit Luftabstand vorn und hinten (1,5 m), Wartungsabstand an den Stirnseiten (0,8 m), 0,6 m zwischen Geräten und 2 m zwischen zwei Reihen. Auf der Karte: dunkle Rechtecke = Geräte, gestrichelt = benötigte Fläche, blaue Striche = Luftrichtung. Richtwerte — Herstellerangaben sind maßgeblich.">?</span></div>
+      <div class="lwwp-aufstellung-grid">
+        <label class="inp-label" for="lwwp-modul">Gerätegröße</label>
+        <select class="inp-field" id="lwwp-modul" data-change="lwWpAufstellungSetzen('modulKw', this.value)"></select>
+        <label class="inp-label" for="lwwp-reihen">Reihen</label>
+        <select class="inp-field" id="lwwp-reihen" data-change="lwWpAufstellungSetzen('reihen', this.value)">
+          <option value="auto">automatisch</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+        </select>
+        <label class="inp-label" for="lwwp-drehung">Drehung <span id="lwwp-drehung-wert">0°</span></label>
+        <input type="range" id="lwwp-drehung" min="0" max="179" step="1" value="0" data-input="lwWpAufstellungSetzen('drehung', this.value)"/>
+        <span class="inp-label">Form</span>
+        <div class="lwwp-form-zeile"><span id="lwwp-form-info">automatisch</span>
+          <button type="button" class="btn-xs" id="lwwp-form-reset" data-click="lwWpAufstellungSetzen('laenge', 'auto')" title="Seitenverhältnis wieder automatisch wählen" style="display:none;">zurücksetzen</button></div>
       </div>
-      <div class="inp-group">
-        <label class="inp-label" title="Überschreibt automatisch berechnete Breite">Breite manuell (m)</label>
-        <input class="inp-field" type="number" id="lwwp-man-breite" placeholder="auto" step="0.5" min="0.5" data-input="redrawLwWp();updateLwWpDisplay();"/>
+      <div class="wirt-hinweis">Auf der Karte: <b>⟳</b> dreht die Fläche, <b>↔</b> ändert das Seitenverhältnis — die Fläche bleibt gleich, die Geräte ordnen sich neu.</div>
+      <div class="lwwp-aufstellung-verfuegbar">
+        <span class="inp-label" title="Optional: tatsächlich verfügbare Fläche. Ist sie kleiner als benötigt, wird sie rot.">Verfügbare Fläche (optional)</span>
+        <input class="inp-field" type="number" id="lwwp-man-laenge" placeholder="Länge m" step="0.5" min="0.5" title="Länge entlang der Gerätereihe" data-input="redrawLwWp();updateLwWpDisplay();"/>
+        <span>×</span>
+        <input class="inp-field" type="number" id="lwwp-man-breite" placeholder="Breite m" step="0.5" min="0.5" title="Breite quer zur Gerätereihe (Luftrichtung)" data-input="redrawLwWp();updateLwWpDisplay();"/>
       </div>
     </div>
     <button class="btn-secondary" data-click="lwwpUseNetworkValues()" style="width:100%;font-size:11px;margin-bottom:10px;">Aus Netzberechnung übernehmen</button>
     <div style="padding:7px 8px;background:var(--bg);border-radius:5px;border:1px solid var(--border);font-size:10px;font-family:'DM Mono',monospace;margin-bottom:10px;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;">
+      <span style="color:var(--muted)">Außengeräte</span><span id="lwwp-geraete" style="color:var(--text)">—</span>
       <span style="color:var(--muted)">Platzbedarf</span><span style="color:var(--accent)" id="lwwp-platz">— m²</span>
       <span style="color:var(--muted)">Abm. (L×B)</span><span id="lwwp-abm" style="color:var(--text)">—</span>
       <span style="color:var(--muted)" id="lwwp-strom-lbl" style="display:none">Stromverbrauch</span><span id="lwwp-strom" style="color:#f9a825;display:none">—</span>
@@ -2235,16 +2286,33 @@
       <svg id="lwwp-cop-svg" width="100%" height="80" viewBox="0 0 300 80" preserveAspectRatio="none" style="display:block;"></svg>
     </div>
     <div class="inp-group" style="margin-bottom:10px; padding:8px; background:var(--bg); border-radius:5px; border:1px solid var(--border);">
-      <div class="inp-label" style="margin-bottom:4px;">Schallausbreitung (Freifeld)</div>
-      <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">Abstand bis Pegel &lt; …</div>
-      <div id="lwwp-schall-tabelle" style="font-size:11px; font-family:'DM Mono',monospace;"></div>
-      <div style="font-size:9px; color:var(--muted); margin-top:6px;">
-        Legende: <span style="color:#b71c1c;">Rot</span> 55 dB ·
-        <span style="color:#e65100;">Orange</span> 50 dB ·
-        <span style="color:#f9a825;">Gelb</span> 45 dB ·
-        <span style="color:#8bc34a;">Hellgrün</span> 40 dB ·
-        <span style="color:#2e7d32;">Grün</span> 35 dB
+      <div class="inp-label" style="margin-bottom:4px;">Schall (Außengeräte als Punktquellen, Halbraum)</div>
+      <div id="lwwp-schall-tabelle" class="lwwp-schall"></div>
+      <label class="lwwp-gebiet"><span>Gebietsart</span>
+        <select class="inp-field" id="lwwp-gebiet" data-change="lwWpGebietSetzen(this.value)"></select></label>
+      <label class="lwwp-gebiet" title="Schallschutz an den Außengeräten: Einfügungsdämpfung als Richtwert, wirkt auf Isophonen, Pegel an den Gebäuden und das Gutachten. Eigener Wert nach Herstellerangabe."><span>Schallschutz</span>
+        <span class="lwwp-schallschutz-wahl"><select class="inp-field" id="lwwp-schallschutz" data-change="lwWpSchallschutzSetzen(this.value, document.getElementById('lwwp-schallschutz-db').value)"></select>
+        <input class="inp-field" type="number" id="lwwp-schallschutz-db" min="0" max="30" step="1" placeholder="dB" style="display:none;width:58px;" data-change="lwWpSchallschutzSetzen('manuell', this.value)"/></span></label>
+      <div class="lwwp-schall-legende">
+        <span style="color:#b71c1c;">■</span> 55 <span style="color:#e65100;">■</span> 50 <span style="color:#f9a825;">■</span> 45
+        <span style="color:#8bc34a;">■</span> 40 <span style="color:#2e7d32;">■</span> 35 dB(A)
       </div>
+      <div class="lwwp-ausbreitung" role="group" aria-label="Ausbreitung der Isophonen">
+        <button type="button" class="aktiv" id="lwwp-ausbreitung-kreis" aria-pressed="true" data-click="lwWpAusbreitungSetzen('kreis')" title="Kreisrunde Freifeldausbreitung um die Außengeräte, ohne Gebäude und Bäume (Standard). Pegel an den Gebäuden am nächsten Fassadenpunkt.">○ Kreisrund (Freifeld)</button>
+        <button type="button" id="lwwp-ausbreitung-3d" aria-pressed="false" data-click="lwWpAusbreitungSetzen('3d')" title="Gebäude schirmen den Schall ab (Beugung nach DIN ISO 9613-2) und reflektieren ihn an Fassaden nahe der Außengeräte, Bäume dämpfen als dichter Bewuchs. Die Isophonen werden aus einem Pegelraster abgeleitet und sind nicht mehr kreisrund.">▦ Mit Gebäuden &amp; Bäumen</button>
+      </div>
+      <label class="lwwp-gebiet" id="lwwp-baeume-wrap" title="Dichter Baumbestand dämpft den Schall (DIN ISO 9613-2 Anhang A): je Oktave aus der Weglänge des Schallstrahls durch die Baumkronen, erst ab 10 m Weg, höchstens der Wert bei 200 m. Nadelbäume gelten als dauerhaft dichter Bewuchs (Standard, auf der sicheren Seite). Laubbäume dämpfen belaubt, im Winter kaum — nur wählen, wenn der Bewuchs ganzjährig dicht ist."><span>Bäume im Schallweg</span>
+        <select class="inp-field" id="lwwp-baeume" data-change="lwWpBaeumeSetzen(this.value)">
+          <option value="nadel">nur Nadelbäume</option>
+          <option value="alle">alle Bäume (belaubt)</option>
+          <option value="aus">nicht berücksichtigen</option>
+        </select></label>
+      <div class="lwwp-schall-hinweis" id="lwwp-baeume-info" style="margin-top:-4px;"></div>
+      <button class="btn-secondary" id="lwwp-baeume-osm" data-click="lwWpBaeumeAusOsm()" style="display:none;font-size:10px;padding:3px 8px;" title="Holt die Bäume im Umkreis von 150 m um die Gebäude aus OpenStreetMap und legt sie im Projekt an (wie im Baum-Werkzeug). Die 3D-Ansicht zeigt Bäume ohne Projektbäume nur als Vorschau — für die Schallrechnung zählen nur Bäume im Projekt.">🌳 Bäume aus OpenStreetMap ins Projekt übernehmen</button>
+      <label class="lwwp-gebiet" id="lwwp-spektrum-wrap" title="A-bewertete Schallleistung je Oktave 63 Hz, 125 Hz … 8 kHz (8 Werte, absolut oder relativ, getrennt durch Leerzeichen oder Semikolon) nach Herstellerangabe. Es zählt nur die Form des Spektrums, die Gesamt-Schallleistung bleibt. Leer = typisches Spektrum von Außengeräten mit Axialventilatoren."><span>Oktavspektrum</span>
+        <input class="inp-field" type="text" id="lwwp-spektrum" placeholder="typisch · 63 Hz … 8 kHz in dB(A)" data-change="lwWpSpektrumSetzen(this.value)"/></label>
+      <div class="lwwp-schall-hinweis">Überschlägig nach DIN ISO 9613-2 ohne Bodendämpfung (Schallschutz an den Geräten als Einfügungsdämpfung), <span id="lwwp-schall-modell">mit Abschirmung durch Gebäude</span>.
+        Zuschläge für Ton- oder Impulshaltigkeit sind nicht enthalten — ersetzt kein Schallgutachten.</div>
     </div>
     <div class="panel-btns">
       <button class="btn-secondary" data-click="clearLwWp()" style="border-color:#e53935; color:#e53935;">LW-WP entfernen</button>
@@ -2423,7 +2491,7 @@
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
       <div class="inp-group">
         <label class="inp-label">Volumen (m³)</label>
-        <input class="inp-field" type="number" id="ts-volumen" value="50" min="1" step="10" data-input="updateThermSpeicherDisplay();updateAllDeckungen()"/>
+        <input class="inp-field" type="number" id="ts-volumen" value="50" min="1" step="10" data-input="tsVerlustAuto();updateThermSpeicherDisplay();updateAllDeckungen()"/>
       </div>
       <div class="inp-group">
         <label class="inp-label">ΔT Spreizung (K)</label>
@@ -2431,7 +2499,7 @@
       </div>
       <div class="inp-group">
         <label class="inp-label" title="Wärmeverlust pro Stunde in Prozent des aktuellen Ladezustands">Verlustrate (%/h)</label>
-        <input class="inp-field" type="number" id="ts-verlust" value="0.5" min="0.001" max="5" step="0.05" data-input="updateThermSpeicherDisplay();updateAllDeckungen()"/>
+        <input class="inp-field" type="number" id="ts-verlust" value="0.054" min="0.001" max="5" step="0.01" title="Stündlicher Wärmeverlust in % des Inhalts. Ohne eigene Eingabe aus der Speicherkennlinie (Oberfläche/Volumen)." data-input="this.dataset.manuell='1';updateThermSpeicherDisplay();updateAllDeckungen()"/>
       </div>
       <div class="inp-group">
         <label class="inp-label" title="Maximale thermische Entladeleistung (begrenzt durch Wärmetauscher)">Entladeleistung (kW)</label>
@@ -2452,9 +2520,21 @@
     </div>
   </div>
   <div class="panel-btns">
+    <button class="btn-secondary" data-click="spOeffnen()" title="Größe, Füllstand und Wirtschaftlichkeit von Kurz- und Langzeitspeichern im aktuellen System untersuchen">Speicheranalyse</button>
     <button class="btn-secondary" data-click="clearThermSpeicher()" style="border-color:#e53935;color:#e53935;">Speicher entfernen</button>
     <button class="btn-secondary" data-click="document.getElementById('therm-speicher-panel').style.display='none';">Schließen</button>
   </div>
+</div>
+
+<!-- ══ Quartier sondieren ══════════════════════════════════════════ -->
+<div class="float-panel" id="quartier-sonde-panel" style="border-color:#4fc3f7;--panel-accent:#4fc3f7;display:none;min-width:480px;">
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'quartier-sonde-panel')"><span style="color:#4fc3f7;font-size:12px">🔍 Quartier sondieren</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('quartier-sonde-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" data-click="qsToggle()">✕</span></div>
+  <div class="qs-werkzeuge">
+    <button class="btn-secondary" data-click="qsBereichStarten()" title="Rechteck auf der Karte aufziehen">▭ Bereich ziehen</button>
+    <button class="btn-secondary" data-click="qsAuswahlUebernehmen()" title="In der Gebäudetabelle markierte Gebäude untersuchen">☑ Tabellenauswahl</button>
+    <span id="qs-hinweis" class="qs-hinweis"></span>
+  </div>
+  <div id="qs-inhalt"></div>
 </div>
 
 <!-- ══ Kälteversorgung ════════════════════════════════════════════ -->
@@ -2889,7 +2969,7 @@
       </div>
       <div class="inp-group">
         <label class="inp-label" title="Erwartete mittlere Absenkung der Sole-Eintrittstemperatur gegenüber ungestörtem Erdreich (aus EED o.ä.)">ΔT Sole-Absenkung (K) <span style="color:var(--muted);font-size:9px;">aus Fachplanung</span></label>
-        <input class="inp-field" type="number" id="geo-dt-absenkung" value="0" min="0" max="15" step="0.5" autocomplete="off" data-input="updateAllDeckungen()" title="Sole-Temperaturabsenkung durch Entzugsauskühlung (typ. 3–6 K). 0 = ungestört. Wert aus EED/Fachplanung übernehmen."/>
+        <input class="inp-field" type="number" id="geo-dt-absenkung" value="4" min="0" max="15" step="0.5" autocomplete="off" data-input="updateAllDeckungen()" title="Sole-Temperaturabsenkung durch Entzugsauskühlung (typ. 3–6 K). Vorgabe 4 K (VDI 4640, mittlere Winterbedingung); 0 = ungestörtes Erdreich. Wert aus EED/Fachplanung übernehmen."/>
       </div>
     </div>
     <div style="font-size:9px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;margin:8px 0 6px;">Feldgeometrie manuell überschreiben</div>
@@ -2939,6 +3019,7 @@
   <div class="inp-group" id="netz-central-control" style="margin-bottom:10px">
     <label class="inp-label">Heizzentrale auswählen</label>
     <select class="inp-field" id="netz-zentrale" data-change="recalcNetz(); redrawGasKessel(); redrawVerbindungslinien(); updateViz();" style="font-family:inherit;font-size:12px;padding:6px;font-weight:normal;"></select>
+    <div id="hz-liste" class="hz-liste"></div>
   </div>
   <!-- Interner Kompatibilitätswert für ältere Projekte und Strangberichte.
        Der frühere Ansichtsfilter ist kein Bestandteil der Bedienoberfläche mehr. -->
@@ -2962,8 +3043,8 @@
       <input class="inp-field" type="number" id="netz-rl" value="60" data-change="syncVLTemps('netz');recalcNetz();if(window.glBerechnenDebounced&&window.glKannBerechnen&&window.glKannBerechnen())window.glBerechnenDebounced()"/>
     </div>
     <div class="inp-group">
-      <label class="inp-label">Ziel-Fließgeschw. (m/s)</label>
-      <input class="inp-field" type="number" id="netz-v" value="1.0" min="0.3" max="2.0" step="0.1" data-change="recalcNetz()" title="Auslegungswert; zulässiger Einstellbereich 0,3 bis 2,0 m/s"/>
+      <label class="inp-label">Max. Fließgeschw. bis DN 32 (m/s)</label>
+      <input class="inp-field" type="number" id="netz-v" value="1.0" min="0.3" max="2.0" step="0.1" data-change="recalcNetz()" title="Obergrenze der Fließgeschwindigkeit für Nennweiten bis DN 32 (Einstellbereich 0,3 bis 2,0 m/s). Größere Nennweiten dürfen schneller fließen: bis DN 65 × 1,5, bis DN 150 × 2, bis DN 300 × 2,5, darüber × 3. Maßgebend für die Nennweite ist in der Regel der Druckverlust."/>
     </div>
   </div>
 
@@ -2984,7 +3065,7 @@
       <label class="inp-label">Gleichzeitigkeitsfaktor</label>
       <select class="inp-field" id="netz-gzf-methode" data-change="document.getElementById('netz-gzf-manuell-wrap').style.display=this.value==='manuell'?'':'none'; recalcNetz()">
         <option value="keine">Keine (Σ Normheizlast)</option>
-        <option value="richtwert" selected>Richtwert (AGFW)</option>
+        <option value="richtwert" selected>Richtwert (Winter et al., AGFW)</option>
         <option value="manuell">Manuell</option>
       </select>
     </div>
@@ -3010,8 +3091,8 @@
       <input class="inp-field" type="number" id="netz-t-erdreich" value="4" step="1" data-change="recalcNetz()" title="Erdreichtemperatur in Verlegetiefe (0,8–1 m) im Winter, typ. 3–5 °C. Maßgeblich für die Spitzen-Wärmeverluste der erdverlegten KMR-Rohre – nicht die Lufttemperatur."/>
     </div>
     <div class="inp-group" style="grid-column:1/-1">
-      <label class="inp-label">U-Wert Rohr (W/m·K)</label>
-      <input class="inp-field" type="number" id="netz-u-wert" value="0.25" step="0.05" min="0.05" data-change="recalcNetz()" title="Wärmedurchgangskoeffizient KMR-Rohr, typ. 0.2–0.4"/>
+      <label class="inp-label">Verlustkoeffizient je Rohr bei DN 100 (W/m·K)</label>
+      <input class="inp-field" type="number" id="netz-u-wert" value="0.25" step="0.01" min="0.05" data-change="recalcNetz()" title="Wärmeverlustkoeffizient eines erdverlegten KMR-Rohrs DN 100 (typ. 0,18–0,30 je nach Dämmserie). Andere Nennweiten werden danach skaliert (kleiner DN → kleinerer Wert), Vor- und Rücklauf getrennt gerechnet."/>
     </div>
   </div>
   <div id="netz-loss-display" style="font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);margin-bottom:6px;padding:4px 6px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">Netzverluste: —</div>
@@ -3037,7 +3118,7 @@
   
   <div class="inp-group" style="margin-bottom:12px">
     <label class="inp-label">Kostenszenario (KMR, €/m inkl. Verlegung)</label>
-    <select class="inp-field" id="kosten-szenario" data-change="kostenSzenario=this.value; recalcNetz();" style="font-family:inherit;font-size:12px;padding:6px;font-weight:normal;">
+    <select class="inp-field" id="kosten-szenario" data-change="setKostenSzenario(this.value); recalcNetz();" style="font-family:inherit;font-size:12px;padding:6px;font-weight:normal;">
       <option value="niedrig">Niedrig (günstig)</option>
       <option value="mittel" selected>Mittel (Standard)</option>
       <option value="hoch">Hoch (aufwändig)</option>
@@ -3080,110 +3161,78 @@
     <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleWirtschaftPanel()">✕</span>
   </div>
   <div class="panel-info">Investitions- und Betriebskosten nach VDI 2067 · KWW-Technikkatalog 12/2025</div>
-
-  <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px;">
-    <label for="wirt-szenario" style="font-size:10px;color:var(--muted);">Wirtschaftsszenario:</label>
-    <select class="inp-field" id="wirt-szenario" style="flex:1;font-size:10px;" data-change="onEconomicScenarioChange()">
-      <option value="project-base-2026-07-v1">Projektbasis 07/2026 · v1</option>
-      <option value="manual">Manuelle Annahmen</option>
-    </select>
-  </div>
-  <div id="wirt-szenario-hint" style="font-size:9px;color:var(--muted);margin-bottom:8px;">Dokumentierte Projektannahmen, Stand 18.07.2026; vor Beschluss projektspezifisch plausibilisieren.</div>
-
-  <div id="netz-bestand-options" style="margin:0 0 10px;padding:9px;background:rgba(76,175,80,0.06);border:1px solid rgba(76,175,80,0.2);border-radius:6px;">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-      <input type="checkbox" id="netz-sanierung-toggle" data-change="window._netzSanierung=this.checked;document.getElementById('netz-sanierung-detail').style.display=this.checked?'flex':'none';if(typeof calcWirtschaftPanel==='function')calcWirtschaftPanel();"/>
-      <label for="netz-sanierung-toggle" style="font-size:11px;cursor:pointer;">Netzsanierung in Investitionskosten berücksichtigen</label>
-    </div>
-    <div id="netz-sanierung-detail" style="display:none;align-items:center;gap:6px;font-size:10px;color:var(--muted);">
-      <span>Sanierungsanteil</span>
-      <input class="inp-field" type="number" id="netz-sanierung-pct" value="40" min="5" max="100" step="5"
-             style="width:48px;text-align:center;font-size:10px;" data-change="if(typeof calcWirtschaftPanel==='function')calcWirtschaftPanel();"/>
-      <span>% der Neubaukosten</span>
-    </div>
-    <div style="font-size:9px;color:var(--muted);margin-top:4px;">Nur für Bestandsnetze: berücksichtigt einen anteiligen Rohr- und Trassentausch in den Investitionskosten.</div>
-  </div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 8px;margin-bottom:8px;">
-    <div class="inp-group">
-      <label class="inp-label">Strom (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-strom" value="35" min="0" step="1" data-input="onEconomicManualInput();_onStrompreisChange('wirt-p-strom')"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label" title="Arbeitspreis für WP-/Stromkessel-Strom (Sondervertrag, reduzierte Netzentgelte, ggf. §14a EnWG). Leer = allgemeiner Strompreis. Großwärmepumpen zahlen typisch 18–25 ct statt Haushaltstarif.">WP-Strom (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-strom-wp" placeholder="= Strom" min="0" step="1" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">Erdgas (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-gas" value="10" min="0" step="0.5" data-input="onEconomicManualInput();_onGaspreisChange('wirt-p-gas')"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">Heizöl (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-hko" value="10" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">Fernwärme (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-fw" value="17" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">Pellets (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-pk" value="8" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">HHS (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-hhs" value="6" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label" title="BHKW-Vergütung wird oben im Strom-Tab differenziert eingestellt (Einspeisung/Eigenverbrauch/KWK-Zuschlag)">BHKW-Vergütung</label>
-      <span class="inp-field" style="color:var(--muted);font-size:9px;cursor:help;" title="Einstellung im Strom-Tab → BHKW-Vergütung">→ siehe Strom-Tab</span>
-      <input type="hidden" id="wirt-p-bhkw" value="12"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label" style="display:flex;align-items:center;gap:6px;">
-        <span title="CO₂-Kostenansatz für interne Wirtschaftlichkeitsrechnung (z.B. CO₂-Preis Projektionsbericht)">CO₂-Ansatz (€/t)</span>
-        <label class="tog" style="margin-left:auto;" title="Ein: CO₂-Kosten auf alle Energieträger anrechnen (Gas, Öl, Biomasse, Fernwärme, WP-Strom) · Aus: CO₂-Kosten nur auf fossile Brennstoffe (Gas, Öl)">
-          <input type="checkbox" id="wirt-co2-alle" checked data-change="onEconomicManualInput();document.getElementById('wirt-co2-alle-label').textContent=this.checked?'alle Energieträger':'nur fossile';calcWirtschaftPanel()"/>
+  <div class="wirt-layout">
+    <aside class="wirt-annahmen">
+      <div class="wirt-block">
+        <div class="wirt-block-titel">Szenario</div>
+        <select class="inp-field" id="wirt-szenario" data-change="onEconomicScenarioChange()">
+          <option value="project-base-2026-07-v1">Projektbasis 07/2026 · v1</option>
+          <option value="manual">Manuelle Annahmen</option>
+        </select>
+        <div id="wirt-szenario-hint" class="wirt-hinweis">Dokumentierte Projektannahmen, Stand 18.07.2026; vor Beschluss projektspezifisch plausibilisieren.</div>
+      </div>
+      <div class="wirt-block">
+        <div class="wirt-block-titel">Energiepreise <small>ct/kWh</small></div>
+        <div class="wirt-felder">
+        <label class="wirt-feld"><span>Strom</span><input class="inp-field" type="number" id="wirt-p-strom" value="35" min="0" step="1" data-input="onEconomicManualInput();_onStrompreisChange('wirt-p-strom')"/></label>
+        <label class="wirt-feld" title="Arbeitspreis für WP-/Stromkessel-Strom (Sondervertrag, reduzierte Netzentgelte, ggf. §14a EnWG). Leer = allgemeiner Strompreis. Großwärmepumpen zahlen typisch 18–25 ct statt Haushaltstarif."><span>WP-Strom</span><input class="inp-field" type="number" id="wirt-p-strom-wp" placeholder="= Strom" min="0" step="1" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        <label class="wirt-feld" title="Arbeitspreis Erdgas je kWh Brennwert (Hs), wie abgerechnet. Die Rechnung rechnet über Hs/Hi = 1,11 auf den Heizwert um, auf den sich die Kessel- und BHKW-Wirkungsgrade beziehen."><span>Erdgas (Hs)</span><input class="inp-field" type="number" id="wirt-p-gas" value="10" min="0" step="0.5" data-input="onEconomicManualInput();_onGaspreisChange('wirt-p-gas')"/></label>
+        <label class="wirt-feld"><span>Heizöl</span><input class="inp-field" type="number" id="wirt-p-hko" value="10" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        <label class="wirt-feld"><span>Fernwärme</span><input class="inp-field" type="number" id="wirt-p-fw" value="17" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        <label class="wirt-feld"><span>Pellets</span><input class="inp-field" type="number" id="wirt-p-pk" value="8" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        <label class="wirt-feld"><span>Hackschnitzel</span><input class="inp-field" type="number" id="wirt-p-hhs" value="6" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        </div>
+        <div class="wirt-hinweis" title="Einstellung im Strom-Tab → BHKW-Vergütung">BHKW-Vergütung: im Strom-Tab</div>
+        <input type="hidden" id="wirt-p-bhkw" value="12"/>
+      </div>
+      <div class="wirt-block">
+        <div class="wirt-block-titel">CO₂ und Finanzierung</div>
+        <div class="wirt-felder">
+          <label class="wirt-feld" title="CO₂-Kostenansatz für interne Wirtschaftlichkeitsrechnung (z.B. CO₂-Preis Projektionsbericht)"><span>CO₂-Ansatz €/t</span><input class="inp-field" type="number" id="wirt-p-co2" value="120" min="0" step="10" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+          <label class="wirt-feld"><span>Kapitalzins %</span><input class="inp-field" type="number" id="wirt-zins" value="3.5" min="0" max="15" step="0.5" data-input="onEconomicManualInput();_syncZins();calcWirtschaftPanel()"/></label>
+          <label class="wirt-feld"><span>Bedienung €/h</span><input class="inp-field" type="number" id="wirt-lohn" value="45" min="0" step="5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        </div>
+        <label class="tog wirt-tog" title="Ein: CO₂-Kosten auf alle Energieträger anrechnen (Gas, Öl, Biomasse, Fernwärme, WP-Strom) · Aus: CO₂-Kosten nur auf fossile Brennstoffe (Gas, Öl)">
+          <input type="checkbox" id="wirt-co2-alle" checked data-change="onEconomicManualInput();document.getElementById('wirt-co2-alle-label').textContent=this.checked?'CO₂ auf alle Energieträger':'CO₂ nur auf fossile';calcWirtschaftPanel()"/>
           <span class="tog-track"></span>
-          <span class="tog-label" id="wirt-co2-alle-label">alle Energieträger</span>
+          <span class="tog-label" id="wirt-co2-alle-label">CO₂ auf alle Energieträger</span>
         </label>
-      </label>
-      <input class="inp-field" type="number" id="wirt-p-co2" value="120" min="0" step="10" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;margin-bottom:12px;">
-    <div class="inp-group">
-      <label class="inp-label">Kapitalzins (%)</label>
-      <input class="inp-field" type="number" id="wirt-zins" value="3.5" min="0" max="15" step="0.5" data-input="onEconomicManualInput();_syncZins();calcWirtschaftPanel()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">Stundensatz Bedienung (€/h)</label>
-      <input class="inp-field" type="number" id="wirt-lohn" value="45" min="0" step="5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
-    </div>
-  </div>
-
-  <div id="wirt-table-wrap">
-    <div style="color:var(--muted);font-size:10px;text-align:center;padding:12px 0;">Stündliche Einsatzplanung ausführen, um Ergebnisse zu sehen.</div>
-  </div>
-  <!-- Jahresscheiben-Berechnung -->
-  <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
-    <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
-      Jahresscheiben / NPV-Analyse
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
-      <div class="inp-group" style="margin:0">
-        <label class="inp-label">Betrachtung (a)</label>
-        <input class="inp-field" type="number" id="js-laufzeit" value="20" min="5" max="40" step="5" data-input="calcJahresscheiben()"/>
       </div>
-      <div class="inp-group" style="margin:0">
-        <label class="inp-label">Preissteigerung (%/a)</label>
-        <input class="inp-field" type="number" id="js-eskalation" value="2.0" min="0" max="8" step="0.5" data-input="calcJahresscheiben()"/>
+      <div class="wirt-block">
+        <div class="wirt-block-titel">Betrachtung nach VDI 2067</div>
+        <div class="wirt-felder">
+          <label class="wirt-feld" title="Betrachtungszeitraum T der Annuitätenmethode und der Barwertbetrachtung (Ersatzbeschaffungen und Restwerte darin)"><span>Zeitraum a</span><input class="inp-field" type="number" id="js-laufzeit" value="20" min="5" max="40" step="5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+          <label class="wirt-feld" title="Preisänderung der Energie- und CO₂-Kosten (bedarfsgebundene Kosten, Faktor b_V)"><span>Preissteig. Energie %/a</span><input class="inp-field" type="number" id="js-eskalation" value="2.0" min="0" max="8" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+          <label class="wirt-feld" title="Preisänderung von Instandsetzung, Wartung, Bedienen und Ersatzbeschaffungen (Faktoren b_IN, b_B, r_K)"><span>Preissteig. Betrieb %/a</span><input class="inp-field" type="number" id="wirt-r-betrieb" value="2.0" min="0" max="8" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/></label>
+        </div>
+        <div class="wirt-hinweis">Annuitätenmethode mit Ersatzbeschaffung, Restwert und Preisänderung · Diskontierung = Kapitalzins (<span id="js-diskont-sync"></span> %)</div>
       </div>
-    </div>
-    <div style="font-size:9px;color:var(--muted);margin-bottom:6px;">Diskontierung = Kapitalzins (<span id="js-diskont-sync"></span>%) aus VDI 2067</div>
-    <div id="js-result" style="display:none;"></div>
-    <div id="js-chart-wrap" style="display:none;margin-top:8px;">
-      <canvas id="js-canvas" height="160" style="width:100%;display:block;"></canvas>
-    </div>
+      <div class="wirt-block" id="netz-bestand-options">
+        <label class="wirt-check"><input type="checkbox" id="netz-sanierung-toggle" data-change="window._netzSanierung=this.checked;document.getElementById('netz-sanierung-detail').style.display=this.checked?'flex':'none';if(typeof calcWirtschaftPanel==='function')calcWirtschaftPanel();"/>
+          <span>Netzsanierung einrechnen</span></label>
+        <div id="netz-sanierung-detail" style="display:none;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin-top:5px;">
+          <input class="inp-field" type="number" id="netz-sanierung-pct" value="40" min="5" max="100" step="5" style="width:52px;text-align:center;font-size:10px;" data-change="if(typeof calcWirtschaftPanel==='function')calcWirtschaftPanel();"/>
+          <span>% der Neubaukosten</span>
+        </div>
+        <div class="wirt-hinweis">Nur für Bestandsnetze: anteiliger Rohr- und Trassentausch.</div>
+      </div>
+    </aside>
+    <section class="wirt-ergebnis">
+      <div class="wirt-umfang" role="group" aria-label="Betrachtungsumfang" title="Nur Wärmeerzeugung: Wärmenetz (Leitungen) und Hausübergabestationen bleiben unberücksichtigt — so lassen sich Erzeugungskonzepte unabhängig vom Netz vergleichen. Gilt für alle Varianten.">
+        <button type="button" class="active" data-umfang="gesamt" data-click="wirtUmfangSetzen(false)">Gesamtsystem</button>
+        <button type="button" data-umfang="erzeugung" data-click="wirtUmfangSetzen(true)">Nur Wärmeerzeugung</button>
+      </div>
+      <label class="wirt-pv-wp-label" title="PV und Batterie sind keine Wärmeerzeuger und bleiben standardmäßig außerhalb der Wärmegestehungskosten. Eingeschaltet bezieht die Wärmepumpe den PV-Strom, den sie laut Stundenbilanz direkt oder über die Batterie erhält, zum PV-Gestehungspreis statt zum Netzpreis. Einspeisung und Eigenverbrauch der Gebäude bleiben auf der Stromseite."><input type="checkbox" class="wirt-pv-wp" data-change="wirtPvWpSetzen(this.checked)"> PV-Strom für Wärmepumpen anrechnen</label>
+      <div id="wirt-table-wrap">
+        <div style="color:var(--muted);font-size:10px;text-align:center;padding:12px 0;">Stündliche Einsatzplanung ausführen, um Ergebnisse zu sehen.</div>
+      </div>
+      <div class="wirt-npv">
+        <div id="js-result" style="display:none;"></div>
+        <div id="js-chart-wrap" style="display:none;margin-top:8px;">
+          <canvas id="js-canvas" height="160" style="width:100%;display:block;"></canvas>
+        </div>
+      </div>
+    </section>
   </div>
 
   <button class="btn-secondary" data-click="hidePanels()" style="margin-top:10px;">Schließen</button>

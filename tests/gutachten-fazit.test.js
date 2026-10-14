@@ -13,7 +13,7 @@ describe('Bewertung und Empfehlung', () => {
   it('drei Achsen', () => {
     const t = text(faTextBewertung({ varianten: [V1, V2, V3, V4], preise: { strom: 25, gas: 10 }, gesamtMwh: 10000, efGas: 240, pMaxKw: 5000 }));
     expect(t).toContain('V1 künftig die niedrigsten Emissionen');
-    expect(t).toContain('Wirtschaftlich ist V2 mit 14,00 ct/kWh die günstigste Variante');
+    expect(t).toContain('Wirtschaftlich ist V2 mit 14,0 ct/kWh die günstigste Variante');
     expect(t).toContain('In der Resilienz sind alle Varianten');
   });
   it('Gesamtbewertung nach vier Kriterien, Stromkessel-Referenz, Geothermie', () => {
@@ -94,7 +94,7 @@ describe('Fahrplan für die Vorzugsvariante', () => {
   });
   it('Wärmepumpenvariante mit Kessel: NT-Ertüchtigung, Schallschutz, Kesselersatz, Ausbaustufen', () => {
     const t = text(faTextFahrplan({ start: 2027, variante: { ...V1, investEur: 3e6 }, ausbau: [{ name: 'Stufe 1', von: 2028, bis: 2029, anzahl: 3, kostenEur: 450000 }] }));
-    expect(t).toContain('Vorzugsvariante V1 (Luft-Wasser-Wärmepumpe 4,0 MW und Gaskessel 5,0 MW) mit einer Gesamtinvestition von rund 3,00 Mio. €');
+    expect(t).toContain('Vorzugsvariante V1 (Luft-Wasser-Wärmepumpe 4,00 MW und Gaskessel 5,00 MW) mit einer Gesamtinvestition von rund 3,00 Mio. €');
     expect(t).toContain('Niedertemperatur-Ertüchtigung (2029–2031)');
     expect(t).toContain('Schallschutz');
     expect(t).toContain('Stufe 1 (2028–2029, 3 Maßnahmen, rund 450 Tsd. €)');

@@ -246,7 +246,6 @@ export const HILFE_TEXTE = {
   'opt-cand-bat': 'Batteriespeicher in die Optimierung einbeziehen — Kapazität wird automatisch variiert.',
   'opt-cand-st': 'Solarthermie in die Optimierung einbeziehen — Kollektorfläche wird automatisch variiert.',
   'opt-cand-ts': 'Wärmespeicher in die Optimierung einbeziehen — Volumen wird automatisch variiert.',
-  'opt-pv-max-amort': 'Maximale Amortisationszeit für PV-Anlagen (Jahre) — Varianten mit längerer Amortisation werden verworfen.',
 
   // PV-Varianten-Workflow (M2–M6)
   'btn-pv-merit-order': 'Startet die Flächen-Merit-Order: Bewertet alle PV-Kandidaten (Dächer, Freifl., Assets) nach wirtschaftlichem Zusatznutzen (Δ Überschuss abzgl. Δ Infrastrukturkosten) und ordnet sie in Tiers A/B/C ein.',

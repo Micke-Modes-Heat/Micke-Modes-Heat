@@ -145,6 +145,9 @@ export function calcStromPanel() {
 
   let pvMwh = pauschMwh + gebPvMwh + ffPvMwh;
   window._stromPvH = pvH; // für Fluss-Chart
+  // installierte PV gesamt (für den PV-Gestehungspreis, wenn PV-Strom den Wärmepumpen angerechnet wird)
+  const _kwpManuell = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
+  const pvKwpGesamt = (window.elPvH && !_kwpManuell ? pauschMwh * 1000 / (pvSpez || 1000) : _kwpManuell) + gebaeudeKwp + ffKwp;
 
   // BHKW-Stromerzeugung (aus Dispatch)
   const bhkwElHourly = window._bhkwElHourly;
@@ -167,6 +170,8 @@ export function calcStromPanel() {
   let batDischargeKwh = 0;
   // Aufschlüsselung Strom-Quellen pro Verbraucher (für Sankey)
   let pvToWp = 0, pvToSk = 0, pvToQuartier = 0;
+  // PV-Strom an Wärmepumpen und Stromkessel: direkt (inkl. Überschuss → WP → Wärmespeicher) bzw. über die Batterie
+  let pvZuWpDirekt = 0, pvZuWpBat = 0;
   let bhkwToWp = 0, bhkwToSk = 0, bhkwToQuartier = 0;
   let netzToWp = 0, netzToSk = 0, netzToQuartier = 0;
   let pvToKaelte = 0, bhkwToKaelte = 0, netzToKaelte = 0;
@@ -231,6 +236,7 @@ export function calcStromPanel() {
               eigenverbrauchMwh += elActual / 1000;
               mEigen[_mIdx]      += elActual / 1000;
               pvEigenMwh += elActual / 1000 * pvFrac;
+              pvZuWpDirekt += elActual / 1000 * pvFrac;
               bhkwEigenMwh += elActual / 1000 * (1 - pvFrac);
               wpUsed = true;
             }
@@ -249,6 +255,7 @@ export function calcStromPanel() {
                 eigenverbrauchMwh += skLoad / 1000;
                 mEigen[_mIdx]      += skLoad / 1000;
                 pvEigenMwh += skLoad / 1000 * pvFrac;
+                pvZuWpDirekt += skLoad / 1000 * pvFrac;
                 bhkwEigenMwh += skLoad / 1000 * (1 - pvFrac);
               }
             }
@@ -281,6 +288,10 @@ export function calcStromPanel() {
       const evFrac = demand > 0 ? evKw / demand : 0;
       pvToWp       += wpD * evFrac * pvLocalFrac / 1000;
       pvToSk       += skD * evFrac * pvLocalFrac / 1000;
+      if (localSourceSum > 0) {
+        pvZuWpDirekt += (wpD + skD) * evFrac * (step.pvDirectKwh / localSourceSum) / 1000;
+        pvZuWpBat    += (wpD + skD) * evFrac * (step.pvDischargedKwh / localSourceSum) / 1000;
+      }
       pvToQuartier += qD  * evFrac * pvLocalFrac / 1000;
       bhkwToWp       += wpD * evFrac * (1 - pvLocalFrac) / 1000;
       bhkwToSk       += skD * evFrac * (1 - pvLocalFrac) / 1000;
@@ -327,7 +338,7 @@ export function calcStromPanel() {
   const wpAnteil = gesamtMwh > 0 ? (wpMwh / gesamtMwh * 100) : 0;
   window._batteryAging = bat ? estimateBatteryAging({
     capacityKwh:bat.kapKwh, annualDischargeKwh:batDischargeKwh,
-    calendarFadePctPerYear:parseFloat(document.getElementById('bat-calendar-fade')?.value) || 0,
+    calendarFadePctPerYear:(v => Number.isFinite(v) ? v : 1.5)(parseFloat(document.getElementById('bat-calendar-fade')?.value)),
     cycleLife:parseFloat(document.getElementById('bat-cycle-life')?.value) || 6000,
     eolCapacityPct:parseFloat(document.getElementById('bat-eol-pct')?.value) || 80,
     studyYears:parseFloat(document.getElementById('opt-bat-life')?.value) || 15,
@@ -338,7 +349,7 @@ export function calcStromPanel() {
     : 'Alterung wird nach der Strombilanz aus Kalender- und Vollzyklen geschätzt.';
 
   // Stromkosten — differenziert nach PV und BHKW
-  const preisB  = (parseFloat(document.getElementById('strom-preis-bezug')?.value) || 30) / 100;  // €/kWh
+  const preisB  = (parseFloat((document.getElementById('strom-preis-bezug') || document.getElementById('wirt-p-strom'))?.value) || 30) / 100;  // €/kWh
   const pvPreisE  = (parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8)  / 100;  // €/kWh PV-Einspeisung
   const bhkwPreisE = (parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8)  / 100;  // €/kWh BHKW-Einspeisung
   const bhkwKwkE   = (parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8)  / 100;  // €/kWh KWK-Zuschlag Einsp.
@@ -355,10 +366,17 @@ export function calcStromPanel() {
   const bhkwEigenverbrauchErloes = bhkwEigenMwh * 1000 * (preisB + bhkwKwkEig);  // €/a
   // Globale Referenz für BHKW-Wirtschaftlichkeit
   window._bhkwStromErloes = bhkwEinspeisungserloes + bhkwEigenverbrauchErloes;
+  // davon KWK-Zuschlag (alle Stunden eines Jahres) — die Wirtschaftlichkeit begrenzt ihn nach KWKG
+  window._bhkwKwkZuschlagEur = bhkwEinspMwh * 1000 * bhkwKwkE + bhkwEigenMwh * 1000 * bhkwKwkEig;
   window._pvStromErloes = pvEinspeisungserloes + pvEigenverbrauchErloes;
   window._stromBilanz = { pvEigenMwh, pvEinspMwh, bhkwEigenMwh, bhkwEinspMwh,
     pvToWp, pvToSk, pvToQuartier, bhkwToWp, bhkwToSk, bhkwToQuartier,
-    netzToWp, netzToSk, netzToQuartier, pvToKaelte, bhkwToKaelte, netzToKaelte };
+    netzToWp, netzToSk, netzToQuartier, pvToKaelte, bhkwToKaelte, netzToKaelte,
+    // übriger Strombedarf (Quartier + Kälte) — Bezugsgröße für die anteilige PV-Zuordnung in der Wirtschaftlichkeit
+    quartierMwh: quartierMwh + kaelteMwh,
+    // Grundlage „PV-Strom für Wärmepumpen anrechnen“ (Wirtschaftlichkeit, Optimierung)
+    pvKwp: pvKwpGesamt, pvErtragMwh: pvMwh, pvSpez, batEntladungMwh: batDischargeKwh / 1000,
+    pvZuWpDirektMwh: pvZuWpDirekt, pvZuWpBatMwh: pvZuWpBat };
   // CO₂-Bilanz Strom (inkl. optionaler PV-Einspeisung-Gutschrift)
   const vEmF = calcVerdraengungEmF();
   const pvCo2GutschriftT = pvCo2Gutschrift && einspeisungMwh > 0 ? einspeisungMwh * vEmF / 1e3 : 0; // t CO₂/a — Einspeisung verdrängt Marginalstrom
@@ -580,7 +598,7 @@ export function updateBatteryRecommendation(requestedCapacity) {
   const stepSize=Math.max(5,Math.round(maxCapacity/40/5)*5);
   slider.max=String(Math.ceil(maxCapacity/stepSize)*stepSize);
   slider.step=String(stepSize);
-  const buy=(parseFloat(document.getElementById('strom-preis-bezug')?.value)||35)/100;
+  const buy=(parseFloat((document.getElementById('strom-preis-bezug') || document.getElementById('wirt-p-strom'))?.value)||35)/100;
   const feed=(parseFloat(document.getElementById('strom-preis-einsp')?.value)||8)/100;
   const investPerKwh=parseFloat(document.getElementById('opt-bat-invest')?.value)||400;
   const life=parseFloat(document.getElementById('opt-bat-life')?.value)||15;

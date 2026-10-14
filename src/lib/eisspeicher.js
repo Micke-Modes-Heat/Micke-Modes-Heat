@@ -56,11 +56,11 @@ export function eisGeometrie(volumenM3) {
   return { durchmesserM: d, oberflaecheM2: 1.5 * Math.PI * d * d };
 }
 
-const G_PEAK = [280, 400, 550, 700, 800, 850, 830, 750, 600, 400, 280, 230];
-const SONNE = [[8, 16], [7, 17], [7, 18], [6, 20], [5, 21], [5, 21], [5, 21], [6, 20], [7, 19], [7, 18], [8, 16], [8, 16]];
-const MONATSSTART_TAG = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+export const G_PEAK = [280, 400, 550, 700, 800, 850, 830, 750, 600, 400, 280, 230];
+export const SONNE = [[8, 16], [7, 17], [7, 18], [6, 20], [5, 21], [5, 21], [5, 21], [6, 20], [7, 19], [7, 18], [8, 16], [8, 16]];
+export const MONATSSTART_TAG = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
 
-function monatAusTag(tag) {
+export function monatAusTag(tag) {
   let m = 0;
   while (m < 11 && tag >= MONATSSTART_TAG[m + 1]) m++;
   return m;

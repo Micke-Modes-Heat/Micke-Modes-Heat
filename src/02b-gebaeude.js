@@ -206,12 +206,38 @@ export function getComputedStats(g, year) {
 // Wenn sich das Betrachtungsjahr ändert, wird der Basis-Lastgang proportional
 // skaliert: Gebäude die abgerissen/geplant/saniert sind verändern den Wärmebedarf.
 // Netzverluste skalieren proportional mit (weniger Wärme → weniger Verluste).
+/**
+ * Lastgang-Kennwerte für ein beliebiges Jahr, ohne den Systemzustand zu ändern (gleiche Skalierung wie
+ * _rescaleLastgangForYear) — z. B. Ist-Stichjahr im Gutachten unabhängig vom eingestellten Jahr.
+ * Ergebnis: { gesamtMwh, pMaxKw, nutzMwh, netzverlustMwh, netzverlustPct, faktor } oder null.
+ */
+export function lastgangKennwerteFuerJahr(year) {
+  const ss = window.systemState, basis = window._basisLastgangKw, basisSumme = window._basisGebWaermeSumme;
+  if (!ss || !basis || !(basisSumme > 0.1)) return null;
+  let zielSumme = 0;
+  for (const g of window.gebaeude || []) { if (isExcluded(g.id)) continue; zielSumme += getComputedStats(g, year).waerme || 0; }
+  const f = year === window._basisYear ? 1 : zielSumme / basisSumme;
+  let summe = 0, max = 0;
+  for (let i = 0; i < basis.length; i++) { const v = basis[i] * f; summe += v; if (v > max) max = v; }
+  return { gesamtMwh: summe / 1000, pMaxKw: max, faktor: f,
+    nutzMwh: Number.isFinite(window._basisNutzwaermeMwh) ? window._basisNutzwaermeMwh * f : undefined,
+    netzverlustMwh: Number.isFinite(window._basisNetzverlustMwh) ? window._basisNetzverlustMwh * f : undefined,
+    netzverlustPct: ss.netzverlustPct };
+}
+
 export function _rescaleLastgangForYear(year) {
   const ss = window.systemState;
   if (!ss || !window._basisLastgangKw || !window._basisGebWaermeSumme) return;
+  // Nutzwärme und Netzverlust (MWh) mit dem Lastgang fortschreiben — sonst nennen Kennzahlen und Gutachten
+  // die Werte des Basisjahrs neben dem skalierten Jahresbedarf
+  const _fortschreiben = f => {
+    if (Number.isFinite(window._basisNutzwaermeMwh)) ss.nutzwaermeMwh = window._basisNutzwaermeMwh * f;
+    if (Number.isFinite(window._basisNetzverlustMwh)) ss.netzverlustMwh = window._basisNetzverlustMwh * f;
+  };
   if (year === window._basisYear) {
     // Zurück zum Originalzustand
     ss.lastgangKw = new Float32Array(window._basisLastgangKw);
+    _fortschreiben(1);
     ss.gesamtMwhMitNV = ss.lastgangKw.reduce((a, b) => a + b, 0) / 1000;
     ss.pMaxKw = Math.max(...ss.lastgangKw);
     ss.jahresdauerlinie = Float32Array.from(ss.lastgangKw).sort((a, b) => b - a);
@@ -227,6 +253,8 @@ export function _rescaleLastgangForYear(year) {
   let zielSumme = 0;
   let nAbgerissen = 0, nNeu = 0, nSaniert = 0;
   for (const g of window.gebaeude) {
+    // wie die Basissumme (06b): ausgeschlossene Gebäude zählen nicht
+    if (isExcluded(g.id)) continue;
     const stBasis = getComputedStats(g, window._basisYear);
     const stZiel  = getComputedStats(g, year);
     zielSumme += (stZiel.waerme || 0);
@@ -243,6 +271,7 @@ export function _rescaleLastgangForYear(year) {
   for (let i = 0; i < basis.length; i++) skaliert[i] = basis[i] * faktor;
 
   ss.lastgangKw = skaliert;
+  _fortschreiben(faktor);
   ss.gesamtMwhMitNV = skaliert.reduce((a, b) => a + b, 0) / 1000;
   ss.pMaxKw = Math.max(...skaliert);
   ss.jahresdauerlinie = Float32Array.from(skaliert).sort((a, b) => b - a);
@@ -748,8 +777,10 @@ export function calcHeizlastFromGeometry(g, allGebaeude) {
   var volumen = nutzflaeche * geschosshoehe / 0.8; // Bruttovolumen
   var HV = 0.34 * 0.5 * volumen; // 0.34 Wh/(m³K) × Luftwechselrate × Volumen
 
-  // Normheizlast [kW] bei ΔT = 35K (Auslegung: -12°C außen, 20°C innen, abzgl. interne Gewinne)
-  var deltaT = 32; // etwas reduziert durch interne Gewinne
+  // Normheizlast [kW] nach DIN EN 12831: ΔT = Innentemperatur 20 °C − Normaußentemperatur des Standorts
+  // (Wärme-Grundlagen, Vorgabe −12 °C); interne Gewinne werden bei der Normheizlast nicht abgezogen
+  var normAt = parseFloat(typeof document !== 'undefined' ? document.getElementById('gl-norm-at')?.value : NaN);
+  var deltaT = 20 - (Number.isFinite(normAt) ? normAt : -12);
   var heizlastW = (HT + HV) * deltaT;
   return heizlastW / 1000; // kW
 }

@@ -1,5 +1,6 @@
 // ── 03b-netz.js — Netzplanung (Geothermie, Polygon-Zeichnen, Panel-Mgmt, OSM, Netzgraph, Strang-Report, Rohr-BOM) ──
 // ── Geothermie-Sondenfeld ────────────────────────────────────────────────────
+import { glfWinter } from './lib/gleichzeitigkeit.js';
 import { areaPolygon, gebaeude, globalYear, isDrawingTrasse, isExcluded, isPlacingLwWp, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 
 let netzVisible = true;
@@ -24,11 +25,10 @@ import { readNum } from './lib/util.js';
 import { clipBuildingEndpoint, crossesForeignBuilding } from './lib/netz-building-obstacles.js';
 import { bereinigeKleinbauten, rechteckAusDreiPunkten } from './lib/gebaeude-geometrie.js';
 import { osmDachAusTags, osmQuerAzimut, osmDachGebaeude, osmDachZuordnen } from './lib/osm-dach.js';
-import { validateRadialHeatGraph } from './lib/waerme-graph-validation.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
 import { areaEditMarkers, areaLatLngs, cacheVariantResults, currentMode, drawPoints, edgeKey, edgeWaypoints, fliessgewaesser, gasKessel, geoThermie, networkLocked, netzPruningMode, trassePoints, trasseSegments } from './01-globals-varianten.js';
-import { addEdgeMidHandle, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getEdgeWaypoints, getKostenProM, getUWertForDN, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, removeEdgeWaypointMarkers, standardDNs } from './02a-netz-physik.js';
+import { addEdgeMidHandle, getEdgePathPoints, strassenWegeAbPunkt, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getEdgeWaypoints, getKostenProM, getUWertForDN, ROHRE_JE_TRASSE, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, removeEdgeWaypointMarkers, standardDNs } from './02a-netz-physik.js';
 import { OSM_SKIP_TYPES, addGebaeude, osmNutzung } from './02b-gebaeude.js';
 import { polygonCenter, redrawFliessgewaesser, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
@@ -40,7 +40,24 @@ import { setEdgeStartId, setNetzEdges, setNetworkLocked, setSelectedId, setSelec
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { selectedStrandId } from './01-globals-varianten.js';
 import { netzSignatur, netzAenderungText, erstelleNetzVerlauf } from './lib/netz-verlauf.js';
+import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen, besteAstVerlegung, parallelAbschnitte, ueberlappungAmEnde } from './lib/netz-strang.js';
+import { strangGruppen, sackgassenEntfernen, quartierJeGebaeude, hauptstraenge } from './lib/netz-quartiere.js';
+import { zentraleJeGebaeude, kuppelVerbindungen } from './lib/netz-zentralen.js';
 import { EIS, eisAuslegungVorschlag, eisBewertung, eisGeometrie, eisInvest } from './lib/eisspeicher.js';
+import { overpassAbfrage, overpassPausen, OVERPASS_SERVER, seiteLokal } from './lib/overpass-client.js';
+import { CP_WASSER, rohrHydraulik, rohrQuerschnittM2, wasserStoffwerte, netzPumpe, pumpenVolllaststunden, foerderDruckPa, DP_HAUSSTATION_PA, DN_MIN, DN_MIN_HAUSANSCHLUSS } from './lib/netz-hydraulik.js';
+
+/** Netztemperaturen im Jahr (°C): ab dem Jahr der geplanten Absenkung die abgesenkten Werte. */
+export function netzTemperaturen(jahr = globalYear) {
+  let vl = parseFloat(document.getElementById('netz-vl')?.value) || 90;
+  let rl = parseFloat(document.getElementById('netz-rl')?.value) || 60;
+  const planJahr = parseInt(document.getElementById('netz-plan-jahr')?.value);
+  if (planJahr && jahr >= planJahr) {
+    vl = parseFloat(document.getElementById('netz-plan-vl')?.value) || vl;
+    rl = parseFloat(document.getElementById('netz-plan-rl')?.value) || rl;
+  }
+  return { vl, rl, dt: Math.max(1, vl - rl) };
+}
 
 export function toggleGeoPanel() {
   const p = document.getElementById('geo-panel');
@@ -56,12 +73,7 @@ export function toggleGeoPanel() {
 }
 
 export function geoUseNetworkValues() {
-  const zId = parseInt(document.getElementById('netz-zentrale').value);
-  const lastKw = window.calculatedLoad && window.calculatedLoad[zId] ? window.calculatedLoad[zId] : 0;
-  const connectedIds = new Set(window.netzEdges.flatMap(e => [e.u, e.v]));
-  const verbrauchMWh = gebaeude.filter(g => connectedIds.has(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
-  const lossAnnual = window.netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0);
-  const erzeugungMWh = verbrauchMWh + lossAnnual * 8.76;
+  const { kw: lastKw, mwh: erzeugungMWh } = netzErzeugerVorgabe();
   if (lastKw > 0) document.getElementById('geo-heizlast').value = Math.round(lastKw);
   if (erzeugungMWh > 0) document.getElementById('geo-waerme').value = Math.round(erzeugungMWh);
   calcGeoThermie();
@@ -138,7 +150,8 @@ export function calcGeoThermie() {
   const tQK  = 10 + 273.15; // mittlere Erdreichtemperatur Deutschland
   const jazCarnot = Math.max(2, Math.min(8, (tVlK / (tVlK - tQK)) * guetegrad));
   const en  = window._dispatchEnergy?.['geo'];
-  const jaz = (en && en.elMwh > 0) ? en.waermeMwh / en.elMwh : jazCarnot;
+  // JAZ aus der gesamten erzeugten Wärme (inkl. Speicherladung) — Grundlage des Entzugs für die Sondenauslegung
+  const jaz = (en && en.elMwh > 0) ? (en.erzeugtMwh ?? en.waermeMwh) / en.elMwh : jazCarnot;
   const jazEl = document.getElementById('geo-jaz');
   if (jazEl) jazEl.value = jaz.toFixed(2);
   // Display: nur nach Dispatch einen Wert zeigen (vorher —)
@@ -1008,6 +1021,23 @@ function _netzVersorgungsGebaeude() {
     getComputedStats(building, globalYear).heizlast > 0);
 }
 
+// Doppelt verlegte Abschnitte (zwei Leitungen direkt nebeneinander) — nur neu rechnen, wenn sich das Netz geändert hat
+let _parallelCache = { sig: null, kanten: [] };
+function _parallelVerlegt(edges) {
+  const sig = `${_netzStandSignatur}|${edges.length}|${JSON.stringify((window.netzQuartiere || []).map(q => q.gebIds))}`;
+  if (_parallelCache.sig !== sig) {
+    const liste = edges.filter(e => !e.pruned && e.layer).map(e => ({ edge: e, linie: e.layer.getLatLngs() }));
+    // Getrennte Hauptstränge verschiedener Versorgungsquartiere liegen gewollt nebeneinander (gemeinsamer Graben)
+    const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+    const knoten = new Map();
+    edges.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
+    const strang = _strangZuordnung(edges.filter(e => !e.pruned),centralId,knoten);
+    const gewollt = t => strang && strang.quartierDerKante(t.a.edge) !== strang.quartierDerKante(t.b.edge);
+    _parallelCache = { sig, kanten: parallelAbschnitte(liste).filter(t => !gewollt(t)).map(t => ({ edge: t.a.edge, laengeM: t.laengeM })) };
+  }
+  return _parallelCache.kanten;
+}
+
 export function netzWorkspaceStatus() {
   const edges = (window.netzEdges || []).filter(edge => !edge.temporallyHidden);
   const verbunden = new Set(edges.flatMap(edge => [edge.u, edge.v]));
@@ -1022,6 +1052,7 @@ export function netzWorkspaceStatus() {
     offeneGebaeude,
     konflikte: edges.filter(edge => edge.buildingConflict),
     hydraulik: edges.filter(edge => edge.hydraulicBottleneck),
+    parallel: _parallelVerlegt(edges),
     bestand: !!window.networkLocked,
     trasse: waermeTrassenInfo().haupttrasse,
   };
@@ -1036,6 +1067,7 @@ const _NETZ_MODUS_TEXT = {
   edit: {
     titel: 'Leitungsverläufe bearbeiten',
     schritte: ['Leitung anklicken – es erscheint ein blauer Ziehpunkt.', 'Punkt auf den gewünschten Verlauf ziehen; das Netz folgt der Straße.',
+      'Liegt der Punkt auf einer anderen Straße, kann der ganze Strang dahinter dorthin umgelegt werden.',
       'Doppelklick auf einen roten Punkt entfernt ihn. Rechtsklick auf eine Leitung löscht sie.'],
   },
 };
@@ -1051,10 +1083,12 @@ function _netzArbeitslisteHtml(status) {
   const punkte = [
     ...status.offeneGebaeude.map(building => ({ typ: 'geb', id: building.id, titel: building.name || `Gebäude ${building.id}`, text: 'ohne Anschluss', aktion: 'anschließen', stufe: 'offen' })),
     ...status.konflikte.map(edge => ({ typ: 'edge', id: `${edge.u}-${edge.v}`, titel: 'Leitung durch Gebäude', text: `${Math.round(edge.length || 0)} m`, aktion: 'Verlauf ändern', stufe: 'konflikt' })),
+    ...(status.parallel || []).map(x => ({ typ: 'edge', id: `${x.edge.u}-${x.edge.v}`, titel: 'Doppelt verlegt', text: `${Math.round(x.laengeM)} m neben einer anderen Leitung`, aktion: 'zeigen', stufe: 'konflikt' })),
     ...status.hydraulik.map(edge => ({ typ: 'edge', id: `${edge.u}-${edge.v}`, titel: `Hydraulik DN ${edge.dn || '?'}`,
       text: edge.velocityExceeded ? `${(edge._vActual || 0).toFixed(1)} m/s` : `${Math.round(edge.dpPerM || 0)} Pa/m`, aktion: 'zeigen', stufe: 'hydraulik' })),
   ];
-  const kopf = `<div class="na-liste-kopf"><b>${status.angeschlossen} von ${status.gebaeude}</b> Gebäuden angeschlossen` +
+  const kopf = `<button type="button" class="nws-link na-aufraeumen" data-click="netzAufraeumen()" title="Leitungen ohne Abnehmer entfernen, doppelt verlegte Stücke zusammenlegen und Gebäude an nähere Leitungen hängen, wo das Trasse spart">🧹 Netz aufräumen</button>` +
+    `<div class="na-liste-kopf"><b>${status.angeschlossen} von ${status.gebaeude}</b> Gebäuden angeschlossen` +
     (status.bestand ? ' · <span class="nws-typ bestand">🏛 Bestandsnetz</span>' : '') + '</div>';
   if (!punkte.length) return `${kopf}<div class="na-ok">✓ Alle Gebäude angeschlossen, keine Konflikte, Hydraulik in den Grenzen.</div>`;
   const sichtbar = punkte.slice(0, 8);
@@ -1119,11 +1153,9 @@ export function netzWorkspaceAktualisieren() {
     ? `${status.offen} Gebäude ohne Anschluss · Griff auf einen Netzstrang ziehen`
     : 'Griff eines Gebäudes auf einen anderen Netzstrang ziehen';
   // ④ Bewertung
-  // Wärmeliniendichte wie in der Kennwertliste: (Wärme angeschlossener Gebäude + Netzverluste) / Trassenlänge
+  // Wärmeliniendichte wie in der Kennwertliste: Wärmeabsatz der angeschlossenen Gebäude im Jahr / Trassenlänge
   const kenn = _netzKennzahlen();
-  const verbunden = new Set((window.netzEdges || []).flatMap(edge => [edge.u, edge.v]));
-  const waermeMwh = gebaeude.filter(building => verbunden.has(building.id)).reduce((summe, building) => summe + (parseFloat(building.waerme) || 0), 0);
-  const wld = kenn.laengeM > 0 ? (waermeMwh + kenn.verlustMwh) / (kenn.laengeM / 1000) : 0;
+  const wld = kenn.laengeM > 0 ? netzVerbrauchMwh(globalYear) / (kenn.laengeM / 1000) : 0;
   setText('na-sum-4', status.abschnitte
     ? `${fmt(status.laengeM)} m · WLD ${fmt(wld)} kWh/(m·a) · Hydraulik ${status.hydraulik.length ? '⚠' : '✓'}`
     : '—');
@@ -1148,6 +1180,66 @@ export function netzWorkspaceAktualisieren() {
   document.querySelectorAll('[data-netz-braucht="trasse"]').forEach(element => { element.hidden = !status.trasse; });
   document.querySelectorAll('[data-netz-braucht="netz"]').forEach(element => { element.hidden = !status.abschnitte; });
   _netzModusAnzeigen();
+  // Versorgungsquartiere: Liste aktualisieren, auf der Karte nur im Schritt ② zeigen
+  window.netzQuartiereListe?.();
+  window.netzQuartiereAnzeigen?.(_netzWorkspaceSichtbar() && _naOffen === 2);
+}
+
+/** Je Versorgungsquartier: Wird es im aktuellen Netz über eigene Hauptstränge versorgt? Map Quartier-ID → Status. */
+export function netzQuartierStatus() {
+  const out = new Map();
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const kanten = (window.netzEdges || []).filter(e => !e.pruned);
+  const knoten = new Map();
+  kanten.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
+  const strang = _strangZuordnung(kanten,centralId,knoten);
+  if (!strang) return out;
+  for (const q of window.netzQuartiere || []) {
+    const abgaenge = new Set((q.gebIds || []).map(id => strang.abgangVon.get(id)).filter(a => a != null));
+    out.set(q.id,{
+      linien:kanten.filter(e => strang.quartierDerKante(e) === q.id).map(e => e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt]),
+      angeschlossen:abgaenge.size > 0,
+      abgaenge:abgaenge.size,
+      eigener:abgaenge.size > 0 && [...abgaenge].every(a => strang.quartierVonAbgang.get(a) === q.id),
+    });
+  }
+  return out;
+}
+
+/**
+ * Quartier, das (teilweise) über den Strang eines anderen versorgt wird: die obersten Leitungen, hinter denen nur
+ * Gebäude dieses Quartiers hängen, bekommen je einen eigenen Abgang aus der Heizzentrale.
+ */
+export function netzQuartierStrangHerstellen(quartierId) {
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const q = (window.netzQuartiere || []).find(x => x.id === quartierId);
+  if (!q || !centralId) return 0;
+  const quartierVon = quartierJeGebaeude((window.netzQuartiere || []).filter(x => x.gebIds?.length),centralId);
+  const eltern = window._netzElternKante || new Map();
+  // Elternknoten je Knoten und Quartiere im Teilbaum
+  const elternKnoten = new Map();
+  for (const [id, e] of eltern) elternKnoten.set(id, e.u === id ? e.v : e.u);
+  const imTeilbaum = new Map();
+  for (const g of gebaeude) {
+    if (!eltern.has(g.id)) continue;
+    const qq = quartierVon.get(g.id) ?? null;
+    for (let x = g.id; x != null && x !== centralId; x = elternKnoten.get(x)) {
+      if (!imTeilbaum.has(x)) imTeilbaum.set(x, new Set());
+      imTeilbaum.get(x).add(qq);
+    }
+  }
+  const nurQ = id => { const s = imTeilbaum.get(id); return !!s && s.size === 1 && s.has(q.id); };
+  // oberste Knoten: Teilbaum nur dieses Quartier, Elternknoten nicht (und nicht die Zentrale selbst)
+  const kanten = [];
+  for (const [id] of imTeilbaum) {
+    const p = elternKnoten.get(id);
+    if (nurQ(id) && p != null && p !== centralId && !nurQ(p)) kanten.push(eltern.get(id));
+  }
+  let n = 0;
+  for (const e of kanten) if (window.netzEdges.includes(e) && netzAbgangAusZentrale(e)) n++;
+  showHint(n ? `✓ ${q.name}: ${n} eigene${n === 1 ? 'r Abgang' : ' Abgänge'} aus der Heizzentrale angelegt.` : `${q.name}: kein Strang gefunden, der sich trennen lässt — ggf. „Netz berechnen“.`, 5000);
+  window.netzQuartiereListe?.();
+  return n;
 }
 
 /** Anleitung zum aktiven Kartenmodus in der Sidebar statt eines dauerhaften Hinweisbalkens. */
@@ -2425,108 +2517,37 @@ function _enrichBaujahrFromSources(bbox, blId, buildings) {
 }
 
 // ── Overpass (Fallback für Bayern + Ausland) ─────────────────────────────────
-export var OVERPASS_ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
-];
-var _overpassServerNames = ['overpass-api.de', 'kumi.systems', 'private.coffee', 'maps.mail.ru'];
+export var OVERPASS_ENDPOINTS = OVERPASS_SERVER.map(s => s.url);
 var _overpassCancelled = false;
 
-function _overpassSingleAttempt(query) {
-  var done = false;
-  var controllers = [];
-  var failures = 0;
-  var serverStatus = OVERPASS_ENDPOINTS.map(function() { return 'wartet…'; });
-  var total = OVERPASS_ENDPOINTS.length;
-
-  function updateStatus(elapsed) {
-    if (done) return;
-    var lines = serverStatus.map(function(s, i) { return _overpassServerNames[i] + ': ' + s; });
-    showHint('⏳ OSM-Laden (' + elapsed + 's)  —  ' + lines.join('  |  '));
-    lsUnter(lines);
-  }
-
-  return new Promise(function(resolve) {
-    var startTime = Date.now();
-    var ticker = setInterval(function() {
-      if (done || _overpassCancelled) { clearInterval(ticker); return; }
-      updateStatus(Math.round((Date.now() - startTime) / 1000));
-    }, 500);
-
-    OVERPASS_ENDPOINTS.forEach(function(endpoint, idx) {
-      var ctrl = new AbortController();
-      controllers.push(ctrl);
-      serverStatus[idx] = '🔄';
-      var timer = setTimeout(function() { ctrl.abort(); }, 20000);
-      fetch(endpoint, {
-        method: 'POST',
-        body: 'data=' + encodeURIComponent(query),
-        signal: ctrl.signal
-      }).then(function(resp) {
-        clearTimeout(timer);
-        if (done || _overpassCancelled) return;
-        if (!resp.ok || resp.status === 429 || resp.status === 504) {
-          serverStatus[idx] = '⚠ HTTP ' + resp.status;
-          throw new Error('HTTP ' + resp.status);
-        }
-        serverStatus[idx] = '📥 Daten empfangen…';
-        updateStatus(Math.round((Date.now() - startTime) / 1000));
-        return resp.json();
-      }).then(function(data) {
-        if (done || _overpassCancelled || !data) return;
-        if (!data.elements || data.elements.length === 0) {
-          serverStatus[idx] = '⚠ leer';
-          throw new Error('Leere Antwort');
-        }
-        serverStatus[idx] = '✓ ' + data.elements.length + ' Elemente';
-        done = true;
-        clearInterval(ticker);
-        controllers.forEach(function(c) { try { c.abort(); } catch(e){} });
-        resolve(data);
-      }).catch(function(err) {
-        clearTimeout(timer);
-        if (!serverStatus[idx].startsWith('⚠')) serverStatus[idx] = '✗ ' + (err.name === 'AbortError' ? 'Timeout' : 'Fehler');
-        failures++;
-        if (failures >= total && !done) {
-          done = true;
-          clearInterval(ticker);
-          resolve(null);
-        }
-      });
-    });
-  });
-}
-
-export function _overpassFetchWithRetry(query) {
-  var MAX_RETRIES = 3;
+// Abfrage über den gemeinsamen, schonenden Overpass-Zugriff (lib/overpass-client.js): eine Anfrage zur Zeit,
+// Server nacheinander, Pause nach Rate-Limit, Zwischenspeicher im Browser. Fortschritt im Hinweis und in der Ladeübersicht.
+export function _overpassFetchWithRetry(query, opt = {}) {
   _overpassCancelled = false;
-
-  return new Promise(function(resolve) {
-    function attempt(retryNum) {
-      if (_overpassCancelled) { resolve(null); return; }
-      if (retryNum > 0) {
-        showHint('🔁 Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ' — Server werden erneut angefragt…');
-        lsMeldung('Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ' — Server werden erneut angefragt');
-      }
-      _overpassSingleAttempt(query).then(function(data) {
-        if (_overpassCancelled) { resolve(null); return; }
-        if (data) {
-          resolve(data);
-        } else if (retryNum < MAX_RETRIES) {
-          var wait = 2 + retryNum * 2; // 2s, 4s, 6s Pause
-          showHint('⚠ Alle Server fehlgeschlagen — neuer Versuch in ' + wait + 's… (Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ')');
-          lsMeldung('Alle Server fehlgeschlagen — neuer Versuch in ' + wait + ' s (' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ')');
-          setTimeout(function() { attempt(retryNum + 1); }, wait * 1000);
-        } else {
-          showHint('⚠ OSM-Server nicht erreichbar nach ' + (MAX_RETRIES + 1) + ' Versuchen — bitte Gebiet verkleinern oder später erneut versuchen');
-          setTimeout(hideHint, 8000);
-          resolve(null);
-        }
-      });
+  const zeilen = new Map();
+  const start = Date.now();
+  const zeigen = () => {
+    const lines = [...zeilen].map(([n, t]) => n + ': ' + t);
+    showHint('⏳ OSM-Laden (' + Math.round((Date.now() - start) / 1000) + 's)  —  ' + lines.join('  |  '));
+    lsUnter(lines);
+  };
+  return overpassAbfrage(query, {
+    frisch: !!opt.frisch,
+    status: (name, text) => { zeilen.set(name, text); zeigen(); },
+    abgebrochen: () => _overpassCancelled,
+  }).then(data => {
+    if (!data && !_overpassCancelled) {
+      const gesperrt = overpassPausen().filter(x => x.restS > 0).length;
+      const text = gesperrt
+        ? '⚠ OSM-Server ausgelastet oder Anfragelimit erreicht — bitte in ein paar Minuten erneut versuchen'
+        : seiteLokal()
+          ? '⚠ OSM-Server nicht erreichbar — das Tool ist als lokale Datei geöffnet; der Hauptserver (overpass-api.de) beantwortet nur Aufrufe über eine Webadresse. Tool über eine Webadresse öffnen oder später erneut versuchen'
+          : '⚠ OSM-Server nicht erreichbar — bitte Gebiet verkleinern oder später erneut versuchen';
+      showHint(text);
+      lsMeldung(text.replace(/^⚠ /, ''));
+      setTimeout(hideHint, 8000);
     }
-    attempt(0);
+    return data;
   });
 }
 
@@ -3132,6 +3153,9 @@ function _netzDisplayPoints(uNode, vNode, waypoints = []) {
 
 function _netzPlanningYears() {
   const years = new Set([WAERME_NETZ_BASISJAHR,globalYear]);
+  // Jahr der geplanten Absenkung der Netztemperaturen: ab dann kleinere Spreizung, größere Volumenströme
+  const planJahr = parseInt(document.getElementById('netz-plan-jahr')?.value, 10);
+  if (Number.isFinite(planJahr) && planJahr > WAERME_NETZ_BASISJAHR) years.add(planJahr);
   gebaeude.forEach(g => {
     const events = [
       Number.parseInt(g.baujahr,10),
@@ -3158,22 +3182,33 @@ function _maxBuildingLoad(g, years = _netzPlanningYears()) {
 // hydraulisch neu dimensioniert und über ihre Lebenszykluskosten bewertet.
 function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,strategy) {
   const lifetimeYears = 20;
-  const cp = 4.184;
-  const rhoWater = 975;
-  const nuWater = 0.000000415;
-  const roughness = 0.00005;
-  const vlTemp = readNum('netz-vl',90,20,150);
-  const rlTemp = readNum('netz-rl',60,0,140);
-  const dt = Math.max(1,vlTemp - rlTemp);
+  const cp = CP_WASSER;
+  // Auslegung für den ungünstigsten Planungszustand: Lasten je Gebäude als Maximum der Planungsjahre, Spreizung
+  // als kleinste der Planungsjahre (geplante Absenkung der Netztemperaturen), wie in der Netzberechnung
+  const temps = _netzPlanningYears().map(netzTemperaturen);
+  const tAusl = temps.reduce((a, b) => (b.dt < a.dt ? b : a));
+  const vlTemp = tAusl.vl;
+  const rlTemp = tAusl.rl;
+  const dt = tAusl.dt;
+  const stoff = wasserStoffwerte((vlTemp + rlTemp) / 2);
   const vFlow = readNum('netz-v',1,0.3,2);
   const dpMain = readNum('netz-dp-main',150,50,500);
   const dpService = readNum('netz-dp-service',250,50,500);
   const uBase = readNum('netz-u-wert',0.25,0.05,2);
   const soilMean = readNum('netz-t-mittel',10,-20,30);
-  const meanPipeTemp = (vlTemp + rlTemp) / 2;
+  // Wärmeverluste der Varianten mit den Netztemperaturen des Basisjahres (Hydraulik mit der kleinsten Spreizung)
+  const tBasis = netzTemperaturen(WAERME_NETZ_BASISJAHR);
+  const meanPipeTemp = (tBasis.vl + tBasis.rl) / 2;
   const heatPrice = 80; // konservativer Fallback, solange keine belastbaren WGK vorliegen
   const electricityPrice = readNum('wirt-p-strom',35,0,200) / 100;
-  const annualHours = Math.max(1,getNetzVBH() || 1800);
+  // Pumpenenergie: äquivalente Volllaststunden der drehzahlgeregelten Pumpe aus dem Lastgang (kubisch, mind. 10 %);
+  // ohne Lastgang Näherung 50 % der Vollbenutzungsstunden
+  const _pumpHours = new Map();
+  const pumpHoursFor = aKonst => {
+    const k = Math.round(aKonst * 20) / 20;   // gerundet zwischenspeichern (viele Varianten)
+    if (!_pumpHours.has(k)) _pumpHours.set(k, pumpenVolllaststunden(window.systemState?.lastgangKw, 0, k) || 0.5 * Math.max(1,getNetzVBH() || 1800));
+    return _pumpHours.get(k);
+  };
   const loadById = new Map(buildingNodes.map(node => [node.id,node.load || 0]));
   const requiredIds = new Set(buildingNodes.map(node => node.id));
   const edgeKeyOf = edge => String(edge.u) < String(edge.v)
@@ -3355,22 +3390,12 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
     }
     return connected;
   };
-  const hydraulicsFor = (load,dn) => {
-    const diameter = dn / 1000;
-    const area = Math.PI * Math.pow(diameter / 2,2);
-    const massFlow = load / (cp * dt);
-    const velocity = (massFlow / rhoWater) / area;
-    const reynolds = velocity * diameter / nuWater;
-    const lambda = reynolds < 2300
-      ? 64 / Math.max(reynolds,100)
-      : 0.25 / Math.pow(Math.log10(roughness / (3.7 * diameter) + 5.74 / Math.pow(reynolds,0.9)),2);
-    return {velocity,dpPerM:lambda * rhoWater * Math.pow(velocity,2) / (2 * diameter)};
-  };
+  const hydraulicsFor = (load,dn) => rohrHydraulik(load / (cp * dt),dn,stoff);
   const gzf = count => {
     const method = document.getElementById('netz-gzf-methode')?.value || 'richtwert';
     if (method === 'keine') return 1;
     if (method === 'manuell') return Math.max(0.1,Math.min(1,readNum('netz-gzf-manuell',0.6,0.1,1)));
-    return Math.max(0.45,1 / Math.pow(Math.max(1,count),0.15));
+    return glfWinter(count);   // lib/gleichzeitigkeit.js (Winter et al. 2001)
   };
   const scoreTree = edges => {
     const adjacency = new Map();
@@ -3408,7 +3433,9 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
       const houseConnection = count === 1 &&
         (edge.uNode?.type === 'geb' || edge.vNode?.type === 'geb');
       const dpLimit = houseConnection ? dpService : dpMain;
+      const dnMin = houseConnection ? DN_MIN_HAUSANSCHLUSS : DN_MIN;
       const dn = standardDNs.find(candidate => {
+        if (candidate < dnMin) return false;
         const hydraulic = hydraulicsFor(designLoad,candidate);
         return hydraulic.velocity <= getVFlowForDN(candidate,vFlow) &&
           hydraulic.dpPerM <= dpLimit;
@@ -3425,26 +3452,20 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
       const sizedEdge = sized.get(id);
       const length = sizedEdge.edge.dist;
       investment += length * getKostenProM(sizedEdge.dn);
-      lossMWhPerYear += getUWertForDN(sizedEdge.dn,uBase) * length *
+      lossMWhPerYear += getUWertForDN(sizedEdge.dn,uBase) * ROHRE_JE_TRASSE * length *
         Math.max(0,meanPipeTemp - soilMean) / 1000 * 8.76;
       const upstream = parent.get(id);
       pathDp.set(id,(pathDp.get(upstream) || 0) +
         sizedEdge.hydraulic.dpPerM * length * 2);
       pathLength.set(id,(pathLength.get(upstream) || 0) + length);
     });
-    const maxPathDp = Math.max(0,...[...requiredIds].map(id => pathDp.get(id) || 0)) + 50000;
-    const rootLoad = loads.get(zId) || 0;
-    const rootFlowM3s = (rootLoad / (cp * dt) / rhoWater);
-    const hydraulicKW = rootFlowM3s * maxPathDp / 1000;
-    const efficiency = hydraulicKW < 0.1 ? 0.25
-      : hydraulicKW < 0.5 ? 0.4
-      : hydraulicKW < 2 ? 0.55
-      : hydraulicKW < 10 ? 0.65
-      : hydraulicKW < 50 ? 0.73
-      : hydraulicKW < 200 ? 0.78 : 0.82;
-    const pumpKW = hydraulicKW / efficiency;
+    const maxPathDp = foerderDruckPa(Math.max(0,...[...requiredIds].map(id => pathDp.get(id) || 0)));
+    // Volumenstrom der Pumpe: Σ Normheizlast × Gleichzeitigkeit über alle Abnehmer
+    const rootLoad = (loads.get(zId) || 0) * gzf(consumers.get(zId) || 0);
+    const pumpKW = netzPumpe(rootLoad / (cp * dt),maxPathDp,stoff).pKw;
+    // Pumpenenergie mit konstantem Differenzdruck am ungünstigsten Anschluss (Anteil an der Förderhöhe)
     const operating = lifetimeYears *
-      (lossMWhPerYear * heatPrice + pumpKW * annualHours * electricityPrice);
+      (lossMWhPerYear * heatPrice + pumpKW * pumpHoursFor(maxPathDp > 0 ? DP_HAUSSTATION_PA / maxPathDp : 0) * electricityPrice);
     let detourPenalty = 0;
     let maxStretch = 1;
     requiredIds.forEach(id => {
@@ -3456,6 +3477,8 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
       const load = Math.max(1,loadById.get(id) || 0);
       if (stretch > 1.6) detourPenalty += Math.pow(stretch - 1.6,2) * load * 300;
       if (stretch > 2.5) detourPenalty += (stretch - 2.5) * load * 1500;
+      // Die Optimierung darf Umwege nicht über das Ausgangsnetz hinaus verlängern (mind. 30 % Spielraum)
+      if (stretch > umwegGrenze + 1e-9) detourPenalty += (stretch - umwegGrenze) * load * 1e6;
     });
     return {
       score:investment + operating + detourPenalty,
@@ -3464,7 +3487,9 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
   };
 
   let current = [...treeEdges];
+  let umwegGrenze = Infinity;
   const before = scoreTree(current);
+  umwegGrenze = Math.max(1.3, before.maxStretch || 1);
   // Eine gezeichnete Haupttrasse ist verbindlich. Die folgenden Varianten bauen den ganzen Baum neu
   // (kürzeste Wege, Zentralabgänge, Routenvarianten) und würden sie dabei verwerfen; mit Vorgabe
   // bleiben deshalb nur die lokalen Tausche, die Vorgabekanten nie entfernen.
@@ -3677,14 +3702,17 @@ export function autoGenerateNetz(options = {}){
     return false;
   }
 
+  // Weitere Heizzentralen am selben Netz: vor clearNetz merken (die Liste gehört zum Projekt, nicht zum Netz)
+  const wurzelnAufbau = netzZentralenIds();
   clearNetz();
 
   const planningYears = _netzPlanningYears();
   const nodes = gebaeude.filter(g => {
     if (!g.polygon) return false;
     // Die Zentrale ist der hydraulische Startknoten und muss auch dann Teil des
-    // Graphen sein, wenn das Zentralengebäude selbst keinen Wärmebedarf hat.
-    if (g.id === zId) return true;
+    // Graphen sein, wenn das Zentralengebäude selbst keinen Wärmebedarf hat (ebenso weitere Zentralen).
+    if (g.id === zId || wurzelnAufbau.includes(g.id)) return true;
+    if (isExcluded(g.id)) return false;   // ausgeschlossene Gebäude werden nicht versorgt
     return networkLocked
       ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast > 0
       : _maxBuildingLoad(g,planningYears) > 0;
@@ -3694,14 +3722,14 @@ export function autoGenerateNetz(options = {}){
     return false;
   }
 
-  const allPts = nodes.map(g => {
+  const allePunkte = nodes.map(g => {
     const load = networkLocked
       ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast || 0
       : _maxBuildingLoad(g,planningYears);
     return { id: g.id, type: 'geb', pt: polygonCenter(g.polygon), load };
   });
 
-  const usedNodeIds = new Set(allPts.map(node => node.id));
+  const usedNodeIds = new Set(allePunkte.map(node => node.id));
   let tIdCounter = 10000;
   const nextTrasseNodeId = () => {
     while (usedNodeIds.has(tIdCounter)) tIdCounter++;
@@ -3709,6 +3737,22 @@ export function autoGenerateNetz(options = {}){
     usedNodeIds.add(id);
     return id;
   };
+  // Versorgungsquartiere: je Quartier ein eigener Baum ab der Zentrale (eigener Hauptstrang), übrige Gebäude gemeinsam
+  const quartiere = (window.netzQuartiere || []).filter(q => q.gebIds?.length);
+  // Mehrere Heizzentralen: Gebäude der nächstgelegenen (oder fest zugeordneten) Zentrale zuordnen, je Zone planen
+  const zentralenPunkte = wurzelnAufbau.map(id => allePunkte.find(n => n.id === id)).filter(Boolean);
+  const zoneVon = zentraleJeGebaeude(allePunkte, zentralenPunkte,
+    new Map(gebaeude.filter(g => g.heizzentrale != null).map(g => [g.id, Number(g.heizzentrale)])));
+  const gruppen = [];
+  for (const zp of zentralenPunkte) {
+    const ids = allePunkte.map(n => n.id).filter(id => zoneVon.get(id) === zp.id && !wurzelnAufbau.includes(id));
+    if (!ids.length) continue;
+    const g = quartiere.length ? strangGruppen(ids, quartiere, zp.id) : [{id:null, gebIds:ids}];
+    g.forEach(x => gruppen.push({ ...x, zentrale: zp.id }));
+  }
+  // Netz für eine Gruppe planen (Zentrale + Gebäude); false, wenn sich die Gruppe nicht anschließen lässt
+  // zId: Zentrale dieser Gruppe (verdeckt die Hauptzentrale)
+  const gruppePlanen = (allPts, zId) => {
   const useHeatTrasse = strategy !== 'quick';
   // Automatisch übernommene OSM-Straßen sind nur Routinggrundlage der Straßen-Strategie. Bei einer
   // gezeichneten Haupttrasse dürfen sie nicht als verbindliche Vorgabe in das Netz gezwungen werden.
@@ -3720,7 +3764,14 @@ export function autoGenerateNetz(options = {}){
   if (useHeatTrasse && trasseSegments.length === 0) trassePoints.forEach((_, i) => heatPointIndices.add(i));
   else heatSegments.forEach(seg => { for (let i=seg.start; i<=seg.end; i++) heatPointIndices.add(i); });
   const sharedTrasseNodes = new Map();
+  // Haupttrasse an der Heizzentrale verankert: ein Trassenpunkt im Zentralengebäude (oder ≤ 8 m vom Mittelpunkt)
+  // ist die Zentrale selbst — das Netz beginnt dann direkt dort, ohne eigenen Stich
+  const zentraleKnoten = allPts.find(n => n.id === zId);
+  const zentraleGeb = gebaeude.find(g => g.id === zId);
+  const anZentrale = pt => !!zentraleKnoten && (L.latLng(pt).distanceTo(zentraleKnoten.pt) <= 8 ||
+    (zentraleGeb?.polygon?.length >= 3 && _punktImPolygon(L.latLng(pt), zentraleGeb.polygon)));
   const getTrasseNode = pt => {
+    if (anZentrale(pt)) return zentraleKnoten;
     const key = `${Number(pt.lat).toFixed(7)},${Number(pt.lng).toFixed(7)}`;
     if (!sharedTrasseNodes.has(key)) sharedTrasseNodes.set(key, { id: nextTrasseNodeId(), type: 'trasse', pt, load: 0 });
     return sharedTrasseNodes.get(key);
@@ -4125,11 +4176,40 @@ export function autoGenerateNetz(options = {}){
   mstEdges.splice(0,mstEdges.length,...optimizedEdges);
   window._netzBuildingObstacleDiagnostics.usedConflictEdges =
     mstEdges.filter(edge => edge.buildingConflict).length;
+  return mstEdges;
+  };
+
+  const mstEdges = [];
+  const strassenDiag = {uncoveredBuildings:0,freeClusters:0};
+  const zonenKnoten = new Map();
+  for (const gruppe of gruppen) {
+    const ids = new Set(gruppe.gebIds);
+    const zp = allePunkte.find(n => n.id === gruppe.zentrale);
+    let kanten = gruppePlanen([zp, ...allePunkte.filter(n => ids.has(n.id))], gruppe.zentrale);
+    if (kanten === false) return false;
+    // Eigene Stränge bzw. mehrere Zentralen: nur der Teil von Trasse und Straßen, der die Gebäude der Gruppe erreicht —
+    // sonst legt jede Gruppe die ganze gezeichnete Haupttrasse ein weiteres Mal
+    if (quartiere.length || gruppen.length > 1) kanten = sackgassenEntfernen(kanten, id => id !== gruppe.zentrale && !ids.has(id));
+    mstEdges.push(...kanten);
+    if (!zonenKnoten.has(gruppe.zentrale)) zonenKnoten.set(gruppe.zentrale, new Map());
+    kanten.forEach(k => [k.uNode, k.vNode].forEach(n => { if (n?.pt) zonenKnoten.get(gruppe.zentrale).set(n.id, n); }));
+    strassenDiag.uncoveredBuildings += window._streetRoutingDiagnostics?.uncoveredBuildings || 0;
+    strassenDiag.freeClusters += window._streetRoutingDiagnostics?.freeClusters || 0;
+  }
+  // Mehrere Zentralen am selben Netz: Zonen über Verbindungsleitungen (kürzeste Verbindung) zusammenschließen
+  if (wurzelnAufbau.length > 1 && window._hzVerbinden !== false) {
+    // Zentralen ohne eigene Gebäude trotzdem anbinden
+    zentralenPunkte.forEach(zp => { if (!zonenKnoten.has(zp.id)) zonenKnoten.set(zp.id, new Map([[zp.id, zp]])); });
+    const zonen = new Map([...zonenKnoten].map(([z, m]) => [z, [...m.values()]]));
+    kuppelVerbindungen(zonen).forEach(k => mstEdges.push({ u: k.a.id, v: k.b.id, uNode: k.a, vNode: k.b, kuppelAufbau: true }));
+  }
+  if (window._streetRoutingDiagnostics) Object.assign(window._streetRoutingDiagnostics, strassenDiag);
+  window._netzBuildingObstacleDiagnostics.usedConflictEdges = mstEdges.filter(edge => edge.buildingConflict).length;
 
   mstEdges.forEach(e => {
     const displayPoints = _netzDisplayPoints(e.uNode,e.vNode);
     const layer = L.polyline(displayPoints, {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
-    const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane'});
+    const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane', className: 'netz-hit'});
     if (netzVisible) { layer.addTo(map); hitLayer.addTo(map); }
     const edgeObj = {
         u: e.u, v: e.v, uNode: e.uNode, vNode: e.vNode,
@@ -4137,13 +4217,17 @@ export function autoGenerateNetz(options = {}){
         buildingConflict:e.buildingConflict === true,
         waypoint: null, segLayers: [], warnMarker: null, midMarker: null
     };
+    _leitungGreifbarMachen(edgeObj, hitLayer);
     hitLayer.on('click', (ev) => {
-      if (window.isDrawingEdge) return;
+      // Beim Zeichnen der Trasse: Klick an die Karte durchreichen
+      if (window.isDrawingEdge || window.isDrawingTrasse) return;
+      if (Date.now() - _leitungGezogenUm < 400) { L.DomEvent.stopPropagation(ev); return; }
       _selectNetzEditEdge(edgeObj);
       showEdgePopup(edgeObj, ev.originalEvent);
       L.DomEvent.stopPropagation(ev);
     });
     hitLayer.on('contextmenu', () => {
+      if (window.isDrawingTrasse) return;   // Rechtsklick beim Trassenzeichnen löscht keine Leitung
       if (!ensureWaermeNetzStructureEditable()) return;
       map.removeLayer(layer);
       map.removeLayer(hitLayer);
@@ -4190,6 +4274,11 @@ export function autoGenerateNetz(options = {}){
     });
     recalcNetz();
   }
+  // Gebäude von der sinnvolleren Straßenseite anschließen, statt die Leitung um den Block zu legen
+  // Volle Trassentreue: Anschlüsse bleiben an der vorgegebenen Trasse, auch wenn ein Stich woanders kürzer wäre
+  const volleTreue = (options.strategy || 'trasse') === 'trasse' &&
+    Number(options.trasseTreue ?? document.getElementById('netz-trassentreue')?.value ?? 80) >= 95;
+  const anschlussOpt = options.anschluesseOptimieren === false || volleTreue ? null : _anschluesseOptimieren();
   autoAssignEdgeCosts();
   // Nach der Erzeugung bewusst in eine ruhige Ergebnisansicht wechseln.
   setNetzRewireMode(false);
@@ -4205,8 +4294,310 @@ export function autoGenerateNetz(options = {}){
   const conflictInfo = conflictCount
     ? ` · ${conflictCount} Leitungsverlauf${conflictCount === 1 ? '' : 'e'} als Gebäudekonflikt markiert`
     : '';
-  showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte${streetInfo}${conflictInfo}.`, conflictCount ? 7000 : 4500);
+  const optInfo = anschlussOpt?.umgelegt
+    ? ` · ${anschlussOpt.umgelegt} Anschl${anschlussOpt.umgelegt === 1 ? 'uss' : 'üsse'} von der kürzeren Seite (−${Math.round(anschlussOpt.gespart)} m Trasse)`
+    : '';
+  showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte${optInfo}${streetInfo}${conflictInfo}.`, conflictCount ? 7000 : 4500);
   return window.netzEdges.length > 0;
+}
+
+/**
+ * Zuordnung der Leitungen zu den Hauptsträngen, wenn Versorgungsquartiere festgelegt sind (sonst null).
+ * erlaubt(gebId, kante): Liegt die Leitung in einem Strang, der nur das Quartier des Gebäudes versorgt?
+ */
+function _strangZuordnung(kanten, centralId, knoten) {
+  const quartiere = (window.netzQuartiere || []).filter(q => q.gebIds?.length);
+  if (!quartiere.length) return null;
+  const quartierVon = quartierJeGebaeude(quartiere,centralId);
+  const h = hauptstraenge(kanten,centralId,quartierVon,id => knoten.get(id)?.type === 'geb');
+  const quartierDerKante = e => {
+    const abgang = h.abgangVon.get(e.u === centralId ? e.v : e.u);
+    return abgang == null ? undefined : h.quartierVonAbgang.get(abgang);
+  };
+  return {
+    ...h,
+    quartierDerKante,
+    erlaubt:(gebId,e) => quartierDerKante(e) === (quartierVon.get(gebId) ?? null),
+  };
+}
+
+/**
+ * Versorgungsquartiere: Darf ein Gebäude an diese Leitung? Nur an Leitungen des eigenen Hauptstrangs (Gebäude ohne
+ * Quartier nur an Leitungen ohne Quartier). Ohne Quartiere: immer. Gilt für Umhängen, Anschlüsse, Strang umlegen.
+ */
+function _quartierZielPruefer() {
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const kanten = (window.netzEdges || []).filter(e => !e.pruned);
+  const knoten = new Map();
+  kanten.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
+  const strang = _strangZuordnung(kanten,centralId,knoten);
+  if (!strang) return null;
+  const quartierVon = quartierJeGebaeude((window.netzQuartiere || []).filter(q => q.gebIds?.length),centralId);
+  return {
+    erlaubt: (gebId, e) => {
+      const q = strang.quartierDerKante(e);
+      // Leitungen außerhalb der Zone der Hauptzentrale (mehrere Zentralen) und noch nicht zugeordnete: frei
+      return q === undefined || q === (quartierVon.get(gebId) ?? null);
+    },
+    quartierVon,
+  };
+}
+
+/** Leitungen entfernen, die an einem Abzweig ohne Weiterführung enden (versorgen niemanden). Zentrale und Gebäude bleiben. */
+function _blattAbzweigeEntfernen() {
+  const zentralen = new Set(netzZentralenIds());
+  let entfernt = 0;
+  for (let runde = 0; runde < 500; runde++) {
+    const grad = new Map();
+    window.netzEdges.filter(e => !e.pruned).forEach(e => { grad.set(e.u,(grad.get(e.u) || 0) + 1); grad.set(e.v,(grad.get(e.v) || 0) + 1); });
+    const blatt = window.netzEdges.find(e => !e.pruned && [[e.u,e.uNode],[e.v,e.vNode]].some(([id,n]) =>
+      n && n.type !== 'geb' && !zentralen.has(id) && grad.get(id) === 1));
+    if (!blatt) break;
+    _removeNetzEdge(blatt);
+    entfernt++;
+  }
+  return entfernt;
+}
+
+/**
+ * Tote Leitungen: Stücke, die niemanden versorgen — Stummel nach dem Löschen oder Umhängen einer Leitung,
+ * Leitungen zu Gebäuden ohne Wärmebedarf in jedem Jahr oder zu gelöschten Gebäuden. Teilnetze, die (noch) nicht
+ * mit der Zentrale verbunden sind, aber Verbraucher enthalten, bleiben stehen — dort wird vermutlich gerade umgebaut.
+ * Ergebnis: die Kanten, die entfernt würden (entfernen = true: entfernt sie auch).
+ */
+export function toteLeitungen(entfernen = false) {
+  const zentralen = new Set(netzZentralenIds());
+  const gebMap = new Map(gebaeude.map(g => [g.id, g]));
+  // Verbraucher: Gebäude mit Wärmebedarf jetzt oder in einem anderen Planungsjahr (Neubau, Sanierung)
+  const jahre = _netzPlanningYears();
+  const merk = new Map();
+  const istVerbraucher = id => {
+    if (merk.has(id)) return merk.get(id);
+    const g = gebMap.get(id);
+    const ja = !!g && !isExcluded(id) && jahre.some(j => (getComputedStats(g, j).heizlast || 0) > 0 || (getComputedStats(g, j).waerme || 0) > 0);
+    merk.set(id, ja);
+    return ja;
+  };
+  const ergebnis = [];
+  for (let runde = 0; runde < 2000; runde++) {
+    const kanten = window.netzEdges.filter(e => !e.pruned && !ergebnis.includes(e));
+    const nachbarn = new Map();
+    kanten.forEach(e => { for (const [a, b] of [[e.u, e.v], [e.v, e.u]]) { if (!nachbarn.has(a)) nachbarn.set(a, []); nachbarn.get(a).push({ zu: b, e }); } });
+    // Teilnetze bestimmen: verbunden mit der Zentrale? enthält Verbraucher?
+    const komp = new Map();
+    let k = 0;
+    for (const start of nachbarn.keys()) {
+      if (komp.has(start)) continue;
+      const q = [start]; komp.set(start, k);
+      while (q.length) { const x = q.pop(); for (const n of nachbarn.get(x) || []) if (!komp.has(n.zu)) { komp.set(n.zu, k); q.push(n.zu); } }
+      k++;
+    }
+    const mitZentrale = new Set([...zentralen].map(z => komp.get(z)).filter(c => c != null)), mitVerbraucher = new Set();
+    for (const [id, c] of komp) if (!zentralen.has(id) && istVerbraucher(id)) mitVerbraucher.add(c);
+    const tot = kanten.find(e => {
+      const c = komp.get(e.u);
+      if (!mitZentrale.has(c) && mitVerbraucher.has(c)) return false;
+      if (!mitZentrale.has(c)) return true;   // Teilnetz ohne Verbraucher und ohne Zentrale
+      return [e.u, e.v].some(id => !zentralen.has(id) && (nachbarn.get(id) || []).length === 1 && !istVerbraucher(id));
+    });
+    if (!tot) break;
+    ergebnis.push(tot);
+  }
+  if (entfernen && ergebnis.length) { ergebnis.forEach(_removeNetzEdge); recalcNetz(); }
+  return ergebnis;
+}
+
+/** Schaltfläche in der Netzwarnung: tote Leitungen entfernen (mit Rückgängig über Strg+Z). */
+export function toteLeitungenEntfernen() {
+  if (!ensureWaermeNetzStructureEditable()) return 0;
+  const n = toteLeitungen(true).length;
+  showHint(n ? `✓ ${n} Leitung${n === 1 ? '' : 'en'} ohne Abnehmer entfernt.` : 'Keine Leitungen ohne Abnehmer gefunden.', 3500);
+  return n;
+}
+
+/** Leitungen, die von einer Zentrale aus erreichbar sind (ohne Verbindungsleitungen übergeben = ihre Zone). */
+function _kantenDerZone(kanten, zentrale) {
+  const nachbarn = new Map();
+  kanten.forEach(e => { for (const [a, b] of [[e.u, e.v], [e.v, e.u]]) { if (!nachbarn.has(a)) nachbarn.set(a, []); nachbarn.get(a).push({ b, e }); } });
+  const besucht = new Set([zentrale]), out = new Set(), q = [zentrale];
+  while (q.length) {
+    const x = q.pop();
+    for (const n of nachbarn.get(x) || []) { out.add(n.e); if (!besucht.has(n.b)) { besucht.add(n.b); q.push(n.b); } }
+  }
+  return kanten.filter(e => out.has(e));
+}
+
+/**
+ * Doppelt verlegte Leitungen zusammenlegen: Läuft eine Leitung an einem Ende ein Stück auf einer anderen mit
+ * (z. B. nach dem Umhängen oder Verschieben), wird sie dort angeschlossen, wo sie die andere verlässt — das
+ * doppelte Stück entfällt, und auf der Straße liegt nur noch eine Leitung (eine Farbe, eine WLD).
+ * nurKante: nur Doppelverlegungen dieser Leitung. Ergebnis: Zahl der zusammengelegten Abschnitte.
+ */
+export function doppelVerlegungenAufloesen(nurKante = null) {
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  if (!centralId) return 0;
+  let gesamt = 0;
+  for (let runde = 0; runde < 40; runde++) {
+    const kanten = window.netzEdges.filter(e => !e.pruned && e.layer);
+    const knoten = new Map();
+    kanten.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
+    const strang = _strangZuordnung(kanten,centralId,knoten);
+    const liste = kanten.map(e => ({ edge: e, linie: e.layer.getLatLngs() }));
+    const paare = parallelAbschnitte(liste)
+      .filter(t => !(strang && strang.quartierDerKante(t.a.edge) !== strang.quartierDerKante(t.b.edge)))
+      .filter(t => !nurKante || t.a.edge === nurKante || t.b.edge === nurKante);
+    let erledigt = false;
+    for (const t of paare) {
+      for (const [a, b] of [[t.a, t.b], [t.b, t.a]]) {
+        if (_doppelstueckAufloesen(a.edge, b.edge, a.linie, b.linie)) { erledigt = true; break; }
+      }
+      if (erledigt) break;
+    }
+    if (!erledigt) break;
+    gesamt++;
+  }
+  return gesamt;
+}
+
+function _doppelstueckAufloesen(edgeA, edgeB, linieA, linieB) {
+  const u = ueberlappungAmEnde(linieA, linieB);
+  if (!u) return false;
+  // Ende von A, das auf B liegt (X), und das freie Ende (Y)
+  const xNode = u.ende === 'start' ? edgeA.uNode : edgeA.vNode;
+  const yNode = u.ende === 'start' ? edgeA.vNode : edgeA.uNode;
+  if (!xNode || !yNode) return false;   // X darf auch die Zentrale oder ein Gebäude sein — die Prüfung danach verhindert Abtrennen
+  const snapshot = captureWaermeNetzGraph();
+  const vorher = window._waermeNetzValidation || {};
+  const zyklen = vorher.cycleEdges || 0, getrennt = (vorher.disconnectedConsumerIds || []).length;
+  const props = { dn: edgeA.dn, kostKlasse: edgeA.kostKlasse || null, kostOverride: edgeA.kostOverride === true,
+    visibleFromYear: edgeA.visibleFromYear, visibleUntilYear: edgeA.visibleUntilYear };
+  try {
+    _removeNetzEdge(edgeA);
+    if (!window.netzEdges.includes(edgeB)) throw new Error('Ziel fehlt');
+    const j = _knotenAufKante(edgeB, L.latLng(u.punkt.lat, u.punkt.lng));
+    if (!j || j.id === yNode.id) throw new Error('kein Anschluss');
+    // Verlauf: vom Anschluss an B bis zum freien Ende (Richtung von J nach Y)
+    const rest = (u.ende === 'start' ? u.rest : [...u.rest].reverse()).map(p => L.latLng(p.lat, p.lng));
+    const neu = _makeNetzEdge(j, yNode, props.dn || 0);
+    Object.assign(neu, { kostKlasse: props.kostKlasse, kostOverride: props.kostOverride });
+    if (props.visibleFromYear != null) neu.visibleFromYear = props.visibleFromYear;
+    if (props.visibleUntilYear != null) neu.visibleUntilYear = props.visibleUntilYear;
+    _applySplitWaypoints(neu, rest.slice(1, -1).filter(p => p.distanceTo(j.pt) > 1 && p.distanceTo(yNode.pt) > 1));
+    toteLeitungen(true);
+    recalcNetz();
+    const v = window._waermeNetzValidation || {};
+    if ((v.cycleEdges || 0) > zyklen || (v.disconnectedConsumerIds || []).length > getrennt) throw new Error('ungültige Netzstruktur');
+    return true;
+  } catch (error) {
+    applyWaermeNetzGraph(snapshot);
+    return false;
+  }
+}
+
+/**
+ * „Netz aufräumen“: tote Leitungen entfernen, doppelt verlegte Stücke zusammenlegen, Anschlüsse an nähere
+ * Leitungen hängen (wo das Trasse spart). Eine Aktion, ein Rückgängig-Schritt.
+ */
+export function netzAufraeumen() {
+  if (!ensureWaermeNetzStructureEditable()) return null;
+  const laengeVorher = _netzTrassenLaenge();
+  const tote = toteLeitungen(true).length;
+  const doppelt = doppelVerlegungenAufloesen();
+  const opt = _anschluesseOptimieren() || { umgelegt: 0 };
+  const tote2 = toteLeitungen(true).length;
+  recalcNetz();
+  const delta = Math.round(laengeVorher - _netzTrassenLaenge());
+  const teile = [];
+  if (tote + tote2) teile.push(`${tote + tote2} Leitung${tote + tote2 === 1 ? '' : 'en'} ohne Abnehmer entfernt`);
+  if (doppelt) teile.push(`${doppelt}× doppelt verlegt zusammengelegt`);
+  if (opt.umgelegt) teile.push(`${opt.umgelegt} Anschluss${opt.umgelegt === 1 ? '' : 'e'} an nähere Leitungen gehängt`);
+  showHint(teile.length ? `✓ ${teile.join(' · ')} — Trasse ${delta >= 0 ? '−' : '+'}${Math.abs(delta)} m. Strg+Z macht es rückgängig.` : 'Nichts aufzuräumen — das Netz ist bereits sauber.', 5000);
+  return { tote: tote + tote2, doppelt, umgelegt: opt.umgelegt, gespartM: delta };
+}
+
+/** Schaltfläche in der Arbeitsliste: alle Doppelverlegungen zusammenlegen. */
+export function doppelVerlegungenZusammenlegen() {
+  if (!ensureWaermeNetzStructureEditable()) return 0;
+  const n = doppelVerlegungenAufloesen();
+  showHint(n ? `✓ ${n} doppelt verlegte${n === 1 ? 'r Abschnitt' : ' Abschnitte'} zusammengelegt. Strg+Z macht es rückgängig.` : 'Keine doppelt verlegten Abschnitte, die sich zusammenlegen lassen.', 4000);
+  return n;
+}
+
+/**
+ * Nach dem Aufbau: Äste, deren Gebäude sich mit kurzen Stichen an eine andere Leitung hängen lassen, so dass der Ast
+ * samt Zuleitung entfällt (z. B. Bogen um einen Block), umlegen — solange das Trasse spart (lib/netz-strang.js).
+ */
+export function _anschluesseOptimieren(maxRunden = 25) {
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  if (!centralId) return null;
+  const snapshot = captureWaermeNetzGraph();
+  const vorher = window._waermeNetzValidation || {};
+  const getrenntVorher = (vorher.disconnectedConsumerIds || []).length, zyklenVorher = vorher.cycleEdges || 0;
+  let gespart = 0, umgelegt = 0;
+  try {
+    for (let runde = 0; runde < maxRunden; runde++) {
+      const kanten = window.netzEdges.filter(e => !e.pruned);
+      const knoten = new Map();
+      kanten.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
+      // Mehrere Zentralen: je Versorgungszone getrennt (Gebäude bleiben in ihrer Zone, Verbindungsleitungen tabu)
+      const zentralen = netzZentralenIds();
+      let plan = null;
+      for (const zentrale of zentralen) {
+        const zoneKanten = zentralen.length > 1 ? _kantenDerZone(kanten.filter(e => !e.kuppel),zentrale) : kanten;
+        const zoneKnoten = new Map();
+        zoneKanten.forEach(e => { zoneKnoten.set(e.u,e.uNode); zoneKnoten.set(e.v,e.vNode); });
+        const gebPunkte = new Map([...zoneKnoten].filter(([id,n]) => n?.type === 'geb' && !zentralen.includes(id)).map(([id,n]) => [id,n.pt]));
+        const liste = zoneKanten.map(e => ({u:e.u,v:e.v,linie:e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt],edge:e}));
+        // Versorgungsquartiere: Gebäude nur an Leitungen des eigenen Hauptstrangs hängen
+        const strang = zentrale === centralId ? _strangZuordnung(zoneKanten,centralId,zoneKnoten) : null;
+        plan = besteAstVerlegung(liste,{
+          zentraleId:zentrale, gebaeude:gebPunkte,
+          zielErlaubt:strang ? (gebId,ziel) => strang.erlaubt(gebId,ziel.edge) : undefined,
+          istAbzweig:id => !!zoneKnoten.get(id) && zoneKnoten.get(id).type !== 'geb',
+          kreuzt:(von,nach,gebId) => crossesForeignBuilding(L.latLng(von.lat,von.lng),L.latLng(nach.lat,nach.lng),gebaeude,[gebId]),
+        });
+        if (plan) break;
+      }
+      if (!plan) break;
+      // Zeitliche Schaltung der alten Hausanschlüsse (geplante Neubauten) übernehmen
+      const zeit = new Map();
+      plan.stiche.forEach(st => {
+        const alt = kanten.find(e => e.u === st.gebId || e.v === st.gebId);
+        if (alt?.visibleFromYear) zeit.set(st.gebId,{von:alt.visibleFromYear,bis:alt.visibleUntilYear ?? null});
+      });
+      plan.entfallen.forEach(x => _removeNetzEdge(x.edge));
+      const gebIds = new Set(plan.stiche.map(st => st.gebId));
+      plan.stiche.forEach(st => {
+        const punkt = L.latLng(st.punkt.lat,st.punkt.lng);
+        // Das Ziel kann von einem vorherigen Stich geteilt worden sein: dann die nächstgelegene Leitung ohne Gebäude am Ende
+        let ziel = window.netzEdges.includes(st.ziel.edge) ? st.ziel.edge : null;
+        if (!ziel) {
+          let d = Infinity;
+          const pruefer = _quartierZielPruefer();
+          window.netzEdges.filter(e => !e.pruned && !gebIds.has(e.u) && !gebIds.has(e.v) && (!pruefer || pruefer.erlaubt(st.gebId,e))).forEach(e => {
+            const a = abstandZuLinie(punkt,e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt]);
+            if (a < d) { d = a; ziel = e; }
+          });
+        }
+        if (!ziel) throw new Error('kein Anschlussziel');
+        const neu = _makeNetzEdge(_knotenAufKante(ziel,punkt),knoten.get(st.gebId),0);
+        const z = zeit.get(st.gebId);
+        if (z) { neu.visibleFromYear = z.von; neu.visibleUntilYear = z.bis; }
+      });
+      _blattAbzweigeEntfernen();
+      gespart += plan.gewinn;
+      umgelegt += plan.stiche.length;
+    }
+    if (!umgelegt) return {gespart:0,umgelegt:0};
+    recalcNetz();
+    const v = window._waermeNetzValidation || {};
+    if ((v.cycleEdges || 0) > zyklenVorher || (v.disconnectedConsumerIds || []).length > getrenntVorher) throw new Error('ungültige Netzstruktur');
+    return {gespart,umgelegt};
+  } catch (error) {
+    console.warn('Anschlussoptimierung verworfen:',error);
+    applyWaermeNetzGraph(snapshot);
+    return {gespart:0,umgelegt:0};
+  }
 }
 
 export async function confirmAutoGenerateNetz(options = {}){
@@ -4667,7 +5058,7 @@ export function addNetzEdge(u, v, {force = false} = {}){
   }
   const displayPoints = _netzDisplayPoints(uNode,vNode);
   const layer = L.polyline(displayPoints, {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
-  const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane'});
+  const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane', className: 'netz-hit'});
   if (netzVisible) { layer.addTo(map); hitLayer.addTo(map); }
 
   const edgeObj = {
@@ -4679,14 +5070,18 @@ export function addNetzEdge(u, v, {force = false} = {}){
     waypoint: null, segLayers: [], warnMarker: null, midMarker: null
   };
 
+  _leitungGreifbarMachen(edgeObj, hitLayer);
   hitLayer.on('click', (ev) => {
-    if (window.isDrawingEdge) return;
+    // Beim Zeichnen der Trasse liegen die Leitungen über den Straßen: Klick an die Karte durchreichen (Trassenpunkt setzen)
+    if (window.isDrawingEdge || window.isDrawingTrasse) return;
+    if (Date.now() - _leitungGezogenUm < 400) { L.DomEvent.stopPropagation(ev); return; }   // Ende eines Ziehens, kein Klick
     if (netzPruningMode) { toggleEdgePruned(edgeObj); L.DomEvent.stopPropagation(ev); return; }
     _selectNetzEditEdge(edgeObj);
     showEdgePopup(edgeObj, ev.originalEvent);
     L.DomEvent.stopPropagation(ev);
   });
   hitLayer.on('contextmenu', () => {
+    if (window.isDrawingTrasse) return;   // Rechtsklick beim Trassenzeichnen löscht keine Leitung
     if (!ensureWaermeNetzStructureEditable()) return;
     map.removeLayer(layer);
     map.removeLayer(hitLayer);
@@ -4696,6 +5091,8 @@ export function addNetzEdge(u, v, {force = false} = {}){
     if (edgeObj.segLayers) edgeObj.segLayers.forEach(s => map.removeLayer(s));
     setNetzEdges(window.netzEdges.filter(e => e !== edgeObj));
     closeEdgePopup();
+    // Reststücke, die jetzt niemanden mehr versorgen, gleich mit entfernen
+    toteLeitungen(true);
     recalcNetz();
   });
 
@@ -4722,7 +5119,7 @@ function _nextJunctionId(){
 function _makeNetzEdge(uNode, vNode, dn){
   const displayPoints = _netzDisplayPoints(uNode,vNode);
   const layer    = L.polyline(displayPoints, {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
-  const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane'});
+  const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane', className: 'netz-hit'});
   if (netzVisible) { layer.addTo(map); hitLayer.addTo(map); }
   const edgeObj = {
     u: uNode.id, v: vNode.id, uNode, vNode,
@@ -4730,14 +5127,18 @@ function _makeNetzEdge(uNode, vNode, dn){
     _straightLength: calcEdgeLength({layer}), length: calcEdgeLength({layer}),
     waypoint: null, segLayers: [], warnMarker: null, midMarker: null
   };
+  _leitungGreifbarMachen(edgeObj, hitLayer);
   hitLayer.on('click', (ev) => {
-    if (window.isDrawingEdge) return;
+    // Beim Zeichnen der Trasse liegen die Leitungen über den Straßen: Klick an die Karte durchreichen (Trassenpunkt setzen)
+    if (window.isDrawingEdge || window.isDrawingTrasse) return;
+    if (Date.now() - _leitungGezogenUm < 400) { L.DomEvent.stopPropagation(ev); return; }   // Ende eines Ziehens, kein Klick
     if (netzPruningMode) { toggleEdgePruned(edgeObj); L.DomEvent.stopPropagation(ev); return; }
     _selectNetzEditEdge(edgeObj);
     showEdgePopup(edgeObj, ev.originalEvent);
     L.DomEvent.stopPropagation(ev);
   });
   hitLayer.on('contextmenu', () => {
+    if (window.isDrawingTrasse) return;   // Rechtsklick beim Trassenzeichnen löscht keine Leitung
     if (!ensureWaermeNetzStructureEditable()) return;
     map.removeLayer(layer); map.removeLayer(hitLayer);
     if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
@@ -4745,7 +5146,9 @@ function _makeNetzEdge(uNode, vNode, dn){
     if (edgeObj.warnMarker) map.removeLayer(edgeObj.warnMarker);
     if (edgeObj.segLayers) edgeObj.segLayers.forEach(s => map.removeLayer(s));
     setNetzEdges(window.netzEdges.filter(e => e !== edgeObj));
-    closeEdgePopup(); recalcNetz();
+    closeEdgePopup();
+    toteLeitungen(true);   // Reststücke ohne Abnehmer mit entfernen
+    recalcNetz();
   });
   window.netzEdges.push(edgeObj);
   addEdgeMidHandle(edgeObj);
@@ -4772,6 +5175,7 @@ export function captureWaermeNetzGraph(){
     return {
       u: e.u, v: e.v,
       dn: Number(e.dn) || 0,
+      ...(e.dnOverride ? {dnOverride:true} : {}),
       ...(e.visibleFromYear != null && Number.isFinite(Number(e.visibleFromYear))
         ? {visibleFromYear:Number(e.visibleFromYear)} : {}),
       ...(e.visibleUntilYear != null && Number.isFinite(Number(e.visibleUntilYear))
@@ -4817,6 +5221,7 @@ export function applyWaermeNetzGraph(graph, {recalculate = true} = {}){
     if (!uNode || !vNode) return;
     const edge = _makeNetzEdge(uNode, vNode, Number(data.dn) || 0);
     edge.pruned = data.pruned === true;
+    edge.dnOverride = data.dnOverride === true;
     edge.buildingConflict = data.buildingConflict === true;
     edge.kostKlasse = data.kostKlasse || null;
     edge.kostOverride = data.kostOverride === true;
@@ -4835,6 +5240,7 @@ export function applyWaermeNetzGraph(graph, {recalculate = true} = {}){
       removeEdgeWaypointMarkers(edge);
       addEdgeMidHandle(edge);
     }
+    edge.length = calcEdgeLength(edge) || edge.length;
   });
   if (recalculate) recalcNetz();
 }
@@ -4850,9 +5256,11 @@ export function connectGebToNearestPipe(g){
   // Nächstgelegenen Punkt auf dem vollständigen Leitungsverlauf suchen. Das
   // Bestandsnetz darf dabei weder begradigt noch neu dimensioniert werden.
   let best = null;
+  const quartierPruefer = _quartierZielPruefer();
   for (const e of window.netzEdges) {
     if (e.pruned || e.visibleFromYear != null ||
         !e.uNode || !e.vNode || !e.uNode.pt || !e.vNode.pt) continue;
+    if (quartierPruefer && !quartierPruefer.erlaubt(g.id,e)) continue;
     const projection = _nearestPointOnNetzEdge(e,gc);
     if (!projection) continue;
     const allowedIds = [g.id,e.uNode,e.vNode]
@@ -5078,6 +5486,115 @@ export function setNetzMotionless(enabled) {
   refreshNetzFlowArrows();
 }
 
+// ── Leitung direkt greifen und ziehen (Bearbeitungsmodus) ──
+// Wie bei der Routenplanung: Leitung an beliebiger Stelle greifen und auf den gewünschten Verlauf ziehen —
+// ohne vorher anklicken. Beim Loslassen gilt dasselbe wie für den Ziehpunkt der Leitung: Straßenrouting
+// über den Punkt und, wenn er auf einer anderen Straße liegt, das Angebot, den Strang umzulegen.
+let _leitungGezogenUm = 0;
+
+/** Leitungen sind greifbar im Bearbeitungsmodus und überall im Netz-Reiter — außer während anderer Werkzeuge. */
+function _leitungGreifbar() {
+  if (netzPruningMode || netzRewireMode || window.isDrawingTrasse || window.isDrawingEdge) return false;
+  return netzEditMode || _netzWorkspaceSichtbar();
+}
+
+/** Index der Ecke (fester Zwischenpunkt) der Leitung, die höchstens 12 Pixel vom Bildschirmpunkt entfernt liegt, sonst -1. */
+function _eckeAmPunkt(edgeObj, px) {
+  return (edgeObj.routingViaPoints || []).findIndex(v => map.latLngToContainerPoint(v).distanceTo(px) <= 12);
+}
+
+function _leitungGreifbarMachen(edgeObj, hitLayer) {
+  hitLayer.on('mousedown', ev => _leitungGreifen(edgeObj, ev));
+  // Doppelklick auf eine Ecke entfernt sie — die Leitung folgt dann wieder der Straße
+  hitLayer.on('dblclick', ev => {
+    if (!_leitungGreifbar()) return;
+    const i = _eckeAmPunkt(edgeObj,map.latLngToContainerPoint(ev.latlng));
+    const marker = i >= 0 ? edgeObj.waypointMarkers?.[i] : null;
+    if (!marker) return;
+    L.DomEvent.stop(ev);
+    marker.fire('dblclick',{originalEvent:ev.originalEvent});
+    closeEdgePopup();   // die beiden Einzelklicks hatten das Leitungsfenster geöffnet
+    showHint('Ecke entfernt.',2500);
+  });
+  // „Greifen“-Hand genau dann, wenn Ziehen möglich ist
+  hitLayer.on('mouseover', () => { const el = hitLayer.getElement?.(); if (el) el.style.cursor = _leitungGreifbar() ? 'grab' : ''; });
+}
+
+function _leitungGreifen(edgeObj, ev) {
+  if (!_leitungGreifbar()) return;
+  if ((ev.originalEvent?.button ?? 0) !== 0 || !edgeObj.midMarker) return;
+  L.DomEvent.stopPropagation(ev);
+  ev.originalEvent?.preventDefault?.();
+  const startPx = map.latLngToContainerPoint(ev.latlng);
+  const pfad = getEdgePathPoints(edgeObj);
+  // Nahe an einer vorhandenen Ecke gegriffen: diese Ecke verschieben statt eine neue zu setzen
+  const ecke = _eckeAmPunkt(edgeObj,startPx);
+  let bewegt = false;
+  const kartenZiehen = map.dragging.enabled();
+  if (kartenZiehen) map.dragging.disable();
+  const vorschau = latlng => {
+    if (ecke >= 0) {
+      const vias = [...(edgeObj.routingViaPoints || [])];
+      vias[ecke] = latlng;
+      const punkte = [edgeObj.uNode.pt,...vias,edgeObj.vNode.pt];
+      edgeObj.layer?.setLatLngs(punkte);
+      edgeObj.hitLayer?.setLatLngs(punkte);
+      return;
+    }
+    // eingefügt an der nächstgelegenen Stelle des bisherigen Verlaufs
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < pfad.length - 1; i++) {
+      const d = L.LineUtil.pointToSegmentDistance(map.latLngToLayerPoint(latlng), map.latLngToLayerPoint(pfad[i]), map.latLngToLayerPoint(pfad[i + 1]));
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    const punkte = [...pfad.slice(0, best + 1), latlng, ...pfad.slice(best + 1)];
+    edgeObj.layer?.setLatLngs(punkte);
+    edgeObj.hitLayer?.setLatLngs(punkte);
+  };
+  const bewegen = e => {
+    if (!bewegt && map.latLngToContainerPoint(e.latlng).distanceTo(startPx) < 5) return;
+    bewegt = true;
+    map.getContainer().classList.add('netz-zieht');
+    vorschau(e.latlng);
+  };
+  const loslassen = e => {
+    map.off('mousemove', bewegen);
+    map.off('mouseup', loslassen);
+    document.removeEventListener('mouseup', abbrechen);
+    map.getContainer().classList.remove('netz-zieht');
+    if (kartenZiehen) map.dragging.enable();
+    if (!bewegt) return;   // einfacher Klick: wie bisher auswählen
+    _leitungGezogenUm = Date.now();
+    // Der Browser meldet nach dem Loslassen noch einen Klick — der würde das Angebot sofort wieder schließen
+    const container = map.getContainer();
+    const schlucken = ce => { ce.stopPropagation(); ce.preventDefault(); };
+    container.addEventListener('click', schlucken, { capture: true, once: true });
+    setTimeout(() => container.removeEventListener('click', schlucken, { capture: true }), 400);
+    _selectNetzEditEdge(edgeObj);
+    const eckMarker = ecke >= 0 ? edgeObj.waypointMarkers?.[ecke] : null;
+    if (eckMarker) { eckMarker.setLatLng(e.latlng); eckMarker.fire('dragend'); return; }
+    edgeObj.midMarker.setLatLng(e.latlng);
+    edgeObj.midMarker.fire('dragend');
+  };
+  // Loslassen außerhalb der Karte: Vorschau verwerfen
+  const abbrechen = () => {
+    if (!bewegt) return;
+    map.off('mousemove', bewegen);
+    map.off('mouseup', loslassen);
+    document.removeEventListener('mouseup', abbrechen);
+    map.getContainer().classList.remove('netz-zieht');
+    if (kartenZiehen) map.dragging.enable();
+    edgeObj.layer?.setLatLngs(pfad);
+    edgeObj.hitLayer?.setLatLngs(pfad);
+  };
+  map.on('mousemove', bewegen);
+  map.on('mouseup', loslassen);
+  document.addEventListener('mouseup', abbrechen);
+}
+
+/** Ist ein Bearbeitungsmodus des Wärmenetzes aktiv (Leitungsverläufe oder Anschlüsse)? Für andere Module, window-Kopien sind nicht live. */
+export function netzBearbeitungAktiv() { return { edit: netzEditMode, rewire: netzRewireMode }; }
+
 export function setNetzEditMode(enabled) {
   netzEditMode = !!enabled;
   if (netzEditMode) setNetzVisible(true);
@@ -5135,7 +5652,12 @@ function _removeNetzEdge(edge) {
 
 function _parentEdgeForBuilding(buildingId) {
   const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
-  if (!centralId || buildingId === centralId) return null;
+  if (!centralId || istNetzZentrale(buildingId)) return null;
+  // Mehrere Zentralen: Versorgungsweg aus der letzten Netzberechnung (kürzester Weg zur nächsten Zentrale)
+  if (netzZentralenIds().length > 1) {
+    const e = window._netzElternKante?.get(buildingId);
+    return e && window.netzEdges.includes(e) ? e : null;
+  }
   const adjacency = new Map();
   window.netzEdges.filter(edge => !edge.pruned).forEach(edge => {
     if (!adjacency.has(edge.u)) adjacency.set(edge.u, []);
@@ -5208,6 +5730,267 @@ function _applySplitWaypoints(edge, points) {
   addEdgeMidHandle(edge);
 }
 
+/**
+ * Anschlussknoten auf einer Leitung: liegt der Punkt nahe an einem Ende, dieses Ende; sonst wird die Leitung
+ * an der nächstgelegenen Stelle mit einem neuen Abzweig geteilt (Verlauf, DN und Kostenklasse bleiben).
+ */
+function _knotenAufKante(targetEdge, targetPoint) {
+  const projection = _nearestPointOnNetzEdge(targetEdge,targetPoint);
+  const distanceU = projection.point.distanceTo(targetEdge.uNode.pt);
+  const distanceV = projection.point.distanceTo(targetEdge.vNode.pt);
+  if (distanceU < 5 || distanceV < 5) return distanceU <= distanceV ? targetEdge.uNode : targetEdge.vNode;
+  const dn = targetEdge.dn || 0;
+  const sourceProps = {kostKlasse:targetEdge.kostKlasse||null,kostOverride:targetEdge.kostOverride===true};
+  const junction = {id:_nextJunctionId(),type:'junction',pt:projection.point,load:0};
+  const leftWaypoints = projection.path.slice(1,projection.index+1);
+  const rightWaypoints = projection.path.slice(projection.index+1,-1);
+  _removeNetzEdge(targetEdge);
+  const left = _makeNetzEdge(targetEdge.uNode,junction,dn);
+  const right = _makeNetzEdge(junction,targetEdge.vNode,dn);
+  Object.assign(left,sourceProps); Object.assign(right,sourceProps);
+  _applySplitWaypoints(left,leftWaypoints);
+  _applySplitWaypoints(right,rightWaypoints);
+  return junction;
+}
+
+// ── Strang umlegen (Bearbeitungsmodus): wie ein Zwischenziel bei der Routenplanung ──
+// Ein auf eine andere Straße gezogener Leitungspunkt kann den ganzen Strang dahinter neu anbinden:
+// Teilnetz lösen, über den Punkt entlang der Straßen zum nächsten Punkt des übrigen Netzes führen,
+// verwaiste Abzweige entfernen. Logik der Struktur: lib/netz-strang.js.
+
+let _strangPlan = null;
+let _strangPopup = null;
+
+function _punktImPolygon(p, polygon) {
+  let innen = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i], b = polygon[j];
+    if ((a.lat > p.lat) !== (b.lat > p.lat) && p.lng < ((b.lng - a.lng) * (p.lat - a.lat)) / (b.lat - a.lat) + a.lng) innen = !innen;
+  }
+  return innen;
+}
+
+function _strangPlanen(edge, punkt, verlaufVorher = null) {
+  // Mehrere Zentralen: in der Zone der Leitung planen (ohne Verbindungsleitungen), mit deren Zentrale
+  const mehrere = netzZentralenIds().length > 1;
+  const centralId = mehrere ? window._netzWurzelVon?.get(edge.u) ?? window._netzWurzelVon?.get(edge.v)
+    : parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const alle = window.netzEdges.filter(e => !e.pruned);
+  const kanten = mehrere && centralId != null ? _kantenDerZone(alle.filter(e => !e.kuppel), centralId) : alle;
+  if (!centralId || !kanten.includes(edge) || !punkt) return null;
+  const knoten = new Map();
+  kanten.forEach(e => { knoten.set(e.u,e.uNode); knoten.set(e.v,e.vNode); });
+  // Abzweige (auch Trassenknoten des Aufbaus) dürfen wegfallen — Gebäude und Zentrale nie
+  const analyse = strangAnalyse(kanten,edge,centralId,id => !!knoten.get(id) && knoten.get(id).type !== 'geb');
+  if (!analyse) return null;
+  const gebaeudeDahinter = [...analyse.teilnetz].filter(id => knoten.get(id)?.type === 'geb').length;
+  if (!gebaeudeDahinter) return null;
+  const linie = e => e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt];
+  const entfaellt = new Set([edge,...analyse.totKanten]);
+  const imStrang = kanten.filter(e => e !== edge && analyse.teilnetz.has(e.u) && analyse.teilnetz.has(e.v)).map(e => ({edge:e,linie:linie(e)}));
+  const qPruefer = _quartierZielPruefer();
+  const strangGeb = [...analyse.teilnetz].filter(id => knoten.get(id)?.type === 'geb');
+  const imNetz = kanten.filter(e => !entfaellt.has(e) && !analyse.teilnetz.has(e.u) && !analyse.teilnetz.has(e.v))
+    .filter(e => !qPruefer || strangGeb.every(id => qPruefer.erlaubt(id,e)))
+    .map(e => ({edge:e,linie:linie(e)}));
+  const abstandZu = liste => p => Math.min(Infinity,...liste.map(x => abstandZuLinie(p,x.linie)));
+  const unten = knoten.get(analyse.unten), zentrale = knoten.get(centralId);
+  // Losgelassen auf oder nahe der Heizzentrale: Strang direkt aus der Zentrale — Weg ab ihrem Anschlusspunkt an der Straße
+  let zurZentrale = false;
+  const zentraleGeb = gebaeude.find(g => g.id === centralId);
+  const aufZentrale = zentrale && (punkt.distanceTo(zentrale.pt) <= 40 ||
+    (zentraleGeb?.polygon?.length >= 3 && _punktImPolygon(punkt,zentraleGeb.polygon)));
+  if (aufZentrale) {
+    const nachbarn = kanten.filter(e => e.u === centralId || e.v === centralId).map(e => (e.u === centralId ? e.vNode : e.uNode))
+      .filter(n => n && !analyse.teilnetz.has(n.id));
+    if (nachbarn.length) {
+      punkt = nachbarn.reduce((a,b) => (a.pt.distanceTo(punkt) <= b.pt.distanceTo(punkt) ? a : b)).pt;
+      zurZentrale = true;
+    }
+  }
+  // Vom Punkt aus in beide Richtungen: zum nächsten Punkt des Strangs und zum nächsten Punkt des übrigen Netzes
+  const route = strassenWegeAbPunkt(punkt,[
+    {abstand:abstandZu(imStrang),punkt:unten.pt},
+    // weiter zum Netz: nicht auf dem Weg zum Strang zurück und nicht durch den Strang hindurch
+    {abstand:abstandZu(imNetz),punkt:zentrale?.pt,getrennt:true,meiden:p => abstandZu(imStrang)(p) <= 8 && abstandZu(imNetz)(p) > 8},
+  ]);
+  if (!route) return null;
+  const [zumStrang,zumNetz] = route.wege;
+  const anschluss = (weg,liste,knotenAmPunkt) => {
+    const ende = weg.weg[weg.weg.length - 1];
+    if (weg.amPunkt || !liste.length) return {knoten:knotenAmPunkt,punkt:ende};
+    let best = null, d = Infinity;
+    liste.forEach(x => { const a = abstandZuLinie(ende,x.linie); if (a < d) { d = a; best = x.edge; } });
+    return {edge:best,punkt:ende};
+  };
+  const untenAnschluss = anschluss(zumStrang,imStrang,unten);
+  let obenAnschluss = anschluss(zumNetz,imNetz,zentrale);
+  let weg = [...zumStrang.weg].reverse().concat(zumNetz.weg.slice(1));   // vom Strang über den Punkt zum Netz
+  // Liegt der Punkt selbst auf einer Leitung des Netzes, nicht parallel zu ihr verlegen: am Ende der Überlappung anschließen
+  const amNetz = abstandZu(imNetz);
+  let k = zumStrang.weg.length - 1;
+  if (imNetz.length && amNetz(weg[k]) <= 8) {
+    while (k > 1 && amNetz(weg[k - 1]) <= 8) k--;
+    weg = weg.slice(0,k + 1);
+    obenAnschluss = anschluss({weg,amPunkt:false},imNetz,zentrale);
+  }
+  // Auf die Heizzentrale gezogen: Strang ab der Zentrale. Liegt auf dem Weg schon eine Leitung, wird sie mitbenutzt
+  // (eine Straße, eine Trasse); die neue Leitung beginnt dort, wo der Weg sie verlässt.
+  if (zurZentrale && !imNetz.length) obenAnschluss = {knoten:zentrale,punkt:zentrale.pt};
+  // Gleiche Anbindung wie bisher (an denselben Enden, nichts verwaist): nichts vorzuschlagen
+  const oben = knoten.get(analyse.oben);
+  if (!analyse.totKanten.length && oben && obenAnschluss.punkt.distanceTo(oben.pt) < 15 && untenAnschluss.punkt.distanceTo(unten.pt) < 15) return null;
+  // Neuer Weg liegt praktisch auf dem bisherigen (nur innerhalb derselben Straße verschoben): kein Vorschlag
+  const linieVorher = verlaufVorher?.length >= 2 ? verlaufVorher : linie(edge);
+  const bisher = [linieVorher,...analyse.totKanten.map(linie)];
+  // Gleich nur, wenn neuer und alter Verlauf gegenseitig aufeinander liegen — sonst lieber das Umlegen anbieten
+  const probenAuf = l => l.flatMap((p,i) => (i ? [0.25,0.5,0.75,1].map(t => L.latLng(l[i - 1].lat + (p.lat - l[i - 1].lat) * t,l[i - 1].lng + (p.lng - l[i - 1].lng) * t)) : [p]));
+  const neuAufAlt = weg.every(p => Math.min(...bisher.map(l => abstandZuLinie(p,l))) <= 10);
+  const altAufNeu = bisher.every(l => probenAuf(l).every(p => abstandZuLinie(p,weg) <= 10));
+  if (neuAufAlt && altAufNeu) return null;
+  const laenge = e => linienLaenge(linie(e));
+  const delta = linienLaenge(weg) - linienLaenge(linieVorher) - analyse.totKanten.reduce((sum,e) => sum + laenge(e),0);
+  return {edge,analyse,unten,untenAnschluss,obenAnschluss,weg,viaPunkt:route.viaPunkt,delta,gebaeudeDahinter,zurZentrale};
+}
+
+export function netzStrangVorschlagSchliessen() {
+  _strangPlan = null;
+  if (_strangPopup) { map.closePopup(_strangPopup); _strangPopup = null; }
+}
+
+/**
+ * Nach dem Ziehen eines Leitungspunkts: Ergibt die Anbindung über diesen Punkt eine andere Netzstruktur, wird sie angeboten.
+ * verlaufVorher: Verlauf der Leitung vor dem Ziehen (der Bearbeitungsmodus hat sie da schon über den Punkt geführt).
+ */
+export function netzStrangVorschlag(edge, punkt, verlaufVorher = null) {
+  netzStrangVorschlagSchliessen();
+  if (window.isDrawingTrasse) return false;
+  let plan = null;
+  try { plan = _strangPlanen(edge,punkt,verlaufVorher); } catch (error) { console.error('Strang umlegen:',error); }
+  if (!plan) {
+    // Nur der Verlauf hat sich geändert: liegt die Leitung jetzt auf einer anderen, dort zusammenlegen
+    if (doppelVerlegungenAufloesen(edge)) showHint('✓ Doppelt verlegtes Stück mit der vorhandenen Leitung zusammengelegt. Strg+Z macht es rückgängig.',4000);
+    return false;
+  }
+  _strangPlan = plan;
+  const delta = Math.round(plan.delta);
+  const n = plan.gebaeudeDahinter;
+  const inhalt = document.createElement('div');
+  inhalt.className = 'netz-strang-vorschlag';
+  inhalt.innerHTML = `<strong>${plan.zurZentrale ? 'Strang direkt an die Heizzentrale anbinden?' : 'Strang über diesen Punkt anbinden?'}</strong>`
+    + `<div>${n === 1 ? 'Das Gebäude dahinter wird' : `Die ${n} Gebäude dahinter werden`} ${plan.zurZentrale ? 'über einen eigenen Strang aus der Heizzentrale versorgt' : 'über diese Straße an das Netz angeschlossen'}`
+    + `${plan.analyse.totKanten.length ? '; nicht mehr benötigte Leitungen entfallen' : ''}.</div>`
+    + `<div class="nsv-delta">Trassenlänge ca. ${delta > 0 ? '+' : delta < 0 ? '−' : '±'}${Math.abs(delta)} m</div>`
+    + '<div class="nsv-knoepfe"><button type="button" class="nsv-ja">Strang umlegen</button>'
+    + '<button type="button" class="btn-secondary nsv-nein">Nur Verlauf ändern</button></div>';
+  inhalt.querySelector('.nsv-ja').addEventListener('click',() => netzStrangUmlegen());
+  inhalt.querySelector('.nsv-nein').addEventListener('click',() => {
+    netzStrangVorschlagSchliessen();
+    if (window.netzEdges.includes(edge) && doppelVerlegungenAufloesen(edge)) showHint('✓ Doppelt verlegtes Stück mit der vorhandenen Leitung zusammengelegt.',3500);
+  });
+  _strangPopup = L.popup({closeButton:true,autoClose:true,className:'netz-strang-popup',maxWidth:260})
+    .setLatLng(plan.viaPunkt || punkt).setContent(inhalt).openOn(map);
+  _strangPopup.on('remove',() => { if (_strangPopup) { _strangPopup = null; _strangPlan = null; } });
+  return true;
+}
+
+/** Gesamte Trassenlänge der aktiven Leitungen (m). */
+function _netzTrassenLaenge() {
+  return window.netzEdges.filter(e => !e.pruned).reduce((sum,e) => sum + linienLaenge(e.layer?.getLatLngs?.() || [e.uNode.pt,e.vNode.pt]),0);
+}
+
+/** Vorschlag übernehmen: Leitung und verwaiste Abzweige entfernen, Strang über den Punkt neu anschließen. */
+export function netzStrangUmlegen() {
+  const plan = _strangPlan;
+  netzStrangVorschlagSchliessen();
+  if (!plan || !window.netzEdges.includes(plan.edge)) return false;
+  const snapshot = captureWaermeNetzGraph();
+  const laengeVorher = _netzTrassenLaenge();
+  _removeNetzEdge(plan.edge);
+  plan.analyse.totKanten.forEach(_removeNetzEdge);
+  const knotenFuer = a => (a.edge && window.netzEdges.includes(a.edge) ? _knotenAufKante(a.edge,a.punkt) : a.knoten);
+  const untenKnoten = knotenFuer(plan.untenAnschluss);
+  const obenKnoten = knotenFuer(plan.obenAnschluss);
+  if (!untenKnoten || !obenKnoten) { applyWaermeNetzGraph(snapshot); return false; }
+  // Neue Leitung vom Netz (oben) zum Strang (unten), Verlauf entlang der Straßen über den gezogenen Punkt
+  const neu = _makeNetzEdge(obenKnoten,untenKnoten,0);
+  const verlauf = linieVereinfachen([obenKnoten.pt,...[...plan.weg].reverse(),untenKnoten.pt]).slice(1,-1)
+    .filter(p => p.distanceTo(obenKnoten.pt) > 1 && p.distanceTo(untenKnoten.pt) > 1);
+  neu.routingViaPoints = plan.viaPunkt ? [plan.viaPunkt] : [];
+  _applySplitWaypoints(neu,verlauf);
+  // Im Strang ins Leere laufende Abzweige (z. B. der alte Einspeisepunkt) entfernen
+  const teilnetz = plan.analyse.teilnetz;
+  for (let runde = 0; runde < 200; runde++) {
+    const grad = new Map();
+    window.netzEdges.filter(e => !e.pruned).forEach(e => { grad.set(e.u,(grad.get(e.u) || 0) + 1); grad.set(e.v,(grad.get(e.v) || 0) + 1); });
+    const blatt = window.netzEdges.find(e => !e.pruned && e !== neu && [[e.u,e.uNode],[e.v,e.vNode]].some(([id,n]) =>
+      n && n.type !== 'geb' && teilnetz.has(id) && grad.get(id) === 1));
+    if (!blatt) break;
+    _removeNetzEdge(blatt);
+  }
+  recalcNetz();
+  const v = window._waermeNetzValidation || {};
+  if ((v.cycleEdges || 0) > 0 || (v.disconnectedConsumerIds || []).some(id => teilnetz.has(id))) {
+    applyWaermeNetzGraph(snapshot);
+    showHint('Strang nicht umgelegt: Die neue Anbindung würde eine ungültige Netzstruktur erzeugen.',4500);
+    return false;
+  }
+  doppelVerlegungenAufloesen();
+  const delta = Math.round(_netzTrassenLaenge() - laengeVorher);
+  showHint(`✓ Strang umgelegt — Trassenlänge ${delta > 0 ? '+' : delta < 0 ? '−' : '±'}${Math.abs(delta)} m. Strg+Z macht es rückgängig.`,4000);
+  return true;
+}
+
+/**
+ * Eigener Abgang aus der Heizzentrale: Der Strang hinter dieser Leitung wird nicht mehr über sie versorgt, sondern
+ * direkt aus der Zentrale — entlang der Straßen, sonst auf kürzestem Weg. Nicht mehr benötigte Leitungen entfallen.
+ */
+export function netzAbgangAusZentrale(edge) {
+  if (!edge || !window.netzEdges.includes(edge)) return false;
+  if (!ensureWaermeNetzStructureEditable()) return false;
+  const mehrere = netzZentralenIds().length > 1;
+  const centralId = mehrere ? (window._netzWurzelVon?.get(edge.u) ?? window._netzWurzelVon?.get(edge.v))
+    : parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  const zentraleGeb = gebaeude.find(g => g.id === centralId);
+  const kanten = mehrere ? _kantenDerZone(window.netzEdges.filter(e => !e.pruned && !e.kuppel), centralId) : window.netzEdges.filter(e => !e.pruned);
+  const zentrale = kanten.map(e => (e.u === centralId ? e.uNode : e.v === centralId ? e.vNode : null)).find(Boolean)
+    || (zentraleGeb?.polygon ? { id: centralId, type: 'geb', pt: polygonCenter(zentraleGeb.polygon), load: 0 } : null);
+  if (!zentrale) { showHint('Bitte zuerst eine Heizzentrale festlegen.', 3500); return false; }
+  netzStrangVorschlagSchliessen();
+  let plan = null;
+  try { plan = _strangPlanen(edge, zentrale.pt); } catch (error) { console.error('Abgang aus der Zentrale:', error); }
+  if (plan?.zurZentrale) { _strangPlan = plan; return netzStrangUmlegen(); }
+  // Ohne Straßenweg: gerade Leitung von der Zentrale zum nächstgelegenen Punkt des Strangs
+  const knoten = new Map();
+  kanten.forEach(e => { knoten.set(e.u, e.uNode); knoten.set(e.v, e.vNode); });
+  const analyse = strangAnalyse(kanten, edge, centralId, id => !!knoten.get(id) && knoten.get(id).type !== 'geb');
+  if (!analyse || ![...analyse.teilnetz].some(id => knoten.get(id)?.type === 'geb')) {
+    showHint('Hinter dieser Leitung liegt kein Gebäude — hier ist kein eigener Abgang nötig.', 4000);
+    return false;
+  }
+  const snapshot = captureWaermeNetzGraph();
+  const imStrang = kanten.filter(e => e !== edge && analyse.teilnetz.has(e.u) && analyse.teilnetz.has(e.v));
+  let ziel = { knoten: knoten.get(analyse.unten), d: knoten.get(analyse.unten).pt.distanceTo(zentrale.pt) };
+  imStrang.forEach(e => {
+    const n = _nearestPointOnNetzEdge(e, zentrale.pt);
+    if (n && n.point.distanceTo(zentrale.pt) < ziel.d) ziel = { edge: e, punkt: n.point, d: n.point.distanceTo(zentrale.pt) };
+  });
+  _removeNetzEdge(edge);
+  analyse.totKanten.forEach(_removeNetzEdge);
+  const unten = ziel.knoten || _knotenAufKante(ziel.edge, ziel.punkt);
+  _makeNetzEdge(zentrale, unten, 0);
+  toteLeitungen(true);
+  recalcNetz();
+  const v = window._waermeNetzValidation || {};
+  if ((v.cycleEdges || 0) > 0 || (v.disconnectedConsumerIds || []).some(id => analyse.teilnetz.has(id))) {
+    applyWaermeNetzGraph(snapshot);
+    showHint('Kein eigener Abgang möglich: Die neue Anbindung würde eine ungültige Netzstruktur erzeugen.', 4500);
+    return false;
+  }
+  showHint('✓ Strang direkt aus der Heizzentrale angebunden (gerade Leitung — Verlauf im Bearbeitungsmodus anpassbar). Strg+Z macht es rückgängig.', 5000);
+  return true;
+}
+
 export function rewireBuildingConnection(buildingId, targetEdge, targetPoint) {
   const building = gebaeude.find(item => item.id === buildingId);
   const parentEdge = _parentEdgeForBuilding(buildingId);
@@ -5217,32 +6000,21 @@ export function rewireBuildingConnection(buildingId, targetEdge, targetPoint) {
     showHint('Dieses Ziel liegt im nachgelagerten Teilnetz des Gebäudes.',3500);
     return false;
   }
+  const pruefer = _quartierZielPruefer();
+  if (pruefer && !pruefer.erlaubt(buildingId,targetEdge)) {
+    showHint('Diese Leitung gehört zum Hauptstrang eines anderen Quartiers — Gebäude nur an den eigenen Strang hängen.',4500);
+    return false;
+  }
   const snapshot = captureWaermeNetzGraph();
   const stats = getComputedStats(building,globalYear);
   const buildingNode = parentEdge
     ? (parentEdge.u === buildingId ? parentEdge.uNode : parentEdge.vNode)
     : {id:building.id,type:'geb',pt:polygonCenter(building.polygon),load:stats.heizlast || 0};
-  const projection = _nearestPointOnNetzEdge(targetEdge,targetPoint);
-  if (!projection) return false;
-  const dn = targetEdge.dn || 0;
-  const sourceProps = {kostKlasse:targetEdge.kostKlasse||null,kostOverride:targetEdge.kostOverride===true};
+  if (!_nearestPointOnNetzEdge(targetEdge,targetPoint)) return false;
   if (parentEdge) _removeNetzEdge(parentEdge);
-  const distanceU = projection.point.distanceTo(targetEdge.uNode.pt);
-  const distanceV = projection.point.distanceTo(targetEdge.vNode.pt);
-  if (distanceU < 5 || distanceV < 5) {
-    _makeNetzEdge(distanceU <= distanceV ? targetEdge.uNode : targetEdge.vNode,buildingNode,0);
-  } else {
-    const junction = {id:_nextJunctionId(),type:'junction',pt:projection.point,load:0};
-    const leftWaypoints = projection.path.slice(1,projection.index+1);
-    const rightWaypoints = projection.path.slice(projection.index+1,-1);
-    _removeNetzEdge(targetEdge);
-    const left = _makeNetzEdge(targetEdge.uNode,junction,dn);
-    const right = _makeNetzEdge(junction,targetEdge.vNode,dn);
-    Object.assign(left,sourceProps); Object.assign(right,sourceProps);
-    _applySplitWaypoints(left,leftWaypoints);
-    _applySplitWaypoints(right,rightWaypoints);
-    _makeNetzEdge(junction,buildingNode,0);
-  }
+  _makeNetzEdge(_knotenAufKante(targetEdge,targetPoint),buildingNode,0);
+  _blattAbzweigeEntfernen();   // Leitungen, die nach dem Umhängen niemanden mehr versorgen
+  toteLeitungen(true);
   recalcNetz();
   if ((window._waermeNetzValidation?.cycleEdges || 0) > 0 ||
       (window._waermeNetzValidation?.disconnectedConsumerIds || []).includes(buildingId)) {
@@ -5250,6 +6022,7 @@ export function rewireBuildingConnection(buildingId, targetEdge, targetPoint) {
     showHint('Anschluss nicht geändert: Das Ziel würde eine ungültige Netzstruktur erzeugen.',4500);
     return false;
   }
+  doppelVerlegungenAufloesen();
   showHint(parentEdge
     ? `✓ Anschluss von „${building.name}“ umgehängt.`
     : `✓ „${building.name}“ an das Wärmenetz angeschlossen.`,3000);
@@ -5282,9 +6055,11 @@ function _renderNetzRewireMarkers() {
       if (netzRewirePreview) { map.removeLayer(netzRewirePreview); netzRewirePreview=null; }
       const parentEdge = _parentEdgeForBuilding(building.id);
       const forbidden = parentEdge ? _buildingSideNodes(building.id,parentEdge) : new Set();
+      const qPruefer = _quartierZielPruefer();
       const candidates = window.netzEdges
         .filter(edge => !edge.pruned && !edge.temporallyHidden && edge !== parentEdge &&
-          !(parentEdge && forbidden.has(edge.u) && forbidden.has(edge.v)))
+          !(parentEdge && forbidden.has(edge.u) && forbidden.has(edge.v)) &&
+          (!qPruefer || qPruefer.erlaubt(building.id,edge)))
         .map(edge => _nearestPointOnNetzEdge(edge,event.target.getLatLng()))
         .filter(Boolean).sort((a,b)=>a.distancePx-b.distancePx);
       const target = candidates[0];
@@ -5323,19 +6098,98 @@ export function toggleNetzRewireMode() {
   return setNetzRewireMode(!netzRewireMode);
 }
 
+// Vorlauf des Netzes (Auslegung) und Vorlauf der Heizkurve bei −5 °C (gleitende Fahrweise darunter konstant) sind
+// dieselbe Größe und bleiben gekoppelt. Der Rücklauf des Netzes ist eine andere Größe als der Heizkurven-Vorlauf
+// bei +15 °C und wird nicht übertragen.
 export function syncVLTemps(source) {
-  if (source === 'netz') {
-    document.getElementById('gl-vl5').value = document.getElementById('netz-vl').value;
-    document.getElementById('gl-vl15').value = document.getElementById('netz-rl').value;
-  } else {
-    document.getElementById('netz-vl').value = document.getElementById('gl-vl5').value;
-    document.getElementById('netz-rl').value = document.getElementById('gl-vl15').value;
-  }
+  if (source === 'netz') document.getElementById('gl-vl5').value = document.getElementById('netz-vl').value;
+  else document.getElementById('netz-vl').value = document.getElementById('gl-vl5').value;
 }
+
+/**
+ * Alle Heizzentralen des Wärmenetzes (Gebäude-IDs). Die Auswahl „Heizzentrale“ ist die aktive (Hauptzentrale);
+ * weitere Zentralen speisen in dasselbe Netz ein (window.weitereZentralen = [{ id, name }]).
+ */
+/**
+ * Anteil der Betriebsstunden des Netzes am Jahr: 1; bei dezentralem Trinkwarmwasser nur die Heizperiode (aus dem
+ * Lastgang, 06b). Der Jahresverlust des berechneten Netzes fällt nur in diesen Stunden an.
+ */
+export function netzBetriebsAnteil() {
+  const h = window.systemState?.twwDezentral?.betriebStunden;
+  return document.getElementById('gl-tww-dezentral')?.checked && h > 0 ? Math.min(1, h / 8760) : 1;
+}
+
+/** Wärmebedarf der an das Netz angeschlossenen Gebäude im Jahr (MWh/a): mit Sanierung und Status, ohne ausgeschlossene. */
+export function netzVerbrauchMwh(jahr = globalYear) {
+  const verbunden = new Set((window.netzEdges || []).filter(e => !e.pruned).flatMap(e => [e.u, e.v]));
+  return gebaeude.filter(g => verbunden.has(g.id) && !isExcluded(g.id))
+    .reduce((s, g) => s + (getComputedStats(g, jahr).waerme || 0), 0);
+}
+
+/**
+ * Vorgabe für „Aus Netzberechnung übernehmen“ (ein Erzeuger deckt das Netz): Leistung = Auslegungsspitze (Σ Normheizlast
+ * × Gleichzeitigkeit + Netzverlustleistung, lib/auslegung.js), sonst Pumpenauslegungslast + Verlustleistung; Wärme =
+ * Bedarf der angeschlossenen Gebäude im Jahr + Jahresverlust im Betrieb.
+ */
+export function netzErzeugerVorgabe() {
+  const a = typeof window.auslegungsSpitzeAktuell === 'function' ? window.auslegungsSpitzeAktuell() : null;
+  const p = window._netzPumpe;
+  const kw = a?.kw > 0 ? a.kw : (p?.lastKw || 0) + (p?.verlustKw || 0);
+  const verlustMwh = (Number(window._netzAnnualLossMWh) || 0) * netzBetriebsAnteil();
+  return { kw, mwh: netzVerbrauchMwh() + verlustMwh };
+}
+
+/**
+ * Hausübergabestationen des Wärmenetzes: angeschlossene, nicht ausgeschlossene Gebäude (ohne Heizzentralen), die in
+ * einem der Planungsjahre Wärme aus dem Netz beziehen. Anschlussleistung = größte Normheizlast der Planungsjahre.
+ * Ergebnis: { anzahl, anschlussKw: [kW je Station] }.
+ */
+export function netzHausstationen() {
+  const kanten = (window.netzEdges || []).filter(e => !e.pruned);
+  if (!kanten.length) return { anzahl: 0, anschlussKw: [] };
+  const verbunden = new Set(kanten.flatMap(e => [e.u, e.v]));
+  const wurzeln = netzZentralenIds();
+  const jahre = _netzPlanningYears();
+  const anschlussKw = gebaeude
+    .filter(g => verbunden.has(g.id) && !wurzeln.includes(g.id) && !isExcluded(g.id))
+    .map(g => _maxBuildingLoad(g, jahre))
+    .filter(kw => kw > 0);
+  return { anzahl: anschlussKw.length, anschlussKw };
+}
+
+export function netzZentralenIds() {
+  const ids = [];
+  const haupt = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  if (Number.isFinite(haupt)) ids.push(haupt);
+  for (const z of window.weitereZentralen || []) {
+    const id = Number(z?.id);
+    if (Number.isFinite(id) && !ids.includes(id) && gebaeude.some(g => g.id === id)) ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * Übergabeleistung der Verbindungsleitungen zwischen den Versorgungszonen (kW): Eingabe im Netz-Panel, sonst die
+ * höchste Netzlast im Sommer (Juni–August) — so kann eine Zentrale das Netz im Sommer allein versorgen.
+ * Ohne Lastgang: 20 % der Summe der Gebäude-Heizlasten.
+ */
+export function kuppelUebergabeKw() {
+  const eingabe = parseFloat(window._hzKuppelKw ?? document.getElementById('netz-kuppel-kw')?.value);
+  if (eingabe > 0) return eingabe;
+  const lg = window.systemState?.lastgangKw;
+  if (lg?.length >= 5832) { let m = 0; for (let i = 3624; i < 5832; i++) if (lg[i] > m) m = lg[i]; if (m > 0) return m; }
+  return 0.2 * gebaeude.filter(g => !isExcluded(g.id)).reduce((s, g) => s + (getComputedStats(g, globalYear).heizlast || 0), 0);
+}
+
+/** Ist dieser Knoten eine Heizzentrale? */
+export function istNetzZentrale(id) { return netzZentralenIds().includes(Number(id)); }
 
 export function recalcNetz(){
   const ergebnis = _recalcNetzIntern();
   _netzVerlaufBeobachten();
+  window.hzRender?.();
+  // Geänderte Netzverluste (U-Wert, Temperaturen, Leitungen, DN, Jahr) gehen in den Lastgang ein
+  window.lastgangBeiBedarfNeu?.();
   return ergebnis;
 }
 
@@ -5347,6 +6201,9 @@ function _recalcNetzIntern(){
   gebaeude.forEach(g => delete g.tempIn);
 
   const zId = parseInt(document.getElementById('netz-zentrale').value);
+  const wurzeln = netzZentralenIds();
+  window._netzWurzelVon = new Map();
+  window._netzJeZentrale = {};
   if(!zId || isNaN(zId)) {
     gebaeude.forEach(g => { g.netzVerlustKW = null; g.netzVerlustRatioPct = null; g.netzVerlustJahrMWh = null; });
     updateStrandDropdown();
@@ -5354,16 +6211,7 @@ function _recalcNetzIntern(){
     return;
   }
 
-  let vlTemp = parseFloat(document.getElementById('netz-vl').value) || 90;
-  let rlTemp = parseFloat(document.getElementById('netz-rl').value) || 60;
-
-  const planJahr = parseInt(document.getElementById('netz-plan-jahr').value);
-  if (planJahr && globalYear >= planJahr) {
-    vlTemp = parseFloat(document.getElementById('netz-plan-vl').value) || vlTemp;
-    rlTemp = parseFloat(document.getElementById('netz-plan-rl').value) || rlTemp;
-  }
-
-  const dt = Math.max(1, vlTemp - rlTemp);
+  const { vl: vlTemp, rl: rlTemp, dt } = netzTemperaturen(globalYear);
   const vFlow = readNum('netz-v', 1.0, 0.3, 2.0);
   const dpLimitMain = readNum('netz-dp-main', 150, 50, 500);
   const dpLimitService = readNum('netz-dp-service', 250, 50, 500);
@@ -5374,18 +6222,18 @@ function _recalcNetzIntern(){
   function _wGzf(nVerbraucher) {
     if (wGzfMethode === 'keine') return 1.0;
     if (wGzfMethode === 'manuell') return Math.max(0.1, Math.min(1.0, wGzfManuell));
-    // Richtwert Wärme: 1/n^0.15 (AGFW-Näherung, flacher als Strom,
-    // da Heizbedarf stark wetterkorreliert — bei Auslegungstemp. heizen fast alle)
-    if (nVerbraucher <= 1) return 1.0;
-    return Math.max(0.45, 1.0 / Math.pow(nVerbraucher, 0.15));
+    // Richtwert Wärme nach Winter et al. (2001), AGFW-üblich — lib/gleichzeitigkeit.js
+    return glfWinter(nVerbraucher);
   }
 
   const nodeMap = {};
-  const zGeb = gebMap.get(zId);
-  if(zGeb) {
-      nodeMap[zId] = { id: zId, load: getComputedStats(zGeb, globalYear).heizlast||0, adj: [] };
+  wurzeln.forEach(w => {
+    const zGeb = gebMap.get(w);
+    if(zGeb) {
+      nodeMap[w] = { id: w, load: getComputedStats(zGeb, globalYear).heizlast||0, adj: [] };
       zGeb.tempIn = vlTemp;
-  }
+    }
+  });
 
   window.netzEdges.forEach(e => {
     // Deaktivieren schaltet den Abschnitt nur hydraulisch aus. Geometrie und
@@ -5403,56 +6251,103 @@ function _recalcNetzIntern(){
   });
 
   const consumerIds = gebaeude
-    .filter(g => g.id !== zId && !isExcluded(g.id) && getComputedStats(g, globalYear).heizlast > 0)
+    .filter(g => !wurzeln.includes(g.id) && !isExcluded(g.id) && getComputedStats(g, globalYear).heizlast > 0)
     .map(g => g.id);
-  const topology = validateRadialHeatGraph(window.netzEdges, zId, consumerIds);
+
+  // ── Versorgungszonen ──
+  // Eine Zentrale: Baum per Breitensuche wie bisher. Mehrere Zentralen am selben Netz: jeder Knoten wird von der
+  // Zentrale versorgt, die über das Netz am nächsten liegt (kürzester Leitungsweg). Leitungen zwischen zwei Zonen
+  // sind Verbindungsleitungen mit Trennstelle — kein Ring.
+  const order = [];
+  const parentEdge = {};
+  const wurzelVon = window._netzWurzelVon;
+  if (wurzeln.length <= 1) {
+    const visited = new Set([zId]);
+    const queue = [zId];
+    wurzelVon.set(zId, zId);
+    while(queue.length > 0){
+      const curr = queue.shift();
+      order.push(curr);
+      if(nodeMap[curr]){
+          nodeMap[curr].adj.forEach(neighbor => {
+            if(!visited.has(neighbor.to)){
+              visited.add(neighbor.to);
+              parentEdge[neighbor.to] = { e: neighbor.edge, pNodeId: curr };
+              wurzelVon.set(neighbor.to, zId);
+              queue.push(neighbor.to);
+            }
+          });
+      }
+    }
+  } else {
+    const dist = new Map(wurzeln.filter(w => nodeMap[w]).map(w => [w, 0]));
+    wurzeln.forEach(w => wurzelVon.set(w, w));
+    const fertig = new Set();
+    for (;;) {
+      let curr = null, dMin = Infinity;
+      for (const [id, d] of dist) if (!fertig.has(id) && d < dMin) { dMin = d; curr = id; }
+      if (curr === null) break;
+      fertig.add(curr);
+      order.push(curr);
+      for (const nb of nodeMap[curr]?.adj || []) {
+        if (fertig.has(nb.to) || wurzeln.includes(nb.to)) continue;
+        const d = dMin + Math.max(0.01, nb.edge.length || 0);
+        if (d < (dist.get(nb.to) ?? Infinity)) {
+          dist.set(nb.to, d);
+          parentEdge[nb.to] = { e: nb.edge, pNodeId: curr };
+          wurzelVon.set(nb.to, wurzelVon.get(curr));
+        }
+      }
+    }
+  }
+  window._netzElternKante = new Map(Object.entries(parentEdge).map(([id, p]) => [Number(id), p.e]));
+  const baumKanten = new Set(Object.values(parentEdge).map(p => p.e));
+  const kuppelKanten = window.netzEdges.filter(e => !e.pruned && !baumKanten.has(e) &&
+    wurzelVon.has(e.u) && wurzelVon.has(e.v) && wurzelVon.get(e.u) !== wurzelVon.get(e.v));
+  window.netzEdges.forEach(e => { e.kuppel = kuppelKanten.includes(e); });
+  const zyklenIdx = window.netzEdges.map((e, i) => i).filter(i => {
+    const e = window.netzEdges[i];
+    return !e.pruned && !baumKanten.has(e) && !e.kuppel && wurzelVon.has(e.u) && wurzelVon.has(e.v);
+  });
   window._waermeNetzValidation = {
-    cycleEdges: topology.cycleEdgeIndexes.length,
-    disconnectedConsumerIds: topology.disconnectedConsumerIds
+    cycleEdges: zyklenIdx.length,
+    disconnectedConsumerIds: consumerIds.filter(id => !wurzelVon.has(id)),
   };
+  window._netzKuppelAnzahl = kuppelKanten.length;
   window.netzEdges.forEach((edge, index) => {
-    edge.notHydraulicallySolved = topology.cycleEdgeIndexes.includes(index);
-    edge.disconnected = !edge.pruned && (!topology.reachable.has(edge.u) || !topology.reachable.has(edge.v));
+    edge.notHydraulicallySolved = zyklenIdx.includes(index);
+    edge.disconnected = !edge.pruned && (!wurzelVon.has(edge.u) || !wurzelVon.has(edge.v));
     if (edge.notHydraulicallySolved) edge.layer?.setStyle({dashArray: '8,6', color: '#ab47bc'});
     else if (edge.disconnected) edge.layer?.setStyle({dashArray: '4,6', color: '#ff9800'});
   });
   const topologyWarning = document.getElementById('netz-topology-warning');
   if (topologyWarning) {
     const parts = [];
-    if (topology.disconnectedConsumerIds.length) parts.push(`${topology.disconnectedConsumerIds.length} Verbraucher nicht mit der Zentrale verbunden`);
-    if (topology.cycleEdgeIndexes.length) parts.push(`${topology.cycleEdgeIndexes.length} Ringkante(n) nicht hydraulisch gelöst`);
-    topologyWarning.textContent = parts.length ? `⚠ ${parts.join(' · ')}` : '';
-    topologyWarning.style.display = parts.length ? 'block' : 'none';
+    const getrennt = window._waermeNetzValidation.disconnectedConsumerIds.length;
+    if (getrennt) parts.push(`${getrennt} Verbraucher nicht mit ${wurzeln.length > 1 ? 'einer Heizzentrale' : 'der Zentrale'} verbunden`);
+    if (zyklenIdx.length) parts.push(`${zyklenIdx.length} Ringkante(n) nicht hydraulisch gelöst`);
+    let tote = 0;
+    try { tote = toteLeitungen(false).length; } catch { tote = 0; }
+    topologyWarning.innerHTML = (parts.length ? `⚠ ${parts.join(' · ')}` : '')
+      + (tote ? `${parts.length ? '<br>' : ''}⚠ ${tote} Leitung${tote === 1 ? '' : 'en'} ohne Abnehmer (grau gestrichelt) <button type="button" class="btn-secondary netz-tote-btn" data-click="toteLeitungenEntfernen()">entfernen</button>` : '');
+    topologyWarning.style.display = parts.length || tote ? 'block' : 'none';
   }
 
-  const order = [];
-  const parentEdge = {};
-  const visited = new Set([zId]);
-  const queue = [zId];
-
-  while(queue.length > 0){
-    const curr = queue.shift();
-    order.push(curr);
-    if(nodeMap[curr]){
-        nodeMap[curr].adj.forEach(neighbor => {
-          if(!visited.has(neighbor.to)){
-            visited.add(neighbor.to);
-            parentEdge[neighbor.to] = { e: neighbor.edge, pNodeId: curr };
-            queue.push(neighbor.to);
-          }
-        });
-    }
-  }
-
-  const neighborsOfZ = nodeMap[zId] ? nodeMap[zId].adj.map(a => a.to).sort((a,b)=>a-b) : [];
-  window.netzEdges.forEach(e => {
-    if (e.u === zId || e.v === zId) {
-      const other = e.u === zId ? e.v : e.u;
-      e.strandId = Math.max(0, neighborsOfZ.indexOf(other));
-    }
+  // Stränge: Abgänge je Zentrale, fortlaufend nummeriert
+  let strangNr = 0;
+  window.netzEdges.forEach(e => { e.strandId = null; });
+  wurzeln.forEach(w => {
+    const abgaenge = (nodeMap[w]?.adj || []).filter(a => parentEdge[a.to]?.e === a.edge).map(a => a.to).sort((a,b)=>a-b);
+    window.netzEdges.forEach(e => {
+      if ((e.u === w || e.v === w) && baumKanten.has(e)) {
+        const other = e.u === w ? e.v : e.u;
+        e.strandId = strangNr + Math.max(0, abgaenge.indexOf(other));
+      }
+    });
+    strangNr += Math.max(1, abgaenge.length);
   });
   order.forEach(nodeId => {
-    if (nodeId === zId || !parentEdge[nodeId]) return;
+    if (wurzeln.includes(nodeId) || !parentEdge[nodeId]) return;
     const e = parentEdge[nodeId].e;
     if (e.strandId != null) return;
     const pNodeId = parentEdge[nodeId].pNodeId;
@@ -5462,12 +6357,18 @@ function _recalcNetzIntern(){
   });
   window.netzEdges.forEach(e => { if (e.strandId == null) e.strandId = 0; });
 
-  window.netzEdges.forEach(e => { e.load = 0; e.loadRaw = 0; e._nVerbraucher = 0; e._gzf = 1.0; });
+  window.netzEdges.forEach(e => { e.load = 0; e.loadRaw = 0; e._nVerbraucher = 0; e._gzf = 1.0; e.waermeMwh = 0; });
 
   // Summierte Rohlasten und Verbraucheranzahl pro Knoten
   // calculatedLoad bleibt global zugänglich für lwwpUseNetworkValues etc.
   window.calculatedLoad = {};
   const nVerb = {};
+  // Jahreswärmebedarf der Abnehmer (Sanierung, Status) — Grundlage der Wärmeliniendichte je Kante
+  const waermeSum = {};
+  Object.keys(nodeMap).forEach(k => {
+    const gk = gebMap.get(Number(k));
+    waermeSum[k] = gk && !wurzeln.includes(gk.id) && !isExcluded(gk.id) ? (getComputedStats(gk, globalYear).waerme || 0) : 0;
+  });
   Object.keys(nodeMap).forEach(k => {
     window.calculatedLoad[k] = nodeMap[k].load;
     const isVerb = nodeMap[k].load > 0;
@@ -5480,6 +6381,8 @@ function _recalcNetzIntern(){
     if(pInfo){
       window.calculatedLoad[pInfo.pNodeId] += window.calculatedLoad[curr];
       nVerb[pInfo.pNodeId] += nVerb[curr];
+      waermeSum[pInfo.pNodeId] += waermeSum[curr];
+      pInfo.e.waermeMwh = waermeSum[curr];   // Jahreswärme der nachgelagerten Abnehmer (MWh/a)
       // Kante: Rohlast (Σ Normheizlast) und GZF-Last
       const nV = nVerb[curr];
       const raw = window.calculatedLoad[curr];
@@ -5519,8 +6422,11 @@ function _recalcNetzIntern(){
   // ungünstigsten zeitlichen Zustand dimensioniert. Beim Bestandsnetz wird
   // dieser Wert ausschließlich für neue, noch undimensionierte Anschlüsse
   // verwendet; erfasste DN werden nicht automatisch verändert.
-  window.netzEdges.forEach(e => { e.designLoad = 0; e.designLoadRaw = 0; e.designYear = null; });
+  // Maßgebend ist der größte Massenstrom: Last des Jahres / (cp · Spreizung des Jahres) — eine geplante Absenkung
+  // der Netztemperaturen (kleinere Spreizung) vergrößert die Nennweiten.
+  window.netzEdges.forEach(e => { e.designLoad = 0; e.designLoadRaw = 0; e.designYear = null; e.designMdot = 0; e.designTm = null; });
   _netzPlanningYears().forEach(year => {
+    const tJahr = netzTemperaturen(year);
     const yearLoad = {};
     const yearConsumers = {};
     Object.keys(nodeMap).forEach(id => {
@@ -5536,30 +6442,38 @@ function _recalcNetzIntern(){
       const raw = yearLoad[nodeId] || 0;
       const count = yearConsumers[nodeId] || 0;
       const designLoad = raw * _wGzf(count);
-      if (designLoad > pInfo.e.designLoad) {
+      const designMdot = designLoad / (CP_WASSER * tJahr.dt);
+      if (designMdot > pInfo.e.designMdot) {
         pInfo.e.designLoad = designLoad;
         pInfo.e.designLoadRaw = raw;
         pInfo.e.designYear = year;
+        pInfo.e.designMdot = designMdot;
+        pInfo.e.designTm = (tJahr.vl + tJahr.rl) / 2;
       }
       yearLoad[pInfo.pNodeId] = (yearLoad[pInfo.pNodeId] || 0) + raw;
       yearConsumers[pInfo.pNodeId] = (yearConsumers[pInfo.pNodeId] || 0) + count;
     }
   });
+  // Verbindungsleitungen zwischen den Zonen: ausgelegt auf die Übergabeleistung (Eingabe, sonst Sommerspitze des
+  // ganzen Netzes — dann kann im Sommer eine Zentrale allein das Netz versorgen)
+  const kuppelKw = kuppelUebergabeKw();
+  window.netzEdges.filter(e => e.kuppel).forEach(e => {
+    e.load = kuppelKw; e.loadRaw = kuppelKw; e._nVerbraucher = 0; e._gzf = 1;
+    e.designLoad = kuppelKw; e.designLoadRaw = kuppelKw; e.designMdot = kuppelKw / (CP_WASSER * dt); e.designTm = null;
+    e.tempIn = vlTemp; e.tempOut = vlTemp;
+  });
 
-  const cp = 4.184;
-  const rhoWater = 975; // kg/m³ bei ~70°C
-  const nuWater = 0.000000415; // kinematische Viskosität m²/s bei ~70°C
-  const kRough = 0.00005; // Rohrrauhigkeit Stahl/KMR [m]
-  const hydraulicsFor = (load,dn) => {
-    const dInner = dn / 1000;
-    const area = Math.PI * Math.pow(dInner / 2,2);
-    const massFlow = load / (cp * dt);
-    const velocity = (massFlow / rhoWater) / area;
-    const reynolds = velocity * dInner / nuWater;
-    const lambda = reynolds < 2300
-      ? 64 / Math.max(reynolds,100)
-      : 0.25 / Math.pow(Math.log10(kRough / (3.7 * dInner) + 5.74 / Math.pow(reynolds,0.9)),2);
-    return {velocity,dpPerM:lambda * rhoWater * Math.pow(velocity,2) / (2 * dInner),reynolds,lambda};
+  const cp = CP_WASSER;
+  // Stoffwerte des Wassers bei der mittleren Netztemperatur; Innendurchmesser der KMR-Stahlrohre (lib/netz-hydraulik.js)
+  const stoff = wasserStoffwerte((vlTemp + rlTemp) / 2);
+  const rhoWater = stoff.rho;
+  const hydraulicsFor = (load,dn) => rohrHydraulik(load / (cp * dt),dn,stoff);
+  // Auslegung: größter Massenstrom aus aktuellem Jahr und Planungsjahren, Stoffwerte des maßgebenden Jahres
+  const sizingFor = (load,e,dn) => {
+    const mJetzt = load / (cp * dt);
+    return (e.designMdot || 0) > mJetzt
+      ? rohrHydraulik(e.designMdot,dn,e.designTm != null ? wasserStoffwerte(e.designTm) : stoff)
+      : rohrHydraulik(mJetzt,dn,stoff);
   };
   // Rohr-Dimensionierung mit DN-abhängiger Fließgeschwindigkeit (2 Iterationen für Konvergenz)
   for (let iter = 0; iter < 2; iter++) {
@@ -5569,10 +6483,11 @@ function _recalcNetzIntern(){
           (e.uNode?.type === 'geb' || e.vNode?.type === 'geb');
         e.dpLimit = e.isHouseConnection ? dpLimitService : dpLimitMain;
 
+        const dnMin = e.isHouseConnection ? DN_MIN_HAUSANSCHLUSS : DN_MIN;
         if ((!networkLocked && !e.dnOverride) || e.dn === 0) {
-            const sizingLoad = Math.max(e.load,e.designLoad || 0);
             e.dn = standardDNs.find(dn => {
-              const candidate = hydraulicsFor(sizingLoad,dn);
+              if (dn < dnMin) return false;
+              const candidate = sizingFor(e.load,e,dn);
               return candidate.velocity <= getVFlowForDN(dn,vFlow) && candidate.dpPerM <= e.dpLimit;
             }) || standardDNs[standardDNs.length - 1];
         }
@@ -5583,8 +6498,10 @@ function _recalcNetzIntern(){
           e.isHouseConnection = e._nVerbraucher <= 1 &&
             (e.uNode?.type === 'geb' || e.vNode?.type === 'geb');
           e.dpLimit = e.isHouseConnection ? dpLimitService : dpLimitMain;
+          const dnMinZ = e.isHouseConnection ? DN_MIN_HAUSANSCHLUSS : DN_MIN;
           e.dn = standardDNs.find(dn => {
-            const candidate = hydraulicsFor(e.designLoad,dn);
+            if (dn < dnMinZ) return false;
+            const candidate = sizingFor(0,e,dn);
             return candidate.velocity <= getVFlowForDN(dn,vFlow) && candidate.dpPerM <= e.dpLimit;
           }) || standardDNs[standardDNs.length - 1];
         } else if (!networkLocked) {
@@ -5624,66 +6541,62 @@ function _recalcNetzIntern(){
     }
   });
 
-  // Kritischer Pfad: maximaler Druckverlust von Zentrale zu einem Abnehmer
-  let maxPathDp = 0;
-  let maxPathNode = null;
+  // Kritischer Pfad je Versorgungszone: Förderdruck zum ungünstigsten Abnehmer = Rohrleitungsdruckverlust (Vor- und
+  // Rücklauf) mit Zuschlag für Formstücke und Armaturen + Differenzdruck Hausstation + Heizzentrale (lib/netz-hydraulik.js)
+  const zonen = new Map(wurzeln.filter(w => nodeMap[w]).map(w => [w, { maxPathDp: 0, maxPathNode: null }]));
   order.forEach(nodeId => {
-    if (nodeId === zId || !parentEdge[nodeId]) return;
-    let pathDp = 0;
+    if (wurzeln.includes(nodeId) || !parentEdge[nodeId]) return;
+    const bNode = gebMap.get(nodeId);
+    if (!bNode || !nodeMap[nodeId] || !(nodeMap[nodeId].load > 0)) return;
+    let rohrDp = 0;
     let curr = nodeId;
     while (parentEdge[curr]) {
-      pathDp += parentEdge[curr].e.dpTotal || 0;
+      rohrDp += parentEdge[curr].e.dpTotal || 0;
       curr = parentEdge[curr].pNodeId;
     }
-    // Hausstationsdruckverlust: ~30 kPa pro Übergabestation
-    const bNode = gebMap.get(nodeId);
-    if (bNode && nodeMap[nodeId] && nodeMap[nodeId].load > 0) {
-      pathDp += 50000; // 50 kPa Hausstation / verfügbare Regelreserve
-    }
-    if (pathDp > maxPathDp) {
-      maxPathDp = pathDp;
-      maxPathNode = nodeId;
-    }
+    const pathDp = foerderDruckPa(rohrDp);
+    const zone = zonen.get(wurzelVon.get(nodeId));
+    if (zone && pathDp > zone.maxPathDp) { zone.maxPathDp = pathDp; zone.maxPathNode = nodeId; }
   });
 
-  // Pumpenparameter
-  const foerderhoehePa = maxPathDp; // Pa
-  const foerderhoeheMWS = foerderhoehePa / 9810; // mWS (Meter Wassersäule)
-  const foerderhoeheBar = foerderhoehePa / 100000; // bar
-  // Volumenstrom an der Zentrale (gesamter Netzvolumenstrom)
-  const zentraleEdges = window.netzEdges.filter(e => e.u === zId || e.v === zId);
-  const totalLoadKW = zentraleEdges.reduce((s, e) => s + (e.load || 0), 0);
-  const mDotGesamt = totalLoadKW / (cp * dt); // kg/s
-  const vDotGesamt = mDotGesamt / rhoWater; // m³/s
-  // Pumpenleistung: P = (V̇ * Δp) / η_pumpe
-  // Gesamtwirkungsgrad (Motor × Hydraulik × Mechanik) leistungsabhängig gestaffelt
-  // Quellen: Wilo/Grundfos Datenblätter, Hocheffizienz-Nassläufer IE4/IE5
-  const pHydraulisch = vDotGesamt * foerderhoehePa; // hydraulische Leistung [W]
-  const pHydKW = pHydraulisch / 1000;
-  let etaPumpe;
-  if (pHydKW < 0.1)       etaPumpe = 0.25; // Kleinstpumpen (< 100 W hydr.)
-  else if (pHydKW < 0.5)  etaPumpe = 0.40; // kleine Umwälzpumpen
-  else if (pHydKW < 2)    etaPumpe = 0.55; // kleine Nahwärmenetze
-  else if (pHydKW < 10)   etaPumpe = 0.65; // mittlere Netze
-  else if (pHydKW < 50)   etaPumpe = 0.73; // größere Quartiere
-  else if (pHydKW < 200)  etaPumpe = 0.78; // große Netze, optimaler Betriebspunkt
-  else                     etaPumpe = 0.82; // Großpumpen (> 200 kW hydr.)
+  // Netzpumpe je Zentrale: Volumenstrom aus Σ Normheizlast × Gleichzeitigkeit über alle Abnehmer der Zone (nicht
+  // die Summe der Abgänge mit je eigener Gleichzeitigkeit), Förderhöhe aus dem kritischen Pfad, P = V̇·Δp/η
+  const pumpeJeZone = {};
+  zonen.forEach((z, w) => {
+    const abg = window.netzEdges.filter(e => !e.kuppel && !e.pruned && baumKanten.has(e) && (e.u === w || e.v === w));
+    const raw = abg.reduce((s, e) => s + (e.loadRaw || 0), 0);
+    const nAbn = abg.reduce((s, e) => s + (e._nVerbraucher || 0), 0);
+    const lastKw = raw * _wGzf(nAbn);
+    const mDot = lastKw / (cp * dt);
+    const p = netzPumpe(mDot, z.maxPathDp, stoff);
+    pumpeJeZone[w] = {
+      kritPfadDp: z.maxPathDp, foerderhoeheMWS: p.foerderhoeheM, foerderhoeheBar: z.maxPathDp / 100000,
+      pumpenLeistungKW: p.pKw, etaPumpe: p.eta, pHydKw: p.pHydKw, mDotGesamt: mDot, vDotGesamt: p.vDotM3s * 3600,
+      lastKw, maxPathNode: z.maxPathNode,
+    };
+  });
+  const zonenPumpen = Object.values(pumpeJeZone);
+  const kritZone = zonenPumpen.reduce((a, b) => (!a || b.kritPfadDp > a.kritPfadDp ? b : a), null)
+    || { kritPfadDp: 0, foerderhoeheMWS: 0, foerderhoeheBar: 0, maxPathNode: null };
+  const summe = key => zonenPumpen.reduce((s, z) => s + (z[key] || 0), 0);
+  const pumpenLeistungKW = summe('pumpenLeistungKW');
 
-  const pumpenLeistungW = pHydraulisch / etaPumpe;
-  const pumpenLeistungKW = pumpenLeistungW / 1000;
-
-  // Ergebnisse am recalcNetz-Scope verfügbar machen
+  // Ergebnisse am recalcNetz-Scope verfügbar machen (mehrere Zentralen: Summen, Förderhöhe der ungünstigsten Zone)
   window._netzPumpe = {
-    kritPfadDp: foerderhoehePa,
-    foerderhoeheMWS: foerderhoeheMWS,
-    foerderhoeheBar: foerderhoeheBar,
-    pumpenLeistungKW: pumpenLeistungKW,
-    etaPumpe: etaPumpe,
-    mDotGesamt: mDotGesamt,
-    vDotGesamt: vDotGesamt * 3600, // m³/h
-    maxPathNode: maxPathNode
-    ,dpExceededCount: window.netzEdges.filter(edge => edge.dpExceeded).length
-    ,bottleneckCount: window.netzEdges.filter(edge => edge.hydraulicBottleneck).length
+    kritPfadDp: kritZone.kritPfadDp,
+    foerderhoeheMWS: kritZone.foerderhoeheMWS,
+    foerderhoeheBar: kritZone.foerderhoeheBar,
+    pumpenLeistungKW,
+    etaPumpe: pumpenLeistungKW > 0 ? summe('pHydKw') / pumpenLeistungKW : 0,
+    mDotGesamt: summe('mDotGesamt'),
+    vDotGesamt: summe('vDotGesamt'), // m³/h
+    lastKw: summe('lastKw'),         // Auslegungslast der Pumpen (Σ Normheizlast × Gleichzeitigkeit)
+    // Anteil des konstant geregelten Differenzdrucks (Hausstation) an der Förderhöhe — Teillast der Pumpe
+    dpKonstantAnteil: kritZone.kritPfadDp > 0 ? DP_HAUSSTATION_PA / kritZone.kritPfadDp : 0,
+    maxPathNode: kritZone.maxPathNode,
+    zonen: pumpeJeZone,
+    dpExceededCount: window.netzEdges.filter(edge => edge.dpExceeded).length,
+    bottleneckCount: window.netzEdges.filter(edge => edge.hydraulicBottleneck).length,
   };
 
   // readNum statt parseFloat: parseFloat liefert bei leerem Feld NaN, und
@@ -5701,8 +6614,9 @@ function _recalcNetzIntern(){
   let totalLossKW = 0;
   window.netzEdges.forEach(e => {
     if (e.load > 0 && e.length > 0) {
-      // DN-abhängiger U-Wert (größere Rohre besser gedämmt)
-      const uWert = getUWertForDN(e.dn, uWertBase);
+      // Verlustkoeffizient je Rohr nach DN (steigt mit dem Durchmesser), Vor- und Rücklauf: 2 Rohre je Trasse;
+      // mit der mittleren Rohrtemperatur ist das gleich U·(T_VL − T_E) + U·(T_RL − T_E)
+      const uWert = getUWertForDN(e.dn, uWertBase) * ROHRE_JE_TRASSE;
       e.lossKW = uWert * e.length * deltaT / 1000;
       e.lossKW_annual = uWert * e.length * deltaTMittel / 1000;
       e.lossPerM = uWert * deltaT;
@@ -5717,28 +6631,52 @@ function _recalcNetzIntern(){
   });
 
   const totalLossKW_annual = window.netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0);
+  // Ganzjahreswert: Grundlage des Lastgangs (06b verteilt ihn auf die Betriebsstunden); angezeigt wird der Wert im Betrieb
   const totalLossJahrMWh = totalLossKW_annual * 8.76;
+  const betriebsAnteil = netzBetriebsAnteil();
+  window._netzPumpe.verlustKw = totalLossKW;   // Bezug des Jahrespumpenstroms: Pumpenlast + Verlustleistung
   // Zentrale Verlustquelle für Lastgang und Kennzahlen. Sobald ein
   // berechnetes Netz existiert, ersetzt dieser leitungsgenaue Jahreswert den
   // pauschalen Prozentansatz aus den Wärme-Grundlagendaten.
   window._netzAnnualLossMWh = totalLossJahrMWh;
-  const connectedIds = new Set(window.netzEdges.flatMap(e => [e.u, e.v]));
-  const totalVerbrauchMWh = gebaeude.filter(g => connectedIds.has(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
-  const totalErzeugungMWh = totalLossJahrMWh + totalVerbrauchMWh;
-  const lossPct = totalVerbrauchMWh > 0 ? (totalLossJahrMWh / totalErzeugungMWh * 100).toFixed(1) : '—';
+  // Kennwerte je Heizzentrale (Versorgungszone); Verbindungsleitungen zählen je zur Hälfte zu beiden Zonen
+  wurzeln.forEach(w => { window._netzJeZentrale[w] = { verlustMWh: 0, laengeM: 0, gebIds: [], heizlastKw: 0, waermeMwh: 0 }; });
+  window.netzEdges.forEach(e => {
+    if (e.pruned) return;
+    const zonen = e.kuppel ? [wurzelVon.get(e.u), wurzelVon.get(e.v)] : [wurzelVon.get(e.u) ?? wurzelVon.get(e.v)];
+    zonen.forEach(z => {
+      const k = window._netzJeZentrale[z];
+      if (!k) return;
+      k.verlustMWh += (e.lossKW_annual || 0) * 8.76 * betriebsAnteil / zonen.length;
+      k.laengeM += (e.length || 0) / zonen.length;
+    });
+  });
+  gebaeude.forEach(g => {
+    const z = wurzelVon.get(g.id);
+    if (z == null || !window._netzJeZentrale[z] || isExcluded(g.id)) return;
+    const st = getComputedStats(g, globalYear);
+    if (!(st.heizlast > 0) && !(st.waerme > 0)) return;
+    const k = window._netzJeZentrale[z];
+    k.gebIds.push(g.id); k.heizlastKw += st.heizlast || 0; k.waermeMwh += st.waerme || 0;
+  });
+  // Bedarf der angeschlossenen Gebäude im betrachteten Jahr (Sanierung, Status, ohne ausgeschlossene) und Verlust im Betrieb
+  const totalVerbrauchMWh = netzVerbrauchMwh(globalYear);
+  const verlustBetriebMWh = totalLossJahrMWh * betriebsAnteil;
+  const totalErzeugungMWh = verlustBetriebMWh + totalVerbrauchMWh;
+  const lossPct = totalVerbrauchMWh > 0 ? (verlustBetriebMWh / totalErzeugungMWh * 100).toFixed(1) : '—';
   const lossDisp = document.getElementById('netz-loss-display');
-  if (lossDisp) lossDisp.textContent = `Netzverluste: ${totalLossKW.toFixed(1)} kW | ${totalLossJahrMWh.toFixed(0)} MWh/a (${lossPct} % der Erzeugung) | ΔT: ${deltaT.toFixed(0)} K`;
+  if (lossDisp) lossDisp.textContent = `Netzverluste: ${totalLossKW.toFixed(1)} kW | ${verlustBetriebMWh.toFixed(0)} MWh/a (${lossPct} % der Erzeugung) | ΔT: ${deltaT.toFixed(0)} K`;
   const summaryDiv = document.getElementById('netz-summary');
   if (summaryDiv) {
     if (totalVerbrauchMWh > 0) {
       summaryDiv.style.display = 'grid';
-      summaryDiv.innerHTML = `<span style="color:var(--muted)">Gebäudebedarf</span><span>${totalVerbrauchMWh.toFixed(0)} MWh/a</span><span style="color:var(--muted)">+ Netzverluste</span><span style="color:#f9a825">${totalLossJahrMWh.toFixed(0)} MWh/a</span><span style="color:var(--muted);border-top:1px solid var(--border);padding-top:3px;margin-top:2px">= Zentrale erzeugt</span><span style="color:var(--accent);font-weight:bold;border-top:1px solid var(--border);padding-top:3px;margin-top:2px">${totalErzeugungMWh.toFixed(0)} MWh/a</span>`;
+      summaryDiv.innerHTML = `<span style="color:var(--muted)">Gebäudebedarf</span><span>${totalVerbrauchMWh.toFixed(0)} MWh/a</span><span style="color:var(--muted)">+ Netzverluste</span><span style="color:#f9a825">${verlustBetriebMWh.toFixed(0)} MWh/a</span><span style="color:var(--muted);border-top:1px solid var(--border);padding-top:3px;margin-top:2px">= Zentrale erzeugt</span><span style="color:var(--accent);font-weight:bold;border-top:1px solid var(--border);padding-top:3px;margin-top:2px">${totalErzeugungMWh.toFixed(0)} MWh/a</span>`;
     } else {
       summaryDiv.style.display = 'none';
     }
   }
 
-  nodeMap[zId].tempIn = vlTemp;
+  wurzeln.forEach(w => { if (nodeMap[w]) nodeMap[w].tempIn = vlTemp; });
 
   for(let i = 0; i < order.length; i++){
     const curr = order[i];
@@ -5765,7 +6703,7 @@ function _recalcNetzIntern(){
   // Per-Gebäude: zugerechnete Netzverluste (proportional nach Wärmestromanteil)
   gebaeude.forEach(g => { g.netzVerlustKW = null; g.netzVerlustRatioPct = null; g.netzVerlustJahrMWh = null; });
   order.forEach(nodeId => {
-    if (nodeId === zId || !parentEdge[nodeId]) return;
+    if (wurzeln.includes(nodeId) || !parentEdge[nodeId]) return;
     const g = gebMap.get(nodeId);
     if (!g) return;
     const bLoad = getComputedStats(g, globalYear).heizlast || 0;
@@ -5783,8 +6721,8 @@ function _recalcNetzIntern(){
       curr = parentEdge[curr].pNodeId;
     }
     g.netzVerlustKW = Math.round(attributed * 100) / 100;
-    g.netzVerlustJahrMWh = Math.round(attributedAnnual * 8.76 * 10) / 10;
-    const waermeJahr = parseFloat(g.waerme) || 0;
+    g.netzVerlustJahrMWh = Math.round(attributedAnnual * 8.76 * betriebsAnteil * 10) / 10;
+    const waermeJahr = getComputedStats(g, globalYear).waerme || 0;
     g.netzVerlustRatioPct = waermeJahr > 0 ? Math.round(g.netzVerlustJahrMWh / waermeJahr * 1000) / 10 : null;
   });
 
@@ -5823,7 +6761,7 @@ function _recalcNetzIntern(){
     subtreeLoad[parent]   += subtreeLoad[curr];
     subtreeLength[parent] += subtreeLength[curr] + edge.length;
     subtreeKosten[parent] += subtreeKosten[curr] + (edge.kosten || 0);
-    subtreeLoss[parent]   += subtreeLoss[curr] + (edge.lossKW_annual || 0) * 8.76;
+    subtreeLoss[parent]   += subtreeLoss[curr] + (edge.lossKW_annual || 0) * 8.76 * betriebsAnteil;
   }
 
   // Auf Kanten übertragen: Subtree-Werte = Werte des Kindknotens
@@ -5833,12 +6771,13 @@ function _recalcNetzIntern(){
     const edge = parentEdge[nodeId].e;
     const stLen = subtreeLength[nodeId] + edge.length;
     const stLoadKW = subtreeLoad[nodeId];
-    const stWaerme = stLoadKW * VBH / 1000;
+    // Jahreswärme der nachgelagerten Abnehmer (nicht Σ Normheizlast × Vollbenutzungsstunden des Lastgangs)
+    const stWaerme = Number.isFinite(edge.waermeMwh) ? edge.waermeMwh : stLoadKW * VBH / 1000;
     edge.subtreeWLD = stLen > 0 ? stWaerme / stLen : 0;
     edge.subtreeKosten = subtreeKosten[nodeId] + (edge.kosten || 0);
     edge.subtreeWaermeMWh = stWaerme;
     edge.subtreeLength = stLen;
-    edge.subtreeLoss = subtreeLoss[nodeId] + (edge.lossKW_annual || 0) * 8.76;
+    edge.subtreeLoss = subtreeLoss[nodeId] + (edge.lossKW_annual || 0) * 8.76 * betriebsAnteil;
     // Verbraucher zählen
     let consumers = 0;
     const countSub = (nId) => {
@@ -5853,12 +6792,11 @@ function _recalcNetzIntern(){
   // "Was kostet es zusätzlich zur Erzeugung, diesen Strang über das Netz zu versorgen?"
   // Bestand (networkLocked): nur laufende Verlustkosten (Rohre sind schon bezahlt)
   // Neubau (!networkLocked): Rohr-Annuität + Verlustkosten
-  const _netzZins = (parseFloat(document.getElementById('wirt-zins')?.value) || 2.7) / 100;
+  const _netzZins = (Number.isFinite(parseFloat(document.getElementById('wirt-zins')?.value)) ? parseFloat(document.getElementById('wirt-zins').value) : 2.7) / 100;
   const _netzN = 50;  // Nutzungsdauer Wärmenetz nach VDI 2067 (konsistent mit Wirtschaftlichkeits-Panel)
   const annFaktor = _netzZins > 0 ? _netzZins * Math.pow(1 + _netzZins, _netzN) / (Math.pow(1 + _netzZins, _netzN) - 1) : 1 / _netzN;
   // Erzeugungskosten an der Zentrale (€/MWh) – für Verlustbewertung
-  const wgkZentraleEl = document.getElementById('fs-wgk');
-  const wgkZentrale = parseFloat(wgkZentraleEl?.textContent) || 80;
+  const wgkZentrale = window._lastWgk > 0 ? window._lastWgk * 10 : 80;   // ct/kWh → €/MWh
 
   window.netzEdges.forEach(e => {
     if (e.subtreeWaermeMWh > 0) {
@@ -5889,9 +6827,8 @@ function _recalcNetzIntern(){
       (e.visibleUntilYear != null && globalYear >= e.visibleUntilYear);
 
     if(e.load > 0){
-      const actualArea = Math.PI * Math.pow((e.dn / 1000) / 2, 2);
-      const mDot = e.load / (cp * dt); 
-      const actualVel = (mDot / rhoWater) / actualArea;
+      // Auslastung = Geschwindigkeit / zulässige Geschwindigkeit der Nennweite (Innendurchmesser)
+      const actualArea = rohrQuerschnittM2(e.dn);
       const allowedVelocity = e.velocityLimit || getVFlowForDN(e.dn,vFlow);
       const maxMDot = actualArea * allowedVelocity * rhoWater;
       const maxLoad = maxMDot * cp * dt;
@@ -5933,7 +6870,7 @@ function _recalcNetzIntern(){
         ttHtml += `Last (Σ ${e._nVerbraucher} Gebäude): ${e.load.toFixed(1)} kW<br>`;
       }
       const utilizationColor = auslastung <= 80 ? '#4caf50' : auslastung <= 100 ? '#f9a825' : '#f44336';
-      ttHtml += `Leitungsauslastung: <span style="color:${utilizationColor}">${auslastung.toFixed(1)} %</span> · ${actualVel.toFixed(2)} m/s<br>`;
+      ttHtml += `Leitungsauslastung: <span style="color:${utilizationColor}">${auslastung.toFixed(1)} %</span> · ${(e._vActual || 0).toFixed(2)} m/s<br>`;
       ttHtml += `${_m}Kapazität: ${maxLoad.toFixed(0)} kW bei ${allowedVelocity.toFixed(2)} m/s zulässiger Zielgeschwindigkeit${_me}<br>`;
       if (!networkLocked && e.designYear != null) {
         ttHtml += `${_m}Dimensioniert für ${e.designLoad.toFixed(1)} kW im maßgebenden Jahr ${e.designYear}${_me}<br>`;
@@ -6001,6 +6938,12 @@ function _recalcNetzIntern(){
       }
 
       targetLayer.unbindTooltip();
+      if (e.kuppel) {
+        // Verbindungsleitung zwischen zwei Versorgungszonen: eigene Darstellung und Erläuterung
+        e.layer.setStyle({ color: '#26c6da', dashArray: '10, 5' });
+        ttHtml = '<span style="color:#26c6da">⇄ Verbindungsleitung zwischen zwei Heizzentralen</span><br>'
+          + `<span style="color:var(--muted);font-size:9px">Trennstelle zwischen den Versorgungszonen; ausgelegt auf ${Math.round(e.load)} kW Übergabe (Sommerbetrieb mit einer Zentrale bzw. Eingabe im Netz-Panel)</span><br>` + ttHtml;
+      }
       e.infoHtml = ttHtml;
 
       // Gradient
@@ -6234,10 +7177,7 @@ export function updateRohrListe() {
 
   // Netz-WLD = Summe Verbraucher-Jahreswärme / Gesamttrassenlänge
   // (nicht Summe Kantenlast, da Stammleitung akkumulierte Last trägt)
-  const connIds = new Set(window.netzEdges.flatMap(e => [e.u, e.v]));
-  const totalConsumerKW = gebaeude.filter(g => connIds.has(g.id))
-    .reduce((s, g) => s + (getComputedStats(g, globalYear).heizlast || 0), 0);
-  const totalWaerme = totalConsumerKW * 1800 / 1000;
+  const totalWaerme = netzVerbrauchMwh(globalYear);
   const wldGesamt = totalLength > 0 ? totalWaerme / totalLength : 0;
   const wldColor = getWLDColor(wldGesamt);
   const szenarioLabel = {niedrig:'Niedrig',mittel:'Mittel',hoch:'Hoch'}[kostenSzenario];
@@ -6259,7 +7199,7 @@ export function updateRohrListe() {
   
   Object.keys(rohre).sort((a,b) => Number(a) - Number(b)).forEach(dn => {
     const r = rohre[dn];
-    const euM = getKostenProM(Number(dn));
+    const euM = r.length > 0 ? Math.round(r.kosten / r.length) : getKostenProM(Number(dn));   // Kostenklassen je Abschnitt
     html += `<tr>
       <td>KMR DN ${dn}</td>
       <td>${Math.round(r.length)}</td>
@@ -6285,14 +7225,14 @@ export function exportRohreCSV() {
     if (e.load > 0 && e.dn > 0) {
       if (!rohre[e.dn]) rohre[e.dn] = { length: 0, kosten: 0 };
       rohre[e.dn].length += e.length;
-      rohre[e.dn].kosten += getKostenProM(e.dn) * e.length;
+      rohre[e.dn].kosten += getKostenProM(e.dn, e.kostKlasse) * e.length;   // Kostenklasse je Abschnitt wie in der Rohrliste
     }
   });
   
   let csvContent = `DN (mm);Laenge (m);Euro_pro_m (${kostenSzenario});Kosten (EUR)\n`;
   Object.keys(rohre).sort((a,b) => Number(a) - Number(b)).forEach(dn => {
     const r = rohre[dn];
-    csvContent += `${dn};${Math.round(r.length)};${getKostenProM(Number(dn))};${Math.round(r.kosten)}\n`;
+    csvContent += `${dn};${Math.round(r.length)};${r.length > 0 ? Math.round(r.kosten / r.length) : getKostenProM(Number(dn))};${Math.round(r.kosten)}\n`;
   });
   
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

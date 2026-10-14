@@ -14,6 +14,10 @@ import { _gebLabelHtml, escHtml } from './03c-gebaeude-io.js';
 import { cancelDrawStromEdge } from './05b-stromnetz.js';
 import { beginInteraction, cancelInteraction, commitInteraction, getActiveInteraction } from './lib/interaction-state.js';
 import { createLifecycleScope } from './lib/lifecycle.js';
+import { wpAufstellungForm, rechteckEcken, WP_MODULE } from './lib/wp-aufstellung.js';
+import { wpSchallQuellen, lwaGesamt, pegelAm, isophone, isophonRadius, naechsterFassadenpunkt, WP_SCHALLSCHUTZ, schallschutzDb, quellenMitSchallschutz } from './lib/wp-schall.js';
+import { PT_TA_LAERM } from './lib/gutachten-potenzial.js';
+import { hindernis, schallSzene, pegel3d, isophonenKarte, immissionsort3d } from './lib/schall-hindernisse.js';
 
 /** @type {import('./lib/lifecycle.js').LifecycleScope|null} */
 let areaDrawLifecycle = null;
@@ -171,6 +175,27 @@ function manualWaermeConnectedBuildingIds() {
     if (touches) connected.add(g.id);
   });
   return connected;
+}
+
+/** Liegt der Punkt in einer Heizzentrale (Haupt- oder weitere)? Dann deren Mittelpunkt als Ankerpunkt. */
+function _heizzentraleAnker(latlng) {
+  const ids = window.netzZentralenIds?.() || [];
+  for (const id of ids) {
+    const g = gebaeude.find(x => x.id === id);
+    if (!g?.polygon?.length) continue;
+    let innen = false;
+    for (let i = 0, j = g.polygon.length - 1; i < g.polygon.length; j = i++) {
+      const a = g.polygon[i], b = g.polygon[j];
+      if ((a.lat > latlng.lat) !== (b.lat > latlng.lat) && latlng.lng < ((b.lng - a.lng) * (latlng.lat - a.lat)) / (b.lat - a.lat) + a.lng) innen = !innen;
+    }
+    if (innen) {
+      const c = polygonCenter(g.polygon);
+      const p = L.latLng(c.lat, c.lng);
+      p._hzName = g.name || 'Heizzentrale';
+      return p;
+    }
+  }
+  return null;
 }
 
 function updateManualWaermeBuildingStyles() {
@@ -447,13 +472,16 @@ export function updateViz(){
       }
       // Heizzentrale hervorheben
       const hzId = parseInt(document.getElementById('netz-zentrale')?.value);
-      if (g.id === hzId && !excluded) {
+      // Weitere Heizzentralen am selben Netz: gleiche Hervorhebung, Beschriftung mit ihrem Namen
+      const weitereHz = (window.weitereZentralen || []).find(z => Number(z.id) === g.id && Number(z.id) !== hzId);
+      if ((g.id === hzId || weitereHz) && !excluded) {
         g.polygonLayer.setStyle({ color: '#ff8f00', weight: 2.5, fillColor: '#ff8f00', fillOpacity: 0.12, dashArray: '' });
         if (g.hzLabelMarker) { map.removeLayer(g.hzLabelMarker); g.hzLabelMarker = null; }
         if (g.polygon) {
           const c = polygonCenter(g.polygon);
+          const hzText = (window.weitereZentralen || []).length ? (weitereHz ? (weitereHz.name || 'HZ 2') : (window.hauptzentraleName || 'HZ 1')) : 'HZ';
           g.hzLabelMarker = L.marker(c, {
-            icon: L.divIcon({ className:'', html:'<div style="background:rgba(255,143,0,0.85);color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;white-space:nowrap;pointer-events:none;letter-spacing:0.5px;">HZ</div>', iconAnchor:[10,8] }),
+            icon: L.divIcon({ className:'', html:`<div style="background:rgba(255,143,0,0.85);color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;white-space:nowrap;pointer-events:none;letter-spacing:0.5px;">${String(hzText).replace(/[<>&"]/g, '')}</div>`, iconAnchor:[10,8] }),
             interactive: false, zIndexOffset: 100
           }).addTo(map);
         }
@@ -595,6 +623,16 @@ export function selectFromMap(id, clickEvent){
   if(window.isDrawingEdge ?? isDrawingEdge){
     if(window.edgeStartId === null){ window.edgeStartId = id; showHint('Zweites Gebäude anklicken.'); }
     else { if(window.edgeStartId !== id){ addNetzEdge(window.edgeStartId, id); recalcNetz(); } window.edgeStartId = null; showHint('Nächstes Gebäude anklicken oder Tool beenden.'); }
+    return;
+  }
+  // Erneuter Klick auf das ausgewählte Gebäude hebt die Auswahl wieder auf
+  if (selectedId === id) {
+    setSelectedId(null);
+    _expandedIds.delete(id);
+    document.querySelectorAll('.geb-card.selected').forEach(c => c.classList.remove('selected'));
+    window.updateSperrVisibility?.();
+    _rerenderCard(id);
+    updateViz();
     return;
   }
   setSelectedId(id);
@@ -1094,7 +1132,10 @@ map.on('click',e=>{
   }
   if(window.isDrawingTrasse) {
     recordTrasseHistory();
-    const clickedLatLng = snapManualWaermePoint(e.latlng);
+    let clickedLatLng = snapManualWaermePoint(e.latlng);
+    // Klick in eine Heizzentrale: Haupttrasse dort verankern (Punkt in die Mitte der Zentrale)
+    const hzAnker = !window._manualWaermeNetzDrawing && _heizzentraleAnker(clickedLatLng);
+    if (hzAnker) clickedLatLng = hzAnker;
     if (window._manualWaermeNetzDrawing &&
         window.trasseDetached &&
         selectedManualTrassePointIndex!=null) {
@@ -1112,18 +1153,18 @@ map.on('click',e=>{
     const strangLeer = window.trassePoints.length <= window.trasseCurrentSegStart;
     if (window.trasseDetached || strangLeer) {
       // Neuer Strang: an vorhandenem Punkt oder mitten auf einer Linie einrasten = Abzweig
-      const ziel = clickedLatLng._gebaeude ? null : trasseEinrastziel(clickedLatLng);
+      const ziel = clickedLatLng._gebaeude || hzAnker ? null : trasseEinrastziel(clickedLatLng);
       const start = ziel ? trasseEinrastpunktSetzen(ziel) : clickedLatLng;
       setTrasseCurrentSegStart(window.trassePoints.length);
       window.trassePoints.push(L.latLng(start.lat, start.lng));
-      showHint(ziel
+      showHint(hzAnker ? `✓ Strang an der Heizzentrale „${hzAnker._hzName}“ verankert. Weitere Punkte klicken · Enter/Doppelklick beendet den Strang.` : ziel
         ? 'Abzweig gesetzt. Weitere Punkte klicken · Klick auf eine Leitung verbindet · Enter/Doppelklick beendet den Strang.'
         : 'Strang begonnen. Weitere Punkte klicken · Klick auf eine Leitung verbindet · Enter/Doppelklick beendet den Strang.', 5000);
       setTrasseDetached(false);
     } else {
       // Laufender Strang: Klick auf eine vorhandene Leitung verbindet dorthin und beendet den Strang
       const startPunkt = window.trassePoints[window.trasseCurrentSegStart];
-      const ziel = clickedLatLng._gebaeude ? null : trasseEinrastziel(clickedLatLng);
+      const ziel = clickedLatLng._gebaeude || hzAnker ? null : trasseEinrastziel(clickedLatLng);
       const zuNahAmStart = ziel && startPunkt &&
         map.latLngToContainerPoint(ziel.latlng).distanceTo(map.latLngToContainerPoint(startPunkt)) < 12;
       if (ziel && !zuNahAmStart) {
@@ -1135,6 +1176,11 @@ map.on('click',e=>{
         return;
       }
       window.trassePoints.push(clickedLatLng);
+      if (hzAnker) {
+        // Ende an der Zentrale: Strang ist fertig
+        startNewTrasseBranch();
+        showHint(`✓ Strang an der Heizzentrale „${hzAnker._hzName}“ verankert und beendet.`, 4500);
+      }
     }
     redrawTrasse();
     return;
@@ -1372,6 +1418,11 @@ export function toggleDrawTrasse(domain) {
     if (_tcb) _tcb.checked = true;
     // Andere Modi beenden
     if (window.isDrawingStromEdge && typeof cancelDrawStromEdge === 'function') cancelDrawStromEdge();
+    // Bearbeitungsmodi des Wärmenetzes beenden: ihre Ziehpunkte liegen über der Trasse und würden Klicks abfangen
+    window.netzStrangVorschlagSchliessen?.();
+    const _netzModi = window.netzBearbeitungAktiv?.() || {};
+    if (_netzModi.edit) window.setNetzEditMode?.(false);
+    if (_netzModi.rewire) window.setNetzRewireMode?.(false);
     if (typeof window.setPendingType === 'function' && window._pendingAssetType) window.setPendingType(window._pendingAssetType);
     buttons.forEach(btn => btn.classList.add('active'));
     setTrasseDetached(false);
@@ -1680,11 +1731,18 @@ export function redrawTrasse() {
       const pl = L.polyline(pts, { color, weight: 14, opacity: 0.25, lineCap: 'round', lineJoin: 'round' }).addTo(map);
       pl._trasseSegment = seg;
       if (allSegIdx < window.trasseSegments.length) {
+        // Rechtsklick: kleines Menü mit Länge und „Abschnitt löschen“ (auch im Zeichenmodus)
         pl.on('contextmenu', (e) => {
           L.DomEvent.stop(e);
-          if (window.isDrawingTrasse) return;
-          deleteTrasse(allSegIdx);
+          _trasseAbschnittMenue(allSegIdx, e.latlng, pts);
         });
+        // Löschmodus: ein Klick entfernt den Abschnitt
+        pl.on('click', (e) => {
+          if (!window._trasseLoeschModus) return;
+          L.DomEvent.stop(e);
+          trasseAbschnittLoeschen(allSegIdx);
+        });
+        if (window._trasseLoeschModus) pl.bindTooltip('Klicken: Abschnitt löschen', { sticky: true });
       }
       window.trassePolyline.push(pl);
     }
@@ -1724,7 +1782,15 @@ export function redrawTrasse() {
     const m = L.marker(pt, { draggable, icon:pointIcon, zIndexOffset:isManualSelected ? 2300 : 2000 }).addTo(map);
     m._trassePointIndex=idx;
     m.on('click',event => {
-      if (!window._manualWaermeNetzDrawing) return;
+      if (!window._manualWaermeNetzDrawing) {
+        // Haupttrasse zeichnen: Klick auf einen orangen Punkt wirkt wie ein Klick genau dort —
+        // erster Punkt beginnt einen Abzweig, ein weiterer verbindet dorthin
+        if (window.isDrawingTrasse) {
+          if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
+          map.fire('click',{latlng:L.latLng(pt.lat,pt.lng),originalEvent:event?.originalEvent});
+        }
+        return;
+      }
       if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
       selectedManualTrassePointIndex=idx;
       redrawTrasse();
@@ -1822,6 +1888,75 @@ export function deleteTrasse(segIdx) {
   }
   redrawTrasse();
   if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
+}
+
+// ── Einzelne Trassenabschnitte löschen (Rechtsklick-Menü oder Löschmodus), mit Rückgängig ──
+const _trasseLoeschStapel = [];
+function _trasseLaengeM(pts) {
+  let m = 0;
+  for (let i = 1; i < pts.length; i++) m += L.latLng(pts[i - 1]).distanceTo(L.latLng(pts[i]));
+  return m;
+}
+function _trasseAbschnittMenue(segIdx, latlng, pts) {
+  const laenge = Math.round(_trasseLaengeM(pts)).toLocaleString('de-DE');
+  L.popup({ closeButton: true, className: 'trasse-menue', offset: [0, -4] })
+    .setLatLng(latlng)
+    .setContent(`<div class="trasse-menue-inhalt"><b>Trassenabschnitt</b><span>${laenge} m</span>
+      <button type="button" class="btn-secondary danger" data-click="trasseAbschnittLoeschen(${segIdx})">🗑 Abschnitt löschen</button></div>`)
+    .openOn(map);
+}
+function _trasseToast(html, aktion = '') {
+  document.querySelector('.var-toast')?.remove();
+  const el = document.createElement('div');
+  el.className = 'var-toast';
+  el.setAttribute('role', 'status');
+  el.style.borderColor = '#ff9800';
+  el.innerHTML = `<span>${html}</span>${aktion}<button data-click="this.closest('.var-toast').remove()" aria-label="Schließen" style="text-decoration:none;color:var(--muted);">✕</button>`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 8000);
+}
+export function trasseAbschnittLoeschen(segIdx) {
+  const seg = window.trasseSegments[segIdx];
+  if (!seg) return false;
+  const pts = window.trassePoints.slice(seg.start, seg.end + 1);
+  const vorher = captureTrasseHistoryState();
+  recordTrasseHistory();   // im Zeichenmodus zusätzlich über ↶ rückgängig
+  deleteTrasse(segIdx);
+  _trasseLoeschStapel.push(vorher);
+  if (_trasseLoeschStapel.length > 30) _trasseLoeschStapel.shift();
+  map.closePopup();
+  _trasseToast(`🗑 Trassenabschnitt gelöscht (${Math.round(_trasseLaengeM(pts)).toLocaleString('de-DE')} m)`,
+    '<button data-click="trasseLoeschenRueckgaengig()">Rückgängig</button>');
+  return true;
+}
+export function trasseLoeschenRueckgaengig() {
+  const st = _trasseLoeschStapel.pop();
+  if (!st) return false;
+  restoreTrasseHistoryState(st);
+  if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
+  document.querySelector('.var-toast')?.remove();
+  showHint('Trassenabschnitt wiederhergestellt.', 2500);
+  return true;
+}
+/** Löschmodus: Trasse sichtbar, Klick auf einen Abschnitt löscht ihn. Esc beendet. */
+export function trasseLoeschModusUmschalten(an = !window._trasseLoeschModus) {
+  window._trasseLoeschModus = !!an;
+  document.getElementById('btn-trasse-loeschmodus')?.classList.toggle('active', window._trasseLoeschModus);
+  document.body.classList.toggle('trasse-loeschmodus', window._trasseLoeschModus);
+  if (window._trasseLoeschModus) {
+    window._trasseVorLoeschModus = !!window.trasseVisible;
+    window.trasseVisible = true;
+    if (!window.trasseSegments.some(sg => sg.source !== 'osm-street' && sg.end > sg.start)) showHint('Es gibt keine gezeichneten Trassenabschnitte.', 3500);
+    else showHint('Löschmodus: Trassenabschnitt anklicken · Esc oder erneut auf den Knopf zum Beenden', 0);
+    if (!window._trasseLoeschEsc) {
+      window._trasseLoeschEsc = true;
+      document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && window._trasseLoeschModus) trasseLoeschModusUmschalten(false); });
+    }
+  } else {
+    window.trasseVisible = window._trasseVorLoeschModus ?? window.trasseVisible;
+    hideHint();
+  }
+  redrawTrasse();
 }
 
 export function clearTrasse() {
@@ -2141,13 +2276,270 @@ export function updateWirtDisplay(prefix, result) {
 }
 
 /* ── Luft-Wasser-Wärmepumpe: Platzbedarf + Schall Freifeld ───────────────── */
+// Aufstellfläche aus Gerätegröße, Luft- und Wartungsabständen (lib/wp-aufstellung.js);
+// Gerätegröße, Reihen und Drehung stehen in lwWp.aufstellung.
+export function lwWpAufstellungOpt() {
+  const a = window.lwWp?.aufstellung || {};
+  const laenge = Number(a.laenge);
+  return { modulKw: a.modulKw ?? 'auto', reihen: a.reihen ?? 'auto', drehung: Number(a.drehung) || 0,
+    laenge: Number.isFinite(laenge) && laenge > 0 ? laenge : null };
+}
+export function lwWpAufstellung(leistungKw) {
+  return wpAufstellungForm(leistungKw, lwWpAufstellungOpt());
+}
 export function lwWpPlatzbedarfM2(leistungKw) {
-  return Math.max(2, 2 + leistungKw * 0.35);
+  return lwWpAufstellung(leistungKw).flaeche;
+}
+// Maße der gezeichneten Fläche: berechnet oder manuell (Länge entlang der Gerätereihe)
+function _lwWpFlaecheMasse(auf) {
+  const manL = parseFloat(document.getElementById('lwwp-man-laenge')?.value) || 0;
+  const manB = parseFloat(document.getElementById('lwwp-man-breite')?.value) || 0;
+  return { l: manL > 0 ? manL : auf.laenge, b: manB > 0 ? manB : auf.breite, manuell: manL > 0 || manB > 0 };
+}
+const LWWP_GRIFF_ABSTAND = 1.5;   // m außerhalb der Fläche
+function _lwWpAufstellungZeichnen(pt, leistung) {
+  const auf = lwWpAufstellung(leistung);
+  const { drehung } = lwWpAufstellungOpt();
+  const m = _lwWpFlaecheMasse(auf);
+  const latPerM = 1 / 111320;
+  const lngPerM = 1 / (111320 * Math.cos(pt.lat * Math.PI / 180));
+  const zuLatLng = ecken => ecken.map(e => [pt.lat + e.nord * latPerM, pt.lng + e.ost * lngPerM]);
+  const zuKleinManuell = m.manuell && (m.l < auf.laenge - 0.05 || m.b < auf.breite - 0.05);
+  const zuKlein = zuKleinManuell;
+  const farbe = zuKlein ? '#ef5350' : '#388e3c';
+  const nf = (v, d = 1) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const text = `${auf.anzahl} × Außengerät ~${auf.modul.kw} kW (${nf(auf.modul.l)} × ${nf(auf.modul.b)} × ${nf(auf.modul.h)} m)`
+    + `<br>Fläche inkl. Abstände: ${nf(auf.laenge)} × ${nf(auf.breite)} m ≈ <b>${nf(auf.flaeche, 0)} m²</b>`
+    + (auf.formFrei ? ` · ${auf.reihen} ${auf.reihen === 1 ? 'Reihe' : 'Reihen'} à ${auf.jeReihe}` : '')
+    + (auf.mehrFlaeche > 0.5 ? `<br>In dieser Form ≈ ${nf(auf.mehrFlaeche, 0)} m² mehr als bei automatischer Anordnung, damit alle Abstände eingehalten sind` : '')
+    + (m.manuell ? `<br>verfügbar: ${nf(m.l)} × ${nf(m.b)} m${zuKleinManuell ? ' — <b>zu klein</b>' : ''}` : '')
+    + '<br><span style="opacity:.7">Richtwerte, Herstellerangaben maßgeblich</span>';
+  // Fläche inkl. Abstände
+  const flaeche = L.polygon(zuLatLng(rechteckEcken(0, 0, m.l, m.b, drehung)), {
+    color: farbe, weight: 2, dashArray: '6 4', fillColor: farbe, fillOpacity: zuKlein ? 0.18 : 0.10, className: 'lwwp-flaeche',
+  }).bindTooltip(text, { sticky: true }).addTo(window.lwWpLayerGroup);
+  // Geräte
+  for (const g of auf.geraete) {
+    L.polygon(zuLatLng(rechteckEcken(g.x, g.y, g.l, g.b, drehung)), {
+      color: '#1b5e20', weight: 1, fillColor: '#66bb6a', fillOpacity: 0.85, className: 'lwwp-geraet',
+    }).bindTooltip(text, { sticky: true }).addTo(window.lwWpLayerGroup);
+  }
+  // Luftrichtung je Reihe: kurze Pfeile vor und hinter der Reihe
+  const reihenY = [...new Set(auf.geraete.map(g => g.y))];
+  for (const y of reihenY) {
+    for (const s of [-1, 1]) {
+      const y0 = y + s * (auf.modul.b / 2 + 0.15), y1 = y + s * (auf.modul.b / 2 + Math.min(1.2, auf.abstaende.luft - 0.2));
+      const [a, b] = [rechteckEcken(0, y0, 0, 0, drehung)[0], rechteckEcken(0, y1, 0, 0, drehung)[0]];
+      L.polyline(zuLatLng([a, b]), { color: '#4fc3f7', weight: 2, opacity: 0.8, interactive: false, className: 'lwwp-luft' })
+        .addTo(window.lwWpLayerGroup);
+    }
+  }
+  // Griffe zum Drehen und Formen — nur bei geöffnetem LW-WP-Panel und ohne manuelle Fläche
+  if (!document.getElementById('lwwp-panel')?.classList.contains('visible') || m.manuell) return;
+  const punkt = (x, y, w) => { const e = rechteckEcken(x, y, 0, 0, w)[0]; return L.latLng(pt.lat + e.nord * latPerM, pt.lng + e.ost * lngPerM); };
+  const lokal = ll => {   // Kartenpunkt → Meter in Ost/Nord relativ zur Mitte
+    return { ost: (ll.lng - pt.lng) / lngPerM, nord: (ll.lat - pt.lat) / latPerM };
+  };
+  const griff = (ll, cls, titel) => L.marker(ll, { draggable: true, keyboard: false, zIndexOffset: 3500, title: titel,
+    icon: L.divIcon({ className: 'lwwp-griff ' + cls, iconSize: [18, 18], iconAnchor: [9, 9], html: cls === 'drehen' ? '⟳' : '↔' }) })
+    .addTo(window.lwWpLayerGroup);
+  // Drehgriff vor der Längsseite: Richtung Mitte → Griff = Drehung (Kompass, im Uhrzeigersinn)
+  const dreh = griff(punkt(0, m.b / 2 + LWWP_GRIFF_ABSTAND, drehung), 'drehen', 'Fläche drehen');
+  let drehNeu = drehung;
+  dreh.on('drag', ev => {
+    const p = lokal(ev.target.getLatLng());
+    drehNeu = (Math.atan2(p.ost, p.nord) * 180 / Math.PI + 360) % 360;
+    flaeche.setLatLngs(zuLatLng(rechteckEcken(0, 0, m.l, m.b, drehNeu)));
+  });
+  dreh.on('dragend', () => lwWpAufstellungSetzen('drehung', drehNeu));
+  // Längengriff an der Stirnseite: Länge ändern, Breite = Fläche / Länge
+  const lang = griff(punkt(m.l / 2 + LWWP_GRIFF_ABSTAND, 0, drehung), 'laenge', 'Seitenverhältnis ändern — die Fläche bleibt gleich');
+  let laengeNeu = m.l;
+  lang.on('drag', ev => {
+    const p = lokal(ev.target.getLatLng());
+    const w = drehung * Math.PI / 180;
+    const x = p.ost * Math.cos(w) - p.nord * Math.sin(w);   // Abstand entlang der Längsachse
+    laengeNeu = Math.min(auf.maxL ?? Infinity, Math.max(auf.minL ?? 1, 2 * (Math.abs(x) - LWWP_GRIFF_ABSTAND)));
+    flaeche.setLatLngs(zuLatLng(rechteckEcken(0, 0, laengeNeu, auf.flaeche / laengeNeu, drehung)));
+  });
+  lang.on('dragend', () => lwWpAufstellungSetzen('laenge', laengeNeu));
 }
 // Freifeld-Radius (ohne Gebäudedämpfung); Zusatzdämpfung wird punktbezogen bei der Tooltip-Berechnung berücksichtigt.
 export function lwWpSchallRadiusM(lwaDb, zielDb) {
   if (lwaDb <= zielDb) return 0;
   return Math.pow(10, (lwaDb - 11 - zielDb) / 20);
+}
+/** Schallquellen der LW-WP: jedes Außengerät mit seiner Schallleistung, gedreht wie die Aufstellfläche,
+ *  gemindert um den gewählten Schallschutz (Haube, Einhausung, Wand). */
+export function lwWpSchallQuellen() {
+  if (!window.lwWp) return [];
+  const auf = lwWpAufstellung(window.lwWp.leistungKw);
+  const lwa = window.lwWp.lwaManuell ? Number(window.lwWp.lwaDb) : null;
+  return quellenMitSchallschutz(wpSchallQuellen(auf, lwWpAufstellungOpt().drehung, lwa), lwWpSchallschutzDb());
+}
+/** Dämpfung des Schallschutzes an den Außengeräten in dB(A) (0 = keiner). */
+export function lwWpSchallschutzDb() { return schallschutzDb(window.lwWp?.schallschutz); }
+export function lwWpSchallschutzSetzen(art, db) {
+  if (!window.lwWp) return;
+  const alt = window.lwWp.schallschutz || {};
+  window.lwWp.schallschutz = art === 'keine' ? null : { art, db: art === 'manuell' ? (Number(db) || alt.db || 10) : undefined };
+  updateLwWpDisplay();
+  redrawLwWp();
+}
+/** Schallleistung aller Außengeräte nach Herstellerangabe bzw. Schätzung (ohne manuelle Vorgabe). */
+export function lwWpLwaAuto(leistungKw) {
+  return Math.round(lwaGesamt(wpSchallQuellen(lwWpAufstellung(leistungKw), 0, null)) * 10) / 10;
+}
+/** Immissionsrichtwerte der gewählten Gebietsart: { gebiet, tag, nacht }. */
+export function lwWpGebiet() {
+  const name = window.lwWp?.gebiet || 'Allgemeines Wohngebiet';
+  const z = PT_TA_LAERM.find(x => x[0] === name) || PT_TA_LAERM.find(x => x[0] === 'Allgemeines Wohngebiet');
+  return { gebiet: z[0], tag: z[1], nacht: z[2] };
+}
+export function lwWpGebietSetzen(name) {
+  if (!window.lwWp) return;
+  window.lwWp.gebiet = name;
+  updateLwWpDisplay();
+}
+/**
+ * Ausbreitung der Isophonen und Pegel an den Gebäuden: 'kreis' (Standard) — Freifeld, kreisrund um die Außengeräte, Pegel am
+ * nächsten Fassadenpunkt; '3d' — mit Gebäuden (Abschirmung, Reflexion) und Bäumen (Bewuchs) als Pegelraster.
+ */
+export function lwWpAusbreitung() { return window.lwWp?.ausbreitung === '3d' ? '3d' : 'kreis'; }
+/** Gebäude und Bäume als Schallhindernisse berücksichtigen (Abschirmung, Reflexion, Bewuchs)? Nur im Modus „3d“. */
+export function lwWpMitGebaeuden() { return lwWpAusbreitung() === '3d'; }
+export function lwWpAusbreitungSetzen(art) {
+  if (!window.lwWp) return;
+  if (art === '3d') window.lwWp.ausbreitung = '3d'; else delete window.lwWp.ausbreitung;
+  updateLwWpDisplay();
+  redrawLwWp();
+}
+/**
+ * Bäume im Schallweg (Bewuchsdämpfung nach DIN ISO 9613-2 Anhang A, nur dichter Bewuchs): 'aus', 'nadel' (nur Nadelbäume
+ * als dauerhaft dichter Bewuchs — Standard, auf der sicheren Seite) oder 'alle' (auch Laub- und Obstbäume, belaubt).
+ */
+export function lwWpBaeumeArt() { const a = window.lwWp?.baeume; return a === 'aus' || a === 'alle' ? a : 'nadel'; }
+export function lwWpBaeumeSetzen(art) {
+  if (!window.lwWp) return;
+  if (art === 'aus' || art === 'alle') window.lwWp.baeume = art; else delete window.lwWp.baeume;
+  updateLwWpDisplay();
+  redrawLwWp();
+}
+/** Bäume aus OpenStreetMap ins Projekt übernehmen (Baum-Werkzeug); danach rechnet der Schall mit ihnen. */
+export async function lwWpBaeumeAusOsm() {
+  if (typeof window.baumOsmUebernehmen !== 'function') return;
+  await window.baumOsmUebernehmen();
+  if (window.lwWp) { updateLwWpDisplay(); redrawLwWp(); }
+}
+let _lwWpBaumTimer = null;
+/** Der Baumbestand hat sich geändert (40-baeume.js): Schallanzeige und Isophonen der Luft-WP neu rechnen. */
+export function lwWpBaeumeGeaendert() {
+  if (!window.lwWp) return;
+  clearTimeout(_lwWpBaumTimer);
+  _lwWpBaumTimer = setTimeout(() => { if (window.lwWp) { updateLwWpDisplay(); redrawLwWp(); } }, 120);
+}
+// Bäume des Projekts (40-baeume.js) als Schallhindernisse in lokalen Koordinaten, nach der gewählten Art gefiltert
+function _lwWpBaeume(zuLokal) {
+  const art = lwWpBaeumeArt();
+  const liste = typeof window.baumListe === 'function' ? window.baumListe() : [];
+  const gesamt = liste.length;
+  if (art === 'aus' || !gesamt || !lwWpMitGebaeuden()) return { baeume: [], gesamt };
+  const baeume = liste.filter(b => art === 'alle' || b.art === 'nadel')
+    .map(b => ({ ...zuLokal(b), hoehe: b.hoehe, krone: b.krone, art: b.art }));
+  return { baeume, gesamt };
+}
+/** Oktavspektrum der Außengeräte (8 Werte 63 Hz – 8 kHz in dB(A), absolut oder relativ); leer = typisches Spektrum. */
+export function lwWpSpektrumSetzen(text) {
+  if (!window.lwWp) return;
+  const werte = String(text || '').trim().split(/[;\s]+/).filter(Boolean).map(v => Number(v.replace(',', '.')));
+  if (werte.length === 8 && werte.every(Number.isFinite)) window.lwWp.spektrum = werte;
+  else {
+    delete window.lwWp.spektrum;
+    if (String(text || '').trim()) showHint('Oktavspektrum: bitte 8 Werte (63 Hz … 8 kHz) in dB(A) eingeben, getrennt durch Leerzeichen oder Semikolon. Es gilt das typische Spektrum.', 6000);
+  }
+  updateLwWpDisplay();
+  redrawLwWp();
+}
+// Lokale Koordinaten (m) relativ zur Mitte der Aufstellfläche
+function _lwWpLokal() {
+  const lat0 = window.lwWp.lat, lng0 = window.lwWp.lng;
+  const latPerM = 1 / 111320, lngPerM = 1 / (111320 * Math.cos(lat0 * Math.PI / 180));
+  return p => ({ ost: ((p.lng ?? p[1]) - lng0) / lngPerM, nord: ((p.lat ?? p[0]) - lat0) / latPerM });
+}
+// Höhe eines Gebäudes für die Abschirmung: Traufhöhe aus LoD2, sonst Geschosse × 3 m
+function _gebHoeheM(g) {
+  if (g.dachLod2 && g.dachLod2.quelle !== 'grundriss' && g.dachLod2.traufeM > 0.5) return g.dachLod2.traufeM;
+  return Math.max(1, Math.min(60, parseInt(g.stockwerke, 10) || 1)) * 3;
+}
+function _gebGeschosse(g) { return Math.max(1, Math.min(30, parseInt(g.stockwerke, 10) || Math.round(_gebHoeheM(g) / 3) || 1)); }
+// Gebäude, die im betrachteten Jahr stehen (geplante und abgerissene zählen nicht)
+function _lwWpGebaeudeImBestand() {
+  const jahr = window.globalYear || globalYear;
+  return (gebaeude || []).filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3 && !Array.isArray(g.polygon[0]?.[0]) && (() => {
+    const st = getComputedStats(g, jahr)?.status;
+    return st !== 'geplant' && st !== 'abgerissen';
+  })());
+}
+let _lwWpSzeneCache = null;
+/** Rechenszene der LW-WP (Quellen, Gebäude als Hindernisse) — zwischengespeichert, solange sich nichts ändert. */
+export function lwWpSchallSzene() {
+  if (!window.lwWp) return null;
+  const quellen = lwWpSchallQuellen();
+  const auf = lwWpAufstellung(window.lwWp.leistungKw);
+  const hs = Math.max(1, auf.modul?.h || 2);
+  const zuLokal = _lwWpLokal();
+  const gebs = lwWpMitGebaeuden() ? _lwWpGebaeudeImBestand() : [];
+  const hind = gebs.map(g => hindernis(g.id, g.polygon.map(zuLokal), _gebHoeheM(g)));
+  const spektrum = window.lwWp.spektrum || null;
+  const { baeume, gesamt: baeumeGesamt } = _lwWpBaeume(zuLokal);
+  const baumKey = baeume.length ? `${lwWpBaeumeArt()}:${baeume.length}:${typeof window.baumSig === 'function' ? window.baumSig() : ''}` : '';
+  const schluessel = JSON.stringify([window.lwWp.lat, window.lwWp.lng, hs, quellen, spektrum, hind.map(h => [h.id, h.h, h.box]), baumKey]);
+  if (_lwWpSzeneCache?.schluessel === schluessel) return _lwWpSzeneCache.sz;
+  const sz = schallSzene(quellen, hind, hs, spektrum, baeume);
+  sz.baeumeGesamt = baeumeGesamt;
+  _lwWpSzeneCache = { schluessel, sz, iso: null };
+  return sz;
+}
+const LWWP_SCHALL_STUFEN = [55, 50, 45, 40, 35];
+/**
+ * Isophonen je Stufe als Ringe [[{ost, nord}, …], …] (Empfängerhöhe 4 m): mit Gebäuden und Bäumen als Höhenlinien des
+ * Pegelfelds (Schatten hinter Gebäuden als Aussparungen), sonst Freifeldkreis.
+ */
+export function lwWpIsophonen() {
+  const sz = lwWpSchallSzene();
+  if (!sz || !sz.quellen.length) return new Map();
+  if (_lwWpSzeneCache.iso) return _lwWpSzeneCache.iso;
+  const iso = (sz.hind.length || sz.baeume.n)
+    ? isophonenKarte(sz, LWWP_SCHALL_STUFEN, { hr: 4 })
+    : new Map(LWWP_SCHALL_STUFEN.map(z => { const l = isophone(sz.quellen, z); return [z, l.length ? [l] : []]; }));
+  _lwWpSzeneCache.iso = iso;
+  return iso;
+}
+/** Pegel an einem Punkt der Karte (ost/nord relativ zur Flächenmitte, 4 m Höhe). */
+export function lwWpPegelAm(ost, nord) {
+  const sz = lwWpSchallSzene();
+  if (!sz) return -Infinity;
+  return (sz.hind.length || sz.baeume.n) ? pegel3d(sz, ost, nord, 4).pegel : pegelAm(sz.quellen, ost, nord);
+}
+/**
+ * Pegel an den Gebäuden, lauteste zuerst. Ohne Gebäudeeinfluss: nächster Fassadenpunkt. Mit Gebäuden: lautester
+ * Fassadenpunkt über alle Geschosse, Abschirmung je Außengerät, Reflexionen an Fassaden nahe der Geräte.
+ * Bäume im Schallweg dämpfen zusätzlich (Bewuchs). Ergebnis: [{ id, name, abstand, pegel, frei, geschoss, bewuchs }].
+ */
+export function lwWpImmissionsorte(anzahl = 5) {
+  if (!window.lwWp) return [];
+  const sz = lwWpSchallSzene();
+  const zuLokal = _lwWpLokal();
+  const kandidaten = _lwWpGebaeudeImBestand().map(g => {
+    const poly = g.polygon.map(zuLokal);
+    const f = naechsterFassadenpunkt(poly);
+    return { g, poly, id: g.id, name: g.name || ('Gebäude ' + g.id), abstand: f.d, pegel: pegelAm(sz.quellen, f.ost, f.nord) };
+  }).filter(k => !sz.ohne.has(k.id)).sort((a, b) => b.pegel - a.pegel);
+  if (!sz.hind.length && !sz.baeume.n) return kandidaten.slice(0, anzahl).map(({ id, name, abstand, pegel }) => ({ id, name, abstand, pegel, frei: pegel, geschoss: 0, bewuchs: 0 }));
+  return kandidaten.slice(0, Math.max(anzahl * 4, 20)).map(k => {
+    const io = immissionsort3d(sz, { id: k.id, poly: k.poly, geschosse: _gebGeschosse(k.g) });
+    return { id: k.id, name: k.name, abstand: k.abstand, pegel: io.pegel, frei: io.frei, geschoss: io.geschoss, bewuchs: io.bewuchs || 0 };
+  }).sort((a, b) => b.pegel - a.pegel).slice(0, anzahl);
 }
 export function toggleLwWpPanel() {
   const p = document.getElementById('lwwp-panel');
@@ -2172,6 +2564,7 @@ export function toggleLwWpPanel() {
       document.getElementById('lwwp-data-section').style.display = 'none';
     }
   }
+  if (window.lwWp) redrawLwWp();   // Dreh-/Formgriffe nur bei offenem Panel
 }
 
 export function togglePlaceLwWp() {
@@ -2199,7 +2592,7 @@ export function togglePlaceLwWp() {
 export function placeLwWpAt(latlng) {
   const leistung = parseFloat(document.getElementById('lwwp-leistung').value) || 12;
   const lwa = parseFloat(document.getElementById('lwwp-lwa').value) || 80;
-  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible };
+  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible, ...(window.lwWp?.aufstellung ? { aufstellung: window.lwWp.aufstellung } : {}), ...(window.lwWp?.schallschutz ? { schallschutz: window.lwWp.schallschutz } : {}), ...(window.lwWp?.ausbreitung === '3d' ? { ausbreitung: '3d' } : {}), ...(window.lwWp?.baeume ? { baeume: window.lwWp.baeume } : {}), ...(window.lwWp?.spektrum ? { spektrum: window.lwWp.spektrum } : {}) };
   document.getElementById('lwwp-man-laenge').value = '';
   document.getElementById('lwwp-man-breite').value = '';
   window.isPlacingLwWp = false;
@@ -2232,52 +2625,32 @@ export function redrawLwWp() {
   if (!window.lwWpSchallLayerGroup) window.lwWpSchallLayerGroup = L.layerGroup();
   window.lwWpLayerGroup.clearLayers();
   if (!window.lwWp || window.lwWp.lat == null || window.lwWp.lng == null) return;
+  _lwWpLwaSync();
   const pt = L.latLng(window.lwWp.lat, window.lwWp.lng);
   const leistung = window.lwWp.leistungKw;
   const lwa = window.lwWp.lwaDb;
-  const platzM2 = lwWpPlatzbedarfM2(leistung);
-  const rwAuto = Math.sqrt(platzM2);   // Quadratisch als Startwert
-  const rlAuto = rwAuto;
-  const manL = parseFloat(document.getElementById('lwwp-man-laenge')?.value) || 0;
-  const manB = parseFloat(document.getElementById('lwwp-man-breite')?.value) || 0;
-  const rl = manL > 0 ? manL : rlAuto;
-  const rw = manB > 0 ? manB : rwAuto;
-  const latPerM = 1 / 111320;
-  const lngPerM = 1 / (111320 * Math.cos(pt.lat * Math.PI / 180));
-  // Mutable bounds für Seitengriffe
-  const sw = { lat: pt.lat - rl / 2 * latPerM, lng: pt.lng - rw / 2 * lngPerM };
-  const ne = { lat: pt.lat + rl / 2 * latPerM, lng: pt.lng + rw / 2 * lngPerM };
-  const reqF = platzM2;
-  const tol = 0.08;
-  function actF() { return ((ne.lat - sw.lat) / latPerM) * ((ne.lng - sw.lng) / lngPerM); }
-  function fb(aF) {
-    if (aF < reqF * (1 - tol)) return { c: '#ef5350', o: 0.30 };
-    if (aF > reqF * (1 + tol)) return { c: '#66bb6a', o: 0.22 };
-    return { c: '#388e3c', o: 0.20 };
-  }
-  const f0 = fb(actF());
-  const rect = L.rectangle([sw, ne], { color: '#388e3c', weight: 2, fillColor: f0.c, fillOpacity: f0.o })
-    .bindTooltip(`Platzbedarf: ${platzM2.toFixed(1)} m² min. · ${rl.toFixed(1)}×${rw.toFixed(1)} m`, {sticky:true})
-    .addTo(window.lwWpLayerGroup);
+  _lwWpAufstellungZeichnen(pt, leistung);
   window.lwWpSchallLayerGroup.clearLayers();
-  const schallStufen = [55, 50, 45, 40, 35];
+  // Isophonen: Linien gleichen Pegels aus allen Außengeräten (Punktquellen, Halbraum) — folgen Form und Drehung der Fläche
+  const latPerM = 1 / 111320, lngPerM = 1 / (111320 * Math.cos(pt.lat * Math.PI / 180));
+  const zuLatLng = p => [pt.lat + p.nord * latPerM, pt.lng + p.ost * lngPerM];
+  const schallStufen = LWWP_SCHALL_STUFEN;
   const schallFarben = ['#b71c1c', '#e65100', '#f9a825', '#8bc34a', '#2e7d32'];
+  const isophonen = lwWpIsophonen();
   for (let i = schallStufen.length - 1; i >= 0; i--) {
-    const r = lwWpSchallRadiusM(lwa, schallStufen[i]);
-    if (r > 0.5 && r < 500) {
-      const circle = L.circle(pt, { radius: r, color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12 }).addTo(window.lwWpSchallLayerGroup);
-      circle.bindTooltip('', {sticky: true, direction: 'top', opacity: 0.9});
-      circle.on('mousemove', ev => {
-        const d = pt.distanceTo(ev.latlng);
-        if (d <= 0) return;
-        const lpAtD = lwa - 11 - 20 * Math.log10(d);
-        const tt = circle.getTooltip();
-        if (!tt) return;
-        tt.setContent(`<div class="lwwp-tooltip">Abstand: ${d.toFixed(1)} m<br>Pegel ≈ ${lpAtD.toFixed(1)} dB(A)</div>`);
-        tt.setLatLng(ev.latlng);
-        if (!map.hasLayer(tt)) circle.openTooltip(ev.latlng);
-      });
-    }
+    const ringe = (isophonen.get(schallStufen[i]) || []).filter(r => r.length >= 3);
+    if (!ringe.length) continue;
+    const flaeche = L.polygon(ringe.map(r => r.map(zuLatLng)), { color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12, className: 'lwwp-isophone' })
+      .addTo(window.lwWpSchallLayerGroup);
+    flaeche.bindTooltip('', { sticky: true, direction: 'top', opacity: 0.9 });
+    flaeche.on('mousemove', ev => {
+      const ost = (ev.latlng.lng - pt.lng) / lngPerM, nord = (ev.latlng.lat - pt.lat) / latPerM;
+      const tt = flaeche.getTooltip();
+      if (!tt) return;
+      tt.setContent(`<div class="lwwp-tooltip">Abstand zur Mitte: ${Math.hypot(ost, nord).toFixed(0)} m<br>Pegel ≈ ${lwWpPegelAm(ost, nord).toFixed(1)} dB(A)</div>`);
+      tt.setLatLng(ev.latlng);
+      if (!map.hasLayer(tt)) flaeche.openTooltip(ev.latlng);
+    });
   }
   // Hinweis: Größen-Anfasser (weiße Quadrate) wurden entfernt — wirkten unruhig.
   // Die Fläche skaliert automatisch aus dem Platzbedarf; manuelle Maße weiterhin
@@ -2293,6 +2666,7 @@ export function redrawLwWp() {
   });
   updateLwWpVisibility();
   redrawVerbindungslinien();
+  window.d3dNachViz?.();   // offene 3D-Ansicht zeigt die Außengeräte mit
 }
 
 export function updateLwWpDisplay() {
@@ -2301,24 +2675,20 @@ export function updateLwWpDisplay() {
   const lwa = window.lwWp.lwaDb;
   const jaz = parseFloat(document.getElementById('lwwp-jaz').value) || 3.0;
   const waermeJahr = parseFloat(document.getElementById('lwwp-waerme').value) || 0;
-  const platzM2 = lwWpPlatzbedarfM2(leistung);
-  const rwAuto = Math.sqrt(platzM2);
-  const rlAuto = rwAuto;
-  const manL = parseFloat(document.getElementById('lwwp-man-laenge')?.value) || 0;
-  const manB = parseFloat(document.getElementById('lwwp-man-breite')?.value) || 0;
-  const rl = manL > 0 ? manL : rlAuto;
-  const rw = manB > 0 ? manB : rwAuto;
-  const manArea = manL > 0 && manB > 0 ? manL * manB : 0;
-  document.getElementById('lwwp-platz').textContent = platzM2.toFixed(1) + ' m² (min.)';
-  document.getElementById('lwwp-abm').textContent = `${rl.toFixed(1)} × ${rw.toFixed(1)} m${manL>0||manB>0?' ✏':''}`;
+  const auf = lwWpAufstellung(leistung);
+  const platzM2 = auf.flaeche;
+  const m = _lwWpFlaecheMasse(auf);
+  const nf = (v, d = 1) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  document.getElementById('lwwp-platz').textContent = nf(platzM2, 0) + ' m²';
+  document.getElementById('lwwp-abm').textContent = `${nf(m.l)} × ${nf(m.b)} m${m.manuell ? ' ✏' : ''}`;
+  const geraeteEl = document.getElementById('lwwp-geraete');
+  if (geraeteEl) geraeteEl.textContent = `${auf.anzahl} × ~${auf.modul.kw} kW · ${auf.reihen} ${auf.reihen === 1 ? 'Reihe' : 'Reihen'}`;
+  _lwWpAufstellungUiSync();
   const warnEl = document.getElementById('lwwp-flaeche-warn');
   if (warnEl) {
-    if (manArea > 0 && manArea < platzM2) {
-      warnEl.style.display = '';
-      warnEl.textContent = `⚠ ${manArea.toFixed(0)} m² eingegeben, mind. ${platzM2.toFixed(0)} m² benötigt`;
-    } else {
-      warnEl.style.display = 'none';
-    }
+    const zuKlein = m.manuell && (m.l < auf.laenge - 0.05 || m.b < auf.breite - 0.05);
+    warnEl.style.display = zuKlein ? '' : 'none';
+    if (zuKlein) warnEl.textContent = `⚠ ${nf(m.l)} × ${nf(m.b)} m verfügbar, für die Geräte mit Abständen werden ${nf(auf.laenge)} × ${nf(auf.breite)} m benötigt`;
   }
   if (waermeJahr > 0) {
     const strom = waermeJahr / jaz;
@@ -2337,48 +2707,163 @@ export function updateLwWpDisplay() {
   } else {
     ['lwwp-strom-lbl','lwwp-strom','lwwp-luft-lbl','lwwp-luft','lwwp-co2-lbl','lwwp-co2'].forEach(id => document.getElementById(id).style.display = 'none');
   }
-  const schallRows = [55, 50, 45, 40, 35].map(lp => {
-    const r = lwWpSchallRadiusM(lwa, lp);
-    return '&lt; ' + lp + ' dB: ' + (r >= 500 ? '&gt;500' : r.toFixed(1)) + ' m';
-  });
-  document.getElementById('lwwp-schall-tabelle').innerHTML = schallRows.join('<br>');
+  _lwWpSchallAnzeigen(auf);
   updateErzeugerAssetProps('lwwp');
 }
 
-export function calcLwaAuto(kw) {
-  // LWA-Schätzung aus Leistung: basierend auf Herstellerdaten (Vaillant, Stiebel Eltron,
-  // Viessmann, Daikin u.a.) und EU-Verordnung 813/2013 Ecodesign-Grenzwerten.
-  // Zwei-Segment-Logarithmus: kleine Anlagen (≤50 kW) skalieren moderater,
-  // große Anlagen (>50 kW) haben überproportional mehr Ventilatoren/Kompressoren.
-  const x = Math.max(kw, 1);
-  const raw = x <= 50
-    ? 47 + 12 * Math.log10(x)   // Residential/klein-gewerblich
-    : 30 + 22 * Math.log10(x);  // Groß-gewerblich/industriell
-  return Math.round(Math.min(100, Math.max(45, raw)));
+// Schall im LW-WP-Panel: Quellen, Abstände je Pegel, Pegel an den nächsten Gebäuden gegen die Richtwerte
+function _lwWpSchallAnzeigen(auf) {
+  const el = document.getElementById('lwwp-schall-tabelle');
+  if (!el) return;
+  const quellen = lwWpSchallQuellen();
+  if (!quellen.length) { el.innerHTML = ''; return; }
+  const nf = (v, d = 0) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const gesamt = lwaGesamt(quellen);
+  const quelle = window.lwWp.lwaManuell ? 'Vorgabe' : (auf.modul.lwa != null ? 'Herstellerangabe' : 'Schätzung');
+  const schutz = lwWpSchallschutzDb();
+  const g = lwWpGebiet();
+  const isophonen = lwWpIsophonen();
+  const mitte = lwWpSchallSzene().mitte;
+  const radien = LWWP_SCHALL_STUFEN.map(lp => {
+    const punkte = (isophonen.get(lp) || []).flat();
+    const r = punkte.length ? punkte.reduce((m, q) => Math.max(m, Math.hypot(q.ost - mitte.ost, q.nord - mitte.nord)), 0) : (isophonRadius(quellen, lp) >= 2999 ? 3000 : 0);
+    return `<span>${lp} dB(A)</span><span>${r >= 2999 ? '&gt; 3 km' : r > 0 ? nf(r) + ' m' : '—'}</span>`;
+  }).join('');
+  const orte = lwWpImmissionsorte(5);
+  const mitGeb = lwWpMitGebaeuden();
+  const szeneAnzeige = lwWpSchallSzene();
+  const baeumeAktiv = szeneAnzeige.baeume.n > 0;
+  const mit3d = mitGeb;
+  const ortZeilen = orte.map(o => {
+    const klasse = o.pegel > g.tag ? 'ueber' : o.pegel > g.nacht ? 'nacht' : 'ok';
+    const daempf = o.frei - o.pegel;
+    const bew = o.bewuchs || 0;
+    const ohneBew = daempf - bew;   // Abschirmung bzw. Reflexion durch Gebäude (Bewuchs getrennt)
+    const teile = [];
+    if (mitGeb) teile.push(ohneBew >= 0 ? 'Abschirmung −' + nf(ohneBew, 1) + ' dB' : 'Reflexion +' + nf(-ohneBew, 1) + ' dB');
+    if (bew >= 0.05) teile.push('Bewuchs −' + nf(bew, 1) + ' dB');
+    const info = mit3d ? `ohne Gebäude- und Bewuchseinfluss ${nf(o.frei, 1)} dB(A)${teile.length ? ' · ' + teile.join(' · ') : ''} · lautester Punkt im ${o.geschoss ? o.geschoss + '. OG' : 'EG'}` : '';
+    return `<span class="lwwp-io-name" title="${escHtml(o.name)}">${escHtml(o.name)}</span><span>${nf(o.abstand)} m</span><span class="lwwp-io-pegel ${klasse}"${info ? ` title="${escHtml(info)}"` : ''}>${nf(o.pegel, 1)} dB(A)${mit3d && Math.abs(daempf) >= 0.5 ? `<small class="lwwp-io-daempf">${daempf > 0 ? '−' : '+'}${nf(Math.abs(daempf))}</small>` : ''}</span>`;
+  }).join('');
+  el.innerHTML = `<div class="lwwp-schall-quelle">${quellen.length} × ${nf(quellen[0].lwa + schutz, 1)} dB(A) (${quelle})${schutz > 0 ? ` − ${nf(schutz)} dB Schallschutz` : ''} → <b>${nf(gesamt, 1)} dB(A)</b> gesamt</div>
+    <div class="lwwp-schall-radien"><span class="kopf">Pegel</span><span class="kopf">bis Abstand</span>${radien}</div>
+    ${orte.length ? `<div class="lwwp-schall-orte-kopf">Nächste Gebäude · Richtwert ${g.tag} / ${g.nacht} dB(A) tags / nachts</div>
+    <div class="lwwp-schall-orte">${ortZeilen}</div>` : ''}`;
+  const ss = document.getElementById('lwwp-schallschutz');
+  if (ss) {
+    if (!ss.options.length) ss.innerHTML = WP_SCHALLSCHUTZ.map(x => `<option value="${x.id}">${escHtml(x.label)}${x.db ? ` (−${x.db} dB)` : ''}</option>`).join('');
+    ss.value = window.lwWp.schallschutz?.art || 'keine';
+    const dbEl = document.getElementById('lwwp-schallschutz-db');
+    if (dbEl) { dbEl.style.display = ss.value === 'manuell' ? '' : 'none'; if (ss.value === 'manuell') dbEl.value = schutz; }
+  }
+  [['kreis', !mitGeb], ['3d', mitGeb]].forEach(([art, an]) => {
+    const b = document.getElementById('lwwp-ausbreitung-' + art);
+    if (b) { b.classList.toggle('aktiv', an); b.setAttribute('aria-pressed', an ? 'true' : 'false'); }
+  });
+  const baumWrap = document.getElementById('lwwp-baeume-wrap');
+  if (baumWrap) baumWrap.style.display = mitGeb ? '' : 'none';
+  const selBaum = document.getElementById('lwwp-baeume');
+  if (selBaum) selBaum.value = lwWpBaeumeArt();
+  const baumInfo = document.getElementById('lwwp-baeume-info');
+  if (baumInfo) {
+    baumInfo.style.display = mitGeb ? '' : 'none';
+    const gesamt = szeneAnzeige.baeumeGesamt || 0, art = lwWpBaeumeArt();
+    const gewertet = szeneAnzeige.baeume.n;
+    baumInfo.textContent = !gesamt ? 'Keine Bäume im Projekt. Die 3D-Ansicht zeigt Bäume ohne Projektbäume nur als Vorschau — für den Schall zählen nur Bäume im Projekt (setzen oder aus OpenStreetMap übernehmen).'
+      : art === 'aus' ? `${nf(gesamt)} Bäume im Projekt, ohne Wirkung auf den Schall.`
+        : `${nf(gesamt)} Bäume im Projekt, ${nf(gewertet)} davon im Schallweg berücksichtigt${art === 'nadel' ? ' (nur Nadelbäume)' : ''}.`
+          + (art === 'nadel' && !gewertet ? ' Es sind keine Nadelbäume dabei (OpenStreetMap-Bäume gelten ohne Angabe als Laubbäume) — „alle Bäume“ wählen, wenn der Bewuchs ganzjährig dicht ist.' : '');
+    const osmBtn = document.getElementById('lwwp-baeume-osm');
+    if (osmBtn) osmBtn.style.display = mitGeb && !gesamt ? '' : 'none';
+  }
+  const hinweis = document.getElementById('lwwp-schall-modell');
+  if (hinweis) {
+    const bewuchsText = baeumeAktiv ? ' sowie Dämpfung durch dichten Bewuchs (Weglänge durch die Baumkronen, DIN ISO 9613-2 Anhang A: erst ab 10 m Weg, höchstens der Wert bei 200 m)' : '';
+    hinweis.textContent = mit3d
+      ? `in Oktavbändern (${window.lwWp.spektrum ? 'Spektrum nach Angabe' : 'typisches Spektrum von Außengeräten mit Axialventilatoren'})${mitGeb ? ' mit Abschirmung durch Gebäude (Beugung über Dach und seitlich, Höhe aus LoD2 bzw. Geschosse × 3 m) und Reflexion an Fassaden nahe der Geräte' : ''}${mitGeb && baeumeAktiv ? ',' : ''}${bewuchsText}; Isophonen in 4 m Höhe, an den Gebäuden lautester Fassadenpunkt über alle Geschosse`
+      : 'kreisrund im Freifeld ohne Abschirmung durch Gebäude (Einzahlwert), Pegel am nächsten Fassadenpunkt';
+  }
+  const spEl = document.getElementById('lwwp-spektrum');
+  if (spEl && document.activeElement !== spEl) spEl.value = window.lwWp.spektrum ? window.lwWp.spektrum.map(v => String(v).replace('.', ',')).join(' ') : '';
+  const spWrap = document.getElementById('lwwp-spektrum-wrap');
+  if (spWrap) spWrap.style.display = mit3d ? '' : 'none';
+  const sel = document.getElementById('lwwp-gebiet');
+  if (sel) {
+    if (!sel.options.length) sel.innerHTML = PT_TA_LAERM.map(([name, tag, nacht]) => `<option value="${escHtml(name)}">${escHtml(name)} (${tag}/${nacht})</option>`).join('');
+    sel.value = g.gebiet;
+  }
 }
+
+// Steuerung der Aufstellung im LW-WP-Panel (Gerätegröße, Reihen, Drehung)
+function _lwWpAufstellungUiSync() {
+  const o = lwWpAufstellungOpt();
+  const modul = document.getElementById('lwwp-modul');
+  if (modul && !modul.options.length) {
+    modul.innerHTML = '<option value="auto">automatisch</option>'
+      + WP_MODULE.map(x => `<option value="${x.kw}">~${x.kw} kW (${String(x.l).replace('.', ',')} × ${String(x.b).replace('.', ',')} m)</option>`).join('');
+  }
+  if (modul) modul.value = String(o.modulKw);
+  const reihen = document.getElementById('lwwp-reihen');
+  if (reihen) reihen.value = String(o.reihen);
+  const dreh = document.getElementById('lwwp-drehung');
+  if (dreh && document.activeElement !== dreh) dreh.value = String(o.drehung);
+  const drehWert = document.getElementById('lwwp-drehung-wert');
+  if (drehWert) drehWert.textContent = Math.round(o.drehung) + '°';
+  const formInfo = document.getElementById('lwwp-form-info');
+  if (formInfo && window.lwWp) {
+    const auf = lwWpAufstellung(window.lwWp.leistungKw);
+    const nf = v => v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    formInfo.textContent = o.laenge ? `${nf(auf.laenge)} × ${nf(auf.breite)} m${auf.mehrFlaeche > 0.5 ? ` (+${Math.round(auf.mehrFlaeche)} m² für die Abstände)` : ''}` : 'automatisch';
+  }
+  const formReset = document.getElementById('lwwp-form-reset');
+  if (formReset) formReset.style.display = o.laenge ? '' : 'none';
+}
+export function lwWpAufstellungSetzen(feld, wert) {
+  if (!window.lwWp) return;
+  const a = { ...lwWpAufstellungOpt() };
+  if (feld === 'drehung') a.drehung = ((Math.round(Number(wert) || 0) % 180) + 180) % 180;
+  else if (feld === 'laenge') a.laenge = wert === 'auto' || wert == null ? null : Math.round(Number(wert) * 10) / 10;
+  else {
+    a[feld] = wert === 'auto' ? 'auto' : Number(wert);
+    if (feld === 'reihen' || feld === 'modulKw') a.laenge = null;   // neue Grundanordnung → Form wieder automatisch
+  }
+  window.lwWp.aufstellung = a;
+  redrawLwWp();
+  updateLwWpDisplay();
+}
+
+/** Schallleistung der LW-WP aus der Leistung — über die Außengeräte der automatischen Aufstellung. */
+export function calcLwaAuto(kw) { return lwWpLwaAuto(kw); }
 
 export function updateLwWpData() {
   if (!window.lwWp) return;
   window.lwWp.leistungKw = parseFloat(document.getElementById('lwwp-leistung').value) || 100;
   // LWA: nur auto-berechnen wenn noch auf Default (80) oder wenn Leistung geändert
   const lwaEl = document.getElementById('lwwp-lwa');
-  if (lwaEl && !lwaEl._userEdited) {
-    const autoLwa = calcLwaAuto(window.lwWp.leistungKw);
-    lwaEl.value = autoLwa;
-    lwaEl.title = `Auto: ${autoLwa} dB(A) bei ${lwWp.leistungKw} kW — überschreibbar`;
-  }
-  window.lwWp.lwaDb = parseFloat(document.getElementById('lwwp-lwa').value) || calcLwaAuto(window.lwWp.leistungKw);
+  if (lwaEl?._userEdited) window.lwWp.lwaManuell = true;
+  if (lwaEl?._userEdited === false) window.lwWp.lwaManuell = false;
+  _lwWpLwaSync();
   updateLwWpDisplay();
   redrawLwWp();
 }
 
+/** Schallleistung: ohne Vorgabe aus den Außengeräten (Anzahl × Gerätewert), sonst die eingegebene Summe. */
+function _lwWpLwaSync() {
+  if (!window.lwWp) return;
+  const lwaEl = document.getElementById('lwwp-lwa');
+  const auto = lwWpLwaAuto(window.lwWp.leistungKw);
+  if (!window.lwWp.lwaManuell) {
+    window.lwWp.lwaDb = auto;
+    if (lwaEl) lwaEl.value = auto;
+  } else {
+    window.lwWp.lwaDb = parseFloat(lwaEl?.value) || window.lwWp.lwaDb || auto;
+  }
+  if (lwaEl) lwaEl.title = `Automatisch aus den Außengeräten: ${String(auto).replace('.', ',')} dB(A) — überschreibbar, Doppelklick setzt zurück`;
+}
+
 export function lwwpUseNetworkValues() {
-  const zId = parseInt(document.getElementById('netz-zentrale').value);
-  const lastKw = calculatedLoad && calculatedLoad[zId] ? calculatedLoad[zId] : 0;
-  const connectedIds = new Set(netzEdges.flatMap(e => [e.u, e.v]));
-  const verbrauchMWh = gebaeude.filter(g => connectedIds.has(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
-  const lossAnnual = netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0);
-  const erzeugungMWh = verbrauchMWh + lossAnnual * 8.76;
+  // Auslegungsspitze und Wärme der angeschlossenen Gebäude + Netzverlust (03b netzErzeugerVorgabe)
+  const { kw: lastKw, mwh: erzeugungMWh } = window.netzErzeugerVorgabe?.() || { kw: 0, mwh: 0 };
   if (lastKw > 0) document.getElementById('lwwp-leistung').value = Math.round(lastKw);
   if (erzeugungMWh > 0) document.getElementById('lwwp-waerme').value = Math.round(erzeugungMWh);
   updateLwWpData();

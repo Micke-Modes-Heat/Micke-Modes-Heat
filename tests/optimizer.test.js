@@ -20,11 +20,16 @@ beforeAll(() => {
   if (!globalThis.performance) globalThis.performance = { now: () => Date.now() };
   loadScript('08-calc-engine.js');
   loadScript('06c-dispatch-core.js');
+  loadScript('lib/vdi-bedien.js');
+  loadScript('lib/waermespeicher.js');
+  loadScript('lib/eisspeicher.js');
+  loadScript('lib/vdi2067.js');
   loadScript('07b-analysis-economics.js');
   loadScript('06a-gbi-lastgang.js');
   loadScript('09a-pv-profile.js');
   loadScript('lib/pv-battery-core.js');
   loadScript('lib/battery-aging.js');
+  loadScript('lib/optimierer-suche.js');
   loadScript('10a-optimizer-core.js');
   loadScript('10d-optimizer-worker.js');
 });
@@ -111,7 +116,8 @@ describe('Ansatz 1: _optInvestProKw', () => {
 function refDispatch(lastgangKw, tempH, vlH, erzList, speicherVol) {
   let thSp = null;
   if (speicherVol > 0) {
-    thSp = { kapKwh: speicherVol * 1.16 * 40, verlustRate: 0.005, entladeKw: 200 };
+    // Verlust aus der Kennlinie (leeres Eingabefeld), wie Hauptrechnung und Optimierer
+    thSp = { kapKwh: speicherVol * 1.16 * 40, verlustRate: speicherVerlustProH(speicherVol, 'puffer') / 100, entladeKw: 200 };
   }
   for (const erz of erzList) {
     if (!erz.guetegrad) erz.guetegrad = _defaultGuetegrad(erz.key);
@@ -528,15 +534,27 @@ describe('Ansatz 4: Plausibilität — EE-Anteil Konsistenz', () => {
     expect(kw.eeAnteil).toBe(100);
   });
 
-  it('100% WP → 100% EE', () => {
-    const disp = refDispatch(new Float32Array(lastgangKw), tempH, vlH, [{ key: 'lwwp', leistKw: 200 }], 0);
+  it('WP allein: nicht auf die Spitzenlast hochskaliert, den Rest deckt der Auto-Gaskessel', () => {
+    // 120 kW am Prüfpunkt A2/W35 liefern bei Frost und hohem Vorlauf weniger als die 100 kW Last
+    const disp = refDispatch(new Float32Array(lastgangKw), tempH, vlH, [{ key: 'lwwp', leistKw: 120 }], 0);
+    expect(disp.erzeugerList[0].leistKw).toBe(120);
+    expect(disp.autoGkMwh).toBeGreaterThan(0);
+    const wp = disp.erzeugerList[0].waermeMwh;
+    expect(wp + disp.autoGkMwh).toBeCloseTo(disp.gesamtMwh, 1);
     const kw = refKennwerte(disp, 0, 0, 0);
-    expect(kw.eeAnteil).toBe(100);
+    expect(kw.eeAnteil).toBeCloseTo(wp / disp.gesamtMwh * 100, 1);
+  });
+
+  it('Kessel als letzter Erzeuger bleibt Backup bis zur Spitzenlast', () => {
+    const disp = refDispatch(new Float32Array(lastgangKw), tempH, vlH, [{ key: 'lwwp', leistKw: 120 }, { key: 'gaskessel', leistKw: 1 }], 0);
+    expect(disp.autoGkMwh).toBeCloseTo(0, 6);
+    expect(disp.erzeugerList[1].waermeMwh).toBeGreaterThan(0);
+    expect(disp.erzeugerList[1].leistKw).toBeGreaterThan(1);
   });
 
   it('50% WP + 50% Gas → EE zwischen 30-70%', () => {
     const disp = refDispatch(new Float32Array(lastgangKw), tempH, vlH, [
-      { key: 'lwwp', leistKw: 80 }, { key: 'gaskessel', leistKw: 200 }
+      { key: 'lwwp', leistKw: 55 }, { key: 'gaskessel', leistKw: 200 }
     ], 0);
     const kw = refKennwerte(disp, 0, 0, 0);
     expect(kw.eeAnteil).toBeGreaterThan(20);
@@ -578,7 +596,7 @@ describe('Ansatz 5: Worker-Code Struktur', () => {
     expect(code).toContain('function pvBatSim8760');
     expect(code).toContain('function kennwerte');
     expect(code).toContain('function score');
-    expect(code).toContain('function _findOptPvBat');
+    expect(code).toContain('function optMusterSuche');
     expect(code).toContain('function _calcKostenShared');
     expect(code).toContain(_dispatchCore.toString());
     expect(code).toContain(pvBatteryStep.toString());
@@ -587,15 +605,43 @@ describe('Ansatz 5: Worker-Code Struktur', () => {
 
   it('Worker-Code enthält alle nötigen Hilfsfunktionen', () => {
     const code = _buildOptWorkerCode();
-    expect(code).toContain('function _annF');
     expect(code).toContain('function _defaultGuetegrad');
     expect(code).toContain('function _quelleTemp');
     expect(code).toContain('function _investProKw');
-    expect(code).toContain('function _pvInvestPerKwp');
   });
 
   it('Worker-Code enthält self.onmessage Handler', () => {
     const code = _buildOptWorkerCode();
     expect(code).toContain('self.onmessage');
+  });
+});
+
+describe('Kostenfunktion: PV-Strom für Wärmepumpen', () => {
+  const basis = (pv) => _calcKostenShared({
+    pKw: { lwwp: 500 }, erzList: [{ key: 'lwwp', waermeMwh: 1000, elMwh: 300, typ: 'wp' }],
+    zinsPct: 3.5, lohn: 45, prices: { strom: 30, stromWp: 25 }, etas: {},
+    investFn: (k, kw) => kw * 600, extra: {}, pv, strom: { quartierMwh: 400 }, co2: {}, gesamtMwh: 1000, stMwh: 0,
+  });
+  const pvWp = { modus: 'wp', kwp: 500, ertragMwh: 500, invPerKwp: 800, batKwh: 0, zuWpDirektMwh: 80, zuWpBatMwh: 0 };
+  it('ohne Schalter bleibt PV vollständig außen vor (keine Investition, keine Gutschrift)', () => {
+    const aus = basis({ modus: 'aus', kwp: 500, ertragMwh: 500, invPerKwp: 800, zuWpDirektMwh: 80 });
+    const ohne = basis(undefined);
+    expect(aus.jahreskosten).toBeCloseTo(ohne.jahreskosten, 6);
+    expect(aus.investGesamt).toBe(ohne.investGesamt);
+    expect(aus.pvZuWpMwh).toBe(0);
+  });
+  it('mit Schalter: WP-Strom aus PV zum Gestehungspreis, Vorteil auf (Netzpreis − PV-Preis) × PV→WP begrenzt', () => {
+    const r = basis(pvWp), ohne = basis(undefined);
+    const annF = 0.035 * 1.035 ** 20 / (1.035 ** 20 - 1);
+    const pvCt = 500 * 800 * (annF + 0.01) / (500 * 10);
+    expect(r.pvCt).toBeCloseTo(pvCt, 6);
+    expect(ohne.jahreskosten - r.jahreskosten).toBeCloseTo(80 * (25 - pvCt) * 10, 3);
+    expect(r.investGesamt).toBe(ohne.investGesamt);   // PV-Investition gehört zur Stromseite
+  });
+  it('eine riesige PV kann den Vorteil nicht über den WP-Strom hinaus treiben', () => {
+    const r = basis({ ...pvWp, kwp: 20000, ertragMwh: 20000, zuWpDirektMwh: 5000 });
+    const ohne = basis(undefined);
+    expect(r.pvZuWpMwh).toBe(300);
+    expect(ohne.jahreskosten - r.jahreskosten).toBeLessThanOrEqual(300 * 25 * 10);
   });
 });

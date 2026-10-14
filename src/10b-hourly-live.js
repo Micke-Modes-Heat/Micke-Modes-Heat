@@ -98,7 +98,7 @@ export function _drawStackedDispatch(canvas, currentHour, keys, hourly, ss) {
   }
   if (hourly['solarthermie']) { allKeys.push('solarthermie'); allColors.push('#ffab40'); allLabels.push('ST'); }
   if (hourly['_thermSpeicher']) { allKeys.push('_thermSpeicher'); allColors.push('#26a69a'); allLabels.push('Speicher'); }
-  if (hourly['_autoGk']) { allKeys.push('_autoGk'); allColors.push('#78909c'); allLabels.push('GK-Backup'); }
+  if (hourly['_autoGk']) { allKeys.push('_autoGk'); allColors.push('#78909c'); allLabels.push('Spitzenkessel'); }
 
   const N = allKeys.length;
   if (N === 0) return;
@@ -1364,7 +1364,7 @@ export function _updateHourlyOverlay(t) {
   }
   if (hourly['solarthermie']?.[t] > 0.01) erzeuger.push({ label: 'Solarthermie', kw: hourly['solarthermie'][t], color: '#ffab40', key: 'solarthermie' });
   if (hourly['_thermSpeicher']?.[t] > 0.01) erzeuger.push({ label: 'Speicher \u2192', kw: hourly['_thermSpeicher'][t], color: '#26a69a', key: '_thermSpeicher' });
-  if (hourly['_autoGk']?.[t] > 0.01) erzeuger.push({ label: 'GK-Backup', kw: hourly['_autoGk'][t], color: '#78909c', key: '_autoGk' });
+  if (hourly['_autoGk']?.[t] > 0.01) erzeuger.push({ label: 'Spitzenkessel', kw: hourly['_autoGk'][t], color: '#78909c', key: '_autoGk' });
   const erzFiltered = erzeuger.filter(e => e.kw > 0.01);
 
   // Speicher

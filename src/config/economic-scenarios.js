@@ -14,6 +14,7 @@ export const ECONOMIC_SCENARIOS = Object.freeze({
       stromCtKwh: 35, wpStromCtKwh: null, gasCtKwh: 10, heizoelCtKwh: 10,
       fernwaermeCtKwh: 17, pelletsCtKwh: 8, hhsCtKwh: 6,
       co2EurT: 120, co2Alle: true, kapitalzinsPct: 3.5, lohnEurH: 45,
+      betrachtungA: 20, preisEnergiePct: 2, preisBetriebPct: 2,
     }),
   }),
 });

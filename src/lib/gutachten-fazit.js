@@ -5,8 +5,18 @@ import { F, wtHilfen } from './gutachten-waerme-texte.js';
 import { vaEnergie, vaSensitivitaet } from './gutachten-varianten.js';
 
 const { ok, nf, pct, liste, absatz } = wtHilfen;
-const L = kw => (kw >= 1000 ? `${nf(kw / 1000, 1)} MW` : `${nf(kw)} kW`);
+const L = kw => (kw >= 1000 ? `${nf(kw / 1000, 2)} MW` : `${nf(kw)} kW`);   // wie Kapitel 4
 const KESSEL = new Set(['gaskessel', '_autoGk', 'heizoel']);
+
+/** Vergleich mit einer reinen Erdgasversorgung (kumuliert, t CO₂e): Faktor nur, wenn alle Varianten deutlich darunter liegen. */
+function erdgasVergleich(ref, besterT, schlechtesterT) {
+  const satz = `; eine reine Erdgasversorgung käme auf rund ${nf(ref)} t CO₂e`;
+  if (schlechtesterT > 0 && ref / schlechtesterT >= 1.5) {
+    return `${satz}, alle Varianten bleiben also um den Faktor ${nf(ref / schlechtesterT, 1)} bis ${nf(ref / Math.max(1, besterT), 1)} darunter.`;
+  }
+  if (besterT < ref) return `${satz}; ${schlechtesterT < ref ? 'alle Varianten liegen darunter' : 'nicht alle Varianten liegen darunter'}.`;
+  return `${satz}; die Varianten liegen nicht darunter.`;
+}
 
 /* ══════════════════════════════════════════════════════════════════════════
  * Bewertung der Varianten und Empfehlung
@@ -23,12 +33,12 @@ export function faTextBewertung(o = {}) {
     const ref = o.gesamtMwh > 0 && ok(o.efGas) ? (o.gesamtMwh / (o.eta?.gaskessel || 0.92)) * o.efGas / 1000 * n : NaN;
     out.push(absatz(`In der Emissionsbilanz erreicht ${s[0].name} künftig die niedrigsten Emissionen (von ${nf(s[0].co2T)} auf ${nf(s[0].co2LzT)} t CO₂e/a), `,
       `gefolgt von ${s[1].name} (${nf(s[1].co2LzT)} t CO₂e/a). Über ${n} Jahre kumuliert liegen die Varianten zwischen ${nf(s[0].co2LzT * n)} und ${nf(s[s.length - 1].co2LzT * n)} t CO₂e`,
-      ok(ref) ? `; eine reine Erdgasversorgung käme auf rund ${nf(ref)} t CO₂e, alle Varianten bleiben also um den Faktor ${nf(ref / (s[s.length - 1].co2LzT * n), 0)} bis ${nf(ref / Math.max(1, s[0].co2LzT * n), 0)} darunter.` : '.'));
+      ok(ref) ? erdgasVergleich(ref, s[0].co2LzT * n, s[s.length - 1].co2LzT * n) : '.'));
   }
   const w = [...V].sort((a, b) => a.wgkCt - b.wgkCt);
   const sens = o.preise ? vaSensitivitaet(V, o.preise) : [];
   const rangK = sens.length >= 2 ? [...sens].sort((a, b) => a.sz[a.sz.length - 1].gesamt - b.sz[b.sz.length - 1].gesamt).map(x => x.name) : [];
-  out.push(absatz(`Wirtschaftlich ist ${w[0].name} mit ${nf(w[0].wgkCt, 2)} ct/kWh die günstigste Variante, gefolgt von ${liste(w.slice(1).map(v => `${v.name} (${nf(v.wgkCt, 2)} ct/kWh)`))}. `,
+  out.push(absatz(`Wirtschaftlich ist ${w[0].name} mit ${nf(w[0].wgkCt, 1)} ct/kWh die günstigste Variante, gefolgt von ${liste(w.slice(1).map(v => `${v.name} (${nf(v.wgkCt, 1)} ct/kWh)`))}. `,
     rangK.length ? (rangK[0] === w[0].name ? 'Die Sensitivitätsanalyse zeigt, dass diese Rangfolge auch unter deutlichen Energiepreissteigerungen weitgehend stabil bleibt.' : `Im Krisenszenario der Sensitivitätsanalyse wird ${rangK[0]} zur günstigsten Variante; die Rangfolge der führenden Varianten ist damit preisabhängig.`) : ''));
   const zsb = V.map(v => (v.erzeuger || []).filter(x => KESSEL.has(x.key)).reduce((s, x) => s + (Number(x.leistungKw) || 0), 0));
   if (ok(o.pMaxKw) && zsb.every(k => k >= o.pMaxKw * 0.995)) {
@@ -67,7 +77,8 @@ export function faBewertungsmatrix(o = {}) {
     const w = roh.map(r => r[k]).filter(ok);
     if (!w.length) return () => NaN;
     if (hoeherBesser) return x => (ok(x) ? Math.max(0, Math.min(100, x * 100)) : NaN);
-    const min = Math.max(1e-9, Math.min(...w));
+    // Untergrenze: ein Wert nahe 0 (z. B. kaum Preisrisiko) darf die übrigen Varianten nicht auf 0 Punkte drücken
+    const min = Math.max(k === 'preis' ? 1 : 1e-9, Math.min(...w));
     return x => (!ok(x) ? NaN : x <= min ? 100 : 100 * min / x);
   };
   const p = { kosten: punkte('kosten'), klima: punkte('klima'), preis: punkte('preis'), resilienz: punkte('resilienz', true) };
@@ -107,7 +118,7 @@ export function faTextEmpfehlung(o = {}) {
     const guenstig = a.wgkCt <= b.wgkCt ? a : b;
     out.push(absatz(`Da beide Varianten nahezu gleichauf liegen, wird eine der beiden – ${a.name} oder ${b.name} – als Vorzugsvariante empfohlen. `,
       sauber !== guenstig
-        ? `Sie unterscheiden sich vor allem im fossilen Restanteil: ${sauber.name} erreicht mit ${pct(en.get(sauber).fossilPct)} fossilem Anteil die höhere Emissionsfreiheit und ist unabhängiger von Gaspreisen, ${guenstig.name} fällt mit ${nf(guenstig.wgkCt, 2)} ct/kWh wirtschaftlich etwas günstiger aus. Die Wahl ist eine Abwägung zwischen Emissionsfreiheit und Preisstabilität einerseits und etwas niedrigeren Kosten andererseits.`
+        ? `Sie unterscheiden sich vor allem im fossilen Restanteil: ${sauber.name} erreicht mit ${pct(en.get(sauber).fossilPct)} fossilem Anteil die höhere Emissionsfreiheit und ist unabhängiger von Gaspreisen, ${guenstig.name} fällt mit ${nf(guenstig.wgkCt, 1)} ct/kWh wirtschaftlich etwas günstiger aus. Die Wahl ist eine Abwägung zwischen Emissionsfreiheit und Preisstabilität einerseits und etwas niedrigeren Kosten andererseits.`
         : `${sauber.name} ist dabei zugleich günstiger und emissionsärmer.`));
   } else {
     out.push(absatz(`Aus der Gesamtbetrachtung wird ${a.name} als Vorzugsvariante empfohlen.`));
@@ -122,12 +133,12 @@ export function faTextEmpfehlung(o = {}) {
     const e = en.get(v);
     const geo = (v.erzeuger || []).some(x => x.key === 'geo' && x.leistungKw > 0);
     if (e.strombasiertPct >= 99 && e.skPct > 0.5) {
-      out.push(absatz(`Die vollständig strombasierte Variante ${v.name} zeigt, dass ein Verzicht auf den fossilen Spitzenlastanteil technisch bereits heute möglich wäre, ist mit ${nf(v.wgkCt, 2)} ct/kWh derzeit jedoch ${v.wgkCt >= Math.max(...w.map(x => x.wgkCt)) ? 'die teuerste' : 'eine teurere'} Variante. Sie eignet sich eher als Referenz für den späteren Umstellungspfad.`));
+      out.push(absatz(`Die vollständig strombasierte Variante ${v.name} zeigt, dass ein Verzicht auf den fossilen Spitzenlastanteil technisch bereits heute möglich wäre, ist mit ${nf(v.wgkCt, 1)} ct/kWh derzeit jedoch ${v.wgkCt >= Math.max(...w.map(x => x.wgkCt)) ? 'die teuerste' : 'eine teurere'} Variante. Sie eignet sich eher als Referenz für den späteren Umstellungspfad.`));
     } else if (geo) {
-      out.push(absatz(`Die Erdwärmevariante ${v.name} erreicht eine sehr gute Klimabilanz, schneidet mit ${nf(v.wgkCt, 2)} ct/kWh wirtschaftlich jedoch schlechter ab. Hohe Investitionskosten und der Flächenbedarf des Sondenfelds werden durch den geringeren Stromverbrauch nicht ausgeglichen; eine Umsetzung käme vor allem bei strategischer Gewichtung von Klimabilanz oder Netzdienlichkeit in Betracht.`));
+      out.push(absatz(`Die Erdwärmevariante ${v.name} erreicht eine sehr gute Klimabilanz, schneidet mit ${nf(v.wgkCt, 1)} ct/kWh wirtschaftlich jedoch schlechter ab. Hohe Investitionskosten und der Flächenbedarf des Sondenfelds werden durch den geringeren Stromverbrauch nicht ausgeglichen; eine Umsetzung käme vor allem bei strategischer Gewichtung von Klimabilanz oder Netzdienlichkeit in Betracht.`));
     } else {
       const z = m.zeilen.find(x => x.v === v);
-      out.push(absatz(`${v.name} liegt in der Gesamtbewertung mit ${nf(z.gesamt)} Punkten (${nf(v.wgkCt, 2)} ct/kWh) hinter den führenden Varianten.`));
+      out.push(absatz(`${v.name} liegt in der Gesamtbewertung mit ${nf(z.gesamt)} Punkten (${nf(v.wgkCt, 1)} ct/kWh) hinter den führenden Varianten.`));
     }
   }
   return out;

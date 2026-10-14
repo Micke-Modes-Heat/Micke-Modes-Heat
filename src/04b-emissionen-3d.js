@@ -6,14 +6,14 @@ import { _getEtaMap, bhkwCo2Gutschrift, gasEmF, pefGas } from './01-globals-vari
 import { calcVerdraengungEmF } from './03a-erzeuger.js';
 import { glKannBerechnen } from './06b-gl-berechnen.js';
 import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
-import { autoGkResult, meritOrderKeys } from './06c-dispatch-core.js';
+import { autoGkResult, meritOrderKeys, spitzenkessel } from './06c-dispatch-core.js';
 import { DAYS_PER_YEAR } from './lib/physik-konstanten.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pefFernwaerme, pefHeizoel, pefHhs, pefPellets, pefStrom, pefWP, pelletsEmF, stromEmF } from './01-globals-varianten.js';
 import { _glIsRunning, glBerechnenDebounced } from './06b-gl-berechnen.js';
 import { DA_COLORS_FALLBACK } from './07a-analysis-charts.js';
 import { _renderWirtCo2Chart } from './07b-analysis-economics.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
-import { projektExportFilename } from './03c-gebaeude-io.js';
+import { escHtml, projektExportFilename } from './03c-gebaeude-io.js';
 
 export let _emCurrentTab = 'em-stunden';
 export let _emZoom = { startH: 0, endH: 8760 };
@@ -30,6 +30,9 @@ export function setEmissionenTab(tab) {
 }
 
 /* ── Stündliche CO₂-Daten berechnen (kgCO₂/h pro Erzeuger) ────────────── */
+/** Zahl in deutscher Schreibweise mit fester Nachkommazahl (statt toFixed). */
+function _de(v, d = 0) { return (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+
 export function _calcEmHourly() {
   const hourly = window._dispatchHourly || {};
   const keys   = window._dispatchActiveKeys || [];
@@ -45,22 +48,25 @@ export function _calcEmHourly() {
   const activeKeys = [];
   const N = 8760;
 
+  // automatischer Spitzenlastkessel: Faktoren des gewählten Kesseltyps (lib/spitzenkessel.js)
+  const _agkKey = spitzenkessel().key;
   for (const k of keys) {
     const h = hourly[k];
     const e = en[k];
     if (!h && !e) continue;
-    const emf = EMF[k] || 0;
+    const kk = k === '_autoGk' ? _agkKey : k;
+    const emf = EMF[kk] || 0;
     if (emf === 0) continue;
 
     const co2h = new Float64Array(N);
 
     if (h && h.length >= N) {
       // Stundenscharfe Berechnung
-      if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') {
+      if (kk === 'lwwp' || kk === 'fg' || kk === 'geo' || kk === 'stromkessel') {
         // WP/Stromkessel: h[t] = Wärme kW, el = Wärme/COP
         const wMwh = e?.waermeMwh || 0;
         const eMwh = e?.elMwh || 0;
-        const ratio = wMwh > 0 ? eMwh / wMwh : (k === 'stromkessel' ? 1 : 0.25);
+        const ratio = wMwh > 0 ? eMwh / wMwh : (kk === 'stromkessel' ? 1 : 0.25);
         for (let t = 0; t < N; t++) co2h[t] = h[t] * ratio * emf / 1e3; // kgCO₂/h
       } else if (k === 'bhkw') {
         const etaGes = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
@@ -72,18 +78,18 @@ export function _calcEmHourly() {
         for (let t = 0; t < N; t++) co2h[t] = Math.max(0, h[t] / etaTh * emf / 1e3 - h[t] * gutschrift);
       } else if (k === 'fernwaerme') {
         for (let t = 0; t < N; t++) co2h[t] = h[t] * emf / 1e3;
-      } else if (ETA[k]) {
-        const eta = ETA[k];
+      } else if (ETA[kk]) {
+        const eta = ETA[kk];
         for (let t = 0; t < N; t++) co2h[t] = h[t] / eta * emf / 1e3;
       }
     } else if (e) {
       // Kein Stundenprofil → gleichmäßig verteilen (Fallback)
       const wMwh = e.waermeMwh || 0;
       let tCo2;
-      if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') {
+      if (kk === 'lwwp' || kk === 'fg' || kk === 'geo' || kk === 'stromkessel') {
         tCo2 = (e.elMwh || 0) * emf / 1e3;
-      } else if (ETA[k]) {
-        tCo2 = wMwh / ETA[k] * emf / 1e3;
+      } else if (ETA[kk]) {
+        tCo2 = wMwh / ETA[kk] * emf / 1e3;
       } else { tCo2 = wMwh * emf / 1e3; }
       const perH = tCo2 * 1000 / N; // kgCO₂/h
       for (let t = 0; t < N; t++) co2h[t] = perH;
@@ -96,6 +102,9 @@ export function _calcEmHourly() {
 
   return { hourly: result, keys: activeKeys };
 }
+
+/** Primärenergiefaktor des durch KWK-Strom verdrängten Netzstroms (DIN V 18599-9, GEG). */
+export const FP_VERDRAENGUNGSSTROM = 2.8;
 
 /* ── PEF-Daten pro Erzeuger berechnen ──────────────────────────────────── */
 export function _calcPefData() {
@@ -113,24 +122,28 @@ export function _calcPefData() {
   const rows = [];
   let totalPE = 0, totalEnd = 0;
 
+  const _agkKey = spitzenkessel().key;
   for (const k of keys) {
     const e = en[k]; if (!e) continue;
     const wMwh = e.waermeMwh || 0;
     if (wMwh < 0.01) continue;
-    const fp = PEF_MAP[k] || 1.0;
+    const kk = k === '_autoGk' ? _agkKey : k;
+    const fp = PEF_MAP[kk] || 1.0;
     let endenergieMwh;
-    if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') {
+    if (kk === 'lwwp' || kk === 'fg' || kk === 'geo' || kk === 'stromkessel') {
       endenergieMwh = e.elMwh || 0;
     } else if (k === 'bhkw') {
       const etaGes = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
       const sigma  = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
-      endenergieMwh = wMwh / (etaGes / (1 + sigma));
-    } else if (ETA[k]) {
-      endenergieMwh = wMwh / ETA[k];
+      endenergieMwh = (e.erzeugtMwh ?? wMwh) / (etaGes / (1 + sigma));   // inkl. Mindestlastwärme für den Speicher
+    } else if (ETA[kk]) {
+      endenergieMwh = wMwh / ETA[kk];
     } else {
       endenergieMwh = wMwh;
     }
-    const peMwh = endenergieMwh * fp;
+    let peMwh = endenergieMwh * fp;
+    // KWK: Stromgutschrift nach DIN V 18599-9 / GEG (Verdrängungsstrommix f_p = 2,8), höchstens bis 0
+    if (k === 'bhkw') peMwh = Math.max(0, peMwh - (e.elMwh || 0) * FP_VERDRAENGUNGSSTROM);
     totalPE += peMwh;
     totalEnd += endenergieMwh;
     rows.push({ key: k, label: DA_LABELS[k] || k, color: _daColor(k), wMwh, endenergieMwh, fp, peMwh });
@@ -158,12 +171,12 @@ export function _updateEmKpis() {
       for (let t = 0; t < 8760; t++) totalCo2 += h[t];
     }
     const tCo2 = totalCo2 / 1000; // t/a
-    setKpi('em-kpi-co2', tCo2.toFixed(1));
-    setKpi('em-kpi-spez', totalWaerme > 0 ? (totalCo2 / totalWaerme).toFixed(0) : '—');
+    setKpi('em-kpi-co2', tCo2.toLocaleString('de-DE', { maximumFractionDigits: tCo2 < 100 ? 1 : 0 }));
+    setKpi('em-kpi-spez', totalWaerme > 0 ? _de(totalCo2 / totalWaerme, 0) : '—');
     // Referenz: reiner Gaskessel (η=0.92, 240 g/kWh)
     const refCo2 = totalWaerme / 0.92 * gasEmF / 1e3; // tCO₂
     const red = refCo2 > 0 ? ((refCo2 - tCo2) / refCo2 * 100) : 0;
-    setKpi('em-kpi-red', red > 0.5 ? '−' + red.toFixed(0) + ' %' : (red < -0.5 ? '+' + Math.abs(red).toFixed(0) + ' %' : '≈ 0 %'));
+    setKpi('em-kpi-red', red > 0.5 ? '−' + _de(red, 0) + ' %' : (red < -0.5 ? '+' + _de(Math.abs(red), 0) + ' %' : '≈ 0 %'));
   } else {
     setKpi('em-kpi-co2', '—');
     setKpi('em-kpi-spez', '—');
@@ -171,7 +184,7 @@ export function _updateEmKpis() {
   }
 
   if (pefData) {
-    setKpi('em-kpi-pef', pefData.fpGes.toFixed(2));
+    setKpi('em-kpi-pef', pefData.fpGes.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   } else {
     setKpi('em-kpi-pef', '—');
   }
@@ -231,7 +244,7 @@ export function _renderEmStunden() {
     const yy = PAD.t + iH - iH * i / nGrid;
     ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(W - PAD.r, yy); ctx.stroke();
     ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'right';
-    ctx.fillText((maxV * i / nGrid).toFixed(0), PAD.l - 3, yy + 3);
+    ctx.fillText(_de(maxV * i / nGrid, 0), PAD.l - 3, yy + 3);
   }
 
   // Y-Achse Label
@@ -326,8 +339,8 @@ export function _emSetupHover(canvas, keys, hourly, startH, endH, PAD, iW, iH, m
     }
     let html = `<b>Stunde ${t}</b><br>`;
     let total = 0;
-    for (const k of keys) { const v = hourly[k][t]; total += v; html += `<span style="color:${_daColor(k)}">${DA_LABELS[k]||k}: ${v.toFixed(1)} kg</span><br>`; }
-    html += `<b>Σ ${total.toFixed(1)} kg CO₂/h</b>`;
+    for (const k of keys) { const v = hourly[k][t]; total += v; html += `<span style="color:${_daColor(k)}">${DA_LABELS[k]||k}: ${_de(v, 1)} kg</span><br>`; }
+    html += `<b>Σ ${_de(total, 1)} kg CO₂/h</b>`;
     if (tooltip) { tooltip.innerHTML = html; tooltip.style.display = ''; tooltip.style.left = Math.min(mx + 10, iW - 60) + 'px'; tooltip.style.top = '8px'; }
   });
   canvas.addEventListener('mouseleave', () => { if (tooltip) tooltip.style.display = 'none'; });
@@ -402,7 +415,7 @@ export function _renderEmDauerlinie() {
     const yy = PAD.t + iH - iH * i / 4;
     ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(W - PAD.r, yy); ctx.stroke();
     ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'right';
-    ctx.fillText((maxV * i / 4).toFixed(0), PAD.l - 3, yy + 3);
+    ctx.fillText(_de(maxV * i / 4, 0), PAD.l - 3, yy + 3);
   }
 
   // Y-Achse
@@ -450,7 +463,7 @@ export function _renderEmDauerlinie() {
     ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + iW, y); ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = color; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'left';
-    ctx.fillText(label + ': ' + val.toFixed(1) + ' kg/h', PAD.l + 4, y - 3);
+    ctx.fillText(label + ': ' + _de(val, 1) + ' kg/h', PAD.l + 4, y - 3);
   };
   drawDash(median, 'Median', '#ffd54f');
   drawDash(p90, 'P90', '#ff8a65');
@@ -458,7 +471,7 @@ export function _renderEmDauerlinie() {
   // Info
   const infoEl = document.getElementById('em-dl-info');
   const totalTCo2 = sorted.reduce((s, v) => s + v, 0) / 1000;
-  if (infoEl) infoEl.textContent = 'Σ ' + totalTCo2.toFixed(1) + ' t CO₂/a | Max ' + sorted[0].toFixed(1) + ' kg/h | Median ' + median.toFixed(1) + ' kg/h';
+  if (infoEl) infoEl.textContent = 'Σ ' + _de(totalTCo2, 1) + ' t CO₂/a | Max ' + _de(sorted[0], 1) + ' kg/h | Median ' + _de(median, 1) + ' kg/h';
 }
 
 /* ── Sub-Tab 3: Monatsübersicht ──────────────────────────────────────────── */
@@ -515,7 +528,7 @@ export function _renderEmMonat() {
     const yy = PAD.t + iH - iH * i / 4;
     ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(W - PAD.r, yy); ctx.stroke();
     ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'right';
-    ctx.fillText((maxM * i / 4).toFixed(1), PAD.l - 3, yy + 3);
+    ctx.fillText(_de(maxM * i / 4, 1), PAD.l - 3, yy + 3);
   }
 
   // Y-Achse
@@ -540,7 +553,7 @@ export function _renderEmMonat() {
     // Summe oben
     let mTotal = 0; for (const k of keys) mTotal += monatData[m][k] || 0;
     ctx.fillStyle = 'rgba(200,200,200,0.6)'; ctx.font = '7px "DM Mono", monospace';
-    ctx.fillText(mTotal.toFixed(1), bx + barW / 2, PAD.t + iH - cumY - 3);
+    ctx.fillText(_de(mTotal, 1), bx + barW / 2, PAD.t + iH - cumY - 3);
   }
 
   // Legende + Total
@@ -552,7 +565,7 @@ export function _renderEmMonat() {
   }
   const totalEl = document.getElementById('em-monat-total');
   let yearTotal = 0; monatData.forEach(m => { for (const k of keys) yearTotal += m[k] || 0; });
-  if (totalEl) totalEl.textContent = 'Σ ' + yearTotal.toFixed(1) + ' t CO₂/a';
+  if (totalEl) totalEl.textContent = 'Σ ' + _de(yearTotal, 1) + ' t CO₂/a';
 }
 
 /* ── Sub-Tab 4: Primärenergie ──────────────────────────────────────────── */
@@ -599,7 +612,7 @@ export function _renderEmPef() {
   for (let i = 0; i <= 4; i++) {
     const x = PAD.l + iW * i / 4;
     ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, H - PAD.b); ctx.stroke();
-    if (i > 0) ctx.fillText((maxPE * i / 4).toFixed(0) + ' MWh', x, H - PAD.b + 12);
+    if (i > 0) ctx.fillText(_de(maxPE * i / 4, 0) + ' MWh', x, H - PAD.b + 12);
   }
   // X-Achsen-Titel
   ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
@@ -631,9 +644,9 @@ export function _renderEmPef() {
 
     // Werte rechts vom Balken: PE MWh + fp
     ctx.fillStyle = 'rgba(230,230,230,0.8)'; ctx.font = '9px "DM Mono", monospace'; ctx.textAlign = 'left';
-    ctx.fillText(r.peMwh.toFixed(0) + ' MWh', PAD.l + barLen + 6, y + rowH / 2 + 1);
+    ctx.fillText(_de(r.peMwh, 0) + ' MWh', PAD.l + barLen + 6, y + rowH / 2 + 1);
     ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '8px "DM Mono", monospace';
-    ctx.fillText('fp ' + r.fp.toFixed(1), PAD.l + barLen + 6, y + rowH / 2 + 11);
+    ctx.fillText('fp ' + _de(r.fp, 1), PAD.l + barLen + 6, y + rowH / 2 + 11);
   });
 
   // Gesamt-Linie + Label
@@ -643,7 +656,7 @@ export function _renderEmPef() {
   ctx.beginPath(); ctx.moveTo(PAD.l + totalLen, PAD.t); ctx.lineTo(PAD.l + totalLen, totalY); ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle = 'var(--accent)'; ctx.font = 'bold 10px "DM Mono", monospace'; ctx.textAlign = 'left';
-  ctx.fillText('Σ ' + pefData.totalPE.toFixed(0) + ' MWh PE | fp,ges = ' + pefData.fpGes.toFixed(2), PAD.l, totalY + 12);
+  ctx.fillText('Σ ' + _de(pefData.totalPE, 0) + ' MWh PE | fp,ges = ' + _de(pefData.fpGes, 2), PAD.l, totalY + 12);
 
   // Legende
   const legendEl = document.getElementById('em-pef-legend');
@@ -664,18 +677,18 @@ export function _renderEmPef() {
     rows.forEach(r => {
       html += `<tr>
         <td style="color:${r.color}">${r.label}</td>
-        <td style="text-align:right">${r.wMwh.toFixed(0)} MWh</td>
-        <td style="text-align:right">${r.endenergieMwh.toFixed(0)} MWh</td>
-        <td style="text-align:right">${r.fp.toFixed(2)}</td>
-        <td style="text-align:right">${r.peMwh.toFixed(0)} MWh</td>
+        <td style="text-align:right">${_de(r.wMwh, 0)} MWh</td>
+        <td style="text-align:right">${_de(r.endenergieMwh, 0)} MWh</td>
+        <td style="text-align:right">${_de(r.fp, 2)}</td>
+        <td style="text-align:right">${_de(r.peMwh, 0)} MWh</td>
       </tr>`;
     });
     html += `<tr style="border-top:1px solid var(--border);font-weight:600;">
       <td>Gesamt</td>
-      <td style="text-align:right">${pefData.totalWaerme.toFixed(0)} MWh</td>
-      <td style="text-align:right">${pefData.totalEnd.toFixed(0)} MWh</td>
-      <td style="text-align:right">${pefData.fpGes.toFixed(2)}</td>
-      <td style="text-align:right">${pefData.totalPE.toFixed(0)} MWh</td>
+      <td style="text-align:right">${_de(pefData.totalWaerme, 0)} MWh</td>
+      <td style="text-align:right">${_de(pefData.totalEnd, 0)} MWh</td>
+      <td style="text-align:right">${_de(pefData.fpGes, 2)}</td>
+      <td style="text-align:right">${_de(pefData.totalPE, 0)} MWh</td>
     </tr>`;
     html += '</tbody></table>';
     html += '<div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.5;">Primärenergie = Endenergie × f<sub>p</sub> · f<sub>p</sub> = Primärenergiefaktor (nicht-erneuerbar) nach GEG Anlage 4<br>Wärmepumpen: Endenergie = Strombedarf · Kessel: Endenergie = Wärme ÷ Wirkungsgrad</div>';
@@ -826,7 +839,7 @@ export function renderAnalyseDispatch() {
   // Y-Achsen-Labels
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
   ctx.font = '10px "DM Mono", monospace';
-  ctx.fillText(maxP.toFixed(0) + ' kW', 4, 12);
+  ctx.fillText(_de(maxP, 0) + ' kW', 4, 12);
   [25, 50, 75].forEach(pct => {
     const y = H - (pct / 100) * H;
     ctx.strokeStyle = 'rgba(255,255,255,0.06)';
@@ -839,11 +852,11 @@ export function renderAnalyseDispatch() {
   if (canStack) {
     const legEl = canvas.parentElement?.querySelector('.av-lastgang-legend');
     if (legEl) {
-      const hasManualGk = keys.includes('gaskessel');
+      const hasManualGk = keys.includes('gaskessel') && spitzenkessel().key === 'gaskessel';
       legEl.innerHTML = keys
         .filter(k => !(k === '_autoGk' && hasManualGk))
         .map(k => {
-          const label = (k === 'gaskessel' && keys.includes('_autoGk')) ? 'Gaskessel (teil-auto)' : (DA_LABELS?.[k] || k);
+          const label = (k === 'gaskessel' && hasManualGk && keys.includes('_autoGk')) ? 'Gaskessel (teil-auto)' : (DA_LABELS?.[k] || k);
           const c = typeof _daColor === 'function' ? _daColor(k) : (DA_COLORS_FALLBACK[k] || '#aaa');
           return `<span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;border-radius:1px;background:${c};"></span>${label}</span>`;
         }).join('');
@@ -910,7 +923,7 @@ export function renderAnalyseDispatch() {
 
       jCtx.fillStyle = 'rgba(255,255,255,0.4)';
       jCtx.font = '10px "DM Mono", monospace';
-      jCtx.fillText(jdlMaxP.toFixed(0) + ' kW', 4, 12);
+      jCtx.fillText(_de(jdlMaxP, 0) + ' kW', 4, 12);
     } else {
       // Fallback: einfache sortierte Kurve
       const sorted = Float32Array.from(data).sort().reverse();
@@ -928,7 +941,7 @@ export function renderAnalyseDispatch() {
       jCtx.stroke();
       jCtx.fillStyle = 'rgba(255,255,255,0.4)';
       jCtx.font = '10px "DM Mono", monospace';
-      jCtx.fillText(maxP.toFixed(0) + ' kW', 4, 12);
+      jCtx.fillText(_de(maxP, 0) + ' kW', 4, 12);
     }
   }
 
@@ -942,14 +955,15 @@ export function renderAnalyseDispatch() {
     const p65 = sorted2[Math.floor(n * 0.35)] || 0;
     const p90 = sorted2[Math.floor(n * 0.10)] || 0;
     const vbh = maxP > 0 ? Math.round(totalKwh / maxP) : 0;
-    metrikenEl.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div><span style="font-family:'DM Mono',monospace;font-size:13px;color:var(--text);">${maxP.toFixed(0)}</span> <span style="color:var(--muted);">kW P<sub>max</sub></span></div>
-        <div><span style="font-family:'DM Mono',monospace;font-size:13px;color:var(--text);">${Math.round(totalMwh).toLocaleString('de-DE')}</span> <span style="color:var(--muted);">MWh/a</span></div>
-        <div><span style="font-family:'DM Mono',monospace;font-size:13px;color:var(--text);">${p65.toFixed(0)}</span> <span style="color:var(--muted);">kW P<sub>65%</sub></span></div>
-        <div><span style="font-family:'DM Mono',monospace;font-size:13px;color:var(--text);">${p90.toFixed(0)}</span> <span style="color:var(--muted);">kW P<sub>90%</sub></span></div>
-        <div><span style="font-family:'DM Mono',monospace;font-size:13px;color:var(--text);">${vbh.toLocaleString('de-DE')}</span> <span style="color:var(--muted);">h/a VBH</span> <span class="htip" data-tip="Vollbenutzungsstunden: Wie viele Stunden pro Jahr liefe der Erzeuger auf voller Leistung, um die gleiche Energie zu liefern? Hohe VBH = gute Auslastung.">?</span></div>
-      </div>`;
+    const nf = v => Math.round(v).toLocaleString('de-DE');
+    const kw = v => `${nf(v)}<small>kW</small>`;
+    metrikenEl.innerHTML = [
+      ['Spitzenlast', kw(maxP), 'Höchste stündliche Wärmeleistung im Jahr.'],
+      ['an 876 h überschritten', kw(p90), 'Leistung, die in 10 % der Jahresstunden überschritten wird — Richtwert für Spitzenlasterzeuger.'],
+      ['an 3.066 h überschritten', kw(p65), 'Leistung, die in 35 % der Jahresstunden überschritten wird — Richtwert für die Grundlast.'],
+      ['Vollbenutzungsstunden', `${nf(vbh)}<small>h/a</small>`, 'Wie viele Stunden pro Jahr liefe der Erzeuger auf voller Leistung, um die gleiche Energie zu liefern? Hohe VBH = gute Auslastung.'],
+      ['Wärmemenge', `${nf(totalMwh)}<small>MWh/a</small>`, 'Summe des Lastgangs.'],
+    ].map(([l, v, t]) => `<div class="analyse-metrik" title="${t}"><span>${l}</span><b>${v}</b></div>`).join('');
   }
 
   // Erzeuger table
@@ -963,28 +977,18 @@ export function renderAnalyseDispatch() {
   }
 
   // Energiekrone 3D rendern wenn Dispatch-Daten vorhanden
-  if (keys.length > 0 && Object.keys(hourly).length > 0) {
+  // (nur aufgeklappt — die 3D-Ansicht ist rechenintensiv und standardmäßig zu)
+  const ekDetails = document.getElementById('energiekrone-details');
+  if (ekDetails && !ekDetails._toggleListener) {
+    ekDetails._toggleListener = true;
+    ekDetails.addEventListener('toggle', () => { if (ekDetails.open) requestAnimationFrame(_renderEnergiekrone); });
+  }
+  if (keys.length > 0 && Object.keys(hourly).length > 0 && ekDetails?.open !== false) {
     requestAnimationFrame(_renderEnergiekrone);
   }
 }
 
-// ── 3D-Dispatch-Visualisierung (Teppich + Helix) ──────────────────────────
-if (!window._ekroneMode) window._ekroneMode = 'carpet';
-
-export function _setEkroneMode(mode) {
-  window._ekroneMode = mode;
-  document.querySelectorAll('.ekrone-mode-btn').forEach(b => {
-    const active = b.getAttribute('data-mode') === mode;
-    b.style.background = active ? 'rgba(77,208,225,0.15)' : 'transparent';
-    b.style.color = active ? '#4dd0e1' : 'var(--muted)';
-    b.classList.toggle('active', active);
-  });
-  const title = document.getElementById('ekrone-title');
-  if (title) title.textContent = (mode === 'helix' ? 'Helix' : '3D-Teppich') + ' \u2014 Dispatch (365 \u00d7 24 h)';
-  window._ekroneState = mode === 'helix' ? { az: 0.4, el: 0.55, zoom: 1 } : { az: 0.6, el: 0.45, zoom: 1 };
-  _renderEnergiekrone();
-}
-
+// ── 3D-Dispatch-Visualisierung (Teppich) ──────────────────────────────────
 export function _renderEnergiekrone() {
   const canvas = document.getElementById('energiekrone-canvas');
   if (!canvas) return;
@@ -1035,11 +1039,7 @@ export function _renderEnergiekrone() {
   bg.addColorStop(0, 'rgba(20,22,30,0.6)'); bg.addColorStop(1, 'rgba(10,12,18,0.3)');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
-  if (window._ekroneMode === 'helix') {
-    _renderHelix3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, az, el, zoom);
-  } else {
-    _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, az, el, zoom);
-  }
+  _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, az, el, zoom);
 
   // Legend
   const legEl = document.getElementById('energiekrone-legend');
@@ -1160,130 +1160,9 @@ export function _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, 
     ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(160,170,200,0.55)'; ctx.font = '8px sans-serif';
     const pB = proj(-1.06, 0, -0.6), pT = proj(-1.06, hScale, -0.6);
     ctx.fillText('0', pB.sx - 3, pB.sy);
-    ctx.fillText(maxKw >= 1000 ? (maxKw/1000).toFixed(1)+' MW' : Math.round(maxKw)+' kW', pT.sx - 3, pT.sy);
+    ctx.fillText(maxKw >= 1000 ? _de(maxKw/1000, 1)+' MW' : Math.round(maxKw)+' kW', pT.sx - 3, pT.sy);
     ctx.strokeStyle = 'rgba(160,170,200,0.25)'; ctx.lineWidth = 0.7;
     ctx.beginPath(); ctx.moveTo(pB.sx, pB.sy); ctx.lineTo(pT.sx, pT.sy); ctx.stroke();
-
-    ctx.fillStyle = 'rgba(120,130,160,0.35)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('Drag: drehen  \u00b7  Scroll: zoom  \u00b7  Doppelklick: Reset', W / 2, H - 6);
-  }
-
-  window._ekroneQuads = quads;
-}
-
-// ── 3D-Helix ──
-export function _renderHelix3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, az, el, zoom) {
-  const cosA = Math.cos(az), sinA = Math.sin(az);
-  const cosE = Math.cos(el), sinE = Math.sin(el);
-  const sW = W * 0.32 * zoom, sH = H * 0.36 * zoom;
-  const cx = W * 0.50, cy = H * 0.52;
-
-  function proj(x, y, z) {
-    return { sx: cx + (x * cosA - z * sinA) * sW, sy: cy - (x * sinA * sinE + y * cosE + z * cosA * sinE) * sH };
-  }
-
-  const dayStep = 2;
-  const nSlots = Math.ceil(DAYS_PER_YEAR / dayStep);
-  const REVOLUTIONS = 12; // 12 Windungen = 1 pro Monat
-  const baseR = 0.25;     // Innenradius der Helix
-  const maxBarH = 0.55;   // Max Balkenhöhe nach außen
-  const helixH = 1.6;     // Gesamthöhe der Spirale
-
-  const quads = [];
-
-  for (let si = 0; si < nSlots; si++) {
-    const d0 = si * dayStep, d1 = Math.min(d0 + dayStep, DAYS_PER_YEAR);
-    const frac0 = d0 / DAYS_PER_YEAR, frac1 = d1 / DAYS_PER_YEAR;
-    const angle0 = frac0 * REVOLUTIONS * 2 * Math.PI;
-    const angle1 = frac1 * REVOLUTIONS * 2 * Math.PI;
-    const y0 = (frac0 - 0.5) * helixH;
-    const y1 = (frac1 - 0.5) * helixH;
-
-    for (let h = 0; h < 24; h++) {
-      const idx0 = d0 * 24 + h;
-      if (idx0 >= 8760) continue;
-
-      let tSum = 0, cnt = 0;
-      const contribs = {};
-      for (let dd = d0; dd < d1 && dd < DAYS_PER_YEAR; dd++) {
-        const idx = dd * 24 + h;
-        if (idx >= 8760) continue;
-        tSum += totals[idx]; cnt++;
-        const dk = domKeys[idx];
-        if (dk) contribs[dk] = (contribs[dk] || 0) + (hData[dk]?.[idx] || 0);
-      }
-      const avg = cnt > 0 ? tSum / cnt : 0;
-      const barH = (avg / maxKw) * maxBarH;
-
-      let domK = null, maxC = 0;
-      for (const k in contribs) { if (contribs[k] > maxC) { maxC = contribs[k]; domK = k; } }
-      const color = domK ? _daColor(domK) : '#333';
-
-      // Stunde bestimmt radiale Position innerhalb eines Rings
-      const hFrac = h / 24;
-      const a0 = angle0 + hFrac * (2 * Math.PI / REVOLUTIONS) * 0.9;
-      const a1 = angle0 + (hFrac + 1/24) * (2 * Math.PI / REVOLUTIONS) * 0.9;
-      const yM = (y0 + y1) / 2;
-
-      // Innerer Punkt (Basis-Helix)
-      const ri = baseR;
-      const ro = baseR + barH;
-
-      const top = [
-        [ri * Math.cos(a0), yM, ri * Math.sin(a0)],
-        [ro * Math.cos(a0), yM, ro * Math.sin(a0)],
-        [ro * Math.cos(a1), yM, ro * Math.sin(a1)],
-        [ri * Math.cos(a1), yM, ri * Math.sin(a1)]
-      ];
-
-      const depth = ((ri+ro)/2) * Math.cos((a0+a1)/2) * sinA * cosE
-                   + ((ri+ro)/2) * Math.sin((a0+a1)/2) * cosA * cosE
-                   + yM * sinE * 0.3;
-
-      quads.push({ top, bot: null, color, depth, ht: barH, avg, domK, d0, h });
-    }
-  }
-
-  quads.sort((a, b) => a.depth - b.depth);
-
-  // Central axis
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.5;
-  const pBot = proj(0, -helixH/2, 0), pTop = proj(0, helixH/2, 0);
-  ctx.beginPath(); ctx.moveTo(pBot.sx, pBot.sy); ctx.lineTo(pTop.sx, pTop.sy); ctx.stroke();
-
-  // Helix spine (guide line)
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 0.3;
-  ctx.beginPath();
-  for (let i = 0; i <= 360; i++) {
-    const f = i / 360;
-    const a = f * REVOLUTIONS * 2 * Math.PI;
-    const y = (f - 0.5) * helixH;
-    const p = proj(baseR * Math.cos(a), y, baseR * Math.sin(a));
-    i === 0 ? ctx.moveTo(p.sx, p.sy) : ctx.lineTo(p.sx, p.sy);
-  }
-  ctx.stroke();
-
-  // Draw quads
-  for (const q of quads) {
-    const pp = q.top.map(c => proj(c[0], c[1], c[2]));
-    ctx.beginPath(); ctx.moveTo(pp[0].sx, pp[0].sy); ctx.lineTo(pp[1].sx, pp[1].sy);
-    ctx.lineTo(pp[2].sx, pp[2].sy); ctx.lineTo(pp[3].sx, pp[3].sy); ctx.closePath();
-    ctx.fillStyle = q.color; ctx.globalAlpha = 0.85; ctx.fill();
-    ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.lineWidth = 0.15; ctx.stroke();
-  }
-
-  // Labels
-  if (!window._ekroneDragging) {
-    ctx.fillStyle = 'rgba(170,180,210,0.7)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'left';
-    const months = ['Jan','Feb','M\u00e4r','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
-    const mDays = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-    for (let m = 0; m < 12; m++) {
-      const f = (mDays[m] + 15) / DAYS_PER_YEAR;
-      const a = f * REVOLUTIONS * 2 * Math.PI;
-      const y = (f - 0.5) * helixH;
-      const p = proj((baseR + maxBarH + 0.08) * Math.cos(a), y, (baseR + maxBarH + 0.08) * Math.sin(a));
-      ctx.fillText(months[m], p.sx, p.sy);
-    }
 
     ctx.fillStyle = 'rgba(120,130,160,0.35)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('Drag: drehen  \u00b7  Scroll: zoom  \u00b7  Doppelklick: Reset', W / 2, H - 6);
@@ -1322,8 +1201,7 @@ export function _attachEkroneInteraction() {
     _renderEnergiekrone();
   }, { passive: false });
   canvas.addEventListener('dblclick', () => {
-    const mode = window._ekroneMode || 'carpet';
-    window._ekroneState = mode === 'helix' ? { az: 0.4, el: 0.55, zoom: 1 } : { az: 0.6, el: 0.45, zoom: 1 };
+    window._ekroneState = { az: 0.6, el: 0.45, zoom: 1 };
     _renderEnergiekrone();
   });
 
@@ -1339,10 +1217,9 @@ export function _attachEkroneInteraction() {
     const W2 = canvas.offsetWidth || 600, H2 = Math.round(W2 * 0.58);
     const cosA2 = Math.cos(st.az), sinA2 = Math.sin(st.az);
     const cosE2 = Math.cos(st.el), sinE2 = Math.sin(st.el);
-    const mode = window._ekroneMode || 'carpet';
-    const sW2 = W2 * (mode === 'helix' ? 0.32 : 0.38) * st.zoom;
-    const sH2 = H2 * (mode === 'helix' ? 0.36 : 0.44) * st.zoom;
-    const cx2 = W2 * 0.50, cy2 = H2 * (mode === 'helix' ? 0.52 : 0.55);
+    const sW2 = W2 * 0.38 * st.zoom;
+    const sH2 = H2 * 0.44 * st.zoom;
+    const cx2 = W2 * 0.50, cy2 = H2 * 0.55;
 
     let bestDist = 25, bestQ = null;
     for (const q of qs) {
@@ -1367,10 +1244,10 @@ export function _attachEkroneInteraction() {
       const v = hData2[k]?.[idx] || 0; totalH += v;
       if (v > 0.5) {
         const l = (typeof DA_LABELS !== 'undefined' && DA_LABELS[k]) || k;
-        parts.push('<span style="color:' + _daColor(k) + '">' + l + ': ' + v.toFixed(0) + ' kW</span>');
+        parts.push('<span style="color:' + _daColor(k) + '">' + l + ': ' + _de(v, 0) + ' kW</span>');
       }
     }
-    html += 'Gesamt: ' + totalH.toFixed(0) + ' kW<br>' + parts.join('<br>');
+    html += 'Gesamt: ' + _de(totalH, 0) + ' kW<br>' + parts.join('<br>');
     tip.innerHTML = html; tip.style.display = 'block';
     tip.style.left = (e.clientX + 12) + 'px'; tip.style.top = (e.clientY - 10) + 'px';
   });
@@ -1394,30 +1271,38 @@ export function renderAnalyseErzeugerTable() {
   // Gesamtwärme für Deckungsprozent
   const totalMwh = Object.values(dispEn).reduce((s, e) => s + (e.waermeMwh || 0), 0);
 
-  let html = '<table class="bom-table"><thead><tr><th>Erzeuger</th><th>Leistung kW</th><th>Deckung %</th><th>Wärme MWh/a</th></tr></thead><tbody>';
+  const nf = (v, d = 0) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const zeile = (label, color, leistung, waermeMwh) => {
+    const deckung = totalMwh > 0 ? (waermeMwh / totalMwh * 100) : 0;
+    return `<div class="erzeugermix-zeile">
+      <div class="erzeugermix-kopf"><span class="erzeugermix-punkt" style="background:${color}"></span><span class="erzeugermix-name">${escHtml(label)}</span>
+        <span class="erzeugermix-werte">${nf(leistung)} kW · ${nf(waermeMwh)} MWh/a</span><b>${nf(deckung, 1)} %</b></div>
+      <div class="erzeugermix-balken"><i style="width:${Math.min(100, deckung)}%;background:${color}"></i></div>
+    </div>`;
+  };
+  // Kopf: Anteile an Leistung und Energie als 100-%-Balken — zeigt, wer Grund- und wer Spitzenlast fährt
+  const anteile = keys.map(k => {
+    const c = cfg[k] || {};
+    return { label: c.label || k, color: c.color || '#fff', kw: c.leistungId ? (parseFloat(document.getElementById(c.leistungId)?.value) || 0) : 0, mwh: dispEn[k]?.waermeMwh || 0 };
+  });
+  if (autoGkResult && autoGkResult.waermeMwh > 0) anteile.push({ label: 'Spitzenlast-Gaskessel (automatisch)', color: '#78909c', kw: autoGkResult.leistungKw || 0, mwh: autoGkResult.waermeMwh });
+  const sumKw = anteile.reduce((s, a) => s + a.kw, 0), sumMwh = anteile.reduce((s, a) => s + a.mwh, 0);
+  const balken = (feld, summe) => summe > 0
+    ? anteile.filter(a => a[feld] > 0).map(a => `<i style="width:${a[feld] / summe * 100}%;background:${a.color}" title="${escHtml(a.label)}: ${nf(a[feld] / summe * 100)} %"></i>`).join('')
+    : '';
+  let html = `<div class="erzeugermix-anteile">
+    <span>Leistung</span><div class="erzeugermix-stapel">${balken('kw', sumKw)}</div><b>${nf(sumKw)} kW</b>
+    <span>Energie</span><div class="erzeugermix-stapel">${balken('mwh', sumMwh)}</div><b>${nf(sumMwh)} MWh/a</b>
+  </div>`;
   keys.forEach(k => {
     const c = cfg[k] || {};
-    const color = c.color || '#fff';
-    const label = c.label || k;
     const leistung = c.leistungId ? (parseFloat(document.getElementById(c.leistungId)?.value) || 0) : 0;
-    const waermeMwh = (dispEn[k]?.waermeMwh || 0);
-    const deckung = totalMwh > 0 ? (waermeMwh / totalMwh * 100) : 0;
-    html += '<tr><td style="color:' + color + ';">' + label + '</td>';
-    html += '<td style="text-align:right;">' + leistung.toFixed(0) + '</td>';
-    html += '<td style="text-align:right;">' + deckung.toFixed(1) + '</td>';
-    html += '<td style="text-align:right;">' + waermeMwh.toFixed(0) + '</td>';
-    html += '</tr>';
+    html += zeile(c.label || k, c.color || '#fff', leistung, dispEn[k]?.waermeMwh || 0);
   });
   // Auto-GK wenn vorhanden
   if (autoGkResult && autoGkResult.waermeMwh > 0) {
-    const agk = autoGkResult;
-    const deckung = totalMwh > 0 ? (agk.waermeMwh / totalMwh * 100) : 0;
-    html += '<tr><td style="color:#78909c;">Spitzenlast-GK</td>';
-    html += '<td style="text-align:right;">' + (agk.leistungKw || 0).toFixed(0) + '</td>';
-    html += '<td style="text-align:right;">' + deckung.toFixed(1) + '</td>';
-    html += '<td style="text-align:right;">' + agk.waermeMwh.toFixed(0) + '</td></tr>';
+    html += zeile('Spitzenlast-Gaskessel (automatisch)', '#78909c', autoGkResult.leistungKw || 0, autoGkResult.waermeMwh);
   }
-  html += '</tbody></table>';
   el.innerHTML = html;
 }
 

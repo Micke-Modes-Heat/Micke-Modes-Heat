@@ -6,6 +6,7 @@ import { polygonAreaM2 } from './02c-karte-werkzeuge.js';
 import { redrawVerbindungslinien } from './03a-erzeuger.js';
 import { hideHint, showHint } from './03c-gebaeude-io.js';
 import { sommerGrundlast, wbKorrigiere } from './lib/witterung.js';
+import { netzBetriebStunden, raumwaermeAusLastgang, raumwaermeImBetrieb } from './lib/tww-dezentral.js';
 import { glGetGesamtMwh, glGetMonatswerte, glGetTempH, glLastgangKw, glRenderPreview, glRenderSplit, glUpdateKlimaStatus, glUpdateStatus } from './06a-gbi-lastgang.js';
 import { onSystemStateUpdated, updateAllDeckungen } from './06c-dispatch-core.js';
 import { CalcEngine } from './08-calc-engine.js';
@@ -17,6 +18,9 @@ import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { buildBuildingHeatProfiles } from './lib/building-heat-profiles.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { setThermSpeicherAktiv, thermSpeicherAktiv } from './01-globals-varianten.js';
+import { speicherVerlustProH } from './lib/waermespeicher.js';
+import { auslegungsSpitze, tagesmittel365, vorlaufNachHeizkurve } from './lib/auslegung.js';
+import { glfWinter } from './lib/gleichzeitigkeit.js';
 
 export let _glAutoTimer  = null;
 export let _glIsRunning  = false;
@@ -34,8 +38,128 @@ export function glBerechnenDebounced(delay = 1000) {
   const dot = document.getElementById('gl-status-dot');
   if (dot) dot.className = 'gl-status-dot pending';
   _glAutoTimer = setTimeout(async () => {
-    if (!_glIsRunning) await glBerechnen();
+    // Läuft gerade eine Berechnung, geht der Auftrag nicht verloren: danach erneut versuchen
+    if (_glIsRunning) { glBerechnenDebounced(Math.max(delay, 200)); return; }
+    await glBerechnen();
   }, delay);
+}
+
+// ── Auslegungsspitze (Normaußentemperatur) ────────────────────────────────
+/**
+ * Auslegungsspitze des aktuellen Lastgangs (lib/auslegung.js). Beim Lastgang aus Gebäudedaten: Σ Normheizlast der
+ * eingerechneten Gebäude im Betrachtungsjahr × Gleichzeitigkeit (Einstellung des Wärmenetzes) + Netzverlustleistung;
+ * fehlt eine Heizlast oder ist der Lastgang eingegeben/gemessen: Hochrechnung auf die Normaußentemperatur.
+ * Dazu die Vorlauftemperatur im Auslegungsfall (Heizkurve). null ohne Lastgang.
+ */
+export function auslegungsSpitzeAktuell(ss = window.systemState) {
+  if (!ss?.lastgangKw?.length) return null;
+  let heizlastenKw = null;
+  if (ss.nurGebaeude) {
+    const hl = [];
+    let vollstaendig = true;
+    for (const g of gebaeude) {
+      if (isExcluded(g.id)) continue;
+      const st = getComputedStats(g, globalYear) || {};
+      if (!((+st.waerme || 0) > 0)) continue;
+      if ((+st.heizlast || 0) > 0) hl.push(+st.heizlast); else { vollstaendig = false; break; }
+    }
+    if (vollstaendig && hl.length) heizlastenKw = hl;
+  }
+  const n = heizlastenKw?.length || 0;
+  const methode = document.getElementById('netz-gzf-methode')?.value || 'richtwert';
+  const glf = methode === 'keine' ? 1
+    : methode === 'manuell' ? Math.max(0.1, Math.min(1, readNum('netz-gzf-manuell', 0.6, 0.1, 1)))
+    : glfWinter(n);
+  // Netzverlust in der Spitze: berechnetes Wärmenetz (Erdreich im Winter), sonst Jahresverlust je Betriebsstunde
+  let verlustKw = 0;
+  const kanten = ss.netzverlustQuelle === 'waermenetz' ? (window.netzEdges || []) : [];
+  const netzKw = kanten.reduce((s, e) => s + (e.lossKW || 0), 0);
+  if (netzKw > 0) verlustKw = netzKw;
+  else if (ss.netzverlustMwh > 0) verlustKw = ss.netzverlustMwh * 1000 / (ss.twwDezentral?.betriebStunden || ss.lastgangKw.length);
+  // Tagesmittel zum Lastgang: beim eingelesenen Lastgang die des Messjahres (Witterungsbereinigung, wie im Gutachten
+  // 3.2.5; ohne sie bleibt es bei der Spitze des Lastgangs), sonst die des Klimajahrs
+  let tageT = null;
+  if (glLastgangKw) {
+    const wb = window.getWitterung?.() || {};
+    if (wb.ergebnis?.messjahr === wb.messjahr && wb.ergebnis?.tageT?.length === 365) tageT = Array.from(wb.ergebnis.tageT);
+  } else {
+    tageT = tagesmittel365(ss.tempH);
+  }
+  const a = auslegungsSpitze({ lastgangKw: ss.lastgangKw, tageT, normAt: ss.normAussentemp, heizlastenKw, glf, verlustKw });
+  const vl5 = Number.isFinite(ss.vlMinus5) ? ss.vlMinus5 : 90, vl15 = Number.isFinite(ss.vl15) ? ss.vl15 : 70;
+  a.vorlauf = vorlaufNachHeizkurve(a.normAt ?? -12, vl5, vl15);
+  return a;
+}
+
+/** Kennzahlen-Kachel Spitzenlast: Auslegungsspitze, darunter Spitze des Lastgangs und Σ Normheizlast. */
+export function spitzenlastKachel(summeHeizlastKw) {
+  const wert = document.getElementById('tot-hl'), lbl = document.getElementById('tot-hl-lbl');
+  const sub = document.getElementById('tot-hl-sub'), kachel = document.getElementById('tc-hl');
+  if (!wert || !lbl || !sub || !kachel) return;
+  const de = v => Math.round(v).toLocaleString('de-DE');
+  const a = auslegungsSpitzeAktuell();
+  if (!a) {
+    wert.textContent = summeHeizlastKw ? de(summeHeizlastKw) : '—';
+    lbl.textContent = 'Normheizlast (kW)';
+    sub.textContent = '';
+    kachel.title = 'Summe der Gebäude-Normheizlasten (DIN EN 12831).\nNach der Lastgangberechnung wird hier die Auslegungsspitze angezeigt.';
+    return;
+  }
+  wert.textContent = de(a.kw);
+  lbl.textContent = 'Auslegungsspitze (kW)';
+  sub.textContent = `Lastgang ${de(a.lastgangKw)} kW` + (summeHeizlastKw ? ` · Σ Gebäude ${de(summeHeizlastKw)} kW` : '');
+  const nat = a.normAt != null ? a.normAt.toLocaleString('de-DE') : '—';
+  const herleitung = a.quelle === 'heizlast'
+    ? `Σ Normheizlast ${de(a.summeHeizlastKw)} kW × Gleichzeitigkeit ${a.glf.toFixed(2).replace('.', ',')} + Netzverluste ${de(a.verlustKw)} kW`
+    : a.quelle === 'hochrechnung'
+      ? `Spitze des Lastgangs ${de(a.lastgangKw)} kW, linear auf die Normaußentemperatur hochgerechnet (Tagesmittel am Spitzentag ${a.tSpitze.toFixed(1).replace('.', ',')} °C)`
+      : 'Spitze des Lastgangs (liegt bereits bei oder über der Normaußentemperatur)';
+  kachel.title = `Auslegungsspitze bei Normaußentemperatur ${nat} °C: ${de(a.kw)} kW\n${herleitung}.\n`
+    + `Spitze des Lastgangs (Einsatzplanung, Klima-/Messjahr): ${de(a.lastgangKw)} kW.\n`
+    + 'Die Auslegungsspitze bestimmt die Mindestleistung der Wärmeerzeugung (Spitzenlastkessel).';
+}
+
+// ── Eingangsstand des Lastgangs ───────────────────────────────────────────
+// Jahresverlust des berechneten Wärmenetzes, so wie glBerechnen ihn verwendet (null = Prozentansatz)
+function _netzVerlustEingang() {
+  return window.netzEdges?.length > 0 && Number.isFinite(window._netzAnnualLossMWh)
+    ? Math.max(0, window._netzAnnualLossMWh) : null;
+}
+
+/**
+ * Was außerhalb der Grundlagen-Eingaben in den Lastgang eingeht: der Netzverlust und — beim
+ * Lastgang aus Gebäudedaten — Jahr, Gebäudewerte und Nutzungsprofile. Ändert sich davon etwas,
+ * ohne dass neu gerechnet wird, beruhen Deckungsanteile auf einem veralteten Lastgang.
+ */
+export function lastgangEingangSignatur() {
+  const v = _netzVerlustEingang();
+  const netz = v === null ? '-' : v.toFixed(2);
+  const teile = [String(globalYear)];
+  for (const g of gebaeude) {
+    if (isExcluded(g.id)) continue;
+    const st = getComputedStats(g, globalYear) || {};
+    teile.push([g.id, st.status || '', (+st.waerme || 0).toFixed(2), (+st.heizlast || 0).toFixed(2),
+      g.heatProfileType || '', g.nutzung || ''].join(':'));
+  }
+  return { netz, geb: teile.join('|') };
+}
+
+/**
+ * Lastgang passt nicht mehr zu Netzverlust bzw. Gebäudedaten (nur ein bereits berechneter Lastgang).
+ * Ein eingegebener Verbrauch/Lastgang enthält die Verluste schon; der Netzverlust verändert ihn nur
+ * bei dezentralem TWW. Gebäudedaten zählen nur beim Lastgang aus Gebäudedaten.
+ */
+export function lastgangVeraltet() {
+  const ss = window.systemState;
+  if (!ss?.lastgangKw || !ss.eingang) return false;
+  const jetzt = lastgangEingangSignatur();
+  const netzWirkt = ss.nurGebaeude || !!ss.twwDezentral;
+  return (netzWirkt && jetzt.netz !== ss.eingang.netz) || (ss.nurGebaeude && jetzt.geb !== ss.eingang.geb);
+}
+
+/** Nach Netz- oder Gebäudeänderungen: Lastgang neu rechnen, sobald er nicht mehr passt. */
+export function lastgangBeiBedarfNeu(delay = 600) {
+  if (lastgangVeraltet()) glBerechnenDebounced(delay);
 }
 
 /**
@@ -57,6 +181,8 @@ export function glBerechnenAuto() {
 async function glBerechnen() {
   if (_glIsRunning) return;
   _glIsRunning = true;
+  // Gebäude- und Jahresstand zu Beginn festhalten (Netzverlust: dort, wo er gelesen wird)
+  const eingang = lastgangEingangSignatur();
   const btn = document.getElementById('gl-run-btn');
   btn.textContent = '⏳ Berechne…'; btn.disabled = true;
 
@@ -64,6 +190,9 @@ async function glBerechnen() {
     const stadt       = document.getElementById('gl-stadt').value;
     const normAt      = readNum('gl-norm-at', -12, -30, 0);
     const netzverlust = readNum('gl-netzverlust', 10, 0, 50);
+    // Trinkwarmwasser dezentral: Netz liefert nur Raumwärme und ist außerhalb der Heizperiode aus
+    const twwDezentral = !!document.getElementById('gl-tww-dezentral')?.checked;
+    const heizgrenze  = readNum('gl-heizgrenze', 15, 8, 20);
     const vl5         = readNum('gl-vl5', 90, 30, 130);
     const vl15        = readNum('gl-vl15', 60, 20, 100);
     const profil1     = document.getElementById('gl-profil1').value || 'HEF33';
@@ -155,7 +284,7 @@ async function glBerechnen() {
       });
 
       const buildingResult=nurGebaeude ? buildBuildingHeatProfiles(
-        gebaeude,synState.tempH,globalYear,getComputedStats,isExcluded) : null;
+        gebaeude,synState.tempH,globalYear,getComputedStats,isExcluded,{ohneSockel:twwDezentral}) : null;
       const buildingMwh=buildingResult
         ? buildingResult.aggregate.reduce((sum,value)=>sum+value,0)/1000
         : 0;
@@ -184,25 +313,59 @@ async function glBerechnen() {
     // Fallback für Projekte ohne aufgebautes Wärmenetz.
     const nvPct = Math.min(netzverlust, 50);
     const nvFaktor = 1 - nvPct / 100;
-    const detailedNetworkLossMWh = window.netzEdges?.length > 0 &&
-      Number.isFinite(window._netzAnnualLossMWh)
-      ? Math.max(0,window._netzAnnualLossMWh)
-      : null;
+    const detailedNetworkLossMWh = _netzVerlustEingang();
+    eingang.netz = detailedNetworkLossMWh === null ? '-' : detailedNetworkLossMWh.toFixed(2);
     let nutzwaermeMwh, gesamtMwhMitNV;
+    // Netzbetrieb je Stunde (nur mit dezentralem TWW): Heizperiode aus dem gleitenden 3-Tage-Mittel der Außentemperatur
+    let netzAn = null, twwInfo = null;
+    if (twwDezentral) {
+      const tempBetrieb = synState?.tempH || tempHDwd || (await CalcEngine.run({
+        stadt, normAussentemp: normAt, sigProfil1: profil1, sigProfil2: profil2, gewicht1: gew1, gewicht2: gew2,
+        vlMinus5: vl5, vl15, gesamtenergieMwh: 1, erzeuger: [], energiepreise: {}, kapitalzins: 4,
+        twwNetzAnteil: 0, twwAnteilVonTwwNetz: 0 })).tempH;
+      netzAn = netzBetriebStunden(tempBetrieb, heizgrenze, 3);
+    }
 
     if (nurGebaeude) {
       // Nur Gebäudedaten → Netzverluste AUFSCHLAGEN (Energie + Leistung).
       // Heizlast ergibt sich aus dem Synthese-Lastgang (pMaxKw), nicht aus Σ Einzel-Heizlasten
       // → GLF ist implizit durch die Profilsynthese aus Gesamtenergie abgedeckt
+      if (netzAn) {
+        // Sockel (TWW) ist bereits aus den Gebäudeprofilen entfernt; Raumwärme nur in der Heizperiode
+        const raumMwhVor = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
+        lastgangKw = raumwaermeImBetrieb(lastgangKw, netzAn).kw;
+        twwInfo = { twwMwh: Math.max(0, (gesamt || 0) - raumMwhVor) };
+      }
       nutzwaermeMwh = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
       if (detailedNetworkLossMWh !== null) {
+        // Verluste je Betriebsstunde wie im Ganzjahresbetrieb — außerhalb der Heizperiode keine
         const averageLossKw = detailedNetworkLossMWh * 1000 / lastgangKw.length;
-        for (let i = 0; i < lastgangKw.length; i++) lastgangKw[i] += averageLossKw;
+        for (let i = 0; i < lastgangKw.length; i++) if (!netzAn || netzAn[i]) lastgangKw[i] += averageLossKw;
       } else {
-        const aufschlag = 1 / nvFaktor; // z.B. 10% Verlust → Faktor 1.111
-        for (let i = 0; i < lastgangKw.length; i++) lastgangKw[i] *= aufschlag;
+        // Pauschaler Verlust (Anteil an der eingespeisten Wärme), wie beim berechneten Netz als konstanter
+        // Aufschlag je Betriebsstunde: Leitungsverluste hängen kaum von der Last ab (Spitze nicht überhöht)
+        const verlustMwh = nvFaktor > 0 ? nutzwaermeMwh * (1 / nvFaktor - 1) : 0;
+        let stunden = 0;
+        for (let i = 0; i < lastgangKw.length; i++) if (!netzAn || netzAn[i]) stunden++;
+        const verlustKw = stunden > 0 ? verlustMwh * 1000 / stunden : 0;
+        for (let i = 0; i < lastgangKw.length; i++) if (!netzAn || netzAn[i]) lastgangKw[i] += verlustKw;
       }
       gesamtMwhMitNV = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
+    } else if (netzAn) {
+      // Fälle 1–4 mit dezentralem TWW: aus dem Lastgang (inkl. TWW und Verlusten) die Raumwärme herauslösen,
+      // in die Heizperiode legen und nur dort die Netzverluste ansetzen
+      const vorMwh = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
+      const verlustKw = detailedNetworkLossMWh !== null
+        ? Math.min(detailedNetworkLossMWh, vorMwh * 0.5) * 1000 / lastgangKw.length
+        : vorMwh * (nvPct / 100) * 1000 / lastgangKw.length;
+      const { raumKw, twwKw } = raumwaermeAusLastgang(lastgangKw, sommerGrundlast(lastgangKw), verlustKw);
+      const raum = raumwaermeImBetrieb(raumKw, netzAn).kw;
+      lastgangKw = new Float32Array(raum.length);
+      let verlustMwh = 0;
+      for (let i = 0; i < raum.length; i++) { lastgangKw[i] = raum[i] + (netzAn[i] ? verlustKw : 0); if (netzAn[i]) verlustMwh += verlustKw / 1000; }
+      gesamtMwhMitNV = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
+      nutzwaermeMwh = gesamtMwhMitNV - verlustMwh;
+      twwInfo = { twwMwh: twwKw * 8760 / 1000 };
     } else {
       // Fälle 1–4: Eingegebene/hochgeladene Werte enthalten Verluste bereits
       gesamtMwhMitNV = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
@@ -210,6 +373,12 @@ async function glBerechnen() {
         ? Math.max(0,gesamtMwhMitNV - Math.min(detailedNetworkLossMWh,gesamtMwhMitNV * 0.5))
         : gesamtMwhMitNV * nvFaktor;
     }
+    if (netzAn) {
+      let anStunden = 0;
+      for (let i = 0; i < netzAn.length; i++) anStunden += netzAn[i];
+      twwInfo = { ...twwInfo, heizgrenze, betriebStunden: anStunden, ausTage: Math.round((netzAn.length - anStunden) / 24) };
+    }
+    window._twwDezentralInfo = twwInfo;
     const effectiveLossMWh = Math.max(0,gesamtMwhMitNV - nutzwaermeMwh);
     const effectiveLossPct = gesamtMwhMitNV > 0 ? effectiveLossMWh / gesamtMwhMitNV * 100 : 0;
     const lossHint = document.getElementById('gl-netzverlust-hint');
@@ -249,6 +418,10 @@ async function glBerechnen() {
       netzverlustQuelle: detailedNetworkLossMWh !== null ? 'waermenetz' : 'prozentwert',
       netzverlustMwh: effectiveLossMWh,
       nurGebaeude,
+      // Netzverlust und Gebäudestand, mit denen gerechnet wurde (lastgangVeraltet prüft das)
+      eingang,
+      // Trinkwarmwasser dezentral: Netz nur in der Heizperiode (Betriebsstunden, entfallenes TWW)
+      twwDezentral: twwInfo,
       pMaxKw: Math.max(...lastgangKw),
       tMin: Math.min(...tempState.tempH),
       // Parameter
@@ -259,10 +432,14 @@ async function glBerechnen() {
       // Zeitstempel
       berechnetAm: new Date().toISOString(),
     };
+    window.glTwwDezentralUi?.();
 
     // Basis-Lastgang für jahresweise Skalierung speichern
     window._basisLastgangKw = new Float32Array(lastgangKw);
     window._basisYear = globalYear;
+    // Nutzwärme und Netzverlust des Basisjahrs — werden beim Jahreswechsel mit demselben Faktor fortgeschrieben
+    window._basisNutzwaermeMwh = window.systemState.nutzwaermeMwh;
+    window._basisNetzverlustMwh = window.systemState.netzverlustMwh;
     window._basisGebWaermeSumme = gebaeude.reduce((s, g) => {
       if (isExcluded(g.id)) return s;
       const st = getComputedStats(g, globalYear);
@@ -285,13 +462,8 @@ async function glBerechnen() {
     document.getElementById('tot-waerme').textContent =
       Math.round(gesamtMwhMitNV).toLocaleString('de-DE', {maximumFractionDigits: 1});
     document.getElementById('tc-waerme').title = `${Math.round(gesamtMwhMitNV)} MWh/a inkl. Netzverluste (Lastgang).\nOhne Verluste: ${Math.round(nutzwaermeMwh)} MWh/a`;
-    document.getElementById('tot-hl').textContent =
-      Math.round(window.systemState.pMaxKw).toLocaleString('de-DE', {maximumFractionDigits: 1});
-    document.getElementById('tot-hl-lbl').textContent = 'Netz-Spitzenlast (kW)';
-    const normheizlastKw = gebaeude.reduce((s,g) => s + (getComputedStats(g,globalYear).heizlast||0), 0);
-    document.getElementById('tot-hl-sub').textContent =
-      `Σ Gebäude: ${Math.round(normheizlastKw).toLocaleString('de-DE')} kW`;
-    document.getElementById('tc-hl').title = `Maßgebende Spitzenlast aus dem berechneten Lastgang inklusive Netzverlusten: ${Math.round(window.systemState.pMaxKw)} kW.\nSumme der Gebäude-Normheizlasten (DIN 12831): ${Math.round(normheizlastKw)} kW.`;
+    const normheizlastKw = gebaeude.reduce((s,g) => isExcluded(g.id) ? s : s + (getComputedStats(g,globalYear).heizlast||0), 0);
+    spitzenlastKachel(normheizlastKw);
 
     // Status aktualisieren
     const dot = document.getElementById('gl-status-dot');
@@ -363,32 +535,45 @@ export function glSkaliereMitMonaten(arr, monatswerte) {
     const f = faktoren[m1] * (1 - t) + faktoren[m2] * t;
     result[i] = arr[i] * Math.max(0, f);
   }
-  return result;
-}
-
-// ── Fall 4: Monatsfloor anwenden ─────────────────────────────────────────
-export function glAnwendeMonatsfloor(arr, monatswerte, gesamtMwh) {
-  const MONAT_STUNDEN = [744,672,744,720,744,720,744,744,720,744,720,744];
-  const result = Float32Array.from(arr);
-  let h = 0;
+  // Die geglätteten Faktoren treffen die Monatswerte nur ungefähr — je Monat exakt nachskalieren
+  h = 0;
   for (let m = 0; m < 12; m++) {
     const stunden = MONAT_STUNDEN[m];
-    if (monatswerte[m] == null) { h += stunden; continue; }
-    const floor = monatswerte[m] * 1000; // kWh
-    let sum = 0;
-    for (let i = 0; i < stunden && h + i < 8760; i++) sum += result[h + i];
-    if (sum < floor) {
-      // Gleichmäßig auffüllen
-      const add = (floor - sum) / stunden;
-      for (let i = 0; i < stunden && h + i < 8760; i++) result[h + i] += add;
+    if (monatswerte[m] != null) {
+      let sum = 0;
+      for (let i = 0; i < stunden && h + i < 8760; i++) sum += result[h + i];
+      if (sum > 0) { const k = monatswerte[m] * 1000 / sum; for (let i = 0; i < stunden && h + i < 8760; i++) result[h + i] *= k; }
     }
     h += stunden;
   }
-  // Auf Gesamtmenge skalieren
-  const sumNeu = result.reduce((a, b) => a + b, 0) / 1000;
-  if (sumNeu > 0 && gesamtMwh) {
-    const f = gesamtMwh / sumNeu;
-    for (let i = 0; i < 8760; i++) result[i] *= f;
+  return result;
+}
+
+// ── Fälle 3+4: Monatswerte einhalten ────────────────────────────────────
+// Eingegebene Monate werden exakt getroffen; die übrigen Monate teilen sich den Rest bis zur Jahresmenge
+// im Verhältnis des Profils (ohne Rest: 0). Liegt die Jahresmenge unter Σ Monatswerte, gilt Σ Monatswerte.
+export function glAnwendeMonatsfloor(arr, monatswerte, gesamtMwh) {
+  const MONAT_STUNDEN = [744,672,744,720,744,720,744,744,720,744,720,744];
+  const result = Float32Array.from(arr);
+  const start = [];
+  let h = 0, gegebenMwh = 0, restProfilKwh = 0, restStunden = 0;
+  const summe = [];
+  for (let m = 0; m < 12; m++) {
+    start.push(h);
+    let sum = 0;
+    for (let i = 0; i < MONAT_STUNDEN[m] && h + i < 8760; i++) sum += result[h + i];
+    summe.push(sum);
+    if (monatswerte[m] != null) gegebenMwh += monatswerte[m];
+    else { restProfilKwh += sum; restStunden += MONAT_STUNDEN[m]; }
+    h += MONAT_STUNDEN[m];
+  }
+  const restKwh = Math.max(0, ((gesamtMwh || gegebenMwh) - gegebenMwh) * 1000);
+  for (let m = 0; m < 12; m++) {
+    const n = MONAT_STUNDEN[m], h0 = start[m];
+    const ziel = monatswerte[m] != null ? monatswerte[m] * 1000
+      : (restProfilKwh > 0 ? restKwh * summe[m] / restProfilKwh : restKwh * n / Math.max(1, restStunden));
+    if (summe[m] > 0) { const k = ziel / summe[m]; for (let i = 0; i < n && h0 + i < 8760; i++) result[h0 + i] *= k; }
+    else { for (let i = 0; i < n && h0 + i < 8760; i++) result[h0 + i] = ziel / n; }
   }
   return result;
 }
@@ -673,21 +858,48 @@ export function toggleThermSpeicherPanel() {
 export function tsTypChanged() {
   const typ = document.getElementById('ts-typ')?.value;
   const presets = {
-    puffer:   { dt: 40, verlust: 0.5,  entlade: 200 },
-    gross:    { dt: 40, verlust: 0.1,  entlade: 500 },
-    saisonal: { dt: 30, verlust: 0.02, entlade: 100 },
+    puffer:   { dt: 40, entlade: 200 },
+    gross:    { dt: 40, entlade: 500 },
+    saisonal: { dt: 30, entlade: 100 },
   };
   const p = presets[typ] || presets.puffer;
   document.getElementById('ts-dt').value = p.dt;
-  document.getElementById('ts-verlust').value = p.verlust;
   document.getElementById('ts-entlade-kw').value = p.entlade;
   const ladeEl = document.getElementById('ts-lade-kw');
   if (ladeEl) ladeEl.value = p.entlade;
   // Volumen automatisch aus WP-Leistung berechnen
   const vol = _autoSpeicherVolumen(typ, p.dt);
   document.getElementById('ts-volumen').value = vol;
+  const vEl = document.getElementById('ts-verlust');
+  if (vEl) delete vEl.dataset.manuell;   // neuer Typ: Verlust wieder aus der Kennlinie
+  tsVerlustAuto();
   updateThermSpeicherDisplay();
   updateAllDeckungen();
+}
+
+/**
+ * Stündlicher Verlust aus der Speicherkennlinie (lib/waermespeicher.js, Oberfläche/Volumen), solange der Wert
+ * nicht von Hand eingetragen wurde — z. B. 50 m³ Puffer ≈ 0,05 %/h statt pauschal 0,5 %/h.
+ */
+export function tsVerlustAuto() {
+  const vEl = document.getElementById('ts-verlust');
+  if (!vEl || vEl.dataset.manuell === '1') return;
+  const vol = parseFloat(document.getElementById('ts-volumen')?.value) || 0;
+  const typ = document.getElementById('ts-typ')?.value || 'puffer';
+  if (vol > 0) vEl.value = +speicherVerlustProH(vol, typ).toPrecision(2);
+}
+
+/**
+ * Nach dem Laden eines Projekts/einer Variante: Die früheren Pauschalwerte (Puffer 0,5 · Groß 0,1 · Saisonal
+ * 0,02 %/h) gelten als nicht von Hand gesetzt und werden aus der Kennlinie ersetzt; andere Werte bleiben.
+ */
+export function tsVerlustGeladen() {
+  const vEl = document.getElementById('ts-verlust');
+  if (!vEl) return;
+  const typ = document.getElementById('ts-typ')?.value || 'puffer';
+  const alt = { puffer: 0.5, gross: 0.1, saisonal: 0.02 }[typ];
+  if (Math.abs((parseFloat(vEl.value) || 0) - (alt ?? -1)) < 1e-9) { delete vEl.dataset.manuell; tsVerlustAuto(); }
+  else vEl.dataset.manuell = '1';
 }
 
 // ── Automatische Speichergrößen-Empfehlung ──
@@ -730,7 +942,9 @@ export function getThermSpeicherParams() {
   const vol = parseFloat(document.getElementById('ts-volumen')?.value) || 0;
   if (vol <= 0) return null;
   const dt = parseFloat(document.getElementById('ts-dt')?.value) || 40;
-  const verlustPctH = parseFloat(document.getElementById('ts-verlust')?.value) || 0.5;
+  // Verlust: Eingabe, leer → Kennlinie nach Volumen und Bauart (nicht pauschal 0,5 %/h)
+  const vEin = parseFloat(document.getElementById('ts-verlust')?.value);
+  const verlustPctH = Number.isFinite(vEin) && vEin >= 0 ? vEin : speicherVerlustProH(vol, document.getElementById('ts-typ')?.value || 'puffer');
   const entladeKw = parseFloat(document.getElementById('ts-entlade-kw')?.value) || 200;
   const ladeKw = parseFloat(document.getElementById('ts-lade-kw')?.value) || entladeKw;
   const kapKwh = vol * 1.16 * dt; // V × ρc/3600 × ΔT ≈ V × 1.16 × ΔT

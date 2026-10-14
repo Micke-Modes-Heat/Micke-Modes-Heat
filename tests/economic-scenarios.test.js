@@ -8,8 +8,8 @@ describe('versioniertes Wirtschaftsszenario', () => {
     expect(scenario.version).toBe(1);
     expect(scenario.effectiveDate).toBe('2026-07-18');
     expect(Object.keys(scenario.values).sort()).toEqual([
-      'co2Alle','co2EurT','fernwaermeCtKwh','gasCtKwh','heizoelCtKwh','hhsCtKwh',
-      'kapitalzinsPct','lohnEurH','pelletsCtKwh','stromCtKwh','wpStromCtKwh',
+      'betrachtungA','co2Alle','co2EurT','fernwaermeCtKwh','gasCtKwh','heizoelCtKwh','hhsCtKwh',
+      'kapitalzinsPct','lohnEurH','pelletsCtKwh','preisBetriebPct','preisEnergiePct','stromCtKwh','wpStromCtKwh',
     ]);
   });
 

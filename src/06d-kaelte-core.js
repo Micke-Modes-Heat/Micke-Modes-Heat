@@ -386,7 +386,7 @@ export function updateKaelte() {
 // Reversible WP: nur Reversibilitäts-Aufschlag (€/kW) — die Maschine selbst steckt
 // bereits in der Wärme-Investition. Dedizierte Kältemaschine: Vollinvest (€/kW).
 function _kaelteEconomics(ks, erzList) {
-  const preisCt = _num('strom-preis-bezug', 35);          // ct/kWh
+  const preisCt = document.getElementById('strom-preis-bezug') ? _num('strom-preis-bezug', 35) : _num('wirt-p-strom', 35);   // ct/kWh (Feld im Strom-Panel entfallen → Strompreis der Wirtschaftlichkeit)
   const zins = _num('kaelte-zins', 4) / 100;
   const emfStrom = (typeof window.stromEmF === 'number') ? window.stromEmF : 363; // g/kWh
   const chillerEurKw = _num('kaelte-invest-chiller', 400);

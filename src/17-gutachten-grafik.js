@@ -10,6 +10,7 @@
 // über window gelesen — main.js legt alle Modul-Exporte dort ab.
 
 import { LKEBW_LOGO, LKEBW_LOGO_H, LKEBW_LOGO_W } from './config/lkebw-logo.js';
+import { erzeugtMwh as deErzeugt, jazAus as deJaz, lastMwh as deLast, waermeAnLastJeErzeuger as deAnLast } from './lib/dispatch-energie.js';
 import { naKvaText, NA_MESSORTE } from './lib/netzanschluss.js';
 import { BP_STUFEN, bpStufen, bpLadeLeistung, bpJahresreihe } from './lib/bedarfsprognose.js';
 import { sdJahresuebersicht, sdJahresauswertung, sdTrend, sdZeitraumText, sdDauerlinie } from './lib/stromdaten.js';
@@ -1471,12 +1472,26 @@ function ggEisDaten() {
     absorberM2: ggFeldZahl('eis-absorber'),
     maxVereisungZulPct: ggFeldZahl('eis-vereisung'),
     wpKw: ggFeldZahl('geo-leistung-eff'),
-    jaz: en && en.elMwh > 0 ? en.waermeMwh / en.elMwh : undefined,
-    waermeMwh: en?.waermeMwh,
-    deckungPct: en && gesamt > 0 ? en.waermeMwh / gesamt * 100 : undefined,
+    jaz: ggLies(() => deJaz(w._dispatchEnergy, 'geo'), null) ?? undefined,
+    waermeMwh: en ? ggLies(() => deErzeugt(w._dispatchEnergy, 'geo'), en.waermeMwh) : undefined,
+    deckungPct: en && gesamt > 0 ? ggLies(() => deAnLast(w._dispatchEnergy).geo, en.waermeMwh) / gesamt * 100 : undefined,
     folgeErzeuger: pos >= 0 ? keys.slice(pos + 1).filter(istAktiv) : [],
     stat: w._eisSpeicherErgebnis || null,
   };
+}
+
+/**
+ * Automatischer Spitzenlastkessel einer Variante → Schlüssel seines Kesseltyps (lib/spitzenkessel.js), damit Energieträger,
+ * fossiler Anteil, Resilienz und Primärenergie in den Textbausteinen stimmen; Erdgas bleibt '_autoGk'.
+ */
+function ggAgkNormal(liste, artAktiv) {
+  return (liste || []).map(e => {
+    if (e.key !== '_autoGk') return e;
+    const art = e.agkArt || artAktiv || 'gas';
+    if (art === 'heizoel') return { ...e, key: 'heizoel', name: 'Spitzenlast-Ölkessel' };
+    if (art === 'strom') return { ...e, key: 'stromkessel', name: 'Spitzenlast-Elektrodenkessel' };
+    return e;
+  });
 }
 
 /** Kurznamen der Variantenübersicht → Erzeugerschlüssel des Dispatch (für ältere Zwischenstände ohne `erzeugerDetail`). */
@@ -1519,9 +1534,10 @@ function ggVerbrauch() {
 function ggPotenzialDaten() {
   const w = window, ss = w.systemState;
   const en = ggLies(() => w._dispatchEnergy, {}) || {};
-  const gesamtDispatch = Object.values(en).reduce((x, e) => x + (e?.waermeMwh || 0), 0);
-  const anteil = k => (en[k]?.waermeMwh > 0 && gesamtDispatch > 0 ? (en[k].waermeMwh / gesamtDispatch) * 100 : NaN);
-  const jaz = k => (en[k]?.elMwh > 0 ? en[k].waermeMwh / en[k].elMwh : NaN);
+  // Anteile an der gedeckten Last mit anteiliger Speicherwärme, JAZ aus der gesamten erzeugten Wärme (lib/dispatch-energie.js)
+  const gesamtDispatch = deLast(en), anLast = deAnLast(en);
+  const anteil = k => (anLast[k] > 0 && gesamtDispatch > 0 ? (anLast[k] / gesamtDispatch) * 100 : NaN);
+  const jaz = k => deJaz(en, k) ?? NaN;
   const lwKw = ggLies(() => w.lwWp?.leistungKw, NaN);
   return {
     jdlKw: ss?.jahresdauerlinie, gesamtMwh: ss?.gesamtMwhMitNV, pMaxKw: ss?.pMaxKw,
@@ -1530,7 +1546,7 @@ function ggPotenzialDaten() {
       jaz: Number.isFinite(jaz('geo')) ? jaz('geo') : ggFeldZahl('geo-jaz'), deckungPct: anteil('geo'),
     },
     lwwp: {
-      wpKw: lwKw, jaz: jaz('lwwp'), deckungPct: anteil('lwwp'), waermeMwh: en.lwwp?.waermeMwh, stromMwh: en.lwwp?.elMwh, lwaDb: ggFeldZahl('lwwp-lwa'),
+      wpKw: lwKw, jaz: jaz('lwwp'), deckungPct: anteil('lwwp'), waermeMwh: en.lwwp ? deErzeugt(en, 'lwwp') : undefined, stromMwh: en.lwwp?.elMwh, lwaDb: ggFeldZahl('lwwp-lwa'), schallschutzDb: typeof window.lwWpSchallschutzDb === 'function' ? window.lwWpSchallschutzDb() : 0, schallschutzArt: window.lwWp?.schallschutz?.art || null,
       platzM2: Number.isFinite(lwKw) && typeof w.lwWpPlatzbedarfM2 === 'function' ? w.lwWpPlatzbedarfM2(lwKw) : NaN,
       vl15: ggFeldZahl('gl-vl15'), vlMinus5: ggFeldZahl('gl-vl5'), lastgangJahr: ggLies(() => w.getWitterung?.()?.messjahr, ''),
     },
@@ -1551,8 +1567,8 @@ function ggVariantenDaten() {
   const bEta = ggFeldZahl('bhkw-eta'), bSkz = ggFeldZahl('bhkw-skz');
   if (Number.isFinite(bEta) && bEta > 0) eta.bhkwTh = bEta / 100 / (1 + (Number.isFinite(bSkz) ? bSkz : 0.45));
   return {
-    varianten: d.varianten.map(v => ({ ...v, eta })), eta, pMaxKw: d.lastgang.pMaxKw, gesamtMwh: d.lastgang.gesamtMwh,
-    preise: { strom: Number.isFinite(stromWp) ? stromWp : ggFeldZahl('wirt-p-strom'), gas: ggFeldZahl('wirt-p-gas'), oel: ggFeldZahl('wirt-p-hko'), pellets: ggFeldZahl('wirt-p-pk'), hhs: ggFeldZahl('wirt-p-hhs') },
+    varianten: d.varianten.map(v => ({ ...v, eta })), eta, pMaxKw: d.lastgang.auslegung?.kw > 0 ? d.lastgang.auslegung.kw : d.lastgang.pMaxKw, gesamtMwh: d.lastgang.gesamtMwh,
+    preise: { strom: Number.isFinite(stromWp) ? stromWp : ggFeldZahl('wirt-p-strom'), gas: ggFeldZahl('wirt-p-gas'), oel: ggFeldZahl('wirt-p-hko'), pellets: ggFeldZahl('wirt-p-pk'), hhs: ggFeldZahl('wirt-p-hhs'), fw: ggFeldZahl('wirt-p-fw') },
     ef: { gas: num(ggLies(() => w.gasEmF)), oel: num(ggLies(() => w.heizoelEmF)), pellets: num(ggLies(() => w.pelletsEmF)), strom: num(ggLies(() => w.stromEmF)), stromLz: num(ggLies(() => w.stromEmFLZ)) },
     co2PreisEurT: ggFeldZahl('wirt-p-co2'), co2Quelle: VA_CO2_QUELLE,
     bestandCo2T: ggLies(() => ggVerbrauch().co2MittelT, NaN),
@@ -1594,12 +1610,24 @@ function ggTwwBestand() {
   return baTwwAuswertung((w.gebaeude || []).filter(g => !(parseInt(g.baujahr, 10) >= 2026)));
 }
 
-/** Wärmelastgang für Abbildungen: Import bevorzugt, sonst berechneter Basis-Lastgang. */
-function ggLastgangWaerme() {
-  const gl = ggLies(() => window.captureWaermeGrundlagen?.(), null);
-  if (gl?.lastgangKw?.length >= 8760) return { daten: gl.lastgangKw, quelle: 'Import' };
-  const b = window._basisLastgangKw || window.systemState?.lastgangKw;
-  return b?.length >= 8760 ? { daten: b, quelle: 'berechnet' } : { daten: null, quelle: '' };
+/**
+ * Wärmelastgang für Abbildungen — dieselbe Reihe wie die Texte (nach Monatsskalierung, Witterungsbereinigung und
+ * Netzverlusten), auf das Ist-Stichjahr skaliert; die Quelle sagt, ob sie auf einem importierten Lastgang beruht.
+ */
+function ggLastgangWaerme(o = {}) {
+  const w = window;
+  const gl = ggLies(() => w.captureWaermeGrundlagen?.(), null);
+  // roh: die gemessene Importreihe selbst (Vergleich Messung ↔ Gebäudesumme)
+  if (o.roh && gl?.lastgangKw?.length >= 8760) return { daten: gl.lastgangKw, quelle: 'Import' };
+  const quelle = gl?.lastgangKw?.length >= 8760 ? 'Import' : 'berechnet';
+  const basis = w._basisLastgangKw;
+  if (basis?.length >= 8760) {
+    const stichjahr = ggLies(() => ggGebaeudeAuswertung()?.stichjahr, null);
+    const f = Number.isFinite(stichjahr) ? ggLies(() => w.lastgangKennwerteFuerJahr?.(stichjahr)?.faktor, 1) : 1;
+    return { daten: f === 1 ? basis : Float32Array.from(basis, v => v * f), quelle };
+  }
+  const b = w.systemState?.lastgangKw;
+  return b?.length >= 8760 ? { daten: b, quelle } : { daten: null, quelle: '' };
 }
 /** Verbrauchsaufteilung auf die Gebäude — nur mit Messung (importierter Lastgang oder Verbrauchsdaten der Bestandsanlage). */
 function ggVerbrauchsaufteilung() {
@@ -1609,7 +1637,7 @@ function ggVerbrauchsaufteilung() {
   const vb = ggLies(() => ggVerbrauch(), null);
   let messungMwh = NaN, quelle = '', messpunkt = ba.messpunkt || 'einspeisung';
   if (String(herkunft).startsWith('import')) {
-    const lg = ggLastgangWaerme();
+    const lg = ggLastgangWaerme({ roh: true });
     messungMwh = lg.daten ? Array.prototype.reduce.call(lg.daten, (a, b) => a + (b || 0), 0) / 1000 : NaN;
     quelle = `Lastgang ${ggLies(() => w.getWitterung?.()?.messjahr, '') || ''}`.trim();
     if (messpunkt === 'brennstoff') messpunkt = 'einspeisung'; // ein Wärmelastgang ist immer Nutzwärme ab Erzeugung
@@ -1852,7 +1880,7 @@ function ggLwwpSweep() {
 function ggNtVergleich() {
   const w = window, d = ggVariantenDaten();
   const en = ggLies(() => w._dispatchEnergy, {}) || {};
-  const wp = ['lwwp', 'geo', 'fg'].reduce((a, k) => ({ w: a.w + (en[k]?.waermeMwh || 0), e: a.e + (en[k]?.elMwh || 0) }), { w: 0, e: 0 });
+  const wp = ['lwwp', 'geo', 'fg'].reduce((a, k) => ({ w: a.w + deErzeugt(en, k), e: a.e + (en[k]?.elMwh || 0) }), { w: 0, e: 0 });
   const vl15 = ggFeldZahl('gl-vl15'), vl5 = ggFeldZahl('gl-vl5'), vlHt = ggFeldZahl('netz-vl');
   const vlNt = Number.isFinite(vl15) && Number.isFinite(vl5) ? (vl15 + vl5) / 2 : NaN;
   if (!(wp.w > 0) || !Number.isFinite(vlHt) || !Number.isFinite(vlNt) || !(d.preise.strom > 0)) return null;
@@ -1904,9 +1932,15 @@ export function ggWaermeDaten() {
   const aktivKey = (typeof w.getActiveVariantId === 'function' ? w.getActiveVariantId() : w.activeVariantId) || 'base';
   const vr = ggLies(() => (typeof w.getVariantResults === 'function' ? w.getVariantResults() : w.variantResults), {}) || {};
 
+  // Ist-Zustand (3.1): Lastgang im Ist-Stichjahr, unabhängig vom gerade eingestellten Jahr
+  const stichjahr = ggLies(() => ggGebaeudeAuswertung()?.stichjahr, null);
+  const lastgangIst = ss && Number.isFinite(stichjahr) && stichjahr !== w.globalYear
+    ? ggLies(() => w.lastgangKennwerteFuerJahr?.(stichjahr), null) : null;
   const lastgang = ss ? {
     pMaxKw: ss.pMaxKw, nutzMwh: ss.nutzwaermeMwh, gesamtMwh: ss.gesamtMwhMitNV,
     netzverlustPct: ss.netzverlustPct, netzverlustMwh: ss.netzverlustMwh, tMinC: ss.tMin, jdlKw: ss.jahresdauerlinie,
+    // Auslegungsspitze bei Normaußentemperatur (lib/auslegung.js) — maßgebend für Leistungsprüfung und Resilienz
+    auslegung: ggLies(() => w.auslegungsSpitzeAktuell?.(), null),
   } : {};
 
   // Erzeuger der aktiven Variante direkt aus dem Dispatch; die übrigen Varianten kommen aus ihrem Zwischenstand
@@ -1917,39 +1951,67 @@ export function ggWaermeDaten() {
     bhkw: ggLies(() => w.bhkw?.leistungThKw), pellets: ggLies(() => w.pelletsKessel?.leistungKw), hhs: ggLies(() => w.heizhackschnitzel?.leistungKw),
     stromkessel: ggLies(() => w.stromkessel?.leistungKw), fernwaerme: ggLies(() => w.fernwaerme?.leistungKw),
   };
+  const _anLastAktiv = deAnLast(en);
   const erzeugerAktiv = Object.keys(en).map(key => ({
     key, leistungKw: leistung[key] || 0, waermeMwh: en[key]?.waermeMwh || 0, elMwh: en[key]?.elMwh || 0,
+    erzeugtMwh: deErzeugt(en, key), anLastMwh: key === '_thermSpeicher' ? undefined : _anLastAktiv[key],
     speicherM3: key === '_thermSpeicher' ? ggFeldZahl('ts-volumen') : undefined,
+    agkArt: key === '_autoGk' ? ggLies(() => w.spitzenkessel?.().art, 'gas') : undefined,
   }));
 
   // Netz: Länge, angeschlossene Gebäude, Hydraulik
   const kanten = ggLies(() => (w.netzEdges || []).filter(e => !e.pruned), []);
   const verbunden = new Set(kanten.flatMap(e => [e.u, e.v]));
-  const angeschlossen = ggLies(() => (w.gebaeude || []).filter(g => verbunden.has(g.id) && !(typeof w.isExcluded === 'function' && w.isExcluded(g.id))), []);
-  const mitDruck = kanten.filter(e => Number.isFinite(e.dpPerM) && Number.isFinite(e.dpLimit));
+  // Angeschlossen im betrachteten Jahr: ohne ausgeschlossene, geplante und abgerissene Gebäude; Heizlast mit Sanierung
+  const statJahr = g => ggLies(() => w.getComputedStats(g, w.globalYear), null);
+  // Hausstationen: mit Wärmebedarf, ohne Heizzentralen und reine Durchleitungsgebäude
+  const zentralen = ggLies(() => w.netzZentralenIds?.() || [], []);
+  const angeschlossen = ggLies(() => (w.gebaeude || []).filter(g => verbunden.has(g.id) && !(typeof w.isExcluded === 'function' && w.isExcluded(g.id))
+    && !zentralen.includes(g.id) && !['geplant', 'abgerissen'].includes(statJahr(g)?.status)
+    && ((statJahr(g)?.heizlast ?? parseFloat(g.heizlast)) > 0 || (statJahr(g)?.waerme ?? parseFloat(g.waerme)) > 0)), []);
+  // Netztemperaturen des betrachteten Jahres; geplante Absenkung (Jahr und Temperaturen vorher/nachher)
+  const tNetz = ggLies(() => w.netzTemperaturen?.(w.globalYear), null);
+  const planJahr = ggFeldZahl('netz-plan-jahr');
+  const absenkung = Number.isFinite(planJahr) && planJahr > 0 ? ggLies(() => {
+    const vor = w.netzTemperaturen(planJahr - 1), nach = w.netzTemperaturen(planJahr);
+    return nach.vl !== vor.vl || nach.rl !== vor.rl ? { jahr: planJahr, vlVorC: vor.vl, rlVorC: vor.rl, vlNachC: nach.vl, rlNachC: nach.rl } : undefined;
+  }) : undefined;
+  // Hydraulik: Grenzwerte aus den Eingaben, Engpässe nach Druckgefälle oder Geschwindigkeit, Förderhöhe der Netzpumpe
+  const mitDruck = kanten.filter(e => (e.load || 0) > 0 && Number.isFinite(e.dpPerM) && Number.isFinite(e.dpLimit));
+  const vBezug = ggFeldZahl('netz-v');
+  const vDn = dn => ggLies(() => (vBezug > 0 && typeof w.getVFlowForDN === 'function' ? w.getVFlowForDN(dn, vBezug) : undefined));
+  const hydraulik = kanten.length ? {
+    dpNetzPaM: ggFeldZahl('netz-dp-main'), dpAnschlussPaM: ggFeldZahl('netz-dp-service'),
+    vKleinMs: vDn(32), vGrossMs: vDn(350), foerderhoeheBar: ggLies(() => w._netzPumpe?.foerderhoeheBar),
+  } : undefined;
+  if (hydraulik) Object.keys(hydraulik).forEach(k => { if (!Number.isFinite(hydraulik[k])) delete hydraulik[k]; });
   const netz = {
-    laengeM: kanten.length ? kanten.reduce((s, e) => s + (e.length || 0), 0) : undefined,
+    // Trassenlänge der verlegten Leitungen (mit Nennweite, wie im Netzinvest; ohne deaktivierte und tote Abschnitte)
+    laengeM: kanten.length ? kanten.reduce((s, e) => s + ((e.dn || 0) > 0 ? (e.length || 0) : 0), 0) : undefined,
     anzahlAnschluesse: angeschlossen.length || undefined,
-    vlC: ggFeldZahl('netz-vl'), rlC: ggFeldZahl('netz-rl'),
+    vlC: tNetz?.vl ?? ggFeldZahl('netz-vl'), rlC: tNetz?.rl ?? ggFeldZahl('netz-rl'), absenkung,
     bestand: kanten.length ? !!w.networkLocked : undefined,
-    ueberschreitungen: mitDruck.length ? mitDruck.filter(e => e.dpPerM > e.dpLimit * 1.0001).length : undefined,
+    ueberschreitungen: mitDruck.length ? mitDruck.filter(e => e.hydraulicBottleneck || e.dpPerM > e.dpLimit * 1.0001).length : undefined,
+    hydraulik,
   };
   const gebaeude = {
     anzahl: angeschlossen.length || undefined,
-    heizlastSummeKw: angeschlossen.reduce((s, g) => s + (parseFloat(g.heizlast) || 0), 0) || undefined,
+    heizlastSummeKw: angeschlossen.reduce((s, g) => s + (Number(statJahr(g)?.heizlast ?? parseFloat(g.heizlast)) || 0), 0) || undefined,
   };
 
   const wirtschaft = {
-    zinsPct: ggFeldZahl('wirt-zins'), co2PreisEurT: ggFeldZahl('wirt-p-co2'), strompreisCt: ggFeldZahl('wirt-p-strom'),
+    // Strompreis wie in der WGK: Wärmepumpen und Stromkessel rechnen mit dem WP-Tarif (sonst allgemeiner Preis)
+    zinsPct: ggFeldZahl('wirt-zins'), co2PreisEurT: ggFeldZahl('wirt-p-co2'),
+    strompreisCt: ['lwwp', 'geo', 'fg', 'stromkessel'].some(k => (en[k]?.elMwh || 0) > 0) ? (ggFeldZahl('wirt-p-strom-wp') ?? ggFeldZahl('wirt-p-strom')) : ggFeldZahl('wirt-p-strom'),
     gaspreisCt: ggFeldZahl('wirt-p-gas'), fernwaermeCt: ggFeldZahl('wirt-p-fw'),
   };
 
   const gebName = id => { const g = ggLies(() => (w.gebaeude || []).find(x => x.id === id), null); return g?.name || `Gebäude ${id}`; };
   const varianten = Object.entries(vr).filter(([, r]) => r && Array.isArray(r.erzeuger) && (r.erzeugerDetail?.length || r.erzeuger.length)).map(([id, r]) => {
     const aktiv = id === aktivKey;
-    const detail = aktiv && erzeugerAktiv.length ? erzeugerAktiv
+    const detail = ggAgkNormal(aktiv && erzeugerAktiv.length ? erzeugerAktiv
       : r.erzeugerDetail?.length ? r.erzeugerDetail
-        : r.erzeuger.map(e => ({ key: GG_TYP_KEY[e.typ], name: GG_TYP_KEY[e.typ] ? undefined : e.typ, leistungKw: e.leistungKw, waermeMwh: e.waermeMwh }));
+        : r.erzeuger.map(e => ({ key: GG_TYP_KEY[e.typ], name: GG_TYP_KEY[e.typ] ? undefined : e.typ, leistungKw: e.leistungKw, waermeMwh: e.waermeMwh, agkArt: e.agkArt })));
     return {
       id, name: id === 'base' ? ggLies(() => w.variantenName?.('base'), '') || 'Hauptplan' : (r.label || id), aktiv, erzeuger: detail,
       investEur: r.investGes || undefined, jahreskostenEur: r.jkGes || undefined, wgkCt: r.wgkNum || undefined,
@@ -1959,7 +2021,7 @@ export function ggWaermeDaten() {
     };
   });
 
-  return { lastgang, projekt: ggBauProjekt(), herkunft: ggWaermeHerkunft(), netz, gebaeude, wirtschaft, varianten };
+  return { lastgang, lastgangIst: lastgangIst ? { ...lastgangIst, jahr: stichjahr } : null, projekt: ggBauProjekt(), herkunft: ggWaermeHerkunft(), netz, gebaeude, wirtschaft, varianten };
 }
 
 /* ── Hochbau (Kapitel 2): Gebäudebestand, bauliche Veränderungen, Entwicklung von Bedarf und Heizlast ──
@@ -2360,8 +2422,8 @@ const GG_FIGUREN = [
       const hat = k => (en[k]?.waermeMwh || 0) > 0;
       const nAssets = t => { try { return window.listAssets?.({ type: t }).length || 0; } catch (e) { void e; return 0; } };
       return {
-        heizoel:   hat('heizoel'),
-        erdgas:    hat('gaskessel') || hat('bhkw') || hat('_autoGk'),
+        heizoel:   hat('heizoel') || (hat('_autoGk') && window.spitzenkessel?.().key === 'heizoel'),
+        erdgas:    hat('gaskessel') || hat('bhkw') || (hat('_autoGk') && (window.spitzenkessel?.().key || 'gaskessel') === 'gaskessel'),
         biofest:   hat('pellets') || hat('hhs'),
         bioliquid: false,          // im Tool nicht modelliert
         biogas:    false,          // im Tool nicht modelliert
@@ -2921,7 +2983,7 @@ const GG_FIGUREN = [
     hinweis: 'Mittlere Leistung im Juli/August als Grundlast aus Warmwasser und Netzverlusten, aufs Jahr hochgerechnet und aufgeteilt.',
     render: () => {
       const ss = window.systemState;
-      return ggWaermeTextBlatt(lgTextGrundlast({ lastgangKw: ss?.lastgangKw, gesamtMwh: ss?.gesamtMwhMitNV, netzverlustMwh: ss?.netzverlustMwh }));
+      return ggWaermeTextBlatt(lgTextGrundlast({ lastgangKw: ss?.lastgangKw, gesamtMwh: ss?.gesamtMwhMitNV, netzverlustMwh: ss?.netzverlustMwh, twwDezentral: ss?.twwDezentral || null }));
     },
     config: {},
   },
@@ -3312,7 +3374,7 @@ const GG_FIGUREN = [
     render: () => {
       const w = window, d = ggVariantenDaten();
       const en = ggLies(() => w._dispatchEnergy, {}) || {};
-      const wp = ['lwwp', 'geo', 'fg'].reduce((a, k) => ({ w: a.w + (en[k]?.waermeMwh || 0), e: a.e + (en[k]?.elMwh || 0) }), { w: 0, e: 0 });
+      const wp = ['lwwp', 'geo', 'fg'].reduce((a, k) => ({ w: a.w + deErzeugt(en, k), e: a.e + (en[k]?.elMwh || 0) }), { w: 0, e: 0 });
       const vl15 = ggFeldZahl('gl-vl15'), vl5 = ggFeldZahl('gl-vl5');
       return ggWaermeTextBlatt(faTextNt({
         waermeMwh: wp.w, jazNt: wp.e > 0 ? wp.w / wp.e : undefined, vlHtC: ggFeldZahl('netz-vl'), vlNtC: Number.isFinite(vl15) && Number.isFinite(vl5) ? (vl15 + vl5) / 2 : NaN,
@@ -3359,7 +3421,7 @@ const GG_FIGUREN = [
     render: () => {
       const ss = window.systemState;
       const mittel = ss?.lastgangKw?.length ? ss.lastgangKw.reduce((a, b) => a + b, 0) / ss.lastgangKw.length : NaN;
-      return ggWaermeTextBlatt(faTextHeizoeltank({ maxKw: ss?.pMaxKw, mittelKw: mittel }));
+      return ggWaermeTextBlatt(faTextHeizoeltank({ maxKw: ggLies(() => window.auslegungsSpitzeAktuell?.()?.kw, null) || ss?.pMaxKw, mittelKw: mittel }));
     },
     config: {},
   },
@@ -3675,7 +3737,7 @@ const GG_FIGUREN = [
         z('Strombedarf', x => `${ggNum(x.stromMwh)} MWh`), z('Spitzenlasterzeuger Wärme', x => `${ggNum(x.spitzeMwh)} MWh`), { highlight: true, werte: ['Spitzenlasterzeuger Leistung', ...r.map(x => (x.restMaxKw < 1 ? 'entfällt' : `${ggNum(x.restMaxKw)} kW`))] },
       ];
       const nicht = ggLwwpSweep().filter(x => !x.erreichbar).map(x => `${x.ziel} %`);
-      cfg.fussnote = 'COP = Gütegrad × T_VL/(T_VL − T_Luft), höchstens 8; Leistung = Nennleistung × COP/COP(A2/W35); Vorlauf aus der Heizkurve der Wärme-Grundlagen'
+      cfg.fussnote = 'COP = Gütegrad × T_VL/(T_VL − T_Luft), höchstens 8; Leistung = Nennleistung (A2/W35) × (1 + 2 %/K · (T_Luft − 2) − 0,25 %/K · (T_VL − 35)), 30–110 %; Vorlauf aus der Heizkurve der Wärme-Grundlagen'
         + (nicht.length ? ` · nicht erreichbar (Mindest-COP): ${nicht.join(', ')}` : '');
       return `✓ ${r.length} Deckungsgrade.`;
     },
@@ -3689,7 +3751,20 @@ const GG_FIGUREN = [
     ausProjekt(cfg) {
       ggGebKopf(cfg);
       const ss = window.systemState, kw = ggLies(() => window.lwWp?.leistungKw, 0);
-      const r = kw > 0 ? abLwwpSimulation({ ...ggLwwpEingaben(), nennKw: kw, stunden: true }) : null;
+      // Wie der Text (4.2): Ergebnis der Einsatzplanung, solange die Luft-WP die einzige Wärmepumpe ist
+      // (Strom je Stunde gibt die Einsatzplanung nur für alle WP zusammen aus); sonst Einzelsimulation
+      const en = ggLies(() => window._dispatchEnergy, {}) || {};
+      const hourly = ggLies(() => window._dispatchHourly?.lwwp, null), elAlle = ggLies(() => window._wpElHourly, null);
+      const nurLwwp = !(en.geo?.elMwh > 0) && !(en.fg?.elMwh > 0);
+      let r;
+      if (kw > 0 && hourly?.length >= 8760 && elAlle?.length >= 8760 && nurLwwp && ss?.lastgangKw) {
+        const pd = ggPotenzialDaten().lwwp;
+        let restMax = 0;
+        for (let t = 0; t < 8760; t++) restMax = Math.max(restMax, ss.lastgangKw[t] - hourly[t]);
+        r = { wpH: hourly, elH: elAlle, deckungPct: pd.deckungPct, jaz: pd.jaz, restMaxKw: restMax };
+      } else {
+        r = kw > 0 ? abLwwpSimulation({ ...ggLwwpEingaben(), nennKw: kw, stunden: true }) : null;
+      }
       if (!r) { cfg.serien = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Luft-WP und Lastgang mit Außentemperatur nötig.'; }
       const idx = Array.from({ length: 8760 }, (_, i) => i).sort((a, b) => ss.lastgangKw[b] - ss.lastgangKw[a]);
       // Mittel über je 12 sortierte Stunden: 730 Stützstellen reichen für die Linie und halten das SVG klein
@@ -3713,13 +3788,14 @@ const GG_FIGUREN = [
     config: { ...ggGebVorlage('Mindestabstände Luft-WP nach TA Lärm', 'Abstand in m', 'Gebietsart', 'Kein Schallleistungspegel eingetragen.'), eyebrow: 'Potenzialanalyse' },
     ausProjekt(cfg) {
       ggGebKopf(cfg);
-      const lwa = ggPotenzialDaten().lwwp.lwaDb;
+      const lw = ggPotenzialDaten().lwwp;
+      const lwa = lw.lwaDb > 0 ? lw.lwaDb - (lw.schallschutzDb || 0) : lw.lwaDb;   // wirksamer Pegel mit Schallschutz
       const r = abSchallAbstaende(lwa);
       if (!r.length) { ggGebLeer(cfg); return '⚠ Kein Schallleistungspegel (Luft-WP-Panel).'; }
       cfg.kategorien = r.map(x => x.gebiet.replace(' Wohngebiet', ' WG').replace('Kern-, Dorf-, Mischgebiet', 'Misch-/Dorfgebiet'));
       cfg.gruppen = [{ label: '', segmente: [{ label: 'tags', farbe: '#C9A227', werte: r.map(x => x.rTag) }] }, { label: '', segmente: [{ label: 'nachts', farbe: '#2F4858', werte: r.map(x => x.rNacht) }] }];
       cfg.punkte = null; cfg.summenLabel = true;
-      cfg.kpiLinks = [{ wert: `${ggNum(lwa)} dB(A)`, label: 'Schallleistungspegel' }];
+      cfg.kpiLinks = [{ wert: `${ggNum(lwa)} dB(A)`, label: lw.schallschutzDb > 0 ? `Schallleistungspegel mit Schallschutz (−${ggNum(lw.schallschutzDb)} dB)` : 'Schallleistungspegel' }];
       cfg.kpiRechts = [{ wert: `${ggNum(r.find(x => x.nacht === 40)?.rNacht)} m`, label: 'allg. Wohngebiet nachts (40 dB(A))', highlight: true }];
       return `✓ ${r.length} Gebietsarten.`;
     },
@@ -9344,7 +9420,7 @@ function ggPvFiguren() {
         const mit = ggPvKanon().filter(v => v.batKwh > 0);
         if (!mit.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Auslegung mit Batteriespeicher.'; }
         const kurz = {
-          'ev-opt': 'wirtschaftlich', 'wirt-opt': 'mit PV optimiert', 'autarkie': 'Autarkie-Sättigung',
+          'ev-opt': 'wirtschaftlich', 'wirt-opt': 'mit PV optimiert',
           wirt: 'wirtschaftlich', autarkie: 'Autarkie-Sättigung', abregelung: 'gegen Abregelung', fest: 'vorgegeben',
         };
         const crate = window._pvAnalyse?.basis?.batCRate || 0.5;

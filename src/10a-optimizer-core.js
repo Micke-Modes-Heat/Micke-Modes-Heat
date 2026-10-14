@@ -7,7 +7,7 @@
 // OPT_INVEST_DEFAULT, OPT_NUTZUNG, OPT_IH, OPT_EE_KEYS, OPT_MERIT_ORDER → src/config/optimizer-defaults.js
 
 // Mapping Optimizer-Key → CalcEngine INVEST_KURVEN Key
-import { sichereAktivenStand, _varianteAusLiveAnlegen, fernwaermeEmF, gasEmF, gebaeude, globalYear, heizoelEmF, hhsEmF, networkLocked, netzEdges, pelletsEmF, stromEmF, varianten } from './01-globals-varianten.js';
+import { sichereAktivenStand, _varianteAusLiveAnlegen, variantenKennzahlenSperren, variantenKennzahlenFreigeben, fernwaermeEmF, gasEmF, gebaeude, globalYear, heizoelEmF, hhsEmF, networkLocked, netzEdges, pelletsEmF, stromEmF, varianten } from './01-globals-varianten.js';
 import { getComputedStats, getGebStromMwh, map } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, polygonCenter, redrawFliessgewaesser, redrawLwWp } from './02c-karte-werkzeuge.js';
 import { clearBhkw, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons } from './03a-erzeuger.js';
@@ -15,14 +15,18 @@ import { calcGeoThermie, clearGeo, redrawGeo } from './03b-netz.js';
 import { showHint } from './03c-gebaeude-io.js';
 import { getKostenProMKlasse, updateLpErgebnisKpis, updateLpStepProgress } from './04a-ui-panels.js';
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
-import { clearSolarthermie, clearThermSpeicher, getThermSpeicherParams, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
-import { _dispatchCore, autoGkResult, isErzeugerAktiv, meritOrderKeys, onSystemStateUpdated, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
-import { _calcKostenShared, _parseGeoBohrMeter } from './07b-analysis-economics.js';
+import { auslegungsSpitzeAktuell, clearSolarthermie, clearThermSpeicher, getThermSpeicherParams, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
+import { _dispatchCore, autoGkResult, isErzeugerAktiv, spitzenkessel, meritOrderKeys, onSystemStateUpdated, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
+import { huestInvestEur } from './lib/netz-hausstationen.js';
+import { eisInvest } from './lib/eisspeicher.js';
+import { speicherVerlustProH } from './lib/waermespeicher.js';
+import { _calcKostenShared, _parseGeoBohrMeter, batterieLebensdauer, netzPumpenstromMwh, pvWaermeEingaben, vdiDynParams, wirtPvWp } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
-import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { ERZEUGER_CFG, ERDGAS_HS_HI } from './config/erzeuger-cfg.js';
 import { OPT_INVEST_DEFAULT } from './config/optimizer-defaults.js';
-import { activeVariantId } from './01-globals-varianten.js';
+import { activeVariantId, bhkwCo2Gutschrift } from './01-globals-varianten.js';
+import { calcVerdraengungEmF } from './03a-erzeuger.js';
 import { appLifecycle } from './lib/lifecycle.js';
 const optimizerLifecycle = typeof appLifecycle !== 'undefined' ? appLifecycle : {
   timeout: (callback, delay) => setTimeout(callback, delay),
@@ -30,8 +34,13 @@ const optimizerLifecycle = typeof appLifecycle !== 'undefined' ? appLifecycle : 
 };
 import { _quelleTemp } from './06c-dispatch-core.js';
 import { OPT_EE_KEYS, OPT_IH, OPT_MERIT_ORDER, OPT_NUTZUNG } from './config/optimizer-defaults.js';
+import { eeAnteilPct, lastMwh } from './lib/dispatch-energie.js';
 import { pvBatteryStep } from './lib/pv-battery-core.js';
 import { estimateBatteryAging } from './lib/battery-aging.js';
+import { optGrobPunkte, optRasterStufen, optSuchraum } from './lib/optimierer-suche.js';
+
+// Zahlenfeld lesen, 0 ist ein gültiger Wert (||-Fallback würde ihn verschlucken)
+function _zahlOder(id, def) { const v = parseFloat(document.getElementById(id)?.value); return Number.isFinite(v) ? v : def; }
 
 export const _OPT_CE_KEY = {
   lwwp:'LuftWP', fg:'FlussWP', geo:'GeoWP', gaskessel:'Gaskessel',
@@ -67,6 +76,17 @@ export function _readGuetegrad(key) {
   return isNaN(v) || v <= 0 ? _defaultGuetegrad(key) : v;
 }
 
+// Auslegungsspitze für den Optimierer (Dispatch-Kern: Mindestleistung des Backup-/Spitzenkessels); je Lastgang und Jahr einmal
+let _auslCache = null;
+export function _optAuslegung() {
+  const ss = window.systemState;
+  if (_auslCache && _auslCache.ref === ss?.lastgangKw && _auslCache.jahr === globalYear) return _auslCache.val;
+  const a = typeof auslegungsSpitzeAktuell === 'function' ? auslegungsSpitzeAktuell(ss) : null;
+  const val = a ? { kw: a.kw, normAt: a.normAt, vorlauf: a.vorlauf } : null;
+  _auslCache = { ref: ss?.lastgangKw, jahr: globalYear, val };
+  return val;
+}
+
 // ── Optimizer-Dispatch: dünner Wrapper um _dispatchCore ──────────────────
 // Signatur bleibt identisch für alle 10 Aufrufstellen im Optimizer.
 // Intern wird der gemeinsame Kern (_dispatchCore aus 06-system-dispatch.js) genutzt.
@@ -79,7 +99,10 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
   let thSp = null;
   if (typeof optSpeicherVol === 'number' && optSpeicherVol > 0) {
     const dt = parseFloat(document.getElementById('ts-dt')?.value) || 40;
-    const verlustPctH = parseFloat(document.getElementById('ts-verlust')?.value) || 0.5;
+    // Verlust je untersuchtem Volumen aus der Kennlinie, außer von Hand eingegeben (wie im Worker)
+    const vEl = document.getElementById('ts-verlust');
+    const verlustPctH = vEl?.dataset.manuell === '1' && Number.isFinite(parseFloat(vEl.value)) ? parseFloat(vEl.value)
+      : speicherVerlustProH(optSpeicherVol, document.getElementById('ts-typ')?.value || 'puffer');
     const entladeKw = parseFloat(document.getElementById('ts-entlade-kw')?.value) || 200;
     const ladeKw = parseFloat(document.getElementById('ts-lade-kw')?.value) || entladeKw;
     thSp = { vol: optSpeicherVol, dt, kapKwh: optSpeicherVol * 1.16 * dt, verlustRate: verlustPctH / 100, entladeKw, ladeKw };
@@ -94,7 +117,10 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
   }
 
   // Kern-Dispatch aufrufen (nutzt _quelleTemp aus 06-system-dispatch.js — identische Logik)
-  const r = _dispatchCore({
+  // Saisonalspeicher wie in der Hauptrechnung (dispatchEingaben): Laden rund um die Uhr, eingeschwungener Jahresbeginn
+  const saisonal = !!thSp && document.getElementById('ts-typ')?.value === 'saisonal';
+  if (saisonal) thSp = { ...thSp, ladeVon: 0, ladeBis: 24 };
+  const args = {
     lastgangKw, tempH, vlH,
     erzList: erzeugerList,
     speicherParams: thSp,
@@ -104,12 +130,19 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
     quelleTemp: _quelleTemp,
     recordHourly: false,
     backupMode: true,
-  });
+    auslegung: _optAuslegung(),
+    agkStromEta: spitzenkessel().strom ? skEta : 0,
+  };
+  if (saisonal) args.speicherStartKwh = _dispatchCore(args).thermSocEnde || 0;
+  const r = _dispatchCore(args);
 
   // Ergebnisse in erzeugerList schreiben (Optimizer-Format)
   for (const erz of erzeugerList) {
     erz.waermeMwh = (r.thKwh[erz.key] || 0) / 1000;
     erz.elMwh     = (r.elKwh[erz.key] || 0) / 1000;
+    // in den Speicher geladene Wärme: zählt zur Erzeugung (JAZ, Brennstoff), nicht zur Direktdeckung
+    erz.ladeMwh   = ((r.ladeKwh?.[erz.key] || 0) + (r.verworfenKwh?.[erz.key] || 0)) / 1000;
+    erz.erzeugtMwh = erz.waermeMwh + erz.ladeMwh;
   }
   // Backup-Kessel: leistKw auf tatsächlichen Peak anheben
   const backupErz = erzeugerList.length > 0 ? erzeugerList[erzeugerList.length - 1] : null;
@@ -121,17 +154,22 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
     erzeugerList,
     autoGkMwh: r.autoGkKwh / 1000,
     autoGkPeakKw: r.autoGkPeakKw,
+    autoGkElMwh: (r.autoGkElKwh || 0) / 1000,
     gesamtMwh: r.gesamtKwh / 1000,
     wpElH: r.wpElH, bhkwElH: r.bhkwElH, skElH: r.skElH,
     speicherEntladenMwh: r.thermEntladenGes / 1000,
     speicherGeladenMwh: r.thermGeladenGes / 1000,
+    stLadeMwh: (r.ladeKwh?.solarthermie || 0) / 1000,
     wpResKwH: r.wpResKwH, wpResCopH: r.wpResCopH,
     thSpParams: r.speicherParams ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw, ladeKw: r.speicherParams.ladeKw ?? r.speicherParams.entladeKw } : null,
   };
 }
 
 // ── PV/Bat stündliche Simulation ──────────────────────────────────────────
-export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
+// wpSkH (optional): stündlicher Strombedarf von WP und Stromkessel — dann wird der PV-Strom an diese Verbraucher
+// mitgezählt (direkt bzw. über die Batterie), Grundlage für „PV-Strom für Wärmepumpen anrechnen“.
+// batLeistKwIn / spezIn (optional): Batterieleistung und spez. PV-Ertrag der Planung statt C/2 bzw. pv-spez.
+export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult, wpSkH = null, batLeistKwIn = null, spezIn = null) {
   const hasBhkw = bhkwElH && bhkwElH.some(v => v > 0);
   if (pvKwp <= 0 && !hasBhkw) {
     let sumDem = 0;
@@ -141,9 +179,10 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
   }
 
   const pvProfile = window._optCachedPvProfile || ((typeof makePvProfile8760 === 'function') ? makePvProfile8760() : null);
-  const spez = parseFloat(document.getElementById('pv-spez')?.value) || 1000;
+  const spez = spezIn || parseFloat(document.getElementById('pv-spez')?.value) || 1000;
   const ETA_BAT = 0.90;
-  const batLeistKw = batKwh > 0 ? batKwh / 2 : 0; // C/2 Rate
+  const batLeistKw = batKwh > 0 ? (batLeistKwIn > 0 ? batLeistKwIn : batKwh / 2) : 0; // sonst C/2
+  let zuWpDirekt = 0, zuWpBat = 0;
 
   let sv = 0, ins = 0, bez = 0, soc = 0, socPv = 0, socBhkw = 0;
   let pvEig = 0, pvEinsp = 0, bhkwEig = 0, bhkwEinsp = 0;
@@ -194,73 +233,79 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
     bhkwEig += (step.bhkwDirectKwh + step.bhkwDischargedKwh) / 1000;
     pvEinsp += (rGen / 1000) * pvFrac;
     bhkwEinsp += (rGen / 1000) * (1 - pvFrac);
+    if (wpSkH && dem > 0) {
+      const anteil = Math.min(1, wpSkH[t] / dem);
+      zuWpDirekt += step.pvDirectKwh * anteil / 1000 + pvWpSpeicher;
+      zuWpBat += step.pvDischargedKwh * anteil / 1000;
+    }
   }
 
   return { eigenMwh: sv / 1000 + pvWpSpeicherGes, einspeiseMwh: ins / 1000, netzbezugMwh: bez / 1000,
            pvEigenMwh: pvEig, pvEinspMwh: pvEinsp, bhkwEigenMwh: bhkwEig, bhkwEinspMwh: bhkwEinsp,
-           pvWpSpeicherMwh: pvWpSpeicherGes, batDischargeMwh:batDischargeKwh/1000 };
+           pvWpSpeicherMwh: pvWpSpeicherGes, batDischargeMwh:batDischargeKwh/1000,
+           pvErtragMwh: pvKwp * spez / 1000, zuWpDirektMwh: zuWpDirekt, zuWpBatMwh: zuWpBat };
 }
 
 // _calcBausteinKostenOpt ENTFERNT — nutzt jetzt _calcKostenShared
 
 // ── Kennwerte (WGK, CO2, EE-Anteil, Autarkie) — Wrapper um _calcKostenShared ──
-export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, params, stWaermeMwhOpt, stM2Opt, optSpeicherVol) {
+// tsOverride (optional): {typ, dt} des Speichers statt der Eingaben im Wärmespeicher-Panel (Speicheranalyse)
+export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, params, stWaermeMwhOpt, stM2Opt, optSpeicherVol, tsOverride = null) {
   const { erzeugerList, gesamtMwh } = dispatchResult;
-  const { pStrom, pStromWp, pGas, pPk, pHhs, pHko, pFw, pEinsp, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz } = params;
+  const { pStrom, pStromWp, pGas, pPk, pHhs, pHko, pFw, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz } = params;
 
   // Peak-Leistungen für Bausteine
   const _bPKw = {};
   for (const erz of erzeugerList) _bPKw[erz.key] = erz.leistKw;
+  // Auto-Spitzenlastkessel (Rest, den die gewählten Erzeuger nicht decken, mindestens die fehlende Leistung im
+  // Auslegungsfall) wie in der normalen Wirtschaftlichkeit
+  const _agkMwh = dispatchResult.autoGkMwh || 0, _agkKw = dispatchResult.autoGkPeakKw || 0;
+  if (_agkKw > 0.1) _bPKw._autoGk = Math.ceil(_agkKw);
   const _bInvestFn = (key, kw) => kw > 0.1 ? Math.round(kw * _optInvestProKw(key, kw)) : 0;
 
-  // Dynamische Bohrmeter für Geo
+  // Dynamische Bohrmeter für Geo; Quelle Eisspeicher: dessen Investition (mit der Geo-WP-Leistung skaliert)
   let _dynBohrMeter = typeof _parseGeoBohrMeter === 'function' ? _parseGeoBohrMeter() : 0;
   const _geoErz = erzeugerList.find(e => e.key === 'geo');
-  if (_geoErz && _geoErz.leistKw > 0 && _dynBohrMeter < 1) {
-    const jaz = (_geoErz.elMwh > 0) ? _geoErz.waermeMwh / _geoErz.elMwh : 4.0;
+  const _eisVar = _optEisFuer(erzeugerList);
+  const _geoQuellEur = _eisVar ? eisInvest(_eisVar.volumenM3, _eisVar.absorberM2) : undefined;
+  if (_geoErz && _geoErz.leistKw > 0 && _dynBohrMeter < 1 && !_eisVar) {
+    const _geoErzeugt = _geoErz.erzeugtMwh ?? _geoErz.waermeMwh;
+    const jaz = (_geoErz.elMwh > 0) ? _geoErzeugt / _geoErz.elMwh : 4.0;
     const tiefe = Math.min(400, Math.max(30, parseFloat(document.getElementById('geo-tiefe')?.value) || 100));
     const qPerM = Math.min(60, Math.max(10, parseFloat(document.getElementById('geo-q-perm')?.value) || 31));
     const erdwKw = _geoErz.leistKw * (jaz - 1) / jaz;
     const proSondeKw = qPerM * tiefe / 1000;
     const nL = Math.max(1, Math.ceil(erdwKw / proSondeKw));
     let nE = 1;
-    if (_geoErz.waermeMwh > 0) {
-      nE = Math.max(1, Math.ceil(_geoErz.waermeMwh * 1000 * (jaz - 1) / jaz / (proSondeKw * 2100)));
+    if (_geoErzeugt > 0) {
+      nE = Math.max(1, Math.ceil(_geoErzeugt * 1000 * (jaz - 1) / jaz / (proSondeKw * 2100)));
     }
     _dynBohrMeter = Math.max(nL, nE) * tiefe;
   }
 
   // Quartier-Strom
   let quartierStromMwh = 0;
-  if (window.elQuartierH) { for (let t = 0; t < 8760; t++) quartierStromMwh += window.elQuartierH[t]; quartierStromMwh /= 1000; }
+  if (Number.isFinite(window._optQuartierStromMwh)) quartierStromMwh = window._optQuartierStromMwh;   // wie im Worker (10c)
+  else if (window.elQuartierH) { for (let t = 0; t < 8760; t++) quartierStromMwh += window.elQuartierH[t]; quartierStromMwh /= 1000; }
   else { const gebs = typeof gebaeude !== 'undefined' ? gebaeude : []; let s = 0; for (const g of gebs) s += parseFloat(g.stromJahr || g.stromkwh || 0); quartierStromMwh = s / 1000; }
-
-  // PV-Daten
-  const pvEigenMwh = pvBatResult ? (pvBatResult.pvEigenMwh != null ? pvBatResult.pvEigenMwh : pvBatResult.eigenMwh) : 0;
-  const pvEinspMwh = pvBatResult ? (pvBatResult.pvEinspMwh != null ? pvBatResult.pvEinspMwh : pvBatResult.einspeiseMwh) : 0;
-  const gesamtEigenMwh = pvBatResult ? (pvBatResult.eigenMwh || 0) : 0;
-  const pvAutoChk = document.getElementById('pv-invest-auto');
-  let pvInvPerKwp = OPT_INVEST_DEFAULT.pv;
-  if (pvAutoChk?.checked && typeof CalcEngine !== 'undefined') pvInvPerKwp = CalcEngine.getPvInvestPerKwp(pvKwp);
-  else pvInvPerKwp = parseFloat(document.getElementById('opt-pv-invest')?.value) || OPT_INVEST_DEFAULT.pv;
 
   // ErzList mit typ ergänzen
   const erzListTyped = erzeugerList.map(e => ({
-    key: e.key, waermeMwh: e.waermeMwh, elMwh: e.elMwh,
+    key: e.key, waermeMwh: e.waermeMwh, elMwh: e.elMwh, ladeMwh: e.ladeMwh || 0, erzeugtMwh: e.erzeugtMwh ?? e.waermeMwh,
     typ: (typeof ERZEUGER_CFG !== 'undefined' && ERZEUGER_CFG[e.key]) ? ERZEUGER_CFG[e.key].typ : null
   }));
+  if (_bPKw._autoGk) erzListTyped.push({ key: '_autoGk', waermeMwh: _agkMwh, elMwh: dispatchResult.autoGkElMwh || 0, typ: 'fix' });
 
   // BHKW-Erlös-Daten
   const bhkwEigMwh = pvBatResult ? (pvBatResult.bhkwEigenMwh || 0) : 0;
   const bhkwEinspMwh = pvBatResult ? (pvBatResult.bhkwEinspMwh || 0) : 0;
-  const batAging = batKwh > 0 ? estimateBatteryAging({capacityKwh:batKwh,annualDischargeKwh:(pvBatResult?.batDischargeMwh||0)*1000,
-    calendarFadePctPerYear:parseFloat(document.getElementById('bat-calendar-fade')?.value)||1.5,
-    cycleLife:parseFloat(document.getElementById('bat-cycle-life')?.value)||6000,eolCapacityPct:parseFloat(document.getElementById('bat-eol-pct')?.value)||80,studyYears:20}) : null;
 
   const result = _calcKostenShared({
     pKw: _bPKw,
+    agkKey: typeof spitzenkessel === 'function' ? spitzenkessel().key : 'gaskessel',
     erzList: erzListTyped,
     zinsPct: zinssatz * 100,
+    dyn: params.dyn,
     lohn: parseFloat(document.getElementById('wirt-lohn')?.value) || 45,
     prices: { strom: pStrom, stromWp: pStromWp, gas: pGas, hko: pHko, fw: pFw, pk: pPk, hhs: pHhs },
     etas: {
@@ -274,23 +319,18 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
     investFn: _bInvestFn,
     extra: {
       bohrMeter: _dynBohrMeter,
-      nGeb: parseInt(document.getElementById('netz-n-geb')?.value) || 0,
+      geoQuellEur: _geoQuellEur,
+      nGeb: _optHst().anzahl,
+      huestEur: huestInvestEur(_optHst().anschlussKw),
       netzInvest: typeof _calcNetzInvestForOpt === 'function' ? _calcNetzInvestForOpt() : 0,
+      ohneNetz: !!window._wirtOhneNetz,
+      pumpMwh: netzPumpenstromMwh(),
       stM2: stM2Opt || (stWaermeMwhOpt > 0 ? (parseFloat(document.getElementById('st-flaeche')?.value) || 0) : 0),
       optSpeicherVol: optSpeicherVol || 0,
-      tsTyp: document.getElementById('ts-typ')?.value || 'puffer',
-      tsDt: parseFloat(document.getElementById('ts-dt')?.value) || 40,
+      tsTyp: tsOverride?.typ || document.getElementById('ts-typ')?.value || 'puffer',
+      tsDt: tsOverride?.dt || parseFloat(document.getElementById('ts-dt')?.value) || 40,
     },
-    pv: {
-      kwp: pvKwp, batKwh: batKwh,
-      eigenMwh: pvEigenMwh, einspMwh: pvEinspMwh,
-      gesamtEigenMwh: gesamtEigenMwh,
-      invPerKwp: pvInvPerKwp,
-      batInvPerKwh: parseFloat(document.getElementById('opt-bat-invest')?.value) || OPT_INVEST_DEFAULT.bat,
-      batLifeYears: batAging && Number.isFinite(batAging.expectedLifeYears) ? Math.max(1,batAging.expectedLifeYears) : OPT_NUTZUNG.bat,
-      vergModell: document.getElementById('pv-verg-modell')?.value || 'teil',
-      pEinsp: pEinsp
-    },
+    pv: _optPvObjekt(pvKwp, batKwh, pvBatResult),
     strom: {
       quartierMwh: quartierStromMwh,
       bhkwEigenMwh: bhkwEigMwh, bhkwEinspMwh: bhkwEinspMwh,
@@ -299,6 +339,8 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
     co2: {
       pCo2: parseFloat(document.getElementById('wirt-p-co2')?.value) || 0,
       alleET: document.getElementById('wirt-co2-alle')?.checked !== false,
+      bhkwGutschrift: !!bhkwCo2Gutschrift,
+      verdraengungEf: calcVerdraengungEmF(),
       emf: {
         gas: typeof gasEmF !== 'undefined' ? gasEmF : 240,
         heizoel: typeof heizoelEmF !== 'undefined' ? heizoelEmF : 310,
@@ -309,20 +351,41 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
       }
     },
     gesamtMwh: gesamtMwh,
-    stMwh: stWaermeMwhOpt || 0
+    stMwh: stWaermeMwhOpt || 0,
+    speicherEntladenMwh: dispatchResult.speicherEntladenMwh || 0,
+    stLadeMwh: dispatchResult.stLadeMwh || 0
   });
-
-  // Debug
-
-  const spez = parseFloat(document.getElementById('pv-spez')?.value) || 1000;
-  const pvErtragMwh = pvKwp * spez / 1000;
 
   return {
     wgk: result.wgk, co2ta: result.co2ta, eeAnteil: result.eeAnteil,
     stromAutarkie: result.stromAutarkie, waermeAutarkie: result.waermeAutarkie,
     investGesamt: result.investGesamt, jahreskosten: result.jahreskosten,
-    pvEigenMwh: pvEigenMwh, pvErtragMwh: pvErtragMwh
+    pvErtragMwh: pvBatResult?.pvErtragMwh || 0, pvZuWpMwh: result.pvZuWpMwh, pvCt: result.pvCt,
   };
+}
+
+/**
+ * PV-Eingaben der Optimierung: PV und Batterie wie in der Planung (nicht optimiert); angerechnet wird nur der
+ * PV-Strom an WP/Stromkessel aus der Stundensimulation dieser Variante — wie pvWaermeEingaben() im Panel.
+ */
+function _optPvObjekt(pvKwp, batKwh, r) {
+  if (!wirtPvWp() || !(pvKwp > 0)) return { modus: 'aus' };
+  const plan = pvWaermeEingaben();
+  const aging = batKwh > 0 ? estimateBatteryAging({ capacityKwh: batKwh, annualDischargeKwh: (r?.batDischargeMwh || 0) * 1000,
+    calendarFadePctPerYear: _zahlOder('bat-calendar-fade', 1.5), cycleLife: parseFloat(document.getElementById('bat-cycle-life')?.value) || 6000,
+    eolCapacityPct: parseFloat(document.getElementById('bat-eol-pct')?.value) || 80, studyYears: 20 }) : null;
+  return { ...plan, kwp: pvKwp, batKwh, ertragMwh: r?.pvErtragMwh ?? plan.ertragMwh,
+    batEntladungMwh: r?.batDischargeMwh || 0, batLifeYears: batterieLebensdauer(aging?.expectedLifeYears),
+    zuWpDirektMwh: r?.zuWpDirektMwh || 0, zuWpBatMwh: r?.zuWpBatMwh || 0 };
+}
+
+/** PV und Batterie der Planung für die Optimierung (nur mit „PV-Strom für Wärmepumpen anrechnen“). */
+export function _optPvPlan() {
+  if (!wirtPvWp()) return { kwp: 0, batKwh: 0, batKw: 0, spez: 0 };
+  const b = window._stromBilanz || {};
+  const batKw = parseFloat(document.getElementById('bat-leistung')?.value) || 0;
+  return { kwp: Math.round(b.pvKwp || 0), batKwh: batKw > 0 ? Math.round(parseFloat(document.getElementById('bat-kapazitaet')?.value) || 0) : 0,
+    batKw, spez: b.pvSpez || 0 };
 }
 
 // ── Score-Berechnung je Optimierungsziel ──────────────────────────────────
@@ -330,59 +393,9 @@ export function _optScore(kw, ziel) {
   if (ziel === 'min-wgk')       return kw.wgk;
   if (ziel === 'min-co2')       return kw.co2ta;
   if (ziel === 'max-autarkie')  return -(kw.stromAutarkie + kw.waermeAutarkie);
-  if (ziel === 'min-kosten-ee') return kw.eeAnteil >= 65 ? kw.wgk : 1e9 + kw.wgk;
+  // unzulässig bleibt vergleichbar (näher an 65 % = besser) — wie score() im Worker
+  if (ziel === 'min-kosten-ee') return kw.eeAnteil >= 65 ? kw.wgk : 1e9 + (65 - kw.eeAnteil) * 1e3 + kw.wgk;
   return kw.wgk;
-}
-
-// ── PV+Bat Dimensionierung per marginaler Amortisation (Main-Thread) ──
-export function _findOptPvBatMain(pvSteps, batSteps, demandH, bhkwElH, disp,
-                           params, stMwh, stM2, tsVol, ziel, maxAmortJ) {
-  const pStrom = params.pStrom;
-  function einspeiseCtKwh(pvKwp) {
-    const mod = document.getElementById('pv-verg-modell')?.value || 'teil';
-    if (mod === 'teil') return pvKwp <= 0 ? 8.1 : (Math.min(pvKwp,10)*8.1 + Math.max(0,Math.min(pvKwp,40)-10)*7.0 + Math.max(0,pvKwp-40)*5.7) / pvKwp;
-    if (mod === 'voll') return pvKwp <= 0 ? 12.9 : (Math.min(pvKwp,10)*12.9 + Math.max(0,pvKwp-10)*10.8) / pvKwp;
-    return params.pEinsp || 8;
-  }
-  function pvInvPerKwp(kwp) {
-    const chk = document.getElementById('pv-invest-auto');
-    if (chk?.checked && typeof CalcEngine !== 'undefined') return CalcEngine.getPvInvestPerKwp(kwp);
-    return parseFloat(document.getElementById('opt-pv-invest')?.value) || OPT_INVEST_DEFAULT.pv;
-  }
-  let bestPv = 0, bestBat = 0, bestScore = Infinity, bestKw = null;
-
-  // PV=0 immer testen
-  const pvBat0 = _optPvBatSim8760(0, 0, demandH, bhkwElH, disp);
-  const kw0 = _optKennwerte2(disp, 0, 0, pvBat0, params, stMwh, stM2, tsVol);
-  const sc0 = _optScore(kw0, ziel);
-  if (sc0 < bestScore) { bestScore = sc0; bestPv = 0; bestBat = 0; bestKw = kw0; }
-
-  for (const batK of batSteps) {
-    let prevEigen = 0, prevEinsp = 0, prevPvK = 0;
-    for (let pi = 0; pi < pvSteps.length; pi++) {
-      const pvK = pvSteps[pi];
-      if (pvK <= 0) continue;
-
-      const pvBat = _optPvBatSim8760(pvK, batK, demandH, bhkwElH, disp);
-      const curEigen = pvBat.pvEigenMwh || 0;
-      const curEinsp = pvBat.pvEinspMwh || 0;
-
-      const deltaInvest = pvK * pvInvPerKwp(pvK) - prevPvK * pvInvPerKwp(prevPvK);
-      const deltaEigen = curEigen - prevEigen;
-      const deltaFeedRevenue = curEinsp * einspeiseCtKwh(pvK) * 10
-        - prevEinsp * einspeiseCtKwh(prevPvK) * 10;
-      const deltaSavings = deltaEigen * pStrom * 10 + deltaFeedRevenue;
-
-      if (deltaSavings <= 0 || deltaInvest / deltaSavings > maxAmortJ) break;
-
-      const kw = _optKennwerte2(disp, pvK, batK, pvBat, params, stMwh, stM2, tsVol);
-      const sc = _optScore(kw, ziel);
-      if (sc < bestScore) { bestScore = sc; bestPv = pvK; bestBat = batK; bestKw = kw; }
-
-      prevEigen = curEigen; prevEinsp = curEinsp; prevPvK = pvK;
-    }
-  }
-  return { pvKwp: bestPv, batKwh: bestBat, kw: bestKw, score: bestScore };
 }
 
 // _optAborted, _optRunning, _optWorker, _optWorkers — defined in 10b-optimizer-ui.js
@@ -458,46 +471,30 @@ export function _optUpdateEstimate() {
   const el = document.getElementById('opt-estimate');
   if (!el) return;
   const allKeys = ['lwwp','fg','geo','gaskessel','bhkw','stromkessel','pellets','hhs','fernwaerme','heizoel'];
-  const nKand = allKeys.filter(k => document.getElementById('opt-cand-' + k)?.checked).length;
-  if (nKand === 0) { el.textContent = ''; return; }
-  const pvAktiv = document.getElementById('opt-cand-pv')?.checked;
-  const batAktiv = document.getElementById('opt-cand-bat')?.checked;
-  const stAktiv = document.getElementById('opt-cand-st')?.checked;
-  const tsAktiv = document.getElementById('opt-cand-ts')?.checked;
+  const aktiv = allKeys.filter(k => document.getElementById('opt-cand-' + k)?.checked);
+  if (aktiv.length === 0) { el.textContent = ''; return; }
   const q = document.getElementById('opt-quality')?.value || 'standard';
-
-  // Kombinations-Anzahl: C(n,1) + C(n,2) + C(n,3)
-  const nKombis = nKand + nKand * (nKand - 1) / 2 + nKand * (nKand - 1) * (nKand - 2) / 6;
-  // Leistungsstufen pro Quality
-  const gN = { schnell: 5, standard: 7, gruendlich: 11 }[q];
-  // Durchschnittliche Configs pro Kombi (gewichteter Mix aus 1er, 2er, 3er)
-  const avg1 = gN, avg2 = gN * gN, avg3 = gN * gN * gN;
-  const n1 = nKand, n2 = nKand * (nKand - 1) / 2, n3 = nKand * (nKand - 1) * (nKand - 2) / 6;
-  const totalConfigs = n1 * avg1 + n2 * avg2 + n3 * avg3;
-  // ST/TS Multiplikatoren
-  const stSteps = stAktiv ? (nKand <= 4 ? 5 : nKand <= 6 ? 3 : 2) : 1;
-  const tsSteps = tsAktiv ? (nKand <= 4 ? 5 : 3) : 1;
-  // PV/Bat innere Schleife
-  const pvN = { schnell: 2, standard: 3, gruendlich: 5 }[q];
-  const batN = { schnell: 1, standard: 2, gruendlich: 3 }[q];
-  const pvBatSteps = (pvAktiv ? pvN : 1) * (batAktiv ? batN : 1);
-
-  const totalDispatches = totalConfigs * stSteps * tsSteps;
-  const totalEvals = totalDispatches * pvBatSteps;
-  // Empirischer Faktor: ~0.5ms pro Dispatch+PvBat auf modernem Rechner
-  const estSec = totalEvals * 0.5 / 1000;
-  // + Feinsuche ~40% Overhead
-  const estTotal = estSec * 1.4;
-
-  let label;
-  if (estTotal < 10) label = '~' + Math.max(1, Math.round(estTotal)) + 's';
-  else if (estTotal < 90) label = '~' + Math.round(estTotal / 5) * 5 + 's';
-  else if (estTotal < 600) label = '~' + Math.round(estTotal / 60) + ' min';
-  else label = '~' + (estTotal / 60).toFixed(0) + ' min';
-
-  el.textContent = nKombis.toFixed(0) + ' Kombis \u00b7 ' + label;
-  el.style.color = estTotal < 30 ? '#81c784' : estTotal < 120 ? '#ffcc80' : '#ef9a9a';
+  const typen = {}; for (const [k, v] of Object.entries(ERZEUGER_CFG)) typen[k] = v.typ;
+  // Suchraum wie im Lauf, mit normierter Spitzenlast (die Punktzahl hängt nur von den Anteilen ab)
+  const raum = optSuchraum({ aktiv, constraints: {}, jahr: 0, peak: 1000, typen, meritOrder: OPT_MERIT_ORDER, agkKey: spitzenkessel().key });
+  const stufen = optRasterStufen(q);
+  let punkte = 0;
+  for (const k of raum.kombis) punkte += optGrobPunkte(k.grenzen, stufen, 1000).length;
+  const mult = (document.getElementById('opt-cand-st')?.checked ? 2 : 1) * (document.getElementById('opt-cand-ts')?.checked ? 2 : 1);
+  const pvN = wirtPvWp() ? 1 : 0;
+  // ~0,25 ms je Einsatzplanung, ~0,2 ms je PV/Batterie-Bewertung (gemessen); Kerne parallel
+  const kerne = Math.max(1, Math.min((navigator.hardwareConcurrency || 4) - 1, 8));
+  const grobSek = punkte * mult * (0.25 + pvN * 0.2) / 1000 / kerne;
+  const feinSek = (OPT_FEIN_ANZAHL[q] || 6) * (OPT_FEIN_EVALS[q] || 350) * 0.6 / 1000 / Math.min(kerne, OPT_FEIN_ANZAHL[q] || 6);
+  const est = grobSek + feinSek;
+  const label = est < 10 ? '~' + Math.max(1, Math.round(est)) + ' s' : est < 90 ? '~' + Math.round(est / 5) * 5 + ' s' : '~' + Math.round(est / 60) + ' min';
+  el.textContent = raum.kombis.length + ' Konzepte \u00b7 ' + label;
+  el.style.color = est < 30 ? '#81c784' : est < 120 ? '#ffcc80' : '#ef9a9a';
 }
+
+/** Anzahl der Anlagenkonzepte, die in die Feinsuche gehen, und deren Bewertungsbudget je Qualität. */
+export const OPT_FEIN_ANZAHL = { schnell: 5, standard: 8, gruendlich: 12 };
+export const OPT_FEIN_EVALS = { schnell: 150, standard: 350, gruendlich: 700 };
 
 // Event-Listener für Kandidaten-Checkboxen → Schätzung aktualisieren
 // Direkt ausführen (DOM existiert bereits, da dieses Script nach dem HTML steht)
@@ -510,13 +507,31 @@ export function _optUpdateEstimate() {
   _optUpdateEstimate();
 })();
 
+/** Eisspeicher als Quelle der Geo-WP: Auslegung des Panels, mit der Leistung der Geo-WP der Variante skaliert (oder null). */
+export function _optEisSpeicher() {
+  const e = typeof window.getEisSpeicherParams === 'function' ? window.getEisSpeicherParams() : null;
+  return e ? { ...e, wpKw: parseFloat(document.getElementById('geo-heizlast')?.value) || 0 } : null;
+}
+function _optEisFuer(erzeugerList) {
+  const e = _optEisSpeicher();
+  const geo = e && erzeugerList.find(x => x.key === 'geo');
+  if (!geo || !(geo.leistKw > 0)) return null;
+  const f = e.wpKw > 0 ? geo.leistKw / e.wpKw : 1;
+  return { volumenM3: e.volumenM3 * f, absorberM2: e.absorberM2 * f, maxVereisungPct: e.maxVereisungPct };
+}
+
+/** Hausübergabestationen des Wärmenetzes (03b netzHausstationen): Anzahl und Anschlussleistung je Gebäude. */
+function _optHst() {
+  return typeof window.netzHausstationen === 'function' ? window.netzHausstationen() : { anzahl: 0, anschlussKw: [] };
+}
+
 export function _calcNetzInvestForOpt() {
   if (typeof netzEdges === 'undefined' || !netzEdges.length) return 0;
   if (typeof networkLocked !== 'undefined' && networkLocked && !window._netzSanierung) return 0;
   let s = 0;
   netzEdges.forEach(function(e) {
     if (e.pruned) return;
-    const kpm = typeof getKostenProMKlasse === 'function' ? getKostenProMKlasse(e.dn, e.kostKlasse || 'mittel') : 0;
+    const kpm = typeof getKostenProMKlasse === 'function' ? getKostenProMKlasse(e.dn, e.kostKlasse || window.kostenSzenarioAktuell?.() || 'mittel') : 0;
     s += kpm * (e.length || 0);
   });
   if (typeof networkLocked !== 'undefined' && networkLocked && window._netzSanierung) {
@@ -524,6 +539,29 @@ export function _calcNetzInvestForOpt() {
     return Math.round(s * pct);
   }
   return Math.round(s);
+}
+
+/** Preise und Finanzierung für die Kostenkennwerte (Optimierer, Speicheranalyse) — wie die Wirtschaftlichkeitsrechnung. */
+export function _optWirtParams() {
+  // Fallbacks = HTML-Vorgaben der wirt-p-* Felder
+  const _pStromOpt = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
+  const _pWpRawOpt = parseFloat(document.getElementById('wirt-p-strom-wp')?.value);
+  const _zinsRawOpt = parseFloat(document.getElementById('wirt-zins')?.value);
+  return {
+    pStrom: _pStromOpt,
+    pStromWp: isNaN(_pWpRawOpt) ? _pStromOpt : _pWpRawOpt, // optionaler WP-Sondervertragspreis
+    // Gaspreis je kWh Hs (Eingabe) → je kWh Hi, passend zu den Wirkungsgraden (ERDGAS_HS_HI)
+    pGas: (parseFloat(document.getElementById('wirt-p-gas')?.value) || 10) * ERDGAS_HS_HI,
+    pPk: parseFloat(document.getElementById('wirt-p-pk')?.value) || 8,
+    pHhs: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 6,
+    pHko: parseFloat(document.getElementById('wirt-p-hko')?.value) || 10,
+    pFw: parseFloat(document.getElementById('wirt-p-fw')?.value) || 17,
+    pBhkwEinsp: parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8,
+    pBhkwKwkE: parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8,
+    pBhkwKwkEig: parseFloat(document.getElementById('bhkw-kwk-eigen')?.value) || 4,
+    zinssatz: (isNaN(_zinsRawOpt) ? 3.5 : _zinsRawOpt) / 100,
+    dyn: vdiDynParams(),   // VDI 2067: Zeitraum und Preisänderungen wie die Wirtschaftlichkeitsrechnung
+  };
 }
 
 export function _collectOptDomParams() {
@@ -537,50 +575,44 @@ export function _collectOptDomParams() {
     const v = gid ? parseFloat(document.getElementById(gid)?.value) : NaN;
     guetegrade[k] = isNaN(v) || v <= 0 ? (k === 'lwwp' ? 0.42 : k === 'fg' ? 0.56 : 0.50) : v;
   }
-  // Invest-Kurven aus CalcEngine vorab berechnen für relevante Leistungen
-  // (statt CalcEngine im Worker zu brauchen, pre-compute die €/kW Werte)
+  // Invest-Kurven aus der CalcEngine als dichte Stützstellen (logarithmisch 1 kW … 50 MW),
+  // der Worker interpoliert linear — Abweichung zur exakten Kurve im Promillebereich
   const investKurven = {};
   if (typeof CalcEngine !== 'undefined') {
     for (const [optKey, ceKey] of Object.entries(_OPT_CE_KEY)) {
       const pts = [];
-      for (let kw = 1; kw <= 5000; kw = kw < 50 ? kw + 1 : kw < 500 ? kw + 10 : kw + 50) {
-        pts.push({ kw, eurKw: CalcEngine.investEurProKw(ceKey, kw) });
+      for (let i = 0; i <= 600; i++) {
+        const kw = Math.pow(10, i / 600 * Math.log10(50000));
+        pts.push({ x: kw, y: CalcEngine.investEurProKw(ceKey, kw) });
       }
       investKurven[optKey] = pts;
     }
   }
-  // PV-Invest: Auto vs manuell
-  let pvInvestMode = 'manual';
-  let pvInvestManual = f('opt-pv-invest', OPT_INVEST_DEFAULT.pv);
-  const pvAutoChk = document.getElementById('pv-invest-auto');
-  if (pvAutoChk?.checked && typeof CalcEngine !== 'undefined') {
-    pvInvestMode = 'auto';
-  }
-  // PV-Invest-Tabelle für auto-Modus
-  const pvInvestTabelle = [
-    {kwp:5,eurKwp:1400},{kwp:10,eurKwp:1300},{kwp:30,eurKwp:1150},{kwp:50,eurKwp:1050},
-    {kwp:100,eurKwp:950},{kwp:300,eurKwp:850},{kwp:750,eurKwp:780},{kwp:1000,eurKwp:750},
-    {kwp:5000,eurKwp:650},{kwp:10000,eurKwp:600}
-  ];
   return {
     bhkwSkz: f('bhkw-skz', 0.45), skEta: f('sk-eta', 99) / 100, lwwpMinCop: f('lwwp-min-cop', 0),
-    geoDtAbsenkung: f('geo-dt-absenkung', 0),
+    auslegung: _optAuslegung(),
+    agkKey: spitzenkessel().key, agkStromEta: spitzenkessel().strom ? f('sk-eta', 99) / 100 : 0,
+    geoDtAbsenkung: f('geo-dt-absenkung', 4),
+    eisSpeicher: _optEisSpeicher(),
     geoTiefe: Math.min(400, Math.max(30, f('geo-tiefe', 100))),
     geoQPerM: Math.min(60, Math.max(10, f('geo-q-perm', 31))),
-    tsDt: f('ts-dt', 40), tsVerlust: f('ts-verlust', 0.5), tsEntladeKw: f('ts-entlade-kw', 200), tsLadeKw: f('ts-lade-kw', f('ts-entlade-kw', 200)),
+    tsDt: f('ts-dt', 40), tsVerlust: f('ts-verlust', 0.5), tsVerlustManuell: document.getElementById('ts-verlust')?.dataset.manuell === '1', tsEntladeKw: f('ts-entlade-kw', 200), tsLadeKw: f('ts-lade-kw', f('ts-entlade-kw', 200)),
     tsTyp: s('ts-typ', 'puffer'),
     etaGk: f('gk-eta', 92) / 100, etaHko: f('hko-eta', 90) / 100,
     etaPk: f('pk-eta', 88) / 100, etaHhs: f('hhs-eta', 85) / 100,
     etaBhkw: f('bhkw-eta', 88) / 100,
-    pvSpez: f('pv-spez', 1000), stSpez: f('st-spez', 400),
+    // spez. PV-Ertrag und Batterieleistung wie in der Strombilanz der Planung
+    pvSpez: _optPvPlan().spez || f('pv-spez', 1000), batKw: _optPvPlan().batKw, stSpez: f('st-spez', 400),
     guetegrade,
-    investKurven, pvInvestMode, pvInvestManual,
-    pvInvestTabelle,
+    investKurven,
     batInvest: f('opt-bat-invest', OPT_INVEST_DEFAULT.bat),
-    batCalendarFade: f('bat-calendar-fade', 1.5),
+    batCalendarFade: _zahlOder('bat-calendar-fade', 1.5),
+    batLife: f('opt-bat-life', OPT_NUTZUNG.bat),
     batCycleLife: f('bat-cycle-life', 6000),
     batEolPct: f('bat-eol-pct', 80),
-    pvVergModell: s('pv-verg-modell', 'teil'),
+    // „PV-Strom für Wärmepumpen anrechnen“: PV/Batterie der Planung, PV-Preisbasis wie im Panel
+    pvWp: wirtPvWp(),
+    pvInvPerKwpPlan: wirtPvWp() ? pvWaermeEingaben().invPerKwp : 0,
     // Emissionsfaktoren
     stromEmF: typeof stromEmF !== 'undefined' ? stromEmF : 363,
     gasEmF: typeof gasEmF !== 'undefined' ? gasEmF : 240,
@@ -590,6 +622,9 @@ export function _collectOptDomParams() {
     fernwaermeEmF: typeof fernwaermeEmF !== 'undefined' ? fernwaermeEmF : 180,
     // CO2-Preis (€/t) für WGK-Berechnung
     pCo2: f('wirt-p-co2', 0),
+    co2Alle: document.getElementById('wirt-co2-alle')?.checked !== false,
+    bhkwGutschrift: !!bhkwCo2Gutschrift,
+    verdraengungEf: calcVerdraengungEmF(),
     // Konstanten
     OPT_INVEST_DEFAULT: { ...OPT_INVEST_DEFAULT },
     OPT_NUTZUNG: { ...OPT_NUTZUNG }, OPT_IH: { ...OPT_IH },
@@ -599,9 +634,11 @@ export function _collectOptDomParams() {
     // Wirtschaft-Bausteine: zusätzliche Daten für vollständige WGK-Berechnung
     lohn: f('wirt-lohn', 45),
     bohrMeter: typeof _parseGeoBohrMeter === 'function' ? _parseGeoBohrMeter() : 0,
-    nGeb: parseInt(document.getElementById('netz-n-geb')?.value) || 0,
+    nGeb: _optHst().anzahl,
+    huestEur: huestInvestEur(_optHst().anschlussKw),
     netzInvest: _calcNetzInvestForOpt(),
-    pvMaxAmort: f('opt-pv-max-amort', 10),
+    ohneNetz: !!window._wirtOhneNetz,
+    pumpMwh: netzPumpenstromMwh(),
   };
 }
 
@@ -610,8 +647,10 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
     return window.runPlanningTransaction('Optimierung als Variante übernehmen', () => _optVarianteUebernehmen(result, btnEl, true));
   }
   if (!result) { console.warn('OptVariante: kein result'); return; }
+  let _gesperrt = false;
+  const _freigeben = () => { if (_gesperrt) { _gesperrt = false; variantenKennzahlenFreigeben(); } };
   try {
-  const titel = result.keys.map(k => ERZEUGER_CFG[k]?.label || k).join('+');
+  const titel = (result.anzeigeKeys || result.keys).map(k => ERZEUGER_CFG[k]?.label || k).join('+');
   const varName = 'Opt: ' + titel;
 
   // Bisherigen Stand VOLLSTÄNDIG sichern (Wärme, Erzeuger, Strom-Paket, Maßnahmen,
@@ -619,6 +658,9 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
   // Stromnetz: Planungsobjekte seit dem letzten Wechsel wanderten in die neue
   // Variante und fehlten danach in der Ausgangsvariante.
   const vonKey = sichereAktivenStand();
+  // Die Kennzahlen der Ausgangsvariante bleiben unberührt, bis die neue Variante angelegt ist
+  variantenKennzahlenSperren();
+  _gesperrt = true;
 
   // Alle Erzeuger deaktivieren (saubere Basis für neue Variante)
   if (typeof clearLwWp === 'function') clearLwWp();
@@ -651,8 +693,10 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
 
   // Erzeuger der Kombination aktivieren und Leistung setzen
   // (ohne moBeiAktivierung in der Schleife — wird einmal am Ende aufgerufen)
-  for (const erz of result.config) {
-    const leist = Math.max(1, Math.round(erz.leistKw));
+  for (const [ci, erz] of result.config.entries()) {
+    // Bewertet wurde die Leistung nach dem Einsatz (der letzte Erzeuger deckt als Backup die Spitze) —
+    // genau diese übernehmen, sonst springt in der Variante der automatische Spitzenkessel ein
+    const leist = Math.max(1, Math.round(result.erzLeistKw?.[ci] ?? result.sim?.erzeugerList?.[ci]?.leistKw ?? erz.leistKw));
     const setBtn = (id) => { const el = document.getElementById(id); if (el) el.style.display = 'none'; };
     const showSec = (id) => { const el = document.getElementById(id); if (el) el.style.display = 'block'; };
     switch (erz.key) {
@@ -748,6 +792,26 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
     }
   }
 
+  // Spitzenlastkessel der Optimierung als echten Erzeuger der gewählten Art übernehmen (Gas-, Öl- oder Stromkessel) —
+  // gleiche Leistung, damit Einsatz und Kosten der Variante exakt der Ergebniskarte entsprechen. Steht ein Kessel
+  // dieser Art schon im Ergebnis, wird er um die Leistung des Spitzenlastkessels vergrößert.
+  const _agkKw = result.sim?.autoGkPeakKw || 0;
+  const _agk = spitzenkessel();
+  const _agkFelder = { gaskessel: ['gk-leistung', 'gasKessel', 'btn-activate-gaskessel', 'gaskessel-data-section'],
+    heizoel: ['hko-leistung', 'heizoelKessel', 'btn-activate-heizoel', 'heizoel-data-section'],
+    stromkessel: ['sk-leistung', 'stromkessel', 'btn-activate-stromkessel', 'stromkessel-data-section'] }[_agk.key];
+  const _agkIdx = result.config.findIndex(c => c.key === _agk.key);
+  const _agkVorhanden = _agkIdx >= 0;
+  if (_agkKw > 0.1 && _agkFelder) {
+    const vorhKw = _agkVorhanden ? (result.erzLeistKw?.[_agkIdx] ?? result.config[_agkIdx].leistKw ?? 0) : 0;
+    const leist = Math.ceil(_agkKw) + Math.round(vorhKw);
+    document.getElementById(_agkFelder[0]).value = leist;
+    window[_agkFelder[1]] = { ...(window[_agkFelder[1]] || {}), leistungKw: leist };
+    const b = document.getElementById(_agkFelder[2]); if (b) b.style.display = 'none';
+    const sec = document.getElementById(_agkFelder[3]); if (sec) sec.style.display = 'block';
+    if (!meritOrderKeys.includes(_agk.key)) meritOrderKeys.push(_agk.key);
+  }
+
   // Solarthermie-Fläche aus Optimierungsergebnis übernehmen
   if (result.stM2 > 0) {
     const stEl = document.getElementById('st-flaeche');
@@ -762,26 +826,19 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
   if (result.tsVol > 0) {
     const tsVolEl = document.getElementById('ts-volumen');
     if (tsVolEl) tsVolEl.value = result.tsVol;
+    // Verlust zum neuen Volumen aus der Kennlinie (wie im Optimierer gerechnet), außer von Hand eingegeben
+    if (typeof window.tsVerlustAuto === 'function') window.tsVerlustAuto();
     window.thermSpeicherAktiv = true;
     if (typeof updateThermSpeicherDisplay === 'function') updateThermSpeicherDisplay();
   } else {
     if (typeof clearThermSpeicher === 'function') clearThermSpeicher();
   }
 
-  // PV + Batterie aus Optimierungsergebnis übernehmen
-  if (result.pvKwp > 0) {
-    const pvEl = document.getElementById('pv-kwp');
-    if (pvEl) pvEl.value = result.pvKwp.toFixed(1);
-  }
-  if (result.batKwh > 0) {
-    const batEl = document.getElementById('bat-kapazitaet');
-    if (batEl) batEl.value = result.batKwh.toFixed(1);
-  }
-
   // Einmal am Ende: Icons aktualisieren
   if (typeof redrawErzeugerIcons === 'function') redrawErzeugerIcons();
 
-  // Variante mit diesem Zustand speichern
+  // Variante mit diesem Zustand speichern (ab hier gehören die Kennzahlen der neuen Variante)
+  _freigeben();
   _varianteAusLiveAnlegen({
     name: varName, herkunft: 'optimierer', vonKey,
     zweck: 'Aus der Optimierung übernommener Erzeugerpark: ' + titel,
@@ -803,6 +860,7 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
   }
 
   } catch(err) {
+    _freigeben();
     console.error('OptVariante Fehler:', err);
     showHint('Fehler beim Anlegen der Variante: ' + err.message);
   }
@@ -850,7 +908,11 @@ export function updateFooterStatus() {
   // Heizlast (mit Quellenangabe)
   if (ss?.pMaxKw > 0) {
     let hlQuelle = hatLg ? 'Lastgang' : (ss?.nurGebaeude ? 'Gebäude' : 'Synthese');
-    _fsTxt(fsHL, Math.round(ss.pMaxKw).toLocaleString('de-DE') + ' kW (' + hlQuelle + ')');
+    // Auslegungsspitze bei Normaußentemperatur; in Klammern die Spitze des Lastgangs (Einsatzplanung)
+    const ausl = _optAuslegung();
+    _fsTxt(fsHL, ausl && ausl.kw > ss.pMaxKw + 0.5
+      ? Math.round(ausl.kw).toLocaleString('de-DE') + ' kW Auslegung (' + hlQuelle + ' ' + Math.round(ss.pMaxKw).toLocaleString('de-DE') + ' kW)'
+      : Math.round(ss.pMaxKw).toLocaleString('de-DE') + ' kW (' + hlQuelle + ')');
     _fsDot(fsHL, true);
   } else if (gebKw > 0) {
     _fsTxt(fsHL, '~' + Math.round(gebKw).toLocaleString('de-DE') + ' kW (Gebäude)');
@@ -897,16 +959,10 @@ export function updateFooterStatus() {
 
   // EE-Anteil
   const fsEE = document.getElementById('fs-ee');
+  // EE-Anteil an der gedeckten Last, Speicherwärme nach Herkunft der Ladung (lib/dispatch-energie.js)
   const en = window._dispatchEnergy || {};
-  const EE_KEYS = ['lwwp','fg','geo','pellets','hhs'];
-  let eeWaerme = 0, gesWaerme = 0;
-  for (const k of Object.keys(en)) {
-    const w = en[k]?.waermeMwh || 0;
-    gesWaerme += w;
-    if (EE_KEYS.includes(k)) eeWaerme += w;
-  }
-  if (gesWaerme > 0) {
-    const eePct = eeWaerme / gesWaerme * 100;
+  if (lastMwh(en) > 0) {
+    const eePct = eeAnteilPct(en);
     window._lastEeAnteil = eePct;
     _fsTxt(fsEE, 'EE: ' + eePct.toFixed(0) + ' %');
     _fsDot(fsEE, true, eePct < 65);

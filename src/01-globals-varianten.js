@@ -1,11 +1,14 @@
-import { map } from './02b-gebaeude.js';
+import { co2AusEinsatz } from './lib/co2-einsatz.js';
+import { eeAnteilPct, erzeugtMwh as _erzeugtMwh, waermeAnLastJeErzeuger } from './lib/dispatch-energie.js';
+import { euroKompakt } from './lib/euro-format.js';
+import { getComputedStats, map } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, redrawFliessgewaesser, redrawLwWp, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
 import { calcVerdraengungEmF, clearBhkw, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
 import { applyWaermeNetzGraph, calcGeoThermie, captureWaermeNetzGraph, clearGeo, recalcNetz, redrawGeo, syncVLTemps } from './03b-netz.js';
 import { escHtml, renderList, updateTotals } from './03c-gebaeude-io.js';
 import { currentViewMode, setViewMode } from './04a-ui-panels.js';
 import { _attachSTLayer, clearSolarthermie, clearThermSpeicher, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
-import { autoGkResult, isErzeugerAktiv, meritOrderKeys, setAutoGkResult, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
+import { autoGkResult, isErzeugerAktiv, meritOrderKeys, setAutoGkResult, spitzenkessel, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { splitStromNetzState, mergeStromNetzState, istDelta, migriereZuDelta } from './lib/varianten-delta.js';
 import { HAUPTPLAN_NAME, variantKey, massnahmenHerausnehmen, massnahmenEinsetzen, massnahmeStandardVariante, waermeGeometrie, geometrieGleich, netzMitGeometrie, pvBelegungErfassen, pvBelegungAnwenden, schichtFuerNeu, baujahrFuerNeu } from './lib/varianten-regeln.js';
@@ -263,6 +266,18 @@ export function toggleVergleich() {
 }
 
 export let _cacheVariantTimer = null;
+/** CO₂ der aktuellen Einsatzplanung in t/a — eine Rechnung für Kennzahl-Kachel, Variantenvergleich und Gutachten.
+ *  lz = true: mittlerer Strom-Emissionsfaktor 2030–2050 statt heute. */
+export function co2EinsatzAktuell(lz = false, detail = false) {
+  const num = (id, d) => parseFloat(document.getElementById(id)?.value) || d;
+  const sigma = num('bhkw-skz', 0.45);
+  const eta = { ..._getEtaMap(), stromkessel: num('sk-eta', 99) / 100, bhkwTh: (num('bhkw-eta', 88) / 100) / (1 + sigma) };
+  const ef = { gas: gasEmF, oel: heizoelEmF, pellets: pelletsEmF, hhs: hhsEmF, fw: fernwaermeEmF, strom: lz ? stromEmFLZ : stromEmF };
+  const bhkw = { gutschrift: bhkwCo2Gutschrift, sigma, verdraengungEf: calcVerdraengungEmF() };
+  const r = co2AusEinsatz(window._dispatchEnergy || {}, ef, eta, bhkw, spitzenkessel().key);
+  return detail ? r : r.t;
+}
+
 export function cacheVariantResultsDebounced() {
   clearTimeout(_cacheVariantTimer);
   _cacheVariantTimer = setTimeout(cacheVariantResults, 80);
@@ -279,14 +294,23 @@ export function gebaeudeStempel() {
   return `${gebaeude.length}:${h}`;
 }
 
+// Während ein Erzeugerpark umgebaut wird (z. B. Optimierungsergebnis übernehmen), gehören die
+// Zwischenstände zu keiner Variante — sonst überschriebe der Umbau die Kennzahlen der Ausgangsvariante.
+let _cacheSperre = 0;
+export function variantenKennzahlenSperren() { _cacheSperre++; }
+export function variantenKennzahlenFreigeben() { _cacheSperre = Math.max(0, _cacheSperre - 1); }
+
 export function cacheVariantResults() {
+  if (_cacheSperre > 0) return;
   const key = activeVariantId || 'base';
-  const connectedIds = new Set(netzEdges.flatMap(e => [e.u, e.v]));
-  const netzVerbrauch = gebaeude.filter(g => connectedIds.has(g.id) && !isExcluded(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
+  // Bedarf im betrachteten Jahr (Sanierung, Status), ohne ausgeschlossene Gebäude; Netzverlust im Betrieb (bei
+  // dezentralem Trinkwarmwasser nur in der Heizperiode, wie im Lastgang)
+  const _bedarf = g => getComputedStats(g, globalYear)?.waerme || 0;
+  const netzVerbrauch = typeof window.netzVerbrauchMwh === 'function' ? window.netzVerbrauchMwh(globalYear) : 0;
   // Fallback: wenn kein Netz gezeichnet, alle Gebäude zählen (wie im Dispatch)
-  const alleVerbrauch = gebaeude.filter(g => !isExcluded(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
+  const alleVerbrauch = gebaeude.filter(g => !isExcluded(g.id)).reduce((s, g) => s + _bedarf(g), 0);
   let totalVerbrauch = netzVerbrauch > 0 ? netzVerbrauch : alleVerbrauch;
-  let totalLoss = netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0) * 8.76;
+  let totalLoss = netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0) * 8.76 * (window.netzBetriebsAnteil?.() ?? 1);
   // Fallback 2: weder Netz noch Gebäude (Bedarf direkt eingegeben) →
   // Werte aus der Grundlagenberechnung, statt irreführende Nullen zu zeigen.
   // Verluste = Differenz Erzeugung − Nutzwärme (aus dem Netzverlust-%-Feld).
@@ -298,8 +322,8 @@ export function cacheVariantResults() {
     lastgangBasis = true;
   }
   const totalErzeugung = totalVerbrauch + totalLoss;
-  const vlTemp = parseFloat(document.getElementById('netz-vl').value) || 90;
-  const rlTemp = parseFloat(document.getElementById('netz-rl').value) || 60;
+  // Netztemperaturen des betrachteten Jahres (geplante Absenkung)
+  const { vl: vlTemp, rl: rlTemp } = window.netzTemperaturen?.() || { vl: parseFloat(document.getElementById('netz-vl').value) || 90, rl: parseFloat(document.getElementById('netz-rl').value) || 60 };
   const erzeugerList = [];
   const co2Val = (waermeMwh, jaz) => waermeMwh > 0 ? (waermeMwh / jaz * stromEmF   / 1000).toFixed(1) + ' t/a' : '—';
   const co2LZVal = (waermeMwh, jaz) => waermeMwh > 0 ? (waermeMwh / jaz * stromEmFLZ / 1000).toFixed(1) + ' t/a' : '—';
@@ -312,12 +336,16 @@ export function cacheVariantResults() {
   if (gasKessel) { const w = parseFloat(document.getElementById('gk-waerme')?.value)||0; const eta = parseFloat(document.getElementById('gk-eta')?.value)||92;
     const gkCo2 = w > 0 ? (w / (eta/100) * gasEmF / 1000).toFixed(1) + ' t/a (fossil)' : '—';
     erzeugerList.push({ typ: 'Gaskessel', leistungKw: gasKessel.leistungKw, wgk: '—', invest: 0, co2: gkCo2, co2lz: gkCo2 }); }
-  else if (autoGkResult && autoGkResult.leistungKw > 0) {
-    // Auto-GK (Spitzenlastkessel aus Dispatch-Residual) als Gaskessel eintragen
-    const agk = autoGkResult;
-    const eta = parseFloat(document.getElementById('gk-eta')?.value) || 92;
-    const agkCo2 = agk.waermeMwh > 0 ? (agk.waermeMwh / (eta/100) * gasEmF / 1000).toFixed(1) + ' t/a (fossil)' : '—';
-    erzeugerList.push({ typ: 'Gaskessel (Auto)', leistungKw: agk.leistungKw, waermeMwh: agk.waermeMwh, wgk: '—', invest: 0, co2: agkCo2, co2lz: agkCo2 });
+  if (autoGkResult && autoGkResult.leistungKw > 0) {
+    // Auto-GK (Spitzenlastkessel: Restlast der Einsatzplanung und Reserve im Auslegungsfall) mit der gewählten Art
+    // (lib/spitzenkessel.js) — auch neben einem eigenen Gaskessel, dessen Leistung dann nicht ausreicht
+    const agk = autoGkResult, art = spitzenkessel();
+    const eta = _getEtaMap()._autoGk;
+    const t = efStrom => {
+      const ef = art.strom ? efStrom : art.key === 'heizoel' ? heizoelEmF : gasEmF;
+      return agk.waermeMwh > 0 ? (agk.waermeMwh / eta * ef / 1000).toFixed(1) + (art.fossil ? ' t/a (fossil)' : ' t/a') : '—';
+    };
+    erzeugerList.push({ typ: 'Gaskessel (Auto)', agkArt: art.art, name: art.name, leistungKw: agk.leistungKw, waermeMwh: agk.waermeMwh, wgk: '—', invest: 0, co2: t(stromEmF), co2lz: t(stromEmFLZ) });
   }
   if (bhkw) { const w = parseFloat(document.getElementById('bhkw-waerme')?.value)||0; const sigma = parseFloat(document.getElementById('bhkw-skz')?.value)||0.45; const etaGes = parseFloat(document.getElementById('bhkw-eta')?.value)||88; const etaTh = (1+sigma) > 0 ? (etaGes/100)/(1+sigma) : 0.4;
     const elMwhBhkw = w * sigma;
@@ -338,37 +366,44 @@ export function cacheVariantResults() {
   // Numerische CO₂-Werte aus erzeugerList extrahieren (für Summierung)
   // Felder co2n / co2lzn bereits bei Stromkessel, bei anderen rückwärts parsen
   const _parseTon = s => { if (!s || s === '—') return 0; const m = s.match(/^([\d.]+)/); return m ? parseFloat(m[1]) : 0; };
-  const co2GesH  = erzeugerList.reduce((s, e) => s + (e.co2n  !== undefined ? e.co2n  : _parseTon(e.co2)),  0);
-  const co2GesLZ = erzeugerList.reduce((s, e) => s + (e.co2lzn !== undefined ? e.co2lzn : _parseTon(e.co2lz)), 0);
+  let co2GesH  = erzeugerList.reduce((s, e) => s + (e.co2n  !== undefined ? e.co2n  : _parseTon(e.co2)),  0);
+  let co2GesLZ = erzeugerList.reduce((s, e) => s + (e.co2lzn !== undefined ? e.co2lzn : _parseTon(e.co2lz)), 0);
+  // Maßgeblich sind die Energiemengen der Einsatzplanung (alle Erzeuger, auch Heizöl, Biomasse, Fernwärme);
+  // die Kurzliste oben rechnet aus den Panel-Eingaben und kennt nur einen Teil der Technik.
+  let co2ProErzeuger = null, co2ProErzeugerLZ = null;
+  if (Object.keys(window._dispatchEnergy || {}).length) {
+    const h = co2EinsatzAktuell(false, true), lz = co2EinsatzAktuell(true, true);
+    co2GesH = h.t; co2GesLZ = lz.t;
+    co2ProErzeuger = h.proErzeuger; co2ProErzeugerLZ = lz.proErzeuger;
+  }
   // Investition aus Wirtschaftlichkeits-Panel (globale Variable, gesetzt von calcWirtschaftPanel)
   const investGes = window._lastInvestGes || erzeugerList.reduce((s, e) => s + (e.invest || 0), 0);
   const jkGes = window._lastJkGes || 0;
   // WGK gesamt aus Wirtschafts-Panel (wenn vorhanden)
   const wgkGes = parseFloat(document.querySelector('#wirt-table-wrap .token')?.textContent) || null; // fallback — try via systemState
-  const wgkText = window._lastWgk ? window._lastWgk.toFixed(1) + ' ct/kWh' : (wgkGes ? wgkGes.toFixed(1) + ' ct/kWh' : '—');
+  const _ct = v => v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' ct/kWh';
+  const wgkText = window._lastWgk ? _ct(window._lastWgk) + (window._wirtOhneNetz ? ' (nur Erzeugung)' : '') : (wgkGes ? _ct(wgkGes) : '—');
 
   const ausschlüsse = activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.gebaeudeAusschlüsse?.length || 0) : 0;
   // WGK as number for comparison
   const wgkNum = window._lastWgk || wgkGes || null;
   // EE-Anteil direkt aus Dispatch-Daten berechnen
-  const EE_KEYS_V = ['lwwp','fg','geo','pellets','hhs'];
+  // EE-Anteil an der gedeckten Last; die Speicherwärme zählt nach Herkunft der Ladung (lib/dispatch-energie.js)
   const dispEn = window._dispatchEnergy || {};
-  let eeW = 0, gesW = 0;
-  for (const k of Object.keys(dispEn)) { const w = dispEn[k]?.waermeMwh || 0; gesW += w; if (EE_KEYS_V.includes(k) || k === '_thermSpeicher') eeW += w; }
-  const eeAnteil = gesW > 0 ? (eeW / gesW * 100) : null;
+  const eeAnteil = Object.keys(dispEn).length ? eeAnteilPct(dispEn) : null;
   // WP-Stromkosten (sum of all WP electricity * Strompreis)
   let stromkostenWp = null;
   const WP_KEYS_V = ['lwwp','fg','geo'];
   if (window._wpElHourly) {
     const wpElMWh = Array.from(window._wpElHourly).reduce((s, v) => s + v, 0) / 1000;
-    const strompreis = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
+    const strompreis = parseFloat(document.getElementById('wirt-p-strom-wp')?.value) || parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
     stromkostenWp = wpElMWh * strompreis * 10; // MWh * ct/kWh * 10 = €
   } else {
     // JDL-Modus: WP-Strom aus Dispatch-Energiedaten
     let wpElMwh = 0;
     WP_KEYS_V.forEach(k => { if (dispEn[k]?.elMwh) wpElMwh += dispEn[k].elMwh; });
     if (wpElMwh > 0) {
-      const strompreis = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
+      const strompreis = parseFloat(document.getElementById('wirt-p-strom-wp')?.value) || parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
       stromkostenWp = wpElMwh * strompreis * 10;
     }
   }
@@ -378,16 +413,22 @@ export function cacheVariantResults() {
     gaskessel: gasKessel?.leistungKw, _autoGk: autoGkResult?.leistungKw, heizoel: heizoelKessel?.leistungKw, bhkw: bhkw?.leistungThKw,
     pellets: pelletsKessel?.leistungKw, hhs: heizhackschnitzel?.leistungKw, stromkessel: stromkessel?.leistungKw, fernwaerme: fernwaerme?.leistungKw,
   };
+  // waermeMwh: direkt an die Last; anLastMwh: inkl. anteiliger Speicherwärme; erzeugtMwh: insgesamt erzeugt (JAZ)
+  const _anLast = waermeAnLastJeErzeuger(dispEn);
   const erzeugerDetail = Object.keys(dispEn).map(k => ({
     key: k, leistungKw: _detailLeistung[k] || 0, waermeMwh: dispEn[k]?.waermeMwh || 0, elMwh: dispEn[k]?.elMwh || 0,
+    erzeugtMwh: _erzeugtMwh(dispEn, k), anLastMwh: k === '_thermSpeicher' ? undefined : _anLast[k],
     speicherM3: k === '_thermSpeicher' ? (parseFloat(document.getElementById('ts-volumen')?.value) || undefined) : undefined,
+    agkArt: k === '_autoGk' ? spitzenkessel().art : undefined,   // Art des Spitzenlastkessels dieser Variante
   }));
   // Netzkennwerte je Variante (Gutachten: Tabelle nur, wenn sich die Varianten unterscheiden)
   const _kanten = netzEdges.filter(e => !e.pruned);
   const _verbunden = new Set(_kanten.flatMap(e => [e.u, e.v]));
   const netzKennwerte = _kanten.length ? {
-    laengeM: _kanten.reduce((s, e) => s + (e.length || 0), 0),
-    anschluesse: gebaeude.filter(g => _verbunden.has(g.id) && !isExcluded(g.id)).length,
+    // wie im Gutachten: verlegte Leitungen (mit Nennweite); Anschlüsse = Gebäude mit Wärmebedarf im Jahr, ohne Heizzentralen
+    laengeM: _kanten.reduce((s, e) => s + ((e.dn || 0) > 0 ? (e.length || 0) : 0), 0),
+    anschluesse: gebaeude.filter(g => _verbunden.has(g.id) && !isExcluded(g.id) && !(window.netzZentralenIds?.() || []).includes(g.id)
+      && ((getComputedStats(g, globalYear)?.heizlast || 0) > 0 || _bedarf(g) > 0)).length,
     verlusteMwh: totalLoss, verlustePct: totalErzeugung > 0 ? totalLoss / totalErzeugung * 100 : 0,
     dnMax: _kanten.reduce((m, e) => Math.max(m, parseInt(e.dn, 10) || 0), 0), vlC: vlTemp, rlC: rlTemp,
   } : null;
@@ -397,7 +438,7 @@ export function cacheVariantResults() {
     gebäudebedarf: totalVerbrauch, netzverluste: totalLoss,
     netzverlustePct: totalErzeugung > 0 ? totalLoss / totalErzeugung * 100 : 0,
     erzeugung: totalErzeugung, lastgangBasis, vlTemp, rlTemp, erzeuger: erzeugerList, erzeugerDetail, ausschlüsse,
-    investGes, jkGes, co2GesH, co2GesLZ, wgkText, wgkNum, eeAnteil, stromkostenWp,
+    investGes, jkGes, co2GesH, co2GesLZ, co2ProErzeuger, co2ProErzeugerLZ, wgkText, wgkNum, eeAnteil, stromkostenWp,
     wirtKomp: window._lastWirtKomp ? { ...window._lastWirtKomp } : null,
     gebaeudeStempel: gebaeudeStempel(), netz: netzKennwerte, ausschlussIds,
     // Woraus gerechnet wurde — daran erkennt der Vergleich veraltete Spalten
@@ -417,12 +458,14 @@ function _hash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 3
 export function stammSignatur(key = variantKey(activeVariantId)) {
   const geb = _hash(JSON.stringify(gebaeude.map(g => [g.id, g.waerme, g.heizlast, g.baujahr, g.abrissjahr, g.nutzung, g.flaeche, g.stockwerke])));
   const rec = key === 'base' ? null : varianten.find(v => v.id === key);
-  if (rec?.netzEigen) return String(geb);
+  // Betrachtungsumfang der Wirtschaftlichkeit (mit/ohne Netz) gilt für alle Varianten
+  const umfang = (window._wirtOhneNetz ? '|nurErzeugung' : '') + (window._wirtPvWp ? '|pvWp' : '');
+  if (rec?.netzEigen) return String(geb) + umfang;
   const liveGemeinsam = !aktiveVarianteNetzEigen();
   const trasse = liveGemeinsam
     ? [trassePoints.map(p => [p.lat, p.lng]), trasseSegments]
     : [(waermeNetzGemeinsam?.trasse || []).map(p => [p.lat, p.lng]), waermeNetzGemeinsam?.trasseSegments || []];
-  return `${geb}|${_hash(JSON.stringify(trasse))}`;
+  return `${geb}|${_hash(JSON.stringify(trasse))}${umfang}`;
 }
 
 /** 'aktuell' | 'veraltet' | 'nie' — Stand der Wärme-Kennzahlen einer Variante. */
@@ -483,6 +526,12 @@ export function renderVergleich() {
   }
   const fmt = (v, unit='', digits=0) => (v != null && !isNaN(v) && v !== '') ? Number(v).toLocaleString('de-DE', {maximumFractionDigits:digits}) + (unit ? '\u00a0' + unit : '') : '—';
   const numVal = (r, fn) => { try { const s = fn(r); const n = parseFloat(String(s).replace(/[^\d,.-]/g,'').replace(',','.')); return isNaN(n) ? null : n; } catch(e) { return null; } };
+  const _co2Liste = pro => {
+    const e = Object.entries(pro || {}).filter(([, t]) => t > 0.05).sort((a, b) => b[1] - a[1]);
+    if (!e.length) return '—';
+    const name = k => k === '_autoGk' ? 'Spitzenlastkessel' : (ERZEUGER_CFG[k]?.label || k);
+    return e.map(([k, t]) => `${name(k)} ${Math.round(t).toLocaleString('de-DE')} t`).join(' · ');
+  };
   const rows = [
     { label: 'NETZ', header: true },
     { label: 'VL / RL', fn: r => r ? `${r.vlTemp}°C / ${r.rlTemp}°C` : '—' },
@@ -494,11 +543,11 @@ export function renderVergleich() {
     { label: 'Typ', fn: r => r?.erzeuger?.length ? r.erzeuger.map(e => e.typ).join(', ') : '—' },
     { label: 'Leistung', fn: r => r?.erzeuger?.length ? r.erzeuger.map(e => fmt(e.leistungKw, 'kW')).join(', ') : '—' },
     { label: 'EE-Anteil', fn: r => r?.eeAnteil != null ? fmt(r.eeAnteil, '%', 1) : '—', numFn: r => r?.eeAnteil, best: 'max', bold: true },
-    { label: 'WIRTSCHAFTLICHKEIT', header: true },
-    { label: 'Investition gesamt', fn: r => r?.investGes > 0 ? fmt(Math.round(r.investGes/1000), 'k€') : '—', numFn: r => r?.investGes, best: 'min', bold: true },
-    { label: 'Jahreskosten gesamt', fn: r => r?.jkGes > 0 ? fmt(r.jkGes/1000, 'k€/a', 1) : '—', numFn: r => r?.jkGes, best: 'min' },
+    { label: window._wirtOhneNetz ? 'WIRTSCHAFTLICHKEIT — NUR WÄRMEERZEUGUNG (OHNE NETZ)' : 'WIRTSCHAFTLICHKEIT', header: true },
+    { label: 'Investition gesamt', fn: r => r?.investGes > 0 ? euroKompakt(r.investGes) : '—', numFn: r => r?.investGes, best: 'min', bold: true },
+    { label: 'Jahreskosten gesamt', fn: r => r?.jkGes > 0 ? euroKompakt(r.jkGes, true) : '—', numFn: r => r?.jkGes, best: 'min' },
     { label: 'WGK System gesamt', fn: r => r?.wgkText || '—', numFn: r => r?.wgkNum, best: 'min', bold: true },
-    { label: 'Stromkosten WP', fn: r => r?.stromkostenWp != null ? fmt(r.stromkostenWp, '€/a') : '—', numFn: r => r?.stromkostenWp, best: 'min' },
+    { label: 'Stromkosten WP', fn: r => r?.stromkostenWp != null ? euroKompakt(r.stromkostenWp, true) : '—', numFn: r => r?.stromkostenWp ?? 0, best: 'min', nullGilt: true },
     { label: 'PV-AUSBAU (Merit-Order)', header: true },
     { label: 'PV installiert (A+B)',
       fn: (r, id) => {
@@ -542,11 +591,18 @@ export function renderVergleich() {
         return String(pv.ranking.filter(x => x.tier !== 'C').length);
       } },
     { label: 'CO₂ EMISSIONEN', header: true },
-    { label: 'CO₂ je Erzeuger (heute)', fn: r => r?.erzeuger?.length ? r.erzeuger.map(e => e.co2 || '—').join(', ') : '—' },
+    { label: 'CO₂ je Erzeuger (heute)', fn: r => _co2Liste(r?.co2ProErzeuger) },
     { label: 'CO₂ gesamt (heute)', fn: r => r?.co2GesH > 0 ? fmt(r.co2GesH, 't/a', 1) : '—', numFn: r => r?.co2GesH, best: 'min', bold: true },
-    { label: 'CO₂ je Erzeuger (Ø 2030–50)', fn: r => r?.erzeuger?.length ? r.erzeuger.map(e => e.co2lz || '—').join(', ') : '—' },
+    { label: 'CO₂ je Erzeuger (Ø 2030–50)', fn: r => _co2Liste(r?.co2ProErzeugerLZ) },
     { label: 'CO₂ gesamt (Ø 2030–50)', fn: r => r?.co2GesLZ > 0 ? fmt(r.co2GesLZ, 't/a', 1) : '—', numFn: r => r?.co2GesLZ, best: 'min', bold: true },
   ];
+
+  // PV-Ausbau nur zeigen, wenn mindestens eine Variante eine PV-Rangliste hat
+  if (!cols.some(id => window._pvVariantResults?.[id]?.ranking)) {
+    const a = rows.findIndex(r => r.header && r.label.startsWith('PV-AUSBAU'));
+    const b = rows.findIndex((r, j) => j > a && r.header);
+    if (a >= 0) rows.splice(a, (b > a ? b : rows.length) - a);
+  }
 
   // Determine best values per row for highlighting
   const bestIdx = {};
@@ -556,7 +612,7 @@ export function renderVergleich() {
     cols.forEach(id => {
       const r = variantResults[id];
       const v = r ? row.numFn(r, id) : null;
-      if (v == null || isNaN(v) || v <= 0) return;
+      if (v == null || isNaN(v) || (row.nullGilt ? v < 0 : v <= 0)) return;   // 0 € WP-Strom ist ein gültiger Bestwert
       if (bestVal === null || (row.best === 'min' ? v < bestVal : v > bestVal)) { bestVal = v; bestIds = [id]; }
       else if (v === bestVal) bestIds.push(id);
     });
@@ -597,8 +653,9 @@ export function renderVergleich() {
   }
   wrap.innerHTML = html;
 
-  // Pareto-Diagramm rendern
+  // Pareto-Diagramm und grafischer Vergleich rendern
   requestAnimationFrame(() => _renderParetoChart());
+  window.vgRender?.();
 }
 
 export function _renderParetoChart() {
@@ -668,7 +725,7 @@ export function _renderParetoChart() {
     ctx.textAlign = 'right';
     for (let i = 0; i <= 4; i++) {
       const v = co2Min + (co2Max - co2Min) * (1 - i / 4);
-      ctx.fillText(v.toFixed(1), PAD.l - 4, PAD.t + iH * i / 4 + 3);
+      ctx.fillText(Math.round(v).toLocaleString('de-DE'), PAD.l - 4, PAD.t + iH * i / 4 + 3);
     }
     ctx.save();
     ctx.fillStyle = 'rgba(200,200,200,0.5)';
@@ -685,7 +742,7 @@ export function _renderParetoChart() {
     ctx.font = '8px "DM Mono", monospace';
     for (let i = 0; i <= 4; i++) {
       const v = wgkMin + (wgkMax - wgkMin) * i / 4;
-      ctx.fillText(v.toFixed(1), PAD.l + iW * i / 4, H - PAD.b + 14);
+      ctx.fillText(v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }), PAD.l + iW * i / 4, H - PAD.b + 14);
     }
     ctx.font = '8px sans-serif';
     ctx.fillText('WGK [ct/kWh]', PAD.l + iW / 2, H - 4);
@@ -771,11 +828,11 @@ export function _renderParetoChart() {
     if (legendEl) {
       legendEl.innerHTML = points.map((p, i) => {
         const color = p.id === 'base' ? '#4caf50' : VCOLORS[i % VCOLORS.length];
-        const invK = p.invest > 0 ? ' · ' + Math.round(p.invest / 1000) + ' k€ Invest' : '';
+        const invK = p.invest > 0 ? ' · ' + euroKompakt(p.invest) + ' Investition' : '';
         return `<span style="display:inline-flex;align-items:center;gap:3px;">` +
           `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color}44;border:1.5px solid ${color};"></span>` +
           `<span style="color:var(--text);">${escHtml(p.label)}</span>` +
-          `<span style="color:var(--muted);">${p.wgk.toFixed(1)} ct · ${p.co2.toFixed(1)} t${invK}</span></span>`;
+          `<span style="color:var(--muted);">${p.wgk.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ct/kWh · ${Math.round(p.co2).toLocaleString('de-DE')} t/a${invK}</span></span>`;
       }).join('') +
         (front.length >= 2 ? `<span style="color:rgba(102,187,106,0.6);margin-left:6px;">- - - Pareto-Front</span>` : '');
     }
@@ -792,7 +849,11 @@ export function _getEtaMap() {
     heizoel: (parseFloat(document.getElementById('hko-eta')?.value) || 90) / 100,
     pellets: (parseFloat(document.getElementById('pk-eta')?.value) || 88) / 100,
     hhs: (parseFloat(document.getElementById('hhs-eta')?.value) || 85) / 100,
-    _autoGk: 0.92, fernwaerme: 1.0
+    // automatischer Spitzenlastkessel: Wirkungsgrad des gewählten Kesseltyps (lib/spitzenkessel.js)
+    _autoGk: { gaskessel: (parseFloat(document.getElementById('gk-eta')?.value) || 92) / 100,
+      heizoel: (parseFloat(document.getElementById('hko-eta')?.value) || 90) / 100,
+      stromkessel: (parseFloat(document.getElementById('sk-eta')?.value) || 99) / 100 }[spitzenkessel().key],
+    fernwaerme: 1.0
   };
 }
 
@@ -1147,6 +1208,7 @@ function _migriereWaermeNetz() {
 export function captureNetzState() {
   return {
     zentrale: document.getElementById('netz-zentrale').value,
+    ...window.heizzentralenStand?.(),
     vl: document.getElementById('netz-vl').value,
     rl: document.getElementById('netz-rl').value,
     v: document.getElementById('netz-v').value,
@@ -1168,6 +1230,7 @@ export function applyNetzState(state) {
   if (!state) return;
   const zentrale = document.getElementById('netz-zentrale');
   if (zentrale && state.zentrale != null) zentrale.value = state.zentrale;
+  window.heizzentralenLaden?.(state);
   document.getElementById('netz-vl').value = state.vl ?? 90;
   document.getElementById('netz-rl').value = state.rl ?? 60;
   syncVLTemps('netz');
@@ -1278,6 +1341,7 @@ export function captureErzeugerState() {
     waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: parseFloat(document.getElementById('ts-volumen')?.value)||0, dt: parseFloat(document.getElementById('ts-dt')?.value)||40, verlust: parseFloat(document.getElementById('ts-verlust')?.value)||0.5, entladeKw: parseFloat(document.getElementById('ts-entlade-kw')?.value)||200, ladeKw: parseFloat(document.getElementById('ts-lade-kw')?.value)||parseFloat(document.getElementById('ts-entlade-kw')?.value)||200 } : null,
     // Merit-Order und Wirtschaftlichkeits-Overrides mit sichern
     meritOrderKeys: [...meritOrderKeys],
+    spitzenkesselArt: document.getElementById('agk-art')?.value || 'gas',
     wirtVdiOverrides: JSON.parse(JSON.stringify(window._wirtVdiOverrides || {})),
     wirtBausteineOverrides: JSON.parse(JSON.stringify(window._wirtBausteineOverrides || {})),
   };
@@ -1298,11 +1362,12 @@ export function applyErzeugerState(state) {
   clearThermSpeicher();
   if (!state) return;
   if (state.lwWp && state.lwWp.lat != null) {
-    lwWp = { lat: state.lwWp.lat, lng: state.lwWp.lng, leistungKw: state.lwWp.leistungKw || 12, lwaDb: state.lwWp.lwaDb || 80, visible: state.lwWp.visible !== false };
+    lwWp = { lat: state.lwWp.lat, lng: state.lwWp.lng, leistungKw: state.lwWp.leistungKw || 12, lwaDb: state.lwWp.lwaDb || 80, visible: state.lwWp.visible !== false, ...(state.lwWp.aufstellung ? { aufstellung: { ...state.lwWp.aufstellung } } : {}), ...(state.lwWp.lwaManuell ? { lwaManuell: true } : {}), ...(state.lwWp.gebiet ? { gebiet: state.lwWp.gebiet } : {}), ...(state.lwWp.schallschutz ? { schallschutz: { ...state.lwWp.schallschutz } } : {}), ...(state.lwWp.ausbreitung === '3d' ? { ausbreitung: '3d' } : {}), ...(['aus', 'alle'].includes(state.lwWp.baeume) ? { baeume: state.lwWp.baeume } : {}), ...(Array.isArray(state.lwWp.spektrum) ? { spektrum: [...state.lwWp.spektrum] } : {}) };
     lwWpVisible = lwWp.visible;
     document.getElementById('lwwp-visible').checked = lwWpVisible;
     document.getElementById('lwwp-leistung').value = lwWp.leistungKw;
     document.getElementById('lwwp-lwa').value = lwWp.lwaDb;
+    document.getElementById('lwwp-lwa')._userEdited = undefined;
     if (state.lwWp.jaz) document.getElementById('lwwp-jaz').value = state.lwWp.jaz;
     if (state.lwWp.waerme) document.getElementById('lwwp-waerme').value = state.lwWp.waerme;
     if (state.lwWp.minCop) document.getElementById('lwwp-min-cop').value = state.lwWp.minCop;
@@ -1435,12 +1500,16 @@ export function applyErzeugerState(state) {
     document.getElementById('ts-volumen').value = state.waermespeicher.volumen || 0;
     document.getElementById('ts-dt').value = state.waermespeicher.dt || 40;
     document.getElementById('ts-verlust').value = state.waermespeicher.verlust || 0.5;
+    window.tsVerlustGeladen?.();
     document.getElementById('ts-entlade-kw').value = state.waermespeicher.entladeKw || 200;
     document.getElementById('ts-lade-kw').value = state.waermespeicher.ladeKw || state.waermespeicher.entladeKw || 200;
     thermSpeicherAktiv = (state.waermespeicher.volumen || 0) > 0;
     updateThermSpeicherDisplay();
     document.getElementById('therm-speicher-panel').style.display = 'block';
   }
+  // Art des automatischen Spitzenlastkessels (ältere Stände: Erdgas)
+  const agkSel = document.getElementById('agk-art');
+  if (agkSel) agkSel.value = ['gas', 'heizoel', 'strom'].includes(state?.spitzenkesselArt) ? state.spitzenkesselArt : 'gas';
   // Merit-Order wiederherstellen (clearXxx() hat sie via moBeiDeaktivierung() geleert)
   if (state && state.meritOrderKeys) {
     setMeritOrderKeys(state.meritOrderKeys.filter(k => isErzeugerAktiv(k)));

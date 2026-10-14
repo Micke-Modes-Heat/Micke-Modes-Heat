@@ -292,6 +292,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .float-panel.inline-mode .panel-drag-handle{display:none!important;}
 .float-panel.inline-mode .panel-btns button[onclick*="hidePanels"]{display:none!important;}
 .float-panel.inline-mode button[onclick*="hidePanels()"]{display:none!important;}
+.float-panel.inline-mode button[data-click="hidePanels()"],.float-panel.inline-mode .float-panel-close{display:none!important;}
+.float-panel.inline-mode{resize:none!important;overflow:visible!important;border:none!important;}
+.float-panel.inline-mode .sa-tab-content{border:none!important;}
 .float-panel.blue-border{border:1px solid var(--accent); min-width:420px;--panel-accent:var(--accent);}
 .float-panel.purple-border{border:1px solid #ce93d8;--panel-accent:#ce93d8;}
 .float-panel.teal-border{border:1px solid #26a69a;--panel-accent:#26a69a;}
@@ -1195,18 +1198,21 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 /* ── Flow SVG Animations ── */
 @keyframes flowDash{from{stroke-dashoffset:16;}to{stroke-dashoffset:0;}}
 #live-flow-svg .flow-anim{stroke-dasharray:4 4;animation:flowDash 1.2s linear infinite;}
-.analyse-full-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-.analyse-full-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;min-height:180px;overflow:hidden;}
+.analyse-full-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;}
+.analyse-full-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.18);}
 .analyse-full-card.full-width{grid-column:1/-1;}
-.analyse-full-card-title{font-size:11px;color:var(--accent);margin-bottom:10px;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between;}
+.analyse-full-card-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
 .analyse-full-card canvas{width:100%;display:block;border-radius:4px;}
-.analyse-kpi-bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
-.analyse-kpi{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;min-width:100px;flex:1;}
-.analyse-kpi-val{font-family:'DM Mono',monospace;font-size:18px;color:var(--accent);line-height:1.2;}
-.analyse-kpi-lbl{font-size:9px;color:var(--muted);margin-top:2px;}
-.analyse-section-tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap;}
-.analyse-section-tab{padding:4px 12px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;transition:.15s;}
-.analyse-section-tab.active{background:var(--accent);color:#000;border-color:var(--accent);}
+.analyse-kpi-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px;}
+.analyse-kpi{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px 10px 16px;min-width:0;overflow:hidden;}
+.analyse-kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--kpi-c,var(--accent));}
+.analyse-kpi-val{font-family:'DM Mono',monospace;font-size:22px;color:var(--text);line-height:1.15;margin-top:4px;white-space:nowrap;}
+.analyse-kpi-val small{font-size:10px;color:var(--muted);margin-left:5px;font-family:inherit;}
+.analyse-kpi-lbl{font-size:10px;color:var(--muted);letter-spacing:.02em;}
+.analyse-section-tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap;align-items:center;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;}
+.analyse-section-tab{padding:5px 12px;border-radius:7px;border:none;background:transparent;color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;transition:.15s;}
+.analyse-section-tab:hover{color:var(--text);background:rgba(255,255,255,.05);}
+.analyse-section-tab.active{background:var(--accent);color:#000;font-weight:600;}
 .analyse-sub-tabs{display:flex;gap:3px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:6px;}
 .analyse-sub-tab{padding:4px 10px;border:none;background:none;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-7px;transition:.15s;}
 .analyse-sub-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
@@ -2329,6 +2335,23 @@ body.gm-fokus #view-tabs{display:none;}
 .na-grundlagen span{color:var(--muted)}.na-grundlagen b{font-weight:500}
 .na-haupt{width:100%;padding:9px;border:0;border-radius:7px;background:#43a047;color:#fff;font:600 11px 'DM Sans',sans-serif;cursor:pointer}
 .na-haupt:hover:not(:disabled){background:#4caf50}.na-haupt:disabled{opacity:.6;cursor:progress}
+.na-quartiere{margin:6px 0 4px;border-top:1px solid var(--border);padding-top:5px}
+.na-quartiere summary{cursor:pointer;font-size:9.5px;color:var(--text);padding:2px 0}
+.na-quartiere-anzahl:not(:empty){display:inline-block;min-width:14px;padding:0 4px;margin-left:4px;border-radius:7px;background:var(--accent);color:#fff;font-size:8.5px;text-align:center}
+.na-quartiere-hinweis{font-size:8.5px;color:var(--muted);margin:3px 0 5px;line-height:1.35}
+.na-quartiere > button{width:100%;font-size:10px;padding:5px;margin-top:4px}
+.na-quartier-liste{display:flex;flex-direction:column;gap:3px}
+.nq-zeile{display:grid;grid-template-columns:10px minmax(0,1fr) auto auto;align-items:center;gap:5px;font-size:9px}
+.nq-farbe{width:10px;height:10px;border-radius:2px}
+.nq-name{min-width:0;font-size:9.5px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text)}
+.nq-anzahl{color:var(--muted);white-space:nowrap}
+.nq-status{grid-column:2 / 4;font-size:8.5px;color:var(--muted)}
+.nq-status.ok{color:#2e7d32}
+.nq-status.warn{color:#e65100}
+.nq-weg{grid-row:1;grid-column:4;border:none;background:none;color:var(--muted);cursor:pointer;font-size:13px;line-height:1;padding:0 3px}
+.nq-weg:hover{color:#c62828}
+.netz-quartier-label{background:rgba(255,255,255,.85);border:none;box-shadow:none;font-size:10px;font-weight:600;color:#333;padding:1px 5px}
+.netz-quartier-label::before{display:none}
 .na-mehr summary{cursor:pointer;font-size:9px;color:var(--muted);padding:2px 0}
 .na-mehr button{width:100%;margin-top:5px;font-size:10px;padding:6px}
 .na-mehr button[hidden]{display:none}
@@ -2496,6 +2519,367 @@ textarea.ssb-in{resize:vertical;}
 .ssb-legende .lg-nd.ueberschritten{border-color:#e53935;}
 .ssb-legende .lg-nd.erreicht{border-color:#ffb74d;}
 
+/* Netz: Vorschlag „Strang über diesen Punkt anbinden" (Bearbeitungsmodus) */
+.netz-strang-vorschlag { font-size: 12px; line-height: 1.4; }
+.netz-strang-vorschlag strong { display: block; margin-bottom: 3px; }
+.netz-strang-vorschlag .nsv-delta { margin-top: 4px; opacity: .75; }
+.netz-strang-vorschlag .nsv-knoepfe { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.netz-strang-vorschlag .nsv-knoepfe button { font-size: 11px; padding: 4px 9px; border-radius: 4px; cursor: pointer; }
+.netz-strang-vorschlag .nsv-ja { background: #266426; color: #fff; border: 1px solid #266426; }
+
+/* Netz-Bearbeitungsmodus: Leitungen direkt greifen und ziehen */
+.netz-zieht, .netz-zieht path.leaflet-interactive { cursor: grabbing !important; }
+
+/* ── LW-WP: Aufstellung der Außengeräte ── */
+.lwwp-aufstellung{margin-bottom:10px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;}
+.lwwp-aufstellung-titel{font-size:10px;font-weight:600;color:var(--text);margin-bottom:6px;}
+.lwwp-aufstellung-grid{display:grid;grid-template-columns:auto 1fr;gap:5px 8px;align-items:center;}
+.lwwp-aufstellung-grid .inp-label{margin:0;}
+.lwwp-aufstellung-grid select{font-size:10px;padding:2px 4px;}
+.lwwp-aufstellung-grid input[type=range]{width:100%;accent-color:var(--accent);}
+#lwwp-drehung-wert{font-family:'DM Mono',monospace;color:var(--accent);}
+.lwwp-aufstellung-verfuegbar{display:grid;grid-template-columns:1fr auto 1fr;gap:4px;align-items:center;margin-top:7px;font-size:10px;color:var(--muted);}
+.lwwp-aufstellung-verfuegbar .inp-label{margin:0;grid-column:1/-1;}
+.lwwp-aufstellung-verfuegbar .inp-field{font-size:10px;padding:2px 4px;}
+
+/* ── Systemanalyse: Übersicht ── */
+.analyse-tab-trenner{margin:0 4px 0 10px;padding-left:12px;border-left:1px solid var(--border);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);opacity:.7;}
+.analyse-card-sub{font-size:10px;font-weight:400;color:var(--muted);}
+.analyse-full-card-title .htip{margin-left:auto;}
+.analyse-full-card-title .analyse-card-sub:last-child{margin-left:auto;}
+.analyse-legende{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10px;color:var(--muted);margin:2px 0 6px;}
+.analyse-kpi-bar-mini{position:relative;height:4px;margin-top:7px;background:rgba(255,255,255,.08);border-radius:2px;}
+.analyse-kpi-bar-mini i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:#ef8a3c;transition:width .3s;}
+.analyse-kpi-bar-mini i.ok{background:#43a047;}
+.analyse-kpi-bar-mini b{position:absolute;left:65%;top:-3px;bottom:-3px;width:2px;background:var(--text);opacity:.55;}
+.analyse-metriken{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-top:12px;font-size:10px;color:var(--muted);}
+.analyse-metrik{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:7px 9px;cursor:help;}
+.analyse-metrik span{display:block;font-size:9px;}
+.analyse-metrik b{display:block;font:500 14px 'DM Mono',monospace;color:var(--text);margin-top:2px;}
+.analyse-metrik b small{font-size:9px;color:var(--muted);margin-left:3px;}
+.erzeugermix-zeile{padding:7px 0;border-bottom:1px solid var(--border);}
+.erzeugermix-zeile:last-child{border-bottom:none;}
+.erzeugermix-kopf{display:flex;align-items:center;gap:8px;font-size:11px;}
+.erzeugermix-punkt{width:9px;height:9px;border-radius:3px;flex-shrink:0;}
+.erzeugermix-name{color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.erzeugermix-werte{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);white-space:nowrap;}
+.erzeugermix-kopf b{font-family:'DM Mono',monospace;font-size:12px;color:var(--text);min-width:52px;text-align:right;}
+.erzeugermix-balken{height:6px;margin-top:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;}
+.erzeugermix-balken i{display:block;height:100%;border-radius:3px;}
+.analyse-aufklapp > summary{cursor:pointer;list-style:none;margin-bottom:0;}
+.analyse-aufklapp > summary::-webkit-details-marker{display:none;}
+.analyse-aufklapp > summary::before{content:"▸";color:var(--muted);transition:transform .15s;display:inline-block;}
+.analyse-aufklapp[open] > summary::before{transform:rotate(90deg);}
+.analyse-aufklapp[open] > summary{margin-bottom:10px;}
+@media (max-width:900px){.analyse-full-grid{grid-template-columns:1fr;}}
+.erzeugermix-anteile{display:grid;grid-template-columns:auto 1fr auto;gap:6px 10px;align-items:center;font-size:10px;color:var(--muted);margin-bottom:10px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+.erzeugermix-anteile b{font:500 11px 'DM Mono',monospace;color:var(--text);text-align:right;}
+.erzeugermix-stapel{display:flex;height:14px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,.06);}
+.erzeugermix-stapel i{display:block;height:100%;border-right:1px solid var(--surface);}
+.erzeugermix-stapel i:last-child{border-right:none;}
+
+/* Eingebettete Panels (Wärme, Wirtschaftlichkeit, Strom) als Karte */
+#analyse-waerme-content,#analyse-section-content{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+#analyse-section-content:empty{display:none;}
+#analyse-waerme-wrap .analyse-sub-tabs{border-bottom:none;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;width:fit-content;max-width:100%;flex-wrap:wrap;}
+#analyse-waerme-wrap .analyse-sub-tab,#analyse-emissionen-wrap .analyse-sub-tab{border-radius:7px;margin-bottom:0;border-bottom:none;padding:5px 11px;}
+#analyse-waerme-wrap .analyse-sub-tab.active,#analyse-emissionen-wrap .analyse-sub-tab.active{background:rgba(255,255,255,.08);color:var(--text);}
+#analyse-emissionen-wrap .analyse-sub-tabs{border-bottom:none;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;width:fit-content;max-width:100%;flex-wrap:wrap;}
+
+/* ── Wirtschaftlichkeit ── */
+.wirt-layout{display:flex;flex-direction:column;gap:12px;}
+.float-panel.inline-mode .wirt-layout{display:grid;grid-template-columns:minmax(230px,280px) minmax(0,1fr);gap:16px;align-items:start;}
+.float-panel.inline-mode .wirt-annahmen{position:sticky;top:0;}
+#wirtschaft-panel.inline-mode > .panel-info{margin-bottom:12px;}
+.wirt-annahmen{display:flex;flex-direction:column;gap:10px;}
+.wirt-block{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 10px;}
+.wirt-block-titel{font-size:10px;font-weight:600;color:var(--text);margin-bottom:7px;}
+.wirt-block-titel small{font-weight:400;color:var(--muted);margin-left:4px;}
+.wirt-block select{width:100%;font-size:10px;}
+.wirt-hinweis{font-size:9px;color:var(--muted);margin-top:6px;line-height:1.4;}
+.wirt-felder{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;}
+.wirt-feld{display:flex;flex-direction:column;gap:2px;font-size:9px;color:var(--muted);min-width:0;}
+.wirt-feld .inp-field{font-size:11px;padding:3px 6px;width:100%;}
+.wirt-tog{margin-top:8px;}
+.wirt-check{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text);cursor:pointer;}
+.wirt-ergebnis{display:flex;flex-direction:column;gap:12px;min-width:0;}
+#wirt-table-wrap{display:flex;flex-direction:column;gap:12px;}
+.wirt-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
+.wirt-kpi{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;min-width:0;}
+.wirt-kpi > span{display:block;font-size:10px;color:var(--muted);}
+.wirt-kpi b{display:block;font:500 20px 'DM Mono',monospace;color:var(--text);margin-top:3px;white-space:nowrap;}
+.wirt-kpi b small{font-size:10px;color:var(--muted);margin-left:4px;}
+.wirt-kpi em{display:block;font-style:normal;font-size:9px;color:var(--muted);margin-top:2px;}
+.wirt-kpi-haupt{border-color:rgba(102,187,106,.55);background:rgba(76,175,80,.08);}
+.wirt-kpi-haupt b{color:#a5d6a7;font-size:24px;}
+.wirt-karte{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;min-width:0;overflow-x:auto;}
+.wirt-karte-titel{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px;}
+.wirt-karte-titel small{font-weight:400;font-size:9px;color:var(--muted);}
+.wirt-ansicht{margin-left:auto;display:flex;gap:2px;}
+.wirt-struktur{display:flex;height:16px;border-radius:5px;overflow:hidden;background:rgba(255,255,255,.06);}
+.wirt-struktur i{display:block;height:100%;border-right:1px solid var(--bg);}
+.wirt-struktur-legende{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:10px;color:var(--muted);}
+.wirt-struktur-legende span{display:inline-flex;align-items:baseline;gap:5px;}
+.wirt-struktur-legende i{width:8px;height:8px;border-radius:2px;display:inline-block;}
+.wirt-struktur-legende b{font:500 11px 'DM Mono',monospace;color:var(--text);}
+.wirt-struktur-legende small{font-size:9px;}
+.wirt-tabelle{width:100%;border-collapse:collapse;font-size:11px;}
+.wirt-tabelle tr[data-wirt-kw] td:first-child{cursor:help}
+.wirt-kurvenkarte{position:fixed;z-index:4000;display:none;pointer-events:none;width:264px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.35);font-size:10.5px;line-height:1.5;color:var(--text)}
+.wirt-tabelle th{font-size:9px;font-weight:500;color:var(--muted);text-align:right;padding:0 4px 5px;border-bottom:1px solid var(--border);white-space:nowrap;}
+.wirt-tabelle td{padding:3px 4px;}
+.wirt-tabelle tbody tr:hover{background:rgba(255,255,255,.03);}
+.wirt-tabelle tfoot td{border-top:1px solid var(--border);font-weight:600;padding-top:5px;text-align:right;font-family:'DM Mono',monospace;}
+.wirt-tabelle tfoot td:first-child{text-align:left;font-family:inherit;}
+.wirt-npv{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+.wirt-npv:not(:has(#js-result[style*="block"])){display:none;}
+.wirt-npv-werte{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:6px;}
+.wirt-npv-werte span{display:block;font-size:9px;color:var(--muted);}
+.wirt-npv-werte b{font:500 13px 'DM Mono',monospace;color:var(--text);}
+#wirtschaft-panel:not(.inline-mode) .wirt-ergebnis{order:-1;}
+.wirt-umfang{display:inline-flex;align-self:flex-start;gap:2px;padding:3px;background:var(--bg);border:1px solid var(--border);border-radius:8px;}
+.wirt-umfang button{border:none;background:transparent;color:var(--muted);font:inherit;font-size:10px;padding:4px 11px;border-radius:6px;cursor:pointer;}
+.wirt-umfang button:hover{color:var(--text);}
+.wirt-umfang button.active{background:var(--accent);color:#000;font-weight:600;}
+
+/* ── Quartier herauslösen ── */
+.qh-deckel{position:absolute;inset:0;z-index:650;cursor:crosshair;background:transparent;}
+.qh-info{font-size:12px;margin-bottom:8px;}
+.qh-hinweis{font-size:10px;color:var(--muted);line-height:1.45;margin-bottom:10px;}
+.qh-label{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;}
+
+/* Strom in der Analyse: Diagramme oben, Eingaben darunter; im schwebenden Panel keine Diagramme */
+#strom-panel:not(.inline-mode) [id^="strom-content-"],#strom-panel:not(.inline-mode) .strom-ana-tabs,#strom-panel:not(.inline-mode) .strom-ana-eingaben-titel{display:none!important;}
+#strom-panel.inline-mode > div:has(> .strom-ana-tabs){display:flex;flex-direction:column;padding:0!important;}
+#strom-panel.inline-mode .strom-ana-tabs{order:-3;border-bottom:none;padding:4px;background:var(--bg);border:1px solid var(--border);border-radius:10px;width:fit-content;max-width:100%;flex-wrap:wrap;}
+#strom-panel.inline-mode .strom-ana-tabs .analyse-sub-tab{border-radius:7px;margin-bottom:0;border-bottom:none;padding:5px 11px;}
+#strom-panel.inline-mode .strom-ana-tabs .analyse-sub-tab.active{background:rgba(255,255,255,.08);color:var(--text);}
+#strom-panel.inline-mode [id^="strom-content-"]{order:-2;margin-bottom:14px;}
+#strom-panel.inline-mode .strom-ana-eingaben-titel{order:-1;font-size:11px;font-weight:600;color:var(--text);padding-top:12px;margin-bottom:8px;border-top:1px solid var(--border);}
+
+/* ── Optimierung: Einstellungen als drei Karten, Ergebniskarten ── */
+#center-optimierung-view > div:first-child span:first-child,#center-vergleich-view .vergleich-header h2,#center-analyse-view > div:first-child > span:first-child{font-size:18px!important;font-weight:600;color:var(--text)!important;letter-spacing:0!important;}
+#center-optimierung-view .opt-setup{grid-template-columns:minmax(330px,440px) minmax(230px,300px) minmax(260px,1fr);gap:14px;padding:0;background:none;border:none;}
+#center-optimierung-view .opt-setup > div{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;}
+#center-optimierung-view .opt-setup .inp-field{border-radius:5px;}
+@media(max-width:1100px){#center-optimierung-view .opt-setup{grid-template-columns:1fr 1fr;}}
+.opt-karte{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;}
+.opt-karte-erste{border-color:rgba(253,216,53,.45);box-shadow:0 0 0 1px rgba(253,216,53,.15) inset;}
+.opt-karte-kopf{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.opt-karte-rang{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);color:var(--text);font-weight:700;font-size:12px;flex-shrink:0;}
+.opt-karte-erste .opt-karte-rang{background:#fdd835;color:#000;}
+.opt-karte-titel{flex:1;font-size:13px;font-weight:600;color:var(--text);}
+.opt-karte-kpis{display:flex;gap:10px;align-items:stretch;margin-bottom:10px;}
+.opt-karte-wgk{background:rgba(253,216,53,.08);border:1px solid rgba(253,216,53,.3);border-radius:8px;padding:8px 14px;text-align:center;min-width:96px;display:flex;flex-direction:column;justify-content:center;}
+.opt-karte-wgk b{font:700 24px 'DM Mono',monospace;color:#fdd835;line-height:1.1;}
+.opt-karte-wgk span{font-size:9px;color:var(--muted);margin-top:2px;}
+.opt-karte-werte{flex:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;}
+.opt-karte-werte div{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;}
+.opt-karte-werte b{display:block;font:500 13px 'DM Mono',monospace;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.opt-karte-werte span{font-size:9px;color:var(--muted);}
+.opt-erz-tabelle{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(2,minmax(0,1fr)) minmax(0,1.4fr);gap:4px 12px;font-size:11px;align-items:center;padding-top:8px;border-top:1px solid var(--border);}
+.opt-erz-tabelle > div{text-align:right;font-family:'DM Mono',monospace;color:var(--text);}
+.opt-erz-tabelle > .opt-erz-name,.opt-erz-tabelle > .opt-erz-kopf:first-child{text-align:left;font-family:inherit;}
+.opt-erz-kopf{font-size:9px!important;color:var(--muted)!important;font-family:inherit!important;}
+.opt-erz-name i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;}
+.opt-erz-anteil{display:flex;align-items:center;justify-content:flex-end;gap:8px;}
+.opt-erz-anteil span{flex:1;max-width:120px;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;}
+.opt-erz-anteil em{display:block;height:100%;}
+.opt-karte-fuss{display:flex;justify-content:flex-end;margin-top:10px;}
+.opt-karte-fuss .btn-secondary{font-size:10px;padding:5px 14px;}
+.opt-karte{text-align:left;}
+.opt-ergebnis-kopf{font-size:10px;color:var(--muted);margin-bottom:8px;text-align:left;}
+.opt-umfang-hinweis{margin-left:8px;padding:1px 7px;border:1px solid var(--border);border-radius:9px;font-size:9px;}
+.opt-ausgang{margin-top:4px;font-size:10px;color:var(--text);}
+.opt-karte-hinweis{margin-top:8px;padding:5px 8px;border-left:2px solid #ffb74d;background:var(--surface2);font-size:9.5px;color:#ffcc80;line-height:1.45;}
+
+/* ── Variantenvergleich: Abschnitte als Karten ── */
+#vergleich-uebersicht,#vergleich-view-table-wrap,#vergleich-pareto-wrap,#vergleich-strom-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:6px 8px;}
+#vergleich-pareto-wrap{padding:12px 14px;}
+#center-vergleich-view .vergleich-abschnitt{font-size:12px;font-weight:600;color:var(--text);text-transform:none;letter-spacing:0;margin:18px 0 8px;}
+#center-vergleich-view .vergleich-table{table-layout:fixed;}
+#center-vergleich-view .vergleich-table th:first-child,#center-vergleich-view .vergleich-table td:first-child{width:210px;}
+#center-vergleich-view .vergleich-table th,#center-vergleich-view .vergleich-table td{white-space:normal;}
+#center-vergleich-view .vergleich-table th{background:transparent!important;color:var(--muted)!important;font-size:11px;letter-spacing:0;border-bottom:2px solid var(--border);}
+#center-vergleich-view .vergleich-table th.clickable[style*="var(--accent)"],#center-vergleich-view .vergleich-table th.clickable[style*="#4caf50"]{color:var(--text)!important;border-bottom-color:var(--accent);}
+#center-vergleich-view .vergleich-table th.clickable:hover{background:rgba(255,255,255,.04)!important;}
+.lwwp-form-zeile{display:flex;align-items:center;gap:6px;font-size:10px;font-family:'DM Mono',monospace;color:var(--text);}
+.lwwp-form-zeile .zu-klein,#lwwp-form-info.zu-klein{color:#ef5350;}
+.lwwp-griff{display:flex!important;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#fff;color:#1b5e20;border:2px solid #388e3c;font:700 11px/1 sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:grab;}
+.lwwp-griff.drehen{color:#0277bd;border-color:#0277bd;}
+.gl-aufklapp > summary{cursor:pointer;list-style:none;}
+.gl-aufklapp > summary::-webkit-details-marker{display:none;}
+.gl-aufklapp > summary::before{content:"▸ ";color:var(--muted);}
+.gl-aufklapp[open] > summary::before{content:"▾ ";}
+.trasse-menue .leaflet-popup-content{margin:8px 10px;}
+.trasse-menue-inhalt{display:flex;flex-direction:column;gap:5px;font-size:11px;min-width:150px;}
+.trasse-menue-inhalt span{color:var(--muted,#888);font-family:'DM Mono',monospace;}
+.trasse-menue-inhalt .btn-secondary{font-size:11px;padding:4px 8px;}
+body.trasse-loeschmodus .leaflet-interactive{cursor:not-allowed;}
+body.trasse-loeschmodus path.leaflet-interactive[stroke="#ff9800"],body.trasse-loeschmodus path.leaflet-interactive[stroke="#ab47bc"],body.trasse-loeschmodus path.leaflet-interactive[stroke="#42a5f5"]{cursor:pointer;}
+#btn-trasse-loeschmodus.active{background:#c62828;color:#fff;border-color:#c62828;}
+
+/* LW-WP: Schall im Panel */
+.lwwp-schall{font-size:10px;display:flex;flex-direction:column;gap:6px}
+.lwwp-schall-quelle{font-family:'DM Mono',monospace;font-size:10px;color:var(--text)}
+.lwwp-schall-radien{display:grid;grid-template-columns:auto 1fr;gap:1px 12px;font-family:'DM Mono',monospace;font-size:10px}
+.lwwp-schall-radien .kopf,.lwwp-schall-orte-kopf{color:var(--muted);font-family:inherit;font-size:9px}
+.lwwp-ausbreitung{display:flex;margin:6px 0 2px;border:1px solid var(--border);border-radius:5px;overflow:hidden}
+.lwwp-ausbreitung button{flex:1;padding:3px 6px;border:0;background:var(--surface2);color:var(--muted);font:inherit;font-size:10px;cursor:pointer;white-space:nowrap}
+.lwwp-ausbreitung button+button{border-left:1px solid var(--border)}
+.lwwp-ausbreitung button.aktiv{background:var(--accent);color:#111}
+.lwwp-io-daempf{margin-left:4px;font-size:8px;color:var(--muted)}
+.lwwp-schall-orte{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:1px 8px;font-family:'DM Mono',monospace;font-size:10px}
+.lwwp-io-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lwwp-io-pegel.ok{color:#81c784}
+.lwwp-io-pegel.nacht{color:#ffb74d}
+.lwwp-io-pegel.ueber{color:#ef5350;font-weight:600}
+.lwwp-gebiet{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:6px;margin-top:6px;font-size:10px;color:var(--muted)}
+.lwwp-gebiet select{font-size:10px;padding:2px 4px}
+.lwwp-schall-legende{font-size:9px;color:var(--muted);margin-top:6px}
+.lwwp-schall-hinweis{font-size:8.5px;color:var(--muted);margin-top:4px;line-height:1.35}
+
+/* Wirtschaftlichkeit: Kostenanalyse */
+.wirt-abschnitt{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px}
+.wirt-abschnitt small{font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted);margin-left:6px}
+.wirt-analyse-raster{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.wirt-analyse-raster>.wirt-karte{margin-bottom:0}
+@media (max-width:1100px){.wirt-analyse-raster{grid-template-columns:1fr}}
+.wirt-kennwerte{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.wirt-kennwerte span{display:flex;flex-direction:column;padding:5px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg);min-width:96px}
+.wirt-kennwerte small{font-size:8.5px;color:var(--muted)}
+.wirt-kennwerte b{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;color:var(--text)}
+.wirt-tornado{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);gap:4px 0;align-items:center;font-size:10px}
+.wirt-tornado .wt-name{padding-right:10px;color:var(--text);white-space:nowrap}
+.wirt-tornado .wt-links,.wirt-tornado .wt-rechts{display:flex;align-items:center;gap:4px;height:16px}
+.wirt-tornado .wt-links{justify-content:flex-end;border-right:1px solid var(--muted);padding-right:2px}
+.wirt-tornado .wt-rechts{padding-left:2px}
+.wirt-tornado .wt-links i{display:block;height:12px;background:#66bb6a;border-radius:2px 0 0 2px;opacity:.85}
+.wirt-tornado .wt-rechts i{display:block;height:12px;background:#ef5350;border-radius:0 2px 2px 0;opacity:.85}
+.wirt-tornado b{font-family:'DM Mono',monospace;font-weight:400;font-size:9.5px;color:var(--text);white-space:nowrap}
+.wirt-tornado small{font-size:8.5px;color:var(--muted);white-space:nowrap}
+.we-kopf,.we-zeile{display:grid;grid-template-columns:150px 190px minmax(0,1fr) 64px 80px;gap:10px;align-items:center}
+.we-kopf{font-size:8.5px;color:var(--muted);padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:4px}
+.we-kopf i{display:inline-block;width:8px;height:8px;border-radius:2px;margin:0 2px 0 6px;vertical-align:middle}
+.we-kopf span:nth-child(n+4){text-align:right}
+.we-zeile{font-size:10px;padding:3px 0}
+.we-name{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.we-name i{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.we-menge{color:var(--muted);font-family:'DM Mono',monospace;font-size:9.5px;white-space:nowrap}
+.we-balken{display:flex;height:12px;background:var(--bg);border-radius:3px;overflow:hidden}
+.we-balken i{display:block;height:100%}
+.we-wert{text-align:right;font-family:'DM Mono',monospace;font-weight:500;color:var(--text)}
+.we-summe{text-align:right;font-family:'DM Mono',monospace;color:var(--muted);font-size:9.5px}
+.we-gemeinsam{border-top:1px dashed var(--border);margin-top:3px;padding-top:5px}
+@media (max-width:1100px){.we-kopf,.we-zeile{grid-template-columns:120px 1fr 60px}.we-menge,.we-summe,.we-kopf span:nth-child(2),.we-kopf span:nth-child(5){display:none}}
+.wirt-pv-wp-label{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:10px;color:var(--muted);cursor:pointer;}
+.wirt-pv-wp-label input{accent-color:var(--accent);margin:0;}
+.lwwp-schallschutz-wahl{display:flex;gap:4px;align-items:center;}
+
+/* ── Ladeanzeige beim Öffnen eines Projekts (Spinner als CSS-Animation: dreht auch bei blockierter Seite) ── */
+#projekt-lade-anzeige{position:fixed;inset:0;z-index:20000;display:none;align-items:center;justify-content:center;background:rgba(10,12,18,.55);}
+#projekt-lade-anzeige.sichtbar{display:flex;}
+#projekt-lade-anzeige .pla-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 26px;max-width:420px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.4);}
+#projekt-lade-anzeige .pla-spinner{width:34px;height:34px;margin:0 auto 12px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:pla-dreh .9s linear infinite;will-change:transform;}
+#projekt-lade-anzeige .pla-titel{font-size:12px;color:var(--text);font-weight:600;margin-bottom:6px;word-break:break-word;}
+#projekt-lade-anzeige .pla-text{font-size:10.5px;color:var(--muted);line-height:1.45;}
+@keyframes pla-dreh{to{transform:rotate(360deg);}}
+.geb-ohne-nutzung{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:6px 0;padding:6px 10px;border-left:2px solid #ffb74d;background:var(--surface2);font-size:10.5px;color:#ffcc80;}
+.geb-ohne-nutzung .btn-secondary{font-size:10px;padding:3px 10px;}
+.geb-profile-btn.ersatz{color:#ffb74d;border-color:rgba(255,183,77,.5);}
+.gl-tww-dezentral{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:8px;font-size:10px;color:var(--muted);}
+.gl-tww-dezentral label{display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--text);}
+.gl-tww-dezentral input[type=checkbox]{accent-color:var(--accent);margin:0;}
+.gl-tww-heizgrenze input{width:52px;text-align:right;font-size:10px;padding:2px 4px;}
+.gl-tww-info{font-family:'DM Mono',monospace;color:var(--accent);}
+
+/* ── Speicheranalyse (Einsatzanalyse, Reiter „Speicher“) ── */
+.sp-leer{font-size:11px;color:var(--muted);padding:18px 6px;}
+.sp-steuerung{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:10px;}
+.sp-art{display:flex;gap:2px;}
+.sp-feld{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);}
+.sp-feld .inp-field{width:62px;padding:2px 4px;font-size:10px;text-align:right;}
+.sp-feld small{font-size:9px;}
+.sp-feld-breit input[type=range]{width:130px;accent-color:#26a69a;}
+.sp-check{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer;}
+.sp-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-bottom:8px;}
+.sp-kpi{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:5px 7px;display:flex;flex-direction:column;gap:1px;}
+.sp-kpi span{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+.sp-kpi b{font-family:'DM Mono',monospace;font-size:13px;color:var(--text);font-weight:600;}
+.sp-kpi em{font-style:normal;font-size:9px;color:var(--muted);}
+.sp-fazit{font-size:10.5px;padding:6px 8px;border-radius:5px;margin-bottom:10px;border-left:3px solid;}
+.sp-gut{background:rgba(129,199,132,0.08);border-color:#81c784;}
+.sp-schlecht{background:rgba(229,115,115,0.08);border-color:#e57373;}
+.sp-titelzeile{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
+.sp-ansicht{display:flex;gap:2px;}
+.sp-ansicht .viz-btn,.sp-art .viz-btn{font-size:9px;padding:2px 8px;}
+#sa-tab-speicher canvas{width:100%;display:block;border-radius:4px;background:rgba(0,0,0,0.12);cursor:default;}
+#sp-canvas-variation{cursor:pointer!important;}
+.sp-legende{font-size:9px;color:var(--muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap;}
+.sp-fuss{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;margin-top:10px;font-size:9px;color:var(--muted);line-height:1.4;}
+.sp-fuss .btn-secondary{flex-shrink:0;font-size:10px;}
+.sp-hinweis{font-size:10px;color:#81c784;margin-top:4px;}
+
+/* ── Gebäudeübersicht: Datenanalyse mit wählbaren Achsen ── */
+.geb-dyn-analyse{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:10px 0;}
+.ga-kopf{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:8px;}
+.ga-kopf h3{margin:0 8px 0 0;font-size:12px;color:var(--accent);font-weight:600;}
+.ga-kopf label{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:5px;}
+.ga-kopf select{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;padding:2px 4px;}
+.ga-flaeche{position:relative;}
+.ga-flaeche canvas{width:100%;display:block;border-radius:4px;background:rgba(0,0,0,0.12);}
+.ga-tipp{position:absolute;display:none;pointer-events:none;background:rgba(15,17,23,0.94);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:10px;color:var(--text);max-width:220px;line-height:1.45;z-index:5;}
+.ga-info{font-size:9.5px;color:var(--muted);margin-top:5px;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;}
+.ga-info i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:-1px;}
+.ga-info em{font-style:normal;}
+@keyframes ga-blink{0%,100%{background:transparent}30%{background:rgba(79,195,247,0.35)}}
+tr.ga-blink td{animation:ga-blink 1.6s ease 2;}
+
+/* ── Quartier sondieren ── */
+.qs-werkzeuge{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;}
+.qs-werkzeuge .btn-secondary{font-size:10px;padding:3px 9px;}
+.qs-hinweis{font-size:10px;color:#4fc3f7;}
+.qs-leer{font-size:11px;color:var(--muted);padding:10px 2px;line-height:1.5;}
+.qs-quelle{font-size:9.5px;color:var(--muted);margin-bottom:6px;}
+.qs-ansicht{display:flex;gap:2px;margin:4px 0 6px;flex-wrap:wrap;}
+.qs-ansicht .viz-btn{font-size:9px;padding:2px 8px;}
+#qs-canvas{width:100%;display:block;border-radius:4px;background:rgba(0,0,0,0.12);}
+.leaflet-container.qs-ziehen,.leaflet-container.qs-ziehen .leaflet-interactive{cursor:crosshair!important;}
+
+/* ── Variantenvergleich: grafischer Vergleich ── */
+.vg-kopf{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.vg-ansicht{display:flex;gap:2px;flex-wrap:wrap;}
+.vg-ansicht .viz-btn{font-size:9.5px;padding:3px 9px;}
+.vg-check{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer;}
+.vg-flaeche{position:relative;}
+.vg-flaeche canvas{width:100%;display:block;border-radius:6px;background:var(--surface2);}
+.vg-leer{font-size:11px;color:var(--muted);padding:8px 0;}
+
+/* ── Mehrere Heizzentralen ── */
+.hz-liste{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
+.hz-zeile{display:flex;gap:4px;align-items:center;}
+.hz-zeile .hz-name{width:78px;font-size:11px;padding:3px 5px;}
+.hz-zeile .hz-geb{flex:1;font-size:11px;padding:3px 5px;color:var(--muted);}
+.hz-zeile select.hz-geb{color:var(--text);}
+.hz-zu,.hz-weg{background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;font-size:10px;padding:2px 6px;}
+.hz-zu:hover{color:var(--accent);border-color:var(--accent);} .hz-weg:hover{color:#e57373;border-color:#e57373;}
+.hz-kenn{font-size:9.5px;color:var(--muted);margin:-1px 0 3px 82px;}
+.hz-plus{font-size:10.5px;padding:4px 8px;align-self:flex-start;}
+.hz-opt{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+.hz-opt .inp-field{width:76px;font-size:10.5px;padding:2px 4px;}
+.hz-hinweis{font-size:9.5px;color:var(--muted);line-height:1.4;}
+.hz-tab{width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:6px;}
+.hz-tab th{text-align:left;color:var(--muted);font-weight:500;font-size:9.5px;border-bottom:1px solid var(--border);padding:3px 5px;}
+.hz-tab td{padding:3px 5px;border-bottom:1px solid rgba(255,255,255,0.04);font-family:'DM Mono',monospace;}
+.hz-tab select{font-size:10px;padding:1px 3px;}
+#hz-canvas{width:100%;display:block;border-radius:4px;background:rgba(0,0,0,0.12);}
+.nq-fix{background:transparent;border:1px solid #ffb74d;color:#ffb74d;border-radius:4px;font-size:9px;padding:1px 6px;cursor:pointer;}
+
+/* ── Wärme-Schemata (Netz, Heizzentrale) ── */
+#ws-panel{position:fixed;top:0;right:0;bottom:0;width:560px;background:var(--bg);border-left:1px solid var(--border);display:none;flex-direction:column;z-index:600;}
+#ws-panel.visible{display:flex;}
+#ws-panel.sld-fullscreen{left:0;width:100%!important;z-index:900;}
+#ws-canvas-wrap{flex:1;overflow:auto;background:#0b0e18;}
 /* ── Plangebiet & Laden — Statusübersicht (42-lade-status.js) ─────────────── */
 #lade-status-panel{position:fixed;bottom:84px;left:292px;width:330px;z-index:10034;
   background:rgba(24,20,30,.97);border:1px solid #ab47bc;border-radius:10px;
@@ -2536,3 +2920,22 @@ textarea.ssb-in{resize:vertical;}
 #lade-status-panel .ls-spin{display:inline-block;width:10px;height:10px;margin-top:2px;border:2px solid rgba(79,195,247,.3);border-top-color:#4fc3f7;border-radius:50%;animation:ls-spin .8s linear infinite;}
 @keyframes ls-spin{to{transform:rotate(360deg);}}
 @media(max-width:900px){#lade-status-panel{left:12px!important;right:12px;width:auto;bottom:60px;max-height:50vh;}}
+/* Datenanalyse: Auswertung je Wärmepumpe */
+.wpa-kopf{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;margin-bottom:6px;}
+.wpa-chips,.wpa-ansicht{display:flex;flex-wrap:wrap;gap:4px;}
+.wpa-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin-bottom:6px;}
+.wpa-kpis>div{background:var(--surface2);border-radius:4px;padding:4px 6px;display:flex;flex-direction:column;}
+.wpa-kpis b{font-size:12px;color:var(--text);}
+.wpa-kpis span{font-size:9px;color:var(--muted);}
+.wpa-zeit{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:10px;color:var(--muted);margin-bottom:4px;}
+.wpa-zeit select{width:auto;font-size:10px;padding:1px 4px;}
+.wpa-zeit label{display:flex;align-items:center;gap:4px;}
+.wpa-diagramm{position:relative;}
+.wpa-diagramm canvas{width:100%;display:block;border-radius:4px;cursor:crosshair;}
+.wpa-tip{position:absolute;display:none;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:10px;color:var(--text);white-space:nowrap;z-index:5;box-shadow:0 2px 6px rgba(0,0,0,.3);}
+.wpa-legende{display:flex;flex-wrap:wrap;gap:12px;font-size:9px;color:var(--muted);margin-top:4px;}
+.wpa-leer{font-size:11px;color:var(--muted);padding:8px 0;}
+/* Gebäudetabelle: Zahlenfeld-Pfeile nur beim Überfahren/Bearbeiten, dunkel und dezent */
+.geb-overview-table input[type="number"]{color-scheme:dark;}
+.geb-overview-table input[type="number"]::-webkit-inner-spin-button,.geb-overview-table input[type="number"]::-webkit-outer-spin-button{opacity:0;margin:0;}
+.geb-overview-table input[type="number"]:hover::-webkit-inner-spin-button,.geb-overview-table input[type="number"]:focus::-webkit-inner-spin-button{opacity:.3;}

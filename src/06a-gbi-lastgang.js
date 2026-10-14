@@ -34,6 +34,8 @@ export const GL_MONTH_HOURS = [744,672,744,720,744,720,744,744,720,744,720,744];
 
 export let gbiData = [];        // parsed CSV rows as objects
 export let gbiColumns = {};     // {name:colIdx, nutzung:colIdx, baujahr:colIdx, zustand:colIdx, flaeche:colIdx}
+/** Spaltenzuordnung von Hand ändern (Auswahl im Import-Dialog). */
+export function gbiSpalteSetzen(key, idx) { gbiColumns[key] = Number.isFinite(idx) ? idx : -1; }
 export let gbiHeaders = [];     // raw CSV headers
 export let gbiRawRows = [];     // raw CSV rows (arrays)
 export let gbiMatches = [];     // [{csvIdx, gebId, score, status:'auto'|'manual'|'rejected'}]
@@ -152,7 +154,7 @@ export function gbiShowMapping() {
   var html = '';
   fields.forEach(function(f) {
     html += '<div class="inp-group"><label class="inp-label">' + f.label + '</label>'
-      + '<select class="inp-field" id="gbi-col-' + f.key + '" data-change="gbiColumns[\'' + f.key + '\']=parseInt(this.value)">'
+      + '<select class="inp-field" id="gbi-col-' + f.key + '" data-change="gbiSpalteSetzen(\'' + f.key + '\', parseInt(this.value))">'
       + opts.replace('value="' + gbiColumns[f.key] + '"', 'value="' + gbiColumns[f.key] + '" selected')
       + '</select></div>';
   });
@@ -167,7 +169,14 @@ export function gbiBackToUpload() {
 // ── Step 3: Auto-Matching ───────────────────────────────────────────────
 export function gbiStartMatching() {
   // Build CSV data objects
-  var num = function(v) { return parseFloat((v || '').replace(/\./g, '').replace(',', '.')) || 0; };
+  // Deutsches und englisches Zahlenformat: „1.234,5“, „1234,5“, „1.234“ (Tausender) und „180.5“ (Dezimalpunkt)
+  var num = function(v) {
+    var s = String(v || '').trim().replace(/['"\s]/g, '');
+    if (!s) return 0;
+    if (s.indexOf(',') >= 0) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+    if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) return parseFloat(s.replace(/\./g, '')) || 0;
+    return parseFloat(s) || 0;
+  };
   gbiData = gbiRawRows.map(function(row, idx) {
     return {
       idx: idx,
@@ -561,7 +570,20 @@ export function captureWaermeGrundlagen() {
     timeSeriesMeta:glTimeSeriesMeta ? structuredClone(glTimeSeriesMeta) : null,
     bestandsanlage:window.getBestandsanlage?.() ?? null,
     witterung:window.getWitterung?.() ?? null,
+    ...(document.getElementById('gl-tww-dezentral')?.checked ? { twwDezentral:true, heizgrenze:value('gl-heizgrenze') } : {}),
   };
+}
+
+/** Sichtbarkeit der Heizgrenze und Kurzinfo zur Sommerabschaltung (TWW dezentral). */
+export function glTwwDezentralUi() {
+  const an = !!document.getElementById('gl-tww-dezentral')?.checked;
+  const wrap = document.getElementById('gl-tww-heizgrenze-wrap');
+  if (wrap) wrap.style.display = an ? '' : 'none';
+  const info = document.getElementById('gl-tww-dezentral-info');
+  const t = window.systemState?.twwDezentral;
+  if (info) info.textContent = an && t
+    ? `Netz an ${t.ausTage} Tagen aus (${Math.round(t.betriebStunden).toLocaleString('de-DE')} Betriebsstunden)` + (t.twwMwh > 0.5 ? ` · ${Math.round(t.twwMwh).toLocaleString('de-DE')} MWh/a TWW dezentral` : '')
+    : '';
 }
 
 export function restoreWaermeGrundlagen(data) {
@@ -592,6 +614,10 @@ export function restoreWaermeGrundlagen(data) {
   set('gl-profil2',source.profil2,'');
   set('gl-gew1',source.gewicht1,'100');
   set('gl-gew2',source.gewicht2,'0');
+  const twwCb = document.getElementById('gl-tww-dezentral');
+  if (twwCb) twwCb.checked = !!source.twwDezentral;
+  set('gl-heizgrenze',source.heizgrenze,'15');
+  glTwwDezentralUi();
 
   glRawCsv=null;
   glRawData=null;
@@ -1058,8 +1084,9 @@ export function glRenderSplit(lastgangKw, verlustPct) {
   // = verbleibende Last ohne Raumwärme → Trinkwarmwasser
   const vf = (verlustPct || 0) / 100;
   const summerNetKwh = (mTotal[5] + mTotal[6] + mTotal[7]) / 3 * (1 - vf);
-  // Auf alle Monate gleich verteilt (TWW = konstante Jahreslast)
-  const mTww = MDAYS.map(d => Math.min(summerNetKwh, mTotal[0])); // cap: nie mehr als Januarverbrauch
+  // Auf alle Monate gleich verteilt (TWW = konstante Jahreslast); bei dezentralem TWW liefert das Netz keins
+  const twwDez = !!window.systemState?.twwDezentral;
+  const mTww = MDAYS.map(() => twwDez ? 0 : Math.min(summerNetKwh, mTotal[0])); // cap: nie mehr als Januarverbrauch
 
   // Netzverluste pro Monat
   const mVerlust = mTotal.map(e => e * vf);
@@ -1174,6 +1201,8 @@ export function glSetUploadError(msg) {
 
 // ── Vorschau-SVG ──────────────────────────────────────────────────────────
 export function glClearLastgang() {
+  const wb = document.getElementById('wb-box');
+  if (wb) wb.style.display = 'none';
   glRawCsv = null;
   glRawData = null;
   glLastgangKw = null;
@@ -1222,8 +1251,16 @@ export function glRenderPreview(arr, pMax) {
     <text x="${pad+iW-2}" y="${pad+iH-2}" fill="#7a8099" font-size="7" text-anchor="end">Grün: Dauerlinie · Grau: Zeitverlauf</text>`;
 
   document.getElementById('gl-preview-svg').innerHTML = svgContent;
-  document.getElementById('gl-preview-title').textContent =
-    `Vorschau: ${Math.round(arr.reduce((a,b)=>a+b,0)/1000).toLocaleString('de-DE')} MWh/a`;
+  // Hochgeladen oder aus den Gebäudedaten berechnet? Nur Hochgeladenes lässt sich entfernen und witterungsbereinigen.
+  const hochgeladen = !!glLastgangKw;
+  const mwh = Math.round(arr.reduce((a,b)=>a+b,0)/1000).toLocaleString('de-DE');
+  document.getElementById('gl-preview-title').textContent = hochgeladen
+    ? `Hochgeladener Lastgang: ${mwh} MWh/a`
+    : `Berechneter Lastgang (aus Gebäudedaten): ${mwh} MWh/a`;
+  const entfernen = document.getElementById('gl-preview-entfernen');
+  if (entfernen) entfernen.style.display = hochgeladen ? '' : 'none';
+  const wb = document.getElementById('wb-box');
+  if (wb) wb.style.display = hochgeladen ? '' : 'none';
   document.getElementById('gl-preview-wrap').style.display = 'block';
 }
 

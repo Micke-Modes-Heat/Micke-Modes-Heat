@@ -1,13 +1,15 @@
 // ── 10c-optimizer-run.js — Optimierung starten/abbrechen, Worker-Orchestrierung, Ergebnis-Rendering ──
 
-import { globalYear } from './01-globals-varianten.js';
+import { euroKompakt } from './lib/euro-format.js';
+import { globalYear, solarthermieAktiv, thermSpeicherAktiv } from './01-globals-varianten.js';
 import { aggregateGebStrom } from './02b-gebaeude.js';
 import { escHtml } from './03c-gebaeude-io.js';
 import { makeStProfile8760 } from './06b-gl-berechnen.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
-import { _collectOptDomParams, _optGetScaledLastgang, _optKennwerte2, _optScore } from './10a-optimizer-core.js';
-
-import { _buildOptWorkerCode, _doRunOptimierung, _optRenderBarChart, _optRenderRadar, _optRenderScatter } from './10d-optimizer-worker.js';
+import { OPT_FEIN_ANZAHL, OPT_FEIN_EVALS, _collectOptDomParams, _optGetScaledLastgang, _optKennwerte2, _optPvPlan, _optScore, _optWirtParams } from './10a-optimizer-core.js';
+import { optGrobPunkte, optRasterStufen, optSuchraum } from './lib/optimierer-suche.js';
+import { OPT_MERIT_ORDER } from './config/optimizer-defaults.js';
+import { _buildOptWorkerCode, _optRenderBarChart, _optRenderRadar, _optRenderScatter } from './10d-optimizer-worker.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { _optFinished } from './10e-optimizer-session.js';
 import { addHourlyElectricLoad } from './lib/electric-demand.js';
@@ -18,6 +20,7 @@ export function runOptimierung() {
   if (window._optRunning) { _optAbbrechen(); return; }
   window._optRunId = (window._optRunId || 0) + 1;
   window._optAborted = false;
+  window._optTop3Final = null;
   window._optRunning = true;
   const btn = document.getElementById('btn-opt-start');
   if (btn) {
@@ -60,17 +63,20 @@ export function _runOptWorker(resDiv) {
 
   const dom = _collectOptDomParams();
   const pvProfile = (typeof makePvProfile8760 === 'function') ? makePvProfile8760() : null;
-  const stNormProfile = document.getElementById('opt-cand-st')?.checked ? ((typeof makeStProfile8760 === 'function') ? makeStProfile8760(1) : null) : null;
+  const stAktiv = !!document.getElementById('opt-cand-st')?.checked;
+  const stNormProfile = stAktiv && typeof makeStProfile8760 === 'function' ? makeStProfile8760(1) : null;
 
-  // Kandidaten, Constraints, Ziel, Quality auslesen
+  // Kandidaten, Randbedingungen, Ziel, Qualität
   const allKeys = ['lwwp','fg','geo','gaskessel','bhkw','stromkessel','pellets','hhs','fernwaerme','heizoel'];
   const aktiv = allKeys.filter(k => document.getElementById('opt-cand-' + k)?.checked);
-  const pvAktiv = !!document.getElementById('opt-cand-pv')?.checked;
-  const batAktiv = !!document.getElementById('opt-cand-bat')?.checked;
-  const stAktiv = !!document.getElementById('opt-cand-st')?.checked;
+  if (!aktiv.length) {
+    resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Bitte mindestens einen Wärmeerzeuger als Kandidaten wählen.</div>';
+    _optFinished();
+    return;
+  }
   const tsAktiv = !!document.getElementById('opt-cand-ts')?.checked;
   const constraints = {};
-  for (const k of [...allKeys, 'pv', 'bat', 'ts']) {
+  for (const k of [...allKeys, 'st', 'ts']) {
     constraints[k] = {
       minKw: parseFloat(document.getElementById('opt-min-' + k)?.value) || 0,
       maxKw: parseFloat(document.getElementById('opt-max-' + k)?.value) || 0,
@@ -80,98 +86,99 @@ export function _runOptWorker(resDiv) {
   const ziel = document.querySelector('input[name="opt-ziel"]:checked')?.value || 'min-wgk';
   const quality = document.getElementById('opt-quality')?.value || 'standard';
   const optYear = parseInt(document.getElementById('opt-year')?.value) || (typeof globalYear !== 'undefined' ? globalYear : 2026);
-  const globalYr = optYear;
-  // Lastgang für das gewählte Betrachtungsjahr skalieren
-  const _optScaledLastgang = _optGetScaledLastgang(optYear);
+  const lastgang = _optGetScaledLastgang(optYear) || ss.lastgangKw;
 
-  // Wirtschaftsparameter
-  const _pStromOpt = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
-  const _pWpRawOpt = parseFloat(document.getElementById('wirt-p-strom-wp')?.value);
-  const _zinsRawOpt = parseFloat(document.getElementById('wirt-zins')?.value);
-  const params = {
-    // Fallbacks = HTML-Defaults der wirt-p-* Felder (einheitlich in allen Modulen)
-    pStrom: _pStromOpt,
-    pStromWp: isNaN(_pWpRawOpt) ? _pStromOpt : _pWpRawOpt, // optionaler WP-Sondervertragspreis
-    pGas: parseFloat(document.getElementById('wirt-p-gas')?.value) || 10,
-    pPk: parseFloat(document.getElementById('wirt-p-pk')?.value) || 8,
-    pHhs: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 6,
-    pHko: parseFloat(document.getElementById('wirt-p-hko')?.value) || 10,
-    pFw: parseFloat(document.getElementById('wirt-p-fw')?.value) || 17,
-    pEinsp: parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8,
-    pBhkwEinsp: parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8,
-    pBhkwKwkE: parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8,
-    pBhkwKwkEig: parseFloat(document.getElementById('bhkw-kwk-eigen')?.value) || 4,
-    zinssatz: (isNaN(_zinsRawOpt) ? 3.5 : _zinsRawOpt) / 100,
-  };
+  const params = _optWirtParams();
 
-  // Quartier-Strom (gleiche Kaskade wie calcStromPanel)
+
+  // Quartier-Strom — gleiche Rangfolge wie die Strombilanz (09b): Upload, manuelle Jahressumme, Gebäudedaten
   const quartierH = new Float32Array(8760);
+  const qMwhManuell = parseFloat(document.getElementById('strom-quartier-mwh')?.value) || 0;
   if (window.elQuartierH) {
     for (let t = 0; t < 8760; t++) quartierH[t] = window.elQuartierH[t];
+  } else if (qMwhManuell > 0) {
+    quartierH.fill(qMwhManuell * 1000 / 8760);
   } else if (window._elQuartierFromGeb) {
     for (let t = 0; t < 8760; t++) quartierH[t] = window._elQuartierFromGeb[t];
-  } else {
-    // Fallback: Manuelle Eingabe oder SLP aus Gebäudedaten
-    const qMwh = parseFloat(document.getElementById('strom-quartier-mwh')?.value) || 0;
-    if (qMwh > 0) {
-      const perH = qMwh * 1000 / 8760;
-      for (let t = 0; t < 8760; t++) quartierH[t] = perH;
-    } else if (typeof aggregateGebStrom === 'function') {
-      const gebStrom = aggregateGebStrom();
-      if (gebStrom && gebStrom.totalMWh > 0) {
-        for (let t = 0; t < 8760; t++) quartierH[t] = gebStrom.hourly[t];
-      }
+  } else if (typeof aggregateGebStrom === 'function') {
+    const gebStrom = aggregateGebStrom();
+    if (gebStrom && gebStrom.totalMWh > 0) {
+      for (let t = 0; t < 8760; t++) quartierH[t] = gebStrom.hourly[t];
     }
   }
   // Kälte ist keine separate Nebenrechnung, sondern Teil derselben Stromnachfrage.
   addHourlyElectricLoad(quartierH, window._kaelteElHourly || null);
+  // Die Nachrechnung der Top-Varianten im Hauptthread (_optKennwerte2) muss denselben Bedarf verwenden
+  let _qSum = 0; for (let t = 0; t < 8760; t++) _qSum += quartierH[t];
+  window._optQuartierStromMwh = _qSum / 1000;
 
-  // Anzahl paralleler Worker bestimmen (min 1, max 8, einen Kern für UI freilassen)
+  // ── Suchraum ──
+  let peak = 0, waermeMwh = 0;
+  for (let t = 0; t < 8760; t++) { if (lastgang[t] > peak) peak = lastgang[t]; waermeMwh += lastgang[t]; }
+  // Leistungsraster bezogen auf die Auslegungsspitze (Normaußentemperatur), mindestens die Spitze des Lastgangs
+  peak = Math.max(1, peak, dom.auslegung?.kw || 0); waermeMwh /= 1000;
+  const raum = optSuchraum({ aktiv, constraints, jahr: optYear, peak, typen: dom.ERZEUGER_TYP, meritOrder: OPT_MERIT_ORDER, agkKey: dom.agkKey });
+  const stufen = optRasterStufen(quality);
+  const kombis = raum.kombis.map(k => ({ ...k, punkte: optGrobPunkte(k.grenzen, stufen, peak) }));
+
+  const achse = (aktivFlag, con, hiAuto) => {
+    if (!aktivFlag) return { lo: 0, hi: 0 };
+    const hi = Math.max(0, Math.round(con.maxKw > 0 ? con.maxKw : hiAuto));
+    return { lo: Math.min(hi, Math.round(con.minKw || 0)), hi };
+  };
+  // PV und Batterie werden nicht optimiert: mit „PV-Strom für Wärmepumpen anrechnen“ fest wie in der Planung, sonst 0
+  const pvPlan = _optPvPlan();
+  const pv = { lo: pvPlan.kwp, hi: pvPlan.kwp };
+  const bat = { lo: pvPlan.kwp > 0 ? pvPlan.batKwh : 0, hi: pvPlan.kwp > 0 ? pvPlan.batKwh : 0 };
+  const st = achse(stAktiv && !!stNormProfile, constraints.st, waermeMwh * 0.4 * 1000 / (dom.stSpez || 400));
+  // Wärmespeicher: bis zur dreifachen Stundenleistung der halben Spitzenlast (WP-Pufferung)
+  const ts = achse(tsAktiv, constraints.ts, Math.max(10, peak * 0.5 * 3 / (1.16 * dom.tsDt) * 3));
+  const suche = {
+    peak, backupMode: raum.backupMode, gasImplizit: raum.gasImplizit, kombis, pv, bat, st, ts,
+    // Höchstleistung des Kessels, den der Spitzenlastkessel vertritt (gewählte Art)
+    gasMaxKw: raum.gasImplizit ? (constraints[raum.agkKey]?.maxKw || 0) : 0,
+    minSchrittErz: Math.max(1, Math.round(peak * 0.005)),
+    maxEvalFein: OPT_FEIN_EVALS[quality] || 350,
+    anzahlFein: OPT_FEIN_ANZAHL[quality] || 6,
+  };
+  const ausgangsSeed = _optAusgangsSeed(raum, { pv: pv.lo, bat: bat.lo, stAktiv: st.hi > 0, tsAktiv: ts.hi > 0 });
+  const info = { ohneNetz: !!window._wirtOhneNetz, pvWp: !!window._wirtPvWp, jahr: optYear, ziel };
+
+  // Anzahl paralleler Worker (min 1, max 8, einen Kern für die Oberfläche freilassen)
   const numWorkers = Math.max(1, Math.min((navigator.hardwareConcurrency || 4) - 1, 8));
   const startTime = Date.now();
+  const blobUrl = URL.createObjectURL(new Blob([_buildOptWorkerCode()], { type: 'application/javascript' }));
 
-  const workerCode = _buildOptWorkerCode();
-  const blob = new Blob([workerCode], { type: 'application/javascript' });
-  const blobUrl = URL.createObjectURL(blob);
-
-  // Gemeinsame Payload (ohne Transferable — wird pro Worker kopiert)
-  const basePayload = {
-    dom, params, aktiv, constraints, ziel, quality,
-    pvAktiv, batAktiv, stAktiv, tsAktiv, globalYear: globalYr,
-  };
+  const basePayload = { dom, params, ziel, suche };
   const shareSeries = canUseSharedWorkerSeries();
   const sharedSeries = shareSeries ? {
-    lastgang:copyWorkerSeries(_optScaledLastgang || ss.lastgangKw,true), temp:copyWorkerSeries(ss.tempH,true),
-    vl:copyWorkerSeries(ss.vlH,true), pv:pvProfile?copyWorkerSeries(pvProfile,true):null,
-    st:stNormProfile?copyWorkerSeries(stNormProfile,true):null, quartier:copyWorkerSeries(quartierH,true),
+    lastgang: copyWorkerSeries(lastgang, true), temp: copyWorkerSeries(ss.tempH, true),
+    vl: copyWorkerSeries(ss.vlH, true), pv: pvProfile ? copyWorkerSeries(pvProfile, true) : null,
+    st: stNormProfile ? copyWorkerSeries(stNormProfile, true) : null, quartier: copyWorkerSeries(quartierH, true),
   } : null;
   window._optSeriesTransport = shareSeries ? 'shared-array-buffer' : 'transferable-copy';
 
-  // ── Hilfsfunktion: Worker mit Daten-Kopie starten ──
   function createAndSendWorker(mode, extraPayload) {
     const w = new Worker(blobUrl);
-    const lastgang = sharedSeries?.lastgang || new Float32Array(_optScaledLastgang || ss.lastgangKw);
+    const lg = sharedSeries?.lastgang || new Float32Array(lastgang);
     const tempArr = sharedSeries?.temp || new Float32Array(ss.tempH);
     const vlArr = sharedSeries?.vl || new Float32Array(ss.vlH);
     const pvArr = sharedSeries?.pv || (pvProfile ? new Float32Array(pvProfile) : null);
     const stArr = sharedSeries?.st || (stNormProfile ? new Float32Array(stNormProfile) : null);
     const qArr = sharedSeries?.quartier || new Float32Array(quartierH);
-    const transferList = shareSeries ? [] : [lastgang.buffer, tempArr.buffer, vlArr.buffer, qArr.buffer];
+    const transferList = shareSeries ? [] : [lg.buffer, tempArr.buffer, vlArr.buffer, qArr.buffer];
     if (!shareSeries && pvArr) transferList.push(pvArr.buffer);
     if (!shareSeries && stArr) transferList.push(stArr.buffer);
-    const payload = {
+    w.postMessage({
       ...basePayload, ...extraPayload, mode,
-      lastgangKw: lastgang, tempH: tempArr, vlH: vlArr,
-      pvProfile: pvArr, stNormProfile: stArr, quartierH: qArr,
-    };
-    w.postMessage(payload, transferList);
+      lastgangKw: lg, tempH: tempArr, vlH: vlArr, pvProfile: pvArr, stNormProfile: stArr, quartierH: qArr,
+    }, transferList);
     return w;
   }
 
   // ── Fortschrittsanzeige ──
   const workerProgress = new Array(numWorkers).fill(0);
   const workerBest3 = new Array(numWorkers).fill(null); // Zwischenstände je Worker (Grobsuche)
-
   function _zwischenstandHtml() {
     const all = [];
     for (const b of workerBest3) if (b) all.push(...b);
@@ -183,13 +190,13 @@ export function _runOptWorker(resDiv) {
     }
     const name = k => ERZEUGER_CFG[k]?.label || k;
     const rows = top.map((r, i) => {
-      const erz = (r.config || []).map(c => name(c.key) + ' ' + Math.round(c.leistKw) + ' kW').join(' + ');
+      const erz = r.kombiKey.split('+').map(name).join(' + ');
       const extras = [];
       if (r.pvKwp > 0) extras.push('PV ' + r.pvKwp + ' kWp');
       if (r.batKwh > 0) extras.push('Bat. ' + r.batKwh + ' kWh');
       if (r.stM2 > 0) extras.push('ST ' + r.stM2 + ' m²');
       if (r.tsVol > 0) extras.push('Speicher ' + r.tsVol + ' m³');
-      const wgk = (r.wgk != null && r.wgk < 1e6) ? r.wgk.toFixed(1).replace('.', ',') + ' €/MWh' : '';
+      const wgk = (r.wgk != null && r.wgk < 1e6) ? r.wgk.toFixed(1).replace('.', ',') + ' ct/kWh' : '';
       return '<div style="padding:3px 6px;border-left:2px solid ' + (i === 0 ? '#fdd835' : 'var(--border)') + ';margin-bottom:2px;font-size:9px;color:var(--text);">'
         + (i + 1) + '. ' + escHtml(erz)
         + (extras.length ? ' · ' + escHtml(extras.join(' · ')) : '')
@@ -197,314 +204,288 @@ export function _runOptWorker(resDiv) {
         + '</div>';
     });
     return '<div style="margin-top:6px;text-align:left;">'
-      + '<div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Beste Varianten bisher</div>'
+      + '<div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Beste Konzepte bisher (Grobsuche)</div>'
       + rows.join('') + '</div>';
   }
-
   function updateProgress(phase) {
-    const totalPct = Math.round(workerProgress.reduce((s, v) => s + v, 0) / numWorkers);
+    const totalPct = Math.round(workerProgress.reduce((s, v) => s + v, 0) / workerProgress.length);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-    const nwLabel = numWorkers > 1 ? ' \u00b7 ' + numWorkers + ' Kerne' : '';
-    resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;font-size:10px;">' + phase + ': ' + totalPct + '% \u00b7 ' + elapsed + 's' + nwLabel + '</div>'
+    const nwLabel = numWorkers > 1 ? ' · ' + numWorkers + ' Kerne' : '';
+    resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;font-size:10px;">' + phase + ': ' + totalPct + '% · ' + elapsed + 's' + nwLabel + '</div>'
       + _zwischenstandHtml();
   }
-
-  // ── Single Worker (Fallback für 1 Kern) ──
-  if (numWorkers <= 1) {
-    const worker = createAndSendWorker('full', { workerIdx: 0, numWorkers: 1 });
-    window._optWorker = worker;
-    window._optWorkers = [worker];
-    worker.onmessage = function(e) {
-      if (runId !== window._optRunId) return;
-      const msg = e.data;
-      if (msg.type === 'progress') {
-        workerProgress[0] = msg.pct;
-        if (msg.best3) workerBest3[0] = msg.best3;
-        updateProgress(msg.phase);
-      } else if (msg.type === 'done') {
-        window._optGrobResults = msg.grobResults;
-        _renderWorkerResults(msg.topFein, msg.grobResults, resDiv, startTime, params);
-      }
-    };
-    worker.onerror = function(e) {
-      if (runId !== window._optRunId) return;
-      console.error('OptWorker Error:', e);
-      window._optWorker = null; window._optWorkers = [];
-      _optFinished();
-      resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;">Worker-Fehler. Die Suche wurde beendet; es erfolgt keine blockierende Berechnung im Hauptfenster.</div>';
-    };
+  let hadError = false;
+  function fehler(e, text) {
+    if (runId !== window._optRunId || hadError) return;
+    hadError = true;
+    console.error('OptWorker Error:', e);
+    for (const wk of window._optWorkers) { try { wk.terminate(); } catch (ex) { /* bereits beendet */ } }
+    _optFinished();
     URL.revokeObjectURL(blobUrl);
-    return;
+    resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;">' + text + '</div>';
   }
 
-  // ── Multi-Worker: Phase 1 — Grobsuche parallelisiert ──
-  console.log('[OPT] Multi-Worker Grobsuche mit', numWorkers, 'Kernen');
-  let allGrobResults = [];
-  let grobWorkersFinished = 0;
-  let hadError = false;
+  // ── Phase 1: Grobsuche, auf alle Kerne verteilt ──
+  const allGrob = [];
+  let grobFertig = 0;
   window._optWorkers = [];
-
   for (let i = 0; i < numWorkers; i++) {
     const w = createAndSendWorker('grob', { workerIdx: i, numWorkers });
     window._optWorkers.push(w);
-
     w.onmessage = function(e) {
-      if (runId !== window._optRunId) return;
-      if (window._optAborted) return;
+      if (runId !== window._optRunId || window._optAborted) return;
       const msg = e.data;
       if (msg.type === 'progress') {
-        workerProgress[msg.workerIdx || i] = msg.pct;
-        if (msg.best3) workerBest3[msg.workerIdx || i] = msg.best3;
+        workerProgress[i] = msg.pct;
+        if (msg.best3) workerBest3[i] = msg.best3;
         updateProgress('Grobsuche');
       } else if (msg.type === 'grob_done') {
-        allGrobResults.push(...(msg.grobResults || []));
-        grobWorkersFinished++;
-        workerProgress[msg.workerIdx || i] = 100;
-        updateProgress('Grobsuche');
+        allGrob.push(...(msg.grobResults || []));
+        workerProgress[i] = 100;
         w.terminate();
-        if (grobWorkersFinished === numWorkers) {
-          _startFeinPhase();
-        }
+        if (++grobFertig === numWorkers) _startFein();
       }
     };
-
-    w.onerror = function(e) {
-      if (runId !== window._optRunId) return;
-      console.error('OptWorker', i, 'Error:', e);
-      if (!hadError) {
-        hadError = true;
-        for (const wk of window._optWorkers) { try { wk.terminate(); } catch(ex) {} }
-        window._optWorker = null; window._optWorkers = [];
-        _optFinished();
-        resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;">Worker-Fehler. Die Suche wurde beendet; bitte erneut starten oder Suchqualität reduzieren.</div>';
-      }
-    };
+    w.onerror = e => fehler(e, 'Worker-Fehler. Die Suche wurde beendet; bitte erneut starten oder Genauigkeit reduzieren.');
   }
-  URL.revokeObjectURL(blobUrl);
 
-  // ── Multi-Worker: Phase 2 — Feinsuche mit einem Worker ──
-  function _startFeinPhase() {
+  // ── Phase 2: Mustersuche je Anlagenkonzept, ebenfalls parallel ──
+  function _startFein() {
     if (window._optAborted) return;
-    // Grobresultate zusammenführen, deduplizieren, Top 5 auswählen
-    allGrobResults.sort((a, b) => a.score - b.score);
-    const seen = new Set();
-    const grobTop = [];
-    for (const r of allGrobResults) {
-      if (!seen.has(r.kombiKey)) { seen.add(r.kombiKey); grobTop.push(r); }
-    }
-    const topNGrob = grobTop.slice(0, 5);
-    window._optGrobResults = allGrobResults.map(r => ({
-      kombiKey: r.kombiKey, keys: r.keys, kw: r.kw, score: r.score,
-      stM2: r.stM2, tsVol: r.tsVol, pvKwp: r.pvKwp, batKwh: r.batKwh
-    }));
-
-    if (topNGrob.length === 0) {
-      resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine Ergebnisse.</div>';
-      _optFinished();
+    window._optGrobResults = allGrob;
+    const besteJe = new Map();
+    for (const r of allGrob) { const b = besteJe.get(r.kanon); if (!b || r.score < b.score) besteJe.set(r.kanon, r); }
+    const seeds = [...besteJe.values()].sort((a, b) => a.score - b.score).slice(0, suche.anzahlFein)
+      .map(r => ({ keys: r.keys, x: r.x, kanon: r.kanon }));
+    if (ausgangsSeed) seeds.push(ausgangsSeed);
+    if (!seeds.length) {
+      _optFinished(); URL.revokeObjectURL(blobUrl);
+      resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine zulässige Variante gefunden — Randbedingungen prüfen.</div>';
       return;
     }
-
-    console.log('[OPT] Feinsuche für', topNGrob.length, 'Varianten');
-    workerProgress.fill(0);
-
-    // Neuen Blob-URL erzeugen (der alte wurde nach der Grobsuche revoked)
-    const workerCode2 = _buildOptWorkerCode();
-    const blob2 = new Blob([workerCode2], { type: 'application/javascript' });
-    const url2 = URL.createObjectURL(blob2);
-    const feinWorker = new Worker(url2);
-    // Daten-Kopien für den Fein-Worker erstellen und senden
-    const fLastgang = sharedSeries?.lastgang || new Float32Array(_optScaledLastgang || ss.lastgangKw);
-    const fTempArr = sharedSeries?.temp || new Float32Array(ss.tempH);
-    const fVlArr = sharedSeries?.vl || new Float32Array(ss.vlH);
-    const fPvArr = sharedSeries?.pv || (pvProfile ? new Float32Array(pvProfile) : null);
-    const fStArr = sharedSeries?.st || (stNormProfile ? new Float32Array(stNormProfile) : null);
-    const fQArr = sharedSeries?.quartier || new Float32Array(quartierH);
-    const fTransferList = shareSeries ? [] : [fLastgang.buffer, fTempArr.buffer, fVlArr.buffer, fQArr.buffer];
-    if (!shareSeries && fPvArr) fTransferList.push(fPvArr.buffer);
-    if (!shareSeries && fStArr) fTransferList.push(fStArr.buffer);
-    feinWorker.postMessage({
-      ...basePayload, mode: 'fein', workerIdx: 0, numWorkers: 1, topNGrob,
-      lastgangKw: fLastgang, tempH: fTempArr, vlH: fVlArr,
-      pvProfile: fPvArr, stNormProfile: fStArr, quartierH: fQArr,
-    }, fTransferList);
-    window._optWorker = feinWorker;
-    window._optWorkers = [feinWorker];
-    URL.revokeObjectURL(url2);
-
-    feinWorker.onmessage = function(e) {
-      if (runId !== window._optRunId) return;
-      if (window._optAborted) return;
-      const msg = e.data;
-      if (msg.type === 'progress') {
-        workerProgress[0] = msg.pct;
-        updateProgress('Feinsuche');
-      } else if (msg.type === 'done') {
-        _renderWorkerResults(msg.topFein, window._optGrobResults, resDiv, startTime, params);
-      }
-    };
-
-    feinWorker.onerror = function(e) {
-      if (runId !== window._optRunId) return;
-      console.error('Fein-Worker Error:', e);
-      _optFinished();
-      resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Feinsuche fehlgeschlagen.</div>';
-    };
+    const nFein = Math.min(numWorkers, seeds.length);
+    const anteile = Array.from({ length: nFein }, () => []);
+    seeds.forEach((s, i) => anteile[i % nFein].push(s));
+    workerProgress.length = nFein; workerProgress.fill(0);
+    const feinErg = [];
+    let feinFertig = 0;
+    window._optWorkers = [];
+    anteile.forEach((teil, i) => {
+      const w = createAndSendWorker('fein', { workerIdx: i, numWorkers: nFein, seeds: teil });
+      window._optWorkers.push(w);
+      w.onmessage = function(e) {
+        if (runId !== window._optRunId || window._optAborted) return;
+        const msg = e.data;
+        if (msg.type === 'progress') {
+          workerProgress[i] = msg.pct;
+          updateProgress('Feinsuche');
+        } else if (msg.type === 'done') {
+          feinErg.push(...(msg.topFein || []));
+          w.terminate();
+          if (++feinFertig === nFein) {
+            URL.revokeObjectURL(blobUrl);
+            window._optLetzterLauf = { topFein: feinErg, startTime, params, info };
+            _renderWorkerResults(feinErg, allGrob, resDiv, startTime, params, info);
+          }
+        }
+      };
+      w.onerror = e => fehler(e, 'Feinsuche fehlgeschlagen.');
+    });
   }
 }
 
-export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, params) {
+/**
+ * Aktuelle Planung als zusätzlicher Startpunkt der Feinsuche — so findet die Optimierung
+ * mindestens so gute Lösungen wie eine von Hand eingestellte Variante desselben Konzepts.
+ * null, wenn die Planung Erzeuger enthält, die nicht zur Auswahl stehen.
+ */
+export function _optAusgangsSeed(raum, achsen) {
+  const live = (window._dispatchActiveKeys || []).filter(k => k !== '_autoGk' && ERZEUGER_CFG[k]);
+  const keys = live.filter(k => !(raum.gasImplizit && k === raum.agkKey));
+  if (!live.length) return null;
+  const k = raum.kombis.find(kk => kk.keys.length === keys.length && kk.keys.every(x => keys.includes(x)));
+  if (!k) return null;
+  const leist = key => parseFloat(document.getElementById(ERZEUGER_CFG[key]?.leistungId)?.value) || 0;
+  const gens = k.keys.map((key, i) => i === k.backupIdx ? 1 : Math.max(1, Math.round(leist(key))));
+  const zahl = id => Math.max(0, Math.round(parseFloat(document.getElementById(id)?.value) || 0));
+  const x = gens.concat([
+    achsen.pv || 0,
+    achsen.bat || 0,
+    achsen.stAktiv && solarthermieAktiv ? zahl('st-flaeche') : 0,
+    achsen.tsAktiv && thermSpeicherAktiv ? zahl('ts-volumen') : 0,
+  ]);
+  return { keys: k.keys, x, kanon: null, ausgangsplanung: true };
+}
+
+/** Anzeige-Reihenfolge der Erzeuger eines Konzepts (Merit-Order, Gaskessel zuletzt). */
+function _optAnzeigeKeys(kanon) {
+  const rang = k => { const i = OPT_MERIT_ORDER.indexOf(k); return i < 0 ? 99 : i; };
+  return kanon.split('+').filter(Boolean).sort((a, b) => rang(a) - rang(b));
+}
+
+/** Ergebnis im Hauptthread mit demselben Code wie das Wirtschaftlichkeits-Panel nachrechnen. */
+function _optNachrechnen(r, params) {
+  const dispResult = {
+    erzeugerList: r.config.map((c, i) => ({
+      key: c.key, typ: ERZEUGER_CFG[c.key]?.typ || c.typ,
+      leistKw: r.erzLeistKw?.[i] ?? c.leistKw,
+      waermeMwh: r.erzWaermeMwh?.[i] ?? 0,
+      elMwh: r.erzElMwh?.[i] ?? 0,
+      ladeMwh: r.erzLadeMwh?.[i] ?? 0,
+      erzeugtMwh: (r.erzWaermeMwh?.[i] ?? 0) + (r.erzLadeMwh?.[i] ?? 0),
+    })),
+    autoGkMwh: r.autoGkMwh || 0,
+    autoGkPeakKw: r.autoGkPeakKw || 0,
+    gesamtMwh: r.gesamtMwh || 0,
+    speicherEntladenMwh: r.speicherEntladenMwh || 0,
+    stLadeMwh: r.stLadeMwh || 0,
+  };
+  return _optKennwerte2(dispResult, r.pvKwp || 0, r.batKwh || 0, r.pvBatData || null, params, r.stMwh || 0, r.stM2 || 0, r.tsVol || 0);
+}
+
+/** „PV-Strom für Wärmepumpen anrechnen“ umgestellt: PV-Flüsse stammen aus der Stundensimulation des Laufs → neu rechnen. */
+export function _optPvWpGeaendert() {
+  const resDiv = document.getElementById('opt-result-list');
+  if (!window._optLetzterLauf || window._optRunning || !resDiv || resDiv.querySelector('.opt-veraltet')) return;
+  const h = document.createElement('div');
+  h.className = 'opt-karte-hinweis opt-veraltet';
+  h.textContent = 'PV-Einstellung geändert \u2014 Ergebnisse bitte neu berechnen.';
+  resDiv.insertBefore(h, resDiv.firstChild);
+}
+
+/** Nach dem Umschalten „Gesamtsystem / Nur Wärmeerzeugung“: letzte Ergebnisse neu bewerten. */
+export function _optUmfangGeaendert() {
+  const L = window._optLetzterLauf;
+  if (!L || window._optRunning) return;
+  const resDiv = document.getElementById('opt-result-list');
+  if (!resDiv) return;
+  L.info = { ...L.info, ohneNetz: !!window._wirtOhneNetz };
+  _renderWorkerResults(L.topFein, window._optGrobResults, resDiv, L.startTime, L.params, L.info, true);
+}
+
+export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, params, info = {}, nurNeuBewertet = false) {
   if (!topFein || topFein.length === 0) {
     resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine Ergebnisse.</div>';
     _optFinished();
     return;
   }
-  topFein.sort((a, b) => a.score - b.score);
-  const top3 = topFein.slice(0, 3);
+  const ziel = document.querySelector('input[name="opt-ziel"]:checked')?.value || 'min-wgk';
 
-  // ── WGK-Nachrechnung auf dem Main-Thread (gleicher Code wie Wirtschafts-Panel) ──
-  // Damit Optimizer-WGK und Panel-WGK garantiert übereinstimmen
-  for (const r of top3) {
+  // ── Nachrechnung aller Feinergebnisse im Hauptthread (gleicher Code wie das Wirtschafts-Panel) ──
+  for (const r of topFein) {
     try {
-      // Dispatch-Ergebnis aus Worker-Daten rekonstruieren
-      const dispResult = {
-        erzeugerList: r.config.map((c, i) => ({
-          key: c.key, typ: ERZEUGER_CFG[c.key]?.typ || c.typ,
-          leistKw: r.erzLeistKw?.[i] ?? c.leistKw,
-          waermeMwh: r.erzWaermeMwh?.[i] ?? 0,
-          elMwh: r.erzElMwh?.[i] ?? 0,
-        })),
-        autoGkMwh: r.autoGkMwh || 0,
-        autoGkPeakKw: r.autoGkPeakKw || 0,
-        gesamtMwh: r.gesamtMwh || 0,
-        speicherEntladenMwh: r.speicherEntladenMwh || 0,
-      };
-      // PV/Bat-Ergebnis aus Worker-Daten verwenden
-      const pvBatResult = r.pvBatData || null;
-      // WGK mit _optKennwerte2 neu berechnen (Main-Thread)
-      const recalc = _optKennwerte2(dispResult, r.pvKwp || 0, r.batKwh || 0, pvBatResult, params, r.stMwh || 0, r.stM2 || 0, r.tsVol || 0);
-      // Vergleich loggen
-      const wWorker = r.kw.wgk, wMain = recalc.wgk;
-      if (Math.abs(wWorker - wMain) > 0.3) {
-        console.warn('[WGK-DIFF] #' + (top3.indexOf(r)+1), r.keys.join('+'),
-          '| Worker:', wWorker.toFixed(1), '| Main:', wMain.toFixed(1), '| Diff:', (wWorker - wMain).toFixed(1),
-          '| W-JK:', Math.round(r.kw.jahreskosten), '| M-JK:', Math.round(recalc.jahreskosten),
-          '| W-Inv:', Math.round(r.kw.investGesamt), '| M-Inv:', Math.round(recalc.investGesamt));
+      const recalc = _optNachrechnen(r, params);
+      if (!nurNeuBewertet && Math.abs(r.kw.wgk - recalc.wgk) > 0.3) {
+        console.warn('[WGK-DIFF]', r.kanon, '| Worker:', r.kw.wgk.toFixed(2), '| Main:', recalc.wgk.toFixed(2));
       }
-      // Main-Thread-Ergebnis verwenden (konsistent mit Panel)
       r.kw = recalc;
+      r.score = _optScore(recalc, ziel);
+      if (r.start) { r.start.kw = _optNachrechnen(r.start, params); r.start.score = _optScore(r.start.kw, ziel); }
     } catch (e) {
       console.warn('[WGK-RECALC] Fehler bei Nachrechnung:', e.message);
     }
   }
 
-  // Re-sort nach Nachrechnung (Reihenfolge könnte sich ändern)
-  const _reZiel = document.querySelector('input[name="opt-ziel"]:checked')?.value || 'min-wgk';
-  top3.sort((a, b) => _optScore(a.kw, _reZiel) - _optScore(b.kw, _reZiel));
+  // ── Je Anlagenkonzept nur die beste Variante (die Ausgangsplanung ist ein Startpunkt, kein eigenes Konzept) ──
+  const besteJe = new Map();
+  for (const r of topFein) {
+    if (!Number.isFinite(r.score)) continue;
+    const b = besteJe.get(r.kanon);
+    if (!b || r.score < b.score) besteJe.set(r.kanon, r);
+  }
+  const sortiert = [...besteJe.values()].sort((a, b) => a.score - b.score);
+  // „≥ 65 % EE“: nur Varianten zeigen, die die Bedingung erfüllen; erfüllt keine sie, die beste Annäherung mit Hinweis
+  const eeZiel = ziel === 'min-kosten-ee';
+  const zulaessig = eeZiel ? sortiert.filter(r => r.kw.eeAnteil >= 65) : sortiert;
+  const eeVerfehlt = eeZiel && !zulaessig.length;
+  const top3 = (eeVerfehlt ? sortiert : zulaessig).slice(0, 3);
+  for (const r of top3) r.anzeigeKeys = _optAnzeigeKeys(r.kanon);
+  window._optTop3Final = top3;   // für die Markierung im Streudiagramm
+  const ausgang = topFein.find(r => r.ausgangsplanung && r.start)?.start || null;
 
   resDiv.innerHTML = '';
-  // Jahr-Info im Ergebnis anzeigen
-  const _optResYear = parseInt(document.getElementById('opt-year')?.value) || globalYear;
-  const _optResYearDiv = document.createElement('div');
-  _optResYearDiv.style.cssText = 'font-size:10px;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;';
-  _optResYearDiv.innerHTML = '<span style="color:var(--accent);font-weight:600;">Betrachtungsjahr: ' + _optResYear + '</span>'
-    + (window._basisYear && _optResYear !== window._basisYear ? ' <span style="color:#78909c;font-size:9px;">(Lastgang skaliert)</span>' : '');
-  resDiv.appendChild(_optResYearDiv);
+  const nf = (v, d = 0) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+  // ── Kopf: Jahr, Betrachtungsumfang, Vergleich mit der aktuellen Planung ──
+  const kopf = document.createElement('div');
+  kopf.className = 'opt-ergebnis-kopf';
+  const _optResYear = info.jahr || parseInt(document.getElementById('opt-year')?.value) || globalYear;
+  let kopfHtml = '<span style="color:var(--accent);font-weight:600;">Betrachtungsjahr: ' + _optResYear + '</span>'
+    + (window._basisYear && _optResYear !== window._basisYear ? ' <span style="color:#78909c;font-size:9px;">(Lastgang skaliert)</span>' : '')
+    + ' <span class="opt-umfang-hinweis">' + (window._wirtOhneNetz ? 'Nur Wärmeerzeugung (ohne Netzkosten)' : 'Gesamtsystem inkl. Netz') + '</span>';
+  if (ausgang?.kw && top3[0]) {
+    const diff = ausgang.kw.wgk - top3[0].kw.wgk;
+    kopfHtml += '<div class="opt-ausgang">Aktuelle Planung im selben Rechenmodell: <b>' + nf(ausgang.kw.wgk, 1) + ' ct/kWh</b>'
+      + (ziel === 'min-wgk' && diff > 0.05 ? ' — Variante 1 ist ' + nf(diff, 1) + ' ct/kWh günstiger' : '') + '</div>';
+  }
+  if (eeVerfehlt) {
+    kopfHtml += '<div class="opt-karte-hinweis">Keine Variante erreicht 65 % erneuerbare Wärme \u2014 gezeigt wird die beste Annäherung. Wärmepumpen, Biomasse oder Solarthermie als Kandidaten ergänzen bzw. Höchstleistungen prüfen.</div>';
+  }
+  if (window._wirtPvWp) {
+    kopfHtml += '<div class="opt-ausgang">PV-Strom für Wärmepumpen angerechnet (PV und Batterie wie in der Planung, nicht optimiert)</div>';
+  }
+  kopf.innerHTML = kopfHtml;
+  resDiv.appendChild(kopf);
+
   top3.forEach((r, idx) => {
     const card = document.createElement('div');
-    card.style.cssText = 'background:var(--surface2);border-radius:8px;padding:12px 14px;margin-bottom:16px;border:1px solid rgba(255,255,255,0.12);box-shadow:0 2px 8px rgba(0,0,0,0.3);';
-
-    const titel = r.keys.map(k => ERZEUGER_CFG[k]?.label || k).join(' + ')
-      + (r.stM2 > 0 ? ' + ST ' + r.stM2 + ' m\u00b2' : '')
-      + (r.tsVol > 0 ? ' + WS ' + r.tsVol + ' m\u00b3' : '')
-      + (r.pvKwp > 0 ? ' + PV ' + r.pvKwp.toFixed(0) + ' kWp' : '')
-      + (r.batKwh > 0 ? ' + Bat ' + r.batKwh.toFixed(0) + ' kWh' : '');
+    card.className = 'opt-karte' + (idx === 0 ? ' opt-karte-erste' : '');
+    const titel = r.anzeigeKeys.map(k => ERZEUGER_CFG[k]?.label || k).join(' + ')
+      + (r.stM2 > 0 ? ' + ST ' + nf(r.stM2) + ' m²' : '')
+      + (r.tsVol > 0 ? ' + WS ' + nf(r.tsVol) + ' m³' : '');
 
     const eeColor = r.kw.eeAnteil >= 65 ? '#81c784' : '#ef9a9a';
     const eeBadge = '<span style="background:' + eeColor + ';color:#000;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:600;">' + r.kw.eeAnteil.toFixed(0) + '% EE</span>';
 
-    // ── Hauptzeile: WGK prominent + Sekundär-KPIs ──
     const totalInkST = (r.gesamtMwh || 0) + (r.stMwh || 0);
-
-    let kpiHtml = '<div style="display:flex;align-items:stretch;gap:6px;margin:6px 0;">';
-    // WGK groß links
-    kpiHtml += '<div style="background:rgba(253,216,53,0.08);border:1px solid rgba(253,216,53,0.25);border-radius:6px;padding:6px 12px;text-align:center;min-width:80px;">'
-      + '<div style="font-size:18px;font-weight:700;color:#fdd835;line-height:1.1;">' + r.kw.wgk.toFixed(1) + '</div>'
-      + '<div style="font-size:8px;color:var(--muted);margin-top:1px;">ct/kWh</div></div>';
-    // Sekundär-KPIs rechts
-    kpiHtml += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;flex:1;">';
+    let kpiHtml = '<div class="opt-karte-kpis">'
+      + '<div class="opt-karte-wgk"><b>' + nf(r.kw.wgk, 1) + '</b><span>ct/kWh WGK</span></div>'
+      + '<div class="opt-karte-werte">';
     const kpis2 = [
-      { val: (r.kw.investGesamt / 1000).toFixed(0) + ' k\u20ac', lbl: 'Invest', color: '#b0bec5' },
-      { val: r.kw.co2ta.toFixed(1) + ' t/a', lbl: 'CO\u2082', color: '#90a4ae' },
-      { val: r.kw.jahreskosten ? (r.kw.jahreskosten / 1000).toFixed(1) + ' k\u20ac/a' : '\u2014', lbl: 'Jahreskosten', color: '#ce93d8' },
-      { val: (r.kw.stromAutarkie || 0).toFixed(0) + '%', lbl: '\u26A1 Strom-Aut.', color: '#fdd835' },
-      { val: (r.kw.waermeAutarkie || 0).toFixed(0) + '%', lbl: '\uD83C\uDF21 W\u00e4rme-Aut.', color: '#e53935' },
-      { val: totalInkST.toFixed(0) + ' MWh', lbl: 'W\u00e4rme ges.', color: '#ff7043' },
+      { val: euroKompakt(r.kw.investGesamt), lbl: 'Investition' },
+      { val: r.kw.jahreskosten ? euroKompakt(r.kw.jahreskosten, true) : '—', lbl: 'Jahreskosten' },
+      { val: nf(r.kw.co2ta) + ' t/a', lbl: 'CO₂' },
+      { val: nf(r.kw.stromAutarkie) + ' %', lbl: 'Strom-Autarkie' },
+      { val: nf(r.kw.waermeAutarkie) + ' %', lbl: 'Wärme-Autarkie' },
+      { val: nf(totalInkST) + ' MWh/a', lbl: 'Wärme gesamt' },
     ];
-    for (const k of kpis2) {
-      kpiHtml += '<div style="background:rgba(255,255,255,0.03);border-radius:3px;padding:2px 4px;text-align:center;">'
-        + '<div style="font-size:10px;font-weight:600;color:' + k.color + ';">' + k.val + '</div>'
-        + '<div style="font-size:7px;color:var(--muted);white-space:nowrap;">' + k.lbl + '</div></div>';
-    }
+    for (const k of kpis2) kpiHtml += '<div><b>' + k.val + '</b><span>' + k.lbl + '</span></div>';
     kpiHtml += '</div></div>';
 
     // ── Erzeuger-Tabelle: Leistung, Energie, Anteil ──
-    let erzHtml = '<div style="display:grid;grid-template-columns:auto repeat(3,1fr);gap:0 8px;font-size:9px;margin:4px 0;padding:4px 0;border-top:1px solid var(--border);">';
-    // Header
-    erzHtml += '<div style="color:var(--muted);font-size:8px;">Erzeuger</div>'
-      + '<div style="color:var(--muted);font-size:8px;text-align:right;">Leistung</div>'
-      + '<div style="color:var(--muted);font-size:8px;text-align:right;">Energie</div>'
-      + '<div style="color:var(--muted);font-size:8px;text-align:right;">Anteil</div>';
-    // Solarthermie
+    const zeile = (farbe, name, leistung, energie, pct) => '<div class="opt-erz-name"><i style="background:' + farbe + '"></i>' + name + '</div>'
+      + '<div>' + leistung + '</div><div>' + energie + '</div>'
+      + '<div class="opt-erz-anteil">' + (pct == null ? '—' : '<span><em style="width:' + Math.min(100, pct) + '%;background:' + farbe + '"></em></span>' + nf(pct) + ' %') + '</div>';
+    let erzHtml = '<div class="opt-erz-tabelle"><div class="opt-erz-kopf">Erzeuger</div><div class="opt-erz-kopf">Leistung</div><div class="opt-erz-kopf">Wärme</div><div class="opt-erz-kopf">Anteil</div>';
     if (r.stM2 > 0 && r.stMwh > 0) {
-      const dckPct = totalInkST > 0 ? (r.stMwh / totalInkST * 100) : 0;
-      erzHtml += '<div><span style="color:#ef6c00;">\u25CF</span> ST ' + r.stM2 + ' m\u00b2</div>'
-        + '<div style="text-align:right;">\u2014</div>'
-        + '<div style="text-align:right;">' + r.stMwh.toFixed(0) + ' MWh</div>'
-        + '<div style="text-align:right;font-weight:600;">' + dckPct.toFixed(0) + '%</div>';
+      erzHtml += zeile('#ef6c00', 'Solarthermie ' + nf(r.stM2) + ' m²', '—', nf(r.stMwh) + ' MWh', totalInkST > 0 ? r.stMwh / totalInkST * 100 : 0);
     }
     for (let ci = 0; ci < r.config.length; ci++) {
       const erz = r.config[ci];
       const waermeMwh = r.erzWaermeMwh ? r.erzWaermeMwh[ci] : 0;
-      const col = ERZEUGER_CFG[erz.key]?.color || '#aaa';
-      const dckPct = totalInkST > 0 ? (waermeMwh / totalInkST * 100) : 0;
       const displayKw = r.erzLeistKw ? r.erzLeistKw[ci] : erz.leistKw;
-      erzHtml += '<div><span style="color:' + col + ';">\u25CF</span> ' + (ERZEUGER_CFG[erz.key]?.label || erz.key) + '</div>'
-        + '<div style="text-align:right;">' + displayKw.toFixed(0) + ' kW</div>'
-        + '<div style="text-align:right;">' + waermeMwh.toFixed(0) + ' MWh</div>'
-        + '<div style="text-align:right;font-weight:600;">' + dckPct.toFixed(0) + '%</div>';
+      erzHtml += zeile(ERZEUGER_CFG[erz.key]?.color || '#aaa', escHtml(ERZEUGER_CFG[erz.key]?.label || erz.key), nf(displayKw) + ' kW', nf(waermeMwh) + ' MWh', totalInkST > 0 ? waermeMwh / totalInkST * 100 : 0);
     }
-    if (r.autoGkMwh > 0) {
-      const dckPct = totalInkST > 0 ? (r.autoGkMwh / totalInkST * 100) : 0;
-      erzHtml += '<div><span style="color:#78909c;">\u25CF</span> Backup-GK</div>'
-        + '<div style="text-align:right;">\u2014</div>'
-        + '<div style="text-align:right;">' + r.autoGkMwh.toFixed(0) + ' MWh</div>'
-        + '<div style="text-align:right;font-weight:600;">' + dckPct.toFixed(0) + '%</div>';
+    if (r.autoGkMwh > 0.05) {
+      erzHtml += zeile(ERZEUGER_CFG.gaskessel?.color || '#78909c', 'Gaskessel (Spitzenlast)', r.autoGkPeakKw ? nf(Math.ceil(r.autoGkPeakKw)) + ' kW' : '—', nf(r.autoGkMwh) + ' MWh', totalInkST > 0 ? r.autoGkMwh / totalInkST * 100 : 0);
     }
-    // PV/Batterie
-    if (r.pvKwp > 0) {
-      erzHtml += '<div><span style="color:#fdd835;">\u25CF</span> PV' + (r.batKwh > 0 ? ' + Bat' : '') + '</div>'
-        + '<div style="text-align:right;">' + r.pvKwp.toFixed(0) + ' kWp' + (r.batKwh > 0 ? ' / ' + r.batKwh.toFixed(0) + ' kWh' : '') + '</div>'
-        + '<div style="text-align:right;color:var(--muted);">' + (r.kw.pvErtragMwh || 0).toFixed(0) + ' MWh</div>'
-        + '<div style="text-align:right;color:var(--muted);">\u2014</div>';
+    if (r.pvKwp > 0 && r.kw.pvZuWpMwh > 0) {
+      erzHtml += zeile('#fdd835', 'PV-Strom an WP (Planung' + (r.batKwh > 0 ? ' + Batterie' : '') + ')', nf(r.pvKwp) + ' kWp', nf(r.kw.pvZuWpMwh) + ' MWh \u00e0 ' + nf(r.kw.pvCt, 1) + ' ct', null);
     }
     erzHtml += '</div>';
 
     card.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.08);">' +
-        '<span style="font-size:12px;font-weight:700;color:var(--text);">' + (idx + 1) + '. ' + escHtml(titel) + '</span>' +
-        eeBadge +
-      '</div>' +
-      kpiHtml +
-      erzHtml +
-      '<div style="text-align:center;margin-top:6px;"><button class="btn-secondary" style="font-size:9px;padding:3px 12px;" data-click="_optVarianteUebernehmen(window._optLastResults[' + idx + '], this)">Als Variante \u00fcbernehmen</button></div>';
+      '<div class="opt-karte-kopf"><span class="opt-karte-rang">' + (idx + 1) + '</span>' +
+        '<span class="opt-karte-titel">' + escHtml(titel) + '</span>' + eeBadge + '</div>' +
+      kpiHtml + erzHtml +
+      '<div class="opt-karte-fuss"><button class="btn-secondary" data-click="_optVarianteUebernehmen(window._optLastResults[' + idx + '], this)">Als Variante übernehmen</button></div>';
     resDiv.appendChild(card);
   });
 
-  // Ergebnis-Objekte für "Als Variante übernehmen" bereitstellen
-  // Konvertiere Worker-Ergebnisse in das erwartete Format
+  // Ergebnis-Objekte für „Als Variante übernehmen“ und die Diagramme
   window._optLastResults = top3.map(r => ({
-    keys: r.keys, config: r.config, pvKwp: r.pvKwp, batKwh: r.batKwh,
-    stM2: r.stM2, stMwh: r.stMwh, tsVol: r.tsVol, kw: r.kw,
+    keys: r.keys, anzeigeKeys: r.anzeigeKeys, config: r.config, pvKwp: r.pvKwp, batKwh: r.batKwh,
+    stM2: r.stM2, stMwh: r.stMwh, tsVol: r.tsVol, kw: r.kw, erzLeistKw: r.erzLeistKw,
     sim: { gesamtMwh: r.gesamtMwh, autoGkMwh: r.autoGkMwh, autoGkPeakKw: r.autoGkPeakKw || 0,
       erzeugerList: r.config.map((c, i) => ({ ...c, waermeMwh: r.erzWaermeMwh?.[i] || 0,
         leistKw: r.erzLeistKw?.[i] || c.leistKw, elMwh: r.erzElMwh?.[i] || 0 })) },
@@ -517,11 +498,13 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
 
   const totalElapsed = ((Date.now() - startTime) / 1000);
   const timeLabel = totalElapsed < 60 ? totalElapsed.toFixed(1) + 's' : (totalElapsed / 60).toFixed(1) + ' min';
+  const nEval = topFein.reduce((s, r) => s + (r.evals || 0), 0);
   const infoDiv = document.createElement('div');
   infoDiv.style.cssText = 'font-size:9px;color:var(--muted);text-align:center;margin-top:8px;';
-  infoDiv.textContent = 'Berechnung abgeschlossen in ' + timeLabel + ' (' + (grobResults?.length || 0) + ' Konfigurationen getestet)';
+  infoDiv.textContent = nurNeuBewertet ? 'Neu bewertet (Betrachtungsumfang geändert).'
+    : 'Berechnung abgeschlossen in ' + timeLabel + ' · ' + (grobResults?.length || 0) + ' Startpunkte, '
+      + besteJe.size + ' Konzepte verfeinert (' + nEval + ' Bewertungen)';
   resDiv.appendChild(infoDiv);
 
-  window._optCachedPvProfile = null;
-  _optFinished();
+  if (!nurNeuBewertet) _optFinished();
 }

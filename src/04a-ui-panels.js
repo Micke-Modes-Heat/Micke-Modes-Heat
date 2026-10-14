@@ -3,6 +3,7 @@
 
 import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, networkLocked, variantResults } from './01-globals-varianten.js';
 import { getWLD } from './02a-netz-physik.js';
+import { eeAnteilPct, lastMwh } from './lib/dispatch-energie.js';
 import { _invalidateStats, getComputedStats, getNutzungstypen, map } from './02b-gebaeude.js';
 import { setGebVisible, setMode, setSchallVisible, updateViz } from './02c-karte-werkzeuge.js';
 import { hidePanels, recalcNetz, setNetzVisible } from './03b-netz.js';
@@ -28,7 +29,9 @@ import { lbBuildAnalyseSection, lbShowSection } from './18-liegenschaftsbilder.j
 import { ausbauShow } from './14e-ausbauplaner-ui.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, stromEmF } from './01-globals-varianten.js';
 import { getWLDColor } from './02a-netz-physik.js';
-import { OVERPASS_ENDPOINTS, updateRohrListe } from './03b-netz.js';
+import { updateRohrListe } from './03b-netz.js';
+import { overpassAbfrage } from './lib/overpass-client.js';
+import { splitOsmBbox } from './lib/osm-bbox-tiles.js';
 import { _buildProjectData, _loadProject, hideHint, showHint } from './03c-gebaeude-io.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { netzPruningMode, setNetzPruningMode } from './01-globals-varianten.js';
@@ -132,6 +135,15 @@ export function applyBulk() {
   document.getElementById('bulk-waerme').value = '';
   document.getElementById('bulk-hl').value = '';
   renderList(); updateViz(); updateTotals(); recalcNetz();
+}
+
+/** Genau die Gebäude ohne Nutzung auswählen — für die Sammelzuordnung in der Gebäudeübersicht. */
+export function gebOhneNutzungAuswaehlen() {
+  gebaeude.forEach(g => { g.selected = !g.nutzung; });
+  renderList();
+  updateBulkBar();
+  if (currentViewMode === 'gebaeude') renderGebaeudeOverview();
+  document.getElementById('geb-bulk-nutzung')?.focus();
 }
 
 export function clearSelection() {
@@ -409,6 +421,7 @@ export function renderGebaeudeOverview() {
   const head = document.getElementById('geb-table-head');
   if (!body || !head) return;
   _renderGebOverviewAnalysis();
+  window.gaRender?.();
   const rows = _filteredSortedBuildings();
   const selected = gebaeude.filter(g => g.selected);
   const allVisibleSelected = rows.length > 0 && rows.every(g => g.selected);
@@ -465,7 +478,9 @@ export function renderGebaeudeOverview() {
       ${zelle(r,'zustand',`<select data-change="updateGebaeudeTableField(${g.id},'zustand',this.value)">${['','1','2','3'].map(v => `<option value="${v}" ${(baZustandAusText(g.zustand) || '') === v ? 'selected' : ''}>${v || '—'}</option>`).join('')}</select>`)}
       ${zelle(r,'twwArt',`<select data-change="updateGebaeudeTableField(${g.id},'twwArt',this.value)"><option value="">—</option>${Object.entries(BA_TWW_ARTEN).map(([k,t]) => `<option value="${k}" ${g.twwArt === k ? 'selected' : ''} title="${_gebTableEsc(t.name)}">${_gebTableEsc(BA_TWW_KURZ[k])}</option>`).join('')}</select>`)}
       ${zelle(r,'twwKw',`<input class="geb-table-num" type="number" min="0" value="${_gebTableEsc(g.twwKw ?? '')}" data-change="updateGebaeudeTableField(${g.id},'twwKw',this.value)">`)}
-      <td><button class="geb-profile-btn" data-click="showGebaeudeHeatProfile(${g.id})">${_gebTableEsc(getBuildingHeatProfileMeta(g).label)}</button></td>
+      <td>${(meta => meta.ersatz
+        ? `<button class="geb-profile-btn ersatz" data-click="showGebaeudeHeatProfile(${g.id})" title="Keine Nutzung zugeordnet — das Wärmeprofil wird ersatzweise wie Gewerbe, Handel und Dienstleistung gerechnet. Nutzung in der Spalte „Nutzung“ wählen.">Ersatz: GHD</button>`
+        : `<button class="geb-profile-btn" data-click="showGebaeudeHeatProfile(${g.id})">${_gebTableEsc(meta.label)}</button>`)(getBuildingHeatProfileMeta(g))}</td>
       <td class="geb-table-readonly" title="${_gebTableEsc(g.importSourceName || '')}">${_gebTableEsc(g.importSourceName || '—')}</td>
     </tr>`;
   }).join('');
@@ -476,6 +491,14 @@ export function renderGebaeudeOverview() {
   if (markInfo) markInfo.textContent = mark && trGroesse(mark) > 1 ? `${trGroesse(mark)} Zellen markiert` : '';
   const count = document.getElementById('geb-table-result-count');
   if (count) count.textContent = `${rows.length} von ${gebaeude.length} Gebäuden`;
+  // Gebäude ohne Nutzung: zählen in Karte und Diagrammen als „Nicht zugeordnet“ und rechnen mit dem GHD-Ersatzprofil
+  const ohne = gebaeude.filter(g => !g.nutzung).length;
+  const ohneEl = document.getElementById('geb-ohne-nutzung');
+  if (ohneEl) {
+    ohneEl.style.display = ohne ? '' : 'none';
+    ohneEl.innerHTML = ohne ? `⚠ ${ohne.toLocaleString('de-DE')} Gebäude ohne Nutzung — in Karte und Diagrammen „Nicht zugeordnet“, Wärmeprofil ersatzweise wie Gewerbe/Handel/Dienstleistung.
+      <button class="btn-secondary" data-click="gebOhneNutzungAuswaehlen()">Diese auswählen und zuordnen</button>` : '';
+  }
   const bulk = document.getElementById('geb-table-bulk');
   if (bulk) {
     bulk.classList.toggle('visible',selected.length > 0);
@@ -943,7 +966,12 @@ export async function loadAutosave() {
   try {
     const snapshot = _latestAutosave || await loadLatestAutosave();
     if (!snapshot) return;
-    await _loadProject(snapshot.project);
+    const anzeige = typeof window.projektLadeAnzeige === 'function' ? window.projektLadeAnzeige('automatische Sicherung', 0) : null;
+    try {
+      anzeige?.text('Projekt wird aufgebaut — Gebäude, Netz und Berechnungen …');
+      if (typeof window._nachZeichnen === 'function') await window._nachZeichnen();
+      await _loadProject(snapshot.project);
+    } finally { anzeige?.weg(); }
     showHint('✓ Autosave wiederhergestellt.');
     setTimeout(hideHint, 3000);
   } catch(e) { showHint('Fehler beim Wiederherstellen.'); console.error(e); }
@@ -989,60 +1017,61 @@ export const HIGHWAY_KOSTEN = {
 };
 
 let _aaecRunning = false;
-async function queryOsmRoadType(latA, lngA, latB, lngB) {
-  // Find the OSM way closest to the midpoint of the edge
-  const midLat = (latA + latB) / 2;
-  const midLng = (lngA + lngB) / 2;
-  const delta = 0.0003;
-  const bbox = `${midLat-delta},${midLng-delta},${midLat+delta},${midLng+delta}`;
-  const q = `[out:json][timeout:5];way["highway"](${bbox});out tags 1;`;
-  const resp = await fetch(OVERPASS_ENDPOINTS[0], {
-    method: 'POST',
-    body: 'data=' + encodeURIComponent(q),
-    signal: AbortSignal.timeout(6000)
-  });
-  // Harter Fehler (429/5xx) → werfen, damit der Aufrufer den Circuit-Breaker auslöst.
-  if (!resp.ok) throw new Error('overpass ' + resp.status);
-  const d = await resp.json();
-  if (d && d.elements && d.elements.length > 0) {
-    const hw = d.elements[0].tags?.highway || '';
-    return HIGHWAY_KOSTEN[hw] || 'mittel';
+
+// Abstand eines Punkts zu einer Polylinie in Metern (lokale Projektion um den Punkt)
+function _abstandZuWegM(lat, lng, geom) {
+  const mLat = 111320, mLng = 111320 * Math.cos(lat * Math.PI / 180);
+  let best = Infinity;
+  for (let i = 1; i < geom.length; i++) {
+    const ax = (geom[i - 1].lon - lng) * mLng, ay = (geom[i - 1].lat - lat) * mLat;
+    const bx = (geom[i].lon - lng) * mLng, by = (geom[i].lat - lat) * mLat;
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    const t = l2 > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+    best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
   }
-  return 'mittel'; // erfolgreich, aber keine Straße in der Nähe → Default
+  return best;
 }
 
 export async function autoAssignEdgeCosts() {
-  // Straßentyp je Kante → Kostenklasse (Hintergrund, nach autoGenerateNetz).
-  // Robust gegen Overpass-Ausfälle/Rate-Limits (429) und file://-CORS: früh
-  // aufhören statt den Browser mit hunderten fehlschlagenden Requests zu fluten
-  // (das machte ihn "brutal langsam", wenn der Hintergrund-Sturm weiterlief).
-  if (_aaecRunning) return; // nur ein Lauf gleichzeitig — kein Request-Sturm bei Mehrfachauslösung
+  // Straßentyp je Kante → Kostenklasse (Hintergrund, nach autoGenerateNetz). Eine Overpass-Abfrage für das ganze
+  // Netzgebiet (Kacheln ≤ 2 km, zwischengespeichert) statt einer Anfrage je Leitung — sonst sperren die öffentlichen
+  // Server die IP-Adresse (zu viele Anfragen) und auch Gebäude-, Dach- und Baumabfragen scheitern. Je Kante zählt der
+  // nächstgelegene Weg (bis 25 m von der Leitungsmitte), sonst „mittel“.
+  if (_aaecRunning) return; // nur ein Lauf gleichzeitig
   // file:// (Doppelklick auf dist/index.html): Overpass ist per CORS chancenlos → gar nicht anfragen.
   const offline = typeof location === 'undefined' || location.protocol === 'file:' || location.origin === 'null';
-  if (offline) {
-    for (const e of netzEdges) if (!e.kostOverride && !e.kostKlasse) e.kostKlasse = 'mittel';
+  const kanten = netzEdges.filter(e => !e.kostOverride && e.uNode?.pt && e.vNode?.pt);
+  if (offline || !kanten.length) {
+    for (const e of kanten) if (!e.kostKlasse) e.kostKlasse = 'mittel';
     updateRohrListe();
     return;
   }
   _aaecRunning = true;
   try {
-    let fails = 0;
-    for (const e of netzEdges) {
-      if (e.kostOverride) continue; // manuelle Einstellung nicht überschreiben
-      const uPt = e.uNode?.pt, vPt = e.vNode?.pt;
-      if (!uPt || !vPt) continue;
-      if (fails >= 2) { if (!e.kostKlasse) e.kostKlasse = 'mittel'; continue; } // Circuit-Breaker: Overpass nicht erreichbar
-      try {
-        e.kostKlasse = await queryOsmRoadType(uPt.lat, uPt.lng, vPt.lat, vPt.lng);
-      } catch (_) {
-        fails++;
-        if (!e.kostKlasse) e.kostKlasse = 'mittel';
+    let s = 90, w = 180, n = -90, o = -180;
+    for (const e of kanten) for (const p of [e.uNode.pt, e.vNode.pt]) { s = Math.min(s, p.lat); n = Math.max(n, p.lat); w = Math.min(w, p.lng); o = Math.max(o, p.lng); }
+    const rand = 0.0004;
+    const kacheln = splitOsmBbox([s - rand, w - rand, n + rand, o + rand], { targetMeters: 2000, maxTilesPerAxis: 4 });
+    const wege = [];
+    for (const [ks, kw, kn, ko] of kacheln) {
+      const q = `[out:json][timeout:25];way["highway"](${ks.toFixed(6)},${kw.toFixed(6)},${kn.toFixed(6)},${ko.toFixed(6)});out tags geom;`;
+      const d = await overpassAbfrage(q);
+      if (!d) { for (const e of kanten) if (!e.kostKlasse) e.kostKlasse = 'mittel'; return; }
+      for (const el of d.elements || []) if (el.geometry?.length >= 2 && el.tags?.highway) wege.push(el);
+    }
+    for (const e of kanten) {
+      const lat = (e.uNode.pt.lat + e.vNode.pt.lat) / 2, lng = (e.uNode.pt.lng + e.vNode.pt.lng) / 2;
+      let besterWeg = null, bestM = 25;
+      for (const weg of wege) {
+        const m = _abstandZuWegM(lat, lng, weg.geometry);
+        if (m < bestM) { bestM = m; besterWeg = weg; }
       }
+      e.kostKlasse = besterWeg ? (HIGHWAY_KOSTEN[besterWeg.tags.highway] || 'mittel') : 'mittel';
     }
   } finally {
     _aaecRunning = false;
+    updateRohrListe();
   }
-  updateRohrListe();
 }
 
 // ── Edge popup ────────────────────────────────────────────────────────
@@ -1057,7 +1086,7 @@ export function showEdgePopup(e, mouseEvt) {
     .map(dn => `<option value="${dn}" ${e.dn===dn?'selected':''}>${dn===0?'Auto':'DN '+dn}</option>`)
     .join('');
 
-  const kostKlasse = e.kostKlasse || 'mittel';
+  const kostKlasse = e.kostKlasse || window.kostenSzenarioAktuell?.() || 'mittel';
   const kostAuto   = !e.kostOverride;
   popup.innerHTML = `
     <div class="edge-popup-title">
@@ -1087,7 +1116,7 @@ export function showEdgePopup(e, mouseEvt) {
       <span>Last: <span style="color:var(--text)">${(e.load||0).toFixed(1)} kW</span>${e._gzf < 1 ? ` <span style="color:var(--muted);font-size:9px">(GZF ${e._gzf.toFixed(2)})</span>` : ''}</span>
       <span>Länge: <span style="color:var(--text)">${Math.round(e.length||0)} m</span></span>
       <span>WLD: <span style="color:${getWLDColor(getWLD(e))}">${getWLD(e).toFixed(2)} MWh/(m·a)</span></span>
-      <span>Kosten: <span style="color:#4fc3f7">${Math.round((getKostenProMKlasse(e.dn, e.kostKlasse||'mittel'))*(e.length||0)).toLocaleString('de-DE')} €</span></span>
+      <span>Kosten: <span style="color:#4fc3f7">${Math.round((getKostenProMKlasse(e.dn, e.kostKlasse||window.kostenSzenarioAktuell?.()||'mittel'))*(e.length||0)).toLocaleString('de-DE')} €</span></span>
     </div>
     ${e.buildingConflict ? `<div style="margin-top:7px;padding:6px 8px;border:1px solid rgba(249,168,37,.55);border-radius:5px;background:rgba(249,168,37,.1);color:#ffd180;font-size:9px;line-height:1.45;">
       ⚠ Automatischer Rückfall: Dieser Verlauf kreuzt einen Gebäudegrundriss. Das Netz wäre ohne diesen Abschnitt nicht vollständig verbunden. Bitte den Abschnitt bei Bedarf manuell umlegen.
@@ -1097,6 +1126,7 @@ export function showEdgePopup(e, mouseEvt) {
       <button data-click="toggleEdgePruned()" style="width:100%;padding:5px 8px;background:${e.pruned?'#1b3a2a':'rgba(249,168,37,0.12)'};border:1px solid ${e.pruned?'#4caf50':'#f9a825'};border-radius:4px;color:${e.pruned?'#4caf50':'#f9a825'};cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">
         ${e.pruned?'✓ Wieder anschließen':'✂ Abschnitt deaktivieren'}
       </button>
+      ${e.pruned ? '' : `<button data-click="edgeAbgangAusZentrale()" title="Die Gebäude hinter diesem Abschnitt bekommen einen eigenen Abgang aus der Heizzentrale; dieser Abschnitt und nicht mehr benötigte Zuleitungen entfallen" style="width:100%;margin-top:5px;padding:5px 8px;background:rgba(79,195,247,0.1);border:1px solid #4fc3f7;border-radius:4px;color:#4fc3f7;cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">⇱ Eigener Abgang aus der Heizzentrale</button>`}
     </div>`;
 
   // Position near mouse, clamped to viewport
@@ -1110,6 +1140,13 @@ export function showEdgePopup(e, mouseEvt) {
   if (py + ph > rect.height - 10) py = mouseEvt.clientY - rect.top  - ph - 12;
   popup.style.left = px + 'px';
   popup.style.top  = py + 'px';
+}
+
+/** Popup-Knopf: Strang hinter dem gewählten Abschnitt direkt aus der Heizzentrale versorgen. */
+export function edgeAbgangAusZentrale() {
+  const e = activeEdgePopup;
+  closeEdgePopup();
+  if (e) window.netzAbgangAusZentrale?.(e);
 }
 
 export function closeEdgePopup() {
@@ -1350,8 +1387,10 @@ export function startDrag(e, panelId) {
   function onMove(ev) {
     let nx = ev.clientX - startX;
     let ny = ev.clientY - startY;
-    nx = Math.max(0, Math.min(window.innerWidth  - panel.offsetWidth,  nx));
-    ny = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, ny));
+    // Kopfzeile (Griff, ×) bleibt immer unterhalb der App-Kopfleiste und im Fenster erreichbar
+    const oben = _panelObergrenze();
+    nx = Math.max(Math.min(0, window.innerWidth - 120), Math.min(window.innerWidth - Math.min(panel.offsetWidth, 160), nx));
+    ny = Math.max(oben, Math.min(window.innerHeight - 40, ny));
     panel.style.left = nx + 'px';
     panel.style.top  = ny + 'px';
   }
@@ -1370,6 +1409,47 @@ setTimeout(() => {
   renderList();
   tryRestoreAutosave();
 }, 0);
+
+/** Unterkante der App-Kopfleiste: Panels dürfen mit ihrer Kopfzeile nicht darunter verschwinden. */
+function _panelObergrenze() {
+  const kopf = document.querySelector('header')?.getBoundingClientRect();
+  return Math.max(0, Math.round(kopf?.bottom || 0)) + 4;
+}
+
+/**
+ * Schwebende Fenster im Bild halten: Liegt die Kopfzeile (Griff, Minimieren, ×) über dem oberen Rand oder unter
+ * der App-Kopfleiste, wird das Fenster nach unten geschoben und in der Höhe begrenzt — beim Öffnen, wenn es wächst
+ * und wenn sich das Browserfenster ändert.
+ */
+function _panelImBild(panel) {
+  if (!panel.isConnected || panel.classList.contains('inline-mode') || getComputedStyle(panel).position === 'static') return;
+  const r = panel.getBoundingClientRect();
+  if (!r.height || !r.width) return;
+  if (r.top <= 0.5 && r.height >= window.innerHeight - 1) return;   // Vollbild-Fenster (z. B. Schaltbild)
+  const oben = _panelObergrenze();
+  const verfuegbar = window.innerHeight - oben - 8;
+  if (r.top >= oben - 0.5 && r.left > -r.width + 80 && r.left < window.innerWidth - 80) return;
+  panel.style.left = Math.max(0, Math.min(window.innerWidth - Math.min(r.width, window.innerWidth), r.left)) + 'px';
+  panel.style.top = Math.max(oben, r.top) + 'px';
+  panel.style.transform = 'none';
+  panel.classList.add('dragging');
+  if (r.height > verfuegbar) panel.style.maxHeight = verfuegbar + 'px';
+}
+let _panelPruefung = 0;
+function _panelsPruefen() {
+  if (_panelPruefung) return;
+  _panelPruefung = requestAnimationFrame(() => {
+    _panelPruefung = 0;
+    document.querySelectorAll('.panel-drag-handle').forEach(h => {
+      const panel = h.parentElement;
+      if (panel && panel.offsetParent !== null) _panelImBild(panel);
+    });
+  });
+}
+if (typeof MutationObserver === 'function' && document.body) {
+  new MutationObserver(_panelsPruefen).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  window.addEventListener('resize', _panelsPruefen);
+}
 
 export function toggleSidebar() {
   const sb = document.getElementById('sidebar');
@@ -1531,6 +1611,7 @@ let _prevSchallVisible = null;
 export function setLeftTab(tabId) {
   document.querySelectorAll('#lp-tabs .lp-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
   document.querySelectorAll('#left-panel .lp-content').forEach(c => c.classList.toggle('active', c.id === 'lp-' + tabId));
+  if (tabId !== 'netz') window.netzQuartiereAnzeigen?.(false);
   const titles = { gebiet: 'Gebiet', netz: 'Netz', erzeuger: 'Erzeuger', elektro: 'Elektro', ergebnis: 'Ergebnis' };
   document.getElementById('lp-title').textContent = titles[tabId] || tabId;
   if (tabId === 'netz') window.netzTabGeoeffnet?.();
@@ -1637,10 +1718,10 @@ export function updateLpMeritOrder() {
     const prio = keys.length + 1;
     const agk = autoGkResult;
     let detail = '';
-    if (agk) detail = ' · ' + Math.round(agk.waermeMwh).toLocaleString('de-DE') + ' MWh';
+    if (agk) detail = ' · ' + Math.round(agk.leistungKw).toLocaleString('de-DE') + ' kW · ' + Math.round(agk.waermeMwh).toLocaleString('de-DE') + ' MWh';
     html += '<div class="lp-mo-item" style="border-left-color:#78909c;border-left-style:dashed;opacity:0.75;">'
       + '<span class="mo-prio">' + prio + '.</span>'
-      + '<span class="mo-name">Auto-Gaskessel' + detail + ' <span class="htip" data-tip="Virtueller Reservekessel: Zeigt, wie viel Leistung die installierten Erzeuger nicht abdecken können. Wenn dieser Wert > 0 ist, fehlt Erzeugerkapazität.">?</span></span>'
+      + '<span class="mo-name">Spitzenlastkessel (auto)' + detail + ' <span class="htip" data-tip="Automatischer Spitzenlastkessel der gewählten Art (unten): deckt die Restlast der Einsatzplanung und die Leistung, die den Erzeugern bei Normaußentemperatur fehlt. Er wird mit Investition und Betrieb gerechnet.">?</span></span>'
       + '</div>';
   }
   container.innerHTML = html;
@@ -1757,13 +1838,15 @@ export function updateLpNetzSummary() {
     return;
   }
   if (hint) hint.style.display = 'none';
+  // Aktive Leitungen; Verlust im Betrieb; Wärmeliniendichte = Wärmeabsatz der angeschlossenen Gebäude im Jahr / Trassenlänge
   let totalLen = 0, totalLoss = 0;
-  netzEdges.forEach(e => { totalLen += (e.length || 0); totalLoss += (e.lossKW_annual || 0); });
-  const lossMWh = totalLoss * 8.76;
-  const connIds = new Set(netzEdges.flatMap(e => [e.u, e.v]));
-  const connGeb = gebaeude.filter(g => connIds.has(g.id));
-  const totalW = connGeb.reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
-  const wld = totalLen > 0 ? ((totalW + lossMWh) / (totalLen / 1000)).toFixed(1) : '—';
+  netzEdges.forEach(e => { if (e.pruned) return; totalLen += (e.length || 0); totalLoss += (e.lossKW_annual || 0); });
+  const lossMWh = totalLoss * 8.76 * (window.netzBetriebsAnteil?.() ?? 1);
+  const connIds = new Set(netzEdges.filter(e => !e.pruned).flatMap(e => [e.u, e.v]));
+  const zentralen = window.netzZentralenIds?.() || [];
+  const connGeb = gebaeude.filter(g => connIds.has(g.id) && !zentralen.includes(g.id) && !(window.isExcluded?.(g.id)));
+  const totalW = typeof window.netzVerbrauchMwh === 'function' ? window.netzVerbrauchMwh() : connGeb.reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
+  const wld = totalLen > 0 ? (totalW / (totalLen / 1000)).toFixed(1) : '—';
   const pct = (totalW + lossMWh) > 0 ? (lossMWh / (totalW + lossMWh) * 100).toFixed(1) + ' %' : '—';
   setVal('lp-netz-laenge', (totalLen).toFixed(0) + ' m');
   setVal('lp-netz-verluste', lossMWh.toFixed(1) + ' MWh/a');
@@ -1868,37 +1951,24 @@ export function refreshAnalyseView() {
     // Try from gebaeude
     const tw = gebaeude.reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
     const thl = gebaeude.reduce((s, g) => s + (parseFloat(g.heizlast) || 0), 0);
-    setKpi('av-kpi-waerme', tw.toFixed(0));
-    setKpi('av-kpi-pmax', thl.toFixed(0));
+    setKpi('av-kpi-waerme', Math.round(tw).toLocaleString('de-DE'));
+    setKpi('av-kpi-pmax', Math.round(thl).toLocaleString('de-DE'));
   }
 
   // WGK + EE from globals (zuverlässiger als DOM-Footer)
-  setKpi('av-kpi-wgk', window._lastWgk ? window._lastWgk.toFixed(1) + ' ct' : '—');
+  const _nf = (v, d = 0) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  setKpi('av-kpi-wgk', window._lastWgk ? _nf(window._lastWgk, 1) : '—');
   // EE-Anteil direkt berechnen
-  const _eeKeys = ['lwwp','fg','geo','pellets','hhs'];
+  // wie Variantenvergleich und Optimierer: Speicherwärme nach Herkunft der Ladung (lib/dispatch-energie.js)
   const _den = window._dispatchEnergy || {};
-  let _eeW = 0, _gesW = 0;
-  for (const k of Object.keys(_den)) { const w = _den[k]?.waermeMwh || 0; _gesW += w; if (_eeKeys.includes(k) || k === '_thermSpeicher') _eeW += w; }
-  setKpi('av-kpi-ee', _gesW > 0 ? (_eeW / _gesW * 100).toFixed(0) + ' %' : '—');
+  const _eePct = lastMwh(_den) > 0 ? eeAnteilPct(_den) : null;
+  setKpi('av-kpi-ee', _eePct != null ? _nf(_eePct) : '—');
+  const _eeBar = document.getElementById('av-kpi-ee-bar');
+  if (_eeBar) { _eeBar.style.width = (_eePct != null ? Math.min(100, _eePct) : 0) + '%'; _eeBar.classList.toggle('ok', _eePct != null && _eePct >= 65); }
 
-  // CO₂ direkt aus Dispatch-Daten berechnen
-  const _co2Eta = _getEtaMap();
-  const _co2Emf = { gaskessel:gasEmF, heizoel:heizoelEmF, pellets:pelletsEmF, hhs:hhsEmF,
-    _autoGk:gasEmF, fernwaerme:fernwaermeEmF, lwwp:stromEmF, fg:stromEmF, geo:stromEmF, stromkessel:stromEmF, bhkw:gasEmF };
-  let _co2Tot = 0;
-  for (const k of Object.keys(_den)) {
-    const e = _den[k]; if (!e) continue;
-    const emf = _co2Emf[k] || 0;
-    if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') {
-      _co2Tot += (e.elMwh || 0) * emf / 1e3;
-    } else if (k === 'bhkw') {
-      const etaTh = ((parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100) / (1 + (parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45));
-      _co2Tot += (e.waermeMwh || 0) / etaTh * emf / 1e3;
-    } else if (_co2Eta[k]) {
-      _co2Tot += (e.waermeMwh || 0) / _co2Eta[k] * emf / 1e3;
-    }
-  }
-  setKpi('av-kpi-co2', _co2Tot > 0.01 ? _co2Tot.toFixed(1) : '—');
+  // CO₂: dieselbe Rechnung wie Variantenvergleich und Emissionen-Reiter (inkl. BHKW-Stromgutschrift)
+  const _co2Tot = Object.keys(_den).length && typeof window.co2EinsatzAktuell === 'function' ? window.co2EinsatzAktuell() : 0;
+  setKpi('av-kpi-co2', _co2Tot > 0.01 ? _nf(_co2Tot, _co2Tot < 100 ? 1 : 0) : '—');
 
   // Render the active section
   const grid    = document.getElementById('analyse-dispatch-grid');
@@ -1957,6 +2027,7 @@ export function refreshAnalyseView() {
     const sp = document.getElementById('strom-panel');
     if (sp) sp.querySelectorAll('.float-panel-close, button[data-click="hidePanels()"]').forEach(b => b.style.display = 'none');
     if (typeof calcStromPanel === 'function') calcStromPanel();
+    _stromAnalyseTabs(sp);
   } else if (analyseCurrentSection === 'emissionen') {
     if (emWrap) { emWrap.style.display = 'block'; _renderEmissionenTab(); }
   } else if (analyseCurrentSection === 'nap') {
@@ -1974,6 +2045,33 @@ export function refreshAnalyseView() {
   } else if (analyseCurrentSection === 'ausbauplaner') {
     if (typeof ausbauShow === 'function') ausbauShow(true);
   }
+}
+
+// Strom in der Analyse: die Diagramme des Strom-Panels über eine eigene Reiterleiste erreichbar machen
+// (im schwebenden Strom-Grundlagen-Panel bleiben sie ausgeblendet)
+let _stromAnalyseTab = 'fluss';
+function _stromAnalyseTabs(sp) {
+  if (!sp) return;
+  const inhalt = sp.querySelector('#strom-content-jdl')?.parentElement;
+  if (!inhalt) return;
+  let leiste = sp.querySelector('.strom-ana-tabs');
+  if (!leiste) {
+    leiste = document.createElement('div');
+    leiste.className = 'analyse-sub-tabs strom-ana-tabs';
+    leiste.innerHTML = [['fluss', 'Energiefluss (Woche)'], ['lastgang', 'Jahreslastgang'], ['jdl', 'Dauerlinie'], ['sankey', 'Jahresbilanz (Sankey)']]
+      .map(([t, l]) => `<button class="analyse-sub-tab" data-tab="${t}" data-click="stromAnalyseTab('${t}')">${l}</button>`).join('');
+    inhalt.insertBefore(leiste, inhalt.firstChild);
+    const eingaben = document.createElement('div');
+    eingaben.className = 'strom-ana-eingaben-titel';
+    eingaben.textContent = 'Eingaben Strom-Grundlagen';
+    leiste.after(eingaben);
+  }
+  stromAnalyseTab(_stromAnalyseTab);
+}
+export function stromAnalyseTab(tab) {
+  _stromAnalyseTab = tab;
+  document.querySelectorAll('.strom-ana-tabs .analyse-sub-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  if (typeof window._stromSetTab === 'function') window._stromSetTab(tab);
 }
 
 // ── Ebenen-Panel ─────────────────────────────────────────────────────────────

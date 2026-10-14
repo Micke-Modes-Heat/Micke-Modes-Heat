@@ -9,6 +9,13 @@ const SIGLINDE={
   GHD34:{A:1.25696,B:-36.6078453,C:7.321187,D:0.077696,mh:-0.0696826,bh:1.1379702,mw:-0.0008522,bw:0.1921068},
 };
 
+// Raumwärmeanteil der SigLinDe-Tageskurve: ohne den Warmwasser-/Grundlastteil (D und Warmwasser-Gerade mw·θ+bw).
+// Den Warmwasseranteil bildet der eigene Sockel (baseShare) ab — sonst stünde er doppelt im Profil, und bei
+// dezentralem Trinkwarmwasser würde er als Raumwärme in die Heizperiode verschoben.
+function sigRaum(theta,p) {
+  return Math.max(0,sigH(theta,p)-p.D-Math.max(0,p.mw*theta+p.bw));
+}
+
 function sigH(theta,p) {
   const diff=theta-THETA_0;
   const denominator=Math.abs(diff)<1e-10 ? (diff<0 ? -1e-10 : 1e-10) : diff;
@@ -114,7 +121,8 @@ function constrainPeak(profile,maximumKw) {
   return result;
 }
 
-export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year=2026) {
+// opt.ohneSockel: Trinkwarmwasser dezentral — der wetterunabhängige Sockelanteil entfällt, es bleibt die Raumwärme
+export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year=2026,opt={}) {
   const archetype=archetypeFor(building);
   const weatherRaw=new Float64Array(H);
   const baseRaw=new Float64Array(H);
@@ -128,7 +136,7 @@ export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year
     const weekDay=(firstDay+day)%7;
     const weekend=weekDay===0 || weekDay===6;
     const dayFactor=weekend ? archetype.weekend : 1;
-    const weather=Math.max(0,sigH(mean,params))*dayFactor;
+    const weather=sigRaum(mean,params)*dayFactor;
     let scheduleSum=0;
     for (const value of archetype.weekday) scheduleSum+=value;
     for (let hour=0;hour<24;hour++) {
@@ -142,7 +150,7 @@ export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year
   const result=new Float32Array(H);
   const totalKwh=Math.max(0,Number(annualMwh)||0)*1000;
   normalizeInto(result,weatherRaw,totalKwh,1-archetype.baseShare);
-  normalizeInto(result,baseRaw,totalKwh,archetype.baseShare);
+  if (!opt.ohneSockel) normalizeInto(result,baseRaw,totalKwh,archetype.baseShare);
   const peakConstraint=constrainPeak(result,Number(maximumKw)||0);
   return {
     values:result,
@@ -159,14 +167,14 @@ export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year
   };
 }
 
-export function buildBuildingHeatProfiles(buildings,tempH,year,getStats,isExcluded=()=>false) {
+export function buildBuildingHeatProfiles(buildings,tempH,year,getStats,isExcluded=()=>false,opt={}) {
   const aggregate=new Float32Array(H);
   const profiles=new Map();
   for (const building of buildings || []) {
     if (isExcluded(building.id)) continue;
     const stats=getStats(building,year);
     if (!stats || stats.status==='geplant' || stats.status==='abgerissen' || !(stats.waerme>0)) continue;
-    const profile=buildBuildingHeatProfile(building,tempH,stats.waerme,stats.heizlast,year);
+    const profile=buildBuildingHeatProfile(building,tempH,stats.waerme,stats.heizlast,year,opt);
     profiles.set(building.id,profile);
     for (let i=0;i<H;i++) aggregate[i]+=profile.values[i];
   }
@@ -175,9 +183,12 @@ export function buildBuildingHeatProfiles(buildings,tempH,year,getStats,isExclud
 
 export function getBuildingHeatProfileMeta(building) {
   const archetype=archetypeFor(building);
+  const requested=building?.heatProfileType || building?.nutzung;
   return {
     type:Object.entries(ARCHETYPES).find(([,value])=>value===archetype)?.[0] || 'ghd',
     label:archetype.label,
+    // true: keine (bekannte) Nutzung → allgemeines GHD-Profil als Ersatz
+    ersatz:!(ARCHETYPES[requested] || ARCHETYPE_ALIASES[requested]),
     sigLinDe:archetype.sig,
     baseShare:archetype.baseShare,
   };

@@ -26,8 +26,13 @@
 /** Mindestanteile erneuerbarer Energien und unvermeidbarer Abwärme in Wärmenetzen nach WPG. */
 export const WPG_EE_ZIELE = [{ jahr: 2030, pct: 30 }, { jahr: 2040, pct: 80 }, { jahr: 2045, pct: 100 }];
 
-/** Auslegungsregeln der Netzhydraulik im Tool (Pa/m je Leitung, m/s). */
-export const WT_HYDRAULIK_STANDARD = { dpNetzPaM: 150, dpAnschlussPaM: 250, vZielMs: 1.0, vMinMs: 0.3, vMaxMs: 2.0, hausstationBar: 0.5 };
+/**
+ * Auslegungsregeln der Netzhydraulik im Tool (Voreinstellung; Pa/m je Leitung, m/s): Druckgefälle Verteilleitung und
+ * Hausanschluss, zulässige Fließgeschwindigkeit je Nennweite (Nennweiten bis DN 32 bzw. ab DN 350), Differenzdruck an
+ * der Hausstation, Druckverlust Heizzentrale, Zuschlag für Formstücke und Armaturen. foerderhoeheBar: Förderhöhe der
+ * Netzpumpe am ungünstigsten Anschluss (berechnet).
+ */
+export const WT_HYDRAULIK_STANDARD = { dpNetzPaM: 150, dpAnschlussPaM: 250, vKleinMs: 1.0, vGrossMs: 3.0, hausstationBar: 0.5, heizzentraleBar: 0.5, zuschlagPct: 20 };
 
 export const WT_SCHWELLEN = {
   vollbenutzungH: { spitzig: 1800, gleichmaessig: 3000 },   // Wärmenetze mit Heizlast und Warmwasser liegen typisch dazwischen
@@ -201,11 +206,13 @@ function normErz(liste) {
     return {
       ...k, ...e, key: e.key, name: e.name || k.name || e.key,
       leistungKw: num(e.leistungKw) || 0, waermeMwh: num(e.waermeMwh) || 0, elMwh: num(e.elMwh) || 0,
+      // erzeugt (JAZ, Brennstoff) und an die Last inkl. anteiliger Speicherwärme (Deckungsanteile); ältere Stände: direkt
+      erzeugtMwh: num(e.erzeugtMwh) || num(e.waermeMwh) || 0, anLastMwh: num(e.anLastMwh) || num(e.waermeMwh) || 0,
     };
-  }).filter(e => e.leistungKw > 0 || e.waermeMwh > 0);
+  }).filter(e => e.leistungKw > 0 || e.waermeMwh > 0 || e.erzeugtMwh > 0);
   const waermeErz = erz.filter(e => e.art !== 'speicher');
-  const gesamtErz = summe(waermeErz, e => e.waermeMwh);
-  waermeErz.forEach(e => { e.anteil = gesamtErz > 0 ? (e.waermeMwh / gesamtErz) * 100 : NaN; });
+  const gesamtErz = summe(waermeErz, e => e.anLastMwh);
+  waermeErz.forEach(e => { e.anteil = gesamtErz > 0 ? (e.anLastMwh / gesamtErz) * 100 : NaN; });
   const nachLeistung = [...waermeErz].sort((a, b) => b.leistungKw - a.leistungKw);
   const nachWaerme = [...waermeErz].sort((a, b) => b.waermeMwh - a.waermeMwh || b.leistungKw - a.leistungKw);
   return {
@@ -216,7 +223,8 @@ function normErz(liste) {
 
 /**
  * Erwartete Form (alles optional):
- *   lastgang   { pMaxKw, nutzMwh, gesamtMwh, netzverlustPct, netzverlustMwh, tMinC, jdlKw }   // für das Jahr projekt.lastgangJahr
+ *   lastgang   { pMaxKw, nutzMwh, gesamtMwh, netzverlustPct, netzverlustMwh, tMinC, jdlKw,   // für das Jahr projekt.lastgangJahr
+ *                auslegung: { kw, quelle, lastgangKw, summeHeizlastKw, anzahl, glf, verlustKw, normAt, tSpitze, thetaInnen } }
  *   projekt    { basisJahr, lastgangJahr, anzahl: { gesamt, bestand, neubau, abriss, saniert },
  *                bedarfsverlauf: [{ jahr, bedarfMwh, heizlastKw }], ereignisse: [{ jahr, art: 'neubau'|'abriss'|'sanierung', anzahl, deltaMwh }] }
  *   herkunft   { lastgang: 'import'|'importMonate'|'monate'|'monateGesamt'|'gesamt'|'gebaeude', zeitreihe: { intervallMin, quelle, qualitaet },
@@ -235,11 +243,19 @@ export function wtNormalisiere(d = {}) {
     ...v, ...normErz(v.erzeuger),
     investEur: num(v.investEur), jahreskostenEur: num(v.jahreskostenEur), wgkCt: num(v.wgkCt),
     co2T: num(v.co2T), eeAnteilPct: num(v.eeAnteilPct), netzverlustPct: num(v.netzverlustPct),
+    // Bewertungsgrundlage für Emissionsvergleiche: künftiger Strommix (Ø 2030–2050) wie Fazit und Bewertungsmatrix,
+    // ohne diesen Wert der heutige
+    co2LzT: num(v.co2LzT), co2Bew: ok(num(v.co2LzT)) ? num(v.co2LzT) : num(v.co2T),
   }));
   return {
     pMaxKw: num(lg.pMaxKw), nutzMwh: nutz, gesamtMwh: ok(num(lg.gesamtMwh)) ? num(lg.gesamtMwh) : nutz, tMinC: num(lg.tMinC),
+    // Auslegungsspitze bei Normaußentemperatur (lib/auslegung.js); ohne sie die Spitze des Lastgangs
+    auslegung: ok(num(lg.auslegung?.kw)) && num(lg.auslegung.kw) > 0 ? lg.auslegung : null,
+    auslKw: ok(num(lg.auslegung?.kw)) && num(lg.auslegung.kw) > 0 ? num(lg.auslegung.kw) : num(lg.pMaxKw),
     jdlKw: lg.jdlKw || null,
     netzverlustPct: num(lg.netzverlustPct), netzverlustMwh: num(lg.netzverlustMwh),
+    // Ist-Stichjahr (3.1), falls abweichend vom Lastgangjahr; sonst dieselben Werte
+    ist: d.lastgangIst ? { gesamtMwh: num(d.lastgangIst.gesamtMwh), pMaxKw: num(d.lastgangIst.pMaxKw), jahr: num(d.lastgangIst.jahr) } : null,
     projekt: d.projekt || {}, typ: wtProjektTyp(d.projekt), herkunft: d.herkunft || {},
     netz: d.netz || {}, gebaeude: d.gebaeude || {}, wirt: d.wirtschaft || {},
     varianten,
@@ -304,6 +320,39 @@ function herkunftLastgangAbsaetze(n) {
 }
 
 /** Schlusssatz zur Belastbarkeit je nach Herkunft. */
+/**
+ * Auslegungsspitze bei Normaußentemperatur (3.2.5). Beim gemessenen Lastgang beschreibt der eigene Baustein
+ * „Spitzenlast und Auslegungsheizlast“ die Extrapolation; hier dann nichts.
+ */
+function auslegungAbsaetze(n) {
+  const a = n.auslegung;
+  const art = n.herkunft.lastgang;
+  if (!a || art === 'import' || art === 'importMonate') return [];
+  const nat = ok(num(a.normAt)) ? `der Norm-Außentemperatur von ${nf(num(a.normAt), 1)} °C` : 'der Norm-Außentemperatur';
+  const lgKw = num(a.lastgangKw);
+  const einl = `Die Spitze des Lastgangs gilt für die Witterung des zugrunde gelegten Jahres. Für die Auslegung der Wärmeerzeugung ist die Leistung bei ${nat} maßgebend. `;
+  const folge = ' Einsatzplanung, Energiemengen und Jahresdauerlinie beruhen weiterhin auf dem Lastgang. Die Wärmeerzeugung muss jedoch auch die Auslegungsspitze sicher bereitstellen; maßgebend ist dabei die Leistung der Erzeuger bei der Norm-Außentemperatur.';
+  if (a.quelle === 'heizlast') {
+    const roh = num(a.summeHeizlastKw) * num(a.glf) + num(a.verlustKw);
+    return [absatz(einl,
+      `Sie ergibt sich aus der Summe der Normheizlasten nach DIN EN 12831 der ${nf(num(a.anzahl))} Gebäude von ${nf(num(a.summeHeizlastKw))} kW, dem Gleichzeitigkeitsfaktor von ${nf(num(a.glf), 2)} und der Netzverlustleistung von ${nf(num(a.verlustKw))} kW`,
+      ok(roh) && roh < num(a.kw) - 0.5
+        ? ` zu rund ${nf(roh)} kW. Da die Spitze des Lastgangs mit ${nf(lgKw)} kW darüber liegt, wird sie als Auslegungsspitze angesetzt.`
+        : ` zu einer Auslegungsspitze von rund ${nf(num(a.kw))} kW${ok(lgKw) ? ` (Spitze des Lastgangs: ${nf(lgKw)} kW)` : ''}.`,
+      folge)];
+  }
+  if (a.quelle === 'hochrechnung') {
+    return [absatz(einl,
+      `Die Spitze des Lastgangs von ${nf(lgKw)} kW tritt bei einem Tagesmittel der Außentemperatur von ${nf(num(a.tSpitze), 1)} °C auf. `,
+      `Linear auf ${nat} hochgerechnet – im Verhältnis der Temperaturdifferenzen zur Innentemperatur von ${nf(num(a.thetaInnen))} °C – ergibt sich eine Auslegungsspitze von rund ${nf(num(a.kw))} kW.`,
+      folge)];
+  }
+  if (ok(num(a.normAt))) {
+    return [absatz(`Der Lastgang reicht bereits bis zu ${nat}; die Spitze des Lastgangs von ${nf(lgKw)} kW ist daher zugleich die Auslegungsspitze.`)];
+  }
+  return [];
+}
+
 function belastbarkeitAbsatz(n) {
   const art = n.herkunft.lastgang;
   if (art === 'import' || art === 'importMonate') {
@@ -321,7 +370,14 @@ function belastbarkeitAbsatz(n) {
 function netzverlustHerkunft(n, mitMwh = true) {
   const h = n.herkunft;
   if (h.netzverlustQuelle === 'waermenetz') return `aus der leitungsgenauen Berechnung des Wärmenetzes${mitMwh && ok(n.netzverlustMwh) ? ` (${nf(n.netzverlustMwh)} MWh/a)` : ''}`;
-  if (h.netzverlustQuelle === 'prozentwert') return `pauschal mit ${ok(num(h.netzverlustPct)) ? pct(num(h.netzverlustPct), 1) : 'einem Prozentwert'} angesetzt, da kein Netz berechnet ist`;
+  if (h.netzverlustQuelle === 'prozentwert') {
+    // Dezentrales Trinkwarmwasser: Netz nur in der Heizperiode — der wirksame Anteil weicht vom Ansatz ab
+    const ansatz = num(h.netzverlustPct), wirksam = num(n.netzverlustPct);
+    if (ok(ansatz) && ok(wirksam) && Math.abs(ansatz - wirksam) > 0.05) {
+      return `aus dem pauschalen Ansatz von ${pct(ansatz, 1)} während der Betriebsstunden des Netzes abgeleitet, da kein Netz berechnet ist`;
+    }
+    return `pauschal mit ${ok(ansatz) ? pct(ansatz, 1) : 'einem Prozentwert'} angesetzt, da kein Netz berechnet ist`;
+  }
   return '';
 }
 
@@ -391,9 +447,11 @@ export function wtIstZustand(d) {
     return out;
   }
   out.push(...entwicklungAbsaetze(n).slice(0, 1));
-  if (ok(n.gesamtMwh) && n.gesamtMwh > 0) {
-    out.push(absatz(`Der Wärmebedarf der Liegenschaft beträgt rund ${nf(n.gesamtMwh)} MWh pro Jahr einschließlich Netzverlusten`
-      + (ok(n.pMaxKw) ? `, die Spitzenlast ${nf(n.pMaxKw)} kW` : '') + '.'
+  const istG = n.ist && ok(n.ist.gesamtMwh) ? n.ist.gesamtMwh : n.gesamtMwh;
+  const istP = n.ist && ok(n.ist.pMaxKw) ? n.ist.pMaxKw : n.pMaxKw;
+  if (ok(istG) && istG > 0) {
+    out.push(absatz(`Der Wärmebedarf der Liegenschaft beträgt ${n.ist && ok(n.ist.jahr) ? `im Jahr ${n.ist.jahr} ` : ''}rund ${nf(istG)} MWh pro Jahr einschließlich Netzverlusten`
+      + (ok(istP) ? `, die Spitzenlast ${nf(istP)} kW` : '') + '.'
       + (netzverlustHerkunft(n) ? ` Die Netzverluste sind ${netzverlustHerkunft(n)}.` : '')));
   } else {
     out.push(absatz('Der Wärmebedarf der Liegenschaft beträgt ', F('Wärmebedarf in MWh/a'), ' MWh pro Jahr, die Spitzenlast ', F('Spitzenlast in kW'), ' kW.'));
@@ -415,9 +473,10 @@ export function wtDimensionierungWea(d) {
   out.push(...herkunftLastgangAbsaetze(n));
 
   if (ok(n.pMaxKw) && n.pMaxKw > 0) {
-    const bedarf = ok(n.gesamtMwh) ? ` Der Jahreswärmebedarf einschließlich Netzverlusten beträgt ${nf(n.gesamtMwh)} MWh, die maßgebende Spitzenlast ${nf(n.pMaxKw)} kW`
+    const spName = n.auslegung ? 'die Spitze des Lastgangs' : 'die maßgebende Spitzenlast';
+    const bedarf = ok(n.gesamtMwh) ? ` Der Jahreswärmebedarf einschließlich Netzverlusten beträgt ${nf(n.gesamtMwh)} MWh, ${spName} ${nf(n.pMaxKw)} kW`
       + (ok(n.tMinC) ? ` (tiefste Außentemperatur im Lastgang ${nf(n.tMinC, 1)} °C)` : '') + '.'
-      : ` Die maßgebende Spitzenlast beträgt ${nf(n.pMaxKw)} kW.`;
+      : ` ${n.auslegung ? 'Die Spitze des Lastgangs' : 'Die maßgebende Spitzenlast'} beträgt ${nf(n.pMaxKw)} kW.`;
     const p = [ok(jahr) ? `Der Soll-Lastgang ist für das Jahr ${jahr} berechnet.` : 'Der Soll-Lastgang berücksichtigt den Stand der baulichen Entwicklung im Betrachtungsjahr.', bedarf];
     if (ok(n.gesamtMwh) && n.gesamtMwh > 0) {
       const h = (n.gesamtMwh * 1000) / n.pMaxKw;
@@ -446,9 +505,13 @@ export function wtDimensionierungWea(d) {
     out.push(absatz('Die maßgebende Spitzenlast beträgt ', F('Spitzenlast in kW'), ' kW bei einem Jahreswärmebedarf von ', F('Jahreswärmebedarf in MWh'), ' MWh.'));
   }
 
+  out.push(...auslegungAbsaetze(n));
   const bel = belastbarkeitAbsatz(n);
   if (bel.length) out.push(bel);
-  out.push(absatz('Die Auslegungsleistung der Wärmeerzeugungsanlage (WEA) richtet sich nach dieser Spitzenlast zuzüglich einer Reserve von ', F('Reserve in %'), ' %. Die Wahl des Versorgungssystems erfolgt erst im Variantenvergleich (Kapitel 7).'));
+  out.push(absatz(n.auslegung
+    ? `Die Auslegungsleistung der Wärmeerzeugungsanlage (WEA) richtet sich nach der Auslegungsspitze von rund ${nf(n.auslKw)} kW zuzüglich einer Reserve von `
+    : 'Die Auslegungsleistung der Wärmeerzeugungsanlage (WEA) richtet sich nach dieser Spitzenlast zuzüglich einer Reserve von ',
+  F('Reserve in %'), ' %. Die Wahl des Versorgungssystems erfolgt erst im Variantenvergleich (Kapitel 7).'));
   return out;
 }
 
@@ -530,20 +593,30 @@ export function wtWvn(d) {
       : sp >= WT_SCHWELLEN.spreizungK.gering
         ? 'Die Spreizung liegt im üblichen Bereich.'
         : 'Die geringe Spreizung führt zu großen Volumenströmen, höheren Druckverlusten und erhöhter Pumpenenergie; der hydraulische Abgleich der Anlagen ist zu prüfen.');
+    // Geplante Absenkung der Netztemperaturen: Zeitpunkt, Werte und Auslegung der Nennweiten
+    const ab = z.absenkung;
+    if (ab && ok(num(ab.jahr)) && ok(num(ab.vlNachC)) && ok(num(ab.rlNachC))) {
+      const nachher = vl === num(ab.vlNachC) && rl === num(ab.rlNachC);
+      p.push(nachher
+        ? ` Bis ${num(ab.jahr) - 1} wird das Netz mit ${nf(num(ab.vlVorC))} °C / ${nf(num(ab.rlVorC))} °C betrieben; die Absenkung auf die genannten Werte ist ab ${num(ab.jahr)} geplant.`
+        : ` Ab ${num(ab.jahr)} ist eine Absenkung auf ${nf(num(ab.vlNachC))} °C / ${nf(num(ab.rlNachC))} °C geplant (Spreizung ${nf(num(ab.vlNachC) - num(ab.rlNachC))} K).`);
+      p.push(' Die Nennweiten sind auf den größten Volumenstrom aller Planungsjahre ausgelegt und berücksichtigen die Absenkung.');
+    }
     out.push(absatz(...p));
   } else {
     out.push(absatz('Das Netz ist für eine Vorlauftemperatur von ', F('Vorlauftemperatur in °C'), ' °C und eine Rücklauftemperatur von ', F('Rücklauftemperatur in °C'), ' °C ausgelegt.'));
   }
 
   // Hydraulik
-  const ue = num(z.ueberschreitungen);
-  const h = [`Die Nennweiten werden so gewählt, dass in der Verteilleitung ein Druckverlust von ${nf(hyd.dpNetzPaM)} Pa/m und im Hausanschluss von ${nf(hyd.dpAnschlussPaM)} Pa/m `
-    + `nicht überschritten wird; die Fließgeschwindigkeit wird auf ${nf(hyd.vZielMs, 1)} m/s ausgelegt (zulässiger Bereich ${nf(hyd.vMinMs, 1)} bis ${nf(hyd.vMaxMs, 1)} m/s). `
+  const ue = num(z.ueberschreitungen), fh = num(hyd.foerderhoeheBar);
+  const h = [`Die Nennweiten werden nach dem Druckverlust gewählt: höchstens ${nf(hyd.dpNetzPaM)} Pa/m in der Verteilleitung und ${nf(hyd.dpAnschlussPaM)} Pa/m im Hausanschluss. `
+    + `Die Fließgeschwindigkeit bleibt dabei unter der für die Nennweite zulässigen Geschwindigkeit (von ${nf(hyd.vKleinMs, 1)} m/s bei Nennweiten bis DN 32 bis ${nf(hyd.vGrossMs, 1)} m/s ab DN 350). `
     + `Für die Hausstation wird eine Druckreserve von ${nf(hyd.hausstationBar, 1)} bar angesetzt. `];
+  if (ok(fh) && fh > 0) h.push(`Die Förderhöhe der Netzpumpe am hydraulisch ungünstigsten Anschluss beträgt rund ${nf(fh, 1)} bar (Vor- und Rücklauf mit ${nf(hyd.zuschlagPct)} % Zuschlag für Formstücke und Armaturen, ${nf(hyd.hausstationBar, 1)} bar Hausstation, ${nf(hyd.heizzentraleBar, 1)} bar Heizzentrale). `);
   if (ok(ue)) {
     if (ue <= 0) h.push('Die hydraulische Prüfung zeigt keine Überschreitung der Grenzwerte.');
-    else if (bestandsnetz) h.push(`Die hydraulische Prüfung zeigt bei ${nf(ue)} ${kleinN(ue, 'Strang', 'Strängen')} eine Überschreitung der Grenzwerte. Da die Nennweiten des Bestands nicht verändert werden, sind diese Stränge zu markieren und im Einzelfall zu prüfen, ob eine Anpassung erforderlich ist.`);
-    else h.push(`Die hydraulische Prüfung zeigte bei ${nf(ue)} ${kleinN(ue, 'Strang', 'Strängen')} eine Überschreitung der Grenzwerte, die durch Anpassung der Nennweite behoben werden muss.`);
+    else if (bestandsnetz) h.push(`Die hydraulische Prüfung zeigt bei ${nf(ue)} ${kleinN(ue, 'Leitungsabschnitt', 'Leitungsabschnitten')} eine Überschreitung der Grenzwerte für Druckverlust oder Fließgeschwindigkeit. Da die Nennweiten des Bestands nicht verändert werden, sind diese Abschnitte zu markieren und im Einzelfall zu prüfen, ob eine Anpassung erforderlich ist.`);
+    else h.push(`Die hydraulische Prüfung zeigte bei ${nf(ue)} ${kleinN(ue, 'Leitungsabschnitt', 'Leitungsabschnitten')} eine Überschreitung der Grenzwerte für Druckverlust oder Fließgeschwindigkeit, die durch Anpassung der Nennweite behoben werden muss.`);
   }
   out.push(absatz(...h));
   return out;
@@ -570,7 +643,8 @@ export function wtHausstation(d) {
     out.push(absatz('Die Wärmeübergabe an die Gebäude erfolgt über Hausstationen. Die Zahl der anzuschließenden Gebäude beträgt ', F('Anzahl Hausstationen'), '.'));
   }
 
-  out.push(absatz(`Für die Hausstationen wird eine Druckreserve von ${nf(hyd.hausstationBar, 1)} bar angesetzt, damit der Differenzdruck auch am hydraulisch ungünstigsten Anschluss ausreicht.`));
+  out.push(absatz(`Für die Hausstationen wird eine Druckreserve von ${nf(hyd.hausstationBar, 1)} bar angesetzt, damit der Differenzdruck auch am hydraulisch ungünstigsten Anschluss ausreicht. `
+    + 'Die Anschlussleistung entspricht der Normheizlast des Gebäudes ohne gesonderten Zuschlag für die Trinkwassererwärmung; die Hausanschlussleitungen werden mindestens in DN 25 ausgeführt, sodass auch eine Trinkwassererwärmung im Durchflussprinzip versorgt werden kann.'));
 
   if (ok(vl)) {
     const kl = wtVorlaufKlasse(vl);
@@ -651,17 +725,17 @@ function leistungsAbsaetze(v, pMax) {
   if (!ok(pMax) || pMax <= 0 || v.instKw <= 0) return out;
   const q = v.instKw / pMax;
   const kl = wtLeistungsKlasse(q);
-  const basis = `Die installierte thermische Leistung beträgt insgesamt ${nf(v.instKw)} kW, die Spitzenlast ${nf(pMax)} kW.`;
+  const basis = `Die installierte thermische Leistung beträgt insgesamt ${nf(v.instKw)} kW, die Auslegungsspitze ${nf(pMax)} kW.`;
   if (kl === 'unterdeckung') {
-    out.push(absatz(`${basis} Die Spitzenlast kann damit nicht vollständig gedeckt werden; es verbleibt eine Unterdeckung von ${nf(pMax - v.instKw)} kW (${pct((1 - q) * 100, 1)}). Zur Sicherstellung der Versorgung bei Auslegungstemperatur ist die Leistung zu erhöhen, etwa durch einen zusätzlichen Spitzenlasterzeuger oder eine mobile Heizzentrale.`));
+    out.push(absatz(`${basis} Die Auslegungsspitze kann damit nicht vollständig gedeckt werden; es verbleibt eine Unterdeckung von ${nf(pMax - v.instKw)} kW (${pct((1 - q) * 100, 1)}). Zur Sicherstellung der Versorgung bei Auslegungstemperatur ist die Leistung zu erhöhen, etwa durch einen zusätzlichen Spitzenlasterzeuger oder eine mobile Heizzentrale.`));
   } else if (kl === 'knapp') {
-    out.push(absatz(`${basis} Die Spitzenlast wird damit nur knapp unterschritten. Eine nennenswerte Reserve besteht nicht; Betriebsstörungen oder Lastzuwächse im Netz können zu einer Unterversorgung führen.`));
+    out.push(absatz(`${basis} Die Auslegungsspitze wird damit nur knapp unterschritten. Eine nennenswerte Reserve besteht nicht; Betriebsstörungen oder Lastzuwächse im Netz können zu einer Unterversorgung führen.`));
   } else if (kl === 'ausreichend') {
-    out.push(absatz(`${basis} Die Spitzenlast wird damit abgedeckt, die Leistungsreserve beträgt ${pct((q - 1) * 100, 1)}.`));
+    out.push(absatz(`${basis} Die Auslegungsspitze wird damit abgedeckt, die Leistungsreserve beträgt ${pct((q - 1) * 100, 1)}.`));
   } else if (kl === 'komfortabel') {
-    out.push(absatz(`${basis} Die Spitzenlast wird mit einer komfortablen Reserve von ${pct((q - 1) * 100, 1)} abgedeckt; zusätzliche Anschlüsse oder ein erhöhter Bedarf lassen sich damit aufnehmen.`));
+    out.push(absatz(`${basis} Die Auslegungsspitze wird mit einer komfortablen Reserve von ${pct((q - 1) * 100, 1)} abgedeckt; zusätzliche Anschlüsse oder ein erhöhter Bedarf lassen sich damit aufnehmen.`));
   } else {
-    out.push(absatz(`${basis} Die Anlage ist mit dem ${nf(q, 1)}-Fachen der Spitzenlast deutlich überdimensioniert. Die Erzeuger arbeiten überwiegend im Teillastbereich; zu prüfen ist, ob eine kleinere Auslegung oder eine Aufteilung auf mehrere Module wirtschaftlicher ist.`));
+    out.push(absatz(`${basis} Die Anlage ist mit dem ${nf(q, 1)}-Fachen der Auslegungsspitze deutlich überdimensioniert. Die Erzeuger arbeiten überwiegend im Teillastbereich; zu prüfen ist, ob eine kleinere Auslegung oder eine Aufteilung auf mehrere Module wirtschaftlicher ist.`));
   }
   if (v.erz.length === 1) {
     out.push(absatz(`Mit nur einem Erzeuger besteht keine Redundanz. Bei einem Ausfall von ${mitArtikel(v.groesster)} ist die Wärmeversorgung nicht gesichert; eine Reserveerzeugung (z. B. mobile Heizzentrale oder Anschlussmöglichkeit dafür) ist vorzusehen.`));
@@ -669,11 +743,11 @@ function leistungsAbsaetze(v, pMax) {
     const rest = v.instKw - v.groesster.leistungKw;
     const teil = rest / pMax;
     if (teil >= 1) {
-      out.push(absatz(`Auch bei Ausfall des größten Erzeugers (${v.groesster.name}, ${nf(v.groesster.leistungKw)} kW) bleibt die Spitzenlast gedeckt (Restleistung ${nf(rest)} kW). Die Variante erfüllt damit das N-1-Kriterium.`));
+      out.push(absatz(`Auch bei Ausfall des größten Erzeugers (${v.groesster.name}, ${nf(v.groesster.leistungKw)} kW) bleibt die Auslegungsspitze gedeckt (Restleistung ${nf(rest)} kW). Die Variante erfüllt damit das N-1-Kriterium.`));
     } else if (teil >= WT_SCHWELLEN.n1Teil) {
-      out.push(absatz(`Bei Ausfall des größten Erzeugers (${v.groesster.name}, ${nf(v.groesster.leistungKw)} kW) stehen noch ${nf(rest)} kW zur Verfügung; das entspricht ${pct(teil * 100)} der Spitzenlast. Das N-1-Kriterium wird nicht vollständig erfüllt. In der Auslegungsspitze wäre ein Lastabwurf oder eine Absenkung der Netztemperatur nötig; eine Reserveerzeugung ist zu prüfen.`));
+      out.push(absatz(`Bei Ausfall des größten Erzeugers (${v.groesster.name}, ${nf(v.groesster.leistungKw)} kW) stehen noch ${nf(rest)} kW zur Verfügung; das entspricht ${pct(teil * 100)} der Auslegungsspitze. Das N-1-Kriterium wird nicht vollständig erfüllt. In der Auslegungsspitze wäre ein Lastabwurf oder eine Absenkung der Netztemperatur nötig; eine Reserveerzeugung ist zu prüfen.`));
     } else {
-      out.push(absatz(`Bei Ausfall des größten Erzeugers (${v.groesster.name}, ${nf(v.groesster.leistungKw)} kW) stehen nur noch ${nf(rest)} kW (${pct(teil * 100)} der Spitzenlast) zur Verfügung. Das N-1-Kriterium wird deutlich verfehlt; für die Versorgungssicherheit ist eine Reserveerzeugung vorzusehen.`));
+      out.push(absatz(`Bei Ausfall des größten Erzeugers (${v.groesster.name}, ${nf(v.groesster.leistungKw)} kW) stehen nur noch ${nf(rest)} kW (${pct(teil * 100)} der Auslegungsspitze) zur Verfügung. Das N-1-Kriterium wird deutlich verfehlt; für die Versorgungssicherheit ist eine Reserveerzeugung vorzusehen.`));
     }
   }
   return out;
@@ -687,7 +761,7 @@ function technikAbsaetze(v, gesehen) {
 
   const wps = von('wp');
   if (wps.length) {
-    const w = summe(wps, e => e.waermeMwh), el = summe(wps, e => e.elMwh), kw = summe(wps, e => e.leistungKw);
+    const w = summe(wps, e => e.erzeugtMwh), el = summe(wps, e => e.elMwh), kw = summe(wps, e => e.leistungKw);
     const plural = wps.length > 1;
     const p = [`${plural ? 'Die Wärmepumpen' : mitArtikel(wps[0], true)} (${nf(kw)} kW thermisch)`];
     if (w > 0 && el > 0) {
@@ -804,7 +878,7 @@ export function wtVariantenvergleich(d) {
   }
 
   // Einleitung
-  const bedarfsSatz = ok(n.gesamtMwh) ? ` Grundlage ist der Soll-Bedarf aus Kapitel 3.2 (${nf(n.gesamtMwh)} MWh/a${ok(n.pMaxKw) ? `, Spitzenlast ${nf(n.pMaxKw)} kW` : ''}).` : ' Grundlage ist der Soll-Bedarf aus Kapitel 3.2.';
+  const bedarfsSatz = ok(n.gesamtMwh) ? ` Grundlage ist der Soll-Bedarf aus Kapitel 3.2 (${nf(n.gesamtMwh)} MWh/a${ok(n.auslKw) ? `, Auslegungsspitze ${nf(n.auslKw)} kW` : ''}).` : ' Grundlage ist der Soll-Bedarf aus Kapitel 3.2.';
   if (V.length === 1) {
     out.push(absatz(`Betrachtet wird eine Variante der Wärmeversorgung, „${nameV(V[0])}“.${bedarfsSatz} Weitere Varianten sind `, F('Weitere Varianten oder Begründung für die Betrachtung einer Variante'), '.'));
   } else {
@@ -820,7 +894,7 @@ export function wtVariantenvergleich(d) {
 
   // Beschreibung je Variante
   const gesehen = new Set();
-  for (const v of V) out.push(...variantenBeschreibung(v, n.pMaxKw, gesehen));
+  for (const v of V) out.push(...variantenBeschreibung(v, n.auslKw, gesehen));
 
   if (V.length === 1) {
     const v = V[0];
@@ -832,13 +906,14 @@ export function wtVariantenvergleich(d) {
   }
 
   // Ökologie
-  const co2 = V.filter(v => ok(v.co2T));
+  const co2 = V.filter(v => ok(v.co2Bew));
+  const co2Basis = co2.some(v => ok(v.co2LzT)) ? ' bei künftigem Strommix (Ø 2030–2050)' : '';
   if (co2.length >= 2) {
-    const best = extrem(co2, 'co2T', 'min'), schlecht = extrem(co2, 'co2T', 'max'), sp = spanne(co2, 'co2T');
-    const rel = schlecht.co2T > 0 ? ((schlecht.co2T - best.co2T) / schlecht.co2T) * 100 : 0;
+    const best = extrem(co2, 'co2Bew', 'min'), schlecht = extrem(co2, 'co2Bew', 'max'), sp = spanne(co2, 'co2Bew');
+    const rel = schlecht.co2Bew > 0 ? ((schlecht.co2Bew - best.co2Bew) / schlecht.co2Bew) * 100 : 0;
     out.push(absatz(rel < WT_SCHWELLEN.gleichwertigPct.co2
-      ? `Die Emissionen der Varianten liegen mit ${nf(sp.min)} bis ${nf(sp.max)} t CO₂e pro Jahr nahezu gleichauf; die Varianten unterscheiden sich ökologisch kaum.`
-      : `Die jährlichen Emissionen liegen zwischen ${nf(sp.min)} t CO₂e (${nameV(best)}) und ${nf(sp.max)} t CO₂e (${nameV(schlecht)}). ${nameV(best)} verursacht damit ${pct(rel)} weniger Emissionen als ${nameV(schlecht)}.`));
+      ? `Die Emissionen der Varianten liegen${co2Basis} mit ${nf(sp.min)} bis ${nf(sp.max)} t CO₂e pro Jahr nahezu gleichauf; die Varianten unterscheiden sich ökologisch kaum.`
+      : `Die jährlichen Emissionen liegen${co2Basis} zwischen ${nf(sp.min)} t CO₂e (${nameV(best)}) und ${nf(sp.max)} t CO₂e (${nameV(schlecht)}). ${nameV(best)} verursacht damit ${pct(rel)} weniger Emissionen als ${nameV(schlecht)}.`));
   }
   const ee = V.filter(v => ok(v.eeAnteilPct));
   if (ee.length >= 2) {
@@ -861,20 +936,20 @@ export function wtVariantenvergleich(d) {
   const inv = V.filter(v => ok(v.investEur));
   const bestInv = extrem(inv, 'investEur', 'min');
   if (inv.length >= 2 && bestWgk && bestInv && bestInv !== bestWgk) {
-    out.push(absatz(`Die geringste Investition erfordert ${nameV(bestInv)} (${nf(bestInv.investEur / 1000)} Tsd. €), die niedrigsten Gestehungskosten erreicht jedoch ${nameV(bestWgk)} (Investition ${nf(bestWgk.investEur / 1000)} Tsd. €). Höhere Investitionen werden hier durch geringere Betriebskosten über die Nutzungsdauer ausgeglichen.`));
+    out.push(absatz(`Die geringste Investition erfordert ${nameV(bestInv)} (${nf(bestInv.investEur / 1000)} Tsd. €), die niedrigsten Gestehungskosten erreicht jedoch ${nameV(bestWgk)}${ok(bestWgk.investEur) ? ` (Investition ${nf(bestWgk.investEur / 1000)} Tsd. €)` : ''}. Höhere Investitionen werden hier durch geringere Betriebskosten über die Nutzungsdauer ausgeglichen.`));
   }
 
   // Zielkonflikt oder Gleichlauf
-  const bestCo2 = extrem(co2, 'co2T', 'min');
+  const bestCo2 = extrem(co2, 'co2Bew', 'min');
   if (bestWgk && bestCo2 && wgk.length >= 2 && co2.length >= 2) {
     if (bestWgk === bestCo2) {
       out.push(absatz(`${nameV(bestWgk)} ist sowohl wirtschaftlich als auch ökologisch die günstigste Variante; ein Zielkonflikt zwischen Kosten und Klimaschutz besteht nicht.`));
-    } else if (ok(bestWgk.co2T) && ok(bestCo2.wgkCt)) {
+    } else if (ok(bestWgk.co2Bew) && ok(bestCo2.wgkCt)) {
       const mehr = bestCo2.wgkCt - bestWgk.wgkCt;
       let satz = `Zwischen Kosten und Klimaschutz besteht ein Zielkonflikt: Die wirtschaftlichste Variante (${nameV(bestWgk)}) ist nicht die emissionsärmste (${nameV(bestCo2)}). `
-        + `Die emissionsärmste Variante verursacht Mehrkosten von ${nf(mehr, 1)} ct/kWh (${pct(bestWgk.wgkCt > 0 ? (mehr / bestWgk.wgkCt) * 100 : 0)}) bei ${nf(bestWgk.co2T - bestCo2.co2T)} t CO₂e geringeren Emissionen pro Jahr.`;
-      if (ok(bestWgk.jahreskostenEur) && ok(bestCo2.jahreskostenEur) && bestWgk.co2T - bestCo2.co2T > 0) {
-        const vermeid = (bestCo2.jahreskostenEur - bestWgk.jahreskostenEur) / (bestWgk.co2T - bestCo2.co2T);
+        + `Die emissionsärmste Variante verursacht Mehrkosten von ${nf(mehr, 1)} ct/kWh (${pct(bestWgk.wgkCt > 0 ? (mehr / bestWgk.wgkCt) * 100 : 0)}) bei ${nf(bestWgk.co2Bew - bestCo2.co2Bew)} t CO₂e geringeren Emissionen pro Jahr${co2Basis}.`;
+      if (ok(bestWgk.jahreskostenEur) && ok(bestCo2.jahreskostenEur) && bestWgk.co2Bew - bestCo2.co2Bew > 0) {
+        const vermeid = (bestCo2.jahreskostenEur - bestWgk.jahreskostenEur) / (bestWgk.co2Bew - bestCo2.co2Bew);
         if (vermeid > 0) satz += ` Das entspricht CO₂-Vermeidungskosten von rund ${nf(vermeid)} €/t CO₂e.`;
       }
       out.push(absatz(satz));
@@ -977,12 +1052,12 @@ export function wtEmpfehlung(d) {
   const out = [];
 
   if (V.length >= 2) {
-    const bw = extrem(V, 'wgkCt', 'min'), bc = extrem(V, 'co2T', 'min'), be = extrem(V, 'eeAnteilPct', 'max');
+    const bw = extrem(V, 'wgkCt', 'min'), bc = extrem(V, 'co2Bew', 'min'), be = extrem(V, 'eeAnteilPct', 'max');
     const teile = [];
     if (bw) teile.push(`wirtschaftlich am günstigsten ist ${nameV(bw)} (${nf(bw.wgkCt, 1)} ct/kWh)`);
-    if (bc) teile.push(`die geringsten Emissionen hat ${nameV(bc)} (${nf(bc.co2T)} t CO₂e/a)`);
+    if (bc) teile.push(`die geringsten Emissionen hat ${nameV(bc)} (${nf(bc.co2Bew)} t CO₂e/a${ok(bc.co2LzT) ? ' bei künftigem Strommix' : ''})`);
     if (be && ok(be.eeAnteilPct)) teile.push(`den höchsten Anteil erneuerbarer Energien erreicht ${nameV(be)} (${pct(be.eeAnteilPct, 1)})`);
-    out.push(absatz('Im Variantenvergleich zeigt sich: ', liste(teile), '.'));
+    if (teile.length) out.push(absatz('Im Variantenvergleich zeigt sich: ', liste(teile), '.'));
     if (bw && bc && bw === bc) {
       out.push(absatz(`Da ${nameV(bw)} wirtschaftlich und ökologisch vorn liegt, wird diese Variante zur Umsetzung empfohlen.`));
     } else {
@@ -1007,7 +1082,7 @@ export function wtFazit(d) {
   const V = n.varianten;
   const out = [];
   const typSatz = { neubau: ' Die Liegenschaft besteht ausschließlich aus geplanten Neubauten.', gemischt: ' Die Liegenschaft besteht aus Bestandsgebäuden und geplanten Neubauten.', bestand: '' }[n.typ] || '';
-  const bedarf = ok(n.gesamtMwh) ? `Der Wärmebedarf der Liegenschaft beträgt im Soll-Zustand rund ${nf(n.gesamtMwh)} MWh pro Jahr bei einer Spitzenlast von ${nf(n.pMaxKw)} kW.${typSatz}` : '';
+  const bedarf = ok(n.gesamtMwh) ? `Der Wärmebedarf der Liegenschaft beträgt im Soll-Zustand rund ${nf(n.gesamtMwh)} MWh pro Jahr bei einer Auslegungsspitze von ${nf(n.auslKw)} kW.${typSatz}` : '';
   const herk = {
     import: 'gemessenen Lastgang', importMonate: 'gemessenen, auf Monatsverbräuche skalierten Lastgang',
     monate: 'synthetischen, auf Monatsverbräuche gestützten Lastgang', monateGesamt: 'synthetischen, auf Monatsverbräuche gestützten Lastgang',
@@ -1016,12 +1091,12 @@ export function wtFazit(d) {
   out.push(absatz(bedarf, herk ? ` Er beruht auf einem ${herk}.` : '', bedarf ? '' : ['Der Wärmebedarf der Liegenschaft ist ', F('Zusammenfassung des Wärmebedarfs'), '.']));
 
   if (V.length) {
-    const bw = extrem(V, 'wgkCt', 'min'), bc = extrem(V, 'co2T', 'min');
+    const bw = extrem(V, 'wgkCt', 'min'), bc = extrem(V, 'co2Bew', 'min');
     const teile = [];
     if (V.length > 1) teile.push(`Im Variantenvergleich wurden ${V.length} Varianten betrachtet.`);
     else teile.push(`Betrachtet wurde die Variante „${nameV(V[0])}“.`);
     if (V.length > 1 && bw) teile.push(` Wirtschaftlich am günstigsten ist ${nameV(bw)} mit ${nf(bw.wgkCt, 1)} ct/kWh.`);
-    if (V.length > 1 && bc) teile.push(` Die geringsten Emissionen verursacht ${nameV(bc)} mit ${nf(bc.co2T)} t CO₂e pro Jahr.`);
+    if (V.length > 1 && bc) teile.push(` Die geringsten Emissionen verursacht ${nameV(bc)} mit ${nf(bc.co2Bew)} t CO₂e pro Jahr${ok(bc.co2LzT) ? ' bei künftigem Strommix (Ø 2030–2050)' : ''}.`);
     if (V.length === 1) {
       const v = V[0];
       const erg = [];

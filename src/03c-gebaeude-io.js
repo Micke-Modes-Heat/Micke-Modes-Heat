@@ -23,7 +23,7 @@ import { attachFFLayer, clearFernwaerme, clearGasKessel, clearHeizoelKessel, cle
 import { addNetzEdge, applyWaermeNetzGraph, autoGenerateNetz, calcGeoThermie, captureWaermeNetzGraph, clearNetz, recalcNetz, redrawGeo, syncVLTemps } from './03b-netz.js';
 import { applyEdgePrunedStyle, updatePruningSummary } from './04a-ui-panels.js';
 import { addStromEdge, addStromNode, clearStromNetz, recalcStromNetz, stromNodeClick } from './05b-stromnetz.js';
-import { _attachSTLayer, clearSolarthermie, clearThermSpeicher, glBerechnenDebounced, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
+import { _attachSTLayer, clearSolarthermie, clearThermSpeicher, glBerechnenDebounced, spitzenlastKachel, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
 import { moBeiAktivierung } from './06c-dispatch-core.js';
 import { _onGaspreisChange, _onStrompreisChange, onPvVergModellChange } from './09a-pv-profile.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
@@ -52,20 +52,7 @@ export function updateTotals(){
   });
   document.getElementById('tot-waerme').textContent=tw?tw.toLocaleString('de-DE',{maximumFractionDigits:1}):'—';
   document.getElementById('tc-waerme').title='Summe Wärmebedarf aller Gebäude (ohne Netzverluste)';
-  const ss = window.systemState;
-  const hatSpitzenlast = Number.isFinite(ss?.pMaxKw) && ss.pMaxKw > 0;
-  document.getElementById('tot-hl').textContent = hatSpitzenlast
-    ? Math.round(ss.pMaxKw).toLocaleString('de-DE')
-    : th ? Math.round(th).toLocaleString('de-DE') : '—';
-  document.getElementById('tot-hl-lbl').textContent = hatSpitzenlast
-    ? 'Netz-Spitzenlast (kW)'
-    : 'Normheizlast (kW)';
-  document.getElementById('tot-hl-sub').textContent = hatSpitzenlast && th
-    ? `Σ Gebäude: ${Math.round(th).toLocaleString('de-DE')} kW`
-    : '';
-  document.getElementById('tc-hl').title = hatSpitzenlast
-    ? `Maßgebende Spitzenlast aus dem berechneten Lastgang inklusive Netzverlusten: ${Math.round(ss.pMaxKw)} kW.\nSumme der Gebäude-Normheizlasten (DIN 12831): ${Math.round(th)} kW.`
-    : 'Summe der Gebäude-Normheizlasten (DIN 12831).\nNach der Lastgangberechnung wird hier die maßgebende Netz-Spitzenlast angezeigt.';
+  spitzenlastKachel(th);
   // Strom-Totals
   let ts=0, tsl=0;
   if (window.elQuartierH) {
@@ -109,6 +96,8 @@ export function updateTotals(){
   }
 
   updatePrintLegend();
+  // Gebäudewerte (Sanierung, Abriss, Neubau, Ausschluss …) gehen in den Lastgang aus Gebäudedaten ein
+  window.lastgangBeiBedarfNeu?.(1500);
 }
 
 export function cardDotColor(g){
@@ -3377,6 +3366,9 @@ function _captureEconomicScenario() {
       pelletsCtKwh:n('wirt-p-pk'), hhsCtKwh:n('wirt-p-hhs'), co2EurT:n('wirt-p-co2'),
       co2Alle:!!document.getElementById('wirt-co2-alle')?.checked,
       kapitalzinsPct:n('wirt-zins'), lohnEurH:n('wirt-lohn'),
+      betrachtungA:n('js-laufzeit'), preisEnergiePct:n('js-eskalation'), preisBetriebPct:n('wirt-r-betrieb'),
+      ...(window._wirtOhneNetz ? { nurErzeugung: true } : {}),
+      ...(window._wirtPvWp ? { pvStromFuerWp: true } : {}),
     },
   };
 }
@@ -3485,9 +3477,11 @@ export function _buildProjectData() {
       importSourceColor: g.importSourceColor || null,
       importOriginalBuildingId: g.importOriginalBuildingId ?? null,
       importBuildingKey: g.importBuildingKey || null,
+      heizzentrale: g.heizzentrale ?? null,
     })),
     netz: {
       zentrale: document.getElementById('netz-zentrale').value,
+      ...window.heizzentralenStand?.(),
       vl: document.getElementById('netz-vl').value,
       rl: document.getElementById('netz-rl').value,
       v: document.getElementById('netz-v').value,
@@ -3509,10 +3503,11 @@ export function _buildProjectData() {
     trasse: trassePoints.map(p => ({lat: p.lat, lng: p.lng})),
     trasseSegments: trasseSegments,
     waermeNetzGraph: captureWaermeNetzGraph(),
+    ...(window.netzQuartiere?.length ? { netzQuartiere: structuredClone(window.netzQuartiere) } : {}),
     customEdges: netzEdges.filter(e => e.u < 10000 && e.v < 10000).map(e => ({u: e.u, v: e.v, pruned: e.pruned || false})),
     edgeWaypoints: edgeWaypoints,
     fliessgewaesser: fliessgewaesser ? { latlngs: fliessgewaesser.latlngs, durchflussLs: fliessgewaesser.durchflussLs, leistungKw: fliessgewaesser.leistungKw, jaz: fliessgewaesser.jaz, visible: fliessgewaesserVisible } : null,
-    lwWp: lwWp ? { lat: lwWp.lat, lng: lwWp.lng, leistungKw: lwWp.leistungKw, lwaDb: lwWp.lwaDb, jaz: _finiteNumberOr(document.getElementById('lwwp-jaz').value, 3.0), waerme: document.getElementById('lwwp-waerme').value, minCop: document.getElementById('lwwp-min-cop')?.value || '', visible: lwWpVisible } : null,
+    lwWp: lwWp ? { lat: lwWp.lat, lng: lwWp.lng, leistungKw: lwWp.leistungKw, lwaDb: lwWp.lwaDb, jaz: _finiteNumberOr(document.getElementById('lwwp-jaz').value, 3.0), waerme: document.getElementById('lwwp-waerme').value, minCop: document.getElementById('lwwp-min-cop')?.value || '', visible: lwWpVisible, ...(lwWp.aufstellung ? { aufstellung: lwWp.aufstellung } : {}), ...(lwWp.lwaManuell ? { lwaManuell: true } : {}), ...(lwWp.gebiet ? { gebiet: lwWp.gebiet } : {}), ...(lwWp.schallschutz ? { schallschutz: lwWp.schallschutz } : {}), ...(lwWp.ausbreitung === '3d' ? { ausbreitung: '3d' } : {}), ...(lwWp.baeume ? { baeume: lwWp.baeume } : {}), ...(lwWp.spektrum ? { spektrum: lwWp.spektrum } : {}) } : null,
     geoThermie: geoThermie ? { ...geoThermie, heizlast: document.getElementById('geo-heizlast').value, waerme: document.getElementById('geo-waerme').value, jaz: _finiteNumberOr(document.getElementById('geo-jaz').value, 4.5), tiefe: _finiteNumberOr(document.getElementById('geo-tiefe').value, 100), qPerM: _finiteNumberOr(document.getElementById('geo-q-perm').value, 50), abstand: _finiteNumberOr(document.getElementById('geo-abstand').value, 10), dtAbsenkung: _finiteNumberOr(document.getElementById('geo-dt-absenkung').value, 0) } : null,
     gasKessel: gasKessel ? { leistungKw: gasKessel.leistungKw, eta: document.getElementById('gk-eta').value, waerme: document.getElementById('gk-waerme').value } : null,
     heizoelKessel: heizoelKessel ? { leistungKw: heizoelKessel.leistungKw, eta: document.getElementById('hko-eta').value, waerme: document.getElementById('hko-waerme').value } : null,
@@ -3557,6 +3552,7 @@ export function _buildProjectData() {
       calendarFadePctPerYear:_finiteNumberOr(document.getElementById('bat-calendar-fade')?.value,1.5),cycleLife:_finiteNumberOr(document.getElementById('bat-cycle-life')?.value,6000),
       eolCapacityPct:_finiteNumberOr(document.getElementById('bat-eol-pct')?.value,80),aging:window._batteryAging ? {...window._batteryAging}:null},
     meritOrderKeys: [...meritOrderKeys],
+    spitzenkesselArt: document.getElementById('agk-art')?.value || 'gas',
     kaelte: _captureKaelte(),
     pelletsKessel: pelletsKessel ? { leistungKw: pelletsKessel.leistungKw, eta: document.getElementById('pk-eta').value, waerme: document.getElementById('pk-waerme').value, lat: pelletsKessel.lat, lng: pelletsKessel.lng } : null,
     heizhackschnitzel: heizhackschnitzel ? { leistungKw: heizhackschnitzel.leistungKw, eta: document.getElementById('hhs-eta').value, waerme: document.getElementById('hhs-waerme').value, lat: heizhackschnitzel.lat, lng: heizhackschnitzel.lng } : null,
@@ -3635,35 +3631,54 @@ let _projectFileHandle = null;
 
 function _projectJsonBlob() {
   const project = _buildProjectData();
-  return new Blob([JSON.stringify(project,null,2)],{type:'application/json'});
+  // kompakt: eingerückt stand jede Zahl der Stundenreihen in einer eigenen Zeile (Datei um ein Mehrfaches größer)
+  return new Blob([JSON.stringify(project)],{type:'application/json'});
 }
+const _mb = bytes => (bytes / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' MB';
 
 function _setProjectFileStatus(name = null) {
   const status = document.getElementById('project-file-status');
   if (status) status.textContent = name ? `Datei: ${name}` : 'Noch keine Projektdatei geöffnet';
 }
 
-function _downloadProjectJson(filename = projektExportFilename('projekt', 'json')) {
-  const url = URL.createObjectURL(_projectJsonBlob());
-  const a=document.createElement('a');
-  a.href=url; a.download=filename; a.click();
-  setTimeout(() => URL.revokeObjectURL(url),0);
+async function _downloadProjectJson(filename = projektExportFilename('projekt', 'json')) {
+  const anzeige = projektAnzeige('Projekt wird gespeichert', filename, 0, 'Projektdaten werden zusammengestellt …');
+  try {
+    await _nachZeichnen();
+    const blob = _projectJsonBlob();
+    const url = URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url),0);
+    return blob.size;
+  } finally {
+    anzeige.weg();
+  }
 }
 
 async function _writeProjectHandle(handle) {
-  const writable = await handle.createWritable();
-  await writable.write(_projectJsonBlob());
-  await writable.close();
-  _projectFileHandle = handle;
-  _setProjectFileStatus(handle.name || 'Projektdatei');
-  showHint(`✓ Projekt gespeichert: ${handle.name || 'Projektdatei'}`,3000);
-  return true;
+  const name = handle.name || 'Projektdatei';
+  const anzeige = projektAnzeige('Projekt wird gespeichert', name, 0, 'Projektdaten werden zusammengestellt …');
+  try {
+    await _nachZeichnen();
+    const blob = _projectJsonBlob();
+    anzeige.text(`Datei wird geschrieben … (${_mb(blob.size)})`);
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    _projectFileHandle = handle;
+    _setProjectFileStatus(name);
+    showHint(`✓ Projekt gespeichert: ${name} (${_mb(blob.size)})`,3000);
+    return true;
+  } finally {
+    anzeige.weg();
+  }
 }
 
 export async function saveProjectAs() {
   if (typeof window.showSaveFilePicker !== 'function') {
-    _downloadProjectJson();
-    showHint('Projekt als JSON-Datei heruntergeladen.',3000);
+    const bytes = await _downloadProjectJson();
+    showHint(`Projekt als JSON-Datei heruntergeladen (${_mb(bytes)}).`,3000);
     return true;
   }
   try {
@@ -3697,11 +3712,43 @@ export function exportJSON(){
   return saveProject();
 }
 
+/**
+ * Ladeanzeige beim Öffnen eines Projekts. Das Einlesen selbst läuft synchron und blockiert die Seite —
+ * der Spinner ist eine reine CSS-Animation und dreht sich trotzdem weiter. Rückgabe: { text(t), weg() }.
+ */
+export function projektLadeAnzeige(dateiName, bytes) {
+  return projektAnzeige('Projekt wird geladen', dateiName, bytes, 'Datei wird gelesen …');
+}
+/** Gemeinsame Anzeige für Laden und Speichern (titel z. B. „Projekt wird gespeichert“). */
+export function projektAnzeige(titel, dateiName, bytes, text) {
+  let el = document.getElementById('projekt-lade-anzeige');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'projekt-lade-anzeige';
+    el.setAttribute('role', 'status');
+    el.innerHTML = '<div class="pla-box"><div class="pla-spinner" aria-hidden="true"></div><div class="pla-titel"></div><div class="pla-text"></div></div>';
+    document.body.appendChild(el);
+  }
+  const mb = bytes > 0 ? ` (${(bytes / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB)` : '';
+  el.querySelector('.pla-titel').textContent = titel + (dateiName ? ': ' + dateiName : '') + mb;
+  el.querySelector('.pla-text').textContent = text || '';
+  el.classList.add('sichtbar');
+  return {
+    text(t) { el.querySelector('.pla-text').textContent = t; },
+    weg() { el.classList.remove('sichtbar'); },
+  };
+}
+/** Zwei Bildaufbauten abwarten, damit Anzeige und Text gezeichnet sind, bevor die blockierende Arbeit beginnt. */
+export function _nachZeichnen() {
+  return new Promise(res => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(res, 0))));
+}
+
 export async function openProjectFile() {
   if (typeof window.showOpenFilePicker !== 'function') {
     document.getElementById('import-file')?.click();
     return false;
   }
+  let anzeige = null;
   try {
     const [handle] = await window.showOpenFilePicker({
       multiple:false,
@@ -3709,7 +3756,11 @@ export async function openProjectFile() {
     });
     if (!handle) return false;
     const file = await handle.getFile();
-    const project = JSON.parse(await file.text());
+    anzeige = projektLadeAnzeige(handle.name || file.name, file.size);
+    const text = await file.text();
+    anzeige.text('Projekt wird aufgebaut — Gebäude, Netz und Berechnungen. Bei großen Liegenschaften kann das eine Weile dauern …');
+    await _nachZeichnen();
+    const project = JSON.parse(text);
     _loadProject(project);
     _projectFileHandle = handle;
     _setProjectFileStatus(handle.name || file.name);
@@ -3720,15 +3771,22 @@ export async function openProjectFile() {
     console.error('Projekt öffnen fehlgeschlagen:',error);
     showHint('Fehler beim Laden der Datei.',5000);
     return false;
+  } finally {
+    anzeige?.weg();
   }
 }
 
 export function importJSON(event) {
   const file = event.target.files[0];
   if (!file) return;
+  const anzeige = projektLadeAnzeige(file.name, file.size);
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onprogress = ev => { if (ev.lengthComputable && ev.total > 0) anzeige.text(`Datei wird gelesen … ${Math.round(ev.loaded / ev.total * 100)} %`); };
+  reader.onerror = () => { anzeige.weg(); showHint('Fehler beim Lesen der Datei.'); };
+  reader.onload = async function(e) {
     try {
+      anzeige.text('Projekt wird aufgebaut — Gebäude, Netz und Berechnungen. Bei großen Liegenschaften kann das eine Weile dauern …');
+      await _nachZeichnen();
       const project = JSON.parse(e.target.result);
       _loadProject(project);
       // Klassischer Datei-Input liefert aus Sicherheitsgründen keinen
@@ -3740,6 +3798,8 @@ export function importJSON(event) {
     } catch (err) {
       showHint('Fehler beim Laden der Datei.');
       console.error(err);
+    } finally {
+      anzeige.weg();
     }
   };
   reader.readAsText(file);
@@ -4078,6 +4138,7 @@ function _applyProjectData(project) {
             newG.importSourceColor = g.importSourceColor || null;
             newG.importOriginalBuildingId = g.importOriginalBuildingId ?? null;
             newG.importBuildingKey = g.importBuildingKey || null;
+            if (g.heizzentrale != null) newG.heizzentrale = g.heizzentrale;
             newG.nutzung = g.nutzung || '';
             newG.stockwerke = g.stockwerke ?? 1;
             newG.waermeManual = g.waermeManual || false;
@@ -4157,6 +4218,7 @@ function _applyProjectData(project) {
 
          populateZentraleSelect();
          document.getElementById('netz-zentrale').value = project.netz.zentrale || '';
+         window.heizzentralenLaden?.(project.netz);
 
          if (project.netz.isLocked && !networkLocked) {
              toggleNetworkLock();
@@ -4183,6 +4245,7 @@ function _applyProjectData(project) {
          redrawTrasse();
       }
 
+      window.netzQuartiere = Array.isArray(project.netzQuartiere) ? structuredClone(project.netzQuartiere) : [];
       setEdgeWaypoints(project.edgeWaypoints || {});
       const _prunedMap = {};
       const hasSavedWaermeGraph = Array.isArray(project.waermeNetzGraph?.edges) &&
@@ -4225,11 +4288,12 @@ function _applyProjectData(project) {
       }
 
     if (project.lwWp && project.lwWp.lat != null && project.lwWp.lng != null) {
-        window.lwWp = { lat: project.lwWp.lat, lng: project.lwWp.lng, leistungKw: project.lwWp.leistungKw ?? 12, lwaDb: project.lwWp.lwaDb ?? 80, visible: project.lwWp.visible !== false };
+        window.lwWp = { lat: project.lwWp.lat, lng: project.lwWp.lng, leistungKw: project.lwWp.leistungKw ?? 12, lwaDb: project.lwWp.lwaDb ?? 80, visible: project.lwWp.visible !== false, ...(project.lwWp.aufstellung ? { aufstellung: project.lwWp.aufstellung } : {}), ...(project.lwWp.lwaManuell ? { lwaManuell: true } : {}), ...(project.lwWp.gebiet ? { gebiet: project.lwWp.gebiet } : {}), ...(project.lwWp.schallschutz ? { schallschutz: project.lwWp.schallschutz } : {}), ...(project.lwWp.ausbreitung === '3d' ? { ausbreitung: '3d' } : {}), ...(['aus', 'alle'].includes(project.lwWp.baeume) ? { baeume: project.lwWp.baeume } : {}), ...(Array.isArray(project.lwWp.spektrum) && project.lwWp.spektrum.length === 8 ? { spektrum: project.lwWp.spektrum.map(Number) } : {}) };
         window.lwWpVisible = window.lwWp.visible !== false;
         document.getElementById('lwwp-visible').checked = lwWpVisible;
         document.getElementById('lwwp-leistung').value = lwWp.leistungKw;
         document.getElementById('lwwp-lwa').value = lwWp.lwaDb;
+        document.getElementById('lwwp-lwa')._userEdited = undefined;
         if (project.lwWp.jaz != null) document.getElementById('lwwp-jaz').value = project.lwWp.jaz;
         if (project.lwWp.waerme != null) document.getElementById('lwwp-waerme').value = project.lwWp.waerme;
         if (project.lwWp.minCop != null) document.getElementById('lwwp-min-cop').value = project.lwWp.minCop;
@@ -4307,6 +4371,7 @@ function _applyProjectData(project) {
         document.getElementById('ts-volumen').value = project.waermespeicher.volumen ?? 0;
         document.getElementById('ts-dt').value = project.waermespeicher.dt ?? 40;
         document.getElementById('ts-verlust').value = project.waermespeicher.verlust ?? 0.5;
+        window.tsVerlustGeladen?.();
         document.getElementById('ts-entlade-kw').value = project.waermespeicher.entladeKw ?? 200;
         document.getElementById('ts-lade-kw').value = project.waermespeicher.ladeKw ?? project.waermespeicher.entladeKw ?? 200;
         setThermSpeicherAktiv((project.waermespeicher.volumen ?? 0) > 0);
@@ -4392,22 +4457,30 @@ function _applyProjectData(project) {
         const ids = {capacityKwh:'bat-kapazitaet',powerKw:'bat-leistung',investEurKwh:'opt-bat-invest',studyLifeYears:'opt-bat-life',calendarFadePctPerYear:'bat-calendar-fade',cycleLife:'bat-cycle-life',eolCapacityPct:'bat-eol-pct'};
         for (const [key,id] of Object.entries(ids)) { const el=document.getElementById(id); if(el && project.battery[key] != null) el.value=project.battery[key]; }
       }
+      window._wirtOhneNetz = false;   // Betrachtungsumfang gehört zum Projekt
+      window._wirtPvWp = false;       // ebenso „PV-Strom für Wärmepumpen anrechnen“
+      queueMicrotask(() => { window._wirtUmfangUiSync?.(); window._wirtPvWpUiSync?.(); });
       if (project.economicScenario?.values) {
         const es = project.economicScenario;
-        const ids = {stromCtKwh:'wirt-p-strom',wpStromCtKwh:'wirt-p-strom-wp',gasCtKwh:'wirt-p-gas',heizoelCtKwh:'wirt-p-hko',fernwaermeCtKwh:'wirt-p-fw',pelletsCtKwh:'wirt-p-pk',hhsCtKwh:'wirt-p-hhs',co2EurT:'wirt-p-co2',kapitalzinsPct:'wirt-zins',lohnEurH:'wirt-lohn'};
+        const ids = {stromCtKwh:'wirt-p-strom',wpStromCtKwh:'wirt-p-strom-wp',gasCtKwh:'wirt-p-gas',heizoelCtKwh:'wirt-p-hko',fernwaermeCtKwh:'wirt-p-fw',pelletsCtKwh:'wirt-p-pk',hhsCtKwh:'wirt-p-hhs',co2EurT:'wirt-p-co2',kapitalzinsPct:'wirt-zins',lohnEurH:'wirt-lohn',betrachtungA:'js-laufzeit',preisEnergiePct:'js-eskalation',preisBetriebPct:'wirt-r-betrieb'};
         const sel = document.getElementById('wirt-szenario'); if (sel) sel.value = es.scenarioId || 'manual';
         for (const [key, id] of Object.entries(ids)) {
           const el = document.getElementById(id); if (el && es.values[key] != null) el.value = es.values[key];
           if (el && key === 'wpStromCtKwh' && es.values[key] == null) el.value = '';
         }
         const co2 = document.getElementById('wirt-co2-alle'); if (co2) co2.checked = !!es.values.co2Alle;
-        const label = document.getElementById('wirt-co2-alle-label'); if (label) label.textContent = es.values.co2Alle ? 'alle Energieträger' : 'nur fossile';
+        const label = document.getElementById('wirt-co2-alle-label'); if (label) label.textContent = es.values.co2Alle ? 'CO₂ auf alle Energieträger' : 'CO₂ nur auf fossile';
+        window._wirtOhneNetz = !!es.values.nurErzeugung;
+        window._wirtPvWp = !!es.values.pvStromFuerWp;
         const hint = document.getElementById('wirt-szenario-hint'); if (hint) hint.textContent = es.scenarioId === 'manual' ? 'Manuelle Annahmen aus Projektdatei.' : `Gespeichertes Wirtschaftsszenario ${es.scenarioId}.`;
         _onStrompreisChange('wirt-p-strom'); _onGaspreisChange('wirt-p-gas');
       }
       if (project.meritOrderKeys) {
         setMeritOrderKeys(project.meritOrderKeys.filter(k => isErzeugerAktiv(k)));
       }
+      // Art des automatischen Spitzenlastkessels (ältere Projekte: Erdgas)
+      { const agkSel = document.getElementById('agk-art');
+        if (agkSel) agkSel.value = ['gas', 'heizoel', 'strom'].includes(project.spitzenkesselArt) ? project.spitzenkesselArt : 'gas'; }
       if (project.pelletsKessel) {
         setPelletsKessel({ leistungKw: project.pelletsKessel.leistungKw ?? 300 });
         if (project.pelletsKessel.lat != null) { pelletsKessel.lat = project.pelletsKessel.lat; pelletsKessel.lng = project.pelletsKessel.lng; }

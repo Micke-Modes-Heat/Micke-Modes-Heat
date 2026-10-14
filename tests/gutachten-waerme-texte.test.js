@@ -238,6 +238,32 @@ describe('2.2.1 Soll-Bedarf und Auslegungsleistung — ohne Versorgungssystem', 
     const ohne = text(wtDimensionierungWea(stand({ lastgang: { ...lastgang, jdlKw: new Array(8760).fill(5000) } })));
     expect(ohne).not.toContain('Sommerabschaltung');
   });
+
+  it('Auslegungsspitze bei Normaußentemperatur: aus Normheizlasten bzw. hochgerechnet, systemneutral', () => {
+    const ausl = { kw: 13000, quelle: 'heizlast', lastgangKw: 10000, summeHeizlastKw: 14000, anzahl: 40, glf: 0.9, verlustKw: 400, normAt: -12, thetaInnen: 22 };
+    const t = text(wtDimensionierungWea(stand({ lastgang: { ...lastgang, auslegung: ausl } })));
+    expect(t).toContain('die Spitze des Lastgangs 10.000 kW');
+    expect(t).toContain('Norm-Außentemperatur von -12,0 °C maßgebend');
+    expect(t).toContain('Normheizlasten nach DIN EN 12831 der 40 Gebäude von 14.000 kW, dem Gleichzeitigkeitsfaktor von 0,90 und der Netzverlustleistung von 400 kW zu einer Auslegungsspitze von rund 13.000 kW');
+    expect(t).toContain('richtet sich nach der Auslegungsspitze von rund 13.000 kW zuzüglich');
+    expect(t).not.toMatch(systemWoerter);
+    // Formel kleiner als die Lastgangspitze: diese wird angesetzt
+    const klein = text(wtDimensionierungWea(stand({ lastgang: { ...lastgang, auslegung: { ...ausl, kw: 10000, summeHeizlastKw: 9000 } } })));
+    expect(klein).toContain('zu rund 8.500 kW. Da die Spitze des Lastgangs mit 10.000 kW darüber liegt');
+    const hoch = text(wtDimensionierungWea(stand({ lastgang: { ...lastgang, auslegung: { kw: 12593, quelle: 'hochrechnung', lastgangKw: 10000, tSpitze: -5, normAt: -12, thetaInnen: 22 } } })));
+    expect(hoch).toContain('Tagesmittel der Außentemperatur von -5,0 °C');
+    expect(hoch).toContain('Innentemperatur von 22 °C – ergibt sich eine Auslegungsspitze von rund 12.593 kW');
+    // gemessener Lastgang: die Extrapolation steht im eigenen Baustein, hier kein zweiter Absatz
+    const gem = text(wtDimensionierungWea(stand({ herkunft: { lastgang: 'import' }, lastgang: { ...lastgang, auslegung: { ...ausl, quelle: 'hochrechnung' } } })));
+    expect(gem).not.toContain('Tagesmittel der Außentemperatur');
+    expect(gem).toContain('richtet sich nach der Auslegungsspitze von rund 13.000 kW');
+  });
+
+  it('Leistungsprüfung der Varianten gegen die Auslegungsspitze', () => {
+    const t = text(wtVariantenvergleich({ lastgang: { ...lastgang, auslegung: { kw: 14000, quelle: 'heizlast' } }, varianten: [V('A', [wp, gk])] }));
+    expect(t).toContain('Die installierte thermische Leistung beträgt insgesamt 13.000 kW, die Auslegungsspitze 14.000 kW');
+    expect(t).toContain('Unterdeckung von 1.000 kW');
+  });
 });
 
 describe('2.2.2 WVN', () => {
@@ -293,8 +319,18 @@ describe('2.2.2 WVN', () => {
     expect(text(wtWvn({ netz }))).toContain('250 Pa/m');
     expect(text(wtWvn({ netz: { ...netz, ueberschreitungen: 0 } }))).toContain('keine Überschreitung');
     expect(text(wtWvn({ projekt: bestandProjekt, netz: { ...netz, bestand: true, ueberschreitungen: 3 } }))).toContain('nicht verändert');
-    expect(text(wtWvn({ netz: { ...netz, ueberschreitungen: 1 } }))).toContain('1 Strang');
+    expect(text(wtWvn({ netz: { ...netz, ueberschreitungen: 1 } }))).toContain('1 Leitungsabschnitt');
     expect(text(wtWvn({ netz: { ...netz, hydraulik: { dpNetzPaM: 200 } } }))).toContain('200 Pa/m');
+  });
+  it('nennt die geplante Absenkung der Netztemperaturen', () => {
+    const ab = { jahr: 2035, vlVorC: 90, rlVorC: 60, vlNachC: 60, rlNachC: 40 };
+    const vorher = text(wtWvn({ netz: { ...netz, vlC: 90, rlC: 60, absenkung: ab } }));
+    expect(vorher).toContain('Ab 2035 ist eine Absenkung auf 60 °C / 40 °C geplant');
+    expect(vorher).toContain('berücksichtigen die Absenkung');
+    const nachher = text(wtWvn({ netz: { ...netz, vlC: 60, rlC: 40, absenkung: ab } }));
+    expect(nachher).toContain('Bis 2034 wird das Netz mit 90 °C / 60 °C betrieben');
+    expect(nachher).toContain('Niedertemperaturnetz');
+    expect(text(wtWvn({ netz }))).not.toContain('Absenkung auf');
   });
 });
 
@@ -347,7 +383,7 @@ describe('2.4 Variantenvergleich — hier stehen die Versorgungssysteme', () => 
   it('mit einer Variante: beschreibt sie und fragt weitere ab', () => {
     const t = mit([A]);
     expect(t).toContain('Betrachtet wird eine Variante der Wärmeversorgung, „WP + Gaskessel“');
-    expect(t).toContain('Soll-Bedarf aus Kapitel 3.2 (29.000 MWh/a, Spitzenlast 10.000 kW)');
+    expect(t).toContain('Soll-Bedarf aus Kapitel 3.2 (29.000 MWh/a, Auslegungsspitze 10.000 kW)');
     expect(t).toContain('bivalent aus 2 Erzeugern');
     expect(t).toContain('[Weitere Varianten');
     expect(t).toContain('Wärmegestehungskosten von 11,0 ct/kWh');

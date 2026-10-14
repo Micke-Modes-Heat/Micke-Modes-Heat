@@ -7,6 +7,9 @@ beforeAll(() => {
   loadScript('config/optimizer-defaults.js');
   loadScript('01-globals-varianten.js');
   loadScript('08-calc-engine.js');
+  loadScript('lib/vdi-bedien.js');
+  loadScript('lib/waermespeicher.js');
+  loadScript('lib/vdi2067.js');
   loadScript('07b-analysis-economics.js');
 });
 
@@ -304,54 +307,23 @@ describe('_calcKostenShared — Kapitalkosten (VDI 2067)', () => {
 });
 
 describe('_calcKostenShared — PV & Batterie', () => {
-  it('PV-Invest wird annuitätisch berechnet', () => {
-    const result = _calcKostenShared({
-      pKw: {},
-      investFn: () => 0,
-      erzList: [],
-      gesamtMwh: 100,
-      pv: { kwp: 100, invPerKwp: 1000 },
-    });
-
-    // PV-Invest: 100 kWp × 1000 €/kWp = 100.000 €
-    expect(result.investGesamt).toBeCloseTo(100000, -2);
-    expect(result.pvJk).toBeGreaterThan(0);
+  // PV und Batterie sind keine Wärmeerzeuger: weder Investition noch Einspeiseerlös gehen in die WGK ein
+  it('PV und Batterie ohne Schalter: keine Investition, keine Jahreskosten', () => {
+    const r = _calcKostenShared({ pKw: {}, investFn: () => 0, erzList: [], gesamtMwh: 100,
+      pv: { kwp: 100, invPerKwp: 1000, batKwh: 100, batInvPerKwh: 400, einspMwh: 50, pEinsp: 8 } });
+    expect(r.investGesamt).toBe(0);
+    expect(r.jahreskosten).toBe(0);
   });
 
-  it('Batterie-Invest wird addiert', () => {
-    const result = _calcKostenShared({
-      pKw: {},
-      investFn: () => 0,
-      erzList: [],
-      gesamtMwh: 100,
-      pv: { kwp: 50, invPerKwp: 1000, batKwh: 100, batInvPerKwh: 400 },
-    });
-
-    // PV 50.000 + Bat 40.000 = 90.000
-    expect(result.investGesamt).toBeCloseTo(90000, -2);
-  });
-
-  it('PV-Einspeisung reduziert Jahreskosten', () => {
-    const ohne = _calcKostenShared({
-      pKw: {},
-      investFn: () => 0,
-      erzList: [],
-      gesamtMwh: 100,
-      pv: { kwp: 100, invPerKwp: 1000, einspMwh: 0 },
-    });
-    const mit = _calcKostenShared({
-      pKw: {},
-      investFn: () => 0,
-      erzList: [],
-      gesamtMwh: 100,
-      pv: { kwp: 100, invPerKwp: 1000, einspMwh: 50, pEinsp: 8 },
-    });
-
-    // Einspeisung bringt Erlös → niedrigere PV-Jahreskosten
-    expect(mit.pvJk).toBeLessThan(ohne.pvJk);
+  it('auch mit Schalter keine PV-Investition in der Wärme — nur der WP-Strom aus PV wird bepreist', () => {
+    const basis = pv => _calcKostenShared({ pKw: { lwwp: 100 }, investFn: () => 0, erzList: [{ key: 'lwwp', waermeMwh: 300, elMwh: 100, typ: 'wp' }],
+      gesamtMwh: 300, prices: { strom: 30 }, pv });
+    const r = basis({ modus: 'wp', kwp: 100, ertragMwh: 100, invPerKwp: 1000, batKwh: 100, batInvPerKwh: 400, batEntladungMwh: 20, zuWpDirektMwh: 30, zuWpBatMwh: 10 });
+    expect(r.investGesamt).toBe(basis(undefined).investGesamt);
+    expect(r.pvZuWpMwh).toBe(40);
+    expect(r.batCt).toBeGreaterThan(0);
   });
 });
-
 describe('_calcKostenShared — BHKW (KWK)', () => {
   it('BHKW Brennstoffkosten abzüglich Stromerlös', () => {
     const result = _calcKostenShared({
@@ -397,16 +369,23 @@ describe('_calcBausteinJK / _calcBausteinJKDetail', () => {
     expect(jk).toBeLessThan(12000);
   });
 
-  it('Detail gibt einzelne Komponenten zurück', () => {
-    const d = _calcBausteinJKDetail(100000, { n: 20, inst: 1.0, wart: 1.5, bedien: 5 }, 3.5, 45);
+  const ohnePreisaenderung = { T: 20, rV: 0, rK: 0, rIN: 0, rB: 0 };
+  it('Detail gibt einzelne Komponenten zurück (ohne Preisänderung: Jahr-1-Werte)', () => {
+    const d = _calcBausteinJKDetail(100000, { n: 20, inst: 1.0, wart: 1.5, bedien: 5 }, 3.5, 45, ohnePreisaenderung);
     expect(d.annuitaet).toBeGreaterThan(0);
-    expect(d.instandhaltung).toBe(1000);
-    expect(d.wartung).toBe(1500);
-    expect(d.bedienung).toBe(225);
+    expect(d.instandhaltung).toBeCloseTo(1000, 6);
+    expect(d.wartung).toBeCloseTo(1500, 6);
+    expect(d.bedienung).toBeCloseTo(225, 6);
+  });
+
+  it('VDI 2067: Betriebskosten mit 2 %/a Preissteigerung über 20 a ≈ × 1,188', () => {
+    const d = _calcBausteinJKDetail(100000, { n: 20, inst: 1.0, wart: 1.5, bedien: 5 }, 3.5, 45, { T: 20, rV: 0.02, rK: 0.02, rIN: 0.02, rB: 0.02 });
+    expect(d.instandhaltung).toBeCloseTo(1188, 0);
+    expect(d.bedienung).toBeCloseTo(225 * 1.188, 0);
   });
 
   it('Invest 0 → nur Bedienkosten', () => {
-    const jk = _calcBausteinJK(0, { n: 20, inst: 1.0, wart: 1.5, bedien: 10 }, 3.5, 45);
-    expect(jk).toBe(450); // 10h × 45€/h
+    const jk = _calcBausteinJK(0, { n: 20, inst: 1.0, wart: 1.5, bedien: 10 }, 3.5, 45, ohnePreisaenderung);
+    expect(jk).toBeCloseTo(450, 6); // 10h × 45€/h
   });
 });

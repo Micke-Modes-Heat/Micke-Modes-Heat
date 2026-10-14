@@ -1,4 +1,6 @@
+import { ERDGAS_HS_HI } from './config/erzeuger-cfg.js';
 import { _getEtaMap } from './01-globals-varianten.js';
+import { spitzenkessel } from './06c-dispatch-core.js';
 import { redrawErzeugerIcons } from './03a-erzeuger.js';
 import { glInit } from './06a-gbi-lastgang.js';
 import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
@@ -879,7 +881,7 @@ export function runSensitivitaet() {
 
   // Verbrauch je Energieträger [MWh/a] aus aktuellem Dispatch
   const ETA = _getEtaMap();
-  const TRAEGER_MAP = { gaskessel:'Erdgas', _autoGk:'Erdgas', heizoel:'Heizoel', pellets:'Pellets', hhs:'Hackschnitzel',
+  const TRAEGER_MAP = { gaskessel:'Erdgas', _autoGk:spitzenkessel().traeger, heizoel:'Heizoel', pellets:'Pellets', hhs:'Hackschnitzel',
     fernwaerme:'Fernwaerme', lwwp:'Strom', fg:'Strom', geo:'Strom', stromkessel:'Strom', bhkw:'Erdgas' };
   const verbrauch = {};
   keys.forEach(k => {
@@ -1177,7 +1179,7 @@ function _sensRenderBump() {
     const multipliers = [0.6, 0.8, 1.0, 1.2, 1.4, 1.6];
     const mLabels = multipliers.map(m => (m * 100 - 100 >= 0 ? '+' : '') + Math.round(m * 100 - 100) + '%');
 
-    const pGas   = parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10;
+    const pGas   = (parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10) * ERDGAS_HS_HI;   // Hs → Hi
     const pStrom = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
     const pHko   = parseFloat(document.getElementById('wirt-p-hko')?.value)   || 10;
     const pFw    = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 17;
@@ -1190,15 +1192,18 @@ function _sensRenderBump() {
     const skEta      = (parseFloat(document.getElementById('sk-eta')?.value) || 99) / 100;
 
     // Map key -> carrier price function
-    const priceFor = (k, mult) => {
-      if (k === 'lwwp' || k === 'fg' || k === 'geo') return (en[k]?.elMwh || 0) * pStrom * 10 * mult;
-      if (k === 'stromkessel') return (en[k]?.waermeMwh || 0) / skEta * pStrom * 10 * mult;
-      if (k === 'gaskessel' || k === '_autoGk') return (en[k]?.waermeMwh || 0) / (0.92) * pGas * 10 * mult;
-      if (k === 'pellets') return (en[k]?.waermeMwh || 0) / (0.85) * pPk * 10;
-      if (k === 'hhs') return (en[k]?.waermeMwh || 0) / (0.80) * pHhs * 10;
-      if (k === 'heizoel') return (en[k]?.waermeMwh || 0) / (0.90) * pHko * 10;
-      if (k === 'fernwaerme') return (en[k]?.waermeMwh || 0) * pFw * 10;
-      if (k === 'bhkw') return (en[k]?.waermeMwh || 0) / etaThBhkw * pGas * 10 * mult;
+    // automatischer Spitzenlastkessel: Energieträger der gewählten Art (lib/spitzenkessel.js)
+    const _agkKey = spitzenkessel().key;
+    const priceFor = (k0, mult) => {
+      const k = k0 === '_autoGk' ? _agkKey : k0;
+      if (k === 'lwwp' || k === 'fg' || k === 'geo') return (en[k0]?.elMwh || 0) * pStrom * 10 * mult;
+      if (k === 'stromkessel') return (en[k0]?.waermeMwh || 0) / skEta * pStrom * 10 * mult;
+      if (k === 'gaskessel') return (en[k0]?.waermeMwh || 0) / (0.92) * pGas * 10 * mult;
+      if (k === 'pellets') return (en[k0]?.waermeMwh || 0) / (0.85) * pPk * 10;
+      if (k === 'hhs') return (en[k0]?.waermeMwh || 0) / (0.80) * pHhs * 10;
+      if (k === 'heizoel') return (en[k0]?.waermeMwh || 0) / (0.90) * pHko * 10;
+      if (k === 'fernwaerme') return (en[k0]?.waermeMwh || 0) * pFw * 10;
+      if (k === 'bhkw') return (en[k0]?.waermeMwh || 0) / etaThBhkw * pGas * 10 * mult;
       return 0;
     };
 

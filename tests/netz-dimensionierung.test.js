@@ -3,6 +3,7 @@ import { loadScript } from './load-script.js';
 
 beforeAll(() => {
   loadScript('config/netz-kosten.js');
+  loadScript('lib/netz-hydraulik.js');
   loadScript('02a-netz-physik.js');
 });
 
@@ -92,12 +93,11 @@ describe('Wärmeverlust-Berechnung', () => {
     expect(v500m).toBe(v100m * 5);
   });
 
-  it('Größerer DN → relativ weniger Verlust pro kW transportiert', () => {
-    // DN50 transportiert weniger, hat aber höheren U-Wert
-    const u50 = getUWertForDN(50, 0.25);
-    const u200 = getUWertForDN(200, 0.25);
-    // U-Wert sinkt mit DN → bessere Isolation
-    expect(u200).toBeLessThan(u50);
+  it('Größerer DN → mehr Verlust je Meter, aber weniger je transportierter Leistung', () => {
+    const u50 = getUWertForDN(50, 0.25), u200 = getUWertForDN(200, 0.25);
+    expect(u200).toBeGreaterThan(u50);
+    // Querschnitt DN 200 / DN 50 = 16 → bei gleicher Geschwindigkeit 16-fache Leistung, Verlust nur ~1,8-fach
+    expect(u200 / 16).toBeLessThan(u50);
   });
 });
 

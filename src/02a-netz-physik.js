@@ -5,6 +5,8 @@ import { edgeKey, edgeWaypoints, netzVisible, selectedStrandId, trassePoints, tr
 import { map } from './02b-gebaeude.js';
 import { netzEditMode, recalcNetz } from './03b-netz.js';
 import { KMR_KOSTEN } from './config/netz-kosten.js';
+import { dijkstraBisZiel, stichEntfernen } from './lib/netz-strang.js';
+import { rohrLeistungKw, vGrenzeMs } from './lib/netz-hydraulik.js';
 
 export let overlayLayer = null;
 
@@ -14,6 +16,8 @@ export const standardDNs = [15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 
 
 export let kostenSzenario = 'mittel'; // 'niedrig' | 'mittel' | 'hoch'
 export function setKostenSzenario(v) { kostenSzenario = v; }
+/** Kostenszenario für Leitungen ohne eigene Kostenklasse (Auswahl im Netz-Panel). */
+export function kostenSzenarioAktuell() { return kostenSzenario; }
 export let netzColorMode = 'wld'; // 'wld' | 'temp' | 'dn' | 'auslastung' | 'abkuehlung'
 
 export function getKostenProM(dn, edgeKlasse) {
@@ -26,33 +30,29 @@ export function getKostenProM(dn, edgeKlasse) {
 
 // ── Physikalisch korrekte Hilfsfunktionen ─────────────────────────────────
 
-// U-Wert abhängig von DN (Typische KMR-Werte, W/(m·K) für VL+RL gesamt)
-// Quelle: Nussbaumer/AGFW, preinsulated KMR pipes
+// Wärmeverlustkoeffizient eines KMR-Rohrs je Meter (W/(m·K)), JE ROHR — Vor- und Rücklauf werden getrennt
+// gerechnet (Trasse = 2 Rohre). Der Koeffizient steigt mit dem Durchmesser (größere Oberfläche), typische
+// Werte erdverlegter Kunststoffmantelrohre der Standard-Dämmserie: DN 20 ≈ 0,11 … DN 100 ≈ 0,22 … DN 500 ≈ 0,40.
+// baseU ist die Eingabe für DN 100; die übrigen Nennweiten werden im selben Verhältnis skaliert.
+const KMR_U_REL = {
+  15: 0.48, 20: 0.50, 25: 0.55, 32: 0.59, 40: 0.64, 50: 0.73, 65: 0.82, 80: 0.91, 100: 1.0, 125: 1.09,
+  150: 1.23, 200: 1.32, 250: 1.41, 300: 1.55, 350: 1.50, 400: 1.64, 450: 1.73, 500: 1.82, 600: 2.0, 700: 2.18, 800: 2.36,
+};
 export function getUWertForDN(dn, baseU) {
-  // baseU ist der User-Eingabewert (Referenz für DN100)
-  // Skalierung: kleinere Rohre → schlechterer U-Wert, größere → besserer
   const ref = baseU || 0.25;
-  const DN_U_FACTORS = {
-    15: 1.6, 20: 1.5, 25: 1.4, 32: 1.3, 40: 1.2, 50: 1.15,
-    65: 1.08, 80: 1.04, 100: 1.0, 125: 0.92, 150: 0.85,
-    200: 0.75, 250: 0.68, 300: 0.62, 350: 0.58, 400: 0.55,
-    450: 0.52, 500: 0.50, 600: 0.46, 700: 0.43, 800: 0.40
-  };
-  const factor = DN_U_FACTORS[dn] || 1.0;
-  return ref * factor;
+  const d = Number(dn) || 100;
+  if (KMR_U_REL[d]) return ref * KMR_U_REL[d];
+  // Zwischenwerte: nächstgelegene Nennweite
+  const naechste = Object.keys(KMR_U_REL).map(Number).reduce((a, b) => (Math.abs(b - d) < Math.abs(a - d) ? b : a));
+  return ref * KMR_U_REL[naechste];
 }
+/** Rohre je Trasse (Vor- und Rücklauf). */
+export const ROHRE_JE_TRASSE = 2;
 
-// Empfohlene Fließgeschwindigkeit abhängig von DN (m/s)
-// Kleine Rohre: langsamer (Geräusch, Druckverlust), große: schneller
+// Zulässige Fließgeschwindigkeit abhängig von DN (m/s): Obergrenze, steigend mit der Nennweite (lib/netz-hydraulik.js);
+// maßgebend für die Nennweite ist in der Regel das Druckgefälle
 export function getVFlowForDN(dn, baseV) {
-  const ref = baseV || 1.0;
-  if (dn <= 25)  return ref * 0.5;
-  if (dn <= 40)  return ref * 0.6;
-  if (dn <= 65)  return ref * 0.75;
-  if (dn <= 100) return ref * 0.9;
-  if (dn <= 200) return ref * 1.0;
-  if (dn <= 400) return ref * 1.2;
-  return ref * 1.5;  // DN450+
+  return vGrenzeMs(dn, baseV || 1.0);
 }
 
 // Echte Polyline-Länge berechnen (mit Waypoints)
@@ -78,10 +78,12 @@ export function getNetzVBH() {
 }
 
 export function getWLD(edge) {
-  // Wärmeliniendichte in MWh/(m·a) = Jahreswärme der angeschlossenen Abnehmer / Trassenlänge
-  const VBH = getNetzVBH();
+  // Wärmeliniendichte in MWh/(m·a) = Jahreswärme der nachgelagerten Abnehmer (Netzberechnung, mit Sanierung und
+  // Status) / Länge des Abschnitts; vor der ersten Netzberechnung Näherung Σ Normheizlast × Vollbenutzungsstunden
   if (!edge.length || edge.length <= 0) return 0;
-  const waerme_mwh = ((edge.loadRaw || edge.load) * VBH) / 1000; // kW * h / 1000 = MWh
+  const waerme_mwh = Number.isFinite(edge.waermeMwh) && edge.waermeMwh > 0
+    ? edge.waermeMwh
+    : ((edge.loadRaw || edge.load) * getNetzVBH()) / 1000; // kW * h / 1000 = MWh
   return waerme_mwh / edge.length;
 }
 
@@ -112,12 +114,9 @@ export function setNetzColorMode(mode) {
 export function getEdgeColor(e, vlTemp, dt, vFlow) {
   if (!e.load || e.load <= 0) return '#555';
 
-  const cp = 4.184;
-  const actualArea = Math.PI * Math.pow((e.dn / 1000) / 2, 2);
-  const mDot = e.load / (cp * dt);
-  const maxMDot = actualArea * vFlow * 1000;
-  const maxLoad = maxMDot * cp * dt;
-  const auslastung = (e.load / maxLoad) * 100;
+  // Auslastung aus der Netzberechnung (Geschwindigkeit gegen die zulässige Geschwindigkeit der Nennweite)
+  const auslastung = Number.isFinite(e.utilizationPct) ? e.utilizationPct
+    : (e.load / rohrLeistungKw(e.dn, getVFlowForDN(e.dn, vFlow), dt)) * 100;
 
   switch (netzColorMode) {
     case 'wld': {
@@ -431,14 +430,88 @@ export function rerouteEdgeViaStreet(edgeObj,viaPoints = edgeObj.routingViaPoint
     if (!part) return false;
     routed.push(...(index ? part.slice(1) : part));
   }
-  const fullPath = [path[0],...routed,path[path.length - 1]].filter((point,index,array) =>
-    index === 0 || point.distanceTo(array[index - 1]) > 0.15);
-  edgeObj.routingViaPoints = snaps.slice(1,-1).map(snap => snap.point);
+  // Hin und zurück auf derselben Straße (Zwischenziel hinter einem Ende) ergibt keine doppelte Leitung
+  const fullPath = stichEntfernen([path[0],...routed,path[path.length - 1]].filter((point,index,array) =>
+    index === 0 || point.distanceTo(array[index - 1]) > 0.15)).map(p => L.latLng(p.lat,p.lng));
+  // Zwischenziele, die dabei weggefallen sind, sind keine Vorgaben mehr
+  edgeObj.routingViaPoints = snaps.slice(1,-1).map(snap => snap.point)
+    .filter(v => fullPath.some((p,i) => i > 0 && L.LineUtil.pointToSegmentDistance(map.project(v,18),map.project(fullPath[i - 1],18),map.project(p,18)) < 2));
   edgeObj.waypoints = fullPath.slice(1,-1);
   _persistEdgeWaypoints(edgeObj);
   _setEdgePath(edgeObj);
   _renderEdgeWaypointMarkers(edgeObj);
   return true;
+}
+
+/**
+ * Strang umlegen: Straßenwege vom gezogenen Punkt (via) zu mehreren Zielen. Ein Ziel { abstand(latlng) → m, punkt? }
+ * gilt als erreicht an der ersten Straßenstelle höchstens toleranzM von ihm entfernt; ein optionaler punkt (z. B. ein
+ * Gebäude abseits der Straße) wird auf die Straße gerastet und zählt selbst als Ziel. meiden(latlng): Stellen, die der
+ * Weg nicht betreten darf; getrennt: true — der Weg darf die Wege der vorherigen Ziele nicht mitbenutzen (wie eine Route
+ * durch ein Zwischenziel: hin und weiter nicht auf derselben Straße). zuschlag(latlng): Kosten hinter dem Anschluss —
+ * gewählt wird dann das Ziel mit der kleinsten Summe aus Straßenweg und Zuschlag statt des nächsten.
+ * Ergebnis: { viaPunkt, wege: [{ weg: [LatLng] von via bis Ziel, amPunkt }] } oder null (keine Straßen, Punkt abseits, kein Weg).
+ */
+export function strassenWegeAbPunkt(via, ziele, toleranzM = 8) {
+  const graph = _streetRoutingGraph();
+  if (!graph.legs.length) return null;
+  const snapVia = _snapToStreetLeg(via,graph.legs);
+  if (!snapVia || snapVia.distance > 35) return null;
+  // Straßenstücke fein unterteilen: eine Leitung mitten auf einem langen Stück wird so dort erkannt und nicht doppelt verlegt
+  const teile = new Map();
+  graph.legs.forEach(leg => {
+    const n = Math.max(1,Math.ceil(leg.distance / toleranzM));
+    const keys = [leg.aKey];
+    for (let i = 1; i < n; i++) {
+      const key = `${leg.id}#${i}`;
+      graph.positions.set(key,L.latLng(leg.a.lat + (leg.b.lat - leg.a.lat) * i / n,leg.a.lng + (leg.b.lng - leg.a.lng) * i / n));
+      keys.push(key);
+    }
+    keys.push(leg.bKey);
+    for (let i = 1; i < keys.length; i++) graph.connect(keys[i - 1],keys[i],leg.distance / n);
+    teile.set(leg.id,{keys,n});
+  });
+  const virtuell = [];
+  const einhaengen = (snap,key) => {
+    const {keys,n} = teile.get(snap.leg.id);
+    const i = Math.min(n - 1,Math.floor(snap.t * n));
+    graph.positions.set(key,snap.point);
+    graph.connect(key,keys[i],(snap.t * n - i) * snap.leg.distance / n);
+    graph.connect(key,keys[i + 1],(i + 1 - snap.t * n) * snap.leg.distance / n);
+    virtuell.forEach(other => {
+      if (other.snap.leg.id === snap.leg.id) graph.connect(key,other.key,Math.abs(other.snap.t - snap.t) * snap.leg.distance);
+    });
+    virtuell.push({key,snap});
+  };
+  einhaengen(snapVia,'@strang-via');
+  ziele.forEach((ziel,index) => {
+    const snap = ziel.punkt ? _snapToStreetLeg(ziel.punkt,graph.legs) : null;
+    if (snap) einhaengen(snap,`@strang-ziel-${index}`);
+  });
+  const wege = [];
+  const benutzt = new Set();
+  for (let index = 0; index < ziele.length; index++) {
+    const eigen = `@strang-ziel-${index}`;
+    const ziel = ziele[index];
+    const gesperrt = key => key !== eigen && ((ziel.getrennt && benutzt.has(key)) || (ziel.meiden ? ziel.meiden(graph.positions.get(key)) : false));
+    // zuschlag(latlng): Kosten hinter dem Anschluss (Leitungsweg bis zur Zentrale) — am eigenen Punkt keiner
+    const zielKosten = ziel.zuschlag ? key => (key === eigen ? 0 : ziel.zuschlag(graph.positions.get(key))) : null;
+    const r = dijkstraBisZiel(graph.adjacency,'@strang-via',
+      key => key === eigen || ziel.abstand(graph.positions.get(key)) <= toleranzM, gesperrt, zielKosten);
+    if (!r) return null;
+    r.weg.slice(1).forEach(key => benutzt.add(key));
+    const weg = r.weg.map(key => graph.positions.get(key)).filter(Boolean);
+    const amPunkt = r.ziel === eigen;
+    if (amPunkt) weg.push(ziele[index].punkt);
+    wege.push({weg:weg.filter((point,i,array) => i === 0 || point.distanceTo(array[i - 1]) > 0.15),amPunkt});
+  }
+  return {viaPunkt:snapVia.point,wege};
+}
+
+/** Punkt abseits der Straßen (> 35 m): die Leitung verläuft dort frei — kurz erklären, wie man das wieder löst. */
+function _hinweisFreierVerlauf() {
+  if (!trasseSegments.some(seg => !seg.domains || seg.domains.includes('waerme'))) return;   // ohne Straßen ist frei der Normalfall
+  window.showHint?.('Punkt liegt abseits der Straßen – die Leitung verläuft hier frei. Ecke erneut greifen und an die Straße ziehen oder doppelt anklicken, um sie zu entfernen. Strg+Z macht es rückgängig.',6000);
 }
 
 export function removeEdgeWaypointMarkers(edgeObj) {
@@ -462,6 +535,7 @@ function _renderEdgeWaypointMarkers(edgeObj) {
       edgeObj.hitLayer?.setLatLngs([edgeObj.uNode.pt,...preview,edgeObj.vNode.pt]);
     });
     marker.on('dragend', function() {
+      const verlaufVorher = getEdgePathPoints(edgeObj);
       const vias = [...edgeObj.routingViaPoints];
       vias[index] = this.getLatLng();
       if (!rerouteEdgeViaStreet(edgeObj,vias)) {
@@ -470,8 +544,11 @@ function _renderEdgeWaypointMarkers(edgeObj) {
         _persistEdgeWaypoints(edgeObj);
         _setEdgePath(edgeObj);
         _renderEdgeWaypointMarkers(edgeObj);
+        _hinweisFreierVerlauf();
       }
       recalcNetz();
+      // Liegt der Punkt auf einer anderen Straße: anbieten, den ganzen Strang dahinter dorthin umzulegen
+      window.netzStrangVorschlag?.(edgeObj,vias[index],verlaufVorher);
     });
     marker.on('dblclick', event => {
       L.DomEvent.stopPropagation(event);
@@ -534,6 +611,7 @@ export function addEdgeMidHandle(edgeObj) {
   _renderEdgeWaypointMarkers(edgeObj);
   edgeObj.midMarker.on('dragend', function() {
     const point = this.getLatLng();
+    const verlaufVorher = getEdgePathPoints(edgeObj);
     const vias = [...(edgeObj.routingViaPoints || []),point]
       .sort((a,b) => _positionAlongEdgePath(edgeObj,a) - _positionAlongEdgePath(edgeObj,b));
     if (!rerouteEdgeViaStreet(edgeObj,vias)) {
@@ -542,9 +620,11 @@ export function addEdgeMidHandle(edgeObj) {
       edgeObj.routingViaPoints = vias;
       _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
       _renderEdgeWaypointMarkers(edgeObj);
+      _hinweisFreierVerlauf();
     }
     this.setLatLng(getEdgeMidDisplayPt(edgeObj));
     recalcNetz();
+    window.netzStrangVorschlag?.(edgeObj,point,verlaufVorher);
   });
   edgeObj.midMarker.on('dblclick', function(ev) {
     L.DomEvent.stopPropagation(ev);

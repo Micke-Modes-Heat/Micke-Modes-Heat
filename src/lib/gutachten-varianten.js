@@ -29,16 +29,17 @@ export function vaEnergie(v) {
   const eta = { ...VA_ETA, ...(v.eta || {}) };   // Wirkungsgrade aus den Erzeuger-Panels, sonst Standard
   let waerme = 0, wp = 0, sk = 0, fossil = 0, strom = 0, gas = 0, oel = 0, pellets = 0, hhs = 0, fw = 0;
   for (const x of v.erzeuger || []) {
-    const w = Number(x.waermeMwh) || 0, el = Number(x.elMwh) || 0;
+    // w: an die Last inkl. anteiliger Speicherwärme (Anteile); wE: insgesamt erzeugt (Brennstoff); ältere Stände: direkt
+    const w = Number(x.anLastMwh ?? x.waermeMwh) || 0, wE = Number(x.erzeugtMwh ?? x.waermeMwh) || 0, el = Number(x.elMwh) || 0;
     if (x.key === '_thermSpeicher') continue;
     waerme += w;
     if (WP.has(x.key)) { wp += w; strom += el > 0 ? el : 0; }
-    else if (x.key === 'stromkessel') { sk += w; strom += el > 0 ? el : w / eta.stromkessel; }
-    else if (x.key === 'gaskessel' || x.key === '_autoGk') { fossil += w; gas += w / eta.gaskessel; }
-    else if (x.key === 'heizoel') { fossil += w; oel += w / eta.heizoel; }
-    else if (x.key === 'bhkw') { fossil += w; gas += w / eta.bhkwTh; }
-    else if (x.key === 'pellets') pellets += w / eta.pellets;
-    else if (x.key === 'hhs') hhs += w / eta.hhs;
+    else if (x.key === 'stromkessel') { sk += w; strom += el > 0 ? el : wE / eta.stromkessel; }
+    else if (x.key === 'gaskessel' || x.key === '_autoGk') { fossil += w; gas += wE / eta.gaskessel; }
+    else if (x.key === 'heizoel') { fossil += w; oel += wE / eta.heizoel; }
+    else if (x.key === 'bhkw') { fossil += w; gas += wE / eta.bhkwTh; }
+    else if (x.key === 'pellets') pellets += wE / eta.pellets;
+    else if (x.key === 'hhs') hhs += wE / eta.hhs;
     else if (x.key === 'fernwaerme') fw += w;
   }
   const p = x => (waerme > 0 ? (x / waerme) * 100 : NaN);
@@ -288,7 +289,11 @@ export const VA_SZENARIEN = Object.freeze([
 export function vaSensitivitaet(V, preise, szenarien = VA_SZENARIEN) {
   return V.filter(v => ok(v.jahreskostenEur) && v.jahreskostenEur > 0).map(v => {
     const e = vaEnergie(v);
-    const kosten = { strom: e.strom * (preise.strom || 0) * 10, fossil: e.gas * (preise.gas || 0) * 10 + e.oel * (preise.oel || 0) * 10, bio: e.pellets * (preise.pellets || 0) * 10 + e.hhs * (preise.hhs || 0) * 10 };
+    // Fernwärme im fossilen Szenario: Fernwärme-Preisgleitklauseln sind überwiegend an Erdgas gekoppelt (Annahme)
+    const kosten = { strom: e.strom * (preise.strom || 0) * 10,
+      // e.gas: Erdgas auf Heizwert-Basis, Preis je kWh Brennwert → × Hs/Hi (1,11)
+      fossil: e.gas * 1.11 * (preise.gas || 0) * 10 + e.oel * (preise.oel || 0) * 10 + (e.fw || 0) * (preise.fw || 0) * 10,
+      bio: e.pellets * (preise.pellets || 0) * 10 + e.hhs * (preise.hhs || 0) * 10 };
     const sz = szenarien.map(s => {
       const mehr = kosten.strom * s.strom / 100 + kosten.fossil * s.fossil / 100 + kosten.bio * s.bio / 100;
       return { name: s.name, gesamt: v.jahreskostenEur + mehr, mehr, pct: (mehr / v.jahreskostenEur) * 100 };

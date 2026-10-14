@@ -314,7 +314,7 @@ export function updateBhkwDisplay() {
   const gasverbrauch = waerme > 0 ? waerme / etaTh : 0;
   const gaskosten    = gasverbrauch * gaspreis * 10;
   // BHKW Stromerlös differenziert: Eigenverbrauch (vermiedene Bezugskosten + KWK) + Einspeisung (Baseload + KWK)
-  const bezugspreis  = parseFloat(document.getElementById('strom-preis-bezug')?.value) || 35;
+  const bezugspreis  = parseFloat((document.getElementById('strom-preis-bezug') || document.getElementById('wirt-p-strom'))?.value) || 35;
   const bhkwPreisEinsp = parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8;
   const kwkEinsp     = parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8;
   const kwkEigen     = parseFloat(document.getElementById('bhkw-kwk-eigen')?.value) || 4;
@@ -593,7 +593,8 @@ export function showErzeugerPopup(key) {
   const gesamtMwh = ss?.gesamtMwhMitNV || 0;
   const deckPct   = gesamtMwh > 0 ? waermeMwh / gesamtMwh * 100 : 0;
   const vbh       = peakKw > 0 ? Math.round(totalKwh / peakKw) : 0;
-  const jaz       = cfg.typ === 'wp' && elMwh > 0 ? (waermeMwh / elMwh).toFixed(2) : null;
+  // JAZ = Σ erzeugte Wärme (direkt + Speicherladung) / Σ Strom
+  const jaz       = cfg.typ === 'wp' && elMwh > 0 ? ((en[key]?.erzeugtMwh ?? waermeMwh) / elMwh).toFixed(2) : null;
 
   // DOM befüllen
   const epIcon = document.getElementById('ep-icon');
@@ -784,12 +785,8 @@ export function updateGasKesselDisplay() {
 }
 
 export function gasKesselUseNetworkValues() {
-  const zId = parseInt(document.getElementById('netz-zentrale').value);
-  const lastKw = calculatedLoad && calculatedLoad[zId] ? calculatedLoad[zId] : 0;
-  const connectedIds = new Set(netzEdges.flatMap(e => [e.u, e.v]));
-  const verbrauchMWh = gebaeude.filter(g => connectedIds.has(g.id) && !isExcluded(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
-  const lossAnnual = netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0);
-  const erzeugungMWh = verbrauchMWh + lossAnnual * 8.76;
+  // Auslegungsspitze und Wärme der angeschlossenen Gebäude + Netzverlust (03b netzErzeugerVorgabe)
+  const { kw: lastKw, mwh: erzeugungMWh } = window.netzErzeugerVorgabe?.() || { kw: 0, mwh: 0 };
   if (lastKw > 0) { document.getElementById('gk-leistung').value = Math.round(lastKw); gasKessel.leistungKw = Math.round(lastKw); }
   if (erzeugungMWh > 0) document.getElementById('gk-waerme').value = Math.round(erzeugungMWh);
   updateGasKesselDisplay();
@@ -1214,22 +1211,29 @@ export function redrawVerbindungslinien() {
   const g = gebaeude.find(x => x.id === zId);
   if (!g || !g.polygon) return;
   const zentrale = polygonCenter(g.polygon);
+  // Mehrere Heizzentralen: Linie zur Zentrale, an der der Erzeuger steht (Standort)
+  const zentraleFuer = key => {
+    const id = window.erzeugerStandort?.(key);
+    const zg = id != null && id !== zId ? gebaeude.find(x => x.id === id) : null;
+    return zg?.polygon ? polygonCenter(zg.polygon) : zentrale;
+  };
   const lineStyle = { color: '#9e9e9e', weight: 1.5, dashArray: '8,6', opacity: 0.55 };
   if (geoThermie && geoThermie.lat != null)
-    L.polyline([L.latLng(geoThermie.lat, geoThermie.lng), zentrale], lineStyle).addTo(window.verbindungsLayerGroup);
+    L.polyline([L.latLng(geoThermie.lat, geoThermie.lng), zentraleFuer('geo')], lineStyle).addTo(window.verbindungsLayerGroup);
   if (lwWp && lwWp.lat != null)
-    L.polyline([L.latLng(lwWp.lat, lwWp.lng), zentrale], lineStyle).addTo(window.verbindungsLayerGroup);
+    L.polyline([L.latLng(lwWp.lat, lwWp.lng), zentraleFuer('lwwp')], lineStyle).addTo(window.verbindungsLayerGroup);
   if (fliessgewaesser && fliessgewaesser.latlngs && fliessgewaesser.latlngs.length >= 2) {
     const pts = fliessgewaesser.latlngs.map(p => L.latLng(p.lat, p.lng));
-    const cp = closestPointOnPolyline(pts, zentrale);
-    if (cp) L.polyline([cp, zentrale], lineStyle).addTo(window.verbindungsLayerGroup);
+    const ziel = zentraleFuer('fg');
+    const cp = closestPointOnPolyline(pts, ziel);
+    if (cp) L.polyline([cp, ziel], lineStyle).addTo(window.verbindungsLayerGroup);
   }
   if (pelletsKessel && pelletsKessel.lat != null)
-    L.polyline([L.latLng(pelletsKessel.lat, pelletsKessel.lng), zentrale], lineStyle).addTo(window.verbindungsLayerGroup);
+    L.polyline([L.latLng(pelletsKessel.lat, pelletsKessel.lng), zentraleFuer('pellets')], lineStyle).addTo(window.verbindungsLayerGroup);
   if (heizhackschnitzel && heizhackschnitzel.lat != null)
-    L.polyline([L.latLng(heizhackschnitzel.lat, heizhackschnitzel.lng), zentrale], lineStyle).addTo(window.verbindungsLayerGroup);
+    L.polyline([L.latLng(heizhackschnitzel.lat, heizhackschnitzel.lng), zentraleFuer('hhs')], lineStyle).addTo(window.verbindungsLayerGroup);
   if (window.fernwaerme && window.fernwaerme.lat != null)
-    L.polyline([L.latLng(window.fernwaerme.lat, window.fernwaerme.lng), zentrale], lineStyle).addTo(window.verbindungsLayerGroup);
+    L.polyline([L.latLng(window.fernwaerme.lat, window.fernwaerme.lng), zentraleFuer('fernwaerme')], lineStyle).addTo(window.verbindungsLayerGroup);
   freiflaechen.forEach(ff => {
     if (ff.polygon && ff.polygon.length >= 3)
       L.polyline([polygonCenter(ff.polygon), zentrale],
