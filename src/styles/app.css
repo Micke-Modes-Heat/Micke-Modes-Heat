@@ -2624,6 +2624,8 @@ textarea.ssb-in{resize:vertical;}
 .wirt-struktur-legende b{font:500 11px 'DM Mono',monospace;color:var(--text);}
 .wirt-struktur-legende small{font-size:9px;}
 .wirt-tabelle{width:100%;border-collapse:collapse;font-size:11px;}
+.wirt-tabelle tr[data-wirt-kw] td:first-child{cursor:help}
+.wirt-kurvenkarte{position:fixed;z-index:4000;display:none;pointer-events:none;width:264px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.35);font-size:10.5px;line-height:1.5;color:var(--text)}
 .wirt-tabelle th{font-size:9px;font-weight:500;color:var(--muted);text-align:right;padding:0 4px 5px;border-bottom:1px solid var(--border);white-space:nowrap;}
 .wirt-tabelle td{padding:3px 4px;}
 .wirt-tabelle tbody tr:hover{background:rgba(255,255,255,.03);}

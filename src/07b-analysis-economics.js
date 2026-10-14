@@ -575,16 +575,14 @@ export function calcWirtschaftPanel() {
   const iKWtip = (tech, kw, extra) => {
     if (typeof CalcEngine === 'undefined' || !kw) return extra || '';
     const eur = CalcEngine.investEurProKw(tech, kw);
-    const K = CalcEngine.INVEST_KURVEN?.[tech];
-    let bereich = '';
-    if (K) {
-      if (K.aDez && kw <= K.maxDez) bereich = ' (Dezentral-Kurve)';
-      else if (K.aZen && kw >= (K.minZen || 0) && kw <= (K.maxZen || Infinity)) bereich = ' (Zentral-Kurve)';
-      else if (K.maxZen && kw > K.maxZen) bereich = ' (über Kurvenbereich — spez. Preis eingefroren)';
-      else bereich = ' (Übergangsbereich, interpoliert)';
-    }
-    return (extra ? extra + '. ' : '') + Math.round(eur) + ' €/kW bei ' + Math.round(kw) + ' kW' + bereich + ' — Kurve im „Kostenkurven"-Tab (Quelle: KWW-Technikkatalog 2025)';
+    const bereich = _kurvenBereich(tech, kw);
+    return (extra ? extra + '. ' : '') + Math.round(eur) + ' €/kW bei ' + Math.round(kw) + ' kW' + (bereich ? ' (' + bereich + ')' : '') + ' — Kurve im „Kostenkurven"-Tab (Quelle: KWW-Technikkatalog 2025)';
   };
+  // Grundlage der Hover-Karte je Baustein: [Kostenkurve (CalcEngine) oder null bei Pauschale je kW, Erzeugerschlüssel]
+  const _spezBasis = { lwwp: ['LuftWP', 'lwwp'], fg: ['FlussWP', 'fg'], geo_wp: ['GeoWP', 'geo'], pk: ['Pellets', 'pellets'],
+    hhs: ['Hackschnitzel', 'hhs'], hko: ['Heizoel', 'heizoel'], gk: ['Gaskessel', 'gaskessel'], bhkw_agg: ['BHKW', 'bhkw'],
+    sk: ['Stromkessel', 'stromkessel'], gk_auto: [_agk.strom ? 'Stromkessel' : _agk.ce, '_autoGk'],
+    pk_lager: [null, 'pellets'], hhs_lager: [null, 'hhs'], bhkw_hydr: [null, 'bhkw'], fw_pumpe: [null, 'fernwaerme'] };
 
   // Direkte Bausteine
   const BD = [
@@ -1034,7 +1032,11 @@ export function calcWirtschaftPanel() {
   function _wirtDetailRow(b, gi, isOpen) {
     const over = ov[b.id] !== undefined;
     const vdi  = b.vdi || {};
-    return '<tr class="wirt-detail wirt-grp-' + gi + '" style="display:' + (isOpen ? '' : 'none') + ';">' +
+    const sb = _spezBasis[b.id], kwB = sb ? (pKw[sb[1]] || 0) : 0;
+    const karte = sb && kwB > 0.5
+      ? ' data-wirt-kw="' + kwB + '" data-wirt-ce="' + (sb[0] || '') + '" data-wirt-inv="' + Math.round(b.effVal || 0) + '" data-wirt-auto="' + Math.round(b.autoVal || 0) + '" data-wirt-label="' + String(b.label).replace(/"/g, '&quot;') + '"'
+      : '';
+    return '<tr class="wirt-detail wirt-grp-' + gi + '"' + karte + ' style="display:' + (isOpen ? '' : 'none') + ';">' +
       '<td style="padding-left:18px;"><span style="color:' + (_daColor(b.id)||'var(--text)') + ';font-size:10px;">' + b.label + '</span>' +
         ' <span title="' + (b.tooltip||'') + '" style="cursor:help;color:var(--muted);font-size:9px;">ⓘ</span>' +
         (vdi.n===0 ? ' <span style="font-size:9px;color:var(--muted);">(nur Betrieb)</span>' : '') +
@@ -1137,6 +1139,7 @@ export function calcWirtschaftPanel() {
     </div>
     ${_analyseHtml}`;
 
+  _wirtKarteAnbinden(wrap);
   wrap.innerHTML = kopfHtml + `
     <div class="wirt-abschnitt">Kostendetails <small>Bausteine nach VDI 2067 — Werte direkt in der Tabelle anpassbar</small></div>
     <div class="wirt-karte">
@@ -1292,6 +1295,89 @@ export function _wirtSetView(mode) {
   });
   if (mode === 'waterfall') _wirtRenderWaterfall();
   if (mode === 'kurven') _wirtRenderKurven();
+}
+
+// ── Hover-Karte der Investitionsbausteine: spezifischer Preis, Leistung, Lage auf der Kostenkurve ──
+/** Bereich der KWW-Kostenkurve für tech bei kw (Text) oder ''. */
+export function _kurvenBereich(tech, kw) {
+  const K = typeof CalcEngine !== 'undefined' ? CalcEngine.INVEST_KURVEN?.[tech] : null;
+  if (!K) return '';
+  if (K.aDez && kw <= K.maxDez) return 'Dezentral-Kurve';
+  if (K.aZen && kw >= (K.minZen || 0) && kw <= (K.maxZen || Infinity)) return 'Zentral-Kurve';
+  if (K.maxZen && kw > K.maxZen) return 'über Kurvenbereich — spez. Preis eingefroren';
+  return 'Übergangsbereich, interpoliert';
+}
+
+// Kleine log-log-Kurve €/kW über der Leistung (0,1- bis 10-fache der Anlage), Punkt = eigene Anlage
+function _wirtMiniKurve(ce, kw, farbe) {
+  const W = 248, H = 104, pl = 44, pr = 8, pt = 8, pb = 18;
+  const lo = Math.max(10, kw / 10), hi = Math.min(20000, Math.max(kw * 10, lo * 4));
+  const pts = [];
+  for (let i = 0; i <= 60; i++) { const k = lo * Math.pow(hi / lo, i / 60); const e = CalcEngine.investEurProKw(ce, k); if (e > 0) pts.push([k, e]); }
+  if (pts.length < 2) return '';
+  const eAkt = CalcEngine.investEurProKw(ce, kw);
+  let yMin = Math.min(...pts.map(p => p[1]), eAkt) * 0.9, yMax = Math.max(...pts.map(p => p[1]), eAkt) * 1.1;
+  if (yMax / yMin < 1.5) { yMin /= 1.2; yMax *= 1.2; }
+  const x = k => pl + (Math.log(k) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) * (W - pl - pr);
+  const y = e => pt + (H - pt - pb) - (Math.log(e) - Math.log(yMin)) / (Math.log(yMax) - Math.log(yMin)) * (H - pt - pb);
+  const nf = v => Math.round(v).toLocaleString('de-DE');
+  const kwTxt = k => (k >= 1000 ? (k / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' MW' : nf(k) + ' kW');
+  const pfad = pts.map((p, i) => (i ? 'L' : 'M') + x(p[0]).toFixed(1) + ' ' + y(p[1]).toFixed(1)).join(' ');
+  const kx = x(Math.min(hi, Math.max(lo, kw))), ky = y(eAkt);
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;margin-top:6px;">
+    <line x1="${pl}" y1="${H - pb}" x2="${W - pr}" y2="${H - pb}" stroke="var(--border)"/><line x1="${pl}" y1="${pt}" x2="${pl}" y2="${H - pb}" stroke="var(--border)"/>
+    <text x="${pl - 4}" y="${pt + 8}" text-anchor="end" font-size="9" fill="var(--muted)">${nf(yMax)}</text>
+    <text x="${pl - 4}" y="${H - pb}" text-anchor="end" font-size="9" fill="var(--muted)">${nf(yMin)}</text>
+    <text x="${pl}" y="${H - 5}" font-size="9" fill="var(--muted)">${kwTxt(lo)}</text>
+    <text x="${W - pr}" y="${H - 5}" text-anchor="end" font-size="9" fill="var(--muted)">${kwTxt(hi)}</text>
+    <path d="${pfad}" fill="none" stroke="${farbe}" stroke-width="1.8"/>
+    <line x1="${kx}" y1="${pt}" x2="${kx}" y2="${H - pb}" stroke="${farbe}" stroke-dasharray="2,2" opacity="0.6"/>
+    <circle cx="${kx}" cy="${ky}" r="4.5" fill="${farbe}" stroke="var(--surface)" stroke-width="1.5"/>
+    <text x="${W - pr}" y="${pt + 8}" text-anchor="end" font-size="9" fill="var(--muted)">€/kW über Leistung (log.)</text>
+  </svg>`;
+}
+
+function _wirtKarteHtml(tr) {
+  const kw = parseFloat(tr.dataset.wirtKw) || 0, ce = tr.dataset.wirtCe || '';
+  const inv = parseFloat(tr.dataset.wirtInv) || 0, auto = parseFloat(tr.dataset.wirtAuto) || 0;
+  const nf = v => Math.round(v).toLocaleString('de-DE');
+  const t = _KURVEN_TECHS.find(k => k.ce === ce);
+  const farbe = t?.color || 'var(--accent)';
+  const zeilen = [`<b>${tr.dataset.wirtLabel || ''}</b> · ${nf(kw)} kW`];
+  if (ce && typeof CalcEngine !== 'undefined') {
+    const eur = CalcEngine.investEurProKw(ce, kw);
+    zeilen.push(`<span style="font-size:13px;color:${farbe};font-weight:600;">${nf(eur)} €/kW</span> × ${nf(kw)} kW = ${nf(eur * kw)} €`);
+    const bereich = _kurvenBereich(ce, kw);
+    zeilen.push(`<span style="color:var(--muted);">${bereich ? bereich + ' · ' : ''}Kostenkurve KWW-Technikkatalog 2025</span>`);
+  } else {
+    zeilen.push(`<span style="font-size:13px;color:${farbe};font-weight:600;">${nf(auto / kw)} €/kW</span> pauschal × ${nf(kw)} kW = ${nf(auto)} €`);
+  }
+  if (Math.abs(inv - auto) > 1) zeilen.push(`<span style="color:#ff9800;">Eigener Wert ${nf(inv)} € = ${nf(inv / kw)} €/kW</span>`);
+  return zeilen.join('<br>') + (ce && typeof CalcEngine !== 'undefined' ? _wirtMiniKurve(ce, kw, farbe) : '');
+}
+
+// Karte an der Maus zeigen; einmal je Tabellen-Container angebunden (Ereignisdelegation)
+function _wirtKarteAnbinden(wrap) {
+  if (!wrap || wrap.dataset.wirtKarte === '1') return;
+  wrap.dataset.wirtKarte = '1';
+  let el = null;
+  const weg = () => { if (el) el.style.display = 'none'; };
+  wrap.addEventListener('mouseover', ev => {
+    const tr = ev.target.closest?.('tr[data-wirt-kw]');
+    if (!tr) { weg(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'wirt-kurvenkarte';
+      document.body.appendChild(el);
+    }
+    el.innerHTML = _wirtKarteHtml(tr);
+    el.style.display = 'block';
+    const r = tr.getBoundingClientRect(), b = el.offsetWidth || 264, h = el.offsetHeight || 170;
+    const links = Math.min(window.innerWidth - b - 8, Math.max(8, r.left + 24));
+    const oben = r.bottom + h + 8 < window.innerHeight ? r.bottom + 4 : Math.max(8, r.top - h - 4);
+    el.style.left = links + 'px'; el.style.top = oben + 'px';
+  });
+  wrap.addEventListener('mouseleave', weg);
 }
 
 // ── Kostenkurven-View: spez. Invest €/kW über Anlagengröße (log-log) ──
