@@ -2935,3 +2935,7 @@ tr.ga-blink td{animation:ga-blink 1.6s ease 2;}
 .wpa-tip{position:absolute;display:none;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:10px;color:var(--text);white-space:nowrap;z-index:5;box-shadow:0 2px 6px rgba(0,0,0,.3);}
 .wpa-legende{display:flex;flex-wrap:wrap;gap:12px;font-size:9px;color:var(--muted);margin-top:4px;}
 .wpa-leer{font-size:11px;color:var(--muted);padding:8px 0;}
+/* Gebäudetabelle: Zahlenfeld-Pfeile nur beim Überfahren/Bearbeiten, dunkel und dezent */
+.geb-overview-table input[type="number"]{color-scheme:dark;}
+.geb-overview-table input[type="number"]::-webkit-inner-spin-button,.geb-overview-table input[type="number"]::-webkit-outer-spin-button{opacity:0;margin:0;}
+.geb-overview-table input[type="number"]:hover::-webkit-inner-spin-button,.geb-overview-table input[type="number"]:focus::-webkit-inner-spin-button{opacity:.3;}
