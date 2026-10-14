@@ -76,7 +76,7 @@ export function saSetTab(name) {
   if (name === 'lastgang') { _lgRenderCurrentView(); }
   if (name === 'jdl')      daRenderJdl();
   if (name === 'woche')    daRenderWoche();
-  if (name === 'tempvl')   daRenderTempVL();
+  if (name === 'tempvl')   { daRenderTempVL(); window.wpAnalyseRender?.(); }
   if (name === 'metriken') daRenderMetriken();
   if (name === 'dim')      dimRender();
   if (name === 'split')    splitRender();

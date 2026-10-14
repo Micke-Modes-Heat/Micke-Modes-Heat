@@ -2920,3 +2920,18 @@ tr.ga-blink td{animation:ga-blink 1.6s ease 2;}
 #lade-status-panel .ls-spin{display:inline-block;width:10px;height:10px;margin-top:2px;border:2px solid rgba(79,195,247,.3);border-top-color:#4fc3f7;border-radius:50%;animation:ls-spin .8s linear infinite;}
 @keyframes ls-spin{to{transform:rotate(360deg);}}
 @media(max-width:900px){#lade-status-panel{left:12px!important;right:12px;width:auto;bottom:60px;max-height:50vh;}}
+/* Datenanalyse: Auswertung je Wärmepumpe */
+.wpa-kopf{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;margin-bottom:6px;}
+.wpa-chips,.wpa-ansicht{display:flex;flex-wrap:wrap;gap:4px;}
+.wpa-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin-bottom:6px;}
+.wpa-kpis>div{background:var(--surface2);border-radius:4px;padding:4px 6px;display:flex;flex-direction:column;}
+.wpa-kpis b{font-size:12px;color:var(--text);}
+.wpa-kpis span{font-size:9px;color:var(--muted);}
+.wpa-zeit{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:10px;color:var(--muted);margin-bottom:4px;}
+.wpa-zeit select{width:auto;font-size:10px;padding:1px 4px;}
+.wpa-zeit label{display:flex;align-items:center;gap:4px;}
+.wpa-diagramm{position:relative;}
+.wpa-diagramm canvas{width:100%;display:block;border-radius:4px;cursor:crosshair;}
+.wpa-tip{position:absolute;display:none;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:10px;color:var(--text);white-space:nowrap;z-index:5;box-shadow:0 2px 6px rgba(0,0,0,.3);}
+.wpa-legende{display:flex;flex-wrap:wrap;gap:12px;font-size:9px;color:var(--muted);margin-top:4px;}
+.wpa-leer{font-size:11px;color:var(--muted);padding:8px 0;}
