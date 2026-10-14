@@ -116,14 +116,17 @@ export function overpassAbfrage(abfrage, opt = {}) {
         const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
         const timer = setTimeout(() => ctrl?.abort(), clientMs);
         try {
-          const resp = await abrufen(s.url, { method: 'POST', body: 'data=' + encodeURIComponent(abfrage), signal: ctrl?.signal });
+          // Formular-Kodierung wie vom Overpass-Server erwartet (CORS-einfache Anfrage, keine Vorabprüfung)
+          const resp = await abrufen(s.url, { method: 'POST', body: 'data=' + encodeURIComponent(abfrage), signal: ctrl?.signal,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } });
           if (!resp.ok) {
             const p = pauseNachAntwort(resp.status, resp.headers?.get?.('Retry-After'));
             if (p) pauseBis.set(s.url, Date.now() + p);
             status(s.name, '⚠ HTTP ' + resp.status + (resp.status === 429 ? ' (zu viele Anfragen)' : ''));
             continue;
           }
-          const daten = await resp.json();
+          let daten;
+          try { daten = await resp.json(); } catch (e) { void e; status(s.name, '⚠ keine gültige Antwort'); continue; }
           if (/runtime error|timed out/i.test(daten?.remark || '')) {
             pauseBis.set(s.url, Date.now() + pauseNachAntwort('timeout'));
             status(s.name, '⚠ Server überlastet');
@@ -135,7 +138,9 @@ export function overpassAbfrage(abfrage, opt = {}) {
         } catch (e) {
           const zeit = e?.name === 'AbortError';
           if (zeit) pauseBis.set(s.url, Date.now() + pauseNachAntwort('timeout'));
-          status(s.name, '✗ ' + (zeit ? 'Zeitüberschreitung' : 'nicht erreichbar'));
+          // „Failed to fetch“: vom Browser blockiert (CORS, Netzwerk, Proxy) — Hinweis auf lokal geöffnete Datei
+          const lokal = typeof location !== 'undefined' && location.protocol === 'file:';
+          status(s.name, '✗ ' + (zeit ? 'Zeitüberschreitung' : 'vom Browser blockiert' + (lokal ? ' (Datei lokal geöffnet)' : '') + (e?.message ? ': ' + e.message : '')));
         } finally {
           clearTimeout(timer);
         }
