@@ -29,7 +29,9 @@ import { lbBuildAnalyseSection, lbShowSection } from './18-liegenschaftsbilder.j
 import { ausbauShow } from './14e-ausbauplaner-ui.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, stromEmF } from './01-globals-varianten.js';
 import { getWLDColor } from './02a-netz-physik.js';
-import { OVERPASS_ENDPOINTS, updateRohrListe } from './03b-netz.js';
+import { updateRohrListe } from './03b-netz.js';
+import { overpassAbfrage } from './lib/overpass-client.js';
+import { splitOsmBbox } from './lib/osm-bbox-tiles.js';
 import { _buildProjectData, _loadProject, hideHint, showHint } from './03c-gebaeude-io.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { netzPruningMode, setNetzPruningMode } from './01-globals-varianten.js';
@@ -1015,60 +1017,61 @@ export const HIGHWAY_KOSTEN = {
 };
 
 let _aaecRunning = false;
-async function queryOsmRoadType(latA, lngA, latB, lngB) {
-  // Find the OSM way closest to the midpoint of the edge
-  const midLat = (latA + latB) / 2;
-  const midLng = (lngA + lngB) / 2;
-  const delta = 0.0003;
-  const bbox = `${midLat-delta},${midLng-delta},${midLat+delta},${midLng+delta}`;
-  const q = `[out:json][timeout:5];way["highway"](${bbox});out tags 1;`;
-  const resp = await fetch(OVERPASS_ENDPOINTS[0], {
-    method: 'POST',
-    body: 'data=' + encodeURIComponent(q),
-    signal: AbortSignal.timeout(6000)
-  });
-  // Harter Fehler (429/5xx) → werfen, damit der Aufrufer den Circuit-Breaker auslöst.
-  if (!resp.ok) throw new Error('overpass ' + resp.status);
-  const d = await resp.json();
-  if (d && d.elements && d.elements.length > 0) {
-    const hw = d.elements[0].tags?.highway || '';
-    return HIGHWAY_KOSTEN[hw] || 'mittel';
+
+// Abstand eines Punkts zu einer Polylinie in Metern (lokale Projektion um den Punkt)
+function _abstandZuWegM(lat, lng, geom) {
+  const mLat = 111320, mLng = 111320 * Math.cos(lat * Math.PI / 180);
+  let best = Infinity;
+  for (let i = 1; i < geom.length; i++) {
+    const ax = (geom[i - 1].lon - lng) * mLng, ay = (geom[i - 1].lat - lat) * mLat;
+    const bx = (geom[i].lon - lng) * mLng, by = (geom[i].lat - lat) * mLat;
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    const t = l2 > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+    best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
   }
-  return 'mittel'; // erfolgreich, aber keine Straße in der Nähe → Default
+  return best;
 }
 
 export async function autoAssignEdgeCosts() {
-  // Straßentyp je Kante → Kostenklasse (Hintergrund, nach autoGenerateNetz).
-  // Robust gegen Overpass-Ausfälle/Rate-Limits (429) und file://-CORS: früh
-  // aufhören statt den Browser mit hunderten fehlschlagenden Requests zu fluten
-  // (das machte ihn "brutal langsam", wenn der Hintergrund-Sturm weiterlief).
-  if (_aaecRunning) return; // nur ein Lauf gleichzeitig — kein Request-Sturm bei Mehrfachauslösung
+  // Straßentyp je Kante → Kostenklasse (Hintergrund, nach autoGenerateNetz). Eine Overpass-Abfrage für das ganze
+  // Netzgebiet (Kacheln ≤ 2 km, zwischengespeichert) statt einer Anfrage je Leitung — sonst sperren die öffentlichen
+  // Server die IP-Adresse (zu viele Anfragen) und auch Gebäude-, Dach- und Baumabfragen scheitern. Je Kante zählt der
+  // nächstgelegene Weg (bis 25 m von der Leitungsmitte), sonst „mittel“.
+  if (_aaecRunning) return; // nur ein Lauf gleichzeitig
   // file:// (Doppelklick auf dist/index.html): Overpass ist per CORS chancenlos → gar nicht anfragen.
   const offline = typeof location === 'undefined' || location.protocol === 'file:' || location.origin === 'null';
-  if (offline) {
-    for (const e of netzEdges) if (!e.kostOverride && !e.kostKlasse) e.kostKlasse = 'mittel';
+  const kanten = netzEdges.filter(e => !e.kostOverride && e.uNode?.pt && e.vNode?.pt);
+  if (offline || !kanten.length) {
+    for (const e of kanten) if (!e.kostKlasse) e.kostKlasse = 'mittel';
     updateRohrListe();
     return;
   }
   _aaecRunning = true;
   try {
-    let fails = 0;
-    for (const e of netzEdges) {
-      if (e.kostOverride) continue; // manuelle Einstellung nicht überschreiben
-      const uPt = e.uNode?.pt, vPt = e.vNode?.pt;
-      if (!uPt || !vPt) continue;
-      if (fails >= 2) { if (!e.kostKlasse) e.kostKlasse = 'mittel'; continue; } // Circuit-Breaker: Overpass nicht erreichbar
-      try {
-        e.kostKlasse = await queryOsmRoadType(uPt.lat, uPt.lng, vPt.lat, vPt.lng);
-      } catch (_) {
-        fails++;
-        if (!e.kostKlasse) e.kostKlasse = 'mittel';
+    let s = 90, w = 180, n = -90, o = -180;
+    for (const e of kanten) for (const p of [e.uNode.pt, e.vNode.pt]) { s = Math.min(s, p.lat); n = Math.max(n, p.lat); w = Math.min(w, p.lng); o = Math.max(o, p.lng); }
+    const rand = 0.0004;
+    const kacheln = splitOsmBbox([s - rand, w - rand, n + rand, o + rand], { targetMeters: 2000, maxTilesPerAxis: 4 });
+    const wege = [];
+    for (const [ks, kw, kn, ko] of kacheln) {
+      const q = `[out:json][timeout:25];way["highway"](${ks.toFixed(6)},${kw.toFixed(6)},${kn.toFixed(6)},${ko.toFixed(6)});out tags geom;`;
+      const d = await overpassAbfrage(q);
+      if (!d) { for (const e of kanten) if (!e.kostKlasse) e.kostKlasse = 'mittel'; return; }
+      for (const el of d.elements || []) if (el.geometry?.length >= 2 && el.tags?.highway) wege.push(el);
+    }
+    for (const e of kanten) {
+      const lat = (e.uNode.pt.lat + e.vNode.pt.lat) / 2, lng = (e.uNode.pt.lng + e.vNode.pt.lng) / 2;
+      let besterWeg = null, bestM = 25;
+      for (const weg of wege) {
+        const m = _abstandZuWegM(lat, lng, weg.geometry);
+        if (m < bestM) { bestM = m; besterWeg = weg; }
       }
+      e.kostKlasse = besterWeg ? (HIGHWAY_KOSTEN[besterWeg.tags.highway] || 'mittel') : 'mittel';
     }
   } finally {
     _aaecRunning = false;
+    updateRohrListe();
   }
-  updateRohrListe();
 }
 
 // ── Edge popup ────────────────────────────────────────────────────────

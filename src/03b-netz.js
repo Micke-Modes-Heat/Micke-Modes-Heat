@@ -44,6 +44,7 @@ import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen, besteAs
 import { strangGruppen, sackgassenEntfernen, quartierJeGebaeude, hauptstraenge } from './lib/netz-quartiere.js';
 import { zentraleJeGebaeude, kuppelVerbindungen } from './lib/netz-zentralen.js';
 import { EIS, eisAuslegungVorschlag, eisBewertung, eisGeometrie, eisInvest } from './lib/eisspeicher.js';
+import { overpassAbfrage, overpassPausen, OVERPASS_SERVER } from './lib/overpass-client.js';
 import { CP_WASSER, rohrHydraulik, rohrQuerschnittM2, wasserStoffwerte, netzPumpe, pumpenVolllaststunden, foerderDruckPa, DP_HAUSSTATION_PA, DN_MIN, DN_MIN_HAUSANSCHLUSS } from './lib/netz-hydraulik.js';
 
 /** Netztemperaturen im Jahr (°C): ab dem Jahr der geplanten Absenkung die abgesenkten Werte. */
@@ -2516,108 +2517,35 @@ function _enrichBaujahrFromSources(bbox, blId, buildings) {
 }
 
 // ── Overpass (Fallback für Bayern + Ausland) ─────────────────────────────────
-export var OVERPASS_ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
-];
-var _overpassServerNames = ['overpass-api.de', 'kumi.systems', 'private.coffee', 'maps.mail.ru'];
+export var OVERPASS_ENDPOINTS = OVERPASS_SERVER.map(s => s.url);
 var _overpassCancelled = false;
 
-function _overpassSingleAttempt(query) {
-  var done = false;
-  var controllers = [];
-  var failures = 0;
-  var serverStatus = OVERPASS_ENDPOINTS.map(function() { return 'wartet…'; });
-  var total = OVERPASS_ENDPOINTS.length;
-
-  function updateStatus(elapsed) {
-    if (done) return;
-    var lines = serverStatus.map(function(s, i) { return _overpassServerNames[i] + ': ' + s; });
-    showHint('⏳ OSM-Laden (' + elapsed + 's)  —  ' + lines.join('  |  '));
-    lsUnter(lines);
-  }
-
-  return new Promise(function(resolve) {
-    var startTime = Date.now();
-    var ticker = setInterval(function() {
-      if (done || _overpassCancelled) { clearInterval(ticker); return; }
-      updateStatus(Math.round((Date.now() - startTime) / 1000));
-    }, 500);
-
-    OVERPASS_ENDPOINTS.forEach(function(endpoint, idx) {
-      var ctrl = new AbortController();
-      controllers.push(ctrl);
-      serverStatus[idx] = '🔄';
-      var timer = setTimeout(function() { ctrl.abort(); }, 20000);
-      fetch(endpoint, {
-        method: 'POST',
-        body: 'data=' + encodeURIComponent(query),
-        signal: ctrl.signal
-      }).then(function(resp) {
-        clearTimeout(timer);
-        if (done || _overpassCancelled) return;
-        if (!resp.ok || resp.status === 429 || resp.status === 504) {
-          serverStatus[idx] = '⚠ HTTP ' + resp.status;
-          throw new Error('HTTP ' + resp.status);
-        }
-        serverStatus[idx] = '📥 Daten empfangen…';
-        updateStatus(Math.round((Date.now() - startTime) / 1000));
-        return resp.json();
-      }).then(function(data) {
-        if (done || _overpassCancelled || !data) return;
-        if (!data.elements || data.elements.length === 0) {
-          serverStatus[idx] = '⚠ leer';
-          throw new Error('Leere Antwort');
-        }
-        serverStatus[idx] = '✓ ' + data.elements.length + ' Elemente';
-        done = true;
-        clearInterval(ticker);
-        controllers.forEach(function(c) { try { c.abort(); } catch(e){} });
-        resolve(data);
-      }).catch(function(err) {
-        clearTimeout(timer);
-        if (!serverStatus[idx].startsWith('⚠')) serverStatus[idx] = '✗ ' + (err.name === 'AbortError' ? 'Timeout' : 'Fehler');
-        failures++;
-        if (failures >= total && !done) {
-          done = true;
-          clearInterval(ticker);
-          resolve(null);
-        }
-      });
-    });
-  });
-}
-
-export function _overpassFetchWithRetry(query) {
-  var MAX_RETRIES = 3;
+// Abfrage über den gemeinsamen, schonenden Overpass-Zugriff (lib/overpass-client.js): eine Anfrage zur Zeit,
+// Server nacheinander, Pause nach Rate-Limit, Zwischenspeicher im Browser. Fortschritt im Hinweis und in der Ladeübersicht.
+export function _overpassFetchWithRetry(query, opt = {}) {
   _overpassCancelled = false;
-
-  return new Promise(function(resolve) {
-    function attempt(retryNum) {
-      if (_overpassCancelled) { resolve(null); return; }
-      if (retryNum > 0) {
-        showHint('🔁 Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ' — Server werden erneut angefragt…');
-        lsMeldung('Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ' — Server werden erneut angefragt');
-      }
-      _overpassSingleAttempt(query).then(function(data) {
-        if (_overpassCancelled) { resolve(null); return; }
-        if (data) {
-          resolve(data);
-        } else if (retryNum < MAX_RETRIES) {
-          var wait = 2 + retryNum * 2; // 2s, 4s, 6s Pause
-          showHint('⚠ Alle Server fehlgeschlagen — neuer Versuch in ' + wait + 's… (Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ')');
-          lsMeldung('Alle Server fehlgeschlagen — neuer Versuch in ' + wait + ' s (' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ')');
-          setTimeout(function() { attempt(retryNum + 1); }, wait * 1000);
-        } else {
-          showHint('⚠ OSM-Server nicht erreichbar nach ' + (MAX_RETRIES + 1) + ' Versuchen — bitte Gebiet verkleinern oder später erneut versuchen');
-          setTimeout(hideHint, 8000);
-          resolve(null);
-        }
-      });
+  const zeilen = new Map();
+  const start = Date.now();
+  const zeigen = () => {
+    const lines = [...zeilen].map(([n, t]) => n + ': ' + t);
+    showHint('⏳ OSM-Laden (' + Math.round((Date.now() - start) / 1000) + 's)  —  ' + lines.join('  |  '));
+    lsUnter(lines);
+  };
+  return overpassAbfrage(query, {
+    frisch: !!opt.frisch,
+    status: (name, text) => { zeilen.set(name, text); zeigen(); },
+    abgebrochen: () => _overpassCancelled,
+  }).then(data => {
+    if (!data && !_overpassCancelled) {
+      const gesperrt = overpassPausen().filter(x => x.restS > 0).length;
+      const text = gesperrt
+        ? '⚠ OSM-Server ausgelastet oder Anfragelimit erreicht — bitte in ein paar Minuten erneut versuchen'
+        : '⚠ OSM-Server nicht erreichbar — bitte Gebiet verkleinern oder später erneut versuchen';
+      showHint(text);
+      lsMeldung(text.replace(/^⚠ /, ''));
+      setTimeout(hideHint, 8000);
     }
-    attempt(0);
+    return data;
   });
 }
 
