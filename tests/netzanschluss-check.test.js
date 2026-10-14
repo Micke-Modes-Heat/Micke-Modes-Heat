@@ -1,0 +1,112 @@
+import { describe, it, expect } from 'vitest';
+import {
+  ncEinspeisungImJahr, ncZieljahr, ncReihe, ncUeberschreitung, ncWege, ncBaustein, ncCsv, ncBedarfSvg,
+} from '../src/lib/netzanschluss-check.js';
+import { aeEinordnung, aeSvg, aeKva } from '../src/lib/anschlussebenen.js';
+import { uwParameterMischen, uwBewerten, uwSatz } from '../src/lib/umspannwerk-core.js';
+
+const P = uwParameterMischen(null);
+
+const ASSETS = [
+  { id: 'pv1', type: 'PV', props: { leistungKWp: 500 } },                         // Bestand
+  { id: 'pv2', type: 'PV', props: { leistungKWp: 3000 }, baujahr: 2030 },          // Zubau
+  { id: 'bh', type: 'KWK', props: { leistungElKW: 200 }, abrissjahr: 2028 },       // Rückbau
+  { id: 'wp', type: 'WP', props: { leistungElKW: 400 }, baujahr: 2029 },           // Last, keine Einspeisung
+];
+const STAND = {
+  dataYear: 2026, basisKw: 1800, gzf: 1, quelle: 'Messung 2026',
+  massnahmen: [{ id: 'wp', type: 'WP', loadKW: 400, genKW: 0, baujahr: 2029, abrissjahr: null, isAbbruch: false, checked: true }],
+};
+
+describe('netzanschluss-check: Bedarf', () => {
+  it('Einspeisung je Jahr: Bestand + Zubau − Rückbau', () => {
+    expect(ncEinspeisungImJahr(ASSETS, 2026)).toBe(700);
+    expect(ncEinspeisungImJahr(ASSETS, 2028)).toBe(500);
+    expect(ncEinspeisungImJahr(ASSETS, 2030)).toBe(3500);
+  });
+
+  it('Zieljahr = spätestes Maßnahmen- oder Erzeugerjahr', () => {
+    expect(ncZieljahr(STAND, ASSETS)).toBe(2030);
+    expect(ncZieljahr({ dataYear: 2026, massnahmen: [] }, [])).toBe(2026);
+  });
+
+  it('Reihe: Bezug aus der Bedarfsprognose, Überschreitung je Richtung', () => {
+    const reihe = ncReihe({ stand: STAND, assets: ASSETS, von: 2026, bis: 2032 });
+    expect(reihe[0]).toMatchObject({ jahr: 2026, bezugKw: 1800, einspKw: 700 });
+    expect(reihe.find(r => r.jahr === 2029).bezugKw).toBe(2200);
+    expect(ncUeberschreitung(reihe, 'bezugKw', 2000)).toBe(2029);
+    expect(ncUeberschreitung(reihe, 'einspKw', 1500)).toBe(2030);
+    expect(ncUeberschreitung(reihe, 'einspKw', null)).toBeNull();
+  });
+});
+
+describe('netzanschluss-check: Wege und Text', () => {
+  const reihe = ncReihe({ stand: STAND, assets: ASSETS, von: 2026, bis: 2032 });
+  const ziel = { jahr: 2030, bezugKw: 2200, einspKw: 3500 };
+  const grenzen = { bezugKw: 2500, einspKw: 1500 };
+  const uwRoh = { lat: 48.03, lng: 9.0, msKv: 20, trafos: [] };
+  const b = uwBewerten(uwRoh, { ref: { lat: 48, lng: 9 }, p: P, ziel: { bezugMw: 2.2, einspMw: 3.5 } });
+
+  it('A meldet das letzte tragfähige Jahr, C deckt das Ziel', () => {
+    const w = ncWege({ ziel, grenzen, reihe, p: P, uw: { name: 'UW Test', b } });
+    expect(w.map(x => x.id)).toEqual(['A', 'B', 'C', 'D']);
+    expect(w[0].ampel).toMatchObject({ stufe: 'warn', text: 'reicht bis 2029 (Einspeisung)' });
+    expect(w[2].ampel.stufe).toBe('ok');
+    expect(w[3].ampel.stufe).toBe('na');
+  });
+
+  it('A: schon im Messjahr überschritten', () => {
+    const w = ncWege({ ziel, grenzen: { bezugKw: 1000, einspKw: null }, reihe, p: P, uw: null });
+    expect(w[0].ampel).toMatchObject({ stufe: 'bad' });
+    expect(w[2].ampel.stufe).toBe('na');   // ohne gewähltes UW
+  });
+
+  it('Textbaustein nennt Grenzen, Bedarf, Zeitpunkt und Vorbehalt', () => {
+    const t = ncBaustein({ stand: STAND, ziel, grenzen, reihe, uw: { name: 'UW Test', betreiber: 'Netz AG', b }, osmStand: '2026-10-14' });
+    expect(t).toMatch(/2\.500 kVA Bezug/);
+    expect(t).toMatch(/für die Einspeisung bis 2029/);
+    expect(t).toMatch(/geeignete UW Test \(Netz AG\)/);
+    expect(t).not.toMatch(/Umspannwerk UW/);
+    expect(t).toMatch(/gemessenen Höchstlast von 1,8 MW im Jahr 2026/);
+    expect(t).toMatch(/wäre ein Kabelsystem nötig/);
+    const ohneKv = ncBaustein({ stand: STAND, ziel, grenzen, reihe, uw: { name: 'Umspannwerk Nord', b: { ...b, uAusUw: false } } });
+    expect(ohneKv).toMatch(/geeignete Umspannwerk Nord liegt/);
+    expect(ohneKv).toMatch(/angenommen 20 kV/);
+    expect(t).toMatch(/Netzanschlussanfrage/);
+  });
+
+  it('CSV und Diagramm', () => {
+    const csv = ncCsv(reihe, grenzen).split('\r\n');
+    expect(csv[0]).toMatch(/^Jahr;/);
+    expect(csv[1]).toBe('2026;1800;700;2500;1500');
+    expect(ncBedarfSvg({ reihe, grenzen, zieljahr: 2030 })).toMatch(/^<svg/);
+  });
+});
+
+describe('anschlussebenen', () => {
+  it('ordnet Leistungen ein', () => {
+    const e = aeEinordnung(10000);
+    expect(e.haeufig.map(b => b.name)).toContain('20 kV · Sammelschiene UW');
+    expect(e.tab.t).toBe('Sammelschiene im UW');
+    expect(aeEinordnung(0).haeufig).toEqual([]);
+    expect(aeKva(2500)).toBe('2,5 MVA');
+  });
+  it('zeichnet Marker', () => {
+    const s = aeSvg({ farben: {}, marker: [{ kva: 5000, farbe: '#f00', label: 'B 2030' }] });
+    expect(s).toMatch(/B 2030/);
+  });
+});
+
+describe('umspannwerk-core: n-1 zwischen Kabelsystemen', () => {
+  const uw = { lat: 48.03, lng: 9.0, msKv: 20, trafos: [], name: 'UW Test' };
+  const ref = { lat: 48, lng: 9 };
+  it('mit Reserve trägt das kleinste Paket ein System, braucht aber zwei', () => {
+    const ohne = uwBewerten(uw, { ref, p: P, ziel: { bezugMw: 5 } });
+    const mit = uwBewerten(uw, { ref, p: P, ziel: { bezugMw: 5 }, redundant: true });
+    expect(mit.stufen[0].systeme).toBe(2);
+    expect(mit.stufen[0].bezugMw).toBeCloseTo(ohne.stufen[0].bezugMw, 6);
+    expect(mit.ziel.systeme).toBe(ohne.ziel.systeme + 1);
+    expect(mit.stufen[0].kosten.anschlussEur).toBeGreaterThan(ohne.stufen[0].kosten.anschlussEur);
+    expect(uwSatz(uw, mit)).toMatch(/Reserve \(n-1\)/);
+  });
+});

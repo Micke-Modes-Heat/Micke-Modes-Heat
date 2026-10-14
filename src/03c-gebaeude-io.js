@@ -3527,6 +3527,9 @@ export function _buildProjectData() {
     stromMessjahre: typeof window.sgMjCapture === 'function' ? window.sgMjCapture() : null,
     // NAP-Grenzen (22-netzanschluss-panel.js): vereinbarte Anschlussleistung und Einspeisezusage
     napGrenzen: typeof window.sgNaCaptureNapGrenzen === 'function' ? window.sgNaCaptureNapGrenzen() : null,
+    // Umspannwerke in der Nähe (OSM-Schnappschuss) + Annahmen Direktanschluss (43-umspannwerke.js)
+    umspannwerke: typeof window.uwCapture === 'function' ? window.uwCapture() : null,
+    netzanschlussModul: typeof window.naModulCapture === 'function' ? window.naModulCapture() : null,
     // PV-Analyse (09d): Eingaben, letzter Berechnungsstand und Resilienz-Auslegung (Gutachten 3.4.2–3.5, 5.2)
     pvAnalyse: typeof window.pvCaptureState === 'function' ? window.pvCaptureState() : null,
     // PV-Belegungsstände (38): benannte Fassungen der Dachbelegung (Potenzial, Auslegungen der PV-Analyse)
@@ -4375,6 +4378,8 @@ function _applyProjectData(project) {
       if (typeof window.sgMjRestore === 'function') window.sgMjRestore(project.stromMessjahre || null, project.quartierProfile || null);
       // NAP-Grenzen vor der PV-Analyse — sie übernimmt die Grenzen in ihren Zustand
       if (typeof window.sgNaRestoreNapGrenzen === 'function') window.sgNaRestoreNapGrenzen(project.napGrenzen || null);
+      if (typeof window.uwRestore === 'function') window.uwRestore(project.umspannwerke || null);
+      if (typeof window.naModulRestore === 'function') window.naModulRestore(project.netzanschlussModul || null);
       // Belegungsstände vor der PV-Analyse — deren Potenzial und Auslegungen verweisen darauf
       if (typeof window.pvbsRestore === 'function') window.pvbsRestore(project.pvBelegungsStaende || null);
       // Bäume + Verschattungsschalter vor der PV-Analyse — der Schalter wirkt auf calcGebKwpKorr

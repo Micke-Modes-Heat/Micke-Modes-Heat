@@ -5887,6 +5887,160 @@ GG_FIGUREN.push({
   },
 });
 
+/* ── 5.1.2 Prinzipskizze Redundanzklassen ────────────────────────────────────
+ * Einteilung in Anlehnung an die PROFINET-Systemredundanz (S1/S2/R1/R2):
+ * Buchstabe = Anschlüsse der Station (S einfach, R doppelt), Ziffer = Versorgungswege
+ * je Anschluss. Je Klasse ein Feld: zwei Einspeisungen links, Trafostation rechts
+ * (MS- und NS-Sammelschiene senkrecht), darunter die Folge eines Kabel- bzw. Trafofehlers.
+ * Rein schematisch — keine Projektdaten. */
+const GG_REDUNDANZ_KLASSEN = Object.freeze([
+  { k: 'S1', name: 'Stichversorgung', anschl: 1, wege: 1,
+    kabel: ['aus', 'Ausfall bis zur Reparatur'], trafo: ['aus', 'Ausfall bis zur Reparatur'] },
+  { k: 'S2', name: 'Ring / zweiseitige Einspeisung', anschl: 1, wege: 2,
+    kabel: ['ok', 'Umschaltung auf Weg 2'], trafo: ['aus', 'Ausfall bis zur Reparatur'] },
+  { k: 'R1', name: 'Doppelstich', anschl: 2, wege: 1,
+    kabel: ['teil', 'eine Hälfte aus → Kupplung schließen'], trafo: ['teil', 'eine Hälfte aus → Kupplung schließen'] },
+  { k: 'R2', name: 'Vollredundanz', anschl: 2, wege: 2,
+    kabel: ['ok', 'Umschaltung auf Weg 2'], trafo: ['ok', 'zweiter Trafo übernimmt'] },
+]);
+
+export function ggRenderRedundanzPrinzip(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const gruen = T.accents.gruenDunkel, weg2 = T.energy.strom;
+  const strich = T.text.strong, fein = T.text.faint;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  const folgeFarbe = { aus: T.energy.waerme, teil: T.energy.gas, ok: T.accents.gruen };
+  const top = S.headBand + S.headHSchmal + 24;
+  const gap = 24, pw = (W - 2 * S.padX - gap) / 2, ph = 352;
+  const legY = top + 2 * ph + gap + 30;
+  const fuss = ggResUmbruch(cfg.fussnote || '', 150);
+  const height = legY + 26 + fuss.length * 15 + S.footSpace;
+  const G = { S, W, headH: S.headHSchmal, reduziert: true, height };
+  let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.titel }, T, G);
+
+  const pfad = (d, o = {}) => `<path d="${d}" fill="none" stroke="${o.farbe || strich}" stroke-width="${o.breite || 2}"`
+    + `${o.strich ? ` stroke-dasharray="${o.strich}"` : ''} stroke-linejoin="round"/>`;
+  const linie = (x1, y1, x2, y2, o = {}) => pfad(`M${gR(x1)} ${gR(y1)}L${gR(x2)} ${gR(y2)}`, o);
+  const punkt = (x, y, farbe) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="3.2" fill="${farbe}"/>`;
+  // Lasttrennschalter-Feld am Stationseingang
+  const feld = (x, y) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="4.5" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.4"/>`;
+  // Trafo liegend: zwei Kreise nebeneinander
+  const trafo = (x, y) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="11" fill="none" stroke="${strich}" stroke-width="1.5"/>`
+    + `<circle cx="${gR(x + 16)}" cy="${gR(y)}" r="11" fill="none" stroke="${strich}" stroke-width="1.5"/>`;
+
+  const feldZeichnen = (kl, px, py) => {
+    let o = `<rect x="${gR(px) + 0.5}" y="${gR(py) + 0.5}" width="${gR(pw - 1)}" height="${ph - 1}"
+              fill="${T.neutral.cardBg}" stroke="${T.line}" stroke-width="1"/>`;
+    o += txt(px + 16, py + 31, kl.k, { size: 20, weight: 700, fill: gruen });
+    o += txt(px + 54, py + 30, kl.name, { size: 13, weight: 700 });
+    o += linie(px + 16, py + 44, px + pw - 16, py + 44, { farbe: T.line, breite: 1 });
+
+    // Einspeisungen A (oben) und B (unten); in S1 ist B nicht vorhanden
+    const qx = px + 16, qw = 120, qh = 44, qA = py + 70, qB = py + 200;
+    for (const [qy, name, da] of [[qA, 'Einspeisung A', true], [qB, 'Einspeisung B', kl.wege > 1 || kl.anschl > 1]]) {
+      o += `<rect x="${gR(qx) + 0.5}" y="${gR(qy) + 0.5}" width="${qw}" height="${qh}" fill="${da ? T.neutral.band : 'none'}"
+              stroke="${da ? T.rule : fein}" stroke-width="1.2"${da ? '' : ' stroke-dasharray="4 3"'}/>`;
+      o += txt(qx + qw / 2, qy + 19, name, { anchor: 'middle', size: 11.5, weight: 700, fill: da ? strich : fein });
+      o += txt(qx + qw / 2, qy + 34, da ? 'MS-Abgang' : 'nicht vorhanden', { anchor: 'middle', size: 10.5, fill: da ? T.text.muted : fein });
+    }
+
+    // Trafostation
+    const sx = px + 226, sy = py + 60, sw = pw - 226 - 16, sh = 212;
+    o += `<rect x="${gR(sx) + 0.5}" y="${gR(sy) + 0.5}" width="${gR(sw)}" height="${sh}" fill="${T.tint}"
+            stroke="${T.accents.gruen}" stroke-width="1.2"/>`;
+    o += txt(sx + 8, sy + 16, 'Trafostation', { size: 11, weight: 700 });
+    const msX = sx + 36, nsX = sx + 146, tY = sy + 36, bY = sy + 194;
+    o += txt(msX, tY - 6, 'MS', { anchor: 'middle', size: 10, fill: T.text.muted });
+    o += txt(nsX, tY - 6, 'NS', { anchor: 'middle', size: 10, fill: T.text.muted });
+    // Anschlüsse: Abschnitt [von, bis] der MS-Sammelschiene, Trafo in der Mitte
+    const abschnitte = kl.anschl === 1 ? [[tY, bY]] : [[tY, tY + 64], [bY - 64, bY]];
+    abschnitte.forEach(([a, b], i) => {
+      const m = (a + b) / 2;
+      o += linie(msX, a, msX, b, { farbe: gruen, breite: 4.5 });
+      o += linie(msX, m, msX + 28, m) + trafo(msX + 39, m) + linie(msX + 66, m, nsX, m);
+      o += linie(nsX, a + 4, nsX, b - 4, { breite: 4 });
+      if (kl.anschl === 2) o += txt(msX - 8, m + 4, String(i + 1), { anchor: 'end', size: 10, weight: 700, fill: T.text.muted });
+    });
+    if (kl.anschl === 2) {
+      // NS-Kupplung, im Normalbetrieb offen
+      const a = tY + 60, b = bY - 60, ky = (a + b) / 2;
+      o += linie(nsX, a, nsX, ky - 8, { breite: 1.6 }) + linie(nsX, ky + 8, nsX, b, { breite: 1.6 });
+      o += linie(nsX, ky + 8, nsX + 9, ky - 7, { breite: 1.6 });
+      o += txt(nsX + 14, ky + 4, 'Kupplung', { size: 10, fill: T.text.muted });
+    }
+
+    // Versorgungswege: Eintritt auf die MS-Sammelschiene
+    const eA = kl.anschl === 1 ? [tY + 14] : kl.wege === 1 ? [tY + 16] : [tY + 16, bY - 48];
+    const eB = kl.anschl === 1 ? (kl.wege > 1 ? [bY - 14] : []) : kl.wege === 1 ? [bY - 16] : [bY - 16, tY + 48];
+    const laneA = px + 170, laneB = px + 200, ausA = qA + qh / 2, ausB = qB + qh / 2;
+    const zeichneWege = (aus, lane, ziele, o2) => {
+      let r = '';
+      ziele.forEach((y, i) => {
+        r += pfad(i === 0 ? `M${gR(qx + qw)} ${gR(aus)}H${gR(lane)}V${gR(y)}H${gR(msX)}` : `M${gR(lane)} ${gR(ziele[0])}V${gR(y)}H${gR(msX)}`, o2);
+        r += feld(sx + 14, y);
+      });
+      if (ziele.length > 1) r += punkt(lane, ziele[0], o2.farbe);
+      return r;
+    };
+    o += zeichneWege(ausB, laneB, eB, { farbe: weg2, breite: 2, strich: '7 4' });
+    o += zeichneWege(ausA, laneA, eA, { farbe: gruen, breite: 2.2 });
+
+    // Folge eines Einzelfehlers
+    const fy = py + 298;
+    o += txt(px + 16, fy, `${kl.anschl} ${kl.anschl === 1 ? 'Anschluss' : 'Anschlüsse'} · `
+      + `${kl.anschl === 2 ? 'je ' : ''}${kl.wege} ${kl.wege === 1 ? 'Versorgungsweg' : 'Versorgungswege'}`, { size: 12, weight: 700 });
+    [['Kabelfehler', kl.kabel], ['Trafofehler', kl.trafo]].forEach(([was, [art, folge]], i) => {
+      const y = fy + 22 + i * 19;
+      o += `<rect x="${gR(px + 16)}" y="${gR(y - 9)}" width="10" height="10" fill="${folgeFarbe[art]}"/>`;
+      o += txt(px + 34, y, `${was}:`, { size: 11.5, weight: 700 });
+      o += txt(px + 114, y, folge, { size: 11.5, fill: T.text.muted });
+    });
+    return o;
+  };
+
+  GG_REDUNDANZ_KLASSEN.forEach((kl, i) => {
+    out += feldZeichnen(kl, S.padX + (i % 2) * (pw + gap), top + Math.floor(i / 2) * (ph + gap));
+  });
+
+  // ── Legende ──
+  let lx = S.padX;
+  const leg = (zeichen, zw, text) => {
+    out += zeichen(lx, legY);
+    out += txt(lx + zw + 8, legY + 4, text, { size: 11 });
+    lx += zw + 8 + ggEstW(text, 11) + 30;
+  };
+  leg((x, y) => linie(x, y, x + 30, y, { farbe: gruen, breite: 2.2 }), 30, 'Versorgungsweg 1');
+  leg((x, y) => linie(x, y, x + 30, y, { farbe: weg2, breite: 2, strich: '7 4' }), 30, 'Versorgungsweg 2');
+  for (const [art, text] of [['aus', 'Ausfall'], ['teil', 'Teilausfall'], ['ok', 'überbrückt']]) {
+    leg((x, y) => `<rect x="${x}" y="${y - 5}" width="10" height="10" fill="${folgeFarbe[art]}"/>`, 10, text);
+  }
+  fuss.forEach((z, i) => { out += txt(S.padX, legY + 28 + i * 15, z, { size: S.fsTab - 2, fill: fein }); });
+  return ggFinishSvg(out, W, height);
+}
+
+GG_FIGUREN.push({
+  id: 'redundanz-prinzip',
+  autoSync: true,
+  reihe: 600,   // nach dem Übersichtsschaltbild (500), vor der Tabelle „Übersicht Trafostationen“
+  kapitel: '5.1.2 Stromnetz intern (MS/NS)',
+  titel: 'Prinzip Redundanzklassen der Stromversorgung',
+  datei: 'redundanzklassen-prinzip',
+  hinweis: 'Prinzipskizze ohne Projektdaten: Einteilung der Versorgung einer Station in die Klassen S1/S2/R1/R2 '
+         + 'in Anlehnung an die PROFINET-Systemredundanz — Buchstabe = Anschlüsse der Station (S einfach, R doppelt), '
+         + 'Ziffer = Versorgungswege je Anschluss. Je Klasse die Folge eines Kabel- und eines Trafofehlers. '
+         + 'Dient als Bezug, wenn im Text von Redundanz die Rede ist.',
+  render: cfg => ggRenderRedundanzPrinzip(cfg),
+  config: {
+    eyebrow: 'Stromnetz · Versorgungssicherheit',
+    titel: 'Redundanzklassen der Stromversorgung',
+    fussnote: 'Prinzipskizze in Anlehnung an die Redundanzklassen der PROFINET-Systemredundanz: Buchstabe = Anschlüsse '
+      + 'der Station (S einfach, R doppelt), Ziffer = Versorgungswege je Anschluss. Ein zweiter Weg oder Trafo zählt nur, '
+      + 'wenn er die volle Last allein trägt (n-1). Für Gebäude gilt dieselbe Einteilung auf der NS-Ebene '
+      + '(Anschluss = Einspeisung der NSHV).',
+  },
+  ausProjekt() { return '✓ Prinzipskizze — keine Projektdaten nötig.'; },
+});
+
 /* ── 3.4.1 Zielnetz: dasselbe Schaltbild mit allen Planungen des Netzmodells ──
  * Neue Stationen/Kabel gestrichelt hellgrün, ertüchtigte Kabel kräftig hellgrün, Trafotausch und
  * zusätzliche Trafos als grüne Zeile auf der Karte, Rückbau in der Fußnote. Gezeigt wird, was im
