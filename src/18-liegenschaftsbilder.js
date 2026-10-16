@@ -165,7 +165,7 @@ function lbCapPanelHtml() {
   <div style="display:flex;gap:6px;margin-bottom:14px;">${[2,3,4].map(scaleBtn).join('')}</div>
 
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-    <button data-click="lbCaptureMap()" style="padding:8px 16px;border-radius:6px;border:1px solid rgba(38,166,154,.6);background:rgba(38,166,154,.18);color:#26a69a;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">📷 Bild aus aktuellem Kartenausschnitt erzeugen</button>
+    <button data-click="lbCaptureMap()" style="padding:8px 16px;border-radius:6px;border:1px solid rgba(38,166,154,.6);background:rgba(38,166,154,.18);color:#26a69a;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">Bild aus aktuellem Kartenausschnitt erzeugen</button>
     ${_lbCapBlob ? `<button data-click="lbCapDownload()" style="padding:8px 14px;border-radius:6px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:12px;cursor:pointer;">⤓ PNG herunterladen</button>` : ''}
   </div>
   <div id="lb-cap-status" style="font-size:11px;color:#26a69a;min-height:16px;margin-bottom:10px;"></div>
@@ -1634,7 +1634,7 @@ function lpPanelHtml() {
   const msBtn = (v, label, title) => `<button data-click="lpSetMsModus('${v}')" title="${lbEsc(title)}"
     style="padding:4px 10px;border-radius:12px;border:1px solid ${_lpState.msModus===v?'#FB8C00':'rgba(255,255,255,.14)'};background:${_lpState.msModus===v?'rgba(251,140,0,.16)':'transparent'};color:${_lpState.msModus===v?'#FB8C00':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
   const vergleichBtn = `<button data-click="lpToggleVergleich()" title="Zeigt Referenzjahr (Bestand) und Zieljahr (Ausbauziel) als zwei Lagepläne nebeneinander — gleicher Maßstab und Kartenausschnitt für beide Seiten"
-    style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.vergleich?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpState.vergleich?'rgba(38,166,154,.16)':'transparent'};color:${_lpState.vergleich?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">🔀 Vorher/Nachher</button>`;
+    style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.vergleich?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpState.vergleich?'rgba(38,166,154,.16)':'transparent'};color:${_lpState.vergleich?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">Vorher/Nachher</button>`;
 
   const assetTypen = Object.keys(_lpAssetCounts).sort((a, b) =>
     (window.ASSET_CFG?.[a]?.label || a).localeCompare(window.ASSET_CFG?.[b]?.label || b));
@@ -1740,10 +1740,10 @@ function lpPanelHtml() {
   /* Gruppe "Ausschnitt & Ausrichtung" — wie das Blatt steht */
   const koerperBlatt = [
     feld('Ausschnitt', `<div class="lp-zeile">
-      ${knopf('lpUebernehmeKartenausschnitt()', '📍 Von der Karte übernehmen', 'Übernimmt den aktuell auf der Karte sichtbaren Zoom/Ausschnitt statt automatisch an die gezeichneten Objekte anzupassen')}
+      ${knopf('lpUebernehmeKartenausschnitt()', 'Von der Karte übernehmen', 'Übernimmt den aktuell auf der Karte sichtbaren Zoom/Ausschnitt statt automatisch an die gezeichneten Objekte anzupassen')}
       ${_lpState.kartenausschnitt ? kleinBtn('lpKartenausschnittZuruecksetzen()', '↺ Automatisch', 'Wieder automatisch an die gezeichneten Objekte anpassen') : ''}
     </div>
-    <p class="lp-hinweis">🖱 Im Plan ziehen zum Verschieben, Mausrad zum Zoomen — feines Nachjustieren, ohne zur Karte zu wechseln.</p>`),
+    <p class="lp-hinweis">Im Plan ziehen zum Verschieben, Mausrad zum Zoomen — feines Nachjustieren, ohne zur Karte zu wechseln.</p>`),
     feld('Drehung', `<div class="lp-zeile">
       <input type="range" min="-180" max="180" step="1" value="${d}"
         title="Dreht den kompletten Plan — Geometrie, Satellitenbild und Nordpfeil. 0° = Norden oben."
@@ -1756,10 +1756,10 @@ function lpPanelHtml() {
     <div class="lp-zeile">${_lpAchse
       ? `<span style="font-size:10px;color:#ffcc80;">🖱 ${_lpAchse.p1 ? 'Zweiten' : 'Ersten'} Punkt der Achse im Plan anklicken …</span>
          <button data-click="lpAbbrechenAchse()" style="padding:5px 11px;border-radius:5px;border:1px solid rgba(239,83,80,.4);background:transparent;color:#ef5350;font-family:inherit;font-size:10.5px;cursor:pointer;">Abbrechen</button>`
-      : knopf('lpStartAchse()', '📐 An Achse ausrichten', 'Zwei Punkte im Plan anklicken (z. B. Anfang und Ende der Hauptstraße) — der Plan wird so gedreht, dass diese Achse senkrecht steht')}</div>
+      : knopf('lpStartAchse()', 'An Achse ausrichten', 'Zwei Punkte im Plan anklicken (z. B. Anfang und Ende der Hauptstraße) — der Plan wird so gedreht, dass diese Achse senkrecht steht')}</div>
     <p class="lp-hinweis">Für Liegenschaften, deren Hauptachse schräg zur Nordrichtung liegt. Nordpfeil, Satellitenbild und freie Beschriftungen drehen mit. Nach einer Drehung das Satellitenbild neu einfangen — es wird dann passend zum gedrehten Blatt geholt.</p>`),
     feld('Luftbild', `<div class="lp-zeile">
-      ${knopf('lpCaptureSatellite()', '🛰 Neu einfangen', 'Holt das Luftbild für genau den Bereich, den der Plan gerade zeigt — Zoom und Drehung des Plans bleiben unverändert, die Arbeitskarte wird nur kurz ausgeliehen', _lpSatBusy)}
+      ${knopf('lpCaptureSatellite()', 'Neu einfangen', 'Holt das Luftbild für genau den Bereich, den der Plan gerade zeigt — Zoom und Drehung des Plans bleiben unverändert, die Arbeitskarte wird nur kurz ausgeliehen', _lpSatBusy)}
       ${_lpState.satBild ? chk(_lpState.satBildAn, 'als Hintergrund zeigen', 'lpSetSatBildAn(this.checked)') : ''}
     </div>
     <p class="lp-hinweis">${window.map?.hasLayer?.(window.esriTile) ? 'Kartenhintergrund: Luftbild.' : 'Kartenhintergrund ist die Straßenkarte — beim Einfangen wird automatisch auf Luftbild umgeschaltet.'} Das Bild bleibt geografisch verankert, im Plan lässt sich danach frei zoomen und verschieben.</p>`),
@@ -1779,7 +1779,7 @@ function lpPanelHtml() {
       ${kleinBtn('lpLabelAuswahl(false)', 'Keine', 'Keine Gruppe beschriften — dann gezielt einzelne wieder anhaken')}
       ${_lpLabelOffsets.size ? kleinBtn('lpResetLabelOffsets()', `↺ ${_lpLabelOffsets.size} verschobene zurücksetzen`, 'Setzt alle von Hand verschobenen Beschriftungen auf ihre Standardposition am Objekt zurück') : ''}
     </div>
-    <p class="lp-hinweis">🖱 Einzelne Beschriftung im Plan anfassen und ziehen, wenn sich Namen überdecken — sie bleibt an ihrem Objekt hängen. Ein Klick ohne Ziehen öffnet den Objekt-Editor unten.</p>` : ''}`),
+    <p class="lp-hinweis">Einzelne Beschriftung im Plan anfassen und ziehen, wenn sich Namen überdecken — sie bleibt an ihrem Objekt hängen. Ein Klick ohne Ziehen öffnet den Objekt-Editor unten.</p>` : ''}`),
 
     feld('Eigene Texte & Linien', `<div class="lp-zeile">
       <input id="lp-anno-text" type="text" placeholder="Text (z. B. „geplante Erweiterung“) — bei Linie optional"
@@ -1792,8 +1792,8 @@ function lpPanelHtml() {
     </div>
     <div class="lp-zeile">
       ${knopf("lpStartPlacing('text')", '✎ Text setzen', 'Text eingeben, dann die Stelle im Plan anklicken', !!_lpPlacing)}
-      ${knopf("lpStartPlacing('line')", '📏 Linie setzen', 'Zwei Punkte im Plan anklicken — Text optional', !!_lpPlacing)}
-      ${_lpPlacing ? `<span style="font-size:10px;color:#ffcc80;">🖱 Auf den Plan klicken${_lpPlacing.type === 'line' ? (_lpPlacing.lat1 == null ? ' — Startpunkt' : ' — Endpunkt') : ''} …</span>
+      ${knopf("lpStartPlacing('line')", 'Linie setzen', 'Zwei Punkte im Plan anklicken — Text optional', !!_lpPlacing)}
+      ${_lpPlacing ? `<span style="font-size:10px;color:#ffcc80;">Auf den Plan klicken${_lpPlacing.type === 'line' ? (_lpPlacing.lat1 == null ? ' — Startpunkt' : ' — Endpunkt') : ''} …</span>
         <button data-click="lpCancelPlacing()" style="padding:5px 11px;border-radius:5px;border:1px solid rgba(239,83,80,.4);background:transparent;color:#ef5350;font-family:inherit;font-size:10.5px;cursor:pointer;">Abbrechen</button>` : ''}
     </div>
     ${_lpAnnotations.length ? `<div style="display:flex;flex-direction:column;gap:4px;">
@@ -1808,7 +1808,7 @@ function lpPanelHtml() {
         <button data-click="lpRemoveAnnotation(${a.id})" title="Entfernen" style="background:transparent;border:none;color:#ef5350;cursor:pointer;font-size:12px;">✕</button>
       </div>`).join('')}
     </div>
-    <p class="lp-hinweis">🖱 Im Plan anfassen und ziehen zum Verschieben. Sie hängen an ihrer Stelle der Liegenschaft — Verschieben, Zoomen und Drehen lassen sie dort, wo sie gesetzt wurden.</p>` : ''}`),
+    <p class="lp-hinweis">Im Plan anfassen und ziehen zum Verschieben. Sie hängen an ihrer Stelle der Liegenschaft — Verschieben, Zoomen und Drehen lassen sie dort, wo sie gesetzt wurden.</p>` : ''}`),
 
     feld('Hervorgehobene Objekte', `${_lpSelected ? lpMarkEditorHtml() : ''}
     ${_lpMarkierungen.size ? `<div style="display:flex;flex-direction:column;gap:4px;">
@@ -1859,7 +1859,7 @@ function lpPanelHtml() {
         <span class="lp-wert">${d}°</span>
         <button class="lp-ikon" data-click="lpDrehSchritt(15)" title="15° im Uhrzeigersinn drehen">↻</button>
         <span class="lp-wz-trenner"></span>
-        ${knopf('lpCaptureSatellite()', '🛰 Luftbild', 'Holt das Luftbild für genau den Bereich, den der Plan gerade zeigt', _lpSatBusy)}
+        ${knopf('lpCaptureSatellite()', 'Luftbild', 'Holt das Luftbild für genau den Bereich, den der Plan gerade zeigt', _lpSatBusy)}
         <span style="font-size:10px;color:var(--muted);">${_lpState.kartenausschnitt ? 'fester Ausschnitt' : 'Ausschnitt automatisch'}</span>
         <div id="lp-status" style="margin-left:auto;font-size:10.5px;color:#26a69a;min-height:14px;"></div>
       </div>
@@ -2207,7 +2207,7 @@ function lpMarkEditorHtml() {
         <input type="checkbox" ${m.sichtbar !== false ? 'checked' : ''} data-change="lpSetMarkFlag('${lbEsc(_lpSelected)}','sichtbar',this.checked)">Im Plan anzeigen</label>
       ${verschoben ? `<button data-click="lpResetMarkOffset('${lbEsc(_lpSelected)}')" style="padding:3px 9px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:transparent;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;">Textposition zurücksetzen</button>` : ''}
     </div>
-    ${m.text ? `<div style="font-size:10px;color:var(--muted);margin-top:6px;">🖱 Beschriftung im Plan direkt anfassen und verschieben.</div>` : ''}
+    ${m.text ? `<div style="font-size:10px;color:var(--muted);margin-top:6px;">Beschriftung im Plan direkt anfassen und verschieben.</div>` : ''}
   </div>`;
 }
 
@@ -2344,7 +2344,7 @@ window.lpStartAchse = () => {
   _lpPlacing = null;   // Achsenwahl und Annotations-Platzierung schließen sich aus
   _lpAchse = { p1: null };
   lpRenderPanel();
-  lpSay('🖱 Ersten Punkt der Achse im Plan anklicken (z. B. Anfang der Hauptstraße).');
+  lpSay('Ersten Punkt der Achse im Plan anklicken (z. B. Anfang der Hauptstraße).');
 };
 window.lpAbbrechenAchse = () => { _lpAchse = null; lpRenderPanel(); };
 
@@ -2515,7 +2515,7 @@ function lbRenderTabs() {
   const tabBar = document.getElementById('lb-subtabs');
   if (tabBar) {
     const tabBtn = (id, label) => `<button data-click="lbSetTab('${id}')" style="padding:6px 14px;border-radius:14px;border:1px solid ${_lbTab===id?'#26a69a':'var(--border)'};background:${_lbTab===id?'rgba(38,166,154,.16)':'transparent'};color:${_lbTab===id?'#26a69a':'var(--muted)'};font-family:inherit;font-size:11px;cursor:pointer;">${label}</button>`;
-    tabBar.innerHTML = tabBtn('karte', '📷 Kartenscreenshot') + tabBtn('lageplan', '📐 Vektor-Lageplan');
+    tabBar.innerHTML = tabBtn('karte', 'Kartenscreenshot') + tabBtn('lageplan', 'Vektor-Lageplan');
   }
   const capWrap = document.getElementById('lb-cap-wrap');
   const lpWrap = document.getElementById('lb-lp-wrap');
@@ -2531,7 +2531,7 @@ export function lbBuildAnalyseSection() {
     const btn = document.createElement('button');
     btn.className = 'analyse-section-tab';
     btn.dataset.section = 'liegenschaftsbilder';
-    btn.textContent = '🗺️ Liegenschaftsbilder';
+    btn.textContent = 'Liegenschaftsbilder';
     btn.title = 'Echte Bilder der Liegenschaft fürs Gutachten — hochauflösender Kartenscreenshot oder ein aus den Geodaten neu gezeichneter Vektor-Lageplan (Gebäude, Wärme-/Stromnetz).';
     btn.addEventListener('click', () => {
       if (typeof window.setAnalyseSection === 'function') window.setAnalyseSection('liegenschaftsbilder');

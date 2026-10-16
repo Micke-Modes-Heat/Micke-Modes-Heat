@@ -58,7 +58,7 @@ function _ensurePanel() {
   panel.style.cssText = 'top:70px;min-width:600px;max-width:860px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
   panel.innerHTML = `
     <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID}')">
-      <span style="color:var(--c-teal);font-size:12px;font-weight:600;">🪜 Schwellentreppe</span>
+      <span style="color:var(--c-teal);font-size:12px;font-weight:600;">Schwellentreppe</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
             data-click="schwellenPanelToggle()">✕</span>
@@ -77,7 +77,7 @@ export function schwellenPanelToggle() {
 
 /** Schnappschüsse aller Varianten holen und danach neu zeichnen. */
 export function schwellenAnalyseStarten() {
-  showHint('🪜 Schwellenanalyse: Varianten werden durchgerechnet …');
+  showHint('Schwellenanalyse: Varianten werden durchgerechnet …');
   setTimeout(() => {
     try {
       lastgangSchnappschuesseAlleVarianten();
@@ -103,7 +103,7 @@ export function schwellenAnalyseStarten() {
 export function schwellenVertiefen(varianteId) {
   const id = (varianteId === '' || varianteId === 'null') ? null : varianteId;
   if ((activeVariantId ?? null) !== id) activateVariant(id);
-  showHint('🔬 Vertiefung: zeitlicher Engpass-Verlauf wird gerechnet …');
+  showHint('Vertiefung: zeitlicher Engpass-Verlauf wird gerechnet …');
   setTimeout(() => {
     try {
       engpassPanelAktualisieren();
@@ -132,7 +132,7 @@ export function schwellenPanelRender() {
           <button data-click="schwellenAnalyseStarten()"
             style="padding:4px 10px;border-radius:5px;border:1px solid var(--c-teal);background:transparent;
                    color:var(--c-teal);font-family:inherit;font-size:10px;cursor:pointer;">
-            🪜 Analyse starten</button>
+            Analyse starten</button>
         </div>
       </div>`;
     return;
@@ -219,7 +219,7 @@ function _variantenBlock(schnappschuss, analyse) {
         style="margin-left:auto;padding:2px 8px;border-radius:4px;font-family:inherit;font-size:9px;cursor:pointer;
                border:1px solid ${aktiv ? '#f9a825' : 'var(--border)'};background:transparent;
                color:${aktiv ? '#f9a825' : 'var(--muted)'};white-space:nowrap;">
-        🔬 vertiefen${aktiv ? '' : ' →'}</button>
+        vertiefen${aktiv ? '' : ' →'}</button>
     </div>
     <div style="background:var(--surface2);border-radius:6px;padding:6px 9px;">
       ${komponenten || '<span style="font-size:9px;color:var(--muted);">keine auswertbare Netzkomponente</span>'}

@@ -776,8 +776,8 @@ export function _stromRenderFlussChart(weekIdx) {
       html += `<br><span style="color:var(--c-blue)">WP ${d.WP[h].toFixed(1)} kWh</span>`;
       if (d.SK && d.SK[h] > 0) html += `<br><span style="color:var(--c-blue)">Stromkessel ${d.SK[h].toFixed(1)} kWh</span>`;
       html += `<br><span style="color:var(--c-blue)">Quartier ${d.Q[h].toFixed(1)} kWh</span>`;
-      if (net > 0) html += `<br><span style="color:var(--c-red)">⬇ Bezug ${net.toFixed(1)} kWh</span>`;
-      else if (net < 0) html += `<br><span style="color:var(--c-green)">⬆ Einspeisung ${(-net).toFixed(1)} kWh</span>`;
+      if (net > 0) html += `<br><span style="color:var(--c-red)">Bezug ${net.toFixed(1)} kWh</span>`;
+      else if (net < 0) html += `<br><span style="color:var(--c-green)">Einspeisung ${(-net).toFixed(1)} kWh</span>`;
       if (d.SOC) html += `<br><span style="color:var(--c-amber)">SOC ${d.SOC[h].toFixed(1)} kWh</span>`;
       tt.innerHTML = html;
       tt.style.display = 'block';

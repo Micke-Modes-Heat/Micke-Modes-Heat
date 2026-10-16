@@ -708,7 +708,7 @@ function _aussageAktualisieren(root, erg, eingabe, lf) {
   box.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
       <div data-pvna-aussage-text style="font-size:12px;line-height:1.55;color:var(--text);">${kopf}</div>
-      <button class="pvna-knopf" data-pvna-aktion="kopieren" style="flex:none;" title="Aussage als Text in die Zwischenablage (z. B. für das Gutachten)">📋 Text kopieren</button>
+      <button class="pvna-knopf" data-pvna-aktion="kopieren" style="flex:none;" title="Aussage als Text in die Zwischenablage (z. B. für das Gutachten)">Text kopieren</button>
     </div>
     <div data-pvna-aussage-punkte style="margin-top:5px;font-size:11px;line-height:1.55;color:var(--muted);">
       ${punkte.map(p => `<div style="margin-top:3px;">${p}</div>`).join('')}
@@ -738,7 +738,7 @@ function _aussageKopieren(root, knopf) {
   const kopf = text('[data-pvna-aussage-text]');
   const punkte = text('[data-pvna-aussage-punkte]');
   const txt = (kopf + '\n' + punkte).replace(/\n{3,}/g, '\n\n').trim();
-  const zurueck = ok => { knopf.textContent = ok ? '✓ kopiert' : 'Kopieren nicht möglich'; setTimeout(() => { knopf.textContent = '📋 Text kopieren'; }, 1800); };
+  const zurueck = ok => { knopf.textContent = ok ? '✓ kopiert' : 'Kopieren nicht möglich'; setTimeout(() => { knopf.textContent = 'Text kopieren'; }, 1800); };
   if (navigator.clipboard?.writeText) navigator.clipboard.writeText(txt).then(() => zurueck(true), () => zurueck(false));
   else zurueck(false);
 }
@@ -943,7 +943,7 @@ export function pvnaSchemaRender() {
         title="Schema und Schieber so verkleinern, dass alles ohne Scrollen sichtbar ist">
         <input type="checkbox" data-pvna-einpassen ${_einpassen ? 'checked' : ''}> auf Bildschirm einpassen</label>` : ''}
       ${knopf('allezu', '⊟ Alles einklappen', 'Jeden Trafo auf eine Summenzeile mit Gruppenschieber einklappen')}
-      ${knopf('alleauf', '⊞ Alles ausklappen', 'Die ganze Netzstruktur wieder zeigen')}
+      ${knopf('alleauf', 'Alles ausklappen', 'Die ganze Netzstruktur wieder zeigen')}
       ${_vollbild ? '' : knopf('ausklappen', _ausgeklappt ? '⤡ Einklappen' : '⤢ Ausklappen',
         _ausgeklappt ? 'Ergebnis-Navigation wieder einblenden, Schema im Scrollbereich'
           : 'Schema über die ganze Seitenbreite und in voller Höhe — die Seite scrollt')}
@@ -1439,7 +1439,7 @@ function _fahrplanVariantenLeiste(n) {
     data-pvna-aktion="${akt}" title="${tip}">${txt}</button>`;
   return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 6px;">
     <span style="font-weight:600;">Stufen als Varianten:</span>
-    ${knopf('fvar-alle', '☑ alle Stufen', `Alle ${n} Stufen als Varianten „Fahrplan Stufe 1…${n}" übernehmen`)}
+    ${knopf('fvar-alle', 'alle Stufen', `Alle ${n} Stufen als Varianten „Fahrplan Stufe 1…${n}" übernehmen`)}
     ${knopf('fvar-keine', '☐ keine', 'Keine Fahrplanstufe als Variante')}
     ${knopf('fvar-rechnen', '↻ Varianten neu rechnen', 'Die Auswahl in die PV-Analyse übernehmen und alle Varianten neu rechnen', !aktuell)}
     <span style="color:var(--muted);">${gew.length ? `${gew.length} von ${n} gewählt` : 'keine gewählt'}

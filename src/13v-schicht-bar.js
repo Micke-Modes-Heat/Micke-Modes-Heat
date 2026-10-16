@@ -59,7 +59,7 @@ function _html() {
   }).join('');
   const wahl = ['auto', ...SCHICHT_REIHENFOLGE].map(k => {
     const an = modus === k;
-    const lab = k === 'auto' ? '⚙ automatisch (empfohlen)'
+    const lab = k === 'auto' ? 'automatisch (empfohlen)'
       : `${SCHICHT_META[k].icon} immer ${k === SCHICHT.ENTSCHEIDUNG ? 'nur aktive Variante' : SCHICHT_META[k].label}`;
     return `<button data-click="schichtSetModus('${k}')" style="display:block;width:100%;text-align:left;padding:4px 8px;margin:1px 0;
       border-radius:4px;border:1px solid ${an ? 'var(--accent)' : 'transparent'};background:${an ? 'rgba(212,168,85,.12)' : 'transparent'};

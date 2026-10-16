@@ -56,8 +56,8 @@ function _hauptplanZweck() { return hauptplanZweck; }
 
 /** art: 'variante' | 'alle' | 'bestand' */
 export function wirkungChipHtml(art, text) {
-  const t = text || (art === 'variante' ? `🎯 nur ${esc(aktiverVariantenName())}`
-    : art === 'bestand' ? '🏛 Bestand · alle Varianten' : '📈 alle Varianten');
+  const t = text || (art === 'variante' ? `nur ${esc(aktiverVariantenName())}`
+    : art === 'bestand' ? 'Bestand · alle Varianten' : 'alle Varianten');
   const titel = art === 'variante'
     ? 'Gilt nur in der aktiven Variante. Andere Varianten sehen diese Änderung nicht.'
     : 'Gehört zum gemeinsamen Stamm: Änderungen wirken in allen Varianten.';
@@ -89,14 +89,14 @@ function _waermeKennzeichenRendern() {
   document.querySelectorAll('[data-wirkung="waermenetz"]').forEach(el => {
     let inhalt;
     if (id == null) {
-      inhalt = `<span>Trasse</span>${wirkungChipHtml('alle', '📈 alle Varianten ohne eigenes Netz')}
+      inhalt = `<span>Trasse</span>${wirkungChipHtml('alle', 'alle Varianten ohne eigenes Netz')}
         <span>· Temperaturen</span>${wirkungChipHtml('variante')}`;
     } else if (aktiveVarianteNetzEigen()) {
-      inhalt = `<span>Trasse</span>${wirkungChipHtml('variante', `🎯 eigenes Netz · nur ${esc(aktiverVariantenName())}`)}
+      inhalt = `<span>Trasse</span>${wirkungChipHtml('variante', `eigenes Netz · nur ${esc(aktiverVariantenName())}`)}
         <button data-click="variantenNetzEigen(false)" style="font:inherit;font-size:10px;padding:1px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;"
           title="Die eigene Trasse dieser Variante verwerfen und wieder das gemeinsame Netz verwenden">gemeinsames Netz übernehmen</button>`;
     } else {
-      inhalt = `<span>Trasse</span>${wirkungChipHtml('alle', '📈 gemeinsam mit allen Varianten')}
+      inhalt = `<span>Trasse</span>${wirkungChipHtml('alle', 'gemeinsam mit allen Varianten')}
         <button data-click="variantenNetzEigen(true)" style="font:inherit;font-size:10px;padding:1px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;"
           title="Ab jetzt eine eigene Trasse nur für diese Variante zeichnen — z. B. ein anderes Versorgungsgebiet">eigenes Netz für diese Variante</button>
         <span>· Temperaturen</span>${wirkungChipHtml('variante')}`;
@@ -197,7 +197,7 @@ function _menuHtml() {
     <div class="var-menu-foot">
       <button data-click="variantenMenuSchliessen();addVariante()">＋ Neue Variante …</button>
       <button data-click="variantenMenuSchliessen();setViewMode('vergleich')">⇄ Vergleichen</button>
-      <button data-click="variantenMenuSchliessen();variantenZeitstrahlToggle()">⏱ Zeitstrahl</button>
+      <button data-click="variantenMenuSchliessen();variantenZeitstrahlToggle()">Zeitstrahl</button>
     </div>
     <div style="padding:0 12px 10px;font-size:10px;color:var(--muted);line-height:1.45;">
       Jede Variante = gemeinsamer Stamm (Gebäude, Bestand, was ohnehin kommt) + ihre eigenen Entscheidungen
@@ -307,7 +307,7 @@ export function variantenDialogNeu() {
     return `<label class="obj">
       <input type="checkbox" data-asset="${esc(a.id)}" ${gemeinsam ? 'checked' : ''} style="accent-color:#f9a825;">
       <span>${esc(a.name)} <span style="color:var(--muted);font-family:'DM Mono',monospace;font-size:10.5px;">${esc(a.baujahr ?? '')}</span></span>
-      <span class="vd-wo" style="font-size:10.5px;color:${gemeinsam ? '#f9a825' : '#66bb6a'};">${gemeinsam ? '📈 alle Varianten' : `🎯 nur ${esc(variantenName(null))}`}</span>
+      <span class="vd-wo" style="font-size:10.5px;color:${gemeinsam ? '#f9a825' : '#66bb6a'};">${gemeinsam ? 'alle Varianten' : `nur ${esc(variantenName(null))}`}</span>
     </label>`;
   }).join('');
 
@@ -339,7 +339,7 @@ export function variantenDialogNeu() {
     const boxes = [...bg.querySelectorAll('#vd-liste input[type=checkbox]')];
     boxes.forEach(cb => {
       const wo = cb.closest('.obj')?.querySelector('.vd-wo');
-      if (wo) { wo.textContent = cb.checked ? '📈 alle Varianten' : `🎯 nur ${variantenName(null)}`; wo.style.color = cb.checked ? '#f9a825' : '#66bb6a'; }
+      if (wo) { wo.textContent = cb.checked ? 'alle Varianten' : `nur ${variantenName(null)}`; wo.style.color = cb.checked ? '#f9a825' : '#66bb6a'; }
     });
     const n = boxes.filter(b => b.checked).length;
     const s = bg.querySelector('#vd-summe');
@@ -622,7 +622,7 @@ function _zeitstrahlRender() {
   for (let y = b; y <= y1; y += (y1 - b > 20 ? 5 : 2)) ticks.push(`<span style="position:absolute;left:${pct(y)}%;transform:translateX(-50%);font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);">${y}</span>`);
 
   el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap;">
-      <b style="font-size:12px;">⏱ Zeitstrahl</b>
+      <b style="font-size:12px;">Zeitstrahl</b>
       <span style="color:var(--muted);font-size:10.5px;">blass = nach dem Betrachtungsjahr ${jahr} · Klick zeigt das Objekt</span>
       <span style="display:flex;gap:10px;font-size:10px;color:var(--muted);">
         <span><span class="var-zs-ev entwicklung" style="position:static;display:inline-block;padding:0 6px;">&nbsp;</span> kommt ohnehin</span>

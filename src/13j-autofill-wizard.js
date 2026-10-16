@@ -89,14 +89,14 @@ function renderStep1(state) {
       <label class="aw-check-row">
         <input type="checkbox" id="aw-calc-verbr" ${state.calcVerbrauch ? 'checked' : ''}>
         <div>
-          <div>⚡ Verbraucher <span class="aw-hint">(leistungKW + BDEW-SLP-Profil)</span></div>
+          <div>Verbraucher <span class="aw-hint">(leistungKW + BDEW-SLP-Profil)</span></div>
           <div class="aw-hint" style="margin-top:2px;">kW = Fläche [m²] × W/m² (je SLP-Profil konfigurierbar)</div>
         </div>
       </label>
       <label class="aw-check-row">
         <input type="checkbox" id="aw-calc-pv" ${state.calcPV ? 'checked' : ''}>
         <div>
-          <div>☀ PV-Anlagen <span class="aw-hint">(leistungKWp)</span></div>
+          <div>PV-Anlagen <span class="aw-hint">(leistungKWp)</span></div>
           <div class="aw-hint" style="margin-top:2px;">kWp = Fläche × Dachanteil% × Wp/m² × Korrekturfaktor</div>
         </div>
       </label>
@@ -154,8 +154,8 @@ function renderInfoPanel(state) {
   const verbrSection = state.calcVerbrauch ? `
     <div class="aw-info-section">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-        <div class="aw-info-section-title">⚡ Verbrauch — SLP-Profile</div>
-        <button class="aw-cfg-apply-btn" id="aw-manage-slp" style="font-size:9px;padding:2px 8px;">⚙ Profile verwalten</button>
+        <div class="aw-info-section-title">Verbrauch — SLP-Profile</div>
+        <button class="aw-cfg-apply-btn" id="aw-manage-slp" style="font-size:9px;padding:2px 8px;">Profile verwalten</button>
       </div>
       <div class="aw-formula">kW = Fläche [m²] × W/m² ÷ 1000</div>
       <table class="aw-nt-table">
@@ -170,7 +170,7 @@ function renderInfoPanel(state) {
 
   const pvSection = state.calcPV ? `
     <div class="aw-info-section">
-      <div class="aw-info-section-title">☀ PV-Leistung</div>
+      <div class="aw-info-section-title">PV-Leistung</div>
       <div class="aw-formula">kWp = Fläche × Dachanteil% × Wp/m² ÷ 1000 × <strong>Faktor</strong></div>
       <div class="aw-faktor-erklaerung">
         <div class="aw-faktor-title">Was ist der Faktor?</div>
@@ -234,7 +234,7 @@ function renderTableRows(state) {
   const statusBadge = (st, label) => {
     if (st === 'no_asset') return `<span class="aw-badge-warn">⚠ Kein Asset</span>`;
     if (st === 'no_area')  return `<span class="aw-badge-warn">⚠ Keine Fläche</span>`;
-    if (st === 'manual')   return `<span class="aw-badge-muted">🔒 Gesetzt</span>`;
+    if (st === 'manual')   return `<span class="aw-badge-muted">Gesetzt</span>`;
     return `<span class="aw-badge-ok">${label}</span>`;
   };
 
@@ -290,7 +290,7 @@ function renderTableRows(state) {
       <tr class="aw-dach-subrow">
         <td colspan="${colCount}" style="padding:0;">
           <div class="aw-dach-subrow-inner">
-            <div class="aw-dach-subrow-label">☀ Dach-Parameter: <strong>${esc(g.name)}</strong></div>
+            <div class="aw-dach-subrow-label">Dach-Parameter: <strong>${esc(g.name)}</strong></div>
             <div class="aw-dach-subrow-grid">
               <label>Dachform</label>
               <select class="aw-cfg-input aw-dach-inp" data-gid="${g.id}" data-dachfield="dachform">
@@ -383,8 +383,8 @@ function renderStep2(state) {
   const theadHtml = (showV && showP) ? `
     <tr class="aw-thead-group">
       <th rowspan="2" class="aw-th-gebaeude">Gebäude</th>
-      <th colspan="2" class="aw-th-grp aw-th-grp-verbr">⚡ Verbraucher</th>
-      <th colspan="3" class="aw-th-grp aw-th-grp-pv">☀ PV</th>
+      <th colspan="2" class="aw-th-grp aw-th-grp-verbr">Verbraucher</th>
+      <th colspan="3" class="aw-th-grp aw-th-grp-pv">PV</th>
       <th rowspan="2" class="aw-th-status">Status</th>
     </tr>
     <tr>

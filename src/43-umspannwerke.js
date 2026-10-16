@@ -90,7 +90,7 @@ async function _abfrage(query) {
     if (!data?.elements) return letzter;
     if (!/error|timed out|out of memory/i.test(data.remark || '')) return data;
     letzter = null;   // Teilergebnis nie verwenden
-    _status = `⏳ Antwort unvollständig (${String(data.remark).slice(0, 60)}) — neuer Versuch ${i + 2}/3 …`;
+    _status = `Antwort unvollständig (${String(data.remark).slice(0, 60)}) — neuer Versuch ${i + 2}/3 …`;
     uwRender();
   }
   return letzter;
@@ -106,7 +106,7 @@ export async function uwLaden() {
 nwr["power"="substation"]["substation"!~"^(minor_distribution|traction)$"]${um};
 out bb tags;`;
   _laedt = true;
-  _status = `⏳ Lade Umspannwerke im Umkreis von ${_p().radiusKm} km um ${ref.quelle} …`;
+  _status = `Lade Umspannwerke im Umkreis von ${_p().radiusKm} km um ${ref.quelle} …`;
   uwRender();
   let data = null;
   try { data = await _abfrage(query); }
@@ -440,14 +440,14 @@ function _panelHtml() {
   const ref = _bezug();
   const knopfSetzen = _setzen
     ? `<button data-click="uwVonHandSetzen()" style="${STIL_KNOPF}color:var(--c-orange);border-color:var(--c-orange);">✕ Setzen abbrechen (Esc)</button>`
-    : `<button data-click="uwVonHandSetzen()" title="Nächster Klick auf die Karte legt ein Umspannwerk an — wenn OSM es nicht kennt" style="${STIL_KNOPF}">📍 UW von Hand setzen</button>`;
+    : `<button data-click="uwVonHandSetzen()" title="Nächster Klick auf die Karte legt ein Umspannwerk an — wenn OSM es nicht kennt" style="${STIL_KNOPF}">UW von Hand setzen</button>`;
   const status = _setzen ? 'Auf die Karte klicken, wo das Umspannwerk liegt …' : _status;
   return `<div class="sa-section-title" style="margin-top:4px;">Umspannwerk &amp; Direktanschluss <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">Größenordnung · ersetzt keine Netzanschlussanfrage</span></div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
-      <button data-click="uwLaden()" ${_laedt ? 'disabled' : ''} style="${STIL_KNOPF}">${_liste.some(u => u.osm) ? '⟳ Neu laden' : '🔎 Umspannwerke laden'} (${uwMw(_p().radiusKm)} km)</button>
+      <button data-click="uwLaden()" ${_laedt ? 'disabled' : ''} style="${STIL_KNOPF}">${_liste.some(u => u.osm) ? '⟳ Neu laden' : 'Umspannwerke laden'} (${uwMw(_p().radiusKm)} km)</button>
       ${knopfSetzen}
       ${_liste.length ? `<label style="font-size:9px;color:var(--muted);display:flex;gap:3px;align-items:center;"><input type="checkbox" ${_sichtbar ? 'checked' : ''} data-change="uwKarteUmschalten(this.checked)"/> Karte</label>` : ''}
-      ${_auswahl() ? `<button data-click="uwZeigen()" style="${STIL_KNOPF}">🗺️ zeigen</button>` : ''}
+      ${_auswahl() ? `<button data-click="uwZeigen()" style="${STIL_KNOPF}">zeigen</button>` : ''}
     </div>
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:9px;color:var(--muted);margin:2px 0 4px;">
       <label style="display:flex;gap:4px;align-items:center;" title="Jedes Kabelsystem trägt die volle Leistung allein; ein System ist Reserve. Für den Bezug einer Liegenschaft oft gewünscht, für reine PV-Einspeisung meist nicht.">

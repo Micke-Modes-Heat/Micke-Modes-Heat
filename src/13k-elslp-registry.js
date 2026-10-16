@@ -112,7 +112,7 @@ export function showElSlpModal(onClose) {
 
     modal.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;">
-        <span style="font-size:12px;color:var(--accent);font-weight:600;">⚡ SLP-Profile verwalten</span>
+        <span style="font-size:12px;color:var(--accent);font-weight:600;">SLP-Profile verwalten</span>
         <button class="ebp-close" id="elslp-close">✕</button>
       </div>
       <div style="overflow-y:auto;flex:1;padding:12px 16px;">

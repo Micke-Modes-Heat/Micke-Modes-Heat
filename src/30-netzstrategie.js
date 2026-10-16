@@ -300,7 +300,7 @@ export function nsRender() {
     ${_ns.ziel.art === 'zielkwp' ? `<div style="flex:0 1 100px;"><span class="ns-lbl">Ziel kWp</span>
       <input class="ns-in" data-ns-feld="ziel.kwp" type="number" min="0" step="10" value="${_ns.ziel.kwp}"></div>` : ''}
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      ${_kn('rechnen', _erg && !_erg.fehler ? '↻ Strategien neu rechnen' : '▶ Strategien rechnen', 'Alle Kombinationen bewerten, Pareto-Front und Empfehlung bilden', true, 'style="padding:6px 14px;font-size:11px;"')}
+      ${_kn('rechnen', _erg && !_erg.fehler ? '↻ Strategien neu rechnen' : 'Strategien rechnen', 'Alle Kombinationen bewerten, Pareto-Front und Empfehlung bilden', true, 'style="padding:6px 14px;font-size:11px;"')}
       ${_kn('katalog', _katalogAuf ? '▾ Kostenkatalog' : '▸ Kostenkatalog', 'Kostenansätze für neue Anschlüsse, Stationen und MS-Trassen')}
     </div>
     ${_erg && !_erg.fehler ? `<div style="flex-basis:100%;">${window.stempelHinweisHtml?.(_erg.stempel, null) || ''}</div>` : ''}
@@ -492,7 +492,7 @@ function _editorHtml() {
   const abg = e.erzeugungMwh > 0 ? (e.abgeregeltDachMwh + e.abgeregeltNapMwh) / e.erzeugungMwh * 100 : 0;
   return `<div class="ns-karte"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
     <b style="font-size:11px;">Editor — Anschlussweg je Gruppe</b>
-    <span>${_kn('karte', _karte ? 'Karte aus' : '🗺 Auf der Karte zeigen', 'Gruppen, neue Trassen und Stationen der Editor-Auswahl auf der Karte')}
+    <span>${_kn('karte', _karte ? 'Karte aus' : 'Auf der Karte zeigen', 'Gruppen, neue Trassen und Stationen der Editor-Auswahl auf der Karte')}
       ${_kn('editor-empf', 'Empfehlung laden', '')} ${_kn('editor-voll', 'alle aufklappen', '')}</span></div>
     <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:11px;margin-bottom:6px;">
       <span>${b(_fmt(e.kwp) + ' kWp')}</span><span>${b(_fmt(e.nutzbarMwh) + ' MWh/a')} nutzbar</span>

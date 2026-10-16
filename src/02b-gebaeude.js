@@ -48,8 +48,8 @@ window.lwWpSchallLayerGroup = L.layerGroup();
 window.erzeugerIconLayerGroup = L.layerGroup();
 export let currentTile = 'osm';
 export function toggleTile(){
-  if(currentTile==='osm'){ map.removeLayer(osmTile); esriTile.addTo(map); currentTile='esri'; document.getElementById('btn-tile').textContent='🗺 OSM'; }
-  else { map.removeLayer(esriTile); osmTile.addTo(map); currentTile='osm'; document.getElementById('btn-tile').textContent='🛰 Satellit'; }
+  if(currentTile==='osm'){ map.removeLayer(osmTile); esriTile.addTo(map); currentTile='esri'; document.getElementById('btn-tile').textContent='OSM'; }
+  else { map.removeLayer(esriTile); osmTile.addTo(map); currentTile='osm'; document.getElementById('btn-tile').textContent='Satellit'; }
 }
 // Stellt die Satellitenansicht sicher (für PV-Flächenzeichnung auf dem Dach)
 export function ensureSatellite(){
@@ -114,12 +114,12 @@ export function _syncNetworkLockUI() {
   const btn = document.getElementById('lp-btn-lock');
   if (btn) {
     if (window.networkLocked) {
-      btn.innerHTML = '🏛 Bestandsnetz (2026)';
+      btn.innerHTML = 'Bestandsnetz (2026)';
       btn.style.borderColor = '#4caf50';
       btn.style.color = '#4caf50';
       btn.style.background = 'rgba(76, 175, 80, 0.1)';
     } else {
-      btn.innerHTML = '🔓 Neubaunetz';
+      btn.innerHTML = 'Neubaunetz';
       btn.style.borderColor = 'var(--border)';
       btn.style.color = 'var(--muted)';
       btn.style.background = 'transparent';
@@ -129,12 +129,12 @@ export function _syncNetworkLockUI() {
   const btn2 = document.getElementById('btn-lock-netz');
   if (btn2) {
     if (window.networkLocked) {
-      btn2.innerHTML = '🏛 Bestandsnetz (2026)';
+      btn2.innerHTML = 'Bestandsnetz (2026)';
       btn2.style.borderColor = '#4caf50';
       btn2.style.color = '#4caf50';
       btn2.style.background = 'rgba(76, 175, 80, 0.1)';
     } else {
-      btn2.innerHTML = '🔓 Neubaunetz (Planung)';
+      btn2.innerHTML = 'Neubaunetz (Planung)';
       btn2.style.borderColor = 'var(--border)';
       btn2.style.color = 'var(--muted)';
       btn2.style.background = 'transparent';

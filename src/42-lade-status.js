@@ -255,7 +255,7 @@ function _render() {
   const aktiv = _klein && _lauf && z.aktiv ? `<div class="ls-akt">${_esc(z.aktiv.titel)}${z.aktiv.info ? ` · ${_esc(z.aktiv.info)}` : ''}</div>` : '';
   el.innerHTML = `
     <div class="ls-head">
-      <span class="ls-head-title">⬡ Plangebiet &amp; Laden</span>
+      <span class="ls-head-title">Plangebiet &amp; Laden</span>
       <button class="btn-xs" data-click="ladeStatusKlein()" title="${_klein ? 'Alle Schritte zeigen' : 'Einklappen'}">${_klein ? '▴ Schritte' : '▾'}</button>
       <button class="btn-xs" data-click="ladeStatusSchliessen()" title="Übersicht ausblenden — Laden läuft weiter">✕</button>
     </div>

@@ -839,7 +839,7 @@ export function pvabAlsStand() {
   const potenzial = gesamt && !window._pvAnalyse?.potenzialStandId;
   const st = window.pvbsAusVorschau(zeilen, { name: name.trim() || vorschlag, beschreibung: _auslegungBeschreibung(stich, n), netz, potenzial, mitProjekt: gesamt });
   const sum = zeilen.reduce((t, z) => t + (z.kwpKorr || 0), 0);
-  window.showHint?.(`💾 Belegungsstand „${st.name}" gespeichert (${zeilen.length} Dächer · ${_fmt(sum)} kWp${!schonBelegt ? '' : gesamt ? ` + ${schonBelegt} schon belegte` : `, ohne ${schonBelegt} schon belegte`})`
+  window.showHint?.(`Belegungsstand „${st.name}" gespeichert (${zeilen.length} Dächer · ${_fmt(sum)} kWp${!schonBelegt ? '' : gesamt ? ` + ${schonBelegt} schon belegte` : `, ohne ${schonBelegt} schon belegte`})`
     + (potenzial ? ' — ist jetzt Grundlage der PV-Analyse.' : '.') + ' Das Projekt ist unverändert — unter „📚 Belegungsstände“ anzeigen (👁) oder zum Bearbeiten öffnen (✎).', 9000);
   _ab.vorschau = null;
   pvModusRender();
@@ -1086,10 +1086,10 @@ export function pvabBlockHtml() {
     return `<div style="display:flex;gap:4px;margin-top:6px;">
         <button class="btn-xs" style="flex:1;border-color:${CYAN};color:${CYAN};"
           data-click="pvabToggle('belegen')" title="Viele Dächer auf einmal belegen — alle, Neubauten, PV-Pflicht, ein Bereich oder ein Trafo-Netzgebiet, wahlweise netzverträglich oder gestuft">
-          ⚡ Dächer automatisch belegen …</button>
+          Dächer automatisch belegen …</button>
         <button class="btn-xs" style="border-color:${ROT}99;color:${ROT};"
           data-click="pvabToggle('entfernen')" title="Belegungen vieler Dächer auf einmal entfernen — samt Sperrflächen und PV-Assets">
-          🗑 Entfernen …</button>
+          Entfernen …</button>
       </div>`;
   }
   return _ab.modus === 'entfernen' ? _entfernHtml() : _belegenHtml();
@@ -1102,7 +1102,7 @@ function _entfernHtml() {
   const kwp = liste.reduce((s, g) => s + (calcGebKwpKorr(g) || 0), 0);
   return `
     <div style="margin-top:6px;border:1px solid ${ROT}66;border-radius:5px;padding:6px 7px;background:${ROT}0d;">
-      ${_kopfHtml(ROT, '🗑 Belegungen entfernen', 'entfernen')}
+      ${_kopfHtml(ROT, 'Belegungen entfernen', 'entfernen')}
       ${_umfangHtml(stich, 'Alle belegten Dächer')}
       <div style="font-size:10px;margin-top:6px;padding-top:5px;border-top:1px solid var(--border);">
         <b style="color:${ROT};">${liste.length}</b> Dächer mit Flächen${liste.length ? ` · <span style="font-family:'DM Mono',monospace;">${_fmt(kwp)} kWp</span>` : ''}
@@ -1137,7 +1137,7 @@ function _belegenHtml() {
 
   return `
     <div style="margin-top:6px;border:1px solid ${CYAN}66;border-radius:5px;padding:6px 7px;background:${CYAN}0d;">
-      ${_kopfHtml(CYAN, '⚡ Dächer automatisch belegen', 'belegen')}
+      ${_kopfHtml(CYAN, 'Dächer automatisch belegen', 'belegen')}
       ${_umfangHtml(stich, 'Alle Dächer')}
       <div style="display:flex;align-items:center;gap:5px;margin-top:5px;font-size:10px;">
         <span style="flex:1;color:var(--muted);" title="Kleinere Gebäude (Garagen, Schuppen) bleiben frei">Mindestgröße</span>
@@ -1254,7 +1254,7 @@ function _engstellenHtml(n, stich) {
   const T = x => _fmt((x || 0) / 1000);
   const name = escHtml(_gruppenLabel(es.gruppe, stich));
   const fehlt = Math.max(0, es.noetigKwp - es.passtKwp);
-  const kopf = `<div style="color:var(--text);"><b>🚧 Engstellen für ${name}</b></div>
+  const kopf = `<div style="color:var(--text);"><b>Engstellen für ${name}</b></div>
       <div style="color:var(--muted);">${es.noetigN} Dächer · ${_fmt(es.noetigKwp)} kWp nötig — ${_fmt(es.passtKwp)} kWp passen ins Netz${fehlt > 0.5 ? `, <span style="color:${ROT};">${_fmt(fehlt)} kWp nicht</span>` : ''}${n.ausbau?.massnahmen?.length ? ' (nach der gewählten Ertüchtigung)' : ''}</div>`;
   const ohne = es.ohneNetz ? `<div style="color:var(--muted);">${es.ohneNetz} ${es.ohneNetz === 1 ? 'Dach' : 'Dächer'} ohne Netzanbindung — dort ist die Grenze unbekannt.</div>` : '';
   if (!es.liste.length) {
@@ -1303,7 +1303,7 @@ function _abhilfeHtml(e, T) {
     return `<span style="color:var(--c-orange);">${e.unbekannt ? 'Querschnitt unbekannt bzw. Ersatzwert — erst Kabeldaten prüfen' : 'keine Standardlösung — Netzplanung nötig'}</span>`;
   }
   if (a.kombi) {
-    return `<span style="color:${GRUEN};" title="Kein Kabel allein senkt die Spannung genug — diese Ertüchtigungen zusammen halten die Grenze ein">⚒ zusammen: ${escHtml(a.label)} · ${T(a.investEUR)} T€</span>`;
+    return `<span style="color:${GRUEN};" title="Kein Kabel allein senkt die Spannung genug — diese Ertüchtigungen zusammen halten die Grenze ein">zusammen: ${escHtml(a.label)} · ${T(a.investEUR)} T€</span>`;
   }
   const wo = a.eigen ? '' : ' (anderes Kabel auf dem Weg zum Trafo)';
   const rest = a.teil ? ' (reicht nicht ganz)' : !a.loest ? ' (reicht allein nicht)' : '';
@@ -1321,10 +1321,10 @@ function _alternativenHtml(e, T) {
 function _abregelHtml(e) {
   const r = e.abregelung;
   if (!r) return '';
-  if (r.unmoeglich) return `<div style="color:var(--muted);">↘ Abregeln hilft nicht — schon die geplante PV lastet die Stelle aus.</div>`;
+  if (r.unmoeglich) return `<div style="color:var(--muted);">Abregeln hilft nicht — schon die geplante PV lastet die Stelle aus.</div>`;
   const nah = r.naeherung ? ' Spannung als Näherung: alle Dächer der Gruppe gleich stark gekappt.' : '';
   return `<div style="color:var(--muted);" title="Statt zu ertüchtigen: alle Dächer dahinter voll bauen und ihre Einspeisung auf ${_fmt(r.kwJeKwp, 2)} kW/kWp begrenzen. Stündlich mit dem PV-Profil der Netzaufnahme gerechnet (Südprofil, vorsichtig).${nah}">
-      ↘ oder abregeln: Einspeisung auf ${_fmt(r.anteilPct)} % (${_fmt(r.kwJeKwp, 2)} kW/kWp) → ${_fmt(r.verlustPct, 1)} % Ertragsverlust (${_fmt(r.abgeregeltMwh, 1)} MWh/a, ${_fmt(r.stundenAbgeregelt)} h)</div>`;
+      oder abregeln: Einspeisung auf ${_fmt(r.anteilPct)} % (${_fmt(r.kwJeKwp, 2)} kW/kWp) → ${_fmt(r.verlustPct, 1)} % Ertragsverlust (${_fmt(r.abgeregeltMwh, 1)} MWh/a, ${_fmt(r.stundenAbgeregelt)} h)</div>`;
 }
 
 /** Aufklappbare Herleitung einer Engstelle: Kennwerte → Einspeisung → Vergleich mit der Grenze. */
@@ -1414,7 +1414,7 @@ function _vorschauHtml(nKand, stich) {
   if (!v) {
     return `<button class="btn-xs" style="width:100%;margin-top:5px;border-color:${CYAN};color:${CYAN};"
         ${nKand ? '' : 'disabled'} data-click="pvabVorschau()"
-        title="Probebelegung rechnen und auf der Karte zeigen — ändert noch nichts">🔍 Vorschau berechnen</button>`;
+        title="Probebelegung rechnen und auf der Karte zeigen — ändert noch nichts">Vorschau berechnen</button>`;
   }
   const veraltet = v.sig !== _sig();
   const gruppe = (...st) => v.zeilen.filter(z => st.includes(z.status));
@@ -1480,7 +1480,7 @@ function _auslegungHtml(aktiv) {
       <button class="btn-xs" style="width:100%;margin-top:4px;border-color:var(--c-violet);color:var(--c-violet);" ${aktiv ? '' : 'disabled'}
         data-click="pvabAlsStand()"
         title="Diese Belegung als benannten Stand sichern, OHNE die Dächer zu belegen — ansehen, vergleichen, später aktivieren oder als Auslegung in die PV-Analyse geben.${gesamt ? ' „Alle Dächer · Maximal“ wird beim ersten Mal Anlagenpotenzial der PV-Analyse.' : ''}">
-        💾 Als Belegungsstand speichern${gesamt ? ' (Gesamtpotenzial)' : ''}</button>`;
+        Als Belegungsstand speichern${gesamt ? ' (Gesamtpotenzial)' : ''}</button>`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════

@@ -184,7 +184,7 @@ async function glBerechnen() {
   // Gebäude- und Jahresstand zu Beginn festhalten (Netzverlust: dort, wo er gelesen wird)
   const eingang = lastgangEingangSignatur();
   const btn = document.getElementById('gl-run-btn');
-  btn.textContent = '⏳ Berechne…'; btn.disabled = true;
+  btn.textContent = 'Berechne…'; btn.disabled = true;
 
   try {
     const stadt       = document.getElementById('gl-stadt').value;
@@ -487,7 +487,7 @@ async function glBerechnen() {
   } finally {
     _glIsRunning = false;
     btn.dataset.manual = '0';
-    btn.textContent = '⚡ Grundlage berechnen'; btn.disabled = false;
+    btn.textContent = 'Grundlage berechnen'; btn.disabled = false;
   }
 }
 
@@ -608,7 +608,7 @@ export function glSkalierGebaeude(nutzwaermeMwh, pMaxKw) {
     const teile = [];
     if (richtungW) teile.push(`Verbrauch ×${fW.toFixed(2)} (${pctW > 0 ? '+' : ''}${pctW} %)`);
     if (richtungH && Math.abs(fH - fW) > 0.005) teile.push(`Heizlast ×${fH.toFixed(2)} (${pctH > 0 ? '+' : ''}${pctH} %)`);
-    el.textContent = `ℹ Gebäude intern skaliert — ${teile.join(' · ')} — Lastgang hat Vorrang`;
+    el.textContent = `Gebäude intern skaliert — ${teile.join(' · ')} — Lastgang hat Vorrang`;
     el.style.display = 'block';
   } else {
     el.style.display = 'none';

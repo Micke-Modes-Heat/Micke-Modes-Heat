@@ -40,7 +40,7 @@ export function windaRenderPanel() {
   const gebietBlock = `
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
       <button class="ins-link-btn" onclick="toggleDrawWindGebiet()" style="margin:0;">
-        ${window.windGebietDrawing ? '✎ Zeichnen läuft … (ESC zum Abbrechen)' : window.windGebietPolygon ? '↺ Windgebiet neu zeichnen' : '🗺 Eigenes Windgebiet zeichnen'}
+        ${window.windGebietDrawing ? '✎ Zeichnen läuft … (ESC zum Abbrechen)' : window.windGebietPolygon ? '↺ Windgebiet neu zeichnen' : 'Eigenes Windgebiet zeichnen'}
       </button>
       ${window.windGebietPolygon ? `<button class="ins-link-btn" onclick="clearWindGebiet()" style="margin:0;color:var(--c-red);">✕ löschen</button>` : ''}
     </div>
@@ -102,7 +102,7 @@ function _windaSiteBlock(nAssets) {
 
   let statusHtml;
   if (_siteLoading) {
-    statusHtml = `<div style="font-size:10px;color:var(--c-teal);padding:4px 0;">⏳ Lade Winddaten von Open-Meteo …</div>`;
+    statusHtml = `<div style="font-size:10px;color:var(--c-teal);padding:4px 0;">Lade Winddaten von Open-Meteo …</div>`;
   } else if (s) {
     statusHtml = `
       <div style="background:var(--surface2);border:1px solid rgba(77,208,225,0.35);border-radius:6px;padding:6px 9px;margin-bottom:6px;">
@@ -123,7 +123,7 @@ function _windaSiteBlock(nAssets) {
   }
 
   return `
-    <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:2px 0 6px;">🌐 Standort-Winddaten (ERA5-Reanalyse)</div>
+    <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:2px 0 6px;">Standort-Winddaten (ERA5-Reanalyse)</div>
     <div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:6px;">
       <div style="flex:1;">
         <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Jahre (Mittelung)</div>
@@ -131,7 +131,7 @@ function _windaSiteBlock(nAssets) {
           style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
       </div>
       <button class="ins-link-btn" onclick="windaFetchSite()" ${_siteLoading ? 'disabled' : ''}
-        style="margin:0;flex:2;">${s ? '↺ Neu laden' : '🌐 Winddaten laden'} (${coords.quelle})</button>
+        style="margin:0;flex:2;">${s ? '↺ Neu laden' : 'Winddaten laden'} (${coords.quelle})</button>
     </div>
     ${statusHtml}
     <div style="font-size:8px;color:var(--c-blue);margin-bottom:12px;">ERA5 ist ein ~25-km-Raster-Modell (Open-Meteo, CC-BY 4.0) — gut fürs Screening, lokale Effekte (Waldkante, Kuppe) fehlen. Ersetzt kein Standortwindgutachten.</div>`;
@@ -281,7 +281,7 @@ function _windaPlatzierungBlock() {
   }).join('');
 
   return `
-    <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:2px 0 6px;">📍 Platzierungsvorschläge im Gebiet</div>
+    <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:2px 0 6px;">Platzierungsvorschläge im Gebiet</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
       <div>
         <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Ø Wind auf 100 m (m/s)${site ? ' <span style="color:var(--c-teal);">· ERA5</span>' : ''}</div>
@@ -376,7 +376,7 @@ function _windaCard(asset, zielMwh) {
       <span style="color:var(--c-teal);">${y.annualMWh.toLocaleString('de-DE', { maximumFractionDigits: 0 })} MWh/a</span> ·
       ${y.volllaststundenH.toFixed(0)} Vlh · ${y.kapazitaetsfaktorPct.toFixed(0)} % KF
     </div>
-    <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">🗺 Eignungsfläche: ${eignungTxt}</div>
+    <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">Eignungsfläche: ${eignungTxt}</div>
     <div style="border-top:1px solid rgba(var(--ink),0.06);padding-top:4px;">
       ${_windaScenRow(scen.scen50)}${scen.scenBedarf ? _windaScenRow(scen.scenBedarf) : ''}${_windaScenRow(scen.scenMax)}
     </div>

@@ -66,9 +66,9 @@ export const GUIDE_STEPS = [
     tab: 'gebiet', view: 'karte',
     gruppen: [
       { label: 'Gebiet', aktionen: [
-        { label: '⬡ Plangebiet zeichnen', click: 'toggleDrawArea()', pri: true },
+        { label: 'Plangebiet zeichnen', click: 'toggleDrawArea()', pri: true },
         { label: '↓ Gebäude aus OSM laden', click: 'showOsmPanel()' },
-        { label: '🛰 Satellit', click: 'toggleTile()' },
+        { label: 'Satellit', click: 'toggleTile()' },
       ] },
     ],
     pruefe() {
@@ -92,12 +92,12 @@ export const GUIDE_STEPS = [
     tab: 'gebiet', view: 'karte',
     gruppen: [
       { label: 'Gebäude prüfen', aktionen: [
-        { label: '🏢 Gebäudeliste öffnen', click: "setViewMode('gebaeude')", pri: true },
-        { label: '📋 Gebäudeliste importieren (CSV)', click: 'openGebListImport()' },
+        { label: 'Gebäudeliste öffnen', click: "setViewMode('gebaeude')", pri: true },
+        { label: 'Gebäudeliste importieren (CSV)', click: 'openGebListImport()' },
       ] },
       { label: 'Verbrauch', aktionen: [
         { label: '✦ Auto-Befüllen (Verbrauch & PV)', click: 'showAutofillWizard()' },
-        { label: '⚡ Strom-Grundlagen: Messjahre', click: 'toggleStromPanel()' },
+        { label: 'Strom-Grundlagen: Messjahre', click: 'toggleStromPanel()' },
       ] },
     ],
     pruefe() {
@@ -136,9 +136,9 @@ export const GUIDE_STEPS = [
           return v.ok ? null : `Automatisch erzeugen geht erst, wenn auf der Karte liegt: ${v.fehlt.join(', ')}. Über die Komponenten-Palette unten setzen.`;
         },
         aktionen: [
-        { label: '📐 Bestandsplan digitalisieren', click: 'pdTogglePanel()', pri: true },
+        { label: 'Bestandsplan digitalisieren', click: 'pdTogglePanel()', pri: true },
         { label: '↓ Trassen aus OSM-Straßen laden', click: 'loadAndAdoptOsmStrassen()' },
-        { label: '⚡ Netz automatisch erzeugen', click: 'showAutoNetzDialog()' },
+        { label: 'Netz automatisch erzeugen', click: 'showAutoNetzDialog()' },
       ] },
       { label: 'Trassen & Kabel', aktionen: [
         { label: 'Trasse zeichnen', click: "toggleDrawTrasse('strom')" },
@@ -146,7 +146,7 @@ export const GUIDE_STEPS = [
         { label: 'Einlinienschema', click: 'sldToggle()' },
       ] },
       { label: 'Prüfen', aktionen: [
-        { label: '🔍 Bestand prüfen (Details)', click: 'bestandPruefenUndZeigen()' },
+        { label: 'Bestand prüfen (Details)', click: 'bestandPruefenUndZeigen()' },
       ] },
     ],
     pruefe() {
@@ -181,13 +181,13 @@ export const GUIDE_STEPS = [
     zeigen: [],
     gruppen: [
       { label: '1 · Messung ansehen', aktionen: [
-        { label: '📈 NAP-Lastgang', click: "setAnalyseSection('nap')", pri: true },
+        { label: 'NAP-Lastgang', click: "setAnalyseSection('nap')", pri: true },
       ] },
       { label: '2 · Grenzen eintragen', aktionen: [
-        { label: '🔌 Netzanschluss-Angaben', click: 'sgNaOeffnen()' },
+        { label: 'Netzanschluss-Angaben', click: 'sgNaOeffnen()' },
       ] },
       { label: '3 · Lasten abgleichen', aktionen: [
-        { label: '🔧 Bestandskalibrierung starten', click: 'napShowKalibrierungDialog()' },
+        { label: 'Bestandskalibrierung starten', click: 'napShowKalibrierungDialog()' },
       ] },
     ],
     pruefe() {
@@ -219,17 +219,17 @@ export const GUIDE_STEPS = [
       { label: 'PV am Gebäude',
         hinweis: 'Der übliche Weg: Gebäude in der Liste anklicken → Elektro-Assets → Dach & PV. Dachform, Belegungs- und Sperrflächen ergeben die kWp.',
         aktionen: [
-          { label: '🏢 Gebäudeliste öffnen', click: 'guideSeitenleisteOeffnen()', pri: true },
+          { label: 'Gebäudeliste öffnen', click: 'guideSeitenleisteOeffnen()', pri: true },
           { label: '✦ Auto-Befüllen (Verbrauch & PV)', click: 'showAutofillWizard()' },
         ] },
       { label: 'Einzelne Anlagen setzen', aktionen: [
-        { label: '☀ PV-Asset auf die Karte', click: "setPendingType('PV')" },
-        { label: '☀ Freifläche zeichnen', click: 'startDrawFF()' },
-        { label: '🔋 Batterie-Asset auf die Karte', click: "setPendingType('Batterie')" },
+        { label: 'PV-Asset auf die Karte', click: "setPendingType('PV')" },
+        { label: 'Freifläche zeichnen', click: 'startDrawFF()' },
+        { label: 'Batterie-Asset auf die Karte', click: "setPendingType('Batterie')" },
       ] },
       { label: 'Auslegung', aktionen: [
-        { label: '📊 PV-Analyse', click: "setAnalyseSection('pva')" },
-        { label: '☀ PV-Übersicht', click: 'pvuTogglePanel()' },
+        { label: 'PV-Analyse', click: "setAnalyseSection('pva')" },
+        { label: 'PV-Übersicht', click: 'pvuTogglePanel()' },
       ] },
     ],
     pruefe() {
@@ -252,12 +252,12 @@ export const GUIDE_STEPS = [
     zeigen: ['el-sec-calc'],
     gruppen: [
       { label: 'Rechnen', aktionen: [
-        { label: '⚡ Elektroberechnung starten', click: 'elCalcAssets()', pri: true },
+        { label: 'Elektroberechnung starten', click: 'elCalcAssets()', pri: true },
       ] },
       { label: 'Screening', aktionen: [
-        { label: '📶 Schwellentreppe', click: 'schwellenPanelToggle()' },
-        { label: '⏱ Engpass-Fahrplan', click: 'engpassPanelToggle()' },
-        { label: '🔍 Netzanalyse', click: 'naTogglePanel()' },
+        { label: 'Schwellentreppe', click: 'schwellenPanelToggle()' },
+        { label: 'Engpass-Fahrplan', click: 'engpassPanelToggle()' },
+        { label: 'Netzanalyse', click: 'naTogglePanel()' },
       ] },
     ],
     pruefe() {
@@ -283,13 +283,13 @@ export const GUIDE_STEPS = [
     manuell: 'Ergebnisse gesichtet',
     gruppen: [
       { label: 'Je Variante', aktionen: [
-        { label: '📄 Ergebnisblatt', click: 'ergebnisblattToggle()', pri: true },
-        { label: '💶 Investitionsplan', click: 'showInvestitionsplan()' },
+        { label: 'Ergebnisblatt', click: 'ergebnisblattToggle()', pri: true },
+        { label: 'Investitionsplan', click: 'showInvestitionsplan()' },
       ] },
       { label: 'Nebeneinander', aktionen: [
         { label: '⇄ Varianten vergleichen', click: 'variantenVergleichToggle()' },
-        { label: '📊 PV-Analyse', click: "setAnalyseSection('pva')" },
-        { label: '⚡ Analyse: Strom', click: "setAnalyseSection('strom')" },
+        { label: 'PV-Analyse', click: "setAnalyseSection('pva')" },
+        { label: 'Analyse: Strom', click: "setAnalyseSection('strom')" },
       ] },
     ],
   },
@@ -302,12 +302,12 @@ export const GUIDE_STEPS = [
     manuell: 'Gutachten exportiert',
     gruppen: [
       { label: 'Dokument', aktionen: [
-        { label: '📝 Gutachten', click: "setAnalyseSection('ggrafik')", pri: true },
-        { label: '🗺️ Liegenschaftsbilder', click: "setAnalyseSection('liegenschaftsbilder')" },
-        { label: '📝 Kennzahlen-Digest', click: 'exportGutachtenDigest()' },
+        { label: 'Gutachten', click: "setAnalyseSection('ggrafik')", pri: true },
+        { label: 'Liegenschaftsbilder', click: "setAnalyseSection('liegenschaftsbilder')" },
+        { label: 'Kennzahlen-Digest', click: 'exportGutachtenDigest()' },
       ] },
       { label: 'Sichern', aktionen: [
-        { label: '💾 Projekt speichern', click: 'saveProject()' },
+        { label: 'Projekt speichern', click: 'saveProject()' },
       ] },
     ],
   },

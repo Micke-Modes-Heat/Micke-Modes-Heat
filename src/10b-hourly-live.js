@@ -1571,7 +1571,7 @@ export function _liveSpeicherSerien() {
   const eis = window._eisSpeicherState;
   if (eis?.reserveH && eis.reserveMaxKwh > 0) {
     serien.push({
-      key: 'eis', name: '❄ Eisspeicher', farbe: '#4fc3f7',
+      key: 'eis', name: 'Eisspeicher', farbe: '#4fc3f7',
       pct: t => (eis.reserveH[t] || 0) / eis.reserveMaxKwh * 100,
       // zweite Linie: Vereisungsgrad (gestrichelt)
       pct2: t => (eis.vereisungH[t] || 0) * 100,

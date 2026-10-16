@@ -256,7 +256,7 @@ export function ah2Render() {
         <button class="ah2-knopf" style="white-space:nowrap;" data-ah2-grenze="4990" title="knapp unter 5 t: unter der Störfall-Schwelle">&lt; 5 t</button>
       </div></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      ${_kn('rechnen', _erg?.best ? '↻ Neu auslegen' : '▶ Auslegen', 'Kostenoptimale Auslegung für das Ziel suchen', true, 'style="padding:6px 14px;font-size:11px;"')}
+      ${_kn('rechnen', _erg?.best ? '↻ Neu auslegen' : 'Auslegen', 'Kostenoptimale Auslegung für das Ziel suchen', true, 'style="padding:6px 14px;font-size:11px;"')}
       ${_kn('annahmen', _annahmenAuf ? '▾ Annahmen' : '▸ Annahmen', 'Wirkungsgrade und Kosten von Speichern und BHKW')}
     </div>
     <div style="flex-basis:100%;font-size:10px;color:var(--muted);line-height:1.5;">${_datenbasisHtml()}</div>
@@ -411,7 +411,7 @@ function _tabInhaltHtml() {
     case 'zielkurve': return _lesehilfe('Zielkurve: Kosten je Zielwert',
       'Die Auslegung wird für 0–80 % Mindestdeckung wiederholt (gröberes Raster, einige Sekunden). Die Kurve zeigt, ab welchem Ziel es teurer wird als reiner Netzbezug '
       + 'und wie schnell der Preis des Ziels wächst — oft steigt er ab einem bestimmten Wert sprunghaft, weil dann saisonale Speicherung nötig wird.')
-      + `<div style="margin-bottom:10px;">${_kn('kurve', _kurve ? '↻ Zielkurve neu rechnen' : '📈 Zielkurve rechnen', 'Kosten und Anlagen für 0–80 % Mindestdeckung vergleichen')}</div>`
+      + `<div style="margin-bottom:10px;">${_kn('kurve', _kurve ? '↻ Zielkurve neu rechnen' : 'Zielkurve rechnen', 'Kosten und Anlagen für 0–80 % Mindestdeckung vergleichen')}</div>`
       + (_kurve ? _kurveHtml() : '');
     case 'hinweise': return _hinweiseHtml();
     default: return _auslegungHtml();
@@ -446,7 +446,7 @@ function _kopfHtml() {
       <div style="font-size:11.5px;">${status}</div>
       <div style="display:flex;gap:6px;align-items:center;">
         ${n ? `<button class="ah2-knopf" data-ah2-tab="hinweise" title="Genehmigung, Brennstoff, Grenzen">⚠ ${n} Hinweise</button>` : ''}
-        ${_kn('uebernehmen', '⚡ Als Anlagen übernehmen', 'Die eingestellten Anlagen als Assets auf die Karte legen bzw. frühere anpassen', false,
+        ${_kn('uebernehmen', 'Als Anlagen übernehmen', 'Die eingestellten Anlagen als Assets auf die Karte legen bzw. frühere anpassen', false,
           a.batKwh <= 0 && a.bzKw <= 0 && !(a.bhkwKw > 0) ? 'disabled' : '')}</div></div>
     <div style="font-size:12px;line-height:1.6;margin-top:4px;">${anlagen}</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">

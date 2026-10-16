@@ -1046,9 +1046,9 @@ function _karteKnopf() {
   const an = !!window.pvnaKarteAktiv;
   return `<div style="margin:-4px 0 14px;">
     <button class="btn-confirm" style="padding:6px 14px;font-size:11px;margin-right:6px;"
-      data-click="pvaSetView('pvnaschema')">⚡ Einlinienschema mit Schiebern</button>
+      data-click="pvaSetView('pvnaschema')">Einlinienschema mit Schiebern</button>
     <button class="btn-confirm" style="padding:6px 14px;font-size:11px;"
-      data-click="${an ? 'pvnaKarteAus()' : 'pvnaKarteZeigen()'}">${an ? 'Kartenfärbung aus' : '🗺 Dächer auf der Karte zeigen'}</button>
+      data-click="${an ? 'pvnaKarteAus()' : 'pvnaKarteZeigen()'}">${an ? 'Kartenfärbung aus' : 'Dächer auf der Karte zeigen'}</button>
     <span style="font-size:10px;color:var(--muted);margin-left:8px;">Anteil der Dachfläche, der ohne Ertüchtigung ans Netz kann:
       ${ANTEIL_STUFEN.map(st => `<span style="color:${st.farbe};">■</span> ${st.label}`).join(' · ')}</span></div>`;
 }

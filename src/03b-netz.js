@@ -1087,9 +1087,9 @@ function _netzArbeitslisteHtml(status) {
     ...status.hydraulik.map(edge => ({ typ: 'edge', id: `${edge.u}-${edge.v}`, titel: `Hydraulik DN ${edge.dn || '?'}`,
       text: edge.velocityExceeded ? `${(edge._vActual || 0).toFixed(1)} m/s` : `${Math.round(edge.dpPerM || 0)} Pa/m`, aktion: 'zeigen', stufe: 'hydraulik' })),
   ];
-  const kopf = `<button type="button" class="nws-link na-aufraeumen" data-click="netzAufraeumen()" title="Leitungen ohne Abnehmer entfernen, doppelt verlegte Stücke zusammenlegen und Gebäude an nähere Leitungen hängen, wo das Trasse spart">🧹 Netz aufräumen</button>` +
+  const kopf = `<button type="button" class="nws-link na-aufraeumen" data-click="netzAufraeumen()" title="Leitungen ohne Abnehmer entfernen, doppelt verlegte Stücke zusammenlegen und Gebäude an nähere Leitungen hängen, wo das Trasse spart">Netz aufräumen</button>` +
     `<div class="na-liste-kopf"><b>${status.angeschlossen} von ${status.gebaeude}</b> Gebäuden angeschlossen` +
-    (status.bestand ? ' · <span class="nws-typ bestand">🏛 Bestandsnetz</span>' : '') + '</div>';
+    (status.bestand ? ' · <span class="nws-typ bestand">Bestandsnetz</span>' : '') + '</div>';
   if (!punkte.length) return `${kopf}<div class="na-ok">✓ Alle Gebäude angeschlossen, keine Konflikte, Hydraulik in den Grenzen.</div>`;
   const sichtbar = punkte.slice(0, 8);
   return kopf + '<div class="na-liste">' + sichtbar.map(punkt =>
@@ -1573,7 +1573,7 @@ function _renderOverlays() {
         <button class="btn-xs" title="Plan löschen" data-click="removeOverlayItem(${ov.id})" style="flex:0 0 auto;color:var(--c-red);">🗑</button>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
-        <button class="btn-xs" data-click="setActiveOverlay(${ov.id})" style="flex:0 0 auto;${isActive ? 'border-color:var(--c-violet);color:var(--c-violet);' : ''}" ${ov.visible ? '' : 'disabled'}>${isActive ? '✏️ aktiv' : 'Bearbeiten'}</button>
+        <button class="btn-xs" data-click="setActiveOverlay(${ov.id})" style="flex:0 0 auto;${isActive ? 'border-color:var(--c-violet);color:var(--c-violet);' : ''}" ${ov.visible ? '' : 'disabled'}>${isActive ? 'aktiv' : 'Bearbeiten'}</button>
         <input type="range" min="0.1" max="1" step="0.05" value="${ov.opacity}" data-input="changeOverlayItemOpacity(${ov.id}, this.value)" style="flex:1;" title="Deckkraft"/>
       </div>
     </div>`;
@@ -1908,7 +1908,7 @@ function _ovRefBuildControl() {
     + 'background:var(--surface);border:1.5px solid var(--c-violet);border-radius:9px;padding:12px 14px;'
     + "min-width:300px;max-width:360px;font-family:'DM Sans',sans-serif;color:var(--c-blue);box-shadow:0 6px 24px rgba(0,0,0,.5);";
   box.innerHTML = `
-    <div style="font-size:12px;font-weight:700;color:var(--c-violet);margin-bottom:6px;">🎯 Plan über Referenzpunkte ausrichten</div>
+    <div style="font-size:12px;font-weight:700;color:var(--c-violet);margin-bottom:6px;">Plan über Referenzpunkte ausrichten</div>
     <div id="ov-ref-hint" style="font-size:11px;line-height:1.45;color:var(--c-blue);margin-bottom:8px;"></div>
     <div id="ov-ref-status" style="font-size:11px;margin-bottom:8px;"></div>
     <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--c-blue);margin-bottom:10px;">
@@ -2076,13 +2076,13 @@ function _shGemeindeschluessel(lat, lon) {
 
 function _wfsFetchBuildingsSH(bbox4326) {
   var center = [(bbox4326[0] + bbox4326[2]) / 2, (bbox4326[1] + bbox4326[3]) / 2];
-  showHint('⏳ Ermittle Gemeinde (SH)…');
+  showHint('Ermittle Gemeinde (SH)…');
   lsMeldung('Gemeinde ermitteln (Nominatim) …');
   return _shGemeindeschluessel(center[0], center[1])
     .catch(function(err) { console.warn('SH-Gemeindeermittlung fehlgeschlagen:', err.message); return null; })
     .then(function(ags) {
       if (!ags) return null;
-      showHint('⏳ Lade Gebäude vom Katasteramt (SH)…');
+      showHint('Lade Gebäude vom Katasteramt (SH)…');
       lsMeldung('Gebäude der Gemeinde ' + ags + ' laden …');
       var ctrl = new AbortController();
       var timer = setTimeout(function() { ctrl.abort(); }, 30000);
@@ -2125,7 +2125,7 @@ export function _wfsFetchBuildings(bbox4326) {
 
   var cfg = WFS_CONFIG[blId];
   var blName = blId.toUpperCase();
-  showHint('⏳ Lade Gebäude vom Katasteramt (' + blName + ')…');
+  showHint('Lade Gebäude vom Katasteramt (' + blName + ')…');
   lsMeldung('Anfrage an ' + cfg.url.replace(/^https?:\/\//, '').split('/')[0] + ' …');
 
   var ctrl = new AbortController();
@@ -2135,7 +2135,7 @@ export function _wfsFetchBuildings(bbox4326) {
   // Sekundenzähler
   var ticker = setInterval(function() {
     var elapsed = Math.round((Date.now() - startTime) / 1000);
-    showHint('⏳ Lade Gebäude vom Katasteramt (' + blName + ', ' + elapsed + 's)…');
+    showHint('Lade Gebäude vom Katasteramt (' + blName + ', ' + elapsed + 's)…');
   }, 1000);
 
   var url = _wfsBuildUrl(cfg, bbox4326);
@@ -2505,11 +2505,11 @@ function _enrichBaujahrNRW(bbox, buildings) {
 // Dispatcher: wählt die richtige Quelle nach Bundesland
 function _enrichBaujahrFromSources(bbox, blId, buildings) {
   if (blId === 'hh') {
-    showHint('🔍 Lade Baualtersklassen (Hamburg KWP)…');
+    showHint('Lade Baualtersklassen (Hamburg KWP)…');
     return _enrichBaujahrHamburg(bbox, buildings);
   }
   if (blId === 'nw') {
-    showHint('🔍 Lade Wärmebedarf (NRW Energieatlas)…');
+    showHint('Lade Wärmebedarf (NRW Energieatlas)…');
     return _enrichBaujahrNRW(bbox, buildings);
   }
   // Andere Bundesländer: aktuell keine externe Baujahr-Quelle
@@ -2528,7 +2528,7 @@ export function _overpassFetchWithRetry(query, opt = {}) {
   const start = Date.now();
   const zeigen = () => {
     const lines = [...zeilen].map(([n, t]) => n + ': ' + t);
-    showHint('⏳ OSM-Laden (' + Math.round((Date.now() - start) / 1000) + 's)  —  ' + lines.join('  |  '));
+    showHint('OSM-Laden (' + Math.round((Date.now() - start) / 1000) + 's)  —  ' + lines.join('  |  '));
     lsUnter(lines);
   };
   return overpassAbfrage(query, {
@@ -2610,7 +2610,7 @@ export async function loadOsmBuildings(){
       ls('dachform', 'uebersprungen', 'Nicht nötig — Dachform kommt mit den OSM-Gebäuden');
       const blId = _detectBundesland((bbox[0]+bbox[2])/2, (bbox[1]+bbox[3])/2);
       if (wfsData !== null) {
-        showHint('⏳ WFS ohne Ergebnis — versuche OpenStreetMap…');
+        showHint('WFS ohne Ergebnis — versuche OpenStreetMap…');
       }
       let polyFilter;
       if(snapArea && snapArea.length >= 3){
@@ -2821,7 +2821,7 @@ async function _osmImportZusaetze(neue, ausWfs, opt, lauf) {
   // Dachflächen aus dem Grundriss (beide überspringen dachQuelle 'lod2')
   if (opt.lod2) {
     ls('lod2', 'laeuft', 'Landesdienst anfragen …');
-    showHint('⏳ 3D-Dachflächen (LoD2) vom Landesdienst laden …', 0);
+    showHint('3D-Dachflächen (LoD2) vom Landesdienst laden …', 0);
     try {
       const r = await window.lod2BeimImport?.(neue, { meldung: lsMeldung });
       if (!r) ls('lod2', 'uebersprungen', 'Kein automatischer Dienst für dieses Land');
@@ -2848,7 +2848,7 @@ async function _osmImportZusaetze(neue, ausWfs, opt, lauf) {
   }
   if (opt.dach) {
     if (typeof window.dachGrundrissStill === 'function') {
-      showHint('⏳ Dachflächen aus den Grundrissen berechnen …', 0);
+      showHint('Dachflächen aus den Grundrissen berechnen …', 0);
       ls('dach', 'laeuft', `${neue.length} Grundrisse …`);
       await new Promise(r => setTimeout(r, 30));
       try {
@@ -2883,7 +2883,7 @@ async function _osmImportZusaetze(neue, ausWfs, opt, lauf) {
   }
   if (opt.baeume) {
     if (typeof window.baumOsmUebernehmen === 'function') {
-      showHint('⏳ Bäume aus OpenStreetMap laden …', 0);
+      showHint('Bäume aus OpenStreetMap laden …', 0);
       ls('baeume', 'laeuft', 'Verbinde …');
       const n = await window.baumOsmUebernehmen();
       meldungen.push(n == null ? '⚠ Bäume nicht geladen' : `${n.toLocaleString('de-DE')} Bäume`);
@@ -2919,7 +2919,7 @@ export async function dachformenAusOsmErgaenzen(opts = {}) {
   }
   const rand = 0.0005;   // ~50 m, damit Randgebäude vollständig mitkommen
   const query = `[out:json][timeout:30];way["building"]["roof:shape"](${(s - rand).toFixed(6)},${(w - rand).toFixed(6)},${(n + rand).toFixed(6)},${(e + rand).toFixed(6)});out tags geom;`;
-  showHint('⏳ Dachformen aus OpenStreetMap laden…', 0);
+  showHint('Dachformen aus OpenStreetMap laden…', 0);
   let data = null;
   try { data = await _overpassFetchWithRetry(query); } catch (err) { data = null; }
   if (!data) {

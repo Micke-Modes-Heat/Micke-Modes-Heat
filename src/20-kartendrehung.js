@@ -189,7 +189,7 @@ export function kdRenderPanel() {
     <div style="display:flex;flex-wrap:wrap;gap:4px;">
       ${_kdAchse
         ? `<button data-click="kdAbbrechenAchse()" style="${KD_BTN}border-color:rgba(239,83,80,.4);color:var(--c-red);">Achsenwahl abbrechen</button>`
-        : `<button data-click="kdStartAchse()" title="Zwei Punkte auf der Karte anklicken (z. B. Anfang und Ende der Hauptstraße) — die Karte dreht sich so, dass diese Achse senkrecht steht. Dieses Panel schließt sich dafür; die Anleitung steht dann in der Hinweiszeile." style="${KD_BTN}">📐 An Achse ausrichten</button>`}
+        : `<button data-click="kdStartAchse()" title="Zwei Punkte auf der Karte anklicken (z. B. Anfang und Ende der Hauptstraße) — die Karte dreht sich so, dass diese Achse senkrecht steht. Dieses Panel schließt sich dafür; die Anleitung steht dann in der Hinweiszeile." style="${KD_BTN}">An Achse ausrichten</button>`}
       <button data-click="kdAnLageplan()" title="Denselben Winkel wie der Vektor-Lageplan in „Liegenschaftsbilder“ verwenden" style="${KD_BTN}">↔ Wie Lageplan</button>
     </div>`;
   }
@@ -289,7 +289,7 @@ window.kdStartAchse = () => {
     const ll = window.map.mouseEventToLatLng(evt);
     if (!_kdAchse.p1) {
       _kdAchse.p1 = ll;
-      zeigen('📐 Zweiter Punkt der Achse: das andere Ende anklicken.');
+      zeigen('Zweiter Punkt der Achse: das andere Ende anklicken.');
       return;
     }
     const w = kdAchsenWinkel(_kdAchse.p1, ll);
@@ -307,7 +307,7 @@ window.kdStartAchse = () => {
   mapEl.addEventListener('click', onClick, true);
   document.addEventListener('keydown', onKey);
   mapEl.style.cursor = 'crosshair';
-  zeigen('📐 Ersten Punkt der Achse auf der Karte anklicken (z. B. Anfang der Hauptstraße).');
+  zeigen('Ersten Punkt der Achse auf der Karte anklicken (z. B. Anfang der Hauptstraße).');
 };
 
 window.kdAbbrechenAchse = () => {

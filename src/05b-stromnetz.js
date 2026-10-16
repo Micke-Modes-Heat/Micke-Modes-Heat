@@ -166,7 +166,7 @@ function _renderCableInspector(panel, edge) {
         <div style="font-size:8px;color:var(--muted);margin-top:3px;">Bau-/Abrissjahr von den verbundenen Assets übernommen.</div>
       </div>
       ${_cableMassnSection(edge)}
-      <button class="asset-ins-delete" id="ci-del">🗑 Kabel löschen</button>
+      <button class="asset-ins-delete" id="ci-del">Kabel löschen</button>
     </div>`;
 
   const typeEl     = panel.querySelector('#ci-type');
@@ -941,7 +941,7 @@ export function buildStromEdgeTooltip(e) {
       `<div style="font-size:11px;font-weight:600;">${einspKw.toFixed(1)} kW</div>` +
     `</div>` +
     `<div style="flex:1;text-align:center;padding:0 4px;">` +
-      `<div style="color:var(--c-amber);font-size:10px;margin-bottom:2px;">⚡ Max (WC)</div>` +
+      `<div style="color:var(--c-amber);font-size:10px;margin-bottom:2px;">Max (WC)</div>` +
       `<div style="font-size:11px;font-weight:600;">${wcKw.toFixed(1)} kW</div>` +
     `</div>` +
   `</div>`;
@@ -2483,7 +2483,7 @@ export function elCalcAssets(opts = {}) {
   if (!activeA.find(a => a.type === 'NAP'))   warn.push('⚠ Kein NAP vorhanden.');
   if (!activeA.find(a => a.type === 'Trafo')) warn.push('⚠ Kein Trafo – Berechnung mit 400 V NS.');
   if (activeA.length === 0) { warn.push('⚠ Keine aktiven Elektro-Assets.'); if (!silent) _showElCalcResult(warn); return; }
-  if (activeE.length === 0 && activeA.length > 0) warn.push('ℹ Keine Kabel vorhanden.');
+  if (activeE.length === 0 && activeA.length > 0) warn.push('Keine Kabel vorhanden.');
 
   // Props im Rechenjahr: Basis-Props + alle bis dahin umgesetzten Maßnahmen.
   // Dadurch wirken Ertüchtigungen (z. B. Trafo 630 → 1000 kVA ab 2032) tatsächlich
@@ -3108,7 +3108,7 @@ export async function loadOsmStrassen() {
   }
 
   const btn = document.getElementById('btn-osm-strassen');
-  if (btn) { btn.textContent = '⏳ Lade...'; btn.disabled = true; }
+  if (btn) { btn.textContent = 'Lade...'; btn.disabled = true; }
 
   // Neben öffentlichen Straßen auch typische private Erschließungs- und
   // Betriebswege laden. Gerade auf großen Liegenschaften sind interne Wege in
@@ -3377,7 +3377,7 @@ export function osmStrassenAlsTrassen(domains = ['strom']) {
 export async function loadAndAdoptOsmStrassen() {
   const btn  = document.getElementById('btn-schnellstart-osm');
   const orig = btn ? btn.innerHTML : '';
-  if (btn) { btn.innerHTML = '⏳ Lade Straßen…'; btn.disabled = true; }
+  if (btn) { btn.innerHTML = 'Lade Straßen…'; btn.disabled = true; }
   try {
     await loadOsmStrassen();
     adoptAllOsmStrassen();
@@ -3392,7 +3392,7 @@ export function toggleOsmStrassenVisible() {
   if (_osmStrassenVisible) _osmStrassenLayer.addTo(map);
   else map.removeLayer(_osmStrassenLayer);
   const btn = document.getElementById('btn-osm-strassen-toggle');
-  if (btn) btn.textContent = _osmStrassenVisible ? '👁 Ausblenden' : '👁 Einblenden';
+  if (btn) btn.textContent = _osmStrassenVisible ? 'Ausblenden' : 'Einblenden';
 }
 
 export function clearOsmStrassen() {

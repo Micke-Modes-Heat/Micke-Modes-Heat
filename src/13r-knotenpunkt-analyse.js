@@ -791,10 +791,10 @@ function _renderSidebar() {
   const showErzg  = tf==='alle'||tf==='erzeuger';
   const showVerbr = tf==='alle'||tf==='verbraucher';
   const groups = [
-    showInfra ? ['⚡ Infrastruktur', items.filter(a=>INFRA_TYPES.has(a.type))]                   : null,
-    showVerbr ? ['🔌 Verbraucher',   items.filter(a=>['Verbraucher','Lade'].includes(a.type))]   : null,
-    showErzg  ? ['☀ Erzeuger',       items.filter(a=>[...GENERATOR_TYPES,'WP'].includes(a.type))]: null,
-    showVerbr ? ['🔋 Speicher',       items.filter(a=>a.type==='Batterie')]                       : null,
+    showInfra ? ['Infrastruktur', items.filter(a=>INFRA_TYPES.has(a.type))]                   : null,
+    showVerbr ? ['Verbraucher',   items.filter(a=>['Verbraucher','Lade'].includes(a.type))]   : null,
+    showErzg  ? ['Erzeuger',       items.filter(a=>[...GENERATOR_TYPES,'WP'].includes(a.type))]: null,
+    showVerbr ? ['Speicher',       items.filter(a=>a.type==='Batterie')]                       : null,
   ].filter(Boolean);
 
   let html=`
@@ -805,9 +805,9 @@ function _renderSidebar() {
     oninput="knaSetFilter(this.value)">
   <div style="display:flex;gap:3px;">
     ${tfBtn('alle','Alle')}
-    ${tfBtn('infra','⚡ Infra')}
-    ${tfBtn('erzeuger','☀ Erz.')}
-    ${tfBtn('verbraucher','🔌 Verbr.')}
+    ${tfBtn('infra','Infra')}
+    ${tfBtn('erzeuger','Erz.')}
+    ${tfBtn('verbraucher','Verbr.')}
   </div>
 </div>`;
 
@@ -924,7 +924,7 @@ function _renderMain() {
     </div>
     ${mZoomRow}
     ${noData?`<div style="display:flex;align-items:center;justify-content:center;flex:1;color:#444;font-size:11px;margin-top:8px;">
-      ℹ Noch keine Profildaten — bitte Strom-Berechnung und Dispatch ausführen.</div>`
+      Noch keine Profildaten — bitte Strom-Berechnung und Dispatch ausführen.</div>`
     :`<canvas id="kna-canvas" style="flex:1;width:100%;min-height:0;border-radius:4px;background:var(--surface);margin-top:4px;"></canvas>`}`;
 
   // Kapazitäts-Auslastung — beide Richtungen
@@ -1031,7 +1031,7 @@ export function knaToggleRightPanel() {
   const panel = document.getElementById('kna-right-panel');
   const btn   = document.getElementById('kna-right-btn');
   if (panel) panel.style.width = _K.showContribs ? '260px' : '0';
-  if (btn)   btn.textContent   = _K.showContribs ? '▶ Beiträge' : '◀ Beiträge';
+  if (btn)   btn.textContent   = _K.showContribs ? 'Beiträge' : 'Beiträge';
   if (_K.showContribs) _renderRightPanel();
 }
 
@@ -1172,7 +1172,7 @@ export function knaBuildAnalyseSection() {
     display:flex;align-items:center;justify-content:center;padding:10px 0;
     transition:color .15s;letter-spacing:.05em;"
     onmouseover="this.style.color='#4fc3f7'"
-    onmouseout="this.style.color='#555'">◀ Beiträge</button>
+    onmouseout="this.style.color='#555'">Beiträge</button>
   <!-- Rechter Drawer (Beitragsliste) -->
   <div id="kna-right-panel"
     style="width:0;overflow:hidden;flex-shrink:0;

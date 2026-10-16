@@ -37,7 +37,7 @@ function _ensurePanel() {
   panel.style.cssText = 'top:70px;min-width:520px;max-width:760px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
   panel.innerHTML = `
     <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID}')">
-      <span style="color:var(--c-blue);font-size:12px;font-weight:600;">🏛 Bestand prüfen</span>
+      <span style="color:var(--c-blue);font-size:12px;font-weight:600;">Bestand prüfen</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
             data-click="bestandPanelToggle()">✕</span>
@@ -59,7 +59,7 @@ export function bestandPanelToggle() {
 /** Netz für das Basisjahr rechnen und alle Prüfungen ausführen. */
 export function bestandPruefenUndZeigen() {
   _ensurePanel().style.display = 'block';
-  _body().innerHTML = '<div style="padding:22px;color:var(--muted);font-size:11px;">⏳ Bestand wird geprüft …</div>';
+  _body().innerHTML = '<div style="padding:22px;color:var(--muted);font-size:11px;">Bestand wird geprüft …</div>';
   setTimeout(() => {
     try {
       const heute = new Date().getFullYear();

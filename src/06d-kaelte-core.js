@@ -334,7 +334,7 @@ export function updateKaelte() {
   const ss = window.systemState;
   const hint = document.getElementById('kaelte-hint');
   if (!ss || !ss.tempH) {
-    if (hint) { hint.style.display = 'block'; hint.textContent = '⚡ Zuerst „Grundlage berechnen" – Temperaturprofil wird für die Kältelast benötigt.'; }
+    if (hint) { hint.style.display = 'block'; hint.textContent = 'Zuerst „Grundlage berechnen" – Temperaturprofil wird für die Kältelast benötigt.'; }
     _renderKaelteResults(null);
     return;
   }

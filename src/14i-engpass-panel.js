@@ -80,7 +80,7 @@ function _ensurePanel() {
   panel.style.cssText = 'top:70px;min-width:660px;max-width:900px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
   panel.innerHTML = `
     <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID}')">
-      <span style="color:var(--c-orange);font-size:12px;font-weight:600;">⏱ Engpass-Fahrplan</span>
+      <span style="color:var(--c-orange);font-size:12px;font-weight:600;">Engpass-Fahrplan</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
             data-click="engpassPanelToggle()">✕</span>
@@ -121,7 +121,7 @@ export function engpassPanelAktualisieren() {
   // Horizont aus den Reglern übernehmen, falls das Panel schon gerendert war
   const h = _horizontAusReglern();
   if (h) _horizont = h;
-  _body().innerHTML = '<div style="padding:22px;color:var(--muted);font-size:11px;">⏳ Netz wird über die Stützjahre gerechnet …</div>';
+  _body().innerHTML = '<div style="padding:22px;color:var(--muted);font-size:11px;">Netz wird über die Stützjahre gerechnet …</div>';
   setTimeout(() => {
     try {
       _vergleich = engpassVergleich(_horizont || {});
@@ -222,7 +222,7 @@ function _toolbar(res, nKrit, nOk, nBestand = 0) {
     <button style="${btn}border-color:var(--c-orange);color:var(--c-orange);" data-click="engpassPanelAktualisieren()">↻ Neu rechnen</button>
     <button style="${btn}border-color:var(--c-green);color:var(--c-green);" data-click="engpassMassnahmenVorschlagen()"
       title="Leitet für jedes kritische Betriebsmittel die günstigste ausreichende Ertüchtigung ab und legt sie als geplante Maßnahme an (erscheint im Ausbauplaner).">
-      ⚙ Maßnahmen vorschlagen</button>
+      Maßnahmen vorschlagen</button>
     <button style="${btn}border-color:var(--c-red);color:var(--c-red);" data-click="engpassMassnahmenZuruecksetzen()"
       title="Entfernt alle automatisch erzeugten Maßnahmen wieder — von Hand bearbeitete bleiben.">✕ Auto-Maßnahmen</button>
     <span style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
@@ -432,7 +432,7 @@ function _bestandsmaengel(bestand) {
 
   return `
   <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--c-orange);margin:10px 0 3px;">
-    🔧 Bestandsmängel · ${bestand.length} von Anfang an unterdimensioniert
+    Bestandsmängel · ${bestand.length} von Anfang an unterdimensioniert
   </div>
   <div style="background:rgba(249,168,37,0.07);border:1px solid rgba(249,168,37,0.3);border-radius:6px;padding:6px 4px;margin-bottom:12px;">
     <div style="font-size:8.5px;color:var(--muted);padding:0 6px 5px;line-height:1.6;">
@@ -447,7 +447,7 @@ function _bestandsmaengel(bestand) {
         title="Schreibt die Vorschläge in die Bestandsdaten und rechnet neu.">
         ✓ ${loesbar.length} Korrektur(en) übernehmen</button>
       <button style="${btn}border-color:var(--c-red);color:var(--c-red);" data-click="engpassKorrekturenZuruecknehmen()"
-        title="Stellt die ursprünglichen Bestandswerte wieder her.">↩ Zurücknehmen</button>
+        title="Stellt die ursprünglichen Bestandswerte wieder her.">Zurücknehmen</button>
     </div>
   </div>`;
 }
@@ -505,7 +505,7 @@ function _aufloesung(res) {
 
   return `
   <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:10px 0 3px;">
-    🔗 Ursache → Maßnahme · ${gruppen.length} Auslöser
+    Ursache → Maßnahme · ${gruppen.length} Auslöser
   </div>
   <div style="background:var(--surface2);border-radius:6px;padding:8px 6px;">
     ${zeilen}${ohneBlock}

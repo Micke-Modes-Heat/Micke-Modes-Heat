@@ -529,7 +529,7 @@ function buildGebVerbraucherSection(g) {
         ${verbr
           ? `<button class="btn-xs" data-click="overwriteVerbrAsset(${g.id})"
                style="width:100%;margin-top:6px;display:flex;justify-content:center;gap:4px;border-color:var(--c-blue);color:var(--c-blue);">
-               ⚡ SLP + kW → Verbraucher-Asset überschreiben
+               SLP + kW → Verbraucher-Asset überschreiben
              </button>`
           : `<div style="font-size:9px;color:rgba(249,168,37,.7);margin-top:5px;">⚠ Kein Verbraucher-Asset vorhanden</div>`}
       </div>
@@ -791,7 +791,7 @@ export function pvuRender() {
   const STAT = {
     ok:               { txt: '✓ ok',          col: '#66bb6a' },
     abweichend:       { txt: '⚠ abweichend',   col: '#ffa726' },
-    fehlt:            { txt: '⛔ kein Asset',   col: '#ef5350' },
+    fehlt:            { txt: 'kein Asset',   col: '#ef5350' },
     assetOhneFlaeche: { txt: 'ⓘ ohne Fläche',  col: '#90a4ae' },
   };
   const rowHtml = d => {
@@ -825,7 +825,7 @@ export function pvuRender() {
   ${offen.length ? `<button onclick="pvuUebernehmenAlle()"
       style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;
              border:1px solid var(--c-amber);color:var(--c-amber);background:rgba(255,213,79,.08);margin-bottom:8px;">
-      ☀ Alle ${offen.length} übernehmen (fehlende Assets anlegen)</button>` : ''}
+      Alle ${offen.length} übernehmen (fehlende Assets anlegen)</button>` : ''}
   ${ohneFl.length ? `<button onclick="pvuLoescheAssetsOhneFlaeche()"
       title="PV-Assets entfernen, denen keine gezeichnete Belegungsfläche zugrunde liegt"
       style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;
@@ -920,7 +920,7 @@ function _renderNutzungstypenModal(editId = null, formData = null) {
     </tr>`;
 
   return `<div class="ep-modal" style="min-width:560px;max-width:700px;">
-    <div class="ep-modal-title">⚙ Nutzungstypen verwalten</div>
+    <div class="ep-modal-title">Nutzungstypen verwalten</div>
     <div style="overflow-y:auto;max-height:420px;">
       <table class="nt-table" id="nt-table">
         <thead><tr>
@@ -1069,7 +1069,7 @@ function buildDachSection(g, opts = {}) {
   const modeToggle = `
     <div style="display:flex;gap:4px;margin-top:6px;">
       <button class="btn-xs" style="flex:1;${modus==='pauschal'?'border-color:var(--accent);color:var(--accent);background:rgba(79,195,247,0.08);':''}"
-        data-click="setGebPvModus(${g.id},'pauschal')">⊞ Pauschal</button>
+        data-click="setGebPvModus(${g.id},'pauschal')">Pauschal</button>
       <button class="btn-xs" style="flex:1;${modus==='flaechen'?'border-color:var(--c-amber);color:var(--c-amber);background:rgba(255,213,79,0.08);':''}"
         data-click="setGebPvModus(${g.id},'flaechen')">✎ Flächen zeichnen</button>
     </div>`;
@@ -1092,7 +1092,7 @@ function buildDachSection(g, opts = {}) {
     </div>
     ${g.flaeche ? `
     <div class="geb-dach-kwp-row">
-      <span>☀ Basis</span><span>${kwpBase.toFixed(1)} kWp</span>
+      <span>Basis</span><span>${kwpBase.toFixed(1)} kWp</span>
       <span>Faktor</span>
       <span style="color:${fakCol};font-weight:600;">${(korrFak * 100).toFixed(0)} %</span>
       <span style="font-weight:600;">= Korr.</span>
@@ -1158,7 +1158,7 @@ function buildDachSection(g, opts = {}) {
       </div>
       ${isSattel ? `
       <div style="display:flex;align-items:center;gap:4px;">
-        <button class="btn-xs" style="flex:1;" data-click="startGebFirstDraw(${g.id})" title="Firstlinie auf dem Satellitenbild nachzeichnen (2 Klicks) — nötig bei schiefen/asymmetrischen Grundrissen">📐 First neu zeichnen</button>
+        <button class="btn-xs" style="flex:1;" data-click="startGebFirstDraw(${g.id})" title="Firstlinie auf dem Satellitenbild nachzeichnen (2 Klicks) — nötig bei schiefen/asymmetrischen Grundrissen">First neu zeichnen</button>
         ${g.pvRidgeOverride ? `<button class="btn-xs" data-click="resetGebFirst(${g.id})" title="First zurück auf automatische Mitte">↺</button>` : ''}
       </div>
       ${g.pvRidgeOverride ? '<div style="font-size:9px;color:var(--c-amber);">First manuell gesetzt.</div>' : ''}` : ''}
@@ -1207,7 +1207,7 @@ function buildDachSection(g, opts = {}) {
     </div>
     <button class="btn-xs" style="width:100%;margin-top:4px;border-color:var(--c-amber);color:var(--c-amber);"
       data-click="pvModusStartFuer(${g.id})"
-      title="PV-Modus auf der Karte: Dach anklicken = erste Ecke, der Modus bleibt an — auch für die übrigen Gebäude">🗺 Im PV-Modus zeichnen</button>
+      title="PV-Modus auf der Karte: Dach anklicken = erste Ecke, der Modus bleibt an — auch für die übrigen Gebäude">Im PV-Modus zeichnen</button>
     ${flList ? `<div style="margin-top:6px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">${flList}</div>` : '<div style="font-size:9px;color:var(--muted);margin-top:6px;text-align:center;">Noch keine Fläche gezeichnet.</div>'}
     ${flResult}`;
 
@@ -1984,8 +1984,8 @@ window.startGebPvDraw = function(gId, typ, opts = {}) {
   window.gebPvDraw = { gId, typ, points: [], polyline: null, startMarker: null };
   map.getContainer().style.cursor = 'crosshair';
   showHint(typ === 'sperr'
-    ? '⛔ Sperrfläche: Ecken anklicken · roten Startpunkt erneut klicken = abschließen · Rechtsklick = zurück · Esc = abbrechen'
-    : '☀ Belegungsfläche: Ecken anklicken · roten Startpunkt erneut klicken = abschließen · Rechtsklick = zurück · Esc = abbrechen');
+    ? 'Sperrfläche: Ecken anklicken · roten Startpunkt erneut klicken = abschließen · Rechtsklick = zurück · Esc = abbrechen'
+    : 'Belegungsfläche: Ecken anklicken · roten Startpunkt erneut klicken = abschließen · Rechtsklick = zurück · Esc = abbrechen');
 };
 
 window.cancelGebPvDraw = function() {
@@ -2012,7 +2012,7 @@ window.startGebFirstDraw = function(gId) {
   if (g.polygonLayer) { try { map.fitBounds(g.polygonLayer.getBounds(), { padding: [60, 60], maxZoom: 21 }); } catch(e) {} }
   window.gebFirstDraw = { gId, points: [], polyline: null };
   map.getContainer().style.cursor = 'crosshair';
-  showHint('📐 First: Anfangs- und Endpunkt der Firstlinie anklicken · Esc = abbrechen');
+  showHint('First: Anfangs- und Endpunkt der Firstlinie anklicken · Esc = abbrechen');
 };
 
 window.cancelGebFirstDraw = function() {
@@ -2424,7 +2424,7 @@ export function _renderExpandedPanel(g, stats) {
         title="${_mergeModus?.zielId === g.id ? 'Zusammenfügen beenden' : 'Weiteres Gebäude anklicken und mit diesem Grundriss vereinigen'}">
         ${_mergeModus?.zielId === g.id ? '✓ Fertig' : '⧉ Zusammenfügen'}
       </button>` : ''}
-      <button class="btn-xs" data-click="togglePlanPanel(${g.id})" title="Planung & Sanierung">🔧 Planen</button>
+      <button class="btn-xs" data-click="togglePlanPanel(${g.id})" title="Planung & Sanierung">Planen</button>
       <button class="btn-xs" data-click="startNetzEdgeFrom(${g.id})" title="Leitung von diesem Gebäude zeichnen" style="border-color:var(--c-red);color:var(--c-red);">⛕+</button>
       ${netzEdges.some(e => e.u === g.id || e.v === g.id) ? `<button class="btn-xs red" data-click="abklemmenGebaeude(${g.id})" title="Alle Netzleitungen entfernen">⛕✕</button>` : ''}
       <button class="btn-xs" data-click="finishGebaeudeGrundrissEdit(); removeGebaeude(${g.id})" title="Löschen" style="margin-left:auto">&#10005;</button>
@@ -2432,7 +2432,7 @@ export function _renderExpandedPanel(g, stats) {
     ${_formStatusHtml(g)}
     ${activeVariantId !== null ? `<div style="margin-top:5px;padding-top:5px;border-top:1px solid var(--border);">
       <button class="btn-xs ${ausgeschlossen ? 'green' : ''}" style="${ausgeschlossen ? '' : 'border-color:var(--c-orange);color:var(--c-orange);'}" data-click="toggleAusschluss(${g.id})">
-        ${ausgeschlossen ? '↩ Wieder anschließen' : '⊗ In Variante abkoppeln'}
+        ${ausgeschlossen ? 'Wieder anschließen' : '⊗ In Variante abkoppeln'}
       </button>
     </div>` : ''}
     <div class="plan-panel" id="plan-${g.id}">
@@ -2467,7 +2467,7 @@ export function _renderExpandedPanel(g, stats) {
 function _renderFelddatenBlock(g) {
   if (!g.feldNotizen && !g.feldStatus && !g.feldFotos?.length) return '';
 
-  const statusLabel = { offen:'📋 Offen', besucht:'👁 Besucht', erledigt:'✅ Erledigt' }[g.feldStatus] || '';
+  const statusLabel = { offen:'Offen', besucht:'Besucht', erledigt:'Erledigt' }[g.feldStatus] || '';
   const notizHtml = g.feldNotizen
     ? `<div style="background:#fffbeb;border-left:3px solid var(--c-orange);padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;white-space:pre-wrap;margin-bottom:6px;">${escHtml(g.feldNotizen)}</div>`
     : '';
@@ -2478,7 +2478,7 @@ function _renderFelddatenBlock(g) {
   return `
   <div style="margin:6px 0 2px;padding:6px 8px;background:var(--surface2,var(--surface2));border-radius:8px;border:1px solid var(--c-blue);">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:10px;font-weight:700;color:var(--muted);">
-      📱 FELDDATEN ${statusLabel ? '· ' + statusLabel : ''}
+      FELDDATEN ${statusLabel ? '· ' + statusLabel : ''}
     </div>
     ${notizHtml}
     ${fotoHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${fotoHtml}</div>` : ''}
@@ -2812,7 +2812,7 @@ export async function richteGebaeudeRechtwinklig(gId) {
       : window.confirm(text.replace(/<[^>]+>/g, ''));
     if (!ok) return;
   }
-  showHint('⏳ Grundriss wird rechtwinklig ausgerichtet und neu berechnet …', 0);
+  showHint('Grundriss wird rechtwinklig ausgerichtet und neu berechnet …', 0);
   await _naechsterFrame();
   try {
     g.polygon = r.coords.map(p => L.latLng(p.lat, p.lng));
@@ -3035,7 +3035,7 @@ export function startGebaeudeFormUebernahme(gId) {
 // true = Klick verbraucht
 export function gebaeudeFormClick(quelleId) {
   if (!_formModus) return false;
-  if (_formModus.busy) { showHint('⏳ Die vorige Übernahme läuft noch — einen Moment …', 2500); return true; }
+  if (_formModus.busy) { showHint('Die vorige Übernahme läuft noch — einen Moment …', 2500); return true; }
   const z = window.gebaeude.find(b => b.id === _formModus.zielId);
   const q = window.gebaeude.find(b => b.id === quelleId);
   if (!z?.polygon) { endeGebaeudeFormUebernahme(); return false; }
@@ -3051,7 +3051,7 @@ export function gebaeudeFormClick(quelleId) {
 async function _formUebernehmen(z, q, r) {
   const qName = _gebName(q);
   const vorher = Math.round(z.flaeche || 0);
-  showHint(`⏳ Maße von „${qName}" werden übernommen und neu berechnet …`, 0);
+  showHint(`Maße von „${qName}" werden übernommen und neu berechnet …`, 0);
   await _naechsterFrame();
   try {
     // PV-Flächen, First und Anlagen anteilig mitnehmen, danach den Grundriss exakt setzen

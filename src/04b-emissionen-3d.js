@@ -707,7 +707,7 @@ export function renderAnalyseDispatch() {
       canvas.width = canvas.clientWidth || 600; canvas.height = 200;
       ctx.fillStyle = 'rgba(15,17,23,0.5)'; ctx.fillRect(0, 0, canvas.width, 200);
       ctx.fillStyle = '#888'; ctx.font = '12px sans-serif';
-      const msg = glKannBerechnen() ? '⏳ Bitte „Grundlage berechnen" klicken oder warten…' : 'Gebäude mit Verbrauchsdaten importieren.';
+      const msg = glKannBerechnen() ? 'Bitte „Grundlage berechnen" klicken oder warten…' : 'Gebäude mit Verbrauchsdaten importieren.';
       ctx.fillText(msg, 20, 100);
     }
     // Auto-Berechnung anstoßen wenn möglich

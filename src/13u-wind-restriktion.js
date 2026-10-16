@@ -159,7 +159,7 @@ window.windRestriktLoad = async function () {
   const query = `[out:json][timeout:25];\n(\n  ${parts}\n);\nout geom;`;
 
   _restriktLoading = true;
-  _restriktStatus = '⏳ Lade Infrastruktur aus OpenStreetMap …';
+  _restriktStatus = 'Lade Infrastruktur aus OpenStreetMap …';
   _rerender();
 
   let data = null;
@@ -336,7 +336,7 @@ window.windGwaToggle = function () {
   if (!_gwaUrl) {
     // Kein Prompt mehr — die feste Quelle wird einmalig über „⚙ Quelle" gesetzt und
     // in localStorage gemerkt (bleibt danach über Reloads hinweg fest hinterlegt).
-    _restriktStatus = 'ℹ Keine Windressource-Quelle hinterlegt — mit „⚙ Quelle" eine XYZ-/WMS-URL setzen (wird dauerhaft gemerkt).';
+    _restriktStatus = 'Keine Windressource-Quelle hinterlegt — mit „⚙ Quelle" eine XYZ-/WMS-URL setzen (wird dauerhaft gemerkt).';
     _rerender();
     return;
   }
@@ -422,7 +422,7 @@ async function _gwaFetchValue(ll) {
     _gwaHoverTip.setContent(
       (mean != null && isFinite(mean))
         ? `💨 <b>${mean.toFixed(1).replace('.', ',')} m/s</b> <span style="opacity:.7;">Ø 100 m</span>`
-        : '💨 keine Daten');
+        : 'keine Daten');
   } catch (e) {
     if (e.name !== 'AbortError' && seq === _gwaHoverSeq && _gwaHoverTip) _gwaHoverTip.setContent('💨 —');
   }
@@ -497,16 +497,16 @@ export function windRestriktBlock() {
   const gwaOn = !!_gwaLayer;
 
   return `
-    <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px;">🗺 Karten-Layer</div>
+    <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px;">Karten-Layer</div>
 
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:6px;">
-      <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:6px;">🚧 Restriktionsflächen (OpenStreetMap)</div>
+      <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:6px;">Restriktionsflächen (OpenStreetMap)</div>
       ${refInputs}
       <div style="font-size:8px;color:var(--muted);margin:-2px 0 4px;">↓ Abstände aus Höhe/Rotor abgeleitet (Gebäude/Straße/Bahn = Kipphöhe, Leitung = 1× Rotor-Ø) — manuell überschreibbar:</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">${setInputs}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-        <button class="ins-link-btn" onclick="windRestriktLoad()" ${_restriktLoading ? 'disabled' : ''} style="margin:0;">${_restriktLayer ? '↺ Neu laden' : '⬇ Laden & puffern'}</button>
-        ${_restriktLayer ? `<button class="ins-link-btn" onclick="windRestriktToggle()" style="margin:0;">${on ? '👁 ausblenden' : '👁 einblenden'}</button>` : ''}
+        <button class="ins-link-btn" onclick="windRestriktLoad()" ${_restriktLoading ? 'disabled' : ''} style="margin:0;">${_restriktLayer ? '↺ Neu laden' : 'Laden & puffern'}</button>
+        ${_restriktLayer ? `<button class="ins-link-btn" onclick="windRestriktToggle()" style="margin:0;">${on ? 'ausblenden' : 'einblenden'}</button>` : ''}
         ${_restriktLayer ? `<button class="ins-link-btn" onclick="windRestriktClear()" style="margin:0;color:var(--c-red);">✕ löschen</button>` : ''}
       </div>
       ${_restriktStatus ? `<div style="font-size:9px;color:${_restriktStatus.startsWith('✓') ? '#4dd0e1' : _restriktStatus.startsWith('⏳') ? '#4dd0e1' : '#f9a825'};margin-top:5px;">${_restriktStatus}</div>` : ''}
@@ -515,17 +515,17 @@ export function windRestriktBlock() {
 
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:6px;">
       <div style="display:flex;align-items:center;gap:6px;">
-        <span style="font-size:10px;font-weight:600;color:var(--text);flex:1;">🌿 Schutzgebiete (BfN-WMS)</span>
-        <button class="ins-link-btn" onclick="windSchutzToggle()" style="margin:0;">${schutzOn ? '👁 aus' : '👁 ein'}</button>
+        <span style="font-size:10px;font-weight:600;color:var(--text);flex:1;">Schutzgebiete (BfN-WMS)</span>
+        <button class="ins-link-btn" onclick="windSchutzToggle()" style="margin:0;">${schutzOn ? 'aus' : 'ein'}</button>
       </div>
       <div style="font-size:8px;color:var(--c-blue);margin-top:4px;">Amtliche Referenz: Nationalparke, NSG, Biosphärenreservate, FFH/Natura 2000, Vogelschutz. Reine Anzeige, keine Berechnung.</div>
     </div>
 
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:6px;">
-        <span style="font-size:10px;font-weight:600;color:var(--text);flex:1;">💨 Windressource-Overlay</span>
-        <button class="ins-link-btn" onclick="windGwaSetUrl()" style="margin:0;">⚙ Quelle</button>
-        <button class="ins-link-btn" onclick="windGwaToggle()" style="margin:0;">${gwaOn ? '👁 aus' : '👁 ein'}</button>
+        <span style="font-size:10px;font-weight:600;color:var(--text);flex:1;">Windressource-Overlay</span>
+        <button class="ins-link-btn" onclick="windGwaSetUrl()" style="margin:0;">Quelle</button>
+        <button class="ins-link-btn" onclick="windGwaToggle()" style="margin:0;">${gwaOn ? 'aus' : 'ein'}</button>
       </div>
       ${gwaOn ? `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
         <span style="font-size:8px;color:var(--muted);">Deckkraft</span>

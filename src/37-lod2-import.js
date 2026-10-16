@@ -221,7 +221,7 @@ async function _rueckfrageUndUebernehmen(daten, gebs) {
       + 'Abbrechen = vorhandene Belegungen unverändert lassen.');
   }
 
-  window.showHint?.('⏳ Dachflächen werden übernommen …', 0);
+  window.showHint?.('Dachflächen werden übernommen …', 0);
   await _warte();
   const neu = _schreiben(ziele, umstellen ? belegt.map(z => z.g) : []);
   window.hideHint?.();
@@ -235,7 +235,7 @@ async function _rueckfrageUndUebernehmen(daten, gebs) {
  */
 export async function lod2Importieren(files) {
   const gebs = (window.gebaeude || []).filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3);
-  window.showHint?.('⏳ LoD2-Datei wird gelesen …', 0);
+  window.showHint?.('LoD2-Datei wird gelesen …', 0);
   await _warte();
   const stand = _neuerStand();
   try {
@@ -372,10 +372,10 @@ export async function lod2Laden() {
     lod2DateiWaehlen();
     return;
   }
-  window.showHint?.('⏳ LoD2 vom Landesdienst laden …', 0);
+  window.showHint?.('LoD2 vom Landesdienst laden …', 0);
   let r;
   try {
-    r = await lod2DienstLaden(gebs, { meldung: t => window.showHint?.(`⏳ LoD2 ${dienst.name}: ${t}`, 0) });
+    r = await lod2DienstLaden(gebs, { meldung: t => window.showHint?.(`LoD2 ${dienst.name}: ${t}`, 0) });
   } catch (err) {
     window.hideHint?.();
     alert(`LoD2 konnte nicht vom Landesdienst geladen werden (${err?.message || err}).\n\nAlternativ die Kachel im Geoportal herunterladen und als Datei importieren.`);
@@ -459,7 +459,7 @@ export async function dachGrundrissBerechnen() {
     alert(alle.length ? 'Alle Gebäude haben schon LoD2-Dachflächen.' : 'Erst Gebäude laden oder zeichnen.');
     return;
   }
-  window.showHint?.('⏳ Dachflächen werden berechnet …', 0);
+  window.showHint?.('Dachflächen werden berechnet …', 0);
   await _warte();
   const ziele = [], schief = [];
   for (const g of basis) {

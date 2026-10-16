@@ -151,7 +151,7 @@ export function blackoutModusStart() {
   if (window.blackoutModusAktiv) return;
   beginInteraction({
     id: INTERAKTION,
-    label: '🛡 Blackout-Modus',
+    label: 'Blackout-Modus',
     hint: 'Gebäude anklicken = Klasse zuweisen · 1/2/3 = Kritisch/Eingeschränkt/Einspeisefähig · 0 = entfernen',
     cancel: () => blackoutModusStop(),
   });
@@ -469,7 +469,7 @@ function _platzZeichnen() {
   for (const a of r.aggregate) {
     if (!Number.isFinite(a.lat) || !(a.empfKw > 0)) continue;
     const farbe = a.ort === 'knoten' ? KNOTEN_FARBE : a.fest ? '#90a4ae' : NOTSTROM_KLASSEN.A.farbe;
-    const text = `<b>⚙ NEA ${escHtml(a.name)}</b> (${a.ort === 'knoten' ? escHtml(a.typ) : 'am Gebäude'})<br>`
+    const text = `<b>NEA ${escHtml(a.name)}</b> (${a.ort === 'knoten' ? escHtml(a.typ) : 'am Gebäude'})<br>`
       + `Empfehlung <b>${_fmtKw(a.empfKw)}</b> · gleichz. Spitze ${_fmtKw(a.peakKw)}<br>`
       + (a.bestandKw ? `vorhanden ${_fmtKw(a.bestandKw)}${a.zusatzKw ? ` · fehlen ${_fmtKw(a.zusatzKw)}` : ' ✓'}<br>` : '')
       + `versorgt ${a.gebaeude.length} Gebäude · ${_fmtEur(a.kosten)}`
@@ -539,7 +539,7 @@ function _platzBlock() {
   const titel = `<div style="display:flex;align-items:center;gap:4px;">
       <span style="flex:1;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Platzierung am Netz</span>
       <button class="btn-xs" style="border-color:${KNOTEN_FARBE};color:${KNOTEN_FARBE};" data-click="blackoutPlatzierungRechnen()"
-        title="Aggregat-Standorte am Bestandsnetz vergleichen">${pl ? '↻ Neu' : '⚙ Berechnen'}</button>
+        title="Aggregat-Standorte am Bestandsnetz vergleichen">${pl ? '↻ Neu' : 'Berechnen'}</button>
       ${pl ? '<button class="btn-xs" style="padding:0 5px;" data-click="blackoutPlatzierungVerwerfen()" title="Ergebnis verwerfen">✕</button>' : ''}
     </div>`;
   if (!pl) {
@@ -796,7 +796,7 @@ function _inselBlock() {
     <div style="display:flex;align-items:center;gap:4px;">
       <span style="flex:1;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Insel am NAP</span>
       <button class="btn-xs" style="border-color:${INSEL_FARBE};color:${INSEL_FARBE};" data-click="blackoutInselRechnen()"
-        title="Liegenschafts-Insel bemessen und Checkliste erstellen">${ins ? '↻ Neu' : '⚙ Berechnen'}</button>
+        title="Liegenschafts-Insel bemessen und Checkliste erstellen">${ins ? '↻ Neu' : 'Berechnen'}</button>
       ${ins ? '<button class="btn-xs" style="padding:0 5px;" data-click="blackoutInselVerwerfen()" title="Ergebnis verwerfen">✕</button>' : ''}
     </div>
     <div style="display:flex;align-items:center;gap:6px;margin-top:6px;" title="Abzusichernder Anteil der Liegenschafts-Spitzenlast">
@@ -983,10 +983,10 @@ function _waermeZeichnen() {
   const c = polygonCenter(g.polygon);
   _waermeLayer = L.layerGroup().addTo(map);
   const text = w
-    ? `<b>🔥 Heizzentrale ${escHtml(g.name || '')}</b><br>Deckung im Ausfall: <b>${Math.round(w.mit.deckungEnergiePct)} %</b>`
+    ? `<b>Heizzentrale ${escHtml(g.name || '')}</b><br>Deckung im Ausfall: <b>${Math.round(w.mit.deckungEnergiePct)} %</b>`
       + ` (ohne Maßnahme ${Math.round(w.ohne.deckungEnergiePct)} %)`
       + (w.mit.neaKw ? `<br>Notstrom Hilfsenergie ${_fmtKw(w.mit.neaKw)}` : '')
-    : `<b>🔥 Heizzentrale ${escHtml(g.name || '')}</b><br>Wärme-Lastgang fehlt`;
+    : `<b>Heizzentrale ${escHtml(g.name || '')}</b><br>Wärme-Lastgang fehlt`;
   L.marker([c.lat, c.lng], { icon: _divIcon('🔥', WAERME_FARBE, 30), zIndexOffset: 720 })
     .bindTooltip(text, { className: 'geb-tooltip' }).addTo(_waermeLayer);
 }
@@ -1102,7 +1102,7 @@ function _waermeBlock() {
     ${hzZeile}
     <button class="btn-xs" style="width:100%;margin-top:4px;" data-click="blackoutAuskuehlung()"
       title="Ohne Wärmeversorgung: wie lange der Pufferspeicher trägt und wann die Gebäude unter die kritische Innentemperatur fallen">
-      ❄ Auskühlzeiten ohne Wärmeversorgung</button>
+      Auskühlzeiten ohne Wärmeversorgung</button>
     ${kostenBlock}
     <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.45;">
       Pauschale Betrachtung über die Netzlast der Heizzentrale. Heizöl ${WAERME_PARAMETER.heizwertKwhProL} kWh/l, Kesselwirkungsgrad
@@ -1432,7 +1432,7 @@ function _zieleBlock() {
     <div style="display:flex;align-items:center;gap:4px;">
       <span style="flex:1;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Schutzziele</span>
       <button class="btn-xs" style="border-color:${ZIEL_FARBE};color:${ZIEL_FARBE};" data-click="blackoutZieleRechnen(); blackoutModusRender()"
-        title="Alle Ziele mit den Rechnungen der übrigen Reiter bewerten">${erg ? '↻ Neu bewerten' : '⚙ Bewerten'}</button>
+        title="Alle Ziele mit den Rechnungen der übrigen Reiter bewerten">${erg ? '↻ Neu bewerten' : 'Bewerten'}</button>
     </div>
     <div style="font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.45;">
       Was soll wie lange versorgt werden? Die Stufen A und A + B nutzen die Platzierung am Netz (günstigste Strategie),
@@ -1577,7 +1577,7 @@ function _html() {
     `<button class="bom-tab${k === tab ? ' aktiv' : ''}" data-click="blackoutSetTab('${k}')">${t}</button>`).join('');
   const kopf = `
     <div class="bom-head">
-      <span class="bom-head-title">🛡 Blackout-Modus</span>
+      <span class="bom-head-title">Blackout-Modus</span>
       <span style="font-size:9px;color:var(--muted);">Jahr ${b.jahr}</span>
       <button class="btn-xs" data-click="blackoutModusStop()" title="Modus beenden (Esc)">✓ Fertig</button>
     </div>
@@ -1593,7 +1593,7 @@ function _html() {
         ${_pinselKnopf('C', pinsel === 'C')}${_pinselKnopf('weg', pinsel === 'weg')}
       </div>
       ${auswahl ? `<button class="btn-xs" style="width:100%;margin-top:4px;" data-click="blackoutAufAuswahl()"
-          title="Aktuelle Klasse allen in Gebäudeliste/-tabelle angekreuzten Gebäuden zuweisen">⊞ Auf ${auswahl} ausgewählte Gebäude anwenden</button>` : ''}
+          title="Aktuelle Klasse allen in Gebäudeliste/-tabelle angekreuzten Gebäuden zuweisen">Auf ${auswahl} ausgewählte Gebäude anwenden</button>` : ''}
       <div style="display:flex;align-items:center;gap:6px;margin-top:8px;" title="Lastanteil der Klasse B, solange am Gebäude kein eigener Wert steht">
         <span style="font-size:9.5px;color:var(--muted);white-space:nowrap;">Vorgabe B</span>
         <input type="range" min="0" max="100" step="5" value="${vorgabe}" style="flex:1;accent-color:${NOTSTROM_KLASSEN.B.farbe};height:4px;"

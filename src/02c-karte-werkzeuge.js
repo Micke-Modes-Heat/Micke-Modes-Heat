@@ -678,7 +678,7 @@ export function buildTooltip(g){
       // ── Strom-Modus: elektrische Kennwerte ───────────────────────────────
       const fl = parseFloat(g.flaeche) || 0;
       if (g.elMwh > 0) {
-        lines.push(`⚡ Strom: <span style="font-weight:normal;color:var(--c-amber)">${g.elMwh.toLocaleString('de-DE',{maximumFractionDigits:1})} MWh/a</span>`);
+        lines.push(`Strom: <span style="font-weight:normal;color:var(--c-amber)">${g.elMwh.toLocaleString('de-DE',{maximumFractionDigits:1})} MWh/a</span>`);
         if (fl > 0) {
           const spezEl = g.elMwh * 1000 / fl;
           lines.push(`Spez.: <span style="font-weight:normal">${spezEl.toLocaleString('de-DE',{maximumFractionDigits:0})} kWh/m²a</span>`);
@@ -769,7 +769,7 @@ export function setMode(m){
   }
 }
 
-// ── "⋯ Mehr"-Menü in der Kopfleiste (Feldapp, Farbschema, Satellit, Hilfe …) ──
+// ── "Mehr"-Menü in der Kopfleiste (Feldapp, Farbschema, Satellit, Hilfe …) ──
 export function toggleMehrMenu() {
   const menu = document.getElementById('mehr-menu');
   if (!menu) return;
@@ -1504,7 +1504,7 @@ export function showTrasseFinishBtn() {
       <button type="button" id="trasse-redo-btn" title="Punkt wiederherstellen (Strg/Cmd+Umschalt+Z)">↷</button>
       <button type="button" id="trasse-branch-btn" title="Laufenden Strang beenden (Enter oder Doppelklick)">⏎ Strang beenden</button>
       <button type="button" id="trasse-finish-btn" class="primary">✓ Fertig</button>
-      <button type="button" id="trasse-generate-btn" class="generate">⚙ Fertig & Netz erzeugen</button>
+      <button type="button" id="trasse-generate-btn" class="generate">Fertig & Netz erzeugen</button>
       <button type="button" id="trasse-cancel-btn" title="Aktuellen, noch nicht abgeschlossenen Strang verwerfen">Abbrechen</button>`;
     document.body.appendChild(bar);
     bar.querySelector('#trasse-undo-btn').onclick = undoTrassePoint;
@@ -1547,7 +1547,7 @@ export function showTrasseFinishBtn() {
   // ausschließlich zum Wärmenetz-Workflow.
   if (generate) {
     generate.style.display = isStrom ? 'none' : '';
-    generate.textContent = manualHeat ? '✓ Zeichnung als Netz übernehmen' : '⚙ Fertig & Netz erzeugen';
+    generate.textContent = manualHeat ? '✓ Zeichnung als Netz übernehmen' : 'Fertig & Netz erzeugen';
   }
   bar.style.display = 'flex';
   updateTrasseHistoryButtons();
@@ -1902,7 +1902,7 @@ function _trasseAbschnittMenue(segIdx, latlng, pts) {
   L.popup({ closeButton: true, className: 'trasse-menue', offset: [0, -4] })
     .setLatLng(latlng)
     .setContent(`<div class="trasse-menue-inhalt"><b>Trassenabschnitt</b><span>${laenge} m</span>
-      <button type="button" class="btn-secondary danger" data-click="trasseAbschnittLoeschen(${segIdx})">🗑 Abschnitt löschen</button></div>`)
+      <button type="button" class="btn-secondary danger" data-click="trasseAbschnittLoeschen(${segIdx})">Abschnitt löschen</button></div>`)
     .openOn(map);
 }
 function _trasseToast(html, aktion = '') {
@@ -1925,7 +1925,7 @@ export function trasseAbschnittLoeschen(segIdx) {
   _trasseLoeschStapel.push(vorher);
   if (_trasseLoeschStapel.length > 30) _trasseLoeschStapel.shift();
   map.closePopup();
-  _trasseToast(`🗑 Trassenabschnitt gelöscht (${Math.round(_trasseLaengeM(pts)).toLocaleString('de-DE')} m)`,
+  _trasseToast(`Trassenabschnitt gelöscht (${Math.round(_trasseLaengeM(pts)).toLocaleString('de-DE')} m)`,
     '<button data-click="trasseLoeschenRueckgaengig()">Rückgängig</button>');
   return true;
 }

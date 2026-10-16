@@ -870,7 +870,7 @@ function _drawErzeugungClusters(clusters, maxKW) {
       icon: _naStationIcon(`E${i + 1}`, kvaEmpf.replace(' kVA', ''), col, 40),
       zIndexOffset: 510,
     }).bindPopup(
-      `<b>☀ Einspeise-Trafo ${i+1}</b><br>` +
+      `<b>Einspeise-Trafo ${i+1}</b><br>` +
       `Einspeisung: <b>${cl.einspeisungKW.toFixed(0)} kW</b><br>` +
       `Bezug: <b>${cl.bezugKW.toFixed(0)} kW</b><br>` +
       `Netto: <b>${(cl.einspeisungKW - cl.bezugKW).toFixed(0)} kW</b><br>` +
@@ -999,7 +999,7 @@ export function naRunTrafoOptimierung() {
       icon: _naStationIcon(`${isWhale ? 'D' : 'N'}${i + 1}`, kvaEmpf.replace(' kVA', ''), markerBg),
       zIndexOffset: 500,
     }).bindPopup(
-      `<b>${isWhale ? `⚡ Direktanschluss D${i+1}` : `Neue Station N${i+1}`}</b><br>` +
+      `<b>${isWhale ? `Direktanschluss D${i+1}` : `Neue Station N${i+1}`}</b><br>` +
       (isWhale ? '<span style="color:var(--c-orange)">Einzellast überschreitet Kapazität</span><br>' : '') +
       `Bezug: <b>${cl.bezugKW.toFixed(0)} kW</b> (${cl.nVerb} Verbraucher · GZF ${gzfFn(cl.nVerb).toFixed(2).replace('.', ',')})<br>` +
       `Einspeisung: <b>${cl.einspeisungKW.toFixed(0)} kW</b><br>` +
@@ -1241,14 +1241,14 @@ function _naDrawPlacementUnits(grp, clusters, units, kind) {
       zIndexOffset: 600,
     }).bindPopup(kind === 'bat'
       ? (u.name !== undefined
-          ? `<b>🔋 Speicher · ${u.name}</b><br>Knotenspitze: <b>${u.loadKW.toFixed(0)} kW</b>` +
+          ? `<b>Speicher · ${u.name}</b><br>Knotenspitze: <b>${u.loadKW.toFixed(0)} kW</b>` +
             (u.auslastung > 0 ? ` (Auslastung ${(u.auslastung*100).toFixed(0)} %)` : '') + '<br>' +
             (u.overloadKW > 0 ? `<span style="color:var(--c-red)">Überlast: <b>${u.overloadKW.toFixed(0)} kW</b></span><br>` : '') +
             `Leistung: <b>${u.kW} kW</b><br>Kapazität: <b>${u.kWh} kWh</b><br>` +
             `Bedarf volle Kappung: ${u.reqKWh} kWh ${u.gedeckt ? '✓ gedeckt' : '⚠ Dauer zu kurz'}`
-          : `<b>🔋 Batteriespeicher ${i + 1}</b><br>Zonenlast: <b>${u.loadKW.toFixed(0)} kW</b><br>` +
+          : `<b>Batteriespeicher ${i + 1}</b><br>Zonenlast: <b>${u.loadKW.toFixed(0)} kW</b><br>` +
             `Leistung: <b>${u.kW} kW</b><br>Kapazität: <b>${u.kWh} kWh</b><br>Punkte: ${u.pts}`)
-      : `<b>⚙ Notstromaggregat ${i + 1}</b><br>Zonenlast: <b>${u.loadKW.toFixed(0)} kW</b><br>` +
+      : `<b>Notstromaggregat ${i + 1}</b><br>Zonenlast: <b>${u.loadKW.toFixed(0)} kW</b><br>` +
         `Leistung: <b>${u.kW} kW</b><br>Autonomie: ${u.autonomieH} h · ${u.kraftstoff}<br>Punkte: ${u.pts}`
     ).addTo(grp);
   });
@@ -1636,11 +1636,11 @@ export function naRenderPanel() {
 
   const tabBarHtml = `
 <div style="display:flex;gap:2px;margin-bottom:10px;border-bottom:1px solid var(--border);">
-  ${_tabBtn('last',  '🌡 Lastübersicht',     '#ce93d8', 'Heatmap der räumlichen Verteilung von Verbrauch und Erzeugung auf der Karte anzeigen')}
-  ${_tabBtn('trafo', '⚡ Trafo',     '#4fc3f7', 'Optimale Trafo-Standorte automatisch berechnen (Clustering nach Last/Erzeugung) und als Kompaktstationen übernehmen')}
-  ${_tabBtn('bat',   '🔋 Speicher',  '#aed581', 'Optimale Standorte für Batteriespeicher (Peak-Shaving/Netzentlastung) berechnen und als Assets übernehmen')}
-  ${_tabBtn('nsa',   '⚙ Notstrom',  '#ff7043', 'Optimale Standorte für Notstromaggregate berechnen — Dimensionierung aus der Resilienz-Analyse')}
-  ${_tabBtn('ms',    '🔗 MS-Netz',   '#f9a825', 'Mittelspannungsnetz zwischen NAP und Trafos analysieren und automatisch verlegen')}
+  ${_tabBtn('last',  'Lastübersicht',     '#ce93d8', 'Heatmap der räumlichen Verteilung von Verbrauch und Erzeugung auf der Karte anzeigen')}
+  ${_tabBtn('trafo', 'Trafo',     '#4fc3f7', 'Optimale Trafo-Standorte automatisch berechnen (Clustering nach Last/Erzeugung) und als Kompaktstationen übernehmen')}
+  ${_tabBtn('bat',   'Speicher',  '#aed581', 'Optimale Standorte für Batteriespeicher (Peak-Shaving/Netzentlastung) berechnen und als Assets übernehmen')}
+  ${_tabBtn('nsa',   'Notstrom',  '#ff7043', 'Optimale Standorte für Notstromaggregate berechnen — Dimensionierung aus der Resilienz-Analyse')}
+  ${_tabBtn('ms',    'MS-Netz',   '#f9a825', 'Mittelspannungsnetz zwischen NAP und Trafos analysieren und automatisch verlegen')}
 </div>`;
 
   // ── Tab 1: Lastübersicht (Heatmap) ─────────────────────────────────────────
@@ -1694,7 +1694,7 @@ export function naRenderPanel() {
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
            border:1px solid var(--c-violet);color:${heatOn?'#ce93d8':'var(--muted)'};
            background:${heatOn?'rgba(179,157,219,.12)':'transparent'};">
-    ${heatOn ? '👁 Heatmap ausblenden' : '👁 Heatmap anzeigen'}
+    ${heatOn ? 'Heatmap ausblenden' : 'Heatmap anzeigen'}
   </button>
 </div>`;
 
@@ -1730,7 +1730,7 @@ export function naRenderPanel() {
     const auslPct = NA.naMaxKW ? Math.round(cl.peakKW / NA.naMaxKW * 100) : null;
     trafoRows.push({
       key: `v${i}`, kind: 'v', idx: i,
-      label: cl.isWhale ? `⚡ D${i + 1} Direktanschl.` : `N${i + 1} neu`,
+      label: cl.isWhale ? `D${i + 1} Direktanschl.` : `N${i + 1} neu`,
       col: cl.isWhale ? '#ffa726' : NA_CLUSTER_COLORS[i % NA_CLUSTER_COLORS.length],
       bezugKW: cl.bezugKW, einspeisungKW: cl.einspeisungKW, peakKW: cl.peakKW,
       auslPct, kva: _kvaEmpfStr(cl.peakKW, NA.cosPhi), points: cl.points.length,
@@ -1740,7 +1740,7 @@ export function naRenderPanel() {
     (erzResult || []).forEach((cl, i) => {
       trafoRows.push({
         key: `e${i}`, kind: 'e', idx: i,
-        label: `☀ E${i + 1} Einspeisung`,
+        label: `E${i + 1} Einspeisung`,
         col: NA_ERZEUG_COLORS[i % NA_ERZEUG_COLORS.length],
         bezugKW: cl.bezugKW, einspeisungKW: cl.einspeisungKW, peakKW: cl.einspeisungKW,
         auslPct: null, kva: _kvaEmpfStr(cl.einspeisungKW, NA.cosPhi), points: cl.points.length,
@@ -1979,7 +1979,7 @@ ${_step(2, useExisting && existingT.length > 0 ? 'Zusätzliche Stationen berechn
     style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;
            border:1px solid ${resultStale ? '#ffa726' : '#b39ddb'};color:${resultStale ? '#ffa726' : '#ce93d8'};
            background:${resultStale ? 'rgba(255,167,38,.1)' : 'transparent'};">
-    ${resultStale ? '⟳ Eingaben geändert — neu berechnen' : NA.naResult !== null ? '⟳ Neu berechnen' : '⚡ Standorte berechnen'}
+    ${resultStale ? '⟳ Eingaben geändert — neu berechnen' : NA.naResult !== null ? '⟳ Neu berechnen' : 'Standorte berechnen'}
   </button>
 </div>
 
@@ -1995,7 +1995,7 @@ ${hasAnyResult || NA.naExistingResults ? `<div style="background:var(--surface2)
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
            border:1px solid var(--c-teal);color:${kabelOn?'#80cbc4':'var(--muted)'};
            background:${kabelOn?'rgba(128,203,196,.12)':'transparent'};">
-    ${kabelOn ? '🔌 Ausblenden' : '🔌 Anzeigen'}
+    ${kabelOn ? 'Ausblenden' : 'Anzeigen'}
   </button>
   ${kabelOn && kabelInfo?.totalM > 0 ? `
   <div style="font-size:10px;color:var(--text);margin:5px 0;">
@@ -2009,7 +2009,7 @@ ${hasAnyResult || NA.naExistingResults ? `<div style="background:var(--surface2)
       onchange="naSetKabelEurM(this.value)"> €/m
   </div>
   <div style="background:var(--bg);border-radius:4px;padding:6px 7px;font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
-    💡 Kante auf der Karte <b style="color:var(--c-amber)">anklicken</b> zum Auswählen (gelb).
+    Kante auf der Karte <b style="color:var(--c-amber)">anklicken</b> zum Auswählen (gelb).
   </div>
   <div style="display:flex;gap:6px;">
     <button onclick="naKabelSelectAll()" title="Alle vorgeschlagenen Kabeltrassen auswählen" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid var(--border);color:var(--faint);background:transparent;">alle ☑</button>
@@ -2017,7 +2017,7 @@ ${hasAnyResult || NA.naExistingResults ? `<div style="background:var(--surface2)
     <button onclick="naImportSelectedKabel()" title="Ausgewählte Kabeltrassen als reale Leitungen ins Stromnetz übernehmen"
       style="flex:2;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
              border:1px solid var(--c-green);color:var(--c-green);background:rgba(102,187,106,.1);font-weight:600;">
-      ⬆ Übernehmen (${(NA.naKabelEdges||[]).filter(k=>k.selected).length} ✓)
+      Übernehmen (${(NA.naKabelEdges||[]).filter(k=>k.selected).length} ✓)
     </button>
   </div>` : ''}
 </div>` : ''}
@@ -2054,7 +2054,7 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   <button onclick="elRunMSAnalyse()" title="Mittelspannungsnetz auf Ringstrukturen untersuchen und (n-1)-Ausfallsicherheit prüfen"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
            border:1px solid var(--c-orange);color:var(--c-orange);background:transparent;margin-bottom:5px;">
-    ⊞ MS-Topologie analysieren
+    MS-Topologie analysieren
   </button>
   <button onclick="clearMSRings()" title="MS-Ring-Überlagerung wieder von der Karte entfernen"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
@@ -2108,7 +2108,7 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   };
   const pvLinkBtn = `<button onclick="naOeffnePvAnalyse()" title="Zur PV-Analyse wechseln (Analyse → PV)"
       style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
-             border:1px solid var(--c-blue);color:var(--c-blue);background:rgba(66,165,245,.08);margin-top:5px;">↗ PV-Analyse öffnen</button>`;
+             border:1px solid var(--c-blue);color:var(--c-blue);background:rgba(66,165,245,.08);margin-top:5px;">PV-Analyse öffnen</button>`;
   const pvSizeHtml = isPvSize ? (pvVars.length
     ? `<div style="margin-bottom:6px;">
          <select onchange="naSetBatPvVariant(this.value)" style="width:100%;${_inp}padding:3px;">
@@ -2177,13 +2177,13 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
     <label>Shave <input type="number" min="5" max="100" value="${NA.batShavePct}" onchange="naSetBatShave(this.value)" style="width:46px;${_inp}"> %</label>
     ${isPvSize ? '' : `<label>Dauer <input type="number" min="0.5" max="12" step="0.5" value="${NA.batHours}" onchange="naSetBatHours(this.value)" style="width:46px;${_inp}"> h</label>`}
   </div>
-  <button onclick="naRunSpeicherPlatzierung()" style="${_runBtn(COL_BAT)}">🔋 Platzierung berechnen</button>
+  <button onclick="naRunSpeicherPlatzierung()" style="${_runBtn(COL_BAT)}">Platzierung berechnen</button>
   ${batRes ? `
   <div style="margin-top:8px;font-size:10px;color:var(--c-blue);"><b>${batRes.length}</b> Speicher · Σ <b>${batRes.reduce((s,u)=>s+u.kW,0)}</b> kW · <b>${batRes.reduce((s,u)=>s+u.kWh,0).toLocaleString('de-DE')}</b> kWh${batRes.method==='netz'?` <span style="color:var(--muted)">· ${batRes.scoredCount} Knoten bewertet</span>`:''}</div>
   ${batRes.pvVariant ? `<div style="font-size:9px;color:var(--c-blue);margin-top:2px;">feste Größe aus PV-Variante „${batRes.pvVariant.label}" (${batRes.pvVariant.batKwh.toLocaleString('de-DE')} kWh)</div>` : ''}
   ${batNetzRows ? `<div style="margin-top:5px;">${batNetzRows}</div>` : ''}
   <div style="display:flex;gap:6px;margin-top:6px;">
-    <button onclick="naUebernehmenSpeicher()" style="${_takeBtn}">⬆ Als Assets übernehmen</button>
+    <button onclick="naUebernehmenSpeicher()" style="${_takeBtn}">Als Assets übernehmen</button>
     <button onclick="naClearSpeicher()" title="Vorschlag verwerfen" style="${_clrBtn}">✕</button>
   </div>` : ''}
   ${guideHtml}
@@ -2206,7 +2206,7 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
     <b>Platzierung am Bestandsnetz:</b> Der 🛡 Blackout-Modus stuft Gebäude ein, vergleicht Aggregate an Gebäuden,
     Kabelverteilern, NSHV und Trafos, rechnet vorhandene Aggregate an und vermerkt die abzuschaltenden Abgänge.
   </div>
-  <button onclick="blackoutModusStart(); blackoutSetTab('netz')" style="${_runBtn(COL_NSA)}">🛡 Blackout-Modus › Am Netz öffnen</button>
+  <button onclick="blackoutModusStart(); blackoutSetTab('netz')" style="${_runBtn(COL_NSA)}">Blackout-Modus › Am Netz öffnen</button>
 </div>
 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Schnellschätzung nach Lage</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
@@ -2219,12 +2219,12 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Platzierung</div>
   <div style="display:flex;gap:6px;margin-bottom:6px;">${_modeBtn('nsa','zentral','zentral',NA.nsaMode)}${_modeBtn('nsa','verteilt','verteilt (Zonen)',NA.nsaMode)}</div>
   ${NA.nsaMode==='verteilt' ? `<label style="font-size:10px;color:var(--muted);display:block;margin-bottom:6px;">Zonen <input type="number" min="1" max="20" value="${NA.nsaK}" onchange="naSetNsaK(this.value)" style="width:42px;${_inp}"></label>` : ''}
-  <button onclick="naRunNotstromPlatzierung()" style="${_runBtn(COL_NSA)}">⚙ Platzierung berechnen</button>
+  <button onclick="naRunNotstromPlatzierung()" style="${_runBtn(COL_NSA)}">Platzierung berechnen</button>
   ${nsaRes ? `
   <div style="margin-top:8px;font-size:10px;color:var(--c-blue);"><b>${nsaRes.units.length}</b> Aggregat(e) · Σ <b>${nsaRes.totalKW}</b> kW · ${nsaRes.autonomieH} h · ${nsaRes.kraftstoff}
     <div style="font-size:9px;color:var(--muted);margin-top:2px;">Quelle: ${nsaRes.source==='resilienz' ? 'Resilienz-Analyse' : `Karten-Spitzenlast (${nsaRes.sitePeak} kW)`}</div></div>
   <div style="display:flex;gap:6px;margin-top:6px;">
-    <button onclick="naUebernehmenNotstrom()" style="${_takeBtn}">⬆ Als Assets übernehmen</button>
+    <button onclick="naUebernehmenNotstrom()" style="${_takeBtn}">Als Assets übernehmen</button>
     <button onclick="naClearNotstrom()" title="Vorschlag verwerfen" style="${_clrBtn}">✕</button>
   </div>` : ''}
 </div>`;

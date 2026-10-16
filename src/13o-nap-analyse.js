@@ -895,12 +895,12 @@ function _napRenderSidebar() {
       style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-size:9px;font-weight:600;min-width:60px;
       border:1px solid ${topMode==='gemessen'?'#26a69a':'#333'};
       background:${topMode==='gemessen'?'rgba(38,166,154,.12)':'transparent'};
-      color:${topMode==='gemessen'?'#80cbc4':'#555'};">📄 Messung</button>
+      color:${topMode==='gemessen'?'#80cbc4':'#555'};">Messung</button>
     ${hasBfsSynth?`<button onclick="napSetTopSeriesMode('synthetisch')"
       style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-size:9px;font-weight:600;min-width:60px;
       border:1px solid ${topMode==='synthetisch'?'#ef9a9a':'#333'};
       background:${topMode==='synthetisch'?'rgba(239,154,154,.12)':'transparent'};
-      color:${topMode==='synthetisch'?'#ef9a9a':'#555'};">⚡ Synthetisch</button>`:''}
+      color:${topMode==='synthetisch'?'#ef9a9a':'#555'};">Synthetisch</button>`:''}
     <button onclick="napSetTopSeriesMode('messungPlusProfil')"
       style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-size:9px;font-weight:600;min-width:60px;
       border:1px solid ${topMode==='messungPlusProfil'?'#ab47bc':'#333'};
@@ -927,7 +927,7 @@ function _napRenderSidebar() {
   ${selNap?`<button onclick="napComputeSyntheticAndShow()"
     style="width:100%;padding:5px;border:1px solid ${profileCount>0?'#ab47bc55':'#333'};border-radius:4px;
     background:transparent;color:${profileCount>0?'#ce93d8':'#555'};cursor:pointer;font-size:10px;font-weight:600;">
-    ⚡ Synthetisch berechnen (${profileCount} Profile)</button>`:''}
+    Synthetisch berechnen (${profileCount} Profile)</button>`:''}
 </div>` : '';
   }
 
@@ -938,17 +938,17 @@ function _napRenderSidebar() {
   <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:5px;">Gemessene Daten (Referenzjahr)</div>
   ${csvData?`
   <div style="background:var(--surface2);border-radius:5px;padding:7px 8px;font-size:10px;color:var(--muted);">
-    <span style="color:var(--c-amber);font-size:9px;font-weight:600;">⚡ Aus Strom-Grundlagen</span><br>
+    <span style="color:var(--c-amber);font-size:9px;font-weight:600;">Aus Strom-Grundlagen</span><br>
     ${escHtml(csvData.filename)}<br>
     <span style="color:var(--faint);">${csvData.year} · ${csvData.raw.length.toLocaleString('de')} Werte</span>
   </div>
   <button onclick="napRemoveMeasuredData()"
     style="margin-top:5px;width:100%;padding:4px;border:1px solid #ef535055;border-radius:4px;background:transparent;color:var(--c-red);cursor:pointer;font-size:10px;">
-    ↩ Messdaten ausblenden
+    Messdaten ausblenden
   </button>
   `: hatReferenz ? `
   <div style="background:var(--surface2);border:1px solid #26a69a44;border-radius:5px;padding:7px 8px;font-size:10px;color:var(--muted);margin-bottom:6px;">
-    <span style="color:var(--c-amber);font-size:9px;font-weight:600;">⚡ Referenzjahr verfügbar</span><br>
+    <span style="color:var(--c-amber);font-size:9px;font-weight:600;">Referenzjahr verfügbar</span><br>
     <span style="color:var(--faint);">${escHtml(window.elQuartierFilename || '')}</span>
   </div>
   <button onclick="napLoadFromStromGrundlagen()"
@@ -958,7 +958,7 @@ function _napRenderSidebar() {
   <div style="font-size:9px;color:var(--faint);line-height:1.5;margin-bottom:6px;">Keine Messdaten. Lastgänge werden unter ⚡ Strom-Grundlagen › Messjahre geladen; die NAP-Analyse rechnet mit dem dort gewählten Referenzjahr.</div>`}
   <button onclick="sgMjOeffnen()"
     style="margin-top:5px;width:100%;padding:4px;border:1px solid #ffd54f55;border-radius:4px;background:transparent;color:var(--c-amber);cursor:pointer;font-size:10px;">
-    ⚡ Messjahre verwalten
+    Messjahre verwalten
   </button>
 </div>`;
 
@@ -1054,11 +1054,11 @@ function _napRenderSidebar() {
     </table></div>
     <div style="margin-top:5px;background:var(--surface2);border-radius:4px;padding:5px 7px;font-size:10px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
-        <span style="color:var(--muted);font-weight:600;">⬆ Bezug Zubau (GZF ${gzf.toFixed(2)} auf Gebäude, ${chk.length} aktiv)</span>
+        <span style="color:var(--muted);font-weight:600;">Bezug Zubau (GZF ${gzf.toFixed(2)} auf Gebäude, ${chk.length} aktiv)</span>
         <span style="color:${totalAddLoad>0?'#ef5350':'#66bb6a'};font-weight:700;">${totalAddLoad>0?'+':''}${totalAddLoad.toFixed(0)} kW</span>
       </div>
       <div style="display:flex;justify-content:space-between;">
-        <span style="color:var(--faint);">⬇ Einspeisung Zubau (Nennleistung, ohne GZF)</span>
+        <span style="color:var(--faint);">Einspeisung Zubau (Nennleistung, ohne GZF)</span>
         <span style="color:var(--c-green);font-weight:600;">${totalAddGen.toFixed(0)} kW</span>
       </div>
       <div style="font-size:9px;color:var(--faint);margin-top:3px;">Erzeugung mindert den Bezug nicht (dimensionierungssicher, wie Gutachten 5.3.4).</div>
@@ -1069,7 +1069,7 @@ function _napRenderSidebar() {
 <div style="margin-top:10px;">
   <button onclick="napExportPDF()"
     style="width:100%;padding:7px;background:var(--hover);border:1px solid var(--c-blue);border-radius:5px;color:var(--c-blue);cursor:pointer;font-size:10px;font-weight:600;letter-spacing:.03em;">
-    📄 Analyse als PDF exportieren
+    Analyse als PDF exportieren
   </button>
 </div>`;
 
@@ -1080,7 +1080,7 @@ function _napRenderSidebar() {
   <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:5px;">Bestandskalibrierung</div>
   <button onclick="napShowKalibrierungDialog()"
     style="width:100%;padding:5px 8px;border:1px solid #7b1fa255;border-radius:4px;background:transparent;color:var(--c-violet);cursor:pointer;font-size:10px;font-weight:600;text-align:left;">
-    🔧 leistungKW aus NAP-Profil zurückrechnen
+    leistungKW aus NAP-Profil zurückrechnen
   </button>
   <div style="font-size:9px;color:#444;margin-top:3px;line-height:1.4;">Verteilt NAP-Peak proportional nach Nutzfläche × Nutzungstyp-Faktor auf die verknüpften Verbraucher (wahlweise nur Bestandsgebäude).</div>
 </div>` : '';
@@ -1845,7 +1845,7 @@ function _napRenderKalDialog(kal) {
   <!-- Header -->
   <div style="background:var(--surface);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-shrink:0;">
     <div>
-      <div style="font-size:13px;font-weight:700;color:var(--c-teal);">🔧 Bestandskalibrierung</div>
+      <div style="font-size:13px;font-weight:700;color:var(--c-teal);">Bestandskalibrierung</div>
       <div style="font-size:10px;color:var(--faint);margin-top:2px;">NAP-Peak ${napPeak.toFixed(0)} kW proportional auf ${entries.length} Verbraucher zurückrechnen</div>
     </div>
     <button onclick="document.getElementById('nap-kal-overlay')?.remove()"

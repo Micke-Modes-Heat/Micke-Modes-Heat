@@ -207,7 +207,7 @@ export function baumBearbeitenToggle() {
   if (_bearbeiten) { cancelInteraction(INTERAKTION); return; }
   beginInteraction({
     id: INTERAKTION,
-    label: '🌳 Bäume',
+    label: 'Bäume',
     hint: 'Karte anklicken = Baum setzen (oder Fläche zeichnen) · Baum anklicken = Höhe, Krone, Art ändern oder löschen',
     cancel: () => _bearbeitenAus(),
   });
@@ -373,7 +373,7 @@ function _baumPopup(id) {
   const el = document.createElement('div');
   el.style.cssText = 'font-size:11px;min-width:190px;';
   el.innerHTML = `
-    <div style="font-weight:600;margin-bottom:3px;">🌳 Baum</div>
+    <div style="font-weight:600;margin-bottom:3px;">Baum</div>
     <div style="font-size:9.5px;color:var(--muted);margin-bottom:6px;">${herkunft} · ${hq}</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 6px;align-items:center;">
       <span>Art</span>
@@ -384,7 +384,7 @@ function _baumPopup(id) {
       <span title="Kronendurchmesser">Krone (m)</span>
       <input class="inp-field" type="number" min="0.5" max="30" step="0.5" value="${b.krone}" data-f="krone"/>
     </div>
-    <button class="btn-xs red" style="width:100%;margin-top:7px;" data-a="loeschen">🗑 Baum löschen</button>`;
+    <button class="btn-xs red" style="width:100%;margin-top:7px;" data-a="loeschen">Baum löschen</button>`;
   el.addEventListener('change', ev => {
     const f = ev.target?.dataset?.f;
     if (f) baumAendern(id, f, ev.target.value);
@@ -812,7 +812,7 @@ export async function verschattungBerechnen(nurOffene = true) {
   }
   _rechnet = null;
   _nachKwpAenderung();
-  showHint(`🌳 Verschattung für ${ziele.length} Dächer gerechnet (${_fmt((performance.now() - t0) / 1000, 1)} s).`, 4000);
+  showHint(`Verschattung für ${ziele.length} Dächer gerechnet (${_fmt((performance.now() - t0) / 1000, 1)} s).`, 4000);
 }
 
 /** Ein einzelnes Dach nachrechnen (PV-Modus: das aktive Dach, sobald sich die Belegung ändert). */
@@ -854,7 +854,7 @@ export function baumVerschattungZeileHtml(g) {
   const e = _eintrag(g), st = _status(g);
   if (_an && st !== 'aktuell') _nachrechnenEinzeln(g);
   if (!e) {
-    return `<div style="font-size:9.5px;color:var(--muted);margin-top:5px;">🌳 Verschattung: ${_an ? 'wird gerechnet …' : 'nicht gerechnet'}</div>`;
+    return `<div style="font-size:9.5px;color:var(--muted);margin-top:5px;">Verschattung: ${_an ? 'wird gerechnet …' : 'nicht gerechnet'}</div>`;
   }
   const flaechen = Object.values(e.gruppen || {});
   const b = BEWERTUNG[_bewertung(e.faktor)];
@@ -864,7 +864,7 @@ export function baumVerschattungZeileHtml(g) {
   }).join('') : '';
   const urs = (e.verursacher || []).slice(0, 2).map(v => `<span style="cursor:pointer;text-decoration:underline dotted;" data-click="baumVerursacherZeigen('${v.key}')">${_verursacherName(v.key)} −${_fmt(v.anteil * 100, 1)} %</span>`).join(', ');
   return `<div style="font-size:9.5px;margin-top:5px;line-height:1.45;">
-      🌳 Verschattung <b style="color:${b.farbe};">${_pct(e.faktor)}</b> <span style="color:${b.farbe};">${b.sym} ${b.text}</span>
+      Verschattung <b style="color:${b.farbe};">${_pct(e.faktor)}</b> <span style="color:${b.farbe};">${b.sym} ${b.text}</span>
       <span style="color:var(--muted);">(Bäume ${_pct(e.faktorBaeume)}, Gebäude ${_pct(e.faktorGebaeude)})</span>
       ${st === 'veraltet' ? `<span style="color:${GELB};" title="Bäume wurden seitdem geändert"> ⚠ veraltet</span>` : ''}
       ${_an ? '' : `<span style="color:var(--muted);"> · nicht im Ertrag</span>`}
@@ -880,7 +880,7 @@ export function baumBlockHtml() {
   const aktuell = mitPv.filter(g => _status(g) === 'aktuell').length;
   return `<button class="btn-xs" style="width:100%;margin-top:6px;border-color:${GRUEN};color:${GRUEN};${_an ? `background:${GRUEN}1a;` : ''}"
       data-click="baumPanelToggle()" title="Bäume im Projekt und ihre Verschattung der PV-Dächer">
-      🌳 Bäume & Verschattung · ${_fmt(_baeume.length)} Bäume${mitPv.length ? ` · ${aktuell}/${mitPv.length} gerechnet` : ''}${_an ? ' · im Ertrag' : ''}</button>`;
+      Bäume & Verschattung · ${_fmt(_baeume.length)} Bäume${mitPv.length ? ` · ${aktuell}/${mitPv.length} gerechnet` : ''}${_an ? ' · im Ertrag' : ''}</button>`;
 }
 
 export function baumPanelToggle() {
@@ -951,11 +951,11 @@ function _verursacherName(key) {
   const id = key.slice(1);
   if (key[0] === 'g') {
     const g = (window.gebaeude || []).find(x => String(x.id) === id);
-    return g ? '🏢 ' + escHtml(g.name || 'Gebäude ' + g.id) : '🏢 Gebäude (gelöscht)';
+    return g ? '🏢 ' + escHtml(g.name || 'Gebäude ' + g.id) : 'Gebäude (gelöscht)';
   }
   const b = _baeume.find(x => String(x.id) === id);
   return b ? `🌳 ${ARTEN[b.art]} ${_fmt(b.hoehe, b.hoehe < 10 ? 1 : 0)} m${b.hoeheQuelle === 'vorgabe' ? ' <span style="color:' + GELB + ';">(geschätzt)</span>' : ''}`
-    : '🌳 Baum (gelöscht)';
+    : 'Baum (gelöscht)';
 }
 
 /** Verursacher als reiner Text (Gutachten). */
@@ -1299,7 +1299,7 @@ function _fluegelHinweisHtml() {
       ⚠ <b>${liste.length}</b> belegte Dächer mit verwinkeltem Grundriss rechnen mit <b>einem</b> Satteldach über den ganzen Grundriss —
       Ausrichtung, Modulhöhe und Verschattung sind dort ungenau.
       <button class="btn-xs" style="width:100%;margin-top:4px;border-color:${GELB};color:${GELB};" data-click="baumFluegelUmstellen()"
-        title="Jeder Flügel bekommt ein eigenes Dach; die Belegung wird je Dachfläche neu angelegt (Strg+Z im PV-Modus holt die alte zurück)">📐 In Flügel zerlegen und neu belegen</button></div>`;
+        title="Jeder Flügel bekommt ein eigenes Dach; die Belegung wird je Dachfläche neu angelegt (Strg+Z im PV-Modus holt die alte zurück)">In Flügel zerlegen und neu belegen</button></div>`;
 }
 
 function _zeileHtml(g, e, s) {
@@ -1355,7 +1355,7 @@ function _html() {
 
   return `
     <div class="pvm-head">
-      <span class="pvm-head-title">🌳 Bäume & Verschattung</span>
+      <span class="pvm-head-title">Bäume & Verschattung</span>
       <button class="btn-xs" data-click="baumPanelToggle()" title="Schließen">✕</button>
     </div>
     <div class="pvm-body">
@@ -1366,7 +1366,7 @@ function _html() {
       <div style="display:flex;gap:4px;margin-top:6px;">
         <button class="btn-xs" style="flex:1;border-color:${GRUEN};color:${GRUEN};" data-click="baumOsmUebernehmen()" ${_laedt ? 'disabled' : ''}
           title="Einzelbäume, Baumreihen, Wald und Streuobst im Umkreis von 150 m um die Gebäude aus OpenStreetMap ins Projekt holen. Eigene und bearbeitete Bäume bleiben erhalten.">
-          ${_laedt ? '⏳ lädt …' : '🌐 Aus OSM übernehmen'}</button>
+          ${_laedt ? 'lädt …' : 'Aus OSM übernehmen'}</button>
         <button class="btn-xs" style="flex:1;${_bearbeiten ? `border-color:${GRUEN};color:${GRUEN};background:${GRUEN}1f;` : ''}" data-click="baumBearbeitenToggle()"
           title="Karte anklicken = Baum setzen · Baum anklicken = bearbeiten · Esc = fertig">✎ ${_bearbeiten ? 'Bearbeiten beenden' : 'Setzen & bearbeiten'}</button>
       </div>
@@ -1396,14 +1396,14 @@ function _html() {
           ? `${_flaeche.punkte.length} ${_flaeche.punkte.length === 1 ? 'Punkt' : 'Punkte'} · Doppelklick oder Enter = füllen · ⌫ = letzter Punkt zurück`
           : 'Umriss der Fläche Punkt für Punkt anklicken.'}</div>
         ${_flaeche.punkte.length ? `<div style="display:flex;gap:4px;margin-top:4px;">
-          <button class="btn-xs" style="flex:1;border-color:${GRUEN};color:${GRUEN};" ${_flaeche.punkte.length < 3 ? 'disabled' : ''} data-click="baumFlaecheFuellen()">🌳 Fläche füllen</button>
+          <button class="btn-xs" style="flex:1;border-color:${GRUEN};color:${GRUEN};" ${_flaeche.punkte.length < 3 ? 'disabled' : ''} data-click="baumFlaecheFuellen()">Fläche füllen</button>
           <button class="btn-xs" data-click="baumFlaecheAbbrechen()">Verwerfen</button></div>` : ''}` : ''}
       </div>` : ''}
       <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
         <label style="display:flex;align-items:center;gap:4px;flex:1;font-size:10px;cursor:pointer;">
           <input type="checkbox" ${_sichtbar ? 'checked' : ''} style="accent-color:${GRUEN};" data-change="baumSichtbar(this.checked)"/>auf der Karte zeigen</label>
-        ${anzahl ? `<button class="btn-xs" data-click="baumAlleLoeschen(true)" title="Unveränderte OSM-Bäume entfernen">🗑 OSM</button>
-        <button class="btn-xs red" data-click="baumAlleLoeschen(false)" title="Alle Bäume entfernen">🗑 alle</button>` : ''}
+        ${anzahl ? `<button class="btn-xs" data-click="baumAlleLoeschen(true)" title="Unveränderte OSM-Bäume entfernen">OSM</button>
+        <button class="btn-xs red" data-click="baumAlleLoeschen(false)" title="Alle Bäume entfernen">alle</button>` : ''}
       </div>
 
       <div style="margin-top:9px;border-top:1px solid var(--border);padding-top:7px;">
@@ -1419,8 +1419,8 @@ function _html() {
         <button class="btn-xs" style="width:100%;margin-top:5px;border-color:${GRUEN};color:${GRUEN};" ${_rechnet || !mitPv.length ? 'disabled' : ''}
           data-click="verschattungBerechnen(${offen ? 'true' : 'false'})"
           title="Je Dach eine Stichprobe von Modulen gegen Baumkronen und Nachbargebäude rechnen">
-          ${_rechnet ? `⏳ rechnet … <span id="baum-fortschritt">${_rechnet.fertig} / ${_rechnet.gesamt}</span>`
-            : offen ? `▶ Verschattung berechnen (${offen} ${offen === 1 ? 'Dach' : 'Dächer'})` : '↻ Alle neu berechnen'}</button>
+          ${_rechnet ? `rechnet … <span id="baum-fortschritt">${_rechnet.fertig} / ${_rechnet.gesamt}</span>`
+            : offen ? `Verschattung berechnen (${offen} ${offen === 1 ? 'Dach' : 'Dächer'})` : '↻ Alle neu berechnen'}</button>
         ${mitPv.length ? `<div style="font-size:9.5px;color:var(--muted);margin-top:3px;">
           ${st.aktuell} aktuell${st.veraltet ? ` · <span style="color:${GELB};">${st.veraltet} veraltet</span>` : ''}${st.fehlt ? ` · ${st.fehlt} nicht gerechnet` : ''}</div>`
           : '<div style="font-size:9.5px;color:var(--muted);margin-top:3px;">Noch keine PV-Dächer belegt.</div>'}

@@ -298,7 +298,7 @@ export function pvbsAuslegung(id) {
     window.pvMarkStale?.();
   } else {
     window.pvaBelegungAnlegen?.({ standId: id, name: s.name, speicher: 'wirt' });
-    window.showHint?.(`☀ „${s.name}“ wird in der PV-Analyse als eigene Auslegung gerechnet (Speicher in Karte „04“ wählbar). Dort „Auslegungen berechnen“.`, 7000);
+    window.showHint?.(`„${s.name}“ wird in der PV-Analyse als eigene Auslegung gerechnet (Speicher in Karte „04“ wählbar). Dort „Auslegungen berechnen“.`, 7000);
   }
   _nachAenderung();
 }
@@ -335,7 +335,7 @@ export function pvbsAnsehen(id) {
   if (!s) return;
   if ((id === _bs.projektId && !_entwurf) || _ansicht?.id === id) { pvbsAnsichtEnde(); return; }
   if (_ansicht) pvbsAnsichtEnde(false);
-  window.showHint?.(`⏳ „${s.name}“ wird gezeichnet …`, 0);
+  window.showHint?.(`„${s.name}“ wird gezeichnet …`, 0);
   setTimeout(() => {
     try {
       const pane = _pvPane();
@@ -410,7 +410,7 @@ function _bannerZeigen(s, n) {
   div.style.cssText = 'position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:1200;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'
     + `padding:6px 12px;border-radius:18px;background:var(--surface);border:1px solid ${LILA};color:var(--c-blue);`
     + 'font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.4);max-width:calc(100vw - 32px);';
-  div.innerHTML = `<span style="color:${LILA};">👁 Angezeigt</span>
+  div.innerHTML = `<span style="color:${LILA};">Angezeigt</span>
     <b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(s.name)}</b>
     <span style="color:var(--c-blue);font-family:'DM Mono',monospace;white-space:nowrap;">${n} Dächer · ${_fmt(k?.summeKwp)} kWp</span>
     <span style="color:var(--c-blue);font-size:11px;white-space:nowrap;">nur Ansicht · im Projekt: ${_entwurf ? 'ungespeicherter Entwurf' : `„${escHtml(p?.name || '—')}“`}</span>
@@ -446,13 +446,13 @@ export function pvbsOeffnen(id) {
 /** Hinweis in der Zeile, wenn der Stand mit anderen Belegungsregeln entstand. */
 function _regelnHinweis(s) {
   const abw = window.pvmRegelnAbweichung?.(s.regeln) || [];
-  return abw.length ? ` · <span style="color:${ORANGE};" title="${escHtml('Mit anderen Belegungsregeln entstanden:\n' + abw.join('\n'))}">⚙ andere Regeln</span>` : '';
+  return abw.length ? ` · <span style="color:${ORANGE};" title="${escHtml('Mit anderen Belegungsregeln entstanden:\n' + abw.join('\n'))}">andere Regeln</span>` : '';
 }
 
 /** Stand auf die Dächer legen (Öffnen, Entwurf verwerfen). */
 function _insProjekt(s, hinweis) {
   pvbsAnsichtEnde(false);
-  window.showHint?.(`⏳ „${s.name}“ wird geöffnet …`, 0);
+  window.showHint?.(`„${s.name}“ wird geöffnet …`, 0);
   setTimeout(() => {
     try { _oeffnenLauf(s); }
     catch (err) {
@@ -493,7 +493,7 @@ export function pvbsEntwurfSpeichern() {
   _bs.liste[_bs.liste.indexOf(ps)] = neu;
   _entwurf = null;
   window.pvMarkStale?.();
-  window.showHint?.(`💾 Entwurf in „${neu.name}“ gespeichert.`, 5000);
+  window.showHint?.(`Entwurf in „${neu.name}“ gespeichert.`, 5000);
   _nachAenderung();
 }
 
@@ -512,7 +512,7 @@ export function pvbsEntwurfAlsStand() {
   _bs.liste.push(s);
   _bs.projektId = s.id;
   _entwurf = null;
-  window.showHint?.(`💾 „${s.name}“ gespeichert — liegt jetzt im Projekt.`, 5000);
+  window.showHint?.(`„${s.name}“ gespeichert — liegt jetzt im Projekt.`, 5000);
   _nachAenderung();
 }
 
@@ -578,7 +578,7 @@ function _engstellenHtml(s) {
   if (!es) return '';
   const T = x => _fmt((x || 0) / 1000);
   const fehlt = Math.max(0, (es.noetigKwp || 0) - (es.passtKwp || 0));
-  const kopf = `<div style="color:var(--text);">🚧 Engstellen für ${escHtml(es.gruppe)} <span style="color:var(--muted);">(Netz ${escHtml(String(s.netz.jahr ?? '—'))}, Vorschau vom ${escHtml(s.stand)})</span></div>
+  const kopf = `<div style="color:var(--text);">Engstellen für ${escHtml(es.gruppe)} <span style="color:var(--muted);">(Netz ${escHtml(String(s.netz.jahr ?? '—'))}, Vorschau vom ${escHtml(s.stand)})</span></div>
       <div style="color:var(--muted);">${es.noetigN} Dächer · ${_fmt(es.noetigKwp)} kWp nötig — ${_fmt(es.passtKwp)} kWp passen${fehlt > 0.5 ? `, <span style="color:${ROT};">${_fmt(fehlt)} kWp nicht</span>` : ''}</div>`;
   const rahmen = (farbe, inhalt) => `<div style="margin:2px 0 3px 10px;padding:2px 5px;border-left:2px solid ${farbe};font-size:9px;line-height:1.45;">${inhalt}</div>`;
   if (!es.liste?.length) return rahmen(GRUEN, `${kopf}<div style="color:${GRUEN};">✓ Keine Engstelle — die ganze Gruppe passt ins Netz.</div>`);
@@ -621,7 +621,7 @@ export function pvbsBlockHtml() {
       basis ? _rolle(ORANGE, 'BASIS DES ENTWURFS', 'Der ungespeicherte Entwurf auf den Dächern beruht auf diesem Stand — er selbst ist unverändert') : '',
       angezeigt ? _rolle(LILA, 'ANGEZEIGT', 'Ist gerade auf der Karte zu sehen') : '',
       analyse ? _rolle(GELB, 'PV-ANALYSE', 'Grundlage des Variantenvergleichs in der PV-Analyse') : '',
-      ausl ? _rolle(ORANGE, '☀ AUSLEGUNG', 'Wird in der PV-Analyse zusätzlich als eigene Auslegung mit Speicher gerechnet') : '',
+      ausl ? _rolle(ORANGE, 'AUSLEGUNG', 'Wird in der PV-Analyse zusätzlich als eigene Auslegung mit Speicher gerechnet') : '',
     ].filter(Boolean).join(' ');
     return `
       <div style="padding:4px 0 3px;border-bottom:1px solid rgba(var(--ink),.06);${imProjekt ? `border-left:3px solid ${GRUEN};padding-left:4px;` : 'padding-left:7px;'}">
@@ -639,7 +639,7 @@ export function pvbsBlockHtml() {
         ${offen ? `
         <div style="display:flex;flex-wrap:wrap;gap:3px;padding:4px 0 2px 10px;">
           ${_knopf(`pvbsAnalyse('${s.id}')`, analyse ? '★ PV-Analyse' : '☆ für PV-Analyse', 'Mit diesem Stand rechnet die PV-Analyse ihren Variantenvergleich', GELB, analyse)}
-          ${_knopf(`pvbsAuslegung('${s.id}')`, ausl ? '☀ Auslegung ✓' : '☀ als Auslegung', 'Zusätzlich als eigene Auslegung mit Speicher in der PV-Analyse rechnen', ORANGE, ausl)}
+          ${_knopf(`pvbsAuslegung('${s.id}')`, ausl ? 'Auslegung ✓' : 'als Auslegung', 'Zusätzlich als eigene Auslegung mit Speicher in der PV-Analyse rechnen', ORANGE, ausl)}
           ${_knopf(`pvbsKopie('${s.id}')`, '⧉ Kopie', 'Kopie anlegen — z. B. um diese Fassung zu behalten, bevor man sie bearbeitet', '')}
           ${_knopf(`pvbsUmbenennen('${s.id}')`, '✎ Name', 'Umbenennen', '')}
           ${imProjekt ? '' : _knopf(`pvbsLoeschen('${s.id}')`, '🗑', 'Stand löschen (die Dächer im Projekt bleiben unverändert)', ROT)}
@@ -650,7 +650,7 @@ export function pvbsBlockHtml() {
   };
 
   const kopf = `<div style="display:flex;align-items:center;gap:5px;cursor:pointer;" data-click="pvbsZeile('__zu')">
-      <span style="flex:1;color:${LILA};font-weight:600;font-size:11px;">📚 Belegungsstände${_bs.liste.length ? ` (${_bs.liste.length})` : ''}</span>
+      <span style="flex:1;color:${LILA};font-weight:600;font-size:11px;">Belegungsstände${_bs.liste.length ? ` (${_bs.liste.length})` : ''}</span>
       <span style="font-size:10px;color:var(--muted);">${_bs.zu ? '▸' : '▾'}</span>
     </div>`;
   if (_bs.zu) return `<div style="margin-top:6px;border:1px solid ${LILA}55;border-radius:5px;padding:5px 7px;">${kopf}</div>`;
@@ -672,8 +672,8 @@ export function pvbsBlockHtml() {
       </div>
       <div style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;padding:2px 0 3px;">${_entwurf.daecher} Dächer · ${_fmt(_entwurf.kwpKorr)} kWp</div>
       <div style="display:flex;flex-wrap:wrap;gap:3px;">
-        ${ps ? _knopf('pvbsEntwurfSpeichern()', '💾 speichern', `In „${ps.name}“ speichern — überschreibt dessen bisherigen Inhalt`, GRUEN) : ''}
-        ${_knopf('pvbsEntwurfAlsStand()', '💾 als neuer Stand', 'Unter neuem Namen speichern — liegt danach im Projekt', GRUEN)}
+        ${ps ? _knopf('pvbsEntwurfSpeichern()', 'speichern', `In „${ps.name}“ speichern — überschreibt dessen bisherigen Inhalt`, GRUEN) : ''}
+        ${_knopf('pvbsEntwurfAlsStand()', 'als neuer Stand', 'Unter neuem Namen speichern — liegt danach im Projekt', GRUEN)}
         ${ps ? _knopf('pvbsEntwurfVerwerfen()', '↶ verwerfen', `Änderungen verwerfen, „${ps.name}“ zurück auf die Dächer (Strg+Z holt den Entwurf zurück)`, ROT) : ''}
       </div>
     </div>`;

@@ -63,7 +63,7 @@ export function variantenVergleichRender() {
  */
 export function variantenVergleichNetzwirkung() {
   const btn = document.getElementById('vv-netz-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ rechnet …'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'rechnet …'; }
   setTimeout(() => {
     try {
       lastgangSchnappschuesseAlleVarianten();
@@ -83,7 +83,7 @@ function _grundlage(v) {
   </div>
   <div style="background:var(--surface2);border-radius:6px;padding:7px 9px;margin-bottom:12px;
               display:flex;align-items:center;gap:14px;font-size:10px;">
-    <span style="color:var(--c-blue);">🏛 Bestand + 📈 Entwicklung</span>
+    <span style="color:var(--c-blue);">Bestand + 📈 Entwicklung</span>
     <span style="color:var(--text);font-family:'DM Mono',monospace;">${v.gemeinsam.items} Anlagen · ${v.gemeinsam.edges} Kabel</span>
     <span style="margin-left:auto;color:var(--muted);font-size:9px;">
       gilt in allen Varianten gleich
@@ -149,7 +149,7 @@ function _netzwirkung() {
         <button id="vv-netz-btn" data-click="variantenVergleichNetzwirkung()"
           style="padding:4px 10px;border-radius:5px;border:1px solid var(--c-violet);background:transparent;
                  color:var(--c-violet);font-family:inherit;font-size:10px;cursor:pointer;">
-          ⚡ Netzwirkung berechnen</button>
+          Netzwirkung berechnen</button>
       </div>
     </div>`;
   }

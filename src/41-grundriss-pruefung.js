@@ -147,7 +147,7 @@ export async function grundrissLoeschen(id) {
   _markierungWeg();
   const r = await window.removeGebaeude?.(id);
   if (r === false) return;
-  showHint(`🗑 „${_name(g)}" gelöscht.`, 4000);
+  showHint(`„${_name(g)}" gelöscht.`, 4000);
   grundrissPanelRender();
 }
 

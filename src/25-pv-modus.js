@@ -283,7 +283,7 @@ export function pvModusStart() {
   // auf denselben Kartenklick hören zu lassen.
   beginInteraction({
     id: INTERAKTION,
-    label: '☀ PV-Modus',
+    label: 'PV-Modus',
     hint: 'Dach anklicken = Fläche zeichnen · B/S = Belegung/Sperrfläche · N = nächstes offenes Dach',
     cancel: () => pvModusStop(),
   });
@@ -1249,7 +1249,7 @@ function _dachRegler(g) {
       + (g.dachform === 'sattel' ? `
         <div style="display:flex;gap:4px;margin-top:2px;">
           <button class="btn-xs" style="flex:1;" data-click="pvmFirst(${g.id})"
-            title="Firstlinie auf dem Satellitenbild nachzeichnen (2 Klicks)">📐 First zeichnen</button>
+            title="Firstlinie auf dem Satellitenbild nachzeichnen (2 Klicks)">First zeichnen</button>
           ${g.pvRidgeOverride ? `<button class="btn-xs" data-click="pvmFirstReset(${g.id})" title="First zurück auf automatische Mitte">↺</button>` : ''}
         </div>` : '');
   }
@@ -1303,21 +1303,21 @@ function _aktivBlock(g) {
     ${g.dachFlaechen?.length ? `
     <div style="font-size:9.5px;color:var(--muted);margin-bottom:4px;line-height:1.4;"
       title="${g.dachLod2?.quelle === 'grundriss' ? 'Aus dem Grundriss berechnet (Flügel mit Sattel-/Walmdach, Kehlen an den Anschlüssen) — folgt Dachform und Neigung des Gebäudes' : 'Amtliches 3D-Gebäudemodell: jede Dachfläche mit eigener Neigung und Ausrichtung'}">
-      ${g.dachLod2?.quelle === 'grundriss' ? '📐 Aus Grundriss' : '🏠 LoD2'}: ${g.dachFlaechen.length} Dachflächen${g.dachLod2 ? ` · Traufe ${g.dachLod2.traufeM.toFixed(1)} m · First ${g.dachLod2.firstM.toFixed(1)} m` : ''}
+      ${g.dachLod2?.quelle === 'grundriss' ? 'Aus Grundriss' : 'LoD2'}: ${g.dachFlaechen.length} Dachflächen${g.dachLod2 ? ` · Traufe ${g.dachLod2.traufeM.toFixed(1)} m · First ${g.dachLod2.firstM.toFixed(1)} m` : ''}
     </div>
     <button class="btn-xs" style="width:100%;border-color:${GELB};color:${GELB};"
       data-click="pvmGrundriss(${g.id})"
-      title="Jede belegbare Dachfläche als eigene Belegungsfläche übernehmen (mit ihrer Neigung und Ausrichtung; Nordflächen nach den Vorgaben ausgelassen)">⊞ Dachflächen übernehmen</button>` : `
+      title="Jede belegbare Dachfläche als eigene Belegungsfläche übernehmen (mit ihrer Neigung und Ausrichtung; Nordflächen nach den Vorgaben ausgelassen)">Dachflächen übernehmen</button>` : `
     <button class="btn-xs" style="width:100%;border-color:${GELB};color:${GELB};"
       data-click="pvmGrundriss(${g.id})"
-      title="Den Gebäudegrundriss als Belegungsfläche übernehmen — bei Schrägdächern ist er die Dachfläche (Projektion und Firstteilung macht die Berechnung)">⊞ Grundriss als Fläche</button>`}
+      title="Den Gebäudegrundriss als Belegungsfläche übernehmen — bei Schrägdächern ist er die Dachfläche (Projektion und Firstteilung macht die Berechnung)">Grundriss als Fläche</button>`}
     ${g.dachform === 'sattel' && !g.dachFlaechen?.length ? `
     <button class="btn-xs" style="width:100%;margin-top:4px;${nordDa ? `border-color:${ROT};color:${ROT};` : ''}"
       data-click="pvmNordAussparen(${g.id})"
       title="${nordDa
         ? 'Die automatische Sperrfläche auf der Nordseite wieder entfernen'
         : `Die nach Norden zeigende Dachhälfte als Sperrfläche aussparen (Sektor ±${_vorgabe().nordSektor}° um Nord)`}">
-      ${nordDa ? '↺ Nordseite wieder freigeben' : '⛔ Nordseite aussparen'}</button>` : ''}
+      ${nordDa ? '↺ Nordseite wieder freigeben' : 'Nordseite aussparen'}</button>` : ''}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:6px;">
       <div class="inp-group">
         <div class="inp-label">Dachform</div>
@@ -1556,14 +1556,14 @@ function _html() {
 
   return `
     <div class="pvm-head"${sperr ? ` style="border-bottom-color:${ROT};"` : ''}>
-      <span class="pvm-head-title"${sperr ? ` style="color:${ROT};"` : ''}>${sperr ? '⛔ Sperrflächen' : '☀ PV-Modus'}</span>
+      <span class="pvm-head-title"${sperr ? ` style="color:${ROT};"` : ''}>${sperr ? 'Sperrflächen' : 'PV-Modus'}</span>
       <button class="btn-xs" data-click="pvmHilfeToggle()" title="Kurzanleitung ein-/ausblenden">?</button>
       <button class="btn-xs" data-click="pvModusStop()" title="Modus beenden (Esc)">✓ Fertig</button>
     </div>
     <div class="pvm-body">
       <div style="display:flex;gap:4px;">
-        ${knopf(!sperr, GELB, "pvModusSetTyp('belegung')", '☀ Belegung', 'Taste B')}
-        ${knopf(sperr,  ROT,  "pvModusSetTyp('sperr')",    '⛔ Sperrfläche', 'Taste S')}
+        ${knopf(!sperr, GELB, "pvModusSetTyp('belegung')", 'Belegung', 'Taste B')}
+        ${knopf(sperr,  ROT,  "pvModusSetTyp('sperr')",    'Sperrfläche', 'Taste S')}
       </div>
       <div style="display:flex;gap:4px;margin-top:4px;">
         ${knopf(form === 'polygon',  '#80deea', "pvmSetForm('polygon')",  '✎ Polygon',  'Ecken einzeln klicken · Taste R wechselt')}
@@ -1577,7 +1577,7 @@ function _html() {
       ${ziele
         ? `<button class="btn-xs" style="width:100%;margin-top:4px;border-color:${GELB};color:${GELB};"
              data-click="pvmGrundrissAuswahl()"
-             title="Für jedes ausgewählte Dach ohne Fläche den Grundriss als Belegungsfläche übernehmen">⊞ Grundriss für ${ziele} ausgewählte Dächer</button>`
+             title="Für jedes ausgewählte Dach ohne Fläche den Grundriss als Belegungsfläche übernehmen">Grundriss für ${ziele} ausgewählte Dächer</button>`
         : `<div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.4;">
              Stapelweise: Gebäude in der Liste oder Gebäudetabelle ankreuzen (dort filtern) — dann erscheint hier „Grundriss für die Auswahl".
            </div>`}
@@ -1978,7 +1978,7 @@ function _nachDachflaeche(g) {
 let _netzTimer = 0;
 function _netzSpaeter() {
   clearTimeout(_netzTimer);
-  window.showHint?.('⏳ Stromnetz wird nachgerechnet …', 0);
+  window.showHint?.('Stromnetz wird nachgerechnet …', 0);
   _netzTimer = setTimeout(() => {
     _netzTimer = 0;
     if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();

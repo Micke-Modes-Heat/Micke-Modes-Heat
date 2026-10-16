@@ -23,13 +23,13 @@ export function toggleHilfeModus() {
     btn.style.borderColor = '#4caf50';
     btn.style.color = '#4caf50';
     btn.style.background = 'rgba(76,175,80,0.15)';
-    btn.textContent = '❓ Hilfe-Modus (aktiv)';
+    btn.textContent = 'Hilfe-Modus (aktiv)';
     _showHilfeOverlay();
   } else {
     btn.style.borderColor = '#607d8b';
     btn.style.color = '#90a4ae';
     btn.style.background = '';
-    btn.textContent = '❓ Hilfe-Modus';
+    btn.textContent = 'Hilfe-Modus';
     _hideHilfeOverlay();
   }
 }
@@ -94,7 +94,7 @@ export function _showHilfeOverlay() {
 
     if (!text) { _hilfeTooltip.style.display = 'none'; return; }
 
-    _hilfeTooltip.innerHTML = '<div style="font-weight:600;color:var(--c-green);margin-bottom:4px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">ℹ Hilfe</div>' + text;
+    _hilfeTooltip.innerHTML = '<div style="font-weight:600;color:var(--c-green);margin-bottom:4px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">Hilfe</div>' + text;
     _hilfeTooltip.style.display = '';
 
     // Position: neben dem Cursor, im Viewport halten
@@ -116,7 +116,7 @@ export function _hideHilfeOverlay() {
 export let _leitfadenOpen = false;
 
 export const LEITFADEN_STEPS = [
-  { id: 'lf-s1', title: '📍 Plangebiet & Gebäude',
+  { id: 'lf-s1', title: 'Plangebiet & Gebäude',
     text: '<strong>1. Zum Quartier navigieren:</strong><br>' +
       'Gib oben rechts eine Adresse in die Suche ein, oder verschiebe die Karte manuell zum gewünschten Bereich.<br><br>' +
       '<strong>2. Plangebiet zeichnen:</strong><br>' +
@@ -135,7 +135,7 @@ export const LEITFADEN_STEPS = [
     },
     check: () => typeof gebaeude !== 'undefined' && gebaeude.length > 0,
     tab: 'gebiet' },
-  { id: 'lf-s2', title: '🔍 Gebäudedaten prüfen',
+  { id: 'lf-s2', title: 'Gebäudedaten prüfen',
     text: 'Der Energiebedarf wurde <strong>automatisch geschätzt</strong> (Fläche × Baujahr-Kennwert nach IWU/TABULA). Für eine erste Planung reicht das aus.<br><br>' +
       '<strong>Gebäude bearbeiten:</strong><br>' +
       'Klicke in der <strong>Sidebar rechts</strong> auf ein Gebäude. Du kannst dort ändern:<br>' +
@@ -160,7 +160,7 @@ export const LEITFADEN_STEPS = [
       return gebaeude.some(g => (g.waerme && parseFloat(g.waerme) > 0) || (g.strom && parseFloat(g.strom) > 0) || g.lastgangKw);
     },
     tab: 'gebiet' },
-  { id: 'lf-s3', title: '🔗 Wärmenetz erstellen',
+  { id: 'lf-s3', title: 'Wärmenetz erstellen',
     text: 'Wechsle links zum Tab <strong>„Netz"</strong> (Untertab „Wärme"). Klicke auf <strong>„🔗 Wärmenetz konfigurieren"</strong> — es öffnet sich ein Planungspanel.<br><br>' +
       '<strong>1. Heizzentrale wählen:</strong><br>' +
       'Wähle im Dropdown <strong>„Heizzentrale auswählen"</strong> das Gebäude, in dem die Erzeuger stehen sollen.<br><br>' +
@@ -177,7 +177,7 @@ export const LEITFADEN_STEPS = [
     },
     check: () => typeof netzEdges !== 'undefined' && netzEdges.length > 0,
     tab: 'netz' },
-  { id: 'lf-s4', title: '🔥 Erzeuger hinzufügen',
+  { id: 'lf-s4', title: 'Erzeuger hinzufügen',
     text: 'Wechsle links zum Tab <strong>„Erzeuger"</strong>. Oben findest du Buttons für jeden Erzeugertyp.<br><br>' +
       '<strong>Vorgehen pro Erzeuger:</strong><br>' +
       '1. Klicke auf einen Button (z.B. <strong>„🌊 Luft-WP"</strong> oder <strong>„🔥 Gaskessel"</strong>) — ein Konfigurationspanel öffnet sich<br>' +
@@ -205,7 +205,7 @@ export const LEITFADEN_STEPS = [
       return keys.some(k => { const v = window[k === 'gaskessel' ? 'gasKessel' : k === 'heizoel' ? 'heizoelKessel' : k === 'pellets' ? 'pelletsKessel' : k === 'hhs' ? 'heizhackschnitzel' : k]; return v && (v.leistungKw > 0 || v.leistKw > 0); });
     },
     tab: 'erzeuger' },
-  { id: 'lf-s5', title: '⚡ Ergebnis prüfen',
+  { id: 'lf-s5', title: 'Ergebnis prüfen',
     text: 'Sobald Netz und mindestens ein Erzeuger vorhanden sind, läuft die <strong>stundenscharfe Jahressimulation (8760h) automatisch</strong>.<br><br>' +
       'Wechsle links zum Tab <strong>„Ergebnis"</strong>. Dort siehst du:<br><br>' +
       '• <strong>WGK</strong> — Wärmegestehungskosten (ct/kWh), annuitätisch nach VDI 2067<br>' +
@@ -224,7 +224,7 @@ export const LEITFADEN_STEPS = [
     },
     check: () => { const el = document.getElementById('lp-kpi-wgk'); return el && el.textContent !== '—' && el.textContent !== ''; },
     tab: 'ergebnis' },
-  { id: 'lf-s6', title: '📊 Dispatch & Live-Ansicht',
+  { id: 'lf-s6', title: 'Dispatch & Live-Ansicht',
     text: 'Klicke oben in der Ansichtsleiste auf <strong>„Live"</strong>. Du siehst den stundenscharfen Dispatch über das gesamte Jahr:<br><br>' +
       '• <strong>Lastgang</strong> — Der Wärmebedarf aller Gebäude als Kurve<br>' +
       '• <strong>Erzeugung</strong> — Farbige Flächen zeigen, welcher Erzeuger wann liefert<br>' +
@@ -234,7 +234,7 @@ export const LEITFADEN_STEPS = [
     doneText: () => 'Live-Ansicht geöffnet',
     check: () => { const tab = document.getElementById('view-tab-live'); return tab && tab.style.display !== 'none'; },
     tab: null },
-  { id: 'lf-s7', title: '☀ PV + Batterie (optional)',
+  { id: 'lf-s7', title: 'PV + Batterie (optional)',
     text: 'Wechsle zum Tab <strong>„Erzeuger"</strong> und klicke auf <strong>„☀ PV-Anlage"</strong>. Es öffnet sich ein Panel mit:<br><br>' +
       '• <strong>Leistung (kWp)</strong> — Nennleistung der PV-Anlage<br>' +
       '• <strong>Ausrichtung & Neigung</strong> — Beeinflusst den standortabhängigen Jahresertrag<br>' +
@@ -248,14 +248,14 @@ export const LEITFADEN_STEPS = [
     },
     check: () => { const el = document.getElementById('pv-kwp'); return el && parseFloat(el.value) > 0; },
     tab: 'erzeuger' },
-  { id: 'lf-s8', title: '🔄 Optimierung (optional)',
+  { id: 'lf-s8', title: 'Optimierung (optional)',
     text: 'Klicke oben auf <strong>„Optimierung"</strong> in der Ansichtsleiste. Der Optimierer durchsucht systematisch verschiedene Erzeuger-Leistungskombinationen und bewertet jeweils die Wärmegestehungskosten.<br><br>' +
       'PV-Leistung und Batteriegröße können optional mitoptimiert werden.<br><br>' +
       'Die Ergebnisse lassen sich über <strong>„Vergleich"</strong> in der Ansichtsleiste als Varianten nebeneinander vergleichen.',
     doneText: () => 'Optimierung durchgeführt',
     check: () => false,
     tab: null },
-  { id: 'lf-s9', title: '💾 Speichern & Exportieren',
+  { id: 'lf-s9', title: 'Speichern & Exportieren',
     text: 'Vergiss nicht, dein Projekt zu sichern!<br><br>' +
       '<strong>Projekt speichern:</strong><br>' +
       'Klicke unten in der Leiste auf <strong>„💾 Speichern"</strong>. Nach dem Öffnen einer Projektdatei wird diese in unterstützten Browsern direkt aktualisiert. Mit <strong>„Speichern unter"</strong> wählst du einen neuen Namen oder Speicherort. Browser ohne direkten Dateizugriff laden stattdessen eine JSON-Datei herunter.<br><br>' +
@@ -289,7 +289,7 @@ export function _createLeitfadenPanel() {
 
   // Header — verschiebbar (Drag-Handle)
   let html = '<div id="lf-drag-handle" style="padding:12px 16px;border-bottom:1px solid var(--border,var(--border));display:flex;align-items:center;justify-content:space-between;cursor:grab;user-select:none;">';
-  html += '<span style="font-size:13px;font-weight:600;color:var(--text,var(--c-blue));">📋 Leitfaden <span style="font-size:9px;color:var(--muted,var(--c-blue));font-weight:400;">— verschiebbar</span></span>';
+  html += '<span style="font-size:13px;font-weight:600;color:var(--text,var(--c-blue));">Leitfaden <span style="font-size:9px;color:var(--muted,var(--c-blue));font-weight:400;">— verschiebbar</span></span>';
   html += '<div style="display:flex;gap:6px;align-items:center;"><span id="lf-progress" style="font-size:10px;color:var(--muted,var(--c-blue));font-family:\'DM Mono\',monospace;"></span>';
   html += '<button data-click="toggleLeitfaden()" style="background:none;border:none;color:var(--muted,var(--c-blue));cursor:pointer;font-size:15px;padding:0;line-height:1;">✕</button></div></div>';
 

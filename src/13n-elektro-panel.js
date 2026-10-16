@@ -117,7 +117,7 @@ function _html() { return `
       <button class="lp-tool-btn lp-btn-tile" style="width:100%;"
         id="btn-pd-toggle" data-click="pdTogglePanel()"
         title="Bestands-Einlinienplan (Bild/PDF) laden und darauf klickend digitalisieren: Knoten mit Gebäuden verknüpfen, Kabel nachziehen — Geometrie und Länge kommen aus dem Trassenrouting">
-        📐 Bestandsplan digitalisieren
+        Bestandsplan digitalisieren
       </button>
     </div>
 
@@ -155,7 +155,7 @@ function _html() { return `
     <button class="lp-tool-btn lp-btn-primary" data-click="elCalcAssets()"
       style="margin:4px 0 6px;"
       title="Elektrische Auslastungsberechnung für alle Stromnetz-Komponenten">
-      ⚡ Elektroberechnung starten
+      Elektroberechnung starten
     </button>
     <div id="el-kpi-tiles" class="el-kpi-tiles"></div>
     <div id="lp-el-calc-result"
@@ -247,7 +247,7 @@ function _html() { return `
 
     ${_sub('Ergebnis im Detail')}
     <div class="lp-tool-grid">
-      ${_tile('📄 Ergebnisblatt', 'ergebnisblattToggle()', { id:'btn-ergebnisblatt-toggle',
+      ${_tile('Ergebnisblatt', 'ergebnisblattToggle()', { id:'btn-ergebnisblatt-toggle',
         title:'Vollständige Rechenergebnisse: Kennzahlen, Grenzwertnachweis, Kabel- und Knotentabellen, Mengengerüst, Kosten und alle Annahmen — druckbar und als CSV' })}
     </div>
 
@@ -273,15 +273,15 @@ function _html() { return `
 
     ${_sub('Netzanschluss')}
     <div class="lp-tool-grid">
-      ${_tile('🔌 Netzanschluss', 'naModulToggle()', { id:'btn-na-modul-toggle',
+      ${_tile('Netzanschluss', 'naModulToggle()', { id:'btn-na-modul-toggle',
         title:'Reicht der heutige Netzanschluss? Bedarf je Jahr gegen die vereinbarte Leistung, typische Anschlussebene, Wege bis zum Direktanschluss an ein Umspannwerk, Textbaustein und Leistungstabelle' })}
     </div>
 
     ${_sub('Resilienz')}
     <div class="lp-tool-grid">
-      ${_tile('🛡 Blackout-Modus', 'blackoutModusToggle()', { id:'btn-blackout-modus-toggle',
+      ${_tile('Blackout-Modus', 'blackoutModusToggle()', { id:'btn-blackout-modus-toggle',
         title:'Gebäude auf der Karte als notstromberechtigt einstufen (kritisch / eingeschränkt / einspeisefähig) und die Notstromlast bilanzieren' })}
-      ${_tile('📋 Resilienz-Abfrage', 'raPanelToggle()', { id:'btn-resilienz-abfrage-toggle',
+      ${_tile('Resilienz-Abfrage', 'raPanelToggle()', { id:'btn-resilienz-abfrage-toggle',
         title:'Abfragedatei (.xlsx) für die zuständige Stelle erzeugen, ausgefüllt wieder einlesen und in Resilienzanforderungen übersetzen' })}
     </div>
 
@@ -322,7 +322,7 @@ function _html() { return `
       <button class="lp-tool-btn lp-btn-tile" id="btn-engpass-analyse" data-colormode="engpassjahr"
         style="grid-column:span 2;" data-click="engpassAnalyseStarten()"
         title="Rechnet das Netz über die kommenden Jahre durch und färbt die Kabel danach ein, WANN sie zum Engpass werden (Strombelastbarkeit oder kumulierter Spannungsfall).">
-        ⏱ Engpassjahr (Zeitverlauf)
+        Engpassjahr (Zeitverlauf)
       </button>
     </div>
     <div id="lp-engpass-legende" style="display:none;margin-top:4px;"></div>

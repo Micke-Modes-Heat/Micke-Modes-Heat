@@ -137,7 +137,7 @@ export function sldExportPDF() {
   </div>
   <h3>Komponentenverzeichnis</h3>
   <table><thead><tr><th>Bezeichnung</th><th>Typ</th><th>Kenndaten</th></tr></thead><tbody>${legendRows}</tbody></table>
-  <div class="footer"><span>⚡ Einlinienschema · Jahr ${yr}</span><span>${today}</span></div>
+  <div class="footer"><span>Einlinienschema · Jahr ${yr}</span><span>${today}</span></div>
 </div></body></html>`;
   const win = window.open('', '_blank');
   if (!win) { alert('Popup blockiert.'); return; }

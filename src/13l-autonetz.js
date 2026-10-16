@@ -207,8 +207,8 @@ export function showAutoNetzDialog() {
     // Button + Hint zeigen "läuft…", bevor die (blockierende) Berechnung startet —
     // setTimeout gibt dem Browser Zeit, das noch zu rendern.
     okBtn.disabled = true;
-    okBtn.textContent = '⏳ Generiere …';
-    showHint('⏳ Auto-Netz wird generiert — das kann einen Moment dauern …');
+    okBtn.textContent = 'Generiere …';
+    showHint('Auto-Netz wird generiert — das kann einen Moment dauern …');
     setTimeout(() => {
       close();
       autoNetzAssets({ ring, erzeugungsnetz, autoKvs, kvsMaxConn, kvsMaxDistM, overwriteManual });

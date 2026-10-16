@@ -1731,7 +1731,7 @@ export function pvaBuildAnalyseSection() {
     const btn = document.createElement('button');
     btn.className    = 'analyse-section-tab';
     btn.dataset.section = 'pva';
-    btn.textContent  = '☀ PV-Analyse';
+    btn.textContent  = 'PV-Analyse';
     btn.title = 'PV-Analyse: Auslegungs- und Wirtschaftlichkeitsvergleich für PV-Anlagen — Eigenverbrauch, Einspeisung, Batterieoptimierung und Netzanschluss-Infrastruktur.';
     btn.addEventListener('click', () => {
       if (typeof window.setAnalyseSection === 'function') window.setAnalyseSection('pva');
@@ -2671,7 +2671,7 @@ function _pvBuildPanelHtml() {
               <input type="checkbox" id="pva-wind-enable" ${an ? 'checked' : ''} ${ws.count === 0 ? 'disabled' : ''}
                 data-change="window._pvAnalyse.windEnabled=this.checked;document.getElementById('pva-wind-detail').style.display=this.checked?'block':'none';"
                 style="accent-color:#4dd0e1;">
-              🌀 Windkraftanlagen einbeziehen
+              Windkraftanlagen einbeziehen
               ${ws.count > 0 ? `<span style="color:var(--c-teal);font-weight:500;">(${ws.count}× · ${ws.mwh.toFixed(0)} MWh/a)</span>`
                              : '<span style="font-size:10px;">— keine aktive Anlage im Projekt</span>'}
             </label>
@@ -4013,7 +4013,7 @@ function _pvProfilInfoHtml() {
     ? `<div id="pva-profil-upload" data-click="document.getElementById('pv-file-input').click()"
          style="border:1px dashed var(--border);border-radius:6px;padding:5px 8px;cursor:pointer;margin-top:6px;font-size:10.5px;color:var(--muted);"
          onmouseenter="this.style.borderColor='#66bb6a'" onmouseleave="this.style.borderColor='var(--border)'">
-         📂 PVGIS-Stundenprofil hochladen — ersetzt das synthetische Profil für alle Auslegungen
+         PVGIS-Stundenprofil hochladen — ersetzt das synthetische Profil für alle Auslegungen
        </div>`
     : `<div style="margin-top:6px;">
          <button data-click="pvClear()" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:1px 8px;font-size:10.5px;cursor:pointer;">
@@ -6112,7 +6112,7 @@ function _pvResMinGen(loadEff, pvH, batKwh, start, durH, nHours, initSoc, fuel, 
 function _pvResEnergyHeader(overrideEl) {
   const fsBtn = overrideEl ? '' : '<button data-pva-fs="resilienz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;margin-left:auto;">⤢</button>';
   const blackout = overrideEl ? '' : `<button data-pvres-blackout style="padding:2px 10px;border:1px solid var(--c-red);border-radius:10px;background:transparent;color:var(--c-red);font-size:11px;cursor:pointer;"
-      title="Gebäude einstufen, Aggregate am Netz platzieren, Liegenschafts-Insel und Wärmeversorgung">🛡 Blackout-Modus öffnen</button>`;
+      title="Gebäude einstufen, Aggregate am Netz platzieren, Liegenschafts-Insel und Wärmeversorgung">Blackout-Modus öffnen</button>`;
   return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
     <span style="font-size:11px;color:var(--muted);">Beitrag von PV und Speicher im Blackout · Gebäude, Netz, Liegenschaft und Wärme im</span>${blackout}${fsBtn}
   </div>`;
@@ -6510,8 +6510,8 @@ function renderResilienz(varianten, overrideEl) {
       return `<rect x="${(mx-1).toFixed(1)}" y="${(my-1).toFixed(1)}" width="${(cellW+2).toFixed(1)}" height="${(cellH+2).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="1.6"${dash?` stroke-dasharray="${dash}"`:''}/>`
         + `<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" fill="${stroke}" font-size="10.5" font-weight="700">${label}</text>`;
     };
-    const marker = cellMark(worstStart, '#fff', '◀ Worst-Case')
-      + (isWorst ? '' : cellMark(selStart, '#4fc3f7', '◀ gewählt', '2,1.5'));
+    const marker = cellMark(worstStart, '#fff', 'Worst-Case')
+      + (isWorst ? '' : cellMark(selStart, '#4fc3f7', 'gewählt', '2,1.5'));
     const legW = 130, legH = 8, legX = PL, legY = PT + cH + 14;
     const gradId = 'pvres-grad-' + (overrideEl ? 'fs' : 'm');
     heatEl.innerHTML = `
@@ -6897,7 +6897,7 @@ function renderResilienzWaerme(el, overrideEl) {
       return `<rect x="${(mx-1).toFixed(1)}" y="${(my-1).toFixed(1)}" width="${(cellW+2).toFixed(1)}" height="${(cellH+2).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="1.6"${dash?` stroke-dasharray="${dash}"`:''}/>`
         + `<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" fill="${stroke}" font-size="10.5" font-weight="700">${label}</text>`;
     };
-    const marker = cellMark(worstStart, '#fff', '◀ Worst-Case') + (isWorst ? '' : cellMark(selStart, '#4fc3f7', '◀ gewählt', '2,1.5'));
+    const marker = cellMark(worstStart, '#fff', 'Worst-Case') + (isWorst ? '' : cellMark(selStart, '#4fc3f7', 'gewählt', '2,1.5'));
     const legW = 130, legH = 8, legX = PL, legY = PT + cH + 14;
     const gradId = 'pvresw-grad-' + (overrideEl ? 'fs' : 'm');
     heatEl.innerHTML = `

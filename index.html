@@ -163,7 +163,7 @@
 </div>
 
 <div class="float-panel" id="privacy-panel" style="min-width:420px;max-width:620px;--panel-accent:#90a4ae;">
-  <div class="panel-drag-handle"><span style="font-weight:700;">🔒 Datenschutz &amp; lokale Daten</span><button data-click="document.getElementById('privacy-panel').classList.remove('visible')" aria-label="Schließen">✕</button></div>
+  <div class="panel-drag-handle"><span style="font-weight:700;">Datenschutz &amp; lokale Daten</span><button data-click="document.getElementById('privacy-panel').classList.remove('visible')" aria-label="Schließen">✕</button></div>
   <div style="font-size:12px;line-height:1.55;display:grid;gap:10px;">
     <p><b>Speicherung:</b> Projekte und Sicherungen liegen lokal in diesem Browser. Die Feld-App speichert Projekt, Notizen, Fotos und Offline-Kartenausschnitte ebenfalls lokal auf dem verwendeten Gerät.</p>
     <p><b>Möglicherweise sensible Daten:</b> Gebäudeadressen und -positionen, technische Anlagendaten, GPS-Position, Freitextnotizen und Fotos. Verwende Notizen und Fotos nur mit entsprechender Berechtigung.</p>
@@ -178,7 +178,7 @@
 </div>
 
 <div class="float-panel" id="diagnostics-panel" style="min-width:420px;max-width:680px;--panel-accent:#78909c;">
-  <div class="panel-drag-handle"><span style="font-weight:700;">🩺 Diagnosezentrum</span><button data-click="document.getElementById('diagnostics-panel').classList.remove('visible')" aria-label="Schließen">✕</button></div>
+  <div class="panel-drag-handle"><span style="font-weight:700;">Diagnosezentrum</span><button data-click="document.getElementById('diagnostics-panel').classList.remove('visible')" aria-label="Schließen">✕</button></div>
   <p style="font-size:11px;color:var(--muted);margin-bottom:8px;">Dauerhafte Fehler und Warnungen dieser Sitzung mit empfohlenem nächsten Schritt. Enthält keine Fotos oder Projektdaten.</p>
   <div id="diagnostics-list" style="max-height:55vh;overflow:auto;border:1px solid var(--border);border-radius:6px;"></div>
   <button class="tool-btn" data-click="clearDiagnostics()" style="margin-top:9px;">Meldungen leeren</button>
@@ -192,7 +192,7 @@
   </div>
 
   <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#d4a855;">🎨 Einfärbung</div>
+    <div class="ebp-cat-label" style="--ebp-c:#d4a855;">Einfärbung</div>
     <div style="display:flex;flex-direction:column;gap:3px;">
       <button class="mode-btn active" data-click="setMode('spez')"     id="btn-spez"     style="text-align:left;" title="Spezifischer Wärmebedarf (kWh/m²a)">Spez. Wärmebedarf</button>
       <button class="mode-btn"        data-click="setMode('heizlast')" id="btn-heizlast" style="text-align:left;" title="Heizlast (kW)">Heizlast</button>
@@ -210,7 +210,7 @@
   </div>
 
   <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#ff9800;">🏗 Gebäude &amp; Gebiet</div>
+    <div class="ebp-cat-label" style="--ebp-c:#ff9800;">Gebäude &amp; Gebiet</div>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-geb-visible"     checked data-change="setGebVisible(this.checked);_ebpSync('geb-visible',this.checked)">Gebäude</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-labels-visible"         data-change="setLabelsVisible(this.checked);_ebpSync('labels-visible',this.checked)">Beschriftung</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-chart-visible"          data-change="_ebpChart(this.checked)">Zeitstrahl-Chart</label>
@@ -218,36 +218,36 @@
   </div>
 
   <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#ef5350;">🔥 Wärmenetz</div>
+    <div class="ebp-cat-label" style="--ebp-c:#ef5350;">Wärmenetz</div>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-netz-visible"   checked data-change="setNetzVisible(this.checked);_ebpSync('netz-visible-ansicht',this.checked)">Leitungen</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-netz-motionless" data-change="setNetzMotionless(this.checked)">Netz bewegungslos</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-trasse-visible"        data-change="setTrasseVisible(this.checked)">Planungskorridore</label>
   </div>
 
   <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#4fc3f7;">⚡ Elektro</div>
+    <div class="ebp-cat-label" style="--ebp-c:#4fc3f7;">Elektro</div>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-assets-visible"         data-change="setAssetLayerVisible(this.checked);_ebpSync('assets-visible',this.checked)">Stromnetz-Komponenten</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-stromnetz-visible"      data-change="setStromNetzVisible(this.checked)">Stromnetz (Kabel)</label>
   </div>
 
   <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#ffd54f;">☀ PV</div>
+    <div class="ebp-cat-label" style="--ebp-c:#ffd54f;">PV</div>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-pv-visible" checked data-change="setPvVisible(this.checked)">PV-Anlagen</label>
   </div>
 
   <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#4fc3f7;">🏙 3D</div>
+    <div class="ebp-cat-label" style="--ebp-c:#4fc3f7;">3D</div>
     <button class="mode-btn" data-click="d3dUmschalten()" style="text-align:left;" title="Gebäude als 3D-Körper (Höhe = Geschosse × 3 m) in den Farben der Karte — neigen, drehen, als Bild speichern">3D-Ansicht öffnen / schließen</button>
   </div>
 
   <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#ba68c8;">🧭 Kartendrehung <span style="opacity:.55;font-weight:400;">Versuch</span></div>
+    <div class="ebp-cat-label" style="--ebp-c:#ba68c8;">Kartendrehung <span style="opacity:.55;font-weight:400;">Versuch</span></div>
     <!-- Inhalt wird von src/20-kartendrehung.js gerendert (kdRenderPanel) -->
     <div id="kd-panel"></div>
   </div>
 
   <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#78909c;">🗺 Hintergrund</div>
+    <div class="ebp-cat-label" style="--ebp-c:#78909c;">Hintergrund</div>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-satellit-visible"       data-change="_ebpSatellit(this.checked)">Satellit</label>
   </div>
 </div>
@@ -430,7 +430,7 @@
               <div class="netz-workspace-type">
                 <span>Netztyp</span>
                 <div>
-                  <button id="btn-netz-type-bestand" type="button" data-click="setWaermeNetzType(true)" title="Bestandsnetz: DN und Leitungsverläufe bleiben unverändert, Überschreitungen werden nur markiert">🏛 Bestand 2026</button>
+                  <button id="btn-netz-type-bestand" type="button" data-click="setWaermeNetzType(true)" title="Bestandsnetz: DN und Leitungsverläufe bleiben unverändert, Überschreitungen werden nur markiert">Bestand 2026</button>
                   <button id="btn-netz-type-neubau" type="button" data-click="setWaermeNetzType(false)" title="Neubaunetz: DN werden für alle Planungsjahre ausgelegt">Neubaunetz</button>
                 </div>
               </div>
@@ -456,7 +456,7 @@
               </div>
               <div class="na-trasse-werkzeuge" id="na-trasse-werkzeuge">
                 <button type="button" class="btn-secondary trasse-draw-btn" id="btn-draw-trasse-waerme" data-click="startGuidedTrasseCreation()">✎ Haupttrasse zeichnen</button>
-                <button type="button" class="btn-secondary" id="btn-trasse-loeschmodus" data-netz-braucht="trasse" data-click="trasseLoeschModusUmschalten()" title="Einzelne Trassenabschnitte durch Anklicken entfernen (auch per Rechtsklick auf einen Abschnitt). Rückgängig über den Hinweis unten.">🗑 Abschnitte löschen</button>
+                <button type="button" class="btn-secondary" id="btn-trasse-loeschmodus" data-netz-braucht="trasse" data-click="trasseLoeschModusUmschalten()" title="Einzelne Trassenabschnitte durch Anklicken entfernen (auch per Rechtsklick auf einen Abschnitt). Rückgängig über den Hinweis unten.">Abschnitte löschen</button>
                 <button type="button" class="btn-secondary danger" data-netz-braucht="trasse" data-click="confirmClearTrasse()">Ganze Haupttrasse löschen</button>
               </div>
               <div class="na-struktur">
@@ -570,34 +570,34 @@
         <div class="var-wirkung-box" data-wirkung="erzeuger" style="margin:0 0 8px;font-size:10.5px;"></div>
         <div class="lp-section-title">Wärmeerzeugung</div>
         <div id="lp-erz-buttons" class="lp-tool-grid">
-          <button class="lp-tool-btn" data-click="toggleLwWpPanel()" style="border-color:var(--c-green);color:var(--c-green);">🌊 Luft-WP</button>
-          <button class="lp-tool-btn" data-click="toggleFliessgewaesserPanel()" style="border-color:var(--c-blue);color:var(--c-blue);">〰 Fließgew.</button>
-          <button class="lp-tool-btn" data-click="toggleGeoPanel()" style="border-color:var(--c-orange);color:var(--c-red);">⛏ Geothermie</button>
-          <button class="lp-tool-btn" data-click="openEisspeicherWp()" style="border-color:var(--c-blue);color:var(--c-blue);" title="Sole-Wärmepumpe mit Eisspeicher und Solar-Luftabsorber als Wärmequelle (kombinierbar mit Luft-WP oder Gaskessel)">❄ Eisspeicher-WP</button>
-          <button class="lp-tool-btn" data-click="toggleGasKesselPanel()" style="border-color:var(--c-blue);color:var(--c-blue);">🔥 Gaskessel</button>
-          <button class="lp-tool-btn" data-click="toggleHeizoelPanel()" style="border-color:var(--c-blue);color:var(--c-blue);">🛢 Heizöl</button>
-          <button class="lp-tool-btn" data-click="togglePelletsPanel()" style="border-color:var(--c-orange);color:var(--c-orange);">🌾 Pellets</button>
-          <button class="lp-tool-btn" data-click="toggleHhsPanel()" style="border-color:var(--c-orange);color:var(--c-orange);">🪵 HHS</button>
-          <button class="lp-tool-btn" data-click="toggleFernwaermePanel()" style="border-color:var(--c-red);color:var(--c-red);">🌡 Fernwärme</button>
-          <button class="lp-tool-btn" data-click="toggleStromkesselPanel()" style="border-color:var(--c-violet);color:var(--c-violet);">🔌 Stromkessel</button>
-          <button class="lp-tool-btn" data-click="toggleBhkwPanel()" style="border-color:var(--c-orange);color:var(--c-orange);">⚡ BHKW</button>
-          <button class="lp-tool-btn" data-click="toggleSolarthermiePanel()" style="border-color:var(--c-orange);color:var(--c-orange);">☀ Solarthermie</button>
+          <button class="lp-tool-btn" data-click="toggleLwWpPanel()" style="border-color:var(--c-green);color:var(--c-green);">Luft-WP</button>
+          <button class="lp-tool-btn" data-click="toggleFliessgewaesserPanel()" style="border-color:var(--c-blue);color:var(--c-blue);">Fließgew.</button>
+          <button class="lp-tool-btn" data-click="toggleGeoPanel()" style="border-color:var(--c-orange);color:var(--c-red);">Geothermie</button>
+          <button class="lp-tool-btn" data-click="openEisspeicherWp()" style="border-color:var(--c-blue);color:var(--c-blue);" title="Sole-Wärmepumpe mit Eisspeicher und Solar-Luftabsorber als Wärmequelle (kombinierbar mit Luft-WP oder Gaskessel)">Eisspeicher-WP</button>
+          <button class="lp-tool-btn" data-click="toggleGasKesselPanel()" style="border-color:var(--c-blue);color:var(--c-blue);">Gaskessel</button>
+          <button class="lp-tool-btn" data-click="toggleHeizoelPanel()" style="border-color:var(--c-blue);color:var(--c-blue);">Heizöl</button>
+          <button class="lp-tool-btn" data-click="togglePelletsPanel()" style="border-color:var(--c-orange);color:var(--c-orange);">Pellets</button>
+          <button class="lp-tool-btn" data-click="toggleHhsPanel()" style="border-color:var(--c-orange);color:var(--c-orange);">HHS</button>
+          <button class="lp-tool-btn" data-click="toggleFernwaermePanel()" style="border-color:var(--c-red);color:var(--c-red);">Fernwärme</button>
+          <button class="lp-tool-btn" data-click="toggleStromkesselPanel()" style="border-color:var(--c-violet);color:var(--c-violet);">Stromkessel</button>
+          <button class="lp-tool-btn" data-click="toggleBhkwPanel()" style="border-color:var(--c-orange);color:var(--c-orange);">BHKW</button>
+          <button class="lp-tool-btn" data-click="toggleSolarthermiePanel()" style="border-color:var(--c-orange);color:var(--c-orange);">Solarthermie</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Stromerzeugung <span class="htip" data-tip="Dieselben Anlagen wie im Elektro-Tab — nur ein zweiter Zugang. Eine hier angelegte PV-Anlage erscheint automatisch auch im Stromteil (gleiche Liegenschaft, ein Objekt).">?</span></div>
         <div class="lp-tool-grid">
-          <button class="lp-tool-btn" data-click="togglePvPanel()" style="border-color:var(--c-amber);color:var(--c-amber);" title="Zentrale PV-Anlage (kWp pauschal oder PVGIS-Lastgang) — identisch mit der PV im Stromteil">☀ PV-Anlage</button>
-          <button class="lp-tool-btn" id="btn-pv-modus-toggle" data-click="pvModusToggle()" style="border-color:var(--c-amber);color:var(--c-amber);" title="Dachflächen direkt auf der Karte zeichnen: Dach anklicken = erste Ecke, Modus bleibt an, nächstes Dach. Die Fläche gehört dem Dach, auf dem sie liegt.">🗺 PV-Modus (Karte)</button>
-          <button class="lp-tool-btn" data-click="toggleGebPvPanel()" style="border-color:var(--c-amber);color:var(--c-amber);" title="PV auf Gebäudedächern aktivieren — fließt in dieselbe Strombilanz">☀ Gebäude-PV</button>
-          <button class="lp-tool-btn" data-click="toggleFFPvPanel()" style="border-color:var(--c-amber);color:var(--c-amber);" title="Freiflächen-PV zeichnen — öffnet die Freiflächen-Sektion im Elektro-Tab (gleiche Anlagen)">☀ Freifläche-PV</button>
+          <button class="lp-tool-btn" data-click="togglePvPanel()" style="border-color:var(--c-amber);color:var(--c-amber);" title="Zentrale PV-Anlage (kWp pauschal oder PVGIS-Lastgang) — identisch mit der PV im Stromteil">PV-Anlage</button>
+          <button class="lp-tool-btn" id="btn-pv-modus-toggle" data-click="pvModusToggle()" style="border-color:var(--c-amber);color:var(--c-amber);" title="Dachflächen direkt auf der Karte zeichnen: Dach anklicken = erste Ecke, Modus bleibt an, nächstes Dach. Die Fläche gehört dem Dach, auf dem sie liegt.">PV-Modus (Karte)</button>
+          <button class="lp-tool-btn" data-click="toggleGebPvPanel()" style="border-color:var(--c-amber);color:var(--c-amber);" title="PV auf Gebäudedächern aktivieren — fließt in dieselbe Strombilanz">Gebäude-PV</button>
+          <button class="lp-tool-btn" data-click="toggleFFPvPanel()" style="border-color:var(--c-amber);color:var(--c-amber);" title="Freiflächen-PV zeichnen — öffnet die Freiflächen-Sektion im Elektro-Tab (gleiche Anlagen)">Freifläche-PV</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Speicher</div>
         <div class="lp-tool-grid">
-          <button class="lp-tool-btn" data-click="toggleThermSpeicherPanel()" style="border-color:var(--c-teal);color:var(--c-teal);">🔋 Wärmespeicher</button>
-          <button class="lp-tool-btn" data-click="toggleBatteriePanel()" style="border-color:var(--c-violet);color:var(--c-violet);">🔋 Batteriespeicher</button>
+          <button class="lp-tool-btn" data-click="toggleThermSpeicherPanel()" style="border-color:var(--c-teal);color:var(--c-teal);">Wärmespeicher</button>
+          <button class="lp-tool-btn" data-click="toggleBatteriePanel()" style="border-color:var(--c-violet);color:var(--c-violet);">Batteriespeicher</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Kälteversorgung <span class="htip" data-tip="Kälteanlagen / reversible Wärmepumpen. Stromverbrauch und EER werden stundenscharf (8.760 h) gerechnet – analog zur Wärmepumpe, nur mit Kühl-Wirkungsgrad (EER).">?</span></div>
         <div class="lp-tool-grid">
-          <button class="lp-tool-btn" data-click="toggleKaeltePanel()" style="border-color:var(--c-teal);color:var(--c-teal);">🧊 Kälte / Kühlung</button>
+          <button class="lp-tool-btn" data-click="toggleKaeltePanel()" style="border-color:var(--c-teal);color:var(--c-teal);">Kälte / Kühlung</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Merit-Order <span class="htip" data-tip="Einsatzreihenfolge der Erzeuger: Der billigste wird zuerst eingesetzt, dann der nächste, bis der Wärmebedarf gedeckt ist. Per Drag&amp;Drop änderbar.">?</span></div>
         <div id="lp-merit-order">
@@ -652,12 +652,12 @@
         <div class="lp-section-title">Auswertung</div>
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" data-click="toggleWirtschaftPanel()" style="border-color:var(--c-orange);color:var(--c-orange);">€ Wirtschaftlichkeit</button>
-          <button class="lp-tool-btn" data-click="toggleStromPanel()" style="border-color:var(--c-amber);color:var(--c-amber);">⚡ Strom-Bilanz</button>
-          <button class="lp-tool-btn" data-click="toggleStatusPanel()" style="border-color:var(--c-blue);color:var(--c-blue);">📊 Status</button>
-          <button class="lp-tool-btn" data-click="setViewMode('analyse')" style="border-color:var(--c-blue);color:var(--c-blue);">📈 Systemanalyse</button>
-          <button class="lp-tool-btn" data-click="showSankey()" style="border-color:var(--c-violet);color:var(--c-violet);">🔀 Sankey-Diagramm</button>
-          <button class="lp-tool-btn" id="btn-waerme-schema" data-click="wsToggle()" style="border-color:var(--c-orange);color:var(--c-orange);grid-column:1/-1;" title="Netzschema (Strangplan) und Hydraulikschema der Heizzentrale">🗺 Wärmenetz- &amp; Zentralenschema</button>
-          <button class="lp-tool-btn" id="btn-quartier-sonde" data-click="qsToggle()" style="border-color:var(--c-blue);color:var(--c-blue);" title="Bereich auf der Karte aufziehen und Lastgang, Dauerlinie und Kennwerte dieser Gebäude ansehen">🔍 Quartier sondieren</button>
+          <button class="lp-tool-btn" data-click="toggleStromPanel()" style="border-color:var(--c-amber);color:var(--c-amber);">Strom-Bilanz</button>
+          <button class="lp-tool-btn" data-click="toggleStatusPanel()" style="border-color:var(--c-blue);color:var(--c-blue);">Status</button>
+          <button class="lp-tool-btn" data-click="setViewMode('analyse')" style="border-color:var(--c-blue);color:var(--c-blue);">Systemanalyse</button>
+          <button class="lp-tool-btn" data-click="showSankey()" style="border-color:var(--c-violet);color:var(--c-violet);">Sankey-Diagramm</button>
+          <button class="lp-tool-btn" id="btn-waerme-schema" data-click="wsToggle()" style="border-color:var(--c-orange);color:var(--c-orange);grid-column:1/-1;" title="Netzschema (Strangplan) und Hydraulikschema der Heizzentrale">Wärmenetz- &amp; Zentralenschema</button>
+          <button class="lp-tool-btn" id="btn-quartier-sonde" data-click="qsToggle()" style="border-color:var(--c-blue);color:var(--c-blue);" title="Bereich auf der Karte aufziehen und Lastgang, Dauerlinie und Kennwerte dieser Gebäude ansehen">Quartier sondieren</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Vergleich</div>
         <div class="lp-tool-grid">
@@ -665,10 +665,10 @@
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Export</div>
         <div class="lp-tool-grid">
-          <button class="lp-tool-btn" data-click="exportDispatchCSV()" style="border-color:var(--c-orange);color:var(--c-orange);">📋 Einsatzplanung als CSV</button>
-          <button class="lp-tool-btn" data-click="exportGebaeudeCSV()" style="border-color:var(--c-green);color:var(--c-green);">📋 Gebäude CSV</button>
-          <button class="lp-tool-btn" data-click="openProjectReportWizard()" style="border-color:var(--c-red);color:var(--c-red);grid-column:1/-1;" title="Automatischen Ergebnisbericht konfigurieren, prüfen und als PDF ausgeben">📄 Projektbericht erstellen</button>
-          <button class="lp-tool-btn" data-click="exportGutachtenDigest()" style="border-color:var(--c-blue);color:var(--c-blue);grid-column:1/-1;" title="Anonymisierte, aggregierte Projektkennzahlen als strukturiertes Markdown-Dokument (Arbeitsgrundlage für den Gutachten-Entwurf)">📝 Kennzahlen-Digest (MD)</button>
+          <button class="lp-tool-btn" data-click="exportDispatchCSV()" style="border-color:var(--c-orange);color:var(--c-orange);">Einsatzplanung als CSV</button>
+          <button class="lp-tool-btn" data-click="exportGebaeudeCSV()" style="border-color:var(--c-green);color:var(--c-green);">Gebäude CSV</button>
+          <button class="lp-tool-btn" data-click="openProjectReportWizard()" style="border-color:var(--c-red);color:var(--c-red);grid-column:1/-1;" title="Automatischen Ergebnisbericht konfigurieren, prüfen und als PDF ausgeben">Projektbericht erstellen</button>
+          <button class="lp-tool-btn" data-click="exportGutachtenDigest()" style="border-color:var(--c-blue);color:var(--c-blue);grid-column:1/-1;" title="Anonymisierte, aggregierte Projektkennzahlen als strukturiertes Markdown-Dokument (Arbeitsgrundlage für den Gutachten-Entwurf)">Kennzahlen-Digest (MD)</button>
         </div>
       </div>
 
@@ -684,7 +684,7 @@
        style="display:none;top:80px;min-width:340px;max-width:420px;max-height:82vh;
               padding:0 18px 12px;overflow-y:auto;">
     <div class="panel-drag-handle" onmousedown="startDrag(event,'netzanalyse-panel')">
-      <span style="color:var(--c-violet);font-size:12px;font-weight:600;">🗺️ Netzanalyse</span>
+      <span style="color:var(--c-violet);font-size:12px;font-weight:600;">Netzanalyse</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
             onclick="naTogglePanel()">✕</span>
@@ -697,7 +697,7 @@
        style="display:none;top:80px;min-width:360px;max-width:460px;max-height:82vh;
               padding:0 18px 12px;overflow-y:auto;border:1px solid var(--c-amber);">
     <div class="panel-drag-handle" onmousedown="startDrag(event,'pv-uebersicht-panel')">
-      <span style="color:var(--c-amber);font-size:12px;font-weight:600;">☀ PV-Übersicht</span>
+      <span style="color:var(--c-amber);font-size:12px;font-weight:600;">PV-Übersicht</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
             onclick="pvuTogglePanel()">✕</span>
@@ -710,7 +710,7 @@
        style="display:none;top:80px;min-width:360px;max-width:460px;max-height:82vh;
               padding:0 18px 12px;overflow-y:auto;border:1px solid var(--c-teal);">
     <div class="panel-drag-handle" onmousedown="startDrag(event,'windanalyse-panel')">
-      <span style="color:var(--c-teal);font-size:12px;font-weight:600;">🌀 Windanalyse</span>
+      <span style="color:var(--c-teal);font-size:12px;font-weight:600;">Windanalyse</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
             onclick="windaTogglePanel()">✕</span>
@@ -723,7 +723,7 @@
        style="display:none;top:60px;min-width:220px;max-width:260px;
               padding:0 16px 14px;border:1px solid var(--c-violet);--panel-accent:#8b5cf6;">
     <div class="panel-drag-handle" onmousedown="startDrag(event,'feldapp-panel')">
-      <span style="color:var(--c-violet);font-size:12px;font-weight:600;">📱 Feldapp</span>
+      <span style="color:var(--c-violet);font-size:12px;font-weight:600;">Feldapp</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
             onclick="toggleFeldappPanel()">✕</span>
@@ -739,16 +739,16 @@
   <div id="sld-panel">
     <div class="sld-resize-handle" id="sld-resize-handle"></div>
     <div class="sld-head">
-      <span class="sld-head-titel" title="Einlinienschema">⚡ Einlinienschema &nbsp;<span id="sld-yr-label" style="font-size:9px;color:var(--muted);font-weight:normal;letter-spacing:0;text-transform:none;"></span></span>
+      <span class="sld-head-titel" title="Einlinienschema">Einlinienschema &nbsp;<span id="sld-yr-label" style="font-size:9px;color:var(--muted);font-weight:normal;letter-spacing:0;text-transform:none;"></span></span>
       <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
         <button class="sld-head-btn" data-click="sldZoom(-0.2)" title="Verkleinern">−</button>
         <button class="sld-head-btn" data-click="sldZoom(0)" title="Zoom zurücksetzen" id="sld-zoom-label">100%</button>
         <button class="sld-head-btn" data-click="sldZoom(0.2)" title="Vergrößern">+</button>
         <div style="width:1px;height:14px;background:var(--border);margin:0 2px;"></div>
         <button class="sld-head-btn" id="btn-sld-geb" data-click="sldToggleGebaeude()"
-                title="Anlagen eines Gebäudes zu einem Kästchen zusammenfassen — halbiert die Knotenzahl, versteckt aber die Unterscheidung UV/Verbraucher">🏢 Gebäude</button>
+                title="Anlagen eines Gebäudes zu einem Kästchen zusammenfassen — halbiert die Knotenzahl, versteckt aber die Unterscheidung UV/Verbraucher">Gebäude</button>
         <div style="width:1px;height:14px;background:var(--border);margin:0 2px;"></div>
-        <button class="sld-head-btn" data-click="sldExportPDF()" title="Als PDF exportieren">📄 PDF</button>
+        <button class="sld-head-btn" data-click="sldExportPDF()" title="Als PDF exportieren">PDF</button>
         <button class="sld-head-btn" id="btn-sld-fs" data-click="sldToggleFullscreen()" title="Vollbild">⛶</button>
         <button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:0 3px;line-height:1;" data-click="sldToggle()" title="Schließen">✕</button>
       </div>
@@ -756,7 +756,7 @@
     <div class="sld-suchleiste">
       <span class="sld-suche-wrap">
         <input id="sld-suche" class="sld-suche" type="text" autocomplete="off"
-               placeholder="🔎 Objekt suchen (Gebäudenummer, Name, Typ)…"
+               placeholder="Objekt suchen (Gebäudenummer, Name, Typ)…"
                title="Gebäude oder Betriebsmittel im Schema suchen — der Treffer wird ausgewählt, angefahren und blinkt kurz auf"
                data-input="sldSuche(this.value)" data-keydown="sldSucheTaste(event)"/>
         <div id="sld-suche-res" class="sld-suche-res"></div>
@@ -777,13 +777,13 @@
   <!-- ══ Schemata Wärmenetz / Heizzentrale ══ -->
   <div id="ws-panel">
     <div class="sld-head">
-      <span class="sld-head-titel">🔥 Wärme-Schemata</span>
+      <span class="sld-head-titel">Wärme-Schemata</span>
       <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
         <button class="sld-head-btn" data-click="wsZoom(-0.2)" title="Verkleinern">−</button>
         <button class="sld-head-btn" data-click="wsZoom(0)" title="Zoom zurücksetzen" id="ws-zoom-label">100%</button>
         <button class="sld-head-btn" data-click="wsZoom(0.2)" title="Vergrößern">+</button>
         <button class="sld-head-btn" data-click="wsExportSvg()" title="Als SVG-Datei speichern">SVG</button>
-        <button class="sld-head-btn" data-click="wsDrucken()" title="Druckansicht (als PDF speichern)">📄 PDF</button>
+        <button class="sld-head-btn" data-click="wsDrucken()" title="Druckansicht (als PDF speichern)">PDF</button>
         <button class="sld-head-btn" id="ws-btn-fs" data-click="wsVollbild()" title="Vollbild">⛶</button>
         <button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:0 3px;line-height:1;" data-click="wsToggle()" title="Schließen">✕</button>
       </div>
@@ -892,7 +892,7 @@
       <button class="analyse-section-tab" data-section="strom" data-click="setAnalyseSection('strom')">Strom</button>
       <button class="analyse-section-tab" data-section="emissionen" data-click="setAnalyseSection('emissionen')">Emissionen</button>
       <span class="analyse-tab-trenner">Werkzeuge</span>
-      <button class="analyse-section-tab" data-section="ausbauplaner" data-click="setAnalyseSection('ausbauplaner')" title="Ausbauplaner — Maßnahmen-Fahrplan für Anlagen, Netzkomponenten und Gebäude">📅 Ausbauplaner</button>
+      <button class="analyse-section-tab" data-section="ausbauplaner" data-click="setAnalyseSection('ausbauplaner')" title="Ausbauplaner — Maßnahmen-Fahrplan für Anlagen, Netzkomponenten und Gebäude">Ausbauplaner</button>
     </div>
 
     <!-- ── Übersicht (Dashboard) ─────────────────────────────── -->
@@ -1213,8 +1213,8 @@
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="btn-secondary" data-click="refreshVergleich()" style="font-size:11px;" title="Rechnet nur Varianten nach, deren Kennzahlen fehlen oder veraltet sind — jede davon wird dafür kurz aktiviert">↻ Veraltete rechnen</button>
         <button class="btn-secondary" data-click="addVariante()" style="font-size:11px;">＋ Neue Variante</button>
-        <button class="btn-secondary" data-click="variantenZeitstrahlToggle()" style="font-size:11px;">⏱ Zeitstrahl</button>
-        <button class="btn-secondary" data-click="exportVergleichCSV()" style="font-size:11px;">📋 CSV Export</button>
+        <button class="btn-secondary" data-click="variantenZeitstrahlToggle()" style="font-size:11px;">Zeitstrahl</button>
+        <button class="btn-secondary" data-click="exportVergleichCSV()" style="font-size:11px;">CSV Export</button>
         <button class="btn-secondary" data-click="setViewMode('karte')" style="font-size:11px;">← Zurück zur Karte</button>
       </div>
     </div>
@@ -1343,14 +1343,14 @@
         Gebäude <span class="geb-count" id="geb-count">0</span>
       </button>
       <button class="sb-tab" id="sb-tab-btn-elektro" onclick="setSidebarTab('elektro')">
-        ⚡ Elektro <span id="sb-asset-count" class="geb-count">0</span>
+        Elektro <span id="sb-asset-count" class="geb-count">0</span>
       </button>
     </div>
 
     <!-- ── Tab: Gebäude ────────────────────────────────────────────────────── -->
     <div class="sb-tab-body active" id="sb-tab-gebaeude">
       <div class="geb-filter">
-        <input class="geb-filter-input" id="geb-filter" type="text" placeholder="🔍 Filter…" data-input="filterList(this.value)"/>
+        <input class="geb-filter-input" id="geb-filter" type="text" placeholder="Filter…" data-input="filterList(this.value)"/>
         <div id="geb-source-controls" class="geb-source-controls" hidden>
           <select id="geb-source-filter" data-change="filterList(document.getElementById('geb-filter')?.value || '')" title="Gebäude nach Herkunftsprojekt filtern">
             <option value="">Alle Herkunftsprojekte</option>
@@ -1441,7 +1441,7 @@
              gerade ein Bereich aufgezogen wurde (selBoxAreaClear() blendet wieder aus). -->
         <div id="asset-bulk-box-section" style="display:none;flex-direction:column;gap:3px;padding:5px 6px;margin-bottom:5px;background:var(--surface);border:1px solid var(--border);border-radius:4px;">
           <div style="display:flex;align-items:center;gap:6px;">
-            <span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.04em;flex:1;">📍 Auswahl nach Kartenbereich</span>
+            <span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.04em;flex:1;">Auswahl nach Kartenbereich</span>
             <span id="asset-bulk-box-count" style="color:var(--muted);font-size:9px;"></span>
             <span onclick="selBoxAreaClear()" title="Bereich vergessen" style="font-size:11px;cursor:pointer;color:var(--muted);line-height:1;">✕</span>
           </div>
@@ -1503,9 +1503,9 @@
             <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;" title="Korrigiert die Planungsschicht der ausgewählten Anlagen — z. B. wenn sie im falschen Eingabemodus angelegt wurden.">Schicht</span>
             <select id="asset-bulk-schicht" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
               <option value="">— keine Änderung —</option>
-              <option value="bestand">🏛 Bestand</option>
-              <option value="entwicklung">📈 Entwicklung</option>
-              <option value="entscheidung">🎯 Planung</option>
+              <option value="bestand">Bestand</option>
+              <option value="entwicklung">Entwicklung</option>
+              <option value="entscheidung">Planung</option>
             </select>
           </div>
         </div>
@@ -1518,7 +1518,7 @@
           <span id="bulk-confirm-msg" style="display:none;font-size:10px;font-weight:600;"></span>
           <button onclick="selBulkDelete()" id="bulk-delete-btn" title="Alle ausgewählten Anlagen samt angeschlossener Kabel löschen"
             style="margin-left:auto;font-size:10px;padding:3px 10px;background:transparent;color:var(--c-red);border:1px solid var(--c-red);border-radius:4px;cursor:pointer;font-weight:600;">
-            🗑 Löschen
+            Löschen
           </button>
         </div>
       </div>
@@ -1542,7 +1542,7 @@
 </div>
 
 <div class="float-panel purple-border" id="overlay-panel" style="width:380px">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'overlay-panel')"><span style="color:var(--c-violet);font-size:12px">🗺️ Hintergrundplan einblenden</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleOverlayPanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'overlay-panel')"><span style="color:var(--c-violet);font-size:12px">Hintergrundplan einblenden</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleOverlayPanel()">✕</span></div>
   <div class="panel-info">Mehrere Bilder/PDF-Pläne als Overlays. Je Plan: 👁 ein-/ausblenden, umbenennen, Deckkraft, löschen. Ausrichten des <b>aktiven</b> Plans über Eckgriffe oder <b>Referenzpunkte</b>. Beim Schließen wird er fixiert; Pläne werden mit dem Projekt gespeichert. <span style="opacity:.7">Tipp: ▾ in der Titelleiste klappt das Panel ein, die Ecke unten rechts zieht es größer/kleiner.</span></div>
   <div class="inp-group" style="margin-bottom:10px">
     <label class="inp-label">Plan(e) hinzufügen</label>
@@ -1550,15 +1550,15 @@
   </div>
   <div id="overlay-list" style="margin-bottom:12px"></div>
   <div class="panel-btns">
-    <button class="btn-secondary" data-click="startOverlayReference()" title="2–4 markante Punkte auf dem aktiven Plan und dieselben Stellen auf der Karte anklicken – der Plan wird dann automatisch gedreht und skaliert">🎯 Über Referenzpunkte ausrichten</button>
-    <button class="btn-secondary" data-click="addGebaeude({nutzung:'custom'})">📐 Gebäude auf Plan nachzeichnen</button>
+    <button class="btn-secondary" data-click="startOverlayReference()" title="2–4 markante Punkte auf dem aktiven Plan und dieselben Stellen auf der Karte anklicken – der Plan wird dann automatisch gedreht und skaliert">Über Referenzpunkte ausrichten</button>
+    <button class="btn-secondary" data-click="addGebaeude({nutzung:'custom'})">Gebäude auf Plan nachzeichnen</button>
     <button class="btn-secondary" data-click="clearOverlay()">Alle Pläne entfernen</button>
     <button class="btn-secondary" data-click="hidePanels()">Schließen</button>
   </div>
 </div>
 
 <div class="float-panel blue-border" id="chart-panel">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'chart-panel')"><span style="color:var(--accent);font-size:12px">📊 Entwicklung Gesamtwärmebedarf</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleChartPanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'chart-panel')"><span style="color:var(--accent);font-size:12px">Entwicklung Gesamtwärmebedarf</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleChartPanel()">✕</span></div>
   <div class="panel-info">Projektion des Wärmebedarfs (MWh/a) basierend auf Baujahren, Abrissdaten und Sanierungsmaßnahmen.</div>
   <div class="chart-container" id="svg-chart-container"></div>
   <div class="panel-btns" style="margin-top:15px">
@@ -1581,18 +1581,18 @@
   <div class="osm-import-zusaetze" style="margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border);">
     <div class="inp-label" style="margin-bottom:4px;">Zusätzlich mitladen</div>
     <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Amtliches 3D-Gebäudemodell (LoD2) mitladen: jede Dachfläche mit echter Neigung, Ausrichtung und Höhe — für PV-Belegung und 3D-Ansicht. Automatisch in NRW, Niedersachsen und Baden-Württemberg; in anderen Ländern über „🏠 Dachflächen aus LoD2 laden …“ als Datei. Gebäude ohne LoD2-Dach bekommen, wenn angehakt, die Dachflächen aus dem Grundriss.">
-      <input type="checkbox" id="osm-opt-lod2" data-change="osmImportOptionSync(this)">🏠 3D-Dachflächen (LoD2, amtlich) — NRW, NI, BW</label>
+      <input type="checkbox" id="osm-opt-lod2" data-change="osmImportOptionSync(this)">3D-Dachflächen (LoD2, amtlich) — NRW, NI, BW</label>
     <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Je Gebäude die einzelnen Dachflächen (Satteldach, L/T/U-Flügel mit Kehlen) aus dem Grundriss und der Dachform berechnen — wie „📐 Dachflächen aus Grundriss berechnen“. Schräge oder runde Grundrisse behalten das einfache Dachmodell.">
-      <input type="checkbox" id="osm-opt-dach" data-change="osmImportOptionSync(this)">📐 Dachflächen aus den Grundrissen berechnen</label>
+      <input type="checkbox" id="osm-opt-dach" data-change="osmImportOptionSync(this)">Dachflächen aus den Grundrissen berechnen</label>
     <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Straßen und Wege aus OpenStreetMap als Trassen übernehmen (werden mit dem Projekt gespeichert und lassen sich bearbeiten).">
-      <input type="checkbox" id="osm-opt-strassen" data-change="osmImportOptionSync(this)">🛣️ Straßen als Trassen für
+      <input type="checkbox" id="osm-opt-strassen" data-change="osmImportOptionSync(this)">Straßen als Trassen für
       <select class="inp-field" id="osm-opt-strassen-sparte" data-change="osmImportOptionSync(this)" style="width:auto;padding:1px 4px;font-size:11px;">
         <option value="strom">Elektro</option>
         <option value="waerme">Wärme</option>
         <option value="beide">Wärme + Elektro</option>
       </select></label>
     <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Bäume im Umkreis von 150 m aus OpenStreetMap ins Projekt übernehmen (für die PV-Verschattung; werden mit dem Projekt gespeichert).">
-      <input type="checkbox" id="osm-opt-baeume" data-change="osmImportOptionSync(this)">🌳 Bäume aus OpenStreetMap</label>
+      <input type="checkbox" id="osm-opt-baeume" data-change="osmImportOptionSync(this)">Bäume aus OpenStreetMap</label>
   </div>
   <div class="panel-btns">
     <button class="btn-confirm" data-click="loadOsmBuildings()">Jetzt laden</button>
@@ -1602,7 +1602,7 @@
 </div>
 
 <div class="float-panel magenta-border" id="area-edit-panel">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'area-edit-panel')"><span style="color:var(--c-violet);font-size:12px">⬡ Bereich bearbeiten</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="hidePanels()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'area-edit-panel')"><span style="color:var(--c-violet);font-size:12px">Bereich bearbeiten</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="hidePanels()">✕</span></div>
   <div class="panel-info">Der Bereich ist festgelegt. Du kannst die Eckpunkte auf der Karte jetzt noch verschieben.<br><br>Möchtest du die Gebäude innerhalb dieses Bereichs direkt laden?</div>
   <div class="inp-group" style="margin:8px 0 4px;">
     <label class="inp-label" title="Wird für Gebäude ohne Baujahr in OSM verwendet">Standard-Baujahr (Fallback)</label>
@@ -1617,18 +1617,18 @@
   <div class="osm-import-zusaetze" style="margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border);">
     <div class="inp-label" style="margin-bottom:4px;">Zusätzlich mitladen</div>
     <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Amtliches 3D-Gebäudemodell (LoD2) mitladen: jede Dachfläche mit echter Neigung, Ausrichtung und Höhe — für PV-Belegung und 3D-Ansicht. Automatisch in NRW, Niedersachsen und Baden-Württemberg; in anderen Ländern über „🏠 Dachflächen aus LoD2 laden …“ als Datei. Gebäude ohne LoD2-Dach bekommen, wenn angehakt, die Dachflächen aus dem Grundriss.">
-      <input type="checkbox" id="osm-opt-lod2-area" data-change="osmImportOptionSync(this)">🏠 3D-Dachflächen (LoD2, amtlich) — NRW, NI, BW</label>
+      <input type="checkbox" id="osm-opt-lod2-area" data-change="osmImportOptionSync(this)">3D-Dachflächen (LoD2, amtlich) — NRW, NI, BW</label>
     <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Je Gebäude die einzelnen Dachflächen (Satteldach, L/T/U-Flügel mit Kehlen) aus dem Grundriss und der Dachform berechnen — wie „📐 Dachflächen aus Grundriss berechnen“. Schräge oder runde Grundrisse behalten das einfache Dachmodell.">
-      <input type="checkbox" id="osm-opt-dach-area" data-change="osmImportOptionSync(this)">📐 Dachflächen aus den Grundrissen berechnen</label>
+      <input type="checkbox" id="osm-opt-dach-area" data-change="osmImportOptionSync(this)">Dachflächen aus den Grundrissen berechnen</label>
     <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Straßen und Wege aus OpenStreetMap als Trassen übernehmen (werden mit dem Projekt gespeichert und lassen sich bearbeiten).">
-      <input type="checkbox" id="osm-opt-strassen-area" data-change="osmImportOptionSync(this)">🛣️ Straßen als Trassen für
+      <input type="checkbox" id="osm-opt-strassen-area" data-change="osmImportOptionSync(this)">Straßen als Trassen für
       <select class="inp-field" id="osm-opt-strassen-sparte-area" data-change="osmImportOptionSync(this)" style="width:auto;padding:1px 4px;font-size:11px;">
         <option value="strom">Elektro</option>
         <option value="waerme">Wärme</option>
         <option value="beide">Wärme + Elektro</option>
       </select></label>
     <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:3px 0;" title="Bäume im Umkreis von 150 m aus OpenStreetMap ins Projekt übernehmen (für die PV-Verschattung; werden mit dem Projekt gespeichert).">
-      <input type="checkbox" id="osm-opt-baeume-area" data-change="osmImportOptionSync(this)">🌳 Bäume aus OpenStreetMap</label>
+      <input type="checkbox" id="osm-opt-baeume-area" data-change="osmImportOptionSync(this)">Bäume aus OpenStreetMap</label>
   </div>
   <div class="panel-btns">
     <button class="btn-confirm amber" data-click="loadOsmBuildings()">Gebäude laden</button>
@@ -1638,7 +1638,7 @@
 </div>
 
 <div class="float-panel" id="kennwerte-panel" style="border:1px solid var(--c-blue);--panel-accent:#78909c;min-width:320px;">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'kennwerte-panel')"><span style="color:var(--c-blue);font-size:12px">⚙ Projekt-Kennwerte</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleKennwertePanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'kennwerte-panel')"><span style="color:var(--c-blue);font-size:12px">Projekt-Kennwerte</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleKennwertePanel()">✕</span></div>
   <div class="panel-info">Projektweite Emissionsfaktoren (GEG Anlage 9, 2024). Alle Werte überschreibbar.</div>
   <div style="font-size:9px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px;">CO₂-Emissionsfaktoren <span style="font-style:normal;text-transform:none;letter-spacing:0;">(g CO₂eq/kWh)</span></div>
   <table style="width:100%;border-collapse:collapse;font-size:10px;">
@@ -1770,7 +1770,7 @@
 
 <div class="float-panel" id="grundlagen-panel">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'grundlagen-panel')">
-    <span style="color:var(--c-green);font-size:12px">📋 Grundlagendaten</span>
+    <span style="color:var(--c-green);font-size:12px">Grundlagendaten</span>
     <span class="drag-dots">⠿</span>
     <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleGrundlagenPanel()">✕</span>
   </div>
@@ -1966,7 +1966,7 @@
 
 <div class="float-panel accent-gradient" id="analyse-panel" style="min-width:600px;max-width:900px;">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'analyse-panel')">
-    <span style="color:var(--accent);font-size:12px">📊 Einsatzanalyse</span>
+    <span style="color:var(--accent);font-size:12px">Einsatzanalyse</span>
     <span class="drag-dots">⠿</span>
     <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleAnalysePanel()">✕</span>
   </div>
@@ -2194,7 +2194,7 @@
 </div>
 
 <div class="float-panel teal-border" id="fliessgewaesser-panel">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'fliessgewaesser-panel')"><span style="color:var(--c-teal);font-size:12px">〰 Fließgewässer-Wärmepumpe</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleFliessgewaesserPanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'fliessgewaesser-panel')"><span style="color:var(--c-teal);font-size:12px">Fließgewässer-Wärmepumpe</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleFliessgewaesserPanel()">✕</span></div>
   <div class="panel-info">Fluss einzeichnen (Fließrichtung: erster Klick = Oberstrom/Entnahme). Wärmeleitung führt zur im Wärmenetz gewählten Heizzentrale. Wenn nicht benötigt, einfach ausblenden.</div>
   <div class="inp-group" style="margin-bottom:10px; display:flex; align-items:center; gap:8px;">
     <input type="checkbox" id="fg-visible" checked data-change="setFliessgewaesserVisible(this.checked)"/>
@@ -2268,7 +2268,7 @@
 </div>
 
 <div class="float-panel cyan-border" id="lwwp-panel">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'lwwp-panel')"><span style="color:var(--c-teal);font-size:12px">🌬 Luft-Wasser-Wärmepumpe</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleLwWpPanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'lwwp-panel')"><span style="color:var(--c-teal);font-size:12px">Luft-Wasser-Wärmepumpe</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleLwWpPanel()">✕</span></div>
   <div class="panel-info">Platzierung auf der Karte. Platzbedarf und Schallausbreitung der Außengeräte werden automatisch berechnet.</div>
   <div class="inp-group" style="margin-bottom:10px;">
     <input type="checkbox" id="lwwp-visible" checked data-change="setLwWpVisible(this.checked)"/>
@@ -2315,7 +2315,7 @@
         <span style="color:var(--muted);">Wärme WP</span><span id="lwwp-deckung-mwh" style="color:var(--text);">—</span>
         <span style="color:var(--muted);">JAZ (berechnet)</span><span id="lwwp-deckung-jaz" style="color:var(--c-teal);">—</span>
       </div>
-      <div style="font-size:9px;color:var(--muted);margin-top:4px;">⚡ Grundlage berechnen für vollständige Ergebnisse</div>
+      <div style="font-size:9px;color:var(--muted);margin-top:4px;">Grundlage berechnen für vollständige Ergebnisse</div>
     </div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
       <div class="inp-group">
@@ -2388,7 +2388,7 @@
           <option value="aus">nicht berücksichtigen</option>
         </select></label>
       <div class="lwwp-schall-hinweis" id="lwwp-baeume-info" style="margin-top:-4px;"></div>
-      <button class="btn-secondary" id="lwwp-baeume-osm" data-click="lwWpBaeumeAusOsm()" style="display:none;font-size:10px;padding:3px 8px;" title="Holt die Bäume im Umkreis von 150 m um die Gebäude aus OpenStreetMap und legt sie im Projekt an (wie im Baum-Werkzeug). Die 3D-Ansicht zeigt Bäume ohne Projektbäume nur als Vorschau — für die Schallrechnung zählen nur Bäume im Projekt.">🌳 Bäume aus OpenStreetMap ins Projekt übernehmen</button>
+      <button class="btn-secondary" id="lwwp-baeume-osm" data-click="lwWpBaeumeAusOsm()" style="display:none;font-size:10px;padding:3px 8px;" title="Holt die Bäume im Umkreis von 150 m um die Gebäude aus OpenStreetMap und legt sie im Projekt an (wie im Baum-Werkzeug). Die 3D-Ansicht zeigt Bäume ohne Projektbäume nur als Vorschau — für die Schallrechnung zählen nur Bäume im Projekt.">Bäume aus OpenStreetMap ins Projekt übernehmen</button>
       <label class="lwwp-gebiet" id="lwwp-spektrum-wrap" title="A-bewertete Schallleistung je Oktave 63 Hz, 125 Hz … 8 kHz (8 Werte, absolut oder relativ, getrennt durch Leerzeichen oder Semikolon) nach Herstellerangabe. Es zählt nur die Form des Spektrums, die Gesamt-Schallleistung bleibt. Leer = typisches Spektrum von Außengeräten mit Axialventilatoren."><span>Oktavspektrum</span>
         <input class="inp-field" type="text" id="lwwp-spektrum" placeholder="typisch · 63 Hz … 8 kHz in dB(A)" data-change="lwWpSpektrumSetzen(this.value)"/></label>
       <div class="lwwp-schall-hinweis">Überschlägig nach DIN ISO 9613-2 ohne Bodendämpfung (Schallschutz an den Geräten als Einfügungsdämpfung), <span id="lwwp-schall-modell">mit Abschirmung durch Gebäude</span>.
@@ -2404,7 +2404,7 @@
 </div>
 
 <div class="float-panel amber-border" id="gaskessel-panel">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'gaskessel-panel')"><span style="color:var(--c-orange);font-size:12px">🔥 Gaskessel (Referenz)</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('gaskessel-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleGasKesselPanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'gaskessel-panel')"><span style="color:var(--c-orange);font-size:12px">Gaskessel (Referenz)</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('gaskessel-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleGasKesselPanel()">✕</span></div>
   <div class="panel-info">Referenzerzeuger Gaskessel. Wird automatisch an der Heizzentrale angezeigt. Fossile CO₂-Emissionen werden direkt mit dem Erdgas-Emissionsfaktor berechnet.</div>
   <div class="panel-btns" style="margin-bottom:10px;">
     <button class="btn-secondary" id="btn-activate-gaskessel" data-click="activateGasKessel()" style="width:100%;">Gaskessel aktivieren</button>
@@ -2442,7 +2442,7 @@
 
 <div class="float-panel" id="bhkw-panel" style="border-color:var(--c-orange);--panel-accent:#ff8f00;">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'bhkw-panel')">
-    <span style="color:var(--c-orange);font-size:12px">⚡ BHKW / KWK</span>
+    <span style="color:var(--c-orange);font-size:12px">BHKW / KWK</span>
     <span class="panel-minimize-btn" data-click="togglePanelMinimize('bhkw-panel')">▲</span>
     <span class="drag-dots">⠿</span>
     <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleBhkwPanel()">✕</span>
@@ -2488,7 +2488,7 @@
 </div>
 
 <div class="float-panel" id="stromkessel-panel" style="border-color:var(--c-violet);--panel-accent:#ff69b4;">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'stromkessel-panel')"><span style="color:var(--c-violet);font-size:12px">🔌 Stromheizkessel</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('stromkessel-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleStromkesselPanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'stromkessel-panel')"><span style="color:var(--c-violet);font-size:12px">Stromheizkessel</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('stromkessel-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleStromkesselPanel()">✕</span></div>
   <div class="panel-info">Elektrischer Widerstandsheizkessel. Strom wird direkt in Wärme umgewandelt (η ≈ 99 %). Niedrige Invest- und Betriebskosten, aber hohe Stromkosten. CO₂ abhängig vom Strommix.</div>
   <div class="panel-btns" style="margin-bottom:10px;">
     <button class="btn-secondary" id="btn-activate-stromkessel" data-click="activateStromkessel()" style="width:100%;">Stromkessel aktivieren</button>
@@ -2525,11 +2525,11 @@
 
 <!-- ══ Solarthermie-Panel ══════════════════════════════════════════════ -->
 <div class="float-panel" id="solarthermie-panel" style="border-color:var(--c-orange);--panel-accent:#ff6f00;">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'solarthermie-panel')"><span style="color:var(--c-orange);font-size:12px">☀ Solarthermie</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('solarthermie-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleSolarthermiePanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'solarthermie-panel')"><span style="color:var(--c-orange);font-size:12px">Solarthermie</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('solarthermie-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleSolarthermiePanel()">✕</span></div>
   <div class="panel-info">Solarthermie-Kollektoren erzeugen Wärme direkt aus Sonnenstrahlung. Wird vor allen anderen Erzeugern dispatcht (Grenzkosten ≈ 0). Überschusswärme fließt in den Wärmespeicher.</div>
   <div id="st-data-section">
     <div style="margin-bottom:8px;">
-      <button class="btn-secondary" id="btn-st-draw" data-click="startDrawST()" style="width:100%;border-color:var(--c-orange);color:var(--c-orange);">☀ Kollektorfeld auf Karte einzeichnen</button>
+      <button class="btn-secondary" id="btn-st-draw" data-click="startDrawST()" style="width:100%;border-color:var(--c-orange);color:var(--c-orange);">Kollektorfeld auf Karte einzeichnen</button>
       <button class="btn-secondary" id="btn-st-cancel" data-click="cancelDrawST()" style="width:100%;display:none;border-color:var(--c-red);color:var(--c-red);">Zeichnen abbrechen</button>
     </div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
@@ -2557,7 +2557,7 @@
 
 <!-- ══ Wärmespeicher-Panel ═════════════════════════════════════════════ -->
 <div class="float-panel" id="therm-speicher-panel" style="border-color:var(--c-teal);--panel-accent:#26a69a;">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'therm-speicher-panel')"><span style="color:var(--c-teal);font-size:12px">🔋 Wärmespeicher</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('therm-speicher-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleThermSpeicherPanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'therm-speicher-panel')"><span style="color:var(--c-teal);font-size:12px">Wärmespeicher</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('therm-speicher-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleThermSpeicherPanel()">✕</span></div>
   <div class="panel-info">Thermischer Energiespeicher. Entlädt nach Wärmepumpen und vor Kesseln. Wird über Solarthermie-Überschuss und WP (tagsüber / PV-Überschuss) beladen.</div>
   <div id="ts-data-section">
     <div class="inp-group" style="margin-bottom:8px;">
@@ -2608,10 +2608,10 @@
 
 <!-- ══ Quartier sondieren ══════════════════════════════════════════ -->
 <div class="float-panel" id="quartier-sonde-panel" style="border-color:var(--c-blue);--panel-accent:#4fc3f7;display:none;min-width:480px;">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'quartier-sonde-panel')"><span style="color:var(--c-blue);font-size:12px">🔍 Quartier sondieren</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('quartier-sonde-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" data-click="qsToggle()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'quartier-sonde-panel')"><span style="color:var(--c-blue);font-size:12px">Quartier sondieren</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('quartier-sonde-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" data-click="qsToggle()">✕</span></div>
   <div class="qs-werkzeuge">
     <button class="btn-secondary" data-click="qsBereichStarten()" title="Rechteck auf der Karte aufziehen">▭ Bereich ziehen</button>
-    <button class="btn-secondary" data-click="qsAuswahlUebernehmen()" title="In der Gebäudetabelle markierte Gebäude untersuchen">☑ Tabellenauswahl</button>
+    <button class="btn-secondary" data-click="qsAuswahlUebernehmen()" title="In der Gebäudetabelle markierte Gebäude untersuchen">Tabellenauswahl</button>
     <span id="qs-hinweis" class="qs-hinweis"></span>
   </div>
   <div id="qs-inhalt"></div>
@@ -2619,7 +2619,7 @@
 
 <!-- ══ Kälteversorgung ════════════════════════════════════════════ -->
 <div class="float-panel" id="kaelte-panel" style="border-color:var(--c-teal);--panel-accent:#26c6da;display:none;">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'kaelte-panel')"><span style="color:var(--c-teal);font-size:12px">🧊 Kälteversorgung</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('kaelte-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleKaeltePanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'kaelte-panel')"><span style="color:var(--c-teal);font-size:12px">Kälteversorgung</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('kaelte-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleKaeltePanel()">✕</span></div>
   <div class="panel-info">Kälteanlagen und reversible Wärmepumpen. EER und Stromverbrauch werden stundenscharf über 8.760 h gerechnet – wie bei der Wärmepumpe, nur mit Kühl-Wirkungsgrad. Reversible WP nutzt im Sommer dieselbe Maschine wie die Wärme-WP.</div>
 
   <div id="kaelte-hint" style="display:none;font-size:10px;color:var(--c-orange);background:var(--bg);border:1px solid var(--c-orange);border-radius:5px;padding:6px 8px;margin-bottom:10px;"></div>
@@ -2791,7 +2791,7 @@
 </div>
 
 <div class="float-panel" id="heizoel-panel" style="border-color:var(--c-blue);--panel-accent:#546e7a;">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'heizoel-panel')"><span style="color:var(--c-blue);font-size:12px">🛢 Heizölkessel</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('heizoel-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleHeizoelPanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'heizoel-panel')"><span style="color:var(--c-blue);font-size:12px">Heizölkessel</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('heizoel-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleHeizoelPanel()">✕</span></div>
   <div class="panel-info">Referenzerzeuger Heizöl. Wird an der Heizzentrale angezeigt. CO₂-Emissionen fossil.</div>
   <div class="panel-btns" style="margin-bottom:10px;">
     <button class="btn-secondary" id="btn-activate-heizoel" data-click="activateHeizoelKessel()" style="width:100%;">Heizölkessel aktivieren</button>
@@ -2827,7 +2827,7 @@
 </div>
 
 <div class="float-panel" id="pellets-panel" style="border-color:var(--c-orange);--panel-accent:#e65100;">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'pellets-panel')"><span style="color:var(--c-orange);font-size:12px">🌾 Pelletskessel</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('pellets-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="togglePelletsPanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'pellets-panel')"><span style="color:var(--c-orange);font-size:12px">Pelletskessel</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('pellets-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="togglePelletsPanel()">✕</span></div>
   <div class="panel-info">Biomasseerzeuger. CO₂-Emissionen biogen (sehr gering). Optionale Lagerfläche auf Karte platzierbar.</div>
   <div class="panel-btns" style="margin-bottom:10px;">
     <button class="btn-secondary" id="btn-activate-pellets" data-click="activatePellets()" style="width:100%;">Pelletskessel aktivieren</button>
@@ -2867,7 +2867,7 @@
 </div>
 
 <div class="float-panel" id="hhs-panel" style="border-color:var(--c-red);--panel-accent:#5d4037;">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'hhs-panel')"><span style="color:var(--c-orange);font-size:12px">🪵 Holzhackschnitzelkessel</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('hhs-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleHhsPanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'hhs-panel')"><span style="color:var(--c-orange);font-size:12px">Holzhackschnitzelkessel</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('hhs-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleHhsPanel()">✕</span></div>
   <div class="panel-info">Biomasseerzeuger mit größerem Lager. Sehr niedrige CO₂-Emissionen (biogen).</div>
   <div class="panel-btns" style="margin-bottom:10px;">
     <button class="btn-secondary" id="btn-activate-hhs" data-click="activateHhs()" style="width:100%;">HHS-Kessel aktivieren</button>
@@ -2907,7 +2907,7 @@
 </div>
 
 <div class="float-panel" id="fernwaerme-panel" style="border-color:var(--c-red);--panel-accent:#c62828;">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'fernwaerme-panel')"><span style="color:var(--c-red);font-size:12px">🌡 Fernwärme-Anschluss</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('fernwaerme-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleFernwaermePanel()">✕</span></div>
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'fernwaerme-panel')"><span style="color:var(--c-red);font-size:12px">Fernwärme-Anschluss</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('fernwaerme-panel')">▲</span><span class="drag-dots">⠿</span><span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleFernwaermePanel()">✕</span></div>
   <div class="panel-info">Wärmebezug aus einem vorhandenen Fernwärmenetz. Einspeisepunkt auf Karte platzieren.</div>
   <div class="panel-btns" style="margin-bottom:10px;">
     <button class="btn-secondary" id="btn-activate-fernwaerme" data-click="activateFernwaerme()" style="width:100%;">Fernwärme aktivieren</button>
@@ -3109,7 +3109,7 @@
   <div id="strang-report" style="display:none;margin-bottom:12px;"></div>
   <div class="inp-group" style="margin-bottom:12px">
     <button class="btn-secondary" id="btn-lock-netz" data-click="toggleNetworkLock()" style="width:100%; text-align:center; padding:8px; border-color:var(--c-green); color:var(--c-green); background:rgba(76,175,80,0.1); transition:0.3s;">
-      🏛 Bestandsnetz (2026)
+      Bestandsnetz (2026)
     </button>
   </div>
 
@@ -3226,7 +3226,7 @@
   <div id="bom-container" style="display:none; margin-top: 15px; border-top: 1px solid var(--border); padding-top: 10px;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 5px;">
       <div class="panel-title" style="margin-bottom:0; font-size:11px; color:var(--muted);">Materialauszug (Rohre)</div>
-      <button class="btn-xs blue" data-click="exportRohreCSV()">⬇ CSV</button>
+      <button class="btn-xs blue" data-click="exportRohreCSV()">CSV</button>
     </div>
     <div id="bom-content"></div>
   </div>
@@ -3321,7 +3321,7 @@
 <!-- ══ Gebäude-PV-Panel ═══════════════════════════════════════════════ -->
 <div class="float-panel" id="geb-pv-panel" style="border-color:var(--c-amber);--panel-accent:#ffd54f;min-width:340px;">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'geb-pv-panel')">
-    <span style="color:var(--c-amber);font-size:12px">☀ Gebäude-PV</span>
+    <span style="color:var(--c-amber);font-size:12px">Gebäude-PV</span>
     <span class="panel-minimize-btn" data-click="togglePanelMinimize('geb-pv-panel')">▲</span>
     <span class="drag-dots">⠿</span>
     <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleGebPvPanel()">✕</span>
@@ -3371,7 +3371,7 @@
 <!-- ══ PV-Panel (eigenständig) ═══════════════════════════════════════════ -->
 <div class="float-panel" id="pv-panel" style="min-width:380px;max-width:520px;--panel-accent:#ffd54f;">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'pv-panel')">
-    <span style="color:var(--c-amber);font-size:12px">☀ Photovoltaik</span>
+    <span style="color:var(--c-amber);font-size:12px">Photovoltaik</span>
     <span class="panel-minimize-btn" data-click="togglePanelMinimize('pv-panel')">▲</span>
     <span class="drag-dots">⠿</span>
     <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="togglePvPanel()">✕</span>
@@ -3475,7 +3475,7 @@
 <!-- ══ Batterie-Panel (eigenständig) ════════════════════════════════════ -->
 <div class="float-panel" id="batterie-panel" style="min-width:340px;max-width:460px;--panel-accent:#b39ddb;">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'batterie-panel')">
-    <span style="color:var(--c-violet);font-size:12px">🔋 Batteriespeicher</span>
+    <span style="color:var(--c-violet);font-size:12px">Batteriespeicher</span>
     <span class="panel-minimize-btn" data-click="togglePanelMinimize('batterie-panel')">▲</span>
     <span class="drag-dots">⠿</span>
     <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleBatteriePanel()">✕</span>
@@ -3547,7 +3547,7 @@
 <!-- ══ Strom-Panel ══════════════════════════════════════════════════════ -->
 <div class="float-panel" id="strom-panel" style="min-width:460px;max-width:660px;--panel-accent:#42a5f5;">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'strom-panel')">
-    <span style="color:var(--c-amber);font-size:12px">⚡ Strom-Analyse</span>
+    <span style="color:var(--c-amber);font-size:12px">Strom-Analyse</span>
     <span class="drag-dots">⠿</span>
     <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleStromPanel()">✕</span>
   </div>
@@ -3613,7 +3613,7 @@
 
     <!-- Umspannwerke + Direktanschluss liegen im Netzanschluss-Modul (src/44, Elektro › Auswerten) -->
     <div style="font-size:9px;color:var(--muted);margin:-2px 0 10px;line-height:1.5;">Reicht der Anschluss künftig? Bedarf, Anschlussebene, Umspannwerke und Direktanschluss:
-      <a href="#" data-click="event.preventDefault();naModulOeffnen('bedarf')" style="color:var(--accent);">⚡ Elektro › Auswerten › 🔌 Netzanschluss</a></div>
+      <a href="#" data-click="event.preventDefault();naModulOeffnen('bedarf')" style="color:var(--accent);">Elektro › Auswerten › 🔌 Netzanschluss</a></div>
 
     <!-- Tab: Dauerlinie -->
     <div id="strom-content-jdl" style="display:none;">
@@ -3679,7 +3679,7 @@
 <!-- ══ Eingabestatus-Panel ══════════════════════════════════════════════ -->
 <div class="float-panel" id="status-panel" style="min-width:360px;max-width:500px;border:1px solid var(--c-blue);--panel-accent:#90caf9;">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'status-panel')">
-    <span style="color:var(--c-blue);font-size:12px">📊 Eingabestatus</span>
+    <span style="color:var(--c-blue);font-size:12px">Eingabestatus</span>
     <span class="panel-minimize-btn" data-click="togglePanelMinimize('status-panel')">▲</span>
     <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="toggleStatusPanel()">✕</span>
   </div>
@@ -3692,7 +3692,7 @@
 <!-- ══ Gebäudeliste-Import Panel ══════════════════════════════════════════ -->
 <div class="float-panel" id="geb-import-panel" style="border:1px solid var(--c-orange);--panel-accent:#ff9800;min-width:520px;max-width:720px;max-height:85vh;">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'geb-import-panel')">
-    <span style="color:var(--c-orange);font-size:12px">📋 Gebäudeliste importieren</span>
+    <span style="color:var(--c-orange);font-size:12px">Gebäudeliste importieren</span>
     <span class="drag-dots">⠿</span>
     <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" onclick="gbiClose()">✕</span>
   </div>
@@ -3967,9 +3967,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
           'Deine Rückmeldung wird direkt an Konstantin gesendet.' +
         '</div>' +
         '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
-          '<button class="ep-modal-btn feedback-kat" data-kat="Fehler" data-color="#c62828" style="flex:1;">🔴 Fehler</button>' +
-          '<button class="ep-modal-btn feedback-kat" data-kat="Verbesserung" data-color="#1565c0" style="flex:1;">🔵 Verbesserung</button>' +
-          '<button class="ep-modal-btn feedback-kat" data-kat="Sonstiges" data-color="#546e7a" style="flex:1;">⚪ Sonstiges</button>' +
+          '<button class="ep-modal-btn feedback-kat" data-kat="Fehler" data-color="#c62828" style="flex:1;">Fehler</button>' +
+          '<button class="ep-modal-btn feedback-kat" data-kat="Verbesserung" data-color="#1565c0" style="flex:1;">Verbesserung</button>' +
+          '<button class="ep-modal-btn feedback-kat" data-kat="Sonstiges" data-color="#546e7a" style="flex:1;">Sonstiges</button>' +
         '</div>' +
         '<textarea id="feedback-text" class="ep-modal-input" rows="5" ' +
           'placeholder="Beschreibung, Schritte zum Nachstellen, Erwartung..." ' +
@@ -3991,7 +3991,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
         '</div>' +
         '<div class="ep-modal-btns" style="margin-top:14px;">' +
           '<button class="ep-modal-btn" data-click="this.closest(\'.ep-modal-overlay\').remove()">Abbrechen</button>' +
-          '<button class="ep-modal-btn" id="feedback-download" title="HTML-Datei mit Screenshot herunterladen">⬇ Datei</button>' +
+          '<button class="ep-modal-btn" id="feedback-download" title="HTML-Datei mit Screenshot herunterladen">Datei</button>' +
           '<button class="ep-modal-btn primary" id="feedback-send">Feedback absenden</button>' +
         '</div>' +
       '</div>';
@@ -4116,7 +4116,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
 <!-- ══ FOTO-GALERIE PANEL ══════════════════════════════════════════════════ -->
 <div id="galerie-panel" style="display:none;position:fixed;inset:0;z-index:8000;background:var(--bg);flex-direction:column;">
   <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;">
-    <span style="font-size:15px;font-weight:700;color:var(--text);">📷 Fotogalerie — Feldbegehung</span>
+    <span style="font-size:15px;font-weight:700;color:var(--text);">Fotogalerie — Feldbegehung</span>
     <div style="display:flex;gap:6px;margin-left:auto;align-items:center;">
       <select id="galerie-filter" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);">
         <option value="all">Alle Objekte</option>

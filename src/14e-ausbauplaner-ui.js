@@ -195,7 +195,7 @@ function _renderToolbar() {
   if (!tb) return;
   const nGeplant = _plan.items.filter(it => it.phaseId).length;
   tb.innerHTML = `
-    <span style="font-weight:600;color:var(--accent);">📅 Maßnahmen-Fahrplan</span>
+    <span style="font-weight:600;color:var(--accent);">Maßnahmen-Fahrplan</span>
     <span style="color:var(--muted);font-size:10px;">${_plan.items.length} Maßnahme(n) · ${nGeplant} verplant</span>
     <span style="margin-left:8px;border-left:1px solid var(--border);padding-left:8px;">
       <button class="btn-xs" onclick="ausbauNeuePhase()">+ Phase</button>

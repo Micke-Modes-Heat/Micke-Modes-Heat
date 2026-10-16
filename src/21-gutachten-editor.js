@@ -133,7 +133,7 @@ export function gutBuildAnalyseSection() {
     // Schlüssel noch aus der Zeit als „Gutachten-Grafiken“ — bleibt, damit 04a-ui-panels.js unverändert umschaltet
     btn.dataset.section = 'ggrafik';
     btn.dataset.click = "setAnalyseSection('ggrafik')";
-    btn.textContent = '📝 Gutachten';
+    btn.textContent = 'Gutachten';
     btn.title = 'Gutachten-Editor: Gliederung mit Texten und Abbildungen — plus die Einzelgrafiken für Word.';
     tabBar.appendChild(btn);
   }
@@ -183,7 +183,7 @@ function zeigeModus() {
         border:1px solid ${aktiv ? 'rgba(38,166,154,.6)' : 'rgba(255,255,255,.1)'};background:${aktiv ? 'rgba(38,166,154,.18)' : 'transparent'};
         color:${aktiv ? GUT_AKZENT : 'var(--muted)'};">${label}</button>`;
     };
-    leiste.innerHTML = tab('dokument', '📄 Dokument') + tab('praes', '🖥 Präsentation') + tab('einzel', '🖼 Einzelgrafiken')
+    leiste.innerHTML = tab('dokument', 'Dokument') + tab('praes', 'Präsentation') + tab('einzel', 'Einzelgrafiken')
       + `<span id="gut-status" style="margin-left:12px;font-size:11px;color:${GUT_AKZENT};"></span>`
       + (!einzel && _gut.dok
           ? `<span style="margin-left:auto;display:flex;gap:6px;align-items:center;">${plausiKnopf()}${knopf('⟳ Daten aktualisieren', 'gutAktualisieren()', { titel: 'Alle Abbildungen neu aus dem Projektstand zeichnen.' })}`
@@ -473,7 +473,7 @@ function renderGliederung() {
   const kopf = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Gliederung</div>
       ${_gut.dok ? `<div style="display:flex;gap:4px;">
-          ${knopf('📄 Dokument', 'gutWaehle(null,null)', { klein: true, titel: 'Eigenschaften des gesamten Dokuments rechts anzeigen (Zähler, Standardabgleich, Deckblatt)' })}
+          ${knopf('Dokument', 'gutWaehle(null,null)', { klein: true, titel: 'Eigenschaften des gesamten Dokuments rechts anzeigen (Zähler, Standardabgleich, Deckblatt)' })}
           ${knopf('+ Kapitel', 'gutAddKapitel()', { klein: true, titel: 'Neues Hauptkapitel am Ende' })}</div>` : ''}</div>`;
   if (!_gut.dok) {
     el.innerHTML = kopf + hinweis('Noch kein Dokument — in der Mitte die Standardgliederung anlegen.');
@@ -703,13 +703,13 @@ function kapitelPanel(k, idx) {
           + (k.ebene < GUTACHTEN_MAX_EBENE ? knopf('+ Unterkapitel', `gutAddKapitel('${id}',true)`) : ''))
     + ueberschrift('Inhalt einfügen')
     + `<div style="display:flex;flex-direction:column;gap:6px;">${knopf('¶ Freitext', `gutAddText('${id}')`)}`
-    + `${knopf('🗺 Lageplan einrichten', `gutAddLageplan('${id}')`, { titel: 'Legt einen leeren Lageplan-Block an und öffnet den Reiter 🗺️ Liegenschaftsbilder, um ihn einzurichten (Ausschnitt, Ebenen, MS-Ring, Beschriftungen).' })}`
+    + `${knopf('Lageplan einrichten', `gutAddLageplan('${id}')`, { titel: 'Legt einen leeren Lageplan-Block an und öffnet den Reiter 🗺️ Liegenschaftsbilder, um ihn einzurichten (Ausschnitt, Ebenen, MS-Ring, Beschriftungen).' })}`
     + `${knopf('+ Platzhalter je Trafostation', `gutAddTrafoDummies('${id}')`, { titel: 'Legt für jede bestehende Trafostation (aus dem Elektro-Tab, eine je Gebäude/Station, nicht je Trafo) einen eigenen Freitext-Platzhalter an — zum Eintragen der Begehungsergebnisse.' })}`
     + `${figurAuswahl}</div>`
     + hinweis('Neuer Inhalt kommt ans Ende des Kapitels. ✓ = steht schon im Dokument.')
     + fragenHtml(gfFragenZuKapitel(nr), 'Fragen zu diesem Kapitel (optional)', true)
     + ueberschrift('Entfernen')
-    + knopf('🗑 Kapitel löschen', `gutKapitelLoeschen('${id}')`, { gefahr: true, titel: 'Unterkapitel rücken eine Ebene hoch' });
+    + knopf('Kapitel löschen', `gutKapitelLoeschen('${id}')`, { gefahr: true, titel: 'Unterkapitel rücken eine Ebene hoch' });
 }
 
 function blockPanel(b, kapIdx) {
@@ -720,7 +720,7 @@ function blockPanel(b, kapIdx) {
   const anordnung = ueberschrift('Anordnung')
     + `<div style="display:flex;gap:4px;">${knopf('↑ nach oben', `gutBlockVerschieben('${id}',-1)`)}${knopf('↓ nach unten', `gutBlockVerschieben('${id}',1)`)}</div>`
     + hinweis('Am Kapitelanfang bzw. -ende wandert der Block ins vorige bzw. nächste Kapitel.');
-  const entfernen = ueberschrift('Entfernen') + knopf('🗑 Block entfernen', `gutBlockLoeschen('${id}')`, { gefahr: true });
+  const entfernen = ueberschrift('Entfernen') + knopf('Block entfernen', `gutBlockLoeschen('${id}')`, { gefahr: true });
 
   if (b.typ === 'text') {
     return panelKopf('Freitext') + ort
@@ -779,8 +779,8 @@ function blockPanel(b, kapIdx) {
     + `<div style="display:flex;flex-direction:column;gap:4px;">`
     + knopf(f.istText ? '✎ Platzhalter ausfüllen' : '✎ In Einzelansicht bearbeiten', `gutInEinzelansicht('${f.id}')`,
             { titel: f.istText ? 'Platzhalter und ihre Datenquelle ansehen' : 'Kopfzeile, Haken und Datenübernahme wie bisher' })
-    + knopf(f.istTabelle ? '⊞ Als Word-Tabelle kopieren' : '⧉ Für Word kopieren', `gutCopyTeil('${id}',0)`, { primaer: true })
-    + ((erg?.teile?.length || 0) > 1 ? knopf('⊞ Kennzahlen als Word-Tabelle kopieren', `gutCopyTeil('${id}',1)`) : '')
+    + knopf(f.istTabelle ? 'Als Word-Tabelle kopieren' : '⧉ Für Word kopieren', `gutCopyTeil('${id}',0)`, { primaer: true })
+    + ((erg?.teile?.length || 0) > 1 ? knopf('Kennzahlen als Word-Tabelle kopieren', `gutCopyTeil('${id}',1)`) : '')
     + `</div>`
     + (f.hinweis ? hinweis(esc(f.hinweis)) : '')
     + anordnung + entfernen;
@@ -799,12 +799,12 @@ function anlagePanel(a) {
       + 'hier erscheinen sie beim nächsten Zeichnen bzw. im Word-Export.')
     + (hw.length ? `<div style="margin-top:8px;font-size:10.5px;line-height:1.5;color:${GUT_WARN};">${hw.map(h => '⚠ ' + esc(h)).join('<br>')}</div>` : '')
     + ueberschrift('Bearbeiten')
-    + knopf('📋 Steckbrief öffnen', `gutAnlageOeffnen('${a.id}')`, { primaer: true, titel: 'Stations-Steckbrief im Elektro-Bereich öffnen (Stationsart, Schaltanlage, Trafos, NSHV, Mängel)' })
+    + knopf('Steckbrief öffnen', `gutAnlageOeffnen('${a.id}')`, { primaer: true, titel: 'Stations-Steckbrief im Elektro-Bereich öffnen (Stationsart, Schaltanlage, Trafos, NSHV, Mängel)' })
     + ueberschrift('Anordnung')
     + `<div style="display:flex;gap:4px;">${knopf('↑ nach oben', `gutAnlageVerschieben('${a.id}',-1)`)}${knopf('↓ nach unten', `gutAnlageVerschieben('${a.id}',1)`)}</div>`
     + hinweis('Die Nummern (Anlage I, II, …) folgen der Reihenfolge.')
     + ueberschrift('Entfernen')
-    + knopf('🗑 Anlage entfernen', `gutAnlageLoeschen('${a.id}')`, { gefahr: true, titel: 'Nimmt nur die Anlage aus dem Gutachten — der Steckbrief im Projekt bleibt.' });
+    + knopf('Anlage entfernen', `gutAnlageLoeschen('${a.id}')`, { gefahr: true, titel: 'Nimmt nur die Anlage aus dem Gutachten — der Steckbrief im Projekt bleibt.' });
 }
 
 function renderEigenschaften() {
@@ -1385,7 +1385,7 @@ function anlagenAbschnitt() {
     + `<div style="font-size:11px;color:var(--muted);line-height:1.45;margin-bottom:6px;">${n ? `${n} Anlage${n === 1 ? '' : 'n'} im Dokument.` : 'Noch keine Anlagen.'}`
     + (fehlend.length ? ` <span style="color:${GUT_WARN};">${fehlend.length} bestehende Station${fehlend.length === 1 ? '' : 'en'} ohne Steckbrief.</span>` : '') + '</div>'
     + (fehlend.length
-      ? knopf(`📋 Steckbriefe der Stationen anlegen (${fehlend.length})`, 'gutAnlagenSteckbriefe()', { primaer: true,
+      ? knopf(`Steckbriefe der Stationen anlegen (${fehlend.length})`, 'gutAnlagenSteckbriefe()', { primaer: true,
           titel: 'Je bestehender Trafo-/Übergabestation eine Anlage „Steckbrief Trafostation“ — wie die Vorlage „Liegenschaft_Steckbrief Trafostation“.' })
       : `<div style="font-size:11px;color:${GUT_AKZENT};">✓ Für jede bestehende Station gibt es einen Steckbrief.</div>`);
 }

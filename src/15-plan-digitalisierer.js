@@ -205,7 +205,7 @@ function _ensurePanel() {
   panel.className = 'pd-panel pd-fullscreen';
   panel.innerHTML = `
     <div class="pd-head" onmousedown="pdHeadDrag(event)">
-      <span class="pd-title">📐 Bestandsplan digitalisieren</span>
+      <span class="pd-title">Bestandsplan digitalisieren</span>
       <span id="pd-fortschritt" class="pd-progress">kein Plan geladen</span>
       <span style="flex:1"></span>
       <button class="pd-head-btn" id="pd-btn-fs" data-click="pdToggleFullscreen()"
@@ -215,7 +215,7 @@ function _ensurePanel() {
     </div>
     <div class="pd-toolbar">
       <label class="pd-file-btn" title="Weiteres Blatt desselben Planwerks laden (Bild oder PDF-Seite) — Blätter ergänzen sich und zählen im Abgleich gemeinsam">
-        📂 Blatt laden
+        Blatt laden
         <input type="file" accept="image/png,image/jpeg,application/pdf"
                data-change="pdLoadPlan(this,'blatt')" hidden/>
       </label>
@@ -227,13 +227,13 @@ function _ensurePanel() {
       </label>
       <span class="pd-suche-wrap">
         <input id="pd-suche" class="pd-suche" type="text" autocomplete="off"
-               placeholder="🔎 Gebäude suchen (Nr. oder Name)…"
+               placeholder="Gebäude suchen (Nr. oder Name)…"
                title="Gebäude der Liegenschaft suchen und samt seiner Anlagen auf den Plan setzen"
                data-input="pdSuche(this.value)" data-keydown="pdSucheTaste(event)"/>
         <div id="pd-suche-res" class="pd-suche-res"></div>
       </span>
       <span class="pd-modes">
-        <button class="pd-mode" data-mode="ansehen"  data-click="pdSetMode('ansehen')"  title="Nur ansehen: zoomen, verschieben, Einträge auswählen">🖱 Ansehen</button>
+        <button class="pd-mode" data-mode="ansehen"  data-click="pdSetMode('ansehen')"  title="Nur ansehen: zoomen, verschieben, Einträge auswählen">Ansehen</button>
         <button class="pd-mode" data-mode="knoten"   data-click="pdSetMode('knoten')"   title="Klick auf ein Kästchen im Plan legt ein einzelnes Betriebsmittel an">⊕ Knoten</button>
         <button class="pd-mode" data-mode="kabel"    data-click="pdSetMode('kabel')"    title="Zwei Einträge nacheinander anklicken → Kabel">⟋ Kabel</button>
         <button class="pd-mode" data-mode="text"     data-click="pdSetMode('text')"     title="Beschriftungen aus dem PDF anzeigen und per Klick übernehmen">Aa Text</button>
@@ -280,7 +280,7 @@ function _ensurePanel() {
         <div class="pd-actions">
           <button class="lp-tool-btn" data-click="pdApply()"
                   style="border-color:var(--c-green);color:var(--c-green);justify-content:center;"
-                  title="Verknüpfte Einträge und fertige Kabel auf der Karte anlegen">▶ In Karte übernehmen</button>
+                  title="Verknüpfte Einträge und fertige Kabel auf der Karte anlegen">In Karte übernehmen</button>
           <button class="lp-tool-btn" data-click="pdClear()"
                   style="border-color:var(--c-red);color:var(--c-red);justify-content:center;"
                   title="Alle Blätter samt Markierungen verwerfen (angelegte Assets bleiben)">✕ Alles verwerfen</button>
@@ -1896,7 +1896,7 @@ function _verortungOptions(n) {
     .map(g => `<option value="g:${g.id}"${n.linkKind === 'g' && String(n.linkId) === String(g.id) ? ' selected' : ''}>${_esc(g.name)}${g.gebaeudenummer ? ' (Nr. ' + _esc(g.gebaeudenummer) + ')' : ''}</option>`)
     .join('');
   return `<option value=""${!n.linkKind ? ' selected' : ''}>— offen —</option>
-    <option value="n:"${n.linkKind === 'neu' ? ' selected' : ''}>➕ neu anlegen — Position aus dem Plan geschätzt</option>
+    <option value="n:"${n.linkKind === 'neu' ? ' selected' : ''}>neu anlegen — Position aus dem Plan geschätzt</option>
     ${assets ? `<optgroup label="Vorhandene Anlage auf der Karte">${assets}</optgroup>` : ''}
     ${geb ? `<optgroup label="Gebäude → neue Anlage anlegen">${geb}</optgroup>` : ''}`;
 }
@@ -1906,17 +1906,17 @@ function _renderForm() {
   if (!box) return;
   if (!PD.plan) {
     box.innerHTML = `<div class="pd-hint">Noch kein Plan geladen.<br><br>
-      <b>📂 Plan laden</b> öffnet ein Bild oder eine PDF-Seite des Bestands-Einlinienplans.
+      <b>Plan laden</b> öffnet ein Bild oder eine PDF-Seite des Bestands-Einlinienplans.
       Danach im <b>Suchfeld</b> ein Gebäude über Nummer oder Name suchen und samt seiner
       Anlagen auf den Plan setzen; im Modus <b>⟋ Kabel</b> die Verbindungen nachziehen.</div>`;
     return;
   }
   if (!_sel) {
     box.innerHTML = `<div class="pd-hint">Nichts ausgewählt.<br><br>
-      <b>🔎 Suchfeld</b>: Gebäudenummer eintippen, Treffer wählen, in den Plan klicken.<br>
+      <b>Suchfeld</b>: Gebäudenummer eintippen, Treffer wählen, in den Plan klicken.<br>
       Modus <b>⊕ Knoten</b>: einzelne Betriebsmittel (Station, KV) anlegen.<br>
       Modus <b>⟋ Kabel</b>: zwei Einträge nacheinander anklicken.<br>
-      Modus <b>🖱 Ansehen</b>: Einträge lassen sich verschieben.</div>`;
+      Modus <b>Ansehen</b>: Einträge lassen sich verschieben.</div>`;
     return;
   }
 

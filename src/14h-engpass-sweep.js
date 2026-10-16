@@ -311,7 +311,7 @@ const _KLASSE_META = {
  * schreibt eine Kurzauswertung in die Legende unter der Darstellungs-Sektion.
  */
 export function engpassAnalyseStarten() {
-  showHint('⏱ Engpass-Analyse läuft — Netz wird über die Stützjahre gerechnet …');
+  showHint('Engpass-Analyse läuft — Netz wird über die Stützjahre gerechnet …');
   // setTimeout, damit der Hint vor der blockierenden Rechnung gerendert wird
   setTimeout(() => {
     let res = null;

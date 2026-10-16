@@ -1109,7 +1109,7 @@ export function showEdgePopup(e, mouseEvt) {
           <span class="cost-badge hoch"
             data-click="setEdgeKost('hoch')" style="${kostKlasse==='hoch'?'opacity:1':'opacity:.45'}">Hoch</span>
         </div>
-        <div style="font-size:9px;color:var(--muted);margin-top:3px">${kostAuto?'🔄 Auto (OSM)':'✏️ Manuell'}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:3px">${kostAuto?'Auto (OSM)':'Manuell'}</div>
       </div>
     </div>
     <div style="font-size:10px;color:var(--muted);border-top:1px solid var(--border);padding-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:3px;">
@@ -1124,7 +1124,7 @@ export function showEdgePopup(e, mouseEvt) {
     ${e.infoHtml ? `<div class="edge-popup-details">${e.infoHtml}</div>` : ''}
     <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;">
       <button data-click="toggleEdgePruned()" style="width:100%;padding:5px 8px;background:${e.pruned?'#1b3a2a':'rgba(249,168,37,0.12)'};border:1px solid ${e.pruned?'#4caf50':'#f9a825'};border-radius:4px;color:${e.pruned?'#4caf50':'#f9a825'};cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">
-        ${e.pruned?'✓ Wieder anschließen':'✂ Abschnitt deaktivieren'}
+        ${e.pruned?'✓ Wieder anschließen':'Abschnitt deaktivieren'}
       </button>
       ${e.pruned ? '' : `<button data-click="edgeAbgangAusZentrale()" title="Die Gebäude hinter diesem Abschnitt bekommen einen eigenen Abgang aus der Heizzentrale; dieser Abschnitt und nicht mehr benötigte Zuleitungen entfallen" style="width:100%;margin-top:5px;padding:5px 8px;background:rgba(79,195,247,0.1);border:1px solid var(--c-blue);border-radius:4px;color:var(--c-blue);cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">⇱ Eigener Abgang aus der Heizzentrale</button>`}
     </div>`;
@@ -1191,7 +1191,7 @@ export function togglePruningMode() {
   const btn = document.getElementById('btn-pruning-mode');
   const info = document.getElementById('pruning-info');
   if (btn) {
-    btn.textContent = netzPruningMode ? '✂ Abschnitte ausschließen: An' : '✂ Abschnitte ausschließen: Aus';
+    btn.textContent = netzPruningMode ? 'Abschnitte ausschließen: An' : 'Abschnitte ausschließen: Aus';
     btn.style.borderColor = netzPruningMode ? '#f9a825' : 'var(--border)';
     btn.style.color = netzPruningMode ? '#f9a825' : '';
     btn.style.background = netzPruningMode ? 'rgba(249,168,37,0.08)' : '';
@@ -1201,7 +1201,7 @@ export function togglePruningMode() {
   if (lpBtn) {
     lpBtn.style.borderColor = netzPruningMode ? '#f9a825' : 'var(--border)';
     lpBtn.style.color = netzPruningMode ? '#f9a825' : '';
-    lpBtn.textContent = netzPruningMode ? '✂ Ausschließen (aktiv)' : '✂ Abschnitte ausschließen';
+    lpBtn.textContent = netzPruningMode ? 'Ausschließen (aktiv)' : 'Abschnitte ausschließen';
   }
   updatePruningSummary();
 }
@@ -1325,7 +1325,7 @@ export function updatePruningSummary() {
     return s + (g ? (parseFloat(g.waerme) || 0) : 0);
   }, 0);
   div.innerHTML = `
-    <div style="color:var(--c-orange);font-weight:bold;margin-bottom:3px;">✂ Pruning aktiv</div>
+    <div style="color:var(--c-orange);font-weight:bold;margin-bottom:3px;">Pruning aktiv</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;">
       <span style="color:var(--muted)">Deaktiviert:</span><span>${prunedEdges.length} Abschnitte (${Math.round(prunedLen)} m)</span>
       <span style="color:var(--muted)">Abgeklemmt:</span><span>${disconnected.length} Gebäude (${disconnectedMWh.toFixed(0)} MWh/a)</span>

@@ -237,9 +237,9 @@ function buildSchichtSelect(asset) {
   const cur = normSchicht(asset.schicht);
   const variante = window.aktiverVariantenName?.() || 'dieser Variante';
   const TEXT = {
-    bestand:      '🏛 Ist heute schon da · alle Varianten',
-    entwicklung:  '📈 Kommt ohnehin · alle Varianten',
-    entscheidung: `🎯 Geplant · nur in ${variante}`,
+    bestand:      'Ist heute schon da · alle Varianten',
+    entwicklung:  'Kommt ohnehin · alle Varianten',
+    entscheidung: `Geplant · nur in ${variante}`,
   };
   const opts = SCHICHT_REIHENFOLGE.map(s =>
     `<option value="${s}"${s === cur ? ' selected' : ''}>${TEXT[s] || SCHICHT_META[s].label}</option>`
@@ -350,7 +350,7 @@ function _windGebietZeichnenBlock() {
   const label = _activeGebietLabel();
   return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0 4px;flex-wrap:wrap;">
     <button class="ins-link-btn" onclick="toggleDrawWindGebiet()" style="margin:0;">
-      ${drawing ? '✎ Zeichnen läuft … (ESC zum Abbrechen)' : has ? '↺ Windgebiet neu zeichnen' : '🗺 Eigenes Windgebiet zeichnen'}
+      ${drawing ? '✎ Zeichnen läuft … (ESC zum Abbrechen)' : has ? '↺ Windgebiet neu zeichnen' : 'Eigenes Windgebiet zeichnen'}
     </button>
     ${has ? `<button class="ins-link-btn" onclick="clearWindGebiet()" style="margin:0;color:var(--c-red);">✕ löschen</button>` : ''}
   </div>
@@ -380,7 +380,7 @@ function _windEignungsHinweis(asset) {
   const ha = (s.areaM2 / 10000).toLocaleString('de-DE', { maximumFractionDigits: 2 });
   const trunc = s.truncated ? ' (Raster unvollständig — Wert ist Untergrenze)' : '';
   return `<div style="font-size:9px;color:var(--muted);margin:-3px 0 2px;">≈ ${ha} ha geeignete Fläche im ${gebiet} (Raster ${s.gridStepM} m, Mindestabstand ${s.radiusM.toFixed(0)} m zu Grenze &amp; Gebäuden)${trunc}.</div>`
-    + `<button class="ins-link-btn" onclick="zoomToWindEignungsflaeche()" style="margin:0 0 6px;">🔍 Zur Fläche zoomen</button>`;
+    + `<button class="ins-link-btn" onclick="zoomToWindEignungsflaeche()" style="margin:0 0 6px;">Zur Fläche zoomen</button>`;
 }
 
 function _windScenarioRow(s) {
@@ -610,7 +610,7 @@ function buildPropsForm(asset) {
     case 'Geo':
     case 'FG': {
       const linked = asset.linkedErzeuger
-        ? `<div style="font-size:9px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">🔗 Aus dem Erzeuger-Tab synchronisiert</div>`
+        ? `<div style="font-size:9px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">Aus dem Erzeuger-Tab synchronisiert</div>`
         : '';
       return linked + row2(
         numField(id, 'leistungThKW', 'Th. Leistung (kW)', 100, {props:p}),
@@ -637,9 +637,9 @@ function buildPropsForm(asset) {
         <label class="ins-field-label">Betriebsmodus</label>
         <div class="ins-toggle-row">
           <button class="ins-toggle-btn${modus==='einspeisung'?' active-gen':''}"
-            data-prop="betriebsmodus" data-val="einspeisung" data-id="${id}">⬇ Einspeisung</button>
+            data-prop="betriebsmodus" data-val="einspeisung" data-id="${id}">Einspeisung</button>
           <button class="ins-toggle-btn${modus==='verbraucher'?' active-load':''}"
-            data-prop="betriebsmodus" data-val="verbraucher" data-id="${id}">⬆ Verbraucher</button>
+            data-prop="betriebsmodus" data-val="verbraucher" data-id="${id}">Verbraucher</button>
         </div>
       </div>`;
     }
@@ -696,14 +696,14 @@ function buildPropsForm(asset) {
 
     case 'Stromkessel': {
       const linked = asset.linkedErzeuger
-        ? `<div style="font-size:9px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">🔗 Aus dem Erzeuger-Tab synchronisiert</div>`
+        ? `<div style="font-size:9px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">Aus dem Erzeuger-Tab synchronisiert</div>`
         : '';
       return linked + numField(id, 'leistungKW', 'El. Leistung (kW)', 200, {props:p});
     }
 
     case 'KWK': {
       const linked = asset.linkedErzeuger
-        ? `<div style="font-size:9px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">🔗 Aus dem Erzeuger-Tab synchronisiert</div>`
+        ? `<div style="font-size:9px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">Aus dem Erzeuger-Tab synchronisiert</div>`
         : '';
       const brennstoff = p.brennstoff || 'Erdgas';
       return linked + row2(
@@ -882,7 +882,7 @@ export function showInvestitionsplan() {
   const overlay = document.createElement('div');
   overlay.className = 'ep-modal-overlay';
   overlay.innerHTML = `<div class="ep-modal inv-modal">
-    <div class="ep-modal-title">📋 Investitionsplan
+    <div class="ep-modal-title">Investitionsplan
       <span class="inv-total-badge">${total.toLocaleString('de-DE')} €</span>
     </div>
     <div class="inv-table-wrap">
@@ -920,7 +920,7 @@ function buildBuildingSelect(asset) {
     `<option value="${g.id}"${asset.buildingId === g.id ? ' selected' : ''}>${esc(g.name)}</option>`
   ).join('');
   return `<div class="ins-field-group">
-    <label class="ins-field-label">🏢 Gebäude</label>
+    <label class="ins-field-label">Gebäude</label>
     <select class="ins-field-input" data-field="buildingId">
       <option value=""${!asset.buildingId ? ' selected' : ''}>— Frei (kein Gebäude)</option>
       ${opts}
@@ -932,7 +932,7 @@ function buildBuildingSelect(asset) {
 function _buildPvProfileSection(assetId) {
   return `
     <div class="ins-section-header" data-target="ins-sec-pvprofil">
-      <span class="asset-ins-section-title">☀ Erzeugungsprofil</span>
+      <span class="asset-ins-section-title">Erzeugungsprofil</span>
       <span class="ins-section-chevron">▾</span>
     </div>
     <div class="ins-section-content" id="ins-sec-pvprofil">
@@ -1031,7 +1031,7 @@ function _drawPvInspectorChart(panel, asset) {
 function _buildWindProfileSection(assetId) {
   return `
     <div class="ins-section-header" data-target="ins-sec-windprofil">
-      <span class="asset-ins-section-title">🌀 Erzeugungsprofil</span>
+      <span class="asset-ins-section-title">Erzeugungsprofil</span>
       <span class="ins-section-chevron">▾</span>
     </div>
     <div class="ins-section-content" id="ins-sec-windprofil">
@@ -1052,7 +1052,7 @@ function _buildWindProfileSection(assetId) {
       <div style="font-size:9px;color:var(--muted);margin-top:4px;">${(() => {
         const s = getWindSiteData();
         return s
-          ? `<span style="color:var(--c-teal);">🌐 Reale ERA5-Windreihe ${s.profilJahr}</span> (Ø ${s.vMean100.toFixed(1)} m/s @ 100 m, auf Nabenhöhe extrapoliert, α ${s.alpha.toFixed(2)}). Wird für alle Analysen verwendet.`
+          ? `<span style="color:var(--c-teal);">Reale ERA5-Windreihe ${s.profilJahr}</span> (Ø ${s.vMean100.toFixed(1)} m/s @ 100 m, auf Nabenhöhe extrapoliert, α ${s.alpha.toFixed(2)}). Wird für alle Analysen verwendet.`
           : 'Synthetisch aus Weibull-Verteilung + Wind-Persistenz (AR(1)) — keine reale Wetterzeitreihe. Über die Windanalyse lassen sich echte Standortdaten (ERA5) laden.';
       })()}</div>
     </div>`;
@@ -1133,7 +1133,7 @@ const LADE_DEFAULT_PROFIL = {
 function _buildLadeZeitprofilSection(id) {
   return `
     <div class="ins-section-header" data-target="ins-sec-zeitprofil-${id}">
-      <span class="asset-ins-section-title">🕐 Zeitprofil</span>
+      <span class="asset-ins-section-title">Zeitprofil</span>
       <span class="ins-section-chevron">▾</span>
     </div>
     <div class="ins-section-content" id="ins-sec-zeitprofil-${id}">
@@ -1359,7 +1359,7 @@ function renderInspector(asset) {
       <button onclick="toggleVormerkenAsset('${asset.id}')" title="${asset.feldVorgemerkt ? 'Vorgemerkt – klicken zum Entfernen' : 'Für Feldbegehung vormerken'}" style="background:none;border:none;cursor:pointer;margin-left:auto;font-size:${asset.feldVorgemerkt ? 16 : 13}px;color:${asset.feldVorgemerkt ? '#f59e0b' : '#888'};padding:0 6px;line-height:1;">★</button>
       ${SS_STATIONS_TYPEN.has(asset.type) && ssIstStationsGebaeude(asset.buildingId, ASSETS.items) ? `<button data-click="openStationsSteckbriefFuerAsset('${asset.id}')" title="Stations-Steckbrief: die ganze Station (Schaltanlage, Trafos, NSHV) auf einem Blatt"
         style="background:rgba(0,0,0,0.25);border:1px solid rgba(102,187,106,0.55);border-radius:4px;
-        cursor:pointer;color:var(--c-green);padding:2px 7px;line-height:1;font-size:12px;margin-right:4px;">📋 Station</button>` : ''}
+        cursor:pointer;color:var(--c-green);padding:2px 7px;line-height:1;font-size:12px;margin-right:4px;">Station</button>` : ''}
       <button onclick="openKnotenanalyseFor('${asset.id}')" title="Knotenpunkt-Analyse öffnen"
         style="background:rgba(0,0,0,0.25);border:1px solid rgba(79,195,247,0.45);border-radius:4px;
         cursor:pointer;color:var(--c-blue);padding:2px 7px;line-height:1;font-size:13px;margin-right:4px;">📈</button>
@@ -1403,7 +1403,7 @@ function renderInspector(asset) {
       </div>
       <div class="ins-meta" style="margin-top:12px;">ID: ${asset.id} · ${asset.domain}</div>
       ${_renderAssetFelddaten(asset)}
-      <button class="asset-ins-delete" data-action="delete">🗑 Löschen</button>
+      <button class="asset-ins-delete" data-action="delete">Löschen</button>
     </div>
   `;
 
@@ -1461,7 +1461,7 @@ export function renderAssetSidebar(filterText) {
         </div>
         ${isOpen ? `<div class="asb-card-body">
           ${buildBodyHtml(a)}
-          <button class="asb-card-del" data-asid="${a.id}">🗑 Löschen</button>
+          <button class="asb-card-del" data-asid="${a.id}">Löschen</button>
         </div>` : ''}
       </div>`;
     }
@@ -1679,7 +1679,7 @@ window.toggleVormerkenAsset = toggleVormerkenAsset;
 // ── Felddaten-Block im Asset-Inspector ───────────────────────────────────────
 function _renderAssetFelddaten(a) {
   if (!a.feldNotizen && !a.feldStatus && !a.feldFotos?.length) return '';
-  const labels = { offen: '📋 Offen', besucht: '👁 Besucht', erledigt: '✅ Erledigt' };
+  const labels = { offen: 'Offen', besucht: 'Besucht', erledigt: 'Erledigt' };
   const statusLabel = labels[a.feldStatus] || '';
   const notizHtml = a.feldNotizen
     ? '<div style="background:#fffbeb;border-left:3px solid var(--c-orange);padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#1a1a2e;white-space:pre-wrap;margin-bottom:6px;">' + esc(a.feldNotizen) + '</div>'
@@ -1688,7 +1688,7 @@ function _renderAssetFelddaten(a) {
     '<img src="' + foto.dataUrl + '" title="' + esc(foto.name) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--c-blue);" onclick="openImageLightbox(this.src,this.title)">'
   ).join('');
   return '<div style="margin:8px 0;padding:8px 10px;background:var(--surface2,var(--surface2));border-radius:8px;border:1px solid var(--c-blue);">'
-    + '<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:4px;">📱 FELDDATEN' + (statusLabel ? ' · ' + statusLabel : '') + '</div>'
+    + '<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:4px;">FELDDATEN' + (statusLabel ? ' · ' + statusLabel : '') + '</div>'
     + notizHtml
     + (fotoHtml ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">' + fotoHtml + '</div>' : '')
     + '</div>';

@@ -141,17 +141,17 @@ function _previewText(key, vals) {
   const nT  = parseInt(vals.anzahlTrafos) || 0;
   const batTrafo = parseInt(vals.kva) > 0;
   const chain = {
-    einfach:        `⊞ SA → 🔁 Trafo ${kva} kVA → 🗄 NSHV`,
-    doppel:         `⊞ SA → 🔁 2× Trafo ${kva} kVA → 🗄 NSHV`,
-    einspeise:      `⊞ SA → 🔁 Trafo ${kva} kVA (Einspeisung) → 🗄 NSHV`,
-    mitUV:          `⊞ SA → 🔁 Trafo ${kva} kVA → 🗄 NSHV → 📦 UV`,
-    begehbar:       `⊞ SA → 🔁 Trafo ${kva} kVA → 🗄 NSHV`,
-    begehbarDoppel: `⊞ SA → 🔁 2× Trafo ${kva} kVA → 🗄 NSHV`,
-    uebergabe:      `⚡ NAP → ⊞ SA${nT > 0 ? ` → 🔁 ${nT}× Trafo ${kva} kVA → 🗄 NSHV` : ' (ohne Trafo)'}`,
-    batterie:       `${batTrafo ? `🔁 Trafo ${kva} kVA → ` : ''}🔋 Batterie ${vals.kapazitaetKWh || 1000} kWh / ${vals.leistungKW || 500} kW · Anschluss an bestehende NSHV`,
-    nea:            `⚙ NEA ${vals.leistungKW || 250} kW · ${vals.autonomieH || 24} h · Anschluss an bestehende NSHV`,
-    zentrale:       `🗄 NSHV → 🔥 BHKW ${vals.leistungElKW || 200} kW el / ${Math.round((vals.leistungElKW || 200) * KWK_TH_FAKTOR)} kW th`,
-    ladepark:       `⊞ SA → 🔁 Trafo ${kva} kVA → 🗄 NSHV → 🔌 ${vals.anzahlPunkte || 8}× ${vals.leistungProPunktKW || 22} kW`,
+    einfach:        `SA → 🔁 Trafo ${kva} kVA → 🗄 NSHV`,
+    doppel:         `SA → 🔁 2× Trafo ${kva} kVA → 🗄 NSHV`,
+    einspeise:      `SA → 🔁 Trafo ${kva} kVA (Einspeisung) → 🗄 NSHV`,
+    mitUV:          `SA → 🔁 Trafo ${kva} kVA → 🗄 NSHV → 📦 UV`,
+    begehbar:       `SA → 🔁 Trafo ${kva} kVA → 🗄 NSHV`,
+    begehbarDoppel: `SA → 🔁 2× Trafo ${kva} kVA → 🗄 NSHV`,
+    uebergabe:      `NAP → ⊞ SA${nT > 0 ? ` → 🔁 ${nT}× Trafo ${kva} kVA → 🗄 NSHV` : ' (ohne Trafo)'}`,
+    batterie:       `${batTrafo ? `Trafo ${kva} kVA → ` : ''}🔋 Batterie ${vals.kapazitaetKWh || 1000} kWh / ${vals.leistungKW || 500} kW · Anschluss an bestehende NSHV`,
+    nea:            `NEA ${vals.leistungKW || 250} kW · ${vals.autonomieH || 24} h · Anschluss an bestehende NSHV`,
+    zentrale:       `NSHV → 🔥 BHKW ${vals.leistungElKW || 200} kW el / ${Math.round((vals.leistungElKW || 200) * KWK_TH_FAKTOR)} kW th`,
+    ladepark:       `SA → 🔁 Trafo ${kva} kVA → 🗄 NSHV → 🔌 ${vals.anzahlPunkte || 8}× ${vals.leistungProPunktKW || 22} kW`,
   }[key] || '';
   const dims = _presetDims(p, vals);
   return `${chain} · ${dims.widthM} × ${dims.heightM} m`;

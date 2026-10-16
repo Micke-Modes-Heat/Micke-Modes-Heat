@@ -294,7 +294,7 @@ function _render() {
       <span style="flex:1;font-size:9px;color:var(--muted,var(--c-blue));">${infoLine}${isEdited?' · <span style=\'color:var(--c-orange);\'>✎ bearbeitet</span>':''}</span>
       ${!isCustom?`<button id="slpe-edit-tog" style="background:${editMode?'rgba(100,181,246,.18)':'rgba(255,255,255,.06)'};border:1px solid ${editMode?'rgba(100,181,246,.4)':'rgba(255,255,255,.15)'};border-radius:4px;padding:3px 10px;cursor:pointer;color:${editMode?'#64b5f6':'inherit'};font-size:10px;">${editMode?'✓ Bearbeitung aktiv':'✎ Bearbeiten'}</button>`:''}
       ${isEdited?`<button id="slpe-reset" style="background:transparent;border:1px solid rgba(255,152,0,.3);border-radius:4px;padding:3px 8px;color:var(--c-orange);font-size:10px;cursor:pointer;">↺ Reset</button>`:''}
-      ${(editMode||isEdited||isCustom)?`<button id="slpe-save-tpl" style="background:rgba(102,187,106,.12);border:1px solid rgba(102,187,106,.35);border-radius:4px;padding:3px 10px;cursor:pointer;color:var(--c-green);font-size:10px;">💾 Speichern</button>`:''}
+      ${(editMode||isEdited||isCustom)?`<button id="slpe-save-tpl" style="background:rgba(102,187,106,.12);border:1px solid rgba(102,187,106,.35);border-radius:4px;padding:3px 10px;cursor:pointer;color:var(--c-green);font-size:10px;">Speichern</button>`:''}
     </div>
 
     <!-- Vorlage benennen (inline) -->
@@ -311,10 +311,10 @@ function _render() {
     <!-- Footer: Import / Export / Schließen -->
     <div style="margin-top:10px;border-top:1px solid rgba(var(--ink),.07);padding-top:9px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
       <label style="background:rgba(var(--ink),.06);border:1px solid rgba(var(--ink),.15);border-radius:4px;padding:3px 10px;cursor:pointer;color:inherit;font-size:10px;white-space:nowrap;" title="35.040 Werte (365 Tage × 96 QH) — automatische Aggregation zu Saison×Tagtyp×Stunde">
-        ⬆ 15-min CSV
+        15-min CSV
         <input type="file" id="slpe-file" accept=".csv,.txt" style="display:none;">
       </label>
-      <button id="slpe-export" style="background:rgba(var(--ink),.06);border:1px solid rgba(var(--ink),.15);border-radius:4px;padding:3px 10px;cursor:pointer;color:inherit;font-size:10px;">⬇ CSV</button>
+      <button id="slpe-export" style="background:rgba(var(--ink),.06);border:1px solid rgba(var(--ink),.15);border-radius:4px;padding:3px 10px;cursor:pointer;color:inherit;font-size:10px;">CSV</button>
       <span style="flex:1;"></span>
       <button id="slpe-close2" style="background:rgba(100,181,246,.1);border:1px solid rgba(100,181,246,.25);border-radius:4px;padding:3px 12px;cursor:pointer;color:var(--c-blue);font-size:10px;">Schließen</button>
     </div>

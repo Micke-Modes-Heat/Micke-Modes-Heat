@@ -524,7 +524,7 @@ export function elRunMSAnalyse() {
       if (lf.feedEdgeResult) {
         const fe  = lf.feedEdgeResult;
         const col = fe.ausl_pct > 100 ? '#ef5350' : fe.ausl_pct > 80 ? '#ffa726' : '#66bb6a';
-        html += `<div style="font-size:9px;color:var(--muted);margin:4px 0 2px;">🔌 Zugang NAP → Ring</div>
+        html += `<div style="font-size:9px;color:var(--muted);margin:4px 0 2px;">Zugang NAP → Ring</div>
         <table style="width:100%;border-collapse:collapse;">
           <tr style="color:var(--muted);border-bottom:1px solid var(--border);">
             <th style="text-align:left;padding:2px 3px;font-size:8px;">Kante</th>
@@ -544,11 +544,11 @@ export function elRunMSAnalyse() {
         const pfx = lf.feedEdgeResult
           ? (allAssets.find(a => a.id === lf.entryId)?.name || '?') + ' → '
           : 'NAP → ';
-        html += _renderStich(lf.leftEdgeResults,  `⬅ Linker Stich (${pfx}${trennName})`, allAssets);
+        html += _renderStich(lf.leftEdgeResults,  `Linker Stich (${pfx}${trennName})`, allAssets);
         html += `<div style="font-size:9px;color:var(--c-orange);padding:3px 5px;margin:3px 0;
           background:rgba(249,168,37,.1);border-radius:3px;border:1px dashed #f9a82560;">
           ✂ ${trennName} — offen im Normalbetrieb · I = 0 A</div>`;
-        html += _renderStich(lf.rightEdgeResults, `➡ Rechter Stich (${pfx}${trennName})`, allAssets);
+        html += _renderStich(lf.rightEdgeResults, `Rechter Stich (${pfx}${trennName})`, allAssets);
       } else {
         html += _renderStich(lf.edges, 'Leitungen (Ringbetrieb, Näherung)', allAssets);
       }

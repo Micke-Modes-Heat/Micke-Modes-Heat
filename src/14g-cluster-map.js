@@ -22,7 +22,7 @@ function _clusterChange(label, mutate) {
 }
 
 // Anzeigenamen/Icons der generierbaren Maßnahmen-Typen (Gewerk-Keys aus MASSN_VORLAGEN).
-const MASSN_LABEL = { Sanierung: '🔧 Sanierung', Abriss: '🏚 Stilllegung/Abriss', Bau: '🏗 Neubau' };
+const MASSN_LABEL = { Sanierung: 'Sanierung', Abriss: 'Stilllegung/Abriss', Bau: 'Neubau' };
 
 // ── Modul-State ───────────────────────────────────────────────────────────────────────
 let _layers      = [];      // { polygon, badge } je Cluster — für sauberes Neuzeichnen
@@ -54,7 +54,7 @@ export function clusterInit() {
   panel.style.cssText = 'display:none;top:80px;min-width:340px;max-width:420px;max-height:82vh;padding:15px 18px 12px;overflow-y:auto;border:1px solid var(--c-blue);';
   panel.innerHTML = `
     <div class="panel-drag-handle" onmousedown="startDrag(event,'cluster-panel')">
-      <span style="color:var(--c-blue);font-size:12px;font-weight:600;">🗺 Cluster / Ausbaustufen</span>
+      <span style="color:var(--c-blue);font-size:12px;font-weight:600;">Cluster / Ausbaustufen</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
             onclick="clusterTogglePanel()">✕</span>
@@ -93,7 +93,7 @@ export function clusterRenderPanel() {
       <label style="font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
         <input type="checkbox" ${_sichtbar ? 'checked' : ''} onchange="clusterShowLayers(this.checked)"> Overlay
       </label>
-      <button class="ins-link-btn" style="margin:0;" onclick="clusterZeitreiseToggle()">${_zeitAktiv ? '■ Zeitreise aus' : '▶ Zeitreise'}</button>
+      <button class="ins-link-btn" style="margin:0;" onclick="clusterZeitreiseToggle()">${_zeitAktiv ? '■ Zeitreise aus' : 'Zeitreise'}</button>
     </div>`;
 
   if (!clusters.length) {
@@ -158,7 +158,7 @@ export function clusterRenderPanel() {
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
             <button class="ins-link-btn" style="margin:0;padding:2px 8px;" onclick="clusterPaketAnwenden('${c.id}')">→ auf Mitglieder anwenden</button>
             ${nM ? `<button class="ins-link-btn" style="margin:0;padding:2px 6px;color:var(--c-red);" onclick="clusterPaketEntfernen('${c.id}')">✕ Paket</button>` : ''}
-            ${nM ? `<button class="ins-link-btn" style="margin:0;padding:2px 6px;" onclick="clusterFahrplanOeffnen()">📅 Fahrplan</button>` : ''}
+            ${nM ? `<button class="ins-link-btn" style="margin:0;padding:2px 6px;" onclick="clusterFahrplanOeffnen()">Fahrplan</button>` : ''}
           </div>
         </div>
       </div>`;

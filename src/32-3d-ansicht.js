@@ -1027,7 +1027,7 @@ function d3dWerkzeugHtml() {
   const f = _d3d.foto || {};
   const foto = `<label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10.5px;cursor:pointer;"
       title="Luftbild (Esri) rund um das gewählte Gebäude senkrecht auf die Dächer legen — zum Nachzeichnen von Gauben, Kaminen und Dachfenstern. Module dafür ausblenden (Haken PV-Module). Luftbilder sind keine True Orthophotos: das Dach kann im Bild 1–3 m versetzt liegen.">
-      <input type="checkbox" data-d3d="dachfoto" ${f.an ? 'checked' : ''}>🛰 Luftbild auf den Dächern
+      <input type="checkbox" data-d3d="dachfoto" ${f.an ? 'checked' : ''}>Luftbild auf den Dächern
       <span style="color:var(--muted);font-size:9.5px;">${f.an ? (f.status ? d3dEsc(f.status) : 'Gebäude anklicken') : ''}</span></label>`;
   return foto + `<div style="display:flex;gap:3px;margin-top:5px;">
       ${knopf('zeichne-sperr', 'sperr', '▭ Sperrfläche', D3D_SPERRFARBE, 'Rechteck auf der Dachfläche aussparen (Kamin, Gaube, Dachfenster) — zwei Klicks, an der Falllinie ausgerichtet')}
@@ -1052,7 +1052,7 @@ function d3dFlaecheInfoHtml() {
   const zeile = (l, w) => `<span style="color:var(--muted);">${l}</span><span style="text-align:right;">${w}</span>`;
   const flaeche = i.sperrId != null || i.belegId != null;   // einzelne Fläche statt Dachfläche
   const status = i.belegt
-    ? `<span style="color:${D3D_GEWAEHLT};">☀ belegt</span> · ${i.module} Module · ${_kw(i.kwp)} kWp`
+    ? `<span style="color:${D3D_GEWAEHLT};">belegt</span> · ${i.module} Module · ${_kw(i.kwp)} kWp`
     : '<span style="color:var(--muted);">○ frei</span>';
   return `
     <div style="margin-top:5px;padding:6px 7px;border:1px solid ${D3D_GEWAEHLT}66;border-radius:6px;background:${D3D_GEWAEHLT}0d;">
@@ -1068,16 +1068,16 @@ function d3dFlaecheInfoHtml() {
       </div>
       ${flaeche ? '' : `<div style="font-size:10.5px;margin-top:4px;">${status}</div>`}
       <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;">
-        ${flaeche ? knopf('fl-weg', i.sperrId != null ? '🗑 Sperrfläche entfernen' : '🗑 Fläche entfernen',
+        ${flaeche ? knopf('fl-weg', i.sperrId != null ? 'Sperrfläche entfernen' : 'Fläche entfernen',
             i.sperrId != null ? 'Diese Sperrfläche löschen — dort werden wieder Module gesetzt' : 'Diese Belegungsfläche löschen (die letzte samt PV-Asset)', '#e53935')
           + knopf('undo', '↶', 'Letzten Schritt zurücknehmen') : `
         ${i.belegt
-          ? knopf('fl-aus', '⛔ Freilassen', 'Diese Fläche nicht belegen (Satteldachseite: Sperrfläche, Dachfläche: Belegungsfläche entfernen)', '#e53935')
-          : knopf('fl-an', '☀ Belegen', 'Diese Fläche mit Modulen belegen — nach den Belegungsregeln (Rand, Modullage, Belegungsgrad)', D3D_GEWAEHLT)}
+          ? knopf('fl-aus', 'Freilassen', 'Diese Fläche nicht belegen (Satteldachseite: Sperrfläche, Dachfläche: Belegungsfläche entfernen)', '#e53935')
+          : knopf('fl-an', 'Belegen', 'Diese Fläche mit Modulen belegen — nach den Belegungsregeln (Rand, Modullage, Belegungsgrad)', D3D_GEWAEHLT)}
         ${i.dachBelegt
-          ? knopf('dach-leeren', '🗑 Dach leeren', 'Alle Flächen dieses Dachs entfernen (samt PV-Asset)')
-          : knopf('dach-regeln', '⊞ Ganzes Dach', 'Das ganze Dach nach den Belegungsregeln belegen (wie „Grundriss als Fläche" im PV-Modus)')}
-        ${i.zerlegbar ? knopf('dach-zerlegen', '📐 Zerlegen', 'Dach aus dem Grundriss in einzelne Dachflächen zerlegen (Flügel, Kehlen) — dann ist jede Fläche einzeln belegbar') : ''}
+          ? knopf('dach-leeren', 'Dach leeren', 'Alle Flächen dieses Dachs entfernen (samt PV-Asset)')
+          : knopf('dach-regeln', 'Ganzes Dach', 'Das ganze Dach nach den Belegungsregeln belegen (wie „Grundriss als Fläche" im PV-Modus)')}
+        ${i.zerlegbar ? knopf('dach-zerlegen', 'Zerlegen', 'Dach aus dem Grundriss in einzelne Dachflächen zerlegen (Flügel, Kehlen) — dann ist jede Fläche einzeln belegbar') : ''}
         ${knopf('undo', '↶', 'Letzten Schritt zurücknehmen (wie Strg+Z im PV-Modus)')}`}
       </div>
       ${flaeche ? `<div style="font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.35;">Weiße Ecke ziehen = verschieben (folgt der Dachhaut, rastet an Traufe/First/Kanten und an den Nachbarecken ein — türkis; Alt = frei; Shift = Rechteckform halten) · graue Kantenmitte ziehen oder klicken = neue Ecke · Rechtsklick oder Entf auf einer Ecke = löschen.</div>` : ''}
@@ -1496,7 +1496,7 @@ function d3dBaumInfoHtml() {
   const vorschau = _baumAn && _d3d?.baumStatus === 'fertig' && erg && !erg.ausProjekt && erg.baeume.length;
   return text + (vorschau && typeof window.baumOsmUebernehmen === 'function'
     ? ` <button class="btn-secondary" data-click="baumOsmUebernehmen()" style="font-size:10px;padding:1px 6px;margin-top:3px;"
-        title="Bäume aus OpenStreetMap ins Projekt übernehmen — erst dann werden sie mit dem Projekt gespeichert und für die Verschattung genutzt">🌳 Ins Projekt übernehmen</button>`
+        title="Bäume aus OpenStreetMap ins Projekt übernehmen — erst dann werden sie mit dem Projekt gespeichert und für die Verschattung genutzt">Ins Projekt übernehmen</button>`
     : '');
 }
 
@@ -1515,7 +1515,7 @@ function d3dPanelHtml() {
   const m = _d3d.modus, sat = _d3d.sat;
   return `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-    <b style="font-size:12.5px;">🏙 3D-Ansicht</b>
+    <b style="font-size:12.5px;">3D-Ansicht</b>
     <button data-d3d="schliessen" title="Zurück zur Arbeitskarte" style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;line-height:1;">✕</button>
   </div>
   <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:6px 0 3px;">Farbe</div>
@@ -1538,7 +1538,7 @@ function d3dPanelHtml() {
   <div id="d3d-dachinfo" style="font-size:10px;color:var(--muted);margin-top:3px;">${d3dDachinfoText()}</div>
   <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;cursor:pointer;font-weight:600;color:${D3D_GEWAEHLT};"
     title="Dachflächen anklicken: Ausrichtung, Fläche, Ertrag und Belegung ansehen, einzeln belegen oder freilassen (nach den Belegungsregeln des PV-Modus)">
-    <input type="checkbox" data-d3d="bearbeiten" ${_d3d.bearbeiten ? 'checked' : ''}>☀ Dachflächen bearbeiten</label>
+    <input type="checkbox" data-d3d="bearbeiten" ${_d3d.bearbeiten ? 'checked' : ''}>Dachflächen bearbeiten</label>
   <div id="d3d-flaeche">${d3dFlaecheHtml()}</div>
   <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Netze</div>
   <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;" title="Farben wie auf der Karte (DN, Auslastung …); eine dort ausgeblendete Ebene fehlt auch hier">
@@ -1567,7 +1567,7 @@ function d3dPanelHtml() {
   <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">
     Höhe überhöhen: <span id="d3d-faktor">${_d3d.faktor.toFixed(1).replace('.', ',')}</span>×</div>
   <input data-d3d="faktor" type="range" min="1" max="3" step="0.1" value="${_d3d.faktor}" style="width:100%;">
-  <button data-d3d="png" style="${BTN}width:100%;margin-top:8px;">📷 Bild speichern (PNG)</button>
+  <button data-d3d="png" style="${BTN}width:100%;margin-top:8px;">Bild speichern (PNG)</button>
   <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.4;">
     Rechte Maustaste / Strg + Ziehen: neigen &amp; drehen.<br>Klick auf ein Gebäude öffnet seine Eigenschaften.<br>
     Wandhöhe = Geschosse × 3 m, Dach aus den PV-Angaben.</div>`;
