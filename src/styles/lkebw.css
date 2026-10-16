@@ -363,3 +363,36 @@ header.ui-seitentitel:empty{display:none}
 
 /* ── 6. Papier: Seitenvorschauen bleiben in beiden Darstellungen hell ── */
 #gut-seite,.ui-papier{--text:#191D1A;--muted:#58615A;--faint:#89918A;--border:#DADFD9;--line-2:#C3C9C2;--surface:#FFFFFF;--surface2:#F6F7F5;--bg:#EEF0ED;--hover:#EEF3EC;--ink:25,29,26;--c-red:#B3261E;--c-orange:#B4531A;--c-amber:#8A6100;--c-green:#2E7D32;--c-teal:#00796B;--c-blue:#1E5E98;--c-violet:#7B3F9E;color-scheme:light}
+
+/* ── 7. Fachpanels: Elektro, rechte Seitenleiste, Wärmenetz ─────────── */
+/* Abschnittsköpfe zum Auf-/Zuklappen */
+.lp-section-collapsible{font-size:12px!important;color:var(--text)!important;font-weight:700;text-transform:none!important;letter-spacing:0!important;padding:10px 0 8px!important;border-bottom:1px solid var(--border)!important;margin:6px 0 8px!important}
+.lp-section-collapsible:hover{color:var(--brand)!important}
+/* Bauteil-Palette */
+.asset-palette-group-header{font-size:11px!important;text-transform:uppercase;letter-spacing:.07em;color:var(--faint)!important;font-weight:600;padding:10px 0 4px!important}
+.asset-palette-btn{display:flex;align-items:center;gap:8px;font-size:12.5px!important;font-family:var(--font-ui)!important;padding:6px 8px!important;border:1px solid var(--border)!important;border-radius:var(--r)!important;background:var(--surface)!important;color:var(--text)!important;min-height:30px}
+.asset-palette-btn:hover{border-color:var(--text)!important;background:var(--surface)!important}
+.asset-palette-btn.active{background:var(--brand-weak)!important;border-color:var(--brand)!important;color:var(--brand)!important}
+.asset-palette-btn-icon{font-size:13px!important}
+/* Statuskacheln im Elektro-Panel */
+.el-status-chip,.el-kpi{border:1px solid var(--border)!important;border-radius:var(--r)!important;background:var(--surface)!important;padding:6px 8px!important}
+.el-chip-label{font-size:11px!important;color:var(--faint)!important;text-transform:uppercase;letter-spacing:.05em}
+.el-chip-value{font-size:12.5px!important;color:var(--text)!important;font-weight:600}
+/* Rechte Seitenleiste */
+.sidebar{border-left:1px solid var(--border)}
+.sb-tabs{padding:0 12px;gap:18px}
+.sb-tab{flex:0 0 auto!important;padding:12px 0 10px!important}
+.geb-count{background:var(--surface2)!important;border:1px solid var(--border);color:var(--muted)!important;font-size:11px!important;border-radius:9px}
+.geb-filter-input{background:var(--surface)!important;border:1px solid var(--line-2)!important;border-radius:var(--r)!important;font:13px var(--font-ui)!important;padding:6px 9px!important}
+.btn-add{border:1px dashed var(--line-2)!important;border-radius:var(--r)!important;color:var(--muted)!important;font-size:12.5px!important;font-weight:600}
+.btn-add:hover{border-color:var(--brand)!important;color:var(--brand)!important}
+.legend-title,.total-lbl,.legend-labels{font-size:11px!important;font-family:var(--font-ui)!important;color:var(--muted)!important;text-transform:none!important;letter-spacing:0!important}
+.legend-circle{background:rgba(30,94,152,.15)!important;border-color:rgba(30,94,152,.45)!important}
+.totals{gap:8px!important;padding:12px 14px!important}
+.total-card{background:var(--surface)!important;border:1px solid var(--border);border-radius:var(--r)!important;padding:8px 10px!important}
+.total-val{font:700 15px var(--font-num)!important;color:var(--text)!important;font-variant-numeric:tabular-nums}
+.total-val.tot-strom{color:var(--text)!important}
+.sidebar-toggle,.lp-toggle{border-color:var(--border)!important;color:var(--muted)!important;background:var(--surface)!important}
+/* Hinweisbanner Variante auf der Karte */
+#variant-banner{background:var(--surface)!important;color:var(--text)!important;border:1px solid var(--border)!important;box-shadow:var(--shadow-1)!important;border-radius:var(--r-2)!important}
+.ui-pal-ort{margin-left:auto;font-size:12px;color:var(--faint)}

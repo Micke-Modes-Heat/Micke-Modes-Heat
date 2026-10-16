@@ -12633,6 +12633,39 @@ header.ui-seitentitel:empty{display:none}
 
 /* ── 6. Papier: Seitenvorschauen bleiben in beiden Darstellungen hell ── */
 #gut-seite,.ui-papier{--text:#191D1A;--muted:#58615A;--faint:#89918A;--border:#DADFD9;--line-2:#C3C9C2;--surface:#FFFFFF;--surface2:#F6F7F5;--bg:#EEF0ED;--hover:#EEF3EC;--ink:25,29,26;--c-red:#B3261E;--c-orange:#B4531A;--c-amber:#8A6100;--c-green:#2E7D32;--c-teal:#00796B;--c-blue:#1E5E98;--c-violet:#7B3F9E;color-scheme:light}
+
+/* ── 7. Fachpanels: Elektro, rechte Seitenleiste, Wärmenetz ─────────── */
+/* Abschnittsköpfe zum Auf-/Zuklappen */
+.lp-section-collapsible{font-size:12px!important;color:var(--text)!important;font-weight:700;text-transform:none!important;letter-spacing:0!important;padding:10px 0 8px!important;border-bottom:1px solid var(--border)!important;margin:6px 0 8px!important}
+.lp-section-collapsible:hover{color:var(--brand)!important}
+/* Bauteil-Palette */
+.asset-palette-group-header{font-size:11px!important;text-transform:uppercase;letter-spacing:.07em;color:var(--faint)!important;font-weight:600;padding:10px 0 4px!important}
+.asset-palette-btn{display:flex;align-items:center;gap:8px;font-size:12.5px!important;font-family:var(--font-ui)!important;padding:6px 8px!important;border:1px solid var(--border)!important;border-radius:var(--r)!important;background:var(--surface)!important;color:var(--text)!important;min-height:30px}
+.asset-palette-btn:hover{border-color:var(--text)!important;background:var(--surface)!important}
+.asset-palette-btn.active{background:var(--brand-weak)!important;border-color:var(--brand)!important;color:var(--brand)!important}
+.asset-palette-btn-icon{font-size:13px!important}
+/* Statuskacheln im Elektro-Panel */
+.el-status-chip,.el-kpi{border:1px solid var(--border)!important;border-radius:var(--r)!important;background:var(--surface)!important;padding:6px 8px!important}
+.el-chip-label{font-size:11px!important;color:var(--faint)!important;text-transform:uppercase;letter-spacing:.05em}
+.el-chip-value{font-size:12.5px!important;color:var(--text)!important;font-weight:600}
+/* Rechte Seitenleiste */
+.sidebar{border-left:1px solid var(--border)}
+.sb-tabs{padding:0 12px;gap:18px}
+.sb-tab{flex:0 0 auto!important;padding:12px 0 10px!important}
+.geb-count{background:var(--surface2)!important;border:1px solid var(--border);color:var(--muted)!important;font-size:11px!important;border-radius:9px}
+.geb-filter-input{background:var(--surface)!important;border:1px solid var(--line-2)!important;border-radius:var(--r)!important;font:13px var(--font-ui)!important;padding:6px 9px!important}
+.btn-add{border:1px dashed var(--line-2)!important;border-radius:var(--r)!important;color:var(--muted)!important;font-size:12.5px!important;font-weight:600}
+.btn-add:hover{border-color:var(--brand)!important;color:var(--brand)!important}
+.legend-title,.total-lbl,.legend-labels{font-size:11px!important;font-family:var(--font-ui)!important;color:var(--muted)!important;text-transform:none!important;letter-spacing:0!important}
+.legend-circle{background:rgba(30,94,152,.15)!important;border-color:rgba(30,94,152,.45)!important}
+.totals{gap:8px!important;padding:12px 14px!important}
+.total-card{background:var(--surface)!important;border:1px solid var(--border);border-radius:var(--r)!important;padding:8px 10px!important}
+.total-val{font:700 15px var(--font-num)!important;color:var(--text)!important;font-variant-numeric:tabular-nums}
+.total-val.tot-strom{color:var(--text)!important}
+.sidebar-toggle,.lp-toggle{border-color:var(--border)!important;color:var(--muted)!important;background:var(--surface)!important}
+/* Hinweisbanner Variante auf der Karte */
+#variant-banner{background:var(--surface)!important;color:var(--text)!important;border:1px solid var(--border)!important;box-shadow:var(--shadow-1)!important;border-radius:var(--r-2)!important}
+.ui-pal-ort{margin-left:auto;font-size:12px;color:var(--faint)}
 </style>
 
 
@@ -16422,7 +16455,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-16';
   if (d.indexOf('__') === 0) d = '';
-  var c = '6430195';
+  var c = 'a2aecf8';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -261778,7 +261811,8 @@ out center tags;`;
     for (const q of _QUELLEN) {
       document.querySelectorAll(`${q.sel} button, ${q.sel} [data-click]`).forEach(el => {
         if (el.tagName === 'INPUT' || el.closest('[hidden]:not(#ui-proj-menu)') && !el.closest('#ui-proj-menu')) return;
-        const text = uiLabel(el.textContent);
+        const icon = el.querySelector('.asset-palette-btn-icon');
+        const text = uiLabel(icon ? el.textContent.replace(icon.textContent, '') : el.textContent);
         if (text.length < 3 || /^[\d\s.,%–-]+$/.test(text)) return;
         const k = q.ort + '|' + text;
         if (gesehen.has(k)) return; gesehen.add(k);
@@ -261809,15 +261843,21 @@ out center tags;`;
   function _palRendern() {
     const q = (document.getElementById('ui-pal-input')?.value || '').trim().toLowerCase();
     const woerter = q.split(/\s+/).filter(Boolean);
-    _palTreffer = _palListe.filter(e => { const h = (e.text + ' ' + e.ort + ' ' + e.tip).toLowerCase(); return woerter.every(w => h.includes(w)); }).slice(0, 60);
+    // Rangfolge: Name beginnt mit der Eingabe > Name enthält sie > nur Ort oder Beschreibung
+    const rang = e => { const t = e.text.toLowerCase(); return t.startsWith(q) ? 0 : woerter.every(w => t.includes(w)) ? 1 : 2; };
+    _palTreffer = _palListe
+      .filter(e => { const h = (e.text + ' ' + e.ort + ' ' + e.tip).toLowerCase(); return woerter.every(w => h.includes(w)); })
+      .map((e, i) => ({ e, r: q ? rang(e) : 0, i }))
+      .sort((a, b) => a.r - b.r || a.i - b.i)
+      .map(x => x.e).slice(0, 60);
     _palSel = Math.min(_palSel, Math.max(_palTreffer.length - 1, 0));
     const box = document.getElementById('ui-pal-liste');
     if (!box) return;
     if (!_palTreffer.length) { box.innerHTML = '<div class="ui-pal-leer">Keine Funktion gefunden. Anders formulieren, z. B. „Kabel“, „Excel“ oder „Netzanschluss“.</div>'; return; }
     let ort = null, h = '';
     _palTreffer.forEach((e, i) => {
-      if (e.ort !== ort) { ort = e.ort; h += `<div class="ui-pal-grp">${_esc(ort)}</div>`; }
-      h += `<button type="button" class="ui-pal-it${i === _palSel ? ' act' : ''}" data-ui-pal="${i}" title="${_esc(e.tip)}">${_ic('arrow', 'ui-i ui-i-sm')}<span>${_esc(e.text)}</span></button>`;
+      if (!q && e.ort !== ort) { ort = e.ort; h += `<div class="ui-pal-grp">${_esc(ort)}</div>`; }
+      h += `<button type="button" class="ui-pal-it${i === _palSel ? ' act' : ''}" data-ui-pal="${i}" title="${_esc(e.tip)}">${_ic('arrow', 'ui-i ui-i-sm')}<span>${_esc(e.text)}</span>${q ? `<small class="ui-pal-ort">${_esc(e.ort)}</small>` : ''}</button>`;
     });
     box.innerHTML = h;
     box.querySelector('.act')?.scrollIntoView({ block: 'nearest' });

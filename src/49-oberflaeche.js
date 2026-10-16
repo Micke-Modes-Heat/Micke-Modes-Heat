@@ -258,7 +258,8 @@ function _palIndex() {
   for (const q of _QUELLEN) {
     document.querySelectorAll(`${q.sel} button, ${q.sel} [data-click]`).forEach(el => {
       if (el.tagName === 'INPUT' || el.closest('[hidden]:not(#ui-proj-menu)') && !el.closest('#ui-proj-menu')) return;
-      const text = uiLabel(el.textContent);
+      const icon = el.querySelector('.asset-palette-btn-icon');
+      const text = uiLabel(icon ? el.textContent.replace(icon.textContent, '') : el.textContent);
       if (text.length < 3 || /^[\d\s.,%–-]+$/.test(text)) return;
       const k = q.ort + '|' + text;
       if (gesehen.has(k)) return; gesehen.add(k);
@@ -289,15 +290,21 @@ export function uiBefehlssucheSchliessen() { const ov = document.getElementById(
 function _palRendern() {
   const q = (document.getElementById('ui-pal-input')?.value || '').trim().toLowerCase();
   const woerter = q.split(/\s+/).filter(Boolean);
-  _palTreffer = _palListe.filter(e => { const h = (e.text + ' ' + e.ort + ' ' + e.tip).toLowerCase(); return woerter.every(w => h.includes(w)); }).slice(0, 60);
+  // Rangfolge: Name beginnt mit der Eingabe > Name enthält sie > nur Ort oder Beschreibung
+  const rang = e => { const t = e.text.toLowerCase(); return t.startsWith(q) ? 0 : woerter.every(w => t.includes(w)) ? 1 : 2; };
+  _palTreffer = _palListe
+    .filter(e => { const h = (e.text + ' ' + e.ort + ' ' + e.tip).toLowerCase(); return woerter.every(w => h.includes(w)); })
+    .map((e, i) => ({ e, r: q ? rang(e) : 0, i }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map(x => x.e).slice(0, 60);
   _palSel = Math.min(_palSel, Math.max(_palTreffer.length - 1, 0));
   const box = document.getElementById('ui-pal-liste');
   if (!box) return;
   if (!_palTreffer.length) { box.innerHTML = '<div class="ui-pal-leer">Keine Funktion gefunden. Anders formulieren, z. B. „Kabel“, „Excel“ oder „Netzanschluss“.</div>'; return; }
   let ort = null, h = '';
   _palTreffer.forEach((e, i) => {
-    if (e.ort !== ort) { ort = e.ort; h += `<div class="ui-pal-grp">${_esc(ort)}</div>`; }
-    h += `<button type="button" class="ui-pal-it${i === _palSel ? ' act' : ''}" data-ui-pal="${i}" title="${_esc(e.tip)}">${_ic('arrow', 'ui-i ui-i-sm')}<span>${_esc(e.text)}</span></button>`;
+    if (!q && e.ort !== ort) { ort = e.ort; h += `<div class="ui-pal-grp">${_esc(ort)}</div>`; }
+    h += `<button type="button" class="ui-pal-it${i === _palSel ? ' act' : ''}" data-ui-pal="${i}" title="${_esc(e.tip)}">${_ic('arrow', 'ui-i ui-i-sm')}<span>${_esc(e.text)}</span>${q ? `<small class="ui-pal-ort">${_esc(e.ort)}</small>` : ''}</button>`;
   });
   box.innerHTML = h;
   box.querySelector('.act')?.scrollIntoView({ block: 'nearest' });
