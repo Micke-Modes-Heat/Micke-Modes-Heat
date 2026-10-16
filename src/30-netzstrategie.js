@@ -304,11 +304,11 @@ export function nsRender() {
       ${_kn('katalog', _katalogAuf ? '▾ Kostenkatalog' : '▸ Kostenkatalog', 'Kostenansätze für neue Anschlüsse, Stationen und MS-Trassen')}
     </div>
     ${_erg && !_erg.fehler ? `<div style="flex-basis:100%;">${window.stempelHinweisHtml?.(_erg.stempel, null) || ''}</div>` : ''}
-    ${ziel > stich ? '' : `<div style="flex-basis:100%;font-size:10px;color:#ffb74d;">Zieljahr = Stichjahr: es gibt keine Neubau-Gruppen${neuJahr ? ` — Zieljahr ≥ ${neuJahr} setzen` : ''}.</div>`}
+    ${ziel > stich ? '' : `<div style="flex-basis:100%;font-size:10px;color:var(--c-orange);">Zieljahr = Stichjahr: es gibt keine Neubau-Gruppen${neuJahr ? ` — Zieljahr ≥ ${neuJahr} setzen` : ''}.</div>`}
   </div>
   ${_katalogAuf ? _katalogHtml() : ''}
-  ${_veraltet ? '<div style="margin:-4px 0 10px;font-size:10.5px;color:#ffb74d;">Eingaben geändert — Strategien neu rechnen.</div>' : ''}
-  ${_meldung ? `<div style="margin:-4px 0 10px;font-size:10.5px;color:#80cbc4;">${_meldung}</div>` : ''}
+  ${_veraltet ? '<div style="margin:-4px 0 10px;font-size:10.5px;color:var(--c-orange);">Eingaben geändert — Strategien neu rechnen.</div>' : ''}
+  ${_meldung ? `<div style="margin:-4px 0 10px;font-size:10.5px;color:var(--c-teal);">${_meldung}</div>` : ''}
   <div data-ns-ergebnis style="${_veraltet ? 'opacity:.55;' : ''}">${_ergebnisHtml()}</div>`;
   if (!root.dataset.nsEreignisse) { root.dataset.nsEreignisse = '1'; _ereignisse(root); }
 }
@@ -318,7 +318,7 @@ function _katalogHtml() {
   const zeilen = Object.entries(NS_KOSTEN_STANDARD).map(([key, v]) => {
     const abw = _ns.kosten[key] != null && +_ns.kosten[key] !== v.wert;
     return `<tr><td class="l">${escHtml(v.label)}</td>
-      <td><input data-ns-kosten="${key}" type="number" step="any" min="0" value="${k[key]}" style="width:90px;font-size:10.5px;text-align:right;${abw ? 'color:#ffb74d;' : ''}"></td>
+      <td><input data-ns-kosten="${key}" type="number" step="any" min="0" value="${k[key]}" style="width:90px;font-size:10.5px;text-align:right;${abw ? 'color:var(--c-orange);' : ''}"></td>
       <td class="l" style="color:var(--muted);">${v.einheit}</td>
       <td class="l" style="color:var(--muted);">${abw ? `Standard ${_fmt(v.wert, v.wert % 1 ? 2 : 0)}` : ''}</td></tr>`;
   }).join('');
@@ -333,7 +333,7 @@ function _katalogHtml() {
 
 function _ergebnisHtml() {
   if (!_erg) return `<div style="color:var(--muted);font-size:11px;text-align:center;padding:30px 0;">„Strategien rechnen" starten.</div>`;
-  if (_erg.fehler) return `<div style="color:#ffb74d;font-size:11px;padding:10px 0;">${escHtml(_erg.fehler)}</div>`;
+  if (_erg.fehler) return `<div style="color:var(--c-orange);font-size:11px;padding:10px 0;">${escHtml(_erg.fehler)}</div>`;
   return `${_empfehlungHtml()}
   <div class="ns-karte"><b style="font-size:11px;">Pareto-Front: Netz-Invest ↔ nutzbare Energie</b>
     <span style="font-size:10px;color:var(--muted);"> · jeder Punkt eine bewertete Strategie, obere Kante = effizient · Marke anklicken lädt die Strategie in den Editor</span>
@@ -376,7 +376,7 @@ function _empfehlungHtml() {
       Netz-Invest ${b(_tEur(e.investEUR))}, Jahres-Netto-Überschuss ${b(_fmt(e.wirt.ueberschuss) + ' €/a')}.</div>
     <div style="font-size:10.5px;color:var(--muted);margin-top:4px;line-height:1.55;">Kriterium: ${zielTxt}. ${robT}</div>
     <div style="font-size:10.5px;margin-top:6px;line-height:1.6;">${wegText}</div>
-    ${hinweise.length ? `<div style="font-size:10px;color:#ffb74d;margin-top:5px;line-height:1.5;">${hinweise.map(h => '⚠ ' + escHtml(h)).join('<br>')}</div>` : ''}
+    ${hinweise.length ? `<div style="font-size:10px;color:var(--c-orange);margin-top:5px;line-height:1.5;">${hinweise.map(h => '⚠ ' + escHtml(h)).join('<br>')}</div>` : ''}
     <div style="font-size:10px;color:var(--muted);margin-top:5px;">${_erg.gruppen.length} Gruppen · ${_fmt(opt.kombinationen)} Kombinationen, ${_fmt(opt.bewertungen)} bewertet (${opt.methode}) · `
       + `${_fmt(_erg.dauerMs / 1000, 1)} s · Rechenjahr ${_erg.jahre.ziel}, Neubau = gebaut nach ${_erg.jahre.stich}</div>
     <div style="margin-top:6px;">${_kn('empf-editor', 'In den Editor laden', 'Die Empfehlung im Editor weiterbearbeiten')}</div></div>`;
@@ -430,8 +430,8 @@ function _paretoSvg() {
   if (_editor) out.push(`<circle cx="${x(_editor.investEUR)}" cy="${y(_editor.energie.nutzbarMwh)}" r="7" fill="none" stroke="#4fc3f7" stroke-width="1.8"><title>Editor-Auswahl</title></circle>`);
   return `<div style="overflow-x:auto;margin-top:6px;"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:560px;max-width:${W}px;display:block;">${out.join('')}</svg></div>
     <div style="font-size:10px;color:var(--muted);">
-      <span style="color:var(--accent);">●</span> Pareto-Front · □ S0–S5 Standardstrategien · <span style="color:#ffd54f;">★</span> Empfehlung ·
-      <span style="color:#4fc3f7;">○</span> Editor</div>`;
+      <span style="color:var(--accent);">●</span> Pareto-Front · □ S0–S5 Standardstrategien · <span style="color:var(--c-amber);">★</span> Empfehlung ·
+      <span style="color:var(--c-blue);">○</span> Editor</div>`;
 }
 
 function _vergleichHtml() {
@@ -449,7 +449,7 @@ function _vergleichHtml() {
     return `<tr style="${best ? 'background:rgba(255,213,79,.08);' : ''}">
       <td style="text-align:center;"><input type="checkbox" data-ns-var="${x.key}" ${gewaehlt.has(x.key) ? 'checked' : ''} title="Als Auslegung in die PV-Analyse übernehmen"></td>
       <td class="l"><span data-ns-lade="${r.wahl.join(',')}" style="cursor:pointer;" title="In den Editor laden">${escHtml(x.label)}</span>
-        ${r.machbar ? '' : '<span style="color:#e57373;"> (nicht machbar)</span>'}</td>
+        ${r.machbar ? '' : '<span style="color:var(--c-red);"> (nicht machbar)</span>'}</td>
       <td class="m">${_fmt(e.kwp)}</td><td class="m">${_fmt(e.nutzbarMwh)}</td><td class="m">${_fmt(abg, 1)} %</td>
       <td class="m">${e.mitLastgang ? _fmt(e.evQuotePct) + ' %' : '—'}</td>
       <td class="m">${_tEur(r.investEUR)}</td><td class="m">${e.kwp > 0.5 ? _fmt(r.investEUR / e.kwp) : '—'}</td>
@@ -535,7 +535,7 @@ function _gruppeDetailHtml(i) {
       be = kB == null ? '' : x == null
         ? `Break-even Erzeugungsnetz: lohnt über die Netzkosten nicht — „${escHtml(optionen[i][vgl].kurz)}" kostet nur ${_fmt(kB)} €/kWp, das Erzeugungsnetz allein für die Dachanschlüsse schon ${_fmt(kVar)} €/kWp.`
         : `Break-even Erzeugungsnetz: Fixkosten ${_tEur(fix)} (Station, MS-Trasse, Schaltfeld) gegen ${_fmt(kB)} €/kWp über „${escHtml(optionen[i][vgl].kurz)}" `
-          + `→ lohnt ab <b>${_fmt(x)} kWp</b>; die Gruppe hat ${_fmt(g.kwpMax)} kWp ${g.kwpMax >= x ? '<span style="color:#66bb6a;">(darüber)</span>' : '<span style="color:#ffb74d;">(darunter)</span>'}.`;
+          + `→ lohnt ab <b>${_fmt(x)} kWp</b>; die Gruppe hat ${_fmt(g.kwpMax)} kWp ${g.kwpMax >= x ? '<span style="color:var(--c-green);">(darüber)</span>' : '<span style="color:var(--c-orange);">(darunter)</span>'}.`;
     }
   }
   const o = optionen[i][_editorWahl[i]];
@@ -545,7 +545,7 @@ function _gruppeDetailHtml(i) {
   return `<div style="font-size:10.5px;margin:3px 0 4px;">Dächer: ${g.namen.map(escHtml).join(', ')}</div>
     <table><thead><tr><th class="l">Weg (andere Gruppen wie im Editor)</th><th>+kWp</th><th>+MWh/a</th><th>+Netz</th><th>Netz €/kWp</th><th>+Überschuss €/a</th></tr></thead>
     <tbody>${zeilen}</tbody></table>
-    ${be ? `<div style="margin-top:4px;">${be}</div>` : ''}${posten}${o.hinweis ? `<div style="color:#ffb74d;margin-top:3px;">${escHtml(o.hinweis)}</div>` : ''}`;
+    ${be ? `<div style="margin-top:4px;">${be}</div>` : ''}${posten}${o.hinweis ? `<div style="color:var(--c-orange);margin-top:3px;">${escHtml(o.hinweis)}</div>` : ''}`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

@@ -488,8 +488,8 @@ function _ensureTip() {
   const el=document.createElement('div');
   el.id='kna-tip';
   el.style.cssText='position:fixed;pointer-events:none;z-index:10000;display:none;'+
-    'background:#12121e;border:1px solid rgba(255,255,255,.2);border-radius:6px;'+
-    'padding:6px 10px;font-size:11px;color:#e0e0e0;font-family:"DM Mono",monospace;'+
+    'background:var(--surface);border:1px solid rgba(var(--ink),.2);border-radius:6px;'+
+    'padding:6px 10px;font-size:11px;color:var(--muted);font-family:"DM Mono",monospace;'+
     'white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.6);line-height:1.6;';
   document.body.appendChild(el);
 }
@@ -530,7 +530,7 @@ function _attachHover(cv, prof, mode, zoomMonth=null) {
       const v=prof[tLocal]||0, d=_hoydToDate(tGlobal);
       const c=v>=0?'#ef9a9a':'#4fc3f7';
       _showTip(e.clientX,e.clientY,
-        `<span style="color:#888">${_fmtDate(d)} · ${String(d.getHours()).padStart(2,'0')}:00</span><br>`+
+        `<span style="color:var(--faint)">${_fmtDate(d)} · ${String(d.getHours()).padStart(2,'0')}:00</span><br>`+
         `<span style="color:${c};font-weight:700;">${v>=0?'+':''}${v.toFixed(1)} kW</span>`);
     });
 
@@ -542,9 +542,9 @@ function _attachHover(cv, prof, mode, zoomMonth=null) {
       const v=sorted[rank]||0;
       const c=v>=0?'#ef9a9a':'#4fc3f7';
       _showTip(e.clientX,e.clientY,
-        `<span style="color:#888">Rang ${(rank+1).toLocaleString('de-DE')} / 8.760 h</span><br>`+
+        `<span style="color:var(--faint)">Rang ${(rank+1).toLocaleString('de-DE')} / 8.760 h</span><br>`+
         `<span style="color:${c};font-weight:700;">${v>=0?'+':''}${v.toFixed(1)} kW</span><br>`+
-        `<span style="color:#555;font-size:10px;">überschritten ${(rank+1).toLocaleString('de-DE')} h/a</span>`);
+        `<span style="color:var(--faint);font-size:10px;">überschritten ${(rank+1).toLocaleString('de-DE')} h/a</span>`);
     });
 
   } else if (mode==='monat') {
@@ -555,7 +555,7 @@ function _attachHover(cv, prof, mode, zoomMonth=null) {
       const v=mwh[m];
       const c=v>=0?'#ef9a9a':'#4fc3f7';
       _showTip(e.clientX,e.clientY,
-        `<span style="color:#888">${MLBL[m]}</span><br>`+
+        `<span style="color:var(--faint)">${MLBL[m]}</span><br>`+
         `<span style="color:${c};font-weight:700;">${v>=0?'+':''}${v.toFixed(1)} MWh</span>`);
     });
 
@@ -573,7 +573,7 @@ function _attachHover(cv, prof, mode, zoomMonth=null) {
       const d=_hoydToDate(t);
       const c=v>=0?'#ef9a9a':'#4fc3f7';
       _showTip(e.clientX,e.clientY,
-        `<span style="color:#888">${_fmtDate(d)} · ${String(hour).padStart(2,'0')}:00</span><br>`+
+        `<span style="color:var(--faint)">${_fmtDate(d)} · ${String(hour).padStart(2,'0')}:00</span><br>`+
         `<span style="color:${c};font-weight:700;">${v>=0?'+':''}${v.toFixed(1)} kW</span>`);
     });
   }
@@ -728,15 +728,15 @@ function _renderRightPanel() {
     const dir    = sign > 0 ? '↑' : '↓';
     const dirCol = sign > 0 ? '#ef9a9a' : '#a5d6a7';
     return `<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;
-      border-bottom:1px solid rgba(255,255,255,.04);font-size:10px;
+      border-bottom:1px solid rgba(var(--ink),.04);font-size:10px;
       opacity:${isOn ? 1 : 0.35};">
       <button onclick="knaToggleContrib('${da.id}')" title="${isOn?'Ausblenden':'Einblenden'}"
         style="width:11px;height:11px;border-radius:50%;cursor:pointer;padding:0;flex-shrink:0;
         border:2px solid ${dcfg.color||'#888'};background:${isOn?dcfg.color||'#888':'transparent'};"></button>
       <span style="width:14px;text-align:center;flex-shrink:0;">${dcfg.icon||'?'}</span>
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc;">${da.name}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);">${da.name}</span>
       <span style="color:${dirCol};font-weight:700;">${dir}</span>
-      <span style="color:#555;font-family:'DM Mono',monospace;min-width:48px;text-align:right;">
+      <span style="color:var(--faint);font-family:'DM Mono',monospace;min-width:48px;text-align:right;">
         ${dPeak>0.01?dPeak.toFixed(1)+' kW':'—'}
       </span>
     </div>`;
@@ -753,9 +753,9 @@ function _renderRightPanel() {
       ${label}</button>`;
 
   panel.innerHTML = `
-    <div style="padding:6px 10px;border-bottom:1px solid rgba(79,195,247,.12);background:#0d0d18;">
+    <div style="padding:6px 10px;border-bottom:1px solid rgba(79,195,247,.12);background:var(--surface);">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
-        <span style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;">
+        <span style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);">
           Beiträge (${leaves.length}) · Jahr ${yr2}
         </span>
         <div style="display:flex;gap:3px;">
@@ -800,8 +800,8 @@ function _renderSidebar() {
   let html=`
 <div style="padding:8px 10px 4px;">
   <input id="kna-search" type="text" value="${q}" placeholder="Knoten suchen …"
-    style="width:100%;box-sizing:border-box;padding:6px 8px;background:#1e1e30;
-    border:1px solid #2a3a3a;border-radius:4px;color:#ccc;font-size:10px;margin-bottom:6px;"
+    style="width:100%;box-sizing:border-box;padding:6px 8px;background:var(--surface2);
+    border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:10px;margin-bottom:6px;"
     oninput="knaSetFilter(this.value)">
   <div style="display:flex;gap:3px;">
     ${tfBtn('alle','Alle')}
@@ -814,7 +814,7 @@ function _renderSidebar() {
   for (const [grp,grpItems] of groups) {
     const filtered=q?grpItems.filter(a=>a.name.toLowerCase().includes(q)||(ASSET_CFG[a.type]?.label||'').toLowerCase().includes(q)):grpItems;
     if (!filtered.length) continue;
-    html+=`<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;
+    html+=`<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);
       padding:8px 10px 3px;">${grp} <span style="opacity:.5">(${filtered.length})</span></div>`;
     for (const a of filtered) {
       const cfg=ASSET_CFG[a.type]||{};
@@ -827,7 +827,7 @@ function _renderSidebar() {
         onmouseout="this.style.background='${sel?'rgba(79,195,247,.08)':'transparent'}'">
         <span style="width:8px;height:8px;border-radius:50%;background:${cfg.color||'#888'};flex-shrink:0;"></span>
         <span style="width:14px;text-align:center;flex-shrink:0;">${cfg.icon||'?'}</span>
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc;">${a.name}</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);">${a.name}</span>
         <span style="font-size:9px;color:${cfg.color||'#666'};white-space:nowrap;">${cfg.label||a.type}</span>
       </div>`;
     }
@@ -851,7 +851,7 @@ function _renderMain() {
   }
 
   const asset=getAsset(_K.selectedId);
-  if (!asset) { top.innerHTML='<div style="color:#555;padding:20px;">Asset nicht gefunden</div>'; bot.innerHTML=''; return; }
+  if (!asset) { top.innerHTML='<div style="color:var(--faint);padding:20px;">Asset nicht gefunden</div>'; bot.innerHTML=''; return; }
 
   invalidateKnotenProfileCache(_K.selectedId);
   const prof       = _getActiveProfile(asset); // respektiert disabledContribs
@@ -901,11 +901,11 @@ function _renderMain() {
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;
-          border-left:3px solid ${cfg.color||'#888'};background:rgba(255,255,255,.03);border-radius:0 4px 4px 0;">
+          border-left:3px solid ${cfg.color||'#888'};background:rgba(var(--ink),.03);border-radius:0 4px 4px 0;">
           <span style="font-size:18px;">${cfg.icon||'?'}</span>
           <div>
-            <div style="font-weight:700;font-size:13px;color:#e0e0e0;">${asset.name}</div>
-            <div style="font-size:10px;color:#555;">${cfg.label||asset.type}
+            <div style="font-weight:700;font-size:13px;color:var(--muted);">${asset.name}</div>
+            <div style="font-size:10px;color:var(--faint);">${cfg.label||asset.type}
               ${asset.buildingId&&window.gebaeude?' · '+(window.gebaeude.find(g=>g.id===asset.buildingId)?.name||''):''}
             </div>
           </div>
@@ -918,14 +918,14 @@ function _renderMain() {
         ${tabBtn('h','Heatmap','heatmap')}
         <button onclick="knaOpenFullscreen()" title="Vollbild"
           style="padding:5px 8px;border-radius:4px;cursor:pointer;font-size:12px;
-          border:1px solid #2a3a3a;background:transparent;color:#555;margin-left:4px;"
+          border:1px solid var(--border);background:transparent;color:var(--faint);margin-left:4px;"
           onmouseover="this.style.color='#ccc'" onmouseout="this.style.color='#555'">⛶</button>
       </div>
     </div>
     ${mZoomRow}
     ${noData?`<div style="display:flex;align-items:center;justify-content:center;flex:1;color:#444;font-size:11px;margin-top:8px;">
       ℹ Noch keine Profildaten — bitte Strom-Berechnung und Dispatch ausführen.</div>`
-    :`<canvas id="kna-canvas" style="flex:1;width:100%;min-height:0;border-radius:4px;background:#111;margin-top:4px;"></canvas>`}`;
+    :`<canvas id="kna-canvas" style="flex:1;width:100%;min-height:0;border-radius:4px;background:var(--surface);margin-top:4px;"></canvas>`}`;
 
   // Kapazitäts-Auslastung — beide Richtungen
   let h100=0, h80=0, h100neg=0, h80neg=0;
@@ -988,11 +988,11 @@ function _renderMain() {
     : '';
 
   bot.innerHTML=`
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:8px;">Kennzahlen</div>
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:8px;">Kennzahlen</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;">
       ${kpis.map(([c,l,v])=>`
-        <div style="background:#1e1e30;border-radius:5px;padding:8px 10px;">
-          <div style="font-size:9px;color:#555;margin-bottom:2px;">${l}</div>
+        <div style="background:var(--surface2);border-radius:5px;padding:8px 10px;">
+          <div style="font-size:9px;color:var(--faint);margin-bottom:2px;">${l}</div>
           <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:${c};">${v}</div>
         </div>`).join('')}
     </div>${warn}`;
@@ -1087,13 +1087,13 @@ export function knaOpenFullscreen() {
   // Overlay erstellen
   const ov = document.createElement('div');
   ov.id = 'kna-fs-overlay';
-  ov.style.cssText = 'position:fixed;inset:0;background:#0a0a14;z-index:9900;display:flex;flex-direction:column;';
+  ov.style.cssText = 'position:fixed;inset:0;background:var(--surface);z-index:9900;display:flex;flex-direction:column;';
   ov.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;
-      padding:8px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:#0d0d18;">
-      <span style="font-size:12px;color:#aaa;" id="kna-fs-title">Vollbild</span>
+      padding:8px 16px;border-bottom:1px solid rgba(var(--ink),.08);background:var(--surface);">
+      <span style="font-size:12px;color:var(--muted);" id="kna-fs-title">Vollbild</span>
       <button onclick="document.getElementById('kna-fs-overlay').remove()"
-        style="background:none;border:1px solid #333;border-radius:4px;color:#888;
+        style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--faint);
         cursor:pointer;font-size:14px;padding:3px 10px;">✕ Schließen</button>
     </div>
     <canvas id="kna-fs-canvas" style="flex:1;width:100%;"></canvas>`;
@@ -1156,18 +1156,18 @@ export function knaBuildAnalyseSection() {
     wrap.id='analyse-kna-wrap';
     wrap.style.display='none';
     wrap.innerHTML=`
-<div style="display:flex;flex-direction:row;height:calc(100vh - 160px);min-height:400px;background:#0f0f1a;border-radius:8px;overflow:hidden;">
+<div style="display:flex;flex-direction:row;height:calc(100vh - 160px);min-height:400px;background:var(--surface);border-radius:8px;overflow:hidden;">
   <!-- Sidebar (Knotenliste) -->
-  <div id="kna-sidebar" style="width:280px;overflow-y:auto;flex-shrink:0;border-right:1px solid rgba(79,195,247,.12);background:#0f0f1a;"></div>
+  <div id="kna-sidebar" style="width:280px;overflow-y:auto;flex-shrink:0;border-right:1px solid rgba(79,195,247,.12);background:var(--surface);"></div>
   <!-- Hauptbereich (Chart + KPIs) -->
-  <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:#0f0f1a;">
+  <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--surface);">
     <div id="kna-main-top" style="flex:3;display:flex;flex-direction:column;padding:12px 16px 6px;min-height:0;overflow:hidden;"></div>
     <div id="kna-main-bot" style="flex:1;padding:6px 16px 12px;border-top:1px solid rgba(79,195,247,.08);overflow-y:auto;"></div>
   </div>
   <!-- Drawer-Toggle (immer sichtbar) -->
   <button id="kna-right-btn" onclick="knaToggleRightPanel()"
-    style="width:22px;flex-shrink:0;background:#0d0d18;border:none;
-    border-left:1px solid rgba(79,195,247,.15);cursor:pointer;color:#555;
+    style="width:22px;flex-shrink:0;background:var(--surface);border:none;
+    border-left:1px solid rgba(79,195,247,.15);cursor:pointer;color:var(--faint);
     font-size:9px;writing-mode:vertical-rl;text-orientation:mixed;
     display:flex;align-items:center;justify-content:center;padding:10px 0;
     transition:color .15s;letter-spacing:.05em;"
@@ -1176,7 +1176,7 @@ export function knaBuildAnalyseSection() {
   <!-- Rechter Drawer (Beitragsliste) -->
   <div id="kna-right-panel"
     style="width:0;overflow:hidden;flex-shrink:0;
-    border-left:1px solid rgba(79,195,247,.12);background:#0d0d18;
+    border-left:1px solid rgba(79,195,247,.12);background:var(--surface);
     transition:width .18s ease;display:flex;flex-direction:column;"></div>
 </div>`;
     const analyseView=document.getElementById('center-analyse-view');

@@ -831,16 +831,16 @@ function _showEdgeSelectPopup(edges, latlng) {
 function _ttKv(label, value, col) {
   const val = col ? `<span style="color:${col};font-weight:500;">${value}</span>` : value;
   return `<div style="display:flex;justify-content:space-between;gap:14px;padding:1px 0;">` +
-    `<span style="color:#78909c;font-size:11px;white-space:nowrap;">${label}</span>` +
+    `<span style="color:var(--c-blue);font-size:11px;white-space:nowrap;">${label}</span>` +
     `<span style="font-size:11px;">${val}</span></div>`;
 }
-const _ttHr = '<div style="border-top:1px solid #1e2540;margin:4px 0;"></div>';
+const _ttHr = '<div style="border-top:1px solid var(--border);margin:4px 0;"></div>';
 function _ttHead(icon, badge, sub, bg, fg) {
   fg = fg || '#fff';
   const subHtml = sub
-    ? `<span style="color:#546e7a;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:155px;" title="${sub}">${sub}</span>`
+    ? `<span style="color:var(--c-blue);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:155px;" title="${sub}">${sub}</span>`
     : '';
-  return `<div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;margin-bottom:4px;border-bottom:1px solid #2a3050;">` +
+  return `<div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;margin-bottom:4px;border-bottom:1px solid var(--c-blue);">` +
     `<span style="background:${bg};color:${fg};border-radius:3px;padding:1px 6px 2px;font-size:10px;font-weight:700;white-space:nowrap;">${icon} ${badge}</span>` +
     subHtml + '</div>';
 }
@@ -933,15 +933,15 @@ export function buildStromEdgeTooltip(e) {
 
   h += `<div style="display:flex;gap:0;margin:3px 0;">` +
     `<div style="flex:1;text-align:center;padding:0 4px;">` +
-      `<div style="color:#90caf9;font-size:10px;margin-bottom:2px;">↑ Bezug (WC)</div>` +
+      `<div style="color:var(--c-blue);font-size:10px;margin-bottom:2px;">↑ Bezug (WC)</div>` +
       `<div style="font-size:11px;font-weight:600;">${bezugKw.toFixed(1)} kW</div>` +
     `</div>` +
-    `<div style="flex:1;text-align:center;padding:0 4px;border-left:1px solid #1e2540;border-right:1px solid #1e2540;">` +
-      `<div style="color:#ef9a9a;font-size:10px;margin-bottom:2px;">↓ Einsp. (WC)</div>` +
+    `<div style="flex:1;text-align:center;padding:0 4px;border-left:1px solid var(--border);border-right:1px solid var(--border);">` +
+      `<div style="color:var(--c-red);font-size:10px;margin-bottom:2px;">↓ Einsp. (WC)</div>` +
       `<div style="font-size:11px;font-weight:600;">${einspKw.toFixed(1)} kW</div>` +
     `</div>` +
     `<div style="flex:1;text-align:center;padding:0 4px;">` +
-      `<div style="color:#ffcc02;font-size:10px;margin-bottom:2px;">⚡ Max (WC)</div>` +
+      `<div style="color:var(--c-amber);font-size:10px;margin-bottom:2px;">⚡ Max (WC)</div>` +
       `<div style="font-size:11px;font-weight:600;">${wcKw.toFixed(1)} kW</div>` +
     `</div>` +
   `</div>`;
@@ -961,11 +961,11 @@ export function buildStromEdgeTooltip(e) {
   }
 
   if (isMs) {
-    h += _ttKv('Spannungsfall', '<span style="color:#546e7a">— (MS-Ebene)</span>');
+    h += _ttKv('Spannungsfall', '<span style="color:var(--c-blue)">— (MS-Ebene)</span>');
   } else if (dUKum != null) {
     h += _ttKv('Spannungsfall',
       `<span style="color:${_duCol(dUKum)}">ΔU ${dUKum.toFixed(2)} %</span>` +
-      `<span style="color:#546e7a;font-size:10px;"> (kum.)</span>`);
+      `<span style="color:var(--c-blue);font-size:10px;"> (kum.)</span>`);
   } else {
     h += _ttKv('Spannungsfall', `<span style="color:${_duCol(e.deltaUPct)}">ΔU ${e.deltaUPct.toFixed(2)} %</span>`);
   }
@@ -983,7 +983,7 @@ export function buildStromEdgeTooltip(e) {
     h += _ttKv('Lebenszyklus', lz);
   }
   const nPlan = (e.massnahmen || []).filter(m => m.status === 'geplant').length;
-  if (nPlan > 0) h += _ttKv('Maßnahmen', `<span style="color:#4fc3f7">${nPlan} geplant</span>`);
+  if (nPlan > 0) h += _ttKv('Maßnahmen', `<span style="color:var(--c-blue)">${nPlan} geplant</span>`);
 
   if (endNode?.ikMinA > 0 && isFinite(endNode.ikMinA)) {
     const ikC = endNode.ikMinA < 1000 ? '#f9a825' : '#4caf50';
@@ -1174,7 +1174,7 @@ export function _autoRegisterErzeugerStromNodes() {
     // Create new erzeuger strom node
     const erzIcon = L.divIcon({
       className: '',
-      html: '<div class="strom-icon strom-icon-erz" style="background:' + erz.color + ';width:20px;height:20px;font-size:11px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.3);cursor:pointer;">' + erz.icon + '</div>',
+      html: '<div class="strom-icon strom-icon-erz" style="background:' + erz.color + ';width:20px;height:20px;font-size:11px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.5);border:2px solid rgba(var(--ink),.3);cursor:pointer;">' + erz.icon + '</div>',
       iconSize: [20, 20], iconAnchor: [10, 10]
     });
     const marker = L.marker(L.latLng(erz.lat, erz.lng), { icon: erzIcon, interactive: true, zIndexOffset: 2100 });

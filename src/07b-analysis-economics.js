@@ -1056,7 +1056,7 @@ export function calcWirtschaftPanel() {
       '<td style="text-align:right;">' + vdiInput(b,'wart',38) + '</td>' +
       '<td style="text-align:right;">' + vdiInput(b,'bedien',44) + '</td>' +
       '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + euroKompakt(b.jk, true) + '</td>' +
-      '<td style="text-align:right;font-family:\'DM Mono\',monospace;font-size:9px;color:#a5d6a7;">' + _wgkCt(b.jk) + '</td>' +
+      '<td style="text-align:right;font-family:\'DM Mono\',monospace;font-size:9px;color:var(--c-green);">' + _wgkCt(b.jk) + '</td>' +
     '</tr>';
   }
 
@@ -1076,7 +1076,7 @@ export function calcWirtschaftPanel() {
     const gi = grpIdx;
     const isOpen = !!_openGrps[gi];
     const subLabel = grpRows.length === 1 ? grpRows[0].label : '(' + grpRows.length + ' Bausteine)';
-    invHtml += '<tr class="wirt-grp-header" style="cursor:pointer;background:rgba(255,255,255,0.03);"' +
+    invHtml += '<tr class="wirt-grp-header" style="cursor:pointer;background:rgba(var(--ink),0.03);"' +
       ' data-click="_wirtToggleGroup(this,' + gi + ')">' +
       '<td style="font-weight:600;font-size:11px;" colspan="2">' +
         '<span class="wirt-grp-arrow" style="display:inline-block;width:14px;color:var(--muted);font-size:10px;">' + (isOpen ? '▾' : '▸') + '</span>' +
@@ -1087,7 +1087,7 @@ export function calcWirtschaftPanel() {
       '<td colspan="2"></td>' +
       '<td style="text-align:right;font-size:10px;color:var(--muted);" title="Bedienstunden der Gruppe pro Jahr">' + (grpBed > 0 ? fmt(grpBed) + ' h' : '') + '</td>' +
       '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + euroKompakt(grpJk, true) + '</td>' +
-      '<td style="text-align:right;font-family:\'DM Mono\',monospace;font-size:10px;color:#a5d6a7;">' + _wgkCt(grpJk) + '</td>' +
+      '<td style="text-align:right;font-family:\'DM Mono\',monospace;font-size:10px;color:var(--c-green);">' + _wgkCt(grpJk) + '</td>' +
     '</tr>';
     grpRows.forEach(b => { invHtml += _wirtDetailRow(b, gi, isOpen); });
     grpIdx++;
@@ -1098,7 +1098,7 @@ export function calcWirtschaftPanel() {
       <td style="color:${r.color}">${r.label}</td>
       <td style="color:var(--muted);font-size:10px;">${r.detail}</td>
       <td style="text-align:right;font-family:'DM Mono',monospace;">${euroKompakt(r.kosten, true)}</td>
-      <td style="text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:#a5d6a7;">${_wgkCt(r.kosten)}</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:var(--c-green);">${_wgkCt(r.kosten)}</td>
     </tr>`
   ).join('');
 
@@ -1178,7 +1178,7 @@ export function calcWirtschaftPanel() {
     </div>
     <div id="wirt-wrap-kurven" style="display:none;position:relative;">
       <canvas id="wirt-kurven-canvas" height="300" style="width:100%;display:block;border-radius:4px;"></canvas>
-      <div id="wirt-kurven-tt" style="position:absolute;pointer-events:none;display:none;background:#1a1d26;color:#cfd8dc;border:1px solid #2a3040;border-radius:4px;padding:4px 8px;font-family:'DM Mono',monospace;font-size:10px;white-space:nowrap;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,0.5);"></div>
+      <div id="wirt-kurven-tt" style="position:absolute;pointer-events:none;display:none;background:var(--surface);color:var(--c-blue);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-family:'DM Mono',monospace;font-size:10px;white-space:nowrap;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,0.5);"></div>
       <div id="wirt-kurven-legend" style="display:flex;flex-wrap:wrap;gap:4px 10px;margin:6px 0 14px;font-size:9px;"></div>
     </div>
     </div>
@@ -1352,7 +1352,7 @@ function _wirtKarteHtml(tr) {
   } else {
     zeilen.push(`<span style="font-size:13px;color:${farbe};font-weight:600;">${nf(auto / kw)} €/kW</span> pauschal × ${nf(kw)} kW = ${nf(auto)} €`);
   }
-  if (Math.abs(inv - auto) > 1) zeilen.push(`<span style="color:#ff9800;">Eigener Wert ${nf(inv)} € = ${nf(inv / kw)} €/kW</span>`);
+  if (Math.abs(inv - auto) > 1) zeilen.push(`<span style="color:var(--c-orange);">Eigener Wert ${nf(inv)} € = ${nf(inv / kw)} €/kW</span>`);
   return zeilen.join('<br>') + (ce && typeof CalcEngine !== 'undefined' ? _wirtMiniKurve(ce, kw, farbe) : '');
 }
 
@@ -2081,17 +2081,17 @@ export function calcJahresscheiben() {
               <th style="text-align:right;padding:2px 4px;">Betrieb</th>
               <th style="text-align:right;padding:2px 4px;">Energie</th>
               <th style="text-align:right;padding:2px 4px;">Cashflow</th>
-              <th style="text-align:right;padding:2px 4px;color:#ce93d8;">Jahresk.</th>
+              <th style="text-align:right;padding:2px 4px;color:var(--c-violet);">Jahresk.</th>
               <th style="text-align:right;padding:2px 4px;">Kumulativ</th>
             </tr></thead>
-            <tbody>${years.map(r => `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+            <tbody>${years.map(r => `<tr style="border-bottom:1px solid rgba(var(--ink),0.04);">
               <td style="padding:1px 4px;">${r.y}</td>
-              <td style="text-align:right;padding:1px 4px;${r.invest>0?'color:#ffb74d':r.rest<0?'color:#81c784':''}" ${r.rest<0?'title="Restwert am Ende des Zeitraums (Gutschrift)"':''}>${r.invest>0?euroKompakt(r.invest):r.rest<0?euroKompakt(r.rest):'—'}</td>
+              <td style="text-align:right;padding:1px 4px;${r.invest>0?'color:var(--c-orange)':r.rest<0?'color:var(--c-green)':''}" ${r.rest<0?'title="Restwert am Ende des Zeitraums (Gutschrift)"':''}>${r.invest>0?euroKompakt(r.invest):r.rest<0?euroKompakt(r.rest):'—'}</td>
               <td style="text-align:right;padding:1px 4px;">${r.betrieb>0?euroKompakt(r.betrieb):'—'}</td>
               <td style="text-align:right;padding:1px 4px;">${Math.abs(r.energie)>0.5?euroKompakt(r.energie):'—'}</td>
               <td style="text-align:right;padding:1px 4px;">${euroKompakt(r.total)}</td>
-              <td style="text-align:right;padding:1px 4px;color:#ce93d8;">${r.jahreskosten>0?euroKompakt(r.jahreskosten):'—'}</td>
-              <td style="text-align:right;padding:1px 4px;color:#4fc3f7;">${euroKompakt(r.kumulativ)}</td>
+              <td style="text-align:right;padding:1px 4px;color:var(--c-violet);">${r.jahreskosten>0?euroKompakt(r.jahreskosten):'—'}</td>
+              <td style="text-align:right;padding:1px 4px;color:var(--c-blue);">${euroKompakt(r.kumulativ)}</td>
             </tr>`).join('')}</tbody>
           </table>
         </div>
@@ -2253,7 +2253,7 @@ export function _renderOptKostenUebersicht() {
 
   let html = '<div style="font-size:9px;color:var(--muted);margin-bottom:6px;">Investitions-, Nutzungsdauer- und Instandhaltungswerte der Optimierung. Energiepreise aus dem Wirtschaftlichkeits-Panel. VDI 2067 / KWW-Technikkatalog.</div>';
 
-  html += '<div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:4px;">';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px;padding:6px 8px;background:rgba(var(--ink),0.03);border-radius:4px;">';
   html += '<span style="font-size:9px;font-weight:600;color:var(--text);width:100%;margin-bottom:2px;">Energiepreise</span>';
   const ep = [
     ['Strom (Bezug)',pStrom,'ct/kWh'],['Erdgas',pGas,'ct/kWh'],['Heizöl',pHko,'ct/kWh'],
@@ -2273,12 +2273,12 @@ export function _renderOptKostenUebersicht() {
   const etaHhs = parseFloat(document.getElementById('hhs-eta')?.value) || 85;
   const etaBhkw = parseFloat(document.getElementById('bhkw-eta')?.value) || 88;
   const bhkwSkz = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
-  html += '<div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:4px;">';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px;padding:6px 8px;background:rgba(var(--ink),0.03);border-radius:4px;">';
   html += '<span style="font-size:9px;font-weight:600;color:var(--text);width:100%;margin-bottom:2px;">Kapital &amp; Betrieb</span>';
   html += '<span style="font-size:10px;font-family:\'DM Mono\',monospace;">Kapitalzins: <b>' + zins + '</b> %</span>';
   html += '<span style="font-size:10px;font-family:\'DM Mono\',monospace;">Stundensatz: <b>' + lohn + '</b> €/h</span>';
   html += '</div>';
-  html += '<div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:4px;">';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px;padding:6px 8px;background:rgba(var(--ink),0.03);border-radius:4px;">';
   html += '<span style="font-size:9px;font-weight:600;color:var(--text);width:100%;margin-bottom:2px;">Wirkungsgrade / Kennwerte</span>';
   html += '<span style="font-size:10px;font-family:\'DM Mono\',monospace;">Gaskessel: <b>'+etaGk+'</b> %</span>';
   html += '<span style="font-size:10px;font-family:\'DM Mono\',monospace;">Heizöl: <b>'+etaHko+'</b> %</span>';
@@ -2291,7 +2291,7 @@ export function _renderOptKostenUebersicht() {
   const grpLabels = {erz:'Wärmeerzeuger',zusatz:'Solarthermie &amp; Speicher',strom:'PV &amp; Batterie',neben:'Infrastruktur &amp; Nebenkomponenten',zuschlag:'Prozentuale Zuschläge'};
   html += '<div style="overflow-x:auto;">';
   html += '<table style="width:100%;border-collapse:collapse;font-size:10px;font-family:\'DM Mono\',monospace;">';
-  html += '<thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);color:var(--muted);font-size:9px;text-align:right;">';
+  html += '<thead><tr style="border-bottom:1px solid rgba(var(--ink),0.1);color:var(--muted);font-size:9px;text-align:right;">';
   html += '<th style="text-align:left;padding:3px 6px;">Komponente</th>';
   html += '<th style="padding:3px 6px;">Invest</th>';
   html += '<th style="padding:3px 6px;">Nutzung (a)</th>';
@@ -2306,7 +2306,7 @@ export function _renderOptKostenUebersicht() {
   rows.forEach(r => {
     if (r.grp !== lastGrp) {
       lastGrp = r.grp;
-      html += '<tr><td colspan="7" style="padding:6px 6px 2px;font-size:9px;font-weight:600;color:var(--accent);border-bottom:1px solid rgba(255,255,255,0.06);">'+grpLabels[r.grp]+'</td></tr>';
+      html += '<tr><td colspan="7" style="padding:6px 6px 2px;font-size:9px;font-weight:600;color:var(--accent);border-bottom:1px solid rgba(var(--ink),0.06);">'+grpLabels[r.grp]+'</td></tr>';
     }
     const n = r.n;
     const ann = z > 0 && n > 0 ? (z * Math.pow(1+z,n) / (Math.pow(1+z,n)-1) * 100).toFixed(1) : (n > 0 ? (100/n).toFixed(1) : '—');
@@ -2318,7 +2318,7 @@ export function _renderOptKostenUebersicht() {
       const ce50 = Math.round(CalcEngine.investEurProKw(r.ce, 50));
       if (ce200 > 0) invDisplay = ce50+'/'+ce200+' <span style="color:var(--muted);font-size:7px;">50/200kW</span>';
     }
-    html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04);'+(isSub?'opacity:0.75;':'')+'">';
+    html += '<tr style="border-bottom:1px solid rgba(var(--ink),0.04);'+(isSub?'opacity:0.75;':'')+'">';
     html += '<td style="padding:3px 6px;text-align:left;'+(isSub?'padding-left:20px;':'')+'"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+r.color+';vertical-align:middle;margin-right:5px;'+(isSub?'opacity:0.4;':'')+'"></span>'+r.label+'</td>';
     html += '<td style="padding:3px 6px;text-align:right;">'+invDisplay+' <span style="color:var(--muted);font-size:8px;">'+r.unit+'</span></td>';
     html += '<td style="padding:3px 6px;text-align:right;">'+n+' <span style="color:var(--muted);font-size:8px;">('+ann+'%)</span></td>';

@@ -115,7 +115,7 @@ export function renderSidebarAssetList() {
     }).join('');
     html += `<div class="sb-asset-group">
       <div class="sb-asset-group-hdr${collapsed ? ' is-collapsed' : ''}" data-group-type="_stationen">
-        <span class="sb-asset-group-icon" style="color:#66bb6a;">📋</span>
+        <span class="sb-asset-group-icon" style="color:var(--c-green);">📋</span>
         <span class="sb-asset-group-label">Stationen</span>
         <span class="sb-asset-group-count">${stationen.length}</span>
         <span class="sb-asset-group-chevron">▾</span>
@@ -168,7 +168,7 @@ export function renderSidebarAssetList() {
       const ausl  = e.auslastungPct || 0;
       const dot   = ausl < 80 ? '#4caf50' : ausl < 100 ? '#f9a825' : '#e53935';
       return `<div class="sb-asset-row" data-edge-idx="${idx}">
-        <span class="sb-asset-row-icon" style="background:#3a3a3a;color:#fdd835;font-size:11px;">━</span>
+        <span class="sb-asset-row-icon" style="background:var(--surface2);color:var(--c-amber);font-size:11px;">━</span>
         <span class="sb-asset-row-name">${esc(label)}${esc(lenStr)}</span>
         <span style="width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0;"></span>
       </div>`;
@@ -176,7 +176,7 @@ export function renderSidebarAssetList() {
     const collapsed = !!_groupCollapsed['_cables'];
     html += `<div class="sb-asset-group">
       <div class="sb-asset-group-hdr${collapsed ? ' is-collapsed' : ''}" data-group-type="_cables">
-        <span class="sb-asset-group-icon" style="color:#fdd835;">━</span>
+        <span class="sb-asset-group-icon" style="color:var(--c-amber);">━</span>
         <span class="sb-asset-group-label">Kabel</span>
         <span class="sb-asset-group-count">${edges.length}</span>
         <span class="sb-asset-group-chevron">▾</span>
@@ -352,7 +352,7 @@ function _windGebietZeichnenBlock() {
     <button class="ins-link-btn" onclick="toggleDrawWindGebiet()" style="margin:0;">
       ${drawing ? '✎ Zeichnen läuft … (ESC zum Abbrechen)' : has ? '↺ Windgebiet neu zeichnen' : '🗺 Eigenes Windgebiet zeichnen'}
     </button>
-    ${has ? `<button class="ins-link-btn" onclick="clearWindGebiet()" style="margin:0;color:#ef9a9a;">✕ löschen</button>` : ''}
+    ${has ? `<button class="ins-link-btn" onclick="clearWindGebiet()" style="margin:0;color:var(--c-red);">✕ löschen</button>` : ''}
   </div>
   <div style="font-size:8px;color:var(--muted);margin:-2px 0 6px;">
     ${has
@@ -372,10 +372,10 @@ function _windEignungsHinweis(asset) {
     return `<div style="font-size:9px;color:var(--muted);margin:-3px 0 4px;">Fläche wird berechnet …</div>`;
   }
   if (s.error === 'no-plangebiet') {
-    return `<div style="font-size:9px;color:#f9a825;margin:-3px 0 4px;">⚠ Kein Windgebiet/Plangebiet gezeichnet — Button oben nutzen oder im Gebiet-Tab „Plangebiet / Bereich zeichnen".</div>`;
+    return `<div style="font-size:9px;color:var(--c-orange);margin:-3px 0 4px;">⚠ Kein Windgebiet/Plangebiet gezeichnet — Button oben nutzen oder im Gebiet-Tab „Plangebiet / Bereich zeichnen".</div>`;
   }
   if (!s.cells || !s.cells.length) {
-    return `<div style="font-size:9px;color:#f9a825;margin:-3px 0 4px;">Keine geeignete Fläche gefunden — ${gebiet} zu klein für ${s.radiusM.toFixed(0)} m Mindestabstand.</div>`;
+    return `<div style="font-size:9px;color:var(--c-orange);margin:-3px 0 4px;">Keine geeignete Fläche gefunden — ${gebiet} zu klein für ${s.radiusM.toFixed(0)} m Mindestabstand.</div>`;
   }
   const ha = (s.areaM2 / 10000).toLocaleString('de-DE', { maximumFractionDigits: 2 });
   const trunc = s.truncated ? ' (Raster unvollständig — Wert ist Untergrenze)' : '';
@@ -387,12 +387,12 @@ function _windScenarioRow(s) {
   if (!s) return '';
   const gh = s.gesamthoeheM;
   const ghCol = gh <= 50 ? '#4caf50' : '#f9a825';
-  return `<div style="display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:6px 0;border-top:1px solid rgba(255,255,255,0.06);">
+  return `<div style="display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:6px 0;border-top:1px solid rgba(var(--ink),0.06);">
     <div style="font-size:10px;font-weight:700;color:var(--text);">${esc(s.label)}</div>
     <div style="font-size:10px;color:${ghCol};font-weight:700;">Gesamthöhe ${gh.toFixed(0)} m</div>
     <div style="font-size:9px;color:var(--muted);grid-column:1/3;">
       ${s.ratedKw.toFixed(0)} kW · Ø ${s.rotorDurchmesserM.toFixed(0)} m · Nabenhöhe ${s.nabenhoheM.toFixed(0)} m
-      &nbsp;→&nbsp; <span style="color:#4dd0e1;">${s.annualMWh.toLocaleString('de-DE',{maximumFractionDigits:0})} MWh/a</span>
+      &nbsp;→&nbsp; <span style="color:var(--c-teal);">${s.annualMWh.toLocaleString('de-DE',{maximumFractionDigits:0})} MWh/a</span>
       · ${s.volllaststundenH.toFixed(0)} Vlh
     </div>
   </div>`;
@@ -595,13 +595,13 @@ function buildPropsForm(asset) {
       );
       const hub = Math.max(0, res.ziel - res.tNet);
       const readout = `
-        <div style="margin-top:8px;padding:7px 9px;background:rgba(186,104,206,0.10);border-left:2px solid #ba68c8;border-radius:4px;font-size:10px;line-height:1.5;">
+        <div style="margin-top:8px;padding:7px 9px;background:rgba(186,104,206,0.10);border-left:2px solid var(--c-violet);border-radius:4px;font-size:10px;line-height:1.5;">
           <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">VL am Gebäude${geb?'':' (global)'}</span><span>${res.tVl.toFixed(0)} °C → nutzbar ${res.tNet.toFixed(0)} °C</span></div>
           <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Hub auf ${res.ziel.toFixed(0)} °C · Nacherw.-Anteil</span><span>${hub.toFixed(0)} K · ${(res.anteil*100).toFixed(0)} %</span></div>
           <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">El. Energie</span><span>${Math.round(res.qNachEl).toLocaleString('de-DE')} kWh/a</span></div>
           <div style="display:flex;justify-content:space-between;margin-top:3px;border-top:1px solid var(--border);padding-top:3px;">
-            <span style="font-weight:700;">El. Anschlussleistung</span><span style="font-weight:700;color:#ce93d8;font-size:13px;">${res.leistungKW.toFixed(1)} kW</span></div>
-          ${res.anteil <= 0 ? `<div style="color:#66bb6a;margin-top:3px;">✓ Netz-VL erreicht Zieltemperatur — keine Nacherwärmung nötig.</div>` : ''}
+            <span style="font-weight:700;">El. Anschlussleistung</span><span style="font-weight:700;color:var(--c-violet);font-size:13px;">${res.leistungKW.toFixed(1)} kW</span></div>
+          ${res.anteil <= 0 ? `<div style="color:var(--c-green);margin-top:3px;">✓ Netz-VL erreicht Zieltemperatur — keine Nacherwärmung nötig.</div>` : ''}
         </div>`;
       return eingabeSel + bedarfFields + geraetSel + copField + paramRow + readout;
     }
@@ -610,7 +610,7 @@ function buildPropsForm(asset) {
     case 'Geo':
     case 'FG': {
       const linked = asset.linkedErzeuger
-        ? `<div style="font-size:9px;color:#80cbc4;margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">🔗 Aus dem Erzeuger-Tab synchronisiert</div>`
+        ? `<div style="font-size:9px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">🔗 Aus dem Erzeuger-Tab synchronisiert</div>`
         : '';
       return linked + row2(
         numField(id, 'leistungThKW', 'Th. Leistung (kW)', 100, {props:p}),
@@ -655,9 +655,9 @@ function buildPropsForm(asset) {
           numField(id, 'leistungProPunktKW', 'kW / Punkt',     11,  {props:p})
         )}
         ${numField(id, 'gleichzeitigFaktor', 'Gleichzeitigkeitsfaktor (0–1)', 0.3, {props:p, step:0.05, min:0})}
-        <div style="padding:5px 8px;background:rgba(77,208,225,0.08);border-radius:4px;border-left:2px solid #4dd0e1;margin-top:6px;">
+        <div style="padding:5px 8px;background:rgba(77,208,225,0.08);border-radius:4px;border-left:2px solid var(--c-teal);margin-top:6px;">
           <div style="font-size:9px;color:var(--muted);">Gleichzeitige Spitzenlast</div>
-          <div style="font-size:13px;font-weight:700;color:#4dd0e1;" id="lade-peak-${id}">${pStd.toFixed(0)} kW</div>
+          <div style="font-size:13px;font-weight:700;color:var(--c-teal);" id="lade-peak-${id}">${pStd.toFixed(0)} kW</div>
         </div>
         <div class="ins-field-group" style="margin-top:8px;">
           <label class="ins-field-label">Drehung (°)</label>
@@ -680,7 +680,7 @@ function buildPropsForm(asset) {
       ) + row2(
         numField(id, 'tankKg',            'Tankinhalt (kg H₂)',       500, {props:p, step:10}),
         numField(id, 'druckBar',          'Speicherdruck (bar)',      300, {props:p, step:10})
-      ) + `<div style="padding:5px 8px;background:rgba(57,135,229,0.10);border-radius:4px;border-left:2px solid #3987e5;margin-top:6px;font-size:9.5px;color:var(--muted);line-height:1.5;">
+      ) + `<div style="padding:5px 8px;background:rgba(57,135,229,0.10);border-radius:4px;border-left:2px solid var(--c-blue);margin-top:6px;font-size:9.5px;color:var(--muted);line-height:1.5;">
           Tank ≈ <b style="color:var(--text);">${mwh.toLocaleString('de-DE', {maximumFractionDigits: 1})} MWh</b> H₂ (Hu) ≈ ${(mwh * 0.5).toLocaleString('de-DE', {maximumFractionDigits: 1})} MWh Strom über die Brennstoffzelle.
           Im Netz: Elektrolyseur ${ely} kW Bezug, Brennstoffzelle ${bz} kW Einspeisung.
           ${p.autarkieZiel ? `<br>Ausgelegt über PV-Analyse › Autarkieziel (${parseFloat(p.autarkieZiel) || 0} % je Stunde).` : '<br>Auslegung: PV-Analyse › Autarkieziel.'}</div>`;
@@ -696,14 +696,14 @@ function buildPropsForm(asset) {
 
     case 'Stromkessel': {
       const linked = asset.linkedErzeuger
-        ? `<div style="font-size:9px;color:#80cbc4;margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">🔗 Aus dem Erzeuger-Tab synchronisiert</div>`
+        ? `<div style="font-size:9px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">🔗 Aus dem Erzeuger-Tab synchronisiert</div>`
         : '';
       return linked + numField(id, 'leistungKW', 'El. Leistung (kW)', 200, {props:p});
     }
 
     case 'KWK': {
       const linked = asset.linkedErzeuger
-        ? `<div style="font-size:9px;color:#80cbc4;margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">🔗 Aus dem Erzeuger-Tab synchronisiert</div>`
+        ? `<div style="font-size:9px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">🔗 Aus dem Erzeuger-Tab synchronisiert</div>`
         : '';
       const brennstoff = p.brennstoff || 'Erdgas';
       return linked + row2(
@@ -728,7 +728,7 @@ function buildPropsForm(asset) {
       const y = computeWindYield({ vMean, k: wK, ratedKw, cutIn, ratedWind, cutOut, rotorDiameterM: rotorD });
       const rotorFlaeche = Math.PI * Math.pow(rotorD / 2, 2);
       const specWarn = y.spezFlaecheWm2 > 0 && (y.spezFlaecheWm2 < 150 || y.spezFlaecheWm2 > 500)
-        ? `<div style="font-size:9px;color:#f9a825;margin-top:4px;">⚠ Unübliches Verhältnis Leistung/Rotorfläche (${y.spezFlaecheWm2.toFixed(0)} W/m²) – Werte prüfen.</div>`
+        ? `<div style="font-size:9px;color:var(--c-orange);margin-top:4px;">⚠ Unübliches Verhältnis Leistung/Rotorfläche (${y.spezFlaecheWm2.toFixed(0)} W/m²) – Werte prüfen.</div>`
         : '';
       const zielJahresbedarfMWh = _liegenschaftJahresbedarfMWh();
       const maxRadiusM = _distanceToPlangebietM(asset.lat, asset.lng);
@@ -760,9 +760,9 @@ function buildPropsForm(asset) {
           numField(id, 'mittlereWindMs', 'Ø Windgeschw. Nabenhöhe (m/s)', 6.0, {props:p, step:0.1, min:0}),
           numField(id, 'weibullK',       'Weibull-Formfaktor k',          2.0, {props:p, step:0.1, min:1})
         )
-        + `<div class="ins-result-block" style="border-left-color:#4dd0e1;">
+        + `<div class="ins-result-block" style="border-left-color:var(--c-teal);">
             <div class="ins-result-label">Jahresertrag (geschätzt)</div>
-            <div class="ins-result-value" style="color:#4dd0e1;">${y.annualMWh.toLocaleString('de-DE',{maximumFractionDigits:1})} MWh/a</div>
+            <div class="ins-result-value" style="color:var(--c-teal);">${y.annualMWh.toLocaleString('de-DE',{maximumFractionDigits:1})} MWh/a</div>
             <div class="ins-result-sub">${y.volllaststundenH.toFixed(0)} Volllaststunden/a · Kapazitätsfaktor ${y.kapazitaetsfaktorPct.toFixed(0)} %</div>
             <div class="ins-result-sub">Spez. Flächenleistung: ${y.spezFlaecheWm2.toFixed(0)} W/m² (Rotorfläche ${rotorFlaeche.toFixed(0)} m²)</div>
           </div>`
@@ -780,7 +780,7 @@ function buildPropsForm(asset) {
         + `<div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 0;">Szenarien-Vergleich</div>`
         + `<div style="font-size:9px;color:var(--muted);margin:1px 0 2px;">Gleiche Windkennlinie &amp; spez. Flächenleistung wie oben — nur Größe/Höhe variiert.</div>`
         + _windScenarioRow(scen.scen50)
-        + (scen.scenBedarf ? _windScenarioRow(scen.scenBedarf) : `<div style="font-size:9px;color:var(--muted);padding:6px 0;border-top:1px solid rgba(255,255,255,0.06);">Bedarfsgerecht: ${bedarfHinweis}</div>`)
+        + (scen.scenBedarf ? _windScenarioRow(scen.scenBedarf) : `<div style="font-size:9px;color:var(--muted);padding:6px 0;border-top:1px solid rgba(var(--ink),0.06);">Bedarfsgerecht: ${bedarfHinweis}</div>`)
         + (scen.scenBedarf ? `<div style="font-size:9px;color:var(--muted);margin:-3px 0 4px;">${bedarfHinweis}</div>` : '')
         + _windScenarioRow(scen.scenMax)
         + `<div style="font-size:9px;color:var(--muted);margin:-3px 0 4px;">${flaechenHinweis}</div>`;
@@ -938,14 +938,14 @@ function _buildPvProfileSection(assetId) {
     <div class="ins-section-content" id="ins-sec-pvprofil">
       <canvas id="pv-profile-canvas-${assetId}"
         style="width:100%;height:64px;border-radius:4px;display:block;
-               background:rgba(255,255,255,0.04);margin-bottom:6px;"></canvas>
+               background:rgba(var(--ink),0.04);margin-bottom:6px;"></canvas>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:10px;">
         <div><div style="color:var(--muted);font-size:9px;">Jahresertrag</div>
              <div id="pv-prof-annual-${assetId}"
-               style="font-family:'DM Mono',monospace;color:#ffd54f;">—</div></div>
+               style="font-family:'DM Mono',monospace;color:var(--c-amber);">—</div></div>
         <div><div style="color:var(--muted);font-size:9px;">Spez. Ertrag</div>
              <div id="pv-prof-spez-${assetId}"
-               style="font-family:'DM Mono',monospace;color:#ffd54f;">—</div></div>
+               style="font-family:'DM Mono',monospace;color:var(--c-amber);">—</div></div>
         <div><div style="color:var(--muted);font-size:9px;">Ausrichtung</div>
              <div id="pv-prof-aus-${assetId}"
                style="font-family:'DM Mono',monospace;color:var(--text);">—</div></div>
@@ -1037,14 +1037,14 @@ function _buildWindProfileSection(assetId) {
     <div class="ins-section-content" id="ins-sec-windprofil">
       <canvas id="wind-profile-canvas-${assetId}"
         style="width:100%;height:64px;border-radius:4px;display:block;
-               background:rgba(255,255,255,0.04);margin-bottom:6px;"></canvas>
+               background:rgba(var(--ink),0.04);margin-bottom:6px;"></canvas>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:10px;">
         <div><div style="color:var(--muted);font-size:9px;">Jahresertrag</div>
              <div id="wind-prof-annual-${assetId}"
-               style="font-family:'DM Mono',monospace;color:#4dd0e1;">—</div></div>
+               style="font-family:'DM Mono',monospace;color:var(--c-teal);">—</div></div>
         <div><div style="color:var(--muted);font-size:9px;">Volllaststunden</div>
              <div id="wind-prof-vlh-${assetId}"
-               style="font-family:'DM Mono',monospace;color:#4dd0e1;">—</div></div>
+               style="font-family:'DM Mono',monospace;color:var(--c-teal);">—</div></div>
         <div><div style="color:var(--muted);font-size:9px;">Kapazitätsfaktor</div>
              <div id="wind-prof-kf-${assetId}"
                style="font-family:'DM Mono',monospace;color:var(--text);">—</div></div>
@@ -1052,7 +1052,7 @@ function _buildWindProfileSection(assetId) {
       <div style="font-size:9px;color:var(--muted);margin-top:4px;">${(() => {
         const s = getWindSiteData();
         return s
-          ? `<span style="color:#4dd0e1;">🌐 Reale ERA5-Windreihe ${s.profilJahr}</span> (Ø ${s.vMean100.toFixed(1)} m/s @ 100 m, auf Nabenhöhe extrapoliert, α ${s.alpha.toFixed(2)}). Wird für alle Analysen verwendet.`
+          ? `<span style="color:var(--c-teal);">🌐 Reale ERA5-Windreihe ${s.profilJahr}</span> (Ø ${s.vMean100.toFixed(1)} m/s @ 100 m, auf Nabenhöhe extrapoliert, α ${s.alpha.toFixed(2)}). Wird für alle Analysen verwendet.`
           : 'Synthetisch aus Weibull-Verteilung + Wind-Persistenz (AR(1)) — keine reale Wetterzeitreihe. Über die Windanalyse lassen sich echte Standortdaten (ERA5) laden.';
       })()}</div>
     </div>`;
@@ -1144,7 +1144,7 @@ function _buildLadeZeitprofilSection(id) {
       </div>
       <canvas id="lade-zp-canvas-${id}"
         style="width:100%;height:80px;display:block;border-radius:4px;
-               background:rgba(255,255,255,0.03);cursor:crosshair;
+               background:rgba(var(--ink),0.03);cursor:crosshair;
                margin-top:2px;touch-action:none;"></canvas>
       <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:9px;color:var(--muted);">
         <span id="lade-zp-avg-${id}">Ø —</span>
@@ -1359,10 +1359,10 @@ function renderInspector(asset) {
       <button onclick="toggleVormerkenAsset('${asset.id}')" title="${asset.feldVorgemerkt ? 'Vorgemerkt – klicken zum Entfernen' : 'Für Feldbegehung vormerken'}" style="background:none;border:none;cursor:pointer;margin-left:auto;font-size:${asset.feldVorgemerkt ? 16 : 13}px;color:${asset.feldVorgemerkt ? '#f59e0b' : '#888'};padding:0 6px;line-height:1;">★</button>
       ${SS_STATIONS_TYPEN.has(asset.type) && ssIstStationsGebaeude(asset.buildingId, ASSETS.items) ? `<button data-click="openStationsSteckbriefFuerAsset('${asset.id}')" title="Stations-Steckbrief: die ganze Station (Schaltanlage, Trafos, NSHV) auf einem Blatt"
         style="background:rgba(0,0,0,0.25);border:1px solid rgba(102,187,106,0.55);border-radius:4px;
-        cursor:pointer;color:#a5d6a7;padding:2px 7px;line-height:1;font-size:12px;margin-right:4px;">📋 Station</button>` : ''}
+        cursor:pointer;color:var(--c-green);padding:2px 7px;line-height:1;font-size:12px;margin-right:4px;">📋 Station</button>` : ''}
       <button onclick="openKnotenanalyseFor('${asset.id}')" title="Knotenpunkt-Analyse öffnen"
         style="background:rgba(0,0,0,0.25);border:1px solid rgba(79,195,247,0.45);border-radius:4px;
-        cursor:pointer;color:#4fc3f7;padding:2px 7px;line-height:1;font-size:13px;margin-right:4px;">📈</button>
+        cursor:pointer;color:var(--c-blue);padding:2px 7px;line-height:1;font-size:13px;margin-right:4px;">📈</button>
     </div>
     <div class="asset-ins-body">
       <div class="ins-field-group">
@@ -1682,12 +1682,12 @@ function _renderAssetFelddaten(a) {
   const labels = { offen: '📋 Offen', besucht: '👁 Besucht', erledigt: '✅ Erledigt' };
   const statusLabel = labels[a.feldStatus] || '';
   const notizHtml = a.feldNotizen
-    ? '<div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#1a1a2e;white-space:pre-wrap;margin-bottom:6px;">' + esc(a.feldNotizen) + '</div>'
+    ? '<div style="background:#fffbeb;border-left:3px solid var(--c-orange);padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#1a1a2e;white-space:pre-wrap;margin-bottom:6px;">' + esc(a.feldNotizen) + '</div>'
     : '';
   const fotoHtml = (a.feldFotos || []).map(foto =>
-    '<img src="' + foto.dataUrl + '" title="' + esc(foto.name) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #2a3352;" onclick="openImageLightbox(this.src,this.title)">'
+    '<img src="' + foto.dataUrl + '" title="' + esc(foto.name) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--c-blue);" onclick="openImageLightbox(this.src,this.title)">'
   ).join('');
-  return '<div style="margin:8px 0;padding:8px 10px;background:var(--surface2,#1e2433);border-radius:8px;border:1px solid #2a3352;">'
+  return '<div style="margin:8px 0;padding:8px 10px;background:var(--surface2,var(--surface2));border-radius:8px;border:1px solid var(--c-blue);">'
     + '<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:4px;">📱 FELDDATEN' + (statusLabel ? ' · ' + statusLabel : '') + '</div>'
     + notizHtml
     + (fotoHtml ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">' + fotoHtml + '</div>' : '')

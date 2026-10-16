@@ -251,7 +251,7 @@ export function renderFFPanel() {
       <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-family:'DM Mono',monospace;">
         <span style="color:var(--muted)">Fläche</span><span style="color:var(--text)">${fl}</span>
         ${ff._pvModCount ? `<span style="color:var(--muted)">Module</span><span style="color:var(--text)">${ff._pvModCount.toLocaleString('de-DE')}</span>` : ''}
-        <span style="color:var(--muted)">Leistung</span><span style="color:#ffd54f;">${kwp.toFixed(1)} kWp</span>
+        <span style="color:var(--muted)">Leistung</span><span style="color:var(--c-amber);">${kwp.toFixed(1)} kWp</span>
       </div>
     </div>`;
   }).join('');
@@ -528,7 +528,7 @@ export function redrawErzeugerIcons() {
     const title = `${label}${lk > 0 ? ' · ' + lk + ' kW' : ''} · Priorität ${i + 1} · Klicken & auf anderen ziehen zum Umsortieren`;
     return `<div data-mokey="${key}" class="mo-icon-wrap"
       title="${title}"
-      style="position:relative;width:34px;height:34px;border-radius:7px;background:${c};display:flex;align-items:center;justify-content:center;${emoji ? 'font-size:17px;' : ''}box-shadow:0 2px 5px rgba(0,0,0,.55);border:1.5px solid rgba(255,255,255,0.2);cursor:grab;user-select:none;"
+      style="position:relative;width:34px;height:34px;border-radius:7px;background:${c};display:flex;align-items:center;justify-content:center;${emoji ? 'font-size:17px;' : ''}box-shadow:0 2px 5px rgba(0,0,0,.55);border:1.5px solid rgba(var(--ink),0.2);cursor:grab;user-select:none;"
       onmousedown="moMouseDown(event, '${key}')">
       ${icon}${badge(i + 1)}${arrows(key, i, ordered.length)}
     </div>`;
@@ -548,7 +548,7 @@ export function redrawErzeugerIcons() {
       ? `Spitzenlast-Backup (automatisch) · ${agk.leistungKw} kW · ${agk.deckungPct.toFixed(1)} % · ${Math.round(agk.waermeMwh).toLocaleString('de-DE')} MWh/a · Priorität ${prio}`
       : `Spitzenlast-Backup (automatisch) · Priorität ${prio} · Grundlagen berechnen für Details`;
     autoGkIcon = `<div title="${tip}"
-      style="position:relative;width:34px;height:34px;border-radius:7px;background:#78909c;display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 2px 5px rgba(0,0,0,.55);border:1.5px dashed rgba(255,255,255,0.5);cursor:default;opacity:0.85;">
+      style="position:relative;width:34px;height:34px;border-radius:7px;background:#78909c;display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 2px 5px rgba(0,0,0,.55);border:1.5px dashed rgba(var(--ink),0.5);cursor:default;opacity:0.85;">
       🔥${badge(prio)}
     </div>`;
   }
@@ -556,7 +556,7 @@ export function redrawErzeugerIcons() {
   // Container nur ausblenden wenn weder konfigurierte Erzeuger noch Auto-GK
   if (!icons && !autoGkIcon) { el.innerHTML = ''; return; }
 
-  el.innerHTML = `<div style="display:flex;gap:5px;background:rgba(18,18,18,0.72);padding:6px 8px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);backdrop-filter:blur(4px);pointer-events:auto;" title="Wärmeerzeuger · Klicken &amp; ziehen zum Umsortieren (Priorität 1 = Grundlast)">${icons}${autoGkIcon}</div>`;
+  el.innerHTML = `<div style="display:flex;gap:5px;background:var(--surface);padding:6px 8px;border-radius:10px;border:1px solid rgba(var(--ink),0.1);backdrop-filter:blur(4px);pointer-events:auto;" title="Wärmeerzeuger · Klicken &amp; ziehen zum Umsortieren (Priorität 1 = Grundlast)">${icons}${autoGkIcon}</div>`;
 }
 // ── Erzeuger-Klick-Popup ─────────────────────────────────────────────────────
 export let _epKey = null;
@@ -949,7 +949,7 @@ export function redrawPellets() {
   L.rectangle([sw, ne], { color:'#e65100', weight:2, fillColor:'#e65100', fillOpacity:0.2, dashArray:'6,4' })
     .bindTooltip(`Pellettlager · ${lagerFlaeche.toFixed(0)} m²`, {sticky:true})
     .addTo(pelletsLayerGroup);
-  const pIcon = L.divIcon({ className:'', html:'<div style="width:22px;height:22px;background:rgba(230,81,0,0.35);border:2px solid #e65100;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;font-size:12px;">🌾</div>', iconSize:[22,22], iconAnchor:[11,11] });
+  const pIcon = L.divIcon({ className:'', html:'<div style="width:22px;height:22px;background:rgba(230,81,0,0.35);border:2px solid var(--c-orange);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;font-size:12px;">🌾</div>', iconSize:[22,22], iconAnchor:[11,11] });
   L.marker(center, { draggable:true, icon:pIcon }).addTo(pelletsLayerGroup)
     .on('dragend', function() { pelletsKessel.lat = this.getLatLng().lat; pelletsKessel.lng = this.getLatLng().lng; redrawPellets(); });
   redrawVerbindungslinien();
@@ -1079,7 +1079,7 @@ export function redrawHhs() {
   L.rectangle([sw, ne], { color:'#5d4037', weight:2, fillColor:'#5d4037', fillOpacity:0.2, dashArray:'6,4' })
     .bindTooltip(`HHS-Lager · ${lagerFlaeche.toFixed(0)} m²`, {sticky:true})
     .addTo(hhsLayerGroup);
-  const hIcon = L.divIcon({ className:'', html:'<div style="width:22px;height:22px;background:rgba(93,64,55,0.35);border:2px solid #5d4037;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;font-size:12px;">🪵</div>', iconSize:[22,22], iconAnchor:[11,11] });
+  const hIcon = L.divIcon({ className:'', html:'<div style="width:22px;height:22px;background:rgba(93,64,55,0.35);border:2px solid var(--c-red);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;font-size:12px;">🪵</div>', iconSize:[22,22], iconAnchor:[11,11] });
   L.marker(center, { draggable:true, icon:hIcon }).addTo(hhsLayerGroup)
     .on('dragend', function() { heizhackschnitzel.lat = this.getLatLng().lat; heizhackschnitzel.lng = this.getLatLng().lng; redrawHhs(); });
   redrawVerbindungslinien();
@@ -1174,7 +1174,7 @@ export function redrawFernwaerme() {
   if (!fernwaermeLayerGroup) setFernwaermeLayerGroup(L.layerGroup().addTo(map));
   fernwaermeLayerGroup.clearLayers();
   if (!window.fernwaerme || window.fernwaerme.lat == null) { redrawVerbindungslinien(); return; }
-  const fwIcon = L.divIcon({ className:'', html:'<div style="width:26px;height:26px;background:rgba(198,40,40,0.35);border:2px solid #c62828;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;font-size:14px;">🌡</div>', iconSize:[26,26], iconAnchor:[13,13] });
+  const fwIcon = L.divIcon({ className:'', html:'<div style="width:26px;height:26px;background:rgba(198,40,40,0.35);border:2px solid var(--c-red);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;font-size:14px;">🌡</div>', iconSize:[26,26], iconAnchor:[13,13] });
   L.marker(L.latLng(window.fernwaerme.lat, window.fernwaerme.lng), { draggable:true, icon:fwIcon, title:'Fernwärme-Einspeisepunkt' })
     .addTo(fernwaermeLayerGroup)
     .on('dragend', function() { window.fernwaerme.lat = this.getLatLng().lat; window.fernwaerme.lng = this.getLatLng().lng; redrawVerbindungslinien(); });

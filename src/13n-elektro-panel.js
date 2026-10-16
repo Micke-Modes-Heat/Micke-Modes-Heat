@@ -91,9 +91,9 @@ function _html() { return `
       background:var(--surface);border-radius:5px;border:1px solid rgba(255,213,79,0.2);">
       <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:10px;font-family:'DM Mono',monospace;">
         <span style="color:var(--muted);">Gesamt</span>
-        <span id="el-ff-total-kwp" style="color:#ffd54f;font-weight:600;text-align:right;">—</span>
+        <span id="el-ff-total-kwp" style="color:var(--c-amber);font-weight:600;text-align:right;">—</span>
         <span style="color:var(--muted);">Ertrag</span>
-        <span id="el-ff-total-mwh" style="color:#a5d6a7;font-weight:600;text-align:right;">—</span>
+        <span id="el-ff-total-mwh" style="color:var(--c-green);font-weight:600;text-align:right;">—</span>
       </div>
     </div>
   </div>

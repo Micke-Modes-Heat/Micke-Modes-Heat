@@ -242,7 +242,7 @@ export function _renderCompactRow(g, stats, isExpanded) {
       <span style="font-size:9px;color:var(--muted);max-width:82px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;" title="${escHtml(nutzungLabel)}">${escHtml(nutzungLabel)}</span>
       <span class="geb-compact-val geb-cv-waerme-${g.id}" style="color:var(--accent)">${waermeStr}</span>
       <span class="geb-compact-unit">MWh</span>
-      <span class="geb-compact-val geb-cv-hl-${g.id}" style="color:#f9a825">${hlStr}</span>
+      <span class="geb-compact-val geb-cv-hl-${g.id}" style="color:var(--c-orange)">${hlStr}</span>
       <span class="geb-compact-unit">kW</span>
       <div class="geb-badge ${badgeClass}" style="font-size:8px;padding:1px 3px;margin-left:auto;">${badgeText}</div>
       ${statusColor!=='transparent'?`<span style="width:5px;height:5px;border-radius:50%;background:${statusColor};flex-shrink:0;"></span>`:''}
@@ -409,10 +409,10 @@ function buildGebElektroSection(g) {
       // Kennzahl ersetzt den Status-Punkt wenn vorhanden
       let rightIndicator;
       if (a.type === 'Verbraucher' && a.props?.leistungKW != null) {
-        rightIndicator = `<span class="geb-elektro-metric" style="color:#4fc3f7;">${(+a.props.leistungKW).toLocaleString('de-DE',{maximumFractionDigits:1})} kW</span>`;
+        rightIndicator = `<span class="geb-elektro-metric" style="color:var(--c-blue);">${(+a.props.leistungKW).toLocaleString('de-DE',{maximumFractionDigits:1})} kW</span>`;
       } else if (a.type === 'PV' && a.props?.leistungKWp != null) {
         const modTxt = gebModCount ? `<span class="geb-elektro-metric" style="color:var(--muted);font-size:9px;margin-right:4px;">${gebModCount.toLocaleString('de-DE')} Mod.</span>` : '';
-        rightIndicator = `${modTxt}<span class="geb-elektro-metric" style="color:#ffd54f;">${(+a.props.leistungKWp).toLocaleString('de-DE',{maximumFractionDigits:1})} kWp</span>`;
+        rightIndicator = `${modTxt}<span class="geb-elektro-metric" style="color:var(--c-amber);">${(+a.props.leistungKWp).toLocaleString('de-DE',{maximumFractionDigits:1})} kWp</span>`;
       } else if (a.props?.leistungKVA != null) {
         rightIndicator = `<span class="geb-elektro-metric">${(+a.props.leistungKVA).toLocaleString('de-DE',{maximumFractionDigits:0})} kVA</span>`;
       } else {
@@ -498,11 +498,11 @@ function buildGebVerbraucherSection(g) {
     : autoKw != null ? '~' + autoKw + ' kW' : '—';
 
   return `
-    <div class="geb-dach-section" style="border-top-color:#4fc3f7;">
+    <div class="geb-dach-section" style="border-top-color:var(--c-blue);">
       <div class="geb-dach-hdr" data-click="toggleGebVerbr(${g.id})">
-        <span class="geb-dach-hdr-icon" style="color:#4fc3f7;">⚡</span>
+        <span class="geb-dach-hdr-icon" style="color:var(--c-blue);">⚡</span>
         <span class="geb-dach-hdr-label">Leistungsschätzung</span>
-        <span class="geb-dach-kwp-badge" id="geb-verbr-badge-${g.id}" style="color:#4fc3f7;">${badge}</span>
+        <span class="geb-dach-kwp-badge" id="geb-verbr-badge-${g.id}" style="color:var(--c-blue);">${badge}</span>
         <span class="geb-dach-chevron${isOpen ? '' : ' rotated'}">▾</span>
       </div>
       <div class="geb-dach-rows" id="geb-verbr-rows-${g.id}"${isOpen ? '' : ' style="display:none;"'}>
@@ -523,12 +523,12 @@ function buildGebVerbraucherSection(g) {
         </div>
         ${fl > 0
           ? `<div id="geb-verbr-formel-${g.id}" style="font-size:9px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;">
-               ↳ ${Math.round(fl)} m² × <a data-click="openElSlpManager(${g.id})" title="W/m²-Annahmen verwalten / Profile hinzufügen" style="color:#4fc3f7;cursor:pointer;text-decoration:underline dotted;">${wpm2} W/m²</a> ÷ 1000 = ${autoKw} kW (${slpTyp})
+               ↳ ${Math.round(fl)} m² × <a data-click="openElSlpManager(${g.id})" title="W/m²-Annahmen verwalten / Profile hinzufügen" style="color:var(--c-blue);cursor:pointer;text-decoration:underline dotted;">${wpm2} W/m²</a> ÷ 1000 = ${autoKw} kW (${slpTyp})
              </div>`
-          : `<div id="geb-verbr-formel-${g.id}" style="font-size:9px;color:rgba(249,168,37,.7);margin-top:2px;">↳ Keine Fläche — manuelle Eingabe (<a data-click="openElSlpManager(${g.id})" style="color:#4fc3f7;cursor:pointer;text-decoration:underline dotted;">W/m² verwalten</a>)</div>`}
+          : `<div id="geb-verbr-formel-${g.id}" style="font-size:9px;color:rgba(249,168,37,.7);margin-top:2px;">↳ Keine Fläche — manuelle Eingabe (<a data-click="openElSlpManager(${g.id})" style="color:var(--c-blue);cursor:pointer;text-decoration:underline dotted;">W/m² verwalten</a>)</div>`}
         ${verbr
           ? `<button class="btn-xs" data-click="overwriteVerbrAsset(${g.id})"
-               style="width:100%;margin-top:6px;display:flex;justify-content:center;gap:4px;border-color:#4fc3f7;color:#4fc3f7;">
+               style="width:100%;margin-top:6px;display:flex;justify-content:center;gap:4px;border-color:var(--c-blue);color:var(--c-blue);">
                ⚡ SLP + kW → Verbraucher-Asset überschreiben
              </button>`
           : `<div style="font-size:9px;color:rgba(249,168,37,.7);margin-top:5px;">⚠ Kein Verbraucher-Asset vorhanden</div>`}
@@ -559,7 +559,7 @@ window.updateGebVerbrSlp = function(gId, slpId) {
   // Formel-Zeile live nachziehen
   const formel = document.getElementById(`geb-verbr-formel-${gId}`);
   if (formel && fl > 0) {
-    formel.innerHTML = `↳ ${Math.round(fl)} m² × <a data-click="openElSlpManager(${gId})" title="W/m²-Annahmen verwalten / Profile hinzufügen" style="color:#4fc3f7;cursor:pointer;text-decoration:underline dotted;">${wpm2} W/m²</a> ÷ 1000 = ${autoKw} kW (${slpId})`;
+    formel.innerHTML = `↳ ${Math.round(fl)} m² × <a data-click="openElSlpManager(${gId})" title="W/m²-Annahmen verwalten / Profile hinzufügen" style="color:var(--c-blue);cursor:pointer;text-decoration:underline dotted;">${wpm2} W/m²</a> ÷ 1000 = ${autoKw} kW (${slpId})`;
   }
   // Badge live nachziehen (zeigt die aktuelle Schätzung)
   const badge = document.getElementById(`geb-verbr-badge-${gId}`);
@@ -799,14 +799,14 @@ export function pvuRender() {
     const act = (d.status === 'fehlt' || d.status === 'abweichend')
       ? `<button onclick="pvuFixOne(${d.id})" title="kWp übernehmen (Asset ggf. anlegen)"
            style="padding:1px 6px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:9px;
-                  border:1px solid #ffd54f;color:#ffd54f;background:rgba(255,213,79,.08);">übernehmen</button>`
+                  border:1px solid var(--c-amber);color:var(--c-amber);background:rgba(255,213,79,.08);">übernehmen</button>`
       : '';
     return `<div style="display:grid;grid-template-columns:1.4fr .5fr .6fr .6fr .9fr;gap:4px;align-items:center;
-         padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:10px;">
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;color:#cfd8dc;"
+         padding:3px 0;border-bottom:1px solid rgba(var(--ink),.05);font-size:10px;">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;color:var(--c-blue);"
             title="${d.name} — auf Karte zeigen" onclick="pvuFocus(${d.id})">${d.name}</span>
       <span style="text-align:right;color:var(--muted);">${d.mods || '—'}</span>
-      <span style="text-align:right;color:#ffd54f;">${d.hasBel ? d.drawn.toLocaleString('de-DE') : '—'}</span>
+      <span style="text-align:right;color:var(--c-amber);">${d.hasBel ? d.drawn.toLocaleString('de-DE') : '—'}</span>
       <span style="text-align:right;color:${d.assetKwp == null ? '#ef5350' : '#cfd8dc'};">${d.assetKwp == null ? '—' : d.assetKwp.toLocaleString('de-DE')}</span>
       <span style="text-align:right;color:${s.col};display:flex;gap:4px;justify-content:flex-end;align-items:center;">${s.txt}${act ? ' ' + act : ''}</span>
     </div>`;
@@ -815,32 +815,32 @@ export function pvuRender() {
   el.innerHTML = `
   <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:8px;
        display:grid;grid-template-columns:repeat(3,1fr);gap:4px;text-align:center;">
-    <div><div style="font-size:15px;font-weight:700;color:#ffd54f;">${sumDrawn.toFixed(0)}</div>
+    <div><div style="font-size:15px;font-weight:700;color:var(--c-amber);">${sumDrawn.toFixed(0)}</div>
          <div style="font-size:9px;color:var(--muted);">kWp gezeichnet</div></div>
-    <div><div style="font-size:15px;font-weight:700;color:#cfd8dc;">${sumAsset.toFixed(0)}</div>
+    <div><div style="font-size:15px;font-weight:700;color:var(--c-blue);">${sumAsset.toFixed(0)}</div>
          <div style="font-size:9px;color:var(--muted);">kWp in Assets</div></div>
     <div><div style="font-size:15px;font-weight:700;color:${offen.length ? '#ffa726' : '#66bb6a'};">${offen.length}</div>
          <div style="font-size:9px;color:var(--muted);">zu übernehmen</div></div>
   </div>
   ${offen.length ? `<button onclick="pvuUebernehmenAlle()"
       style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;
-             border:1px solid #ffd54f;color:#ffd54f;background:rgba(255,213,79,.08);margin-bottom:8px;">
+             border:1px solid var(--c-amber);color:var(--c-amber);background:rgba(255,213,79,.08);margin-bottom:8px;">
       ☀ Alle ${offen.length} übernehmen (fehlende Assets anlegen)</button>` : ''}
   ${ohneFl.length ? `<button onclick="pvuLoescheAssetsOhneFlaeche()"
       title="PV-Assets entfernen, denen keine gezeichnete Belegungsfläche zugrunde liegt"
       style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;
-             border:1px solid #ef5350;color:#ef5350;background:rgba(239,83,80,.06);margin-bottom:8px;">
+             border:1px solid var(--c-red);color:var(--c-red);background:rgba(239,83,80,.06);margin-bottom:8px;">
       🗑 ${ohneFl.length} PV-Asset(s) ohne Fläche löschen</button>` : ''}
   ${dach.length ? `
     <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px;">Dach-PV (${dach.length})</div>
-    <div style="display:grid;grid-template-columns:1.4fr .5fr .6fr .6fr .9fr;gap:4px;font-size:9px;color:var(--muted);padding-bottom:2px;border-bottom:1px solid rgba(255,255,255,.1);">
+    <div style="display:grid;grid-template-columns:1.4fr .5fr .6fr .6fr .9fr;gap:4px;font-size:9px;color:var(--muted);padding-bottom:2px;border-bottom:1px solid rgba(var(--ink),.1);">
       <span>Gebäude</span><span style="text-align:right;">Mod.</span><span style="text-align:right;">gez.</span><span style="text-align:right;">Asset</span><span style="text-align:right;">Status</span>
     </div>
     ${dach.map(rowHtml).join('')}` : '<div style="font-size:10px;color:var(--muted);">Keine Dach-PV-Flächen gezeichnet.</div>'}
   ${frei.length ? `
     <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:10px 0 2px;">Freiflächen-PV (${frei.length}) · Σ ${sumFrei.toFixed(0)} kWp</div>
-    ${frei.map(f => `<div style="display:flex;justify-content:space-between;font-size:10px;color:#cfd8dc;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.05);">
-      <span>${f.name}</span><span style="color:#ffd54f;">${f.kwp.toLocaleString('de-DE')} kWp · ${f.mods} Mod.</span></div>`).join('')}` : ''}
+    ${frei.map(f => `<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--c-blue);padding:2px 0;border-bottom:1px solid rgba(var(--ink),.05);">
+      <span>${f.name}</span><span style="color:var(--c-amber);">${f.kwp.toLocaleString('de-DE')} kWp · ${f.mods} Mod.</span></div>`).join('')}` : ''}
   <div style="font-size:9px;color:var(--muted);margin-top:8px;line-height:1.4;">
     „gezeichnet" = kWp aus den platzierten Modulen · „Asset" = aktueller Wert im PV-Asset (treibt alle Analysen).
     Abweichungen entstehen, wenn nach dem Zeichnen „kWp übernehmen" vergessen wurde.
@@ -1043,7 +1043,7 @@ function buildDachSection(g, opts = {}) {
     ? getAssetsForBuilding(g.id).find(a => a.type === 'PV')
     : null;
   const pvOverwriteBtn = (pvAsset && kwpKorr > 0) ? `
-    <button class="btn-xs" style="width:100%;margin-top:5px;display:flex;justify-content:center;gap:4px;border-color:#ffd54f;color:#ffd54f;"
+    <button class="btn-xs" style="width:100%;margin-top:5px;display:flex;justify-content:center;gap:4px;border-color:var(--c-amber);color:var(--c-amber);"
       data-click="overwritePvAsset(${g.id})">
       ☀ ${kwpKorr.toFixed(1)} kWp → PV-Asset überschreiben
     </button>` : '';
@@ -1070,7 +1070,7 @@ function buildDachSection(g, opts = {}) {
     <div style="display:flex;gap:4px;margin-top:6px;">
       <button class="btn-xs" style="flex:1;${modus==='pauschal'?'border-color:var(--accent);color:var(--accent);background:rgba(79,195,247,0.08);':''}"
         data-click="setGebPvModus(${g.id},'pauschal')">⊞ Pauschal</button>
-      <button class="btn-xs" style="flex:1;${modus==='flaechen'?'border-color:#ffd54f;color:#ffd54f;background:rgba(255,213,79,0.08);':''}"
+      <button class="btn-xs" style="flex:1;${modus==='flaechen'?'border-color:var(--c-amber);color:var(--c-amber);background:rgba(255,213,79,0.08);':''}"
         data-click="setGebPvModus(${g.id},'flaechen')">✎ Flächen zeichnen</button>
     </div>`;
 
@@ -1133,7 +1133,7 @@ function buildDachSection(g, opts = {}) {
             style="flex:1;cursor:pointer;accent-color:#ffd54f;height:4px;"
             oninput="this.nextElementSibling.textContent=this.value+'%'"
             data-change="updateGebPvFl(${g.id},'belegung',this.value)"/>
-          <span style="min-width:30px;text-align:right;font-size:11px;color:#ffd54f;font-weight:600;">${flBeleg}%</span>
+          <span style="min-width:30px;text-align:right;font-size:11px;color:var(--c-amber);font-weight:600;">${flBeleg}%</span>
         </div>
       </div>
       <div class="inp-group">
@@ -1143,7 +1143,7 @@ function buildDachSection(g, opts = {}) {
             style="flex:1;cursor:pointer;accent-color:#80deea;height:4px;"
             oninput="this.nextElementSibling.textContent=this.value+'°'"
             data-change="updateGebDach(${g.id},'dachNeigung',this.value)"/>
-          <span style="min-width:28px;text-align:right;font-size:11px;color:#80deea;font-weight:600;">${usedNei}°</span>
+          <span style="min-width:28px;text-align:right;font-size:11px;color:var(--c-teal);font-weight:600;">${usedNei}°</span>
         </div>
       </div>
       <div class="inp-group">
@@ -1153,7 +1153,7 @@ function buildDachSection(g, opts = {}) {
             style="flex:1;cursor:pointer;accent-color:#ef9a9a;height:4px;"
             oninput="this.nextElementSibling.textContent=this.value+'°'"
             data-change="updateGebDach(${g.id},'dachAzimut',this.value)"/>
-          <span style="min-width:28px;text-align:right;font-size:11px;color:#ef9a9a;font-weight:600;">${usedAz}°</span>
+          <span style="min-width:28px;text-align:right;font-size:11px;color:var(--c-red);font-weight:600;">${usedAz}°</span>
         </div>
       </div>
       ${isSattel ? `
@@ -1161,7 +1161,7 @@ function buildDachSection(g, opts = {}) {
         <button class="btn-xs" style="flex:1;" data-click="startGebFirstDraw(${g.id})" title="Firstlinie auf dem Satellitenbild nachzeichnen (2 Klicks) — nötig bei schiefen/asymmetrischen Grundrissen">📐 First neu zeichnen</button>
         ${g.pvRidgeOverride ? `<button class="btn-xs" data-click="resetGebFirst(${g.id})" title="First zurück auf automatische Mitte">↺</button>` : ''}
       </div>
-      ${g.pvRidgeOverride ? '<div style="font-size:9px;color:#ffd54f;">First manuell gesetzt.</div>' : ''}` : ''}
+      ${g.pvRidgeOverride ? '<div style="font-size:9px;color:var(--c-amber);">First manuell gesetzt.</div>' : ''}` : ''}
     </div>` : `
     <div style="font-size:9px;color:var(--muted);margin-top:6px;">Belegbare Dachflächen zeichnen (Satellit), Sperrflächen für Kamine/Gauben/Verschattung abziehen. Rand (0,3 m) bleibt frei; Ost-West-Aufständerung rechnet mit ~90 % Ertragsfaktor.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;">
@@ -1172,7 +1172,7 @@ function buildDachSection(g, opts = {}) {
             style="flex:1;cursor:pointer;accent-color:#ffd54f;height:4px;"
             oninput="this.nextElementSibling.textContent=this.value+'%'"
             data-change="updateGebPvFl(${g.id},'gcr',this.value)"/>
-          <span style="min-width:30px;text-align:right;font-size:11px;color:#ffd54f;font-weight:600;">${flGcr}%</span>
+          <span style="min-width:30px;text-align:right;font-size:11px;color:var(--c-amber);font-weight:600;">${flGcr}%</span>
         </div>
       </div>
       <div class="inp-group">
@@ -1195,17 +1195,17 @@ function buildDachSection(g, opts = {}) {
     <div class="geb-dach-kwp-row">
       <span>${modCount} Module</span><span>${netto.toFixed(0)} m²</span>
       <span>GCR</span><span style="font-weight:600;">${flGcr} %</span>
-      <span style="font-weight:600;">= PV</span><span style="color:#ffd54f;font-weight:600;">${kwpKorr.toFixed(1)} kWp</span>
+      <span style="font-weight:600;">= PV</span><span style="color:var(--c-amber);font-weight:600;">${kwpKorr.toFixed(1)} kWp</span>
     </div>
     ${pvOverwriteBtn}`) : '';
 
   const flaechenUI = `
     ${flaechenControls}
     <div style="display:flex;gap:4px;margin-top:5px;">
-      <button class="btn-xs" style="flex:1;border-color:#ffd54f;color:#ffd54f;" data-click="startGebPvDraw(${g.id},'belegung')">☀ + Belegungsfläche</button>
+      <button class="btn-xs" style="flex:1;border-color:var(--c-amber);color:var(--c-amber);" data-click="startGebPvDraw(${g.id},'belegung')">☀ + Belegungsfläche</button>
       <button class="btn-xs red" style="flex:1;" data-click="startGebPvDraw(${g.id},'sperr')">⛔ + Sperrfläche</button>
     </div>
-    <button class="btn-xs" style="width:100%;margin-top:4px;border-color:#ffd54f;color:#ffd54f;"
+    <button class="btn-xs" style="width:100%;margin-top:4px;border-color:var(--c-amber);color:var(--c-amber);"
       data-click="pvModusStartFuer(${g.id})"
       title="PV-Modus auf der Karte: Dach anklicken = erste Ecke, der Modus bleibt an — auch für die übrigen Gebäude">🗺 Im PV-Modus zeichnen</button>
     ${flList ? `<div style="margin-top:6px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">${flList}</div>` : '<div style="font-size:9px;color:var(--muted);margin-top:6px;text-align:center;">Noch keine Fläche gezeichnet.</div>'}
@@ -2169,7 +2169,7 @@ window.onPvModulChange = function() {
 };
 
 export function _gebLabelHtml(g) {
-  const pvBadge = g.pvAktiv ? '<span style="color:#ffd54f;font-size:9px;margin-left:3px;vertical-align:middle;">☀</span>' : '';
+  const pvBadge = g.pvAktiv ? '<span style="color:var(--c-amber);font-size:9px;margin-left:3px;vertical-align:middle;">☀</span>' : '';
   const nummerPrefix = g.gebaeudenummer ? escHtml(g.gebaeudenummer) + ' · ' : '';
   return nummerPrefix + escHtml(g.name) + pvBadge;
 }
@@ -2266,7 +2266,7 @@ export function renderGebPvPanel() {
   if (totalKwp > 0) {
     const mwha = totalKwp * pvSpez / 1000;
     summe.style.display = 'block';
-    summe.innerHTML = `<span style="color:var(--muted)">Gesamt aktiv</span><span style="color:#ffd54f;font-weight:bold;margin-left:auto;display:block;text-align:right;">${totalKwp.toFixed(1)} kWp · ${mwha.toFixed(0)} MWh/a</span>`;
+    summe.innerHTML = `<span style="color:var(--muted)">Gesamt aktiv</span><span style="color:var(--c-amber);font-weight:bold;margin-left:auto;display:block;text-align:right;">${totalKwp.toFixed(1)} kWp · ${mwha.toFixed(0)} MWh/a</span>`;
     summe.style.display = 'flex';
     summe.style.justifyContent = 'space-between';
     summe.style.alignItems = 'center';
@@ -2278,18 +2278,18 @@ export function renderGebPvPanel() {
 export function _renderExpandedPanel(g, stats) {
   const ausgeschlossen = isExcluded(g.id);
   let planItems = [];
-  if (g.baujahr) planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Neubau ab ${g.baujahr}</span><span style="cursor:pointer;color:#e53935" data-click="clearPlan(${g.id}, 'neubau')">✕</span></div>`);
+  if (g.baujahr) planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Neubau ab ${g.baujahr}</span><span style="cursor:pointer;color:var(--c-red)" data-click="clearPlan(${g.id}, 'neubau')">✕</span></div>`);
   if (g.sanierungen && g.sanierungen.length > 0) {
     g.sanierungen.forEach((s, idx) => {
-      planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Sanierung ${s.jahr}: ${s.zielSpez} kWh/m²a</span><span style="cursor:pointer;color:#e53935" data-click="clearPlan(${g.id}, 'sanierung', ${idx})">✕</span></div>`);
+      planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Sanierung ${s.jahr}: ${s.zielSpez} kWh/m²a</span><span style="cursor:pointer;color:var(--c-red)" data-click="clearPlan(${g.id}, 'sanierung', ${idx})">✕</span></div>`);
     });
   }
-  if (g.abrissjahr) planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Abriss im Jahr ${g.abrissjahr}</span><span style="cursor:pointer;color:#e53935" data-click="clearPlan(${g.id}, 'abriss')">✕</span></div>`);
+  if (g.abrissjahr) planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Abriss im Jahr ${g.abrissjahr}</span><span style="cursor:pointer;color:var(--c-red)" data-click="clearPlan(${g.id}, 'abriss')">✕</span></div>`);
 
   let infoLabel = '';
-  if(stats.status === 'geplant') infoLabel = '<div style="color:#f9a825;font-size:10px;margin-bottom:5px;">Geplant</div>';
-  else if(stats.status === 'abgerissen') infoLabel = '<div style="color:#e53935;font-size:10px;margin-bottom:5px;">Abgerissen</div>';
-  else if(stats.status === 'saniert') infoLabel = `<div style="color:#4caf50;font-size:10px;margin-bottom:5px;">Saniert (${stats.spez.toLocaleString('de-DE',{maximumFractionDigits:1})} kWh/m²a)</div>`;
+  if(stats.status === 'geplant') infoLabel = '<div style="color:var(--c-orange);font-size:10px;margin-bottom:5px;">Geplant</div>';
+  else if(stats.status === 'abgerissen') infoLabel = '<div style="color:var(--c-red);font-size:10px;margin-bottom:5px;">Abgerissen</div>';
+  else if(stats.status === 'saniert') infoLabel = `<div style="color:var(--c-green);font-size:10px;margin-bottom:5px;">Saniert (${stats.spez.toLocaleString('de-DE',{maximumFractionDigits:1})} kWh/m²a)</div>`;
   const sourceLabel = g.importSourceName
     ? `<div class="geb-import-source"><span style="background:${g.importSourceColor || 'var(--muted)'}"></span>Quelle: ${escHtml(g.importSourceName)}</div>`
     : '';
@@ -2304,7 +2304,7 @@ export function _renderExpandedPanel(g, stats) {
       const parts = [];
       if (sW) parts.push(`${sW.toLocaleString('de-DE')} MWh/a`);
       if (sH) parts.push(`${sH.toLocaleString('de-DE')} kW`);
-      netzwertHtml = `<div style="font-size:9px;color:#9fa8da;margin-top:3px;padding:2px 6px;background:rgba(63,81,181,0.12);border-radius:3px;border-left:2px solid #5c6bc0;">↑ Netzwert: ${parts.join(' · ')}</div>`;
+      netzwertHtml = `<div style="font-size:9px;color:var(--c-blue);margin-top:3px;padding:2px 6px;background:rgba(63,81,181,0.12);border-radius:3px;border-left:2px solid var(--c-blue);">↑ Netzwert: ${parts.join(' · ')}</div>`;
     }
   }
 
@@ -2337,7 +2337,7 @@ export function _renderExpandedPanel(g, stats) {
         <div class="inp-label">Spez. kWh/m²a (Bestand)</div>
         <input class="inp-field" type="number" placeholder="—" value="${escVal(g.spez)}"
           data-spez="${g.id}"
-          style="${g.flaeche && g.waerme ? 'color:#4caf50' : ''}"
+          style="${g.flaeche && g.waerme ? 'color:var(--c-green)' : ''}"
           data-input="updateField(${g.id},'spez',this.value)"/>
       </div>
       <div class="inp-group">
@@ -2350,7 +2350,7 @@ export function _renderExpandedPanel(g, stats) {
         <div class="inp-label">Spez. HL W/m² (Bestand)</div>
         <input class="inp-field" type="number" placeholder="—" value="${escVal(g.spezHeizlast)}"
           data-spezhl="${g.id}"
-          style="${g.flaeche && g.heizlast ? 'color:#4caf50' : ''}"
+          style="${g.flaeche && g.heizlast ? 'color:var(--c-green)' : ''}"
           data-input="updateField(${g.id},'spezHeizlast',this.value)"/>
       </div>
       <div class="inp-group">
@@ -2425,13 +2425,13 @@ export function _renderExpandedPanel(g, stats) {
         ${_mergeModus?.zielId === g.id ? '✓ Fertig' : '⧉ Zusammenfügen'}
       </button>` : ''}
       <button class="btn-xs" data-click="togglePlanPanel(${g.id})" title="Planung & Sanierung">🔧 Planen</button>
-      <button class="btn-xs" data-click="startNetzEdgeFrom(${g.id})" title="Leitung von diesem Gebäude zeichnen" style="border-color:#e53935;color:#e53935;">⛕+</button>
+      <button class="btn-xs" data-click="startNetzEdgeFrom(${g.id})" title="Leitung von diesem Gebäude zeichnen" style="border-color:var(--c-red);color:var(--c-red);">⛕+</button>
       ${netzEdges.some(e => e.u === g.id || e.v === g.id) ? `<button class="btn-xs red" data-click="abklemmenGebaeude(${g.id})" title="Alle Netzleitungen entfernen">⛕✕</button>` : ''}
       <button class="btn-xs" data-click="finishGebaeudeGrundrissEdit(); removeGebaeude(${g.id})" title="Löschen" style="margin-left:auto">&#10005;</button>
     </div>
     ${_formStatusHtml(g)}
     ${activeVariantId !== null ? `<div style="margin-top:5px;padding-top:5px;border-top:1px solid var(--border);">
-      <button class="btn-xs ${ausgeschlossen ? 'green' : ''}" style="${ausgeschlossen ? '' : 'border-color:#f9a825;color:#f9a825;'}" data-click="toggleAusschluss(${g.id})">
+      <button class="btn-xs ${ausgeschlossen ? 'green' : ''}" style="${ausgeschlossen ? '' : 'border-color:var(--c-orange);color:var(--c-orange);'}" data-click="toggleAusschluss(${g.id})">
         ${ausgeschlossen ? '↩ Wieder anschließen' : '⊗ In Variante abkoppeln'}
       </button>
     </div>` : ''}
@@ -2469,14 +2469,14 @@ function _renderFelddatenBlock(g) {
 
   const statusLabel = { offen:'📋 Offen', besucht:'👁 Besucht', erledigt:'✅ Erledigt' }[g.feldStatus] || '';
   const notizHtml = g.feldNotizen
-    ? `<div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;white-space:pre-wrap;margin-bottom:6px;">${escHtml(g.feldNotizen)}</div>`
+    ? `<div style="background:#fffbeb;border-left:3px solid var(--c-orange);padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;white-space:pre-wrap;margin-bottom:6px;">${escHtml(g.feldNotizen)}</div>`
     : '';
   const fotoHtml = (g.feldFotos || []).map(foto =>
     `<img src="${foto.dataUrl}" title="${escHtml(foto.name)}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;" onclick="openImageLightbox(this.src,this.title)">`
   ).join('');
 
   return `
-  <div style="margin:6px 0 2px;padding:6px 8px;background:var(--surface2,#1e2433);border-radius:8px;border:1px solid #2a3352;">
+  <div style="margin:6px 0 2px;padding:6px 8px;background:var(--surface2,var(--surface2));border-radius:8px;border:1px solid var(--c-blue);">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:10px;font-weight:700;color:var(--muted);">
       📱 FELDDATEN ${statusLabel ? '· ' + statusLabel : ''}
     </div>
@@ -2511,7 +2511,7 @@ function _edgeHandleIcon() {
     className: '',
     iconSize: [14, 14],
     iconAnchor: [7, 7],
-    html: '<span style="display:block;width:8px;height:8px;margin:3px;border-radius:50%;background:#eaf7ff;border:1px solid #4fc3f7;box-shadow:0 1px 4px rgba(0,0,0,.55);opacity:.82;"></span>',
+    html: '<span style="display:block;width:8px;height:8px;margin:3px;border-radius:50%;background:#eaf7ff;border:1px solid var(--c-blue);box-shadow:0 1px 4px rgba(0,0,0,.55);opacity:.82;"></span>',
   });
 }
 
@@ -2520,7 +2520,7 @@ function _cornerHandleIcon() {
     className: '',
     iconSize: [14, 14],
     iconAnchor: [7, 7],
-    html: '<span style="display:block;width:7px;height:7px;margin:3px;border-radius:2px;background:#fff4cf;border:1px solid #f4b942;box-shadow:0 1px 4px rgba(0,0,0,.55);opacity:.88;"></span>',
+    html: '<span style="display:block;width:7px;height:7px;margin:3px;border-radius:2px;background:#fff4cf;border:1px solid var(--c-amber);box-shadow:0 1px 4px rgba(0,0,0,.55);opacity:.88;"></span>',
   });
 }
 
@@ -2529,7 +2529,7 @@ function _moveHandleIcon() {
     className: '',
     iconSize: [24, 24],
     iconAnchor: [12, 12],
-    html: '<span style="display:grid;place-items:center;width:18px;height:18px;margin:3px;border-radius:50%;background:#17344a;border:1px solid #7dd3fc;color:#eaf7ff;box-shadow:0 1px 5px rgba(0,0,0,.6);font:700 13px/1 sans-serif;opacity:.9;">✥</span>',
+    html: '<span style="display:grid;place-items:center;width:18px;height:18px;margin:3px;border-radius:50%;background:var(--hover);border:1px solid var(--c-blue);color:var(--c-blue);box-shadow:0 1px 5px rgba(0,0,0,.6);font:700 13px/1 sans-serif;opacity:.9;">✥</span>',
   });
 }
 
@@ -2538,7 +2538,7 @@ function _rotateHandleIcon() {
     className: '',
     iconSize: [24, 24],
     iconAnchor: [12, 12],
-    html: '<span style="display:grid;place-items:center;width:18px;height:18px;margin:3px;border-radius:50%;background:#3a2a14;border:1px solid #f4b942;color:#fff4cf;box-shadow:0 1px 5px rgba(0,0,0,.6);font:700 13px/1 sans-serif;opacity:.92;cursor:grab;">↻</span>',
+    html: '<span style="display:grid;place-items:center;width:18px;height:18px;margin:3px;border-radius:50%;background:var(--hover);border:1px solid var(--c-amber);color:var(--c-amber);box-shadow:0 1px 5px rgba(0,0,0,.6);font:700 13px/1 sans-serif;opacity:.92;cursor:grab;">↻</span>',
   });
 }
 
@@ -4622,7 +4622,7 @@ function _applyProjectData(project) {
               let tt = '<b>' + g.name + '</b> (Strom)';
               if (n && n.peakLoadKw) tt += '<br>Last: ' + n.peakLoadKw.toFixed(1) + ' kW';
               if (n && n.annualMwh) tt += '<br>Verbrauch: ' + n.annualMwh.toFixed(1) + ' MWh/a';
-              if (n && n.isProducer) tt += '<br><span style="color:#66bb6a">Einspeiser (PV)</span>';
+              if (n && n.isProducer) tt += '<br><span style="color:var(--c-green)">Einspeiser (PV)</span>';
               return tt;
             }, { sticky: true, className: 'geb-tooltip' });
             gebMarker.on('click', function() { stromNodeClick(g.id); });
@@ -4850,7 +4850,7 @@ export function showHint(msg, duration){
 export function hideHint(){clearTimeout(_hintTimer);document.getElementById('hint').classList.add('hidden');}
 
 export const sty=document.createElement('style');
-sty.textContent=`.geb-tooltip{background:#0f1117;border:1px solid #2a3050;color:#e8eaf0;font-family:'DM Sans',sans-serif;font-size:12px;padding:5px 8px;border-radius:7px;box-shadow:0 6px 24px rgba(0,0,0,.6);font-weight:normal;line-height:1.5;}.geb-tooltip .leaflet-tooltip-tip{display:none;}.geb-form-aktiv,.geb-form-aktiv .leaflet-interactive{cursor:crosshair!important;}`;
+sty.textContent=`.geb-tooltip{background:var(--surface);border:1px solid var(--c-blue);color:var(--c-blue);font-family:'DM Sans',sans-serif;font-size:12px;padding:5px 8px;border-radius:7px;box-shadow:0 6px 24px rgba(0,0,0,.6);font-weight:normal;line-height:1.5;}.geb-tooltip .leaflet-tooltip-tip{display:none;}.geb-form-aktiv,.geb-form-aktiv .leaflet-interactive{cursor:crosshair!important;}`;
 document.head.appendChild(sty);
 
 export let dashOffset = 0;

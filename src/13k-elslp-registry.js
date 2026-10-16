@@ -76,7 +76,7 @@ export function showElSlpModal(onClose) {
         <td style="text-align:right;">
           <input class="aw-cfg-input elslp-wpm2" type="number"
             data-slpid="${esc(p.id)}" value="${wpm2}" min="0.1" max="9999" step="0.5"
-            style="width:60px;${changed?'border-color:#f9a825;':''}"
+            style="width:60px;${changed?'border-color:var(--c-orange);':''}"
             title="${changed ? 'Geändert (Standard: '+p.wpm2+' W/m²)' : ''}">
         </td>
         <td style="text-align:center;">

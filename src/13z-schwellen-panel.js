@@ -58,7 +58,7 @@ function _ensurePanel() {
   panel.style.cssText = 'top:70px;min-width:600px;max-width:860px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
   panel.innerHTML = `
     <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID}')">
-      <span style="color:#4dd0e1;font-size:12px;font-weight:600;">🪜 Schwellentreppe</span>
+      <span style="color:var(--c-teal);font-size:12px;font-weight:600;">🪜 Schwellentreppe</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
             data-click="schwellenPanelToggle()">✕</span>
@@ -130,8 +130,8 @@ export function schwellenPanelRender() {
         werden — das baut das Stromnetz jedes Mal neu auf.
         <div style="margin-top:7px;">
           <button data-click="schwellenAnalyseStarten()"
-            style="padding:4px 10px;border-radius:5px;border:1px solid #4dd0e1;background:transparent;
-                   color:#4dd0e1;font-family:inherit;font-size:10px;cursor:pointer;">
+            style="padding:4px 10px;border-radius:5px;border:1px solid var(--c-teal);background:transparent;
+                   color:var(--c-teal);font-family:inherit;font-size:10px;cursor:pointer;">
             🪜 Analyse starten</button>
         </div>
       </div>`;
@@ -155,8 +155,8 @@ function _kopf(napLimit) {
   return `
   <div style="display:flex;align-items:center;gap:8px;margin:2px 0 10px;">
     <button data-click="schwellenAnalyseStarten()"
-      style="padding:5px 10px;border-radius:5px;border:1px solid #4dd0e1;background:transparent;
-             color:#4dd0e1;font-family:inherit;font-size:10px;cursor:pointer;">↻ Neu rechnen</button>
+      style="padding:5px 10px;border-radius:5px;border:1px solid var(--c-teal);background:transparent;
+             color:var(--c-teal);font-family:inherit;font-size:10px;cursor:pointer;">↻ Neu rechnen</button>
     <span style="margin-left:auto;font-size:10px;color:${napLimit ? 'var(--muted)' : '#f9a825'};">
       ${napLimit
         ? `NAP-Limit ${Math.round(napLimit)} kW`
@@ -235,7 +235,7 @@ function _fussnote() {
     Alternative ist, unter der Schwelle zu bleiben und zu stückeln.
     <br>„Günstigste" heißt allein Investition — Betrieb, Redundanz und
     Genehmigungsaufwand stehen hier nicht drin.
-    <br><b style="color:#f9a825;">„Im Rahmen" heißt nicht „nichts zu tun":</b>
+    <br><b style="color:var(--c-orange);">„Im Rahmen" heißt nicht „nichts zu tun":</b>
     geprüft sind hier nur Trafos und Einspeisepunkt. Strombelastbarkeit und
     Spannungsfall der einzelnen Kabel findet erst die Vertiefung (🔬) über den
     zeitlichen Engpass-Verlauf.

@@ -668,23 +668,23 @@ export function buildTooltip(g){
   const stats = getComputedStats(g, globalYear);
   const lines=[`<span style="font-weight:normal;color:var(--accent)">${escHtml(g.name)}</span>`];
 
-  if (stats.status === 'geplant') lines.push(`<span style="color:#f9a825;font-size:10px">Geplanter Neubau (${g.baujahr})</span>`);
-  if (stats.status === 'abgerissen') lines.push(`<span style="color:#e53935;font-size:10px">Abgerissen (${g.abrissjahr})</span>`);
-  if (stats.status === 'saniert') lines.push(`<span style="color:#4caf50;font-size:10px">Saniert</span>`);
-  if(g.fromOsm) lines.push(`<span style="color:#ce93d8;font-size:10px">● OSM</span>`);
+  if (stats.status === 'geplant') lines.push(`<span style="color:var(--c-orange);font-size:10px">Geplanter Neubau (${g.baujahr})</span>`);
+  if (stats.status === 'abgerissen') lines.push(`<span style="color:var(--c-red);font-size:10px">Abgerissen (${g.abrissjahr})</span>`);
+  if (stats.status === 'saniert') lines.push(`<span style="color:var(--c-green);font-size:10px">Saniert</span>`);
+  if(g.fromOsm) lines.push(`<span style="color:var(--c-violet);font-size:10px">● OSM</span>`);
 
   if (stats.status !== 'geplant' && stats.status !== 'abgerissen') {
     if (window.currentMode === 'strom') {
       // ── Strom-Modus: elektrische Kennwerte ───────────────────────────────
       const fl = parseFloat(g.flaeche) || 0;
       if (g.elMwh > 0) {
-        lines.push(`⚡ Strom: <span style="font-weight:normal;color:#ffd54f">${g.elMwh.toLocaleString('de-DE',{maximumFractionDigits:1})} MWh/a</span>`);
+        lines.push(`⚡ Strom: <span style="font-weight:normal;color:var(--c-amber)">${g.elMwh.toLocaleString('de-DE',{maximumFractionDigits:1})} MWh/a</span>`);
         if (fl > 0) {
           const spezEl = g.elMwh * 1000 / fl;
           lines.push(`Spez.: <span style="font-weight:normal">${spezEl.toLocaleString('de-DE',{maximumFractionDigits:0})} kWh/m²a</span>`);
         }
       } else {
-        lines.push(`<i style="color:#666">Kein Stromlastgang definiert</i>`);
+        lines.push(`<i style="color:var(--faint)">Kein Stromlastgang definiert</i>`);
         if (fl > 0) lines.push(`Fläche: <span style="font-weight:normal">${fl.toLocaleString('de-DE',{maximumFractionDigits:0})} m²</span>`);
       }
       // WP-Strom-Anteil aus Dispatch (falls vorhanden)
@@ -696,7 +696,7 @@ export function buildTooltip(g){
         const gesamtFlaeche = gebaeude.reduce((s,gb)=>s+(parseFloat(gb.flaeche)||0),0);
         if (gesamtFlaeche > 0 && fl > 0) {
           const wpAnteil = wpMwhTotal * fl / gesamtFlaeche;
-          lines.push(`davon WP: <span style="font-weight:normal;color:#ffd54f">${wpAnteil.toLocaleString('de-DE',{maximumFractionDigits:1})} MWh/a</span>`);
+          lines.push(`davon WP: <span style="font-weight:normal;color:var(--c-amber)">${wpAnteil.toLocaleString('de-DE',{maximumFractionDigits:1})} MWh/a</span>`);
         }
       }
     } else {
@@ -705,10 +705,10 @@ export function buildTooltip(g){
       if(stats.spez)     lines.push(`Spez.: <span style="font-weight:normal">${stats.spez.toLocaleString('de-DE',{maximumFractionDigits:1})} kWh/m²a</span>`);
       if(stats.heizlast) lines.push(`Heizlast: <span style="font-weight:normal">${stats.heizlast.toLocaleString('de-DE',{maximumFractionDigits:1})} kW</span>`);
       if(stats.spezHeizlast) lines.push(`Spez. HL: <span style="font-weight:normal">${stats.spezHeizlast.toLocaleString('de-DE',{maximumFractionDigits:1})} W/m²</span>`);
-      if(!stats.waerme&&!stats.spez&&!stats.heizlast) lines.push(`<i style="color:#666">Noch keine Werte</i>`);
+      if(!stats.waerme&&!stats.spez&&!stats.heizlast) lines.push(`<i style="color:var(--faint)">Noch keine Werte</i>`);
       if (g.tempIn !== undefined && g.tempIn !== null) {
         lines.push(`<div style="border-top:1px solid var(--border); margin:4px 0; padding-top:4px;"></div>`);
-        lines.push(`Netz-Ankunft: <span style="font-weight:normal; color:#e53935">${g.tempIn.toFixed(1)} °C</span>`);
+        lines.push(`Netz-Ankunft: <span style="font-weight:normal; color:var(--c-red)">${g.tempIn.toFixed(1)} °C</span>`);
       }
       if (g.netzVerlustKW !== null && g.netzVerlustKW !== undefined) {
         const ratioCol = g.netzVerlustRatioPct < 5 ? '#4caf50' : g.netzVerlustRatioPct < 10 ? '#f9a825' : '#e53935';
@@ -2656,7 +2656,7 @@ export function redrawLwWp() {
   // Die Fläche skaliert automatisch aus dem Platzbedarf; manuelle Maße weiterhin
   // über die Felder „Länge/Breite manuell" im LW-WP-Panel.
   // Hauptmarker (Gerät verschieben) — groß genug um auch ohne Zoom greifbar zu sein
-  const wpIcon = L.divIcon({ className: '', html: '<div style="width:32px;height:32px;background:rgba(56,142,60,0.5);border:2px solid #66bb6a;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;box-shadow:0 0 8px rgba(102,187,106,0.5);">' + windSvg('#c8e6c9',17,14) + '</div>', iconSize: [32,32], iconAnchor: [16,16] });
+  const wpIcon = L.divIcon({ className: '', html: '<div style="width:32px;height:32px;background:rgba(56,142,60,0.5);border:2px solid var(--c-green);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;box-shadow:0 0 8px rgba(102,187,106,0.5);">' + windSvg('#c8e6c9',17,14) + '</div>', iconSize: [32,32], iconAnchor: [16,16] });
   const marker = L.marker(pt, { draggable: true, icon: wpIcon, title: 'Luft-Wasser-WP verschieben', zIndexOffset: 3000 }).addTo(window.lwWpLayerGroup);
   marker.on('dragend', function() {
     window.lwWp.lat = marker.getLatLng().lat;

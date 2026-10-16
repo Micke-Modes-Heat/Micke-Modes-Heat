@@ -76,7 +76,7 @@ function _ensurePanel() {
   panel.style.cssText = 'top:64px;width:760px;max-width:calc(100vw - 40px);max-height:86vh;padding:0 16px 14px;overflow:auto;display:none;';
   panel.innerHTML = `
     <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID}')">
-      <span style="color:#4dd0e1;font-size:12px;font-weight:600;">🔌 Netzanschluss</span>
+      <span style="color:var(--c-teal);font-size:12px;font-weight:600;">🔌 Netzanschluss</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" data-click="naModulToggle()">✕</span>
     </div>
@@ -249,7 +249,7 @@ function _bausteinText(d) {
 function _ergebnisHtml(d) {
   const text = _bausteinText(d);
   return `<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Textbaustein (z. B. für das Gutachten im Anschluss an 5.1.1) — Grundlage: Variante ${esc(d.variante || '—')}, Zieljahr ${d.ziel.jahr}${d.uw ? `, Umspannwerk ${esc(d.uw.name || 'ohne Namen')}` : ', kein Umspannwerk gewählt'}.</div>
-    <div id="na-modul-baustein" style="font-size:11.5px;line-height:1.6;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:rgba(255,255,255,.02);user-select:text;">${esc(text)}</div>
+    <div id="na-modul-baustein" style="font-size:11.5px;line-height:1.6;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:rgba(var(--ink),.02);user-select:text;">${esc(text)}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center;">
       <button data-click="naBausteinKopieren()" style="${STIL_KNOPF}">📋 Text kopieren</button>
       <button data-click="naLeistungstabelleCsv()" style="${STIL_KNOPF}" title="Bezug und Einspeisung je Jahr mit den vereinbarten Grenzen — Anlage zur Netzanschlussanfrage">⤓ Leistungstabelle (CSV)</button>

@@ -83,7 +83,7 @@ function _grundlage(v) {
   </div>
   <div style="background:var(--surface2);border-radius:6px;padding:7px 9px;margin-bottom:12px;
               display:flex;align-items:center;gap:14px;font-size:10px;">
-    <span style="color:#4fc3f7;">🏛 Bestand + 📈 Entwicklung</span>
+    <span style="color:var(--c-blue);">🏛 Bestand + 📈 Entwicklung</span>
     <span style="color:var(--text);font-family:'DM Mono',monospace;">${v.gemeinsam.items} Anlagen · ${v.gemeinsam.edges} Kabel</span>
     <span style="margin-left:auto;color:var(--muted);font-size:9px;">
       gilt in allen Varianten gleich
@@ -104,7 +104,7 @@ function _spalten(v) {
       : '<span style="color:var(--muted);font-size:9px;">keine Planungsentscheidungen</span>';
 
     const aktivBadge = s.aktiv
-      ? '<span style="background:#66bb6a22;color:#66bb6a;border-radius:3px;padding:0 5px;font-size:9px;">aktiv</span>'
+      ? '<span style="background:#66bb6a22;color:var(--c-green);border-radius:3px;padding:0 5px;font-size:9px;">aktiv</span>'
       : `<span style="font-size:9px;color:var(--accent);cursor:pointer;"
               data-click="variantenVergleichAktivieren('${s.id ?? ''}')"
               title="Zu dieser Variante wechseln">→ wechseln</span>`;
@@ -147,8 +147,8 @@ function _netzwirkung() {
       baut das Stromnetz jedes Mal neu auf und dauert entsprechend.
       <div style="margin-top:6px;">
         <button id="vv-netz-btn" data-click="variantenVergleichNetzwirkung()"
-          style="padding:4px 10px;border-radius:5px;border:1px solid #ce93d8;background:transparent;
-                 color:#ce93d8;font-family:inherit;font-size:10px;cursor:pointer;">
+          style="padding:4px 10px;border-radius:5px;border:1px solid var(--c-violet);background:transparent;
+                 color:var(--c-violet);font-family:inherit;font-size:10px;cursor:pointer;">
           ⚡ Netzwirkung berechnen</button>
       </div>
     </div>`;

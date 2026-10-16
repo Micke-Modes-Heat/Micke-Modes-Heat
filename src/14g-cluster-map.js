@@ -51,10 +51,10 @@ export function clusterInit() {
   const panel = document.createElement('div');
   panel.id = 'cluster-panel';
   panel.className = 'float-panel';
-  panel.style.cssText = 'display:none;top:80px;min-width:340px;max-width:420px;max-height:82vh;padding:15px 18px 12px;overflow-y:auto;border:1px solid #90a4ae;';
+  panel.style.cssText = 'display:none;top:80px;min-width:340px;max-width:420px;max-height:82vh;padding:15px 18px 12px;overflow-y:auto;border:1px solid var(--c-blue);';
   panel.innerHTML = `
     <div class="panel-drag-handle" onmousedown="startDrag(event,'cluster-panel')">
-      <span style="color:#b0bec5;font-size:12px;font-weight:600;">🗺 Cluster / Ausbaustufen</span>
+      <span style="color:var(--c-blue);font-size:12px;font-weight:600;">🗺 Cluster / Ausbaustufen</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
             onclick="clusterTogglePanel()">✕</span>
@@ -137,7 +137,7 @@ export function clusterRenderPanel() {
                  style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 6px;font-size:12px;font-weight:600;">
           <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${n} Geb.</span>
           <span onclick="clusterLoeschenUI('${c.id}')" title="Cluster löschen"
-                style="cursor:pointer;color:#ef9a9a;font-size:13px;">✕</span>
+                style="cursor:pointer;color:var(--c-red);font-size:13px;">✕</span>
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);flex-wrap:wrap;">
           <label style="display:inline-flex;align-items:center;gap:4px;">Stufe
@@ -157,7 +157,7 @@ export function clusterRenderPanel() {
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:5px;">${typChecks}</div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
             <button class="ins-link-btn" style="margin:0;padding:2px 8px;" onclick="clusterPaketAnwenden('${c.id}')">→ auf Mitglieder anwenden</button>
-            ${nM ? `<button class="ins-link-btn" style="margin:0;padding:2px 6px;color:#ef9a9a;" onclick="clusterPaketEntfernen('${c.id}')">✕ Paket</button>` : ''}
+            ${nM ? `<button class="ins-link-btn" style="margin:0;padding:2px 6px;color:var(--c-red);" onclick="clusterPaketEntfernen('${c.id}')">✕ Paket</button>` : ''}
             ${nM ? `<button class="ins-link-btn" style="margin:0;padding:2px 6px;" onclick="clusterFahrplanOeffnen()">📅 Fahrplan</button>` : ''}
           </div>
         </div>
@@ -255,7 +255,7 @@ function _renderZeitMarker(map, zustand) {
       interactive: false,
       icon: L.divIcon({
         className: 'cluster-massn-marker',
-        html: `<div style="width:14px;height:14px;border-radius:50%;background:${farbe};color:#fff;font-size:9px;line-height:14px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.5);border:1px solid #fff;">✓</div>`,
+        html: `<div style="width:14px;height:14px;border-radius:50%;background:${farbe};color:#fff;font-size:9px;line-height:14px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.5);border:1px solid var(--border);">✓</div>`,
         iconSize: [14, 14], iconAnchor: [7, 7],
       }),
       zIndexOffset: 1400,
@@ -480,7 +480,7 @@ function _zeitBar() {
   if (!bar) {
     bar = document.createElement('div');
     bar.id = 'cluster-zeitreise';
-    bar.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:3200;background:var(--surface);border:1px solid #90a4ae;border-radius:10px;padding:10px 16px;box-shadow:0 8px 32px rgba(0,0,0,.6);min-width:420px;max-width:min(680px,92vw);display:none;';
+    bar.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:3200;background:var(--surface);border:1px solid var(--c-blue);border-radius:10px;padding:10px 16px;box-shadow:0 8px 32px rgba(0,0,0,.6);min-width:420px;max-width:min(680px,92vw);display:none;';
     document.body.appendChild(bar);
   }
   return bar;

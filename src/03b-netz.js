@@ -357,7 +357,7 @@ export function redrawGeo() {
   // Fläche skaliert automatisch aus der Sondenzahl; manuelle Maße über die Felder
   // „Länge/Breite manuell" im Geothermie-Panel.
   // Zentrum verschieben
-  const geoIcon = L.divIcon({ className: '', html: '<div style="width:26px;height:26px;background:rgba(121,85,72,0.35);border:2px solid #795548;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;">' + drillSvg('#a1887f',14,20) + '</div>', iconSize: [26,26], iconAnchor: [13,13] });
+  const geoIcon = L.divIcon({ className: '', html: '<div style="width:26px;height:26px;background:rgba(121,85,72,0.35);border:2px solid var(--c-orange);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;">' + drillSvg('#a1887f',14,20) + '</div>', iconSize: [26,26], iconAnchor: [13,13] });
   L.marker(center, { draggable: true, icon: geoIcon, zIndexOffset: 1000 }).addTo(window.geoLayerGroup)
     .on('dragend', function() { window.geoThermie.lat = this.getLatLng().lat; window.geoThermie.lng = this.getLatLng().lng; redrawGeo(); moveErzeugerElektroAsset('geo'); });
   if (!map.hasLayer(window.geoLayerGroup)) window.geoLayerGroup.addTo(map);
@@ -509,7 +509,7 @@ function _redrawEisSpeicher() {
   L.circle(center, { radius, color: '#4fc3f7', weight: 2, fillColor: '#b3e5fc', fillOpacity: .35, dashArray: '4,3' })
     .bindTooltip(`Eisspeicher ${Math.round(volumen)} m³ · Ø ${(radius * 2).toFixed(1)} m (erdverlegt)`, { sticky: true })
     .addTo(window.geoLayerGroup);
-  const icon = L.divIcon({ className: '', html: '<div style="width:26px;height:26px;background:rgba(79,195,247,.3);border:2px solid #4fc3f7;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;color:#e1f5fe;font:bold 14px/1 sans-serif">❄</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
+  const icon = L.divIcon({ className: '', html: '<div style="width:26px;height:26px;background:rgba(79,195,247,.3);border:2px solid var(--c-blue);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;color:var(--c-blue);font:bold 14px/1 sans-serif">❄</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
   L.marker(center, { draggable: true, icon, zIndexOffset: 1000 }).addTo(window.geoLayerGroup)
     .on('dragend', function() { window.geoThermie.lat = this.getLatLng().lat; window.geoThermie.lng = this.getLatLng().lng; redrawGeo(); moveErzeugerElektroAsset('geo'); });
   if (!map.hasLayer(window.geoLayerGroup)) window.geoLayerGroup.addTo(map);
@@ -1555,8 +1555,8 @@ function _renderOverlays() {
   const list = window.overlays || [];
   const pending = window._overlayPending || [];
   const pendHtml = pending.map(p => `<div style="display:flex;align-items:center;gap:8px;border:1px dashed rgba(206,147,216,0.5);border-radius:7px;padding:8px;margin-bottom:6px;background:rgba(206,147,216,0.06);">
-      <span style="display:inline-block;width:12px;height:12px;border:2px solid #ce93d8;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;flex:0 0 auto;"></span>
-      <span style="font-size:12px;color:#ce93d8;">${(p.name || 'Plan').replace(/</g, '&lt;')} — wird geladen…</span>
+      <span style="display:inline-block;width:12px;height:12px;border:2px solid var(--c-violet);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;flex:0 0 auto;"></span>
+      <span style="font-size:12px;color:var(--c-violet);">${(p.name || 'Plan').replace(/</g, '&lt;')} — wird geladen…</span>
     </div>`).join('');
   if (!list.length && !pending.length) {
     box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:6px 2px;">Noch keine Pläne geladen.</div>';
@@ -1566,14 +1566,14 @@ function _renderOverlays() {
     const isActive = ov.id === window._activeOverlayId;
     const eye = ov.visible ? '👁' : '🚫';
     const safeName = (ov.name || '').replace(/"/g, '&quot;');
-    return `<div style="border:1px solid ${isActive ? '#ce93d8' : 'rgba(255,255,255,0.12)'};border-radius:7px;padding:7px 8px;margin-bottom:6px;background:rgba(255,255,255,0.03);">
+    return `<div style="border:1px solid ${isActive ? '#ce93d8' : 'rgba(255,255,255,0.12)'};border-radius:7px;padding:7px 8px;margin-bottom:6px;background:rgba(var(--ink),0.03);">
       <div style="display:flex;align-items:center;gap:6px;">
         <button class="btn-xs" title="Ein-/Ausblenden" data-click="toggleOverlayVisible(${ov.id})" style="flex:0 0 auto;opacity:${ov.visible ? 1 : 0.5};">${eye}</button>
-        <input type="text" value="${safeName}" data-change="renameOverlay(${ov.id}, this.value)" style="flex:1;min-width:0;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,0.15);color:var(--fg);font-size:12px;padding:2px 0;"/>
-        <button class="btn-xs" title="Plan löschen" data-click="removeOverlayItem(${ov.id})" style="flex:0 0 auto;color:#e57373;">🗑</button>
+        <input type="text" value="${safeName}" data-change="renameOverlay(${ov.id}, this.value)" style="flex:1;min-width:0;background:transparent;border:none;border-bottom:1px solid rgba(var(--ink),0.15);color:var(--fg);font-size:12px;padding:2px 0;"/>
+        <button class="btn-xs" title="Plan löschen" data-click="removeOverlayItem(${ov.id})" style="flex:0 0 auto;color:var(--c-red);">🗑</button>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
-        <button class="btn-xs" data-click="setActiveOverlay(${ov.id})" style="flex:0 0 auto;${isActive ? 'border-color:#ce93d8;color:#ce93d8;' : ''}" ${ov.visible ? '' : 'disabled'}>${isActive ? '✏️ aktiv' : 'Bearbeiten'}</button>
+        <button class="btn-xs" data-click="setActiveOverlay(${ov.id})" style="flex:0 0 auto;${isActive ? 'border-color:var(--c-violet);color:var(--c-violet);' : ''}" ${ov.visible ? '' : 'disabled'}>${isActive ? '✏️ aktiv' : 'Bearbeiten'}</button>
         <input type="range" min="0.1" max="1" step="0.05" value="${ov.opacity}" data-input="changeOverlayItemOpacity(${ov.id}, this.value)" style="flex:1;" title="Deckkraft"/>
       </div>
     </div>`;
@@ -1813,7 +1813,7 @@ export function startOverlayReference() {
 function _ovRefMarker(latlng, label, kind) {
   const isPlan = kind === 'plan';
   const bg = isPlan ? '#ce93d8' : '#4dd0e1';
-  const html = `<div style="width:22px;height:22px;border-radius:50%;background:${bg};border:2px solid #0a0e1a;`
+  const html = `<div style="width:22px;height:22px;border-radius:50%;background:${bg};border:2px solid var(--border);`
     + `display:flex;align-items:center;justify-content:center;font:700 11px/1 'DM Sans',sans-serif;color:#0a0e1a;`
     + `box-shadow:0 1px 4px rgba(0,0,0,.5);">${label}</div>`;
   return L.marker(latlng, {
@@ -1905,13 +1905,13 @@ function _ovRefBuildControl() {
   const box = document.createElement('div');
   box.id = 'ov-ref-control';
   box.style.cssText = 'position:absolute;top:70px;left:50%;transform:translateX(-50%);z-index:3300;'
-    + 'background:rgba(16,20,34,.96);border:1.5px solid #ce93d8;border-radius:9px;padding:12px 14px;'
-    + "min-width:300px;max-width:360px;font-family:'DM Sans',sans-serif;color:#e6e9f0;box-shadow:0 6px 24px rgba(0,0,0,.5);";
+    + 'background:var(--surface);border:1.5px solid var(--c-violet);border-radius:9px;padding:12px 14px;'
+    + "min-width:300px;max-width:360px;font-family:'DM Sans',sans-serif;color:var(--c-blue);box-shadow:0 6px 24px rgba(0,0,0,.5);";
   box.innerHTML = `
-    <div style="font-size:12px;font-weight:700;color:#ce93d8;margin-bottom:6px;">🎯 Plan über Referenzpunkte ausrichten</div>
-    <div id="ov-ref-hint" style="font-size:11px;line-height:1.45;color:#b9c0d4;margin-bottom:8px;"></div>
+    <div style="font-size:12px;font-weight:700;color:var(--c-violet);margin-bottom:6px;">🎯 Plan über Referenzpunkte ausrichten</div>
+    <div id="ov-ref-hint" style="font-size:11px;line-height:1.45;color:var(--c-blue);margin-bottom:8px;"></div>
     <div id="ov-ref-status" style="font-size:11px;margin-bottom:8px;"></div>
-    <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#b9c0d4;margin-bottom:10px;">
+    <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--c-blue);margin-bottom:10px;">
       Verfahren
       <select id="ov-ref-mode" style="flex:1;font-size:11px;">
         <option value="similarity">${_OV_FIT_METHODS.similarity.label} – empfohlen</option>
@@ -1953,12 +1953,12 @@ function _ovRefUpdate() {
       : `Jetzt dieselbe Stelle <b>Nr. ${n + 1} auf der KARTE</b> anklicken.`;
   }
   if (statEl) {
-    let html = `<span style="color:#4dd0e1;">${n}</span> vollständige${n === 1 ? 's' : ''} Punktepaar${n === 1 ? '' : 'e'}`;
+    let html = `<span style="color:var(--c-teal);">${n}</span> vollständige${n === 1 ? 's' : ''} Punktepaar${n === 1 ? '' : 'e'}`;
     if (n >= 2) {
       const { T, method } = _ovFitFor(ref.pairs, ref.mode);
       html += ` · Verfahren: <b>${method}</b>`;
       const need = _OV_FIT_METHODS[ref.mode]?.min || 2;
-      if (n < need) html += ` <span style="color:#ffcc80;">(gewähltes Verfahren erst ab ${need} Punkten)</span>`;
+      if (n < need) html += ` <span style="color:var(--c-orange);">(gewähltes Verfahren erst ab ${need} Punkten)</span>`;
       if (T) {
         const res = _ovResiduals(ref.pairs, T);
         const maxR = Math.max(...res), meanR = res.reduce((a, b) => a + b, 0) / res.length;
@@ -1968,12 +1968,12 @@ function _ovRefUpdate() {
         const used = n >= need ? need : 2;
         const exact = n === used;
         const col = maxR > 3 ? '#ef9a9a' : '#a5d6a7';
-        html += `<br><span style="color:#8891a8;">Passgenauigkeit (Vorschau):</span> `
+        html += `<br><span style="color:var(--c-blue);">Passgenauigkeit (Vorschau):</span> `
           + `<span style="color:${col};">Ø ${meanR.toFixed(1)} m, max ${maxR.toFixed(1)} m`
           + `${maxR > 0.05 ? ` (Punkt ${worst})` : ''}</span>`
-          + `${exact ? ' <span style="color:#8891a8;">— exakt bestimmt</span>' : ''}`;
+          + `${exact ? ' <span style="color:var(--c-blue);">— exakt bestimmt</span>' : ''}`;
       } else {
-        html += `<br><span style="color:#ef9a9a;">Punkte kollinear/zu dicht — bitte versetzt wählen.</span>`;
+        html += `<br><span style="color:var(--c-red);">Punkte kollinear/zu dicht — bitte versetzt wählen.</span>`;
       }
     } else {
       html += ' · min. 2 nötig';
@@ -6670,7 +6670,7 @@ function _recalcNetzIntern(){
   if (summaryDiv) {
     if (totalVerbrauchMWh > 0) {
       summaryDiv.style.display = 'grid';
-      summaryDiv.innerHTML = `<span style="color:var(--muted)">Gebäudebedarf</span><span>${totalVerbrauchMWh.toFixed(0)} MWh/a</span><span style="color:var(--muted)">+ Netzverluste</span><span style="color:#f9a825">${verlustBetriebMWh.toFixed(0)} MWh/a</span><span style="color:var(--muted);border-top:1px solid var(--border);padding-top:3px;margin-top:2px">= Zentrale erzeugt</span><span style="color:var(--accent);font-weight:bold;border-top:1px solid var(--border);padding-top:3px;margin-top:2px">${totalErzeugungMWh.toFixed(0)} MWh/a</span>`;
+      summaryDiv.innerHTML = `<span style="color:var(--muted)">Gebäudebedarf</span><span>${totalVerbrauchMWh.toFixed(0)} MWh/a</span><span style="color:var(--muted)">+ Netzverluste</span><span style="color:var(--c-orange)">${verlustBetriebMWh.toFixed(0)} MWh/a</span><span style="color:var(--muted);border-top:1px solid var(--border);padding-top:3px;margin-top:2px">= Zentrale erzeugt</span><span style="color:var(--accent);font-weight:bold;border-top:1px solid var(--border);padding-top:3px;margin-top:2px">${totalErzeugungMWh.toFixed(0)} MWh/a</span>`;
     } else {
       summaryDiv.style.display = 'none';
     }
@@ -6855,7 +6855,7 @@ function _recalcNetzIntern(){
 
       const _m = '<span style="color:var(--muted);font-size:9px">';
       const _me = '</span>';
-      const _sep = '<div style="border-top:1px solid #444;margin:5px 0 4px;padding-top:4px;">';
+      const _sep = '<div style="border-top:1px solid var(--border);margin:5px 0 4px;padding-top:4px;">';
       const _grp = (icon, title) => `${_sep}<span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.04em">${icon} ${title}</span></div>`;
 
       // ── 1. LEITUNG ──
@@ -6877,7 +6877,7 @@ function _recalcNetzIntern(){
       }
       if (networkLocked) {
         if (e.hydraulicBottleneck) {
-          ttHtml += `<span style="color:#f44336">⚠ Hydraulischer Engpass im Bestandsnetz</span><br>`;
+          ttHtml += `<span style="color:var(--c-red)">⚠ Hydraulischer Engpass im Bestandsnetz</span><br>`;
         }
       }
 
@@ -6893,9 +6893,9 @@ function _recalcNetzIntern(){
         ttHtml += `Temperatur: ${e.tempIn.toFixed(1)} → ${e.tempOut.toFixed(1)} °C (−${(e.tempIn - e.tempOut).toFixed(1)} K)<br>`;
         ttHtml += `${_m}Vorlauf kühlt auf dem Weg zum Verbraucher ab${_me}<br>`;
         if (e.thermischKritisch) {
-          ttHtml += `<span style="color:#f44336;font-size:10px;">⚠ Ankunftstemperatur unter Rücklauf — Strang nicht versorgbar!</span><br>`;
+          ttHtml += `<span style="color:var(--c-red);font-size:10px;">⚠ Ankunftstemperatur unter Rücklauf — Strang nicht versorgbar!</span><br>`;
         } else if (e.tempOut < 60) {
-          ttHtml += `<span style="color:#f44336;font-size:10px;">⚠ Temp. unter 60 °C — Legionellengefahr</span><br>`;
+          ttHtml += `<span style="color:var(--c-red);font-size:10px;">⚠ Temp. unter 60 °C — Legionellengefahr</span><br>`;
         }
         // Druckverlust
         if (e.dpPerM > 0) {
@@ -6909,7 +6909,7 @@ function _recalcNetzIntern(){
 
       // ── 3. WIRTSCHAFTLICHKEIT ──
       ttHtml += _grp('', 'Wirtschaftlichkeit');
-      ttHtml += `Kosten: ${kostenProM.toLocaleString('de-DE')} €/m (${kostenSzenario}) → <span style="color:#4fc3f7">${Math.round(kostenGesamt).toLocaleString('de-DE')} €</span><br>`;
+      ttHtml += `Kosten: ${kostenProM.toLocaleString('de-DE')} €/m (${kostenSzenario}) → <span style="color:var(--c-blue)">${Math.round(kostenGesamt).toLocaleString('de-DE')} €</span><br>`;
       const wldLabel = wld < 0.5 ? '⚠ unwirtschaftlich' : wld < 1.0 ? 'grenzwertig' : wld < 2.0 ? 'wirtschaftlich' : '✓ sehr wirtschaftlich';
       ttHtml += `WLD: <span style="color:${wldColor}">${wld.toFixed(2)} MWh/(m·a)</span> — ${wldLabel}<br>`;
       ttHtml += `${_m}Wärmeliniendichte: transportierte Jahreswärme pro Meter Trasse${_me}<br>`;
@@ -6941,7 +6941,7 @@ function _recalcNetzIntern(){
       if (e.kuppel) {
         // Verbindungsleitung zwischen zwei Versorgungszonen: eigene Darstellung und Erläuterung
         e.layer.setStyle({ color: '#26c6da', dashArray: '10, 5' });
-        ttHtml = '<span style="color:#26c6da">⇄ Verbindungsleitung zwischen zwei Heizzentralen</span><br>'
+        ttHtml = '<span style="color:var(--c-teal)">⇄ Verbindungsleitung zwischen zwei Heizzentralen</span><br>'
           + `<span style="color:var(--muted);font-size:9px">Trennstelle zwischen den Versorgungszonen; ausgelegt auf ${Math.round(e.load)} kW Übergabe (Sommerbetrieb mit einer Zentrale bzw. Eingabe im Netz-Panel)</span><br>` + ttHtml;
       }
       e.infoHtml = ttHtml;
@@ -7093,8 +7093,8 @@ export function updateStrangReport() {
 
   straenge.forEach(s => {
     const col = ampelCol[s.ampel];
-    const rowStyle = selectedStrandId === s.id ? 'background:rgba(255,255,255,0.05);' : '';
-    h += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;${rowStyle}" `
+    const rowStyle = selectedStrandId === s.id ? 'background:rgba(var(--ink),0.05);' : '';
+    h += `<tr style="border-bottom:1px solid rgba(var(--ink),0.04);cursor:pointer;${rowStyle}" `
        + `data-click="setSelectedStrandId(${s.id});document.getElementById('netz-strang').value='${s.id}';updateNetzStrandVisibility();" `
        + `title="${ampelTxt[s.ampel]}: ${fmtD(s.zuschlag,0)} €/MWh Netzkosten, ${fmtD(s.verlustPct,1)}% Verluste">`;
     h += `<td style="padding:3px 4px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${col};"></span></td>`;
@@ -7186,7 +7186,7 @@ export function updateRohrListe() {
     <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
       <div style="flex:1;background:var(--surface2);border-radius:4px;padding:6px 8px;border:1px solid var(--border);">
         <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Gesamtkosten (${szenarioLabel})</div>
-        <div style="font-size:15px;font-family:'DM Mono',monospace;color:#4fc3f7;margin-top:2px">${Math.round(totalKosten).toLocaleString('de-DE')} €</div>
+        <div style="font-size:15px;font-family:'DM Mono',monospace;color:var(--c-blue);margin-top:2px">${Math.round(totalKosten).toLocaleString('de-DE')} €</div>
       </div>
       <div style="flex:1;background:var(--surface2);border-radius:4px;padding:6px 8px;border:1px solid var(--border);">
         <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Ø WLD Gesamtnetz</div>
@@ -7204,7 +7204,7 @@ export function updateRohrListe() {
       <td>KMR DN ${dn}</td>
       <td>${Math.round(r.length)}</td>
       <td>${euM.toLocaleString('de-DE')}</td>
-      <td style="color:#4fc3f7">${Math.round(r.kosten).toLocaleString('de-DE')}</td>
+      <td style="color:var(--c-blue)">${Math.round(r.kosten).toLocaleString('de-DE')}</td>
     </tr>`;
   });
   
@@ -7212,7 +7212,7 @@ export function updateRohrListe() {
     <th>Gesamt</th>
     <th>${Math.round(totalLength)}</th>
     <th>—</th>
-    <th style="color:#4fc3f7">${Math.round(totalKosten).toLocaleString('de-DE')}</th>
+    <th style="color:var(--c-blue)">${Math.round(totalKosten).toLocaleString('de-DE')}</th>
   </tr>`;
   html += `</tbody></table>`;
   

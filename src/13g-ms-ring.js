@@ -503,16 +503,16 @@ export function elRunMSAnalyse() {
     const trennName = ring.trennstellen[0]?.name || 'Trennstelle';
     const allAssets = getActiveAssets(yr);
 
-    html += `<div style="background:var(--bg);border-radius:4px;padding:6px 8px;margin-top:6px;border-left:3px solid #f9a825;">
+    html += `<div style="background:var(--bg);border-radius:4px;padding:6px 8px;margin-top:6px;border-left:3px solid var(--c-orange);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
-        <span style="font-size:11px;font-weight:600;color:#f9a825;">Ring ${ri + 1}</span>
+        <span style="font-size:11px;font-weight:600;color:var(--c-orange);">Ring ${ri + 1}</span>
         <span style="font-size:9px;color:${n1Color};font-weight:700;">${n1Text}</span>
       </div>
       <div style="font-size:10px;color:var(--muted);margin-bottom:5px;">
         ${ring.nodes.length} Knoten · ${ring.edges.length} Kanten · ${Math.round(ring.totalLengthM)} m
         ${lf?.sticheMode
-          ? ` · <span style="color:#4fc3f7;">Stichbetrieb</span>`
-          : ` · <span style="color:#f9a825;">Ringbetrieb</span>`}
+          ? ` · <span style="color:var(--c-blue);">Stichbetrieb</span>`
+          : ` · <span style="color:var(--c-orange);">Ringbetrieb</span>`}
       </div>`;
 
     if (lf) {
@@ -545,7 +545,7 @@ export function elRunMSAnalyse() {
           ? (allAssets.find(a => a.id === lf.entryId)?.name || '?') + ' → '
           : 'NAP → ';
         html += _renderStich(lf.leftEdgeResults,  `⬅ Linker Stich (${pfx}${trennName})`, allAssets);
-        html += `<div style="font-size:9px;color:#f9a825;padding:3px 5px;margin:3px 0;
+        html += `<div style="font-size:9px;color:var(--c-orange);padding:3px 5px;margin:3px 0;
           background:rgba(249,168,37,.1);border-radius:3px;border:1px dashed #f9a82560;">
           ✂ ${trennName} — offen im Normalbetrieb · I = 0 A</div>`;
         html += _renderStich(lf.rightEdgeResults, `➡ Rechter Stich (${pfx}${trennName})`, allAssets);

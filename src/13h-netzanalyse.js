@@ -784,7 +784,7 @@ function _naDrawExistingTrafos(trafos, assignMap, exhaustionMap) {
         `Auslastung: <b style="color:${auslCol}">${z.auslPct}%</b> Reserve: ${z.freeKW.toFixed(0)} kW<br>` +
         `Versorgte Punkte: ${z.pts.length}` + (z.viaNetz < z.pts.length ? ` (davon ${z.viaNetz} schon per Kabel angeschlossen)` : '') +
         (z.zugang ? `<br>+ ${z.zugang} von überlasteten Nachbarn übernommen` : '') +
-        (z.abgang ? `<br>− ${z.abgang} abgegeben (Nachbar/neue Station)` : '') + (exhLabel ? `<br><span style="color:#ef5350">${exhLabel}</span>` : ''))
+        (z.abgang ? `<br>− ${z.abgang} abgegeben (Nachbar/neue Station)` : '') + (exhLabel ? `<br><span style="color:var(--c-red)">${exhLabel}</span>` : ''))
       .addTo(grpExistingTrafos);
   }
   if (!map.hasLayer(grpExistingTrafos)) grpExistingTrafos.addTo(map);
@@ -836,7 +836,7 @@ export function naZoomBestand(id) {
 function _naStationIcon(label, kvaTxt, bg, dy = -50) {
   return L.divIcon({
     className: '',
-    html: `<div style="background:${bg};border:2px solid #fff;border-radius:11px;height:22px;
+    html: `<div style="background:${bg};border:2px solid var(--border);border-radius:11px;height:22px;
              min-width:22px;padding:0 6px;box-sizing:border-box;display:flex;align-items:center;gap:4px;
              font-size:10px;font-weight:700;color:#fff;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.45);
              transform:translate(-50%,${dy}%);width:max-content;">
@@ -1000,7 +1000,7 @@ export function naRunTrafoOptimierung() {
       zIndexOffset: 500,
     }).bindPopup(
       `<b>${isWhale ? `⚡ Direktanschluss D${i+1}` : `Neue Station N${i+1}`}</b><br>` +
-      (isWhale ? '<span style="color:#ffa726">Einzellast überschreitet Kapazität</span><br>' : '') +
+      (isWhale ? '<span style="color:var(--c-orange)">Einzellast überschreitet Kapazität</span><br>' : '') +
       `Bezug: <b>${cl.bezugKW.toFixed(0)} kW</b> (${cl.nVerb} Verbraucher · GZF ${gzfFn(cl.nVerb).toFixed(2).replace('.', ',')})<br>` +
       `Einspeisung: <b>${cl.einspeisungKW.toFixed(0)} kW</b><br>` +
       `Maßgebend: <b>${cl.peakKW.toFixed(0)} kW</b><br>` +
@@ -1235,7 +1235,7 @@ function _naDrawPlacementUnits(grp, clusters, units, kind) {
   units.forEach((u, i) => {
     L.marker([u.lat, u.lng], {
       icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
-        html: `<div style="background:${col};border:2px solid #fff;border-radius:50%;width:26px;height:26px;
+        html: `<div style="background:${col};border:2px solid var(--border);border-radius:50%;width:26px;height:26px;
                display:flex;align-items:center;justify-content:center;font-size:13px;
                box-shadow:0 2px 6px rgba(0,0,0,.45);">${icon}</div>` }),
       zIndexOffset: 600,
@@ -1243,7 +1243,7 @@ function _naDrawPlacementUnits(grp, clusters, units, kind) {
       ? (u.name !== undefined
           ? `<b>🔋 Speicher · ${u.name}</b><br>Knotenspitze: <b>${u.loadKW.toFixed(0)} kW</b>` +
             (u.auslastung > 0 ? ` (Auslastung ${(u.auslastung*100).toFixed(0)} %)` : '') + '<br>' +
-            (u.overloadKW > 0 ? `<span style="color:#c62828">Überlast: <b>${u.overloadKW.toFixed(0)} kW</b></span><br>` : '') +
+            (u.overloadKW > 0 ? `<span style="color:var(--c-red)">Überlast: <b>${u.overloadKW.toFixed(0)} kW</b></span><br>` : '') +
             `Leistung: <b>${u.kW} kW</b><br>Kapazität: <b>${u.kWh} kWh</b><br>` +
             `Bedarf volle Kappung: ${u.reqKWh} kWh ${u.gedeckt ? '✓ gedeckt' : '⚠ Dauer zu kurz'}`
           : `<b>🔋 Batteriespeicher ${i + 1}</b><br>Zonenlast: <b>${u.loadKW.toFixed(0)} kW</b><br>` +
@@ -1665,26 +1665,26 @@ export function naRenderPanel() {
     <label style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
       <input type="checkbox" ${NA.heatmapLayers?.load !== false ? 'checked' : ''}
              onchange="naHeatmapSetLayerVisibility('load',this.checked)">
-      <span style="color:#ef5350">Verbrauch</span></label>
+      <span style="color:var(--c-red)">Verbrauch</span></label>
     <label style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
       <input type="checkbox" ${NA.heatmapLayers?.gen !== false ? 'checked' : ''}
              onchange="naHeatmapSetLayerVisibility('gen',this.checked)">
-      <span style="color:#42a5f5">Erzeugung</span></label>
+      <span style="color:var(--c-blue)">Erzeugung</span></label>
     <label style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
       <input type="checkbox" ${NA.heatmapContours ? 'checked' : ''}
              onchange="window._naToggleContours(this.checked)">
-      <span style="color:#cfd8dc">Höhenlinien</span></label>
+      <span style="color:var(--c-blue)">Höhenlinien</span></label>
   </div>
   <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Farblegende (Relief-Intensität)</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
     <div>
-      <div style="font-size:9px;color:#ef5350;margin-bottom:2px;">Verbrauch</div>
-      <div style="height:8px;border-radius:4px;background:linear-gradient(90deg,#234,#66bb6a,#ffa726,#ef5350);"></div>
+      <div style="font-size:9px;color:var(--c-red);margin-bottom:2px;">Verbrauch</div>
+      <div style="height:8px;border-radius:4px;background:linear-gradient(90deg,var(--hover),#66bb6a,#ffa726,#ef5350);"></div>
       <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--muted);"><span>niedrig</span><span>hoch</span></div>
     </div>
     <div>
-      <div style="font-size:9px;color:#42a5f5;margin-bottom:2px;">Erzeugung</div>
-      <div style="height:8px;border-radius:4px;background:linear-gradient(90deg,#142036,#2196f3,#64b5f6,#bbdefb);"></div>
+      <div style="font-size:9px;color:var(--c-blue);margin-bottom:2px;">Erzeugung</div>
+      <div style="height:8px;border-radius:4px;background:linear-gradient(90deg,var(--hover),#2196f3,#64b5f6,#bbdefb);"></div>
       <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--muted);"><span>niedrig</span><span>hoch</span></div>
     </div>
   </div>` : `
@@ -1692,7 +1692,7 @@ export function naRenderPanel() {
     Kreise zeigen lokale Lastspitzen; Radius und Farbe steigen mit der maßgebenden Last.</div>`}
   <button onclick="naHeatmapToggle(${!heatOn})" title="Heatmap-Überlagerung auf der Karte ein-/ausblenden"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
-           border:1px solid #b39ddb;color:${heatOn?'#ce93d8':'var(--muted)'};
+           border:1px solid var(--c-violet);color:${heatOn?'#ce93d8':'var(--muted)'};
            background:${heatOn?'rgba(179,157,219,.12)':'transparent'};">
     ${heatOn ? '👁 Heatmap ausblenden' : '👁 Heatmap anzeigen'}
   </button>
@@ -1777,8 +1777,8 @@ export function naRenderPanel() {
           <td style="padding:3px 5px;">
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.col};margin-right:5px;"></span>${r.label}
           </td>
-          <td style="text-align:right;padding:3px 5px;color:#ef5350;">${r.bezugKW.toFixed(0)} kW</td>
-          <td style="text-align:right;padding:3px 5px;color:#42a5f5;">${r.einspeisungKW.toFixed(0)} kW</td>
+          <td style="text-align:right;padding:3px 5px;color:var(--c-red);">${r.bezugKW.toFixed(0)} kW</td>
+          <td style="text-align:right;padding:3px 5px;color:var(--c-blue);">${r.einspeisungKW.toFixed(0)} kW</td>
           <td style="text-align:right;padding:3px 5px;font-weight:600;">${r.peakKW.toFixed(0)} kW</td>
           <td style="text-align:right;padding:3px 5px;color:${auslCol};">${r.auslPct != null ? r.auslPct + '%' : '–'}</td>
           <td style="text-align:right;padding:3px 5px;">${r.kva}</td>
@@ -1790,8 +1790,8 @@ export function naRenderPanel() {
       <tr style="border-top:2px solid var(--border);font-weight:600;">
         <td></td>
         <td style="padding:4px 5px;">Σ ${trafoRows.length} Standorte</td>
-        <td style="text-align:right;padding:4px 5px;color:#ef5350;">${trafoRows.reduce((s, r) => s + r.bezugKW, 0).toFixed(0)} kW</td>
-        <td style="text-align:right;padding:4px 5px;color:#42a5f5;">${trafoRows.reduce((s, r) => s + r.einspeisungKW, 0).toFixed(0)} kW</td>
+        <td style="text-align:right;padding:4px 5px;color:var(--c-red);">${trafoRows.reduce((s, r) => s + r.bezugKW, 0).toFixed(0)} kW</td>
+        <td style="text-align:right;padding:4px 5px;color:var(--c-blue);">${trafoRows.reduce((s, r) => s + r.einspeisungKW, 0).toFixed(0)} kW</td>
         <td></td><td></td>
         <td style="text-align:right;padding:4px 5px;">${trafoRows.reduce((s, r) => s + _kvaSumme(r.peakKW, NA.cosPhi), 0).toLocaleString('de-DE')} kVA</td>
         <td style="text-align:right;padding:4px 5px;color:var(--muted);">${trafoRows.reduce((s, r) => s + r.points, 0)}</td>
@@ -1818,14 +1818,14 @@ export function naRenderPanel() {
       ${NA.naKCompare.map(c => {
         const auslCol = c.maxAuslPct == null ? 'var(--muted)' : c.maxAuslPct > 100 ? '#ef5350' : c.maxAuslPct > 80 ? '#ffa726' : '#66bb6a';
         return `<tr style="border-top:1px solid var(--border);${c.isChosen ? 'background:rgba(79,195,247,.08);' : ''}">
-          <td style="padding:3px 5px;${c.isChosen ? 'font-weight:700;color:#4fc3f7;' : ''}">${c.k}${c.isChosen ? ' (gewählt)' : ''}</td>
+          <td style="padding:3px 5px;${c.isChosen ? 'font-weight:700;color:var(--c-blue);' : ''}">${c.k}${c.isChosen ? ' (gewählt)' : ''}</td>
           <td style="text-align:right;padding:3px 5px;color:${auslCol};">${c.maxAuslPct != null ? c.maxAuslPct + '%' : '–'}</td>
           <td style="text-align:right;padding:3px 5px;">${(c.cableM/1000).toLocaleString('de-DE',{maximumFractionDigits:1})} km</td>
           <td style="text-align:right;padding:3px 5px;">${c.cableCost.toLocaleString('de-DE')} T€</td>
           <td style="text-align:right;padding:3px 5px;">
             ${c.isChosen ? '' : `<button onclick="naApplyKCompare(${c.k})"
               style="padding:2px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:9px;
-                     border:1px solid #4fc3f7;color:#4fc3f7;background:transparent;">verwenden</button>`}
+                     border:1px solid var(--c-blue);color:var(--c-blue);background:transparent;">verwenden</button>`}
           </td>
         </tr>`;
       }).join('')}
@@ -1853,7 +1853,7 @@ ${_step(1, 'Bestand prüfen')}
        </div>
        <div style="font-size:9px;color:var(--muted);margin-bottom:4px;line-height:1.4;">
          Auslastung heute — Zuordnung über die Netzkanten, ohne Anschluss zum nächsten Trafo (bis ${NA.nsReachM} m); ${gzfTxt}.
-         ${exLive?.ohneTrafo?.length ? `<br><span style="color:#ffa726;">${exLive.ohneTrafo.length} Last${exLive.ohneTrafo.length > 1 ? 'en' : ''}
+         ${exLive?.ohneTrafo?.length ? `<br><span style="color:var(--c-orange);">${exLive.ohneTrafo.length} Last${exLive.ohneTrafo.length > 1 ? 'en' : ''}
            ohne Netzanschluss und weiter als ${NA.nsReachM} m von jedem Trafo — derzeit nicht versorgt.</span><br>` : ''}
          Rechts: Jahr, ab dem der Trafo nicht mehr reicht (mit geplanten Lasten und Ertüchtigungen).
          ${useExisting ? 'Bei Überlast werden Lasten zuerst auf Nachbartrafos mit Reserve umgehängt (bis ' + NA.nsReachM + ' m); nur der Rest bekommt neue Stationen.'
@@ -1880,8 +1880,8 @@ ${_step(1, 'Bestand prüfen')}
                 </div>`
              : '<div style="width:50px;font-size:8px;color:var(--muted);text-align:right;">–</div>'}
            ${exh?.exhaustionYear
-             ? `<span style="font-size:8px;color:#ef5350;white-space:nowrap;" title="Ab diesem Jahr überlastet">⚠ ab ${exh.exhaustionYear}</span>`
-             : exh ? '<span style="font-size:8px;color:#66bb6a;white-space:nowrap;" title="Reicht bis 2050">✓ 2050</span>' : ''}
+             ? `<span style="font-size:8px;color:var(--c-red);white-space:nowrap;" title="Ab diesem Jahr überlastet">⚠ ab ${exh.exhaustionYear}</span>`
+             : exh ? '<span style="font-size:8px;color:var(--c-green);white-space:nowrap;" title="Reicht bis 2050">✓ 2050</span>' : ''}
          </div>`;
        }).join('')}`
   }
@@ -1993,14 +1993,14 @@ ${hasAnyResult || NA.naExistingResults ? `<div style="background:var(--surface2)
   </div>
   <button onclick="naKabelToggle(${!kabelOn})" title="Vorgeschlagene Kabeltrassen (minimaler Spannbaum je Trafo/Zone) auf der Karte ein-/ausblenden"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
-           border:1px solid #80cbc4;color:${kabelOn?'#80cbc4':'var(--muted)'};
+           border:1px solid var(--c-teal);color:${kabelOn?'#80cbc4':'var(--muted)'};
            background:${kabelOn?'rgba(128,203,196,.12)':'transparent'};">
     ${kabelOn ? '🔌 Ausblenden' : '🔌 Anzeigen'}
   </button>
   ${kabelOn && kabelInfo?.totalM > 0 ? `
   <div style="font-size:10px;color:var(--text);margin:5px 0;">
-    Gesamt: <b style="color:#80cbc4">${(kabelInfo.totalM/1000).toFixed(2)} km</b>
-    &nbsp;·&nbsp; ca. <b style="color:#ffa726">${Math.round(kabelInfo.totalM * kabelEurM / 1000)} k€</b>
+    Gesamt: <b style="color:var(--c-teal)">${(kabelInfo.totalM/1000).toFixed(2)} km</b>
+    &nbsp;·&nbsp; ca. <b style="color:var(--c-orange)">${Math.round(kabelInfo.totalM * kabelEurM / 1000)} k€</b>
   </div>
   <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin-bottom:6px;">
     Kostensatz: <input type="number" value="${kabelEurM}" min="50" max="2000" step="10"
@@ -2009,14 +2009,14 @@ ${hasAnyResult || NA.naExistingResults ? `<div style="background:var(--surface2)
       onchange="naSetKabelEurM(this.value)"> €/m
   </div>
   <div style="background:var(--bg);border-radius:4px;padding:6px 7px;font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
-    💡 Kante auf der Karte <b style="color:#ffb300">anklicken</b> zum Auswählen (gelb).
+    💡 Kante auf der Karte <b style="color:var(--c-amber)">anklicken</b> zum Auswählen (gelb).
   </div>
   <div style="display:flex;gap:6px;">
-    <button onclick="naKabelSelectAll()" title="Alle vorgeschlagenen Kabeltrassen auswählen" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid #555;color:#888;background:transparent;">alle ☑</button>
-    <button onclick="naKabelSelectNone()" title="Auswahl der Kabeltrassen aufheben" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid #555;color:#888;background:transparent;">keine</button>
+    <button onclick="naKabelSelectAll()" title="Alle vorgeschlagenen Kabeltrassen auswählen" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid var(--border);color:var(--faint);background:transparent;">alle ☑</button>
+    <button onclick="naKabelSelectNone()" title="Auswahl der Kabeltrassen aufheben" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid var(--border);color:var(--faint);background:transparent;">keine</button>
     <button onclick="naImportSelectedKabel()" title="Ausgewählte Kabeltrassen als reale Leitungen ins Stromnetz übernehmen"
       style="flex:2;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
-             border:1px solid #66bb6a;color:#66bb6a;background:rgba(102,187,106,.1);font-weight:600;">
+             border:1px solid var(--c-green);color:var(--c-green);background:rgba(102,187,106,.1);font-weight:600;">
       ⬆ Übernehmen (${(NA.naKabelEdges||[]).filter(k=>k.selected).length} ✓)
     </button>
   </div>` : ''}
@@ -2024,13 +2024,13 @@ ${hasAnyResult || NA.naExistingResults ? `<div style="background:var(--surface2)
 
 ${hasAnyResult ? `
 ${_step(4, 'Übernehmen', '#4fc3f7')}
-<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;border-left:3px solid #4fc3f7;">
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;border-left:3px solid var(--c-blue);">
   <div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.4;">
     Legt je angehaktem Standort ein Stationsgebäude mit Schaltanlage, Trafo und NSHV auf der Karte an.
   </div>
   <button onclick="naUebernehmenAlsKompaktstation()" title="Berechnete Trafo-Standorte als reale Kompaktstationen (Schaltanlage + Trafo + NSHV) inkl. Gebäude auf der Karte anlegen"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
-           border:1px solid #4fc3f7;color:#4fc3f7;background:rgba(79,195,247,.08);margin-bottom:5px;font-weight:600;">
+           border:1px solid var(--c-blue);color:var(--c-blue);background:rgba(79,195,247,.08);margin-bottom:5px;font-weight:600;">
     🏗 ${nSel === trafoRows.length ? `${nSel} Station${nSel !== 1 ? 'en' : ''}` : `${nSel} von ${trafoRows.length} Stationen`} anlegen
   </button>
   <button onclick="naClearTrafoOptimierung()" title="Berechnete Optimierungs-Vorschau (Vorschläge für Trafo-Standorte) wieder verwerfen"
@@ -2053,7 +2053,7 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   </div>
   <button onclick="elRunMSAnalyse()" title="Mittelspannungsnetz auf Ringstrukturen untersuchen und (n-1)-Ausfallsicherheit prüfen"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
-           border:1px solid #f9a825;color:#f9a825;background:transparent;margin-bottom:5px;">
+           border:1px solid var(--c-orange);color:var(--c-orange);background:transparent;margin-bottom:5px;">
     ⊞ MS-Topologie analysieren
   </button>
   <button onclick="clearMSRings()" title="MS-Ring-Überlagerung wieder von der Karte entfernen"
@@ -2065,15 +2065,15 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
 </div>`;
 
   // ── Tabs 4/5: Speicher- & Notstrom-Platzierung ──────────────────────────────
-  const _inp = 'background:#11151d;color:#cfd8dc;border:1px solid #444;border-radius:3px;padding:1px 3px;font-family:inherit;font-size:10px;';
+  const _inp = 'background:var(--surface);color:var(--c-blue);border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;font-size:10px;';
   const _modeBtn = (grp, val, lbl, cur) => {
     const c = grp === 'bat' ? COL_BAT : COL_NSA, on = cur === val;
     return `<button onclick="naSet${grp === 'bat' ? 'Bat' : 'Nsa'}Mode('${val}')"
       style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
              border:1px solid ${on ? c : '#555'};color:${on ? c : '#999'};background:${on ? 'rgba(255,255,255,.06)' : 'transparent'};">${lbl}</button>`;
   };
-  const _runBtn  = (col) => `width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;border:1px solid ${col};color:${col};background:rgba(255,255,255,.04);`;
-  const _takeBtn = 'flex:3;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;border:1px solid #66bb6a;color:#66bb6a;background:rgba(102,187,106,.1);';
+  const _runBtn  = (col) => `width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;border:1px solid ${col};color:${col};background:rgba(var(--ink),.04);`;
+  const _takeBtn = 'flex:3;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;border:1px solid var(--c-green);color:var(--c-green);background:rgba(102,187,106,.1);';
   const _clrBtn  = 'flex:1;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid var(--muted);color:var(--muted);background:transparent;';
 
   const batRes = NA.batResult;
@@ -2089,9 +2089,9 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   // Netz-Ergebnis: Knoten-Zeilen mit Auslastung/Deckung
   const batNetzRows = batRes && batRes.method === 'netz'
     ? batRes.map((u, i) => `<div style="display:flex;justify-content:space-between;gap:6px;padding:3px 0;
-         border-bottom:1px solid rgba(255,255,255,.05);font-size:10px;color:#cfd8dc;">
+         border-bottom:1px solid rgba(var(--ink),.05);font-size:10px;color:var(--c-blue);">
          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:96px;" title="${u.name}">${i+1}. ${u.name}</span>
-         <span>${u.kW} kW · ${u.kWh} kWh${u.overloadKW>0?` · <span style="color:#ef9a9a">Überlast ${u.overloadKW.toFixed(0)}</span>`:''}${u.gedeckt?'':' <span style="color:#ffa726" title="Dauer deckt das größte Lastereignis nicht ab">⚠</span>'}</span>
+         <span>${u.kW} kW · ${u.kWh} kWh${u.overloadKW>0?` · <span style="color:var(--c-red)">Überlast ${u.overloadKW.toFixed(0)}</span>`:''}${u.gedeckt?'':' <span style="color:var(--c-orange)" title="Dauer deckt das größte Lastereignis nicht ab">⚠</span>'}</span>
        </div>`).join('')
     : '';
 
@@ -2108,7 +2108,7 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   };
   const pvLinkBtn = `<button onclick="naOeffnePvAnalyse()" title="Zur PV-Analyse wechseln (Analyse → PV)"
       style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
-             border:1px solid #42a5f5;color:#42a5f5;background:rgba(66,165,245,.08);margin-top:5px;">↗ PV-Analyse öffnen</button>`;
+             border:1px solid var(--c-blue);color:var(--c-blue);background:rgba(66,165,245,.08);margin-top:5px;">↗ PV-Analyse öffnen</button>`;
   const pvSizeHtml = isPvSize ? (pvVars.length
     ? `<div style="margin-bottom:6px;">
          <select onchange="naSetBatPvVariant(this.value)" style="width:100%;${_inp}padding:3px;">
@@ -2119,7 +2119,7 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
          </div>
          ${pvLinkBtn}
        </div>`
-    : `<div style="margin-bottom:6px;font-size:10px;color:#ffa726;line-height:1.4;">
+    : `<div style="margin-bottom:6px;font-size:10px;color:var(--c-orange);line-height:1.4;">
          Noch keine PV-Varianten mit Batterie berechnet. Bitte zuerst die PV-Analyse rechnen.${pvLinkBtn}
        </div>`) : '';
 
@@ -2127,27 +2127,27 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   const emp = NA.batGuideOpen ? naSpeicherEmpfehlung() : null;
   const empCol = emp && emp.empfehlung === 'dezentral' ? '#ffa726' : '#66bb6a';
   const guideHtml = `
-  <div style="margin-top:8px;border-top:1px solid rgba(255,255,255,.07);padding-top:6px;">
+  <div style="margin-top:8px;border-top:1px solid rgba(var(--ink),.07);padding-top:6px;">
     <button onclick="naToggleBatGuide()" style="width:100%;text-align:left;background:transparent;border:none;
-      cursor:pointer;font-family:inherit;font-size:10px;color:#90caf9;padding:2px 0;">
+      cursor:pointer;font-family:inherit;font-size:10px;color:var(--c-blue);padding:2px 0;">
       ${NA.batGuideOpen ? '▾' : '▸'} Anleitung: zentral oder dezentral?
     </button>
     ${NA.batGuideOpen ? `
-    <div style="font-size:10px;color:#cfd8dc;line-height:1.5;margin-top:4px;">
+    <div style="font-size:10px;color:var(--c-blue);line-height:1.5;margin-top:4px;">
       <div style="color:var(--muted);margin-bottom:5px;">Der beste Ort hängt vom Werthebel ab — ein Speicher entlastet nur, was elektrisch oberhalb von ihm liegt:</div>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;margin-bottom:6px;">
-        <div style="color:#66bb6a;font-weight:600;">zentral</div><div>Leistungspreis kappen · Eigenverbrauch/PV-Überschuss · Arbitrage → am Verknüpfungspunkt (NAP/Trafo).</div>
-        <div style="color:#ffa726;font-weight:600;">dezentral</div><div>Engpass / Betriebsmittel-Überlast · Spannungshaltung · Backup → am belasteten Knoten tief im Netz.</div>
+        <div style="color:var(--c-green);font-weight:600;">zentral</div><div>Leistungspreis kappen · Eigenverbrauch/PV-Überschuss · Arbitrage → am Verknüpfungspunkt (NAP/Trafo).</div>
+        <div style="color:var(--c-orange);font-weight:600;">dezentral</div><div>Engpass / Betriebsmittel-Überlast · Spannungshaltung · Backup → am belasteten Knoten tief im Netz.</div>
       </div>
       ${emp && emp.empfehlung ? `
-        <div style="background:rgba(255,255,255,.04);border:1px solid ${empCol};border-radius:5px;padding:6px;">
+        <div style="background:rgba(var(--ink),.04);border:1px solid ${empCol};border-radius:5px;padding:6px;">
           <div style="font-weight:700;color:${empCol};margin-bottom:3px;">Empfehlung: ${emp.empfehlung === 'dezentral' ? 'dezentral' : 'zentral'}</div>
           <div style="margin-bottom:4px;">${emp.kurz}</div>
           <ul style="margin:0 0 4px 0;padding-left:14px;color:var(--muted);">${emp.gruende.map(g => `<li>${g}</li>`).join('')}</ul>
           <button onclick="naEmpfehlungUebernehmen()" style="width:100%;padding:4px;border-radius:4px;cursor:pointer;
             font-family:inherit;font-size:10px;font-weight:600;border:1px solid ${empCol};color:${empCol};background:transparent;">
             ✓ Empfehlung übernehmen</button>
-        </div>` : `<div style="color:#ffa726;font-size:10px;">${emp ? emp.kurz : ''}</div>`}
+        </div>` : `<div style="color:var(--c-orange);font-size:10px;">${emp ? emp.kurz : ''}</div>`}
     </div>` : ''}
   </div>`;
 
@@ -2159,7 +2159,7 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
     ${_methodBtn('netz','Netz-Merit-Order','Bewertet reale Netzknoten nach Entlastung je kWh (Topologie-Residualprofil). Empfohlen, wenn das Stromnetz verkabelt ist.')}
     ${_methodBtn('geo','geografisch','Clustert Lastpunkte räumlich (k-Means). Fallback ohne verkabeltes Netz.')}
   </div>
-  ${isNetz && !hasNetz ? `<div style="font-size:9px;color:#ffa726;margin-bottom:6px;">⚠ Kein verkabeltes Stromnetz — fällt auf geografische Platzierung zurück.</div>` : ''}
+  ${isNetz && !hasNetz ? `<div style="font-size:9px;color:var(--c-orange);margin-bottom:6px;">⚠ Kein verkabeltes Stromnetz — fällt auf geografische Platzierung zurück.</div>` : ''}
   <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
     ${isNetz
       ? 'Bewertet NAP/Trafo/NSHV/UV/KVS anhand ihres Residualprofils. <b>zentral</b> = Verknüpfungspunkt (Leistungspreis/Eigenverbrauch), <b>verteilt</b> = belastete Stränge (Engpass).'
@@ -2179,8 +2179,8 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   </div>
   <button onclick="naRunSpeicherPlatzierung()" style="${_runBtn(COL_BAT)}">🔋 Platzierung berechnen</button>
   ${batRes ? `
-  <div style="margin-top:8px;font-size:10px;color:#cfd8dc;"><b>${batRes.length}</b> Speicher · Σ <b>${batRes.reduce((s,u)=>s+u.kW,0)}</b> kW · <b>${batRes.reduce((s,u)=>s+u.kWh,0).toLocaleString('de-DE')}</b> kWh${batRes.method==='netz'?` <span style="color:var(--muted)">· ${batRes.scoredCount} Knoten bewertet</span>`:''}</div>
-  ${batRes.pvVariant ? `<div style="font-size:9px;color:#90caf9;margin-top:2px;">feste Größe aus PV-Variante „${batRes.pvVariant.label}" (${batRes.pvVariant.batKwh.toLocaleString('de-DE')} kWh)</div>` : ''}
+  <div style="margin-top:8px;font-size:10px;color:var(--c-blue);"><b>${batRes.length}</b> Speicher · Σ <b>${batRes.reduce((s,u)=>s+u.kW,0)}</b> kW · <b>${batRes.reduce((s,u)=>s+u.kWh,0).toLocaleString('de-DE')}</b> kWh${batRes.method==='netz'?` <span style="color:var(--muted)">· ${batRes.scoredCount} Knoten bewertet</span>`:''}</div>
+  ${batRes.pvVariant ? `<div style="font-size:9px;color:var(--c-blue);margin-top:2px;">feste Größe aus PV-Variante „${batRes.pvVariant.label}" (${batRes.pvVariant.batKwh.toLocaleString('de-DE')} kWh)</div>` : ''}
   ${batNetzRows ? `<div style="margin-top:5px;">${batNetzRows}</div>` : ''}
   <div style="display:flex;gap:6px;margin-top:6px;">
     <button onclick="naUebernehmenSpeicher()" style="${_takeBtn}">⬆ Als Assets übernehmen</button>
@@ -2193,7 +2193,7 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   const nsaRes = NA.nsaResult;
   const recoTxt = reco && reco.genKw > 0
     ? `Resilienz-Empfehlung: <b>${Math.ceil(reco.genKw)} kW</b> · ${reco.durH} h · ${reco.kraftstoff}`
-    : `<span style="color:#ffa726">Noch keine Resilienz-Rechnung (☀ PV-Analyse ▸ Kapitel 6.1 Resilienz) — Fallback: Karten-Spitzenlast</span>`;
+    : `<span style="color:var(--c-orange)">Noch keine Resilienz-Rechnung (☀ PV-Analyse ▸ Kapitel 6.1 Resilienz) — Fallback: Karten-Spitzenlast</span>`;
   const _srcBtn = (val, lbl) => {
     const on = NA.nsaSource === val;
     return `<button onclick="naSetNsaSource('${val}')"
@@ -2202,7 +2202,7 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   };
   const tabNsaHtml = `
 <div style="background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.45);border-radius:6px;padding:8px;margin-bottom:10px;">
-  <div style="font-size:10px;color:#cfd8dc;line-height:1.45;margin-bottom:6px;">
+  <div style="font-size:10px;color:var(--c-blue);line-height:1.45;margin-bottom:6px;">
     <b>Platzierung am Bestandsnetz:</b> Der 🛡 Blackout-Modus stuft Gebäude ein, vergleicht Aggregate an Gebäuden,
     Kabelverteilern, NSHV und Trafos, rechnet vorhandene Aggregate an und vermerkt die abzuschaltenden Abgänge.
   </div>
@@ -2213,7 +2213,7 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
     Verteilt eine Gesamtleistung (Resilienz-Analyse oder Karten-Spitzenlast) nach der Lage der Lasten auf Zonen — ohne Netztopologie und Gebäudeklassen.
   </div>
-  <div style="font-size:10px;margin-bottom:6px;padding:5px;border-radius:4px;background:rgba(255,112,67,.08);border:1px solid rgba(255,112,67,.3);color:#cfd8dc;">${recoTxt}</div>
+  <div style="font-size:10px;margin-bottom:6px;padding:5px;border-radius:4px;background:rgba(255,112,67,.08);border:1px solid rgba(255,112,67,.3);color:var(--c-blue);">${recoTxt}</div>
   <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Dimensionierung</div>
   <div style="display:flex;gap:6px;margin-bottom:6px;">${_srcBtn('resilienz','aus Resilienz')}${_srcBtn('spitzenlast','Karten-Spitzenlast')}</div>
   <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Platzierung</div>
@@ -2221,7 +2221,7 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   ${NA.nsaMode==='verteilt' ? `<label style="font-size:10px;color:var(--muted);display:block;margin-bottom:6px;">Zonen <input type="number" min="1" max="20" value="${NA.nsaK}" onchange="naSetNsaK(this.value)" style="width:42px;${_inp}"></label>` : ''}
   <button onclick="naRunNotstromPlatzierung()" style="${_runBtn(COL_NSA)}">⚙ Platzierung berechnen</button>
   ${nsaRes ? `
-  <div style="margin-top:8px;font-size:10px;color:#cfd8dc;"><b>${nsaRes.units.length}</b> Aggregat(e) · Σ <b>${nsaRes.totalKW}</b> kW · ${nsaRes.autonomieH} h · ${nsaRes.kraftstoff}
+  <div style="margin-top:8px;font-size:10px;color:var(--c-blue);"><b>${nsaRes.units.length}</b> Aggregat(e) · Σ <b>${nsaRes.totalKW}</b> kW · ${nsaRes.autonomieH} h · ${nsaRes.kraftstoff}
     <div style="font-size:9px;color:var(--muted);margin-top:2px;">Quelle: ${nsaRes.source==='resilienz' ? 'Resilienz-Analyse' : `Karten-Spitzenlast (${nsaRes.sitePeak} kW)`}</div></div>
   <div style="display:flex;gap:6px;margin-top:6px;">
     <button onclick="naUebernehmenNotstrom()" style="${_takeBtn}">⬆ Als Assets übernehmen</button>
@@ -2234,11 +2234,11 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Übersicht Lastpunkte</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;
      display:grid;grid-template-columns:repeat(4,1fr);gap:4px;text-align:center;">
-  <div><div style="font-size:15px;font-weight:700;color:#ce93d8;">${pts.length}</div>
+  <div><div style="font-size:15px;font-weight:700;color:var(--c-violet);">${pts.length}</div>
        <div style="font-size:9px;color:var(--muted);">Punkte</div></div>
-  <div><div style="font-size:15px;font-weight:700;color:#ef5350;">${totalBezug.toFixed(0)}</div>
+  <div><div style="font-size:15px;font-weight:700;color:var(--c-red);">${totalBezug.toFixed(0)}</div>
        <div style="font-size:9px;color:var(--muted);">kW Bezug</div></div>
-  <div><div style="font-size:15px;font-weight:700;color:#42a5f5;">${totalEinsp.toFixed(0)}</div>
+  <div><div style="font-size:15px;font-weight:700;color:var(--c-blue);">${totalEinsp.toFixed(0)}</div>
        <div style="font-size:9px;color:var(--muted);">kW Einsp.</div></div>
   <div><div style="font-size:15px;font-weight:700;color:${nettoCol};">${nettoSign}${totalNetto.toFixed(0)}</div>
        <div style="font-size:9px;color:var(--muted);">kW Netto</div></div>

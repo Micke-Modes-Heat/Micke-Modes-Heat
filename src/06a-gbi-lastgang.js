@@ -128,7 +128,7 @@ export function gbiShowMapping() {
   var prev = '<table style="width:100%;border-collapse:collapse;font-family:\'DM Mono\',monospace;">';
   prev += '<tr>' + gbiHeaders.map(function(h) { return '<th style="padding:2px 5px;border-bottom:1px solid var(--border);color:var(--accent);text-align:left;white-space:nowrap;">' + escHtml(h) + '</th>'; }).join('') + '</tr>';
   gbiRawRows.slice(0, 4).forEach(function(row) {
-    prev += '<tr>' + row.map(function(c) { return '<td style="padding:2px 5px;border-bottom:1px solid rgba(255,255,255,.04);white-space:nowrap;">' + escHtml(c) + '</td>'; }).join('') + '</tr>';
+    prev += '<tr>' + row.map(function(c) { return '<td style="padding:2px 5px;border-bottom:1px solid rgba(var(--ink),.04);white-space:nowrap;">' + escHtml(c) + '</td>'; }).join('') + '</tr>';
   });
   prev += '</table>';
   document.getElementById('gbi-preview').innerHTML = prev;
@@ -302,9 +302,9 @@ export function gbiShowResults() {
   var unsicherCount = gbiMatches.filter(function(m) { return m.status === 'unsicher'; }).length;
   var unmatchedCount = gbiMatches.filter(function(m) { return m.status === 'unmatched'; }).length;
   document.getElementById('gbi-match-summary').innerHTML =
-    '<span style="color:#66bb6a;">● ' + autoCount + ' sicher</span> · '
-    + '<span style="color:#f9a825;">● ' + unsicherCount + ' unsicher</span> · '
-    + '<span style="color:#e53935;">● ' + unmatchedCount + ' ohne Treffer</span> · '
+    '<span style="color:var(--c-green);">● ' + autoCount + ' sicher</span> · '
+    + '<span style="color:var(--c-orange);">● ' + unsicherCount + ' unsicher</span> · '
+    + '<span style="color:var(--c-red);">● ' + unmatchedCount + ' ohne Treffer</span> · '
     + 'Gesamt: ' + gbiMatches.length + ' Zeilen → ' + gebaeude.length + ' Gebäude auf Karte';
   gbiRenderMatchTable();
   gbiAttachMapDropTargets();
@@ -327,7 +327,7 @@ export function gbiRenderMatchTable() {
     // Ganze Zeile ist per Drag & Drop auf ein Gebäude auf der Karte ziehbar —
     // auch bei bereits (automatisch) zugeordneten Zeilen, um Fehlzuordnungen zu korrigieren.
     // Klick auf die Zeile hebt das zugehörige Gebäude zusätzlich auf der Karte hervor.
-    html += '<tr draggable="true" ondragstart="gbiDragStart(event,' + m.csvIdx + ')" data-click="gbiSelectRow(' + m.csvIdx + ')" style="cursor:grab;border:' + border + ';border-bottom-color:rgba(255,255,255,.04);background:' + bg + ';">';
+    html += '<tr draggable="true" ondragstart="gbiDragStart(event,' + m.csvIdx + ')" data-click="gbiSelectRow(' + m.csvIdx + ')" style="cursor:grab;border:' + border + ';border-bottom-color:rgba(var(--ink),.04);background:' + bg + ';">';
     html += '<td style="padding:3px 5px;">' + csvLabel + '</td>';
     html += '<td style="padding:3px 5px;">' + gebLabel + '</td>';
     html += '<td style="padding:3px 5px;text-align:center;color:' + color + ';">' + scoreStr + '</td>';
@@ -335,7 +335,7 @@ export function gbiRenderMatchTable() {
     if (m.status === 'rejected') {
       html += '<button data-click="gbiUnreject(' + i + ')" style="font-size:9px;padding:1px 6px;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;">↩</button>';
     } else if (m.status === 'auto' || m.status === 'unsicher') {
-      html += '<button data-click="gbiReject(' + i + ')" style="font-size:9px;padding:1px 6px;border:1px solid #e53935;background:transparent;color:#e53935;border-radius:4px;cursor:pointer;">✕</button>';
+      html += '<button data-click="gbiReject(' + i + ')" style="font-size:9px;padding:1px 6px;border:1px solid var(--c-red);background:transparent;color:var(--c-red);border-radius:4px;cursor:pointer;">✕</button>';
     }
     html += '</td></tr>';
   });
@@ -1155,9 +1155,9 @@ export function glRenderSplit(lastgangKw, verlustPct) {
     const fmt = v => Math.round(v).toLocaleString('de-DE');
     const pct = (v, t) => t > 0 ? ' (' + Math.round(v/t*100) + ' %)' : '';
     kpi.innerHTML =
-      `<span style="color:#e53935;">Raumwärme: <b>${fmt(rwMwh)} MWh/a</b>${pct(rwMwh,totMwh)}</span>` +
-      `<span style="color:#ff8a65;">TWW: <b>${fmt(twwMwh)} MWh/a</b>${pct(twwMwh,totMwh)} <span style="color:var(--muted);font-size:9px;">(Schätzung)</span></span>` +
-      `<span style="color:#90a4ae;">Netzverluste: <b>${fmt(verlMwh)} MWh/a</b>${pct(verlMwh,totMwh)}</span>`;
+      `<span style="color:var(--c-red);">Raumwärme: <b>${fmt(rwMwh)} MWh/a</b>${pct(rwMwh,totMwh)}</span>` +
+      `<span style="color:var(--c-red);">TWW: <b>${fmt(twwMwh)} MWh/a</b>${pct(twwMwh,totMwh)} <span style="color:var(--muted);font-size:9px;">(Schätzung)</span></span>` +
+      `<span style="color:var(--c-blue);">Netzverluste: <b>${fmt(verlMwh)} MWh/a</b>${pct(verlMwh,totMwh)}</span>`;
   }
 }
 

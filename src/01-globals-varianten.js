@@ -624,7 +624,7 @@ export function renderVergleich() {
   const thFg = id => isActive(id) ? '#000' : 'var(--muted)';
   const onClick = id => id === 'base' ? `data-click="activateVariant(null);renderVergleich()"` : `data-click="activateVariant('${id}');renderVergleich()"`;
   let html = `<table class="vergleich-table"><thead><tr><th style="background:var(--surface2);">Kennwert</th>`;
-  const STATUS = { aktuell: '', veraltet: ' <span title="Seit der Berechnung hat sich der gemeinsame Stand geändert" style="font-weight:400;font-size:9px;color:#f9a825;">veraltet</span>', nie: ' <span style="font-weight:400;font-size:9px;">nicht gerechnet</span>' };
+  const STATUS = { aktuell: '', veraltet: ' <span title="Seit der Berechnung hat sich der gemeinsame Stand geändert" style="font-weight:400;font-size:9px;color:var(--c-orange);">veraltet</span>', nie: ' <span style="font-weight:400;font-size:9px;">nicht gerechnet</span>' };
   cols.forEach(id => {
     const lbl = escHtml(variantenName(id)) + (gutachtenVariante === id ? ' ★' : '');
     html += `<th class="clickable" data-variant-id="${id}" ${onClick(id)} style="background:${thBg(id)};color:${thFg(id)};" title="Klicken zum Aktivieren">${lbl}${STATUS[variantenKennzahlStatus(id)]}</th>`;
@@ -641,7 +641,7 @@ export function renderVergleich() {
       const val = r ? row.fn(r, id) : '—';
       const active = isActive(id);
       const isBest = bestIdx[ri] && bestIdx[ri].has(id);
-      const style = `${active?'color:var(--accent);':''}${row.bold?'font-weight:bold;':''}${isBest?'color:#66bb6a;':''}`;
+      const style = `${active?'color:var(--accent);':''}${row.bold?'font-weight:bold;':''}${isBest?'color:var(--c-green);':''}`;
       html += `<td class="val-col" style="${style}">${val}${isBest?' ✓':''}</td>`;
     });
     html += `</tr>`;

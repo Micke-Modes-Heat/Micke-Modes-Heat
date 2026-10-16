@@ -350,7 +350,7 @@ export function showGebaeudeHeatProfile(id) {
     ].map(([value,label])=>`<div><strong>${value}</strong><span>${label}</span></div>`).join('');
     if (profile.meta.peakConflictDays?.length) {
       kpis.innerHTML+=`<div style="grid-column:1/-1;border-color:rgba(239,83,80,.55);background:rgba(239,83,80,.08)">
-        <strong style="color:#ef9a9a">${profile.meta.peakConflictDays.length} nicht auflösbare Tage</strong>
+        <strong style="color:var(--c-red)">${profile.meta.peakConflictDays.length} nicht auflösbare Tage</strong>
         <span>Tagesenergie überschreitet Heizlast × 24 h. Jahresenergie wurde nicht verändert; Gebäudedaten bitte prüfen.</span>
       </div>`;
     }
@@ -1116,9 +1116,9 @@ export function showEdgePopup(e, mouseEvt) {
       <span>Last: <span style="color:var(--text)">${(e.load||0).toFixed(1)} kW</span>${e._gzf < 1 ? ` <span style="color:var(--muted);font-size:9px">(GZF ${e._gzf.toFixed(2)})</span>` : ''}</span>
       <span>Länge: <span style="color:var(--text)">${Math.round(e.length||0)} m</span></span>
       <span>WLD: <span style="color:${getWLDColor(getWLD(e))}">${getWLD(e).toFixed(2)} MWh/(m·a)</span></span>
-      <span>Kosten: <span style="color:#4fc3f7">${Math.round((getKostenProMKlasse(e.dn, e.kostKlasse||window.kostenSzenarioAktuell?.()||'mittel'))*(e.length||0)).toLocaleString('de-DE')} €</span></span>
+      <span>Kosten: <span style="color:var(--c-blue)">${Math.round((getKostenProMKlasse(e.dn, e.kostKlasse||window.kostenSzenarioAktuell?.()||'mittel'))*(e.length||0)).toLocaleString('de-DE')} €</span></span>
     </div>
-    ${e.buildingConflict ? `<div style="margin-top:7px;padding:6px 8px;border:1px solid rgba(249,168,37,.55);border-radius:5px;background:rgba(249,168,37,.1);color:#ffd180;font-size:9px;line-height:1.45;">
+    ${e.buildingConflict ? `<div style="margin-top:7px;padding:6px 8px;border:1px solid rgba(249,168,37,.55);border-radius:5px;background:rgba(249,168,37,.1);color:var(--c-amber);font-size:9px;line-height:1.45;">
       ⚠ Automatischer Rückfall: Dieser Verlauf kreuzt einen Gebäudegrundriss. Das Netz wäre ohne diesen Abschnitt nicht vollständig verbunden. Bitte den Abschnitt bei Bedarf manuell umlegen.
     </div>` : ''}
     ${e.infoHtml ? `<div class="edge-popup-details">${e.infoHtml}</div>` : ''}
@@ -1126,7 +1126,7 @@ export function showEdgePopup(e, mouseEvt) {
       <button data-click="toggleEdgePruned()" style="width:100%;padding:5px 8px;background:${e.pruned?'#1b3a2a':'rgba(249,168,37,0.12)'};border:1px solid ${e.pruned?'#4caf50':'#f9a825'};border-radius:4px;color:${e.pruned?'#4caf50':'#f9a825'};cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">
         ${e.pruned?'✓ Wieder anschließen':'✂ Abschnitt deaktivieren'}
       </button>
-      ${e.pruned ? '' : `<button data-click="edgeAbgangAusZentrale()" title="Die Gebäude hinter diesem Abschnitt bekommen einen eigenen Abgang aus der Heizzentrale; dieser Abschnitt und nicht mehr benötigte Zuleitungen entfallen" style="width:100%;margin-top:5px;padding:5px 8px;background:rgba(79,195,247,0.1);border:1px solid #4fc3f7;border-radius:4px;color:#4fc3f7;cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">⇱ Eigener Abgang aus der Heizzentrale</button>`}
+      ${e.pruned ? '' : `<button data-click="edgeAbgangAusZentrale()" title="Die Gebäude hinter diesem Abschnitt bekommen einen eigenen Abgang aus der Heizzentrale; dieser Abschnitt und nicht mehr benötigte Zuleitungen entfallen" style="width:100%;margin-top:5px;padding:5px 8px;background:rgba(79,195,247,0.1);border:1px solid var(--c-blue);border-radius:4px;color:var(--c-blue);cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">⇱ Eigener Abgang aus der Heizzentrale</button>`}
     </div>`;
 
   // Position near mouse, clamped to viewport
@@ -1325,7 +1325,7 @@ export function updatePruningSummary() {
     return s + (g ? (parseFloat(g.waerme) || 0) : 0);
   }, 0);
   div.innerHTML = `
-    <div style="color:#f9a825;font-weight:bold;margin-bottom:3px;">✂ Pruning aktiv</div>
+    <div style="color:var(--c-orange);font-weight:bold;margin-bottom:3px;">✂ Pruning aktiv</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;">
       <span style="color:var(--muted)">Deaktiviert:</span><span>${prunedEdges.length} Abschnitte (${Math.round(prunedLen)} m)</span>
       <span style="color:var(--muted)">Abgeklemmt:</span><span>${disconnected.length} Gebäude (${disconnectedMWh.toFixed(0)} MWh/a)</span>
@@ -1719,7 +1719,7 @@ export function updateLpMeritOrder() {
     const agk = autoGkResult;
     let detail = '';
     if (agk) detail = ' · ' + Math.round(agk.leistungKw).toLocaleString('de-DE') + ' kW · ' + Math.round(agk.waermeMwh).toLocaleString('de-DE') + ' MWh';
-    html += '<div class="lp-mo-item" style="border-left-color:#78909c;border-left-style:dashed;opacity:0.75;">'
+    html += '<div class="lp-mo-item" style="border-left-color:var(--c-blue);border-left-style:dashed;opacity:0.75;">'
       + '<span class="mo-prio">' + prio + '.</span>'
       + '<span class="mo-name">Spitzenlastkessel (auto)' + detail + ' <span class="htip" data-tip="Automatischer Spitzenlastkessel der gewählten Art (unten): deckt die Restlast der Einsatzplanung und die Leistung, die den Erzeugern bei Normaußentemperatur fehlt. Er wird mit Investition und Betrieb gerechnet.">?</span></span>'
       + '</div>';
@@ -1813,7 +1813,7 @@ export function updateLpGebietStatus() {
   if (!el) return;
   var parts = [];
   if (typeof areaPolygon !== 'undefined' && areaPolygon) {
-    parts.push('<span style="color:#ce93d8;">✓ Bereich definiert</span>');
+    parts.push('<span style="color:var(--c-violet);">✓ Bereich definiert</span>');
   }
   if (typeof gebaeude !== 'undefined' && gebaeude.length > 0) {
     parts.push(gebaeude.length + ' Gebäude geladen');

@@ -56,37 +56,25 @@ export function ensureSatellite(){
   if(currentTile==='osm') toggleTile();
 }
 
-// ── Farbschemata ──────────────────────────────────────────────────────────
-export const THEMES = [
-  { name: 'Ocker & Salbei',   bg:'#12110e', surface:'#1c1a15', surface2:'#24221b', border:'#3a3528', text:'#ece8df', muted:'#aca496', accent:'#d4a855' },
-  { name: 'Ozean',            bg:'#0f1117', surface:'#181c27', surface2:'#1f2435', border:'#2a3050', text:'#e8eaf0', muted:'#a2a6b7', accent:'#4fc3f7' },
-  { name: 'Wald',             bg:'#0e1210', surface:'#161e19', surface2:'#1c2820', border:'#2a3e2f', text:'#e4ebe6', muted:'#97ab9c', accent:'#81c784' },
-  { name: 'Terrakotta',       bg:'#120f0e', surface:'#1e1916', surface2:'#28211d', border:'#3e332c', text:'#ebe5e0', muted:'#afa29b', accent:'#c47a5a' },
-  { name: 'Lavendel',         bg:'#100f14', surface:'#1a1821', surface2:'#22202c', border:'#332e45', text:'#e8e6f0', muted:'#a5a1b9', accent:'#b39ddb' },
-  { name: 'Magenta',          bg:'#130e12', surface:'#1e1620', surface2:'#281e2a', border:'#40303e', text:'#f0e6ee', muted:'#b89ab2', accent:'#e91e90' },
-  { name: 'Ros\u00e9gold',    bg:'#13100e', surface:'#1e1915', surface2:'#28211c', border:'#3e3330', text:'#ede6e2', muted:'#b0a19a', accent:'#e8a090' },
-  { name: 'Bernstein',        bg:'#111008', surface:'#1c1a10', surface2:'#252218', border:'#3a3520', text:'#ede8d8', muted:'#aba586', accent:'#f5a623' },
-  { name: 'Nordlicht',        bg:'#0c1210', surface:'#141e1c', surface2:'#1a2826', border:'#283e38', text:'#e2ebe8', muted:'#86afa1', accent:'#4dd0b8' },
-  { name: 'Mitternacht',      bg:'#0a0c14', surface:'#121520', surface2:'#181c2c', border:'#252a42', text:'#e0e4f0', muted:'#9b9fbb', accent:'#7c8cf0' },
-];
-export let currentThemeIdx = 0;
+/// ── Darstellung hell / dunkel ─────────────────────────────────────────────
+// Farben stehen als Tokens in src/styles/lkebw.css; hier wird nur das Thema umgeschaltet.
+const _THEMA_KEY = 'micke.thema';
+
+export function applyTheme(thema) {
+  const dunkel = thema === 'dunkel';
+  if (dunkel) document.documentElement.dataset.theme = 'dark';
+  else delete document.documentElement.dataset.theme;
+  const btn = document.getElementById('btn-theme');
+  if (btn) btn.title = dunkel ? 'Darstellung: dunkel' : 'Darstellung: hell';
+}
 
 export function cycleTheme() {
-  currentThemeIdx = (currentThemeIdx + 1) % THEMES.length;
-  applyTheme(THEMES[currentThemeIdx]);
+  const neu = document.documentElement.dataset.theme === 'dark' ? 'hell' : 'dunkel';
+  applyTheme(neu);
+  try { localStorage.setItem(_THEMA_KEY, neu); } catch (e) { /* privater Modus — dann nur für diese Sitzung */ }
 }
 
-export function applyTheme(t) {
-  const r = document.documentElement.style;
-  r.setProperty('--bg', t.bg);
-  r.setProperty('--surface', t.surface);
-  r.setProperty('--surface2', t.surface2);
-  r.setProperty('--border', t.border);
-  r.setProperty('--text', t.text);
-  r.setProperty('--muted', t.muted);
-  r.setProperty('--accent', t.accent);
-  document.getElementById('btn-theme').title = t.name;
-}
+try { applyTheme(localStorage.getItem(_THEMA_KEY) || 'hell'); } catch (e) { applyTheme('hell'); }
 
 document.getElementById('map').addEventListener('contextmenu', e => e.preventDefault());
 

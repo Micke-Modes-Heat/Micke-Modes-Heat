@@ -242,13 +242,13 @@ function _rechenAnzeige(titel) {
   const el = document.createElement('div');
   el.id = 'pvab-rechen';
   el.style.cssText = 'position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:100000;min-width:300px;max-width:420px;'
-    + 'background:#1b2330;color:#e8eef6;border:2px solid ' + CYAN + ';border-radius:10px;padding:16px 20px;'
+    + 'background:var(--surface2);color:var(--c-blue);border:2px solid ' + CYAN + ';border-radius:10px;padding:16px 20px;'
     + 'box-shadow:0 8px 32px rgba(0,0,0,.5);font-size:13px;pointer-events:none;';
   el.innerHTML = `<div style="display:flex;align-items:center;gap:12px;">
-      <span style="width:22px;height:22px;border:3px solid rgba(255,255,255,.2);border-top-color:${CYAN};border-radius:50%;animation:pvabDreh .8s linear infinite;flex:none;"></span>
+      <span style="width:22px;height:22px;border:3px solid rgba(var(--ink),.2);border-top-color:${CYAN};border-radius:50%;animation:pvabDreh .8s linear infinite;flex:none;"></span>
       <div style="font-weight:600;font-size:14px;">${titel}</div></div>
     <div data-t style="margin-top:9px;font-size:12px;opacity:.85;"></div>
-    <div style="margin-top:8px;height:8px;border-radius:4px;background:rgba(255,255,255,.15);overflow:hidden;">
+    <div style="margin-top:8px;height:8px;border-radius:4px;background:rgba(var(--ink),.15);overflow:hidden;">
       <div data-b style="height:100%;width:0;background:${CYAN};transition:width .15s;"></div></div>
     <div style="margin-top:8px;font-size:11px;opacity:.6;">Bitte warten — die Karte reagiert währenddessen nicht.</div>`;
   document.body.appendChild(el);
@@ -1243,7 +1243,7 @@ function _ausbauHtml(a) {
       <div style="color:var(--text);"><b>Ertüchtigung:</b> ${a.massnahmen.length ? `${a.massnahmen.length} Maßnahme${a.massnahmen.length > 1 ? 'n' : ''} · ${T(a.investEUR)} T€ → ${_fmt(a.mitKwp)} kWp statt ${_fmt(a.ohneKwp)} kWp ohne` : `keine umgesetzt (${a.art === 'budget' ? 'Budget reicht für keine Stufe' : '—'}) · ${_fmt(a.ohneKwp)} kWp`}</div>
       ${liste}${a.massnahmen.length > 5 ? `<div>… und ${a.massnahmen.length - 5} weitere</div>` : ''}
       ${a.naechste ? `<div style="color:var(--muted);margin-top:2px;">Nächste Stufe: +${_fmt(a.naechste.zuwachsKwp)} kWp für ${T(a.naechste.investEUR)} T€ (${escHtml(a.naechste.label)}) · alle ${a.stufenGesamt} Stufen: ${_fmt(a.alleKwp)} kWp für ${T(a.alleInvestEUR)} T€</div>` : ''}
-      ${a.massnahmen.some(m => m.teil) ? '<div style="color:#ffb74d;">⚠ Teil-Ertüchtigung: größte Standardlösung löst den Engpass nicht ganz.</div>' : ''}
+      ${a.massnahmen.some(m => m.teil) ? '<div style="color:var(--c-orange);">⚠ Teil-Ertüchtigung: größte Standardlösung löst den Engpass nicht ganz.</div>' : ''}
     </div>`;
 }
 
@@ -1300,7 +1300,7 @@ function _engstellenHtml(n, stich) {
 function _abhilfeHtml(e, T) {
   const a = e.abhilfe;
   if (!a) {
-    return `<span style="color:#ffb74d;">${e.unbekannt ? 'Querschnitt unbekannt bzw. Ersatzwert — erst Kabeldaten prüfen' : 'keine Standardlösung — Netzplanung nötig'}</span>`;
+    return `<span style="color:var(--c-orange);">${e.unbekannt ? 'Querschnitt unbekannt bzw. Ersatzwert — erst Kabeldaten prüfen' : 'keine Standardlösung — Netzplanung nötig'}</span>`;
   }
   if (a.kombi) {
     return `<span style="color:${GRUEN};" title="Kein Kabel allein senkt die Spannung genug — diese Ertüchtigungen zusammen halten die Grenze ein">⚒ zusammen: ${escHtml(a.label)} · ${T(a.investEUR)} T€</span>`;
@@ -1477,7 +1477,7 @@ function _vorschauHtml(nKand, stich) {
 function _auslegungHtml(aktiv) {
   const gesamt = _ab.umfang === 'alle' && _ab.menge === 'max';
   return `
-      <button class="btn-xs" style="width:100%;margin-top:4px;border-color:#b39ddb;color:#b39ddb;" ${aktiv ? '' : 'disabled'}
+      <button class="btn-xs" style="width:100%;margin-top:4px;border-color:var(--c-violet);color:var(--c-violet);" ${aktiv ? '' : 'disabled'}
         data-click="pvabAlsStand()"
         title="Diese Belegung als benannten Stand sichern, OHNE die Dächer zu belegen — ansehen, vergleichen, später aktivieren oder als Auslegung in die PV-Analyse geben.${gesamt ? ' „Alle Dächer · Maximal“ wird beim ersten Mal Anlagenpotenzial der PV-Analyse.' : ''}">
         💾 Als Belegungsstand speichern${gesamt ? ' (Gesamtpotenzial)' : ''}</button>`;

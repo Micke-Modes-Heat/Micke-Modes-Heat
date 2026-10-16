@@ -37,7 +37,7 @@ function _ensurePanel() {
   panel.style.cssText = 'top:70px;min-width:520px;max-width:760px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
   panel.innerHTML = `
     <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID}')">
-      <span style="color:#4fc3f7;font-size:12px;font-weight:600;">🏛 Bestand prüfen</span>
+      <span style="color:var(--c-blue);font-size:12px;font-weight:600;">🏛 Bestand prüfen</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
             data-click="bestandPanelToggle()">✕</span>
@@ -80,7 +80,7 @@ export function bestandPruefenUndZeigen() {
       elCalcAssets();
     } catch (err) {
       console.error('Bestandsprüfung:', err);
-      _body().innerHTML = '<div style="padding:18px;color:#e53935;font-size:11px;">Prüfung fehlgeschlagen — Details in der Konsole.</div>';
+      _body().innerHTML = '<div style="padding:18px;color:var(--c-red);font-size:11px;">Prüfung fehlgeschlagen — Details in der Konsole.</div>';
     }
   }, 50);
 }
@@ -130,9 +130,9 @@ function _kopf() {
 
   return `
   <div style="display:flex;align-items:center;gap:8px;margin:2px 0 10px;">
-    <button style="${btn}border-color:#4fc3f7;color:#4fc3f7;" data-click="bestandPruefenUndZeigen()">↻ Neu prüfen</button>
+    <button style="${btn}border-color:var(--c-blue);color:var(--c-blue);" data-click="bestandPruefenUndZeigen()">↻ Neu prüfen</button>
     <span style="margin-left:auto;font-size:10px;">
-      ${chips || '<span style="color:#4caf50;">✓ keine Befunde</span>'}
+      ${chips || '<span style="color:var(--c-green);">✓ keine Befunde</span>'}
     </span>
   </div>`;
 }
@@ -162,7 +162,7 @@ function _reifegrad() {
 function _befunde() {
   const { befunde } = _ergebnis;
   if (!befunde.length) {
-    return `<div style="padding:14px;background:var(--surface2);border-radius:6px;font-size:11px;color:#4caf50;">
+    return `<div style="padding:14px;background:var(--surface2);border-radius:6px;font-size:11px;color:var(--c-green);">
       ✓ Keine Auffälligkeiten im Bestand gefunden.</div>`;
   }
 

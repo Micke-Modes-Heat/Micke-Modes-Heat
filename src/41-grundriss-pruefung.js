@@ -198,7 +198,7 @@ function _zeile(u) {
   try { exakt = vereinigePolygone(A.polygon, B.polygon).methode === 'vereinigung'; } catch (err) { void err; }
   const kurz = g => escHtml(_name(g).slice(0, 16));
   return `
-    <div style="padding:5px 0 6px;border-bottom:1px solid rgba(255,255,255,.07);${_markiert === k ? `background:${ORANGE}12;` : ''}${u.ok ? 'opacity:.6;' : ''}">
+    <div style="padding:5px 0 6px;border-bottom:1px solid rgba(var(--ink),.07);${_markiert === k ? `background:${ORANGE}12;` : ''}${u.ok ? 'opacity:.6;' : ''}">
       <div style="display:flex;align-items:center;gap:5px;font-size:10.5px;cursor:pointer;" data-click="grundrissZeigen(${u.a},${u.b})" title="Auf der Karte zeigen">
         <span style="font-size:8.5px;padding:1px 5px;border-radius:3px;border:1px solid ${art.farbe};color:${art.farbe};white-space:nowrap;">${art.text}</span>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span style="color:${ORANGE};">${escHtml(_name(A))}</span> ↔ <span style="color:${CYAN};">${escHtml(_name(B))}</span></span>
@@ -235,7 +235,7 @@ function _html() {
         ${offen.length
           ? `<b>${offen.length}</b> überlappende Grundrisse: ${[n.doppelt && `${n.doppelt} Doppelerfassung${n.doppelt > 1 ? 'en' : ''}`,
               n.enthalten && `${n.enthalten} Gebäudeteil${n.enthalten > 1 ? 'e' : ''} im Gebäude`, n.teil && `${n.teil} Teilüberlappung${n.teil > 1 ? 'en' : ''}`].filter(Boolean).join(', ')}`
-          : '<span style="color:#4caf50;">✓ Keine offenen Überlappungen.</span>'}
+          : '<span style="color:var(--c-green);">✓ Keine offenen Überlappungen.</span>'}
       </div>
       <div style="font-size:9px;color:var(--muted);line-height:1.45;margin-top:3px;">
         Überlappende Grundrisse verfälschen Wärme- und Strombedarf, Dachpotenzial und Verschattung. Doppelerfassung: beide decken sich

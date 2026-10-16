@@ -109,11 +109,13 @@ if (!appCode) throw new Error('Anwendung konnte nicht kanonisch gebündelt werde
 jsAll += `${appCode}\n`;
 
 // 2. CSS lesen
-const cssCode = readFileSync(join(SRC, 'styles', 'app.css'), 'utf8');
+// lkebw.css (Erscheinungsbild) liegt über app.css und wird deshalb dahinter eingefügt
+const cssCode = readFileSync(join(SRC, 'styles', 'app.css'), 'utf8')
+  + '\n' + readFileSync(join(SRC, 'styles', 'lkebw.css'), 'utf8');
 
 // Inline-Favicon: SVG muss URL-encodiert sein, da < und > in HTML-Attributen den Parser brechen
 // (unencoded <svg> im href → leerer href → Browser lädt aktuelle Seite → Unsafe attempt + ERR_FILE_NOT_FOUND)
-const FAVICON = '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Ctext y=\'.9em\' font-size=\'90\'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E">';
+const FAVICON = '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Crect width=\'100\' height=\'100\' rx=\'12\' fill=\'%23266426\'/%3E%3Crect x=\'33\' y=\'33\' width=\'34\' height=\'34\' fill=\'none\' stroke=\'white\' stroke-width=\'9\'/%3E%3C/svg%3E">';
 
 // Leaflet-Icon-Fix: verhindert "Unsafe attempt"-Fehler durch relative Marker-Bild-URLs
 const LEAFLET_ICON_FIX = `
@@ -133,6 +135,7 @@ if (typeof L !== 'undefined') {
 const srcHtml = readFileSync(resolve('index.html'), 'utf8');
 let html = srcHtml
   .replace(/<link[^>]*app\.css[^>]*\/?>/, () => `<style>${cssCode}</style>`)
+  .replace(/<link[^>]*lkebw\.css[^>]*\/?>/, '')
   .replace(/<script type="module"[^>]*>.*?<\/script>/, '')
   .replace('</title>', `</title>\n${FAVICON}`);
 

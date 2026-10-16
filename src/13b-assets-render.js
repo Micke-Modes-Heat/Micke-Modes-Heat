@@ -25,16 +25,16 @@ function _contrast(hex) {
 function _attKv(label, value, col) {
   const val = col ? `<span style="color:${col};font-weight:500;">${value}</span>` : value;
   return `<div style="display:flex;justify-content:space-between;gap:14px;padding:1px 0;">` +
-    `<span style="color:#78909c;font-size:11px;white-space:nowrap;">${label}</span>` +
+    `<span style="color:var(--c-blue);font-size:11px;white-space:nowrap;">${label}</span>` +
     `<span style="font-size:11px;">${val}</span></div>`;
 }
-const _attHr = '<div style="border-top:1px solid #1e2540;margin:4px 0;"></div>';
+const _attHr = '<div style="border-top:1px solid var(--border);margin:4px 0;"></div>';
 function _attHead(icon, badge, sub, bg) {
   const fg = _contrast(bg);
   const subHtml = sub
-    ? `<span style="color:#546e7a;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;" title="${sub}">${sub}</span>`
+    ? `<span style="color:var(--c-blue);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;" title="${sub}">${sub}</span>`
     : '';
-  return `<div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;margin-bottom:4px;border-bottom:1px solid #2a3050;">` +
+  return `<div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;margin-bottom:4px;border-bottom:1px solid var(--c-blue);">` +
     `<span style="background:${bg};color:${fg};border-radius:3px;padding:1px 6px 2px;font-size:10px;font-weight:700;white-space:nowrap;">${icon} ${badge}</span>` +
     subHtml + '</div>';
 }
@@ -136,7 +136,7 @@ function _buildGroupTooltip(assets) {
     (ausl ? `<div style="padding:2px 0 4px 4px;">${_trafoAuslTooltip(ausl)}</div>` : '');
   }).join('');
   const more = assets.length > 6
-    ? `<div style="color:#78909c;font-size:10px;margin-top:2px;">+ ${assets.length - 6} weitere</div>`
+    ? `<div style="color:var(--c-blue);font-size:10px;margin-top:2px;">+ ${assets.length - 6} weitere</div>`
     : '';
   const minW = assets.some(a => a.type === 'Trafo') ? 195 : 145;
   return `<div style="min-width:${minW}px;">${rows}${more}</div>`;
@@ -178,7 +178,7 @@ function _trafoGruppeKv(p) {
 }
 function _trafoAuslTooltip(t) {
   const col = _auslAmpel(t.pct);
-  const bar = `<div style="height:5px;background:#263238;border-radius:3px;overflow:hidden;margin:2px 0 3px;">` +
+  const bar = `<div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden;margin:2px 0 3px;">` +
     `<div style="width:${Math.min(100, t.pct).toFixed(0)}%;height:100%;background:${col};"></div></div>`;
   let h = _attKv('Auslastung', `${t.pct.toFixed(0)} % von ${t.kva} kVA`, col) + bar;
   h += _trafoGruppeKv(t.parallel);
@@ -477,7 +477,7 @@ function _showAssetDeletePopup(buildingId, latlng) {
       `<span style="flex:1;font-size:11px;">${a.name}</span>` +
       `<span title="${sm.label}${geteilt ? ' — in allen Varianten' : ' — nur in dieser Variante'}"` +
       ` style="font-size:10px;opacity:.85;flex-shrink:0;">${sm.icon}</span>` +
-      `<span style="color:#ef5350;font-size:12px;font-weight:700;">✕</span>` +
+      `<span style="color:var(--c-red);font-size:12px;font-weight:700;">✕</span>` +
       `</div>`;
   }).join('');
   const popup = L.popup({ className: 'asset-list-popup', offset: [0, -8], maxWidth: 240 })

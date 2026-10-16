@@ -360,7 +360,7 @@ function _detailHtml(ref) {
       <td style="padding:2px 4px;text-align:right;">${uwMw(s.bezugMw)}</td>
       <td style="padding:2px 4px;text-align:right;">${uwMw(s.einspMw)}</td>
       <td style="padding:2px 4px;text-align:right;white-space:nowrap;">${uwEurSpanne(s.kosten.anschlussEur)}</td>
-      <td style="padding:2px 4px;color:#ffb74d;" title="${s.ueberN1 ? 'mehr als die (n-1)-Trafoleistung des UW — ohne Ausbau des UW kaum möglich' : ''}">${s.ueberN1 ? '⚠ > n-1' : ''}</td>
+      <td style="padding:2px 4px;color:var(--c-orange);" title="${s.ueberN1 ? 'mehr als die (n-1)-Trafoleistung des UW — ohne Ausbau des UW kaum möglich' : ''}">${s.ueberN1 ? '⚠ > n-1' : ''}</td>
     </tr>`).join('');
   const grenze = g => g === 'spannung' ? 'Spannungsfall' : 'Strombelastbarkeit';
   const n1 = b.n1.mva > 0
@@ -376,9 +376,9 @@ function _detailHtml(ref) {
     ? `<div style="margin-top:4px;">→ <b>${b.ziel.systeme} Kabelsystem${b.ziel.systeme > 1 ? 'e' : ''}</b>, Anschluss grob <b>${uwEurSpanne(b.ziel.kosten.anschlussEur)}</b>`
       + `${b.ziel.kosten.bkzEur > 0 ? ` + Baukostenzuschuss ≈ ${uwEur(b.ziel.kosten.bkzEur)}` : ''}.`
       + `${ebene ? `<br>Übliche Ebene bei ${uwMw(zielMva)} MVA: ${esc(ebene.label)}.` : ''}`
-      + `${b.ziel.systeme > 3 ? '<br><span style="color:#ffb74d;">⚠ Mehr als 3 Systeme: Hochspannungsanschluss bzw. eigener Trafo im UW ist dann meist günstiger.</span>' : ''}</div>`
+      + `${b.ziel.systeme > 3 ? '<br><span style="color:var(--c-orange);">⚠ Mehr als 3 Systeme: Hochspannungsanschluss bzw. eigener Trafo im UW ist dann meist günstiger.</span>' : ''}</div>`
     : '';
-  const kvHinweis = b.uAusUw ? '' : ' <span style="color:#ffb74d;">(MS-Spannung nicht aus OSM — bitte eintragen)</span>';
+  const kvHinweis = b.uAusUw ? '' : ' <span style="color:var(--c-orange);">(MS-Spannung nicht aus OSM — bitte eintragen)</span>';
   return `<div style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-top:6px;font-size:10px;line-height:1.45;">
       <div style="display:grid;grid-template-columns:1fr 70px 80px;gap:6px;align-items:end;margin-bottom:4px;">
         <label style="display:flex;flex-direction:column;gap:2px;"><span style="font-size:9px;color:var(--muted);">Umspannwerk</span>
@@ -439,7 +439,7 @@ function _hinweiseHtml() {
 function _panelHtml() {
   const ref = _bezug();
   const knopfSetzen = _setzen
-    ? `<button data-click="uwVonHandSetzen()" style="${STIL_KNOPF}color:#ffb74d;border-color:#ffb74d;">✕ Setzen abbrechen (Esc)</button>`
+    ? `<button data-click="uwVonHandSetzen()" style="${STIL_KNOPF}color:var(--c-orange);border-color:var(--c-orange);">✕ Setzen abbrechen (Esc)</button>`
     : `<button data-click="uwVonHandSetzen()" title="Nächster Klick auf die Karte legt ein Umspannwerk an — wenn OSM es nicht kennt" style="${STIL_KNOPF}">📍 UW von Hand setzen</button>`;
   const status = _setzen ? 'Auf die Karte klicken, wo das Umspannwerk liegt …' : _status;
   return `<div class="sa-section-title" style="margin-top:4px;">Umspannwerk &amp; Direktanschluss <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">Größenordnung · ersetzt keine Netzanschlussanfrage</span></div>

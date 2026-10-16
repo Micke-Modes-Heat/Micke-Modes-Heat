@@ -812,7 +812,7 @@ function _steuerHtml() {
         <option value="neu" ${_ein.flaechen === 'neu' ? 'selected' : ''}>nur Neubau (nach Stichjahr)</option>
       </select>
       ${_ein.flaechen === 'neu' && pvnaJahre().ziel <= pvnaJahre().stich && pvnaLetztesNeubaujahr(pvnaJahre().stich)
-        ? `<span style="font-size:9.5px;color:#ffb74d;">Zieljahr ≥ ${pvnaLetztesNeubaujahr(pvnaJahre().stich)} setzen — sonst steht noch kein Neubau.</span>` : ''}
+        ? `<span style="font-size:9.5px;color:var(--c-orange);">Zieljahr ≥ ${pvnaLetztesNeubaujahr(pvnaJahre().stich)} setzen — sonst steht noch kein Neubau.</span>` : ''}
     </div>
     <div style="flex:0 1 190px;">
       <span style="${lbl}" title="Kabel ohne erfassten Querschnitt: ohne Annahme gilt für sie keine Grenze — die Aufnahme ist dort überschätzt.">Kabel ohne Querschnitt</span>
@@ -1139,8 +1139,8 @@ export function pvnaMarkiereKarte() {
     const verlust = e.bErzMwh > 0 ? (e.bErzMwh - e.bMwh) / e.bErzMwh * 100 : 0;
     L.bindTooltip?.(`<b>${escHtml(g.name || 'Gebäude ' + g.id)}</b><br>`
       + `Netzgrenze: ${_fmt(e.pZulKw)} kW Einspeisung<br>`
-      + `<span style="color:#66bb6a;">A · weniger ausbauen:</span> ${_fmt(e.kwp)} von ${_fmt(e.kwpMax)} kWp (${_fmt(anteil * 100)} %) → ${_fmt(e.aMwh, 1)} MWh/a`
-      + (teil ? `<br><span style="color:#ffb300;">B · voll + abregeln:</span> ${_fmt(e.kwpMax)} kWp → ${_fmt(e.bMwh, 1)} MWh/a nutzbar, ${_fmt(verlust, 1)} % abgeregelt` : '')
+      + `<span style="color:var(--c-green);">A · weniger ausbauen:</span> ${_fmt(e.kwp)} von ${_fmt(e.kwpMax)} kWp (${_fmt(anteil * 100)} %) → ${_fmt(e.aMwh, 1)} MWh/a`
+      + (teil ? `<br><span style="color:var(--c-amber);">B · voll + abregeln:</span> ${_fmt(e.kwpMax)} kWp → ${_fmt(e.bMwh, 1)} MWh/a nutzbar, ${_fmt(verlust, 1)} % abgeregelt` : '')
       + (e.kwpMit > e.kwp + 0.5 ? `<br>mit Ertüchtigung: ${_fmt(e.kwpMit)} kWp` : '') + grund,
     { sticky: true });
   }

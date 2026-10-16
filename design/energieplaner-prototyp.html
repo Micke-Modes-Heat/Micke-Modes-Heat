@@ -1,0 +1,798 @@
+<title>Energieplaner LKEBw</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Layout: dunkler Programmrahmen, darunter Prozessleiste mit den fünf Arbeitsschritten; Arbeitsfläche je Schritt (Karte mit Arbeitsliste und Eigenschaften, oder Seite); unten eine Ergebnisleiste mit Live-Kennzahlen */
+:root{
+  --frame:#1D2320; --frame-2:#2A322D; --on-frame:#E9EDEA; --on-frame-muted:#9DA8A0;
+  --bg:#EEF0ED; --surface:#FFFFFF; --surface-2:#F6F7F5; --line:#DADFD9; --line-2:#C3C9C2;
+  --text:#191D1A; --muted:#58615A; --faint:#89918A;
+  --brand:#266426; --brand-hover:#1D501D; --brand-weak:#E7F0E5; --on-brand:#FFFFFF; --focus:#3F9C3F;
+  --ok:#22795C; --warn:#A8640A; --crit:#C0262D; --info:#1E5E98;
+  --ok-bg:#E2F1EB; --warn-bg:#FBEFD9; --crit-bg:#FAE3E3; --info-bg:#E3EDF7;
+  --map:#EDEFEA; --map-green:#DCE6D3; --map-road:#FFFFFF; --map-road-edge:#D3D8D0; --map-edge:#AEB6AB; --map-label:#6E766F;
+  --seq-1:#E1E8F0; --seq-2:#B5C7DC; --seq-3:#7C9DC2; --seq-4:#456F9D;
+  --heat:#C4561D;
+  --shadow:0 1px 2px rgba(20,30,25,.08),0 4px 16px rgba(20,30,25,.08);
+  --font:"Source Sans 3","Segoe UI",Tahoma,Verdana,sans-serif;
+  --mono:Consolas,"Cascadia Mono",ui-monospace,monospace;
+  --r:3px; --r-2:6px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --frame:#0E1210; --frame-2:#1C221E; --on-frame:#E2E7E3; --on-frame-muted:#8D978F;
+  --bg:#141816; --surface:#1B201D; --surface-2:#212723; --line:#2E3631; --line-2:#3E4842;
+  --text:#E4E8E5; --muted:#A3ACA5; --faint:#78817A;
+  --brand:#5FB55F; --brand-hover:#7BC87B; --brand-weak:#1F2E21; --on-brand:#0C170D; --focus:#7BC87B;
+  --ok:#5CC39D; --warn:#E3AE52; --crit:#F07C7C; --info:#77AFE3;
+  --ok-bg:#1A2D26; --warn-bg:#33291A; --crit-bg:#3A2222; --info-bg:#1A2836;
+  --map:#1B201D; --map-green:#1F2B1F; --map-road:#2C332F; --map-road-edge:#353E38; --map-edge:#46514A; --map-label:#7E887F;
+  --seq-1:#26303A; --seq-2:#33485E; --seq-3:#4B6E95; --seq-4:#6E9BCB;
+  --heat:#E58A55;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.35);
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --frame:#0E1210; --frame-2:#1C221E; --on-frame:#E2E7E3; --on-frame-muted:#8D978F;
+  --bg:#141816; --surface:#1B201D; --surface-2:#212723; --line:#2E3631; --line-2:#3E4842;
+  --text:#E4E8E5; --muted:#A3ACA5; --faint:#78817A;
+  --brand:#5FB55F; --brand-hover:#7BC87B; --brand-weak:#1F2E21; --on-brand:#0C170D; --focus:#7BC87B;
+  --ok:#5CC39D; --warn:#E3AE52; --crit:#F07C7C; --info:#77AFE3;
+  --ok-bg:#1A2D26; --warn-bg:#33291A; --crit-bg:#3A2222; --info-bg:#1A2836;
+  --map:#1B201D; --map-green:#1F2B1F; --map-road:#2C332F; --map-road-edge:#353E38; --map-edge:#46514A; --map-label:#7E887F;
+  --seq-1:#26303A; --seq-2:#33485E; --seq-3:#4B6E95; --seq-4:#6E9BCB;
+  --heat:#E58A55;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.35);
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 var(--font)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.tn{font-variant-numeric:tabular-nums}
+
+.viewport{height:100%;overflow:auto}
+.app{min-width:1240px;height:100%;min-height:720px;display:grid;grid-template-rows:46px 58px 1fr 34px;position:relative}
+
+/* ── Programmrahmen ── */
+.frame{background:var(--frame);color:var(--on-frame);display:flex;align-items:center;gap:18px;padding:0 14px 0 0}
+.brand{display:flex;align-items:center;height:100%;gap:10px;padding:0 16px;border-right:1px solid var(--frame-2);font-weight:700;letter-spacing:.01em}
+.brand i{width:22px;height:22px;background:var(--brand);border-radius:2px;display:grid;place-items:center}
+.brand i::after{content:"";width:8px;height:8px;border:2px solid #fff;border-radius:1px}
+.brand span{color:var(--on-frame-muted);font-weight:400}
+.projsw{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--r)}
+.projsw:hover{background:var(--frame-2)}
+.projsw b{font-weight:600}
+.projsw small{color:var(--on-frame-muted);font-size:13px}
+.cmd{all:unset;cursor:text;display:flex;align-items:center;gap:8px;width:400px;height:30px;padding:0 10px;margin-left:auto;border-radius:var(--r);background:var(--frame-2);color:var(--on-frame-muted);font-size:13px}
+.cmd:hover{color:var(--on-frame)}
+.cmd kbd,.pal kbd{margin-left:auto;font:11px var(--mono);padding:1px 5px;border:1px solid currentColor;border-radius:3px;opacity:.7}
+.fr-right{display:flex;align-items:center;gap:4px;margin-left:auto}
+.saved{display:flex;align-items:center;gap:6px;color:var(--on-frame-muted);font-size:13px;margin-right:8px}
+.saved::before{content:"";width:6px;height:6px;border-radius:50%;background:#5CC39D}
+.fbtn{all:unset;cursor:pointer;display:grid;place-items:center;width:32px;height:32px;border-radius:var(--r);color:var(--on-frame-muted)}
+.fbtn:hover{background:var(--frame-2);color:var(--on-frame)}
+.fbtn.txt{width:auto;padding:0 10px;font-size:13px;display:flex;gap:6px}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--frame-2);display:grid;place-items:center;font-size:12px;font-weight:700;margin-left:6px}
+
+/* ── Prozessleiste ── */
+.process{background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:stretch;padding:0 0 0 8px}
+.steps{display:flex;align-items:stretch}
+.step{all:unset;cursor:pointer;display:grid;grid-template-columns:auto auto;column-gap:10px;align-content:center;padding:0 22px 0 14px;position:relative;min-width:150px}
+.step+.step::before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:1px;background:var(--line)}
+.step .no{grid-row:1/3;width:24px;height:24px;border-radius:50%;border:1.5px solid var(--line-2);display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--muted);align-self:center}
+.step b{font-weight:600;font-size:14px;line-height:1.2}
+.step small{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;line-height:1.3}
+.step small::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--line-2)}
+.step[data-st="ok"] small::before{background:var(--ok)}
+.step[data-st="warn"] small::before{background:var(--warn)}
+.step[data-st="ok"] .no{border-color:var(--ok);color:var(--ok)}
+.step:hover b{color:var(--brand)}
+.step[aria-current="true"]::after{content:"";position:absolute;left:10px;right:18px;bottom:-1px;height:3px;background:var(--brand)}
+.step[aria-current="true"] .no{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.step[aria-current="true"] b{color:var(--brand)}
+.ctxbar{margin-left:auto;display:flex;align-items:center;gap:14px;padding:0 14px;border-left:1px solid var(--line)}
+.cfield{display:grid;gap:1px}
+.cfield label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+.cfield select{all:unset;cursor:pointer;font-weight:600;font-size:14px;padding-right:16px;background:linear-gradient(45deg,transparent 50%,var(--muted) 50%) right 4px top 9px/5px 5px no-repeat,linear-gradient(-45deg,transparent 50%,var(--muted) 50%) right 0 top 9px/5px 5px no-repeat}
+.cfield select option{color:#191D1A}
+
+/* ── Gemeinsame Bausteine ── */
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:var(--r);border:1px solid var(--line-2);background:var(--surface);color:var(--text);cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--text)}
+.btn.pri{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.btn.pri:hover{background:var(--brand-hover);border-color:var(--brand-hover)}
+.btn.q{border-color:transparent;background:transparent;color:var(--muted);padding:0 8px}
+.btn.q:hover{background:var(--surface-2);color:var(--text)}
+.btn.sm{height:26px;font-size:12px;padding:0 9px}
+.st{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;white-space:nowrap}
+.st::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.st.ok{color:var(--ok)} .st.warn{color:var(--warn)} .st.crit{color:var(--crit)} .st.info{color:var(--info)} .st.none{color:var(--faint)}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 6px;border-radius:var(--r);background:var(--surface-2);border:1px solid var(--line);color:var(--muted)}
+.tag.ok{background:var(--ok-bg);border-color:transparent;color:var(--ok)}
+.tag.crit{background:var(--crit-bg);border-color:transparent;color:var(--crit)}
+.tag.warn{background:var(--warn-bg);border-color:transparent;color:var(--warn)}
+.tag.info{background:var(--info-bg);border-color:transparent;color:var(--info)}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:600}
+.fld{display:grid;gap:3px;min-width:0}
+.fld label{font-size:12px;color:var(--muted)}
+.inp{display:flex;align-items:center;height:30px;border:1px solid var(--line-2);border-radius:var(--r);background:var(--surface);min-width:0}
+.inp:focus-within{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
+.inp input,.inp select{all:unset;flex:1;min-width:0;padding:0 9px;font-size:13px;height:100%;font-variant-numeric:tabular-nums}
+.inp em{font-style:normal;font-size:12px;color:var(--faint);padding:0 9px;height:100%;display:flex;align-items:center;background:var(--surface-2);border-left:1px solid var(--line)}
+.inp.changed{border-color:var(--info)}
+.note{display:grid;grid-template-columns:16px 1fr;gap:10px;padding:10px 12px;border-left:3px solid var(--info);background:var(--info-bg);font-size:13px;border-radius:0 var(--r) var(--r) 0}
+.note.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+.note.warn>svg{color:var(--warn)}
+.note>svg{color:var(--info);margin-top:2px}
+.note b{display:block;font-weight:600}
+.note a{color:inherit;font-weight:600;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.bar{height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden;border:1px solid var(--line)}
+.bar i{display:block;height:100%}
+
+/* ── Arbeitsfläche mit Karte ── */
+.work{display:grid;grid-template-columns:360px 1fr auto;min-height:0}
+.list{background:var(--surface);border-right:1px solid var(--line);display:grid;grid-template-rows:auto auto 1fr;min-height:0}
+.l-head{padding:14px 16px 0;display:grid;gap:10px}
+.l-title{display:flex;align-items:center;justify-content:space-between}
+.l-title h2{margin:0;font-size:18px;font-weight:700}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden}
+.seg button{all:unset;cursor:pointer;padding:0 12px;height:26px;display:flex;align-items:center;font-size:13px;color:var(--muted);font-weight:600}
+.seg button+button{border-left:1px solid var(--line-2)}
+.seg button[aria-pressed="true"]{background:var(--text);color:var(--surface)}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--line);margin:0 -16px;padding:0 16px}
+.tabs button{all:unset;cursor:pointer;padding:9px 0;margin-right:18px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:6px}
+.tabs button:hover{color:var(--text)}
+.tabs button[aria-current="true"]{color:var(--text);border-bottom-color:var(--brand)}
+.tabs .cnt{font-size:11px;font-weight:600;color:var(--warn)}
+.l-body{overflow:auto;min-height:0;padding:12px 16px 16px;display:grid;gap:14px;align-content:start}
+.toolbar{display:flex;gap:6px;flex-wrap:wrap}
+.filter{display:flex;align-items:center;gap:6px;height:30px;padding:0 9px;border:1px solid var(--line-2);border-radius:var(--r);color:var(--faint);font-size:13px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);font-weight:600;padding:6px 6px;border-bottom:1px solid var(--line)}
+.tbl td{padding:7px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;vertical-align:middle}
+.tbl th.r,.tbl td.r{text-align:right}
+.tbl tbody tr{cursor:pointer}
+.tbl tbody tr:hover td{background:var(--surface-2)}
+.tbl tbody tr[aria-selected="true"] td{background:var(--brand-weak)}
+.tbl tbody tr[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--brand)}
+.tbl .sub{display:block;font-size:12px;color:var(--muted)}
+.facts{display:grid;gap:0}
+.fact{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.fact:last-child{border-bottom:0}
+.fact b{font-weight:600;display:block}
+.fact span.sub{color:var(--muted);font-size:12px}
+.sec-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px}
+details.more{border-top:1px solid var(--line);padding-top:10px}
+details.more>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:var(--muted)}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary svg{transition:transform .15s}
+details.more[open]>summary svg{transform:rotate(90deg)}
+details.more .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+
+.mapwrap{position:relative;min-width:0;min-height:0;background:var(--map);overflow:hidden}
+.mapwrap svg.map{position:absolute;inset:0;width:100%;height:100%}
+.mfloat{position:absolute;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-2);box-shadow:var(--shadow)}
+.mstyle{top:12px;left:12px;display:flex;align-items:center;gap:10px;padding:6px 8px 6px 12px;font-size:13px}
+.mstyle .eyebrow{margin-right:2px}
+.mctrl{top:12px;right:12px;display:flex;flex-direction:column}
+.mctrl button{all:unset;cursor:pointer;width:34px;height:34px;display:grid;place-items:center;color:var(--muted)}
+.mctrl button:hover{color:var(--text);background:var(--surface-2)}
+.mctrl button+button{border-top:1px solid var(--line)}
+.mctrl hr{margin:0;border:0;border-top:3px solid var(--line)}
+.mlegend{left:12px;bottom:12px;padding:10px 12px;display:grid;gap:5px;font-size:12px;min-width:170px}
+.mlegend .eyebrow{margin-bottom:2px}
+.mlegend span{display:flex;align-items:center;gap:8px}
+.mlegend i{display:inline-block;width:20px;height:4px;border-radius:2px}
+.mlegend i.sq{height:12px;width:14px;border:1px solid var(--map-edge);border-radius:1px}
+.mscale{position:absolute;right:12px;bottom:12px;font-size:12px;color:var(--map-label);display:flex;align-items:center;gap:6px;background:color-mix(in srgb,var(--surface) 75%,transparent);padding:3px 6px;border-radius:var(--r)}
+.mscale i{display:block;width:64px;height:6px;border:1.5px solid var(--map-label);border-top:0}
+.map text{font-family:var(--font)}
+
+.props{width:340px;background:var(--surface);border-left:1px solid var(--line);display:grid;grid-template-rows:auto 1fr auto;min-height:0}
+.props[hidden]{display:none}
+.p-head{padding:14px 16px 12px;border-bottom:1px solid var(--line);display:grid;gap:4px}
+.p-head .row1{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.p-head h3{margin:0;font-size:17px;font-weight:700;line-height:1.25}
+.p-body{overflow:auto;min-height:0;padding:14px 16px;display:grid;gap:18px;align-content:start}
+.p-foot{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:8px}
+.kv{display:grid;grid-template-columns:1fr auto;font-size:13px;margin:0}
+.kv dt,.kv dd{margin:0;padding:6px 0;border-bottom:1px solid var(--line)}
+.kv dt{color:var(--muted)}
+.kv dd{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.kv dd.crit{color:var(--crit)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mini{display:grid;gap:4px}
+.reco{border:1px solid var(--line);border-radius:var(--r-2);padding:12px;display:grid;gap:8px;font-size:13px}
+.reco b{font-weight:600}
+
+/* ── Seiten ── */
+.page{overflow:auto;min-height:0}
+.page-in{max-width:1240px;margin:0 auto;padding:24px 28px 40px}
+.ph{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:20px}
+.ph h1{margin:2px 0 0;font-size:26px;font-weight:700;line-height:1.2}
+.ph p{margin:4px 0 0;color:var(--muted)}
+.cards{display:grid;grid-template-columns:1.35fr 1fr;gap:20px;align-items:start}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-2);min-width:0}
+.card>header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
+.card>header h4{margin:0;font-size:15px;font-weight:700}
+.card .cb{padding:12px 16px}
+.timeline{list-style:none;margin:0;padding:0}
+.tl-ph{display:grid;grid-template-columns:28px 1fr;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.tl-ph:last-child{border-bottom:0}
+.tl-ph .no{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;border:1.5px solid var(--line-2);color:var(--muted)}
+.tl-ph[data-st="ok"] .no{border-color:var(--ok);color:var(--ok)}
+.tl-ph[data-st="warn"] .no{border-color:var(--warn);color:var(--warn)}
+.tl-ph h5{margin:2px 0 6px;font-size:14px;font-weight:700;display:flex;justify-content:space-between}
+.tl-it{display:grid;grid-template-columns:18px 1fr auto;gap:8px;align-items:center;font-size:13px;padding:4px 0}
+.tl-it svg{width:14px;height:14px}
+.tl-it.ok svg{color:var(--ok)} .tl-it.warn svg{color:var(--warn)} .tl-it.none svg{color:var(--faint)}
+.tl-it span.sub{color:var(--muted)}
+.tl-it a{font-size:12px;font-weight:600;color:var(--brand);cursor:pointer;text-decoration:none}
+.tl-it a:hover{text-decoration:underline}
+.nextstep{display:flex;align-items:center;gap:16px;padding:14px 16px;background:var(--brand-weak);border-bottom:1px solid var(--line)}
+.nextstep div{flex:1}
+.nextstep b{display:block}
+.nextstep span{font-size:13px;color:var(--muted)}
+.stack{display:grid;gap:20px}
+.src{font-size:13px;width:100%;border-collapse:collapse}
+.src td{padding:7px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.src tr:last-child td{border-bottom:0}
+.src td:last-child{text-align:right;color:var(--muted);white-space:nowrap;padding-left:10px}
+
+.an{display:grid;grid-template-columns:240px 1fr;min-height:0}
+.an-nav{background:var(--surface);border-right:1px solid var(--line);overflow:auto;padding:14px 0}
+.an-nav .eyebrow{padding:12px 18px 4px}
+.an-nav button{all:unset;box-sizing:border-box;cursor:pointer;display:flex;justify-content:space-between;align-items:center;width:100%;padding:6px 18px;font-size:13px;color:var(--muted)}
+.an-nav button:hover{color:var(--text);background:var(--surface-2)}
+.an-nav button[aria-current="true"]{color:var(--text);font-weight:700;background:var(--brand-weak);box-shadow:inset 3px 0 0 var(--brand)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:var(--r-2);background:var(--surface);margin-bottom:20px}
+.kpi{padding:14px 16px}
+.kpi+.kpi{border-left:1px solid var(--line)}
+.kpi .eyebrow{display:block}
+.kpi b{display:block;font-size:26px;font-weight:700;line-height:1.2;margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi small{color:var(--muted);font-size:12px}
+.kpi.crit b{color:var(--crit)}
+.chart text{fill:var(--muted);font-size:11px;font-family:var(--font)}
+.chart .lab{fill:var(--text);font-weight:600}
+.lgd{display:flex;gap:18px;font-size:12px;color:var(--muted);margin-top:6px;flex-wrap:wrap}
+.lgd i{display:inline-block;vertical-align:middle;margin-right:6px}
+.vtable{width:100%;border-collapse:collapse;font-size:13px}
+.vtable th,.vtable td{padding:8px 12px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+.vtable th:first-child,.vtable td:first-child{text-align:left}
+.vtable thead th{font-size:12px;color:var(--muted);font-weight:600;background:var(--surface-2)}
+.vtable td.best{font-weight:700;color:var(--ok)}
+.vtable tbody tr:last-child td{border-bottom:0}
+
+.doc{display:grid;grid-template-columns:280px 1fr 320px;min-height:0}
+.outline{background:var(--surface);border-right:1px solid var(--line);overflow:auto}
+.outline .oh{display:flex;justify-content:space-between;align-items:center;padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+.outline .oh b{font-size:15px}
+.oi{display:grid;grid-template-columns:44px 1fr 10px;gap:4px;align-items:center;padding:5px 16px;font-size:13px;cursor:pointer}
+.oi:hover{background:var(--surface-2)}
+.oi .nr{color:var(--brand);font-variant-numeric:tabular-nums;font-weight:600}
+.oi.l1{font-weight:700;padding-top:10px}
+.oi.l3{padding-left:28px}
+.oi.cur{background:var(--brand-weak);box-shadow:inset 3px 0 0 var(--brand)}
+.oi i{width:7px;height:7px;border-radius:50%}
+.oi i.ok{background:var(--ok)} .oi i.warn{background:var(--warn)} .oi i.none{background:var(--line-2)}
+.sheet-wrap{overflow:auto;background:var(--bg);display:flex;justify-content:center;padding:28px;min-height:0}
+.sheet{width:560px;background:#FFFFFF;color:#1B1F1C;box-shadow:0 1px 3px rgba(0,0,0,.2);padding:44px 52px 56px;font-family:Tahoma,Verdana,sans-serif;font-size:11px;line-height:1.6;align-self:flex-start}
+.sheet .hd{display:flex;justify-content:space-between;border-bottom:1px solid #E2E4DF;padding-bottom:8px;margin-bottom:26px;font-size:9px;color:#5A5F5A}
+.sheet .hd b{color:#266426}
+.sheet h6{font-size:13px;margin:0 0 10px}
+.sheet h6 em{font-style:normal;color:#266426;margin-right:10px}
+.sheet p{margin:0 0 10px}
+.sheet .fig{border:1px solid #E2E4DF;padding:10px;margin:14px 0 4px;outline:2px solid #3F9C3F;outline-offset:4px}
+.sheet .fig text{font-size:8px;fill:#5A5F5A;font-family:Tahoma,Verdana,sans-serif}
+.sheet .cap{font-size:9.5px;color:#5A5F5A;margin-bottom:14px}
+.sheet .ft{margin-top:30px;border-top:1px solid #E2E4DF;padding-top:6px;font-size:9px;color:#5A5F5A;display:flex;justify-content:space-between}
+
+/* ── Ergebnisleiste ── */
+.result{background:var(--surface);border-top:1px solid var(--line);display:flex;align-items:stretch;font-size:13px;position:relative;z-index:3}
+.res{display:flex;align-items:center;gap:8px;padding:0 16px;border-right:1px solid var(--line);white-space:nowrap}
+.res span{color:var(--muted)}
+.res b{font-weight:700;font-variant-numeric:tabular-nums}
+.res b.crit{color:var(--crit)}
+.res.calc{margin-left:auto;border-right:0;border-left:1px solid var(--line)}
+.res-toggle{all:unset;cursor:pointer;display:flex;align-items:center;gap:6px;padding:0 14px;color:var(--muted);font-weight:600;border-right:1px solid var(--line)}
+.res-toggle:hover{color:var(--text);background:var(--surface-2)}
+.res-toggle svg{transition:transform .15s}
+.res-toggle[aria-expanded="true"] svg{transform:rotate(180deg)}
+.drawer{position:absolute;left:0;right:0;bottom:34px;height:260px;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -6px 18px rgba(0,0,0,.08);display:grid;grid-template-columns:1fr 320px;gap:24px;padding:14px 20px;z-index:2}
+.drawer[hidden]{display:none}
+
+/* ── Befehlssuche & Notizen ── */
+.overlay{position:absolute;inset:0;background:rgba(15,20,17,.35);z-index:20;display:flex;justify-content:center;align-items:flex-start;padding-top:80px}
+.overlay[hidden]{display:none}
+.pal{width:620px;background:var(--surface);border-radius:var(--r-2);box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden;border:1px solid var(--line)}
+.pal-in{display:flex;align-items:center;gap:10px;padding:0 16px;height:52px;border-bottom:1px solid var(--line)}
+.pal-in input{all:unset;flex:1;font-size:16px}
+.pal-list{max-height:380px;overflow:auto;padding:6px 0}
+.pal-list .eyebrow{padding:10px 16px 4px}
+.pal-it{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:16px 1fr auto;gap:12px;align-items:center;width:100%;padding:7px 16px;font-size:14px}
+.pal-it small{color:var(--faint);font-size:12px}
+.pal-it:hover,.pal-it.act{background:var(--brand-weak)}
+.pal-it svg{color:var(--muted)}
+.pal-foot{display:flex;gap:16px;padding:8px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--faint)}
+.notes{position:absolute;top:46px;right:0;bottom:34px;width:420px;background:var(--surface);border-left:1px solid var(--line);box-shadow:var(--shadow);z-index:15;display:grid;grid-template-rows:auto 1fr;min-height:0}
+.notes[hidden]{display:none}
+.notes .nb{overflow:auto;padding:16px 20px 24px;font-size:14px}
+.notes h3{font-size:15px;margin:18px 0 6px}
+.notes h3:first-child{margin-top:0}
+.notes p,.notes li{color:var(--muted);margin:0 0 6px}
+.notes ul{margin:0;padding-left:18px}
+.toast{position:absolute;left:50%;bottom:48px;transform:translateX(-50%) translateY(6px);background:var(--frame);color:var(--on-frame);padding:8px 14px;border-radius:var(--r-2);font-size:13px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:30;display:flex;gap:8px;align-items:center}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l4 4"/></symbol>
+    <symbol id="i-help" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4M8 11.6v.1"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z"/></symbol>
+    <symbol id="i-down" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
+    <symbol id="i-up" viewBox="0 0 16 16"><path d="M4 10l4-4 4 4"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5L6 12.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 2l6.5 11.5h-13zM8 6.5v3.2M8 11.6v.1"/></symbol>
+    <symbol id="i-circle" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5"/></symbol>
+    <symbol id="i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.8v.1"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 16 16"><path d="M3 8h10"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 16 16"><path d="M8 2l6.5 3.5L8 9 1.5 5.5zM1.5 8.5L8 12l6.5-3.5M1.5 11.5L8 15l6.5-3.5"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 16 16"><path d="M8 1.5l6 3.2v6.6l-6 3.2-6-3.2V4.7zM2 4.7l6 3.2 6-3.2M8 7.9v6.6"/></symbol>
+    <symbol id="i-target" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 16 16"><path d="M2.5 13.5l2-6 6-5 3 3-5 6zM2.5 13.5l4-4"/></symbol>
+    <symbol id="i-import" viewBox="0 0 16 16"><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M2.5 12v1.5h11V12"/></symbol>
+    <symbol id="i-table" viewBox="0 0 16 16"><path d="M2 3h12v10H2zM2 6.5h12M2 10h12M6.5 3v10"/></symbol>
+    <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.5 2.5l9 5.5-9 5.5z"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 16 16"><path d="M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 16 16"><path d="M2 3h12l-4.5 5.5V13l-3-1.5V8.5z"/></symbol>
+    <symbol id="i-bulb" viewBox="0 0 16 16"><path d="M6 12.5h4M6.5 14.5h3M5 10c-1-1-1.5-2-1.5-3.3a4.5 4.5 0 0 1 9 0c0 1.3-.5 2.3-1.5 3.3l-.5 1H5.5z"/></symbol>
+  </defs>
+</svg>
+
+<div class="viewport">
+<div class="app" id="app">
+  <header class="frame">
+    <div class="brand"><i></i>LKEBw <span>Energieplaner</span></div>
+    <button class="projsw" title="Projekt wechseln"><b>Kaserne Musterstadt</b><small>WE 12345</small><svg class="i"><use href="#i-down"/></svg></button>
+    <button class="cmd" id="cmdBtn"><svg class="i"><use href="#i-search"/></svg>Funktion, Gebäude oder Station suchen<kbd>Strg K</kbd></button>
+    <div class="fr-right">
+      <span class="saved">Gespeichert 10:42</span>
+      <button class="fbtn txt" id="notesBtn"><svg class="i"><use href="#i-info"/></svg>Zum Entwurf</button>
+      <button class="fbtn" title="Hilfe" aria-label="Hilfe"><svg class="i"><use href="#i-help"/></svg></button>
+      <button class="fbtn" id="themeBtn" title="Hell oder dunkel" aria-label="Hell oder dunkel"><svg class="i"><use href="#i-moon"/></svg></button>
+      <span class="avatar" title="Angemeldet">NN</span>
+    </div>
+  </header>
+
+  <nav class="process" aria-label="Arbeitsschritte">
+    <div class="steps" id="steps"></div>
+    <div class="ctxbar">
+      <div class="cfield"><label for="cVar">Variante</label><select id="cVar"><option>Hauptplan</option><option>PV-Ausbau Süd</option><option>Wärmenetz Ost</option></select></div>
+      <div class="cfield"><label for="cYear">Betrachtungsjahr</label><select id="cYear"><option>2026 Bestand</option><option>2030</option><option selected>2035</option><option>2045</option></select></div>
+      <button class="btn pri" id="calcBtn"><svg class="i"><use href="#i-play"/></svg>Berechnen</button>
+    </div>
+  </nav>
+
+  <main id="stage" style="min-height:0;display:grid"></main>
+
+  <footer class="result" id="result"></footer>
+  <div class="drawer" id="drawer" hidden></div>
+
+  <div class="overlay" id="pal" hidden>
+    <div class="pal" role="dialog" aria-label="Befehlssuche">
+      <div class="pal-in"><svg class="i"><use href="#i-search"/></svg><input id="palInput" placeholder="Was möchtest du tun? z. B. Netzanschluss, OSM, Word" autocomplete="off"><kbd>Esc</kbd></div>
+      <div class="pal-list" id="palList"></div>
+      <div class="pal-foot"><span>↑ ↓ auswählen</span><span>Enter öffnen</span><span>Jede Funktion des Tools ist hier auffindbar</span></div>
+    </div>
+  </div>
+
+  <aside class="notes" id="notes" hidden>
+    <div class="p-head"><div class="row1"><h3>Zum Entwurf</h3><button class="btn q sm" id="notesClose" aria-label="Schließen"><svg class="i"><use href="#i-x"/></svg></button></div><span class="eyebrow">Stand 16.10.2026 · Beispielwerte</span></div>
+    <div class="nb">
+      <h3>Idee</h3>
+      <p>Das Tool arbeitet wie eine Fachanwendung, nicht wie eine Sammlung von Knöpfen. Fünf Arbeitsschritte führen vom Bestand zum Gutachten. Jeder Schritt zeigt, ob er fertig ist.</p>
+      <h3>Aufbau</h3>
+      <ul>
+        <li><b>Programmrahmen</b> dunkel und ruhig. Er trennt das Werkzeug vom Inhalt.</li>
+        <li><b>Prozessleiste</b> mit Status je Schritt. Variante, Jahr und Berechnen stehen rechts daneben und gelten überall.</li>
+        <li><b>Arbeitsliste</b> links als Tabelle. Zeile anklicken wählt das Objekt auch auf der Karte.</li>
+        <li><b>Eigenschaften</b> rechts nur, wenn etwas gewählt ist.</li>
+        <li><b>Ergebnisleiste</b> unten mit den Kennzahlen, die sich beim Planen ändern. Aufklappbar mit Diagramm.</li>
+        <li><b>Befehlssuche</b> (Strg K) findet jede Funktion. Das ersetzt das Menü „Mehr“ und lange Knopflisten.</li>
+      </ul>
+      <h3>Gestaltung</h3>
+      <ul>
+        <li>LKEBw-Grün nur für Auswahl, aktiven Schritt und die Hauptaktion. Statusfarben sind davon klar getrennt.</li>
+        <li>Keine Emojis, ein Satz Linien-Icons.</li>
+        <li>Zahlen rechtsbündig in Tabellen, Einheiten im Feld.</li>
+        <li>Kartenfarben fachlich: Baualter in Blaustufen, Auslastung als Ampel, Wärmenetz in Orange.</li>
+        <li>Schrift Source Sans 3 (frei lizenziert, lässt sich offline einbetten). Das Gutachten bleibt in Tahoma wie die Vorlage.</li>
+      </ul>
+      <h3>Zum Ausprobieren</h3>
+      <ul>
+        <li>Schritte oben anklicken.</li>
+        <li>In Planung zwischen Wärme und Strom wechseln, Station in Liste oder Karte wählen.</li>
+        <li>Unten „Details“ öffnen.</li>
+        <li>Strg K drücken und „Word“ oder „OSM“ eingeben.</li>
+        <li>„Berechnen“ drücken: Status, Kennzahlen und Gutachten-Hinweis ändern sich.</li>
+      </ul>
+      <h3>Offen</h3>
+      <ul>
+        <li>Schrift: Source Sans 3 oder Tahoma auch in der Oberfläche?</li>
+        <li>Echtes LKEBw-Logo statt Platzhalter?</li>
+        <li>Dunkle Darstellung behalten?</li>
+      </ul>
+    </div>
+  </aside>
+  <div class="toast" id="toast"></div>
+</div>
+</div>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const ic = (id, st='') => `<svg class="i" ${st?`style="${st}"`:''}><use href="#i-${id}"/></svg>`;
+  const fmt = n => n.toLocaleString('de-DE');
+  const S = { step:'planung', sparte:'strom', tabStrom:'netz', tabWaerme:'erzeugung', tabBestand:'gebaeude', sel:'T3', bsel:11, calc:false, an:'nap', drawer:false };
+
+  /* ── Daten (Beispiel) ── */
+  const B = [
+    [60,50,120,50,'Stabsgebäude','Verwaltung',1962,3],[200,50,90,50,'Unterkunft 2','Unterkunft',1968,3],[310,50,140,50,'Unterkunft 3','Unterkunft',1968,3],
+    [60,140,60,110,'Sporthalle','Sport',1985,1],[140,150,150,60,'Unterkunft 5','Unterkunft',1994,3],[310,140,70,90,'Wache','Sicherheit',2008,2],
+    [400,140,75,60,'Sanitätsbereich','Sanität',1999,2],[520,50,170,45,'Werkstatt Nord','Werkstatt',1974,1],[520,130,80,90,'Werkstatt Süd','Werkstatt',1974,1],
+    [620,130,80,60,'Lager 10','Lager',1958,1],[60,300,120,60,'Truppenküche','Küche',1981,2],[210,300,90,90,'Unterkunft 12','Unterkunft',1968,4],
+    [320,305,150,50,'Lehrsaalgebäude','Lehre',2015,2],[320,375,70,60,'Heizhaus','Technik',1962,1],[510,300,190,70,'Kfz-Halle','Werkstatt',1990,1],
+    [510,390,90,90,'Lager 16','Lager',1958,1],[620,390,80,60,'Tankstelle','Technik',2003,1],[60,400,120,70,'Unterkunft 18','Unterkunft',2021,3],[210,410,80,60,'Betreuung','Betreuung',1977,2]];
+  const ROADS = [['M20 115 H740','Ringstraße',600,111],['M20 280 H740','Kasernenstraße',405,276],['M490 20 V500',''],['M195 280 V500',''],['M300 115 V280','']];
+  const GREEN = [[400,375,75,100],[620,460,90,40],[130,220,60,50]];
+  const T = {T1:[180,122,630,62,'Unterkunftsbereich West',1994],T2:[470,122,630,71,'Unterkunftsbereich Ost',1994],T3:[600,232,630,109,'Werkstattbereich',1987],T4:[300,292,400,58,'Lehrsaal',2015],T5:[600,292,800,84,'Kfz-Halle',2003],T6:[180,385,400,47,'Unterkunft 18',2021]};
+  const CAB = [['T1',[[180,122],[120,122],[120,100]]],['T1',[[180,122],[245,122],[245,100]]],['T1',[[180,122],[180,140],[100,140]]],['T2',[[470,122],[380,122],[380,100]]],['T2',[[470,122],[470,150],[438,150]]],['T2',[[470,122],[600,122],[600,95]]],['T3',[[600,232],[560,232],[560,220]]],['T3',[[600,232],[660,232],[660,190]]],['T3',[[600,232],[600,205],[570,205]]],['T4',[[300,292],[255,292],[255,300]]],['T4',[[300,292],[395,292],[395,305]]],['T4',[[300,292],[300,230],[345,230]]],['T5',[[600,292],[600,300]]],['T5',[[600,292],[540,292],[540,390]]],['T5',[[600,292],[660,292],[660,390]]],['T6',[[180,385],[120,385],[120,400]]],['T6',[[180,385],[180,360]]],['T6',[[180,385],[250,385],[250,410]]]];
+  const HEAT = [['M355 375 V292 H120 V250',150],['M355 292 H560 V300',100],['M300 292 V210',65],['M300 292 V115 H380 V100',80],['M300 115 H245 V100',50],['M490 292 V220 H560',65],['M355 435 V440 H250 V410',65],['M355 440 V470 H180',50]];
+  const IST = [1212,1168,1054,931,846,812,795,808,872,985,1104,1190];
+  const PROG = IST.map(v => Math.round(v*1.226));
+  const lc = p => p >= 100 ? 'var(--crit)' : p >= 80 ? 'var(--warn)' : 'var(--ok)';
+  const ageCol = y => y < 1970 ? 'var(--seq-4)' : y < 1990 ? 'var(--seq-3)' : y < 2010 ? 'var(--seq-2)' : 'var(--seq-1)';
+  const bgf = b => Math.round(b[2]*b[3]*0.9*b[7]/10)*10*1.6|0;
+
+  /* ── Prozessleiste ── */
+  const STEPS = [
+    ['projekt','Projekt',() => ['ok','Stammdaten vollständig']],
+    ['bestand','Bestand',() => ['warn','1 Punkt offen']],
+    ['planung','Planung',() => ['warn','2 Punkte offen']],
+    ['auswertung','Auswertung',() => S.calc ? ['ok','aktuell'] : ['warn','Rechenstand veraltet']],
+    ['gutachten','Gutachten',() => ['none','31 von 47 Kapiteln']]];
+  function renderSteps(){
+    $('#steps').innerHTML = STEPS.map(([id,t,f],i) => { const [st,s] = f();
+      return `<button class="step" data-step="${id}" data-st="${st}" aria-current="${S.step===id}"><span class="no">${st==='ok'&&S.step!==id?ic('check','width:12px;height:12px;stroke-width:2.2'):i+1}</span><b>${t}</b><small>${s}</small></button>`; }).join('');
+  }
+
+  /* ── Ergebnisleiste ── */
+  function renderResult(){
+    $('#result').innerHTML = `<button class="res-toggle" id="drawerBtn" aria-expanded="${S.drawer}">${ic('up')}Details</button>
+      <div class="res"><span>Wärmebedarf</span><b>4.880 MWh/a</b></div>
+      <div class="res"><span>Heizlast</span><b>2.050 kW</b></div>
+      <div class="res"><span>Spitzenlast Strom 2035</span><b>1.486 kW</b></div>
+      <div class="res"><span>Reserve Netzanschluss</span><b class="crit">−236 kW</b></div>
+      <div class="res"><span>Investition</span><b>8,4 Mio. €</b></div>
+      <div class="res calc">${S.calc ? '<span class="st ok">Berechnet 10:43</span>' : '<span class="st warn">Veraltet seit 10:12 · 2 Änderungen</span>'}</div>`;
+    const d = $('#drawer'); d.hidden = !S.drawer;
+    if (S.drawer) d.innerHTML = `<div><div class="sec-h"><span class="eyebrow">Monatsspitzen und Anschlussleistung · Variante Hauptplan</span></div>${chart(760,190)}</div>
+      <div><span class="eyebrow">Gegenüber letzter Berechnung</span><dl class="kv" style="margin-top:6px"><dt>Spitzenlast 2035</dt><dd>+ 38 kW</dd><dt>Neue Ladepunkte</dt><dd>+ 6</dd><dt>Trafostationen über 100 %</dt><dd class="crit">1</dd><dt>Investition</dt><dd>+ 0,2 Mio. €</dd></dl></div>`;
+  }
+
+  /* ── Karte ── */
+  function mapSvg(mode){
+    let s = `<svg class="map" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Lageplan, Beispiel">`;
+    s += `<rect x="-400" y="-300" width="1560" height="1120" fill="var(--map)"/>`;
+    GREEN.forEach(g => s += `<rect x="${g[0]}" y="${g[1]}" width="${g[2]}" height="${g[3]}" fill="var(--map-green)" rx="3"/>`);
+    ROADS.forEach(r => { s += `<path d="${r[0]}" stroke="var(--map-road-edge)" stroke-width="16" fill="none"/><path d="${r[0]}" stroke="var(--map-road)" stroke-width="13" fill="none"/>`; });
+    ROADS.forEach(r => { if (r[1]) s += `<text x="${r[2]}" y="${r[3]+8}" font-size="9" fill="var(--map-label)" letter-spacing=".5">${r[1]}</text>`; });
+    s += `<path d="M12 24 H748 V510 H12 Z" fill="none" stroke="var(--map-label)" stroke-width="1" stroke-dasharray="8 3 2 3" opacity=".7"/>`;
+    B.forEach((b,i) => {
+      const fill = mode==='bestand' ? ageCol(b[6]) : 'var(--surface)';
+      const sel = mode==='bestand' && S.bsel===i;
+      s += `<rect data-b="${i}" x="${b[0]}" y="${b[1]}" width="${b[2]}" height="${b[3]}" fill="${fill}" stroke="${sel?'var(--brand)':'var(--map-edge)'}" stroke-width="${sel?3:1}" style="cursor:${mode==='bestand'?'pointer':'default'}"/>`;
+      if (mode==='bestand' && b[2]>=80) s += `<text x="${b[0]+6}" y="${b[1]+14}" font-size="9" fill="${b[6]<1990?'#fff':'var(--text)'}" pointer-events="none">${b[4]}</text>`;
+    });
+    if (mode==='strom'){
+      s += `<path d="M20 280 H180 V385 M180 280 V122 H470 M470 122 V232 H600 V292 H300" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="5 4" fill="none" opacity=".7"/>`;
+      CAB.forEach(c => { const p = c[1].map(q=>q.join(' ')).join(' L'); s += `<path d="M${p}" stroke="${lc(T[c[0]][3])}" stroke-width="${S.sel===c[0]?4.5:3}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`; });
+      Object.entries(T).forEach(([k,[x,y,,p]]) => {
+        const sel = S.sel===k;
+        s += `<g data-t="${k}" style="cursor:pointer">${sel?`<circle cx="${x}" cy="${y}" r="17" fill="var(--brand)" opacity=".15"/><circle cx="${x}" cy="${y}" r="17" fill="none" stroke="var(--brand)" stroke-width="2"/>`:''}<rect x="${x-8}" y="${y-8}" width="16" height="16" fill="var(--surface)" stroke="${lc(p)}" stroke-width="3"/><text x="${x+13}" y="${y-10}" font-size="11" font-weight="700" fill="var(--text)" style="paint-order:stroke;stroke:var(--map);stroke-width:3px">${k}</text></g>`;
+      });
+      s += `<circle cx="22" cy="280" r="7" fill="var(--surface)" stroke="var(--text)" stroke-width="2"/><text x="20" y="262" font-size="10" fill="var(--text)" style="paint-order:stroke;stroke:var(--map);stroke-width:3px">Netzanschluss 10 kV</text>`;
+    }
+    if (mode==='waerme'){
+      HEAT.forEach(([d,dn]) => s += `<path d="${d}" stroke="var(--heat)" stroke-width="${1.5+dn/30}" fill="none" stroke-linejoin="round" stroke-linecap="round"/>`);
+      s += `<g data-hz style="cursor:pointer"><circle cx="355" cy="405" r="20" fill="var(--heat)" opacity=".15"/><rect x="343" y="393" width="24" height="24" fill="var(--heat)" stroke="var(--surface)" stroke-width="2"/></g><text x="374" y="425" font-size="11" font-weight="700" fill="var(--text)" style="paint-order:stroke;stroke:var(--map);stroke-width:3px">Heizzentrale</text>`;
+    }
+    return s + '</svg>';
+  }
+  function mapArea(mode){
+    const style = { strom:['Auslastung','ΔU','Leistung'], waerme:['Nennweite','Wärmeverlust'], bestand:['Baualter','Nutzung','Wärmebedarf'] }[mode];
+    const leg = mode==='strom' ? `<span class="eyebrow">Auslastung ${S.calc?'2035':'(Stand 10:12)'}</span><span><i style="background:var(--ok)"></i>unter 80 %</span><span><i style="background:var(--warn)"></i>80 bis 100 %</span><span><i style="background:var(--crit)"></i>über 100 %</span><span><i style="background:var(--muted);height:0;border-top:1.5px dashed var(--muted)"></i>Mittelspannung</span>`
+      : mode==='waerme' ? `<span class="eyebrow">Wärmenetz</span><span><i style="background:var(--heat);height:6px"></i>DN 100 bis 150</span><span><i style="background:var(--heat);height:3px"></i>DN 50 bis 80</span>`
+      : `<span class="eyebrow">Baualter</span><span><i class="sq" style="background:var(--seq-4)"></i>vor 1970</span><span><i class="sq" style="background:var(--seq-3)"></i>1970 bis 1989</span><span><i class="sq" style="background:var(--seq-2)"></i>1990 bis 2009</span><span><i class="sq" style="background:var(--seq-1)"></i>ab 2010</span>`;
+    return `<div class="mapwrap" id="map">${mapSvg(mode)}
+      <div class="mfloat mstyle"><span class="eyebrow">Darstellung</span><div class="seg" data-mseg>${style.map((t,i)=>`<button aria-pressed="${i===0}">${t}</button>`).join('')}</div></div>
+      <div class="mfloat mctrl"><button aria-label="Vergrößern">${ic('plus')}</button><button aria-label="Verkleinern">${ic('minus')}</button><button title="Auf Auswahl zoomen" aria-label="Auf Auswahl zoomen">${ic('target')}</button><hr><button title="Ebenen" aria-label="Ebenen">${ic('layers')}</button><button title="3D-Ansicht" aria-label="3D-Ansicht">${ic('cube')}</button></div>
+      <div class="mfloat mlegend">${leg}</div>
+      <div class="mscale"><i></i>50 m</div></div>`;
+  }
+
+  /* ── Arbeitsliste ── */
+  const fact = (t, sub, right) => `<div class="fact"><span><b>${t}</b>${sub?`<span class="sub">${sub}</span>`:''}</span><span>${right||''}</span></div>`;
+  const tabs = (key, list) => `<div class="tabs" data-tabs="${key}">${list.map(([k,t,c]) => `<button data-tab="${k}" aria-current="${S[key]===k}">${t}${c?`<span class="cnt">${c}</span>`:''}</button>`).join('')}</div>`;
+  const sparte = () => `<div class="seg" data-sparte><button data-sp="waerme" aria-pressed="${S.sparte==='waerme'}">Wärme</button><button data-sp="strom" aria-pressed="${S.sparte==='strom'}">Strom</button></div>`;
+
+  function listPlanung(){
+    if (S.sparte==='strom'){
+      const tl = [['netz','Netz','2'],['erzeugung','Erzeugung'],['laden','Laden'],['resilienz','Resilienz']];
+      let body = '';
+      if (S.tabStrom==='netz'){
+        body = `<div class="note warn">${ic('alert')}<span><b>2 Kabel ohne Querschnitt</b>Gerechnet wird vorerst mit NAYY 4×150. <a data-act="kabel">Kabel anzeigen</a></span></div>
+          <div class="toolbar"><button class="btn sm">${ic('pen')}Kabel zeichnen</button><button class="btn sm">${ic('plus')}Station</button><button class="btn sm q">Netz automatisch erzeugen</button></div>
+          <div><div class="sec-h"><span class="eyebrow">Trafostationen · 6</span><span class="eyebrow">${S.calc?'2035':'Stand 10:12'}</span></div>
+          <table class="tbl"><thead><tr><th>Station</th><th class="r">kVA</th><th style="width:110px">Auslastung</th></tr></thead><tbody>
+          ${Object.entries(T).map(([k,[,,sn,p,n]]) => `<tr data-row-t="${k}" aria-selected="${S.sel===k}"><td><b>${k}</b><span class="sub">${n}</span></td><td class="r">${fmt(sn)}</td><td><div style="display:flex;align-items:center;gap:8px"><div class="bar" style="flex:1"><i style="width:${Math.min(p,100)}%;background:${lc(p)}"></i></div><span class="tn" style="width:36px;text-align:right;font-size:12px;font-weight:600;color:${p>=100?'var(--crit)':'inherit'}">${p} %</span></div></td></tr>`).join('')}
+          </tbody></table></div>
+          <div class="facts">${fact('Niederspannungskabel','48 Abschnitte · 4,2 km','<span class="tag warn">2 offen</span>')}${fact('Mittelspannungsring','1 Ring · 10 kV','<span class="tag ok">ok</span>')}</div>
+          <details class="more"><summary>${ic('chev')}Berechnungsannahmen<span class="tag" style="margin-left:auto">Vorgabe</span></summary><div class="g2">
+            <div class="fld"><label for="a-cos">cos φ Niederspannung</label><div class="inp"><input id="a-cos" value="0,95"></div></div>
+            <div class="fld"><label for="a-gzf">Gleichzeitigkeit</label><div class="inp"><select id="a-gzf"><option>nach Kaiser</option><option>DIN 18015</option></select></div></div>
+            <div class="fld"><label for="a-tb">Leitertemperatur</label><div class="inp"><input id="a-tb" value="70"><em>°C</em></div></div>
+            <div class="fld"><label for="a-tu">Erdreich</label><div class="inp"><input id="a-tu" value="20"><em>°C</em></div></div></div></details>`;
+      } else if (S.tabStrom==='erzeugung'){
+        body = `<div class="toolbar"><button class="btn sm">${ic('plus')}Anlage</button><button class="btn sm q">Dächer automatisch belegen</button></div>
+          <div class="facts">${fact('Photovoltaik','14 Anlagen · 1.240 kWp · 1.180 MWh/a')}${fact('Batteriespeicher','1 Anlage · 500 kWh / 250 kW')}${fact('BHKW','1 Anlage · 240 kWel')}${fact('Netzersatzanlagen','2 Aggregate · 400 kVA')}</div>`;
+      } else if (S.tabStrom==='laden'){
+        body = `<div class="toolbar"><button class="btn sm">${ic('plus')}Ladepark</button></div><div class="facts">${fact('Ladepark Kfz-Halle','24 Normal · 2 Schnell')}${fact('Ladepark Stab','12 Normal')}${fact('Ladepark Unterkunft','10 Normal · 2 Schnell')}</div>`;
+      } else {
+        body = `<div class="facts">${fact('Kritische Verbraucher','12 Gebäude festgelegt','<span class="tag ok">ok</span>')}${fact('Szenario Liegenschaft','Inselbetrieb am Netzanschluss','<span class="tag warn">Deckung 74 %</span>')}${fact('Erhebung bei Nutzern','Fragebogen an 6 Bereiche verschickt')}</div>`;
+      }
+      return `<section class="list"><div class="l-head"><div class="l-title"><h2>Planung</h2>${sparte()}</div>${tabs('tabStrom', tl)}</div><div></div><div class="l-body">${body}</div></section>`;
+    }
+    const tl = [['netz','Wärmenetz'],['erzeugung','Erzeugung'],['speicher','Speicher und Kälte']];
+    let body = '';
+    if (S.tabWaerme==='erzeugung'){
+      body = `<div class="toolbar"><button class="btn sm">${ic('plus')}Erzeuger</button><button class="btn sm q">Einsatzreihenfolge</button></div>
+        <table class="tbl"><thead><tr><th>Erzeuger</th><th class="r">kW</th><th class="r">Anteil</th></tr></thead><tbody>
+        <tr aria-selected="true"><td><b>Luft-Wasser-Wärmepumpe</b><span class="sub">2 Außengeräte · Grundlast</span></td><td class="r">800</td><td class="r">58 %</td></tr>
+        <tr><td><b>BHKW Erdgas</b><span class="sub">240 kWel</span></td><td class="r">360</td><td class="r">27 %</td></tr>
+        <tr><td><b>Spitzenlastkessel Erdgas</b><span class="sub">Bestand, ertüchtigt</span></td><td class="r">1.400</td><td class="r">15 %</td></tr></tbody></table>
+        <div class="facts">${fact('Erneuerbarer Anteil','65 %-Regel erfüllt','<span class="tag ok">68 %</span>')}${fact('Wärmegestehungskosten','Barwert über 20 Jahre','<b class="tn">14,2 ct/kWh</b>')}</div>`;
+    } else if (S.tabWaerme==='netz'){
+      body = `<div class="toolbar"><button class="btn sm">${ic('pen')}Trasse zeichnen</button><button class="btn sm q">Netz automatisch aufbauen</button></div><div class="facts">${fact('Trassen','1,9 km · DN 32 bis 150')}${fact('Hausstationen','23 von 23 angeschlossen','<span class="tag ok">ok</span>')}${fact('Temperaturen','Vorlauf 70 °C · Rücklauf 40 °C')}${fact('Netzverlust','9,4 % der Wärmemenge')}</div>`;
+    } else {
+      body = `<div class="facts">${fact('Pufferspeicher','60 m³ · 2,1 MWh')}${fact('Kälte','1 reversible Wärmepumpe · 180 kW')}</div>`;
+    }
+    return `<section class="list"><div class="l-head"><div class="l-title"><h2>Planung</h2>${sparte()}</div>${tabs('tabWaerme', tl)}</div><div></div><div class="l-body">${body}</div></section>`;
+  }
+  function listBestand(){
+    const tl = [['gebiet','Gebiet'],['gebaeude','Gebäude','1'],['grundlagen','Grundlagen']];
+    let body = '';
+    if (S.tabBestand==='gebaeude'){
+      body = `<div class="note warn">${ic('alert')}<span><b>3 Grundrisse überlappen sich</b>Doppelt erfasste Gebäude erhöhen den Bedarf. <a data-act="ueberlappung">Prüfen</a></span></div>
+        <div class="toolbar"><button class="btn sm">${ic('import')}Daten laden${ic('down')}</button><button class="btn sm">${ic('table')}Als Tabelle</button><span class="filter" style="flex:1">${ic('filter')}Filtern</span></div>
+        <table class="tbl"><thead><tr><th>Gebäude</th><th class="r">BGF m²</th><th class="r">Baujahr</th></tr></thead><tbody>
+        ${B.map((b,i) => `<tr data-row-b="${i}" aria-selected="${S.bsel===i}"><td><b>${b[4]}</b><span class="sub">${b[5]}</span></td><td class="r">${fmt(bgf(b))}</td><td class="r">${b[6]}</td></tr>`).join('')}
+        </tbody></table><span class="eyebrow">19 von 142 angezeigt</span>`;
+    } else if (S.tabBestand==='gebiet'){
+      body = `<div class="facts">${fact('Plangebiet','38,4 ha · gezeichnet am 02.10.','<button class="btn sm">Bearbeiten</button>')}${fact('Lageplan als Hintergrund','1:1000 · 4 Passpunkte')}${fact('Bäume','212 aus OpenStreetMap')}</div>`;
+    } else {
+      body = `<div class="eyebrow">Strom</div><div class="facts">${fact('Messjahre','2022 bis 2024 · Referenz 2024','<span class="tag ok">ok</span>')}${fact('Netzanschluss','1.250 kW · Mittelspannung · RLM','<span class="tag ok">ok</span>')}</div><div class="eyebrow">Wärme</div><div class="facts">${fact('Witterung','Testreferenzjahr Stuttgart')}${fact('Verbrauch','2023 · 31 Zähler','<span class="tag ok">ok</span>')}</div>`;
+    }
+    return `<section class="list"><div class="l-head"><div class="l-title"><h2>Bestand</h2><span class="eyebrow">142 Gebäude</span></div>${tabs('tabBestand', tl)}</div><div></div><div class="l-body">${body}</div></section>`;
+  }
+
+  /* ── Eigenschaften ── */
+  const propHead = (eyebrow, title, st) => `<div class="p-head"><span class="eyebrow">${eyebrow}</span><div class="row1"><h3>${title}</h3><button class="btn q sm" data-close aria-label="Schließen">${ic('x')}</button></div>${st||''}</div>`;
+  function propsTrafo(){
+    if (!S.sel) return '<aside class="props" hidden></aside>';
+    const [,,sn,p,n,bj] = T[S.sel];
+    const kw = Math.round(sn*p/100*0.95), prog = Math.round(kw*1.08), pp = Math.round(prog/(sn*0.95)*100);
+    const st = p>=100 ? '<span class="st crit">Überlastet ab 2034</span>' : p>=80 ? '<span class="st warn">Nahe an der Grenze</span>' : '<span class="st ok">Ausreichend bis 2045</span>';
+    return `<aside class="props">${propHead('Trafostation', `${S.sel} · ${n}`, st)}
+      <div class="p-body">
+        <div><span class="eyebrow">Kenndaten</span><div class="g2" style="margin-top:8px">
+          <div class="fld"><label for="t-sn">Bemessungsleistung</label><div class="inp"><input id="t-sn" value="${fmt(sn)}"><em>kVA</em></div></div>
+          <div class="fld"><label for="t-bj">Baujahr</label><div class="inp"><input id="t-bj" value="${bj}"></div></div>
+          <div class="fld"><label for="t-uk">Kurzschlussspannung</label><div class="inp"><input id="t-uk" value="6,0"><em>%</em></div></div>
+          <div class="fld"><label for="t-bt">Bauart</label><div class="inp"><select id="t-bt"><option>Kompaktstation</option></select></div></div></div></div>
+        <div><span class="eyebrow">Ergebnis</span><dl class="kv" style="margin-top:4px"><dt>Spitzenlast 2026</dt><dd>${fmt(kw)} kW</dd><dt>Auslastung 2026</dt><dd>${p} %</dd><dt>Prognose 2035</dt><dd class="${pp>=100?'crit':''}">${fmt(prog)} kW · ${pp} %</dd><dt>Versorgte Gebäude</dt><dd>${S.sel==='T3'?3:5}</dd><dt>Kabelabgänge</dt><dd>3</dd></dl></div>
+        ${p>=100 ? `<div class="reco"><span class="eyebrow">${ic('bulb','width:13px;height:13px;vertical-align:-2px')} Vorschlag</span><b>Tausch auf 1.000 kVA bis 2033</b><span style="color:var(--muted)">Alternativ Kfz-Halle an T5 umhängen. Investition rund 85.000 €.</span><div><button class="btn sm" data-act="massnahme">Als Maßnahme übernehmen</button></div></div>` : ''}
+      </div>
+      <div class="p-foot"><button class="btn sm">${ic('doc')}Steckbrief</button><button class="btn sm q">Einlinienschema</button></div></aside>`;
+  }
+  function propsHeiz(){
+    return `<aside class="props">${propHead('Heizzentrale','Heizhaus','<span class="st ok">Leistung ausreichend</span>')}
+      <div class="p-body"><dl class="kv"><dt>Heizlast Netz</dt><dd>2.050 kW</dd><dt>Installierte Leistung</dt><dd>2.560 kW</dd><dt>Wärmemenge</dt><dd>4.880 MWh/a</dd><dt>Erneuerbarer Anteil</dt><dd>68 %</dd><dt>Vollbenutzungsstunden WP</dt><dd>3.540 h</dd></dl></div>
+      <div class="p-foot"><button class="btn sm">Zentralenschema</button></div></aside>`;
+  }
+  function propsGeb(){
+    if (S.bsel==null) return '<aside class="props" hidden></aside>';
+    const b = B[S.bsel], a = bgf(b);
+    return `<aside class="props">${propHead('Gebäude '+(S.bsel+1), b[4], '<span class="st none">Quelle OpenStreetMap, ergänzt</span>')}
+      <div class="p-body"><div class="g2">
+        <div class="fld" style="grid-column:1/-1"><label for="g-nu">Nutzung</label><div class="inp"><select id="g-nu"><option>${b[5]}</option></select></div></div>
+        <div class="fld"><label for="g-bgf">BGF</label><div class="inp"><input id="g-bgf" value="${fmt(a)}"><em>m²</em></div></div>
+        <div class="fld"><label for="g-gs">Geschosse</label><div class="inp"><input id="g-gs" value="${b[7]}"></div></div>
+        <div class="fld"><label for="g-bj">Baujahr</label><div class="inp"><input id="g-bj" value="${b[6]}"></div></div>
+        <div class="fld"><label for="g-sa">Sanierungsstand</label><div class="inp"><select id="g-sa"><option>${b[6]>2005?'Neubau':'teilsaniert'}</option></select></div></div></div>
+        <div><span class="eyebrow">Bedarf</span><dl class="kv" style="margin-top:4px"><dt>Wärme</dt><dd>${fmt(Math.round(a*(b[6]<1980?0.14:0.09)))} MWh/a</dd><dt>Strom</dt><dd>${fmt(Math.round(a*0.032))} MWh/a</dd><dt>PV-geeignete Dachfläche</dt><dd>${fmt(Math.round(b[2]*b[3]*0.9))} m²</dd><dt>Anschluss Wärmenetz</dt><dd>ja</dd></dl></div></div>
+      <div class="p-foot"><button class="btn sm">Fotos und Notizen</button><button class="btn sm q">Dach bearbeiten</button></div></aside>`;
+  }
+
+  /* ── Diagramm ── */
+  function chart(W=720,H=240){
+    const L=48,R=12,Tt=16,Bt=24,max=1600,pw=W-L-R,ph=H-Tt-Bt,bw=pw/12;
+    const y = v => Tt+ph-v/max*ph;
+    const M = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+    let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" width="100%" style="max-height:${H}px" role="img" aria-label="Monatsspitzen 2024 und Prognose 2035">`;
+    [0,400,800,1200,1600].forEach(v => s += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L-8}" y="${y(v)+4}" text-anchor="end">${fmt(v)}</text>`);
+    IST.forEach((v,i) => s += `<rect x="${L+i*bw+bw*.22}" y="${y(v)}" width="${bw*.56}" height="${y(0)-y(v)}" fill="var(--seq-3)"/><text x="${L+i*bw+bw/2}" y="${H-6}" text-anchor="middle">${M[i]}</text>`);
+    s += `<path d="${PROG.map((v,i)=>(i?'L':'M')+(L+i*bw+bw/2)+' '+y(v)).join(' ')}" fill="none" stroke="var(--text)" stroke-width="1.6"/>`;
+    PROG.forEach((v,i) => { const o = v>1250; s += `<circle cx="${L+i*bw+bw/2}" cy="${y(v)}" r="${o?4.5:3.2}" fill="${o?'var(--crit)':'var(--surface)'}" stroke="${o?'var(--crit)':'var(--text)'}" stroke-width="1.6"/>`; });
+    s += `<line x1="${L}" x2="${W-R}" y1="${y(1250)}" y2="${y(1250)}" stroke="var(--crit)" stroke-width="1.5" stroke-dasharray="6 4"/><text class="lab" x="${W-R}" y="${y(1250)-7}" text-anchor="end">Anschlussleistung 1.250 kW</text>`;
+    s += `<text class="lab" x="${L+bw/2+9}" y="${y(PROG[0])+4}">${fmt(PROG[0])}</text><text x="${L-8}" y="10" text-anchor="end">kW</text></svg>`;
+    return s + `<div class="lgd"><span><i style="width:10px;height:10px;background:var(--seq-3)"></i>Monatsspitze 2024, gemessen</span><span><i style="width:16px;border-top:1.6px solid var(--text)"></i>Prognose 2035</span><span><i style="width:16px;border-top:1.5px dashed var(--crit)"></i>Vereinbarte Anschlussleistung</span></div>`;
+  }
+
+  /* ── Seiten ── */
+  function pageProjekt(){
+    const it = (st, t, sub, link) => `<div class="tl-it ${st}">${ic(st==='ok'?'check':st==='warn'?'alert':'circle')}<span>${t} <span class="sub">· ${sub}</span></span>${link?`<a data-jump="${link[1]}">${link[0]}</a>`:'<span></span>'}</div>`;
+    const ph = (no, st, t, right, items) => `<li class="tl-ph" data-st="${st}"><span class="no">${st==='ok'?ic('check','width:12px;height:12px;stroke-width:2.2'):no}</span><div><h5>${t}<span class="st ${st}" style="font-size:12px">${right}</span></h5>${items}</div></li>`;
+    return `<div class="page"><div class="page-in">
+      <div class="ph"><div><span class="eyebrow">Projekt · Liegenschaft</span><h1>Kaserne Musterstadt</h1><p>WE 12345 · Musterstraße 1 · Energieversorgungskonzept Strom und Wärme</p></div><div class="toolbar"><button class="btn">Stammdaten bearbeiten</button><button class="btn">Projekt speichern unter</button></div></div>
+      <div class="cards">
+        <section class="card"><header><h4>Projektstand</h4><span class="eyebrow">9 von 13 erledigt</span></header>
+          <div class="nextstep">${ic('arrow')}<div><b>Nächster Schritt: Kabelquerschnitte ergänzen</b><span>Zwei Kabel im Netz haben keinen Querschnitt. Danach neu berechnen.</span></div><button class="btn pri sm" data-jump="planung">Zur Planung</button></div>
+          <ol class="timeline">
+          ${ph(1,'ok','Projekt','vollständig', it('ok','Stammdaten','Liegenschaft, WE, Bearbeiter')+it('ok','Kennwerte','Kostenansätze 2026'))}
+          ${ph(2,'warn','Bestand','1 offen', it('ok','Plangebiet und Gebäude','142 Gebäude, 96 mit Dachdaten')+it('warn','Grundrisse prüfen','3 Überlappungen',['Prüfen','bestand'])+it('ok','Strom-Grundlagen','Messjahre 2022 bis 2024')+it('ok','Wärme-Grundlagen','Witterung, Verbrauch 2023'))}
+          ${ph(3,'warn','Planung','1 offen', it('ok','Wärmenetz und Erzeuger','1,9 km, 3 Erzeuger')+it('warn','Stromnetz','2 Kabel ohne Querschnitt',['Ergänzen','planung'])+it('ok','PV, Speicher, Laden','1.240 kWp, 500 kWh, 50 Ladepunkte'))}
+          ${ph(4,S.calc?'ok':'warn','Auswertung',S.calc?'aktuell':'veraltet', it(S.calc?'ok':'warn','Berechnung',S.calc?'aktuell, 10:43':'Stand 10:12, seitdem 2 Änderungen',S.calc?null:['Ansehen','auswertung'])+it('ok','Variantenvergleich','3 Varianten'))}
+          ${ph(5,'none','Gutachten','31 von 47', it('none','Kapitel 5 und 6','noch ohne Text',['Öffnen','gutachten'])+it('none','Word-Datei','noch nicht erstellt'))}
+          </ol></section>
+        <div class="stack">
+          <section class="card"><header><h4>Varianten</h4><button class="btn q sm">${ic('plus')}Neu</button></header><div class="cb"><dl class="kv"><dt>Hauptplan</dt><dd><span class="tag info">im Gutachten</span></dd><dt>PV-Ausbau Süd</dt><dd>+ 620 kWp</dd><dt>Wärmenetz Ost</dt><dd>+ 0,6 km Trasse</dd></dl></div></section>
+          <section class="card"><header><h4>Datenquellen</h4><span class="eyebrow">Herkunft</span></header><div class="cb"><table class="src">
+            <tr><td>Gebäude OpenStreetMap</td><td>abgerufen 02.10.2026</td></tr><tr><td>3D-Gebäudemodell LoD2</td><td>Landesdienst, 96 Gebäude</td></tr><tr><td>Lastgang Strom</td><td>RLM 2022 bis 2024</td></tr><tr><td>Wärmeverbrauch</td><td>Zählerliste 2023</td></tr><tr><td>Witterung</td><td>Testreferenzjahr DWD</td></tr></table></div></section>
+          <section class="card"><header><h4>Bearbeitung</h4></header><div class="cb"><dl class="kv"><dt>Strom</dt><dd>N. N.</dd><dt>Wärme</dt><dd>N. N.</dd><dt>Letzte Änderung</dt><dd>heute 10:42</dd></dl></div></section>
+        </div></div></div></div>`;
+  }
+  const AN = [['','Übersicht',[['uebersicht','Übersicht']]],['Wärme',null,[['lastgang','Lastgang und Dauerlinie'],['erzeugung','Erzeugung'],['optimierung','Optimierung']]],['Strom',null,[['nap','Netzanschluss','!'],['netz','Netzauslastung'],['engpass','Engpässe nach Jahr'],['pv','Photovoltaik'],['resilienz','Resilienz']]],['Übergreifend',null,[['wirt','Wirtschaftlichkeit'],['co2','Emissionen'],['varianten','Variantenvergleich'],['massnahmen','Maßnahmen und Fahrplan']]]];
+  function pageAuswertung(){
+    const nav = AN.map(([g,,items]) => `${g?`<div class="eyebrow">${g}</div>`:''}${items.map(([k,t,f]) => `<button data-an="${k}" aria-current="${S.an===k}">${t}${f?'<span class="st crit"></span>':''}</button>`).join('')}`).join('');
+    let main = '';
+    const stale = S.calc ? '' : `<div class="note warn" style="margin-bottom:16px">${ic('alert')}<span><b>Ergebnisse vom Stand 10:12</b>Seitdem wurde die Planung zweimal geändert. Oben „Berechnen“ wählen, um die Werte zu aktualisieren.</span></div>`;
+    if (S.an==='nap'){
+      main = `<div class="ph"><div><span class="eyebrow">Auswertung · Strom</span><h1>Netzanschluss</h1><p>Reicht die vereinbarte Anschlussleistung für die geplante Entwicklung?</p></div><div class="toolbar"><button class="btn">${ic('doc')}Ins Gutachten (3.4.1)</button><button class="btn q">Als Tabelle</button></div></div>
+        ${stale}
+        <div class="kpis"><div class="kpi"><span class="eyebrow">Anschlussleistung</span><b>1.250 kW</b><small>vereinbart, Mittelspannung</small></div><div class="kpi"><span class="eyebrow">Spitze 2024</span><b>1.212 kW</b><small>gemessen, 97 % im Januar</small></div><div class="kpi"><span class="eyebrow">Prognose 2035</span><b>1.486 kW</b><small>mit Wärmepumpen und Laden</small></div><div class="kpi crit"><span class="eyebrow">Reserve 2035</span><b>−236 kW</b><small>Grenze erreicht ab 2031</small></div></div>
+        <div class="cards" style="grid-template-columns:1fr 320px">
+          <section class="card"><header><h4>Monatsspitzen und Anschlussleistung</h4><span class="eyebrow">Beispielwerte</span></header><div class="cb">${chart()}</div></section>
+          <div class="stack"><section class="card"><header><h4>Bewertung</h4></header><div class="cb" style="font-size:14px"><p style="margin:0 0 10px">Die gemessene Spitze nutzt die Anschlussleistung bereits zu 97 %. Mit den geplanten Wärmepumpen und Ladepunkten wird die Grenze ab 2031 in fünf Wintermonaten überschritten.</p><p style="margin:0"><b>Empfehlung:</b> Erhöhung auf 1.600 kW beim Netzbetreiber beantragen. Vorlaufzeit von mehreren Jahren einplanen.</p></div></section>
+          <section class="card"><header><h4>Anteile am Zuwachs</h4></header><div class="cb"><dl class="kv"><dt>Wärmepumpen</dt><dd>+ 168 kW</dd><dt>Ladeinfrastruktur</dt><dd>+ 92 kW</dd><dt>Neubauten</dt><dd>+ 41 kW</dd><dt>Rückbau</dt><dd>− 27 kW</dd></dl></div></section></div></div>`;
+    } else if (S.an==='varianten'){
+      main = `<div class="ph"><div><span class="eyebrow">Auswertung · Übergreifend</span><h1>Variantenvergleich</h1><p>Kennzahlen der drei Varianten im Zieljahr 2035</p></div></div>${stale}
+        <section class="card"><table class="vtable"><thead><tr><th>Kennzahl</th><th>Hauptplan</th><th>PV-Ausbau Süd</th><th>Wärmenetz Ost</th></tr></thead><tbody>
+        <tr><td>Investition</td><td>8,4 Mio. €</td><td>9,1 Mio. €</td><td class="best">7,9 Mio. €</td></tr>
+        <tr><td>Jahreskosten</td><td>1,32 Mio. €/a</td><td class="best">1,24 Mio. €/a</td><td>1,35 Mio. €/a</td></tr>
+        <tr><td>Wärmegestehungskosten</td><td>14,2 ct/kWh</td><td class="best">13,6 ct/kWh</td><td>14,9 ct/kWh</td></tr>
+        <tr><td>Erneuerbarer Anteil Wärme</td><td>68 %</td><td class="best">74 %</td><td>66 %</td></tr>
+        <tr><td>Spitzenlast Strom</td><td>1.486 kW</td><td class="best">1.402 kW</td><td>1.511 kW</td></tr>
+        <tr><td>Reserve Netzanschluss</td><td>−236 kW</td><td class="best">−152 kW</td><td>−261 kW</td></tr>
+        <tr><td>CO₂-Emissionen</td><td>612 t/a</td><td class="best">498 t/a</td><td>655 t/a</td></tr></tbody></table></section>`;
+    } else {
+      const t = AN.flatMap(a=>a[2]).find(x=>x[0]===S.an)[1];
+      main = `<div class="ph"><div><span class="eyebrow">Auswertung</span><h1>${t}</h1></div></div><section class="card"><div class="cb" style="color:var(--muted)">Im Entwurf sind „Netzanschluss“ und „Variantenvergleich“ ausgearbeitet. Jede Auswertung folgt demselben Aufbau: Frage, Kennzahlen, Hauptdiagramm, Bewertung, Übernahme ins Gutachten.</div></section>`;
+    }
+    return `<div class="an"><nav class="an-nav" aria-label="Auswertungen">${nav}</nav><div class="page"><div class="page-in">${main}</div></div></div>`;
+  }
+  function pageGutachten(){
+    const o = [[1,'1','Ausgangslage','ok'],[2,'1.1','Aufgabenstellung','ok'],[2,'1.2','Liegenschaft','ok'],[1,'2','Grundlagen','ok'],[1,'3','Elektrotechnik','warn'],[2,'3.1','Bestand','ok'],[2,'3.2','Lastgang','ok'],[2,'3.3','Bedarfsprognose','ok'],[2,'3.4','Variantenbildung','warn'],[3,'3.4.1','Netzanschluss','warn',1],[3,'3.4.2','Photovoltaik','ok'],[3,'3.4.3','Notstrom','ok'],[3,'3.4.4','Ladeinfrastruktur','ok'],[2,'3.5','Wirtschaftlichkeit','ok'],[2,'3.6','Bewertung','ok'],[1,'4','Wärmeversorgung','ok'],[1,'5','Resilienz','none'],[1,'6','Energiemanagement','none'],[1,'7','Empfehlung','none']];
+    const sc = 1/1600*105;
+    return `<div class="doc">
+      <nav class="outline"><div class="oh"><b>Gliederung</b><button class="btn q sm">${ic('plus')}Kapitel</button></div>
+        ${o.map(([l,n,t,st,c]) => `<div class="oi l${l}${c?' cur':''}"><span class="nr">${n}</span><span>${t}</span><i class="${st}"></i></div>`).join('')}</nav>
+      <div class="sheet-wrap"><article class="sheet">
+        <div class="hd"><span><b>LKEBw</b> · Gutachten Energieversorgung</span><span>Kaserne Musterstadt</span></div>
+        <h6><em>3.4.1</em>Netzanschluss</h6>
+        <p>Die Liegenschaft ist über einen Mittelspannungsanschluss mit einer vereinbarten Anschlussleistung von 1.250 kW an das Netz des örtlichen Verteilnetzbetreibers angeschlossen. Die gemessene Jahreshöchstlast lag im Referenzjahr 2024 bei 1.212 kW.</p>
+        <p>Mit den geplanten Maßnahmen steigt die Höchstlast bis 2035 auf voraussichtlich 1.486 kW. Die vereinbarte Anschlussleistung wird damit ab 2031 in den Wintermonaten überschritten.</p>
+        <div class="fig"><svg viewBox="0 0 440 130" width="100%">${IST.map((v,i)=>`<rect x="${26+i*34}" y="${118-v*sc}" width="18" height="${v*sc}" fill="#7C9DC2"/>`).join('')}<line x1="18" x2="436" y1="${118-1250*sc}" y2="${118-1250*sc}" stroke="#C0262D" stroke-dasharray="4 3"/><path d="${PROG.map((v,i)=>(i?'L':'M')+(35+i*34)+' '+(118-v*sc)).join(' ')}" fill="none" stroke="#1B1F1C" stroke-width="1.2"/><text x="436" y="${112-1250*sc}" text-anchor="end">Anschlussleistung 1.250 kW</text></svg></div>
+        <div class="cap">Abbildung 14: Monatsspitzen 2024 und Prognose 2035 im Vergleich zur Anschlussleistung</div>
+        <p>Es wird empfohlen, die Erhöhung der Anschlussleistung auf 1.600 kW frühzeitig beim Netzbetreiber zu beantragen, da mit Vorlaufzeiten von mehreren Jahren zu rechnen ist.</p>
+        <div class="ft"><span>LKEBw · Kaserne Musterstadt</span><span>Seite 23</span></div>
+      </article></div>
+      <aside class="props">${propHead('Abbildung 14','Monatsspitzen und Anschlussleistung', S.calc?'<span class="st ok">aktuell</span>':'<span class="st warn">Neuere Ergebnisse vorhanden</span>')}
+        <div class="p-body"><dl class="kv"><dt>Kapitel</dt><dd>3.4.1</dd><dt>Quelle</dt><dd>Auswertung › Netzanschluss</dd><dt>Variante</dt><dd>Hauptplan</dd><dt>Stand</dt><dd>${S.calc?'10:43':'10:12'}</dd></dl>
+          <div class="fld"><label for="f-cap">Beschriftung</label><div class="inp"><input id="f-cap" value="Monatsspitzen 2024 und Prognose 2035 im Vergleich zur Anschlussleistung"></div></div>
+          <div class="fld"><label for="f-lay">Breite</label><div class="inp"><select id="f-lay"><option>Satzspiegel</option><option>halbe Breite</option></select></div></div>
+          ${S.calc?'':`<button class="btn sm" data-act="figupd">Abbildung aktualisieren</button>`}</div>
+        <div class="p-foot"><button class="btn pri sm" data-act="word">${ic('import')}Word-Datei erstellen</button><button class="btn sm q">Vorschau</button></div></aside></div>`;
+  }
+
+  /* ── Render ── */
+  function render(){
+    renderSteps(); renderResult();
+    let h;
+    if (S.step==='projekt') h = pageProjekt();
+    else if (S.step==='bestand') h = `<div class="work">${listBestand()}${mapArea('bestand')}${propsGeb()}</div>`;
+    else if (S.step==='planung') h = S.sparte==='strom' ? `<div class="work">${listPlanung()}${mapArea('strom')}${propsTrafo()}</div>` : `<div class="work">${listPlanung()}${mapArea('waerme')}${propsHeiz()}</div>`;
+    else if (S.step==='auswertung') h = pageAuswertung();
+    else h = pageGutachten();
+    $('#stage').innerHTML = h;
+  }
+  function toast(t){ const el = $('#toast'); el.innerHTML = ic('check')+t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(()=>el.classList.remove('on'), 1800); }
+
+  /* ── Ereignisse ── */
+  $('#steps').addEventListener('click', e => { const b = e.target.closest('[data-step]'); if (b){ S.step = b.dataset.step; render(); } });
+  $('#calcBtn').addEventListener('click', () => { S.calc = true; render(); toast('Berechnung abgeschlossen · 4,8 s'); });
+  $('#cVar').addEventListener('change', e => toast('Variante „' + e.target.value + '“ aktiv'));
+  $('#cYear').addEventListener('change', e => toast('Betrachtungsjahr ' + e.target.value));
+  $('#result').addEventListener('click', e => { if (e.target.closest('#drawerBtn')){ S.drawer = !S.drawer; renderResult(); } });
+  $('#themeBtn').addEventListener('click', () => { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme==='dark' : matchMedia('(prefers-color-scheme: dark)').matches; r.dataset.theme = dark ? 'light' : 'dark'; });
+  $('#notesBtn').addEventListener('click', () => { $('#notes').hidden = !$('#notes').hidden; });
+  $('#notesClose').addEventListener('click', () => { $('#notes').hidden = true; });
+  $('#stage').addEventListener('click', e => {
+    const t = e.target;
+    let x;
+    if ((x = t.closest('[data-sp]'))){ S.sparte = x.dataset.sp; S.sel = S.sparte==='strom' ? 'T3' : null; return render(); }
+    if ((x = t.closest('[data-tabs] [data-tab]'))){ S[x.parentNode.dataset.tabs] = x.dataset.tab; return render(); }
+    if ((x = t.closest('[data-t]')) || (x = t.closest('[data-row-t]'))){ S.sel = x.dataset.t || x.dataset.rowT; return render(); }
+    if ((x = t.closest('[data-b]')) || (x = t.closest('[data-row-b]'))){ if (S.step!=='bestand') return; S.bsel = +(x.dataset.b ?? x.dataset.rowB); return render(); }
+    if (t.closest('[data-close]')){ if (S.step==='bestand') S.bsel = null; else S.sel = null; return render(); }
+    if ((x = t.closest('[data-jump]'))){ S.step = x.dataset.jump; return render(); }
+    if ((x = t.closest('[data-an]'))){ S.an = x.dataset.an; return render(); }
+    if ((x = t.closest('[data-mseg] button'))){ x.parentNode.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b===x)); return; }
+    if ((x = t.closest('[data-act]'))){
+      const m = { kabel:'Karte zeigt die 2 Kabel ohne Querschnitt', ueberlappung:'Prüfansicht für 3 Überlappungen geöffnet', massnahme:'Maßnahme „Trafotausch T3“ in den Fahrplan übernommen', figupd:'Erst oben „Berechnen“, dann wird die Abbildung neu erzeugt', word:'Gutachten_Kaserne_Musterstadt.docx erstellt' }[x.dataset.act];
+      if (m) toast(m);
+    }
+  });
+
+  /* ── Befehlssuche ── */
+  const CMDS = [
+    ['Projekt','Stammdaten bearbeiten','projekt'],['Projekt','Variante anlegen','projekt'],['Projekt','Kennwerte und Kostenansätze','projekt'],['Projekt','Feldaufnahme vorbereiten (Feldapp)','projekt'],
+    ['Bestand','Gebäude aus OpenStreetMap laden','bestand','tabBestand','gebaeude'],['Bestand','3D-Gebäudemodell (LoD2) laden','bestand','tabBestand','gebaeude'],['Bestand','Gebäudeliste importieren (CSV, Excel)','bestand','tabBestand','gebaeude'],['Bestand','Grundrisse prüfen','bestand','tabBestand','gebaeude'],['Bestand','Plangebiet zeichnen','bestand','tabBestand','gebiet'],['Bestand','Lageplan als Hintergrund','bestand','tabBestand','gebiet'],['Bestand','Messjahre Strom','bestand','tabBestand','grundlagen'],['Bestand','Netzanschluss eintragen','bestand','tabBestand','grundlagen'],
+    ['Planung','Wärmenetz zeichnen','planung','sparte','waerme'],['Planung','Wärmeerzeuger hinzufügen','planung','sparte','waerme'],['Planung','Kabel zeichnen','planung','sparte','strom'],['Planung','Trafostation setzen','planung','sparte','strom'],['Planung','Dächer automatisch mit PV belegen','planung','sparte','strom'],['Planung','Ladepark anlegen','planung','sparte','strom'],['Planung','Blackout-Szenarien','planung','sparte','strom'],
+    ['Auswertung','Netzanschluss bewerten','auswertung','an','nap'],['Auswertung','Engpässe nach Jahr','auswertung','an','engpass'],['Auswertung','Wirtschaftlichkeit','auswertung','an','wirt'],['Auswertung','Variantenvergleich','auswertung','an','varianten'],['Auswertung','Optimierung Wärmeerzeugung','auswertung','an','optimierung'],['Auswertung','Maßnahmen und Fahrplan','auswertung','an','massnahmen'],
+    ['Gutachten','Word-Datei erstellen','gutachten'],['Gutachten','Liegenschaftsbilder','gutachten'],['Gutachten','Stations-Steckbriefe','gutachten'],['Gutachten','Gebäudeliste als CSV exportieren','gutachten']];
+  let palSel = 0, palHits = CMDS;
+  function palRender(){
+    const q = $('#palInput').value.trim().toLowerCase();
+    palHits = CMDS.filter(c => !q || (c[0]+' '+c[1]).toLowerCase().includes(q));
+    palSel = Math.min(palSel, Math.max(palHits.length-1, 0));
+    let last = '', h = '';
+    palHits.forEach((c,i) => { if (c[0]!==last){ h += `<div class="eyebrow">${c[0]}</div>`; last = c[0]; } h += `<button class="pal-it${i===palSel?' act':''}" data-i="${i}">${ic('arrow')}<span>${c[1]}</span><small>${c[0]}</small></button>`; });
+    $('#palList').innerHTML = h || '<div style="padding:16px;color:var(--muted)">Keine Funktion gefunden.</div>';
+  }
+  function palOpen(){ $('#pal').hidden = false; $('#palInput').value = ''; palSel = 0; palRender(); setTimeout(()=>$('#palInput').focus(), 0); }
+  function palClose(){ $('#pal').hidden = true; }
+  function palGo(c){ if (!c) return; palClose(); S.step = c[2]; if (c[3]) S[c[3]] = c[4]; if (c[3]==='sparte') S.sel = c[4]==='strom' ? 'T3' : null; render(); toast(c[1]); }
+  $('#cmdBtn').addEventListener('click', palOpen);
+  $('#pal').addEventListener('click', e => { const b = e.target.closest('.pal-it'); if (b) return palGo(palHits[+b.dataset.i]); if (e.target.id==='pal') palClose(); });
+  $('#palInput').addEventListener('input', () => { palSel = 0; palRender(); });
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); $('#pal').hidden ? palOpen() : palClose(); return; }
+    if ($('#pal').hidden) { if (e.key==='Escape') $('#notes').hidden = true; return; }
+    if (e.key==='Escape') palClose();
+    else if (e.key==='ArrowDown'){ e.preventDefault(); palSel = Math.min(palSel+1, palHits.length-1); palRender(); }
+    else if (e.key==='ArrowUp'){ e.preventDefault(); palSel = Math.max(palSel-1, 0); palRender(); }
+    else if (e.key==='Enter'){ e.preventDefault(); palGo(palHits[palSel]); }
+  });
+
+  render();
+})();
+</script>

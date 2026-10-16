@@ -1368,8 +1368,8 @@ export function dimDraw(pInst) {
     const eCov = _dimEnergy(pInst);
     const covPct = _dimTotalEnergy > 0 ? eCov / _dimTotalEnergy * 100 : 0;
     kpiBox.innerHTML =
-      `<div style="color:#4fc3f7;font-weight:bold;">${Math.round(pInst).toLocaleString('de-DE')} kW</div>` +
-      `<div>Energiedeckung: <b style="color:#4fc3f7;">${de1(covPct)} %</b></div>` +
+      `<div style="color:var(--c-blue);font-weight:bold;">${Math.round(pInst).toLocaleString('de-DE')} kW</div>` +
+      `<div>Energiedeckung: <b style="color:var(--c-blue);">${de1(covPct)} %</b></div>` +
       `<div>Volllaststunden: <b>${Math.round(res.vls).toLocaleString('de-DE')} h</b></div>` +
       `<div style="color:var(--muted);font-size:9px;">Gesamt: ${Math.round(_dimTotalEnergy/1000).toLocaleString('de-DE')} MWh/a</div>` +
       `<div style="color:var(--muted);font-size:9px;">P<sub>max</sub>: ${Math.round(pMax).toLocaleString('de-DE')} kW</div>`;
@@ -1676,9 +1676,9 @@ export function _splitBindEvents() {
     const hr  = t % 24;
     tip.innerHTML =
       `<b>KW ${kw} · Tag ${day} · ${hr}:00 Uhr</b><br>` +
-      `<span style="color:#e53935;">Raumwärme: ${rw.toFixed(0)} kW</span><br>` +
-      `<span style="color:#ff8a65;">TWW: ${twwH.toFixed(0)} kW</span><br>` +
-      `<span style="color:#90a4ae;">Verluste: ${verlust.toFixed(0)} kW</span><br>` +
+      `<span style="color:var(--c-red);">Raumwärme: ${rw.toFixed(0)} kW</span><br>` +
+      `<span style="color:var(--c-red);">TWW: ${twwH.toFixed(0)} kW</span><br>` +
+      `<span style="color:var(--c-blue);">Verluste: ${verlust.toFixed(0)} kW</span><br>` +
       `<b>Gesamt: ${lg[t].toFixed(0)} kW</b>`;
     tip.style.display = 'block';
     tip.style.left = (e.offsetX > W * 0.65 ? e.offsetX - tip.offsetWidth - 8 : e.offsetX + 10) + 'px';

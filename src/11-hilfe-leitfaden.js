@@ -56,7 +56,7 @@ export function _showHilfeOverlay() {
   // Tooltip-Element
   _hilfeTooltip = document.createElement('div');
   _hilfeTooltip.id = 'hilfe-tooltip';
-  _hilfeTooltip.style.cssText = 'position:fixed;z-index:9999;background:#1a1a2e;color:#e8eaf0;border:1px solid #4caf50;border-radius:8px;padding:10px 14px;font-size:12px;line-height:1.5;max-width:320px;pointer-events:none;display:none;box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+  _hilfeTooltip.style.cssText = 'position:fixed;z-index:9999;background:var(--surface2);color:var(--c-blue);border:1px solid var(--c-green);border-radius:8px;padding:10px 14px;font-size:12px;line-height:1.5;max-width:320px;pointer-events:none;display:none;box-shadow:0 4px 20px rgba(0,0,0,0.5);';
 
   document.body.appendChild(_hilfeOverlay);
   document.body.appendChild(_hilfeTooltip);
@@ -94,7 +94,7 @@ export function _showHilfeOverlay() {
 
     if (!text) { _hilfeTooltip.style.display = 'none'; return; }
 
-    _hilfeTooltip.innerHTML = '<div style="font-weight:600;color:#4caf50;margin-bottom:4px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">ℹ Hilfe</div>' + text;
+    _hilfeTooltip.innerHTML = '<div style="font-weight:600;color:var(--c-green);margin-bottom:4px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">ℹ Hilfe</div>' + text;
     _hilfeTooltip.style.display = '';
 
     // Position: neben dem Cursor, im Viewport halten
@@ -285,25 +285,25 @@ export function toggleLeitfaden() {
 export function _createLeitfadenPanel() {
   const panel = document.createElement('div');
   panel.id = 'leitfaden-panel';
-  panel.style.cssText = 'position:fixed;top:90px;right:16px;width:320px;max-height:calc(100vh - 110px);z-index:1500;background:var(--surface,#23262f);border:1px solid var(--border,#333844);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.5);overflow:hidden;display:flex;flex-direction:column;font-family:inherit;';
+  panel.style.cssText = 'position:fixed;top:90px;right:16px;width:320px;max-height:calc(100vh - 110px);z-index:1500;background:var(--surface,var(--surface2));border:1px solid var(--border,var(--border));border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.5);overflow:hidden;display:flex;flex-direction:column;font-family:inherit;';
 
   // Header — verschiebbar (Drag-Handle)
-  let html = '<div id="lf-drag-handle" style="padding:12px 16px;border-bottom:1px solid var(--border,#333);display:flex;align-items:center;justify-content:space-between;cursor:grab;user-select:none;">';
-  html += '<span style="font-size:13px;font-weight:600;color:var(--text,#e8eaf0);">📋 Leitfaden <span style="font-size:9px;color:var(--muted,#78909c);font-weight:400;">— verschiebbar</span></span>';
-  html += '<div style="display:flex;gap:6px;align-items:center;"><span id="lf-progress" style="font-size:10px;color:var(--muted,#78909c);font-family:\'DM Mono\',monospace;"></span>';
-  html += '<button data-click="toggleLeitfaden()" style="background:none;border:none;color:var(--muted,#78909c);cursor:pointer;font-size:15px;padding:0;line-height:1;">✕</button></div></div>';
+  let html = '<div id="lf-drag-handle" style="padding:12px 16px;border-bottom:1px solid var(--border,var(--border));display:flex;align-items:center;justify-content:space-between;cursor:grab;user-select:none;">';
+  html += '<span style="font-size:13px;font-weight:600;color:var(--text,var(--c-blue));">📋 Leitfaden <span style="font-size:9px;color:var(--muted,var(--c-blue));font-weight:400;">— verschiebbar</span></span>';
+  html += '<div style="display:flex;gap:6px;align-items:center;"><span id="lf-progress" style="font-size:10px;color:var(--muted,var(--c-blue));font-family:\'DM Mono\',monospace;"></span>';
+  html += '<button data-click="toggleLeitfaden()" style="background:none;border:none;color:var(--muted,var(--c-blue));cursor:pointer;font-size:15px;padding:0;line-height:1;">✕</button></div></div>';
 
   html += '<div id="lf-steps" style="overflow-y:auto;padding:8px 12px;flex:1;min-height:0;">';
   LEITFADEN_STEPS.forEach((step, i) => {
-    html += '<div id="' + step.id + '" class="lf-step-item" style="padding:10px 12px;margin-bottom:6px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#181a20);transition:.3s;">';
+    html += '<div id="' + step.id + '" class="lf-step-item" style="padding:10px 12px;margin-bottom:6px;border-radius:8px;border:1px solid var(--border,var(--border));background:var(--bg,var(--surface));transition:.3s;">';
     html += '<div style="display:flex;align-items:center;gap:8px;">';
     html += '<span class="lf-check" data-step="' + i + '" style="font-size:14px;flex-shrink:0;cursor:pointer;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:.15s;" title="Klicken zum Abhaken">○</span>';
-    html += '<span class="lf-step-title" style="font-size:12px;font-weight:500;color:var(--text,#e8eaf0);cursor:pointer;flex:1;">' + step.title + '</span>';
-    html += '<span class="lf-step-num" style="font-size:9px;color:var(--muted,#555);font-family:\'DM Mono\',monospace;">' + (i+1) + '/' + LEITFADEN_STEPS.length + '</span></div>';
+    html += '<span class="lf-step-title" style="font-size:12px;font-weight:500;color:var(--text,var(--c-blue));cursor:pointer;flex:1;">' + step.title + '</span>';
+    html += '<span class="lf-step-num" style="font-size:9px;color:var(--muted,var(--faint));font-family:\'DM Mono\',monospace;">' + (i+1) + '/' + LEITFADEN_STEPS.length + '</span></div>';
     // Bestätigungstext (wird bei erledigt eingeblendet)
-    html += '<div class="lf-done-text" style="display:none;margin-top:4px;padding:4px 0 0 30px;font-size:10px;color:#81c784;line-height:1.4;"></div>';
+    html += '<div class="lf-done-text" style="display:none;margin-top:4px;padding:4px 0 0 30px;font-size:10px;color:var(--c-green);line-height:1.4;"></div>';
     // Detailtext (wird beim aktiven/nächsten Schritt gezeigt)
-    html += '<div class="lf-detail" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border,#333);font-size:11px;color:var(--muted,#78909c);line-height:1.6;">' + step.text + '</div>';
+    html += '<div class="lf-detail" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border,var(--border));font-size:11px;color:var(--muted,var(--c-blue));line-height:1.6;">' + step.text + '</div>';
     html += '</div>';
   });
   html += '</div>';

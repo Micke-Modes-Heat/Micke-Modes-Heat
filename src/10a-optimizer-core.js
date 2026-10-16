@@ -998,7 +998,7 @@ export function updateStatusPanel() {
 
   const dot = (ok) => `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${ok ? '#66bb6a' : '#455a64'};margin-right:4px;vertical-align:middle;"></span>`;
   const warn = () => `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#f9a825;margin-right:4px;vertical-align:middle;"></span>`;
-  const val = (v, unit) => v ? `<span style="color:var(--text);font-family:'DM Mono',monospace;">${v}</span> <span style="color:var(--muted);">${unit||''}</span>` : `<span style="color:#455a64;">—</span>`;
+  const val = (v, unit) => v ? `<span style="color:var(--text);font-family:'DM Mono',monospace;">${v}</span> <span style="color:var(--muted);">${unit||''}</span>` : `<span style="color:var(--c-blue);">—</span>`;
 
   let html = '';
 
@@ -1019,17 +1019,17 @@ export function updateStatusPanel() {
   const ss = window.systemState;
 
   html += `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;margin-bottom:8px;padding-left:4px;">`;
-  html += `<div>${dot(hatLg)}Lastgang (8760h)</div><div>${hatLg ? val(Math.round(glLastgangKw.reduce((a,b)=>a+b,0)/1000).toLocaleString('de-DE'), 'MWh/a') : '<span style="color:#455a64;">nicht geladen</span>'}</div>`;
-  html += `<div>${dot(hatMonat)}Monatswerte</div><div>${hatMonat ? val(Math.round(monatswerte.reduce((a,b)=>a+(b||0),0)).toLocaleString('de-DE'), 'MWh/a') : '<span style="color:#455a64;">nicht eingegeben</span>'}</div>`;
-  html += `<div>${dot(gesamtMwh > 0)}Gesamtverbrauch</div><div>${gesamtMwh > 0 ? val(Math.round(gesamtMwh).toLocaleString('de-DE'), 'MWh/a') : '<span style="color:#455a64;">—</span>'}</div>`;
-  html += `<div>${dot(!!ss)}Berechnet (systemState)</div><div>${ss ? val(Math.round(ss.gesamtMwhMitNV || ss.nutzwaermeMwh || 0).toLocaleString('de-DE'), 'MWh/a inkl. NV') : '<span style="color:#455a64;">noch nicht berechnet</span>'}</div>`;
+  html += `<div>${dot(hatLg)}Lastgang (8760h)</div><div>${hatLg ? val(Math.round(glLastgangKw.reduce((a,b)=>a+b,0)/1000).toLocaleString('de-DE'), 'MWh/a') : '<span style="color:var(--c-blue);">nicht geladen</span>'}</div>`;
+  html += `<div>${dot(hatMonat)}Monatswerte</div><div>${hatMonat ? val(Math.round(monatswerte.reduce((a,b)=>a+(b||0),0)).toLocaleString('de-DE'), 'MWh/a') : '<span style="color:var(--c-blue);">nicht eingegeben</span>'}</div>`;
+  html += `<div>${dot(gesamtMwh > 0)}Gesamtverbrauch</div><div>${gesamtMwh > 0 ? val(Math.round(gesamtMwh).toLocaleString('de-DE'), 'MWh/a') : '<span style="color:var(--c-blue);">—</span>'}</div>`;
+  html += `<div>${dot(!!ss)}Berechnet (systemState)</div><div>${ss ? val(Math.round(ss.gesamtMwhMitNV || ss.nutzwaermeMwh || 0).toLocaleString('de-DE'), 'MWh/a inkl. NV') : '<span style="color:var(--c-blue);">noch nicht berechnet</span>'}</div>`;
 
   // Fall-Anzeige
-  if (hatLg && !hatMonat) html += `<div colspan="2" style="grid-column:1/-1;color:#81c784;font-size:9px;">→ Fall 1: Lastgang direkt</div>`;
-  else if (hatLg && hatMonat) html += `<div style="grid-column:1/-1;color:#81c784;font-size:9px;">→ Fall 2: Lastgang + Monatsskalierung</div>`;
-  else if (!hatLg && hatMonat) html += `<div style="grid-column:1/-1;color:#81c784;font-size:9px;">→ Fall 3/4: SigLinDe-Synthese aus Monatswerten</div>`;
-  else if (!hatLg && !hatMonat && gesamtMwh > 0) html += `<div style="grid-column:1/-1;color:#81c784;font-size:9px;">→ Fall 5: Reine SigLinDe-Synthese</div>`;
-  else html += `<div style="grid-column:1/-1;color:#f9a825;font-size:9px;">→ Keine Wärmedaten eingegeben</div>`;
+  if (hatLg && !hatMonat) html += `<div colspan="2" style="grid-column:1/-1;color:var(--c-green);font-size:9px;">→ Fall 1: Lastgang direkt</div>`;
+  else if (hatLg && hatMonat) html += `<div style="grid-column:1/-1;color:var(--c-green);font-size:9px;">→ Fall 2: Lastgang + Monatsskalierung</div>`;
+  else if (!hatLg && hatMonat) html += `<div style="grid-column:1/-1;color:var(--c-green);font-size:9px;">→ Fall 3/4: SigLinDe-Synthese aus Monatswerten</div>`;
+  else if (!hatLg && !hatMonat && gesamtMwh > 0) html += `<div style="grid-column:1/-1;color:var(--c-green);font-size:9px;">→ Fall 5: Reine SigLinDe-Synthese</div>`;
+  else html += `<div style="grid-column:1/-1;color:var(--c-orange);font-size:9px;">→ Keine Wärmedaten eingegeben</div>`;
   html += `</div>`;
 
   // Gebäude als Quelle
@@ -1045,15 +1045,15 @@ export function updateStatusPanel() {
   const hatStromLg = !!window.elQuartierH;
   const stromMwh = parseFloat(document.getElementById('strom-quartier-mwh')?.value) || 0;
   html += `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;margin-bottom:8px;padding-left:4px;">`;
-  html += `<div>${dot(hatStromLg)}CSV-Upload (8760h)</div><div>${hatStromLg ? val(Math.round(window.elQuartierH.reduce((a,b)=>a+b,0)/1000).toLocaleString('de-DE'), 'MWh/a') : '<span style="color:#455a64;">nicht geladen</span>'}</div>`;
-  html += `<div>${dot(stromMwh > 0)}Jahressumme manuell</div><div>${stromMwh > 0 ? val(stromMwh.toLocaleString('de-DE'), 'MWh/a') : '<span style="color:#455a64;">—</span>'}</div>`;
+  html += `<div>${dot(hatStromLg)}CSV-Upload (8760h)</div><div>${hatStromLg ? val(Math.round(window.elQuartierH.reduce((a,b)=>a+b,0)/1000).toLocaleString('de-DE'), 'MWh/a') : '<span style="color:var(--c-blue);">nicht geladen</span>'}</div>`;
+  html += `<div>${dot(stromMwh > 0)}Jahressumme manuell</div><div>${stromMwh > 0 ? val(stromMwh.toLocaleString('de-DE'), 'MWh/a') : '<span style="color:var(--c-blue);">—</span>'}</div>`;
   html += `</div>`;
 
   // ─── Abschnitt: Erzeuger ────────────────────────────────────────────
   html += `<div style="margin-bottom:6px;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.06em;">Wärmeerzeuger (aktiv)</span></div>`;
   const activeErz = meritOrderKeys.filter(k => isErzeugerAktiv(k));
   if (activeErz.length === 0) {
-    html += `<div style="padding-left:4px;color:#455a64;margin-bottom:8px;">Keine Erzeuger aktiv</div>`;
+    html += `<div style="padding-left:4px;color:var(--c-blue);margin-bottom:8px;">Keine Erzeuger aktiv</div>`;
   } else {
     html += `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:1px 8px;margin-bottom:8px;padding-left:4px;">`;
     activeErz.forEach((k, i) => {
@@ -1079,23 +1079,23 @@ export function updateStatusPanel() {
 
   const pvKwp = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
   const pvSpez = parseFloat(document.getElementById('pv-spez')?.value) || 1000;
-  html += `<div>${dot(pvKwp > 0)}PV pauschal</div><div>${pvKwp > 0 ? val(pvKwp, 'kWp') + ` (${val(Math.round(pvKwp*pvSpez/1000), 'MWh/a')})` : '<span style="color:#455a64;">—</span>'}</div>`;
+  html += `<div>${dot(pvKwp > 0)}PV pauschal</div><div>${pvKwp > 0 ? val(pvKwp, 'kWp') + ` (${val(Math.round(pvKwp*pvSpez/1000), 'MWh/a')})` : '<span style="color:var(--c-blue);">—</span>'}</div>`;
 
   // Gebäude-PV
   const gebPvEl = document.getElementById('geb-pv-summe');
   const gebPvActive = gebPvEl && gebPvEl.style.display !== 'none';
-  html += `<div>${dot(gebPvActive)}Gebäude-PV</div><div>${gebPvActive ? '<span style="color:#ffd54f;">aktiv</span>' : '<span style="color:#455a64;">—</span>'}</div>`;
+  html += `<div>${dot(gebPvActive)}Gebäude-PV</div><div>${gebPvActive ? '<span style="color:var(--c-amber);">aktiv</span>' : '<span style="color:var(--c-blue);">—</span>'}</div>`;
 
   // FF-PV
   const ffPvPanel = document.getElementById('ff-pv-panel');
   const ffPvActive = ffPvPanel?.classList.contains('visible');
-  html += `<div>${dot(ffPvActive)}Freiflächen-PV</div><div>${ffPvActive ? '<span style="color:#ffd54f;">aktiv</span>' : '<span style="color:#455a64;">—</span>'}</div>`;
+  html += `<div>${dot(ffPvActive)}Freiflächen-PV</div><div>${ffPvActive ? '<span style="color:var(--c-amber);">aktiv</span>' : '<span style="color:var(--c-blue);">—</span>'}</div>`;
 
   // Batterie
   const batKwh = parseFloat(document.getElementById('bat-kapazitaet')?.value) || 0;
   const batKw = parseFloat(document.getElementById('bat-leistung')?.value) || 0;
   const batAktiv = batKwh > 0 && batKw > 0;
-  html += `<div>${dot(batAktiv)}Batterie</div><div>${batAktiv ? val(batKwh, 'kWh') + ` / ${val(batKw, 'kW')}` : '<span style="color:#455a64;">—</span>'}</div>`;
+  html += `<div>${dot(batAktiv)}Batterie</div><div>${batAktiv ? val(batKwh, 'kWh') + ` / ${val(batKw, 'kW')}` : '<span style="color:var(--c-blue);">—</span>'}</div>`;
 
   // BHKW-Strom
   const bhkwAktiv = isErzeugerAktiv('bhkw');
@@ -1111,7 +1111,7 @@ export function updateStatusPanel() {
   const pStrom = document.getElementById('wirt-p-strom')?.value;
   const pGas = document.getElementById('wirt-p-gas')?.value;
   html += `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;padding-left:4px;">`;
-  html += `<div>${dot(!!wgk)}WGK gesamt</div><div>${wgk ? val(wgk.toFixed(1), 'ct/kWh') : '<span style="color:#455a64;">nach Wirtschaftlichkeitsberechnung</span>'}</div>`;
+  html += `<div>${dot(!!wgk)}WGK gesamt</div><div>${wgk ? val(wgk.toFixed(1), 'ct/kWh') : '<span style="color:var(--c-blue);">nach Wirtschaftlichkeitsberechnung</span>'}</div>`;
   html += `<div>${dot(!!pStrom)}Strompreis</div><div>${val(pStrom || '—', 'ct/kWh')}</div>`;
   html += `<div>${dot(!!pGas)}Gaspreis</div><div>${val(pGas || '—', 'ct/kWh')}</div>`;
   html += `</div>`;

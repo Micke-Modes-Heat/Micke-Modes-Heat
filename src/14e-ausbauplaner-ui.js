@@ -253,10 +253,10 @@ function _renderSidebar() {
       }).join('');
 
   const konflikteHtml = _konflikte.size === 0
-    ? `<div style="color:#4caf50;font-size:10px;padding:4px 0;">✓ Keine Konflikte</div>`
+    ? `<div style="color:var(--c-green);font-size:10px;padding:4px 0;">✓ Keine Konflikte</div>`
     : [..._konflikte].slice(0, 8).map(id => {
         const it = _plan.items.find(x => x.id === id);
-        return `<div style="color:#ef4444;font-size:10px;padding:2px 0;">⚠ ${esc(it?.titel || id)}</div>`;
+        return `<div style="color:var(--c-red);font-size:10px;padding:2px 0;">⚠ ${esc(it?.titel || id)}</div>`;
       }).join('');
 
   const nUngeplant = _plan.items.filter(it => !it.phaseId).length;
@@ -269,7 +269,7 @@ function _renderSidebar() {
     ${phasenHtml}
     ${nUngeplant > 0 ? `<div style="color:var(--muted);font-size:10px;margin-top:4px;">${nUngeplant} ungeplant</div>` : ''}
     ${_konflikte.size > 0 ? `<div style="border-top:1px solid var(--border);margin:10px 0 6px;"></div>
-    <div style="font-size:11px;font-weight:600;margin-bottom:4px;color:#ef4444;">Konflikte</div>
+    <div style="font-size:11px;font-weight:600;margin-bottom:4px;color:var(--c-red);">Konflikte</div>
     ${konflikteHtml}` : ''}
   `;
 }

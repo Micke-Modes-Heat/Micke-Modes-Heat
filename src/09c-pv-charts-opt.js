@@ -770,15 +770,15 @@ export function _stromRenderFlussChart(weekIdx) {
       const dayN = Math.floor(h / 24);
       const hourN = h % 24;
       const dayLabel = DAYS[dayN] + ' ' + hourN + ':00';
-      let html = `<b style="color:#cdd">${dayLabel}</b><br>`;
-      html += `<span style="color:#8bc34a">PV ${d.PV[h].toFixed(1)} kWh</span>`;
-      if (d.BH[h] > 0) html += `<br><span style="color:#ff9800">BHKW ${d.BH[h].toFixed(1)} kWh</span>`;
-      html += `<br><span style="color:#42a5f5">WP ${d.WP[h].toFixed(1)} kWh</span>`;
-      if (d.SK && d.SK[h] > 0) html += `<br><span style="color:#90caf9">Stromkessel ${d.SK[h].toFixed(1)} kWh</span>`;
-      html += `<br><span style="color:#78909c">Quartier ${d.Q[h].toFixed(1)} kWh</span>`;
-      if (net > 0) html += `<br><span style="color:#ef5350">⬇ Bezug ${net.toFixed(1)} kWh</span>`;
-      else if (net < 0) html += `<br><span style="color:#66bb6a">⬆ Einspeisung ${(-net).toFixed(1)} kWh</span>`;
-      if (d.SOC) html += `<br><span style="color:#ffd54f">SOC ${d.SOC[h].toFixed(1)} kWh</span>`;
+      let html = `<b style="color:var(--c-teal)">${dayLabel}</b><br>`;
+      html += `<span style="color:var(--c-green)">PV ${d.PV[h].toFixed(1)} kWh</span>`;
+      if (d.BH[h] > 0) html += `<br><span style="color:var(--c-orange)">BHKW ${d.BH[h].toFixed(1)} kWh</span>`;
+      html += `<br><span style="color:var(--c-blue)">WP ${d.WP[h].toFixed(1)} kWh</span>`;
+      if (d.SK && d.SK[h] > 0) html += `<br><span style="color:var(--c-blue)">Stromkessel ${d.SK[h].toFixed(1)} kWh</span>`;
+      html += `<br><span style="color:var(--c-blue)">Quartier ${d.Q[h].toFixed(1)} kWh</span>`;
+      if (net > 0) html += `<br><span style="color:var(--c-red)">⬇ Bezug ${net.toFixed(1)} kWh</span>`;
+      else if (net < 0) html += `<br><span style="color:var(--c-green)">⬆ Einspeisung ${(-net).toFixed(1)} kWh</span>`;
+      if (d.SOC) html += `<br><span style="color:var(--c-amber)">SOC ${d.SOC[h].toFixed(1)} kWh</span>`;
       tt.innerHTML = html;
       tt.style.display = 'block';
       const tx = Math.min(mx + 10, d.W - 130);
@@ -814,7 +814,7 @@ export function _runPvBatOpt(resultDiv) {
   const gesamtMwh = wpMwh + quartierMwh;
   if (gesamtMwh < 0.1) {
     if (resultDiv) resultDiv.innerHTML =
-      '<div style="font-size:10px;color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;">Kein Strombedarf definiert — Lastgang hochladen oder Jahressumme eingeben.</div>';
+      '<div style="font-size:10px;color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;">Kein Strombedarf definiert — Lastgang hochladen oder Jahressumme eingeben.</div>';
     return;
   }
 
@@ -948,7 +948,7 @@ export function _runPvBatOpt(resultDiv) {
   const r2 = isViable(bestJoint)  ? bestJoint  : null;
 
   if (!r1 && !r2) {
-    resultDiv.innerHTML = `<div style="font-size:10px;color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;text-align:center;">
+    resultDiv.innerHTML = `<div style="font-size:10px;color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;text-align:center;">
       Bei den aktuellen Kosten und Preisen ist PV/Speicher nicht wirtschaftlich rentabel.</div>`;
     return;
   }
@@ -981,7 +981,7 @@ export function _runPvBatOpt(resultDiv) {
     return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;flex:1;min-width:170px;">
       <div style="font-size:9px;font-weight:700;color:${accent};margin-bottom:7px;letter-spacing:.04em;">${label}</div>
       ${rows.map(([l,v,c,bold]) => `
-        <div style="display:flex;justify-content:space-between;margin-bottom:3px;${bold?'background:rgba(255,255,255,0.04);margin:0 -4px;padding:2px 4px;border-radius:3px;':''}">
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px;${bold?'background:rgba(var(--ink),0.04);margin:0 -4px;padding:2px 4px;border-radius:3px;':''}">
           <span style="font-size:9px;color:${bold?'var(--text)':'var(--muted)'};">${l}</span>
           <span style="font-family:'DM Mono',monospace;font-size:10px;${c?'color:'+c+';':''}${bold||c?'font-weight:600;':''}white-space:nowrap;">${v}</span>
         </div>`).join('')}
@@ -992,13 +992,13 @@ export function _runPvBatOpt(resultDiv) {
   let addLine = '';
   if (r1 && r2) {
     if (bewertung === 'nettogewinn' && r2.netBenefit > r1.netBenefit) {
-      addLine = `<div style="font-size:9px;color:#a5d6a7;text-align:center;margin-top:5px;">
+      addLine = `<div style="font-size:9px;color:var(--c-green);text-align:center;margin-top:5px;">
         Speicher bringt +${fmt(r2.netBenefit - r1.netBenefit)} €/a zusätzlichen Nettogewinn</div>`;
     } else if (bewertung === 'rendite' && r2.rendite > r1.rendite) {
-      addLine = `<div style="font-size:9px;color:#4fc3f7;text-align:center;margin-top:5px;">
+      addLine = `<div style="font-size:9px;color:var(--c-blue);text-align:center;margin-top:5px;">
         Speicher verbessert Rendite auf ${r2.rendite.toFixed(1)} %/a (statt ${r1.rendite.toFixed(1)} %/a)</div>`;
     } else if (bewertung === 'amortisation' && r2.payback < r1.payback) {
-      addLine = `<div style="font-size:9px;color:#ffd54f;text-align:center;margin-top:5px;">
+      addLine = `<div style="font-size:9px;color:var(--c-amber);text-align:center;margin-top:5px;">
         Speicher verkürzt Amortisation auf ${fmtP(r2.payback)} a (statt ${fmtP(r1.payback)} a)</div>`;
     }
   }
@@ -1029,7 +1029,7 @@ export function _runPvBatOpt(resultDiv) {
       <div style="position:relative;">
         <canvas id="opt-heatmap" style="width:100%;display:block;border-radius:4px;cursor:crosshair;"></canvas>
         <div id="opt-tooltip" style="display:none;position:absolute;pointer-events:none;
-          background:rgba(12,16,36,0.96);border:1px solid rgba(255,255,255,0.12);
+          background:var(--surface);border:1px solid rgba(var(--ink),0.12);
           border-radius:6px;padding:7px 10px;font-size:9px;font-family:'DM Mono',monospace;
           min-width:170px;z-index:10;line-height:1.7;"></div>
       </div>
@@ -1254,22 +1254,22 @@ export function _attachOptHover() {
 
     let header = '';
     if (nearJoint && r.batKwh > 0.5)
-      header = `<div style="color:#00c853;font-weight:bold;margin-bottom:4px;">✦ Optimum PV + Speicher</div>`;
+      header = `<div style="color:var(--c-green);font-weight:bold;margin-bottom:4px;">✦ Optimum PV + Speicher</div>`;
     else if (nearPvOnly && r.batKwh < 1)
-      header = `<div style="color:#ffd54f;font-weight:bold;margin-bottom:4px;">▲ Optimum PV-only</div>`;
+      header = `<div style="color:var(--c-amber);font-weight:bold;margin-bottom:4px;">▲ Optimum PV-only</div>`;
 
     const renditeVal = r.rendite !== undefined ? r.rendite.toFixed(1) : '—';
     tooltip.innerHTML = `${header}
       <div style="color:var(--muted);margin-bottom:3px;">PV&thinsp;<span style="color:#fff;">${fmtN(r.kwp)} kWp</span>
-        ${r.batKwh > 0.5 ? `&nbsp;·&nbsp;Speicher&thinsp;<span style="color:#80deea;">${fmtN(r.batKwh)} kWh</span>` : ''}</div>
+        ${r.batKwh > 0.5 ? `&nbsp;·&nbsp;Speicher&thinsp;<span style="color:var(--c-teal);">${fmtN(r.batKwh)} kWh</span>` : ''}</div>
       <div>Nettogewinn&ensp;<span style="color:${col};font-weight:bold;">${fmtN(r.netBenefit)} €/a</span></div>
-      <div>Rendite&ensp;<span style="color:#4fc3f7;font-weight:bold;">${renditeVal} %/a</span></div>
-      <div>Amortisation&ensp;<span style="color:#ffd54f;">${fmtP(r.payback)}</span></div>
-      <div style="border-top:1px solid rgba(255,255,255,0.08);margin:3px 0;padding-top:3px;">
-      Ersparnis/Erlös&ensp;<span style="color:#a5d6a7;">${fmtN(r.saving)} €/a</span></div>
-      <div>Jahreskosten&ensp;<span style="color:#ef9a9a;">${fmtN(r.annualCost)} €/a</span></div>
-      <div>Investition&ensp;<span style="color:#fff176;">${fmtN(r.invest)} €</span></div>
-      <div>Strom-Autarkie&ensp;<span style="color:#4fc3f7;">${r.autarkie.toFixed(0)} %</span></div>`;
+      <div>Rendite&ensp;<span style="color:var(--c-blue);font-weight:bold;">${renditeVal} %/a</span></div>
+      <div>Amortisation&ensp;<span style="color:var(--c-amber);">${fmtP(r.payback)}</span></div>
+      <div style="border-top:1px solid rgba(var(--ink),0.08);margin:3px 0;padding-top:3px;">
+      Ersparnis/Erlös&ensp;<span style="color:var(--c-green);">${fmtN(r.saving)} €/a</span></div>
+      <div>Jahreskosten&ensp;<span style="color:var(--c-red);">${fmtN(r.annualCost)} €/a</span></div>
+      <div>Investition&ensp;<span style="color:var(--c-amber);">${fmtN(r.invest)} €</span></div>
+      <div>Strom-Autarkie&ensp;<span style="color:var(--c-blue);">${r.autarkie.toFixed(0)} %</span></div>`;
 
     // Tooltip positionieren
     tooltip.style.display = '';

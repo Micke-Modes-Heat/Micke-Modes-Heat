@@ -991,7 +991,7 @@ export function _drawSpeicherIcon() {
   const kapStr = p ? Math.round(p.kapKwh) + ' kWh' : '';
   const icon = L.divIcon({
     className: '',
-    html: `<div style="background:rgba(38,166,154,0.85);color:#fff;border-radius:5px;padding:2px 5px;font-size:10px;font-family:'DM Mono',monospace;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,0.25);display:flex;align-items:center;gap:4px;">
+    html: `<div style="background:rgba(38,166,154,0.85);color:#fff;border-radius:5px;padding:2px 5px;font-size:10px;font-family:'DM Mono',monospace;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.4);border:1px solid rgba(var(--ink),0.25);display:flex;align-items:center;gap:4px;">
       <svg width="16" height="20" viewBox="0 0 16 20" style="flex-shrink:0;">
         <rect x="3" y="2" width="10" height="16" rx="1.5" fill="rgba(255,255,255,0.25)" stroke="#fff" stroke-width="1"/>
         <rect x="5.5" y="1" width="5" height="2" rx="0.8" fill="rgba(255,255,255,0.5)"/>

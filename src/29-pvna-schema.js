@@ -484,7 +484,7 @@ function _schieber(id, max, wert, varWert) {
     <div style="position:absolute;left:6px;right:6px;top:0;bottom:0;pointer-events:none;">
       <div data-pvna-band="${escHtml(id)}" style="position:absolute;left:0;top:7px;height:4px;width:0;background:rgba(102,187,106,.75);border-radius:2px;"></div>
       <div title="Variante" style="position:absolute;left:${vp}%;top:-1px;width:0;height:0;transform:translateX(-4px);
-        border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid #4fc3f7;"></div>
+        border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid var(--c-blue);"></div>
     </div></div>`;
 }
 
@@ -593,7 +593,7 @@ function _aussageAktualisieren(root, erg, eingabe, lf) {
   const pct = pot > 0 ? lf.summeKwp / pot * 100 : 0;
   const variante = _istVariante(erg);
   const b = t => `<b style="color:var(--text);">${t}</b>`;
-  const rot = t => `<span style="color:#e57373;">${t}</span>`;
+  const rot = t => `<span style="color:var(--c-red);">${t}</span>`;
   const lbl = id => escHtml(info.elInfo.get(id)?.label || id);
 
   // 1 · Kopfsatz
@@ -607,7 +607,7 @@ function _aussageAktualisieren(root, erg, eingabe, lf) {
     const nU = lf.ueberlastet.length, nS = lf.spannungsverletzt.length;
     kopf = `${b('Eigene Belegung')}${aktiv.length ? ` mit ${aktiv.length} Ertüchtigung${aktiv.length > 1 ? 'en' : ''} (${_fmt(inv / 1000, 1)} T€)` : ''}: `
       + `${b(_fmt(lf.summeKwp) + ' kWp')} (${_fmt(pct)} % des Flächenpotenzials) — `
-      + (lf.zulaessig ? '<span style="color:#66bb6a;">das Netz hält.</span>'
+      + (lf.zulaessig ? '<span style="color:var(--c-green);">das Netz hält.</span>'
         : rot(`das Netz hält nicht: ${[nU ? `${nU} Element${nU > 1 ? 'e' : ''} überlastet` : '', nS ? `${nS} Knoten über der ΔU-Grenze` : ''].filter(Boolean).join(', ')}.`))
       + ` <span style="color:var(--muted);">Variante „Bestandsnetz": ${_fmt(erg.treppe.basis.summeKwp)} kWp.</span>`;
   }
@@ -686,7 +686,7 @@ function _aussageAktualisieren(root, erg, eingabe, lf) {
     // Steht die Variante im Vergleich noch auf einer anderen Annahme?
     const bn = (window._pvAnalyse?.ergebnisse || []).find(v => v.id === 'bestandsnetz')?.netzaufnahme;
     const veraltet = bn && (+bn.eingaben?.ersatzQs || 0) !== qs
-      ? ' <span style="color:#ffb74d;">Die Variante im Varianten-Vergleich steht noch auf der vorigen Annahme — „Varianten berechnen".</span>' : '';
+      ? ' <span style="color:var(--c-orange);">Die Variante im Varianten-Vergleich steht noch auf der vorigen Annahme — „Varianten berechnen".</span>' : '';
     const wo = `${unbek.length} Kabel ohne erfassten Querschnitt (${unbek.slice(0, 3).map(e => escHtml(info.elInfo.get(e.id)?.knotenName || e.id)).join(', ')}${unbek.length > 3 ? ' …' : ''})`;
     if (qs > 0) punkte.push(`${wo} — gerechnet mit ${wahl}.${veraltet}`);
     else {
@@ -712,7 +712,7 @@ function _aussageAktualisieren(root, erg, eingabe, lf) {
     </div>
     <div data-pvna-aussage-punkte style="margin-top:5px;font-size:11px;line-height:1.55;color:var(--muted);">
       ${punkte.map(p => `<div style="margin-top:3px;">${p}</div>`).join('')}
-      ${warn.map(w => `<div style="margin-top:3px;color:#ffb74d;">⚠ ${w}</div>`).join('')}
+      ${warn.map(w => `<div style="margin-top:3px;color:var(--c-orange);">⚠ ${w}</div>`).join('')}
       <div style="margin-top:5px;font-size:10px;">Lastfall: volle Einspeisung ${_fmt(einsp, 2)} kW/kWp ohne gleichzeitige Last, Spannungsanhebung ≤ ${_fmt(grenze, 1)} %, Rechenjahr ${erg.jahr}
         — konservativ: Eigenverbrauch hinter dem Zähler würde die Aufnahme erhöhen.</div>
     </div>`;
@@ -849,7 +849,7 @@ function _aktualisieren({ spielraum = true } = {}) {
       const begEl = beg?.elementId ? info.elInfo.get(beg.elementId) : null;
       aw.innerHTML = `<b style="color:var(--text);">${escHtml(info.dachInfo.get(_auswahl)?.name || _auswahl)}</b>:
         ${_fmt(_bel.get(_auswahl) || 0, 1)} von ${_fmt(d.kwpMax, 1)} kWp belegt · Spielraum bei der übrigen Belegung
-        <b style="color:#66bb6a;">${_fmt(sp?.kwp, 1)} kWp</b>`
+        <b style="color:var(--c-green);">${_fmt(sp?.kwp, 1)} kWp</b>`
         + (beg && sp.kwp < d.kwpMax - 0.05
           ? ` — begrenzt durch ${_ART[beg.art] || beg.art}${begEl ? ': ' + escHtml(begEl.label) + (begEl.kabelText ? ` (${escHtml(begEl.kabelText)})` : '') : ''}`
           : ' — volle Fläche möglich')
@@ -875,7 +875,7 @@ function _abregelText(id, d, kwp, sp, html) {
   const b = t => html ? `<b style="color:var(--text);">${t}</b>` : t;
   const kopf = ueber ? `${_fmt(kwp - sp.kwp, 1)} kWp über dem Spielraum: statt das Netz zu ertüchtigen,`
     : `Voll belegen (${_fmt(d.kwpMax, 1)} kWp) und`;
-  return `${html ? '<span style="color:#ffb74d;">⚡</span> ' : ''}${kopf} die Einspeisung am EZA-Regler auf ${b(_fmt(pZul) + ' kW')} begrenzen → `
+  return `${html ? '<span style="color:var(--c-orange);">⚡</span> ' : ''}${kopf} die Einspeisung am EZA-Regler auf ${b(_fmt(pZul) + ' kW')} begrenzen → `
     + `${b(_fmt(r.verlustPct, 1) + ' %')} der Erzeugung abgeregelt, ${_fmt(r.nutzbarMwh, 1)} statt ${_fmt(basis.nutzbarMwh, 1)} MWh/a nutzbar `
     + `(${_fmt(ziel > sp.kwp + 0.05 ? (r.nutzbarMwh - basis.nutzbarMwh) * 1000 / (ziel - sp.kwp) : 0)} kWh je zusätzlichem kWp; ohne Eigenverbrauch).`;
 }
@@ -904,7 +904,7 @@ export function pvnaSchemaRender() {
   // Sichtbarkeit gehört der Ansichtsumschaltung (09d) — beim Umstellen erhalten
   const anzeige = root.style.display;
   root.style.cssText = _vollbild
-    ? 'position:fixed;inset:0;z-index:9000;background:var(--bg,#101216);overflow:auto;padding:10px 16px;box-sizing:border-box;'
+    ? 'position:fixed;inset:0;z-index:9000;background:var(--bg,var(--surface));overflow:auto;padding:10px 16px;box-sizing:border-box;'
     : '';
   root.style.display = anzeige;
   if (!erg || !erg.modell.eingabe.daecher.length) {
@@ -971,17 +971,17 @@ export function pvnaSchemaRender() {
     ${knopf('null', 'Alle auf 0', 'Alle Dächer leer')}
   </div>
   <div data-pvna-variante style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px;padding:7px 10px;
-    background:var(--surface);border:1px solid var(--border);border-left:3px solid #80cbc4;border-radius:7px;font-size:10.5px;"></div>
+    background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--c-teal);border-radius:7px;font-size:10.5px;"></div>
   <div data-pvna-fahrplan style="margin-bottom:6px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);
-    border-left:3px solid #4fc3f7;border-radius:7px;font-size:10.5px;"></div>
+    border-left:3px solid var(--c-blue);border-radius:7px;font-size:10.5px;"></div>
   <div data-pvna-auswahl style="font-size:10.5px;color:var(--muted);margin:6px 0 8px;min-height:15px;line-height:1.5;"></div>
   <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 14px;margin-bottom:6px;">
     <div style="font-size:10px;color:var(--muted);line-height:1.6;flex:1 1 420px;">
-      Kabel: <span style="color:#66bb6a;">■</span> &lt; 70 % · <span style="color:#ffb300;">■</span> 70–100 % · <span style="color:#e53935;">■</span> überlastet ·
-      <span style="color:var(--muted);">- -</span> Querschnitt nicht erfasst bzw. angenommen · <span style="color:#4fc3f7;">⚒</span> Ertüchtigung (bei aufgeklapptem Fahrplan) ·
-      Knoten: Spannungsanhebung · <span style="color:#e53935;">◉</span> Engpass (Grenze erreicht) ·
-      <span style="color:var(--accent);">▬</span> begrenzt das gewählte Dach · Schieber: <span style="color:#4fc3f7;">▼</span> Variante,
-      <span style="color:#66bb6a;">▬</span> Spielraum bei der übrigen Belegung, roter Knopf = mehr als der Spielraum.
+      Kabel: <span style="color:var(--c-green);">■</span> &lt; 70 % · <span style="color:var(--c-amber);">■</span> 70–100 % · <span style="color:var(--c-red);">■</span> überlastet ·
+      <span style="color:var(--muted);">- -</span> Querschnitt nicht erfasst bzw. angenommen · <span style="color:var(--c-blue);">⚒</span> Ertüchtigung (bei aufgeklapptem Fahrplan) ·
+      Knoten: Spannungsanhebung · <span style="color:var(--c-red);">◉</span> Engpass (Grenze erreicht) ·
+      <span style="color:var(--accent);">▬</span> begrenzt das gewählte Dach · Schieber: <span style="color:var(--c-blue);">▼</span> Variante,
+      <span style="color:var(--c-green);">▬</span> Spielraum bei der übrigen Belegung, roter Knopf = mehr als der Spielraum.
       Rechts: kWp belegt / Fläche (anklicken zum Eintippen) · ΔU am Anschlussknoten.</div>
     <div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);" title="Was an den Kabeln steht">
       Beschriftung:
@@ -1345,7 +1345,7 @@ function _fahrplanAktualisieren(root, erg) {
         + (t.restKwp > 0.5 ? ` · ${_fmt(t.restKwp)} kWp ohne Standardlösung` : '');
     box.innerHTML = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;">
       ${umschalter}<span style="color:var(--muted);">— ${inhalt}</span>
-      ${aktiv.length ? `<span style="color:#4fc3f7;">· aktiv: ${aktiv.length} Maßnahme${aktiv.length > 1 ? 'n' : ''} (${_fmt(aktiv.reduce((s2, m) => s2 + m.investEUR, 0) / 1000, 1)} T€)</span>` : ''}
+      ${aktiv.length ? `<span style="color:var(--c-blue);">· aktiv: ${aktiv.length} Maßnahme${aktiv.length > 1 ? 'n' : ''} (${_fmt(aktiv.reduce((s2, m) => s2 + m.investEUR, 0) / 1000, 1)} T€)</span>` : ''}
       ${n || t.restKwp > 0.5 ? `<button class="pvna-knopf" data-pvna-aktion="fahrplan" style="margin-left:auto;">Fahrplan zeigen</button>` : ''}</div>`;
     return;
   }
@@ -1359,7 +1359,7 @@ function _fahrplanAktualisieren(root, erg) {
     const an = _mass.has(m.id);
     return `<span data-pvna-mass="${escHtml(m.id)}" title="${escHtml(`${m.label} · ${_fmt(m.investEUR)} € · Klicken: ${an ? 'zurücknehmen' : 'umsetzen'}${warum ? '\n\n' + warum : ''}`)}"
       style="display:inline-flex;gap:4px;align-items:center;padding:1px 7px;margin:1px 4px 1px 0;border-radius:10px;cursor:pointer;
-      border:1px solid #4fc3f7;${an ? 'background:#4fc3f7;color:#0b1a24;' : 'color:#4fc3f7;'}">${an ? '✓' : '⚒'} ${escHtml(m.label)}</span>`;
+      border:1px solid var(--c-blue);${an ? 'background:#4fc3f7;color:#0b1a24;' : 'color:var(--c-blue);'}">${an ? '✓' : '⚒'} ${escHtml(m.label)}</span>`;
   };
   const alleAn = ids => ids.length && ids.every(id => _mass.has(id));
   const fv = window._pvAnalyse?.fahrplanVarianten;
@@ -1395,7 +1395,7 @@ function _fahrplanAktualisieren(root, erg) {
   box.innerHTML = `
     <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px;margin-bottom:4px;">
       <span>${umschalter} <b>— Netzertüchtigungen in Reihenfolge der Wirksamkeit (€ je zusätzlichem kWp)</b></span>
-      <span style="color:var(--muted);">Aktiv: ${_mass.size ? `<b style="color:#4fc3f7;">${_mass.size} Maßnahme${_mass.size > 1 ? 'n' : ''} · ${_fmt(aktivInv / 1000, 1)} T€</b>` : 'keine'}
+      <span style="color:var(--muted);">Aktiv: ${_mass.size ? `<b style="color:var(--c-blue);">${_mass.size} Maßnahme${_mass.size > 1 ? 'n' : ''} · ${_fmt(aktivInv / 1000, 1)} T€</b>` : 'keine'}
         · Netzgrenze damit <b style="color:var(--text);">${_fmt(f.summeKwp)} kWp</b> von ${_fmt(f.potenzialKwp)} kWp</span>
     </div>
     ${_wasserfallSvg(erg)}
@@ -1409,10 +1409,10 @@ function _fahrplanAktualisieren(root, erg) {
     <div style="margin-top:4px;color:var(--muted);line-height:1.5;">„▶ bis Stufe k" setzt die Stufen 1…k um und füllt die Dächer bis zur neuen Netzgrenze.
       Einzelne Maßnahmen lassen sich auch über ⚒ im Schema schalten; danach „▲ Bis zur Netzgrenze füllen" oder die Schieber nutzen.
       ${t.restKwp > 0.5 ? `Auch nach allen Stufen bleiben ${_fmt(t.restKwp)} kWp ohne Anschluss.` : ''}</div>
-    ${ungeloest.length ? `<div style="margin-top:4px;color:#ffb74d;line-height:1.5;">Kein Standardkabel reicht für:
+    ${ungeloest.length ? `<div style="margin-top:4px;color:var(--c-orange);line-height:1.5;">Kein Standardkabel reicht für:
       ${ungeloest.map(escHtml).join(', ')} — hier endet der Fahrplan; weiter geht es nur mit einer Strukturänderung
       (zusätzlicher Abgang, eigene Anbindung).</div>` : ''}
-    ${teilweise.length ? `<div style="margin-top:4px;color:#ffb74d;line-height:1.5;">Größte Standardlösung (8 Parallelstränge) reicht nicht für alle Flächen:
+    ${teilweise.length ? `<div style="margin-top:4px;color:var(--c-orange);line-height:1.5;">Größte Standardlösung (8 Parallelstränge) reicht nicht für alle Flächen:
       ${teilweise.slice(0, 6).map(escHtml).join(', ')}${teilweise.length > 6 ? ` und ${teilweise.length - 6} weitere` : ''} — als Teil-Ertüchtigung im Fahrplan; der Rest dahinter braucht eine Strukturänderung
       (zusätzlicher Abgang, eigene Anbindung, weiterer Trafo).</div>` : ''}`;
 }
@@ -1443,7 +1443,7 @@ function _fahrplanVariantenLeiste(n) {
     ${knopf('fvar-keine', '☐ keine', 'Keine Fahrplanstufe als Variante')}
     ${knopf('fvar-rechnen', '↻ Varianten neu rechnen', 'Die Auswahl in die PV-Analyse übernehmen und alle Varianten neu rechnen', !aktuell)}
     <span style="color:var(--muted);">${gew.length ? `${gew.length} von ${n} gewählt` : 'keine gewählt'}
-      ${aktuell ? (ist.size ? ' · stehen im Varianten-Vergleich' : '') : ' · <span style="color:#ffb74d;">Auswahl geändert — neu rechnen</span>'}
+      ${aktuell ? (ist.size ? ' · stehen im Varianten-Vergleich' : '') : ' · <span style="color:var(--c-orange);">Auswahl geändert — neu rechnen</span>'}
       · erscheinen im Varianten-Vergleich, nicht in Abbildungen und Gutachten</span>
   </div>`;
 }
@@ -1676,13 +1676,13 @@ function _varianteZeile(root, lf) {
   box.innerHTML = `
     ${knopf('uebernehmen', eig ? '✚ Aktuelle Belegung übernehmen (ersetzt)' : '✚ Als Variante übernehmen',
       'Legt diese Belegung als Variante „Bestandsnetz, eigene Belegung" an und rechnet die Varianten neu', true)}
-    <span style="color:var(--muted);">${_fmt(lf.summeKwp)} kWp${_mass.size ? ` + ${_mass.size} Ertüchtigung${_mass.size > 1 ? 'en' : ''}` : ''}${lf.zulaessig ? '' : ' · <span style="color:#e53935;">Netz hält nicht — wird mit Warnhinweis übernommen</span>'}</span>
+    <span style="color:var(--muted);">${_fmt(lf.summeKwp)} kWp${_mass.size ? ` + ${_mass.size} Ertüchtigung${_mass.size > 1 ? 'en' : ''}` : ''}${lf.zulaessig ? '' : ' · <span style="color:var(--c-red);">Netz hält nicht — wird mit Warnhinweis übernommen</span>'}</span>
     ${eig ? `<span style="flex-basis:100%;height:0;"></span>
       <span>Übernommen: <b>${_fmt(eig.summeKwp)} kWp</b>${eig.massnahmen?.length
         ? ` + ${eig.massnahmen.length} Ertüchtigung${eig.massnahmen.length > 1 ? 'en' : ''} (${_fmt(eig.massnahmen.reduce((t, m) => t + m.investEUR, 0) / 1000)} T€)` : ''} <span style="color:var(--muted);">(Stand ${escHtml(eig.stand || '—')})</span></span>
       ${knopf('laden', '↺ Übernommene Belegung laden', 'Die gespeicherte Belegung in die Schieber laden')}
       ${knopf('entfernen', '✕ Variante entfernen', 'Variante „Bestandsnetz, eigene Belegung" löschen und neu rechnen')}` : ''}
-    ${_meldung ? `<span style="flex-basis:100%;color:#80cbc4;">${_meldung}</span>` : ''}`;
+    ${_meldung ? `<span style="flex-basis:100%;color:var(--c-teal);">${_meldung}</span>` : ''}`;
 }
 
 function _eigeneLaden(erg) {

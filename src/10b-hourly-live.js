@@ -935,7 +935,7 @@ export function _buildFlowSankey(container, data, mode) {
   if (!tt) {
     tt = document.createElement('div');
     tt.className = 'live-sankey-tt';
-    tt.style.cssText = 'position:absolute;pointer-events:none;background:#1a1d26;color:#cfd8dc;border:1px solid #2a3040;border-radius:4px;padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;display:none;white-space:nowrap;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,0.5);';
+    tt.style.cssText = 'position:absolute;pointer-events:none;background:var(--surface);color:var(--c-blue);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;display:none;white-space:nowrap;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,0.5);';
     container.style.position = 'relative';
     container.appendChild(tt);
   }
@@ -1475,7 +1475,7 @@ export function _updateHourlyOverlay(t) {
       kpiHtml +=
         '<div class="live-kpi-cell">' +
           '<div class="kl">Speicher</div>' +
-          '<div class="kv" style="color:#26a69a;">' + pct.toFixed(0) + ' <span class="ku">%</span></div>' +
+          '<div class="kv" style="color:var(--c-teal);">' + pct.toFixed(0) + ' <span class="ku">%</span></div>' +
           '<div class="live-kpi-gauge"><div class="live-kpi-gauge-fill" style="width:' + pct.toFixed(1) + '%;background:' + gaugeColor + ';"></div></div>' +
           '<div class="ks">' + speicher.tsSoc.toFixed(0) + '/' + speicher.tsKap.toFixed(0) + ' kWh' + dir + '</div>' +
         '</div>';

@@ -80,7 +80,7 @@ function _ensurePanel() {
   panel.style.cssText = 'top:70px;min-width:660px;max-width:900px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
   panel.innerHTML = `
     <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID}')">
-      <span style="color:#f9a825;font-size:12px;font-weight:600;">⏱ Engpass-Fahrplan</span>
+      <span style="color:var(--c-orange);font-size:12px;font-weight:600;">⏱ Engpass-Fahrplan</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
             data-click="engpassPanelToggle()">✕</span>
@@ -129,7 +129,7 @@ export function engpassPanelAktualisieren() {
       _render();
     } catch (err) {
       console.error('Engpass-Panel:', err);
-      _body().innerHTML = '<div style="padding:18px;color:#e53935;font-size:11px;">Analyse fehlgeschlagen — Details in der Konsole.</div>';
+      _body().innerHTML = '<div style="padding:18px;color:var(--c-red);font-size:11px;">Analyse fehlgeschlagen — Details in der Konsole.</div>';
     }
   }, 50);
 }
@@ -219,11 +219,11 @@ function _toolbar(res, nKrit, nOk, nBestand = 0) {
   const btn = 'padding:5px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:10px;cursor:pointer;';
   return `
   <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:2px 0 10px;">
-    <button style="${btn}border-color:#f9a825;color:#f9a825;" data-click="engpassPanelAktualisieren()">↻ Neu rechnen</button>
-    <button style="${btn}border-color:#66bb6a;color:#66bb6a;" data-click="engpassMassnahmenVorschlagen()"
+    <button style="${btn}border-color:var(--c-orange);color:var(--c-orange);" data-click="engpassPanelAktualisieren()">↻ Neu rechnen</button>
+    <button style="${btn}border-color:var(--c-green);color:var(--c-green);" data-click="engpassMassnahmenVorschlagen()"
       title="Leitet für jedes kritische Betriebsmittel die günstigste ausreichende Ertüchtigung ab und legt sie als geplante Maßnahme an (erscheint im Ausbauplaner).">
       ⚙ Maßnahmen vorschlagen</button>
-    <button style="${btn}border-color:#e57373;color:#e57373;" data-click="engpassMassnahmenZuruecksetzen()"
+    <button style="${btn}border-color:var(--c-red);color:var(--c-red);" data-click="engpassMassnahmenZuruecksetzen()"
       title="Entfernt alle automatisch erzeugten Maßnahmen wieder — von Hand bearbeitete bleiben.">✕ Auto-Maßnahmen</button>
     <span style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
       Horizont
@@ -231,7 +231,7 @@ function _toolbar(res, nKrit, nOk, nBestand = 0) {
         title="Startjahr der Betrachtung"
         style="width:78px;accent-color:#f9a825;cursor:pointer;"
         data-input="engpassHorizontVorschau()" data-change="engpassPanelAktualisieren()">
-      <b id="engpass-horizont-label" style="color:#f9a825;font-family:'DM Mono',monospace;min-width:74px;">${res.von}–${res.bis}</b>
+      <b id="engpass-horizont-label" style="color:var(--c-orange);font-family:'DM Mono',monospace;min-width:74px;">${res.von}–${res.bis}</b>
       <input type="range" id="engpass-bis" min="5" max="40" step="1" value="${res.bis - res.von}"
         title="Länge des Betrachtungszeitraums in Jahren"
         style="width:78px;accent-color:#f9a825;cursor:pointer;"
@@ -246,7 +246,7 @@ function _toolbar(res, nKrit, nOk, nBestand = 0) {
     </label>` : ''}
     <span style="margin-left:auto;font-size:10px;color:var(--muted);">
       ${res.jahre.length} Stützjahre ·
-      <b style="color:#e53935;">${nKrit}</b> kritisch · <b style="color:#4caf50;">${nOk}</b> ohne Engpass
+      <b style="color:var(--c-red);">${nKrit}</b> kritisch · <b style="color:var(--c-green);">${nOk}</b> ohne Engpass
     </span>
   </div>`;
 }
@@ -280,8 +280,8 @@ function _reserveKurve() {
       <span><span style="display:inline-block;width:14px;height:2px;background:#e53935;vertical-align:middle;"></span> ohne Ausbau</span>
       <span><span style="display:inline-block;width:14px;height:2px;background:#4caf50;vertical-align:middle;"></span> mit geplanten Maßnahmen</span>
       ${_vergleich.restEngpaesse === 0
-        ? '<span style="color:#4caf50;">✓ alle Engpässe aufgelöst</span>'
-        : `<span style="color:#f9a825;">${_vergleich.restEngpaesse} verbleiben</span>`}
+        ? '<span style="color:var(--c-green);">✓ alle Engpässe aufgelöst</span>'
+        : `<span style="color:var(--c-orange);">${_vergleich.restEngpaesse} verbleiben</span>`}
     </div>
   </div>`;
 }
@@ -289,14 +289,14 @@ function _reserveKurve() {
 // Zeitstrahl: Zeile je kritischem Betriebsmittel, Spalte je Jahr
 function _zeitstrahl(res, kritisch) {
   if (!kritisch.length) {
-    return `<div style="padding:14px;background:var(--surface2);border-radius:6px;font-size:11px;color:#4caf50;">
+    return `<div style="padding:14px;background:var(--surface2);border-radius:6px;font-size:11px;color:var(--c-green);">
       ✓ Im Horizont ${res.von}–${res.bis} wird kein Betriebsmittel zum Engpass.</div>`;
   }
   const jahre = [];
   for (let j = res.von; j <= res.bis; j++) jahre.push(j);
   const zellW = 15;
 
-  const kopf = jahre.map(j => `<div style="flex:0 0 ${zellW}px;font-size:7px;color:#78909c;text-align:center;">
+  const kopf = jahre.map(j => `<div style="flex:0 0 ${zellW}px;font-size:7px;color:var(--c-blue);text-align:center;">
       ${j % 5 === 0 ? String(j).slice(2) : ''}</div>`).join('');
 
   // WICHTIG: alle festen Spalten mit flex:0 0 — sonst schrumpfen sie als Flex-Items,
@@ -310,12 +310,12 @@ function _zeitstrahl(res, kritisch) {
   const zeilen = kritisch.map(it => {
     const zellen = jahre.map(j => {
       const w = _wertBei(it.reihe, j);
-      if (!w) return `<div style="flex:0 0 ${zellW}px;height:12px;background:#161b2e;"
+      if (!w) return `<div style="flex:0 0 ${zellW}px;height:12px;background:var(--hover);"
         title="${j}: existiert noch nicht"></div>`;
       const krit = j === it.engpassJahr;
       return `<div title="${it.label} · ${j}: ${w.auslastungPct.toFixed(0)} % Auslastung · ΔU ${(w.deltaUKumPct || 0).toFixed(2)} %"
         style="flex:0 0 ${zellW}px;height:12px;background:${_zellCol(w)};
-               ${krit ? 'outline:2px solid #fff;outline-offset:-2px;z-index:1;' : ''}"></div>`;
+               ${krit ? 'outline:2px solid var(--border);outline-offset:-2px;z-index:1;' : ''}"></div>`;
     }).join('');
     const icon = it.art === 'trafo' ? '⏚' : '⚡';
     // Maßgebender Wert: bei Spannungs-Engpässen ist die Auslastung irrelevant
@@ -335,7 +335,7 @@ function _zeitstrahl(res, kritisch) {
       title="Auf der Karte anzeigen und Eigenschaften öffnen">
       ${nameSpalte(`${icon} ${it.label}`, 'font-size:9.5px;color:var(--text);',
                    `${it.label} — Engpass ab ${it.engpassJahr}, Ursache: ${it.ursache}${auslTxt}${zushTxt}`)}
-      <div style="flex:0 0 34px;font-size:9px;font-weight:700;color:#e53935;text-align:right;">${it.engpassJahr}</div>
+      <div style="flex:0 0 34px;font-size:9px;font-weight:700;color:var(--c-red);text-align:right;">${it.engpassJahr}</div>
       <div style="flex:0 0 26px;font-size:8px;color:${spannung ? '#ce93d8' : '#ffab91'};text-align:center;"
            title="${spannung ? 'Spannungsfall' : 'Strombelastbarkeit'}">${spannung ? 'ΔU' : 'I'}</div>
       <div style="display:flex;">${zellen}</div>
@@ -349,11 +349,11 @@ function _zeitstrahl(res, kritisch) {
   </div>
   <div style="background:var(--surface2);border-radius:6px;padding:7px 8px;margin-bottom:12px;overflow-x:auto;">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
-      ${nameSpalte('Betriebsmittel', 'font-size:8px;color:#78909c;')}
-      <div style="flex:0 0 34px;font-size:8px;color:#78909c;text-align:right;">ab</div>
-      <div style="flex:0 0 26px;font-size:8px;color:#78909c;text-align:center;" title="Ursache: I = Strom, ΔU = Spannungsfall">Urs.</div>
+      ${nameSpalte('Betriebsmittel', 'font-size:8px;color:var(--c-blue);')}
+      <div style="flex:0 0 34px;font-size:8px;color:var(--c-blue);text-align:right;">ab</div>
+      <div style="flex:0 0 26px;font-size:8px;color:var(--c-blue);text-align:center;" title="Ursache: I = Strom, ΔU = Spannungsfall">Urs.</div>
       <div style="display:flex;">${kopf}</div>
-      <div style="flex:0 0 52px;font-size:8px;color:#78909c;text-align:right;">maßgeb.</div>
+      <div style="flex:0 0 52px;font-size:8px;color:var(--c-blue);text-align:right;">maßgeb.</div>
     </div>
     ${zeilen}
   </div>`;
@@ -368,23 +368,23 @@ function _massnahmenListe() {
   }
   const zeilen = _massnahmen.items.map(m => `
     <div style="display:flex;align-items:center;gap:8px;padding:3px 6px;border-radius:4px;">
-      <span style="flex:0 0 34px;font-size:9.5px;font-weight:700;color:#66bb6a;">${m.jahr}</span>
+      <span style="flex:0 0 34px;font-size:9.5px;font-weight:700;color:var(--c-green);">${m.jahr}</span>
       <span style="flex:0 0 190px;font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             title="${m.label}">${m.art === 'trafo' ? '⏚' : '⚡'} ${m.label}</span>
       <span style="flex:1;font-size:9.5px;color:var(--text);">${m.titel}</span>
-      <span style="font-size:9.5px;color:#fdd835;text-align:right;white-space:nowrap;">${_eur(m.kosten)}</span>
+      <span style="font-size:9.5px;color:var(--c-amber);text-align:right;white-space:nowrap;">${_eur(m.kosten)}</span>
     </div>`).join('');
   const ungeloest = (_massnahmen.ungeloest || []).map(u => `
     <div style="display:flex;align-items:flex-start;gap:8px;padding:3px 6px;">
-      <span style="flex:0 0 34px;font-size:9.5px;font-weight:700;color:#e53935;">${u.engpassJahr}</span>
+      <span style="flex:0 0 34px;font-size:9.5px;font-weight:700;color:var(--c-red);">${u.engpassJahr}</span>
       <span style="flex:0 0 190px;font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             title="${u.label}">⚡ ${u.label}</span>
-      <span style="flex:1;font-size:9px;color:#ef9a9a;line-height:1.5;">${u.grund}
+      <span style="flex:1;font-size:9px;color:var(--c-red);line-height:1.5;">${u.grund}
         <span style="color:var(--muted);">(${u.maxStromA.toFixed(0)} A nötig, ${u.maxAuslPct.toFixed(0)} % Auslastung)</span></span>
     </div>`).join('');
 
   const ungeloestBlock = ungeloest ? `
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#e53935;margin:10px 0 3px;">
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--c-red);margin:10px 0 3px;">
     ⚠ Nicht durch Kabeltausch lösbar · ${_massnahmen.ungeloest.length}
   </div>
   <div style="background:rgba(229,57,53,0.08);border:1px solid rgba(229,57,53,0.35);border-radius:6px;padding:6px 4px;">
@@ -424,14 +424,14 @@ function _bestandsmaengel(bestand) {
       title="Auf der Karte anzeigen und Eigenschaften öffnen">
       <span style="flex:0 0 190px;font-size:9px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             title="${item.label}">${icon} ${item.label}</span>
-      <span style="flex:0 0 52px;font-size:8.5px;color:#ef9a9a;text-align:right;">${massgeb}</span>
+      <span style="flex:0 0 52px;font-size:8.5px;color:var(--c-red);text-align:right;">${massgeb}</span>
       <span style="flex:1;font-size:9.5px;color:${vorschlag ? '#66bb6a' : '#ef9a9a'};">
         ${vorschlag ? '→ ' + vorschlag.label : '→ kein Standardquerschnitt reicht — Netzstruktur ändern'}</span>
     </div>`;
   }).join('');
 
   return `
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#f9a825;margin:10px 0 3px;">
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--c-orange);margin:10px 0 3px;">
     🔧 Bestandsmängel · ${bestand.length} von Anfang an unterdimensioniert
   </div>
   <div style="background:rgba(249,168,37,0.07);border:1px solid rgba(249,168,37,0.3);border-radius:6px;padding:6px 4px;margin-bottom:12px;">
@@ -443,10 +443,10 @@ function _bestandsmaengel(bestand) {
     </div>
     ${zeilen}
     <div style="display:flex;gap:6px;padding:7px 6px 1px;">
-      <button style="${btn}border-color:#66bb6a;color:#66bb6a;" data-click="engpassKorrekturenAnwenden()"
+      <button style="${btn}border-color:var(--c-green);color:var(--c-green);" data-click="engpassKorrekturenAnwenden()"
         title="Schreibt die Vorschläge in die Bestandsdaten und rechnet neu.">
         ✓ ${loesbar.length} Korrektur(en) übernehmen</button>
-      <button style="${btn}border-color:#e57373;color:#e57373;" data-click="engpassKorrekturenZuruecknehmen()"
+      <button style="${btn}border-color:var(--c-red);color:var(--c-red);" data-click="engpassKorrekturenZuruecknehmen()"
         title="Stellt die ursprünglichen Bestandswerte wieder her.">↩ Zurücknehmen</button>
     </div>
   </div>`;

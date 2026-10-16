@@ -37,7 +37,7 @@ export function runOptimierung() {
   } catch (e) {
     console.error('Web Worker nicht verfügbar:', e);
     _optFinished();
-    resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;">Optimierung konnte nicht gestartet werden: Web Worker ist in diesem Browser nicht verfügbar.</div>';
+    resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;">Optimierung konnte nicht gestartet werden: Web Worker ist in diesem Browser nicht verfügbar.</div>';
   }
 }
 
@@ -49,14 +49,14 @@ export function _optAbbrechen() {
   window._optWorkers = [];
   _optFinished();
   const resDiv = document.getElementById('opt-result-list');
-  if (resDiv) resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Abgebrochen.</div>';
+  if (resDiv) resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Abgebrochen.</div>';
 }
 
 export function _runOptWorker(resDiv) {
   const runId = window._optRunId;
   const ss = window.systemState;
   if (!ss?.lastgangKw || ss.lastgangKw.length < 8760 || !ss.tempH || !ss.vlH) {
-    resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Kein stundenscharfer Lastgang verfügbar.</div>';
+    resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Kein stundenscharfer Lastgang verfügbar.</div>';
     _optFinished();
     return;
   }
@@ -70,7 +70,7 @@ export function _runOptWorker(resDiv) {
   const allKeys = ['lwwp','fg','geo','gaskessel','bhkw','stromkessel','pellets','hhs','fernwaerme','heizoel'];
   const aktiv = allKeys.filter(k => document.getElementById('opt-cand-' + k)?.checked);
   if (!aktiv.length) {
-    resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Bitte mindestens einen Wärmeerzeuger als Kandidaten wählen.</div>';
+    resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Bitte mindestens einen Wärmeerzeuger als Kandidaten wählen.</div>';
     _optFinished();
     return;
   }
@@ -200,7 +200,7 @@ export function _runOptWorker(resDiv) {
       return '<div style="padding:3px 6px;border-left:2px solid ' + (i === 0 ? '#fdd835' : 'var(--border)') + ';margin-bottom:2px;font-size:9px;color:var(--text);">'
         + (i + 1) + '. ' + escHtml(erz)
         + (extras.length ? ' · ' + escHtml(extras.join(' · ')) : '')
-        + (wgk ? ' <span style="color:#fdd835;">' + wgk + '</span>' : '')
+        + (wgk ? ' <span style="color:var(--c-amber);">' + wgk + '</span>' : '')
         + '</div>';
     });
     return '<div style="margin-top:6px;text-align:left;">'
@@ -222,7 +222,7 @@ export function _runOptWorker(resDiv) {
     for (const wk of window._optWorkers) { try { wk.terminate(); } catch (ex) { /* bereits beendet */ } }
     _optFinished();
     URL.revokeObjectURL(blobUrl);
-    resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;">' + text + '</div>';
+    resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;">' + text + '</div>';
   }
 
   // ── Phase 1: Grobsuche, auf alle Kerne verteilt ──
@@ -260,7 +260,7 @@ export function _runOptWorker(resDiv) {
     if (ausgangsSeed) seeds.push(ausgangsSeed);
     if (!seeds.length) {
       _optFinished(); URL.revokeObjectURL(blobUrl);
-      resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine zulässige Variante gefunden — Randbedingungen prüfen.</div>';
+      resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine zulässige Variante gefunden — Randbedingungen prüfen.</div>';
       return;
     }
     const nFein = Math.min(numWorkers, seeds.length);
@@ -365,7 +365,7 @@ export function _optUmfangGeaendert() {
 
 export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, params, info = {}, nurNeuBewertet = false) {
   if (!topFein || topFein.length === 0) {
-    resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine Ergebnisse.</div>';
+    resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine Ergebnisse.</div>';
     _optFinished();
     return;
   }
@@ -411,7 +411,7 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
   kopf.className = 'opt-ergebnis-kopf';
   const _optResYear = info.jahr || parseInt(document.getElementById('opt-year')?.value) || globalYear;
   let kopfHtml = '<span style="color:var(--accent);font-weight:600;">Betrachtungsjahr: ' + _optResYear + '</span>'
-    + (window._basisYear && _optResYear !== window._basisYear ? ' <span style="color:#78909c;font-size:9px;">(Lastgang skaliert)</span>' : '')
+    + (window._basisYear && _optResYear !== window._basisYear ? ' <span style="color:var(--c-blue);font-size:9px;">(Lastgang skaliert)</span>' : '')
     + ' <span class="opt-umfang-hinweis">' + (window._wirtOhneNetz ? 'Nur Wärmeerzeugung (ohne Netzkosten)' : 'Gesamtsystem inkl. Netz') + '</span>';
   if (ausgang?.kw && top3[0]) {
     const diff = ausgang.kw.wgk - top3[0].kw.wgk;

@@ -224,9 +224,9 @@ export function pvPflichtBadgeHtml(gebId) {
     title="${escHtml(f.rechenweg)}">
     <span style="color:${LILA_HELL};">§ ${norm}</span>
     <span style="color:var(--muted);"> · Soll </span><span style="color:${LILA_HELL};font-weight:600;">${f.kwp.toFixed(1)} kWp</span>
-    <span style="color:var(--muted);"> · geplant </span><span style="color:#ffd54f;" title="Modul-Nennleistung — für die Pflicht zählt die Modulfläche, nicht der Ertrag">${f.istKwp.toFixed(1)} kWp<span style="color:var(--muted);font-size:8px;"> Nennl.</span></span>
+    <span style="color:var(--muted);"> · geplant </span><span style="color:var(--c-amber);" title="Modul-Nennleistung — für die Pflicht zählt die Modulfläche, nicht der Ertrag">${f.istKwp.toFixed(1)} kWp<span style="color:var(--muted);font-size:8px;"> Nennl.</span></span>
     <br><span style="color:${farbe};font-weight:600;">${text}</span>
-    <span style="color:#607d8b;"> — ${escHtml(f.rechenweg)}</span>
+    <span style="color:var(--c-blue);"> — ${escHtml(f.rechenweg)}</span>
   </div>`;
 }
 
@@ -268,13 +268,13 @@ export function pvPflichtInfoHtml() {
       <span style="font-family:'DM Mono',monospace;font-size:15px;color:${LILA_HELL};">${pf.kwp.toFixed(0)}</span>
       <span style="font-size:10px;color:var(--muted);">kWp Pflicht · ${escHtml(pf.regel.kurz)} ${escHtml(pf.regel.norm)}</span>
     </div>
-    <div style="font-size:10px;color:#78909c;line-height:1.55;margin-top:2px;">
+    <div style="font-size:10px;color:var(--c-blue);line-height:1.55;margin-top:2px;">
       ${escHtml(faelleTxt)} · ${pf.regel.anteilPct.toFixed(0)} % der ${escHtml(bezugFlaechenNameDekliniert(pf.regel))}
-      <br>geplant an diesen Gebäuden: <span style="color:#ffd54f;">${pf.istKwp.toFixed(0)} kWp</span>
+      <br>geplant an diesen Gebäuden: <span style="color:var(--c-amber);">${pf.istKwp.toFixed(0)} kWp</span>
       ${unterdeckt
-        ? ` · <span style="color:#ef5350;font-weight:600;">${unterdeckt} Gebäude unter Soll</span>`
-        : ' · <span style="color:#66bb6a;">alle Gebäude erfüllen ihr Soll</span>'}
-      ${pf.regel.anteilHerkunft === 'verordnung' ? '<br><span style="color:#ffb74d;">Anteil aus der Rechtsverordnung — vor Nutzung prüfen.</span>' : ''}
+        ? ` · <span style="color:var(--c-red);font-weight:600;">${unterdeckt} Gebäude unter Soll</span>`
+        : ' · <span style="color:var(--c-green);">alle Gebäude erfüllen ihr Soll</span>'}
+      ${pf.regel.anteilHerkunft === 'verordnung' ? '<br><span style="color:var(--c-orange);">Anteil aus der Rechtsverordnung — vor Nutzung prüfen.</span>' : ''}
       ${pf.annahmen.length ? `<br>${escHtml(pf.annahmen[0])}` : ''}
       <br>Stand ${escHtml(PV_PFLICHT_META.stand)} · keine Rechtsberatung
     </div>
@@ -300,13 +300,13 @@ export function pvPflichtUebersichtOeffnen() {
   if (!_modal) {
     _modal = document.createElement('div');
     _modal.id = MODAL_ID;
-    _modal.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(8,12,24,0.97);'
+    _modal.style.cssText = 'position:fixed;inset:0;z-index:9998;background:var(--surface);'
       + 'display:none;align-items:flex-start;justify-content:center;';
     _modal.innerHTML =
       '<div style="position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;'
-      + 'padding:12px 20px;border-bottom:1px solid rgba(255,255,255,0.08);">'
+      + 'padding:12px 20px;border-bottom:1px solid rgba(var(--ink),0.08);">'
       + `<span style="font-size:13px;font-weight:600;color:${LILA_HELL};">§ PV-Pflicht je Gebäude</span>`
-      + '<span id="pv-pflicht-x" style="cursor:pointer;font-size:22px;color:#90a4ae;padding:4px 10px;line-height:1;user-select:none;">✕</span></div>'
+      + '<span id="pv-pflicht-x" style="cursor:pointer;font-size:22px;color:var(--c-blue);padding:4px 10px;line-height:1;user-select:none;">✕</span></div>'
       + '<div id="pv-pflicht-body" style="width:96vw;max-width:1500px;margin-top:56px;max-height:calc(100vh - 70px);overflow:auto;padding:8px 0 40px 0;"></div>';
     document.body.appendChild(_modal);
     _modal.querySelector('#pv-pflicht-x')?.addEventListener('click', pvPflichtUebersichtSchliessen);
@@ -379,11 +379,11 @@ function _uebersichtHtml() {
       Belegungsgrad, GCR, Aufständerung und Azimut gehen <b style="color:var(--text);">nicht</b> in die
       Bezugsfläche ein — sie bestimmen die Modulplatzierung und damit die Spalte „geplant".
     </div>
-    <div style="color:#607d8b;margin-top:3px;">
+    <div style="color:var(--c-blue);margin-top:3px;">
       Der auslösende Fall wird gegen das laufende Kalenderjahr geprüft, nicht gegen den Jahres-Regler —
       die Pflicht hängt an der Planung, nicht am Betrachtungsjahr. Je Gebäude überschreibbar.
     </div>
-    <div style="color:#607d8b;">${escHtml(PV_PFLICHT_META.disclaimer)}</div>
+    <div style="color:var(--c-blue);">${escHtml(PV_PFLICHT_META.disclaimer)}</div>
   </div>`;
 
   // ── Summenzeile ──
@@ -392,14 +392,14 @@ function _uebersichtHtml() {
        background:var(--surface2);border:1px solid var(--border);font-size:11px;">
     <span style="color:var(--muted);">Pflichtige Gebäude <b style="color:var(--text);font-family:'DM Mono',monospace;">${pf.faelle.length}</b></span>
     <span style="color:var(--muted);">Soll gesamt <b style="color:${LILA_HELL};font-family:'DM Mono',monospace;">${nf(pf.kwp, 1)} kWp</b></span>
-    <span style="color:var(--muted);" title="Summe der Modul-Nennleistung der pflichtigen Gebäude">geplant gesamt (Nennleistung) <b style="color:#ffd54f;font-family:'DM Mono',monospace;">${nf(pf.istKwp, 1)} kWp</b></span>
+    <span style="color:var(--muted);" title="Summe der Modul-Nennleistung der pflichtigen Gebäude">geplant gesamt (Nennleistung) <b style="color:var(--c-amber);font-family:'DM Mono',monospace;">${nf(pf.istKwp, 1)} kWp</b></span>
     <span style="color:var(--muted);">Bilanz <b style="color:${pf.istKwp >= pf.kwp ? '#66bb6a' : '#ef5350'};font-family:'DM Mono',monospace;">${
       (pf.istKwp - pf.kwp >= 0 ? '+' : '−') + nf(Math.abs(pf.istKwp - pf.kwp), 1)} kWp</b></span>
     ${unterdeckt.length
-      ? `<span style="color:#ef5350;font-weight:600;">${unterdeckt.length} Gebäude unter ihrem Soll</span>`
-      : '<span style="color:#66bb6a;">jedes Gebäude erfüllt sein Soll</span>'}
+      ? `<span style="color:var(--c-red);font-weight:600;">${unterdeckt.length} Gebäude unter ihrem Soll</span>`
+      : '<span style="color:var(--c-green);">jedes Gebäude erfüllt sein Soll</span>'}
   </div>
-  <div style="font-size:10.5px;color:#78909c;margin-bottom:9px;line-height:1.6;">
+  <div style="font-size:10.5px;color:var(--c-blue);margin-bottom:9px;line-height:1.6;">
     Die Summe ist nur eine Information: Das Gesetz verpflichtet das einzelne Gebäude.
     Ein Überschuss auf einem Dach verrechnet sich nicht mit einer Unterdeckung auf einem anderen.
   </div>`;
@@ -455,7 +455,7 @@ function _uebersichtHtml() {
     </select>`;
 
     html += `
-      <tr style="border-bottom:1px solid rgba(255,255,255,0.04);background:${zeilenBg};">
+      <tr style="border-bottom:1px solid rgba(var(--ink),0.04);background:${zeilenBg};">
         ${td(`<span style="color:${pflichtig ? LILA_HELL : '#546e7a'};">§</span> ${escHtml(f.name || ('#' + f.id))}`, 'var(--text)')}
         <td style="padding:5px 7px;">${sel}</td>
         ${td(nf(f.dachM2), 'var(--muted)', true)}
@@ -466,10 +466,10 @@ function _uebersichtHtml() {
              ? (f.deltaKwp >= 0 ? '+' : '−') + nf(Math.abs(f.deltaKwp), 1)
              : '—',
              pflichtig && pf.bezifferbar ? (ok ? '#66bb6a' : '#ef5350') : '#546e7a', true)}
-        <td style="padding:5px 7px;color:#78909c;font-size:10px;">${
+        <td style="padding:5px 7px;color:var(--c-blue);font-size:10px;">${
           escHtml(pflichtig ? (f.rechenweg || f.grund) : f.grund)}${
-          f.annahmen.length ? `<br><span style="color:#ffb74d;">${escHtml(f.annahmen.join(' · '))}</span>` : ''}${
-          assetAbweichung ? `<br><span style="color:#4fc3f7;">${escHtml(assetAbweichung)}</span>` : ''}</td>
+          f.annahmen.length ? `<br><span style="color:var(--c-orange);">${escHtml(f.annahmen.join(' · '))}</span>` : ''}${
+          assetAbweichung ? `<br><span style="color:var(--c-blue);">${escHtml(assetAbweichung)}</span>` : ''}</td>
       </tr>`;
   }
 
@@ -479,9 +479,9 @@ function _uebersichtHtml() {
     html += `
     <div style="margin-top:12px;padding:9px 13px;border-radius:6px;font-size:10.5px;line-height:1.7;
          background:rgba(239,83,80,0.10);border:1px solid rgba(239,83,80,0.35);">
-      <b style="color:#ef5350;">${unterdeckt.length} Gebäude unter ihrem Soll.</b>
+      <b style="color:var(--c-red);">${unterdeckt.length} Gebäude unter ihrem Soll.</b>
       <span style="color:var(--muted);">Häufige Ursachen, in dieser Reihenfolge prüfen:</span>
-      <ol style="margin:4px 0 0 18px;padding:0;color:#90a4ae;">
+      <ol style="margin:4px 0 0 18px;padding:0;color:var(--c-blue);">
         <li>Pflichtiges Gebäude ohne geplante PV — steht hier mit „geplant —".</li>
         <li>Bezugsfläche: ${escHtml(r.land)} rechnet auf die ${escHtml(bezugFlaechenNameDekliniert(r))}.
             ${r.bezug !== 'geeignet'
@@ -494,7 +494,7 @@ function _uebersichtHtml() {
   }
 
   (r.hinweise || []).length && (html += `
-    <div style="margin-top:10px;font-size:10px;color:#78909c;line-height:1.7;">
+    <div style="margin-top:10px;font-size:10px;color:var(--c-blue);line-height:1.7;">
       ${(r.hinweise || []).map(h => `• ${escHtml(h)}`).join('<br>')}
     </div>`);
 

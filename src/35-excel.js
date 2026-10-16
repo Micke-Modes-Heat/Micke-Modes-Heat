@@ -1067,7 +1067,7 @@ function _vorschauZeigen(ctx, dateiname) {
   for (const kat of _KAT_REIHE) {
     const liste = ctx.aenderungen.filter(a => a.kat === kat);
     if (!liste.length) continue;
-    zeilen.push(`<tr><th colspan="4" style="text-align:left;padding:8px 4px 3px;color:var(--accent,#4fc3f7);font-size:11px;">${esc(_KAT_MEHRZAHL[kat])}</th></tr>`);
+    zeilen.push(`<tr><th colspan="4" style="text-align:left;padding:8px 4px 3px;color:var(--accent,var(--c-blue));font-size:11px;">${esc(_KAT_MEHRZAHL[kat])}</th></tr>`);
     let letztes = null;
     for (const a of liste) {
       if (zeilen.length > MAX) break;
@@ -1083,7 +1083,7 @@ function _vorschauZeigen(ctx, dateiname) {
   }
   const abgeschnitten = zeilen.length > MAX ? `<div class="hinweis">… und weitere — die Liste ist auf ${MAX} Zeilen gekürzt.</div>` : '';
   const hinweise = ctx.hinweise.length ? `
-    <details${n ? '' : ' open'} style="margin-top:4px;"><summary style="cursor:pointer;color:#f9a825;">⚠ ${ctx.hinweise.length} Zelle(n) werden nicht übernommen</summary>
+    <details${n ? '' : ' open'} style="margin-top:4px;"><summary style="cursor:pointer;color:var(--c-orange);">⚠ ${ctx.hinweise.length} Zelle(n) werden nicht übernommen</summary>
       <ul style="margin:6px 0 0 16px;padding:0;color:var(--muted);">${ctx.hinweise.slice(0, 200).map(h => `<li>${esc(h)}</li>`).join('')}</ul>
       ${ctx.hinweise.length > 200 ? `<div class="hinweis">(+${ctx.hinweise.length - 200} weitere)</div>` : ''}
     </details>` : '';
@@ -1094,7 +1094,7 @@ function _vorschauZeigen(ctx, dateiname) {
     <header><b id="xl-titel">Excel-Import – Vorschau</b>
       <div class="hinweis" style="margin-top:4px;">${esc(dateiname)} · ${n ? `${n} Änderung(en): ${esc(_zusammenfassung(ctx.aenderungen))}` : 'keine Änderungen gegenüber dem Stand im Tool'}</div></header>
     <div class="body">
-      ${ctx.warnung ? `<div style="padding:6px 8px;border-left:3px solid #f9a825;background:rgba(249,168,37,.1);">${esc(ctx.warnung)}</div>` : ''}
+      ${ctx.warnung ? `<div style="padding:6px 8px;border-left:3px solid var(--c-orange);background:rgba(249,168,37,.1);">${esc(ctx.warnung)}</div>` : ''}
       ${n ? `<div style="max-height:52vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">
         <thead><tr style="color:var(--muted);text-align:left;"><th style="padding:3px 4px;">Objekt</th><th style="padding:3px 4px;">Feld</th><th style="padding:3px 4px;">bisher</th><th style="padding:3px 4px;">neu</th></tr></thead>
         <tbody>${zeilen.join('')}</tbody></table>${abgeschnitten}</div>` : ''}

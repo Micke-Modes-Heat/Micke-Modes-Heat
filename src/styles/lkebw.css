@@ -1,0 +1,147 @@
+/* ══════════════════════════════════════════════════════════════════════
+   lkebw.css — Erscheinungsbild im Stil der LKEBw
+   Liegt über app.css (wird im Build dahinter eingefügt). Enthält:
+   1. Tokens (hell = Standard, dunkel über html[data-theme="dark"])
+   2. Grundlagen (Schrift, Formularelemente)
+   3. Bausteine (Knöpfe, Felder, Fenster, Reiter, Tabellen)
+   Rahmen, Prozessleiste und Ergebnisleiste stehen in Abschnitt 4.
+   ══════════════════════════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap');
+
+/* ── 1. Tokens ───────────────────────────────────────────────────────── */
+:root{
+  /* Programmrahmen (immer dunkel) */
+  --frame:#1D2320; --frame-2:#2A322D; --on-frame:#E9EDEA; --on-frame-muted:#9DA8A0;
+  /* Flächen und Linien */
+  --bg:#EEF0ED; --surface:#FFFFFF; --surface2:#F6F7F5; --surface-2:#F6F7F5;
+  --border:#DADFD9; --line-2:#C3C9C2; --hover:#EEF3EC;
+  --ink:25,29,26;
+  /* Schrift */
+  --text:#191D1A; --muted:#58615A; --faint:#89918A;
+  /* Marke */
+  --brand:#266426; --brand-hover:#1D501D; --brand-weak:#E7F0E5; --on-brand:#FFFFFF; --focus:#3F9C3F;
+  --accent:#266426;
+  /* Status */
+  --ok:#22795C; --warn:#A8640A; --crit:#C0262D; --info:#1E5E98;
+  --ok-bg:#E2F1EB; --warn-bg:#FBEFD9; --crit-bg:#FAE3E3; --info-bg:#E3EDF7;
+  /* Fachliche Farbtöne für Werte und Kennzeichnungen (lesbar auf Hell) */
+  --c-red:#B3261E; --c-orange:#B4531A; --c-amber:#8A6100; --c-green:#2E7D32;
+  --c-teal:#00796B; --c-blue:#1E5E98; --c-violet:#7B3F9E;
+  --shadow-1:0 1px 2px rgba(20,30,25,.08);
+  --shadow-2:0 1px 2px rgba(20,30,25,.08),0 6px 20px rgba(20,30,25,.10);
+  --font-ui:"Source Sans 3","Segoe UI",Tahoma,Verdana,sans-serif;
+  --font-num:"Source Sans 3","Segoe UI",Tahoma,sans-serif;
+  --font-mono:Consolas,"Cascadia Mono",ui-monospace,monospace;
+  --r:3px; --r-2:6px;
+  color-scheme:light;
+}
+html[data-theme="dark"]{
+  --frame:#0E1210; --frame-2:#1C221E; --on-frame:#E2E7E3; --on-frame-muted:#8D978F;
+  --bg:#141816; --surface:#1B201D; --surface2:#212723; --surface-2:#212723;
+  --border:#2E3631; --line-2:#3E4842; --hover:#243028;
+  --ink:255,255,255;
+  --text:#E4E8E5; --muted:#A3ACA5; --faint:#78817A;
+  --brand:#5FB55F; --brand-hover:#7BC87B; --brand-weak:#1F2E21; --on-brand:#0C170D; --focus:#7BC87B;
+  --accent:#5FB55F;
+  --ok:#5CC39D; --warn:#E3AE52; --crit:#F07C7C; --info:#77AFE3;
+  --ok-bg:#1A2D26; --warn-bg:#33291A; --crit-bg:#3A2222; --info-bg:#1A2836;
+  --c-red:#EF9A9A; --c-orange:#FFB74D; --c-amber:#FFD54F; --c-green:#81C784;
+  --c-teal:#80CBC4; --c-blue:#4FC3F7; --c-violet:#CE93D8;
+  --shadow-1:0 1px 2px rgba(0,0,0,.4);
+  --shadow-2:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.4);
+  color-scheme:dark;
+}
+
+/* ── 2. Grundlagen ───────────────────────────────────────────────────── */
+body{font-family:var(--font-ui);font-size:13px;line-height:1.45;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font-family:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+*{scrollbar-color:var(--line-2) transparent}
+*::-webkit-scrollbar-thumb{background:var(--line-2)}
+*::-webkit-scrollbar-thumb:hover{background:var(--faint)}
+select option{color:#191D1A;background:#fff}
+.num,td,.kpi-val,.eb-num,.geb-table-num{font-variant-numeric:tabular-nums}
+svg.ui-i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none;vertical-align:-3px}
+
+/* ── 3. Bausteine ────────────────────────────────────────────────────── */
+
+/* Eingabefelder */
+.inp-group{gap:3px}
+.inp-label{font-size:11px;color:var(--muted);text-transform:none;letter-spacing:0}
+.inp-field,.ins-field-input,.pd-in,.ssb-in,.aw-cfg-input,.wirt-feld input,
+input[type="text"]:not([class]),input[type="number"]:not([class]),select:not([class]){
+  background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r);color:var(--text);
+  font-family:var(--font-num);font-size:12.5px;padding:5px 8px;min-height:28px;font-variant-numeric:tabular-nums}
+.inp-field:focus,.ins-field-input:focus,.pd-in:focus,.ssb-in:focus{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand);outline:none}
+.inp-field::placeholder{color:var(--faint)}
+.inp-field[readonly]{background:var(--surface2);border-color:var(--border);color:var(--muted)}
+select.inp-field{padding-right:24px}
+input[type="checkbox"],input[type="radio"]{accent-color:var(--brand)}
+input[type="range"]{accent-color:var(--brand)}
+
+/* Knöpfe — eine Form, drei Gewichte. Inline-Farben der alten Knöpfe werden neutralisiert. */
+.tool-btn,.lp-tool-btn,.btn-secondary,.btn-xs,.ep-modal-btn,.mode-btn,.var-add-btn,.sld-head-btn,.ins-link-btn{
+  display:inline-flex;align-items:center;gap:6px;border-radius:var(--r)!important;
+  border:1px solid var(--line-2)!important;background:var(--surface)!important;color:var(--text)!important;
+  font-family:var(--font-ui)!important;font-weight:600;cursor:pointer;transition:background .12s,border-color .12s,color .12s}
+.tool-btn,.lp-tool-btn,.btn-secondary,.ep-modal-btn{font-size:12.5px!important;min-height:30px;padding:4px 12px!important}
+.btn-xs,.mode-btn,.var-add-btn,.sld-head-btn,.ins-link-btn{font-size:12px!important;min-height:26px;padding:2px 9px!important}
+.tool-btn:hover,.lp-tool-btn:hover,.btn-secondary:hover,.btn-xs:hover,.ep-modal-btn:hover,.mode-btn:hover,.var-add-btn:hover,.sld-head-btn:hover,.ins-link-btn:hover{
+  border-color:var(--text)!important;background:var(--surface)!important;color:var(--text)!important}
+.tool-btn.active,.lp-tool-btn.active,.btn-secondary.active,.mode-btn.active,.viz-btn.active,.btn-xs.active{
+  background:var(--brand-weak)!important;border-color:var(--brand)!important;color:var(--brand)!important}
+.btn-confirm,.ep-modal-btn.primary,button.primary,.btn-primary{
+  display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:4px 14px!important;border-radius:var(--r)!important;
+  background:var(--brand)!important;border:1px solid var(--brand)!important;color:var(--on-brand)!important;font-weight:600;font-size:12.5px!important;cursor:pointer}
+.btn-confirm:hover,.ep-modal-btn.primary:hover,button.primary:hover,.btn-primary:hover{background:var(--brand-hover)!important;border-color:var(--brand-hover)!important}
+.ep-modal-btn.danger,.tool-btn.red.danger,.btn-danger{background:var(--surface)!important;border-color:var(--crit)!important;color:var(--crit)!important}
+.lp-tool-grid{gap:6px}
+.lp-tool-btn{justify-content:flex-start;white-space:normal;text-align:left;line-height:1.25}
+.lp-btn-tile{justify-content:center;text-align:center}
+.viz-btn{border-radius:var(--r);font-size:12px;color:var(--muted)}
+.t-icon{display:none}
+/* Abgeschaltet wirkende Knöpfe */
+button:disabled,.tool-btn:disabled,.lp-tool-btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* Fragezeichen-Hilfe */
+.htip{width:15px;height:15px;font-size:10px;background:var(--surface2);border:1px solid var(--border);color:var(--muted)}
+.htip:hover{background:var(--brand-weak);color:var(--brand);border-color:var(--brand)}
+.htip::after{background:var(--frame);color:var(--on-frame);border:0;box-shadow:var(--shadow-2);font-size:12px;line-height:1.45;border-radius:var(--r-2)}
+.htip::before{border-top-color:var(--frame)}
+
+/* Abschnittstitel in Panels */
+.lp-section-title,.lp-group-label{font-size:11px!important;color:var(--faint)!important;font-weight:600;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--border);padding-bottom:4px;margin:14px 0 8px}
+.lp-group-label{border-bottom:0;margin:10px 0 4px}
+.panel-info,.lp-hinweis{font-size:12.5px;color:var(--muted);line-height:1.5}
+
+/* Fenster (float-panel) — ruhige Karte statt Glow und Farbbalken */
+.float-panel{background:var(--surface);border:1px solid var(--border)!important;border-radius:var(--r-2);box-shadow:var(--shadow-2);padding:0 18px 16px;font-size:13px}
+.float-panel::after{display:none!important}
+.panel-drag-handle{background:var(--surface);border-bottom:1px solid var(--border);border-radius:var(--r-2) var(--r-2) 0 0;padding:10px 14px 10px 18px;margin:0 -18px 14px}
+.panel-drag-handle>span:first-child,.panel-drag-handle b,.panel-drag-handle strong{color:var(--text)!important;font-size:14px!important;font-weight:700!important}
+.panel-drag-handle .drag-dots{display:none}
+.panel-drag-handle button,.panel-minimize-btn{background:none!important;border:0!important;color:var(--muted)!important;width:26px;height:26px;border-radius:var(--r);cursor:pointer}
+.panel-drag-handle button:hover,.panel-minimize-btn:hover{background:var(--surface2)!important;color:var(--text)!important}
+.panel-btns{gap:8px;margin-top:6px}
+
+/* Kennzahl-Kacheln */
+.kpi{background:var(--surface)!important;border:1px solid var(--border)!important;border-radius:var(--r-2)!important;box-shadow:none!important}
+.kpi-val{color:var(--text)!important;font-weight:700}
+.kpi-label,.kpi-unit{color:var(--muted)!important;text-transform:none!important;letter-spacing:0!important}
+
+/* Reiter innerhalb von Panels und Seiten */
+.analyse-sub-tab,.sa-tab,.sb-tab,.sidebar-tab{font-family:var(--font-ui);font-size:12.5px!important;font-weight:600;color:var(--muted);text-transform:none!important;letter-spacing:0!important;border-bottom:2px solid transparent;background:none!important;border-radius:0}
+.analyse-sub-tab.active,.sa-tab.active,.sb-tab.active,.sidebar-tab.active{color:var(--text)!important;border-bottom-color:var(--brand)!important;background:none!important}
+
+/* Tabellen */
+table{border-color:var(--border)}
+th{color:var(--muted)}
+.geb-overview-table th,.vergleich-tabelle th{background:var(--surface2);color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em}
+
+/* Leaflet-Bedienelemente im Rahmenstil */
+.leaflet-bar a,.leaflet-control-zoom a{background:var(--surface)!important;color:var(--muted)!important;border-color:var(--border)!important}
+.leaflet-bar a:hover{color:var(--text)!important;background:var(--surface2)!important}
+.leaflet-bar{border:1px solid var(--border)!important;box-shadow:var(--shadow-1)!important;border-radius:var(--r-2)!important;overflow:hidden}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface);color:var(--text);box-shadow:var(--shadow-2)}
+.leaflet-tooltip{background:var(--frame);color:var(--on-frame);border:0;box-shadow:var(--shadow-1)}
+.leaflet-control-attribution{background:rgba(var(--ink),.04)!important;color:var(--faint)!important}

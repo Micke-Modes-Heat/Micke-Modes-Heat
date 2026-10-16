@@ -262,8 +262,8 @@ export function ah2Render() {
     <div style="flex-basis:100%;font-size:10px;color:var(--muted);line-height:1.5;">${_datenbasisHtml()}</div>
   </div>
   ${_annahmenAuf ? _annahmenHtml() : ''}
-  ${_veraltet ? '<div style="margin:-4px 0 10px;font-size:10.5px;color:#ffb74d;">Eingaben geändert — neu auslegen.</div>' : ''}
-  ${_meldung ? `<div style="margin:-4px 0 10px;font-size:10.5px;color:#80cbc4;">${escHtml(_meldung)}</div>` : ''}
+  ${_veraltet ? '<div style="margin:-4px 0 10px;font-size:10.5px;color:var(--c-orange);">Eingaben geändert — neu auslegen.</div>' : ''}
+  ${_meldung ? `<div style="margin:-4px 0 10px;font-size:10.5px;color:var(--c-teal);">${escHtml(_meldung)}</div>` : ''}
   <div style="${_veraltet ? 'opacity:.55;' : ''}">${_ergebnisHtml()}</div>`;
   if (!root.dataset.ah2Ereignisse) { root.dataset.ah2Ereignisse = '1'; _ereignisse(root); }
   _heatmapZeichnen();
@@ -271,7 +271,7 @@ export function ah2Render() {
 
 function _datenbasisHtml() {
   const ein = _erg?.info || window.pvAutarkieEingang?.();
-  if (!ein) return '<span style="color:#ffb74d;">Kein Stromlastgang vorhanden — bitte in ⚡ Strom-Grundlagen hochladen.</span>';
+  if (!ein) return '<span style="color:var(--c-orange);">Kein Stromlastgang vorhanden — bitte in ⚡ Strom-Grundlagen hochladen.</span>';
   let s = 0, max = 0;
   for (let i = 0; i < ein.last.length; i++) { s += ein.last[i]; if (ein.last[i] > max) max = ein.last[i]; }
   const modus = { basis: 'nur Strom', gesamt: 'Strom + WP + Stromkessel', endausbau: 'Endausbau' }[ein.lastModus] || ein.lastModus;
@@ -292,7 +292,7 @@ function _annahmenHtml() {
     const abw = _st[g][k] != null && _st[g][k] !== std;
     return `<tr><td class="l">${label}</td>
       <td><input data-ah2-annahme="${g}.${k}" type="number" step="any" min="0" value="${+(cfg[g][k] * f).toFixed(d + 2)}"
-        style="width:80px;font-size:10.5px;text-align:right;${abw ? 'color:#ffb74d;' : ''}"></td>
+        style="width:80px;font-size:10.5px;text-align:right;${abw ? 'color:var(--c-orange);' : ''}"></td>
       <td class="l" style="color:var(--muted);">${einh}</td>
       <td class="l" style="color:var(--muted);">${abw ? `Standard ${_fmt(std * f, d)}` : ''}</td></tr>`;
   }).join('');
@@ -355,7 +355,7 @@ const _RESERVE_TXT = { 0: 'deckt die ganze Last', 0.5: 'deckt die ganze Last bis
 
 function _ergebnisHtml() {
   if (!_erg) return `<div style="color:var(--muted);font-size:11px;text-align:center;padding:30px 0;">Ziel eingeben und „Auslegen" starten.</div>`;
-  if (!_erg.best) return `<div class="ah2-karte" style="border-left:3px solid #ffb74d;font-size:11px;line-height:1.5;">
+  if (!_erg.best) return `<div class="ah2-karte" style="border-left:3px solid var(--c-orange);font-size:11px;line-height:1.5;">
     <b>Ziel nicht erreichbar.</b> ${escHtml(_erg.grund || '')}
     <div style="font-size:10px;color:var(--muted);margin-top:4px;">Hebel: Ziel senken, zulässige Stunden erhöhen, BHKW zulassen, Tank-Obergrenze anheben, mehr PV-Fläche (Dachpotenzial / Freifläche) oder Wind einbeziehen.</div></div>`;
   return `<div id="ah2-kopf">${_kopfHtml()}</div>
@@ -432,12 +432,12 @@ function _kopfHtml() {
   const erfuellt = bil.stundenUnter <= r.toleranzH;
   let status;
   if (!_man) {
-    status = `<span style="color:#66bb6a;">● Optimum</span> <span style="color:var(--muted);">— ${_istGuenstigste() ? 'günstigste Auslegung' : 'gewählte Variante'} „${escHtml(AH2_MODI[r.modus] || r.modus)}"</span>`;
+    status = `<span style="color:var(--c-green);">● Optimum</span> <span style="color:var(--muted);">— ${_istGuenstigste() ? 'günstigste Auslegung' : 'gewählte Variante'} „${escHtml(AH2_MODI[r.modus] || r.modus)}"</span>`;
   } else {
     const d = k.gesamt - opt.kosten.gesamt;
     const lage = !erfuellt ? (d < 0 ? ' — günstiger, weil das Ziel nicht mehr erfüllt ist' : ' — und das Ziel ist nicht erfüllt')
       : d > 0.5 ? ' — Ziel erfüllt, aber teurer als nötig' : '';
-    status = `<span style="color:#ffb74d;">● Eigene Einstellung</span> <span style="color:var(--muted);">— ${d >= 0 ? '+' : ''}${_fmt(d)} €/a gegenüber dem Optimum${lage}</span>
+    status = `<span style="color:var(--c-orange);">● Eigene Einstellung</span> <span style="color:var(--muted);">— ${d >= 0 ? '+' : ''}${_fmt(d)} €/a gegenüber dem Optimum${lage}</span>
       <button class="ah2-knopf" data-ah2-aktion="optimum" style="margin-left:6px;">↺ Optimum</button>`;
   }
   const n = _hinweise().length;
@@ -1025,7 +1025,7 @@ function _variantenHtml() {
     if (_erg.cfg.h2Aktiv && !V.h2 && !V.pvbat) fehlt.push(_erg.cfg.tankMaxKg > 0
       ? `Nur Wasserstoff ist mit der Tank-Obergrenze von ${_fmt(_erg.cfg.tankMaxKg)} kg nicht machbar.`
       : 'Nur Wasserstoff ist nicht machbar (Überschuss reicht nicht).');
-    return fehlt.length ? `<div class="ah2-karte" style="font-size:10.5px;color:#ffb74d;">${fehlt.map(escHtml).join(' ')}</div>` : '';
+    return fehlt.length ? `<div class="ah2-karte" style="font-size:10.5px;color:var(--c-orange);">${fehlt.map(escHtml).join(' ')}</div>` : '';
   }
   const bester = reihenfolge.reduce((m, k) => (!m || V[k].kosten.gesamt < V[m].kosten.gesamt ? k : m), null);
   const basisJk = _erg.basis?.kosten.gesamt;
@@ -1049,7 +1049,7 @@ function _variantenHtml() {
     <div style="overflow-x:auto;margin-top:6px;"><table><thead><tr><th class="l">Variante</th><th>PV kWp</th><th>Batterie kWh</th><th class="l">Wintertechnik</th>
       <th>Invest</th><th>Jahreskosten €/a</th><th>Preis des Ziels €/a</th><th>Brennstoff MWh/a</th><th>Autarkie</th><th class="l">Genehmigung Tank</th><th></th></tr></thead>
     <tbody>${zeilen}</tbody></table></div>
-    ${_erg.cfg.h2Aktiv && !V.h2 && !V.pvbat ? `<div style="font-size:10.5px;color:#ffb74d;margin-top:4px;">${_erg.cfg.tankMaxKg > 0
+    ${_erg.cfg.h2Aktiv && !V.h2 && !V.pvbat ? `<div style="font-size:10.5px;color:var(--c-orange);margin-top:4px;">${_erg.cfg.tankMaxKg > 0
       ? `„Nur Wasserstoff" fehlt: mit der Tank-Obergrenze von ${_fmt(_erg.cfg.tankMaxKg)} kg nicht machbar.`
       : '„Nur Wasserstoff" fehlt: der Überschuss reicht nicht für den nötigen Wasserstoff.'}</div>` : ''}
     <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5;">Preis des Ziels = Jahreskosten gegenüber der günstigsten Auslegung ohne Ziel.
@@ -1092,7 +1092,7 @@ function _kurveHtml() {
       <td class="l">${escHtml(AH2_MODI[p.modus] || '')}</td><td class="m">${_fmt(p.autarkiePct, 1)} %</td>
       <td class="m">${_fmt(p.kostenJk)}</td><td class="m" style="color:${p.mehrkosten > 0 ? '#e57373' : '#66bb6a'};">${p.mehrkosten >= 0 ? '+' : ''}${_fmt(p.mehrkosten)}</td>
       <td class="m">${p.preis != null ? (p.preis >= 0 ? '+' : '') + _fmt(p.preis) : '—'}</td></tr>`
-    : `<tr><td class="m">${p.zielPct} %</td><td colspan="11" class="l" style="color:#ffb74d;">nicht erreichbar</td></tr>`).join('');
+    : `<tr><td class="m">${p.zielPct} %</td><td colspan="11" class="l" style="color:var(--c-orange);">nicht erreichbar</td></tr>`).join('');
   let svg = '';
   if (ok.length > 1) {
     const W = _breite(), H = 280, PL = 70, PR = 12, PT = 12, PB = 26;

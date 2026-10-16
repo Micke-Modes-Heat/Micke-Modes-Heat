@@ -408,12 +408,12 @@ function _bannerZeigen(s, n) {
   const div = document.createElement('div');
   div.id = 'pvbs-banner';
   div.style.cssText = 'position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:1200;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'
-    + `padding:6px 12px;border-radius:18px;background:rgba(20,24,34,.94);border:1px solid ${LILA};color:#eceff1;`
+    + `padding:6px 12px;border-radius:18px;background:var(--surface);border:1px solid ${LILA};color:var(--c-blue);`
     + 'font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.4);max-width:calc(100vw - 32px);';
   div.innerHTML = `<span style="color:${LILA};">👁 Angezeigt</span>
     <b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(s.name)}</b>
-    <span style="color:#b0bec5;font-family:'DM Mono',monospace;white-space:nowrap;">${n} Dächer · ${_fmt(k?.summeKwp)} kWp</span>
-    <span style="color:#90a4ae;font-size:11px;white-space:nowrap;">nur Ansicht · im Projekt: ${_entwurf ? 'ungespeicherter Entwurf' : `„${escHtml(p?.name || '—')}“`}</span>
+    <span style="color:var(--c-blue);font-family:'DM Mono',monospace;white-space:nowrap;">${n} Dächer · ${_fmt(k?.summeKwp)} kWp</span>
+    <span style="color:var(--c-blue);font-size:11px;white-space:nowrap;">nur Ansicht · im Projekt: ${_entwurf ? 'ungespeicherter Entwurf' : `„${escHtml(p?.name || '—')}“`}</span>
     <button data-click="pvbsOeffnen('${s.id}')" style="cursor:pointer;background:transparent;border:1px solid ${GRUEN};border-radius:12px;color:${GRUEN};font-size:11px;padding:1px 9px;">✎ öffnen</button>
     <button data-click="pvbsAnsichtEnde()" style="cursor:pointer;background:transparent;border:1px solid ${LILA};border-radius:12px;color:${LILA};font-size:11px;padding:1px 9px;">Ansicht beenden</button>`;
   document.body.appendChild(div);
@@ -624,7 +624,7 @@ export function pvbsBlockHtml() {
       ausl ? _rolle(ORANGE, '☀ AUSLEGUNG', 'Wird in der PV-Analyse zusätzlich als eigene Auslegung mit Speicher gerechnet') : '',
     ].filter(Boolean).join(' ');
     return `
-      <div style="padding:4px 0 3px;border-bottom:1px solid rgba(255,255,255,.06);${imProjekt ? `border-left:3px solid ${GRUEN};padding-left:4px;` : 'padding-left:7px;'}">
+      <div style="padding:4px 0 3px;border-bottom:1px solid rgba(var(--ink),.06);${imProjekt ? `border-left:3px solid ${GRUEN};padding-left:4px;` : 'padding-left:7px;'}">
         <div style="display:flex;align-items:center;gap:4px;font-size:10.5px;">
           <span style="flex:1;min-width:0;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${imProjekt ? 'font-weight:600;' : ''}" data-click="pvbsZeile('${s.id}')"
             title="${escHtml(`${s.name}${s.beschreibung ? ' — ' + s.beschreibung : ''} · Stand ${s.stand}`)}">${offen ? '▾' : '▸'} ${escHtml(s.name)}</span>

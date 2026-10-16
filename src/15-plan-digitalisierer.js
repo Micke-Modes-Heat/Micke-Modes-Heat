@@ -279,10 +279,10 @@ function _ensurePanel() {
         <div id="pd-list" class="pd-list"></div>
         <div class="pd-actions">
           <button class="lp-tool-btn" data-click="pdApply()"
-                  style="border-color:#66bb6a;color:#66bb6a;justify-content:center;"
+                  style="border-color:var(--c-green);color:var(--c-green);justify-content:center;"
                   title="Verknüpfte Einträge und fertige Kabel auf der Karte anlegen">▶ In Karte übernehmen</button>
           <button class="lp-tool-btn" data-click="pdClear()"
-                  style="border-color:#e57373;color:#e57373;justify-content:center;"
+                  style="border-color:var(--c-red);color:var(--c-red);justify-content:center;"
                   title="Alle Blätter samt Markierungen verwerfen (angelegte Assets bleiben)">✕ Alles verwerfen</button>
         </div>
       </div>
@@ -910,7 +910,7 @@ export function pdSuche(q) {
     // nicht. Statt in eine Sackgasse zu laufen, lässt es sich hier erfassen.
     box.innerHTML = `<div class="pd-suche-leer">Kein Gebäude auf der Karte gefunden</div>
       <div class="pd-suche-row" data-click="pdFehlendesGebaeude('${_esc(s).replace(/'/g, "\\'")}')">
-        <span class="pd-suche-nr" style="color:#ef5350">+</span>
+        <span class="pd-suche-nr" style="color:var(--c-red)">+</span>
         <span class="pd-suche-name">„${_esc(q)}" als <b>fehlend</b> im Plan erfassen</span>
         <span class="pd-suche-meta">nicht auf der Karte</span>
       </div>`;
@@ -1522,14 +1522,14 @@ function _zeigeFarbZahlen() {
     // Ohne gelaufene Berechnung stehen überall Nullen — das sähe aus wie
     // „alles unkritisch" und ist das Gegenteil einer Aussage.
     if (!gerechnet) {
-      el.innerHTML = '<span style="color:#f9a825">⚠ Elektroberechnung noch nicht gelaufen</span>';
+      el.innerHTML = '<span style="color:var(--c-orange)">⚠ Elektroberechnung noch nicht gelaufen</span>';
       return;
     }
     el.innerHTML = [
-      z.ok    ? `<span style="color:#4caf50">●${z.ok}</span>` : '',
-      z.hoch  ? `<span style="color:#fdd835">●${z.hoch}</span>` : '',
-      z.ueber ? `<span style="color:#e53935">●${z.ueber}</span>` : '',
-      z.ohne  ? `<span style="color:#546e7a">○${z.ohne}</span>` : '',
+      z.ok    ? `<span style="color:var(--c-green)">●${z.ok}</span>` : '',
+      z.hoch  ? `<span style="color:var(--c-amber)">●${z.hoch}</span>` : '',
+      z.ueber ? `<span style="color:var(--c-red)">●${z.ueber}</span>` : '',
+      z.ohne  ? `<span style="color:var(--c-blue)">○${z.ohne}</span>` : '',
     ].filter(Boolean).join(' ');
     return;
   }
@@ -1580,7 +1580,7 @@ function _renderMarks() {
       () => kante
         ? buildStromEdgeTooltip(kante)
         : `<b>${_esc(l.label || '(Kabel ohne Angabe)')}</b><br>
-           <span style="color:#90a4ae">noch nicht in die Karte übernommen</span>`,
+           <span style="color:var(--c-blue)">noch nicht in die Karte übernommen</span>`,
       { sticky: true, className: 'geb-tooltip' });
     line.on('click', ev => {
       L.DomEvent.stop(ev);

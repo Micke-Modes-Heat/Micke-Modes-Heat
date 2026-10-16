@@ -484,7 +484,7 @@ export function calcStromPanel() {
         `<div style="font-weight:600;color:var(--text);margin-bottom:5px;font-size:10px;">PV-Wirtschaftlichkeit (${totalKwp.toFixed(0)} kWp)</div>` +
         `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">` +
           `<div><div style="font-size:8px;color:var(--muted);">Investition</div><div style="font-family:'DM Mono',monospace;color:var(--text);font-size:11px;">${fmtE(gesamtInvest)} €</div></div>` +
-          `<div><div style="font-size:8px;color:var(--muted);">Erlös/a</div><div style="font-family:'DM Mono',monospace;color:#a5d6a7;font-size:11px;">${fmtE(erloesSumme)} €</div></div>` +
+          `<div><div style="font-size:8px;color:var(--muted);">Erlös/a</div><div style="font-family:'DM Mono',monospace;color:var(--c-green);font-size:11px;">${fmtE(erloesSumme)} €</div></div>` +
           `<div><div style="font-size:8px;color:var(--muted);">Amortisation</div><div style="font-family:'DM Mono',monospace;color:${payback <= pvLife ? '#66bb6a' : '#ef9a9a'};font-size:11px;">${payback < Infinity ? payback.toFixed(1) + ' a' : '> ' + pvLife + ' a'}</div></div>` +
         `</div>` +
         `<div style="margin-top:4px;font-size:8px;color:var(--muted);">` +
@@ -642,7 +642,7 @@ export function updateBatteryRecommendation(requestedCapacity) {
     : 'wirtschaftlich derzeit kein Speicher empfohlen';
   const fmt=value=>Number(value).toLocaleString('de-DE',{maximumFractionDigits:1});
   kpis.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;">
-    <span>PV-Eigenverbrauch</span><strong style="text-align:right;color:#d1c4e9">${fmt(pvQuote)} % <small>(+${fmt(pvQuote-pvQuote0)} Pp.)</small></strong>
+    <span>PV-Eigenverbrauch</span><strong style="text-align:right;color:var(--c-violet)">${fmt(pvQuote)} % <small>(+${fmt(pvQuote-pvQuote0)} Pp.)</small></strong>
     <span>Strom-Autarkie</span><strong style="text-align:right">${fmt(autarky)} % <small>(+${fmt(autarky-autarky0)} Pp.)</small></strong>
     <span>Vollzyklen</span><strong style="text-align:right">${fmt(cycles)} /a</strong>
     <span>Mehrerlös brutto</span><strong style="text-align:right">${Math.round(selected.gross).toLocaleString('de-DE')} €/a</strong>

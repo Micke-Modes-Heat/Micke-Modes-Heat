@@ -127,8 +127,8 @@ export function massnahmeGeltungWert(m, asset) {
 
 export function massnahmeGeltungText(m) {
   const v = (m && 'variante' in m) ? m.variante : undefined;
-  if (v == null) return v === undefined ? '' : '<span style="color:#f9a825;">alle Varianten</span>';
-  return `<span style="color:#66bb6a;">nur ${esc(variantenName(v))}</span>`;
+  if (v == null) return v === undefined ? '' : '<span style="color:var(--c-orange);">alle Varianten</span>';
+  return `<span style="color:var(--c-green);">nur ${esc(variantenName(v))}</span>`;
 }
 
 // ── Kopfleiste ───────────────────────────────────────────────────────────────
@@ -187,7 +187,7 @@ function _menuHtml() {
           <button data-click="event.stopPropagation();variantenSternSetzen('${v.key}')" title="Diese Variante geht ins Gutachten">${stern ? '★ Gutachten' : '☆ fürs Gutachten'}</button>
           <button data-click="event.stopPropagation();variantenZweckBearbeiten(${idArg(v.id)})">Zweck …</button>
           <button data-click="event.stopPropagation();variantenUmbenennen(${idArg(v.id)})">Umbenennen …</button>
-          ${v.id != null ? `<button data-click="event.stopPropagation();variantenLoeschen(${idArg(v.id)})" style="color:#ef9a9a;">Löschen …</button>` : ''}
+          ${v.id != null ? `<button data-click="event.stopPropagation();variantenLoeschen(${idArg(v.id)})" style="color:var(--c-red);">Löschen …</button>` : ''}
         </div>
       </div>
       <span class="var-status ${st}" title="Stand der Wärme-Kennzahlen im Vergleich">${STATUS_TEXT[st]}</span>
@@ -555,7 +555,7 @@ export function variantenVergleichAnsichtRender() {
       + (_paketListe(v).length > 12 ? `<div style="color:var(--muted);">… und ${_paketListe(v).length - 12} weitere</div>` : ''))}
     ${zeile('Maßnahmen nur hier', v => ul(_massnahmenListe(v).slice(0, 10).map(x => `<li>${esc(x.name)}: ${esc(x.m.titel || 'Maßnahme')}${x.m.jahr ? ` <span class="jahr">${esc(x.m.jahr)}</span>` : ''}</li>`)))}
     ${zeile('Wärme · Erzeuger', v => ul(_erzeugerListe(v).map(t => `<li>${esc(t)}</li>`)))}
-    ${zeile('Wärmenetz', v => v.rec?.netzEigen ? '<span style="color:#66bb6a;">eigene Trasse</span>' : '<span style="color:var(--muted);">gemeinsame Trasse</span>')}
+    ${zeile('Wärmenetz', v => v.rec?.netzEigen ? '<span style="color:var(--c-green);">eigene Trasse</span>' : '<span style="color:var(--muted);">gemeinsame Trasse</span>')}
     ${zeile('Dach-PV belegt', v => { const n = _pvBelegt(v); return n == null ? '<span style="color:var(--muted);">wie Hauptplan (noch nicht getrennt)</span>' : `${n} Gebäude`; })}
     ${zeile('Wärme-Kennzahlen', v => { const st = variantenKennzahlStatus(v.key); return `<span class="var-status ${st}">${STATUS_TEXT[st]}</span>`; })}
   </tbody></table>

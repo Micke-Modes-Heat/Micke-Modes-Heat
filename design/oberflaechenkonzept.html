@@ -1,0 +1,897 @@
+<title>Oberflächenkonzept Energieplaner</title>
+<style>
+/* Layout: Konzeptpapier mit Abschnittsleiste oben; der klickbare Prototyp sitzt als Fenster in der Seite und nutzt dieselben Tokens */
+:root{
+  --bg:#F2F4F1; --surface:#FFFFFF; --surface-2:#F7F8F6; --line:#E2E4DF; --line-strong:#C7CCC4;
+  --text:#1B1F1C; --muted:#5A5F5A; --faint:#878D86;
+  --brand:#266426; --brand-2:#3F9C3F; --tint:#EEF5EC; --on-brand:#FFFFFF;
+  --ok:#2E7D32; --warn:#A86A12; --crit:#B3261E; --info:#2F6690;
+  --ok-bg:#E5F1E5; --warn-bg:#FAF0DB; --crit-bg:#F8E3E0; --info-bg:#E4EEF6;
+  --map-ground:#ECEFE8; --map-block:#D6DBD1; --map-edge:#B9C0B3; --map-road:#FFFFFF; --map-road-edge:#D9DDD5;
+  --heat:#C2551B; --sel:#266426;
+  --font:Tahoma,Verdana,"Segoe UI",sans-serif;
+  --mono:Consolas,"Cascadia Mono",ui-monospace,monospace;
+  --r:2px; --r-lg:4px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#131714; --surface:#1A1F1B; --surface-2:#202621; --line:#2C332D; --line-strong:#3D463E;
+  --text:#E5E9E4; --muted:#A4ABA3; --faint:#7B837A;
+  --brand:#5DB35D; --brand-2:#7CC87C; --tint:#1E2C1F; --on-brand:#0D190E;
+  --ok:#6CC070; --warn:#E0AE4C; --crit:#EE7F72; --info:#72AEDB;
+  --ok-bg:#1D2D1F; --warn-bg:#33291A; --crit-bg:#3A2321; --info-bg:#1B2A36;
+  --map-ground:#1C221D; --map-block:#2B332C; --map-edge:#3A443B; --map-road:#323A33; --map-road-edge:#3A433B;
+  --heat:#E7834B; --sel:#7CC87C;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#131714; --surface:#1A1F1B; --surface-2:#202621; --line:#2C332D; --line-strong:#3D463E;
+  --text:#E5E9E4; --muted:#A4ABA3; --faint:#7B837A;
+  --brand:#5DB35D; --brand-2:#7CC87C; --tint:#1E2C1F; --on-brand:#0D190E;
+  --ok:#6CC070; --warn:#E0AE4C; --crit:#EE7F72; --info:#72AEDB;
+  --ok-bg:#1D2D1F; --warn-bg:#33291A; --crit-bg:#3A2321; --info-bg:#1B2A36;
+  --map-ground:#1C221D; --map-block:#2B332C; --map-edge:#3A443B; --map-road:#323A33; --map-road-edge:#3A433B;
+  --heat:#E7834B; --sel:#7CC87C;
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 var(--font)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--brand-2);outline-offset:1px}
+.num,td,.kpi b{font-variant-numeric:tabular-nums}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ── Dokumentrahmen ── */
+.doc-head{background:var(--surface);border-bottom:1px solid var(--line);padding-inline:16px}
+.doc-head .in{max-width:1180px;margin:0 auto;padding-block:28px 0}
+.eyebrow{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--brand);font-weight:700}
+h1{font-size:26px;line-height:1.25;margin:6px 0 8px;text-wrap:balance}
+.lead{color:var(--muted);max-width:68ch;margin:0 0 20px}
+.meta{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:12px;color:var(--muted);padding-bottom:18px}
+.meta b{color:var(--text);font-weight:700}
+.toc{display:flex;gap:2px;overflow-x:auto;border-top:1px solid var(--line);margin-inline:-16px;padding-inline:16px}
+.toc a{flex:none;padding:10px 12px;font-size:13px;color:var(--muted);text-decoration:none;border-bottom:2px solid transparent}
+.toc a:hover{color:var(--text);border-bottom-color:var(--line-strong)}
+main{padding-inline:16px}
+.sec{max-width:1180px;margin:0 auto;padding-block:40px 8px}
+.sec>h2{font-size:19px;margin:0 0 4px;display:flex;align-items:baseline;gap:10px;text-wrap:balance}
+.sec>h2 .n{color:var(--brand);font-size:15px}
+.sec>.intro{color:var(--muted);max-width:72ch;margin:0 0 20px}
+h3{font-size:15px;margin:0 0 8px}
+p{margin:0 0 10px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;min-width:0}
+.box p:last-child{margin-bottom:0}
+.small{font-size:12px;color:var(--muted)}
+ul.plain{margin:0;padding-left:18px}
+ul.plain li{margin-bottom:4px}
+
+/* Befund */
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px}
+.fact{background:var(--surface);padding:14px 16px}
+.fact b{display:block;font-size:24px;line-height:1.1;color:var(--text)}
+.fact span{font-size:12px;color:var(--muted)}
+.find{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:start}
+.find dt{font-weight:700;color:var(--crit);font-size:12px;padding-top:2px}
+.find dd{margin:0 0 10px}
+
+/* Vorher / Nachher */
+.vn{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.vn figure{margin:0}
+.vn figcaption{font-size:12px;color:var(--muted);margin-top:6px}
+.old{background:#1C1A15;color:#ECE8DF;border-radius:6px;padding:14px;font-family:"Segoe UI",sans-serif;font-size:12px;border:1px solid #3A3528}
+.old .t{font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#ACA496;margin:10px 0 6px}
+.old .ob{display:flex;align-items:center;gap:6px;width:100%;padding:8px 10px;margin-bottom:6px;border-radius:7px;border:1.5px solid;background:transparent;font-size:12px}
+.old .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.old .pill{border-radius:18px;padding:4px 8px;border:1.5px solid;text-align:center;font-size:11px}
+.new{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+
+/* Zuordnungstabelle */
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{text-align:left;font-weight:700;font-size:12px;color:var(--muted);background:var(--surface-2);padding:8px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.from{color:var(--muted)}
+td.to{font-weight:700}
+td.to span{font-weight:400;color:var(--muted)}
+.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:var(--r);background:var(--surface-2);border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tag.k{background:var(--tint);border-color:transparent;color:var(--brand)}
+.tag.x{background:var(--crit-bg);border-color:transparent;color:var(--crit)}
+
+/* Struktur-Diagramm */
+.ia{display:grid;grid-template-columns:repeat(5,minmax(180px,1fr));gap:10px;overflow-x:auto;padding-bottom:4px}
+.ia .col{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);min-width:180px}
+.ia .h{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;font-weight:700}
+.ia .h small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.ia .h .ix{display:grid;place-items:center;width:22px;height:22px;border-radius:var(--r);background:var(--brand);color:var(--on-brand);font-size:12px;flex:none}
+.ia ul{list-style:none;margin:0;padding:8px 12px 12px;font-size:13px}
+.ia li{padding:3px 0}
+.ia li.g{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding-top:8px}
+.ia-axis{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--muted)}
+.ia-axis b{color:var(--text)}
+
+/* Designsystem */
+.sw{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.sw div{border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--surface)}
+.sw i{display:block;height:44px}
+.sw span{display:block;padding:6px 8px;font-size:12px}
+.sw span small{display:block;color:var(--muted);font-family:var(--mono);font-size:11px}
+.type-row{display:grid;grid-template-columns:90px 1fr;gap:12px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line)}
+.type-row:last-child{border-bottom:0}
+.type-row code{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.comp{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+
+/* Gemeinsame Bausteine (Prototyp + Designsystem) */
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--line-strong);background:var(--surface);color:var(--text);cursor:pointer;font-size:12px;white-space:nowrap}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.btn.pri{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.btn.pri:hover{background:var(--brand-2);border-color:var(--brand-2);color:var(--on-brand)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.ghost:hover{color:var(--brand);background:var(--tint)}
+.btn.danger{color:var(--crit);border-color:var(--line-strong)}
+.btn.sm{height:24px;padding:0 8px;font-size:11px}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:1px 7px;border-radius:10px;white-space:nowrap;line-height:18px}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}
+.pill.warn{background:var(--warn-bg);color:var(--warn)}
+.pill.crit{background:var(--crit-bg);color:var(--crit)}
+.pill.info{background:var(--info-bg);color:var(--info)}
+.pill.neutral{background:var(--surface-2);color:var(--muted)}
+.fld{display:grid;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted)}
+.inp{display:flex;align-items:center;height:28px;border:1px solid var(--line-strong);border-radius:var(--r);background:var(--surface);min-width:0}
+.inp:focus-within{border-color:var(--brand)}
+.inp input,.inp select{all:unset;flex:1;min-width:0;padding:0 8px;font-size:12px;height:100%;font-variant-numeric:tabular-nums}
+.inp em{font-style:normal;font-size:11px;color:var(--faint);padding:0 8px;border-left:1px solid var(--line);height:100%;display:flex;align-items:center}
+.hint{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:var(--r-lg);background:var(--tint);font-size:12px}
+.hint svg{color:var(--brand);margin-top:1px}
+.hint b{display:block}
+.hint a{color:var(--brand);font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.hint.warn{background:var(--warn-bg)}
+.hint.warn svg{color:var(--warn)}
+
+/* ── Prototyp ── */
+.proto-wrap{overflow-x:auto;border-radius:var(--r-lg);border:1px solid var(--line-strong);background:var(--surface)}
+.win{position:relative;width:1160px;height:700px;display:grid;grid-template-rows:44px 38px 1fr;font-size:12px;line-height:1.45;background:var(--bg)}
+.w-top{display:flex;align-items:center;gap:14px;padding:0 12px;background:var(--surface);border-bottom:1px solid var(--line)}
+.mark{display:flex;align-items:center;gap:8px;font-weight:700;white-space:nowrap}
+.mark b{display:grid;place-items:center;height:24px;padding:0 6px;background:var(--brand);color:var(--on-brand);border-radius:var(--r);font-size:11px;letter-spacing:.02em}
+.mark span{font-weight:400;color:var(--muted)}
+.w-proj{display:flex;align-items:center;gap:8px;padding-left:14px;border-left:1px solid var(--line);white-space:nowrap}
+.w-proj b{font-size:13px}
+.w-proj span{color:var(--muted)}
+.sp{flex:1}
+.saved{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.search{display:flex;align-items:center;gap:6px;height:28px;width:220px;padding:0 8px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2);color:var(--faint)}
+.icon-btn{display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:var(--r);background:transparent;color:var(--muted);cursor:pointer}
+.icon-btn:hover{background:var(--surface-2);color:var(--text)}
+.w-ctx{display:flex;align-items:center;gap:16px;padding:0 12px;background:var(--surface-2);border-bottom:1px solid var(--line);white-space:nowrap}
+.ctx{display:flex;align-items:center;gap:8px}
+.ctx>label{color:var(--muted)}
+.ctx select{height:26px;border:1px solid var(--line-strong);border-radius:var(--r);background:var(--surface);padding:0 6px;font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.seg button{all:unset;cursor:pointer;padding:0 10px;height:24px;display:flex;align-items:center;font-size:12px;color:var(--muted);border-left:1px solid var(--line)}
+.seg button:first-child{border-left:0}
+.seg button:hover{color:var(--text)}
+.seg button[aria-pressed="true"]{background:var(--tint);color:var(--brand);font-weight:700}
+.vsep{width:1px;height:20px;background:var(--line)}
+.w-body{display:grid;grid-template-columns:168px 1fr;min-height:0}
+.rail{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:8px 0}
+.rail button{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:16px 1fr auto;gap:10px;align-items:center;padding:8px 12px;margin:1px 6px;border-radius:var(--r);color:var(--muted)}
+.rail button:hover{background:var(--surface-2);color:var(--text)}
+.rail button[aria-current="true"]{background:var(--tint);color:var(--brand);font-weight:700}
+.rail button small{display:block;font-weight:400;font-size:11px;color:var(--faint)}
+.rail .st{width:8px;height:8px;border-radius:50%}
+.st.ok{background:var(--ok)} .st.warn{background:var(--warn)} .st.crit{background:var(--crit)} .st.neutral{background:var(--line-strong)}
+.rail .lbl{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:12px 18px 4px}
+.rail .grow{flex:1}
+.stage{min-width:0;min-height:0;display:grid}
+.lay-map{display:grid;grid-template-columns:300px 1fr 268px;min-height:0}
+.lay-page{overflow:auto;padding:16px 20px;min-height:0}
+.panel{background:var(--surface);border-right:1px solid var(--line);overflow:auto;min-height:0;display:flex;flex-direction:column}
+.p-head{padding:12px 14px 10px;border-bottom:1px solid var(--line);display:grid;gap:8px}
+.p-head h4{margin:0;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+.p-body{padding:12px 14px;display:grid;gap:12px;align-content:start}
+.grp{border:1px solid var(--line);border-radius:var(--r-lg)}
+.grp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:8px 10px;font-weight:700}
+.grp>summary::-webkit-details-marker{display:none}
+.grp>summary .chev{margin-left:auto;color:var(--faint);transition:transform .15s}
+.grp[open]>summary .chev{transform:rotate(90deg)}
+.grp>summary small{font-weight:400;color:var(--muted)}
+.grp .gb{padding:0 10px 10px;display:grid;gap:8px}
+.row{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row .k{flex:1;min-width:0}
+.row .v{color:var(--muted);text-align:right}
+.tools{display:flex;flex-wrap:wrap;gap:6px}
+.adv{font-size:11px;color:var(--muted)}
+.mapwrap{position:relative;min-width:0;min-height:0;background:var(--map-ground);overflow:hidden}
+.mapwrap svg.map{position:absolute;inset:0;width:100%;height:100%}
+.mtools{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.mcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.mtools .seg{box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.mzoom{display:flex;flex-direction:column}
+.mzoom button{all:unset;cursor:pointer;width:28px;height:28px;display:grid;place-items:center;color:var(--muted);border-top:1px solid var(--line)}
+.mzoom button:first-child{border-top:0}
+.legend{position:absolute;left:10px;bottom:10px;padding:8px 10px;display:grid;gap:4px;font-size:11px}
+.legend b{font-size:11px}
+.legend i{display:inline-block;width:18px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.scale{position:absolute;right:10px;bottom:10px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.scale i{display:block;width:60px;height:5px;border:1px solid var(--muted);border-top:0}
+.insp{background:var(--surface);border-left:1px solid var(--line);overflow:auto;min-height:0}
+.insp .p-head h4{font-size:13px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:0;font-size:12px}
+.kv dt,.kv dd{padding:5px 0;border-top:1px solid var(--line);margin:0}
+.kv dt{color:var(--muted)}
+.kv dd{text-align:right;font-variant-numeric:tabular-nums}
+.kv dt:first-of-type,.kv dt:first-of-type+dd{border-top:0}
+.subnav{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.subnav button{all:unset;cursor:pointer;padding:8px 12px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.subnav button:hover{color:var(--text)}
+.subnav button[aria-current="true"]{color:var(--brand);border-bottom-color:var(--brand);font-weight:700}
+.chips{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.chips button{all:unset;cursor:pointer;padding:3px 10px;border:1px solid var(--line-strong);border-radius:var(--r);color:var(--muted);background:var(--surface)}
+.chips button[aria-pressed="true"]{border-color:var(--brand);color:var(--brand);background:var(--tint);font-weight:700}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;margin-bottom:14px}
+.kpi{background:var(--surface);padding:10px 12px}
+.kpi span{display:block;color:var(--muted);font-size:11px}
+.kpi b{font-size:19px;display:block;line-height:1.3}
+.kpi small{color:var(--muted)}
+.kpi.crit b{color:var(--crit)}
+.page-grid{display:grid;grid-template-columns:1fr 300px;gap:14px;align-items:start}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px;min-width:0}
+.card h5{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+.chart text{fill:var(--muted);font-size:10px;font-family:var(--font)}
+.chart .lab{fill:var(--text)}
+.check{display:grid;gap:0}
+.ck{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+.ck:first-child{border-top:0}
+.ck .ic{width:20px;height:20px;border-radius:50%;display:grid;place-items:center}
+.ck .ic.ok{background:var(--ok-bg);color:var(--ok)}
+.ck .ic.warn{background:var(--warn-bg);color:var(--warn)}
+.ck .ic.neutral{background:var(--surface-2);color:var(--faint);border:1px solid var(--line)}
+.ck b{display:block;font-size:12px}
+.ck span{color:var(--muted);font-size:11px}
+.ck .step{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em}
+.lay-doc{display:grid;grid-template-columns:250px 1fr 260px;min-height:0}
+.outline{background:var(--surface);border-right:1px solid var(--line);overflow:auto;padding:10px 0}
+.outline div{display:grid;grid-template-columns:34px 1fr auto;gap:4px;padding:4px 12px;cursor:default;align-items:center}
+.outline div:hover{background:var(--surface-2)}
+.outline .l1{font-weight:700;padding-top:8px}
+.outline .l3{padding-left:22px}
+.outline .nr{color:var(--brand);font-variant-numeric:tabular-nums}
+.outline .cur{background:var(--tint)}
+.paper-wrap{overflow:auto;padding:18px;display:flex;justify-content:center;min-height:0;background:var(--surface-2)}
+.paper{width:430px;min-height:600px;background:#FFFFFF;color:#1B1F1C;box-shadow:0 1px 3px rgba(0,0,0,.18);padding:30px 34px;font-size:9.5px;line-height:1.55;font-family:Tahoma,Verdana,sans-serif}
+.paper .ph{display:flex;justify-content:space-between;border-bottom:1px solid #E2E4DF;padding-bottom:6px;margin-bottom:18px;color:#5A5F5A;font-size:8px}
+.paper .ph b{color:#266426}
+.paper h6{font-size:11.5px;margin:0 0 8px}
+.paper h6 em{font-style:normal;color:#266426;margin-right:8px}
+.paper p{margin:0 0 8px}
+.paper .fig{border:1px solid #E2E4DF;margin:10px 0 4px;padding:8px}
+.paper .cap{font-size:8.5px;color:#5A5F5A;margin-bottom:10px}
+.paper .fig text{font-size:7px;fill:#5A5F5A;font-family:Tahoma,Verdana,sans-serif}
+.paper .ph-sel{outline:2px solid #3F9C3F;outline-offset:3px}
+.toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:6px 12px;border-radius:var(--r-lg);font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+.proto-note{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12px;color:var(--muted);margin-top:10px}
+
+/* Umsetzung / Entscheidungen */
+.phase td:first-child{white-space:nowrap;font-weight:700}
+.dec{display:grid;gap:10px;counter-reset:d}
+.dec>div{display:grid;grid-template-columns:28px 1fr;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px}
+.dec>div::before{counter-increment:d;content:counter(d);display:grid;place-items:center;width:24px;height:24px;border-radius:var(--r);background:var(--tint);color:var(--brand);font-weight:700}
+.dec b{display:block;margin-bottom:2px}
+.dec .rec{font-size:12px;color:var(--muted)}
+.dec .rec strong{color:var(--brand)}
+footer{max-width:1180px;margin:0 auto;padding:32px 16px 40px;color:var(--faint);font-size:12px}
+@media (max-width:640px){h1{font-size:22px}.type-row{grid-template-columns:70px 1fr}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-7H8L6.5 3.5h-5z"/></symbol>
+    <symbol id="i-bld" viewBox="0 0 16 16"><path d="M2 14.5V5l5-2.5v12M7 6.5h7v8M4.2 7h1M4.2 9.5h1M4.2 12h1M9.5 9h2M9.5 11.5h2M1 14.5h14"/></symbol>
+    <symbol id="i-plan" viewBox="0 0 16 16"><path d="M2 14l1-3.5L11 2.5l2.5 2.5-8 8L2 14zM9.5 4l2.5 2.5"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 16 16"><path d="M1.5 14.5h13M3.5 12V8M7 12V4M10.5 12V6.5M14 12V2.5"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 16 16"><path d="M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3"/></symbol>
+    <symbol id="i-field" viewBox="0 0 16 16"><path d="M5 1.5h6v13H5zM7.3 12.5h1.4"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></symbol>
+    <symbol id="i-help" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4M8 11.6v.1"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></symbol>
+    <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l4 4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></symbol>
+    <symbol id="i-dot" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 2l6.5 11.5h-13zM8 6.5v3.2M8 11.6v.1"/></symbol>
+    <symbol id="i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.8v.1"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5L6 12.5"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 16 16"><path d="M8 2l6.5 3.5L8 9 1.5 5.5zM1.5 8.5L8 12l6.5-3.5M1.5 11.5L8 15l6.5-3.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 16 16"><path d="M3 8h10"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 16 16"><path d="M8 1.5l6 3.2v6.6l-6 3.2-6-3.2V4.7zM2 4.7l6 3.2 6-3.2M8 7.9v6.6"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 16 16"><path d="M2.5 13.5l2-6 6-5 3 3-5 6zM2.5 13.5l4-4"/></symbol>
+    <symbol id="i-down" viewBox="0 0 16 16"><path d="M8 2v9M4 7.5l4 4 4-4M2.5 14h11"/></symbol>
+    <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.5 2.5l9 5.5-9 5.5z"/></symbol>
+    <symbol id="i-save" viewBox="0 0 16 16"><path d="M2.5 2.5h9l2 2v9h-11zM5 2.5v3.5h5V2.5M5 13.5V9.5h6v4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z"/></symbol>
+  </defs>
+</svg>
+
+<header class="doc-head">
+  <div class="in">
+    <div class="eyebrow">Entwurf zur Besprechung · Stand 16.10.2026</div>
+    <h1>Oberflächenkonzept Energieplaner im LKEBw-Erscheinungsbild</h1>
+    <p class="lead">Vorschlag für ein ruhiges, sachliches Erscheinungsbild und einen neuen Aufbau des Tools. Die Gliederung folgt dem Arbeitsablauf eines Gutachtens: Projekt, Bestand, Planung, Auswertung, Gutachten. Rechenkern, Karte und Datenmodell bleiben unverändert.</p>
+    <div class="meta">
+      <span><b>Gilt für</b> Desktop-Tool (index.html), Feldapp später</span>
+      <span><b>Baut auf</b> Entwürfen A und B vom 16.10. (design/lkebw-entwurf*.html)</span>
+      <span><b>Zahlen im Prototyp</b> Beispielwerte, nicht aus einem Projekt</span>
+    </div>
+    <nav class="toc" aria-label="Abschnitte">
+      <a href="#befund">1 Befund</a><a href="#prinzipien">2 Leitlinien</a><a href="#struktur">3 Neue Gliederung</a><a href="#prototyp">4 Prototyp</a><a href="#fuehrung">5 Benutzerführung</a><a href="#design">6 Gestaltungsregeln</a><a href="#umsetzung">7 Umsetzung</a><a href="#entscheidungen">8 Zu entscheiden</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<!-- 1 Befund -->
+<section class="sec" id="befund">
+  <h2><span class="n">1</span>Befund: Warum das Tool heute nach KI aussieht</h2>
+  <p class="intro">Gezählt im aktuellen Stand von origin/main. Das Tool ist fachlich stark gewachsen. Jede neue Funktion hat einen eigenen Knopf, eine eigene Farbe und oft ein eigenes Fenster bekommen. Das wirkt zusammengesetzt statt gestaltet.</p>
+  <div class="facts">
+    <div class="fact"><b class="num">5 + 5 + 11</b><span>Hauptansichten oben, Reiter links, Analyse-Bereiche: drei Navigationsebenen nebeneinander</span></div>
+    <div class="fact"><b class="num">35</b><span>schwebende Fenster in index.html, weitere aus den Modulen</span></div>
+    <div class="fact"><b class="num">1.505</b><span>Inline-Stile in index.html, dazu 2.941 Zeilen app.css</span></div>
+    <div class="fact"><b class="num">15</b><span>Bedienelemente in der Kopfzeile, davon 11 weitere im Menü „Mehr“</span></div>
+    <div class="fact"><b class="num">3</b><span>Hilfesysteme: Geführter Modus, Leitfaden, Hilfe-Modus</span></div>
+  </div>
+  <div class="cols">
+    <div class="box">
+      <h3>Optik</h3>
+      <dl class="find">
+        <dt>Emojis</dt><dd>Fast jeder Knopf beginnt mit einem Emoji (🔥 ⚡ 📋 🗺). Das ist das deutlichste KI-Merkmal.</dd>
+        <dt>Farben</dt><dd>Jeder Knopf hat eine eigene Randfarbe: Lila, Orange, Grün, Gelb, Pink. Farbe trägt so keine Bedeutung mehr.</dd>
+        <dt>Formen</dt><dd>Pillenförmige Knöpfe mit 18–20 px Radius, dazu Logo aus fünf bunten Balken, Gold-Akzent auf Braun.</dd>
+        <dt>Schrift</dt><dd>DM Sans und DM Mono, Größen zwischen 9 und 16 px ohne feste Stufen.</dd>
+      </dl>
+    </div>
+    <div class="box">
+      <h3>Aufbau</h3>
+      <dl class="find">
+        <dt>Doppelt</dt><dd>Stromerzeugung liegt unter „Erzeuger“ und unter „Elektro“. Analyse ist oben und im Reiter „Ergebnis“ erreichbar.</dd>
+        <dt>Versteckt</dt><dd>Wärme-/Strom-Grundlagen und Kennwerte öffnen als Fenster aus dem Reiter „Gebiet“. PV-Analyse, Gutachten und Netzanschluss liegen in „Analyse“.</dd>
+        <dt>Gemischt</dt><dd>Das Menü „Mehr“ enthält Feldapp, Farbschema, Datenschutz, Diagnose und Cluster nebeneinander.</dd>
+        <dt>Rückweg</dt><dd>Vier Ansichten haben einen eigenen Knopf „Zurück zur Karte“. Die Navigation zeigt nicht, wo man ist.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <h3 style="margin-top:24px">Vorher und nachher am Beispiel „Gebiet“</h3>
+  <div class="vn">
+    <figure>
+      <div class="old" aria-label="Heutige Darstellung">
+        <div class="ob" style="border-color:#ab47bc;color:#ce93d8">⬡ Plangebiet / Bereich zeichnen</div>
+        <div class="ob" style="border-color:#78909c;color:#b0bec5">📐 Plan-Overlay laden…</div>
+        <div class="ob" style="border-color:#ff9800;color:#ffb74d">📋 Gebäudeliste importieren (CSV)</div>
+        <div class="t">Projektdaten</div>
+        <div class="grid">
+          <div class="pill" style="border-color:#81c784;color:#81c784">🔥 Wärme-Grundlagen</div>
+          <div class="pill" style="border-color:#ffd54f;color:#ffd54f">⚡ Strom-Grundlagen</div>
+        </div>
+        <div class="t">Gebäude laden</div>
+        <div class="pill" style="border-color:#66bb6a;color:#66bb6a;margin-bottom:6px">↓ OSM-Import (OpenStreetMap)</div>
+        <div class="pill" style="border-color:#8d6e63;color:#d7ccc8;margin-bottom:6px">LoD2-Gebäudemodell laden</div>
+        <div class="pill" style="border-color:#ffb74d;color:#ffcc80">Grundrisse prüfen</div>
+      </div>
+      <figcaption>Heute: sieben Farben, Emojis, Knöpfe ohne Zustand. Man sieht nicht, was schon erledigt ist.</figcaption>
+    </figure>
+    <figure>
+      <div class="new">
+        <div class="p-head"><h4>Bestand <span class="pill ok">vollständig</span></h4></div>
+        <div class="p-body">
+          <div class="grp" style="border:0">
+            <div class="row"><span class="k"><b>Plangebiet</b><br><span class="small">38,4 ha gezeichnet</span></span><button class="btn sm">Bearbeiten</button></div>
+            <div class="row"><span class="k"><b>Gebäude</b><br><span class="small">142 Gebäude · 96 mit Dachdaten</span></span><button class="btn sm">Daten laden</button></div>
+            <div class="row"><span class="k"><b>Grundrisse prüfen</b><br><span class="small">3 Überlappungen gefunden</span></span><span class="pill warn">offen</span></div>
+            <div class="row"><span class="k"><b>Strom-Grundlagen</b><br><span class="small">Messjahre 2022–2024 · Referenz 2024</span></span><span class="pill ok">ok</span></div>
+          </div>
+        </div>
+      </div>
+      <figcaption>Vorschlag: Liste mit Zustand je Eintrag. Eine Akzentfarbe, Ampelfarben nur für den Status.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 2 Leitlinien -->
+<section class="sec" id="prinzipien">
+  <h2><span class="n">2</span>Leitlinien</h2>
+  <p class="intro">Sechs Regeln, an denen sich jede Einzelentscheidung messen lässt.</p>
+  <div class="cols">
+    <div class="box"><h3>Arbeitsablauf statt Funktionsliste</h3><p>Die Hauptnavigation folgt den Schritten eines Gutachtens. Wärme und Strom sind ein Umschalter innerhalb von Planung und Auswertung, keine eigenen Bereiche.</p></div>
+    <div class="box"><h3>Jede Funktion an genau einem Ort</h3><p>Zweite Zugänge entfallen. Wo eine Funktion anderswo gebraucht wird, steht dort ein Verweis mit Sprung, keine Kopie.</p></div>
+    <div class="box"><h3>Andocken statt schweben</h3><p>Fenster werden zu Arbeitspanel (links), Eigenschaften (rechts) oder ganzer Seite. Schwebend bleiben nur Bestätigungen und Importe.</p></div>
+    <div class="box"><h3>Zustand sichtbar machen</h3><p>Jeder Bereich zeigt, ob er vollständig, offen oder veraltet ist. „Berechnen“ sitzt an einer Stelle und zeigt den Rechenstand.</p></div>
+    <div class="box"><h3>Eine Akzentfarbe</h3><p>LKEBw-Grün markiert Auswahl und Hauptaktion. Ampelfarben stehen nur für Status. Kartenfarben bleiben eigenständig und fachlich.</p></div>
+    <div class="box"><h3>Fachtiefe auf Abruf</h3><p>Normparameter wie Iz-Korrekturfaktoren oder GZF-Methode liegen unter „Erweitert“. Vorgabewerte stehen sichtbar daneben.</p></div>
+  </div>
+</section>
+
+<!-- 3 Struktur -->
+<section class="sec" id="struktur">
+  <h2><span class="n">3</span>Neue Gliederung</h2>
+  <p class="intro">Fünf Bereiche in fester Reihenfolge. Variante, Betrachtungsjahr und Berechnungsstand stehen darüber in einer eigenen Kontextleiste und gelten für alle Bereiche.</p>
+  <div class="ia" role="list">
+    <div class="col" role="listitem"><div class="h"><span class="ix">1</span><span>Projekt<small>Was liegt vor?</small></span></div>
+      <ul><li>Projektstand (Checkliste)</li><li>Stammdaten, Bearbeiter</li><li>Varianten verwalten</li><li>Kennwerte und Kostenansätze</li><li>Ladeübersicht Plangebiet</li><li>Feldaufnahme (Feldapp)</li></ul></div>
+    <div class="col" role="listitem"><div class="h"><span class="ix">2</span><span>Bestand<small>Was ist da?</small></span></div>
+      <ul><li class="g">Gebiet</li><li>Plangebiet, Plan-Overlay</li><li>Bäume</li><li class="g">Gebäude</li><li>OSM, LoD2, CSV, Excel</li><li>Grundrisse prüfen</li><li>Gebäudetabelle</li><li class="g">Grundlagen</li><li>Strom: Messjahre, Netzanschluss</li><li>Wärme: Witterung, Verbrauch</li></ul></div>
+    <div class="col" role="listitem"><div class="h"><span class="ix">3</span><span>Planung<small>Was soll kommen?</small></span></div>
+      <ul><li class="g">Wärme</li><li>Wärmenetz</li><li>Erzeugung, Speicher, Kälte</li><li>Einsatzreihenfolge</li><li class="g">Strom</li><li>Netz, Trafostationen</li><li>PV, Batterie, Notstrom</li><li>Ladeinfrastruktur</li><li>Resilienz (Blackout)</li></ul></div>
+    <div class="col" role="listitem"><div class="h"><span class="ix">4</span><span>Auswertung<small>Was bedeutet es?</small></span></div>
+      <ul><li>Übersicht</li><li>Wärme, Optimierung</li><li>Strom: Netzanschluss, Netz, Engpässe, PV</li><li>Wirtschaftlichkeit</li><li>Emissionen</li><li>Variantenvergleich</li><li>Maßnahmen und Fahrplan</li></ul></div>
+    <div class="col" role="listitem"><div class="h"><span class="ix">5</span><span>Gutachten<small>Was geht raus?</small></span></div>
+      <ul><li>Gliederung und Texte</li><li>Abbildungen</li><li>Liegenschaftsbilder</li><li>Anlagen, Steckbriefe</li><li>Word, Excel, CSV</li></ul></div>
+  </div>
+  <div class="ia-axis"><span><b>Kontextleiste:</b> Variante · Betrachtungsjahr (Bestand / 2030 / 2035 / 2045) · Rechenstand · Berechnen</span><span><b>Kopfzeile:</b> Projekt, Speicherstand, Suche, Hilfe, Menü</span></div>
+
+  <h3 style="margin-top:24px">Wo landet was?</h3>
+  <p class="small" style="margin-bottom:10px">Zuordnung der heutigen Einstiege zur neuen Gliederung. Grün markiert: wird zusammengelegt. Rot markiert: entfällt.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Heute</th><th>Neu</th><th>Art</th></tr></thead>
+      <tbody>
+        <tr><td class="from">Gebiet › Projektdaten</td><td class="to">Projekt › Stammdaten</td><td></td></tr>
+        <tr><td class="from">Gebiet › Kennwerte (Fenster)</td><td class="to">Projekt › Kennwerte <span>und Kostenansätze</span></td><td><span class="tag k">zusammen mit Kostenkennwerten Elektro</span></td></tr>
+        <tr><td class="from">Ergebnis › Kennzahlenleiste</td><td class="to">Projekt › Projektstand</td><td></td></tr>
+        <tr><td class="from">Geführter Modus, Leitfaden, Hilfe-Modus</td><td class="to">Projekt › Projektstand <span>+ Hinweise im Panel</span></td><td><span class="tag k">drei werden eins</span></td></tr>
+        <tr><td class="from">Mehr › Feldapp</td><td class="to">Projekt › Feldaufnahme</td><td></td></tr>
+        <tr><td class="from">Gebiet › Plangebiet, Plan-Overlay, Gebäude laden, Grundrisse prüfen</td><td class="to">Bestand › Gebiet / Gebäude</td><td></td></tr>
+        <tr><td class="from">Ansicht oben „Gebäude“</td><td class="to">Bestand › Gebäudetabelle <span>(Umschalter Karte / Tabelle)</span></td><td></td></tr>
+        <tr><td class="from">Wärme-Grundlagen, Strom-Grundlagen (Fenster)</td><td class="to">Bestand › Grundlagen</td><td></td></tr>
+        <tr><td class="from">Reiter Netz</td><td class="to">Planung › Wärme › Wärmenetz</td><td></td></tr>
+        <tr><td class="from">Reiter Erzeuger (Wärme, Speicher, Kälte, Merit-Order)</td><td class="to">Planung › Wärme › Erzeugung</td><td></td></tr>
+        <tr><td class="from">Erzeuger › Stromerzeugung (zweiter Zugang)</td><td class="to">Planung › Strom › Erzeugung</td><td><span class="tag x">Doppel entfällt</span></td></tr>
+        <tr><td class="from">Elektro › 1 Netz aufbauen</td><td class="to">Planung › Strom › Netz</td><td></td></tr>
+        <tr><td class="from">Elektro › 2 Berechnen</td><td class="to">Kontextleiste „Berechnen“ <span>+ Annahmen unter „Erweitert“</span></td><td></td></tr>
+        <tr><td class="from">Elektro › 3 Auswerten (7 Gruppen)</td><td class="to">Auswertung › Strom</td><td></td></tr>
+        <tr><td class="from">Mehr › Cluster, Analyse › Ausbauplaner</td><td class="to">Auswertung › Maßnahmen und Fahrplan</td><td><span class="tag k">zusammen</span></td></tr>
+        <tr><td class="from">Analyse (oben) und Ergebnis › Auswertung</td><td class="to">Auswertung</td><td><span class="tag k">zwei Wege werden einer</span></td></tr>
+        <tr><td class="from">Analyse › PV-Analyse, Netzanschluss, Knotenpunkt</td><td class="to">Auswertung › Strom</td><td></td></tr>
+        <tr><td class="from">Ansichten oben „Optimierung“, „Vergleich“</td><td class="to">Auswertung › Wärme › Optimierung, Auswertung › Varianten</td><td></td></tr>
+        <tr><td class="from">Analyse › Gutachten, Liegenschaftsbilder</td><td class="to">Gutachten</td><td></td></tr>
+        <tr><td class="from">Ergebnis › Export (CSV, Bericht, Digest)</td><td class="to">Gutachten › Export</td><td></td></tr>
+        <tr><td class="from">Ansicht-Fenster (Ebenen, Einfärbung, 3D)</td><td class="to">Werkzeuge an der Karte</td><td></td></tr>
+        <tr><td class="from">Jahr-Schieber, Planungsschicht, Variantenpillen</td><td class="to">Kontextleiste</td><td><span class="tag k">eine Zeile</span></td></tr>
+        <tr><td class="from">Mehr › Datenschutz, Diagnose, Feedback, Berechnungslogik</td><td class="to">Hilfe-Menü (?)</td><td></td></tr>
+        <tr><td class="from">Mehr › Farbschema (mehrere)</td><td class="to">Einstellungen › Hell / Dunkel</td><td><span class="tag x">Farbschemata entfallen</span></td></tr>
+        <tr><td class="from">„Zurück zur Karte“ (4 ×)</td><td class="to">entfällt, Navigation zeigt den Ort</td><td><span class="tag x">entfällt</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 4 Prototyp -->
+<section class="sec" id="prototyp">
+  <h2><span class="n">4</span>Klickbarer Prototyp</h2>
+  <p class="intro">Links durch die fünf Bereiche klicken. In Planung und Auswertung schaltet „Wärme / Strom“ die Sparte um. Auf der Karte lassen sich Station und Gebäude anwählen. „Berechnen“ und die Bereiche unter „Erweitert“ reagieren.</p>
+  <div class="proto-wrap">
+    <div class="win" id="win">
+      <div class="w-top">
+        <div class="mark"><b>LKEBw</b>Energieplaner</div>
+        <div class="w-proj"><b>Kaserne Musterstadt</b><span>WE 12345</span></div>
+        <div class="sp"></div>
+        <div class="saved"><svg class="i"><use href="#i-save"/></svg><span>Gespeichert 10:42</span></div>
+        <div class="search"><svg class="i"><use href="#i-search"/></svg>Gebäude, Station, Funktion …</div>
+        <button class="icon-btn" title="Hilfe" aria-label="Hilfe"><svg class="i"><use href="#i-help"/></svg></button>
+        <button class="icon-btn" id="themeBtn" title="Hell / Dunkel" aria-label="Hell oder dunkel"><svg class="i"><use href="#i-moon"/></svg></button>
+        <button class="icon-btn" title="Menü" aria-label="Menü"><svg class="i"><use href="#i-menu"/></svg></button>
+      </div>
+      <div class="w-ctx">
+        <div class="ctx"><label for="pv-var">Variante</label><select id="pv-var"><option>Hauptplan (Gutachten)</option><option>PV-Ausbau Süd</option><option>Wärmenetz Ost</option></select></div>
+        <div class="vsep"></div>
+        <div class="ctx"><label>Betrachtungsjahr</label><div class="seg" id="yearSeg"><button aria-pressed="true">Bestand 2026</button><button aria-pressed="false">2030</button><button aria-pressed="false">2035</button><button aria-pressed="false">2045</button></div></div>
+        <div class="sp"></div>
+        <span class="pill warn" id="calcState">Rechenstand veraltet · 2 Änderungen</span>
+        <button class="btn pri" id="calcBtn"><svg class="i"><use href="#i-play"/></svg>Berechnen</button>
+      </div>
+      <div class="w-body">
+        <nav class="rail" id="rail" aria-label="Bereiche"></nav>
+        <div class="stage" id="stage"></div>
+      </div>
+    </div>
+  </div>
+  <div class="proto-note"><span>Fensterbreite 1.160 px, entspricht einem Laptop. Auf schmalen Bildschirmen seitlich scrollen.</span><span>Der Mondknopf oben rechts schaltet zwischen hell und dunkel.</span></div>
+</section>
+
+<!-- 5 Benutzerführung -->
+<section class="sec" id="fuehrung">
+  <h2><span class="n">5</span>Benutzerführung</h2>
+  <p class="intro">Statt drei getrennter Hilfesysteme führt das Tool über den sichtbaren Zustand. Wer neu ist, arbeitet die Checkliste ab. Wer das Tool kennt, springt direkt in den Bereich.</p>
+  <div class="cols">
+    <div class="box"><h3>Projektstand als Startseite</h3><p>Eine Liste in der Reihenfolge des Gutachtens. Jeder Punkt zeigt seinen Zustand und springt mit einem Klick an die richtige Stelle. Der Punkt „Nächster Schritt“ steht oben.</p><p class="small">Ersetzt Leitfaden und Geführten Modus. Der Inhalt des Geführten Modus (8 Schritte Strompfad) fließt in die Liste ein.</p></div>
+    <div class="box"><h3>Statuspunkte in der Navigation</h3><p>Grün: vollständig. Gelb: offen oder veraltet. Grau: noch nicht begonnen. Die Regeln dafür gibt es teils schon in der Ladeübersicht (lib/lade-status).</p></div>
+    <div class="box"><h3>Hinweis im Panel</h3><p>Ein Satz, was fehlt, und ein Link, der es behebt. Beispiel: „2 Kabel ohne Querschnitt. Auf der Karte zeigen.“ Leere Bereiche erklären, wie man anfängt.</p></div>
+    <div class="box"><h3>Erklärung am Feld</h3><p>Das Fragezeichen am Feld zeigt Herkunft, Norm und Vorgabewert. Die Texte aus hilfe-texte.js werden dafür übernommen. Der globale Hilfe-Modus entfällt.</p></div>
+    <div class="box"><h3>Erweitert eingeklappt</h3><p>Normparameter und selten geänderte Annahmen liegen unter „Erweitert“. Sobald ein Wert vom Vorgabewert abweicht, zeigt der Abschnittskopf das an.</p></div>
+    <div class="box"><h3>Eindeutige Aktionsnamen</h3><p>Knöpfe sagen, was passiert: „Gebäude aus OSM laden“, „Word-Datei erstellen“. Danach eine kurze Bestätigung unten im Bild, kein Dialog.</p></div>
+  </div>
+</section>
+
+<!-- 6 Designsystem -->
+<section class="sec" id="design">
+  <h2><span class="n">6</span>Gestaltungsregeln</h2>
+  <p class="intro">Abgeleitet aus der Gutachten-Vorlage und dem PowerPoint-Export (gutachten-pptx.js). Ein offizielles CD-Handbuch lag nicht vor. Falls es eines gibt, gleiche ich die Werte daran ab.</p>
+  <div class="cols">
+    <div class="box" style="grid-column:1/-1">
+      <h3>Farben</h3>
+      <div class="sw">
+        <div><i style="background:var(--brand)"></i><span>LKEBw-Grün<small>#266426</small></span></div>
+        <div><i style="background:var(--brand-2)"></i><span>Grün hell<small>#3F9C3F</small></span></div>
+        <div><i style="background:var(--tint)"></i><span>Tönung<small>#EEF5EC</small></span></div>
+        <div><i style="background:var(--text)"></i><span>Text<small>#1B1F1C</small></span></div>
+        <div><i style="background:var(--muted)"></i><span>Grau<small>#5A5F5A</small></span></div>
+        <div><i style="background:var(--line)"></i><span>Linie<small>#E2E4DF</small></span></div>
+        <div><i style="background:var(--ok)"></i><span>Status ok<small>#2E7D32</small></span></div>
+        <div><i style="background:var(--warn)"></i><span>Status offen<small>#A86A12</small></span></div>
+        <div><i style="background:var(--crit)"></i><span>Status kritisch<small>#B3261E</small></span></div>
+        <div><i style="background:var(--heat)"></i><span>Karte Wärme<small>#C2551B</small></span></div>
+      </div>
+      <p class="small" style="margin-top:10px">Status-Grün ist bewusst kälter und heller als das Markengrün und erscheint nur mit Punkt oder Häkchen. Auf der Karte gelten eigene, fachliche Farbskalen (Auslastung, ΔU, Wärmebedarf).</p>
+    </div>
+    <div class="box">
+      <h3>Schrift</h3>
+      <div class="type-row"><code>Titel 19</code><span style="font-size:19px;font-weight:700">Netzanschluss</span></div>
+      <div class="type-row"><code>Abschnitt 15</code><span style="font-size:15px;font-weight:700">Trafostationen</span></div>
+      <div class="type-row"><code>Text 13</code><span style="font-size:13px">Spitzenlast im Referenzjahr 2024</span></div>
+      <div class="type-row"><code>Bedienung 12</code><span style="font-size:12px">Bemessungsleistung 630 kVA</span></div>
+      <div class="type-row"><code>Hinweis 11</code><span style="font-size:11px;color:var(--muted)">Quelle: Messjahr 2024, RLM</span></div>
+      <p class="small" style="margin-top:10px">Tahoma wie in Word-Vorlage und Folien. Zahlen in Tabellen stehen untereinander. Kleinste Größe 11 px, heute 9 px.</p>
+    </div>
+    <div class="box">
+      <h3>Formen und Abstände</h3>
+      <ul class="plain">
+        <li>Radien 2 px (Knöpfe, Felder) und 4 px (Gruppen, Karten). Keine Pillenform.</li>
+        <li>Abstände 4 · 8 · 12 · 16 · 24 px.</li>
+        <li>Linien statt Schatten. Schatten nur auf Elementen über der Karte.</li>
+        <li>Linien-Icons 16 px, 1,5 px Strich, ein Satz für das ganze Tool.</li>
+        <li>Keine Emojis in der Oberfläche. In Berichten und Exporten ebenfalls nicht.</li>
+      </ul>
+      <div class="comp" style="margin-top:12px">
+        <svg class="i"><use href="#i-bld"/></svg><svg class="i"><use href="#i-plan"/></svg><svg class="i"><use href="#i-chart"/></svg><svg class="i"><use href="#i-doc"/></svg><svg class="i"><use href="#i-layers"/></svg><svg class="i"><use href="#i-cube"/></svg><svg class="i"><use href="#i-pen"/></svg><svg class="i"><use href="#i-down"/></svg><svg class="i"><use href="#i-alert"/></svg>
+      </div>
+    </div>
+    <div class="box">
+      <h3>Bausteine</h3>
+      <div class="comp"><button class="btn pri">Berechnen</button><button class="btn">Daten laden</button><button class="btn ghost">Abbrechen</button><button class="btn danger">Löschen</button></div>
+      <div class="comp"><span class="pill ok">vollständig</span><span class="pill warn">offen</span><span class="pill crit">Überlast ab 2034</span><span class="pill neutral">nicht begonnen</span></div>
+      <div class="comp" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="fld"><label for="ds-sn">Bemessungsleistung</label><div class="inp"><input id="ds-sn" value="630"><em>kVA</em></div></div>
+        <div class="fld"><label for="ds-cos">cos φ</label><div class="inp"><input id="ds-cos" value="0,95"><em>–</em></div></div>
+      </div>
+      <div class="hint"><svg class="i"><use href="#i-info"/></svg><span><b>2 Kabel ohne Querschnitt</b><a>Auf der Karte zeigen</a></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 Umsetzung -->
+<section class="sec" id="umsetzung">
+  <h2><span class="n">7</span>Umsetzung in Stufen</h2>
+  <p class="intro">Jede Stufe ist für sich lauffähig und wird einzeln gebaut, getestet und gemergt. Funktionen, IDs und die data-click-Aufrufe bleiben erhalten, es ändern sich Rahmen und Darstellung.</p>
+  <div class="tw">
+    <table class="phase">
+      <thead><tr><th>Stufe</th><th>Inhalt</th><th>Aufwand</th><th>Ergebnis</th></tr></thead>
+      <tbody>
+        <tr><td>1 Grundlagen</td><td>Farb- und Schrift-Tokens in app.css, Icon-Satz, Grundbausteine (Knopf, Feld, Pille, Gruppe, Tabelle). Alte Farbschemata stilllegen.</td><td class="num">1–2 Tage</td><td>Tool wird hell und grün, Aufbau noch alt</td></tr>
+        <tr><td>2 Rahmen</td><td>Kopfzeile, Kontextleiste, Navigationsschiene, Seitenraster Karte / Seite. Alte Reiter werden auf die neuen Bereiche umgeleitet.</td><td class="num">2–3 Tage</td><td>Neue Navigation sichtbar</td></tr>
+        <tr><td>3 Umzug</td><td>Funktionen nach der Zuordnungstabelle verschieben. Schwebende Fenster in Panel, Eigenschaften oder Seite überführen. Doppelte Zugänge entfernen.</td><td class="num">1–1,5 Wochen</td><td>Jede Funktion an einem Ort</td></tr>
+        <tr><td>4 Aufräumen</td><td>Inline-Stile und Emojis modulweise ersetzen (index.html und die in JS gebauten Panels). Läuft je Modul mit Stufe 3 mit.</td><td class="num">1–2 Wochen</td><td>Einheitliches Bild in allen Panels</td></tr>
+        <tr><td>5 Führung</td><td>Projektstand-Checkliste, Statuspunkte, Panel-Hinweise, Erweitert-Bereiche. Leitfaden, Geführter Modus und Hilfe-Modus zusammenführen.</td><td class="num">3–4 Tage</td><td>Einstieg ohne Einweisung möglich</td></tr>
+        <tr><td>6 Nebenprodukte</td><td>Feldapp, Resilienz-Erhebung, Projektbericht im selben Erscheinungsbild.</td><td class="num">2–4 Tage</td><td>Später, nach Freigabe</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cols" style="margin-top:16px">
+    <div class="box"><h3>Gesamtaufwand</h3><p>Rund 4–6 Wochen für die vollständige Umstellung. Ein vorzeigbarer Zwischenstand liegt nach Stufe 2 vor, also nach etwa einer Woche.</p></div>
+    <div class="box"><h3>Abstimmung mit dem Kollegen</h3><p>index.html und app.css werden in fast jeder Stufe angefasst. Der Kollege arbeitet parallel im Wärmeteil. Deshalb: je Stufe ein eigener Branch, kurze Laufzeit, Merge-Zeitpunkte vorher absprechen.</p></div>
+    <div class="box"><h3>Was sich nicht ändert</h3><p>Rechenkern, Leaflet-Karte, Projektdatei und Gutachten-Export. Alte Projektdateien lassen sich weiter öffnen.</p></div>
+  </div>
+</section>
+
+<!-- 8 Entscheidungen -->
+<section class="sec" id="entscheidungen">
+  <h2><span class="n">8</span>Zu entscheiden</h2>
+  <p class="intro">Diese Punkte brauche ich von dir, bevor Stufe 1 beginnt.</p>
+  <div class="dec">
+    <div><span><b>Hell als Standard?</b>Das LKEBw-Bild ist hell. Das heutige Tool ist dunkel. Dunkel kann als Einstellung bleiben, wird aber nicht mehr gleichrangig gepflegt.<span class="rec" style="display:block;margin-top:4px">Empfehlung: <strong>Hell als Standard, Dunkel als Einstellung.</strong></span></span></div>
+    <div><span><b>Navigation nach Arbeitsschritten?</b>Alternative wäre eine Gliederung nach Sparte (Wärme, Strom, Gutachten). Die Schritte passen besser zum Gutachten und vermeiden Doppelungen wie heute bei der Stromerzeugung.<span class="rec" style="display:block;margin-top:4px">Empfehlung: <strong>Arbeitsschritte mit Sparten-Umschalter.</strong></span></span></div>
+    <div><span><b>Schwebende Fenster abschaffen?</b>Ausnahme wäre die Zwei-Monitor-Ansicht, die Diagramme bewusst auf den zweiten Bildschirm legt.<span class="rec" style="display:block;margin-top:4px">Empfehlung: <strong>Ja, mit Ausnahme Zwei-Monitor-Ansicht und Importdialoge.</strong></span></span></div>
+    <div><span><b>Logo in der Oberfläche?</b>Im Prototyp steht eine Wortmarke als Platzhalter. Das echte Logo liegt in config/lkebw-logo.js. Bei Weitergabe des Tools an Dritte wäre das Branding zu klären.<span class="rec" style="display:block;margin-top:4px">Empfehlung: <strong>Echtes Logo, wenn das Tool nur intern genutzt wird.</strong></span></span></div>
+    <div><span><b>Entwurf A oder B als Grundlage?</b>Dieser Vorschlag kombiniert die Schiene aus A mit dem Eigenschaften-Bereich aus B. Das Diagramm-Dock aus B ist durch eigene Auswertungsseiten ersetzt.<span class="rec" style="display:block;margin-top:4px">Empfehlung: <strong>Kombination wie im Prototyp.</strong></span></span></div>
+    <div><span><b>Reihenfolge der Umsetzung?</b>Stufe 1 allein bringt schon den größten optischen Gewinn bei kleinem Risiko. Der Umbau der Navigation (Stufen 2 und 3) braucht die Absprache mit dem Kollegen.<span class="rec" style="display:block;margin-top:4px">Empfehlung: <strong>Stufe 1 sofort, Stufen 2–3 nach Absprache.</strong></span></span></div>
+  </div>
+</section>
+</main>
+<footer>Entwurf, erstellt mit Claude Code für die Besprechung. Datei im Repo: design/oberflaechenkonzept.html</footer>
+
+<script>
+(function(){
+  const $ = (s, r=document) => r.querySelector(s);
+  const ic = (id) => `<svg class="i"><use href="#i-${id}"/></svg>`;
+  const fmt = (n) => n.toLocaleString('de-DE');
+  const S = { step:'planung', sparte:'strom', sel:'T3', calc:false, asub:'strom', achip:'nap' };
+
+  /* Theme */
+  $('#themeBtn').addEventListener('click', () => {
+    const r = document.documentElement;
+    const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    r.dataset.theme = dark ? 'light' : 'dark';
+  });
+
+  /* Kontextleiste */
+  $('#yearSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    $('#yearSeg').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    toast('Betrachtungsjahr ' + b.textContent.replace('Bestand ', ''));
+  });
+  $('#calcBtn').addEventListener('click', () => {
+    S.calc = true;
+    const p = $('#calcState'); p.className = 'pill ok'; p.textContent = 'Berechnet 10:43';
+    toast('Berechnung abgeschlossen');
+    render();
+  });
+
+  /* Navigation */
+  const STEPS = [
+    { id:'projekt', ico:'folder', t:'Projekt', s:'Stand und Stammdaten', st:'ok' },
+    { id:'bestand', ico:'bld', t:'Bestand', s:'Gebiet, Gebäude, Grundlagen', st:'warn' },
+    { id:'planung', ico:'plan', t:'Planung', s:'Wärme und Strom', st:'warn' },
+    { id:'auswertung', ico:'chart', t:'Auswertung', s:'Ergebnisse, Varianten', st:'warn' },
+    { id:'gutachten', ico:'doc', t:'Gutachten', s:'31 von 47 Kapiteln', st:'neutral' },
+  ];
+  function renderRail(){
+    const calcSt = S.calc ? 'ok' : 'warn';
+    $('#rail').innerHTML = '<div class="lbl">Arbeitsablauf</div>' + STEPS.map(s => {
+      const st = s.id === 'auswertung' ? calcSt : s.st;
+      return `<button data-step="${s.id}" aria-current="${S.step===s.id}">${ic(s.ico)}<span>${s.t}<small>${s.s}</small></span><i class="st ${st}" title="${({ok:'vollständig',warn:'offen',neutral:'nicht begonnen'})[st]}"></i></button>`;
+    }).join('') + `<div class="grow"></div><button>${ic('field')}<span>Feldaufnahme<small>Feldapp</small></span><span></span></button><button>${ic('gear')}<span>Einstellungen</span><span></span></button>`;
+  }
+  $('#rail').addEventListener('click', e => {
+    const b = e.target.closest('button[data-step]'); if (!b) return;
+    S.step = b.dataset.step; render();
+  });
+
+  /* Karte */
+  const B = [[60,50,120,50,'Stabsgebäude'],[200,50,90,50,'Unterkunft 2'],[310,50,140,50,'Unterkunft 3'],[60,140,60,110,'Sporthalle'],[140,150,150,60,'Unterkunft 5'],[310,140,70,90,'Wache'],[400,140,75,60,'Sanitätsbereich'],[520,50,170,45,'Werkstatt Nord'],[520,130,80,90,'Werkstatt Süd'],[620,130,80,60,'Lager 10'],[60,300,120,60,'Truppenküche'],[210,300,90,90,'Unterkunft 12'],[320,305,150,50,'Lehrsaalgebäude'],[320,375,70,60,'Heizhaus'],[510,300,190,70,'Kfz-Halle'],[510,390,90,90,'Lager 16'],[620,390,80,60,'Tankstelle'],[60,400,120,70,'Unterkunft 18'],[210,410,80,60,'Betreuung']];
+  const ROADS = ['M20 115 H740','M20 280 H740','M490 20 V500','M195 280 V500','M300 115 V280'];
+  const T = {T1:[180,122],T2:[470,122],T3:[600,232],T4:[300,292],T5:[600,292],T6:[180,385]};
+  const LOAD = {T1:62,T2:71,T3:109,T4:58,T5:84,T6:47};
+  const CAB = [['T1',[[180,122],[120,122],[120,100]]],['T1',[[180,122],[245,122],[245,100]]],['T1',[[180,122],[180,140],[90,140]]],['T2',[[470,122],[380,122],[380,100]]],['T2',[[470,122],[470,150],[438,150]]],['T2',[[470,122],[600,122],[600,95]]],['T3',[[600,232],[560,232],[560,220]]],['T3',[[600,232],[660,232],[660,190]]],['T3',[[600,232],[600,200],[560,200]]],['T4',[[300,292],[255,292],[255,300]]],['T4',[[300,292],[395,292],[395,305]]],['T4',[[300,292],[300,215]],'ok'],['T5',[[600,292],[600,300]]],['T5',[[600,292],[540,292],[540,390]]],['T5',[[600,292],[660,292],[660,390]]],['T6',[[180,385],[120,385],[120,400]]],['T6',[[180,385],[180,330]]],['T6',[[180,385],[250,385],[250,410]]]];
+  const HEAT = ['M355 375 V292 H120 V250','M355 292 H560 V300','M300 292 V210','M300 292 V115 H380 V100','M300 115 H245 V100','M490 292 V220 H560','M355 375 V440 H250','M355 440 V470 H120'];
+  const lc = (p) => p >= 100 ? 'var(--crit)' : p >= 80 ? 'var(--warn)' : 'var(--ok)';
+
+  function mapSvg(mode){
+    let s = `<svg class="map" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Lageplan Beispiel">`;
+    s += `<rect width="760" height="520" fill="var(--map-ground)"/>`;
+    ROADS.forEach(d => { s += `<path d="${d}" stroke="var(--map-road-edge)" stroke-width="16" fill="none"/><path d="${d}" stroke="var(--map-road)" stroke-width="13" fill="none"/>`; });
+    B.forEach((b,i) => {
+      const sel = mode==='bestand' && S.sel==='G'+i;
+      s += `<rect class="bld" data-b="${i}" x="${b[0]}" y="${b[1]}" width="${b[2]}" height="${b[3]}" fill="${sel?'var(--tint)':'var(--map-block)'}" stroke="${sel?'var(--sel)':'var(--map-edge)'}" stroke-width="${sel?2:1}" style="cursor:${mode==='bestand'?'pointer':'default'}"/>`;
+    });
+    if (mode === 'strom'){
+      s += `<path d="M20 280 H180 V385 M180 280 V122 H470 M470 122 V232 H600 V292 H300" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="5 4" fill="none" opacity=".7"/>`;
+      CAB.forEach(c => { const p = c[1].map(q=>q.join(' ')).join(' L'); s += `<path d="M${p}" stroke="${lc(LOAD[c[0]])}" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`; });
+      Object.entries(T).forEach(([k,[x,y]]) => {
+        const sel = S.sel === k;
+        s += `<g class="tr" data-t="${k}" style="cursor:pointer">`;
+        if (sel) s += `<rect x="${x-13}" y="${y-13}" width="26" height="26" fill="none" stroke="var(--sel)" stroke-width="2" rx="2"/>`;
+        s += `<rect x="${x-8}" y="${y-8}" width="16" height="16" fill="var(--surface)" stroke="${lc(LOAD[k])}" stroke-width="2.5"/><text x="${x}" y="${y-14}" text-anchor="middle" font-size="11" font-weight="700" fill="var(--text)" style="paint-order:stroke;stroke:var(--map-ground);stroke-width:3px">${k}</text></g>`;
+      });
+      s += `<g><circle cx="26" cy="280" r="7" fill="var(--surface)" stroke="var(--text)" stroke-width="2"/><text x="38" y="268" font-size="10" fill="var(--muted)">Netzanschluss</text></g>`;
+    }
+    if (mode === 'waerme'){
+      HEAT.forEach(d => { s += `<path d="${d}" stroke="var(--heat)" stroke-width="4" fill="none" stroke-linejoin="round"/>`; });
+      s += `<rect x="343" y="390" width="24" height="24" fill="var(--heat)" stroke="var(--surface)" stroke-width="2"/><text x="374" y="420" font-size="11" font-weight="700" fill="var(--text)">Heizzentrale</text>`;
+    }
+    return s + '</svg>';
+  }
+  function mapTools(mode){
+    const seg = mode==='strom'
+      ? `<div class="seg"><button aria-pressed="true">Auslastung</button><button aria-pressed="false">ΔU</button><button aria-pressed="false">Leistung</button></div>`
+      : mode==='waerme' ? `<div class="seg"><button aria-pressed="true">Nennweite</button><button aria-pressed="false">Verlust</button></div>`
+      : `<div class="seg"><button aria-pressed="true">Nutzung</button><button aria-pressed="false">Wärmebedarf</button><button aria-pressed="false">Baujahr</button></div>`;
+    return `<div class="mtools">${seg}<div class="mcard mzoom"><button aria-label="Vergrößern">${ic('plus')}</button><button aria-label="Verkleinern">${ic('minus')}</button></div><div class="mcard mzoom"><button title="Ebenen" aria-label="Ebenen">${ic('layers')}</button><button title="3D-Ansicht" aria-label="3D-Ansicht">${ic('cube')}</button></div></div>`;
+  }
+  function legend(mode){
+    if (mode==='strom') return `<div class="mcard legend"><b>Auslastung ${S.calc?'2026':'(Stand 10:12)'}</b><span><i style="background:var(--ok)"></i>unter 80 %</span><span><i style="background:var(--warn)"></i>80–100 %</span><span><i style="background:var(--crit)"></i>über 100 %</span></div>`;
+    if (mode==='waerme') return `<div class="mcard legend"><b>Wärmenetz</b><span><i style="background:var(--heat)"></i>Trasse geplant · 1,9 km</span></div>`;
+    return `<div class="mcard legend"><b>Gebäude</b><span><i style="background:var(--map-block);height:8px;border:1px solid var(--map-edge)"></i>142 im Plangebiet</span></div>`;
+  }
+  const mapArea = (mode) => `<div class="mapwrap" id="map">${mapSvg(mode)}${mapTools(mode)}${legend(mode)}<div class="scale"><i></i>50 m</div></div>`;
+
+  /* Panels */
+  const spartenSeg = () => `<div class="seg" id="sparteSeg"><button data-sp="waerme" aria-pressed="${S.sparte==='waerme'}">Wärme</button><button data-sp="strom" aria-pressed="${S.sparte==='strom'}">Strom</button></div>`;
+  const grp = (title, small, body, open=true, extra='') => `<details class="grp" ${open?'open':''}><summary>${title}${small?`<small>${small}</small>`:''}${extra}<svg class="i chev"><use href="#i-chev"/></svg></summary><div class="gb">${body}</div></details>`;
+  const row = (k, sub, v) => `<div class="row"><span class="k">${k}${sub?`<br><span class="small">${sub}</span>`:''}</span><span class="v">${v||''}</span></div>`;
+
+  function panelPlanungStrom(){
+    return `<aside class="panel"><div class="p-head"><h4>Planung ${spartenSeg()}</h4>
+      <div class="hint warn"><svg class="i"><use href="#i-alert"/></svg><span><b>2 Kabel ohne Querschnitt</b>Die Berechnung nimmt dafür NAYY 4×150 an. <a data-go="map">Auf der Karte zeigen</a></span></div></div>
+      <div class="p-body">
+      ${grp('Netz','6 Stationen · 48 Kabel', row('Trafostationen','6 Stationen · 3.780 kVA','<span class="pill crit">1 Überlast</span>')+row('Niederspannungskabel','48 Abschnitte · 4,2 km','<span class="pill warn">2 offen</span>')+row('Mittelspannungsring','1 Ring · 10 kV','<span class="pill ok">ok</span>')+`<div class="tools"><button class="btn sm">${ic('pen')}Kabel zeichnen</button><button class="btn sm">Station setzen</button><button class="btn sm">Netz automatisch erzeugen</button></div>`)}
+      ${grp('Erzeugung und Speicher','PV · Batterie · Notstrom', row('Photovoltaik','14 Anlagen · 1.240 kWp')+row('Batteriespeicher','1 Anlage · 500 kWh')+row('Netzersatzanlagen','2 Aggregate · 400 kVA'), false)}
+      ${grp('Ladeinfrastruktur','3 Ladeparks', row('Ladepunkte','46 Normal · 4 Schnell'), false)}
+      ${grp('Resilienz','Blackout-Szenarien', row('Kritische Verbraucher','12 Gebäude')+row('Inselbetrieb am Netzanschluss','geplant'), false)}
+      ${grp('Erweitert','Berechnungsannahmen', `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="fld"><label for="pp-cos">cos φ Niederspannung</label><div class="inp"><input id="pp-cos" value="0,95"><em>–</em></div></div>
+        <div class="fld"><label for="pp-gzf">Gleichzeitigkeit</label><div class="inp"><select id="pp-gzf"><option>nach Kaiser</option><option>DIN 18015</option></select></div></div>
+        <div class="fld"><label for="pp-tb">Betriebstemperatur</label><div class="inp"><input id="pp-tb" value="70"><em>°C</em></div></div>
+        <div class="fld"><label for="pp-tu">Erdreichtemperatur</label><div class="inp"><input id="pp-tu" value="20"><em>°C</em></div></div></div>
+        <span class="adv">Alle Werte entsprechen den Vorgaben.</span>`, false, '')}
+      </div></aside>`;
+  }
+  function panelPlanungWaerme(){
+    return `<aside class="panel"><div class="p-head"><h4>Planung ${spartenSeg()}</h4>
+      <div class="hint"><svg class="i"><use href="#i-info"/></svg><span><b>Wärmenetz vollständig angeschlossen</b>23 von 23 Gebäuden im Versorgungsgebiet.</span></div></div>
+      <div class="p-body">
+      ${grp('Wärmenetz','1,9 km · 23 Hausstationen', row('Trassen','1,9 km · DN 32–150')+row('Vorlauf / Rücklauf','70 / 40 °C')+`<div class="tools"><button class="btn sm">${ic('pen')}Trasse zeichnen</button><button class="btn sm">Netz automatisch aufbauen</button></div>`)}
+      ${grp('Erzeugung','3 Erzeuger', row('Luft-Wasser-Wärmepumpe','800 kW','<span class="pill ok">Grundlast</span>')+row('BHKW','240 kWel / 360 kWth')+row('Spitzenlastkessel Erdgas','1.400 kW'))}
+      ${grp('Speicher und Kälte','', row('Pufferspeicher','60 m³')+row('Kälte','1 reversible WP'), false)}
+      ${grp('Einsatzreihenfolge','nach Kosten', row('1. Wärmepumpe · 2. BHKW · 3. Kessel',''), false)}
+      ${grp('Erweitert','Netzhydraulik', `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="fld"><label for="pw-dp">Druckgefälle</label><div class="inp"><input id="pw-dp" value="150"><em>Pa/m</em></div></div>
+        <div class="fld"><label for="pw-gz">Gleichzeitigkeit</label><div class="inp"><input id="pw-gz" value="0,78"><em>–</em></div></div></div>`, false)}
+      </div></aside>`;
+  }
+  function inspTrafo(){
+    const k = S.sel in T ? S.sel : 'T3';
+    const pct = LOAD[k], sn = k==='T3'?630:k==='T5'?800:630;
+    const kw = Math.round(sn*pct/100*0.95), prog = Math.round(kw*1.28);
+    const st = pct>=100 ? '<span class="pill crit">Überlast</span>' : pct>=80 ? '<span class="pill warn">Grenze erreicht</span>' : '<span class="pill ok">ausreichend</span>';
+    const progPct = Math.round(prog/(sn*0.95)*100);
+    return `<aside class="insp"><div class="p-head"><h4>Trafostation ${k} ${st}</h4><span class="small">${k==='T3'?'Werkstattbereich':'Liegenschaft'} · Kompaktstation</span></div>
+      <div class="p-body"><dl class="kv"><dt>Bemessungsleistung</dt><dd>${fmt(sn)} kVA</dd><dt>Spitzenlast 2026</dt><dd>${fmt(kw)} kW</dd><dt>Auslastung 2026</dt><dd>${pct} %</dd><dt>Prognose 2035</dt><dd style="color:${progPct>=100?'var(--crit)':'inherit'}">${fmt(prog)} kW · ${progPct} %</dd><dt>Versorgte Gebäude</dt><dd>${k==='T3'?3:5}</dd><dt>Baujahr</dt><dd>1994</dd></dl>
+      ${pct>=100?`<div class="hint warn"><svg class="i"><use href="#i-alert"/></svg><span><b>Überlast ab 2034</b>Vorschlag: Tausch auf 1.000 kVA oder Lastverlagerung an T5.</span></div>`:''}
+      <div class="tools"><button class="btn sm pri">Ertüchtigung vorschlagen</button><button class="btn sm">Steckbrief öffnen</button></div></div></aside>`;
+  }
+  function inspHeiz(){
+    return `<aside class="insp"><div class="p-head"><h4>Heizzentrale <span class="pill ok">ausreichend</span></h4><span class="small">Heizhaus · Bestand umgebaut</span></div>
+      <div class="p-body"><dl class="kv"><dt>Heizlast Netz</dt><dd>2.050 kW</dd><dt>Installierte Leistung</dt><dd>2.560 kW</dd><dt>Wärmemenge</dt><dd>4.880 MWh/a</dd><dt>EE-Anteil</dt><dd>68 %</dd><dt>Netzverlust</dt><dd>9,4 %</dd></dl>
+      <div class="tools"><button class="btn sm">Zentralenschema öffnen</button></div></div></aside>`;
+  }
+
+  function panelBestand(){
+    return `<aside class="panel"><div class="p-head"><h4>Bestand <span class="pill warn">1 offen</span></h4>
+      <div class="hint warn"><svg class="i"><use href="#i-alert"/></svg><span><b>3 Grundrisse überlappen sich</b>Doppelt erfasste Gebäude verfälschen den Bedarf. <a>Prüfen</a></span></div></div>
+      <div class="p-body">
+      ${grp('Gebiet','38,4 ha', row('Plangebiet','gezeichnet am 02.10.','<button class="btn sm">Bearbeiten</button>')+row('Plan-Overlay','Lageplan 1:1000, 4 Passpunkte')+row('Bäume','212 aus OSM'))}
+      ${grp('Gebäude','142 Gebäude', row('Quellen','OSM 128 · Liste 14')+row('Dachdaten','LoD2 für 96 Gebäude')+row('Grundrisse prüfen','3 Überlappungen','<span class="pill warn">offen</span>')+`<div class="tools"><button class="btn sm">${ic('down')}Daten laden</button><button class="btn sm">Tabelle öffnen</button></div>`)}
+      ${grp('Grundlagen Strom','', row('Messjahre','2022–2024 · Referenz 2024','<span class="pill ok">ok</span>')+row('Netzanschluss','1.250 kW · Mittelspannung','<span class="pill ok">ok</span>'))}
+      ${grp('Grundlagen Wärme','', row('Witterung','TRY Stuttgart, mittleres Jahr')+row('Verbrauch','2023, 31 Zähler'), false)}
+      </div></aside>`;
+  }
+  function inspGeb(){
+    const i = S.sel && S.sel[0]==='G' ? +S.sel.slice(1) : 11;
+    const b = B[i]; const bgf = Math.round(b[2]*b[3]*0.9/10)*10*3;
+    return `<aside class="insp"><div class="p-head"><h4>${b[4]}</h4><span class="small">Gebäude ${i+1} · Quelle OSM</span></div>
+      <div class="p-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="fld" style="grid-column:1/-1"><label for="pg-nu">Nutzung</label><div class="inp"><select id="pg-nu"><option>${/Unterkunft/.test(b[4])?'Unterkunftsgebäude':b[4]}</option></select></div></div>
+        <div class="fld"><label for="pg-bgf">BGF</label><div class="inp"><input id="pg-bgf" value="${fmt(bgf)}"><em>m²</em></div></div>
+        <div class="fld"><label for="pg-gs">Geschosse</label><div class="inp"><input id="pg-gs" value="3"><em>–</em></div></div>
+        <div class="fld"><label for="pg-bj">Baujahr</label><div class="inp"><input id="pg-bj" value="1968"></div></div>
+        <div class="fld"><label for="pg-sa">Sanierung</label><div class="inp"><select id="pg-sa"><option>teilsaniert</option></select></div></div></div>
+        <dl class="kv"><dt>Wärmebedarf</dt><dd>${fmt(Math.round(bgf*0.118))} MWh/a</dd><dt>Strombedarf</dt><dd>${fmt(Math.round(bgf*0.032))} MWh/a</dd><dt>Dachfläche PV-geeignet</dt><dd>${fmt(Math.round(b[2]*b[3]*0.45))} m²</dd></dl></div></aside>`;
+  }
+
+  function pageProjekt(){
+    const ck = (st, ico, step, t, d, a) => `<div class="ck"><span class="ic ${st}"><svg class="i" style="width:12px;height:12px"><use href="#i-${ico}"/></svg></span><span><span class="step">${step}</span><b>${t}</b><span>${d}</span></span>${a?`<button class="btn sm" data-jump="${a[1]}">${a[0]}</button>`:''}</div>`;
+    return `<div class="lay-page"><div class="page-grid">
+      <div class="card"><h5>Projektstand <span class="small">7 von 11 erledigt</span></h5>
+        <div class="hint" style="margin-bottom:10px"><svg class="i"><use href="#i-info"/></svg><span><b>Nächster Schritt: 2 Kabel ohne Querschnitt ergänzen</b>Danach neu berechnen, damit Auswertung und Gutachten aktuell sind. <a data-jump="planung">Zur Planung</a></span></div>
+        <div class="check">
+        ${ck('ok','check','Bestand','Plangebiet und Gebäude','142 Gebäude, 96 mit Dachdaten')}
+        ${ck('warn','alert','Bestand','Grundrisse prüfen','3 Überlappungen offen',['Prüfen','bestand'])}
+        ${ck('ok','check','Bestand','Strom-Grundlagen','Messjahre 2022–2024, Netzanschluss 1.250 kW')}
+        ${ck('ok','check','Bestand','Wärme-Grundlagen','Witterung und Verbrauch 2023')}
+        ${ck('ok','check','Planung','Wärmenetz und Erzeugung','1,9 km, 3 Erzeuger')}
+        ${ck('warn','alert','Planung','Stromnetz','2 Kabel ohne Querschnitt',['Ergänzen','planung'])}
+        ${ck('ok','check','Planung','PV und Speicher','1.240 kWp, 500 kWh')}
+        ${ck(S.calc?'ok':'warn',S.calc?'check':'alert','Auswertung','Berechnung',S.calc?'aktuell, 10:43':'veraltet seit 10:12',S.calc?null:['Ansehen','auswertung'])}
+        ${ck('ok','check','Auswertung','Variantenvergleich','3 Varianten verglichen')}
+        ${ck('neutral','dot','Gutachten','Texte Kapitel 5 und 6','noch nicht begonnen',['Öffnen','gutachten'])}
+        ${ck('neutral','dot','Gutachten','Word-Datei','noch nicht erstellt')}
+        </div></div>
+      <div style="display:grid;gap:14px">
+        <div class="card"><h5>Stammdaten <button class="btn sm ghost">Bearbeiten</button></h5><dl class="kv"><dt>Liegenschaft</dt><dd>Kaserne Musterstadt</dd><dt>WE-Nummer</dt><dd>12345</dd><dt>Anschrift</dt><dd>Musterstr. 1</dd><dt>Bearbeitung Strom</dt><dd>N. N.</dd><dt>Bearbeitung Wärme</dt><dd>offen</dd></dl></div>
+        <div class="card"><h5>Varianten</h5><dl class="kv"><dt>Hauptplan</dt><dd><span class="pill info">im Gutachten</span></dd><dt>PV-Ausbau Süd</dt><dd>+ 620 kWp</dd><dt>Wärmenetz Ost</dt><dd>+ 0,6 km</dd></dl></div>
+        <div class="card"><h5>Kennzahlen Hauptplan</h5><dl class="kv"><dt>Wärmebedarf</dt><dd>4.880 MWh/a</dd><dt>Heizlast</dt><dd>2.050 kW</dd><dt>Strombedarf</dt><dd>3.410 MWh/a</dd><dt>Spitzenlast Strom</dt><dd>1.212 kW</dd><dt>PV installiert</dt><dd>1.240 kWp</dd></dl></div>
+      </div></div></div>`;
+  }
+
+  const IST = [1212,1168,1054,931,846,812,795,808,872,985,1104,1190];
+  function chart(){
+    const W=640,H=250,L=44,R=12,Tt=14,Bt=28,max=1600,pw=W-L-R,ph=H-Tt-Bt,bw=pw/12;
+    const y = v => Tt + ph - v/max*ph;
+    const M = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+    let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Monatsspitzen und Anschlussleistung">`;
+    [0,400,800,1200,1600].forEach(v => { s += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L-6}" y="${y(v)+3}" text-anchor="end">${fmt(v)}</text>`; });
+    const prog = IST.map(v => Math.round(v*1.226));
+    IST.forEach((v,i) => { const x = L+i*bw+bw*0.2; s += `<rect x="${x}" y="${y(v)}" width="${bw*0.6}" height="${y(0)-y(v)}" fill="var(--brand)" opacity=".85"/><text x="${L+i*bw+bw/2}" y="${H-10}" text-anchor="middle">${M[i]}</text>`; });
+    let d=''; prog.forEach((v,i) => { d += (i?'L':'M') + (L+i*bw+bw/2) + ' ' + y(v); });
+    s += `<path d="${d}" fill="none" stroke="var(--text)" stroke-width="1.5"/>`;
+    prog.forEach((v,i) => { const over = v>1250; s += `<circle cx="${L+i*bw+bw/2}" cy="${y(v)}" r="${over?4:3}" fill="${over?'var(--crit)':'var(--surface)'}" stroke="${over?'var(--crit)':'var(--text)'}" stroke-width="1.5"/>`; });
+    s += `<line x1="${L}" x2="${W-R}" y1="${y(1250)}" y2="${y(1250)}" stroke="var(--crit)" stroke-width="1.5" stroke-dasharray="6 4"/><text class="lab" x="${W-R}" y="${y(1250)-6}" text-anchor="end">Anschlussleistung 1.250 kW</text>`;
+    s += `<text class="lab" x="${L+bw/2+8}" y="${y(prog[0])-2}">${fmt(prog[0])} kW</text>`;
+    s += `<text x="${L}" y="9">kW</text></svg>`;
+    return s + `<div style="display:flex;gap:16px;font-size:11px;color:var(--muted);margin-top:4px"><span><i style="display:inline-block;width:10px;height:10px;background:var(--brand);opacity:.85;vertical-align:-1px;margin-right:5px"></i>Monatsspitze 2024 (Messung)</span><span><i style="display:inline-block;width:14px;height:0;border-top:1.5px solid var(--text);vertical-align:3px;margin-right:5px"></i>Prognose 2035</span><span><i style="display:inline-block;width:14px;height:0;border-top:1.5px dashed var(--crit);vertical-align:3px;margin-right:5px"></i>Grenze</span></div>`;
+  }
+  function pageAuswertung(){
+    const subs = [['uebersicht','Übersicht'],['waerme','Wärme'],['strom','Strom'],['wirt','Wirtschaftlichkeit'],['em','Emissionen'],['var','Varianten'],['mass','Maßnahmen und Fahrplan']];
+    const chips = [['nap','Netzanschluss'],['netz','Netzauslastung'],['eng','Engpässe'],['pv','PV'],['res','Resilienz']];
+    const stale = S.calc ? '' : `<div class="hint warn" style="margin-bottom:14px"><svg class="i"><use href="#i-alert"/></svg><span><b>Ergebnisse vom Stand 10:12</b>Seitdem 2 Änderungen in der Planung. Oben „Berechnen“ wählen.</span></div>`;
+    return `<div class="lay-page">
+      <div class="subnav" id="asub">${subs.map(([k,t]) => `<button data-a="${k}" aria-current="${S.asub===k}">${t}</button>`).join('')}</div>
+      ${S.asub!=='strom' ? `<div class="card" style="max-width:560px"><h5>${subs.find(s=>s[0]===S.asub)[1]}</h5><p class="small">Im Prototyp ist nur „Strom › Netzanschluss“ ausgearbeitet. Jede Auswertungsseite folgt demselben Aufbau: Kennzahlen oben, Hauptdiagramm, Bewertung rechts, Übernahme ins Gutachten.</p></div>` : `
+      <div class="chips" id="achips">${chips.map(([k,t]) => `<button data-c="${k}" aria-pressed="${S.achip===k}">${t}</button>`).join('')}</div>
+      ${stale}
+      <div class="kpis"><div class="kpi"><span>Vereinbarte Anschlussleistung</span><b>1.250 kW</b><small>Mittelspannung, RLM</small></div><div class="kpi"><span>Spitze 2024 (gemessen)</span><b>1.212 kW</b><small>97 % · Januar</small></div><div class="kpi"><span>Prognose 2035</span><b>1.486 kW</b><small>mit WP, Lade, PV ohne Abzug</small></div><div class="kpi crit"><span>Reserve 2035</span><b>−236 kW</b><small>Erhöhung nötig ab 2031</small></div></div>
+      <div class="page-grid">
+        <div class="card"><h5>Monatsspitzen und Anschlussleistung <span class="small">Beispielwerte</span></h5>${chart()}</div>
+        <div style="display:grid;gap:14px">
+          <div class="card"><h5>Bewertung</h5><p style="font-size:12px">Die gemessene Spitze liegt 2024 bei 97 % der Anschlussleistung. Mit dem geplanten Zubau an Wärmepumpen und Ladepunkten wird die Grenze ab 2031 in den Wintermonaten überschritten.</p><p style="font-size:12px;margin:0"><b>Empfehlung:</b> Erhöhung auf 1.600 kW beim Netzbetreiber beantragen.</p></div>
+          <div class="card"><h5>Im Gutachten</h5><dl class="kv"><dt>Kapitel</dt><dd>3.4.1 Netzanschluss</dd><dt>Abbildung</dt><dd>Abb. 14</dd><dt>Stand im Gutachten</dt><dd>${S.calc?'aktuell':'10:12'}</dd></dl><div class="tools" style="margin-top:8px"><button class="btn sm" data-jump="gutachten">Im Gutachten ansehen</button></div></div>
+        </div></div>`}
+    </div>`;
+  }
+
+  function pageGutachten(){
+    const o = [[1,'1','Ausgangslage','ok'],[2,'1.1','Aufgabenstellung','ok'],[2,'1.2','Liegenschaft','ok'],[1,'2','Grundlagen','ok'],[1,'3','Elektrotechnik','warn'],[2,'3.1','Bestand','ok'],[2,'3.2','Lastgang','ok'],[2,'3.3','Bedarfsprognose','ok'],[2,'3.4','Variantenbildung','warn'],[3,'3.4.1','Netzanschluss','warn',1],[3,'3.4.2','Photovoltaik','ok'],[3,'3.4.3','Notstrom','ok'],[3,'3.4.4','Ladeinfrastruktur','ok'],[2,'3.5','Wirtschaftlichkeit','ok'],[1,'4','Wärmeversorgung','ok'],[1,'5','Resilienz','neutral'],[1,'6','Energiemanagement','neutral']];
+    return `<div class="lay-doc">
+      <div class="outline"><div style="grid-template-columns:1fr auto;font-weight:700;padding-bottom:8px"><span>Gliederung</span><span class="small">31 / 47</span></div>
+      ${o.map(([l,n,t,st,cur]) => `<div class="l${l}${cur?' cur':''}"><span class="nr">${n}</span><span>${t}</span><i class="st ${st}" style="width:7px;height:7px;border-radius:50%;display:block"></i></div>`).join('')}</div>
+      <div class="paper-wrap"><div class="paper">
+        <div class="ph"><span><b>LKEBw</b> · Gutachten Energieversorgung</span><span>Kaserne Musterstadt · 3 Elektrotechnik</span></div>
+        <h6><em>3.4.1</em>Netzanschluss</h6>
+        <p>Die Liegenschaft ist über einen Mittelspannungsanschluss mit einer vereinbarten Anschlussleistung von 1.250 kW an das Netz des örtlichen Verteilnetzbetreibers angeschlossen. Die gemessene Jahreshöchstlast lag im Referenzjahr 2024 bei 1.212 kW.</p>
+        <p>Mit den geplanten Maßnahmen steigt die Höchstlast bis 2035 auf voraussichtlich 1.486 kW. Die vereinbarte Anschlussleistung wird damit ab 2031 in den Wintermonaten überschritten.</p>
+        <div class="fig ph-sel"><svg viewBox="0 0 360 120" width="100%">${IST.map((v,i)=>`<rect x="${20+i*28}" y="${110-v/1600*100}" width="16" height="${v/1600*100}" fill="#266426" opacity=".85"/>`).join('')}<line x1="14" x2="356" y1="${110-1250/1600*100}" y2="${110-1250/1600*100}" stroke="#B3261E" stroke-dasharray="4 3"/><path d="${IST.map((v,i)=>(i?'L':'M')+(28+i*28)+' '+(110-v*1.226/1600*100)).join(' ')}" fill="none" stroke="#1B1F1C" stroke-width="1"/><text x="356" y="${104-1250/1600*100}" text-anchor="end">Anschlussleistung 1.250 kW</text></svg></div>
+        <div class="cap">Abbildung 14: Monatsspitzen 2024 und Prognose 2035 im Vergleich zur Anschlussleistung</div>
+        <p>Es wird empfohlen, die Erhöhung der Anschlussleistung auf 1.600 kW frühzeitig beim Netzbetreiber zu beantragen, da mit Vorlaufzeiten von mehreren Jahren zu rechnen ist.</p>
+      </div></div>
+      <aside class="insp"><div class="p-head"><h4>Abbildung 14</h4><span class="small">Kapitel 3.4.1 · aus der Auswertung</span></div>
+        <div class="p-body"><dl class="kv"><dt>Quelle</dt><dd>Auswertung › Strom</dd><dt>Daten</dt><dd>Messjahr 2024</dd><dt>Stand</dt><dd>${S.calc?'aktuell':'10:12, veraltet'}</dd></dl>
+        ${S.calc?'':`<div class="hint warn"><svg class="i"><use href="#i-alert"/></svg><span><b>Neuere Ergebnisse vorhanden</b><a data-upd>Abbildung aktualisieren</a></span></div>`}
+        <div class="fld"><label for="pa-cap">Beschriftung</label><div class="inp"><input id="pa-cap" value="Monatsspitzen 2024 und Prognose 2035"></div></div>
+        <div class="tools"><button class="btn sm pri">${ic('down')}Word-Datei erstellen</button><button class="btn sm">Vorschau PDF</button></div></div></aside>
+    </div>`;
+  }
+
+  /* Render */
+  function render(){
+    renderRail();
+    let h = '';
+    if (S.step==='projekt') h = pageProjekt();
+    else if (S.step==='bestand') h = `<div class="lay-map">${panelBestand()}${mapArea('bestand')}${inspGeb()}</div>`;
+    else if (S.step==='planung') h = S.sparte==='strom' ? `<div class="lay-map">${panelPlanungStrom()}${mapArea('strom')}${inspTrafo()}</div>` : `<div class="lay-map">${panelPlanungWaerme()}${mapArea('waerme')}${inspHeiz()}</div>`;
+    else if (S.step==='auswertung') h = pageAuswertung();
+    else h = pageGutachten();
+    $('#stage').innerHTML = h;
+  }
+  function toast(t){
+    const el = $('#toast') || (() => { const d = document.createElement('div'); d.className='toast'; d.id='toast'; $('#win').appendChild(d); return d; })();
+    el.textContent = t; el.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('on'), 1600);
+  }
+  $('#stage').addEventListener('click', e => {
+    const sp = e.target.closest('[data-sp]'); if (sp){ S.sparte = sp.dataset.sp; S.sel = S.sparte==='strom'?'T3':null; render(); return; }
+    const tr = e.target.closest('[data-t]'); if (tr){ S.sel = tr.dataset.t; render(); return; }
+    const bl = e.target.closest('[data-b]'); if (bl && S.step==='bestand'){ S.sel = 'G'+bl.dataset.b; render(); return; }
+    const j = e.target.closest('[data-jump]'); if (j){ S.step = j.dataset.jump; render(); return; }
+    const a = e.target.closest('[data-a]'); if (a){ S.asub = a.dataset.a; render(); return; }
+    const c = e.target.closest('[data-c]'); if (c){ S.achip = c.dataset.c; if (c.dataset.c!=='nap') toast('Im Prototyp nur „Netzanschluss“ ausgearbeitet'); render(); return; }
+    if (e.target.closest('[data-upd]')){ toast('Erst oben „Berechnen“, dann wird die Abbildung neu erzeugt'); return; }
+    if (e.target.closest('[data-go="map"]')){ toast('Karte springt zu den Kabeln ohne Querschnitt'); return; }
+    const seg = e.target.closest('.mtools .seg button'); if (seg){ seg.parentNode.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x===seg)); return; }
+  });
+  render();
+})();
+</script>

@@ -437,7 +437,7 @@ function _posVon(id) {
 function _divIcon(html, farbe, groesse = 26) {
   return L.divIcon({
     className: '', iconSize: [groesse, groesse], iconAnchor: [groesse / 2, groesse / 2],
-    html: `<div style="background:${farbe};border:2px solid #fff;border-radius:50%;width:${groesse}px;height:${groesse}px;
+    html: `<div style="background:${farbe};border:2px solid var(--border);border-radius:50%;width:${groesse}px;height:${groesse}px;
            display:flex;align-items:center;justify-content:center;font-size:${Math.round(groesse / 2)}px;color:#fff;
            box-shadow:0 2px 6px rgba(0,0,0,.45);">${html}</div>`,
   });
@@ -454,7 +454,7 @@ function _platzZeichnen() {
     const pts = e?.layer?.getLatLngs?.() || [];
     const text = `<b>✕ Abschalten</b><br>${escHtml(x.lokal ? `an ${x.vonName}` : `${x.vonName} → ${x.zuName}`)}<br>`
       + `${x.anzahl} Last${x.anzahl === 1 ? '' : 'en'} · ${_fmtKw(x.lastKw)}<br>`
-      + `<span style="color:#90a4ae">${escHtml(x.namen.slice(0, 6).join(', '))}${x.namen.length > 6 ? ' …' : ''}</span>`;
+      + `<span style="color:var(--c-blue)">${escHtml(x.namen.slice(0, 6).join(', '))}${x.namen.length > 6 ? ' …' : ''}</span>`;
     let mitte = null;
     if (pts.length >= 2) {
       L.polyline(pts, { color: '#ff1744', weight: 7, opacity: 0.8, dashArray: '3 7', interactive: false }).addTo(_platzLayer);
@@ -564,21 +564,21 @@ function _platzBlock() {
   const aggZeilen = r.aggregate.map(a => {
     const farbe = a.ort === 'knoten' ? KNOTEN_FARBE : a.fest ? '#90a4ae' : NOTSTROM_KLASSEN.A.farbe;
     const art = a.ort === 'knoten' ? a.typ : a.fest ? 'eigene NEA' : a.nichtAmNetz ? 'ohne Netz' : 'Gebäude';
-    return `<div style="display:flex;align-items:center;gap:4px;padding:2px;border-bottom:1px solid rgba(255,255,255,.05);">
+    return `<div style="display:flex;align-items:center;gap:4px;padding:2px;border-bottom:1px solid rgba(var(--ink),.05);">
         <span style="color:${farbe};">⚙</span>
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;"
           data-click="blackoutZeigeOrt(${a.lat},${a.lng})" title="${escHtml(a.gebaeude.length + ' Gebäude versorgt')}">${escHtml(a.name)}
           <span style="color:var(--muted);font-size:9px;">${escHtml(art)}</span></span>
-        <span style="font-size:9.5px;white-space:nowrap;${a.empfKw > 0 ? '' : 'color:#ffa726;'}"
+        <span style="font-size:9.5px;white-space:nowrap;${a.empfKw > 0 ? '' : 'color:var(--c-orange);'}"
           title="Gleichzeitige Spitze ${_fmtKw(a.peakKw)} + ${Math.round((NEA_KOSTEN.reserve - 1) * 100)} % Reserve${a.bestandKw ? ` · vorhanden ${_fmtKw(a.bestandKw)}` : ''}">${a.empfKw > 0 ? _fmtKw(a.empfKw) : '⚠ 0 kW'}${
             a.bestandKw > 0 ? `<span style="color:${a.zusatzKw > 0 ? '#ffa726' : '#66bb6a'};"> · ${a.zusatzKw > 0 ? `+${_fmtKw(a.zusatzKw)}` : 'Bestand ✓'}</span>` : ''}</span>
       </div>`;
   }).join('');
 
   const abgZeilen = r.abgaenge.map(x => `
-      <div style="display:flex;gap:4px;padding:2px;font-size:9.5px;border-bottom:1px solid rgba(255,255,255,.05);"
+      <div style="display:flex;gap:4px;padding:2px;font-size:9.5px;border-bottom:1px solid rgba(var(--ink),.05);"
         title="${escHtml(x.namen.join(', '))}">
-        <span style="color:#ff1744;">✕</span>
+        <span style="color:var(--c-red);">✕</span>
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(x.lokal ? `an ${x.vonName} trennen` : `${x.vonName} → ${x.zuName}`)}
           <span style="color:var(--muted);">${x.anzahl > 1 ? `(${x.anzahl} Lasten)` : ''}${x.einspeisepunkte ? ' · Einspeisepunkt C' : ''}</span></span>
         <span style="white-space:nowrap;color:var(--muted);">${_fmtKw(x.lastKw)}</span>
@@ -591,7 +591,7 @@ function _platzBlock() {
     r.summe.ohneLast && `${r.summe.ohneLast} Aggregat(e) ohne Last — Gebäude ohne Verbraucher-Asset.`,
     r.bestandOhneOrt.length && `${r.bestandOhneOrt.length} vorhandene(s) Aggregat(e) ohne Kabel zu einem NS-Knoten und ohne Gebäude `
       + `(${escHtml(r.bestandOhneOrt.map(b => b.name || b.id).join(', '))}) — nicht angerechnet.`,
-  ].filter(Boolean).map(t => `<div style="font-size:9px;color:#ffa726;margin-top:4px;line-height:1.4;">⚠ ${t}</div>`).join('');
+  ].filter(Boolean).map(t => `<div style="font-size:9px;color:var(--c-orange);margin-top:4px;line-height:1.4;">⚠ ${t}</div>`).join('');
 
   return titel + `
     <table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px;">
@@ -836,17 +836,17 @@ function _inselBlock() {
     ins.ohneTrafo && 'Keine Trafos erfasst — Lastabwurf und Zuschaltstufen entfallen.',
     r.abReichtNicht && `Die A/B-Gebäude brauchen gleichzeitig mehr als das Ziel — bemessen wird auf ${_fmtKw(r.bemessungKw)}.`,
     !ins.msKabelM && 'Keine MS-Kabel erfasst — Erdschlussstrom und Ladeleistung sind 0 gesetzt.',
-  ].filter(Boolean).map(t => `<div style="font-size:9px;color:#ffa726;margin-top:4px;line-height:1.4;">⚠ ${t}</div>`).join('');
+  ].filter(Boolean).map(t => `<div style="font-size:9px;color:var(--c-orange);margin-top:4px;line-height:1.4;">⚠ ${t}</div>`).join('');
 
   const stufen = r.zuschaltung.stufen.map((st, i) => `
-      <div style="display:flex;gap:4px;padding:2px;font-size:9.5px;border-bottom:1px solid rgba(255,255,255,.05);">
-        <span style="color:#43a047;font-weight:700;width:14px;">${i + 1}</span>
+      <div style="display:flex;gap:4px;padding:2px;font-size:9.5px;border-bottom:1px solid rgba(var(--ink),.05);">
+        <span style="color:var(--c-green);font-weight:700;width:14px;">${i + 1}</span>
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(st.trafos.map(t => t.name).join(', '))}</span>
         <span style="white-space:nowrap;color:var(--muted);">${fmt(st.kva)} kVA · ${_fmtKw(st.lastKw)}</span>
       </div>`).join('');
   const aus = r.lastabwurf.abschalten.map(t => `
-      <div style="display:flex;gap:4px;padding:2px;font-size:9.5px;border-bottom:1px solid rgba(255,255,255,.05);">
-        <span style="color:#ff1744;width:14px;">✕</span>
+      <div style="display:flex;gap:4px;padding:2px;font-size:9.5px;border-bottom:1px solid rgba(var(--ink),.05);">
+        <span style="color:var(--c-red);width:14px;">✕</span>
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(t.name)}</span>
         <span style="white-space:nowrap;color:var(--muted);">${_fmtKw(t.spitzeKw)}</span>
       </div>`).join('');
@@ -859,7 +859,7 @@ function _inselBlock() {
       ${r.checkliste.filter(c => c.gruppe === gr).map(c => {
         const st = INSEL_STATUS[c.status];
         const hand = e.bewertung[c.id] || '';
-        return `<details style="border-bottom:1px solid rgba(255,255,255,.05);padding:2px 0;">
+        return `<details style="border-bottom:1px solid rgba(var(--ink),.05);padding:2px 0;">
           <summary style="display:flex;align-items:center;gap:4px;cursor:pointer;list-style:none;font-size:10px;">
             <span style="flex-shrink:0;font-size:8.5px;padding:0 4px;border-radius:3px;border:1px solid ${st.farbe};color:${st.farbe};${hand ? 'font-weight:700;' : ''}"
               title="${hand ? 'von Hand gesetzt' : 'automatisch'}">${st.label}</span>
@@ -1026,7 +1026,7 @@ function _waermeBlock() {
     ${feld('… oder fest', 'hilfsKw', e.hilfsKw || '', 'kW', 'Fester Wert statt Prozentansatz — leer = Prozentansatz', '—')}`;
 
   if (!w) {
-    return eingaben + `<div style="font-size:9.5px;color:#ffa726;margin-top:8px;line-height:1.45;">
+    return eingaben + `<div style="font-size:9.5px;color:var(--c-orange);margin-top:8px;line-height:1.45;">
       ⚠ Kein Wärme-Lastgang — erst „Grundlagen berechnen" (Wärmenetz), dann erscheint hier die Deckung im Ausfall.</div>`;
   }
   const { mit, ohne } = w;
@@ -1053,7 +1053,7 @@ function _waermeBlock() {
     </div>`;
 
   const erzeugerZeilen = mit.erzeuger.map(x => `
-      <div style="display:flex;gap:4px;padding:2px;font-size:9.5px;border-bottom:1px solid rgba(255,255,255,.05);"
+      <div style="display:flex;gap:4px;padding:2px;font-size:9.5px;border-bottom:1px solid rgba(var(--ink),.05);"
         title="${escHtml(x.grund || 'läuft im Ausfall')}">
         <span style="width:12px;color:${x.verfuegbar ? '#66bb6a' : '#ef5350'};">${x.verfuegbar ? '✓' : '✕'}</span>
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(x.label)}
@@ -1065,11 +1065,11 @@ function _waermeBlock() {
   const hzKlasse = normalisiereNotstrom(hz?.notstrom);
   const hzOhneAsset = !!hz && !(anschlussKwJeGebaeude(_aktiveVerbraucher(globalYear)).get(hz.id) > 0);
   const hzZeile = !hz
-    ? `<div style="font-size:9px;color:#ffa726;margin-top:6px;">⚠ Keine Heizzentrale im Wärmenetz gewählt — sie wird in der Strom-Bilanz nicht berücksichtigt.</div>`
+    ? `<div style="font-size:9px;color:var(--c-orange);margin-top:6px;">⚠ Keine Heizzentrale im Wärmenetz gewählt — sie wird in der Strom-Bilanz nicht berücksichtigt.</div>`
     : hzKlasse?.klasse === 'A' && hzKlasse.eigeneNea
-      ? `<div style="font-size:9.5px;color:#66bb6a;margin-top:6px;">✓ Heizzentrale „${escHtml(hz.name || '')}" ist Klasse A mit eigenem Aggregat.</div>`
+      ? `<div style="font-size:9.5px;color:var(--c-green);margin-top:6px;">✓ Heizzentrale „${escHtml(hz.name || '')}" ist Klasse A mit eigenem Aggregat.</div>`
         + (hzOhneAsset && mit.neaKw
-          ? `<div style="font-size:9px;color:#ffa726;margin-top:3px;line-height:1.4;">⚠ Die Heizzentrale hat kein Verbraucher-Asset — im Strom-Teil zählt ihr Aggregat mit 0 kW statt ${_fmtKw(mit.neaKw)}.</div>`
+          ? `<div style="font-size:9px;color:var(--c-orange);margin-top:3px;line-height:1.4;">⚠ Die Heizzentrale hat kein Verbraucher-Asset — im Strom-Teil zählt ihr Aggregat mit 0 kW statt ${_fmtKw(mit.neaKw)}.</div>`
           : '')
       : `<button class="btn-xs" style="width:100%;margin-top:6px;border-color:${WAERME_FARBE};color:${WAERME_FARBE};"
           data-click="blackoutHeizzentraleEinstufen()"
@@ -1082,7 +1082,7 @@ function _waermeBlock() {
     mit.awsv && `Heizöllager über ${fmt(WAERME_PARAMETER.awsvSchwelleL)} l: AwSV-Anzeige und Auflagen beachten.`,
     w.zweistoffAuto && w.gasKw > 0 && WAERME_SZENARIEN[e.szenario].gas === false && 'Zweistoffbrenner-Leistung = Leistung der Gaskessel (Vorgabe).',
     mit.erzeuger.some(x => x.key === 'zweistoff') && w.zweistoffKw > w.gasKw + 0.5 && 'Zweistoffleistung größer als die Gaskessel — setzt zusätzliche Kessel voraus.',
-  ].filter(Boolean).map(t => `<div style="font-size:9px;color:#ffa726;margin-top:4px;line-height:1.4;">⚠ ${t}</div>`).join('');
+  ].filter(Boolean).map(t => `<div style="font-size:9px;color:var(--c-orange);margin-top:4px;line-height:1.4;">⚠ ${t}</div>`).join('');
 
   const kosten = [
     mit.kosten.nea && ['Notstromaggregat Heizzentrale', mit.kosten.nea],
@@ -1390,7 +1390,7 @@ function _zieleBlock() {
         <input type="text" value="${escHtml(z.name)}" style="flex:1;min-width:0;${eingabe}font-weight:600;"
           data-change="blackoutZielSet('${z.id}','name',this.value)"/>
         ${st ? `<span style="font-size:9px;color:${st.farbe};white-space:nowrap;">${st.label}</span>` : ''}
-        <button class="btn-xs" style="padding:0 5px;${e.empfehlung === z.id ? `border-color:#ffd54f;color:#ffd54f;background:#ffd54f26;` : ''}"
+        <button class="btn-xs" style="padding:0 5px;${e.empfehlung === z.id ? `border-color:var(--c-amber);color:var(--c-amber);background:#ffd54f26;` : ''}"
           data-click="blackoutZielEmpfehlen('${z.id}')"
           title="${e.empfehlung === z.id ? 'Empfehlung des Gutachtens (Kapitel 8.2.8) — erneut klicken zum Entfernen' : 'Als Empfehlung des Gutachtens markieren (Kapitel 8.2.8)'}">${e.empfehlung === z.id ? '★' : '☆'}</button>
         <button class="btn-xs" style="padding:0 5px;" data-click="blackoutZielWeg('${z.id}')" title="Ziel entfernen">✕</button>
@@ -1437,7 +1437,7 @@ function _zieleBlock() {
     <div style="font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.45;">
       Was soll wie lange versorgt werden? Die Stufen A und A + B nutzen die Platzierung am Netz (günstigste Strategie),
       die Liegenschaft die Insel am NAP, die Wärme die Einstellungen des Wärme-Reiters.</div>
-    ${veraltet ? '<div style="font-size:9px;color:#ffa726;margin-top:4px;">⚠ Eingaben geändert — neu bewerten.</div>' : ''}
+    ${veraltet ? '<div style="font-size:9px;color:var(--c-orange);margin-top:4px;">⚠ Eingaben geändert — neu bewerten.</div>' : ''}
     ${karten || '<div style="font-size:9.5px;color:var(--muted);margin-top:6px;">Keine Ziele.</div>'}
     <div style="display:flex;gap:4px;margin-top:6px;">
       <button class="btn-xs" style="flex:1;" data-click="blackoutZielNeu()">+ Ziel</button>
@@ -1550,7 +1550,7 @@ function _liste(b) {
         ? `<label title="Eigenes Notstromaggregat direkt am Gebäude" style="display:inline-flex;align-items:center;gap:2px;cursor:pointer;">
              <input type="checkbox" ${z.eigeneNea ? 'checked' : ''} data-change="blackoutSetEigeneNea(${z.id},this.checked)"/> NEA</label>`
         : '';
-    return `<div style="display:flex;align-items:center;gap:4px;padding:3px 2px;border-bottom:1px solid rgba(255,255,255,.05);${z.id === aktiv ? 'background:rgba(255,255,255,.05);' : ''}">
+    return `<div style="display:flex;align-items:center;gap:4px;padding:3px 2px;border-bottom:1px solid rgba(var(--ink),.05);${z.id === aktiv ? 'background:rgba(var(--ink),.05);' : ''}">
         <span style="width:14px;text-align:center;font-weight:700;color:${k.farbe};">${z.klasse}</span>
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;"
           data-click="blackoutZeige(${z.id})" title="Auf der Karte zeigen">${escHtml(z.name)}</span>
@@ -1602,7 +1602,7 @@ function _html() {
       </div>
       ${_bilanzTabelle(b)}
       ${_kennzahlen(b)}
-      ${b.summe.ohneLast ? `<div style="font-size:9px;color:#ffa726;margin-top:5px;line-height:1.4;">
+      ${b.summe.ohneLast ? `<div style="font-size:9px;color:var(--c-orange);margin-top:5px;line-height:1.4;">
         ⚠ ${b.summe.ohneLast} eingestufte${b.summe.ohneLast === 1 ? 's Gebäude hat' : ' Gebäude haben'} kein Verbraucher-Asset mit Leistung — sie zählen mit 0 kW.</div>` : ''}
       ${_liste(b)}
       <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.45;">

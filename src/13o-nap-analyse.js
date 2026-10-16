@@ -235,11 +235,11 @@ export function napBuildAnalyseSection() {
     wrap.id = 'analyse-nap-wrap';
     wrap.style.display = 'none';
     wrap.innerHTML = `
-<div id="nap-fullscreen-inner" style="display:flex;flex-direction:row;height:calc(100vh - 160px);min-height:400px;gap:0;background:#0f0f1a;border-radius:8px;overflow:hidden;">
+<div id="nap-fullscreen-inner" style="display:flex;flex-direction:row;height:calc(100vh - 160px);min-height:400px;gap:0;background:var(--surface);border-radius:8px;overflow:hidden;">
   <!-- Sidebar -->
-  <div id="nap-sidebar" style="width:300px;overflow-y:auto;flex-shrink:0;border-right:1px solid rgba(38,166,154,.15);padding:10px 10px 16px;background:#0f0f1a;"></div>
+  <div id="nap-sidebar" style="width:300px;overflow-y:auto;flex-shrink:0;border-right:1px solid rgba(38,166,154,.15);padding:10px 10px 16px;background:var(--surface);"></div>
   <!-- Main -->
-  <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:#0f0f1a;">
+  <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--surface);">
     <!-- Oberer Bereich: Chart-Tabs + Canvas -->
     <div id="nap-main-top" style="flex:3;display:flex;flex-direction:column;padding:10px 14px 6px;overflow:hidden;min-height:0;"></div>
     <!-- Unterer Bereich: Lastentwicklung -->
@@ -856,7 +856,7 @@ export function napRenderPanel() {
   const hdrInfo = document.getElementById('nap-hdr-info');
   if (hdrInfo && data) {
     const s = data.stats;
-    hdrInfo.innerHTML = `${data.isSynthetic?'⚡':'📄'} <b style="color:#ccc">${escHtml(data.filename)}</b>
+    hdrInfo.innerHTML = `${data.isSynthetic?'⚡':'📄'} <b style="color:var(--muted)">${escHtml(data.filename)}</b>
       &nbsp;·&nbsp; ${data.year} &nbsp;·&nbsp; ${s.peak.toFixed(0)} kW Peak`;
   } else if (hdrInfo) hdrInfo.innerHTML='';
   _napRenderSidebar();
@@ -889,7 +889,7 @@ function _napRenderSidebar() {
     const hasBfsSynth = !!(synthData && !synthData.isOverlay);
     napBlock = `
 <div style="margin-bottom:10px;">
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:4px;">Ansicht</div>
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:4px;">Ansicht</div>
   <div style="display:flex;gap:3px;margin-bottom:6px;flex-wrap:wrap;">
     <button onclick="napSetTopSeriesMode('gemessen')"
       style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-size:9px;font-weight:600;min-width:60px;
@@ -907,8 +907,8 @@ function _napRenderSidebar() {
       background:${topMode==='messungPlusProfil'?'rgba(171,71,188,.12)':'transparent'};
       color:${topMode==='messungPlusProfil'?'#ce93d8':'#555'};">📊 + Maßnahmen</button>
   </div>
-  ${hasBfsSynth && topMode==='synthetisch'?`<div style="font-size:9px;color:#ef9a9a;">⚡ ${synthData.sourceAssets} Assets · ${synthData.withStaticFallback} statisch — ${synthData.filename||''}</div>`:''}
-  ${synthData?.isOverlay?`<div style="font-size:9px;color:#ab47bc;">✓ ${synthData.sourceAssets} Profile + ${synthData.withStaticFallback} statisch</div>`:''}
+  ${hasBfsSynth && topMode==='synthetisch'?`<div style="font-size:9px;color:var(--c-red);">⚡ ${synthData.sourceAssets} Assets · ${synthData.withStaticFallback} statisch — ${synthData.filename||''}</div>`:''}
+  ${synthData?.isOverlay?`<div style="font-size:9px;color:var(--c-violet);">✓ ${synthData.sourceAssets} Profile + ${synthData.withStaticFallback} statisch</div>`:''}
 </div>`;
   } else {
     const yr2 = _yr();
@@ -918,9 +918,9 @@ function _napRenderSidebar() {
     const profileCount = selNap ? _napBfsDownstream(selId).filter(a=>a.profil?.werte?.length>0).length : 0;
     napBlock = naps.length > 0 ? `
 <div style="margin-bottom:10px;">
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:5px;">Synthetische Analyse</div>
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:5px;">Synthetische Analyse</div>
   <select onchange="napSetSelectedNap(this.value)"
-    style="width:100%;background:#1e1e30;border:1px solid #2a3a3a;border-radius:4px;color:#ccc;padding:5px 7px;font-size:10px;margin-bottom:5px;">
+    style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--muted);padding:5px 7px;font-size:10px;margin-bottom:5px;">
     <option value="">— NAP auswählen —</option>
     ${naps.map(n=>`<option value="${n.id}"${n.id===selId?' selected':''}>${n.name}</option>`).join('')}
   </select>
@@ -935,29 +935,29 @@ function _napRenderSidebar() {
   const hatReferenz = !!(window.elQuartierH15 || window.elQuartierH);
   const importBlock = `
 <div style="margin-bottom:10px;">
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:5px;">Gemessene Daten (Referenzjahr)</div>
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:5px;">Gemessene Daten (Referenzjahr)</div>
   ${csvData?`
-  <div style="background:#1e1e30;border-radius:5px;padding:7px 8px;font-size:10px;color:#aaa;">
-    <span style="color:#ffd54f;font-size:9px;font-weight:600;">⚡ Aus Strom-Grundlagen</span><br>
+  <div style="background:var(--surface2);border-radius:5px;padding:7px 8px;font-size:10px;color:var(--muted);">
+    <span style="color:var(--c-amber);font-size:9px;font-weight:600;">⚡ Aus Strom-Grundlagen</span><br>
     ${escHtml(csvData.filename)}<br>
-    <span style="color:#666;">${csvData.year} · ${csvData.raw.length.toLocaleString('de')} Werte</span>
+    <span style="color:var(--faint);">${csvData.year} · ${csvData.raw.length.toLocaleString('de')} Werte</span>
   </div>
   <button onclick="napRemoveMeasuredData()"
-    style="margin-top:5px;width:100%;padding:4px;border:1px solid #ef535055;border-radius:4px;background:transparent;color:#ef5350;cursor:pointer;font-size:10px;">
+    style="margin-top:5px;width:100%;padding:4px;border:1px solid #ef535055;border-radius:4px;background:transparent;color:var(--c-red);cursor:pointer;font-size:10px;">
     ↩ Messdaten ausblenden
   </button>
   `: hatReferenz ? `
-  <div style="background:#1e2030;border:1px solid #26a69a44;border-radius:5px;padding:7px 8px;font-size:10px;color:#aaa;margin-bottom:6px;">
-    <span style="color:#ffd54f;font-size:9px;font-weight:600;">⚡ Referenzjahr verfügbar</span><br>
-    <span style="color:#666;">${escHtml(window.elQuartierFilename || '')}</span>
+  <div style="background:var(--surface2);border:1px solid #26a69a44;border-radius:5px;padding:7px 8px;font-size:10px;color:var(--muted);margin-bottom:6px;">
+    <span style="color:var(--c-amber);font-size:9px;font-weight:600;">⚡ Referenzjahr verfügbar</span><br>
+    <span style="color:var(--faint);">${escHtml(window.elQuartierFilename || '')}</span>
   </div>
   <button onclick="napLoadFromStromGrundlagen()"
-    style="width:100%;padding:6px;border:1px solid #26a69a55;border-radius:4px;background:#26a69a11;color:#26a69a;cursor:pointer;font-size:10px;margin-bottom:6px;">
+    style="width:100%;padding:6px;border:1px solid #26a69a55;border-radius:4px;background:#26a69a11;color:var(--c-teal);cursor:pointer;font-size:10px;margin-bottom:6px;">
     ↓ Jetzt laden
   </button>` : `
-  <div style="font-size:9px;color:#888;line-height:1.5;margin-bottom:6px;">Keine Messdaten. Lastgänge werden unter ⚡ Strom-Grundlagen › Messjahre geladen; die NAP-Analyse rechnet mit dem dort gewählten Referenzjahr.</div>`}
+  <div style="font-size:9px;color:var(--faint);line-height:1.5;margin-bottom:6px;">Keine Messdaten. Lastgänge werden unter ⚡ Strom-Grundlagen › Messjahre geladen; die NAP-Analyse rechnet mit dem dort gewählten Referenzjahr.</div>`}
   <button onclick="sgMjOeffnen()"
-    style="margin-top:5px;width:100%;padding:4px;border:1px solid #ffd54f55;border-radius:4px;background:transparent;color:#ffd54f;cursor:pointer;font-size:10px;">
+    style="margin-top:5px;width:100%;padding:4px;border:1px solid #ffd54f55;border-radius:4px;background:transparent;color:var(--c-amber);cursor:pointer;font-size:10px;">
     ⚡ Messjahre verwalten
   </button>
 </div>`;
@@ -965,7 +965,7 @@ function _napRenderSidebar() {
   // KPIs
   const kpiBlock = !s ? '' : `
 <div style="margin-bottom:10px;">
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:5px;">
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:5px;">
     Kennzahlen ${data?.isSynthetic?'(Synthetisch)':'Messjahr'}</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
     ${[['#ef5350',s.peak.toFixed(0),'kW Peak-Last'],['#80cbc4',s.grundlast.toFixed(0),'kW Grundlast'],
@@ -973,28 +973,28 @@ function _napRenderSidebar() {
        ['#ffa726',Math.round(s.benutzungsdauer)+'','h Benutzungsdauer'],['#a5d6a7',Math.round(s.volllaststunden)+'','h Volllaststunden'],
        ['#ffa726',s.jahresenergie>=1e6?(s.jahresenergie/1e6).toFixed(2)+' GWh':(s.jahresenergie/1e3).toFixed(1)+' MWh','Jahresenergie'],
        ['#ef5350',s.ueberschreitungsstunden80.toFixed(0),'h > 80%-Stunden']]
-    .map(([c,v,l])=>`<div style="background:#1e1e30;border-radius:4px;padding:5px 6px;text-align:center;">
+    .map(([c,v,l])=>`<div style="background:var(--surface2);border-radius:4px;padding:5px 6px;text-align:center;">
       <div style="font-size:13px;font-weight:700;color:${c};">${v}</div>
-      <div style="font-size:8px;color:#555;margin-top:1px;">${l}</div></div>`).join('')}
+      <div style="font-size:8px;color:var(--faint);margin-top:1px;">${l}</div></div>`).join('')}
   </div>
 </div>`;
 
   // NAP-Kapazität
   const napCapBlock = `
 <div style="margin-bottom:10px;">
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:5px;">NAP-Anschlussleistung</div>
-  <div style="background:#1e1e30;border-radius:5px;padding:7px 8px;">
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:5px;">NAP-Anschlussleistung</div>
+  <div style="background:var(--surface2);border-radius:5px;padding:7px 8px;">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-      <span style="font-size:10px;color:#aaa;">Max. Bezug:</span>
+      <span style="font-size:10px;color:var(--muted);">Max. Bezug:</span>
       <span style="flex:1;font-size:10px;font-weight:600;color:${cap != null ? '#ccc' : '#666'};"
         title="Vereinbarte Anschlussleistung — Feld „Max. Bezug“ unter ⚡ Strom-Grundlagen › NAP-Grenzen">${cap != null ? Math.round(cap).toLocaleString('de-DE') + ' kVA' : 'nicht hinterlegt'}</span>
       <button onclick="sgNaOeffnen()" title="In ⚡ Strom-Grundlagen › Netzanschluss bearbeiten"
-        style="padding:1px 6px;border:1px solid #2a3a3a;border-radius:3px;background:transparent;color:#80cbc4;font-size:9px;cursor:pointer;">✎ Netzanschluss</button>
+        style="padding:1px 6px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--c-teal);font-size:9px;cursor:pointer;">✎ Netzanschluss</button>
     </div>
     <div style="display:flex;align-items:center;gap:6px;">
-      <span style="font-size:10px;color:#aaa;">Gleichzeitigkeit:</span>
+      <span style="font-size:10px;color:var(--muted);">Gleichzeitigkeit:</span>
       <input type="number" value="${gzf}" min="0.1" max="1" step="0.05"
-        style="width:55px;background:#0f0f1a;border:1px solid #2a3a3a;border-radius:3px;color:#ccc;padding:3px 6px;font-size:10px;"
+        style="width:55px;background:var(--surface);border:1px solid var(--border);border-radius:3px;color:var(--muted);padding:3px 6px;font-size:10px;"
         oninput="napSetGzf(this.value)">
     </div>
   </div>
@@ -1017,11 +1017,11 @@ function _napRenderSidebar() {
       ? `<span style="color:${isAbr?'#ef9a9a':'#a5d6a7'};font-weight:600;">${isAbr?'−':'−'}${m.genKW.toFixed(0)}</span>`
       : `<span style="color:#333">–</span>`;
     const abrTag = isAbr
-      ? `<span style="font-size:8px;background:#ef535022;color:#ef7373;border-radius:2px;padding:0 3px;margin-right:2px;">Abriss</span>`
+      ? `<span style="font-size:8px;background:#ef535022;color:var(--c-red);border-radius:2px;padding:0 3px;margin-right:2px;">Abriss</span>`
       : '';
-    return `<tr style="border-bottom:1px solid #1a1a28;${!m.checked?'opacity:.45':''}${isAbr?'background:rgba(239,83,80,.05);':''}">
+    return `<tr style="border-bottom:1px solid var(--border);${!m.checked?'opacity:.45':''}${isAbr?'background:rgba(239,83,80,.05);':''}">
       <td style="padding:3px 4px;"><input type="checkbox" ${m.checked?'checked':''} style="accent-color:#26a69a;cursor:pointer;" onchange="napToggleMassnahme('${m.id}')"></td>
-      <td style="padding:3px 4px;font-size:10px;color:#aaa;max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${m.name}">${typeIcon[m.type]||'▪'} ${abrTag}${m.name}</td>
+      <td style="padding:3px 4px;font-size:10px;color:var(--muted);max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${m.name}">${typeIcon[m.type]||'▪'} ${abrTag}${m.name}</td>
       <td style="padding:3px 4px;text-align:right;font-size:10px;">${loadCell}</td>
       <td style="padding:3px 4px;text-align:right;font-size:10px;">${genCell}</td>
       <td style="padding:3px 4px;text-align:center;font-size:10px;">${yrCell}</td>
@@ -1031,44 +1031,44 @@ function _napRenderSidebar() {
   const massBlock = `
 <div>
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;">Maßnahmen (${list.length})</div>
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);">Maßnahmen (${list.length})</div>
     <div style="display:flex;gap:4px;">
       <button onclick="napToggleAllMassnahmen(true)"
-        style="padding:1px 6px;border:1px solid #2a3a3a;border-radius:3px;background:transparent;color:#80cbc4;font-size:9px;cursor:pointer;">alle ☑</button>
+        style="padding:1px 6px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--c-teal);font-size:9px;cursor:pointer;">alle ☑</button>
       <button onclick="napToggleAllMassnahmen(false)"
-        style="padding:1px 6px;border:1px solid #2a3a3a;border-radius:3px;background:transparent;color:#666;font-size:9px;cursor:pointer;">keine</button>
+        style="padding:1px 6px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--faint);font-size:9px;cursor:pointer;">keine</button>
     </div>
   </div>
   ${list.length===0
     ?'<div style="font-size:10px;color:#444;padding:8px 0;">Keine Assets mit Leistungsbeitrag gefunden.</div>'
-    :`<div style="background:#141420;border-radius:5px;overflow:hidden;max-height:220px;overflow-y:auto;">
+    :`<div style="background:var(--surface);border-radius:5px;overflow:hidden;max-height:220px;overflow-y:auto;">
     <table style="width:100%;border-collapse:collapse;">
-      <thead><tr style="border-bottom:1px solid #222240;background:#1a1a2e;">
+      <thead><tr style="border-bottom:1px solid var(--border);background:var(--surface2);">
         <th style="padding:3px 4px;width:18px;"></th>
-        <th style="padding:3px 4px;text-align:left;font-size:9px;color:#555;font-weight:normal;">Name</th>
-        <th style="padding:3px 4px;text-align:right;font-size:9px;color:#ef9a9a;font-weight:normal;">⬆Bezug</th>
-        <th style="padding:3px 4px;text-align:right;font-size:9px;color:#a5d6a7;font-weight:normal;">⬇Einsp.</th>
-        <th style="padding:3px 4px;text-align:center;font-size:9px;color:#555;font-weight:normal;">Jahr</th>
+        <th style="padding:3px 4px;text-align:left;font-size:9px;color:var(--faint);font-weight:normal;">Name</th>
+        <th style="padding:3px 4px;text-align:right;font-size:9px;color:var(--c-red);font-weight:normal;">⬆Bezug</th>
+        <th style="padding:3px 4px;text-align:right;font-size:9px;color:var(--c-green);font-weight:normal;">⬇Einsp.</th>
+        <th style="padding:3px 4px;text-align:center;font-size:9px;color:var(--faint);font-weight:normal;">Jahr</th>
       </tr></thead>
       <tbody>${massRows}</tbody>
     </table></div>
-    <div style="margin-top:5px;background:#1e1e30;border-radius:4px;padding:5px 7px;font-size:10px;">
+    <div style="margin-top:5px;background:var(--surface2);border-radius:4px;padding:5px 7px;font-size:10px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
-        <span style="color:#aaa;font-weight:600;">⬆ Bezug Zubau (GZF ${gzf.toFixed(2)} auf Gebäude, ${chk.length} aktiv)</span>
+        <span style="color:var(--muted);font-weight:600;">⬆ Bezug Zubau (GZF ${gzf.toFixed(2)} auf Gebäude, ${chk.length} aktiv)</span>
         <span style="color:${totalAddLoad>0?'#ef5350':'#66bb6a'};font-weight:700;">${totalAddLoad>0?'+':''}${totalAddLoad.toFixed(0)} kW</span>
       </div>
       <div style="display:flex;justify-content:space-between;">
-        <span style="color:#777;">⬇ Einspeisung Zubau (Nennleistung, ohne GZF)</span>
-        <span style="color:#a5d6a7;font-weight:600;">${totalAddGen.toFixed(0)} kW</span>
+        <span style="color:var(--faint);">⬇ Einspeisung Zubau (Nennleistung, ohne GZF)</span>
+        <span style="color:var(--c-green);font-weight:600;">${totalAddGen.toFixed(0)} kW</span>
       </div>
-      <div style="font-size:9px;color:#666;margin-top:3px;">Erzeugung mindert den Bezug nicht (dimensionierungssicher, wie Gutachten 5.3.4).</div>
+      <div style="font-size:9px;color:var(--faint);margin-top:3px;">Erzeugung mindert den Bezug nicht (dimensionierungssicher, wie Gutachten 5.3.4).</div>
     </div>`}
 </div>`;
 
   const pdfBlock = !s ? '' : `
 <div style="margin-top:10px;">
   <button onclick="napExportPDF()"
-    style="width:100%;padding:7px;background:#1a2a4a;border:1px solid #2a4a7a;border-radius:5px;color:#82b1ff;cursor:pointer;font-size:10px;font-weight:600;letter-spacing:.03em;">
+    style="width:100%;padding:7px;background:var(--hover);border:1px solid var(--c-blue);border-radius:5px;color:var(--c-blue);cursor:pointer;font-size:10px;font-weight:600;letter-spacing:.03em;">
     📄 Analyse als PDF exportieren
   </button>
 </div>`;
@@ -1077,9 +1077,9 @@ function _napRenderSidebar() {
   const napCount = _allAssets().filter(a => a.type === 'NAP').length;
   const kalBlock = (csvData && napCount > 0) ? `
 <div style="margin-bottom:10px;">
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:5px;">Bestandskalibrierung</div>
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:5px;">Bestandskalibrierung</div>
   <button onclick="napShowKalibrierungDialog()"
-    style="width:100%;padding:5px 8px;border:1px solid #7b1fa255;border-radius:4px;background:transparent;color:#ce93d8;cursor:pointer;font-size:10px;font-weight:600;text-align:left;">
+    style="width:100%;padding:5px 8px;border:1px solid #7b1fa255;border-radius:4px;background:transparent;color:var(--c-violet);cursor:pointer;font-size:10px;font-weight:600;text-align:left;">
     🔧 leistungKW aus NAP-Profil zurückrechnen
   </button>
   <div style="font-size:9px;color:#444;margin-top:3px;line-height:1.4;">Verteilt NAP-Peak proportional nach Nutzfläche × Nutzungstyp-Faktor auf die verknüpften Verbraucher (wahlweise nur Bestandsgebäude).</div>
@@ -1094,8 +1094,8 @@ function _napRenderMainTop() {
   if (!top) return;
   const mode = _N.chartMode;
   const tabSt = t => `flex:1;padding:5px 0;border-radius:4px;cursor:pointer;font-size:10px;border:1px solid;${mode===t
-    ?'background:rgba(38,166,154,.18);color:#80cbc4;border-color:#26a69a;'
-    :'background:transparent;color:#555;border-color:#222;'}`;
+    ?'background:rgba(38,166,154,.18);color:var(--c-teal);border-color:var(--c-teal);'
+    :'background:transparent;color:var(--faint);border-color:var(--border);'}`;
   const zm = _N.zeitMonth;
   const moBtn = (i, lbl) => `<button onclick="_napSetZeitMonth(${i})"
     style="padding:2px 7px;border:1px solid ${i===zm?'#26a69a':'#222'};border-radius:3px;
@@ -1113,11 +1113,11 @@ function _napRenderMainTop() {
   <button onclick="napSetChartMode('heatmap')"    style="${tabSt('heatmap')}">Jahres-Heatmap</button>
 </div>
 ${moBtns}
-<div style="flex:1;min-height:0;border-radius:5px;overflow:hidden;background:#14141e;position:relative;">
+<div style="flex:1;min-height:0;border-radius:5px;overflow:hidden;background:var(--surface);position:relative;">
   <canvas id="nap-chart-canvas" style="width:100%;height:100%;display:block;"></canvas>
   <div id="nap-chart-tooltip" style="display:none;position:absolute;pointer-events:none;
-    background:#1a1a2e;border:1px solid #2a3a5a;border-radius:6px;padding:8px 10px;
-    font-family:sans-serif;font-size:11px;color:#ccc;white-space:nowrap;
+    background:var(--surface2);border:1px solid var(--c-blue);border-radius:6px;padding:8px 10px;
+    font-family:sans-serif;font-size:11px;color:var(--muted);white-space:nowrap;
     box-shadow:0 4px 16px rgba(0,0,0,.6);z-index:10;"></div>
 </div>`;
   requestAnimationFrame(() => {
@@ -1136,14 +1136,14 @@ function _napRenderMainBot() {
   if (!bot) return;
   bot.innerHTML=`
 <div style="flex-shrink:0;margin-bottom:5px;display:flex;align-items:center;gap:10px;">
-  <span style="font-size:11px;font-weight:600;color:#80cbc4;">Lastentwicklung am NAP</span>
-  <span style="font-size:9px;color:#555;">Peak-Last je Jahr (Bestand + geplante Maßnahmen)</span>
+  <span style="font-size:11px;font-weight:600;color:var(--c-teal);">Lastentwicklung am NAP</span>
+  <span style="font-size:9px;color:var(--faint);">Peak-Last je Jahr (Bestand + geplante Maßnahmen)</span>
 </div>
-<div style="flex:1;min-height:0;border-radius:5px;overflow:hidden;background:#14141e;position:relative;">
+<div style="flex:1;min-height:0;border-radius:5px;overflow:hidden;background:var(--surface);position:relative;">
   <canvas id="nap-dev-canvas" style="width:100%;height:100%;display:block;"></canvas>
   <div id="nap-dev-tooltip" style="display:none;position:absolute;pointer-events:none;
-    background:#1a1a2e;border:1px solid #2a3a5a;border-radius:6px;padding:8px 10px;
-    font-family:sans-serif;font-size:11px;color:#ccc;white-space:nowrap;
+    background:var(--surface2);border:1px solid var(--c-blue);border-radius:6px;padding:8px 10px;
+    font-family:sans-serif;font-size:11px;color:var(--muted);white-space:nowrap;
     box-shadow:0 4px 16px rgba(0,0,0,.6);z-index:10;"></div>
 </div>`;
   requestAnimationFrame(() => {
@@ -1489,8 +1489,8 @@ function _napBindChartHover(canvas) {
     tt.style.left=(rawX+ttW>rect.width?rawX-ttW-28:rawX)+'px';
     tt.style.top=Math.max(4,Math.min(rawY,rect.height-ttH-4))+'px';
   }
-  function ttRow(l,v,c){return`<div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0;"><span style="color:#666">${l}</span><span style="font-weight:600;color:${c||'#ccc'}">${v}</span></div>`;}
-  function ttHdr(t){return`<div style="font-size:12px;font-weight:700;color:#80cbc4;margin-bottom:5px;border-bottom:1px solid #2a3a5a;padding-bottom:4px;">${t}</div>`;}
+  function ttRow(l,v,c){return`<div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0;"><span style="color:var(--faint)">${l}</span><span style="font-weight:600;color:${c||'#ccc'}">${v}</span></div>`;}
+  function ttHdr(t){return`<div style="font-size:12px;font-weight:700;color:var(--c-teal);margin-bottom:5px;border-bottom:1px solid var(--c-blue);padding-bottom:4px;">${t}</div>`;}
 
   canvas.addEventListener('mousemove',e=>{
     const mode=_N.chartMode, data=_activeTopData();
@@ -1572,13 +1572,13 @@ function _napBindDevHover(canvas) {
     const r=rows[idx],cap=_napKapazitaetKw(),gzf=_N.gzf;
     const bezugGes=r.basePeak+r.addLoad,overCap=cap&&bezugGes>cap;
     const fmt=v=>v>=1000?`${(v/1000).toFixed(2)} MW`:`${v.toFixed(0)} kW`;
-    const row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0;"><span style="color:#666">${l}</span><span style="font-weight:600;color:${c}">${v}</span></div>`;
-    let html=`<div style="font-size:12px;font-weight:700;color:#80cbc4;margin-bottom:6px;border-bottom:1px solid #2a3a5a;padding-bottom:4px;">${r.year}</div>`;
+    const row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0;"><span style="color:var(--faint)">${l}</span><span style="font-weight:600;color:${c}">${v}</span></div>`;
+    let html=`<div style="font-size:12px;font-weight:700;color:var(--c-teal);margin-bottom:6px;border-bottom:1px solid var(--c-blue);padding-bottom:4px;">${r.year}</div>`;
     html+=row('Bezug Bestand',fmt(r.basePeak),'#7ab2d4');
     if (r.addLoad>0) html+=row(`+ Zubau (GZF ${gzf.toFixed(2)} auf Gebäude)`,fmt(r.addLoad),'#ff8a3c');
-    html+=`<div style="display:flex;justify-content:space-between;gap:16px;margin:3px 0;border-top:1px solid #2a2a40;padding-top:3px;"><span style="color:#aaa;font-weight:600;">Bezug gesamt</span><span style="font-weight:700;color:${overCap?'#ef5350':'rgba(130,200,255,.95)'};">${fmt(bezugGes)}${overCap?' ⚠':''}</span></div>`;
+    html+=`<div style="display:flex;justify-content:space-between;gap:16px;margin:3px 0;border-top:1px solid var(--border);padding-top:3px;"><span style="color:var(--muted);font-weight:600;">Bezug gesamt</span><span style="font-weight:700;color:${overCap?'#ef5350':'rgba(130,200,255,.95)'};">${fmt(bezugGes)}${overCap?' ⚠':''}</span></div>`;
     if (r.addGen>0) html+=row('Einspeisung Zubau',fmt(r.addGen),'rgba(100,230,140,.95)');
-    if (cap) { html+=row('Max. Bezug (NAP)',`${Math.round(cap).toLocaleString('de-DE')} kVA`,'#ef5350'); if (overCap) html+=`<div style="margin-top:4px;color:#ef5350;font-size:10px;">⚠ Überschreitung um ${fmt(bezugGes-cap)}</div>`; }
+    if (cap) { html+=row('Max. Bezug (NAP)',`${Math.round(cap).toLocaleString('de-DE')} kVA`,'#ef5350'); if (overCap) html+=`<div style="margin-top:4px;color:var(--c-red);font-size:10px;">⚠ Überschreitung um ${fmt(bezugGes-cap)}</div>`; }
     tt.innerHTML=html; tt.style.display='block';
     const ttW=tt.offsetWidth||200,ttH=tt.offsetHeight||120;
     const rawX=e.clientX-rect.left+14,rawY=e.clientY-rect.top-ttH/2;
@@ -1776,30 +1776,30 @@ function _napBuildKalibrierungEntries() {
 // Hilfsfunktion: Tabellenzeilen für Dialog rendern
 function _napKalTableRows(entries, fixedEntries, excludedEntries = []) {
   const r = entries.map(e => `
-<tr style="border-bottom:1px solid #1a1a28;">
-  <td style="padding:3px 6px;font-size:10px;color:#ccc;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${e.asset.name}">${e.asset.name}</td>
-  <td style="padding:3px 6px;font-size:10px;color:#888;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${e.building?.name||'–'}">${e.building?.name||'–'}</td>
-  <td style="padding:3px 6px;font-size:10px;color:#80cbc4;font-weight:600;">${e.slpTyp||'–'}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:10px;color:#64b5f6;">${e.nutzflaeche>0?e.nutzflaeche.toLocaleString('de-DE'):'–'} m²</td>
-  <td style="padding:3px 6px;text-align:right;font-size:10px;color:#ce93d8;">${e.typeFactor.toFixed(1)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:10px;color:#555;">${e.currentKW.toFixed(0)}</td>
-  <td style="padding:3px 6px;text-align:right;"><strong style="font-size:11px;color:#ef9a9a;">${e.calibKW}</strong> <span style="font-size:9px;color:#444;">kW</span></td>
+<tr style="border-bottom:1px solid var(--border);">
+  <td style="padding:3px 6px;font-size:10px;color:var(--muted);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${e.asset.name}">${e.asset.name}</td>
+  <td style="padding:3px 6px;font-size:10px;color:var(--faint);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${e.building?.name||'–'}">${e.building?.name||'–'}</td>
+  <td style="padding:3px 6px;font-size:10px;color:var(--c-teal);font-weight:600;">${e.slpTyp||'–'}</td>
+  <td style="padding:3px 6px;text-align:right;font-size:10px;color:var(--c-blue);">${e.nutzflaeche>0?e.nutzflaeche.toLocaleString('de-DE'):'–'} m²</td>
+  <td style="padding:3px 6px;text-align:right;font-size:10px;color:var(--c-violet);">${e.typeFactor.toFixed(1)}</td>
+  <td style="padding:3px 6px;text-align:right;font-size:10px;color:var(--faint);">${e.currentKW.toFixed(0)}</td>
+  <td style="padding:3px 6px;text-align:right;"><strong style="font-size:11px;color:var(--c-red);">${e.calibKW}</strong> <span style="font-size:9px;color:#444;">kW</span></td>
 </tr>`).join('');
   const f = fixedEntries.map(e => `
-<tr style="border-bottom:1px solid #1a1a28;opacity:.45;">
-  <td style="padding:3px 6px;font-size:10px;color:#888;" title="${e.asset.name}">${e.asset.name}</td>
-  <td colspan="3" style="padding:3px 6px;font-size:9px;color:#555;font-style:italic;">kein Gebäude / keine Fläche → unverändert</td>
-  <td style="padding:3px 6px;text-align:right;font-size:10px;color:#555;">–</td>
-  <td style="padding:3px 6px;text-align:right;font-size:10px;color:#555;">${e.currentKW.toFixed(0)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:10px;color:#555;">${e.currentKW.toFixed(0)} kW</td>
+<tr style="border-bottom:1px solid var(--border);opacity:.45;">
+  <td style="padding:3px 6px;font-size:10px;color:var(--faint);" title="${e.asset.name}">${e.asset.name}</td>
+  <td colspan="3" style="padding:3px 6px;font-size:9px;color:var(--faint);font-style:italic;">kein Gebäude / keine Fläche → unverändert</td>
+  <td style="padding:3px 6px;text-align:right;font-size:10px;color:var(--faint);">–</td>
+  <td style="padding:3px 6px;text-align:right;font-size:10px;color:var(--faint);">${e.currentKW.toFixed(0)}</td>
+  <td style="padding:3px 6px;text-align:right;font-size:10px;color:var(--faint);">${e.currentKW.toFixed(0)} kW</td>
 </tr>`).join('');
   const x = excludedEntries.map(e => `
-<tr style="border-bottom:1px solid #1a1a28;opacity:.35;">
-  <td style="padding:3px 6px;font-size:10px;color:#888;" title="${e.asset.name}">${e.asset.name}</td>
-  <td style="padding:3px 6px;font-size:10px;color:#666;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${e.building?.name||'–'}">${e.building?.name||'–'}</td>
-  <td colspan="3" style="padding:3px 6px;font-size:9px;color:#555;font-style:italic;">nicht Bestand → nicht kalibriert</td>
-  <td style="padding:3px 6px;text-align:right;font-size:10px;color:#555;">${e.currentKW.toFixed(0)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:10px;color:#555;">–</td>
+<tr style="border-bottom:1px solid var(--border);opacity:.35;">
+  <td style="padding:3px 6px;font-size:10px;color:var(--faint);" title="${e.asset.name}">${e.asset.name}</td>
+  <td style="padding:3px 6px;font-size:10px;color:var(--faint);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${e.building?.name||'–'}">${e.building?.name||'–'}</td>
+  <td colspan="3" style="padding:3px 6px;font-size:9px;color:var(--faint);font-style:italic;">nicht Bestand → nicht kalibriert</td>
+  <td style="padding:3px 6px;text-align:right;font-size:10px;color:var(--faint);">${e.currentKW.toFixed(0)}</td>
+  <td style="padding:3px 6px;text-align:right;font-size:10px;color:var(--faint);">–</td>
 </tr>`).join('');
   return r + f + x;
 }
@@ -1828,9 +1828,9 @@ function _napRenderKalDialog(kal) {
     const label = (_KAL_SLP_LABELS[k] || `${k} – ${p.label}`).replace(/^[A-Z0-9]+ – /,'');
     return `
 <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-  <span style="font-size:10px;color:#80cbc4;font-weight:600;width:26px;flex-shrink:0;">${k}</span>
+  <span style="font-size:10px;color:var(--c-teal);font-weight:600;width:26px;flex-shrink:0;">${k}</span>
   <input type="number" value="${val}" min="0.1" max="10" step="0.1"
-    style="width:46px;background:#0f0f1a;border:1px solid #2a3a3a;border-radius:3px;color:#ccc;padding:2px 5px;font-size:10px;"
+    style="width:46px;background:var(--surface);border:1px solid var(--border);border-radius:3px;color:var(--muted);padding:2px 5px;font-size:10px;"
     oninput="napKalUpdateFactor('${k}',this.value)">
   <span style="font-size:9px;color:#444;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>
 </div>`;
@@ -1838,57 +1838,57 @@ function _napRenderKalDialog(kal) {
 
   const overlay = document.createElement('div');
   overlay.id = 'nap-kal-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--surface);z-index:9999;display:flex;align-items:center;justify-content:center;';
   overlay.innerHTML = `
-<div style="background:#1a1a2e;border:1px solid #2a3a5a;border-radius:10px;width:790px;max-width:95vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.8);font-family:sans-serif;overflow:hidden;">
+<div style="background:var(--surface2);border:1px solid var(--c-blue);border-radius:10px;width:790px;max-width:95vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.8);font-family:sans-serif;overflow:hidden;">
 
   <!-- Header -->
-  <div style="background:#0f1020;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #2a2a40;flex-shrink:0;">
+  <div style="background:var(--surface);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-shrink:0;">
     <div>
-      <div style="font-size:13px;font-weight:700;color:#80cbc4;">🔧 Bestandskalibrierung</div>
-      <div style="font-size:10px;color:#555;margin-top:2px;">NAP-Peak ${napPeak.toFixed(0)} kW proportional auf ${entries.length} Verbraucher zurückrechnen</div>
+      <div style="font-size:13px;font-weight:700;color:var(--c-teal);">🔧 Bestandskalibrierung</div>
+      <div style="font-size:10px;color:var(--faint);margin-top:2px;">NAP-Peak ${napPeak.toFixed(0)} kW proportional auf ${entries.length} Verbraucher zurückrechnen</div>
     </div>
     <button onclick="document.getElementById('nap-kal-overlay')?.remove()"
-      style="background:transparent;border:1px solid #333;border-radius:4px;color:#aaa;cursor:pointer;font-size:14px;padding:2px 8px;">✕</button>
+      style="background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 8px;">✕</button>
   </div>
 
   <!-- Bilanz + Faktoren -->
-  <div style="display:flex;flex-shrink:0;border-bottom:1px solid #1a1a28;">
+  <div style="display:flex;flex-shrink:0;border-bottom:1px solid var(--border);">
     <!-- KPIs -->
-    <div style="flex:1;padding:10px 14px;background:#141420;">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:6px;">Bilanz</div>
+    <div style="flex:1;padding:10px 14px;background:var(--surface);">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:6px;">Bilanz</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
-        <div style="background:#1e1e30;border-radius:4px;padding:5px 8px;text-align:center;">
-          <div style="font-weight:700;color:#ef5350;font-size:14px;">${napPeak.toFixed(0)} kW</div>
-          <div style="color:#555;font-size:8px;">NAP-Peak (Messung)</div>
+        <div style="background:var(--surface2);border-radius:4px;padding:5px 8px;text-align:center;">
+          <div style="font-weight:700;color:var(--c-red);font-size:14px;">${napPeak.toFixed(0)} kW</div>
+          <div style="color:var(--faint);font-size:8px;">NAP-Peak (Messung)</div>
         </div>
-        <div style="background:#1e1e30;border-radius:4px;padding:5px 8px;text-align:center;">
+        <div style="background:var(--surface2);border-radius:4px;padding:5px 8px;text-align:center;">
           <div id="nap-kal-kpi-sum" style="font-weight:700;color:${Math.abs(abw)<2?'#66bb6a':'#f9a825'};font-size:14px;">${totalCalib.toFixed(0)} kW</div>
-          <div style="color:#555;font-size:8px;">Summe kalibriert</div>
+          <div style="color:var(--faint);font-size:8px;">Summe kalibriert</div>
         </div>
-        <div style="background:#1e1e30;border-radius:4px;padding:5px 8px;text-align:center;">
-          <div style="font-weight:700;color:#64b5f6;font-size:14px;">${entries.length}</div>
-          <div style="color:#555;font-size:8px;">kalibrierbar</div>
+        <div style="background:var(--surface2);border-radius:4px;padding:5px 8px;text-align:center;">
+          <div style="font-weight:700;color:var(--c-blue);font-size:14px;">${entries.length}</div>
+          <div style="color:var(--faint);font-size:8px;">kalibrierbar</div>
         </div>
-        <div style="background:#1e1e30;border-radius:4px;padding:5px 8px;text-align:center;">
-          <div style="font-weight:700;color:#555;font-size:14px;">${fixedEntries.length}</div>
-          <div style="color:#555;font-size:8px;">fix (kein Gebäude)</div>
+        <div style="background:var(--surface2);border-radius:4px;padding:5px 8px;text-align:center;">
+          <div style="font-weight:700;color:var(--faint);font-size:14px;">${fixedEntries.length}</div>
+          <div style="color:var(--faint);font-size:8px;">fix (kein Gebäude)</div>
         </div>
       </div>
-      <div style="margin-top:7px;font-size:9px;color:#555;line-height:1.5;">
+      <div style="margin-top:7px;font-size:9px;color:var(--faint);line-height:1.5;">
         Methode: Nutzfläche (GF × SW × 0,8) × Nutzungstyp-Faktor.<br>
         ${fixedEntries.length>0?`${fixedLoad.toFixed(0)} kW Festlast (${fixedEntries.length} Assets ohne Gebäude) werden vorab abgezogen.`:'Alle Consumer sind einem Gebäude zugeordnet.'}
       </div>
-      <label style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:10px;color:#aaa;cursor:pointer;"
+      <label style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:10px;color:var(--muted);cursor:pointer;"
         title="Neubauten und geplante Assets (Schicht Entwicklung/Planung oder Baujahr nach ${_N.data.stats.year}) sind nicht im gemessenen Lastgang enthalten und behalten ihren leistungKW-Wert.">
         <input type="checkbox" ${_N.kalNurBestand ? 'checked' : ''} onchange="napKalToggleNurBestand(this.checked)">
         Nur Bestandsgebäude kalibrieren
-        ${excludedEntries.length > 0 ? `<span style="color:#555;font-size:9px;">(${excludedEntries.length} ausgeschlossen)</span>` : ''}
+        ${excludedEntries.length > 0 ? `<span style="color:var(--faint);font-size:9px;">(${excludedEntries.length} ausgeschlossen)</span>` : ''}
       </label>
     </div>
     <!-- Faktoren-Editor -->
-    <div style="width:200px;padding:10px 12px;border-left:1px solid #1a1a28;flex-shrink:0;background:#141420;">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:6px;">Nutzungstyp-Faktoren</div>
+    <div style="width:200px;padding:10px 12px;border-left:1px solid var(--border);flex-shrink:0;background:var(--surface);">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:6px;">Nutzungstyp-Faktoren</div>
       ${factorInputs}
       <div style="margin-top:6px;font-size:8px;color:#444;line-height:1.4;">Höherer Faktor → höherer Anteil an der NAP-Last.</div>
     </div>
@@ -1897,18 +1897,18 @@ function _napRenderKalDialog(kal) {
   <!-- Tabelle -->
   <div style="flex:1;overflow-y:auto;min-height:0;">
     ${!hasRows
-      ? `<div style="padding:24px;text-align:center;color:#555;font-size:11px;">Keine kalibrierbaren Assets downstream des NAP gefunden.<br>
+      ? `<div style="padding:24px;text-align:center;color:var(--faint);font-size:11px;">Keine kalibrierbaren Assets downstream des NAP gefunden.<br>
          <span style="color:#444;font-size:9px;">Assets müssen einem Gebäude mit Grundfläche zugeordnet sein und mit dem NAP im Stromnetz verbunden sein.</span></div>`
       : `<table style="width:100%;border-collapse:collapse;">
-        <thead style="position:sticky;top:0;z-index:1;background:#1a1a2e;">
-          <tr style="border-bottom:1px solid #222240;">
-            <th style="padding:4px 6px;text-align:left;font-size:9px;color:#555;font-weight:normal;">Asset</th>
-            <th style="padding:4px 6px;text-align:left;font-size:9px;color:#555;font-weight:normal;">Gebäude</th>
-            <th style="padding:4px 6px;text-align:left;font-size:9px;color:#80cbc4;font-weight:normal;">SLP-Typ</th>
-            <th style="padding:4px 6px;text-align:right;font-size:9px;color:#64b5f6;font-weight:normal;">Nutzfläche</th>
-            <th style="padding:4px 6px;text-align:right;font-size:9px;color:#ce93d8;font-weight:normal;">Faktor</th>
-            <th style="padding:4px 6px;text-align:right;font-size:9px;color:#555;font-weight:normal;">Aktuell kW</th>
-            <th style="padding:4px 6px;text-align:right;font-size:9px;color:#ef9a9a;font-weight:normal;">→ Kalibriert</th>
+        <thead style="position:sticky;top:0;z-index:1;background:var(--surface2);">
+          <tr style="border-bottom:1px solid var(--border);">
+            <th style="padding:4px 6px;text-align:left;font-size:9px;color:var(--faint);font-weight:normal;">Asset</th>
+            <th style="padding:4px 6px;text-align:left;font-size:9px;color:var(--faint);font-weight:normal;">Gebäude</th>
+            <th style="padding:4px 6px;text-align:left;font-size:9px;color:var(--c-teal);font-weight:normal;">SLP-Typ</th>
+            <th style="padding:4px 6px;text-align:right;font-size:9px;color:var(--c-blue);font-weight:normal;">Nutzfläche</th>
+            <th style="padding:4px 6px;text-align:right;font-size:9px;color:var(--c-violet);font-weight:normal;">Faktor</th>
+            <th style="padding:4px 6px;text-align:right;font-size:9px;color:var(--faint);font-weight:normal;">Aktuell kW</th>
+            <th style="padding:4px 6px;text-align:right;font-size:9px;color:var(--c-red);font-weight:normal;">→ Kalibriert</th>
           </tr>
         </thead>
         <tbody id="nap-kal-tbody">${_napKalTableRows(entries, fixedEntries, excludedEntries)}</tbody>
@@ -1916,18 +1916,18 @@ function _napRenderKalDialog(kal) {
   </div>
 
   <!-- Footer -->
-  <div style="padding:10px 18px;border-top:1px solid #1a1a28;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:#0f1020;">
-    <div style="font-size:9px;color:#555;">Kalibrierte Werte werden in Asset-Props (leistungKW) geschrieben.</div>
+  <div style="padding:10px 18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--surface);">
+    <div style="font-size:9px;color:var(--faint);">Kalibrierte Werte werden in Asset-Props (leistungKW) geschrieben.</div>
     <div style="display:flex;gap:8px;">
       <button onclick="document.getElementById('nap-kal-overlay')?.remove()"
-        style="padding:6px 16px;border:1px solid #333;border-radius:4px;background:transparent;color:#666;cursor:pointer;font-size:11px;">Abbrechen</button>
+        style="padding:6px 16px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--faint);cursor:pointer;font-size:11px;">Abbrechen</button>
       ${entries.length>0?`
         <button onclick="napApplyKalibrierung()"
-          style="padding:6px 14px;border:1px solid #2a4a4a;border-radius:4px;background:transparent;color:#80cbc4;cursor:pointer;font-size:11px;"
+          style="padding:6px 14px;border:1px solid var(--c-teal);border-radius:4px;background:transparent;color:var(--c-teal);cursor:pointer;font-size:11px;"
           title="Schreibt nur leistungKW in die Asset-Props">
           ✓ Nur kW übernehmen</button>
         <button onclick="napApplyKalibrierungMitProfil()"
-          style="padding:6px 14px;border:1px solid #26a69a;border-radius:4px;background:rgba(38,166,154,.18);color:#80cbc4;cursor:pointer;font-size:11px;font-weight:600;"
+          style="padding:6px 14px;border:1px solid var(--c-teal);border-radius:4px;background:rgba(38,166,154,.18);color:var(--c-teal);cursor:pointer;font-size:11px;font-weight:600;"
           title="Schreibt leistungKW + überträgt das normierte NAP-Stundenprofil als Zeitreihe auf jeden Verbraucher, dann direkt synthetisch vergleichen">
           ✓ kW + NAP-Profil → Vergleich starten</button>`:''}
     </div>

@@ -236,7 +236,7 @@ function _zeichne(d) {
     }
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     [0, 744, 1416, 2160, 2880, 3624, 4344, 5088, 5832, 6552, 7296, 8016].forEach((h, m) => ctx.fillText(MON[m], L + h / 8760 * pw + 2, H - 4));
-    if (leg) leg.innerHTML = '<span style="color:#4fc3f7">■</span> Mittel <span style="color:rgba(79,195,247,0.5)">■</span> Spitze je Zeitabschnitt';
+    if (leg) leg.innerHTML = '<span style="color:var(--c-blue)">■</span> Mittel <span style="color:rgba(79,195,247,0.5)">■</span> Spitze je Zeitabschnitt';
   } else if (S.ansicht === 'dauer') {
     const max = d.k.spitzeKw * 1.05 || 1;
     _yAchse(ctx, L, T, ph, W, R, max, 'kW');
@@ -263,7 +263,7 @@ function _zeichne(d) {
     linie(d.sommerWt, max, '#ffb74d', 2); linie(d.sommerWe, max, '#ffb74d', 1);
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     [0, 6, 12, 18, 23].forEach(h => ctx.fillText(h + ' Uhr', L + h / 23 * pw - (h === 23 ? 34 : 0), H - 4));
-    if (leg) leg.innerHTML = '<span style="color:#4fc3f7">━</span> Winter (Dez–Feb) <span style="color:#ffb74d">━</span> Sommer (Jun–Aug) · dick: Werktag, dünn: Wochenende';
+    if (leg) leg.innerHTML = '<span style="color:var(--c-blue)">━</span> Winter (Dez–Feb) <span style="color:var(--c-orange)">━</span> Sommer (Jun–Aug) · dick: Werktag, dünn: Wochenende';
   } else {
     const ges = d.mix.reduce((s, m) => s + m[1], 0) || 1;
     const zeilen = d.mix.slice(0, 8);

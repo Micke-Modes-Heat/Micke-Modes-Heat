@@ -144,7 +144,7 @@ function renderInfoPanel(state) {
       <td style="text-align:right;">
         <input class="aw-cfg-input aw-slp-wpm2-inp" type="number"
           data-slpid="${esc(p.id)}" value="${wpm2}" min="0.1" max="9999" step="0.5"
-          style="width:60px;${changed?'border-color:#f9a825;':''}"
+          style="width:60px;${changed?'border-color:var(--c-orange);':''}"
           title="${changed?'Geändert (Projektstandard: '+(projOver??p.wpm2)+' W/m²)':''}">
       </td>
       <td style="font-size:9px;color:var(--muted);padding-left:4px;">W/m²</td>
@@ -180,10 +180,10 @@ function renderInfoPanel(state) {
           Er setzt sich zusammen aus:
         </div>
         <div class="aw-faktor-grid">
-          <div class="aw-faktor-row"><span class="aw-faktor-val" style="color:#4caf50;">100%</span><span>Flachdach (aufgeständert Süd 30°) oder Süddach 30°</span></div>
-          <div class="aw-faktor-row"><span class="aw-faktor-val" style="color:#4caf50;">~97%</span><span>Süddach 35° · Satteldach Süd (typisch)</span></div>
-          <div class="aw-faktor-row"><span class="aw-faktor-val" style="color:#f9a825;">~84%</span><span>Ost- oder Westdach 35°</span></div>
-          <div class="aw-faktor-row"><span class="aw-faktor-val" style="color:#e53935;">~58%</span><span>Norddach 35° (unwirtschaftlich)</span></div>
+          <div class="aw-faktor-row"><span class="aw-faktor-val" style="color:var(--c-green);">100%</span><span>Flachdach (aufgeständert Süd 30°) oder Süddach 30°</span></div>
+          <div class="aw-faktor-row"><span class="aw-faktor-val" style="color:var(--c-green);">~97%</span><span>Süddach 35° · Satteldach Süd (typisch)</span></div>
+          <div class="aw-faktor-row"><span class="aw-faktor-val" style="color:var(--c-orange);">~84%</span><span>Ost- oder Westdach 35°</span></div>
+          <div class="aw-faktor-row"><span class="aw-faktor-val" style="color:var(--c-red);">~58%</span><span>Norddach 35° (unwirtschaftlich)</span></div>
         </div>
         <div class="aw-faktor-hint">Dachform, Neigung &amp; Ausrichtung pro Gebäude über ▾ anpassen.</div>
       </div>
