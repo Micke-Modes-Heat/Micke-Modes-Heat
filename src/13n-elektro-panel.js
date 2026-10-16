@@ -2,13 +2,16 @@
 // Generiert den gesamten HTML-Inhalt des Elektro-Tabs und injiziert ihn in
 // #lp-elektro. Einmalig beim ersten Öffnen des Tabs aufgerufen.
 //
-// Button-Hierarchie (siehe .lp-btn-* in styles/app.css):
-//   • genau EINE Primäraktion pro Panel  → .lp-btn-primary (Elektroberechnung)
-//   • zerstörende Aktionen               → .lp-btn-danger
-//   • Zeichenwerkzeuge                   → neutraler Button + .lp-btn-swatch
-//     in der Farbe, in der das Werkzeug auf der Karte zeichnet
-//   • alles andere                       → neutral (.lp-tool-btn)
-// Keine dekorativen Randfarben mehr — Farbe trägt hier ausschließlich Bedeutung.
+// Aufbau (Oberfläche LKEBw):
+//   • Karte „Nächster Schritt“ (#el-fuehrung) — Status Netz · Rechnung · Zustand und
+//     genau die Aktion, die jetzt dran ist. Wird von elPanelRefreshStatus() befüllt.
+//   • vier Reiter in Arbeitsreihenfolge: Netz · Erzeugung · Berechnen · Prüfen.
+//     Die Reiter selbst stehen im Kopf des Arbeitsbereichs (src/49-oberflaeche.js),
+//     hier liegen die Bereiche (data-el-tab) mit den alten Abschnitts-IDs
+//     (el-sec-netz, el-sec-anlagen, el-sec-calc, el-sec-auswerten), auf die der
+//     Geführte Modus und andere Module zugreifen.
+//   • zerstörende Aktionen nur unter „Aufräumen“ (eingeklappt), Fachparameter unter
+//     „Berechnungsannahmen“ und „Kostenkennwerte“ (eingeklappt).
 
 import { isErzeugerAktiv } from './06c-dispatch-core.js';
 import { lwWp, bhkw, gebaeude } from './01-globals-varianten.js';
@@ -21,11 +24,9 @@ function _inp(id, label, value, { min = 0, max, step = 1, change = '', title = '
   const maxA  = max != null ? `max="${max}"` : '';
   const chgA  = change ? `data-change="${change}"` : '';
   const tipA  = title  ? `title="${title}"` : '';
-  return `<div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">${label}</div>
-    <input id="${id}" type="number" value="${value}" min="${min}" ${maxA} step="${step}"
-      style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;"
-      ${chgA} ${tipA}/>
+  return `<div class="inp-group">
+    <label class="inp-label" for="${id}">${label}</label>
+    <input class="inp-field" id="${id}" type="number" value="${value}" min="${min}" ${maxA} step="${step}" ${chgA} ${tipA}/>
   </div>`;
 }
 
@@ -34,176 +35,152 @@ function _stat(label, id, tip = '') {
   return `<div class="lp-netz-row"><span class="lbl">${label}${tipH}</span><span class="val" id="${id}">—</span></div>`;
 }
 
-const _sep = '<div style="border-top:1px solid var(--border);margin:5px 0 4px;"></div>';
+// Zeile einer Aufgabenliste: Symbol, Titel, Kurzbeschreibung, Pfeil
+const _ic = (id) => `<svg class="ui-i"><use href="#ui-i-${id}"/></svg>`;
+const _aufgabe = (titel, text, click, { id = '', icon = 'chev', title = '', klasse = '' } = {}) =>
+  `<button class="ui-aufgabe${klasse ? ' ' + klasse : ''}"${id ? ` id="${id}"` : ''} data-click="${click}"${title ? ` title="${title}"` : ''}>
+    ${_ic(icon)}<span><b>${titel}</b><small>${text}</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg></button>`;
 
-// Gruppenüberschrift innerhalb eines Abschnitts
-const _sub = (label) => `<div class="lp-group-label">${label}</div>`;
-
-// Kachel-Button für die gruppierten Auswerte-Raster: zentriert, darf umbrechen
-const _tile = (label, click, { id = '', title = '' } = {}) =>
-  `<button class="lp-tool-btn lp-btn-tile"${id ? ` id="${id}"` : ''} data-click="${click}"${title ? ` title="${title}"` : ''}>${label}</button>`;
-
-// Farbtupfer für Zeichenwerkzeuge — Farbe = Farbe der Linie auf der Karte
+// Werkzeug-Knopf (zeichnet auf der Karte) mit Farbtupfer = Linienfarbe auf der Karte
 const _sw = (color) => `<span class="lp-btn-swatch" style="--sw:${color}"></span>`;
+const _werkzeug = (label, click, { id = '', title = '', swatch = '', klasse = '' } = {}) =>
+  `<button class="btn-secondary el-werkzeug${klasse ? ' ' + klasse : ''}"${id ? ` id="${id}"` : ''} data-click="${click}"${title ? ` title="${title}"` : ''}>${swatch ? _sw(swatch) : ''}${label}</button>`;
+
+const _gruppe = (titel, inhalt, hinweis = '') =>
+  `<div class="ui-gruppe"><div class="ui-gruppe-titel">${titel}</div>${hinweis ? `<p class="el-hinweis">${hinweis}</p>` : ''}${inhalt}</div>`;
+
+const _mehr = (titel, inhalt, { id = '', offen = false } = {}) =>
+  `<details class="el-mehr"${offen ? ' open' : ''}><summary>${_ic('chev')}${titel}</summary><div class="el-mehr-in"${id ? ` id="${id}"` : ''}>${inhalt}</div></details>`;
 
 // ── Panel-HTML ────────────────────────────────────────────────────────────────
 
 function _html() { return `
 
-  <!-- Kopf -->
-  <div class="lp-step" style="margin-bottom:10px;">
-    <div class="lp-step-num" data-num="4">⚡</div>
-    <div class="lp-step-text">Stromnetz planen<span>vier Stufen, oben nach unten</span></div>
+  <!-- Nächster Schritt: Status + passende Aktion — von elPanelRefreshStatus() befüllt -->
+  <div id="el-fuehrung" class="el-fuehrung">
+    <div id="el-status-strip" class="el-status-strip"></div>
+    <div id="el-naechster" class="el-naechster"></div>
   </div>
 
-  <!-- Statusleiste — von elPanelRefreshStatus() befuellt -->
-  <div id="el-status-strip" class="el-status-strip"></div>
+  <!-- ═══ Reiter 1 · Netz ═══════════════════════════════════════════════════ -->
+  <section id="el-sec-netz" class="el-pane" data-el-tab="netz">
+    ${_gruppe('Schnellstart', `
+      ${_aufgabe('Netz automatisch erzeugen', 'Stationen und Kabel aus Gebäuden und Trassen vorschlagen lassen', 'showAutoNetzDialog()', { icon: 'play', title: 'Stromnetz automatisch erzeugen' })}
+      ${_aufgabe('Standardgebäude platzieren', 'Trafostation, Übergabestation, Speicher, Ladepark mit fertiger Ausstattung', 'showKompaktstationDialog()', { icon: 'plus',
+        title: 'Standardgebäude (Trafostation, Übergabestation, Batteriespeicher, NEA, Energiezentrale, Ladepark) mit fertiger Elektro-Ausstattung per Klick platzieren' })}
+      ${_aufgabe('Bestandsplan digitalisieren', 'Einlinienplan als Bild oder PDF laden und nachzeichnen', 'pdTogglePanel()', { id: 'btn-pd-toggle', icon: 'doc',
+        title: 'Bestands-Einlinienplan (Bild/PDF) laden und darauf klickend digitalisieren: Knoten mit Gebäuden verknüpfen, Kabel nachziehen — Geometrie und Länge kommen aus dem Trassenrouting' })}`)}
 
-  <!-- ── Angeschlossene Anlagen ─────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible"
-       data-click="toggleSection('el-sec-anlagen')">
-    <span>Angeschlossene Anlagen <span class="htip" data-tip="Dieselben Anlagen wie im Erzeuger-Tab (Wärme) — hier nur gespiegelt. Strombetriebene Wärmeerzeuger (WP, Stromkessel), BHKW, PV und Batterie wirken automatisch in der Strombilanz.">?</span></span>
-    <span id="el-sec-anlagen-arrow">▼</span>
-  </div>
-  <div id="el-sec-anlagen">
-    <div style="font-size:11px;color:var(--muted);margin-bottom:5px;">Status aus dem Erzeuger-Tab (Wärme) — eine Anlage, hier nur gespiegelt:</div>
-    <div id="el-gekoppelt-status" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;"></div>
-    <div style="display:flex;flex-direction:column;gap:3px;">
-      <button class="lp-tool-btn" data-click="setLeftTab('erzeuger')"
-        title="Zum Erzeuger-Tab (Wärme) wechseln">
-        → Im Erzeuger-Tab bearbeiten
-      </button>
-      <button class="lp-tool-btn" data-click="showAutofillWizard()"
-        title="Verbrauchs- und PV-Werte automatisch ermitteln">
-        ✦ Auto-Befüllen (Verbrauch &amp; PV)
-      </button>
-      <button class="lp-tool-btn" id="el-btn-ff-draw" data-click="startDrawFF()"
-        title="PV-Freifläche auf der Karte einzeichnen (Klick auf Eckpunkte, Doppelklick zum Abschluss)">
-        ${_sw('#ffd54f')} Freiflächen-PV zeichnen
-      </button>
-      <button class="lp-tool-btn lp-btn-danger" id="el-btn-ff-cancel" data-click="cancelDrawFF()"
-        style="display:none;">
-        ✕ Abbrechen
-      </button>
-    </div>
-    <div id="el-ff-list" style="display:flex;flex-direction:column;gap:4px;margin-top:4px;"></div>
-    <div id="el-ff-total" style="display:none;margin-top:5px;padding:5px 8px;
-      background:var(--surface);border-radius:5px;border:1px solid rgba(255,213,79,0.2);">
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:12px;font-family:'DM Mono',monospace;">
-        <span style="color:var(--muted);">Gesamt</span>
-        <span id="el-ff-total-kwp" style="color:var(--c-amber);font-weight:600;text-align:right;">—</span>
-        <span style="color:var(--muted);">Ertrag</span>
-        <span id="el-ff-total-mwh" style="color:var(--c-green);font-weight:600;text-align:right;">—</span>
+    ${_gruppe('1 · Trassen', `
+      <div class="el-werkzeuge">
+        ${_werkzeug('Trasse zeichnen', "toggleDrawTrasse('strom')", { id: 'btn-draw-trasse', swatch: '#ff9800', title: 'Trassenverlauf auf der Karte zeichnen' })}
+        ${_werkzeug('Straßen aus OSM', 'loadAndAdoptOsmStrassen()', { id: 'btn-schnellstart-osm', title: 'Straßen aus OpenStreetMap laden und direkt als Trassen übernehmen' })}
+        ${_werkzeug('OSM-Straßen ein/aus', 'toggleOsmStrassenVisible()', { id: 'btn-osm-strassen-toggle', klasse: 'el-werkzeug-klein' })}
+      </div>`, 'Kabel folgen den Trassen. Ohne Trassen werden sie gerade gezogen.')}
+
+    ${_gruppe('2 · Komponenten', `<div id="asset-palette" class="asset-palette-inline"></div>`,
+      'Typ wählen, dann auf die Karte klicken. Erzeugung und Speicher stehen im Reiter Erzeugung.')}
+
+    ${_gruppe('3 · Kabel', `
+      <div class="el-werkzeuge">
+        ${_werkzeug('Kabel ziehen', 'startDrawStromEdge()', { id: 'btn-draw-strom-edge', swatch: '#fdd835', title: 'Kabel zwischen zwei Komponenten ziehen' })}
+        ${_werkzeug('Kabel neu ausrichten', 'realignAllStromKabel()',
+          { title: 'Verlauf und Länge aller bestehenden Kabel neu entlang der aktuellen Trassen berechnen (Elektro- und gezeichnete Wärmetrassen) — z. B. nach nachträglich gezeichneten oder korrigierten Trassen' })}
+      </div>`, 'Zwei Komponenten nacheinander anklicken.')}
+
+    ${_mehr('Aufräumen', `
+      <div class="el-werkzeuge">
+        ${_werkzeug('OSM-Straßen löschen', 'clearOsmStrassen()', { klasse: 'btn-danger' })}
+        ${_werkzeug('Alle Elektro-Trassen löschen', 'clearAllStromTrassen()', { klasse: 'btn-danger',
+          title: 'Alle gezeichneten und aus OSM übernommenen Elektro-Trassenabschnitte auf einmal entfernen — Wärmetrassen bleiben erhalten' })}
+      </div>`)}
+  </section>
+
+  <!-- ═══ Reiter 2 · Erzeugung ══════════════════════════════════════════════ -->
+  <section id="el-sec-anlagen" class="el-pane" data-el-tab="erzeugung" hidden>
+    ${_gruppe('Anlagen setzen', `<div id="asset-palette-erz" class="asset-palette-inline"></div>`,
+      'PV, Wind, Batterie, Notstrom: Typ wählen, dann auf die Karte klicken.')}
+
+    ${_gruppe('PV-Freiflächen', `
+      <div class="el-werkzeuge">
+        ${_werkzeug('Freifläche zeichnen', 'startDrawFF()', { id: 'el-btn-ff-draw', swatch: '#ffd54f',
+          title: 'PV-Freifläche auf der Karte einzeichnen (Klick auf Eckpunkte, Doppelklick zum Abschluss)' })}
+        ${_werkzeug('Abbrechen', 'cancelDrawFF()', { id: 'el-btn-ff-cancel', klasse: 'btn-danger' }).replace('<button', '<button style="display:none;"')}
       </div>
-    </div>
-  </div>
+      <div id="el-ff-list" class="el-ff-list"></div>
+      <div id="el-ff-total" class="el-ff-total" style="display:none;">
+        <span>Gesamt</span><b id="el-ff-total-kwp">—</b>
+        <span>Ertrag</span><b id="el-ff-total-mwh">—</b>
+      </div>`)}
 
-  <!-- ── 1 · Netz aufbauen ────────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
-       data-click="toggleSection('el-sec-netz')">
-    <span>1 · Netz aufbauen</span><span id="el-sec-netz-arrow">▼</span>
-  </div>
-  <div id="el-sec-netz">
-    ${_sub('Komponenten')}
-    <div id="asset-palette" class="asset-palette-inline"></div>
-    <div style="margin-top:3px;">
-      <button class="lp-tool-btn lp-btn-tile" style="width:100%;"
-        data-click="showKompaktstationDialog()"
-        title="Standardgebäude (Trafostation, Übergabestation, Batteriespeicher, NEA, Energiezentrale, Ladepark) mit fertiger Elektro-Ausstattung per Klick platzieren">
-        Standardgebäude
-      </button>
-    </div>
-    <div style="margin-top:3px;">
-      <button class="lp-tool-btn lp-btn-tile" style="width:100%;"
-        id="btn-pd-toggle" data-click="pdTogglePanel()"
-        title="Bestands-Einlinienplan (Bild/PDF) laden und darauf klickend digitalisieren: Knoten mit Gebäuden verknüpfen, Kabel nachziehen — Geometrie und Länge kommen aus dem Trassenrouting">
-        Bestandsplan digitalisieren
-      </button>
-    </div>
+    ${_gruppe('Aus der Wärmeplanung', `
+      <p class="el-hinweis">Wärmepumpen, BHKW, PV und Batterie aus der Wärmeplanung wirken automatisch in der Strombilanz. Sie werden dort bearbeitet.</p>
+      <div id="el-gekoppelt-status" class="el-chips"></div>
+      ${_aufgabe('In der Wärmeplanung bearbeiten', 'Erzeuger und Speicher der Heizzentrale', "uiSchritt('planung',{sparte:'waerme'}); uiWaermeTab('erzeuger')", { icon: 'arrow' })}
+      ${_aufgabe('Verbrauch und PV automatisch ermitteln', 'Strombedarf der Gebäude und PV-Potenzial vorschlagen', 'showAutofillWizard()', { icon: 'calc',
+        title: 'Verbrauchs- und PV-Werte automatisch ermitteln' })}`)}
 
-    ${_sep}
-    ${_sub('Trassen &amp; Kabel')}
-    <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:2px;">
-      <button class="lp-tool-btn lp-btn-tile" id="btn-draw-trasse" data-click="toggleDrawTrasse('strom')"
-        title="Trassenverlauf auf der Karte zeichnen">${_sw('#ff9800')} Trasse</button>
-      <button class="lp-tool-btn lp-btn-tile" id="btn-schnellstart-osm" data-click="loadAndAdoptOsmStrassen()"
-        title="Straßen aus OpenStreetMap laden und direkt als Trassen übernehmen">↓ OSM laden</button>
-      <button class="lp-tool-btn lp-btn-tile" id="btn-draw-strom-edge" data-click="startDrawStromEdge()"
-        title="Kabel zwischen zwei Komponenten ziehen">${_sw('#fdd835')} Kabel</button>
-    </div>
-    <div class="lp-tool-grid" style="margin-bottom:2px;">
-      <button class="lp-tool-btn lp-btn-tile" id="btn-osm-strassen-toggle" data-click="toggleOsmStrassenVisible()">OSM ein-/aus</button>
-      <button class="lp-tool-btn lp-btn-tile lp-btn-danger" data-click="clearOsmStrassen()">✕ OSM löschen</button>
-    </div>
-    <button class="lp-tool-btn lp-btn-tile lp-btn-danger" style="width:100%;margin-bottom:2px;"
-      data-click="clearAllStromTrassen()"
-      title="Alle gezeichneten und aus OSM übernommenen Elektro-Trassenabschnitte auf einmal entfernen — Wärmetrassen bleiben erhalten">✕ Alle Elektro-Trassen löschen</button>
-    <button class="lp-tool-btn lp-btn-tile" style="width:100%;margin-bottom:2px;"
-      data-click="realignAllStromKabel()"
-      title="Verlauf und Länge aller bestehenden Kabel neu entlang der aktuellen Trassen berechnen (Elektro- und gezeichnete Wärmetrassen) — z.B. nach nachträglich gezeichneten oder korrigierten Trassen">↻ Kabel neu ausrichten</button>
-    <button class="lp-tool-btn lp-btn-tile" style="width:100%;"
-      data-click="showAutoNetzDialog()"
-      title="Stromnetz automatisch erzeugen">Netz automatisch erzeugen</button>
-  </div>
+    ${_gruppe('Prüfen', `
+      ${_aufgabe('PV-Übersicht', 'Gezeichnete PV-Flächen gegen die kWp der Anlagen abgleichen', 'pvuTogglePanel()', { id: 'btn-pv-uebersicht-toggle', icon: 'list' })}
+      ${_aufgabe('Windanalyse', 'Ertrag, Abstände, Eignungsfläche und Szenarien der Windkraftanlagen', 'windaTogglePanel()', { id: 'btn-windanalyse-toggle', icon: 'chart' })}`)}
+  </section>
 
-  <!-- ── 2 · Berechnen ────────────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
-       data-click="toggleSection('el-sec-calc')">
-    <span>2 · Berechnen</span><span id="el-sec-calc-arrow">▼</span>
-  </div>
-  <div id="el-sec-calc">
-    <button class="lp-tool-btn lp-btn-primary" data-click="elCalcAssets()"
-      style="margin:4px 0 6px;"
+  <!-- ═══ Reiter 3 · Berechnen ══════════════════════════════════════════════ -->
+  <section id="el-sec-calc" class="el-pane" data-el-tab="berechnen" hidden>
+    <button class="btn-confirm el-rechnen" data-click="elCalcAssets()"
       title="Elektrische Auslastungsberechnung für alle Stromnetz-Komponenten">
-      Elektroberechnung starten
+      ${_ic('play')}Elektroberechnung starten
     </button>
     <div id="el-kpi-tiles" class="el-kpi-tiles"></div>
-    <div id="lp-el-calc-result"
-      style="display:none;margin-bottom:6px;font-size:11px;color:var(--text);
-             background:var(--surface);border-radius:4px;padding:4px 6px;border:1px solid var(--border);">
-    </div>
-    <div style="display:flex;gap:6px;">
-      <div class="lp-section-title lp-section-collapsible"
-           style="margin:0;flex:1;border:none;padding-bottom:0;"
-           data-click="toggleSection('lp-strom-info')">
-        ▸ Kennwerte <span id="lp-strom-info-arrow"></span>
-      </div>
-      <div class="lp-section-title lp-section-collapsible"
-           style="margin:0;flex:1;border:none;padding-bottom:0;"
-           data-click="toggleSection('lp-strom-param')">
-        ▸ Parameter <span id="lp-strom-param-arrow"></span>
-      </div>
-    </div>
-    <div id="lp-strom-info" class="lp-netz-summary" style="display:none;margin-top:4px;">
-      ${_stat('Szenario-Stunde',  'lp-strom-sz-hour')}
-      ${_stat('Gesamtlast',       'lp-strom-last')}
-      ${_stat('Einspeisung',      'lp-strom-einsp')}
-      ${_stat('Trafo-Auslastung', 'lp-strom-trafo-ausl')}
-      ${_stat('Krit. Spannungsfall', 'lp-strom-delta-u')}
-      ${_stat('Min. Ik\'\'', 'lp-strom-ik-min',
-        'Minimaler Anfangs-Kurzschlusswechselstrom (IEC 60909, c=0.95). Maßgeblich für Schutzselektivität.')}
-      ${_stat('Iz-Korrekturfaktor', 'lp-strom-kiz',
-        'Kombinierter Faktor aus Temperatur, Häufung und Verlegeart (IEC 60364-5-52).')}
-      ${_stat('Kabellänge',   'lp-strom-kabel-len')}
-      ${_stat('Komponenten',  'lp-strom-komp')}
-    </div>
-    <div id="lp-strom-param" style="display:none;margin-top:4px;">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Kabeltyp</div>
-      <select id="strom-kabel-typ"
-        style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;margin-bottom:6px;">
-        ${kabelTypOptionen('NYY', ['ns'])}
-      </select>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px;">
-        ${_inp('strom-ns-cosphi', 'NS cos φ', '0.95',
+    <div id="lp-el-calc-result" class="el-calc-result" style="display:none;"></div>
+
+    ${_gruppe('Karte einfärben nach', `
+      <div id="lp-strom-viz">
+        <div class="lp-tool-grid el-farben">
+          <button class="lp-tool-btn lp-btn-tile" data-colormode="auslastung" data-click="setStromColorMode('auslastung')" title="Kabel nach Auslastung in % einfärben (grün = gering, rot = überlastet)">Auslastung</button>
+          <button class="lp-tool-btn lp-btn-tile" data-colormode="spannungsfall" data-click="setStromColorMode('spannungsfall')" title="Kabel nach Spannungsfall ΔU in % einfärben">Spannungsfall</button>
+          <button class="lp-tool-btn lp-btn-tile" data-colormode="leistung" data-click="setStromColorMode('leistung')" title="Kabel nach übertragener Leistung (kW) einfärben">Leistung</button>
+          <button class="lp-tool-btn lp-btn-tile" data-colormode="richtung" data-click="setStromColorMode('richtung')" title="Kabel nach Leistungsflussrichtung einfärben (Bezug vs. Einspeisung)">Flussrichtung</button>
+          <button class="lp-tool-btn lp-btn-tile el-farben-breit" id="btn-engpass-analyse" data-colormode="engpassjahr" data-click="engpassAnalyseStarten()"
+            title="Rechnet das Netz über die kommenden Jahre durch und färbt die Kabel danach ein, WANN sie zum Engpass werden (Strombelastbarkeit oder kumulierter Spannungsfall).">
+            Jahr des Engpasses (rechnet alle Jahre)
+          </button>
+        </div>
+        <div id="lp-engpass-legende" style="display:none;margin-top:6px;"></div>
+        <label class="el-check"><input type="checkbox" id="strom-dynamic-viz" data-change="setStromDynamicViz(this.checked)"/> Leistungsfluss animieren</label>
+        <label class="el-check"><input type="checkbox" id="strom-netz-visible" checked data-change="setStromNetzVisible(this.checked)"/> Stromnetz auf der Karte zeigen</label>
+      </div>`)}
+
+    ${_mehr('Kennwerte der Rechnung', `
+      <div id="lp-strom-info" class="lp-netz-summary">
+        ${_stat('Szenario-Stunde',  'lp-strom-sz-hour')}
+        ${_stat('Gesamtlast',       'lp-strom-last')}
+        ${_stat('Einspeisung',      'lp-strom-einsp')}
+        ${_stat('Trafo-Auslastung', 'lp-strom-trafo-ausl')}
+        ${_stat('Krit. Spannungsfall', 'lp-strom-delta-u')}
+        ${_stat('Min. Ik\'\'', 'lp-strom-ik-min',
+          'Minimaler Anfangs-Kurzschlusswechselstrom (IEC 60909, c=0.95). Maßgeblich für Schutzselektivität.')}
+        ${_stat('Iz-Korrekturfaktor', 'lp-strom-kiz',
+          'Kombinierter Faktor aus Temperatur, Häufung und Verlegeart (IEC 60364-5-52).')}
+        ${_stat('Kabellänge',   'lp-strom-kabel-len')}
+        ${_stat('Komponenten',  'lp-strom-komp')}
+      </div>`)}
+
+    ${_mehr('Berechnungsannahmen', `
+      <div id="lp-strom-param" class="el-raster">
+        <div class="inp-group el-voll">
+          <label class="inp-label" for="strom-kabel-typ">Kabeltyp</label>
+          <select class="inp-field" id="strom-kabel-typ">${kabelTypOptionen('NYY', ['ns'])}</select>
+        </div>
+        ${_inp('strom-ns-cosphi', 'cos φ Niederspannung', '0.95',
           { min:0.70, max:1.00, step:0.01, change:'recalcStromNetz()', title:'Leistungsfaktor NS-Netz (typ. 0,95)' })}
-        ${_inp('strom-ms-cosphi', 'MS cos φ', '0.90',
+        ${_inp('strom-ms-cosphi', 'cos φ Mittelspannung', '0.90',
           { min:0.70, max:1.00, step:0.01, change:'recalcStromNetz()', title:'Leistungsfaktor MS-Ring (typ. 0,90)' })}
-        ${_inp('strom-leiter-temp', 'Leitertemp. (°C)', '70',
+        ${_inp('strom-leiter-temp', 'Leitertemperatur (°C)', '70',
           { min:20, max:90, step:5, change:'recalcStromNetz()', title:'Betriebstemperatur — NAYY/NYY max. 70 °C' })}
-        <div>
-          <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">GZF-Methode</div>
-          <select id="strom-gzf-methode"
-            style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;"
+        <div class="inp-group">
+          <label class="inp-label" for="strom-gzf-methode">Gleichzeitigkeit</label>
+          <select class="inp-field" id="strom-gzf-methode"
             data-change="document.getElementById('strom-gzf-manuell-wrap').style.display=this.value==='manuell'?'':'none'; recalcStromNetz()">
             <option value="din18015">DIN 18015-1 (Tabelle)</option>
             <option value="vde">VDE (1/n^0.4)</option>
@@ -211,241 +188,146 @@ function _html() { return `
             <option value="keine">Keine (Σ-Last)</option>
           </select>
         </div>
-        <div id="strom-gzf-manuell-wrap" style="display:none;grid-column:1/-1;">
-          ${_inp('strom-gzf-manuell', 'GZF manuell', '0.6',
+        <div id="strom-gzf-manuell-wrap" class="el-voll" style="display:none;">
+          ${_inp('strom-gzf-manuell', 'Gleichzeitigkeitsfaktor manuell', '0.6',
             { min:0.1, max:1.0, step:0.05, change:'recalcStromNetz()' })}
         </div>
-        <div style="grid-column:1/-1;border-top:1px solid var(--border);margin:4px 0 2px;"></div>
-        <div style="grid-column:1/-1;">${_sub('Iz-Korrekturfaktoren (IEC 60364-5-52)')}</div>
-        ${_inp('strom-iz-tboden', 'Bodentemp. (°C)', '20',
+        <div class="ui-gruppe-unter el-voll">Strombelastbarkeit (IEC 60364-5-52)</div>
+        ${_inp('strom-iz-tboden', 'Bodentemperatur (°C)', '20',
           { min:-5, max:50, step:5, change:'recalcStromNetz()', title:'Für Iz-Temperaturkorrektur (kT). Referenz: 20 °C' })}
         ${_inp('strom-iz-nkabel', 'Häufung (Kabel)', '1',
           { min:1, max:20, step:1, change:'recalcStromNetz()', title:'Parallel verlegte Kabel (kG, IEC 60364-5-52 Tab. B.52.17)' })}
-        <div style="grid-column:1/-1;">
-          <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Verlegeart</div>
-          <select id="strom-iz-verlegeart"
-            style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;"
-            data-change="recalcStromNetz()">
+        <div class="inp-group el-voll">
+          <label class="inp-label" for="strom-iz-verlegeart">Verlegeart</label>
+          <select class="inp-field" id="strom-iz-verlegeart" data-change="recalcStromNetz()">
             <option value="erde">Erdverlegung direkt (D1) — Standard</option>
             <option value="luft">Freiluft, freie Luft (E/F) ×1.20</option>
             <option value="kanal">Kabelkanal in Erde (D2) ×0.87</option>
             <option value="rohr">Rohr in Wand/Beton (B1) ×0.77</option>
           </select>
         </div>
-      </div>
-    </div>
-  </div>
+      </div>`)}
 
-  <!-- ── 3 · Auswerten ─────────────────────────────────────────────────────── -->
-  <!-- Vier benannte Gruppen statt einer wachsenden Knopfliste. Neue Analysen
-       kommen in die passende Gruppe, nicht als weitere Volle-Breite-Zeile. -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
-       data-click="toggleSection('el-sec-auswerten')">
-    <span>3 · Auswerten</span><span id="el-sec-auswerten-arrow">▼</span>
-  </div>
-  <div id="el-sec-auswerten">
+    ${_mehr('Kostenkennwerte', `
+      <div id="lp-strom-kosten">
+        <div class="ui-gruppe-unter">Netzinfrastruktur</div>
+        <div class="el-raster">
+          ${_inp('strom-k-tiefbau', 'Tiefbau (€/m)',       '100',  { min:0, step:10,  change:'recalcStromNetz()' })}
+          ${_inp('strom-k-nap',     'NAP-Pauschale (€)',    '3000', { min:0, step:500, change:'recalcStromNetz()' })}
+          ${_inp('strom-k-trafo',   'Trafo (€/kVA)',        '60',   { min:0, step:10,  change:'recalcStromNetz()' })}
+          ${_inp('strom-k-nd',      'Nutzungsdauer (a)',    '40',   { min:1, max:60, step:5, change:'recalcStromNetz()' })}
+        </div>
+        <div class="ui-gruppe-unter">Anlagen</div>
+        <div class="el-raster">
+          ${_inp('ak-pv-kwp',    'PV (€/kWp)',          '1200', { min:0, step:100 })}
+          ${_inp('ak-trafo-kva', 'Trafo (€/kVA)',        '80',   { min:0, step:10  })}
+          ${_inp('ak-bat-kwh',   'Batterie (€/kWh)',     '600',  { min:0, step:50  })}
+          ${_inp('ak-wp-kw',     'WP (€/kW)',            '700',  { min:0, step:50  })}
+          ${_inp('ak-lade-pkt',  'Ladestation (€/Pkt.)', '1500', { min:0, step:100 })}
+          ${_inp('ak-kwk-kwel',  'KWK (€/kWel)',         '3500', { min:0, step:100 })}
+          ${_inp('ak-wind-kw',   'Wind (€/kW)',           '1500', { min:0, step:100 })}
+          ${_inp('ak-nap',       'NAP (€ pauschal)',      '8000', { min:0, step:500 })}
+          ${_inp('ak-nshv-abg',  'NSHV (€/Abgang)',       '500',  { min:0, step:50  })}
+          ${_inp('ak-uv-abg',    'UV (€/Abgang)',          '200',  { min:0, step:50  })}
+          ${_inp('ak-kvs-abg',   'KVS (€/Abgang)',         '150',  { min:0, step:25  })}
+        </div>
+        <div class="el-kosten">
+          <div><span>Investition</span><b id="strom-kpi-invest">—</b></div>
+          <div><span>Annuität pro Jahr</span><b id="strom-kpi-annuitaet">—</b></div>
+          <small id="strom-kpi-detail"></small>
+        </div>
+      </div>`)}
+  </section>
 
-    ${_sub('Ergebnis im Detail')}
-    <div class="lp-tool-grid">
-      ${_tile('Ergebnisblatt', 'ergebnisblattToggle()', { id:'btn-ergebnisblatt-toggle',
-        title:'Vollständige Rechenergebnisse: Kennzahlen, Grenzwertnachweis, Kabel- und Knotentabellen, Mengengerüst, Kosten und alle Annahmen — druckbar und als CSV' })}
-    </div>
+  <!-- ═══ Reiter 4 · Prüfen ═════════════════════════════════════════════════ -->
+  <section id="el-sec-auswerten" class="el-pane" data-el-tab="pruefen" hidden>
+    ${_gruppe('Ergebnis ansehen', `
+      ${_aufgabe('Ergebnisblatt', 'Alle Rechenergebnisse mit Nachweisen, Tabellen, Kosten und Annahmen', 'ergebnisblattToggle()', { id: 'btn-ergebnisblatt-toggle', icon: 'doc',
+        title: 'Vollständige Rechenergebnisse: Kennzahlen, Grenzwertnachweis, Kabel- und Knotentabellen, Mengengerüst, Kosten und alle Annahmen — druckbar und als CSV' })}
+      ${_aufgabe('Einlinienschema', 'Das Stromnetz als Schaltbild', 'sldToggle()', { id: 'btn-sld-toggle', icon: 'pulse' })}
+      ${_aufgabe('Netzanalyse', 'Auslastung, Spannungsfall und Schwachstellen', 'naTogglePanel()', { id: 'btn-netzanalyse-toggle', icon: 'chart' })}
+      ${_aufgabe('Knotenanalyse', 'Last und Spannung an einzelnen Knoten über das Jahr', 'openKnotenanalyse()', { icon: 'circle' })}`)}
 
-    ${_sub('Netz ansehen')}
-    <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;">
-      ${_tile('Einlinien&shy;schema', 'sldToggle()', { id:'btn-sld-toggle',
-        title:'Einlinienschema des Stromnetzes anzeigen' })}
-      ${_tile('Netzanalyse', 'naTogglePanel()', { id:'btn-netzanalyse-toggle',
-        title:'Auslastungen, Spannungsfall und Schwachstellen des berechneten Netzes' })}
-      ${_tile('Knoten&shy;analyse', 'openKnotenanalyse()', {
-        title:'Detailanalyse einzelner Netzknoten' })}
-    </div>
+    ${_gruppe('Zukunft und Netzanschluss', `
+      ${_aufgabe('Engpass-Fahrplan', 'Wann wird was zum Engpass, mit Ertüchtigungs-Maßnahmen', 'engpassPanelToggle()', { id: 'btn-engpass-panel-toggle', icon: 'chart',
+        title: 'Zeitstrahl der Engpässe, Reserve-Kurve und automatisch abgeleitete Ertüchtigungs-Maßnahmen' })}
+      ${_aufgabe('Netzanschluss', 'Reicht die vereinbarte Leistung? Ebenen und Wege zum Umspannwerk', 'naModulToggle()', { id: 'btn-na-modul-toggle', icon: 'pulse',
+        title: 'Reicht der heutige Netzanschluss? Bedarf je Jahr gegen die vereinbarte Leistung, typische Anschlussebene, Wege bis zum Direktanschluss an ein Umspannwerk, Textbaustein und Leistungstabelle' })}
+      ${_aufgabe('Schwellentreppe', 'Trägt das Bestandsnetz die geplante Erzeugung je Variante?', 'schwellenPanelToggle()', { id: 'btn-schwellen-panel-toggle', icon: 'list',
+        title: 'Screening je Variante: trägt das Bestandsnetz die geplante Erzeugung, oder lohnt ein eigenes Erzeugungsnetz?' })}`)}
 
-    ${_sub('Zukunft &amp; Risiko')}
-    <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;">
-      ${_tile('Schwellen&shy;treppe', 'schwellenPanelToggle()', { id:'btn-schwellen-panel-toggle',
-        title:'Screening je Variante: trägt das Bestandsnetz die geplante Erzeugung, oder lohnt ein eigenes Erzeugungsnetz?' })}
-      ${_tile('Engpass-Fahrplan', 'engpassPanelToggle()', { id:'btn-engpass-panel-toggle',
-        title:'Zeitstrahl der Engpässe, Reserve-Kurve und automatisch abgeleitete Ertüchtigungs-Maßnahmen' })}
-      ${_tile('Windanalyse', 'windaTogglePanel()', { id:'btn-windanalyse-toggle',
-        title:'Ertrag, Abstände, Eignungsfläche und Szenarien-Vergleich aller Windkraftanlagen' })}
-    </div>
+    ${_gruppe('Resilienz', `
+      ${_aufgabe('Blackout-Modus', 'Notstromberechtigte Gebäude festlegen und Notstromlast bilanzieren', 'blackoutModusToggle()', { id: 'btn-blackout-modus-toggle', icon: 'alert' })}
+      ${_aufgabe('Resilienz-Abfrage', 'Fragebogen für die zuständige Stelle erzeugen und einlesen', 'raPanelToggle()', { id: 'btn-resilienz-abfrage-toggle', icon: 'table',
+        title: 'Abfragedatei (.xlsx) für die zuständige Stelle erzeugen, ausgefüllt wieder einlesen und in Resilienzanforderungen übersetzen' })}`)}
 
-    ${_sub('Netzanschluss')}
-    <div class="lp-tool-grid">
-      ${_tile('Netzanschluss', 'naModulToggle()', { id:'btn-na-modul-toggle',
-        title:'Reicht der heutige Netzanschluss? Bedarf je Jahr gegen die vereinbarte Leistung, typische Anschlussebene, Wege bis zum Direktanschluss an ein Umspannwerk, Textbaustein und Leistungstabelle' })}
-    </div>
+    ${_gruppe('Prüfen und vergleichen', `
+      ${_aufgabe('Bestand prüfen', 'Kabellängen, Querschnitte, Topologie und Lebenszyklus', 'bestandPanelToggle()', { id: 'btn-bestand-panel-toggle', icon: 'check',
+        title: 'Plausibilität des Bestands prüfen: Kabellängen, Querschnitte, Topologie, Lebenszyklus — und welche Analyse der aktuelle Datenstand trägt' })}
+      ${_aufgabe('Varianten vergleichen', 'Planungsentscheidungen aller Varianten nebeneinander', 'variantenVergleichToggle()', { id: 'btn-varianten-vergleich-toggle', icon: 'table' })}`)}
 
-    ${_sub('Resilienz')}
-    <div class="lp-tool-grid">
-      ${_tile('Blackout-Modus', 'blackoutModusToggle()', { id:'btn-blackout-modus-toggle',
-        title:'Gebäude auf der Karte als notstromberechtigt einstufen (kritisch / eingeschränkt / einspeisefähig) und die Notstromlast bilanzieren' })}
-      ${_tile('Resilienz-Abfrage', 'raPanelToggle()', { id:'btn-resilienz-abfrage-toggle',
-        title:'Abfragedatei (.xlsx) für die zuständige Stelle erzeugen, ausgefüllt wieder einlesen und in Resilienzanforderungen übersetzen' })}
-    </div>
-
-    ${_sub('Prüfen &amp; vergleichen')}
-    <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;">
-      ${_tile('Bestand prüfen', 'bestandPanelToggle()', { id:'btn-bestand-panel-toggle',
-        title:'Plausibilität des Bestands prüfen: Kabellängen, Querschnitte, Topologie, Lebenszyklus — und welche Analyse der aktuelle Datenstand trägt' })}
-      ${_tile('Varianten vergleichen', 'variantenVergleichToggle()', { id:'btn-varianten-vergleich-toggle',
-        title:'Zeigt die Planungsentscheidungen aller Varianten nebeneinander — ohne die Variante zu wechseln' })}
-      ${_tile('PV-Übersicht', 'pvuTogglePanel()', { id:'btn-pv-uebersicht-toggle',
-        title:'Abgleich gezeichnete PV-Fläche gegen kWp der PV-Anlage' })}
-    </div>
-
-    ${_sub('Export')}
-    <div class="lp-tool-grid">
-      ${_tile('Bericht PDF', 'exportMassnahmenPDF()', {
-        title:'Maßnahmenbericht als PDF exportieren' })}
-      ${_tile('Investitionsplan', 'showInvestitionsplan()', {
-        title:'Investitionen nach Jahren aufgeschlüsselt' })}
-    </div>
-  </div>
-
-  <!-- ── Darstellung ──────────────────────────────────────────────────────── -->
-  <!-- Die Engpass-Analyse steht hier und nicht unter „Auswerten": sie färbt
-       die Kabel ein, ist also ein fünfter Einfärbe-Modus — nur einer, der
-       vorher rechnen muss. -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
-       data-click="toggleSection('lp-strom-viz')">
-    Darstellung <span id="lp-strom-viz-arrow">▼</span>
-  </div>
-  <div id="lp-strom-viz">
-    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Kabel einfärben nach</div>
-    <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;">
-      <button class="lp-tool-btn lp-btn-tile" data-colormode="auslastung" data-click="setStromColorMode('auslastung')" title="Kabel nach Auslastung in % einfärben (grün = gering, rot = überlastet)">Auslastung</button>
-      <button class="lp-tool-btn lp-btn-tile" data-colormode="spannungsfall" data-click="setStromColorMode('spannungsfall')" title="Kabel nach Spannungsfall ΔU in % einfärben">ΔU%</button>
-      <button class="lp-tool-btn lp-btn-tile" data-colormode="leistung" data-click="setStromColorMode('leistung')" title="Kabel nach übertragener Leistung (kW) einfärben">Leistung</button>
-      <button class="lp-tool-btn lp-btn-tile" data-colormode="richtung" data-click="setStromColorMode('richtung')" title="Kabel nach Leistungsflussrichtung einfärben (Bezug vs. Einspeisung)">Richtung</button>
-      <button class="lp-tool-btn lp-btn-tile" id="btn-engpass-analyse" data-colormode="engpassjahr"
-        style="grid-column:span 2;" data-click="engpassAnalyseStarten()"
-        title="Rechnet das Netz über die kommenden Jahre durch und färbt die Kabel danach ein, WANN sie zum Engpass werden (Strombelastbarkeit oder kumulierter Spannungsfall).">
-        Engpassjahr (Zeitverlauf)
-      </button>
-    </div>
-    <div id="lp-engpass-legende" style="display:none;margin-top:4px;"></div>
-    <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px;">
-      <input type="checkbox" id="strom-dynamic-viz" data-change="setStromDynamicViz(this.checked)"/>
-      Dynamische Darstellung (Flussanimation + Richtungspfeile)
-    </label>
-    <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px;">
-      <input type="checkbox" id="strom-netz-visible" checked data-change="setStromNetzVisible(this.checked)"/>
-      Stromnetz sichtbar
-    </label>
-  </div>
-
-  <!-- ── Kosten (eingeklappt) ────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
-       data-click="toggleSection('lp-strom-kosten')">
-    Kostenkennwerte <span id="lp-strom-kosten-arrow">▶</span>
-  </div>
-  <div id="lp-strom-kosten" style="display:none;">
-    ${_sub('Netzinfrastruktur')}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
-      ${_inp('strom-k-tiefbau', 'Tiefbau (€/m)',       '100',  { min:0, step:10,  change:'recalcStromNetz()' })}
-      ${_inp('strom-k-nap',     'NAP-Pauschale (€)',    '3000', { min:0, step:500, change:'recalcStromNetz()' })}
-      ${_inp('strom-k-trafo',   'Trafo (€/kVA)',        '60',   { min:0, step:10,  change:'recalcStromNetz()' })}
-      ${_inp('strom-k-nd',      'Nutzungsdauer (a)',    '40',   { min:1, max:60, step:5, change:'recalcStromNetz()' })}
-    </div>
-    ${_sep}
-    ${_sub('Anlagen-Kostenfaktoren')}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
-      ${_inp('ak-pv-kwp',    'PV (€/kWp)',          '1200', { min:0, step:100 })}
-      ${_inp('ak-trafo-kva', 'Trafo (€/kVA)',        '80',   { min:0, step:10  })}
-      ${_inp('ak-bat-kwh',   'Batterie (€/kWh)',     '600',  { min:0, step:50  })}
-      ${_inp('ak-wp-kw',     'WP (€/kW)',            '700',  { min:0, step:50  })}
-      ${_inp('ak-lade-pkt',  'Ladestation (€/Pkt.)', '1500', { min:0, step:100 })}
-      ${_inp('ak-kwk-kwel',  'KWK (€/kWel)',         '3500', { min:0, step:100 })}
-      ${_inp('ak-wind-kw',   'Wind (€/kW)',           '1500', { min:0, step:100 })}
-      ${_inp('ak-nap',       'NAP (€ pauschal)',      '8000', { min:0, step:500 })}
-      ${_inp('ak-nshv-abg',  'NSHV (€/Abgang)',       '500',  { min:0, step:50  })}
-      ${_inp('ak-uv-abg',    'UV (€/Abgang)',          '200',  { min:0, step:50  })}
-      ${_inp('ak-kvs-abg',   'KVS (€/Abgang)',         '150',  { min:0, step:25  })}
-    </div>
-    ${_sep}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;">
-        <div style="font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;" id="strom-kpi-invest">—</div>
-        <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Investition</div>
-      </div>
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;">
-        <div style="font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;" id="strom-kpi-annuitaet">—</div>
-        <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Annuität/a</div>
-      </div>
-      <div style="grid-column:1/-1;font-size:11px;color:var(--muted);padding:2px 0;" id="strom-kpi-detail"></div>
-    </div>
-  </div>
-
+    ${_gruppe('Exportieren', `
+      ${_aufgabe('Maßnahmenbericht (PDF)', 'Alle Elektro-Maßnahmen als Bericht', 'exportMassnahmenPDF()', { icon: 'export' })}
+      ${_aufgabe('Investitionsplan', 'Investitionen nach Jahren', 'showInvestitionsplan()', { icon: 'list' })}`)}
+  </section>
 `; }
 
 // ── Status-Chip der gekoppelten Anlagen ─────────────────────────────────────────
-// Spiegelt den Aktiv-Status der stromrelevanten Erzeuger aus dem Erzeuger-Tab.
+// Spiegelt den Aktiv-Status der stromrelevanten Erzeuger aus der Wärmeplanung.
 // Jede Abfrage defensiv gekapselt — fehlende Quelle ⇒ „—" statt Fehler.
-// Die Chip-Farben bleiben bewusst bunt: sie kodieren den Anlagentyp und
-// entsprechen den Farben auf der Karte — anders als bei den Buttons trägt
-// die Farbe hier Bedeutung.
 export function renderGekoppelteStatus() {
   const box = document.getElementById('el-gekoppelt-status');
   if (!box) return;
   const safe = (fn, d = false) => { try { return fn(); } catch (e) { return d; } };
   const kw = (v) => (v != null && isFinite(v)) ? Math.round(v) : null;
-  const chip = (label, color, info) => {
-    const suffix = info ? ` · ${info}` : '';
-    return `<span style="font-size:12px;color:${color};border:1px solid ${color}66;border-radius:10px;padding:2px 8px;white-space:nowrap;">${label}${suffix}</span>`;
-  };
+  const chip = (label, info) => `<span class="el-chip">${label}${info ? ` <b>${info}</b>` : ''}</span>`;
 
   const chips = [];
-  const lwAktiv = safe(() => isErzeugerAktiv('lwwp'));
-  if (lwAktiv) chips.push(chip('Luft-WP', '#66bb6a', kw(lwWp?.leistung) != null ? `${kw(lwWp.leistung)} kW` : ''));
-  if (safe(() => isErzeugerAktiv('geo')))        chips.push(chip('Geothermie',   '#bcaaa4', ''));
-  if (safe(() => isErzeugerAktiv('fg')))         chips.push(chip('Fließgew.-WP', '#4fc3f7', ''));
-  const bhAktiv = safe(() => isErzeugerAktiv('bhkw'));
-  if (bhAktiv) chips.push(chip('BHKW', '#ffb74d', kw(bhkw?.leistung) != null ? `${kw(bhkw.leistung)} kW` : ''));
-  if (safe(() => isErzeugerAktiv('stromkessel'))) chips.push(chip('Stromkessel', '#ff69b4', ''));
+  if (safe(() => isErzeugerAktiv('lwwp'))) chips.push(chip('Luft-WP', kw(lwWp?.leistung) != null ? `${kw(lwWp.leistung)} kW` : ''));
+  if (safe(() => isErzeugerAktiv('geo')))         chips.push(chip('Geothermie', ''));
+  if (safe(() => isErzeugerAktiv('fg')))          chips.push(chip('Fließgewässer-WP', ''));
+  if (safe(() => isErzeugerAktiv('bhkw')))        chips.push(chip('BHKW', kw(bhkw?.leistung) != null ? `${kw(bhkw.leistung)} kW` : ''));
+  if (safe(() => isErzeugerAktiv('stromkessel'))) chips.push(chip('Stromkessel', ''));
   const pvKwp = safe(() => parseFloat(document.getElementById('pv-kwp')?.value) || 0, 0);
-  if (pvKwp > 0) chips.push(chip('PV', '#ffd54f', `${kw(pvKwp)} kWp`));
-  if (safe(() => Array.isArray(gebaeude) && gebaeude.some(g => g.pvAktiv))) chips.push(chip('Gebäude-PV', '#ffd54f', ''));
+  if (pvKwp > 0) chips.push(chip('PV', `${kw(pvKwp)} kWp`));
+  if (safe(() => Array.isArray(gebaeude) && gebaeude.some(g => g.pvAktiv))) chips.push(chip('Gebäude-PV', ''));
   const bat = safe(() => (typeof getBatParams === 'function') ? getBatParams() : null, null);
-  if (bat) chips.push(chip('Batterie', '#ce93d8', kw(bat.kapKwh) != null ? `${kw(bat.kapKwh)} kWh` : ''));
+  if (bat) chips.push(chip('Batterie', kw(bat.kapKwh) != null ? `${kw(bat.kapKwh)} kWh` : ''));
 
   box.innerHTML = chips.length
     ? chips.join('')
-    : '<span style="font-size:11px;color:var(--muted);">Keine aktiven Anlagen</span>';
+    : '<span class="el-hinweis">Keine Anlagen aus der Wärmeplanung aktiv.</span>';
 }
 
-// ── Abschnitts-Zustand ────────────────────────────────────────────────────────
-// Vorher standen sechs Abschnitte gleichzeitig offen — das Panel war dreimal so
-// hoch wie das Fenster. Jetzt gilt: gespeicherter Zustand schlägt Default, und
-// der Default richtet sich danach, ob überhaupt schon ein Netz existiert.
-const _EL_SECTIONS = [
-  'el-sec-anlagen', 'el-sec-netz', 'el-sec-calc',
-  'el-sec-auswerten', 'lp-strom-viz', 'lp-strom-kosten',
+// ── Reiter ────────────────────────────────────────────────────────────────────
+// Reiter-Leiste steht im Kopf des Arbeitsbereichs (49-oberflaeche); hier werden
+// nur die Bereiche umgeschaltet. Zustand bleibt im Browser gespeichert.
+export const EL_TABS = [
+  { id: 'netz',      titel: 'Netz' },
+  { id: 'erzeugung', titel: 'Erzeugung' },
+  { id: 'berechnen', titel: 'Berechnen' },
+  { id: 'pruefen',   titel: 'Prüfen' },
 ];
+const _TAB_KEY = 'micke.el.tab';
+let _tab = null;
 
 function _hatStromAssets() {
   return (window.ASSETS?.items || []).some(a => a.domain === 'strom' || a.domain === 'hybrid');
 }
 
-function _defaultSectionOpen(id, hatNetz) {
-  switch (id) {
-    case 'el-sec-calc':      return true;      // der Zustand, in dem man meistens ist
-    case 'el-sec-netz':      return !hatNetz;  // leeres Projekt: Werkzeuge zuerst
-    case 'el-sec-auswerten': return hatNetz;   // Netz vorhanden: Auswertungen zuerst
-    default:                 return false;
-  }
+export function elTabAktiv() {
+  if (_tab) return _tab;
+  try { _tab = localStorage.getItem(_TAB_KEY); } catch (e) { /* ohne Speicher */ }
+  if (!EL_TABS.some(t => t.id === _tab)) _tab = _hatStromAssets() ? 'berechnen' : 'netz';
+  return _tab;
 }
 
-function _applySectionStates() {
-  const hatNetz = _hatStromAssets();
-  for (const id of _EL_SECTIONS) {
-    const saved = window.getSectionState?.(id);
-    const open  = saved === undefined ? _defaultSectionOpen(id, hatNetz) : saved;
-    if (typeof window.setSectionOpen === 'function') { window.setSectionOpen(id, open); continue; }
-    const el = document.getElementById(id);
-    if (el) el.style.display = open ? '' : 'none';
-  }
+export function elTab(id) {
+  if (!EL_TABS.some(t => t.id === id)) return;
+  _tab = id;
+  try { localStorage.setItem(_TAB_KEY, id); } catch (e) { /* optional */ }
+  document.querySelectorAll('#lp-elektro .el-pane').forEach(p => { p.hidden = p.dataset.elTab !== id; });
+  window.uiLpKopfAktualisieren?.();
 }
 
 // ── Statusleiste & Ergebnis-Kacheln ───────────────────────────────────────────
@@ -504,8 +386,16 @@ const _chip = (label, value, state, title) =>
      <span class="el-chip-label">${label}</span><span class="el-chip-value">${value}</span>
    </div>`;
 
-const _kpi = (label, value, color) =>
-  `<div class="el-kpi"><span class="el-kpi-label">${label}</span><span class="el-kpi-value"${color ? ` style="color:${color}"` : ''}>${value}</span></div>`;
+const _kpi = (label, value, stufe) =>
+  `<div class="el-kpi${stufe ? ' is-' + stufe : ''}"><span class="el-kpi-label">${label}</span><span class="el-kpi-value">${value}</span></div>`;
+
+// Karte „Nächster Schritt“: ein Satz, was jetzt dran ist, und höchstens zwei Knöpfe
+const _naechster = (stufe, titel, text, knoepfe = []) =>
+  `<div class="el-naechster-in" data-stufe="${stufe}">
+     <div><b>${titel}</b><small>${text}</small></div>
+     <div class="el-naechster-knoepfe">${knoepfe.map(([label, click, primaer]) =>
+       `<button class="${primaer ? 'btn-confirm' : 'btn-secondary'}" data-click="${click}">${label}</button>`).join('')}</div>
+   </div>`;
 
 // Markiert die letzte Rechnung als aktuell — aufgerufen am Ende von elCalcAssets().
 export function elMarkCalcDone() {
@@ -530,22 +420,27 @@ export function elPanelRefreshStatus() {
   if (!document.getElementById('lp-elektro')?.classList.contains('active')) return;
   const strip = document.getElementById('el-status-strip');
   const tiles = document.getElementById('el-kpi-tiles');
-  if (!strip && !tiles) return;
+  const naechster = document.getElementById('el-naechster');
+  if (!strip && !tiles && !naechster) return;
 
   const assets = (window.ASSETS?.items || []).filter(a => a.domain === 'strom' || a.domain === 'hybrid');
   const edges  = window.stromEdges || [];
   const frisch = !!_calcStamp && _calcStamp.sig === _netzSignatur();
+  const nAsset = _calcStamp ? assets.filter(a => (a._calcPeakLoadPct || 0) > 100).length : 0;
+  const nKabel = _calcStamp ? edges.filter(e => (e.auslastungPct || 0) > 100).length : 0;
+  const nUeber = nAsset + nKabel;
 
   if (strip) {
     // 1 · Netz
+    const nStat = assets.filter(a => ['NAP', 'Trafo', 'NSHV', 'Schaltanlage'].includes(a.type)).length;
     let netzState = 'is-ok';
-    let netzVal   = `${assets.length} Komp. · ${edges.length} Kabel`;
-    if (!assets.length)     { netzState = 'is-idle'; netzVal = 'leer'; }
-    else if (!edges.length) { netzState = 'is-warn'; netzVal = `${assets.length} Komp. · 0 Kabel`; }
+    let netzVal   = `${nStat} Stat. · ${edges.length} Kabel`;
+    if (!nStat)             { netzState = 'is-idle'; netzVal = 'leer'; }
+    else if (!edges.length) { netzState = 'is-warn'; netzVal = `${nStat} Stat. · 0 Kabel`; }
 
     // 2 · Rechnung
     let calcState = 'is-idle';
-    let calcVal   = 'nicht gerechnet';
+    let calcVal   = 'offen';
     let calcTip   = 'Noch keine Elektroberechnung in dieser Sitzung.';
     if (_calcStamp && frisch) {
       calcState = 'is-ok';
@@ -562,12 +457,9 @@ export function elPanelRefreshStatus() {
     let zuVal   = '—';
     let zuTip   = 'Erst rechnen, dann steht hier die Zahl der Überlastungen.';
     if (_calcStamp) {
-      const nAsset = assets.filter(a => (a._calcPeakLoadPct || 0) > 100).length;
-      const nKabel = edges.filter(e => (e.auslastungPct || 0) > 100).length;
-      const n = nAsset + nKabel;
-      zuState = n ? 'is-bad' : 'is-ok';
-      zuVal   = n ? `${n} überlastet` : 'keine Überlast';
-      zuTip   = n
+      zuState = nUeber ? 'is-bad' : 'is-ok';
+      zuVal   = nUeber ? `${nUeber} überlastet` : 'keine Überlast';
+      zuTip   = nUeber
         ? `${nAsset} Komponente(n) und ${nKabel} Kabel über 100 % Auslastung.`
         : 'Keine Komponente und kein Kabel über 100 % Auslastung.';
       if (!frisch) zuTip += ' Stand der letzten Rechnung.';
@@ -575,10 +467,48 @@ export function elPanelRefreshStatus() {
 
     const html =
       _chip('Netz', netzVal, netzState,
-        `${assets.length} Strom-Komponenten und ${edges.length} Kabel im aktuellen Jahres- und Variantenstand.`) +
+        `${nStat} einspeisende Stationen (NAP, Trafo, NSHV, Schaltanlage), ${assets.length} Komponenten insgesamt und ${edges.length} Kabel im aktuellen Jahres- und Variantenstand.`) +
       _chip('Rechnung', calcVal, calcState, calcTip) +
       _chip('Zustand', zuVal, zuState, zuTip);
     if (strip.innerHTML !== html) strip.innerHTML = html;
+  }
+
+  if (naechster) {
+    // Gebäude bringen automatisch Unterverteilung + Verbraucher mit (13d) — ein Netz
+    // entsteht erst mit der Kette Netzanschlusspunkt → Schaltanlage → Trafo. Dieselbe
+    // Prüfung nutzt das Auto-Netz (13l); so bietet die Karte nie einen Knopf an, der scheitert.
+    const vor = window.autoNetzVoraussetzungen?.() || { ok: true, fehlt: [], fehltKurz: [] };
+    const KURZ = { NAP: 'Netzanschlusspunkt', Schaltanlage: 'Schaltanlage', Trafo: 'Trafo' };
+    let html;
+    if (!assets.length) {
+      html = _naechster('leer', 'Noch keine Gebäude',
+        'Das Stromnetz verbindet die Gebäude. Zuerst Gebäude im Schritt Bestand laden.',
+        [['Zum Bestand', "uiSchritt('bestand')", true]]);
+    } else if (!edges.length && !vor.ok) {
+      const erst = vor.fehltKurz[0];
+      html = _naechster(vor.fehltKurz.length === 3 ? 'leer' : 'offen',
+        vor.fehltKurz.length === 3 ? 'Noch kein Stromnetz' : `${KURZ[erst] || erst} fehlt`,
+        `Das Netz braucht die Kette Netzanschlusspunkt → Schaltanlage → Trafo. Es fehlt noch: ${vor.fehlt.join(', ')}. Danach lässt sich alles automatisch verbinden.`,
+        [[`${KURZ[erst] || erst} setzen`, `elTab('netz'); setPendingType('${erst}')`, true],
+         ['Standardgebäude platzieren', 'showKompaktstationDialog()']]);
+    } else if (!edges.length) {
+      html = _naechster('offen', 'Netz noch nicht verbunden',
+        'Stationen und Gebäude automatisch verkabeln lassen oder Kabel selbst ziehen.',
+        [['Automatisch verbinden', 'showAutoNetzDialog()', true], ['Kabel ziehen', "elTab('netz'); startDrawStromEdge()"]]);
+    } else if (!_calcStamp || !frisch) {
+      html = _naechster('offen', _calcStamp ? 'Netz geändert seit der letzten Rechnung' : 'Netz noch nicht berechnet',
+        'Die Berechnung ermittelt Auslastung, Spannungsfall und Kurzschlussströme.',
+        [['Elektroberechnung starten', "elTab('berechnen'); elCalcAssets()", true]]);
+    } else if (nUeber) {
+      html = _naechster('kritisch', `${nUeber} Überlastung${nUeber === 1 ? '' : 'en'} im Netz`,
+        'Ursachen in der Netzanalyse ansehen, Ertüchtigung im Engpass-Fahrplan ableiten.',
+        [['Netzanalyse', "elTab('pruefen'); naTogglePanel()", true], ['Engpass-Fahrplan', "elTab('pruefen'); engpassPanelToggle()"]]);
+    } else {
+      html = _naechster('ok', 'Netz berechnet, keine Überlast',
+        'Als Nächstes die kommenden Jahre prüfen oder das Ergebnis dokumentieren.',
+        [['Engpass-Fahrplan', "elTab('pruefen'); engpassPanelToggle()", true], ['Ergebnisblatt', "elTab('pruefen'); ergebnisblattToggle()"]]);
+    }
+    if (naechster.innerHTML !== html) naechster.innerHTML = html;
   }
 
   if (tiles) {
@@ -593,15 +523,15 @@ export function elPanelRefreshStatus() {
     const lenM     = edges.reduce((sum, e) => sum + (e.lengthM || 0), 0);
 
     const trafoTxt = trafos.length ? `${maxTrafo.toFixed(0)} %` : '—';
-    const trafoCol = !trafos.length ? '' : maxTrafo < 80 ? '#4caf50' : maxTrafo < 100 ? '#f9a825' : '#e53935';
-    const duTxt    = du > 0 ? `${du.toFixed(2)} %` : '—';
-    const duCol    = du <= 0 ? '' : du < 2 ? '#4caf50' : du < 3 ? '#f9a825' : '#e53935';
-    const lenTxt   = lenM > 0 ? (lenM >= 1000 ? `${(lenM / 1000).toFixed(2)} km` : `${lenM.toFixed(0)} m`) : '—';
+    const trafoSt  = !trafos.length ? '' : maxTrafo < 80 ? 'ok' : maxTrafo < 100 ? 'warn' : 'crit';
+    const duTxt    = du > 0 ? `${du.toFixed(2).replace('.', ',')} %` : '—';
+    const duSt     = du <= 0 ? '' : du < 2 ? 'ok' : du < 3 ? 'warn' : 'crit';
+    const lenTxt   = lenM > 0 ? (lenM >= 1000 ? `${(lenM / 1000).toFixed(2).replace('.', ',')} km` : `${lenM.toFixed(0)} m`) : '—';
 
     const html =
-      _kpi('Trafo max', trafoTxt, trafoCol) +
-      _kpi('ΔU max', duTxt, duCol) +
-      _kpi('Kabel', lenTxt, '');
+      _kpi('Trafo max.', trafoTxt, trafoSt) +
+      _kpi('Spannungsfall max.', duTxt, duSt) +
+      _kpi('Kabellänge', lenTxt, '');
     if (tiles.innerHTML !== html) tiles.innerHTML = html;
   }
 }
@@ -629,7 +559,7 @@ export function buildElektroPanel() {
   window.renderFFPanel?.();
   // Gekoppelte-Anlagen-Status initial füllen
   renderGekoppelteStatus();
-  _applySectionStates();
+  elTab(elTabAktiv());
   elPanelRefreshStatus();
   _startStatusWatch();
 }

@@ -449,6 +449,12 @@ function _fokusAnwenden() {
   const panel = document.querySelector('.lp-content.active');
   if (!panel) return;
   const erlaubt = new Set(step.zeigen);
+  // Strom-Panel mit Reitern (13n): den Reiter öffnen, in dem der gezeigte Abschnitt liegt
+  if (panel.id === 'lp-elektro') {
+    const reiter = { 'el-sec-netz': 'netz', 'el-sec-anlagen': 'erzeugung', 'el-sec-calc': 'berechnen', 'el-sec-auswerten': 'pruefen' };
+    const ziel = step.zeigen.map(z => reiter[z]).find(Boolean);
+    if (ziel) window.elTab?.(ziel);
+  }
 
   [...panel.children].forEach(el => {
     // Eine Abschnitts-Überschrift gehört zu dem Block, den sie auf- und zuklappt.

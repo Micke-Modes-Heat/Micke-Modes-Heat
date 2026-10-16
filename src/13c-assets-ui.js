@@ -20,9 +20,9 @@ export function buildPalette() {
   const GROUPS = [
     { label: 'Netzinfrastruktur', types: ['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS'] },
     { label: 'Verbraucher',       types: ['Verbraucher', 'Lade', 'TWW'] },
-    { label: 'Erzeugung',         types: ['PV', 'Wind'] },
-    { label: 'Speicher & Backup', types: ['Batterie', 'H2', 'Nsa'] },
-    { label: 'Sonstiges',         types: ['Reserve'], fullWidth: true },
+    { label: 'Erzeugung',         types: ['PV', 'Wind'], ziel: 'asset-palette-erz' },
+    { label: 'Speicher & Backup', types: ['Batterie', 'H2', 'Nsa'], ziel: 'asset-palette-erz' },
+    { label: 'Sonstiges',         types: ['Reserve'], fullWidth: true, ziel: 'asset-palette-erz' },
   ];
 
   // Diese Typen legen UNgekoppelte Assets an (Bestands-/Fremdanlagen) —
@@ -35,10 +35,12 @@ export function buildPalette() {
   };
 
   for (const group of GROUPS) {
+    // Erzeugung und Speicher stehen im Strom-Reiter „Erzeugung“ (eigener Container), sonst alles hier
+    const ziel = (group.ziel && document.getElementById(group.ziel)) || panel;
     const header = document.createElement('div');
     header.className = 'asset-palette-group-header';
     header.textContent = group.label;
-    panel.appendChild(header);
+    ziel.appendChild(header);
 
     for (const type of group.types) {
       const cfg = ASSET_CFG[type];
@@ -50,7 +52,7 @@ export function buildPalette() {
       if (UNGEKOPPELT_HINWEIS[type]) btn.title = (btn.title ? btn.title + '\n\n' : '') + UNGEKOPPELT_HINWEIS[type];
       btn.innerHTML = `<span class="asset-palette-btn-icon" style="color:${cfg.color}">${cfg.icon}</span><span>${cfg.label}</span>`;
       btn.addEventListener('click', () => setPendingType(type));
-      panel.appendChild(btn);
+      ziel.appendChild(btn);
     }
   }
 

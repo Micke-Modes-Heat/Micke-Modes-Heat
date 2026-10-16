@@ -75,10 +75,7 @@ export function toggleFFPvPanel() {
   if (typeof window.setLeftTab === 'function') {
     window.setLeftTab('elektro');
     setTimeout(() => {
-      const sec = document.getElementById('el-sec-netz');
-      if (sec && sec.style.display === 'none' && typeof window.toggleSection === 'function') {
-        window.toggleSection('el-sec-netz');
-      }
+      window.elTab?.('erzeugung');   // Liste und Ausrichtung liegen im Strom-Reiter „Erzeugung“
       renderFFPanel();
     }, 120);
   }

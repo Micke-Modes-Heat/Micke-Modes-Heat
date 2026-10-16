@@ -172,11 +172,13 @@ function _lpKopfRendern() {
         <button type="button" data-ui-bestand="tabelle" aria-pressed="${tab}">Tabelle</button></div></div>`;
   } else if (_ui.schritt === 'planung') {
     const sp = _ui.sparte;
+    const elAktiv = window.elTabAktiv?.() || 'netz';
     const reiter = sp === 'waerme'
       ? `<div class="ui-tabs" role="tablist">
           <button type="button" role="tab" data-ui-waerme="netz" aria-selected="${_ui.waermeTab !== 'erzeuger'}">Wärmenetz</button>
           <button type="button" role="tab" data-ui-waerme="erzeuger" aria-selected="${_ui.waermeTab === 'erzeuger'}">Erzeugung und Speicher</button></div>`
-      : '';
+      : `<div class="ui-tabs" role="tablist">${(window.EL_TABS || []).map(t =>
+          `<button type="button" role="tab" data-ui-strom="${t.id}" aria-selected="${t.id === elAktiv}">${t.titel}</button>`).join('')}</div>`;
     kopf.innerHTML = `<div class="ui-lp-titel"><h2>Planung</h2>
       <div class="ui-seg" role="group" aria-label="Sparte">
         <button type="button" data-ui-sparte="waerme" aria-pressed="${sp === 'waerme'}">Wärme</button>
@@ -265,7 +267,13 @@ function _palIndex() {
       if (text.length < 3 || /^[\d\s.,%–-]+$/.test(text)) return;
       const k = q.ort + '|' + text;
       if (gesehen.has(k)) return; gesehen.add(k);
-      liste.push({ text, ort: q.ort, tip: el.title || '', los: () => { if (q.schritt) uiSchritt(q.schritt, { sparte: q.sparte }); if (q.waermeTab) uiWaermeTab(q.waermeTab); setTimeout(() => el.click(), 60); } });
+      liste.push({ text, ort: q.ort, tip: el.title || '', los: () => {
+        if (q.schritt) uiSchritt(q.schritt, { sparte: q.sparte });
+        if (q.waermeTab) uiWaermeTab(q.waermeTab);
+        const elReiter = el.closest('[data-el-tab]')?.dataset.elTab;
+        if (elReiter) window.elTab?.(elReiter);
+        setTimeout(() => el.click(), 60);
+      } });
     });
   }
   for (const s of ['auswertung', 'gutachten']) {
@@ -330,6 +338,9 @@ export function uiGebaeudetabelle(an = true) {
   window.setViewMode?.(an ? 'gebaeude' : 'karte');
   _lpKopfRendern();
 }
+
+/** Kopf des Arbeitsbereichs neu zeichnen (z. B. wenn ein Fachmodul den Strom-Reiter wechselt). */
+export function uiLpKopfAktualisieren() { _lpKopfRendern(); }
 
 export function uiWaermeTab(tab) {
   _ui.waermeTab = tab === 'erzeuger' ? 'erzeuger' : 'netz';
@@ -417,6 +428,7 @@ function _ereignisse() {
     if ((x = t.closest('button[data-ui-fokus]'))) { const f = document.getElementById(x.dataset.uiFokus); f?.focus(); f?.scrollIntoView({ block: 'center' }); return; }
     if ((x = t.closest('button[data-ui-sparte]'))) { uiSchritt('planung', { sparte: x.dataset.uiSparte }); return; }
     if ((x = t.closest('button[data-ui-waerme]'))) { uiWaermeTab(x.dataset.uiWaerme); return; }
+    if ((x = t.closest('button[data-ui-strom]'))) { window.elTab?.(x.dataset.uiStrom); return; }
     if ((x = t.closest('button[data-ui-bestand]'))) { uiGebaeudetabelle(x.dataset.uiBestand === 'tabelle'); return; }
     if ((x = t.closest('button[data-ui-abschnitt]'))) { _abschnittOeffnen(x.dataset.uiAbschnitt); return; }
     if ((x = t.closest('button[data-ui-pal]'))) { _palAusfuehren(+x.dataset.uiPal); return; }

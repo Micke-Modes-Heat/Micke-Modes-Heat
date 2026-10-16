@@ -427,3 +427,70 @@ body.ui-lkebw .float-panel.dragging{border-radius:var(--r-2)!important}
 .ui-logo{display:block;height:26px;width:auto}
 .ui-brand-sub{padding-left:12px;border-left:1px solid var(--frame-2);font-weight:600;color:var(--on-frame)!important;letter-spacing:.01em}
 #ui-thema-btn[aria-pressed="true"]{color:var(--on-frame)}
+
+/* ── 9. Planung › Strom: Führung, Reiter-Bereiche, Werkzeuge ─────────── */
+.el-fuehrung{display:grid;gap:10px;margin:0 0 16px}
+.el-status-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin:0!important;border:1px solid var(--border);border-radius:var(--r-2);overflow:hidden}
+.el-status-strip .el-status-chip{border:0!important;border-radius:0!important;border-right:1px solid var(--border)!important;background:var(--surface)!important;padding:7px 10px!important;display:grid;gap:1px;position:relative}
+.el-status-strip .el-status-chip:last-child{border-right:0!important}
+.el-status-chip::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line-2)}
+.el-status-chip.is-ok::before{background:var(--ok)}
+.el-status-chip.is-warn::before{background:var(--warn)}
+.el-status-chip.is-bad::before{background:var(--crit)}
+.el-status-chip .el-chip-value{white-space:normal;line-height:1.25}
+.el-naechster:empty{display:none}
+.el-naechster-in{display:grid;gap:10px;padding:12px 14px;border-radius:var(--r-2);background:var(--brand-weak);border-left:3px solid var(--brand)}
+.el-naechster-in[data-stufe="offen"]{background:var(--warn-bg);border-left-color:var(--warn)}
+.el-naechster-in[data-stufe="kritisch"]{background:var(--crit-bg);border-left-color:var(--crit)}
+.el-naechster-in[data-stufe="leer"]{background:var(--info-bg);border-left-color:var(--info)}
+.el-naechster-in b{display:block;font-size:14px}
+.el-naechster-in small{display:block;font-size:12.5px;color:var(--muted);line-height:1.4;margin-top:2px}
+.el-naechster-knoepfe{display:flex;flex-wrap:wrap;gap:8px}
+.el-pane[hidden]{display:none!important}
+.el-hinweis{font-size:12.5px;color:var(--muted);margin:6px 0 8px;line-height:1.4}
+.el-werkzeuge{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px}
+.el-werkzeug{flex:1 1 auto;justify-content:center}
+.el-werkzeug.el-werkzeug-klein{flex:0 0 auto;font-weight:400!important;color:var(--muted)!important}
+.lp-btn-swatch{display:inline-block;width:12px;height:3px;border-radius:2px;background:var(--sw);margin-right:2px}
+.el-werkzeug.active,.ui-aufgabe.active{background:var(--brand-weak)!important;border-color:var(--brand)!important;color:var(--brand)!important}
+#lp-elektro .asset-palette-inline{gap:6px;margin-top:4px}
+.el-mehr{border-top:1px solid var(--border);margin:6px 0 0}
+.el-mehr>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 0;font-size:13px;font-weight:600;color:var(--muted)}
+.el-mehr>summary::-webkit-details-marker{display:none}
+.el-mehr>summary svg{transition:transform .15s;color:var(--faint)}
+.el-mehr[open]>summary svg{transform:rotate(90deg)}
+.el-mehr>summary:hover{color:var(--text)}
+.el-mehr-in{padding:0 0 12px}
+.el-raster{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.el-voll{grid-column:1/-1}
+.el-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+.el-chip{font-size:12px;padding:3px 9px;border:1px solid var(--border);border-radius:12px;background:var(--surface2);color:var(--text);white-space:nowrap}
+.el-chip b{font-weight:600;color:var(--muted)}
+.el-ff-list{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.el-ff-list:empty{display:none}
+.el-ff-total{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin-top:8px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r);font-size:12.5px}
+.el-ff-total span{color:var(--muted)}
+.el-ff-total b{text-align:right;font-variant-numeric:tabular-nums}
+.el-rechnen{width:100%;justify-content:center;min-height:36px!important;font-size:13.5px!important;margin:0 0 12px}
+.el-kpi-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin:0 0 14px;border:1px solid var(--border);border-radius:var(--r-2);overflow:hidden}
+.el-kpi-tiles:empty{display:none}
+.el-kpi-tiles .el-kpi{border:0!important;border-right:1px solid var(--border)!important;border-radius:0!important;display:grid;gap:2px;padding:8px 10px!important}
+.el-kpi-tiles .el-kpi:last-child{border-right:0!important}
+.el-kpi-label{font-size:11px;color:var(--muted)}
+.el-kpi-value{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text)}
+.el-kpi.is-ok .el-kpi-value{color:var(--ok)}
+.el-kpi.is-warn .el-kpi-value{color:var(--warn)}
+.el-kpi.is-crit .el-kpi-value{color:var(--crit)}
+.el-calc-result{margin:0 0 12px;font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r)}
+.el-farben{grid-template-columns:1fr 1fr!important;gap:6px!important;margin-top:8px}
+.el-farben .lp-tool-btn{justify-content:center}
+.el-farben-breit{grid-column:1/-1}
+.el-check{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-top:10px;cursor:pointer}
+.el-kosten{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.el-kosten>div{border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;display:grid;gap:2px}
+.el-kosten span{font-size:11px;color:var(--muted)}
+.el-kosten b{font-size:15px;font-variant-numeric:tabular-nums}
+.el-kosten small{grid-column:1/-1;font-size:12px;color:var(--muted)}
+#lp-elektro .lp-netz-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+#lp-elektro .lp-netz-row .lbl{color:var(--muted)}
+#lp-elektro .lp-netz-row .val{font-weight:600;font-variant-numeric:tabular-nums}
