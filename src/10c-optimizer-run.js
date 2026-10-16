@@ -49,14 +49,14 @@ export function _optAbbrechen() {
   window._optWorkers = [];
   _optFinished();
   const resDiv = document.getElementById('opt-result-list');
-  if (resDiv) resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Abgebrochen.</div>';
+  if (resDiv) resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:12px;">Abgebrochen.</div>';
 }
 
 export function _runOptWorker(resDiv) {
   const runId = window._optRunId;
   const ss = window.systemState;
   if (!ss?.lastgangKw || ss.lastgangKw.length < 8760 || !ss.tempH || !ss.vlH) {
-    resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Kein stundenscharfer Lastgang verfügbar.</div>';
+    resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:12px;">Kein stundenscharfer Lastgang verfügbar.</div>';
     _optFinished();
     return;
   }
@@ -70,7 +70,7 @@ export function _runOptWorker(resDiv) {
   const allKeys = ['lwwp','fg','geo','gaskessel','bhkw','stromkessel','pellets','hhs','fernwaerme','heizoel'];
   const aktiv = allKeys.filter(k => document.getElementById('opt-cand-' + k)?.checked);
   if (!aktiv.length) {
-    resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Bitte mindestens einen Wärmeerzeuger als Kandidaten wählen.</div>';
+    resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:12px;">Bitte mindestens einen Wärmeerzeuger als Kandidaten wählen.</div>';
     _optFinished();
     return;
   }
@@ -197,21 +197,21 @@ export function _runOptWorker(resDiv) {
       if (r.stM2 > 0) extras.push('ST ' + r.stM2 + ' m²');
       if (r.tsVol > 0) extras.push('Speicher ' + r.tsVol + ' m³');
       const wgk = (r.wgk != null && r.wgk < 1e6) ? r.wgk.toFixed(1).replace('.', ',') + ' ct/kWh' : '';
-      return '<div style="padding:3px 6px;border-left:2px solid ' + (i === 0 ? '#fdd835' : 'var(--border)') + ';margin-bottom:2px;font-size:9px;color:var(--text);">'
+      return '<div style="padding:3px 6px;border-left:2px solid ' + (i === 0 ? '#fdd835' : 'var(--border)') + ';margin-bottom:2px;font-size:11px;color:var(--text);">'
         + (i + 1) + '. ' + escHtml(erz)
         + (extras.length ? ' · ' + escHtml(extras.join(' · ')) : '')
         + (wgk ? ' <span style="color:var(--c-amber);">' + wgk + '</span>' : '')
         + '</div>';
     });
     return '<div style="margin-top:6px;text-align:left;">'
-      + '<div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Beste Konzepte bisher (Grobsuche)</div>'
+      + '<div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Beste Konzepte bisher (Grobsuche)</div>'
       + rows.join('') + '</div>';
   }
   function updateProgress(phase) {
     const totalPct = Math.round(workerProgress.reduce((s, v) => s + v, 0) / workerProgress.length);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
     const nwLabel = numWorkers > 1 ? ' · ' + numWorkers + ' Kerne' : '';
-    resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;font-size:10px;">' + phase + ': ' + totalPct + '% · ' + elapsed + 's' + nwLabel + '</div>'
+    resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;font-size:12px;">' + phase + ': ' + totalPct + '% · ' + elapsed + 's' + nwLabel + '</div>'
       + _zwischenstandHtml();
   }
   let hadError = false;
@@ -260,7 +260,7 @@ export function _runOptWorker(resDiv) {
     if (ausgangsSeed) seeds.push(ausgangsSeed);
     if (!seeds.length) {
       _optFinished(); URL.revokeObjectURL(blobUrl);
-      resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine zulässige Variante gefunden — Randbedingungen prüfen.</div>';
+      resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:12px;">Keine zulässige Variante gefunden — Randbedingungen prüfen.</div>';
       return;
     }
     const nFein = Math.min(numWorkers, seeds.length);
@@ -365,7 +365,7 @@ export function _optUmfangGeaendert() {
 
 export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, params, info = {}, nurNeuBewertet = false) {
   if (!topFein || topFein.length === 0) {
-    resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine Ergebnisse.</div>';
+    resDiv.innerHTML = '<div style="color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;font-size:12px;">Keine Ergebnisse.</div>';
     _optFinished();
     return;
   }
@@ -411,7 +411,7 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
   kopf.className = 'opt-ergebnis-kopf';
   const _optResYear = info.jahr || parseInt(document.getElementById('opt-year')?.value) || globalYear;
   let kopfHtml = '<span style="color:var(--accent);font-weight:600;">Betrachtungsjahr: ' + _optResYear + '</span>'
-    + (window._basisYear && _optResYear !== window._basisYear ? ' <span style="color:var(--c-blue);font-size:9px;">(Lastgang skaliert)</span>' : '')
+    + (window._basisYear && _optResYear !== window._basisYear ? ' <span style="color:var(--c-blue);font-size:11px;">(Lastgang skaliert)</span>' : '')
     + ' <span class="opt-umfang-hinweis">' + (window._wirtOhneNetz ? 'Nur Wärmeerzeugung (ohne Netzkosten)' : 'Gesamtsystem inkl. Netz') + '</span>';
   if (ausgang?.kw && top3[0]) {
     const diff = ausgang.kw.wgk - top3[0].kw.wgk;
@@ -435,7 +435,7 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
       + (r.tsVol > 0 ? ' + WS ' + nf(r.tsVol) + ' m³' : '');
 
     const eeColor = r.kw.eeAnteil >= 65 ? '#81c784' : '#ef9a9a';
-    const eeBadge = '<span style="background:' + eeColor + ';color:#000;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:600;">' + r.kw.eeAnteil.toFixed(0) + '% EE</span>';
+    const eeBadge = '<span style="background:' + eeColor + ';color:#000;border-radius:3px;padding:1px 5px;font-size:11px;font-weight:600;">' + r.kw.eeAnteil.toFixed(0) + '% EE</span>';
 
     const totalInkST = (r.gesamtMwh || 0) + (r.stMwh || 0);
     let kpiHtml = '<div class="opt-karte-kpis">'
@@ -500,7 +500,7 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
   const timeLabel = totalElapsed < 60 ? totalElapsed.toFixed(1) + 's' : (totalElapsed / 60).toFixed(1) + ' min';
   const nEval = topFein.reduce((s, r) => s + (r.evals || 0), 0);
   const infoDiv = document.createElement('div');
-  infoDiv.style.cssText = 'font-size:9px;color:var(--muted);text-align:center;margin-top:8px;';
+  infoDiv.style.cssText = 'font-size:11px;color:var(--muted);text-align:center;margin-top:8px;';
   infoDiv.textContent = nurNeuBewertet ? 'Neu bewertet (Betrachtungsumfang geändert).'
     : 'Berechnung abgeschlossen in ' + timeLabel + ' · ' + (grobResults?.length || 0) + ' Startpunkte, '
       + besteJe.size + ' Konzepte verfeinert (' + nEval + ' Bewertungen)';

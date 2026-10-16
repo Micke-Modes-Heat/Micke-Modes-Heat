@@ -16,7 +16,7 @@ import {
 
 const WRAP_ID = 'strom-messjahre-wrap';
 const INPUT_ID = 'sgmj-datei';
-const STIL_KNOPF = 'font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--accent);cursor:pointer;';
+const STIL_KNOPF = 'font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--accent);cursor:pointer;';
 const GELB = '#e0a126';
 
 let _daten = { jahre: [], referenzId: null };
@@ -62,7 +62,7 @@ function setzen(jahre, referenzId = _daten.referenzId) {
 
 /* ── Oberfläche ──────────────────────────────────────────────────────────── */
 function dateiZeile(r, ersatz) {
-  return `<div style="color:var(--muted);font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.dateiname)}">`
+  return `<div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.dateiname)}">`
     + `${esc(r.dateiname || ersatz)} · ${r.istViertel ? '15-min' : 'stündlich'}</div>`;
 }
 
@@ -74,16 +74,16 @@ function zeileHtml(mj) {
     ? `<div>BHKW · ${zahl(a.bhkw.arbeitKwh / 1000)} MWh
          <button data-click="sgMjBhkwEntfernen('${mj.id}')" title="BHKW-Lastgang entfernen" style="${STIL_KNOPF}color:var(--muted);padding:0 4px;">✕</button></div>
        ${dateiZeile(mj.bhkw, 'BHKW')}
-       <div style="font-size:9px;">Gesamt ${zahl(a.gesamt.arbeitKwh / 1000)} MWh · max ${zahl(a.gesamt.spitzeKw)} kW</div>`
+       <div style="font-size:11px;">Gesamt ${zahl(a.gesamt.arbeitKwh / 1000)} MWh · max ${zahl(a.gesamt.spitzeKw)} kW</div>`
     : `<button data-click="sgMjDateiWaehlen('bhkw','${mj.id}')" title="Erzeugungslastgang des BHKW für dieses Jahr laden — wird zum Bezug addiert" style="${STIL_KNOPF}">+ BHKW-Lastgang</button>`;
-  return `<div style="display:grid;grid-template-columns:18px 60px minmax(0,1fr) minmax(0,1fr) 20px;gap:6px;align-items:center;padding:5px 2px;border-top:1px solid var(--border);font-size:10px;${ref ? 'background:rgba(66,165,245,.08);' : ''}">
+  return `<div style="display:grid;grid-template-columns:18px 60px minmax(0,1fr) minmax(0,1fr) 20px;gap:6px;align-items:center;padding:5px 2px;border-top:1px solid var(--border);font-size:12px;${ref ? 'background:rgba(66,165,245,.08);' : ''}">
       <input type="radio" name="sgmj-referenz"${ref ? ' checked' : ''} data-change="sgMjSetReferenz('${mj.id}')" title="Als Referenzjahr verwenden" style="margin:0;cursor:pointer;">
-      <input class="inp-field" type="number" min="1990" max="2100" step="1" value="${mj.jahr}" data-change="sgMjSetJahr('${mj.id}',this.value)" title="Messjahr" style="width:100%;box-sizing:border-box;font-size:10px;text-align:left;">
+      <input class="inp-field" type="number" min="1990" max="2100" step="1" value="${mj.jahr}" data-change="sgMjSetJahr('${mj.id}',this.value)" title="Messjahr" style="width:100%;box-sizing:border-box;font-size:12px;text-align:left;">
       <div style="min-width:0;"><div>Bezug · ${zahl(a.bezug.arbeitKwh / 1000)} MWh · max ${zahl(a.bezug.spitzeKw)} kW</div>${dateiZeile(mj.bezug, 'Bezug')}</div>
       <div style="min-width:0;">${bhkw}</div>
       <button data-click="sgMjEntfernen('${mj.id}')" title="Messjahr entfernen" style="${STIL_KNOPF}color:var(--muted);padding:1px 4px;">✕</button>
       ${a.reihe.abweichungWerte > toleranz
-        ? `<div style="grid-column:1/-1;font-size:9px;color:${GELB};">⚠ Bezugs- und BHKW-Lastgang sind unterschiedlich lang (${zahl(a.reihe.abweichungWerte)} Werte) — Zeiträume prüfen.</div>`
+        ? `<div style="grid-column:1/-1;font-size:11px;color:${GELB};">⚠ Bezugs- und BHKW-Lastgang sind unterschiedlich lang (${zahl(a.reihe.abweichungWerte)} Werte) — Zeiträume prüfen.</div>`
         : ''}
     </div>`;
 }
@@ -102,14 +102,14 @@ function panelHtml() {
     status += `<br><span style="color:${GELB};">⚠ Messjahr ${doppelt.join(', ')} mehrfach vorhanden — Jahr korrigieren oder Eintrag entfernen.</span>`;
   }
 
-  return `<div class="sa-section-title">Stromlastgänge · Messjahre <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">(ohne Wärmepumpen) · Bezug EVU + BHKW · Gutachten 3.2 · ● = Referenzjahr</span></div>
+  return `<div class="sa-section-title">Stromlastgänge · Messjahre <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px;">(ohne Wärmepumpen) · Bezug EVU + BHKW · Gutachten 3.2 · ● = Referenzjahr</span></div>
     ${jahre.length ? `<div style="margin-bottom:6px;border-bottom:1px solid var(--border);">${jahre.map(zeileHtml).join('')}</div>` : ''}
     <div data-click="sgMjDateiWaehlen('bezug','')" style="border:1px dashed var(--border);border-radius:6px;padding:8px 12px;cursor:pointer;margin-bottom:6px;display:flex;align-items:center;gap:8px;">
       <span style="font-size:15px;">📂</span>
-      <div style="flex:1;font-size:10px;color:var(--muted);">${jahre.length ? '+ Weiteres Messjahr laden' : 'Bezugs-Lastgänge laden'} — je Datei ein Jahr, mehrere Dateien auf einmal möglich · CSV 15-min (35.040 Werte) oder Stunden (8.760) · kW</div>
+      <div style="flex:1;font-size:12px;color:var(--muted);">${jahre.length ? '+ Weiteres Messjahr laden' : 'Bezugs-Lastgänge laden'} — je Datei ein Jahr, mehrere Dateien auf einmal möglich · CSV 15-min (35.040 Werte) oder Stunden (8.760) · kW</div>
     </div>
     <input type="file" id="${INPUT_ID}" accept=".csv,.txt" style="display:none;" data-change="sgMjDateienGewaehlt(this.files)"/>
-    ${status ? `<div style="font-size:9px;color:var(--muted);margin-bottom:10px;line-height:1.5;">${status}</div>` : ''}`;
+    ${status ? `<div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5;">${status}</div>` : ''}`;
 }
 
 /** Abschnitt „Messjahre" in ⚡ Strom-Grundlagen neu zeichnen. */

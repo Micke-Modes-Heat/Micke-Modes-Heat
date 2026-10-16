@@ -470,9 +470,9 @@ function _cssEinmal() {
   .pvna-sl::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;margin-top:-4px;border-radius:50%;border:none;background:var(--th,var(--accent));}
   .pvna-sl::-moz-range-track{height:4px;border-radius:2px;background:rgba(140,140,140,.28);}
   .pvna-sl::-moz-range-thumb{width:12px;height:12px;border-radius:50%;border:none;background:var(--th,var(--accent));}
-  .pvna-zeile{display:flex;align-items:center;gap:8px;height:${ROW}px;padding:0 6px;font-size:10.5px;box-sizing:border-box;}
+  .pvna-zeile{display:flex;align-items:center;gap:8px;height:${ROW}px;padding:0 6px;font-size:12px;box-sizing:border-box;}
   .pvna-zeile.an{background:rgba(212,168,85,.12);}
-  .pvna-knopf{font-size:10px;padding:1px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;}`;
+  .pvna-knopf{font-size:12px;padding:1px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;}`;
   document.head.appendChild(st);
 }
 
@@ -533,7 +533,7 @@ function _zeilenHtml(erg) {
 function _kachel(id, label) {
   return `<div style="flex:1 1 100px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 10px;">
     <div data-pvna-k="${id}" style="font-size:16px;font-family:'DM Mono',monospace;">—</div>
-    <div style="font-size:10px;color:var(--muted);margin-top:2px;">${label}</div></div>`;
+    <div style="font-size:12px;color:var(--muted);margin-top:2px;">${label}</div></div>`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -682,7 +682,7 @@ function _aussageAktualisieren(root, erg, eingabe, lf) {
     const hinter = new Set(unbek.flatMap(e => _daecherHinter(eingabe, e.id).map(d => d.id)));
     const kwp = [...hinter].reduce((t, id) => t + (_bel.get(id) || 0), 0);
     const qs = +info.ersatzQs || 0;
-    const wahl = `<select data-pvna-ersatz style="font-size:10.5px;padding:1px 4px;margin-left:4px;" title="Annahme für Kabel ohne erfassten Querschnitt — rechnet die Netzaufnahme neu">${pvnaErsatzOptionen(qs)}</select>`;
+    const wahl = `<select data-pvna-ersatz style="font-size:12px;padding:1px 4px;margin-left:4px;" title="Annahme für Kabel ohne erfassten Querschnitt — rechnet die Netzaufnahme neu">${pvnaErsatzOptionen(qs)}</select>`;
     // Steht die Variante im Vergleich noch auf einer anderen Annahme?
     const bn = (window._pvAnalyse?.ergebnisse || []).find(v => v.id === 'bestandsnetz')?.netzaufnahme;
     const veraltet = bn && (+bn.eingaben?.ersatzQs || 0) !== qs
@@ -710,10 +710,10 @@ function _aussageAktualisieren(root, erg, eingabe, lf) {
       <div data-pvna-aussage-text style="font-size:12px;line-height:1.55;color:var(--text);">${kopf}</div>
       <button class="pvna-knopf" data-pvna-aktion="kopieren" style="flex:none;" title="Aussage als Text in die Zwischenablage (z. B. für das Gutachten)">Text kopieren</button>
     </div>
-    <div data-pvna-aussage-punkte style="margin-top:5px;font-size:11px;line-height:1.55;color:var(--muted);">
+    <div data-pvna-aussage-punkte style="margin-top:5px;font-size:12.5px;line-height:1.55;color:var(--muted);">
       ${punkte.map(p => `<div style="margin-top:3px;">${p}</div>`).join('')}
       ${warn.map(w => `<div style="margin-top:3px;color:var(--c-orange);">⚠ ${w}</div>`).join('')}
-      <div style="margin-top:5px;font-size:10px;">Lastfall: volle Einspeisung ${_fmt(einsp, 2)} kW/kWp ohne gleichzeitige Last, Spannungsanhebung ≤ ${_fmt(grenze, 1)} %, Rechenjahr ${erg.jahr}
+      <div style="margin-top:5px;font-size:12px;">Lastfall: volle Einspeisung ${_fmt(einsp, 2)} kW/kWp ohne gleichzeitige Last, Spannungsanhebung ≤ ${_fmt(grenze, 1)} %, Rechenjahr ${erg.jahr}
         — konservativ: Eigenverbrauch hinter dem Zähler würde die Aufnahme erhöhen.</div>
     </div>`;
 }
@@ -813,7 +813,7 @@ function _aktualisieren({ spielraum = true } = {}) {
     const el = root.querySelector(`[data-pvna-k="${k}"]`);
     if (el) { el.innerHTML = html; el.style.color = farbe || 'var(--text)'; }
   };
-  const einh = t => `<span style="font-size:10.5px;color:var(--muted);margin-left:3px;">${t}</span>`;
+  const einh = t => `<span style="font-size:12px;color:var(--muted);margin-left:3px;">${t}</span>`;
   setK('summe', _fmt(lf.summeKwp) + einh(`kWp · ${_fmt(pot > 0 ? lf.summeKwp / pot * 100 : 0)} %`));
   setK('ertrag', _fmt(_ertragMwh(erg)) + einh('MWh/a'));
   setK('trafo', _fmt(maxA(trafos)) + einh('%'), _auslFarbe(maxA(trafos)));
@@ -908,10 +908,10 @@ export function pvnaSchemaRender() {
     : '';
   root.style.display = anzeige;
   if (!erg || !erg.modell.eingabe.daecher.length) {
-    root.innerHTML = `<div style="color:var(--muted);font-size:11px;text-align:center;padding:40px 0;line-height:1.6;">
+    root.innerHTML = `<div style="color:var(--muted);font-size:12.5px;text-align:center;padding:40px 0;line-height:1.6;">
       ${erg ? 'Keine PV-Flächen im Netzmodell — Gebäuden PV zuweisen oder in „Netzaufnahme (Bestand)" auf „Alle Dächer" stellen.'
         : 'Das Einlinienschema zeigt die Variante „Bestandsnetz" — dafür muss die Netzaufnahme einmal gerechnet sein.'}<br>
-      <button class="btn-confirm" style="margin-top:10px;padding:7px 16px;font-size:11.5px;" data-click="pvnaSchemaBerechnen()">Aufnahme berechnen</button></div>`;
+      <button class="btn-confirm" style="margin-top:10px;padding:7px 16px;font-size:12.5px;" data-click="pvnaSchemaBerechnen()">Aufnahme berechnen</button></div>`;
     return;
   }
   _cssEinmal();
@@ -930,16 +930,16 @@ export function pvnaSchemaRender() {
     _mass = alt ? new Set([..._mass].filter(id => angeboten.has(id))) : new Set();
   }
   _layout = _layoutBilden(erg.modell, _nurPv);
-  const knopf = (akt, txt, tip) => `<button class="pvna-knopf" style="padding:4px 10px;font-size:10.5px;" data-pvna-aktion="${akt}" title="${tip}">${txt}</button>`;
+  const knopf = (akt, txt, tip) => `<button class="pvna-knopf" style="padding:4px 10px;font-size:12px;" data-pvna-aktion="${akt}" title="${tip}">${txt}</button>`;
 
   root.innerHTML = `
   <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
     <div style="font-size:12px;font-weight:600;">Einlinienschema — Variante „Bestandsnetz"</div>
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
-      <label style="font-size:10.5px;color:var(--muted);display:flex;gap:5px;align-items:center;cursor:pointer;"
+      <label style="font-size:12px;color:var(--muted);display:flex;gap:5px;align-items:center;cursor:pointer;"
         title="Abgänge, über die weder PV noch vorhandene Einspeisung fließt (reine Verbraucher), je Knoten zu einer Zeile einklappen — dort einzeln aufklappbar">
         <input type="checkbox" data-pvna-nurpv ${_nurPv ? 'checked' : ''}> Stränge ohne PV einklappen${_layout.ausgeblendet ? ` (${_layout.ausgeblendet} Elemente)` : ''}</label>
-      ${_vollbild ? `<label style="font-size:10.5px;color:var(--muted);display:flex;gap:5px;align-items:center;cursor:pointer;"
+      ${_vollbild ? `<label style="font-size:12px;color:var(--muted);display:flex;gap:5px;align-items:center;cursor:pointer;"
         title="Schema und Schieber so verkleinern, dass alles ohne Scrollen sichtbar ist">
         <input type="checkbox" data-pvna-einpassen ${_einpassen ? 'checked' : ''}> auf Bildschirm einpassen</label>` : ''}
       ${knopf('allezu', '⊟ Alles einklappen', 'Jeden Trafo auf eine Summenzeile mit Gruppenschieber einklappen')}
@@ -958,11 +958,11 @@ export function pvnaSchemaRender() {
     ${_kachel('du', 'höchste Spannungsanhebung')}${_kachel('status', 'Netz')}${_kachel('invest', 'Netzertüchtigung')}
   </div>
   <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:6px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:7px;">
-    <span style="font-size:11px;font-weight:600;">Ausbau gesamt</span>
+    <span style="font-size:12.5px;font-weight:600;">Ausbau gesamt</span>
     <input type="range" class="pvna-sl" data-pvna-gesamt min="0" max="100" step="0.5" value="0" style="flex:1 1 200px;width:auto;"
       title="Setzt jedes Dach auf denselben Anteil seiner Fläche">
-    <span data-pvna-gesamt-wert style="font-family:'DM Mono',monospace;font-size:11px;width:44px;text-align:right;"></span>
-    <span style="font-size:10px;color:var(--muted);">des Flächenpotenzials</span>
+    <span data-pvna-gesamt-wert style="font-family:'DM Mono',monospace;font-size:12.5px;width:44px;text-align:right;"></span>
+    <span style="font-size:12px;color:var(--muted);">des Flächenpotenzials</span>
     <span style="flex-basis:100%;height:0;"></span>
     ${knopf('fuellen', '▲ Bis zur Netzgrenze füllen', 'Ertragsstärkste Dächer zuerst belegen, bis mit den aktiven Maßnahmen die erste Grenze erreicht ist')}
     ${knopf('variante', '▼ Variante Bestandsnetz', 'Belegung der berechneten Variante (ertragsstärkste Dächer zuerst, bis zum ersten Engpass)')}
@@ -971,19 +971,19 @@ export function pvnaSchemaRender() {
     ${knopf('null', 'Alle auf 0', 'Alle Dächer leer')}
   </div>
   <div data-pvna-variante style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px;padding:7px 10px;
-    background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--c-teal);border-radius:7px;font-size:10.5px;"></div>
+    background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--c-teal);border-radius:7px;font-size:12px;"></div>
   <div data-pvna-fahrplan style="margin-bottom:6px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);
-    border-left:3px solid var(--c-blue);border-radius:7px;font-size:10.5px;"></div>
-  <div data-pvna-auswahl style="font-size:10.5px;color:var(--muted);margin:6px 0 8px;min-height:15px;line-height:1.5;"></div>
+    border-left:3px solid var(--c-blue);border-radius:7px;font-size:12px;"></div>
+  <div data-pvna-auswahl style="font-size:12px;color:var(--muted);margin:6px 0 8px;min-height:15px;line-height:1.5;"></div>
   <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 14px;margin-bottom:6px;">
-    <div style="font-size:10px;color:var(--muted);line-height:1.6;flex:1 1 420px;">
+    <div style="font-size:12px;color:var(--muted);line-height:1.6;flex:1 1 420px;">
       Kabel: <span style="color:var(--c-green);">■</span> &lt; 70 % · <span style="color:var(--c-amber);">■</span> 70–100 % · <span style="color:var(--c-red);">■</span> überlastet ·
       <span style="color:var(--muted);">- -</span> Querschnitt nicht erfasst bzw. angenommen · <span style="color:var(--c-blue);">⚒</span> Ertüchtigung (bei aufgeklapptem Fahrplan) ·
       Knoten: Spannungsanhebung · <span style="color:var(--c-red);">◉</span> Engpass (Grenze erreicht) ·
       <span style="color:var(--accent);">▬</span> begrenzt das gewählte Dach · Schieber: <span style="color:var(--c-blue);">▼</span> Variante,
       <span style="color:var(--c-green);">▬</span> Spielraum bei der übrigen Belegung, roter Knopf = mehr als der Spielraum.
       Rechts: kWp belegt / Fläche (anklicken zum Eintippen) · ΔU am Anschlussknoten.</div>
-    <div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);" title="Was an den Kabeln steht">
+    <div style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);" title="Was an den Kabeln steht">
       Beschriftung:
       ${[['auslastung', 'Auslastung'], ['du', 'ΔU am Knoten'], ['kabel', 'Kabel']].map(([k, t]) =>
         `<button class="pvna-knopf" data-pvna-beschr="${k}" style="${_beschr === k ? 'background:var(--accent);color:#111;border-color:var(--accent);' : ''}">${t}</button>`).join('')}
@@ -1117,7 +1117,7 @@ function _ereignisse(root) {
       const d = daecher().find(x => x.id === id);
       if (!d) return;
       t.innerHTML = `<input type="number" data-pvna-eingabe="${escHtml(id)}" min="0" max="${d.kwpMax}" step="0.1"
-        value="${(_bel.get(id) || 0).toFixed(1)}" style="width:66px;font-size:10.5px;padding:0 3px;text-align:right;">`;
+        value="${(_bel.get(id) || 0).toFixed(1)}" style="width:66px;font-size:12px;padding:0 3px;text-align:right;">`;
       const inp = t.querySelector('input');
       inp.focus();
       inp.select();
@@ -1435,7 +1435,7 @@ function _fahrplanVariantenLeiste(n) {
   const gew = _fahrplanGewaehlt(n);
   const ist = _fahrplanImErgebnis();
   const aktuell = gew.length === ist.size && gew.every(k => ist.has(k));
-  const knopf = (akt, txt, tip, betont) => `<button class="${betont ? 'btn-confirm' : 'pvna-knopf'}" style="padding:3px 9px;font-size:10.5px;"
+  const knopf = (akt, txt, tip, betont) => `<button class="${betont ? 'btn-confirm' : 'pvna-knopf'}" style="padding:3px 9px;font-size:12px;"
     data-pvna-aktion="${akt}" title="${tip}">${txt}</button>`;
   return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 6px;">
     <span style="font-weight:600;">Stufen als Varianten:</span>
@@ -1672,7 +1672,7 @@ function _varianteZeile(root, lf) {
   if (!box) return;
   const eig = window._pvAnalyse?.eigeneBelegung;
   const knopf = (akt, txt, tip, betont) => `<button class="${betont ? 'btn-confirm' : 'pvna-knopf'}"
-    style="padding:4px 10px;font-size:10.5px;" data-pvna-aktion="${akt}" title="${tip}">${txt}</button>`;
+    style="padding:4px 10px;font-size:12px;" data-pvna-aktion="${akt}" title="${tip}">${txt}</button>`;
   box.innerHTML = `
     ${knopf('uebernehmen', eig ? '✚ Aktuelle Belegung übernehmen (ersetzt)' : '✚ Als Variante übernehmen',
       'Legt diese Belegung als Variante „Bestandsnetz, eigene Belegung" an und rechnet die Varianten neu', true)}

@@ -13558,11 +13558,11 @@ export function ggMountEinzelansicht(host) {
   if (!host || host.querySelector('#gg-sidebar')) return;
   host.innerHTML = `
 <div style="display:flex;flex-direction:row;gap:0;height:100%;min-height:400px;">
-  <div id="gg-sidebar" style="width:250px;flex-shrink:0;overflow-y:auto;border-right:1px solid rgba(38,166,154,.15);padding:10px;"></div>
+  <div id="gg-sidebar" style="width:250px;flex-shrink:0;overflow-y:auto;border-right:1px solid var(--border);padding:10px;"></div>
   <div style="flex:1;display:flex;flex-direction:column;min-width:0;overflow-y:auto;padding:12px 14px;">
     <div id="gg-bar" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;"></div>
     <div id="gg-paper" style="background:#fff;border-radius:6px;padding:10px;overflow-x:auto;"></div>
-    <div id="gg-status" style="font-size:11px;color:#26a69a;min-height:16px;margin-top:8px;"></div>
+    <div id="gg-status" style="font-size:11px;color:var(--brand);min-height:16px;margin-top:8px;"></div>
     <div id="gg-optionen" style="margin-top:10px;"></div>
   </div>
 </div>`;
@@ -13602,13 +13602,13 @@ export function ggRenderPanel() {
     const btnHtml = f => {
       const aktiv = f.id === _gg.figurId;
       return `<button data-click="ggSelectFigur('${f.id}')" style="display:block;width:100%;text-align:left;margin-bottom:4px;padding:7px 9px;border-radius:5px;cursor:pointer;font-family:inherit;font-size:11px;line-height:1.35;
-        border:1px solid ${aktiv ? 'rgba(38,166,154,.5)' : 'rgba(255,255,255,.08)'};
-        background:${aktiv ? 'rgba(38,166,154,.14)' : 'rgba(255,255,255,.03)'};
-        color:${aktiv ? '#26a69a' : 'var(--muted)'};">${gEsc(f.titel)}</button>`;
+        border:1px solid ${aktiv ? 'var(--brand)' : 'rgba(var(--ink),.08)'};
+        background:${aktiv ? 'var(--brand-weak)' : 'rgba(var(--ink),.03)'};
+        color:${aktiv ? 'var(--brand)' : 'var(--muted)'};">${gEsc(f.titel)}</button>`;
     };
     side.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Abbildungen · nach Gutachten-Kapitel</div>`
       + ggFigurenNachKapitel().map((g, gi) => `
-        <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#26a69a;opacity:.8;margin:${gi ? 14 : 0}px 0 5px;">${gEsc(g.kapitel)}</div>`
+        <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--brand);opacity:.8;margin:${gi ? 14 : 0}px 0 5px;">${gEsc(g.kapitel)}</div>`
         + g.figuren.map(btnHtml).join('')).join('')
       + `<div style="margin-top:12px;font-size:10px;color:var(--muted);line-height:1.5;">${gEsc(figur.hinweis || '')}</div>`;
   }
@@ -13617,19 +13617,19 @@ export function ggRenderPanel() {
   const bar = document.getElementById('gg-bar');
   if (bar) {
     const btn = (label, click, primary) => `<button data-click="${click}" style="font-family:inherit;font-size:11px;padding:6px 12px;border-radius:5px;cursor:pointer;
-      border:1px solid ${primary ? 'rgba(38,166,154,.6)' : 'rgba(255,255,255,.12)'};
-      background:${primary ? 'rgba(38,166,154,.18)' : 'rgba(255,255,255,.04)'};
-      color:${primary ? '#26a69a' : 'var(--muted)'};">${label}</button>`;
-    const sel = (click, optionen, wert) => `<select data-change="${click}" style="font-family:inherit;font-size:11px;padding:5px 6px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);">
+      border:1px solid ${primary ? 'var(--brand)' : 'rgba(var(--ink),.12)'};
+      background:${primary ? 'var(--brand-weak)' : 'rgba(var(--ink),.04)'};
+      color:${primary ? 'var(--brand)' : 'var(--muted)'};">${label}</button>`;
+    const sel = (click, optionen, wert) => `<select data-change="${click}" style="font-family:inherit;font-size:11px;padding:5px 6px;border-radius:5px;border:1px solid rgba(var(--ink),.12);background:rgba(var(--ink),.04);color:var(--muted);">
            ${optionen.map(([v, l]) => `<option value="${v}"${String(wert) === String(v) ? ' selected' : ''}>${l}</option>`).join('')}
          </select>`;
     if (figur.istText) {
-      bar.innerHTML = btn('⧉ Für Word kopieren', 'ggCopy()', true)
+      bar.innerHTML = btn('Für Word kopieren', 'ggCopy()', true)
         + `<span style="margin-left:auto;font-size:10px;color:var(--muted);">In Word mit Strg+V einfügen — offene Platzhalter bleiben gelb hervorgehoben, bis sie ausgefüllt sind.</span>`;
     } else {
       const zielTabelle = ggZielIstTabelle();
-      bar.innerHTML = btn(zielTabelle ? '⊞ Als Tabelle kopieren' : '⧉ Für Word kopieren', 'ggCopy()', true)
-        + btn('⤓ PNG', 'ggSavePng()') + btn('⤓ SVG', 'ggSaveSvg()')
+      bar.innerHTML = btn(zielTabelle ? 'Als Tabelle kopieren' : 'Für Word kopieren', 'ggCopy()', true)
+        + btn('PNG speichern', 'ggSavePng()') + btn('SVG speichern', 'ggSaveSvg()')
         + sel('ggSetScale(this.value)', [[2, '2× · ~300 dpi'], [3, '3× · ~450 dpi'], [4, '4× · ~600 dpi']], _gg.scale)
         + (ggIstBlatt(figur)
             ? sel('ggSetLayout(this.value)', [['voll', 'Blatt: vollständig'],
@@ -13663,9 +13663,9 @@ export function ggRenderPanel() {
       // Vorschau so schlicht wie bisher.
       if (!_gg.svgTabelle) { paper.appendChild(svg); return; }
       const box = document.createElement('div');
-      box.style.cssText = `border:2px solid ${aktiv ? '#26a69a' : 'transparent'};padding:4px;margin-bottom:10px;`;
+      box.style.cssText = `border:2px solid ${aktiv ? 'var(--brand)' : 'transparent'};padding:4px;margin-bottom:10px;`;
       const cap = document.createElement('div');
-      cap.style.cssText = 'font-size:10px;color:#5A5F5A;margin:0 0 4px 2px;';
+      cap.style.cssText = 'font-size:10px;color:var(--faint);margin:0 0 4px 2px;';
       cap.textContent = aktiv ? `${name} · wird exportiert` : name;
       box.append(cap, svg);
       paper.appendChild(box);
@@ -13682,7 +13682,7 @@ export function ggRenderPanel() {
     let html = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">${figur.istText ? 'Platzhalter' : figur.config.groups ? 'Zustände' : 'Kopfzeile'}</div>`;
     if (typeof figur.ausProjekt === 'function') {
-      html += `<button data-click="ggSyncFromProject()" style="font-family:inherit;font-size:10px;padding:3px 9px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);">⟳ Aus Projekt übernehmen</button>`;
+      html += `<button data-click="ggSyncFromProject()" style="font-family:inherit;font-size:10px;padding:3px 9px;border-radius:4px;cursor:pointer;border:1px solid rgba(var(--ink),.12);background:rgba(var(--ink),.04);color:var(--muted);">⟳ Aus Projekt übernehmen</button>`;
     }
     html += `</div>`;
 
@@ -13717,7 +13717,7 @@ export function ggRenderPanel() {
             const nr = einspeisungen.length > 1 ? ` ${i + 1}` : '';
             return zeile(`Station${nr}`, e.station, 'Netzbetreiber / Begehung') + zeile(`Kabeltyp${nr}`, e.kabeltyp, 'Netzbetreiber / Bestandsplan');
           }).join('')
-        + `<button data-click="sgNaOeffnen()" style="margin-top:10px;font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,213,79,.45);background:rgba(255,213,79,.08);color:#ffd54f;">⚡ In Strom-Grundlagen bearbeiten</button>`
+        + `<button data-click="sgNaOeffnen()" style="margin-top:10px;font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,213,79,.45);background:rgba(255,213,79,.08);color:var(--c-amber);">⚡ In Strom-Grundlagen bearbeiten</button>`
         + `<div style="margin-top:8px;font-size:10px;color:var(--muted);line-height:1.5;">Eingetragen werden die Netzanschlussdaten unter ⚡ Strom-Grundlagen › Netzanschluss; die vereinbarte Anschlussleistung im Feld „Max. Bezug" unter NAP-Grenzen (kVA) — beides mit der Projektdatei gespeichert.</div>`;
     } else if (figur.bedarfText) {
       // Nur Anzeige: Messbasis, GZF und Maßnahmen-Haken werden in der NAP-Analyse gepflegt
@@ -13727,10 +13727,10 @@ export function ggRenderPanel() {
       const s = window._pvAnalyse;
       html += s?.berechnet
         ? `<div style="font-size:11px;color:var(--muted);line-height:1.6;">Werte aus ☀ PV-Analyse · Berechnungsstand ${gEsc(s.standText || '—')}`
-          + (s.stale ? ` · <span style="color:#e0a126;">Eingaben seither geändert — dort „Varianten neu berechnen“.</span>` : '')
+          + (s.stale ? ` · <span style="color:var(--c-amber);">Eingaben seither geändert — dort „Varianten neu berechnen“.</span>` : '')
           + `</div><div style="font-size:10px;color:var(--muted);margin-top:4px;">Gelbe Platzhalter erfasst das Tool nicht (z. B. Speichertechnologie, Aufstellort) — in Word ergänzen.</div>`
           + ggPvGrundlageHtml() + ggPvAuswahlHtml()
-        : `<div style="font-size:11px;color:#e0a126;">Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen“ klicken.</div>`;
+        : `<div style="font-size:11px;color:var(--c-amber);">Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen“ klicken.</div>`;
     } else if (figur.pvWahl) {
       html += ggPvAuswahlHtml();
     } else if (figur.kostenFigur) {
@@ -13760,7 +13760,7 @@ export function ggRenderPanel() {
       const feld = (label, wert, click) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);">
           ${gEsc(label)}
           <input type="text" value="${gEsc(wert || '')}" data-change="${click}" style="font-family:inherit;font-size:11px;padding:4px 6px;border-radius:4px;
-            border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);min-width:150px;"></label>`;
+            border:1px solid rgba(var(--ink),.12);background:rgba(var(--ink),.04);color:var(--text,var(--text));min-width:150px;"></label>`;
       // Version 2 zeigt Liegenschaft und Metadaten nicht — die Felder dafuer
       // stehen zu lassen waere eine Eingabe ohne Wirkung.
       const reduziert = _gg.layout === 'reduziert';
@@ -13785,7 +13785,7 @@ function ggSay(msg, err) {
   const el = document.getElementById('gg-status');
   if (!el) return;
   el.textContent = msg;
-  el.style.color = err ? '#ef5350' : '#26a69a';
+  el.style.color = err ? 'var(--crit)' : 'var(--brand)';
 }
 
 export function ggSelectFigur(id) {

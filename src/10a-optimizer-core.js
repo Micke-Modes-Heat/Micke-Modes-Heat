@@ -1005,13 +1005,13 @@ export function updateStatusPanel() {
   // ─── Abschnitt: Variante ────────────────────────────────────────────
   const varName = window.activeVariantId ? (varianten.find(v => v.id === window.activeVariantId)?.name || '?') : 'Hauptplan';
   html += `<div style="margin-bottom:8px;padding:5px 8px;background:var(--surface2);border-radius:5px;border-left:3px solid ${activeVariantId ? 'var(--accent)' : '#4caf50'};">`;
-  html += `<span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.06em;">Aktive Variante</span><br>`;
+  html += `<span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">Aktive Variante</span><br>`;
   html += `<span style="color:var(--text);font-size:12px;">${varName}</span>`;
-  if (typeof globalYear !== 'undefined') html += ` <span style="color:var(--muted);font-size:9px;margin-left:6px;">Planungsjahr ${globalYear}</span>`;
+  if (typeof globalYear !== 'undefined') html += ` <span style="color:var(--muted);font-size:11px;margin-left:6px;">Planungsjahr ${globalYear}</span>`;
   html += `</div>`;
 
   // ─── Abschnitt: Wärme-Lastgang ──────────────────────────────────────
-  html += `<div style="margin-bottom:6px;"><span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.06em;">Wärme-Lastgang</span></div>`;
+  html += `<div style="margin-bottom:6px;"><span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">Wärme-Lastgang</span></div>`;
   const hatLg = !!glLastgangKw;
   const monatswerte = typeof glGetMonatswerte === 'function' ? glGetMonatswerte() : [];
   const hatMonat = monatswerte.some(v => v !== null);
@@ -1025,11 +1025,11 @@ export function updateStatusPanel() {
   html += `<div>${dot(!!ss)}Berechnet (systemState)</div><div>${ss ? val(Math.round(ss.gesamtMwhMitNV || ss.nutzwaermeMwh || 0).toLocaleString('de-DE'), 'MWh/a inkl. NV') : '<span style="color:var(--c-blue);">noch nicht berechnet</span>'}</div>`;
 
   // Fall-Anzeige
-  if (hatLg && !hatMonat) html += `<div colspan="2" style="grid-column:1/-1;color:var(--c-green);font-size:9px;">→ Fall 1: Lastgang direkt</div>`;
-  else if (hatLg && hatMonat) html += `<div style="grid-column:1/-1;color:var(--c-green);font-size:9px;">→ Fall 2: Lastgang + Monatsskalierung</div>`;
-  else if (!hatLg && hatMonat) html += `<div style="grid-column:1/-1;color:var(--c-green);font-size:9px;">→ Fall 3/4: SigLinDe-Synthese aus Monatswerten</div>`;
-  else if (!hatLg && !hatMonat && gesamtMwh > 0) html += `<div style="grid-column:1/-1;color:var(--c-green);font-size:9px;">→ Fall 5: Reine SigLinDe-Synthese</div>`;
-  else html += `<div style="grid-column:1/-1;color:var(--c-orange);font-size:9px;">→ Keine Wärmedaten eingegeben</div>`;
+  if (hatLg && !hatMonat) html += `<div colspan="2" style="grid-column:1/-1;color:var(--c-green);font-size:11px;">→ Fall 1: Lastgang direkt</div>`;
+  else if (hatLg && hatMonat) html += `<div style="grid-column:1/-1;color:var(--c-green);font-size:11px;">→ Fall 2: Lastgang + Monatsskalierung</div>`;
+  else if (!hatLg && hatMonat) html += `<div style="grid-column:1/-1;color:var(--c-green);font-size:11px;">→ Fall 3/4: SigLinDe-Synthese aus Monatswerten</div>`;
+  else if (!hatLg && !hatMonat && gesamtMwh > 0) html += `<div style="grid-column:1/-1;color:var(--c-green);font-size:11px;">→ Fall 5: Reine SigLinDe-Synthese</div>`;
+  else html += `<div style="grid-column:1/-1;color:var(--c-orange);font-size:11px;">→ Keine Wärmedaten eingegeben</div>`;
   html += `</div>`;
 
   // Gebäude als Quelle
@@ -1041,7 +1041,7 @@ export function updateStatusPanel() {
   }
 
   // ─── Abschnitt: Strom-Lastgang ──────────────────────────────────────
-  html += `<div style="margin-bottom:6px;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.06em;">Strom-Lastgang (L&K)</span></div>`;
+  html += `<div style="margin-bottom:6px;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">Strom-Lastgang (L&K)</span></div>`;
   const hatStromLg = !!window.elQuartierH;
   const stromMwh = parseFloat(document.getElementById('strom-quartier-mwh')?.value) || 0;
   html += `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;margin-bottom:8px;padding-left:4px;">`;
@@ -1050,7 +1050,7 @@ export function updateStatusPanel() {
   html += `</div>`;
 
   // ─── Abschnitt: Erzeuger ────────────────────────────────────────────
-  html += `<div style="margin-bottom:6px;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.06em;">Wärmeerzeuger (aktiv)</span></div>`;
+  html += `<div style="margin-bottom:6px;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">Wärmeerzeuger (aktiv)</span></div>`;
   const activeErz = meritOrderKeys.filter(k => isErzeugerAktiv(k));
   if (activeErz.length === 0) {
     html += `<div style="padding-left:4px;color:var(--c-blue);margin-bottom:8px;">Keine Erzeuger aktiv</div>`;
@@ -1074,7 +1074,7 @@ export function updateStatusPanel() {
   }
 
   // ─── Abschnitt: PV + Batterie ───────────────────────────────────────
-  html += `<div style="margin-bottom:6px;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.06em;">Strom: PV & Batterie</span></div>`;
+  html += `<div style="margin-bottom:6px;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">Strom: PV & Batterie</span></div>`;
   html += `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;margin-bottom:4px;padding-left:4px;">`;
 
   const pvKwp = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
@@ -1106,7 +1106,7 @@ export function updateStatusPanel() {
   html += `</div>`;
 
   // ─── Abschnitt: Wirtschaftlichkeit ──────────────────────────────────
-  html += `<div style="margin-bottom:6px;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.06em;">Wirtschaftlichkeit</span></div>`;
+  html += `<div style="margin-bottom:6px;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">Wirtschaftlichkeit</span></div>`;
   const wgk = window._lastWgk;
   const pStrom = document.getElementById('wirt-p-strom')?.value;
   const pGas = document.getElementById('wirt-p-gas')?.value;

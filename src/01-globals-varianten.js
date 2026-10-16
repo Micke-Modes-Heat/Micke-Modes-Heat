@@ -521,7 +521,7 @@ export function renderVergleich() {
   if (!wrap) return;
   const cols = ['base', ...varianten.map(v => v.id)];
   if (!cols.some(id => variantResults[id])) {
-    wrap.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:12px 0;">Noch keine Wärme-Kennzahlen. Erst „Grundlage berechnen“ ausführen, dann „↻ Veraltete rechnen“.</div>';
+    wrap.innerHTML = '<div style="color:var(--muted);font-size:12.5px;padding:12px 0;">Noch keine Wärme-Kennzahlen. Erst „Grundlage berechnen“ ausführen, dann „↻ Veraltete rechnen“.</div>';
     return;
   }
   const fmt = (v, unit='', digits=0) => (v != null && !isNaN(v) && v !== '') ? Number(v).toLocaleString('de-DE', {maximumFractionDigits:digits}) + (unit ? '\u00a0' + unit : '') : '—';
@@ -624,7 +624,7 @@ export function renderVergleich() {
   const thFg = id => isActive(id) ? '#000' : 'var(--muted)';
   const onClick = id => id === 'base' ? `data-click="activateVariant(null);renderVergleich()"` : `data-click="activateVariant('${id}');renderVergleich()"`;
   let html = `<table class="vergleich-table"><thead><tr><th style="background:var(--surface2);">Kennwert</th>`;
-  const STATUS = { aktuell: '', veraltet: ' <span title="Seit der Berechnung hat sich der gemeinsame Stand geändert" style="font-weight:400;font-size:9px;color:var(--c-orange);">veraltet</span>', nie: ' <span style="font-weight:400;font-size:9px;">nicht gerechnet</span>' };
+  const STATUS = { aktuell: '', veraltet: ' <span title="Seit der Berechnung hat sich der gemeinsame Stand geändert" style="font-weight:400;font-size:11px;color:var(--c-orange);">veraltet</span>', nie: ' <span style="font-weight:400;font-size:11px;">nicht gerechnet</span>' };
   cols.forEach(id => {
     const lbl = escHtml(variantenName(id)) + (gutachtenVariante === id ? ' ★' : '');
     html += `<th class="clickable" data-variant-id="${id}" ${onClick(id)} style="background:${thBg(id)};color:${thFg(id)};" title="Klicken zum Aktivieren">${lbl}${STATUS[variantenKennzahlStatus(id)]}</th>`;
@@ -632,7 +632,7 @@ export function renderVergleich() {
   html += `</tr></thead><tbody>`;
   rows.forEach((row, ri) => {
     if (row.header) {
-      html += `<tr><td colspan="${cols.length+1}" style="background:var(--surface2);color:var(--muted);font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:5px 12px;">${row.label}</td></tr>`;
+      html += `<tr><td colspan="${cols.length+1}" style="background:var(--surface2);color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:5px 12px;">${row.label}</td></tr>`;
       return;
     }
     html += `<tr><td>${row.label}</td>`;
@@ -649,7 +649,7 @@ export function renderVergleich() {
   html += `</tbody></table>`;
   // Fußnote, wenn eine Variante ohne gezeichnetes Netz/Gebäude rechnet
   if (cols.some(id => variantResults[id]?.lastgangBasis)) {
-    html += `<div style="color:var(--muted);font-size:9px;padding:4px 2px 0;">* kein Netz/Gebäude gezeichnet — Werte aus Grundlagen-Lastgang (Bedarf = Nutzwärme, Verluste aus Netzverlust-%)</div>`;
+    html += `<div style="color:var(--muted);font-size:11px;padding:4px 2px 0;">* kein Netz/Gebäude gezeichnet — Werte aus Grundlagen-Lastgang (Bedarf = Nutzwärme, Verluste aus Netzverlust-%)</div>`;
   }
   wrap.innerHTML = html;
 

@@ -147,7 +147,7 @@ function renderInfoPanel(state) {
           style="width:60px;${changed?'border-color:var(--c-orange);':''}"
           title="${changed?'Geändert (Projektstandard: '+(projOver??p.wpm2)+' W/m²)':''}">
       </td>
-      <td style="font-size:9px;color:var(--muted);padding-left:4px;">W/m²</td>
+      <td style="font-size:11px;color:var(--muted);padding-left:4px;">W/m²</td>
     </tr>`;
   }).join('');
 
@@ -155,7 +155,7 @@ function renderInfoPanel(state) {
     <div class="aw-info-section">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
         <div class="aw-info-section-title">Verbrauch — SLP-Profile</div>
-        <button class="aw-cfg-apply-btn" id="aw-manage-slp" style="font-size:9px;padding:2px 8px;">Profile verwalten</button>
+        <button class="aw-cfg-apply-btn" id="aw-manage-slp" style="font-size:11px;padding:2px 8px;">Profile verwalten</button>
       </div>
       <div class="aw-formula">kW = Fläche [m²] × W/m² ÷ 1000</div>
       <table class="aw-nt-table">
@@ -340,7 +340,7 @@ function renderTableRows(state) {
         </td>
         <td class="aw-col-pv" style="text-align:center;">
           ${fakPct != null && !skipP
-            ? `<span style="color:${fakCol};font-size:10px;font-weight:600;">${fakPct}%</span>`
+            ? `<span style="color:${fakCol};font-size:12px;font-weight:600;">${fakPct}%</span>`
             : '<span style="color:var(--muted)">—</span>'}
         </td>
         <td class="aw-col-pv" style="text-align:center;padding:0 2px;">

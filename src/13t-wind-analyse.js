@@ -44,7 +44,7 @@ export function windaRenderPanel() {
       </button>
       ${window.windGebietPolygon ? `<button class="ins-link-btn" onclick="clearWindGebiet()" style="margin:0;color:var(--c-red);">✕ löschen</button>` : ''}
     </div>
-    <div style="font-size:9px;color:var(--muted);margin-bottom:12px;">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">
       Maßgebliches Gebiet für Abstände/Eignungsfläche unten: <b style="color:${gebiet ? '#4dd0e1' : '#ef9a9a'};">${gebiet || 'keines gezeichnet'}</b>
       — das Windgebiet kann größer/anders zugeschnitten sein als das allgemeine Plangebiet.
     </div>`;
@@ -54,7 +54,7 @@ export function windaRenderPanel() {
   const platzierungBlock  = _windaPlatzierungBlock();
 
   if (!items.length) {
-    el.innerHTML = gebietBlock + siteBlock + kartenLayerBlock + platzierungBlock + `<div style="font-size:11px;color:var(--muted);padding:8px 0;">Keine Windkraftanlagen im Projekt — im Elektro-Tab unter „Erzeugung → Windkraftanlage" anlegen, oder oben einen Platzierungsvorschlag übernehmen.</div>`;
+    el.innerHTML = gebietBlock + siteBlock + kartenLayerBlock + platzierungBlock + `<div style="font-size:12.5px;color:var(--muted);padding:8px 0;">Keine Windkraftanlagen im Projekt — im Elektro-Tab unter „Erzeugung → Windkraftanlage" anlegen, oder oben einen Platzierungsvorschlag übernehmen.</div>`;
     return;
   }
 
@@ -64,15 +64,15 @@ export function windaRenderPanel() {
   const headerBlock = `
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
       <div style="background:var(--surface2);border-radius:6px;padding:6px 8px;">
-        <div style="font-size:8px;color:var(--muted);">Anlagen (aktiv)</div>
+        <div style="font-size:10.5px;color:var(--muted);">Anlagen (aktiv)</div>
         <div style="font-size:14px;font-weight:700;color:var(--c-teal);">${summary.count}</div>
       </div>
       <div style="background:var(--surface2);border-radius:6px;padding:6px 8px;">
-        <div style="font-size:8px;color:var(--muted);">Jahresertrag gesamt</div>
+        <div style="font-size:10.5px;color:var(--muted);">Jahresertrag gesamt</div>
         <div style="font-size:14px;font-weight:700;color:var(--c-teal);">${summary.mwh.toLocaleString('de-DE', { maximumFractionDigits: 0 })} MWh/a</div>
       </div>
       <div style="background:var(--surface2);border-radius:6px;padding:6px 8px;">
-        <div style="font-size:8px;color:var(--muted);">Liegenschaftsbedarf</div>
+        <div style="font-size:10.5px;color:var(--muted);">Liegenschaftsbedarf</div>
         <div style="font-size:14px;font-weight:700;color:${zielMwh > 0 ? 'var(--text)' : '#ef9a9a'};">${zielMwh > 0 ? zielMwh.toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' MWh/a' : '—'}</div>
       </div>
     </div>`;
@@ -102,39 +102,39 @@ function _windaSiteBlock(nAssets) {
 
   let statusHtml;
   if (_siteLoading) {
-    statusHtml = `<div style="font-size:10px;color:var(--c-teal);padding:4px 0;">Lade Winddaten von Open-Meteo …</div>`;
+    statusHtml = `<div style="font-size:12px;color:var(--c-teal);padding:4px 0;">Lade Winddaten von Open-Meteo …</div>`;
   } else if (s) {
     statusHtml = `
       <div style="background:var(--surface2);border:1px solid rgba(77,208,225,0.35);border-radius:6px;padding:6px 9px;margin-bottom:6px;">
-        <div style="font-size:10px;color:var(--text);">
+        <div style="font-size:12px;color:var(--text);">
           Ø <b style="color:var(--c-teal);">${s.vMean100.toFixed(2)} m/s</b> (100 m) ·
           Weibull-k <b style="color:var(--c-teal);">${s.weibullK.toFixed(2)}</b> ·
           Hellmann-α <b style="color:var(--c-teal);">${s.alpha.toFixed(2)}</b>
         </div>
-        <div style="font-size:8px;color:var(--muted);margin-top:2px;">
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">
           Jahre ${s.startYear}–${s.endYear} · Stundenreihe ${s.profilJahr} ·
           ${s.lat.toFixed(3)}, ${s.lng.toFixed(3)} · geladen ${new Date(s.geladen).toLocaleDateString('de-DE')}
         </div>
       </div>
       ${nAssets > 0 ? `<button class="ins-link-btn" onclick="windaApplySiteToAssets()" style="margin:0 0 4px;">→ Kennwerte auf alle ${nAssets} Windkraftanlage(n) übernehmen</button>` : ''}
-      <div style="font-size:8px;color:var(--c-blue);margin-bottom:4px;">Solange geladen, rechnen alle Zeitprofile (Inspector, NAP-, PV-, Knotenpunkt-Analyse) automatisch mit der realen Stundenreihe statt dem synthetischen Profil. „Übernehmen" setzt zusätzlich Ø-Wind/Weibull-k je Anlage (auf deren Nabenhöhe umgerechnet).</div>`;
+      <div style="font-size:10.5px;color:var(--c-blue);margin-bottom:4px;">Solange geladen, rechnen alle Zeitprofile (Inspector, NAP-, PV-, Knotenpunkt-Analyse) automatisch mit der realen Stundenreihe statt dem synthetischen Profil. „Übernehmen" setzt zusätzlich Ø-Wind/Weibull-k je Anlage (auf deren Nabenhöhe umgerechnet).</div>`;
   } else {
-    statusHtml = `<div style="font-size:9px;color:var(--muted);padding:2px 0 4px;">Noch keine Standortdaten geladen — Zeitprofile nutzen das synthetische Weibull-Profil.</div>`;
+    statusHtml = `<div style="font-size:11px;color:var(--muted);padding:2px 0 4px;">Noch keine Standortdaten geladen — Zeitprofile nutzen das synthetische Weibull-Profil.</div>`;
   }
 
   return `
-    <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:2px 0 6px;">Standort-Winddaten (ERA5-Reanalyse)</div>
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:2px 0 6px;">Standort-Winddaten (ERA5-Reanalyse)</div>
     <div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:6px;">
       <div style="flex:1;">
-        <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Jahre (Mittelung)</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">Jahre (Mittelung)</div>
         <input id="winda-site-years" type="number" value="${nY}" min="1" max="5" step="1"
-          style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+          style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;"/>
       </div>
       <button class="ins-link-btn" onclick="windaFetchSite()" ${_siteLoading ? 'disabled' : ''}
         style="margin:0;flex:2;">${s ? '↺ Neu laden' : 'Winddaten laden'} (${coords.quelle})</button>
     </div>
     ${statusHtml}
-    <div style="font-size:8px;color:var(--c-blue);margin-bottom:12px;">ERA5 ist ein ~25-km-Raster-Modell (Open-Meteo, CC-BY 4.0) — gut fürs Screening, lokale Effekte (Waldkante, Kuppe) fehlen. Ersetzt kein Standortwindgutachten.</div>`;
+    <div style="font-size:10.5px;color:var(--c-blue);margin-bottom:12px;">ERA5 ist ein ~25-km-Raster-Modell (Open-Meteo, CC-BY 4.0) — gut fürs Screening, lokale Effekte (Waldkante, Kuppe) fehlen. Ersetzt kein Standortwindgutachten.</div>`;
 }
 
 window.windaFetchSite = async function () {
@@ -263,14 +263,14 @@ function _windaPlatzierungBlock() {
     const totalKw  = v.count * v.ratedKw;
     return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:6px;">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-        <span style="font-size:10px;font-weight:600;color:var(--text);flex:1;">${v.label}</span>
-        <span style="font-size:9px;color:${hoeheCol};font-weight:700;">${v.gesamthoehe.toFixed(0)} m Gesamthöhe</span>
+        <span style="font-size:12px;font-weight:600;color:var(--text);flex:1;">${v.label}</span>
+        <span style="font-size:11px;color:${hoeheCol};font-weight:700;">${v.gesamthoehe.toFixed(0)} m Gesamthöhe</span>
       </div>
-      <div style="font-size:9px;color:var(--muted);margin-bottom:6px;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
         ${v.ratedKw.toFixed(0)} kW · Ø ${v.rotorD.toFixed(0)} m · Nabenhöhe ${v.nabenhoehe.toFixed(0)} m · Abstand ${v.radiusM.toFixed(0)} m untereinander / ${v.boundaryM.toFixed(0)} m zur Grenze
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <div style="flex:1;font-size:10px;">
+        <div style="flex:1;font-size:12px;">
           <span style="color:var(--c-teal);font-weight:700;">${v.count}×</span> Standorte gefunden
           ${v.count > 0 ? `→ <span style="color:var(--c-teal);">${(totalKw/1000).toLocaleString('de-DE',{maximumFractionDigits:1})} MW</span> ·
             <span style="color:var(--c-teal);">${totalMwh.toLocaleString('de-DE',{maximumFractionDigits:0})} MWh/a</span>` : ''}
@@ -281,23 +281,23 @@ function _windaPlatzierungBlock() {
   }).join('');
 
   return `
-    <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:2px 0 6px;">Platzierungsvorschläge im Gebiet</div>
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:2px 0 6px;">Platzierungsvorschläge im Gebiet</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
       <div>
-        <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Ø Wind auf 100 m (m/s)${site ? ' <span style="color:var(--c-teal);">· ERA5</span>' : ''}</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">Ø Wind auf 100 m (m/s)${site ? ' <span style="color:var(--c-teal);">· ERA5</span>' : ''}</div>
         <input id="winda-vmean" type="number" value="${vMean}" step="0.1" min="0"
-          style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+          style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;"
           onchange="windaRenderPanel()"/>
       </div>
       <div>
-        <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Planungsabstand ×Ø</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">Planungsabstand ×Ø</div>
         <input id="winda-mult" type="number" value="${mult}" step="0.5" min="1"
-          style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+          style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;"
           onchange="windaRenderPanel()"/>
       </div>
     </div>
     ${rows}
-    <div style="font-size:8px;color:var(--c-blue);margin-bottom:12px;">Näherung (Raster-Greedy, kein echtes Packungsoptimum) — Planungsabstand (×Ø) gilt untereinander und zu Gebäuden, zur Gebietsgrenze nur die Kipphöhe (≈ Gesamthöhe); bereits platzierte Anlagen sind als Ausschlusszonen berücksichtigt. „Übernehmen" legt echte Windkraftanlagen mit diesen Kennwerten an, danach im Inspector feinjustierbar.</div>`;
+    <div style="font-size:10.5px;color:var(--c-blue);margin-bottom:12px;">Näherung (Raster-Greedy, kein echtes Packungsoptimum) — Planungsabstand (×Ø) gilt untereinander und zu Gebäuden, zur Gebietsgrenze nur die Kipphöhe (≈ Gesamthöhe); bereits platzierte Anlagen sind als Ausschlusszonen berücksichtigt. „Übernehmen" legt echte Windkraftanlagen mit diesen Kennwerten an, danach im Inspector feinjustierbar.</div>`;
 }
 
 window._windaApplyPlacement = function (klassenId) {
@@ -326,7 +326,7 @@ function _windaScenRow(s) {
   if (!s) return '';
   const gh = s.gesamthoeheM;
   const ghCol = gh <= 50 ? '#4caf50' : '#f9a825';
-  return `<div style="display:flex;justify-content:space-between;gap:6px;font-size:9px;padding:2px 0;">
+  return `<div style="display:flex;justify-content:space-between;gap:6px;font-size:11px;padding:2px 0;">
     <span style="color:var(--muted);">${s.label}</span>
     <span style="text-align:right;"><span style="color:${ghCol};">${gh.toFixed(0)} m</span> · ${s.ratedKw.toFixed(0)} kW ·
       <span style="color:var(--c-teal);">${s.annualMWh.toLocaleString('de-DE', { maximumFractionDigits: 0 })} MWh/a</span></span>
@@ -368,15 +368,15 @@ function _windaCard(asset, zielMwh) {
   return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:10px 12px;margin-bottom:10px;">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
       <span style="width:8px;height:8px;border-radius:50%;background:${statusCol};flex-shrink:0;" title="${statusLbl}"></span>
-      <span style="font-size:11px;font-weight:600;color:var(--text);flex:1;cursor:pointer;" onclick="_windaOpenAsset('${asset.id}')" title="Inspector öffnen &amp; auf Karte zeigen">${asset.name}</span>
-      <span style="font-size:9px;color:${hoeheCol};font-weight:700;">Gesamthöhe ${gesamthoehe.toFixed(0)} m</span>
+      <span style="font-size:12.5px;font-weight:600;color:var(--text);flex:1;cursor:pointer;" onclick="_windaOpenAsset('${asset.id}')" title="Inspector öffnen &amp; auf Karte zeigen">${asset.name}</span>
+      <span style="font-size:11px;color:${hoeheCol};font-weight:700;">Gesamthöhe ${gesamthoehe.toFixed(0)} m</span>
     </div>
-    <div style="font-size:9px;color:var(--muted);margin-bottom:6px;">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
       ${ratedKw.toFixed(0)} kW · Ø ${rotorD.toFixed(0)} m · Nabenhöhe ${nabenhoehe.toFixed(0)} m ·
       <span style="color:var(--c-teal);">${y.annualMWh.toLocaleString('de-DE', { maximumFractionDigits: 0 })} MWh/a</span> ·
       ${y.volllaststundenH.toFixed(0)} Vlh · ${y.kapazitaetsfaktorPct.toFixed(0)} % KF
     </div>
-    <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">Eignungsfläche: ${eignungTxt}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Eignungsfläche: ${eignungTxt}</div>
     <div style="border-top:1px solid rgba(var(--ink),0.06);padding-top:4px;">
       ${_windaScenRow(scen.scen50)}${scen.scenBedarf ? _windaScenRow(scen.scenBedarf) : ''}${_windaScenRow(scen.scenMax)}
     </div>

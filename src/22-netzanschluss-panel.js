@@ -14,8 +14,8 @@ import { NA_MESSVERFAHREN, NA_MESSORTE, naMessverfahrenVorschlag, naMessortVorsc
 
 const WRAP_ID = 'strom-netzanschluss-wrap';
 const TEXTFELDER = ['naNetzbetreiberName', 'naNetzbetreiberAdresse', 'naSpannungsebene', 'naUebergabepunkt'];
-const STIL_EINGABE = 'width:100%;box-sizing:border-box;text-align:left;font-size:10px;';
-const STIL_KNOPF = 'font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--accent);cursor:pointer;';
+const STIL_EINGABE = 'width:100%;box-sizing:border-box;text-align:left;font-size:12px;';
+const STIL_KNOPF = 'font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--accent);cursor:pointer;';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -30,11 +30,11 @@ function vorschlag() {
 /* ── Oberfläche ──────────────────────────────────────────────────────────── */
 function textfeld(label, feld, { einheit = '', platzhalter = '' } = {}) {
   return `<label style="display:flex;flex-direction:column;gap:2px;min-width:0;">
-      <span style="font-size:9px;color:var(--muted);">${label}</span>
+      <span style="font-size:11px;color:var(--muted);">${label}</span>
       <span style="display:flex;align-items:center;gap:4px;">
         <input class="inp-field" type="text" value="${esc(window[feld])}" placeholder="${esc(platzhalter)}"
           data-change="sgNaSetFeld('${feld}',this.value)" style="${STIL_EINGABE}"/>
-        ${einheit ? `<span style="font-size:9px;color:var(--muted);">${einheit}</span>` : ''}
+        ${einheit ? `<span style="font-size:11px;color:var(--muted);">${einheit}</span>` : ''}
       </span>
     </label>`;
 }
@@ -44,7 +44,7 @@ function messverfahrenFeld() {
   const optionen = [['', '— bitte wählen —'], ...NA_MESSVERFAHREN.map(o => [o.wert, o.wert])];
   if (aktuell && !NA_MESSVERFAHREN.some(o => o.wert === aktuell)) optionen.push([aktuell, `${aktuell} (bisheriger Freitext)`]);
   return `<label style="display:flex;flex-direction:column;gap:2px;min-width:0;">
-      <span style="font-size:9px;color:var(--muted);">Messverfahren</span>
+      <span style="font-size:11px;color:var(--muted);">Messverfahren</span>
       <select class="inp-field" data-change="sgNaSetMessverfahren(this.value)" style="${STIL_EINGABE}">
         ${optionen.map(([v, l]) => `<option value="${esc(v)}"${v === aktuell ? ' selected' : ''}>${esc(l)}</option>`).join('')}
       </select>
@@ -79,11 +79,11 @@ function messortFeld() {
     : `Vorschlag: <b style="color:var(--text);">MS-seitig</b> – ${esc(v.grund)} `
       + `<button data-click="sgNaSetMessort('${v.wert}')" style="${STIL_KNOPF}">übernehmen</button>`;
   return `<label style="display:flex;flex-direction:column;gap:2px;min-width:0;">
-      <span style="font-size:9px;color:var(--muted);">Messort (Abrechnungsmessung)</span>
+      <span style="font-size:11px;color:var(--muted);">Messort (Abrechnungsmessung)</span>
       <select class="inp-field" data-change="sgNaSetMessort(this.value)" style="${STIL_EINGABE}">
         ${optionen.map(([w, l]) => `<option value="${esc(w)}"${w === aktuell ? ' selected' : ''}>${esc(l)}</option>`).join('')}
       </select>
-      ${hinweis ? `<span style="font-size:9px;color:var(--muted);line-height:1.4;">${hinweis}</span>` : ''}
+      ${hinweis ? `<span style="font-size:11px;color:var(--muted);line-height:1.4;">${hinweis}</span>` : ''}
     </label>`;
 }
 
@@ -97,7 +97,7 @@ function vorschlagHtml() {
 
 function einspeiseFeld(i, feld, label, wert) {
   return `<label style="display:flex;flex-direction:column;gap:2px;min-width:0;">
-      <span style="font-size:9px;color:var(--muted);">${label}</span>
+      <span style="font-size:11px;color:var(--muted);">${label}</span>
       <input class="inp-field" type="text" value="${esc(wert)}" data-change="sgNaSetEinspeisung(${i},'${feld}',this.value)" style="${STIL_EINGABE}"/>
     </label>`;
 }
@@ -113,9 +113,9 @@ function einspeisungenHtml() {
 }
 
 function panelHtml() {
-  return `<div class="sa-section-title" style="margin-top:4px;">Netzanschluss <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">laut Netzanschlussvertrag · Gutachten 5.1.1 · vereinbarte Anschlussleistung = Max. Bezug unter NAP-Grenzen (kVA)</span>
+  return `<div class="sa-section-title" style="margin-top:4px;">Netzanschluss <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px;">laut Netzanschlussvertrag · Gutachten 5.1.1 · vereinbarte Anschlussleistung = Max. Bezug unter NAP-Grenzen (kVA)</span>
       <a href="https://www.vnbdigital.de/" target="_blank" rel="noopener"
-        style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--accent);font-size:9px;margin-left:6px;text-decoration:none;" title="Netzbetreiber anhand der Adresse ermitteln">→ Netzbetreiber finden (VNB Digital)</a>
+        style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--accent);font-size:11px;margin-left:6px;text-decoration:none;" title="Netzbetreiber anhand der Adresse ermitteln">→ Netzbetreiber finden (VNB Digital)</a>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;margin-bottom:6px;">
       ${textfeld('Netzbetreiber', 'naNetzbetreiberName')}
@@ -125,13 +125,13 @@ function panelHtml() {
       ${messverfahrenFeld()}
       ${msAnschluss() ? messortFeld() : ''}
     </div>
-    <div id="strom-na-vorschlag" style="font-size:9px;color:var(--muted);margin-bottom:6px;line-height:1.5;">${vorschlagHtml()}</div>
-    <div style="font-size:9px;color:var(--muted);margin-top:6px;">Einspeisepunkte (Station des Netzbetreibers · Kabel bis zur Übergabe)</div>
+    <div id="strom-na-vorschlag" style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.5;">${vorschlagHtml()}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px;">Einspeisepunkte (Station des Netzbetreibers · Kabel bis zur Übergabe)</div>
     ${einspeisungenHtml()}
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;">
       <button data-click="sgNaEinspeisungNeu()" style="${STIL_KNOPF}">+ Einspeisepunkt</button>
       <button data-click="sgNaAusNapAssetKnopf()" title="Spannungsebene und Übergabepunkt-Gebäude aus dem NAP-Asset des Elektro-Tabs lesen (nur leere Felder)" style="${STIL_KNOPF}">⟳ Aus NAP-Asset übernehmen</button>
-      <span id="strom-na-status" style="font-size:9px;color:var(--muted);"></span>
+      <span id="strom-na-status" style="font-size:11px;color:var(--muted);"></span>
     </div>`;
 }
 

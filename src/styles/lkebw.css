@@ -262,7 +262,7 @@ body[data-ui-layout="nav"] #center-vergleich-view,body[data-ui-layout="nav"] #ce
 /* Rückwege „Zurück zur Karte“ entfallen: die Prozessleiste zeigt, wo man ist */
 button[data-click="setViewMode('karte')"]{display:none!important}
 #analyse-view-tabs{display:none!important}
-body[data-ui-layout="nav"]:not([data-ui-abschnitt="uebersicht"]):not([data-ui-abschnitt="waerme"]):not([data-ui-abschnitt="wirtschaft"]):not([data-ui-abschnitt="emissionen"]) #analyse-kpi-bar{display:none}
+body[data-ui-layout="nav"]:not([data-ui-akt-abschnitt="uebersicht"]):not([data-ui-akt-abschnitt="waerme"]):not([data-ui-akt-abschnitt="wirtschaft"]):not([data-ui-akt-abschnitt="emissionen"]) #analyse-kpi-bar{display:none}
 .analyse-kpi{background:var(--surface)!important;border:1px solid var(--border)!important;border-radius:var(--r-2)!important;box-shadow:none!important}
 .analyse-kpi::before,.analyse-kpi::after{display:none!important}
 
@@ -307,7 +307,6 @@ body>.ui-map-tools{display:none}
 .ui-map-tools .addr-search-icon{left:8px;color:var(--muted)}
 .ui-map-btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);box-shadow:var(--shadow-1);color:var(--text);font-size:13px;font-weight:600;cursor:pointer}
 .ui-map-btn:hover{border-color:var(--text)}
-.ebenen-panel{top:118px!important;border-radius:var(--r-2)!important;box-shadow:var(--shadow-2)!important;border-color:var(--border)!important;width:260px!important}
 
 /* Ergebnisleiste */
 .ui-ergebnis{display:flex;align-items:stretch;height:34px;background:var(--surface);border-top:1px solid var(--border);font-size:12.5px;flex-shrink:0;overflow-x:auto;white-space:nowrap;scrollbar-width:none;font-family:var(--font-ui)}
@@ -362,7 +361,7 @@ header.ui-seitentitel h1{margin:2px 0 0;font-size:24px;font-weight:700;line-heig
 header.ui-seitentitel:empty{display:none}
 
 /* ── 6. Papier: Seitenvorschauen bleiben in beiden Darstellungen hell ── */
-#gut-seite,.ui-papier{--text:#191D1A;--muted:#58615A;--faint:#89918A;--border:#DADFD9;--line-2:#C3C9C2;--surface:#FFFFFF;--surface2:#F6F7F5;--bg:#EEF0ED;--hover:#EEF3EC;--ink:25,29,26;--c-red:#B3261E;--c-orange:#B4531A;--c-amber:#8A6100;--c-green:#2E7D32;--c-teal:#00796B;--c-blue:#1E5E98;--c-violet:#7B3F9E;color-scheme:light}
+#gut-seite,#gg-paper,#lp-paper,.ui-papier{--text:#191D1A;--muted:#58615A;--faint:#89918A;--border:#DADFD9;--line-2:#C3C9C2;--surface:#FFFFFF;--surface2:#F6F7F5;--bg:#EEF0ED;--hover:#EEF3EC;--ink:25,29,26;--c-red:#B3261E;--c-orange:#B4531A;--c-amber:#8A6100;--c-green:#2E7D32;--c-teal:#00796B;--c-blue:#1E5E98;--c-violet:#7B3F9E;color-scheme:light}
 
 /* ── 7. Fachpanels: Elektro, rechte Seitenleiste, Wärmenetz ─────────── */
 /* Abschnittsköpfe zum Auf-/Zuklappen */
@@ -396,3 +395,30 @@ header.ui-seitentitel:empty{display:none}
 /* Hinweisbanner Variante auf der Karte */
 #variant-banner{background:var(--surface)!important;color:var(--text)!important;border:1px solid var(--border)!important;box-shadow:var(--shadow-1)!important;border-radius:var(--r-2)!important}
 .ui-pal-ort{margin-left:auto;font-size:12px;color:var(--faint)}
+
+/* ── 8. Fenster andocken und feste Panels unter die Prozessleiste ───── */
+:root{--kopf-h:102px;--fuss-h:34px}
+/* Fenster öffnen rechts als Spalte zwischen Prozessleiste und Ergebnisleiste.
+   Wer ein Fenster an der Kopfzeile wegzieht, löst es (Klasse .dragging) und verschiebt es frei. */
+body.ui-lkebw .float-panel.visible:not(.inline-mode):not(.dock-mode):not(.dragging){
+  position:fixed!important;top:var(--kopf-h)!important;right:0!important;bottom:var(--fuss-h)!important;left:auto!important;
+  transform:none!important;max-height:none!important;width:460px!important;max-width:min(820px,calc(100vw - var(--lp-w) - 40px))!important;
+  border-radius:0!important;border:0!important;border-left:1px solid var(--border)!important;
+  box-shadow:-6px 0 18px rgba(20,30,25,.08)!important;overflow-y:auto!important;resize:none!important}
+body.ui-lkebw .float-panel.visible.minimized:not(.inline-mode):not(.dock-mode):not(.dragging){bottom:auto!important}
+body.ui-lkebw .float-panel.visible:not(.dragging):not(.inline-mode) .panel-drag-handle{border-radius:0;cursor:grab}
+body.ui-lkebw .float-panel.dragging{border-radius:var(--r-2)!important}
+/* Schaltbilder (Einlinienschema, Wärmeschema) als rechte Spalte unter der Prozessleiste */
+#sld-panel,#ws-panel{top:var(--kopf-h)!important;bottom:var(--fuss-h)!important;background:var(--surface)!important;box-shadow:-6px 0 18px rgba(20,30,25,.08)}
+#sld-panel.sld-fullscreen,#ws-panel.sld-fullscreen{top:var(--kopf-h)!important}
+.sld-head{background:var(--surface)!important;padding:10px 14px!important}
+.sld-head>span:first-child,.sld-head b,.sld-head strong{font-size:14px!important;font-weight:700!important;color:var(--text)!important}
+/* Werkzeugpanels, die bisher unter der alten Kopfzeile (≈ 40–76 px) standen */
+#pv-modus-panel,#baum-panel,#grundriss-panel,#blackout-modus-panel{top:calc(var(--kopf-h) + 12px)!important;border-radius:var(--r-2)!important;box-shadow:var(--shadow-2)!important}
+.gm-card.gm-float{top:calc(var(--kopf-h) + 12px)!important}
+.ebenen-panel{top:calc(var(--kopf-h) + 56px)!important;max-height:calc(100vh - var(--kopf-h) - var(--fuss-h) - 70px)!important}
+.pd-panel{z-index:1450!important}
+#asset-inspector{top:12px}
+
+/* Inline gesetzte Altschriften (DM Mono / DM Sans) auf die Oberflächenschrift umlenken */
+[style*="DM Mono"],[style*="DM Sans"]{font-family:var(--font-num)!important;font-variant-numeric:tabular-nums}

@@ -27,7 +27,7 @@ const SCHRITTE = [
   { id: 'ergebnis', label: '4 · Ergebnis' },
 ];
 const FARBE = { bezug: '#4fc3f7', einsp: '#ef9a9a', band: '#66bb6a', ok: '#66bb6a', warn: '#ffb74d', bad: '#ef5350', na: 'var(--muted)' };
-const STIL_KNOPF = 'font-size:10px;padding:3px 9px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--accent);cursor:pointer;';
+const STIL_KNOPF = 'font-size:12px;padding:3px 9px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--accent);cursor:pointer;';
 
 let _schritt = 'bedarf';
 let _zieljahrHand = null;
@@ -120,7 +120,7 @@ export function naModulRender() {
   let d;
   try { d = _rechnen(); }
   catch (e) {
-    body.innerHTML = `<div style="padding:12px;color:${FARBE.bad};font-size:11px;">⚠ Rechnung fehlgeschlagen: ${esc(e.message)}</div>`;
+    body.innerHTML = `<div style="padding:12px;color:${FARBE.bad};font-size:12.5px;">⚠ Rechnung fehlgeschlagen: ${esc(e.message)}</div>`;
     return;
   }
   _letzte = d;
@@ -135,14 +135,14 @@ function _kopfHtml(d) {
   const grenzText = g.bezugKw || g.einspKw
     ? `<span style="color:${FARBE.bezug};">${g.bezugKw ? `${de(g.bezugKw)} kVA` : '—'}</span> / <span style="color:${FARBE.einsp};">${g.einspKw ? `${de(g.einspKw)} kW` : '—'}</span>`
     : `<span style="color:${FARBE.warn};">nicht eingetragen</span>`;
-  const reiter = SCHRITTE.map(s => `<button data-click="naModulSchritt('${s.id}')" style="font-size:11px;padding:4px 12px;border-radius:4px;cursor:pointer;
+  const reiter = SCHRITTE.map(s => `<button data-click="naModulSchritt('${s.id}')" style="font-size:12.5px;padding:4px 12px;border-radius:4px;cursor:pointer;
       border:1px solid ${s.id === _schritt ? '#00bcd4' : 'var(--border)'};background:${s.id === _schritt ? 'rgba(0,188,212,.18)' : 'transparent'};
       color:${s.id === _schritt ? 'var(--text)' : 'var(--muted)'};font-weight:${s.id === _schritt ? 600 : 400};">${s.label}</button>`).join('');
-  return `<div style="display:flex;flex-wrap:wrap;gap:4px 16px;font-size:10px;color:var(--muted);margin:6px 0 8px;line-height:1.6;">
+  return `<div style="display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted);margin:6px 0 8px;line-height:1.6;">
       <span>Variante <b style="color:var(--text);">${esc(d.variante || '—')}</b></span>
       <span>Messjahr <b style="color:var(--text);">${d.heute}</b></span>
       <span>Zieljahr <input class="inp-field" type="number" min="${d.heute}" max="${d.heute + 30}" value="${d.zieljahr}" data-change="naModulZieljahr(this.value)"
-        style="width:62px;font-size:10px;padding:1px 4px;" title="Leer = Endausbau der Bedarfsprognose (${d.zjAuto})"/>
+        style="width:62px;font-size:12px;padding:1px 4px;" title="Leer = Endausbau der Bedarfsprognose (${d.zjAuto})"/>
         ${_zieljahrHand ? `<a href="#" data-click="event.preventDefault();naModulZieljahr('')" style="color:var(--accent);">↺ ${d.zjAuto}</a>` : '<span>(Endausbau)</span>'}</span>
       <span>vereinbart ${grenzText} <a href="#" data-click="event.preventDefault();sgNaOeffnen()" style="color:var(--accent);">bearbeiten</a></span>
     </div>
@@ -171,18 +171,18 @@ function _bedarfHtml(d) {
   const abgewaehlt = (stand?.massnahmen || []).filter(m => !m.checked).length;
   const leer = !reihe.some(r => r.bezugKw > 0 || r.einspKw > 0);
   const diagramm = leer
-    ? `<div style="padding:22px 10px;text-align:center;font-size:11px;color:var(--muted);border:1px dashed var(--border);border-radius:6px;">
+    ? `<div style="padding:22px 10px;text-align:center;font-size:12.5px;color:var(--muted);border:1px dashed var(--border);border-radius:6px;">
         Noch keine Leistungsdaten — Lastgang unter ⚡ Strom-Grundlagen laden bzw. Verbraucher und Erzeuger im Elektro-Tab anlegen.</div>`
     : ncBedarfSvg({ reihe, grenzen, zieljahr: ziel.jahr, farben: { ..._themaFarben(), bezug: FARBE.bezug, einsp: FARBE.einsp } });
   return `${diagramm}
-    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px;">
-      <thead><tr style="color:var(--muted);font-size:10px;text-align:left;border-bottom:1px solid var(--border);">
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px;">
+      <thead><tr style="color:var(--muted);font-size:12px;text-align:left;border-bottom:1px solid var(--border);">
         <th style="padding:4px 6px;"></th><th style="padding:4px 6px;text-align:right;">${d.heute}</th><th style="padding:4px 6px;text-align:right;">Zieljahr ${ziel.jahr}</th>
         <th style="padding:4px 6px;text-align:right;">vereinbart</th><th style="padding:4px 6px;">Überschreitung</th></tr></thead>
       <tbody>${zeile('Bezug', FARBE.bezug, 'bezugKw', grenzen.bezugKw, 'kVA', uB)}${zeile('Einspeisung', FARBE.einsp, 'einspKw', grenzen.einspKw, 'kW', uE)}</tbody>
     </table>
-    ${hinweise.map(h => `<div style="font-size:10px;color:${FARBE.warn};margin-top:6px;">${h}</div>`).join('')}
-    <div style="font-size:9.5px;color:var(--muted);margin-top:8px;line-height:1.5;">
+    ${hinweise.map(h => `<div style="font-size:12px;color:${FARBE.warn};margin-top:6px;">${h}</div>`).join('')}
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;">
       Bezug: Bedarfsprognose wie Gutachten 5.3 — gemessene Höchstlast ${stand?.basisKw > 0 ? `${kw(stand.basisKw)} (${esc(stand.quelle || stand.dataYear)})` : '—'} plus Neubau/Rückbau,
       Gleichzeitigkeitsfaktor ${de(stand?.gzf ?? 1, 2)}${abgewaehlt ? `, ${abgewaehlt} Maßnahme(n) abgewählt` : ''}.
       <a href="#" data-click="event.preventDefault();ggBedarfNapOeffnen()" style="color:var(--accent);">Maßnahmen und GZF in der NAP-Analyse</a>.
@@ -200,18 +200,18 @@ function _ebeneHtml(d) {
     { kva: ziel.einspKw, farbe: FARBE.einsp, label: `E ${ziel.jahr}` },
   ].filter(m => m.kva > 0 && !(m.gestrichelt && Math.abs(m.kva - (m.farbe === FARBE.bezug ? ziel.bezugKw : ziel.einspKw)) < 1));
   const block = (titel, farbe, kva) => {
-    if (!(kva > 0)) return `<div style="flex:1;min-width:220px;"><b style="color:${farbe};">${titel}</b><div style="color:var(--muted);font-size:10px;">kein Wert</div></div>`;
+    if (!(kva > 0)) return `<div style="flex:1;min-width:220px;"><b style="color:${farbe};">${titel}</b><div style="color:var(--muted);font-size:12px;">kein Wert</div></div>`;
     const e = aeEinordnung(kva);
     return `<div style="flex:1;min-width:220px;border-left:3px solid ${farbe};padding-left:8px;">
         <b style="color:${farbe};">${titel}: ${aeKva(kva)}</b>
-        <div style="font-size:10px;margin-top:2px;"><span style="color:var(--muted);">häufig:</span> ${e.haeufig.length ? e.haeufig.map(b => esc(b.name)).join(' · ') : '—'}</div>
-        <div style="font-size:10px;"><span style="color:var(--muted);">kommt vor:</span> ${e.moeglich.length ? e.moeglich.map(b => esc(b.name)).join(' · ') : '—'}</div>
-        <div style="font-size:10px;"><span style="color:var(--muted);">Beispiel-TAB:</span> ${esc(e.tab?.lang || '—')}</div></div>`;
+        <div style="font-size:12px;margin-top:2px;"><span style="color:var(--muted);">häufig:</span> ${e.haeufig.length ? e.haeufig.map(b => esc(b.name)).join(' · ') : '—'}</div>
+        <div style="font-size:12px;"><span style="color:var(--muted);">kommt vor:</span> ${e.moeglich.length ? e.moeglich.map(b => esc(b.name)).join(' · ') : '—'}</div>
+        <div style="font-size:12px;"><span style="color:var(--muted);">Beispiel-TAB:</span> ${esc(e.tab?.lang || '—')}</div></div>`;
   };
   return `${aeSvg({ farben: { ..._themaFarben(), band: FARBE.band }, marker })}
-    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:11px;">
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12.5px;">
       ${block(`Bezug ${ziel.jahr}`, FARBE.bezug, ziel.bezugKw)}${block(`Einspeisung ${ziel.jahr}`, FARBE.einsp, ziel.einspKw)}</div>
-    <div style="font-size:9.5px;color:var(--muted);margin-top:8px;line-height:1.5;">
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;">
       Bänder: kräftig = häufig, blass = kommt vor; gestrichelte Marker = Messjahr, durchgezogen = Zieljahr. Die Bänder stammen aus realisierten
       Erzeugungsanlagen; für den Bezug gelten sie als Orientierung. Verbindlich ist die TAB des zuständigen Netzbetreibers.
       Quelle: ${esc(AE_QUELLE)}.</div>`;
@@ -219,7 +219,7 @@ function _ebeneHtml(d) {
 
 /* ── 3 · Optionen ───────────────────────────────────────────────────────── */
 function _optionenHtml(d) {
-  const pill = a => `<span style="display:inline-block;font-size:10px;line-height:1.3;padding:1px 8px;border-radius:10px;border:1px solid ${FARBE[a.stufe]};color:${FARBE[a.stufe]};">${esc(a.text)}</span>`;
+  const pill = a => `<span style="display:inline-block;font-size:12px;line-height:1.3;padding:1px 8px;border-radius:10px;border:1px solid ${FARBE[a.stufe]};color:${FARBE[a.stufe]};">${esc(a.text)}</span>`;
   const zeilen = d.wege.map(w => `<tr style="border-bottom:1px solid var(--border);">
       <td style="padding:5px 6px;vertical-align:top;"><b>${w.id}</b></td>
       <td style="padding:5px 6px;vertical-align:top;">${esc(w.titel)}</td>
@@ -227,15 +227,15 @@ function _optionenHtml(d) {
       <td style="padding:5px 6px;vertical-align:top;">${esc(w.kosten)}</td>
       <td style="padding:5px 6px;vertical-align:top;white-space:nowrap;">${esc(w.ebene)}</td>
       <td style="padding:5px 6px;vertical-align:top;">${pill(w.ampel)}</td></tr>`).join('');
-  return `<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Bedarf ${d.ziel.jahr}:
+  return `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Bedarf ${d.ziel.jahr}:
       <b style="color:${FARBE.bezug};">Bezug ${kw(d.ziel.bezugKw)}</b> · <b style="color:${FARBE.einsp};">Einspeisung ${kw(d.ziel.einspKw)}</b>
       ${uwZielVonHand() ? `<span style="color:${FARBE.warn};">— Direktanschluss rechnet mit einer Zielleistung von Hand</span>` : ''}</div>
-    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:10.5px;min-width:600px;">
-      <thead><tr style="color:var(--muted);font-size:9.5px;text-align:left;border-bottom:1px solid var(--border);">
+    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px;">
+      <thead><tr style="color:var(--muted);font-size:11px;text-align:left;border-bottom:1px solid var(--border);">
         <th style="padding:4px 6px;">Weg</th><th style="padding:4px 6px;"></th><th style="padding:4px 6px;text-align:right;">trägt B / E</th>
         <th style="padding:4px 6px;">Kosten</th><th style="padding:4px 6px;">Ebene</th><th style="padding:4px 6px;">Bewertung</th></tr></thead>
       <tbody>${zeilen}</tbody></table></div>
-    <div style="font-size:9.5px;color:var(--muted);margin:4px 0 10px;">Kosten des Direktanschlusses als Spanne −20 % / +40 % (eigene Richtwerte, unter „Annahmen" änderbar).
+    <div style="font-size:11px;color:var(--muted);margin:4px 0 10px;">Kosten des Direktanschlusses als Spanne −20 % / +40 % (eigene Richtwerte, unter „Annahmen" änderbar).
       Ob Netz und Umspannwerk die Leistung aufnehmen, klärt nur die Netzanschlussanfrage.</div>
     <div id="na-modul-uw" style="border-top:1px solid var(--border);padding-top:6px;"></div>`;
 }
@@ -248,14 +248,14 @@ function _bausteinText(d) {
 
 function _ergebnisHtml(d) {
   const text = _bausteinText(d);
-  return `<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Textbaustein (z. B. für das Gutachten im Anschluss an 5.1.1) — Grundlage: Variante ${esc(d.variante || '—')}, Zieljahr ${d.ziel.jahr}${d.uw ? `, Umspannwerk ${esc(d.uw.name || 'ohne Namen')}` : ', kein Umspannwerk gewählt'}.</div>
-    <div id="na-modul-baustein" style="font-size:11.5px;line-height:1.6;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:rgba(var(--ink),.02);user-select:text;">${esc(text)}</div>
+  return `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Textbaustein (z. B. für das Gutachten im Anschluss an 5.1.1) — Grundlage: Variante ${esc(d.variante || '—')}, Zieljahr ${d.ziel.jahr}${d.uw ? `, Umspannwerk ${esc(d.uw.name || 'ohne Namen')}` : ', kein Umspannwerk gewählt'}.</div>
+    <div id="na-modul-baustein" style="font-size:12.5px;line-height:1.6;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:rgba(var(--ink),.02);user-select:text;">${esc(text)}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center;">
       <button data-click="naBausteinKopieren()" style="${STIL_KNOPF}">Text kopieren</button>
       <button data-click="naLeistungstabelleCsv()" style="${STIL_KNOPF}" title="Bezug und Einspeisung je Jahr mit den vereinbarten Grenzen — Anlage zur Netzanschlussanfrage">⤓ Leistungstabelle (CSV)</button>
-      <span id="na-modul-status" style="font-size:10px;color:var(--muted);"></span>
+      <span id="na-modul-status" style="font-size:12px;color:var(--muted);"></span>
     </div>
-    <div style="font-size:9.5px;color:var(--muted);margin-top:10px;line-height:1.5;">
+    <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5;">
       Für die Netzanschlussanfrage zusätzlich: Lageplan mit Übergabestation (🗺️ Liegenschaftsbilder), gemessener Lastgang (⚡ Strom-Grundlagen),
       geplante Erzeugungsanlagen mit Inbetriebnahmejahr. Die Übernahme eines Weges als Maßnahme in die Variante ist noch nicht umgesetzt.</div>`;
 }

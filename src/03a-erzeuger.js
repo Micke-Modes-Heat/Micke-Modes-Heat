@@ -215,7 +215,7 @@ export function renderFFPanel() {
   if (!eListEl) return;
 
   if (freiflaechen.length === 0) {
-    eListEl.innerHTML = '<div style="font-size:10px;color:var(--muted);text-align:center;padding:8px 0;">Noch keine Freifläche gezeichnet.</div>';
+    eListEl.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px 0;">Noch keine Freifläche gezeichnet.</div>';
     if (eTotalEl) eTotalEl.style.display = 'none';
     return;
   }
@@ -227,9 +227,9 @@ export function renderFFPanel() {
     const kwp = calcFFKwp(ff);
     totalKwp += kwp;
     const fl = ff.flaeche ? (ff.flaeche / 10000).toFixed(2) + ' ha' : '—';
-    return `<div style="padding:7px 8px;background:var(--bg);border-radius:5px;border:1px solid rgba(255,213,79,0.2);font-size:10px;">
+    return `<div style="padding:7px 8px;background:var(--bg);border-radius:5px;border:1px solid rgba(255,213,79,0.2);font-size:12px;">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
-        <input class="inp-field" type="text" value="${escHtml(ff.name)}" style="flex:1;font-size:10px;"
+        <input class="inp-field" type="text" value="${escHtml(ff.name)}" style="flex:1;font-size:12px;"
           data-input="updateFF(${ff.id},'name',this.value)"/>
         <button class="btn-xs red" data-click="removeFreiflaeche(${ff.id})" title="Entfernen">✕</button>
       </div>
@@ -247,7 +247,7 @@ export function renderFFPanel() {
           </select>
         </div>
       </div>
-      <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">${((ff.gcr !== undefined ? ff.gcr : ffGcrDefault(ff)) / 100 * _pvWpM2Global()).toFixed(0)} Wp/m² Gesamtfläche (= ${(ff.gcr !== undefined ? ff.gcr : ffGcrDefault(ff))}% × ${_pvWpM2Global().toFixed(0)} Wp/m² Modulleistung)</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">${((ff.gcr !== undefined ? ff.gcr : ffGcrDefault(ff)) / 100 * _pvWpM2Global()).toFixed(0)} Wp/m² Gesamtfläche (= ${(ff.gcr !== undefined ? ff.gcr : ffGcrDefault(ff))}% × ${_pvWpM2Global().toFixed(0)} Wp/m² Modulleistung)</div>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-family:'DM Mono',monospace;">
         <span style="color:var(--muted)">Fläche</span><span style="color:var(--text)">${fl}</span>
         ${ff._pvModCount ? `<span style="color:var(--muted)">Module</span><span style="color:var(--text)">${ff._pvModCount.toLocaleString('de-DE')}</span>` : ''}
@@ -511,7 +511,7 @@ export function redrawErzeugerIcons() {
 
   const badge = (n) =>
     `<span style="position:absolute;top:-5px;right:-5px;background:#fff;color:#111;` +
-    `font-size:9px;font-weight:700;width:15px;height:15px;border-radius:50%;` +
+    `font-size:11px;font-weight:700;width:15px;height:15px;border-radius:50%;` +
     `display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 1px 3px rgba(0,0,0,.5);">${n}</span>`;
 
   const arrows = (key, i, total) => {

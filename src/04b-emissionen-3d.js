@@ -662,7 +662,7 @@ export function _renderEmPef() {
   const legendEl = document.getElementById('em-pef-legend');
   if (legendEl) {
     legendEl.innerHTML =
-      '<span style="color:var(--muted);font-size:9px;">Balken = Primärenergie (nicht-erneuerbar) · Hintergrund = Endenergie · fp = Primärenergiefaktor nach GEG Anlage 4</span>';
+      '<span style="color:var(--muted);font-size:11px;">Balken = Primärenergie (nicht-erneuerbar) · Hintergrund = Endenergie · fp = Primärenergiefaktor nach GEG Anlage 4</span>';
   }
 
   // Tabelle
@@ -691,7 +691,7 @@ export function _renderEmPef() {
       <td style="text-align:right">${_de(pefData.totalPE, 0)} MWh</td>
     </tr>`;
     html += '</tbody></table>';
-    html += '<div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.5;">Primärenergie = Endenergie × f<sub>p</sub> · f<sub>p</sub> = Primärenergiefaktor (nicht-erneuerbar) nach GEG Anlage 4<br>Wärmepumpen: Endenergie = Strombedarf · Kessel: Endenergie = Wärme ÷ Wirkungsgrad</div>';
+    html += '<div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5;">Primärenergie = Endenergie × f<sub>p</sub> · f<sub>p</sub> = Primärenergiefaktor (nicht-erneuerbar) nach GEG Anlage 4<br>Wärmepumpen: Endenergie = Strombedarf · Kessel: Endenergie = Wärme ÷ Wirkungsgrad</div>';
     tableEl.innerHTML = html;
   }
 }
@@ -1264,7 +1264,7 @@ export function renderAnalyseErzeugerTable() {
   const cfg = typeof ERZEUGER_CFG !== 'undefined' ? ERZEUGER_CFG : {};
   const keys = (window._dispatchActiveKeys || meritOrderKeys).filter(k => k !== '_autoGk');
   if (keys.length === 0) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:11px;">Keine Erzeuger aktiv.</div>';
+    el.innerHTML = '<div style="color:var(--muted);font-size:12.5px;">Keine Erzeuger aktiv.</div>';
     return;
   }
   const dispEn = window._dispatchEnergy || {};

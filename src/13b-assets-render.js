@@ -25,17 +25,17 @@ function _contrast(hex) {
 function _attKv(label, value, col) {
   const val = col ? `<span style="color:${col};font-weight:500;">${value}</span>` : value;
   return `<div style="display:flex;justify-content:space-between;gap:14px;padding:1px 0;">` +
-    `<span style="color:var(--c-blue);font-size:11px;white-space:nowrap;">${label}</span>` +
-    `<span style="font-size:11px;">${val}</span></div>`;
+    `<span style="color:var(--c-blue);font-size:12.5px;white-space:nowrap;">${label}</span>` +
+    `<span style="font-size:12.5px;">${val}</span></div>`;
 }
 const _attHr = '<div style="border-top:1px solid var(--border);margin:4px 0;"></div>';
 function _attHead(icon, badge, sub, bg) {
   const fg = _contrast(bg);
   const subHtml = sub
-    ? `<span style="color:var(--c-blue);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;" title="${sub}">${sub}</span>`
+    ? `<span style="color:var(--c-blue);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;" title="${sub}">${sub}</span>`
     : '';
   return `<div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;margin-bottom:4px;border-bottom:1px solid var(--c-blue);">` +
-    `<span style="background:${bg};color:${fg};border-radius:3px;padding:1px 6px 2px;font-size:10px;font-weight:700;white-space:nowrap;">${icon} ${badge}</span>` +
+    `<span style="background:${bg};color:${fg};border-radius:3px;padding:1px 6px 2px;font-size:12px;font-weight:700;white-space:nowrap;">${icon} ${badge}</span>` +
     subHtml + '</div>';
 }
 function _attUnit(label) {
@@ -130,13 +130,13 @@ function _buildGroupTooltip(assets) {
     const fg  = _contrast(cfg.color);
     const ausl = a.type === 'Trafo' ? _trafoAusl(a) : null;
     return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">` +
-      `<span style="background:${cfg.color};color:${fg};border-radius:3px;padding:0 5px;font-size:11px;">${cfg.icon}</span>` +
-      `<span style="font-size:11px;">${a.name}</span>` +
+      `<span style="background:${cfg.color};color:${fg};border-radius:3px;padding:0 5px;font-size:12.5px;">${cfg.icon}</span>` +
+      `<span style="font-size:12.5px;">${a.name}</span>` +
     `</div>` +
     (ausl ? `<div style="padding:2px 0 4px 4px;">${_trafoAuslTooltip(ausl)}</div>` : '');
   }).join('');
   const more = assets.length > 6
-    ? `<div style="color:var(--c-blue);font-size:10px;margin-top:2px;">+ ${assets.length - 6} weitere</div>`
+    ? `<div style="color:var(--c-blue);font-size:12px;margin-top:2px;">+ ${assets.length - 6} weitere</div>`
     : '';
   const minW = assets.some(a => a.type === 'Trafo') ? 195 : 145;
   return `<div style="min-width:${minW}px;">${rows}${more}</div>`;
@@ -473,16 +473,16 @@ function _showAssetDeletePopup(buildingId, latlng) {
     const sm  = SCHICHT_META[sch];
     const geteilt = sch !== SCHICHT.ENTSCHEIDUNG;
     return `<div class="asset-del-row" data-id="${a.id}" style="display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;border-radius:4px;">` +
-      `<span style="background:${cfg.color};width:18px;height:18px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">${cfg.icon}</span>` +
-      `<span style="flex:1;font-size:11px;">${a.name}</span>` +
+      `<span style="background:${cfg.color};width:18px;height:18px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:12.5px;flex-shrink:0;">${cfg.icon}</span>` +
+      `<span style="flex:1;font-size:12.5px;">${a.name}</span>` +
       `<span title="${sm.label}${geteilt ? ' — in allen Varianten' : ' — nur in dieser Variante'}"` +
-      ` style="font-size:10px;opacity:.85;flex-shrink:0;">${sm.icon}</span>` +
+      ` style="font-size:12px;opacity:.85;flex-shrink:0;">${sm.icon}</span>` +
       `<span style="color:var(--c-red);font-size:12px;font-weight:700;">✕</span>` +
       `</div>`;
   }).join('');
   const popup = L.popup({ className: 'asset-list-popup', offset: [0, -8], maxWidth: 240 })
     .setLatLng(latlng)
-    .setContent(`<div style="font-size:10px;color:var(--muted);padding:4px 6px 2px;border-bottom:1px solid var(--border);margin-bottom:4px;">Löschen</div><div>${rows}</div>`)
+    .setContent(`<div style="font-size:12px;color:var(--muted);padding:4px 6px 2px;border-bottom:1px solid var(--border);margin-bottom:4px;">Löschen</div><div>${rows}</div>`)
     .openOn(map);
   setTimeout(() => {
     document.querySelectorAll('.asset-del-row').forEach(row => {

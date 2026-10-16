@@ -73,19 +73,19 @@ export function wbRender() {
   const box = document.getElementById('wb-box');
   if (!box) return;
   const e = _wb.ergebnis, passt = e && e.messjahr === _wb.messjahr;
-  box.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:6px;">
+  box.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px;">
       <label title="Jahr, aus dem der hochgeladene Lastgang stammt">Messjahr
-        <input class="inp-field" type="number" style="width:58px;padding:2px 4px;font-size:10px;" value="${esc(_wb.messjahr)}" data-change="wbFeld('messjahr',this.value)"></label>
+        <input class="inp-field" type="number" style="width:58px;padding:2px 4px;font-size:12px;" value="${esc(_wb.messjahr)}" data-change="wbFeld('messjahr',this.value)"></label>
       <label title="Vergleichszeitraum: Mittel der Jahre vor dem Messjahr">Mittel über
-        <input class="inp-field" type="number" style="width:40px;padding:2px 4px;font-size:10px;" min="5" max="30" value="${_wb.jahre}" data-change="wbFeld('jahre',this.value)"> J.</label>
-      <button class="btn-secondary" style="padding:2px 8px;font-size:10px;" data-click="wbLaden()" title="Tagesmitteltemperaturen am Kartenstandort laden und Gradtagzahlen G20/15 berechnen">Gradtagzahlen laden</button>
+        <input class="inp-field" type="number" style="width:40px;padding:2px 4px;font-size:12px;" min="5" max="30" value="${_wb.jahre}" data-change="wbFeld('jahre',this.value)"> J.</label>
+      <button class="btn-secondary" style="padding:2px 8px;font-size:12px;" data-click="wbLaden()" title="Tagesmitteltemperaturen am Kartenstandort laden und Gradtagzahlen G20/15 berechnen">Gradtagzahlen laden</button>
     </div>
-    <label style="display:flex;gap:5px;align-items:center;font-size:10px;margin-top:4px;color:var(--text);">
+    <label style="display:flex;gap:5px;align-items:center;font-size:12px;margin-top:4px;color:var(--text);">
       <input type="checkbox" ${_wb.aktiv ? 'checked' : ''} ${passt ? '' : 'disabled'} data-change="wbFeld('aktiv',this.checked)"> Lastgang witterungsbereinigen</label>
-    <div id="wb-info" style="font-size:9px;color:var(--muted);margin-top:2px;line-height:1.4;">${passt
+    <div id="wb-info" style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4;">${passt
       ? `G20/15 ${e.messjahr}: ${nf(e.gMess)} Kd · Mittel ${e.vonJahr}–${e.bisJahr}: ${nf(e.gMittel)} Kd → Faktor ${nf(e.faktor, 3)} (${e.faktor > 1 ? 'Messjahr wärmer als üblich' : 'Messjahr kälter als üblich'})`
       : 'Ohne Bereinigung wird der Lastgang unverändert verwendet.'}</div>
-    ${passt && Array.isArray(e.gJahre) && e.gJahre.length ? `<details style="font-size:9px;color:var(--muted);margin-top:3px;"><summary style="cursor:pointer;">Gradtagzahlen je Jahr anzeigen</summary>
+    ${passt && Array.isArray(e.gJahre) && e.gJahre.length ? `<details style="font-size:11px;color:var(--muted);margin-top:3px;"><summary style="cursor:pointer;">Gradtagzahlen je Jahr anzeigen</summary>
       <table style="border-collapse:collapse;margin-top:3px;">${e.gJahre.map(x => `<tr${x.jahr === e.messjahr ? ' style="color:var(--text);font-weight:600;"' : ''}><td style="padding:0 8px 0 0;">${x.jahr}${x.jahr === e.messjahr ? ' (Messjahr)' : ''}</td><td style="text-align:right;">${nf(x.g)} Kd</td></tr>`).join('')}
       <tr style="border-top:1px solid var(--border);"><td style="padding:0 8px 0 0;">Mittel ${e.vonJahr}–${e.bisJahr}</td><td style="text-align:right;">${nf(e.gMittel)} Kd</td></tr>
       <tr><td style="padding:0 8px 0 0;">Faktor = Mittel ÷ Messjahr</td><td style="text-align:right;">${nf(e.faktor, 3)}</td></tr></table>

@@ -413,9 +413,9 @@ function _bannerZeigen(s, n) {
   div.innerHTML = `<span style="color:${LILA};">Angezeigt</span>
     <b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(s.name)}</b>
     <span style="color:var(--c-blue);font-family:'DM Mono',monospace;white-space:nowrap;">${n} Dächer · ${_fmt(k?.summeKwp)} kWp</span>
-    <span style="color:var(--c-blue);font-size:11px;white-space:nowrap;">nur Ansicht · im Projekt: ${_entwurf ? 'ungespeicherter Entwurf' : `„${escHtml(p?.name || '—')}“`}</span>
-    <button data-click="pvbsOeffnen('${s.id}')" style="cursor:pointer;background:transparent;border:1px solid ${GRUEN};border-radius:12px;color:${GRUEN};font-size:11px;padding:1px 9px;">✎ öffnen</button>
-    <button data-click="pvbsAnsichtEnde()" style="cursor:pointer;background:transparent;border:1px solid ${LILA};border-radius:12px;color:${LILA};font-size:11px;padding:1px 9px;">Ansicht beenden</button>`;
+    <span style="color:var(--c-blue);font-size:12.5px;white-space:nowrap;">nur Ansicht · im Projekt: ${_entwurf ? 'ungespeicherter Entwurf' : `„${escHtml(p?.name || '—')}“`}</span>
+    <button data-click="pvbsOeffnen('${s.id}')" style="cursor:pointer;background:transparent;border:1px solid ${GRUEN};border-radius:12px;color:${GRUEN};font-size:12.5px;padding:1px 9px;">✎ öffnen</button>
+    <button data-click="pvbsAnsichtEnde()" style="cursor:pointer;background:transparent;border:1px solid ${LILA};border-radius:12px;color:${LILA};font-size:12.5px;padding:1px 9px;">Ansicht beenden</button>`;
   document.body.appendChild(div);
 }
 
@@ -566,7 +566,7 @@ function _oeffnenLauf(s) {
 
 const _knopf = (klick, inhalt, titel, farbe, an = false) => `<button class="btn-xs" data-click="${klick}" title="${escHtml(titel)}"
     style="padding:1px 6px;${farbe ? `border-color:${farbe};color:${an ? '#10131a' : farbe};${an ? `background:${farbe};` : ''}` : ''}">${inhalt}</button>`;
-const _rolle = (farbe, text, titel) => `<span title="${escHtml(titel)}" style="font-size:8.5px;font-weight:700;letter-spacing:.04em;padding:0 5px;border-radius:7px;
+const _rolle = (farbe, text, titel) => `<span title="${escHtml(titel)}" style="font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:0 5px;border-radius:7px;
     background:${farbe};color:#10131a;white-space:nowrap;">${text}</span>`;
 
 /**
@@ -580,7 +580,7 @@ function _engstellenHtml(s) {
   const fehlt = Math.max(0, (es.noetigKwp || 0) - (es.passtKwp || 0));
   const kopf = `<div style="color:var(--text);">Engstellen für ${escHtml(es.gruppe)} <span style="color:var(--muted);">(Netz ${escHtml(String(s.netz.jahr ?? '—'))}, Vorschau vom ${escHtml(s.stand)})</span></div>
       <div style="color:var(--muted);">${es.noetigN} Dächer · ${_fmt(es.noetigKwp)} kWp nötig — ${_fmt(es.passtKwp)} kWp passen${fehlt > 0.5 ? `, <span style="color:${ROT};">${_fmt(fehlt)} kWp nicht</span>` : ''}</div>`;
-  const rahmen = (farbe, inhalt) => `<div style="margin:2px 0 3px 10px;padding:2px 5px;border-left:2px solid ${farbe};font-size:9px;line-height:1.45;">${inhalt}</div>`;
+  const rahmen = (farbe, inhalt) => `<div style="margin:2px 0 3px 10px;padding:2px 5px;border-left:2px solid ${farbe};font-size:11px;line-height:1.45;">${inhalt}</div>`;
   if (!es.liste?.length) return rahmen(GRUEN, `${kopf}<div style="color:${GRUEN};">✓ Keine Engstelle — die ganze Gruppe passt ins Netz.</div>`);
   const zeilen = es.liste.map(e => {
     const wert = e.ueberKw > 0.5 ? `+${_fmt(e.ueberKw)} kW` : `ΔU ${_fmt(e.duMaxPct, 1)} %`;
@@ -625,14 +625,14 @@ export function pvbsBlockHtml() {
     ].filter(Boolean).join(' ');
     return `
       <div style="padding:4px 0 3px;border-bottom:1px solid rgba(var(--ink),.06);${imProjekt ? `border-left:3px solid ${GRUEN};padding-left:4px;` : 'padding-left:7px;'}">
-        <div style="display:flex;align-items:center;gap:4px;font-size:10.5px;">
+        <div style="display:flex;align-items:center;gap:4px;font-size:12px;">
           <span style="flex:1;min-width:0;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${imProjekt ? 'font-weight:600;' : ''}" data-click="pvbsZeile('${s.id}')"
             title="${escHtml(`${s.name}${s.beschreibung ? ' — ' + s.beschreibung : ''} · Stand ${s.stand}`)}">${offen ? '▾' : '▸'} ${escHtml(s.name)}</span>
           ${_knopf(`pvbsAnsehen('${s.id}')`, '👁', angezeigt && !imProjekt ? 'Ansicht beenden' : imProjekt ? 'Liegt im Projekt und ist ohnehin zu sehen' : 'Auf der Karte anzeigen — das Projekt bleibt unverändert', LILA, angezeigt && !imProjekt)}
           ${imProjekt || basis ? '' : _knopf(`pvbsOeffnen('${s.id}')`, '✎ öffnen', 'Ins Projekt holen und bearbeiten — Änderungen bleiben ein Entwurf, bis du sie speicherst (ein Strg+Z-Schritt)', GRUEN)}
         </div>
         ${rollen ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin:2px 0 1px 10px;">${rollen}</div>` : ''}
-        <div style="font-size:9px;color:var(--muted);padding-left:10px;font-family:'DM Mono',monospace;">${sum.daecher} Dächer · ${_fmt(sum.kwpKorr)} kWp${
+        <div style="font-size:11px;color:var(--muted);padding-left:10px;font-family:'DM Mono',monospace;">${sum.daecher} Dächer · ${_fmt(sum.kwpKorr)} kWp${
           s.netz?.geprueft ? (s.netz.vertraeglich ? ` · <span style="color:${GRUEN};">netzverträglich</span>` : ` · <span style="color:${ORANGE};">über Netzgrenze</span>`) : ''}${
           s.netz?.engstellen?.liste?.length ? ` · <span style="color:${ROT};" title="Aufklappen zeigt die Engstellen">🚧 ${s.netz.engstellen.liste.length}</span>` : ''}${
           _regelnHinweis(s)}</div>
@@ -644,40 +644,40 @@ export function pvbsBlockHtml() {
           ${_knopf(`pvbsUmbenennen('${s.id}')`, '✎ Name', 'Umbenennen', '')}
           ${imProjekt ? '' : _knopf(`pvbsLoeschen('${s.id}')`, '🗑', 'Stand löschen (die Dächer im Projekt bleiben unverändert)', ROT)}
         </div>
-        ${s.beschreibung ? `<div style="font-size:9px;color:var(--muted);padding:0 0 2px 10px;line-height:1.35;">${escHtml(s.beschreibung)}</div>` : ''}
+        ${s.beschreibung ? `<div style="font-size:11px;color:var(--muted);padding:0 0 2px 10px;line-height:1.35;">${escHtml(s.beschreibung)}</div>` : ''}
         ${_engstellenHtml(s)}` : ''}
       </div>`;
   };
 
   const kopf = `<div style="display:flex;align-items:center;gap:5px;cursor:pointer;" data-click="pvbsZeile('__zu')">
-      <span style="flex:1;color:${LILA};font-weight:600;font-size:11px;">Belegungsstände${_bs.liste.length ? ` (${_bs.liste.length})` : ''}</span>
-      <span style="font-size:10px;color:var(--muted);">${_bs.zu ? '▸' : '▾'}</span>
+      <span style="flex:1;color:${LILA};font-weight:600;font-size:12.5px;">Belegungsstände${_bs.liste.length ? ` (${_bs.liste.length})` : ''}</span>
+      <span style="font-size:12px;color:var(--muted);">${_bs.zu ? '▸' : '▾'}</span>
     </div>`;
   if (_bs.zu) return `<div style="margin-top:6px;border:1px solid ${LILA}55;border-radius:5px;padding:5px 7px;">${kopf}</div>`;
 
   const name = id => { const s = pvbsStand(id); return s ? `„${escHtml(s.name)}“` : '<span style="color:var(--muted);">—</span>'; };
   const entwurfName = `<span style="color:${ORANGE};">Entwurf (ungespeichert)</span>`;
   const uebersicht = `
-    <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 6px;font-size:9.5px;margin:4px 0 5px;padding:4px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;align-items:baseline;">
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 6px;font-size:11px;margin:4px 0 5px;padding:4px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;align-items:baseline;">
       ${_rolle(GRUEN, 'IM PROJEKT', 'Liegt auf den Dächern')}<span>${_entwurf ? entwurfName : ps ? name(_bs.projektId) : '<span style="color:var(--muted);">noch keine Dächer belegt</span>'}</span>
       ${_rolle(LILA, 'ANGEZEIGT', 'Auf der Karte')}<span>${anzeigeId ? name(anzeigeId) : _entwurf ? entwurfName : name(null)}${_ansicht ? ` <a style="cursor:pointer;color:${LILA};text-decoration:underline;" data-click="pvbsAnsichtEnde()">beenden</a>` : ''}</span>
       ${_rolle(GELB, 'PV-ANALYSE', 'Grundlage des Variantenvergleichs')}<span>${analyseId ? name(analyseId) : _entwurf ? entwurfName : name(null)}</span>
     </div>`;
   // Entwurf: liegt auf den Dächern, ist aber noch kein Stand
   const entwurf = !_entwurf ? '' : `
-    <div style="margin:4px 0 5px;padding:4px 6px;border:1px dashed ${ORANGE};border-radius:4px;background:${ORANGE}12;font-size:10px;">
+    <div style="margin:4px 0 5px;padding:4px 6px;border:1px dashed ${ORANGE};border-radius:4px;background:${ORANGE}12;font-size:12px;">
       <div style="display:flex;align-items:baseline;gap:5px;">
         ${_rolle(ORANGE, 'ENTWURF', 'Liegt auf den Dächern (PV-Assets, Stromnetz, PV-Analyse), ist aber noch kein gespeicherter Stand')}
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ps ? `beruht auf ${name(_bs.projektId)}` : 'neue Belegung'} — ungespeichert</span>
       </div>
-      <div style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;padding:2px 0 3px;">${_entwurf.daecher} Dächer · ${_fmt(_entwurf.kwpKorr)} kWp</div>
+      <div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;padding:2px 0 3px;">${_entwurf.daecher} Dächer · ${_fmt(_entwurf.kwpKorr)} kWp</div>
       <div style="display:flex;flex-wrap:wrap;gap:3px;">
         ${ps ? _knopf('pvbsEntwurfSpeichern()', 'speichern', `In „${ps.name}“ speichern — überschreibt dessen bisherigen Inhalt`, GRUEN) : ''}
         ${_knopf('pvbsEntwurfAlsStand()', 'als neuer Stand', 'Unter neuem Namen speichern — liegt danach im Projekt', GRUEN)}
         ${ps ? _knopf('pvbsEntwurfVerwerfen()', '↶ verwerfen', `Änderungen verwerfen, „${ps.name}“ zurück auf die Dächer (Strg+Z holt den Entwurf zurück)`, ROT) : ''}
       </div>
     </div>`;
-  const leer = !_bs.liste.length ? `<div style="font-size:9px;color:var(--muted);line-height:1.45;margin-bottom:4px;">
+  const leer = !_bs.liste.length ? `<div style="font-size:11px;color:var(--muted);line-height:1.45;margin-bottom:4px;">
       Noch keine. „⚡ Dächer automatisch belegen“ → Vorschau → „💾 Als Belegungsstand speichern“ — z. B. „Alle Dächer · Maximal“ als Gesamtpotenzial.
       Dächer, die du im Projekt belegst, bleiben ein Entwurf, bis du sie speicherst.</div>` : '';
   return `
@@ -687,7 +687,7 @@ export function pvbsBlockHtml() {
       ${entwurf}
       ${leer}
       <div style="max-height:300px;overflow-y:auto;">${_bs.liste.map(zeile).join('')}</div>
-      <div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.4;">Zeile anklicken für ☆ PV-Analyse · ☀ Auslegung · ⧉ Kopie · Name · Löschen.</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4;">Zeile anklicken für ☆ PV-Analyse · ☀ Auslegung · ⧉ Kopie · Name · Löschen.</div>
     </div>`;
 }
 

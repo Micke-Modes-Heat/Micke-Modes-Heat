@@ -348,10 +348,10 @@ function _renderLegende(res) {
       <span style="width:8px;height:8px;border-radius:2px;background:${m.col};"></span>${m.label}: <b>${zaehl(k)}</b></span>`;
   }).join('');
   el.innerHTML = `
-    <div style="font-size:9px;color:var(--muted);margin-bottom:3px;">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:3px;">
       Engpass-Zeitpunkt ${res.von}–${res.bis} · ${res.jahre.length} Stützjahre · ${res.dauerMs} ms
     </div>
-    <div style="font-size:9px;line-height:1.7;">${chips}</div>`;
+    <div style="font-size:11px;line-height:1.7;">${chips}</div>`;
   el.style.display = '';
 }
 

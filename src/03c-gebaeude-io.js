@@ -235,18 +235,18 @@ export function _renderCompactRow(g, stats, isExpanded) {
       <input type="checkbox" style="flex-shrink:0;accent-color:var(--accent);cursor:pointer;" ${g.selected?'checked':''} data-change="toggleSelect(${g.id},this.checked)" data-click="event.stopPropagation()" title="Auswählen"/>
       <div class="geb-color-dot" data-dot="${g.id}" style="background:${dot};flex-shrink:0;"></div>
       <span class="geb-compact-name">${g.gebaeudenummer ? escHtml(g.gebaeudenummer) + ' · ' : ''}${escHtml(g.name)}</span>
-      <span style="font-size:9px;color:var(--muted);flex-shrink:0;">${isExpanded?'▲':'▼'}</span>
+      <span style="font-size:11px;color:var(--muted);flex-shrink:0;">${isExpanded?'▲':'▼'}</span>
     </div>
     <div style="display:flex;align-items:center;gap:4px;padding-left:28px;margin-top:1px;">
       <button data-click="event.stopPropagation();toggleVormerkenGeb(${g.id})" title="${g.feldVorgemerkt ? 'Vorgemerkt – klicken zum Entfernen' : 'Für Feldbegehung vormerken'}" style="background:none;border:none;cursor:pointer;font-size:${g.feldVorgemerkt ? '13' : '11'}px;color:${g.feldVorgemerkt ? '#f59e0b' : '#666'};padding:0 2px;margin-right:2px;line-height:1;flex-shrink:0;">★</button>
-      <span style="font-size:9px;color:var(--muted);max-width:82px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;" title="${escHtml(nutzungLabel)}">${escHtml(nutzungLabel)}</span>
+      <span style="font-size:11px;color:var(--muted);max-width:82px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;" title="${escHtml(nutzungLabel)}">${escHtml(nutzungLabel)}</span>
       <span class="geb-compact-val geb-cv-waerme-${g.id}" style="color:var(--accent)">${waermeStr}</span>
       <span class="geb-compact-unit">MWh</span>
       <span class="geb-compact-val geb-cv-hl-${g.id}" style="color:var(--c-orange)">${hlStr}</span>
       <span class="geb-compact-unit">kW</span>
-      <div class="geb-badge ${badgeClass}" style="font-size:8px;padding:1px 3px;margin-left:auto;">${badgeText}</div>
+      <div class="geb-badge ${badgeClass}" style="font-size:10.5px;padding:1px 3px;margin-left:auto;">${badgeText}</div>
       ${statusColor!=='transparent'?`<span style="width:5px;height:5px;border-radius:50%;background:${statusColor};flex-shrink:0;"></span>`:''}
-      ${g.feldStatus==='erledigt'?`<span style="font-size:9px;flex-shrink:0;" title="Feldbefund: Erledigt">✅</span>`:g.feldStatus==='besucht'?`<span style="font-size:9px;flex-shrink:0;" title="Feldbefund: Besucht">👁</span>`:''}
+      ${g.feldStatus==='erledigt'?`<span style="font-size:11px;flex-shrink:0;" title="Feldbefund: Erledigt">✅</span>`:g.feldStatus==='besucht'?`<span style="font-size:11px;flex-shrink:0;" title="Feldbefund: Besucht">👁</span>`:''}
     </div>
   </div>`;
 }
@@ -411,7 +411,7 @@ function buildGebElektroSection(g) {
       if (a.type === 'Verbraucher' && a.props?.leistungKW != null) {
         rightIndicator = `<span class="geb-elektro-metric" style="color:var(--c-blue);">${(+a.props.leistungKW).toLocaleString('de-DE',{maximumFractionDigits:1})} kW</span>`;
       } else if (a.type === 'PV' && a.props?.leistungKWp != null) {
-        const modTxt = gebModCount ? `<span class="geb-elektro-metric" style="color:var(--muted);font-size:9px;margin-right:4px;">${gebModCount.toLocaleString('de-DE')} Mod.</span>` : '';
+        const modTxt = gebModCount ? `<span class="geb-elektro-metric" style="color:var(--muted);font-size:11px;margin-right:4px;">${gebModCount.toLocaleString('de-DE')} Mod.</span>` : '';
         rightIndicator = `${modTxt}<span class="geb-elektro-metric" style="color:var(--c-amber);">${(+a.props.leistungKWp).toLocaleString('de-DE',{maximumFractionDigits:1})} kWp</span>`;
       } else if (a.props?.leistungKVA != null) {
         rightIndicator = `<span class="geb-elektro-metric">${(+a.props.leistungKVA).toLocaleString('de-DE',{maximumFractionDigits:0})} kVA</span>`;
@@ -522,16 +522,16 @@ function buildGebVerbraucherSection(g) {
           </div>
         </div>
         ${fl > 0
-          ? `<div id="geb-verbr-formel-${g.id}" style="font-size:9px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;">
+          ? `<div id="geb-verbr-formel-${g.id}" style="font-size:11px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;">
                ↳ ${Math.round(fl)} m² × <a data-click="openElSlpManager(${g.id})" title="W/m²-Annahmen verwalten / Profile hinzufügen" style="color:var(--c-blue);cursor:pointer;text-decoration:underline dotted;">${wpm2} W/m²</a> ÷ 1000 = ${autoKw} kW (${slpTyp})
              </div>`
-          : `<div id="geb-verbr-formel-${g.id}" style="font-size:9px;color:rgba(249,168,37,.7);margin-top:2px;">↳ Keine Fläche — manuelle Eingabe (<a data-click="openElSlpManager(${g.id})" style="color:var(--c-blue);cursor:pointer;text-decoration:underline dotted;">W/m² verwalten</a>)</div>`}
+          : `<div id="geb-verbr-formel-${g.id}" style="font-size:11px;color:rgba(249,168,37,.7);margin-top:2px;">↳ Keine Fläche — manuelle Eingabe (<a data-click="openElSlpManager(${g.id})" style="color:var(--c-blue);cursor:pointer;text-decoration:underline dotted;">W/m² verwalten</a>)</div>`}
         ${verbr
           ? `<button class="btn-xs" data-click="overwriteVerbrAsset(${g.id})"
                style="width:100%;margin-top:6px;display:flex;justify-content:center;gap:4px;border-color:var(--c-blue);color:var(--c-blue);">
                SLP + kW → Verbraucher-Asset überschreiben
              </button>`
-          : `<div style="font-size:9px;color:rgba(249,168,37,.7);margin-top:5px;">⚠ Kein Verbraucher-Asset vorhanden</div>`}
+          : `<div style="font-size:11px;color:rgba(249,168,37,.7);margin-top:5px;">⚠ Kein Verbraucher-Asset vorhanden</div>`}
       </div>
     </div>`;
 }
@@ -798,11 +798,11 @@ export function pvuRender() {
     const s = STAT[d.status] || STAT.ok;
     const act = (d.status === 'fehlt' || d.status === 'abweichend')
       ? `<button onclick="pvuFixOne(${d.id})" title="kWp übernehmen (Asset ggf. anlegen)"
-           style="padding:1px 6px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:9px;
+           style="padding:1px 6px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:11px;
                   border:1px solid var(--c-amber);color:var(--c-amber);background:rgba(255,213,79,.08);">übernehmen</button>`
       : '';
     return `<div style="display:grid;grid-template-columns:1.4fr .5fr .6fr .6fr .9fr;gap:4px;align-items:center;
-         padding:3px 0;border-bottom:1px solid rgba(var(--ink),.05);font-size:10px;">
+         padding:3px 0;border-bottom:1px solid rgba(var(--ink),.05);font-size:12px;">
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;color:var(--c-blue);"
             title="${d.name} — auf Karte zeigen" onclick="pvuFocus(${d.id})">${d.name}</span>
       <span style="text-align:right;color:var(--muted);">${d.mods || '—'}</span>
@@ -816,32 +816,32 @@ export function pvuRender() {
   <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:8px;
        display:grid;grid-template-columns:repeat(3,1fr);gap:4px;text-align:center;">
     <div><div style="font-size:15px;font-weight:700;color:var(--c-amber);">${sumDrawn.toFixed(0)}</div>
-         <div style="font-size:9px;color:var(--muted);">kWp gezeichnet</div></div>
+         <div style="font-size:11px;color:var(--muted);">kWp gezeichnet</div></div>
     <div><div style="font-size:15px;font-weight:700;color:var(--c-blue);">${sumAsset.toFixed(0)}</div>
-         <div style="font-size:9px;color:var(--muted);">kWp in Assets</div></div>
+         <div style="font-size:11px;color:var(--muted);">kWp in Assets</div></div>
     <div><div style="font-size:15px;font-weight:700;color:${offen.length ? '#ffa726' : '#66bb6a'};">${offen.length}</div>
-         <div style="font-size:9px;color:var(--muted);">zu übernehmen</div></div>
+         <div style="font-size:11px;color:var(--muted);">zu übernehmen</div></div>
   </div>
   ${offen.length ? `<button onclick="pvuUebernehmenAlle()"
-      style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;
+      style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;
              border:1px solid var(--c-amber);color:var(--c-amber);background:rgba(255,213,79,.08);margin-bottom:8px;">
       Alle ${offen.length} übernehmen (fehlende Assets anlegen)</button>` : ''}
   ${ohneFl.length ? `<button onclick="pvuLoescheAssetsOhneFlaeche()"
       title="PV-Assets entfernen, denen keine gezeichnete Belegungsfläche zugrunde liegt"
-      style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;
+      style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;
              border:1px solid var(--c-red);color:var(--c-red);background:rgba(239,83,80,.06);margin-bottom:8px;">
       🗑 ${ohneFl.length} PV-Asset(s) ohne Fläche löschen</button>` : ''}
   ${dach.length ? `
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px;">Dach-PV (${dach.length})</div>
-    <div style="display:grid;grid-template-columns:1.4fr .5fr .6fr .6fr .9fr;gap:4px;font-size:9px;color:var(--muted);padding-bottom:2px;border-bottom:1px solid rgba(var(--ink),.1);">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px;">Dach-PV (${dach.length})</div>
+    <div style="display:grid;grid-template-columns:1.4fr .5fr .6fr .6fr .9fr;gap:4px;font-size:11px;color:var(--muted);padding-bottom:2px;border-bottom:1px solid rgba(var(--ink),.1);">
       <span>Gebäude</span><span style="text-align:right;">Mod.</span><span style="text-align:right;">gez.</span><span style="text-align:right;">Asset</span><span style="text-align:right;">Status</span>
     </div>
-    ${dach.map(rowHtml).join('')}` : '<div style="font-size:10px;color:var(--muted);">Keine Dach-PV-Flächen gezeichnet.</div>'}
+    ${dach.map(rowHtml).join('')}` : '<div style="font-size:12px;color:var(--muted);">Keine Dach-PV-Flächen gezeichnet.</div>'}
   ${frei.length ? `
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:10px 0 2px;">Freiflächen-PV (${frei.length}) · Σ ${sumFrei.toFixed(0)} kWp</div>
-    ${frei.map(f => `<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--c-blue);padding:2px 0;border-bottom:1px solid rgba(var(--ink),.05);">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:10px 0 2px;">Freiflächen-PV (${frei.length}) · Σ ${sumFrei.toFixed(0)} kWp</div>
+    ${frei.map(f => `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--c-blue);padding:2px 0;border-bottom:1px solid rgba(var(--ink),.05);">
       <span>${f.name}</span><span style="color:var(--c-amber);">${f.kwp.toLocaleString('de-DE')} kWp · ${f.mods} Mod.</span></div>`).join('')}` : ''}
-  <div style="font-size:9px;color:var(--muted);margin-top:8px;line-height:1.4;">
+  <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.4;">
     „gezeichnet" = kWp aus den platzierten Modulen · „Asset" = aktueller Wert im PV-Asset (treibt alle Analysen).
     Abweichungen entstehen, wenn nach dem Zeichnen „kWp übernehmen" vergessen wurde.
   </div>`;
@@ -899,20 +899,20 @@ function _renderNutzungstypenModal(editId = null, formData = null) {
         ${editable
           ? `<button class="btn-xs nt-edit-btn" data-nt-id="${t.id}" title="Bearbeiten">✎</button>
              <button class="btn-xs red nt-del-btn" data-nt-id="${t.id}" title="Löschen">🗑</button>`
-          : `<span style="font-size:9px;color:var(--muted);">Standard</span>`}
+          : `<span style="font-size:11px;color:var(--muted);">Standard</span>`}
       </td>
     </tr>`;
 
   const formHtml = (data = {}) => `
     <tr id="nt-form-row">
-      <td><input class="inp-field" id="nt-f-id"    value="${escHtml(data.id||'')}"    placeholder="bw_kaserne" style="width:100%;font-size:10px;" ${data.id && isBuiltinNutzungstyp(data.id) ? 'readonly' : ''}></td>
-      <td><input class="inp-field" id="nt-f-label" value="${escHtml(data.label||'')}" placeholder="Kaserne (BW)" style="width:100%;font-size:10px;"></td>
-      <td><input class="inp-field" id="nt-f-gruppe" value="${escHtml(data.gruppe||'')}" placeholder="Bundeswehr" style="width:100%;font-size:10px;"></td>
-      <td><input class="inp-field" id="nt-f-spez"  value="${data.spezStrom??''}"      placeholder="55" type="number" style="width:60px;font-size:10px;"></td>
-      <td><select class="inp-field" id="nt-f-slp" style="font-size:10px;padding:2px 4px;">
+      <td><input class="inp-field" id="nt-f-id"    value="${escHtml(data.id||'')}"    placeholder="bw_kaserne" style="width:100%;font-size:12px;" ${data.id && isBuiltinNutzungstyp(data.id) ? 'readonly' : ''}></td>
+      <td><input class="inp-field" id="nt-f-label" value="${escHtml(data.label||'')}" placeholder="Kaserne (BW)" style="width:100%;font-size:12px;"></td>
+      <td><input class="inp-field" id="nt-f-gruppe" value="${escHtml(data.gruppe||'')}" placeholder="Bundeswehr" style="width:100%;font-size:12px;"></td>
+      <td><input class="inp-field" id="nt-f-spez"  value="${data.spezStrom??''}"      placeholder="55" type="number" style="width:60px;font-size:12px;"></td>
+      <td><select class="inp-field" id="nt-f-slp" style="font-size:12px;padding:2px 4px;">
         ${_slpOpts(data.slp)}
       </select></td>
-      <td><input class="inp-field" id="nt-f-vbh"   value="${data.vbh??''}"           placeholder="2500" type="number" style="width:60px;font-size:10px;"></td>
+      <td><input class="inp-field" id="nt-f-vbh"   value="${data.vbh??''}"           placeholder="2500" type="number" style="width:60px;font-size:12px;"></td>
       <td style="white-space:nowrap;">
         <button class="btn-xs green" id="nt-save-btn">✓</button>
         <button class="btn-xs" id="nt-cancel-btn">✕</button>
@@ -1033,9 +1033,9 @@ function buildDachSection(g, opts = {}) {
           : ''}
       </div>
       ${g.dachAutoAzimut
-        ? `<div style="font-size:8px;color:var(--muted);margin-top:2px;">↳ auto (Polygon)</div>`
+        ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">↳ auto (Polygon)</div>`
         : g.dachQuelle === 'osm' && g.dachAzimut != null
-          ? `<div style="font-size:8px;color:var(--muted);margin-top:2px;">↳ aus OSM (roof:direction)</div>`
+          ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">↳ aus OSM (roof:direction)</div>`
           : ''}
     </div>`;
 
@@ -1062,7 +1062,7 @@ function buildDachSection(g, opts = {}) {
         data-change="updateGebPvBaujahr(${g.id},this.value)"/>
       ${pvAssetBj
         ? ''
-        : '<div style="font-size:8px;color:var(--muted);margin-top:2px;">↳ wird beim automatischen Anlegen des PV-Assets übernommen</div>'}
+        : '<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">↳ wird beim automatischen Anlegen des PV-Assets übernommen</div>'}
     </div>`;
 
   // ── Modus-Umschalter: Pauschal (Dachanteil) vs. Flächen zeichnen ──────────
@@ -1104,7 +1104,7 @@ function buildDachSection(g, opts = {}) {
   const flGcr = g.pvFlGcr != null ? g.pvFlGcr : (g.pvFlAusrichtung === 'ostwest' ? 85 : 40);
   const flList = (g.pvFlaechen || []).map(fl => {
     const isB = fl.typ !== 'sperr';
-    return `<div style="display:flex;align-items:center;gap:6px;font-size:10px;padding:2px 0;">
+    return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0;">
       <span style="color:${isB ? '#ffd54f' : '#e53935'};">${isB ? '☀' : '⛔'}</span>
       <span style="flex:1;">${isB ? 'Belegung' : 'Sperrfläche'}</span>
       <span style="font-family:'DM Mono',monospace;color:var(--muted);">${(fl.flaeche || 0).toFixed(0)} m²</span>
@@ -1124,7 +1124,7 @@ function buildDachSection(g, opts = {}) {
   // Steuerelemente je Dachform: Flachdach = GCR + Aufständerung · Schrägdach = Belegungsgrad
   const usedAz = g.dachAzimut ?? 180;
   const flaechenControls = isPitched ? `
-    <div style="font-size:9px;color:var(--muted);margin-top:6px;">${isSattel ? 'Ganze Dachfläche zeichnen — wird automatisch am First in zwei Seiten (Azimut + Gegenseite) geteilt. ' : 'Dachfläche je Dachseite zeichnen. '}Module liegen parallel zum Dach; Grundriss wird mit 1/cos(Neigung) auf die echte Dachfläche projiziert. Rand (0,3 m) bleibt frei.</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px;">${isSattel ? 'Ganze Dachfläche zeichnen — wird automatisch am First in zwei Seiten (Azimut + Gegenseite) geteilt. ' : 'Dachfläche je Dachseite zeichnen. '}Module liegen parallel zum Dach; Grundriss wird mit 1/cos(Neigung) auf die echte Dachfläche projiziert. Rand (0,3 m) bleibt frei.</div>
     <div style="display:flex;flex-direction:column;gap:4px;margin-top:5px;">
       <div class="inp-group">
         <div class="inp-label" title="Anteil der Dachfläche, der mit Modulen belegt wird (Ränder/Rahmen abgezogen)">Belegungsgrad (%)</div>
@@ -1133,7 +1133,7 @@ function buildDachSection(g, opts = {}) {
             style="flex:1;cursor:pointer;accent-color:#ffd54f;height:4px;"
             oninput="this.nextElementSibling.textContent=this.value+'%'"
             data-change="updateGebPvFl(${g.id},'belegung',this.value)"/>
-          <span style="min-width:30px;text-align:right;font-size:11px;color:var(--c-amber);font-weight:600;">${flBeleg}%</span>
+          <span style="min-width:30px;text-align:right;font-size:12.5px;color:var(--c-amber);font-weight:600;">${flBeleg}%</span>
         </div>
       </div>
       <div class="inp-group">
@@ -1143,7 +1143,7 @@ function buildDachSection(g, opts = {}) {
             style="flex:1;cursor:pointer;accent-color:#80deea;height:4px;"
             oninput="this.nextElementSibling.textContent=this.value+'°'"
             data-change="updateGebDach(${g.id},'dachNeigung',this.value)"/>
-          <span style="min-width:28px;text-align:right;font-size:11px;color:var(--c-teal);font-weight:600;">${usedNei}°</span>
+          <span style="min-width:28px;text-align:right;font-size:12.5px;color:var(--c-teal);font-weight:600;">${usedNei}°</span>
         </div>
       </div>
       <div class="inp-group">
@@ -1153,7 +1153,7 @@ function buildDachSection(g, opts = {}) {
             style="flex:1;cursor:pointer;accent-color:#ef9a9a;height:4px;"
             oninput="this.nextElementSibling.textContent=this.value+'°'"
             data-change="updateGebDach(${g.id},'dachAzimut',this.value)"/>
-          <span style="min-width:28px;text-align:right;font-size:11px;color:var(--c-red);font-weight:600;">${usedAz}°</span>
+          <span style="min-width:28px;text-align:right;font-size:12.5px;color:var(--c-red);font-weight:600;">${usedAz}°</span>
         </div>
       </div>
       ${isSattel ? `
@@ -1161,9 +1161,9 @@ function buildDachSection(g, opts = {}) {
         <button class="btn-xs" style="flex:1;" data-click="startGebFirstDraw(${g.id})" title="Firstlinie auf dem Satellitenbild nachzeichnen (2 Klicks) — nötig bei schiefen/asymmetrischen Grundrissen">First neu zeichnen</button>
         ${g.pvRidgeOverride ? `<button class="btn-xs" data-click="resetGebFirst(${g.id})" title="First zurück auf automatische Mitte">↺</button>` : ''}
       </div>
-      ${g.pvRidgeOverride ? '<div style="font-size:9px;color:var(--c-amber);">First manuell gesetzt.</div>' : ''}` : ''}
+      ${g.pvRidgeOverride ? '<div style="font-size:11px;color:var(--c-amber);">First manuell gesetzt.</div>' : ''}` : ''}
     </div>` : `
-    <div style="font-size:9px;color:var(--muted);margin-top:6px;">Belegbare Dachflächen zeichnen (Satellit), Sperrflächen für Kamine/Gauben/Verschattung abziehen. Rand (0,3 m) bleibt frei; Ost-West-Aufständerung rechnet mit ~90 % Ertragsfaktor.</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px;">Belegbare Dachflächen zeichnen (Satellit), Sperrflächen für Kamine/Gauben/Verschattung abziehen. Rand (0,3 m) bleibt frei; Ost-West-Aufständerung rechnet mit ~90 % Ertragsfaktor.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;">
       <div class="inp-group">
         <div class="inp-label" title="Ground Coverage Ratio: Anteil Modulfläche an gezeichneter Fläche">GCR (% Belegung)</div>
@@ -1172,7 +1172,7 @@ function buildDachSection(g, opts = {}) {
             style="flex:1;cursor:pointer;accent-color:#ffd54f;height:4px;"
             oninput="this.nextElementSibling.textContent=this.value+'%'"
             data-change="updateGebPvFl(${g.id},'gcr',this.value)"/>
-          <span style="min-width:30px;text-align:right;font-size:11px;color:var(--c-amber);font-weight:600;">${flGcr}%</span>
+          <span style="min-width:30px;text-align:right;font-size:12.5px;color:var(--c-amber);font-weight:600;">${flGcr}%</span>
         </div>
       </div>
       <div class="inp-group">
@@ -1208,7 +1208,7 @@ function buildDachSection(g, opts = {}) {
     <button class="btn-xs" style="width:100%;margin-top:4px;border-color:var(--c-amber);color:var(--c-amber);"
       data-click="pvModusStartFuer(${g.id})"
       title="PV-Modus auf der Karte: Dach anklicken = erste Ecke, der Modus bleibt an — auch für die übrigen Gebäude">Im PV-Modus zeichnen</button>
-    ${flList ? `<div style="margin-top:6px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">${flList}</div>` : '<div style="font-size:9px;color:var(--muted);margin-top:6px;text-align:center;">Noch keine Fläche gezeichnet.</div>'}
+    ${flList ? `<div style="margin-top:6px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">${flList}</div>` : '<div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;">Noch keine Fläche gezeichnet.</div>'}
     ${flResult}`;
 
   return `
@@ -1227,7 +1227,7 @@ function buildDachSection(g, opts = {}) {
               ${Object.entries(DACHFORM_LABELS).map(([v,l]) =>
                 `<option value="${v}"${dachform===v?' selected':''}>${l}</option>`).join('')}
             </select>
-            ${g.dachQuelle === 'osm' ? `<div style="font-size:8px;color:var(--muted);margin-top:2px;" title="Aus den OSM-Tags roof:shape / roof:angle übernommen">↳ aus OSM${g.dachNeigung != null ? ` · ${g.dachNeigung}°` : ''}</div>` : ''}
+            ${g.dachQuelle === 'osm' ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;" title="Aus den OSM-Tags roof:shape / roof:angle übernommen">↳ aus OSM${g.dachNeigung != null ? ` · ${g.dachNeigung}°` : ''}</div>` : ''}
           </div>
           ${azimutField}
         </div>
@@ -2169,7 +2169,7 @@ window.onPvModulChange = function() {
 };
 
 export function _gebLabelHtml(g) {
-  const pvBadge = g.pvAktiv ? '<span style="color:var(--c-amber);font-size:9px;margin-left:3px;vertical-align:middle;">☀</span>' : '';
+  const pvBadge = g.pvAktiv ? '<span style="color:var(--c-amber);font-size:11px;margin-left:3px;vertical-align:middle;">☀</span>' : '';
   const nummerPrefix = g.gebaeudenummer ? escHtml(g.gebaeudenummer) + ' · ' : '';
   return nummerPrefix + escHtml(g.name) + pvBadge;
 }
@@ -2233,7 +2233,7 @@ export function renderGebPvPanel() {
   const mitFlaeche = window.gebaeude.filter(g => parseFloat(g.flaeche) > 0);
 
   if (mitFlaeche.length === 0) {
-    list.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:6px 0;">Noch keine Gebäude mit Fläche vorhanden.</div>';
+    list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:6px 0;">Noch keine Gebäude mit Fläche vorhanden.</div>';
     summe.style.display = 'none';
     return;
   }
@@ -2255,7 +2255,7 @@ export function renderGebPvPanel() {
         data-change="updateGebPv(${g.id},'pvAktiv',this.checked)"/>
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(g.name)}">${escHtml(g.name)}</span>
       <input class="inp-field" type="number" value="${g.pvDachanteil || 30}" min="5" max="100" step="5"
-        style="padding:2px 4px;font-size:9px;text-align:right;"
+        style="padding:2px 4px;font-size:11px;text-align:right;"
         data-input="updateGebPv(${g.id},'pvDachanteil',this.value)"/>
       <span style="text-align:right;font-family:'DM Mono',monospace;color:${g.pvAktiv ? '#ffd54f' : 'var(--muted)'};">${kwp.toFixed(1)}</span>
     </div>`;
@@ -2287,9 +2287,9 @@ export function _renderExpandedPanel(g, stats) {
   if (g.abrissjahr) planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Abriss im Jahr ${g.abrissjahr}</span><span style="cursor:pointer;color:var(--c-red)" data-click="clearPlan(${g.id}, 'abriss')">✕</span></div>`);
 
   let infoLabel = '';
-  if(stats.status === 'geplant') infoLabel = '<div style="color:var(--c-orange);font-size:10px;margin-bottom:5px;">Geplant</div>';
-  else if(stats.status === 'abgerissen') infoLabel = '<div style="color:var(--c-red);font-size:10px;margin-bottom:5px;">Abgerissen</div>';
-  else if(stats.status === 'saniert') infoLabel = `<div style="color:var(--c-green);font-size:10px;margin-bottom:5px;">Saniert (${stats.spez.toLocaleString('de-DE',{maximumFractionDigits:1})} kWh/m²a)</div>`;
+  if(stats.status === 'geplant') infoLabel = '<div style="color:var(--c-orange);font-size:12px;margin-bottom:5px;">Geplant</div>';
+  else if(stats.status === 'abgerissen') infoLabel = '<div style="color:var(--c-red);font-size:12px;margin-bottom:5px;">Abgerissen</div>';
+  else if(stats.status === 'saniert') infoLabel = `<div style="color:var(--c-green);font-size:12px;margin-bottom:5px;">Saniert (${stats.spez.toLocaleString('de-DE',{maximumFractionDigits:1})} kWh/m²a)</div>`;
   const sourceLabel = g.importSourceName
     ? `<div class="geb-import-source"><span style="background:${g.importSourceColor || 'var(--muted)'}"></span>Quelle: ${escHtml(g.importSourceName)}</div>`
     : '';
@@ -2304,7 +2304,7 @@ export function _renderExpandedPanel(g, stats) {
       const parts = [];
       if (sW) parts.push(`${sW.toLocaleString('de-DE')} MWh/a`);
       if (sH) parts.push(`${sH.toLocaleString('de-DE')} kW`);
-      netzwertHtml = `<div style="font-size:9px;color:var(--c-blue);margin-top:3px;padding:2px 6px;background:rgba(63,81,181,0.12);border-radius:3px;border-left:2px solid var(--c-blue);">↑ Netzwert: ${parts.join(' · ')}</div>`;
+      netzwertHtml = `<div style="font-size:11px;color:var(--c-blue);margin-top:3px;padding:2px 6px;background:rgba(63,81,181,0.12);border-radius:3px;border-left:2px solid var(--c-blue);">↑ Netzwert: ${parts.join(' · ')}</div>`;
     }
   }
 
@@ -2399,7 +2399,7 @@ export function _renderExpandedPanel(g, stats) {
     </div>
     ${buildGebElektroSection(g)}
     ${netzwertHtml}
-    ${g.netzVerlustKW != null ? `<div style="margin-top:6px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);font-size:10px;font-family:'DM Mono',monospace;display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;">
+    ${g.netzVerlustKW != null ? `<div style="margin-top:6px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);font-size:12px;font-family:'DM Mono',monospace;display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;">
       <span style="color:var(--muted)">Zuger. Verlust</span><span style="color:var(--text)">${g.netzVerlustKW.toFixed(1)} kW</span>
       ${g.netzVerlustJahrMWh != null ? `<span style="color:var(--muted)">Verlust/Jahr</span><span style="color:var(--text)">${g.netzVerlustJahrMWh.toLocaleString('de-DE')} MWh/a</span>` : ''}
       <span style="color:var(--muted)">Anteil Verbrauch</span><span style="color:${g.netzVerlustRatioPct < 5 ? '#4caf50' : g.netzVerlustRatioPct < 10 ? '#f9a825' : '#e53935'};font-weight:bold">${g.netzVerlustRatioPct.toFixed(1)} %</span>
@@ -2436,7 +2436,7 @@ export function _renderExpandedPanel(g, stats) {
       </button>
     </div>` : ''}
     <div class="plan-panel" id="plan-${g.id}">
-      <div style="font-size:10px; color:var(--accent); margin-bottom:8px;">Lebenszyklus & Sanierung</div>
+      <div style="font-size:12px; color:var(--accent); margin-bottom:8px;">Lebenszyklus & Sanierung</div>
       <select class="inp-field" style="margin-bottom:8px;" data-change="changePlanMode(${g.id}, this.value)">
         <option value="">Aktion wählen...</option>
         <option value="neubau">Neubau planen</option>
@@ -2456,7 +2456,7 @@ export function _renderExpandedPanel(g, stats) {
         <input type="number" id="inp-abriss-${g.id}" placeholder="Abrissjahr" class="inp-field" style="flex:1">
         <button class="btn-xs red" data-click="savePlan(${g.id}, 'abriss')">Speichern</button>
       </div>
-      <div id="san-list-${g.id}" style="margin-top:4px; font-size:11px; color:var(--text); display:flex; flex-direction:column; gap:2px;">
+      <div id="san-list-${g.id}" style="margin-top:4px; font-size:12.5px; color:var(--text); display:flex; flex-direction:column; gap:2px;">
         ${planItems.join('')}
       </div>
     </div>
@@ -2469,7 +2469,7 @@ function _renderFelddatenBlock(g) {
 
   const statusLabel = { offen:'Offen', besucht:'Besucht', erledigt:'Erledigt' }[g.feldStatus] || '';
   const notizHtml = g.feldNotizen
-    ? `<div style="background:#fffbeb;border-left:3px solid var(--c-orange);padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;white-space:pre-wrap;margin-bottom:6px;">${escHtml(g.feldNotizen)}</div>`
+    ? `<div style="background:#fffbeb;border-left:3px solid var(--c-orange);padding:6px 10px;border-radius:0 6px 6px 0;font-size:12.5px;white-space:pre-wrap;margin-bottom:6px;">${escHtml(g.feldNotizen)}</div>`
     : '';
   const fotoHtml = (g.feldFotos || []).map(foto =>
     `<img src="${foto.dataUrl}" title="${escHtml(foto.name)}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;" onclick="openImageLightbox(this.src,this.title)">`
@@ -2477,7 +2477,7 @@ function _renderFelddatenBlock(g) {
 
   return `
   <div style="margin:6px 0 2px;padding:6px 8px;background:var(--surface2,var(--surface2));border-radius:8px;border:1px solid var(--c-blue);">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:10px;font-weight:700;color:var(--muted);">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:12px;font-weight:700;color:var(--muted);">
       FELDDATEN ${statusLabel ? '· ' + statusLabel : ''}
     </div>
     ${notizHtml}
@@ -3093,7 +3093,7 @@ function _formStatusHtml(g) {
   const text = l
     ? `✓ Maße von „${escHtml(l.qName)}" übernommen: ${l.vorher} → ${l.nachher} m² — weiteres Gebäude anklicken oder „✓ Fertig"`
     : 'Maßübernahme aktiv: Quellgebäude auf der Karte anklicken (Ziel = cyan umrandet, Vorschau = orange)';
-  return `<div style="margin-top:5px;padding:5px 7px;border-radius:4px;font-size:10px;line-height:1.4;border:1px solid ${l ? '#66bb6a' : '#00e5ff'};color:${l ? '#66bb6a' : '#00e5ff'};background:var(--bg)">⇆ ${text}</div>`;
+  return `<div style="margin-top:5px;padding:5px 7px;border-radius:4px;font-size:12px;line-height:1.4;border:1px solid ${l ? '#66bb6a' : '#00e5ff'};color:${l ? '#66bb6a' : '#00e5ff'};background:var(--bg)">⇆ ${text}</div>`;
 }
 
 // ── Grundrisse zusammenfügen ──────────────────────────────────────────────

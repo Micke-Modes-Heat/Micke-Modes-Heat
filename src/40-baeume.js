@@ -371,10 +371,10 @@ function _baumPopup(id) {
     : 'von Hand gesetzt';
   const hq = { osm: 'Höhe aus OSM', vorgabe: 'Höhe geschätzt (Vorgabe)', manuell: 'Höhe eingetragen' }[b.hoeheQuelle];
   const el = document.createElement('div');
-  el.style.cssText = 'font-size:11px;min-width:190px;';
+  el.style.cssText = 'font-size:12.5px;min-width:190px;';
   el.innerHTML = `
     <div style="font-weight:600;margin-bottom:3px;">Baum</div>
-    <div style="font-size:9.5px;color:var(--muted);margin-bottom:6px;">${herkunft} · ${hq}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${herkunft} · ${hq}</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 6px;align-items:center;">
       <span>Art</span>
       <select class="inp-field" data-f="art">${Object.entries(ARTEN).map(([k, l]) =>
@@ -854,7 +854,7 @@ export function baumVerschattungZeileHtml(g) {
   const e = _eintrag(g), st = _status(g);
   if (_an && st !== 'aktuell') _nachrechnenEinzeln(g);
   if (!e) {
-    return `<div style="font-size:9.5px;color:var(--muted);margin-top:5px;">Verschattung: ${_an ? 'wird gerechnet …' : 'nicht gerechnet'}</div>`;
+    return `<div style="font-size:11px;color:var(--muted);margin-top:5px;">Verschattung: ${_an ? 'wird gerechnet …' : 'nicht gerechnet'}</div>`;
   }
   const flaechen = Object.values(e.gruppen || {});
   const b = BEWERTUNG[_bewertung(e.faktor)];
@@ -863,7 +863,7 @@ export function baumVerschattungZeileHtml(g) {
     return `<div>· ${escHtml(f.label)}: <span style="color:${bf.farbe};">${_pct(f.faktor)} ${bf.sym} ${bf.text}</span></div>`;
   }).join('') : '';
   const urs = (e.verursacher || []).slice(0, 2).map(v => `<span style="cursor:pointer;text-decoration:underline dotted;" data-click="baumVerursacherZeigen('${v.key}')">${_verursacherName(v.key)} −${_fmt(v.anteil * 100, 1)} %</span>`).join(', ');
-  return `<div style="font-size:9.5px;margin-top:5px;line-height:1.45;">
+  return `<div style="font-size:11px;margin-top:5px;line-height:1.45;">
       Verschattung <b style="color:${b.farbe};">${_pct(e.faktor)}</b> <span style="color:${b.farbe};">${b.sym} ${b.text}</span>
       <span style="color:var(--muted);">(Bäume ${_pct(e.faktorBaeume)}, Gebäude ${_pct(e.faktorGebaeude)})</span>
       ${st === 'veraltet' ? `<span style="color:${GELB};" title="Bäume wurden seitdem geändert"> ⚠ veraltet</span>` : ''}
@@ -1262,29 +1262,29 @@ function _empfehlungHtml(auswertung) {
   const zahl = k => `<div style="flex:1;text-align:center;padding:3px 2px;border:1px solid ${BEWERTUNG[k].farbe}55;border-radius:4px;background:${BEWERTUNG[k].farbe}12;"
       title="${_fmt(kwp[k], 0)} kWp wirksame Leistung (ohne Verschattung)">
       <div style="color:${BEWERTUNG[k].farbe};font-weight:700;font-size:12px;">${BEWERTUNG[k].sym} ${n[k]}</div>
-      <div style="font-size:8.5px;color:var(--muted);">${BEWERTUNG[k].text}</div></div>`;
+      <div style="font-size:10.5px;color:var(--muted);">${BEWERTUNG[k].text}</div></div>`;
   const geschaetzt = _geschaetzteVerursacher();
   const ueber = _mitPv().filter(g => _eintrag(g)?.ueberlappungen?.length);
   return `
-    <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:9px 0 4px;">Empfehlung je Dachfläche</div>
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:9px 0 4px;">Empfehlung je Dachfläche</div>
     <div style="display:flex;gap:4px;">${zahl('ok')}${zahl('pruefen')}${zahl('nicht')}</div>
-    <div style="display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--muted);margin-top:4px;" title="Verlust durch Verschattung, ab dem eine Fläche geprüft bzw. nicht belegt werden sollte">
+    <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);margin-top:4px;" title="Verlust durch Verschattung, ab dem eine Fläche geprüft bzw. nicht belegt werden sollte">
       prüfen ab <input class="inp-field" type="number" min="1" max="90" value="${_schwellen.pruefen}" style="width:40px;padding:1px 3px;" data-change="baumSchwelle('pruefen',this.value)"/> %
       · nicht ab <input class="inp-field" type="number" min="1" max="90" value="${_schwellen.nicht}" style="width:40px;padding:1px 3px;" data-change="baumSchwelle('nicht',this.value)"/> %
     </div>
-    <div style="display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--muted);margin-top:3px;" title="Bei der automatischen Belegung (und „aus der Belegung nehmen“) bleiben einzelne Module frei, die für sich mindestens diesen Jahresverlust haben — der Rest des Dachs wird belegt (Teilbelegung)">
+    <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);margin-top:3px;" title="Bei der automatischen Belegung (und „aus der Belegung nehmen“) bleiben einzelne Module frei, die für sich mindestens diesen Jahresverlust haben — der Rest des Dachs wird belegt (Teilbelegung)">
       einzelne Module auslassen ab <input class="inp-field" type="number" min="5" max="95" value="${_schwellen.modul}" style="width:40px;padding:1px 3px;" data-change="baumSchwelle('modul',this.value)"/> %
     </div>
-    <div style="font-size:10px;margin-top:4px;" title="Wirksame Leistung × ${_fmt(_spez(), 0)} kWh/kWp × Verlustanteil, über alle gerechneten Dachflächen">
+    <div style="font-size:12px;margin-top:4px;" title="Wirksame Leistung × ${_fmt(_spez(), 0)} kWh/kWp × Verlustanteil, über alle gerechneten Dachflächen">
       Ertragsverlust durch Verschattung: <b>≈ ${_fmt(verlust, verlust < 10 ? 1 : 0)} MWh/a</b>
       <span style="color:var(--muted);">(${_fmt(ertrag > 0 ? verlust / ertrag * 100 : 0, 1)} % des Dachertrags)</span></div>
     ${n.nicht ? `<button class="btn-xs red" style="width:100%;margin-top:5px;" data-click="verschattetEntfernen()"
         title="Flächen mit ≥ ${_schwellen.nicht} % Verlust aus der Belegung nehmen (Dachflächen, Satteldachseiten oder ganze Dächer) — fragt vorher nach">
         ✗ ${n.nicht} verschattete ${n.nicht === 1 ? 'Fläche' : 'Flächen'} aus der Belegung nehmen …</button>` : ''}
-    ${geschaetzt.length ? `<div style="margin-top:5px;padding:4px 6px;border:1px solid ${GELB}55;border-radius:4px;font-size:9.5px;line-height:1.4;">
+    ${geschaetzt.length ? `<div style="margin-top:5px;padding:4px 6px;border:1px solid ${GELB}55;border-radius:4px;font-size:11px;line-height:1.4;">
         ⚠ <b>${geschaetzt.length}</b> verschattende Bäume haben nur eine <b>geschätzte Höhe</b> — sie bestimmen das Ergebnis mit.
         <a style="color:${GELB};cursor:pointer;text-decoration:underline;" data-click="baumGeschaetzteZeigen()">zeigen &amp; nachtragen</a></div>` : ''}
-    ${ueber.length ? `<div style="margin-top:5px;padding:4px 6px;border:1px solid ${ROT}55;border-radius:4px;font-size:9.5px;line-height:1.4;"
+    ${ueber.length ? `<div style="margin-top:5px;padding:4px 6px;border:1px solid ${ROT}55;border-radius:4px;font-size:11px;line-height:1.4;"
         title="${escHtml(ueber.map(g => g.name || 'Gebäude ' + g.id).join(', '))}">
         ⚠ Bei <b>${ueber.length}</b> Dächern überlappt der Grundriss mit einem Nachbargebäude (Gebäudeteile oder Doppelerfassung).
         Das Nachbargebäude zählt dort nicht als Schatten — <a style="color:${ROT};cursor:pointer;text-decoration:underline;" data-click="grundrissPanelToggle()">⧉ Grundrisse prüfen</a>.</div>` : ''}`;
@@ -1294,7 +1294,7 @@ function _empfehlungHtml(auswertung) {
 function _fluegelHinweisHtml() {
   const liste = window.dachGrundrissKandidatenBelegt?.() || [];
   if (!liste.length) return '';
-  return `<div style="margin-top:6px;padding:4px 6px;border:1px solid ${GELB}55;border-radius:4px;font-size:9.5px;line-height:1.4;"
+  return `<div style="margin-top:6px;padding:4px 6px;border:1px solid ${GELB}55;border-radius:4px;font-size:11px;line-height:1.4;"
       title="${escHtml(liste.map(g => g.name || 'Gebäude ' + g.id).join(', '))}">
       ⚠ <b>${liste.length}</b> belegte Dächer mit verwinkeltem Grundriss rechnen mit <b>einem</b> Satteldach über den ganzen Grundriss —
       Ausrichtung, Modulhöhe und Verschattung sind dort ungenau.
@@ -1306,7 +1306,7 @@ function _zeileHtml(g, e, s) {
   const offen = _offenGeb === g.id;
   const bew = e ? _bewertung(Math.min(...Object.values(e.gruppen || {}).map(x => x.faktor), e.faktor)) : null;
   const kopf = `
-    <div style="display:flex;align-items:center;gap:5px;font-size:10px;padding:1px 0;cursor:pointer;" data-click="baumZeileToggle(${g.id})"
+    <div style="display:flex;align-items:center;gap:5px;font-size:12px;padding:1px 0;cursor:pointer;" data-click="baumZeileToggle(${g.id})"
       title="Aufklappen: Dachflächen und Ursachen">
       <span style="width:10px;color:var(--muted);">${e ? (offen ? '▾' : '▸') : ''}</span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(g.name || 'Gebäude ' + g.id)}</span>
@@ -1328,7 +1328,7 @@ function _zeileHtml(g, e, s) {
         <span style="font-family:'DM Mono',monospace;">−${_fmt(v.anteil * 100, 1)} %</span></div>`).join('');
   const ueber = (e.ueberlappungen || []).map(id => (window.gebaeude || []).find(x => x.id === id)).filter(Boolean);
   return kopf + `
-    <div style="margin:2px 0 5px 15px;padding:4px 6px;border-left:2px solid var(--border);font-size:9.5px;line-height:1.5;">
+    <div style="margin:2px 0 5px 15px;padding:4px 6px;border-left:2px solid var(--border);font-size:11px;line-height:1.5;">
       ${flaechen}
       ${urs ? `<div style="color:var(--muted);margin-top:3px;">Verursacht durch</div>${urs}` : '<div style="color:var(--muted);margin-top:3px;">Keine nennenswerten Hindernisse.</div>'}
       ${ueber.length ? `<div style="color:${ROT};margin-top:3px;">⧉ Grundriss überlappt mit ${ueber.map(o => escHtml(o.name || 'Gebäude ' + o.id)).join(', ')} — dort nicht als Schatten gezählt.</div>` : ''}
@@ -1359,9 +1359,9 @@ function _html() {
       <button class="btn-xs" data-click="baumPanelToggle()" title="Schließen">✕</button>
     </div>
     <div class="pvm-body">
-      <div style="font-size:10px;line-height:1.5;">
+      <div style="font-size:12px;line-height:1.5;">
         <b>${_fmt(anzahl)}</b> Bäume im Projekt${anzahl ? ` · ${_fmt(osm)} aus OSM · ${_fmt(anzahl - osm)} eigene` : ''}
-        ${vorgabe ? `<div style="color:${GELB};font-size:9.5px;" title="Ohne Höhenangabe gilt eine Vorgabe (Einzelbaum 12 m, Wald 20 m, Obstbaum 6 m). Auf der Karte gestrichelt.">⚠ ${_fmt(vorgabe)} mit geschätzter Höhe (gestrichelt)</div>` : ''}
+        ${vorgabe ? `<div style="color:${GELB};font-size:11px;" title="Ohne Höhenangabe gilt eine Vorgabe (Einzelbaum 12 m, Wald 20 m, Obstbaum 6 m). Auf der Karte gestrichelt.">⚠ ${_fmt(vorgabe)} mit geschätzter Höhe (gestrichelt)</div>` : ''}
       </div>
       <div style="display:flex;gap:4px;margin-top:6px;">
         <button class="btn-xs" style="flex:1;border-color:${GRUEN};color:${GRUEN};" data-click="baumOsmUebernehmen()" ${_laedt ? 'disabled' : ''}
@@ -1370,29 +1370,29 @@ function _html() {
         <button class="btn-xs" style="flex:1;${_bearbeiten ? `border-color:${GRUEN};color:${GRUEN};background:${GRUEN}1f;` : ''}" data-click="baumBearbeitenToggle()"
           title="Karte anklicken = Baum setzen · Baum anklicken = bearbeiten · Esc = fertig">✎ ${_bearbeiten ? 'Bearbeiten beenden' : 'Setzen & bearbeiten'}</button>
       </div>
-      ${_laedt ? `<div id="baum-ladeinfo" style="font-size:9.5px;color:var(--muted);margin-top:3px;">${escHtml(_ladeInfo)}</div>` : ''}
+      ${_laedt ? `<div id="baum-ladeinfo" style="font-size:11px;color:var(--muted);margin-top:3px;">${escHtml(_ladeInfo)}</div>` : ''}
       ${_bearbeiten ? `
       <div style="display:flex;gap:4px;margin-top:5px;">
         ${[['einzeln', '● Einzeln'], ['flaeche', '⬠ Fläche füllen']].map(([m, l]) => `<button class="btn-xs" style="flex:1;${_modus === m ? `border-color:${GRUEN};color:${GRUEN};background:${GRUEN}1f;` : ''}"
           data-click="baumModus('${m}')" title="${m === 'einzeln' ? 'Jeder Klick setzt einen Baum' : 'Umriss anklicken, Doppelklick oder Enter füllt die Fläche mit Bäumen'}">${l}</button>`).join('')}
       </div>
       <div style="margin-top:5px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">
-        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">${_modus === 'flaeche' ? 'Bäume in der Fläche' : 'Neuer Baum'}</div>
-        <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:4px;font-size:9.5px;color:var(--muted);">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">${_modus === 'flaeche' ? 'Bäume in der Fläche' : 'Neuer Baum'}</div>
+        <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:4px;font-size:11px;color:var(--muted);">
           <span>Art</span><span>Höhe m</span><span>Krone m</span>
           <select class="inp-field" style="padding:2px;" data-change="baumVorgabe('art',this.value)">${Object.entries(ARTEN).map(([k, l]) =>
             `<option value="${k}"${_neu.art === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
           ${feld('hoehe', _neu.hoehe, 1, 60, 0.5)}${feld('krone', _neu.krone, 0.5, 30, 0.5)}
         </div>
         ${_modus === 'flaeche' ? `
-        <div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:9.5px;color:var(--muted);">
+        <div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11px;color:var(--muted);">
           <span title="Mittlerer Abstand zwischen den Baumstämmen (versetzte Reihen)">Abstand m</span>
           <input class="inp-field" type="number" min="1" max="50" step="0.5" value="${_flaeche.abstand}" style="width:60px;padding:2px 4px;"
             data-change="baumFlaecheOption('abstand',this.value)"/>
           <label style="display:flex;align-items:center;gap:3px;cursor:pointer;" title="Keine Bäume auf Gebäudegrundrissen">
             <input type="checkbox" ${_flaeche.ausGebaeude ? 'checked' : ''} style="accent-color:${GRUEN};" data-change="baumFlaecheOption('ausGebaeude',this.checked)"/>Gebäude aussparen</label>
         </div>
-        <div style="font-size:9.5px;color:var(--muted);margin-top:4px;">${_flaeche.punkte.length
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">${_flaeche.punkte.length
           ? `${_flaeche.punkte.length} ${_flaeche.punkte.length === 1 ? 'Punkt' : 'Punkte'} · Doppelklick oder Enter = füllen · ⌫ = letzter Punkt zurück`
           : 'Umriss der Fläche Punkt für Punkt anklicken.'}</div>
         ${_flaeche.punkte.length ? `<div style="display:flex;gap:4px;margin-top:4px;">
@@ -1400,19 +1400,19 @@ function _html() {
           <button class="btn-xs" data-click="baumFlaecheAbbrechen()">Verwerfen</button></div>` : ''}` : ''}
       </div>` : ''}
       <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
-        <label style="display:flex;align-items:center;gap:4px;flex:1;font-size:10px;cursor:pointer;">
+        <label style="display:flex;align-items:center;gap:4px;flex:1;font-size:12px;cursor:pointer;">
           <input type="checkbox" ${_sichtbar ? 'checked' : ''} style="accent-color:${GRUEN};" data-change="baumSichtbar(this.checked)"/>auf der Karte zeigen</label>
         ${anzahl ? `<button class="btn-xs" data-click="baumAlleLoeschen(true)" title="Unveränderte OSM-Bäume entfernen">OSM</button>
         <button class="btn-xs red" data-click="baumAlleLoeschen(false)" title="Alle Bäume entfernen">alle</button>` : ''}
       </div>
 
       <div style="margin-top:9px;border-top:1px solid var(--border);padding-top:7px;">
-        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Verschattung der PV-Dächer</div>
-        <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;cursor:pointer;"
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Verschattung der PV-Dächer</div>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"
           title="Der Faktor je Dach mindert die wirksame Leistung (kWp × Ertragsfaktor) — und damit PV-Asset, Stromnetz, PV-Analyse und Gutachten">
           <input type="checkbox" ${_an ? 'checked' : ''} style="accent-color:${GRUEN};" data-change="verschattungUmschalten(this.checked)"/>
           <b>im Ertrag berücksichtigen</b></label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:10px;cursor:pointer;margin-top:3px;"
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;margin-top:3px;"
           title="Bäume, deren Höhe nur geschätzt ist (gestrichelt), werden ${Math.round((HOEHEN_AUFSCHLAG - 1) * 100)} % höher gerechnet — Schätzfehler und Wachstum bis zum Betrieb. Gemessene und eingetragene Höhen bleiben unverändert.">
           <input type="checkbox" ${_vorsicht ? 'checked' : ''} style="accent-color:${GRUEN};" data-change="baumVorsichtig(this.checked)"/>
           vorsichtig rechnen <span style="color:var(--muted);">(geschätzte Höhen +${Math.round((HOEHEN_AUFSCHLAG - 1) * 100)} %)</span></label>
@@ -1421,13 +1421,13 @@ function _html() {
           title="Je Dach eine Stichprobe von Modulen gegen Baumkronen und Nachbargebäude rechnen">
           ${_rechnet ? `rechnet … <span id="baum-fortschritt">${_rechnet.fertig} / ${_rechnet.gesamt}</span>`
             : offen ? `Verschattung berechnen (${offen} ${offen === 1 ? 'Dach' : 'Dächer'})` : '↻ Alle neu berechnen'}</button>
-        ${mitPv.length ? `<div style="font-size:9.5px;color:var(--muted);margin-top:3px;">
+        ${mitPv.length ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">
           ${st.aktuell} aktuell${st.veraltet ? ` · <span style="color:${GELB};">${st.veraltet} veraltet</span>` : ''}${st.fehlt ? ` · ${st.fehlt} nicht gerechnet` : ''}</div>`
-          : '<div style="font-size:9.5px;color:var(--muted);margin-top:3px;">Noch keine PV-Dächer belegt.</div>'}
+          : '<div style="font-size:11px;color:var(--muted);margin-top:3px;">Noch keine PV-Dächer belegt.</div>'}
         ${_fluegelHinweisHtml()}
         ${_empfehlungHtml(auswertung)}
         ${zeilen ? `<div style="max-height:220px;overflow-y:auto;margin-top:6px;padding:3px 6px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">${zeilen}</div>` : ''}
-        <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.45;">
+        <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45;">
           Jahresfaktor aus Sonnenbahn und Himmel (Richtwerte Mitte Deutschland), je Dachfläche bis zu ${PROBEN_JE_FLAECHE} Module.
           Kronen lassen Licht durch — Laubbäume belaubt ≈ 20 %, kahl ≈ 60 %, Nadelbäume ≈ 15 %.
           Nachbargebäude zählen bis Traufe + halbe Dachhöhe (ohne LoD2 höchstens 8 m Dach). Nach Änderungen an Nachbargebäuden „Alle neu berechnen".

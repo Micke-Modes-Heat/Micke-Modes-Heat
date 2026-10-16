@@ -773,8 +773,8 @@ function _naDrawExistingTrafos(trafos, assignMap, exhaustionMap) {
       html: `<div style="background:#1a237e;border:2.5px solid ${auslCol};border-radius:4px;
                width:28px;height:28px;display:flex;flex-direction:column;align-items:center;
                justify-content:center;font-weight:700;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.6);">
-               <span style="font-size:10px;line-height:1.1;">T</span>
-               <span style="font-size:7px;line-height:1;color:${auslCol};">${z.auslPct}%</span></div>`,
+               <span style="font-size:12px;line-height:1.1;">T</span>
+               <span style="font-size:10.5px;line-height:1;color:${auslCol};">${z.auslPct}%</span></div>`,
       iconSize: [28, 28], iconAnchor: [14, 14],
     });
     L.marker([t.lat, t.lng], { icon, zIndexOffset: 700 })
@@ -838,7 +838,7 @@ function _naStationIcon(label, kvaTxt, bg, dy = -50) {
     className: '',
     html: `<div style="background:${bg};border:2px solid var(--border);border-radius:11px;height:22px;
              min-width:22px;padding:0 6px;box-sizing:border-box;display:flex;align-items:center;gap:4px;
-             font-size:10px;font-weight:700;color:#fff;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.45);
+             font-size:12px;font-weight:700;color:#fff;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.45);
              transform:translate(-50%,${dy}%);width:max-content;">
              ${label}<span style="font-weight:500;opacity:.9;">${kvaTxt}</span></div>`,
     iconSize: [0, 0], iconAnchor: [0, 0],
@@ -1620,16 +1620,16 @@ export function naRenderPanel() {
   const exAssign       = existingT.length > 0 ? _naAssignPts(pts, existingT) : null;
   const exLive         = exAssign
     ? { assignMap: exAssign.zonen, ohneTrafo: exAssign.ohneTrafo, exhaustionMap: _naFindExhaustionYears(existingT) } : null;
-  const _step = (n, txt, col = 'var(--muted)') => `<div style="display:flex;align-items:center;gap:6px;font-size:9px;
+  const _step = (n, txt, col = 'var(--muted)') => `<div style="display:flex;align-items:center;gap:6px;font-size:11px;
     text-transform:uppercase;letter-spacing:.06em;color:${col};margin:2px 0 5px;">
     <span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;
-      border:1px solid currentColor;font-size:9px;letter-spacing:0;">${n}</span>${txt}</div>`;
+      border:1px solid currentColor;font-size:11px;letter-spacing:0;">${n}</span>${txt}</div>`;
   const nettoCol       = totalNetto >= 0 ? '#ef5350' : '#42a5f5';
   const nettoSign      = totalNetto >= 0 ? '+' : '';
   const activeTab      = NA.activeTab || 'last';
 
   const _tabBtn = (id, label, color, tip) => `<button onclick="naSetTab('${id}')" title="${tip}"
-    style="flex:1;padding:7px 4px;cursor:pointer;font-family:inherit;font-size:10px;
+    style="flex:1;padding:7px 4px;cursor:pointer;font-family:inherit;font-size:12px;
            font-weight:${activeTab===id?'700':'400'};border:none;
            border-bottom:2px solid ${activeTab===id?color:'transparent'};
            background:transparent;color:${activeTab===id?color:'var(--muted)'};">${label}</button>`;
@@ -1645,53 +1645,53 @@ export function naRenderPanel() {
 
   // ── Tab 1: Lastübersicht (Heatmap) ─────────────────────────────────────────
   const tabLastHtml = `
-<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Heatmap: Last &amp; Erzeugung</div>
+<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Heatmap: Last &amp; Erzeugung</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
-  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
     Visualisiert die räumliche Verteilung von Verbrauch und Erzeugung auf der Karte.
   </div>
   <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
     <button onclick="naSetHeatmapMode('legacy')" title="Heatmap als Kreise darstellen: Größe und Farbe der Kreise zeigen lokale Lastspitzen"
       style="flex:1;padding:4px;border-radius:4px;border:1px solid ${heatMode==='legacy'?'#ffb74d':'#666'};
              color:${heatMode==='legacy'?'#ffb74d':'#999'};background:${heatMode==='legacy'?'rgba(255,183,77,.12)':'transparent'};
-             cursor:pointer;font-family:inherit;font-size:10px;">Kreise</button>
+             cursor:pointer;font-family:inherit;font-size:12px;">Kreise</button>
     <button onclick="naSetHeatmapMode('relief')" title="Heatmap als Relief darstellen: flächige Farbverläufe für Verbrauch und Erzeugung mit optionalen Höhenlinien"
       style="flex:1;padding:4px;border-radius:4px;border:1px solid ${heatMode==='relief'?'#81c784':'#666'};
              color:${heatMode==='relief'?'#81c784':'#999'};background:${heatMode==='relief'?'rgba(129,199,132,.12)':'transparent'};
-             cursor:pointer;font-family:inherit;font-size:10px;">Relief</button>
+             cursor:pointer;font-family:inherit;font-size:12px;">Relief</button>
   </div>
   ${heatMode === 'relief' ? `
   <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
-    <label style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
+    <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);">
       <input type="checkbox" ${NA.heatmapLayers?.load !== false ? 'checked' : ''}
              onchange="naHeatmapSetLayerVisibility('load',this.checked)">
       <span style="color:var(--c-red)">Verbrauch</span></label>
-    <label style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
+    <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);">
       <input type="checkbox" ${NA.heatmapLayers?.gen !== false ? 'checked' : ''}
              onchange="naHeatmapSetLayerVisibility('gen',this.checked)">
       <span style="color:var(--c-blue)">Erzeugung</span></label>
-    <label style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
+    <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);">
       <input type="checkbox" ${NA.heatmapContours ? 'checked' : ''}
              onchange="window._naToggleContours(this.checked)">
       <span style="color:var(--c-blue)">Höhenlinien</span></label>
   </div>
-  <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Farblegende (Relief-Intensität)</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Farblegende (Relief-Intensität)</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
     <div>
-      <div style="font-size:9px;color:var(--c-red);margin-bottom:2px;">Verbrauch</div>
+      <div style="font-size:11px;color:var(--c-red);margin-bottom:2px;">Verbrauch</div>
       <div style="height:8px;border-radius:4px;background:linear-gradient(90deg,var(--hover),#66bb6a,#ffa726,#ef5350);"></div>
-      <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--muted);"><span>niedrig</span><span>hoch</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);"><span>niedrig</span><span>hoch</span></div>
     </div>
     <div>
-      <div style="font-size:9px;color:var(--c-blue);margin-bottom:2px;">Erzeugung</div>
+      <div style="font-size:11px;color:var(--c-blue);margin-bottom:2px;">Erzeugung</div>
       <div style="height:8px;border-radius:4px;background:linear-gradient(90deg,var(--hover),#2196f3,#64b5f6,#bbdefb);"></div>
-      <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--muted);"><span>niedrig</span><span>hoch</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);"><span>niedrig</span><span>hoch</span></div>
     </div>
   </div>` : `
-  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
     Kreise zeigen lokale Lastspitzen; Radius und Farbe steigen mit der maßgebenden Last.</div>`}
   <button onclick="naHeatmapToggle(${!heatOn})" title="Heatmap-Überlagerung auf der Karte ein-/ausblenden"
-    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
            border:1px solid var(--c-violet);color:${heatOn?'#ce93d8':'var(--muted)'};
            background:${heatOn?'rgba(179,157,219,.12)':'transparent'};">
     ${heatOn ? 'Heatmap ausblenden' : 'Heatmap anzeigen'}
@@ -1701,7 +1701,7 @@ export function naRenderPanel() {
   // ── Status der letzten Berechnung (vorher nirgends angezeigt) ──────────────
   const resultStale = hasAnyResult || NA.naAutoInfo?.allServed
     ? NA.naRunSig != null && NA.naRunSig !== _naParamSig() : false;
-  const _note = (col, html) => `<div style="font-size:10px;line-height:1.45;padding:6px 8px;margin-bottom:6px;
+  const _note = (col, html) => `<div style="font-size:12px;line-height:1.45;padding:6px 8px;margin-bottom:6px;
     border-radius:4px;border-left:3px solid ${col};background:var(--surface2);color:var(--text);">${html}</div>`;
   const ai = NA.naAutoInfo;
   const trafoStatusHtml = !ai ? '' : [
@@ -1750,8 +1750,8 @@ export function naRenderPanel() {
   const nSel = trafoRows.filter(r => !NA.naExcluded.has(r.key)).length;
   const trafoResultTableHtml = trafoRows.length === 0 ? '' : `
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;overflow-x:auto;">
-  <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">Zeile anklicken → Karte zoomt zur Zone · Haken = wird übernommen</div>
-  <table style="width:100%;border-collapse:collapse;font-size:9px;color:var(--text);white-space:nowrap;">
+  <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Zeile anklicken → Karte zoomt zur Zone · Haken = wird übernommen</div>
+  <table style="width:100%;border-collapse:collapse;font-size:11px;color:var(--text);white-space:nowrap;">
     <thead>
       <tr style="color:var(--muted);">
         <th style="width:14px;padding:2px 0 4px;"></th>
@@ -1802,9 +1802,9 @@ export function naRenderPanel() {
 
   // ── Alternativen-Vergleich: benachbarte Stationszahlen (Auto-Modus) ──────────
   const kCompareHtml = (!NA.naKCompare || NA.naKCompare.length < 2) ? '' : `
-<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Alternativen: Stationszahl vs. Kabellänge</div>
+<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Alternativen: Stationszahl vs. Kabellänge</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;overflow-x:auto;">
-  <table style="width:100%;border-collapse:collapse;font-size:9px;color:var(--text);white-space:nowrap;">
+  <table style="width:100%;border-collapse:collapse;font-size:11px;color:var(--text);white-space:nowrap;">
     <thead>
       <tr style="color:var(--muted);">
         <th style="text-align:left;font-weight:400;padding:2px 5px 4px;">Stationen</th>
@@ -1824,14 +1824,14 @@ export function naRenderPanel() {
           <td style="text-align:right;padding:3px 5px;">${c.cableCost.toLocaleString('de-DE')} T€</td>
           <td style="text-align:right;padding:3px 5px;">
             ${c.isChosen ? '' : `<button onclick="naApplyKCompare(${c.k})"
-              style="padding:2px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:9px;
+              style="padding:2px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px;
                      border:1px solid var(--c-blue);color:var(--c-blue);background:transparent;">verwenden</button>`}
           </td>
         </tr>`;
       }).join('')}
     </tbody>
   </table>
-  <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.4;">
+  <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.4;">
     Schätzung anhand minimaler Spannbäume; Stations-/Trafokosten sind nicht enthalten (kein Kostenmodell hinterlegt).
     Weniger Stationen senken i. d. R. die Stationskosten, erhöhen aber die Kabellänge – und umgekehrt.
   </div>
@@ -1842,16 +1842,16 @@ export function naRenderPanel() {
 ${_step(1, 'Bestand prüfen')}
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
   ${existingT.length === 0
-    ? `<div style="font-size:10px;color:var(--muted);">Keine aktiven Trafo-Assets im Jahr ${yr} gefunden.<br>
+    ? `<div style="font-size:12px;color:var(--muted);">Keine aktiven Trafo-Assets im Jahr ${yr} gefunden.<br>
        Trafos können im Elektro-Modus als Asset platziert werden.</div>`
     : `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-         <span style="font-size:10px;color:var(--text);">${existingT.length} Trafo${existingT.length>1?'s':''} aktiv im Jahr ${yr}</span>
-         <label style="display:flex;align-items:center;gap:5px;font-size:10px;cursor:pointer;">
+         <span style="font-size:12px;color:var(--text);">${existingT.length} Trafo${existingT.length>1?'s':''} aktiv im Jahr ${yr}</span>
+         <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;">
            <input type="checkbox" ${useExisting?'checked':''} onchange="naSetUseExisting(this.checked)"
              style="accent-color:#4fc3f7;width:13px;height:13px;"> Einbeziehen
          </label>
        </div>
-       <div style="font-size:9px;color:var(--muted);margin-bottom:4px;line-height:1.4;">
+       <div style="font-size:11px;color:var(--muted);margin-bottom:4px;line-height:1.4;">
          Auslastung heute — Zuordnung über die Netzkanten, ohne Anschluss zum nächsten Trafo (bis ${NA.nsReachM} m); ${gzfTxt}.
          ${exLive?.ohneTrafo?.length ? `<br><span style="color:var(--c-orange);">${exLive.ohneTrafo.length} Last${exLive.ohneTrafo.length > 1 ? 'en' : ''}
            ohne Netzanschluss und weiter als ${NA.nsReachM} m von jedem Trafo — derzeit nicht versorgt.</span><br>` : ''}
@@ -1868,20 +1868,20 @@ ${_step(1, 'Bestand prüfen')}
          const nachher = useExisting && !resultStale ? NA.naExistingResults?.assignMap?.get(t.id)?.auslPct ?? null : null;
          return `<div onclick="naZoomBestand('${t.id}')" title="Auf der Karte anzeigen"
              style="display:flex;align-items:center;gap:6px;padding:4px 0;border-top:1px solid var(--border);cursor:pointer;">
-           <span style="font-size:10px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${t.name}">${t.name}</span>
-           <span style="font-size:9px;color:var(--muted);white-space:nowrap;">${t.kVA} kVA</span>
+           <span style="font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${t.name}">${t.name}</span>
+           <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${t.kVA} kVA</span>
            ${auslPct != null
              ? `<div style="min-width:50px;flex-shrink:0;">
                   <div style="background:var(--border);border-radius:2px;height:4px;margin-bottom:1px;">
                     <div style="background:${auslCol};width:${barW}%;height:4px;border-radius:2px;"></div>
                   </div>
-                  <div style="font-size:8px;color:${auslCol};text-align:right;white-space:nowrap;">${auslPct}%${nachher != null && nachher !== auslPct
+                  <div style="font-size:10.5px;color:${auslCol};text-align:right;white-space:nowrap;">${auslPct}%${nachher != null && nachher !== auslPct
                     ? ` <span title="nach dem Umhängen" style="color:${nachher > 100 ? '#ef5350' : nachher > 80 ? '#ffa726' : '#66bb6a'};">→ ${nachher}%</span>` : ''}</div>
                 </div>`
-             : '<div style="width:50px;font-size:8px;color:var(--muted);text-align:right;">–</div>'}
+             : '<div style="width:50px;font-size:10.5px;color:var(--muted);text-align:right;">–</div>'}
            ${exh?.exhaustionYear
-             ? `<span style="font-size:8px;color:var(--c-red);white-space:nowrap;" title="Ab diesem Jahr überlastet">⚠ ab ${exh.exhaustionYear}</span>`
-             : exh ? '<span style="font-size:8px;color:var(--c-green);white-space:nowrap;" title="Reicht bis 2050">✓ 2050</span>' : ''}
+             ? `<span style="font-size:10.5px;color:var(--c-red);white-space:nowrap;" title="Ab diesem Jahr überlastet">⚠ ab ${exh.exhaustionYear}</span>`
+             : exh ? '<span style="font-size:10.5px;color:var(--c-green);white-space:nowrap;" title="Reicht bis 2050">✓ 2050</span>' : ''}
          </div>`;
        }).join('')}`
   }
@@ -1889,7 +1889,7 @@ ${_step(1, 'Bestand prüfen')}
 
 ${_step(2, useExisting && existingT.length > 0 ? 'Zusätzliche Stationen berechnen' : 'Stationen berechnen')}
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
-  <div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.4;">
+  <div style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.4;">
     Teilt die Lastpunkte in Versorgungszonen und setzt je Zone eine Station an den
     kabelgünstigsten Punkt. ${isAuto
       ? 'Die Anzahl ergibt sich aus der Trafogröße: so wenige Stationen wie möglich, keine über der Grenze.'
@@ -1897,12 +1897,12 @@ ${_step(2, useExisting && existingT.length > 0 ? 'Zusätzliche Stationen berechn
   </div>
   <div style="display:flex;gap:4px;margin-bottom:8px;">
     <button onclick="naSetMode('auto')" title="Stationszahl automatisch so wählen, dass keine Zone die Trafogröße überschreitet"
-      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
              border:1px solid ${isAuto?'#66bb6a':'var(--border)'};
              background:${isAuto?'rgba(102,187,106,.1)':'transparent'};
              color:${isAuto?'#66bb6a':'var(--muted)'};">Automatisch</button>
     <button onclick="naSetMode('manual')" title="Anzahl der Stationen fest vorgeben"
-      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
              border:1px solid ${!isAuto?'var(--accent)':'var(--border)'};
              background:${!isAuto?'rgba(79,195,247,.12)':'transparent'};
              color:${!isAuto?'var(--accent)':'var(--muted)'};">Anzahl vorgeben</button>
@@ -1910,54 +1910,54 @@ ${_step(2, useExisting && existingT.length > 0 ? 'Zusätzliche Stationen berechn
   <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:6px;">
     ${!isAuto ? `
     <div>
-      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Anzahl Stationen</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Anzahl Stationen</div>
       <input type="number" min="1" max="20" value="${kVal}"
         style="width:100%;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
-               color:var(--text);border-radius:4px;font-size:11px;"
+               color:var(--text);border-radius:4px;font-size:12.5px;"
         onchange="naSetK(this.value)">
     </div>` : ''}
     <div title="${isAuto ? 'Obergrenze je Station' : 'Bezugsgröße für Auslastung und Überlast-Markierung'}">
-      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">${isAuto ? 'Max. Trafogröße' : 'Trafogröße'} (kVA)</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">${isAuto ? 'Max. Trafogröße' : 'Trafogröße'} (kVA)</div>
       <select onchange="naSetMaxKVA(this.value)"
         style="width:100%;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
-               color:var(--text);border-radius:4px;font-size:11px;font-family:inherit;">
+               color:var(--text);border-radius:4px;font-size:12.5px;font-family:inherit;">
         ${NA_KVA_STUFEN.map(v=>`<option value="${v}" ${maxKVA===v?'selected':''}>${v}</option>`).join('')}
       </select>
     </div>
     <div title="Leistungsfaktor: Umrechnung kVA → kW">
-      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">cos φ</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">cos φ</div>
       <input type="number" min="0.7" max="1" step="0.05" value="${cosPhi}"
         style="width:100%;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
-               color:var(--text);border-radius:4px;font-size:11px;"
+               color:var(--text);border-radius:4px;font-size:12.5px;"
         onchange="naSetCosPhi(this.value)">
     </div>
     <div title="Gleichzeitigkeitsfaktor — mindert nur den Bezug; Einspeisung zählt voll">
-      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">GZF (Bezug)</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">GZF (Bezug)</div>
       <select onchange="naSetGzf(this.value)"
         style="width:100%;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
-               color:var(--text);border-radius:4px;font-size:11px;">
+               color:var(--text);border-radius:4px;font-size:12.5px;">
         <option value="netz" ${gzfNetz ? 'selected' : ''}>wie Netz (${gzfMethTxt})</option>
         ${[0.5,0.6,0.7,0.8,0.9,1.0].map(v=>`<option value="${v}" ${!gzfNetz && gzf===v?'selected':''}>fest ${v.toFixed(1)}</option>`).join('')}
       </select>
     </div>
     ${isAuto ? `
     <div title="Stationen unter dieser Auslastung werden mit der nächstgelegenen zusammengelegt, wenn die Summe passt">
-      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Mind.-Auslastung %</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Mind.-Auslastung %</div>
       <input type="number" min="0" max="80" step="5" value="${minUtilPct}"
         style="width:100%;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
-               color:var(--text);border-radius:4px;font-size:11px;"
+               color:var(--text);border-radius:4px;font-size:12.5px;"
         onchange="naSetMinUtil(this.value)">
     </div>` : ''}
     <div style="grid-column:span 2;" title="Lastpunkte, die näher beieinander liegen, werden vorab zu einem Knoten zusammengefasst">
-      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">NSHV-Bündelungsradius</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">NSHV-Bündelungsradius</div>
       <select onchange="naSetProxRadius(this.value)"
         style="width:100%;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
-               color:var(--text);border-radius:4px;font-size:11px;">
+               color:var(--text);border-radius:4px;font-size:12.5px;">
         ${[0,10,25,50,100,200].map(v=>`<option value="${v}" ${proxRadius===v?'selected':''}>${v===0?'aus':v+' m'}</option>`).join('')}
       </select>
     </div>
   </div>
-  <div style="font-size:9px;color:var(--muted);margin-bottom:8px;line-height:1.45;">
+  <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.45;">
     ${isAuto ? 'Grenze' : 'Bezug'} je Station: <b style="color:var(--text)">${(maxKVA*cosPhi).toFixed(0)} kW</b>
     (${maxKVA} kVA × cos φ ${cosPhi.toLocaleString('de-DE')}).
     ${!gzfNetz && gzf < 1 ? `Mit GZF ${gzf.toLocaleString('de-DE')} entspricht das bis zu
@@ -1965,18 +1965,18 @@ ${_step(2, useExisting && existingT.length > 0 ? 'Zusätzliche Stationen berechn
     ${gzfNetz ? `${gzfTxt};` : ''}
     Einspeisung zählt voll.
   </div>
-  <label style="display:flex;align-items:center;gap:6px;font-size:10px;cursor:pointer;margin-bottom:8px;
+  <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-bottom:8px;
                 padding:5px 6px;border-radius:4px;background:${erzeugungsnetz?'rgba(38,198,218,.08)':'transparent'};
                 border:1px solid ${erzeugungsnetz?'#26c6da':'var(--border)'};">
     <input type="checkbox" ${erzeugungsnetz?'checked':''} onchange="naSetErzeugungsnetz(this.checked)"
       style="accent-color:#26c6da;width:13px;height:13px;flex-shrink:0;">
     <span style="color:${erzeugungsnetz?'#26c6da':'var(--muted)'};">
       Erzeugungstrafos separat berechnen
-      <span style="display:block;font-size:9px;opacity:.75;line-height:1.3;">PV / Wind / KWK → eigenes Erzeugungsnetz</span>
+      <span style="display:block;font-size:11px;opacity:.75;line-height:1.3;">PV / Wind / KWK → eigenes Erzeugungsnetz</span>
     </span>
   </label>
   <button onclick="naRunTrafoOptimierung()" title="Trafo-Standorte aus den Lastpunkten des eingestellten Jahres berechnen"
-    style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;
+    style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;
            border:1px solid ${resultStale ? '#ffa726' : '#b39ddb'};color:${resultStale ? '#ffa726' : '#ce93d8'};
            background:${resultStale ? 'rgba(255,167,38,.1)' : 'transparent'};">
     ${resultStale ? '⟳ Eingaben geändert — neu berechnen' : NA.naResult !== null ? '⟳ Neu berechnen' : 'Standorte berechnen'}
@@ -1988,34 +1988,34 @@ ${trafoStatusHtml}
 ${trafoResultTableHtml}
 ${kCompareHtml}
 ${hasAnyResult || NA.naExistingResults ? `<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
-  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
     <b style="color:var(--text);">Kabeltrassen</b> (minimaler Spannbaum, Luftlinie) je Station/Zone
   </div>
   <button onclick="naKabelToggle(${!kabelOn})" title="Vorgeschlagene Kabeltrassen (minimaler Spannbaum je Trafo/Zone) auf der Karte ein-/ausblenden"
-    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
            border:1px solid var(--c-teal);color:${kabelOn?'#80cbc4':'var(--muted)'};
            background:${kabelOn?'rgba(128,203,196,.12)':'transparent'};">
     ${kabelOn ? 'Ausblenden' : 'Anzeigen'}
   </button>
   ${kabelOn && kabelInfo?.totalM > 0 ? `
-  <div style="font-size:10px;color:var(--text);margin:5px 0;">
+  <div style="font-size:12px;color:var(--text);margin:5px 0;">
     Gesamt: <b style="color:var(--c-teal)">${(kabelInfo.totalM/1000).toFixed(2)} km</b>
     &nbsp;·&nbsp; ca. <b style="color:var(--c-orange)">${Math.round(kabelInfo.totalM * kabelEurM / 1000)} k€</b>
   </div>
-  <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin-bottom:6px;">
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:6px;">
     Kostensatz: <input type="number" value="${kabelEurM}" min="50" max="2000" step="10"
       style="width:60px;background:var(--surface);border:1px solid var(--border);border-radius:3px;
-             color:var(--text);padding:2px 4px;font-size:10px;"
+             color:var(--text);padding:2px 4px;font-size:12px;"
       onchange="naSetKabelEurM(this.value)"> €/m
   </div>
-  <div style="background:var(--bg);border-radius:4px;padding:6px 7px;font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
+  <div style="background:var(--bg);border-radius:4px;padding:6px 7px;font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
     Kante auf der Karte <b style="color:var(--c-amber)">anklicken</b> zum Auswählen (gelb).
   </div>
   <div style="display:flex;gap:6px;">
-    <button onclick="naKabelSelectAll()" title="Alle vorgeschlagenen Kabeltrassen auswählen" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid var(--border);color:var(--faint);background:transparent;">alle ☑</button>
-    <button onclick="naKabelSelectNone()" title="Auswahl der Kabeltrassen aufheben" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid var(--border);color:var(--faint);background:transparent;">keine</button>
+    <button onclick="naKabelSelectAll()" title="Alle vorgeschlagenen Kabeltrassen auswählen" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;border:1px solid var(--border);color:var(--faint);background:transparent;">alle ☑</button>
+    <button onclick="naKabelSelectNone()" title="Auswahl der Kabeltrassen aufheben" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;border:1px solid var(--border);color:var(--faint);background:transparent;">keine</button>
     <button onclick="naImportSelectedKabel()" title="Ausgewählte Kabeltrassen als reale Leitungen ins Stromnetz übernehmen"
-      style="flex:2;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+      style="flex:2;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
              border:1px solid var(--c-green);color:var(--c-green);background:rgba(102,187,106,.1);font-weight:600;">
       Übernehmen (${(NA.naKabelEdges||[]).filter(k=>k.selected).length} ✓)
     </button>
@@ -2025,63 +2025,63 @@ ${hasAnyResult || NA.naExistingResults ? `<div style="background:var(--surface2)
 ${hasAnyResult ? `
 ${_step(4, 'Übernehmen', '#4fc3f7')}
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;border-left:3px solid var(--c-blue);">
-  <div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.4;">
+  <div style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.4;">
     Legt je angehaktem Standort ein Stationsgebäude mit Schaltanlage, Trafo und NSHV auf der Karte an.
   </div>
   <button onclick="naUebernehmenAlsKompaktstation()" title="Berechnete Trafo-Standorte als reale Kompaktstationen (Schaltanlage + Trafo + NSHV) inkl. Gebäude auf der Karte anlegen"
-    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
            border:1px solid var(--c-blue);color:var(--c-blue);background:rgba(79,195,247,.08);margin-bottom:5px;font-weight:600;">
     🏗 ${nSel === trafoRows.length ? `${nSel} Station${nSel !== 1 ? 'en' : ''}` : `${nSel} von ${trafoRows.length} Stationen`} anlegen
   </button>
   <button onclick="naClearTrafoOptimierung()" title="Berechnete Optimierungs-Vorschau (Vorschläge für Trafo-Standorte) wieder verwerfen"
-    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
            border:1px solid var(--muted);color:var(--muted);background:transparent;">
     ✕ Vorschau verwerfen</button>
 </div>` : NA.naResult !== null ? `
 <button onclick="naClearTrafoOptimierung()" title="Bestandsbewertung von der Karte entfernen"
-  style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;margin-bottom:10px;
+  style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;margin-bottom:10px;
          border:1px solid var(--muted);color:var(--muted);background:transparent;">✕ Vorschau verwerfen</button>` : ''}
 
 `;
 
   // ── Tab 3: MS-Netz ──────────────────────────────────────────────────────────
   const tabMsHtml = `
-<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">MS-Netz (Mittelspannung)</div>
+<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">MS-Netz (Mittelspannung)</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
-  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
     MS-Ring-Erkennung und (n-1)-Analyse
   </div>
   <button onclick="elRunMSAnalyse()" title="Mittelspannungsnetz auf Ringstrukturen untersuchen und (n-1)-Ausfallsicherheit prüfen"
-    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
            border:1px solid var(--c-orange);color:var(--c-orange);background:transparent;margin-bottom:5px;">
     MS-Topologie analysieren
   </button>
   <button onclick="clearMSRings()" title="MS-Ring-Überlagerung wieder von der Karte entfernen"
-    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
            border:1px solid var(--muted);color:var(--muted);background:transparent;">
     ✕ MS-Overlay ausblenden
   </button>
-  <div id="ms-ring-results" style="margin-top:8px;font-size:10px;"></div>
+  <div id="ms-ring-results" style="margin-top:8px;font-size:12px;"></div>
 </div>`;
 
   // ── Tabs 4/5: Speicher- & Notstrom-Platzierung ──────────────────────────────
-  const _inp = 'background:var(--surface);color:var(--c-blue);border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;font-size:10px;';
+  const _inp = 'background:var(--surface);color:var(--c-blue);border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;font-size:12px;';
   const _modeBtn = (grp, val, lbl, cur) => {
     const c = grp === 'bat' ? COL_BAT : COL_NSA, on = cur === val;
     return `<button onclick="naSet${grp === 'bat' ? 'Bat' : 'Nsa'}Mode('${val}')"
-      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
              border:1px solid ${on ? c : '#555'};color:${on ? c : '#999'};background:${on ? 'rgba(255,255,255,.06)' : 'transparent'};">${lbl}</button>`;
   };
-  const _runBtn  = (col) => `width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;border:1px solid ${col};color:${col};background:rgba(var(--ink),.04);`;
-  const _takeBtn = 'flex:3;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;border:1px solid var(--c-green);color:var(--c-green);background:rgba(102,187,106,.1);';
-  const _clrBtn  = 'flex:1;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid var(--muted);color:var(--muted);background:transparent;';
+  const _runBtn  = (col) => `width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;border:1px solid ${col};color:${col};background:rgba(var(--ink),.04);`;
+  const _takeBtn = 'flex:3;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;border:1px solid var(--c-green);color:var(--c-green);background:rgba(102,187,106,.1);';
+  const _clrBtn  = 'flex:1;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;border:1px solid var(--muted);color:var(--muted);background:transparent;';
 
   const batRes = NA.batResult;
   const isNetz = NA.batMethod === 'netz';
   const _methodBtn = (val, lbl, tip) => {
     const on = NA.batMethod === val;
     return `<button onclick="naSetBatMethod('${val}')" title="${tip}"
-      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
              border:1px solid ${on ? COL_BAT : '#555'};color:${on ? COL_BAT : '#999'};
              background:${on ? 'rgba(174,213,129,.12)' : 'transparent'};">${lbl}</button>`;
   };
@@ -2089,7 +2089,7 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   // Netz-Ergebnis: Knoten-Zeilen mit Auslastung/Deckung
   const batNetzRows = batRes && batRes.method === 'netz'
     ? batRes.map((u, i) => `<div style="display:flex;justify-content:space-between;gap:6px;padding:3px 0;
-         border-bottom:1px solid rgba(var(--ink),.05);font-size:10px;color:var(--c-blue);">
+         border-bottom:1px solid rgba(var(--ink),.05);font-size:12px;color:var(--c-blue);">
          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:96px;" title="${u.name}">${i+1}. ${u.name}</span>
          <span>${u.kW} kW · ${u.kWh} kWh${u.overloadKW>0?` · <span style="color:var(--c-red)">Überlast ${u.overloadKW.toFixed(0)}</span>`:''}${u.gedeckt?'':' <span style="color:var(--c-orange)" title="Dauer deckt das größte Lastereignis nicht ab">⚠</span>'}</span>
        </div>`).join('')
@@ -2102,24 +2102,24 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   const _sizeBtn = (val, lbl, tip) => {
     const on = NA.batSizeMode === val;
     return `<button onclick="naSetBatSizeMode('${val}')" title="${tip}"
-      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
              border:1px solid ${on ? COL_BAT : '#555'};color:${on ? COL_BAT : '#999'};
              background:${on ? 'rgba(174,213,129,.12)' : 'transparent'};">${lbl}</button>`;
   };
   const pvLinkBtn = `<button onclick="naOeffnePvAnalyse()" title="Zur PV-Analyse wechseln (Analyse → PV)"
-      style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+      style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
              border:1px solid var(--c-blue);color:var(--c-blue);background:rgba(66,165,245,.08);margin-top:5px;">PV-Analyse öffnen</button>`;
   const pvSizeHtml = isPvSize ? (pvVars.length
     ? `<div style="margin-bottom:6px;">
          <select onchange="naSetBatPvVariant(this.value)" style="width:100%;${_inp}padding:3px;">
            ${pvVars.map(v => `<option value="${v.id}" ${selPvVar && v.id===selPvVar.id?'selected':''}>${v.label} — ${v.batKwh.toLocaleString('de-DE')} kWh (${v.pvKwp} kWp)</option>`).join('')}
          </select>
-         <div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.4;">
+         <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4;">
            Feste Gesamtkapazität aus der PV-Variante; Leistung über C/2-Rate. Bei „verteilt" anteilig auf die Knoten verteilt.
          </div>
          ${pvLinkBtn}
        </div>`
-    : `<div style="margin-bottom:6px;font-size:10px;color:var(--c-orange);line-height:1.4;">
+    : `<div style="margin-bottom:6px;font-size:12px;color:var(--c-orange);line-height:1.4;">
          Noch keine PV-Varianten mit Batterie berechnet. Bitte zuerst die PV-Analyse rechnen.${pvLinkBtn}
        </div>`) : '';
 
@@ -2129,11 +2129,11 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   const guideHtml = `
   <div style="margin-top:8px;border-top:1px solid rgba(var(--ink),.07);padding-top:6px;">
     <button onclick="naToggleBatGuide()" style="width:100%;text-align:left;background:transparent;border:none;
-      cursor:pointer;font-family:inherit;font-size:10px;color:var(--c-blue);padding:2px 0;">
+      cursor:pointer;font-family:inherit;font-size:12px;color:var(--c-blue);padding:2px 0;">
       ${NA.batGuideOpen ? '▾' : '▸'} Anleitung: zentral oder dezentral?
     </button>
     ${NA.batGuideOpen ? `
-    <div style="font-size:10px;color:var(--c-blue);line-height:1.5;margin-top:4px;">
+    <div style="font-size:12px;color:var(--c-blue);line-height:1.5;margin-top:4px;">
       <div style="color:var(--muted);margin-bottom:5px;">Der beste Ort hängt vom Werthebel ab — ein Speicher entlastet nur, was elektrisch oberhalb von ihm liegt:</div>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;margin-bottom:6px;">
         <div style="color:var(--c-green);font-weight:600;">zentral</div><div>Leistungspreis kappen · Eigenverbrauch/PV-Überschuss · Arbitrage → am Verknüpfungspunkt (NAP/Trafo).</div>
@@ -2145,42 +2145,42 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
           <div style="margin-bottom:4px;">${emp.kurz}</div>
           <ul style="margin:0 0 4px 0;padding-left:14px;color:var(--muted);">${emp.gruende.map(g => `<li>${g}</li>`).join('')}</ul>
           <button onclick="naEmpfehlungUebernehmen()" style="width:100%;padding:4px;border-radius:4px;cursor:pointer;
-            font-family:inherit;font-size:10px;font-weight:600;border:1px solid ${empCol};color:${empCol};background:transparent;">
+            font-family:inherit;font-size:12px;font-weight:600;border:1px solid ${empCol};color:${empCol};background:transparent;">
             ✓ Empfehlung übernehmen</button>
-        </div>` : `<div style="color:var(--c-orange);font-size:10px;">${emp ? emp.kurz : ''}</div>`}
+        </div>` : `<div style="color:var(--c-orange);font-size:12px;">${emp ? emp.kurz : ''}</div>`}
     </div>` : ''}
   </div>`;
 
   const tabBatHtml = `
-<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Batteriespeicher platzieren</div>
+<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Batteriespeicher platzieren</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
-  <div style="font-size:9px;color:var(--muted);margin-bottom:3px;">Methode</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:3px;">Methode</div>
   <div style="display:flex;gap:6px;margin-bottom:6px;">
     ${_methodBtn('netz','Netz-Merit-Order','Bewertet reale Netzknoten nach Entlastung je kWh (Topologie-Residualprofil). Empfohlen, wenn das Stromnetz verkabelt ist.')}
     ${_methodBtn('geo','geografisch','Clustert Lastpunkte räumlich (k-Means). Fallback ohne verkabeltes Netz.')}
   </div>
-  ${isNetz && !hasNetz ? `<div style="font-size:9px;color:var(--c-orange);margin-bottom:6px;">⚠ Kein verkabeltes Stromnetz — fällt auf geografische Platzierung zurück.</div>` : ''}
-  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+  ${isNetz && !hasNetz ? `<div style="font-size:11px;color:var(--c-orange);margin-bottom:6px;">⚠ Kein verkabeltes Stromnetz — fällt auf geografische Platzierung zurück.</div>` : ''}
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
     ${isNetz
       ? 'Bewertet NAP/Trafo/NSHV/UV/KVS anhand ihres Residualprofils. <b>zentral</b> = Verknüpfungspunkt (Leistungspreis/Eigenverbrauch), <b>verteilt</b> = belastete Stränge (Engpass).'
       : 'Schlägt Speicher-Standorte aus Lastschwerpunkten vor. Leistung = Anteil der Zonenlast, Kapazität = Leistung × Dauer.'}
   </div>
   <div style="display:flex;gap:6px;margin-bottom:6px;">${_modeBtn('bat','zentral','zentral',NA.batMode)}${_modeBtn('bat','verteilt',isNetz?'verteilt (Knoten)':'verteilt (Zonen)',NA.batMode)}</div>
-  <div style="font-size:9px;color:var(--muted);margin-bottom:3px;">Dimensionierung</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:3px;">Dimensionierung</div>
   <div style="display:flex;gap:6px;margin-bottom:6px;">
     ${_sizeBtn('auto','aus Netz (Shave %)','Leistung aus Knotenspitze × Shave-Anteil, Kapazität = Leistung × Dauer.')}
     ${_sizeBtn('pv','feste Größe (PV-Variante)','Übernimmt die optimierte Batteriegröße einer PV-Analyse-Variante als feste Gesamtkapazität.')}
   </div>
   ${pvSizeHtml}
-  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px;font-size:10px;color:var(--muted);">
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px;font-size:12px;color:var(--muted);">
     ${NA.batMode==='verteilt' ? `<label>${isNetz?'Knoten':'Zonen'} <input type="number" min="1" max="20" value="${NA.batK}" onchange="naSetBatK(this.value)" style="width:42px;${_inp}"></label>` : ''}
     <label>Shave <input type="number" min="5" max="100" value="${NA.batShavePct}" onchange="naSetBatShave(this.value)" style="width:46px;${_inp}"> %</label>
     ${isPvSize ? '' : `<label>Dauer <input type="number" min="0.5" max="12" step="0.5" value="${NA.batHours}" onchange="naSetBatHours(this.value)" style="width:46px;${_inp}"> h</label>`}
   </div>
   <button onclick="naRunSpeicherPlatzierung()" style="${_runBtn(COL_BAT)}">Platzierung berechnen</button>
   ${batRes ? `
-  <div style="margin-top:8px;font-size:10px;color:var(--c-blue);"><b>${batRes.length}</b> Speicher · Σ <b>${batRes.reduce((s,u)=>s+u.kW,0)}</b> kW · <b>${batRes.reduce((s,u)=>s+u.kWh,0).toLocaleString('de-DE')}</b> kWh${batRes.method==='netz'?` <span style="color:var(--muted)">· ${batRes.scoredCount} Knoten bewertet</span>`:''}</div>
-  ${batRes.pvVariant ? `<div style="font-size:9px;color:var(--c-blue);margin-top:2px;">feste Größe aus PV-Variante „${batRes.pvVariant.label}" (${batRes.pvVariant.batKwh.toLocaleString('de-DE')} kWh)</div>` : ''}
+  <div style="margin-top:8px;font-size:12px;color:var(--c-blue);"><b>${batRes.length}</b> Speicher · Σ <b>${batRes.reduce((s,u)=>s+u.kW,0)}</b> kW · <b>${batRes.reduce((s,u)=>s+u.kWh,0).toLocaleString('de-DE')}</b> kWh${batRes.method==='netz'?` <span style="color:var(--muted)">· ${batRes.scoredCount} Knoten bewertet</span>`:''}</div>
+  ${batRes.pvVariant ? `<div style="font-size:11px;color:var(--c-blue);margin-top:2px;">feste Größe aus PV-Variante „${batRes.pvVariant.label}" (${batRes.pvVariant.batKwh.toLocaleString('de-DE')} kWh)</div>` : ''}
   ${batNetzRows ? `<div style="margin-top:5px;">${batNetzRows}</div>` : ''}
   <div style="display:flex;gap:6px;margin-top:6px;">
     <button onclick="naUebernehmenSpeicher()" style="${_takeBtn}">Als Assets übernehmen</button>
@@ -2197,32 +2197,32 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
   const _srcBtn = (val, lbl) => {
     const on = NA.nsaSource === val;
     return `<button onclick="naSetNsaSource('${val}')"
-      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
              border:1px solid ${on ? COL_NSA : '#555'};color:${on ? COL_NSA : '#999'};background:${on ? 'rgba(255,112,67,.1)' : 'transparent'};">${lbl}</button>`;
   };
   const tabNsaHtml = `
 <div style="background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.45);border-radius:6px;padding:8px;margin-bottom:10px;">
-  <div style="font-size:10px;color:var(--c-blue);line-height:1.45;margin-bottom:6px;">
+  <div style="font-size:12px;color:var(--c-blue);line-height:1.45;margin-bottom:6px;">
     <b>Platzierung am Bestandsnetz:</b> Der 🛡 Blackout-Modus stuft Gebäude ein, vergleicht Aggregate an Gebäuden,
     Kabelverteilern, NSHV und Trafos, rechnet vorhandene Aggregate an und vermerkt die abzuschaltenden Abgänge.
   </div>
   <button onclick="blackoutModusStart(); blackoutSetTab('netz')" style="${_runBtn(COL_NSA)}">Blackout-Modus › Am Netz öffnen</button>
 </div>
-<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Schnellschätzung nach Lage</div>
+<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Schnellschätzung nach Lage</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
-  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
     Verteilt eine Gesamtleistung (Resilienz-Analyse oder Karten-Spitzenlast) nach der Lage der Lasten auf Zonen — ohne Netztopologie und Gebäudeklassen.
   </div>
-  <div style="font-size:10px;margin-bottom:6px;padding:5px;border-radius:4px;background:rgba(255,112,67,.08);border:1px solid rgba(255,112,67,.3);color:var(--c-blue);">${recoTxt}</div>
-  <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Dimensionierung</div>
+  <div style="font-size:12px;margin-bottom:6px;padding:5px;border-radius:4px;background:rgba(255,112,67,.08);border:1px solid rgba(255,112,67,.3);color:var(--c-blue);">${recoTxt}</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Dimensionierung</div>
   <div style="display:flex;gap:6px;margin-bottom:6px;">${_srcBtn('resilienz','aus Resilienz')}${_srcBtn('spitzenlast','Karten-Spitzenlast')}</div>
-  <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Platzierung</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Platzierung</div>
   <div style="display:flex;gap:6px;margin-bottom:6px;">${_modeBtn('nsa','zentral','zentral',NA.nsaMode)}${_modeBtn('nsa','verteilt','verteilt (Zonen)',NA.nsaMode)}</div>
-  ${NA.nsaMode==='verteilt' ? `<label style="font-size:10px;color:var(--muted);display:block;margin-bottom:6px;">Zonen <input type="number" min="1" max="20" value="${NA.nsaK}" onchange="naSetNsaK(this.value)" style="width:42px;${_inp}"></label>` : ''}
+  ${NA.nsaMode==='verteilt' ? `<label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px;">Zonen <input type="number" min="1" max="20" value="${NA.nsaK}" onchange="naSetNsaK(this.value)" style="width:42px;${_inp}"></label>` : ''}
   <button onclick="naRunNotstromPlatzierung()" style="${_runBtn(COL_NSA)}">Platzierung berechnen</button>
   ${nsaRes ? `
-  <div style="margin-top:8px;font-size:10px;color:var(--c-blue);"><b>${nsaRes.units.length}</b> Aggregat(e) · Σ <b>${nsaRes.totalKW}</b> kW · ${nsaRes.autonomieH} h · ${nsaRes.kraftstoff}
-    <div style="font-size:9px;color:var(--muted);margin-top:2px;">Quelle: ${nsaRes.source==='resilienz' ? 'Resilienz-Analyse' : `Karten-Spitzenlast (${nsaRes.sitePeak} kW)`}</div></div>
+  <div style="margin-top:8px;font-size:12px;color:var(--c-blue);"><b>${nsaRes.units.length}</b> Aggregat(e) · Σ <b>${nsaRes.totalKW}</b> kW · ${nsaRes.autonomieH} h · ${nsaRes.kraftstoff}
+    <div style="font-size:11px;color:var(--muted);margin-top:2px;">Quelle: ${nsaRes.source==='resilienz' ? 'Resilienz-Analyse' : `Karten-Spitzenlast (${nsaRes.sitePeak} kW)`}</div></div>
   <div style="display:flex;gap:6px;margin-top:6px;">
     <button onclick="naUebernehmenNotstrom()" style="${_takeBtn}">Als Assets übernehmen</button>
     <button onclick="naClearNotstrom()" title="Vorschlag verwerfen" style="${_clrBtn}">✕</button>
@@ -2231,17 +2231,17 @@ ${_step(4, 'Übernehmen', '#4fc3f7')}
 
   panel.innerHTML = `
 <!-- Übersicht -->
-<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Übersicht Lastpunkte</div>
+<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Übersicht Lastpunkte</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;
      display:grid;grid-template-columns:repeat(4,1fr);gap:4px;text-align:center;">
   <div><div style="font-size:15px;font-weight:700;color:var(--c-violet);">${pts.length}</div>
-       <div style="font-size:9px;color:var(--muted);">Punkte</div></div>
+       <div style="font-size:11px;color:var(--muted);">Punkte</div></div>
   <div><div style="font-size:15px;font-weight:700;color:var(--c-red);">${totalBezug.toFixed(0)}</div>
-       <div style="font-size:9px;color:var(--muted);">kW Bezug</div></div>
+       <div style="font-size:11px;color:var(--muted);">kW Bezug</div></div>
   <div><div style="font-size:15px;font-weight:700;color:var(--c-blue);">${totalEinsp.toFixed(0)}</div>
-       <div style="font-size:9px;color:var(--muted);">kW Einsp.</div></div>
+       <div style="font-size:11px;color:var(--muted);">kW Einsp.</div></div>
   <div><div style="font-size:15px;font-weight:700;color:${nettoCol};">${nettoSign}${totalNetto.toFixed(0)}</div>
-       <div style="font-size:9px;color:var(--muted);">kW Netto</div></div>
+       <div style="font-size:11px;color:var(--muted);">kW Netto</div></div>
 </div>
 
 ${tabBarHtml}

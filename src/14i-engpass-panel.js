@@ -121,7 +121,7 @@ export function engpassPanelAktualisieren() {
   // Horizont aus den Reglern übernehmen, falls das Panel schon gerendert war
   const h = _horizontAusReglern();
   if (h) _horizont = h;
-  _body().innerHTML = '<div style="padding:22px;color:var(--muted);font-size:11px;">Netz wird über die Stützjahre gerechnet …</div>';
+  _body().innerHTML = '<div style="padding:22px;color:var(--muted);font-size:12.5px;">Netz wird über die Stützjahre gerechnet …</div>';
   setTimeout(() => {
     try {
       _vergleich = engpassVergleich(_horizont || {});
@@ -129,7 +129,7 @@ export function engpassPanelAktualisieren() {
       _render();
     } catch (err) {
       console.error('Engpass-Panel:', err);
-      _body().innerHTML = '<div style="padding:18px;color:var(--c-red);font-size:11px;">Analyse fehlgeschlagen — Details in der Konsole.</div>';
+      _body().innerHTML = '<div style="padding:18px;color:var(--c-red);font-size:12.5px;">Analyse fehlgeschlagen — Details in der Konsole.</div>';
     }
   }, 50);
 }
@@ -194,7 +194,7 @@ function _render() {
   const el  = _body();
   if (!el) return;
   if (!res) {
-    el.innerHTML = '<div style="padding:18px;color:var(--muted);font-size:11px;">Keine Analyse vorhanden.</div>';
+    el.innerHTML = '<div style="padding:18px;color:var(--muted);font-size:12.5px;">Keine Analyse vorhanden.</div>';
     return;
   }
 
@@ -216,7 +216,7 @@ function _render() {
 }
 
 function _toolbar(res, nKrit, nOk, nBestand = 0) {
-  const btn = 'padding:5px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:10px;cursor:pointer;';
+  const btn = 'padding:5px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:12px;cursor:pointer;';
   return `
   <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:2px 0 10px;">
     <button style="${btn}border-color:var(--c-orange);color:var(--c-orange);" data-click="engpassPanelAktualisieren()">↻ Neu rechnen</button>
@@ -225,7 +225,7 @@ function _toolbar(res, nKrit, nOk, nBestand = 0) {
       Maßnahmen vorschlagen</button>
     <button style="${btn}border-color:var(--c-red);color:var(--c-red);" data-click="engpassMassnahmenZuruecksetzen()"
       title="Entfernt alle automatisch erzeugten Maßnahmen wieder — von Hand bearbeitete bleiben.">✕ Auto-Maßnahmen</button>
-    <span style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
+    <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);">
       Horizont
       <input type="range" id="engpass-von" min="2020" max="2060" step="1" value="${res.von}"
         title="Startjahr der Betrachtung"
@@ -238,13 +238,13 @@ function _toolbar(res, nKrit, nOk, nBestand = 0) {
         data-input="engpassHorizontVorschau()" data-change="engpassPanelAktualisieren()">
     </span>
     ${nBestand ? `
-    <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);cursor:pointer;"
+    <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);cursor:pointer;"
       title="Betriebsmittel, die schon im Startjahr überlastet sind, ohne dass ein Zubau die Ursache wäre — Bestandsdaten, kein Ausbaubedarf. Ausgeblendet erscheinen sie nur in der eigenen Sektion und werden auch nicht als Maßnahme eingeplant.">
       <input type="checkbox" id="engpass-ohne-bestand" ${_ohneBestand ? 'checked' : ''}
         style="accent-color:#f9a825;cursor:pointer;" data-change="engpassBestandFilter(this.checked)">
       Bestandsmängel ausblenden
     </label>` : ''}
-    <span style="margin-left:auto;font-size:10px;color:var(--muted);">
+    <span style="margin-left:auto;font-size:12px;color:var(--muted);">
       ${res.jahre.length} Stützjahre ·
       <b style="color:var(--c-red);">${nKrit}</b> kritisch · <b style="color:var(--c-green);">${nOk}</b> ohne Engpass
     </span>
@@ -263,7 +263,7 @@ function _reserveKurve() {
   const ticks = [0, Math.round(maxY / 2), maxY].filter((v, i, a) => a.indexOf(v) === i);
 
   return `
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
     Überlastete Betriebsmittel im Zeitverlauf
   </div>
   <div style="background:var(--surface2);border-radius:6px;padding:6px 8px;margin-bottom:12px;overflow-x:auto;">
@@ -276,7 +276,7 @@ function _reserveKurve() {
       ${jahre.map((j, i) => i === 0 || i === jahre.length - 1 || jahre.length <= 8
         ? `<text x="${x(i)}" y="${H - 3}" text-anchor="middle" font-size="8" fill="#78909c">${j}</text>` : '').join('')}
     </svg>
-    <div style="font-size:9px;color:var(--muted);display:flex;gap:12px;margin-top:2px;">
+    <div style="font-size:11px;color:var(--muted);display:flex;gap:12px;margin-top:2px;">
       <span><span style="display:inline-block;width:14px;height:2px;background:#e53935;vertical-align:middle;"></span> ohne Ausbau</span>
       <span><span style="display:inline-block;width:14px;height:2px;background:#4caf50;vertical-align:middle;"></span> mit geplanten Maßnahmen</span>
       ${_vergleich.restEngpaesse === 0
@@ -289,14 +289,14 @@ function _reserveKurve() {
 // Zeitstrahl: Zeile je kritischem Betriebsmittel, Spalte je Jahr
 function _zeitstrahl(res, kritisch) {
   if (!kritisch.length) {
-    return `<div style="padding:14px;background:var(--surface2);border-radius:6px;font-size:11px;color:var(--c-green);">
+    return `<div style="padding:14px;background:var(--surface2);border-radius:6px;font-size:12.5px;color:var(--c-green);">
       ✓ Im Horizont ${res.von}–${res.bis} wird kein Betriebsmittel zum Engpass.</div>`;
   }
   const jahre = [];
   for (let j = res.von; j <= res.bis; j++) jahre.push(j);
   const zellW = 15;
 
-  const kopf = jahre.map(j => `<div style="flex:0 0 ${zellW}px;font-size:7px;color:var(--c-blue);text-align:center;">
+  const kopf = jahre.map(j => `<div style="flex:0 0 ${zellW}px;font-size:10.5px;color:var(--c-blue);text-align:center;">
       ${j % 5 === 0 ? String(j).slice(2) : ''}</div>`).join('');
 
   // WICHTIG: alle festen Spalten mit flex:0 0 — sonst schrumpfen sie als Flex-Items,
@@ -333,27 +333,27 @@ function _zeitstrahl(res, kritisch) {
     return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;cursor:pointer;"
       data-click="engpassSpringeZu('${it.id}','${it.art}')"
       title="Auf der Karte anzeigen und Eigenschaften öffnen">
-      ${nameSpalte(`${icon} ${it.label}`, 'font-size:9.5px;color:var(--text);',
+      ${nameSpalte(`${icon} ${it.label}`, 'font-size:11px;color:var(--text);',
                    `${it.label} — Engpass ab ${it.engpassJahr}, Ursache: ${it.ursache}${auslTxt}${zushTxt}`)}
-      <div style="flex:0 0 34px;font-size:9px;font-weight:700;color:var(--c-red);text-align:right;">${it.engpassJahr}</div>
-      <div style="flex:0 0 26px;font-size:8px;color:${spannung ? '#ce93d8' : '#ffab91'};text-align:center;"
+      <div style="flex:0 0 34px;font-size:11px;font-weight:700;color:var(--c-red);text-align:right;">${it.engpassJahr}</div>
+      <div style="flex:0 0 26px;font-size:10.5px;color:${spannung ? '#ce93d8' : '#ffab91'};text-align:center;"
            title="${spannung ? 'Spannungsfall' : 'Strombelastbarkeit'}">${spannung ? 'ΔU' : 'I'}</div>
       <div style="display:flex;">${zellen}</div>
-      <div style="flex:0 0 52px;font-size:8.5px;color:var(--muted);text-align:right;">${massgeb}</div>
+      <div style="flex:0 0 52px;font-size:10.5px;color:var(--muted);text-align:right;">${massgeb}</div>
     </div>`;
   }).join('');
 
   return `
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
     Engpass-Zeitstrahl · ${kritisch.length} Betriebsmittel · nach Eintrittsjahr sortiert
   </div>
   <div style="background:var(--surface2);border-radius:6px;padding:7px 8px;margin-bottom:12px;overflow-x:auto;">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
-      ${nameSpalte('Betriebsmittel', 'font-size:8px;color:var(--c-blue);')}
-      <div style="flex:0 0 34px;font-size:8px;color:var(--c-blue);text-align:right;">ab</div>
-      <div style="flex:0 0 26px;font-size:8px;color:var(--c-blue);text-align:center;" title="Ursache: I = Strom, ΔU = Spannungsfall">Urs.</div>
+      ${nameSpalte('Betriebsmittel', 'font-size:10.5px;color:var(--c-blue);')}
+      <div style="flex:0 0 34px;font-size:10.5px;color:var(--c-blue);text-align:right;">ab</div>
+      <div style="flex:0 0 26px;font-size:10.5px;color:var(--c-blue);text-align:center;" title="Ursache: I = Strom, ΔU = Spannungsfall">Urs.</div>
       <div style="display:flex;">${kopf}</div>
-      <div style="flex:0 0 52px;font-size:8px;color:var(--c-blue);text-align:right;">maßgeb.</div>
+      <div style="flex:0 0 52px;font-size:10.5px;color:var(--c-blue);text-align:right;">maßgeb.</div>
     </div>
     ${zeilen}
   </div>`;
@@ -362,29 +362,29 @@ function _zeitstrahl(res, kritisch) {
 // Abgeleitete Maßnahmen mit Jahr und Kosten
 function _massnahmenListe() {
   if (!_massnahmen || (!_massnahmen.items.length && !_massnahmen.ungeloest?.length)) {
-    return `<div style="font-size:10px;color:var(--muted);padding:8px;background:var(--surface2);border-radius:6px;">
+    return `<div style="font-size:12px;color:var(--muted);padding:8px;background:var(--surface2);border-radius:6px;">
       Noch keine Maßnahmen abgeleitet — „⚙ Maßnahmen vorschlagen" wählt je Engpass die
       günstigste ausreichende Ertüchtigung und legt sie als geplante Maßnahme an.</div>`;
   }
   const zeilen = _massnahmen.items.map(m => `
     <div style="display:flex;align-items:center;gap:8px;padding:3px 6px;border-radius:4px;">
-      <span style="flex:0 0 34px;font-size:9.5px;font-weight:700;color:var(--c-green);">${m.jahr}</span>
-      <span style="flex:0 0 190px;font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+      <span style="flex:0 0 34px;font-size:11px;font-weight:700;color:var(--c-green);">${m.jahr}</span>
+      <span style="flex:0 0 190px;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             title="${m.label}">${m.art === 'trafo' ? '⏚' : '⚡'} ${m.label}</span>
-      <span style="flex:1;font-size:9.5px;color:var(--text);">${m.titel}</span>
-      <span style="font-size:9.5px;color:var(--c-amber);text-align:right;white-space:nowrap;">${_eur(m.kosten)}</span>
+      <span style="flex:1;font-size:11px;color:var(--text);">${m.titel}</span>
+      <span style="font-size:11px;color:var(--c-amber);text-align:right;white-space:nowrap;">${_eur(m.kosten)}</span>
     </div>`).join('');
   const ungeloest = (_massnahmen.ungeloest || []).map(u => `
     <div style="display:flex;align-items:flex-start;gap:8px;padding:3px 6px;">
-      <span style="flex:0 0 34px;font-size:9.5px;font-weight:700;color:var(--c-red);">${u.engpassJahr}</span>
-      <span style="flex:0 0 190px;font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+      <span style="flex:0 0 34px;font-size:11px;font-weight:700;color:var(--c-red);">${u.engpassJahr}</span>
+      <span style="flex:0 0 190px;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             title="${u.label}">⚡ ${u.label}</span>
-      <span style="flex:1;font-size:9px;color:var(--c-red);line-height:1.5;">${u.grund}
+      <span style="flex:1;font-size:11px;color:var(--c-red);line-height:1.5;">${u.grund}
         <span style="color:var(--muted);">(${u.maxStromA.toFixed(0)} A nötig, ${u.maxAuslPct.toFixed(0)} % Auslastung)</span></span>
     </div>`).join('');
 
   const ungeloestBlock = ungeloest ? `
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--c-red);margin:10px 0 3px;">
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--c-red);margin:10px 0 3px;">
     ⚠ Nicht durch Kabeltausch lösbar · ${_massnahmen.ungeloest.length}
   </div>
   <div style="background:rgba(229,57,53,0.08);border:1px solid rgba(229,57,53,0.35);border-radius:6px;padding:6px 4px;">
@@ -392,12 +392,12 @@ function _massnahmenListe() {
   </div>` : '';
 
   const ausbauBlock = _massnahmen.items.length ? `
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
     Abgeleiteter Ausbau · ${_massnahmen.items.length} Maßnahmen · Σ ${_eur(_massnahmen.investGesamt)}
   </div>
   <div style="background:var(--surface2);border-radius:6px;padding:6px 4px;">
     ${zeilen}
-    <div style="font-size:8.5px;color:var(--muted);padding:4px 6px 0;">
+    <div style="font-size:10.5px;color:var(--muted);padding:4px 6px 0;">
       Umsetzung jeweils mit Vorlauf vor dem Engpassjahr · dimensioniert auf das Maximum
       des gesamten Horizonts (kein zweiter Ausbau) · als „geplant" im Ausbauplaner sichtbar.
     </div>
@@ -412,7 +412,7 @@ function _massnahmenListe() {
 function _bestandsmaengel(bestand) {
   if (!bestand.length) return '';
 
-  const btn = 'padding:4px 9px;border-radius:5px;border:1px solid var(--border);background:transparent;font-family:inherit;font-size:10px;cursor:pointer;';
+  const btn = 'padding:4px 9px;border-radius:5px;border:1px solid var(--border);background:transparent;font-family:inherit;font-size:12px;cursor:pointer;';
   const loesbar = bestand.filter(b => b.vorschlag);
 
   const zeilen = bestand.map(({ item, vorschlag }) => {
@@ -422,20 +422,20 @@ function _bestandsmaengel(bestand) {
     return `<div style="display:flex;align-items:center;gap:8px;padding:3px 6px;cursor:pointer;"
       data-click="engpassSpringeZu('${item.id}','${item.art}')"
       title="Auf der Karte anzeigen und Eigenschaften öffnen">
-      <span style="flex:0 0 190px;font-size:9px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+      <span style="flex:0 0 190px;font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             title="${item.label}">${icon} ${item.label}</span>
-      <span style="flex:0 0 52px;font-size:8.5px;color:var(--c-red);text-align:right;">${massgeb}</span>
-      <span style="flex:1;font-size:9.5px;color:${vorschlag ? '#66bb6a' : '#ef9a9a'};">
+      <span style="flex:0 0 52px;font-size:10.5px;color:var(--c-red);text-align:right;">${massgeb}</span>
+      <span style="flex:1;font-size:11px;color:${vorschlag ? '#66bb6a' : '#ef9a9a'};">
         ${vorschlag ? '→ ' + vorschlag.label : '→ kein Standardquerschnitt reicht — Netzstruktur ändern'}</span>
     </div>`;
   }).join('');
 
   return `
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--c-orange);margin:10px 0 3px;">
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--c-orange);margin:10px 0 3px;">
     Bestandsmängel · ${bestand.length} von Anfang an unterdimensioniert
   </div>
   <div style="background:rgba(249,168,37,0.07);border:1px solid rgba(249,168,37,0.3);border-radius:6px;padding:6px 4px;margin-bottom:12px;">
-    <div style="font-size:8.5px;color:var(--muted);padding:0 6px 5px;line-height:1.6;">
+    <div style="font-size:10.5px;color:var(--muted);padding:0 6px 5px;line-height:1.6;">
       Schon im Startjahr ${_horizontVon()} überlastet, ohne dass ein Zubau die Ursache wäre —
       also keine Folge der Entwicklung, sondern eine zu klein erfasste Bestandsdimensionierung.
       Die Korrektur ändert Querschnitt/Stränge bzw. Trafo-Leistung direkt in den Stammdaten,
@@ -480,7 +480,7 @@ function _aufloesung(res) {
       const it = b.item, m = b.massnahme;
       const mIcon = it.art === 'trafo' ? '⏚' : '⚡';
       const mTxt  = m ? `${m.titel} · ${_eur(m.kosten)}` : 'noch keine Maßnahme abgeleitet';
-      return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0 2px 20px;font-size:9px;">
+      return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0 2px 20px;font-size:11px;">
         <span style="color:var(--muted);">↳</span>
         <span style="flex:0 0 190px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
               title="${it.label}">${mIcon} ${it.label} <span style="color:var(--muted);">(${it.engpassJahr})</span></span>
@@ -488,23 +488,23 @@ function _aufloesung(res) {
       </div>`;
     }).join('');
     return `<div style="margin-bottom:8px;">
-      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text);">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);">
         <span>${_ausloeserIcon(g.trigger)}</span>
         <b>${g.trigger.name}</b>
-        <span style="font-size:8.5px;color:var(--muted);">${_ausloeserGrund(g.trigger)} · ${g.jahr}</span>
+        <span style="font-size:10.5px;color:var(--muted);">${_ausloeserGrund(g.trigger)} · ${g.jahr}</span>
       </div>
       ${betroffen}
     </div>`;
   }).join('');
 
   const ohneBlock = ohneAusloeser.length ? `
-    <div style="font-size:9px;color:var(--muted);padding:4px 6px 0;">
+    <div style="font-size:11px;color:var(--muted);padding:4px 6px 0;">
       ${ohneAusloeser.length} Engpass/Engpässe ohne eindeutig identifizierbaren Auslöser
       (mehrere gleichzeitige Änderungen, oder bereits ab Horizontbeginn kritisch).
     </div>` : '';
 
   return `
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:10px 0 3px;">
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:10px 0 3px;">
     Ursache → Maßnahme · ${gruppen.length} Auslöser
   </div>
   <div style="background:var(--surface2);border-radius:6px;padding:8px 6px;">

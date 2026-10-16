@@ -349,7 +349,7 @@ export function _renderSankeyModal(data, perBuilding, mode) {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <div style="font-size:14px;font-weight:600;color:var(--text);">${title}</div>
         <div style="display:flex;gap:8px;align-items:center;">
-          <select id="sankey-mode" style="padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;">
+          <select id="sankey-mode" style="padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;">
             <option value="liegenschaft">Energiefluss (gesamt)</option>
             <option value="gebaeude">Energiefluss (gebäudescharf)</option>
             <option value="co2">CO\u2082-Emissionen</option>
@@ -358,7 +358,7 @@ export function _renderSankeyModal(data, perBuilding, mode) {
         </div>
       </div>
       <canvas id="sankey-canvas" width="${W - 32}" height="${H}" style="width:100%;border-radius:8px;background:var(--bg);"></canvas>
-      <div id="sankey-footer" style="margin-top:8px;font-size:9px;color:var(--muted);text-align:center;">${footer}</div>
+      <div id="sankey-footer" style="margin-top:8px;font-size:11px;color:var(--muted);text-align:center;">${footer}</div>
     </div>`;
   document.body.appendChild(overlay);
 

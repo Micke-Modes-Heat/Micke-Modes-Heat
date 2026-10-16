@@ -1021,14 +1021,14 @@ function d3dWerkzeugHtml() {
     return `<button data-d3d="${aktion}" title="${d3dEsc(titel)}"
       style="${BTN}padding:3px 6px;${an ? `border-color:${farbe};color:${farbe};background:${farbe}22;font-weight:600;` : ''}">${text}</button>`;
   };
-  const hinweis = !z ? '' : `<div style="font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35;">
+  const hinweis = !z ? '' : `<div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35;">
       ${z.start ? '2. Klick: gegenüberliegende Ecke' : '1. Klick: erste Ecke auf die Dachfläche'}
       <span id="d3d-zeichnen-mass" style="color:var(--text);">${d3dMassText()}</span> · rastet an Traufe/First ein · Esc beendet</div>`;
   const f = _d3d.foto || {};
-  const foto = `<label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10.5px;cursor:pointer;"
+  const foto = `<label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:12px;cursor:pointer;"
       title="Luftbild (Esri) rund um das gewählte Gebäude senkrecht auf die Dächer legen — zum Nachzeichnen von Gauben, Kaminen und Dachfenstern. Module dafür ausblenden (Haken PV-Module). Luftbilder sind keine True Orthophotos: das Dach kann im Bild 1–3 m versetzt liegen.">
       <input type="checkbox" data-d3d="dachfoto" ${f.an ? 'checked' : ''}>Luftbild auf den Dächern
-      <span style="color:var(--muted);font-size:9.5px;">${f.an ? (f.status ? d3dEsc(f.status) : 'Gebäude anklicken') : ''}</span></label>`;
+      <span style="color:var(--muted);font-size:11px;">${f.an ? (f.status ? d3dEsc(f.status) : 'Gebäude anklicken') : ''}</span></label>`;
   return foto + `<div style="display:flex;gap:3px;margin-top:5px;">
       ${knopf('zeichne-sperr', 'sperr', '▭ Sperrfläche', D3D_SPERRFARBE, 'Rechteck auf der Dachfläche aussparen (Kamin, Gaube, Dachfenster) — zwei Klicks, an der Falllinie ausgerichtet')}
       ${knopf('zeichne-belegung', 'belegung', '▭ Belegung', D3D_GEWAEHLT, 'Rechteck auf der Dachfläche mit Modulen belegen — zwei Klicks, an der Falllinie ausgerichtet')}
@@ -1044,7 +1044,7 @@ function d3dFlaecheInfoHtml() {
   const a = _d3d.auswahl;
   const i = a && typeof window.pvmDachflaecheInfo === 'function' ? window.pvmDachflaecheInfo(a.gid, a.key) : null;
   if (!i) {
-    return `<div style="font-size:10px;color:var(--muted);line-height:1.45;margin-top:4px;">
+    return `<div style="font-size:12px;color:var(--muted);line-height:1.45;margin-top:4px;">
       Dachfläche anklicken — Überfahren zeigt Ausrichtung und Fläche. Belegen und Freilassen gelten für die aktive Variante; Strg+Z bzw. ↶ nimmt es zurück.</div>`;
   }
   const knopf = (aktion, text, titel, farbe = '') => `<button data-d3d="${aktion}" title="${d3dEsc(titel)}"
@@ -1056,9 +1056,9 @@ function d3dFlaecheInfoHtml() {
     : '<span style="color:var(--muted);">○ frei</span>';
   return `
     <div style="margin-top:5px;padding:6px 7px;border:1px solid ${D3D_GEWAEHLT}66;border-radius:6px;background:${D3D_GEWAEHLT}0d;">
-      <div style="font-weight:600;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${d3dEsc(i.name)}">${d3dEsc(i.name)}</div>
-      <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">${d3dEsc(i.art)}</div>
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:1px 8px;font-size:10.5px;">
+      <div style="font-weight:600;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${d3dEsc(i.name)}">${d3dEsc(i.name)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:3px;">${d3dEsc(i.art)}</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:1px 8px;font-size:12px;">
         ${flaeche ? zeile('Fläche', `${_kw(i.flaecheM2)} m² <span style="color:var(--muted);">im Grundriss</span>`) : `
         ${zeile('Ausrichtung', i.azimut == null ? 'flach' : `${Math.round(i.azimut)}° ${d3dHimmel(i.azimut)}`)}
         ${zeile('Neigung', `${Math.round(i.neigung)}°`)}
@@ -1066,7 +1066,7 @@ function d3dFlaecheInfoHtml() {
         ${zeile('Ertrag', `${i.ertragPct} % <span style="color:var(--muted);">von Süd 35°</span>`)}
         ${i.schattenPct != null ? zeile('Verschattung', `${_kw(i.schattenPct)} %`) : ''}`}
       </div>
-      ${flaeche ? '' : `<div style="font-size:10.5px;margin-top:4px;">${status}</div>`}
+      ${flaeche ? '' : `<div style="font-size:12px;margin-top:4px;">${status}</div>`}
       <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;">
         ${flaeche ? knopf('fl-weg', i.sperrId != null ? 'Sperrfläche entfernen' : 'Fläche entfernen',
             i.sperrId != null ? 'Diese Sperrfläche löschen — dort werden wieder Module gesetzt' : 'Diese Belegungsfläche löschen (die letzte samt PV-Asset)', '#e53935')
@@ -1080,8 +1080,8 @@ function d3dFlaecheInfoHtml() {
         ${i.zerlegbar ? knopf('dach-zerlegen', 'Zerlegen', 'Dach aus dem Grundriss in einzelne Dachflächen zerlegen (Flügel, Kehlen) — dann ist jede Fläche einzeln belegbar') : ''}
         ${knopf('undo', '↶', 'Letzten Schritt zurücknehmen (wie Strg+Z im PV-Modus)')}`}
       </div>
-      ${flaeche ? `<div style="font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.35;">Weiße Ecke ziehen = verschieben (folgt der Dachhaut, rastet an Traufe/First/Kanten und an den Nachbarecken ein — türkis; Alt = frei; Shift = Rechteckform halten) · graue Kantenmitte ziehen oder klicken = neue Ecke · Rechtsklick oder Entf auf einer Ecke = löschen.</div>` : ''}
-      ${i.hinweis ? `<div style="font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.35;">${d3dEsc(i.hinweis)}</div>` : ''}
+      ${flaeche ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.35;">Weiße Ecke ziehen = verschieben (folgt der Dachhaut, rastet an Traufe/First/Kanten und an den Nachbarecken ein — türkis; Alt = frei; Shift = Rechteckform halten) · graue Kantenmitte ziehen oder klicken = neue Ecke · Rechtsklick oder Entf auf einer Ecke = löschen.</div>` : ''}
+      ${i.hinweis ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.35;">${d3dEsc(i.hinweis)}</div>` : ''}
       ${flaeche ? '' : d3dFlaechenListeHtml(a.gid)}
     </div>`;
 }
@@ -1091,8 +1091,8 @@ function d3dFlaechenListeHtml(gid) {
   const liste = typeof window.pvmFlaechenAmDach === 'function' ? window.pvmFlaechenAmDach(gid) : [];
   if (!liste.length) return '';
   return `<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:4px;">
-      <div style="font-size:9.5px;color:var(--muted);margin-bottom:2px;">Flächen auf diesem Dach — ✎ zeigt die Ecken</div>
-      ${liste.map(f => `<div style="display:flex;align-items:center;gap:5px;font-size:10px;padding:1px 0;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Flächen auf diesem Dach — ✎ zeigt die Ecken</div>
+      ${liste.map(f => `<div style="display:flex;align-items:center;gap:5px;font-size:12px;padding:1px 0;">
         <span style="color:${f.typ === 'sperr' ? D3D_SPERRFARBE : D3D_GEWAEHLT};">${f.typ === 'sperr' ? '⛔' : '☀'}</span>
         <span style="flex:1;">${d3dEsc(f.text)}</span>
         <span style="color:var(--muted);font-family:'DM Mono',monospace;">${_kw(f.m2)} m²</span>
@@ -1495,7 +1495,7 @@ function d3dBaumInfoHtml() {
   const erg = _d3d?.baumErgebnis;
   const vorschau = _baumAn && _d3d?.baumStatus === 'fertig' && erg && !erg.ausProjekt && erg.baeume.length;
   return text + (vorschau && typeof window.baumOsmUebernehmen === 'function'
-    ? ` <button class="btn-secondary" data-click="baumOsmUebernehmen()" style="font-size:10px;padding:1px 6px;margin-top:3px;"
+    ? ` <button class="btn-secondary" data-click="baumOsmUebernehmen()" style="font-size:12px;padding:1px 6px;margin-top:3px;"
         title="Bäume aus OpenStreetMap ins Projekt übernehmen — erst dann werden sie mit dem Projekt gespeichert und für die Verschattung genutzt">Ins Projekt übernehmen</button>`
     : '');
 }
@@ -1508,7 +1508,7 @@ function d3dBaumInfo() {
 /* ── Oberfläche ───────────────────────────────────────────────────────────── */
 
 const BTN = 'flex:1;padding:4px 6px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);'
-  + 'color:var(--text);font:inherit;font-size:11px;cursor:pointer;white-space:nowrap;';
+  + 'color:var(--text);font:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap;';
 const BTN_AN = 'background:var(--accent);border-color:var(--accent);color:#111;';
 
 function d3dPanelHtml() {
@@ -1518,41 +1518,41 @@ function d3dPanelHtml() {
     <b style="font-size:12.5px;">3D-Ansicht</b>
     <button data-d3d="schliessen" title="Zurück zur Arbeitskarte" style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;line-height:1;">✕</button>
   </div>
-  <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:6px 0 3px;">Farbe</div>
-  <select data-d3d="modus" style="width:100%;padding:4px 5px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:11px;">
+  <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:6px 0 3px;">Farbe</div>
+  <select data-d3d="modus" style="width:100%;padding:4px 5px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:12.5px;">
     <option value="karte" ${m === 'karte' ? 'selected' : ''}>Wie Arbeitskarte</option>
     <option value="baujahr" ${m === 'baujahr' ? 'selected' : ''}>Baujahr</option>
     <option value="einheitlich" ${m === 'einheitlich' ? 'selected' : ''}>Einheitlich</option>
   </select>
   <div id="d3d-legende" style="margin-top:5px;"></div>
-  <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Dächer &amp; PV</div>
-  <select data-d3d="daecher" title="Dachform, Neigung und Azimut kommen aus den PV-Angaben des Gebäudes (Dach &amp; PV)" style="width:100%;padding:4px 5px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:11px;">
+  <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Dächer &amp; PV</div>
+  <select data-d3d="daecher" title="Dachform, Neigung und Azimut kommen aus den PV-Angaben des Gebäudes (Dach &amp; PV)" style="width:100%;padding:4px 5px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:12.5px;">
     <option value="angaben" ${_d3d.daecher === 'angaben' ? 'selected' : ''}>Dächer mit Angaben formen</option>
     <option value="alle" ${_d3d.daecher === 'alle' ? 'selected' : ''}>Alle Dächer (Vorgabe Satteldach 35°)</option>
     <option value="aus" ${_d3d.daecher === 'aus' ? 'selected' : ''}>Alle flach</option>
   </select>
-  <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11px;cursor:pointer;">
+  <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:12.5px;cursor:pointer;">
     <input type="checkbox" data-d3d="module" ${_d3d.module ? 'checked' : ''}>PV-Module (Dach &amp; Freifläche)</label>
-  <label style="display:flex;align-items:center;gap:6px;margin-top:3px;font-size:11px;cursor:pointer;" title="Module nach dem gerechneten Verschattungsfaktor ihrer Dachfläche färben (PV-Modus → Bäume &amp; Verschattung). Nicht gerechnete Dächer bleiben blau.">
+  <label style="display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12.5px;cursor:pointer;" title="Module nach dem gerechneten Verschattungsfaktor ihrer Dachfläche färben (PV-Modus → Bäume &amp; Verschattung). Nicht gerechnete Dächer bleiben blau.">
     <input type="checkbox" data-d3d="schatten" ${_d3d.schatten ? 'checked' : ''}>… nach Verschattung färben</label>
-  <div id="d3d-dachinfo" style="font-size:10px;color:var(--muted);margin-top:3px;">${d3dDachinfoText()}</div>
-  <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;cursor:pointer;font-weight:600;color:${D3D_GEWAEHLT};"
+  <div id="d3d-dachinfo" style="font-size:12px;color:var(--muted);margin-top:3px;">${d3dDachinfoText()}</div>
+  <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;cursor:pointer;font-weight:600;color:${D3D_GEWAEHLT};"
     title="Dachflächen anklicken: Ausrichtung, Fläche, Ertrag und Belegung ansehen, einzeln belegen oder freilassen (nach den Belegungsregeln des PV-Modus)">
     <input type="checkbox" data-d3d="bearbeiten" ${_d3d.bearbeiten ? 'checked' : ''}>Dachflächen bearbeiten</label>
   <div id="d3d-flaeche">${d3dFlaecheHtml()}</div>
-  <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Netze</div>
-  <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;" title="Farben wie auf der Karte (DN, Auslastung …); eine dort ausgeblendete Ebene fehlt auch hier">
+  <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Netze</div>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;" title="Farben wie auf der Karte (DN, Auslastung …); eine dort ausgeblendete Ebene fehlt auch hier">
     <input type="checkbox" data-d3d="netzW" ${_d3d.netzW ? 'checked' : ''}>Wärmenetz</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin-top:3px;" title="Kabel wie auf der Karte, dazu freistehende Netzanschlusspunkte, Schaltanlagen, Trafostationen und Batteriespeicher">
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-top:3px;" title="Kabel wie auf der Karte, dazu freistehende Netzanschlusspunkte, Schaltanlagen, Trafostationen und Batteriespeicher">
     <input type="checkbox" data-d3d="netzS" ${_d3d.netzS ? 'checked' : ''}>Stromnetz &amp; Stationen</label>
-  <div id="d3d-netzinfo" style="font-size:10px;color:var(--muted);margin-top:3px;">${d3dNetzinfoText()}</div>
-  <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin-top:5px;" title="Gebäude, Dächer und Module halbtransparent — zeigt die Leitungen, die unter den Gebäuden verlaufen">
+  <div id="d3d-netzinfo" style="font-size:12px;color:var(--muted);margin-top:3px;">${d3dNetzinfoText()}</div>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-top:5px;" title="Gebäude, Dächer und Module halbtransparent — zeigt die Leitungen, die unter den Gebäuden verlaufen">
     <input type="checkbox" data-d3d="glas" ${_d3d.glas ? 'checked' : ''}>Gebäude durchsichtig</label>
-  <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Umgebung</div>
-  <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;" title="Die Bäume des Projekts (PV-Modus → Bäume &amp; Verschattung). Ohne Projektbäume eine Vorschau aus OpenStreetMap im Umkreis von 150 m um die Gebäude — die wird nicht gespeichert.">
+  <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Umgebung</div>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;" title="Die Bäume des Projekts (PV-Modus → Bäume &amp; Verschattung). Ohne Projektbäume eine Vorschau aus OpenStreetMap im Umkreis von 150 m um die Gebäude — die wird nicht gespeichert.">
     <input type="checkbox" data-d3d="baeume" ${_baumAn ? 'checked' : ''}>Bäume</label>
-  <div id="d3d-bauminfo" style="font-size:10px;color:var(--muted);margin-top:3px;">${d3dBaumInfoHtml()}</div>
-  <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Ansicht</div>
+  <div id="d3d-bauminfo" style="font-size:12px;color:var(--muted);margin-top:3px;">${d3dBaumInfoHtml()}</div>
+  <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Ansicht</div>
   <div style="display:flex;gap:3px;">
     <button data-d3d="2d" style="${BTN}" title="Senkrecht von oben">2D</button>
     <button data-d3d="3d" style="${BTN}" title="Geneigt">3D</button>
@@ -1564,11 +1564,11 @@ function d3dPanelHtml() {
     <button data-d3d="karte" style="${BTN}${sat ? '' : BTN_AN}">Karte</button>
     <button data-d3d="sat" style="${BTN}${sat ? BTN_AN : ''}">Satellit</button>
   </div>
-  <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">
+  <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">
     Höhe überhöhen: <span id="d3d-faktor">${_d3d.faktor.toFixed(1).replace('.', ',')}</span>×</div>
   <input data-d3d="faktor" type="range" min="1" max="3" step="0.1" value="${_d3d.faktor}" style="width:100%;">
   <button data-d3d="png" style="${BTN}width:100%;margin-top:8px;">Bild speichern (PNG)</button>
-  <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.4;">
+  <div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.4;">
     Rechte Maustaste / Strg + Ziehen: neigen &amp; drehen.<br>Klick auf ein Gebäude öffnet seine Eigenschaften.<br>
     Wandhöhe = Geschosse × 3 m, Dach aus den PV-Angaben.</div>`;
 }
@@ -1576,7 +1576,7 @@ function d3dPanelHtml() {
 function d3dLegende() {
   const el = document.getElementById('d3d-legende');
   if (!el || !_d3d) return;
-  const zeile = (farbe, text) => `<div style="display:flex;align-items:center;gap:6px;font-size:10.5px;margin:1px 0;">
+  const zeile = (farbe, text) => `<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin:1px 0;">
     <i style="width:12px;height:9px;border-radius:2px;background:${farbe};display:inline-block;flex-shrink:0;"></i>${text}</div>`;
   let html = '';
   if (_d3d.modus === 'karte') {
@@ -1586,9 +1586,9 @@ function d3dLegende() {
     const min = document.getElementById('leg-min')?.textContent || '';
     const max = document.getElementById('leg-max')?.textContent || '';
     if (bar) {
-      html += `<div style="font-size:10.5px;color:var(--muted);">${titel}</div>
+      html += `<div style="font-size:12px;color:var(--muted);">${titel}</div>
         <div style="height:7px;border-radius:3px;margin:2px 0;background:${bar};"></div>
-        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);"><span>${min}</span><span>${max}</span></div>`;
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);"><span>${min}</span><span>${max}</span></div>`;
     }
     html += zeile(D3D_NEUTRAL, 'ohne Kennwert');
   } else if (_d3d.modus === 'baujahr') {
@@ -1638,7 +1638,7 @@ function d3dKartenknopf() {
       a.title = '3D-Ansicht der Gebäude (Höhe = Geschosse × 3 m, Farben wie auf der Karte)';
       a.setAttribute('aria-label', '3D-Ansicht öffnen');
       a.textContent = '3D';
-      a.style.cssText = 'font-weight:700;font-size:11px;letter-spacing:.02em;';
+      a.style.cssText = 'font-weight:700;font-size:12.5px;letter-spacing:.02em;';
       L.DomEvent.disableClickPropagation(box);
       L.DomEvent.on(a, 'click', ev => { L.DomEvent.preventDefault(ev); d3dUmschalten(); });
       return box;
@@ -1717,7 +1717,7 @@ export async function d3dOeffnen() {
   el.innerHTML = '<div id="d3d-karte" style="position:absolute;inset:0;"></div>'
     + '<div id="d3d-panel" style="position:absolute;top:10px;left:10px;width:236px;max-height:calc(100% - 20px);overflow:auto;'
     + 'background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:10px 12px;'
-    + 'box-shadow:0 6px 22px rgba(0,0,0,.45);font-size:11.5px;color:var(--text);z-index:2;"></div>';
+    + 'box-shadow:0 6px 22px rgba(0,0,0,.45);font-size:12.5px;color:var(--text);z-index:2;"></div>';
   const panel = el.querySelector('#d3d-panel');
   panel.innerHTML = d3dPanelHtml();
   panel.addEventListener('click', d3dKlickImPanel);

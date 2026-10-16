@@ -1559,7 +1559,7 @@ function _renderOverlays() {
       <span style="font-size:12px;color:var(--c-violet);">${(p.name || 'Plan').replace(/</g, '&lt;')} — wird geladen…</span>
     </div>`).join('');
   if (!list.length && !pending.length) {
-    box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:6px 2px;">Noch keine Pläne geladen.</div>';
+    box.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:6px 2px;">Noch keine Pläne geladen.</div>';
     return;
   }
   box.innerHTML = pendHtml + list.map(ov => {
@@ -1909,11 +1909,11 @@ function _ovRefBuildControl() {
     + "min-width:300px;max-width:360px;font-family:'DM Sans',sans-serif;color:var(--c-blue);box-shadow:0 6px 24px rgba(0,0,0,.5);";
   box.innerHTML = `
     <div style="font-size:12px;font-weight:700;color:var(--c-violet);margin-bottom:6px;">Plan über Referenzpunkte ausrichten</div>
-    <div id="ov-ref-hint" style="font-size:11px;line-height:1.45;color:var(--c-blue);margin-bottom:8px;"></div>
-    <div id="ov-ref-status" style="font-size:11px;margin-bottom:8px;"></div>
-    <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--c-blue);margin-bottom:10px;">
+    <div id="ov-ref-hint" style="font-size:12.5px;line-height:1.45;color:var(--c-blue);margin-bottom:8px;"></div>
+    <div id="ov-ref-status" style="font-size:12.5px;margin-bottom:8px;"></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--c-blue);margin-bottom:10px;">
       Verfahren
-      <select id="ov-ref-mode" style="flex:1;font-size:11px;">
+      <select id="ov-ref-mode" style="flex:1;font-size:12.5px;">
         <option value="similarity">${_OV_FIT_METHODS.similarity.label} – empfohlen</option>
         <option value="affine">${_OV_FIT_METHODS.affine.label} – ab 3 Punkten</option>
         <option value="projective">${_OV_FIT_METHODS.projective.label} – ab 4 Punkten</option>
@@ -4605,7 +4605,7 @@ export async function confirmAutoGenerateNetz(options = {}){
   // Aus dem Netz-Assistenten: kein Dialog, stattdessen Vergleich mit „Übernehmen / Bisheriges behalten“
   if (existing > 0 && !_ohneErsetzenRueckfrage) {
     const message = `Das vorhandene Wärmenetz mit <strong>${existing} Leitungsabschnitten</strong> wird durch die neue Berechnung ersetzt.` +
-      '<br><br><span style="color:var(--muted);font-size:10px">Gebäude, Haupttrasse und Konfiguration bleiben erhalten.</span>';
+      '<br><br><span style="color:var(--muted);font-size:12px">Gebäude, Haupttrasse und Konfiguration bleiben erhalten.</span>';
     const ok = typeof window.epConfirm === 'function'
       ? await window.epConfirm('Wärmenetz neu erstellen',message,{
           okText:'Netz ersetzen',cancelText:'Abbrechen',danger:true,
@@ -4785,7 +4785,7 @@ export async function confirmManualWaermeNetzFromTrasse() {
   const existing = window.netzEdges?.length || 0;
   if (existing) {
     const message = `Das vorhandene Wärmenetz mit <strong>${existing} Leitungsabschnitten</strong> wird durch die manuelle Zeichnung ersetzt.` +
-      '<br><br><span style="color:var(--muted);font-size:10px">Der gezeichnete Verlauf wird ohne automatische Optimierung übernommen.</span>';
+      '<br><br><span style="color:var(--muted);font-size:12px">Der gezeichnete Verlauf wird ohne automatische Optimierung übernommen.</span>';
     const ok = typeof window.epConfirm === 'function'
       ? await window.epConfirm('Manuelles Wärmenetz übernehmen',message,{
         okText:'Zeichnung übernehmen',cancelText:'Abbrechen',danger:true,
@@ -4898,7 +4898,7 @@ export async function startManualWaermeNetzFromExisting() {
       ? await window.epConfirm(
         'Netz als manuelle Zeichnung übernehmen',
         'Die bisherige Trassenzeichnung wird durch den aktuellen Leitungsverlauf ersetzt.' +
-          '<br><br><span style="color:var(--muted);font-size:10px">Das bestehende Wärmenetz bleibt unverändert, bis du die bearbeitete Zeichnung bewusst übernimmst.</span>',
+          '<br><br><span style="color:var(--muted);font-size:12px">Das bestehende Wärmenetz bleibt unverändert, bis du die bearbeitete Zeichnung bewusst übernimmst.</span>',
         {okText:'Als Zeichnung übernehmen',cancelText:'Abbrechen'},
       )
       : window.confirm('Bisherige Trassenzeichnung durch das aktuelle Wärmenetz ersetzen?');
@@ -5027,7 +5027,7 @@ export async function confirmClearNetz(){
     ? await window.epConfirm(
       'Wärmenetz löschen',
       `Das gesamte Wärmenetz mit <strong>${existing} Leitungsabschnitten</strong> wird entfernt.`+
-        '<br><br><span style="color:var(--muted);font-size:10px">Gebäude, Heizzentralenzuordnung und Trassenzeichnung bleiben erhalten.</span>',
+        '<br><br><span style="color:var(--muted);font-size:12px">Gebäude, Heizzentralenzuordnung und Trassenzeichnung bleiben erhalten.</span>',
       {okText:'Netz löschen',cancelText:'Abbrechen',danger:true},
     )
     : window.confirm(`Wirklich alle ${existing} Wärmeleitungen löschen?`);
@@ -6853,10 +6853,10 @@ function _recalcNetzIntern(){
       // Badge-Farbe für Kostenklasse
       const kBadgeColor = {niedrig:'#4caf50',mittel:'#4fc3f7',hoch:'#e53935'}[e.kostKlasse||kostenSzenario]||'#4fc3f7';
 
-      const _m = '<span style="color:var(--muted);font-size:9px">';
+      const _m = '<span style="color:var(--muted);font-size:11px">';
       const _me = '</span>';
       const _sep = '<div style="border-top:1px solid var(--border);margin:5px 0 4px;padding-top:4px;">';
-      const _grp = (icon, title) => `${_sep}<span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.04em">${icon} ${title}</span></div>`;
+      const _grp = (icon, title) => `${_sep}<span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em">${icon} ${title}</span></div>`;
 
       // ── 1. LEITUNG ──
       let ttHtml = _grp('', 'Leitung');
@@ -6893,9 +6893,9 @@ function _recalcNetzIntern(){
         ttHtml += `Temperatur: ${e.tempIn.toFixed(1)} → ${e.tempOut.toFixed(1)} °C (−${(e.tempIn - e.tempOut).toFixed(1)} K)<br>`;
         ttHtml += `${_m}Vorlauf kühlt auf dem Weg zum Verbraucher ab${_me}<br>`;
         if (e.thermischKritisch) {
-          ttHtml += `<span style="color:var(--c-red);font-size:10px;">⚠ Ankunftstemperatur unter Rücklauf — Strang nicht versorgbar!</span><br>`;
+          ttHtml += `<span style="color:var(--c-red);font-size:12px;">⚠ Ankunftstemperatur unter Rücklauf — Strang nicht versorgbar!</span><br>`;
         } else if (e.tempOut < 60) {
-          ttHtml += `<span style="color:var(--c-red);font-size:10px;">⚠ Temp. unter 60 °C — Legionellengefahr</span><br>`;
+          ttHtml += `<span style="color:var(--c-red);font-size:12px;">⚠ Temp. unter 60 °C — Legionellengefahr</span><br>`;
         }
         // Druckverlust
         if (e.dpPerM > 0) {
@@ -6942,7 +6942,7 @@ function _recalcNetzIntern(){
         // Verbindungsleitung zwischen zwei Versorgungszonen: eigene Darstellung und Erläuterung
         e.layer.setStyle({ color: '#26c6da', dashArray: '10, 5' });
         ttHtml = '<span style="color:var(--c-teal)">⇄ Verbindungsleitung zwischen zwei Heizzentralen</span><br>'
-          + `<span style="color:var(--muted);font-size:9px">Trennstelle zwischen den Versorgungszonen; ausgelegt auf ${Math.round(e.load)} kW Übergabe (Sommerbetrieb mit einer Zentrale bzw. Eingabe im Netz-Panel)</span><br>` + ttHtml;
+          + `<span style="color:var(--muted);font-size:11px">Trennstelle zwischen den Versorgungszonen; ausgelegt auf ${Math.round(e.load)} kW Übergabe (Sommerbetrieb mit einer Zentrale bzw. Eingabe im Netz-Panel)</span><br>` + ttHtml;
       }
       e.infoHtml = ttHtml;
 
@@ -7079,8 +7079,8 @@ export function updateStrangReport() {
   const ampelCol = {g:'#4caf50', y:'#ffa000', r:'#e53935'};
   const ampelTxt = {g:'wirtschaftlich', y:'grenzwertig', r:'unwirtschaftlich'};
 
-  let h = '<div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:6px;">Strang-Bewertung</div>';
-  h += '<table style="width:100%;border-collapse:collapse;font-size:9px;font-family:\'DM Mono\',monospace;">';
+  let h = '<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">Strang-Bewertung</div>';
+  h += '<table style="width:100%;border-collapse:collapse;font-size:11px;font-family:\'DM Mono\',monospace;">';
   h += '<thead><tr style="color:var(--muted);border-bottom:1px solid var(--border);">';
   h += '<th style="text-align:left;padding:2px 4px;font-weight:normal;"></th>';
   h += '<th style="text-align:left;padding:2px 3px;font-weight:normal;">Strang</th>';
@@ -7185,11 +7185,11 @@ export function updateRohrListe() {
   let html = `
     <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
       <div style="flex:1;background:var(--surface2);border-radius:4px;padding:6px 8px;border:1px solid var(--border);">
-        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Gesamtkosten (${szenarioLabel})</div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Gesamtkosten (${szenarioLabel})</div>
         <div style="font-size:15px;font-family:'DM Mono',monospace;color:var(--c-blue);margin-top:2px">${Math.round(totalKosten).toLocaleString('de-DE')} €</div>
       </div>
       <div style="flex:1;background:var(--surface2);border-radius:4px;padding:6px 8px;border:1px solid var(--border);">
-        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Ø WLD Gesamtnetz</div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Ø WLD Gesamtnetz</div>
         <div style="font-size:15px;font-family:'DM Mono',monospace;color:${wldColor};margin-top:2px">${wldGesamt.toFixed(2)} MWh/(m·a)</div>
       </div>
     </div>

@@ -769,15 +769,15 @@ export function pvnaRender() {
   const el = document.getElementById('pva-netzaufnahme');
   if (!el) return;
   el.innerHTML = _steuerHtml() + (_letztes ? _ergebnisHtml(_letztes) : `
-    <div style="color:var(--muted);font-size:11px;text-align:center;padding:40px 0;">
+    <div style="color:var(--muted);font-size:12.5px;text-align:center;padding:40px 0;">
       Rechnet aus Trafos, Kabeln und den Dachflächen der Gebäude, wie viel PV das
       bestehende Netz aufnimmt — unabhängig von Lastgang und Auslegungsrechnung.<br>
       „Aufnahme berechnen" starten.</div>`);
 }
 
 function _steuerHtml() {
-  const lbl = 'color:var(--muted);font-size:10px;display:block;margin-bottom:3px;';
-  const inp = 'width:100%;padding:5px 7px;font-size:11.5px;';
+  const lbl = 'color:var(--muted);font-size:12px;display:block;margin-bottom:3px;';
+  const inp = 'width:100%;padding:5px 7px;font-size:12.5px;';
   return `
   <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:14px;">
     <div style="flex:1 1 220px;">
@@ -812,16 +812,16 @@ function _steuerHtml() {
         <option value="neu" ${_ein.flaechen === 'neu' ? 'selected' : ''}>nur Neubau (nach Stichjahr)</option>
       </select>
       ${_ein.flaechen === 'neu' && pvnaJahre().ziel <= pvnaJahre().stich && pvnaLetztesNeubaujahr(pvnaJahre().stich)
-        ? `<span style="font-size:9.5px;color:var(--c-orange);">Zieljahr ≥ ${pvnaLetztesNeubaujahr(pvnaJahre().stich)} setzen — sonst steht noch kein Neubau.</span>` : ''}
+        ? `<span style="font-size:11px;color:var(--c-orange);">Zieljahr ≥ ${pvnaLetztesNeubaujahr(pvnaJahre().stich)} setzen — sonst steht noch kein Neubau.</span>` : ''}
     </div>
     <div style="flex:0 1 190px;">
       <span style="${lbl}" title="Kabel ohne erfassten Querschnitt: ohne Annahme gilt für sie keine Grenze — die Aufnahme ist dort überschätzt.">Kabel ohne Querschnitt</span>
       <select id="pvna-ersatzqs" style="${inp}">${pvnaErsatzOptionen(_ein.ersatzQs)}</select>
     </div>
-    <label style="flex:1 1 100%;font-size:10.5px;color:var(--muted);display:flex;gap:6px;align-items:center;order:9;">
+    <label style="flex:1 1 100%;font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;order:9;">
       <input id="pvna-bestand" type="checkbox" ${_ein.bestandAlsVorlast ? 'checked' : ''}>
       PV-Anlagen der Schicht „Bestand" als bereits angeschlossen ansetzen (Vorbelastung statt Kandidat)</label>
-    <button class="btn-confirm" style="padding:7px 16px;font-size:11.5px;" data-click="pvnaRechnen()">Aufnahme berechnen</button>
+    <button class="btn-confirm" style="padding:7px 16px;font-size:12.5px;" data-click="pvnaRechnen()">Aufnahme berechnen</button>
   </div>`;
 }
 
@@ -832,8 +832,8 @@ export function pvnaErsatzOptionen(wert) {
 
 function _kachel(wert, einheit, label, farbe) {
   return `<div style="flex:1 1 150px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:10px 12px;">
-    <div style="font-size:19px;font-family:'DM Mono',monospace;color:${farbe || 'var(--text)'};">${wert}<span style="font-size:11px;color:var(--muted);margin-left:4px;">${einheit}</span></div>
-    <div style="font-size:10px;color:var(--muted);margin-top:2px;">${label}</div></div>`;
+    <div style="font-size:19px;font-family:'DM Mono',monospace;color:${farbe || 'var(--text)'};">${wert}<span style="font-size:12.5px;color:var(--muted);margin-left:4px;">${einheit}</span></div>
+    <div style="font-size:12px;color:var(--muted);margin-top:2px;">${label}</div></div>`;
 }
 
 function _ergebnisHtml({ modell, treppe, jahr }) {
@@ -844,7 +844,7 @@ function _ergebnisHtml({ modell, treppe, jahr }) {
   const invest = treppe.schritte.at(-1)?.kumInvestEUR || 0;
 
   if (!modell.eingabe.daecher.length) {
-    return `<div style="color:var(--muted);font-size:11px;padding:20px 0;">Keine PV-Flächen gefunden.
+    return `<div style="color:var(--muted);font-size:12.5px;padding:20px 0;">Keine PV-Flächen gefunden.
       Auf „Alle Dächer" umstellen oder Gebäuden PV zuweisen.</div>` + _hinweiseHtml(info);
   }
 
@@ -856,18 +856,18 @@ function _ergebnisHtml({ modell, treppe, jahr }) {
     ${_kachel(_fmt(invest / 1000), 'T€', 'Invest Ertüchtigung', '#ffb74d')}
     ${treppe.restKwp > 0.5 ? _kachel(_fmt(treppe.restKwp), 'kWp', 'nicht erschließbar', '#ef5350') : ''}
   </div>
-  <div style="font-size:11px;font-weight:600;margin:2px 0 6px;">Ohne Ertüchtigung: weniger ausbauen oder abregeln?</div>
+  <div style="font-size:12.5px;font-weight:600;margin:2px 0 6px;">Ohne Ertüchtigung: weniger ausbauen oder abregeln?</div>
   <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;">
     ${_kachel(_fmt(os.aKwp), 'kWp', `A · weniger ausbauen → ${_fmt(os.aMwh)} MWh/a`, '#66bb6a')}
     ${_kachel(_fmt(os.bKwp), 'kWp', `B · voll ausbauen + abregeln → ${_fmt(os.bMwh)} MWh/a nutzbar`, '#ffb300')}
     ${_kachel(_fmt(os.bVerlustPct, 1), '%', `Abregelungsverlust bei B (${_fmt(os.bAbgMwh)} MWh/a)`, '#ff7043')}
     ${_kachel('+' + _fmt(os.bMwh - os.aMwh), 'MWh/a', `Mehrertrag B gegenüber A für +${_fmt(os.bKwp - os.aKwp)} kWp`, '#4fc3f7')}
   </div>
-  <div style="font-size:10.5px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
     Beide Wege halten die Netzgrenze ein: Bei B wird die Einspeisung am EZA-Regler bzw. Wechselrichter
     auf dieselbe Leistung gekappt wie bei A. Stündlich gerechnet mit dem PV-Profil, ohne Eigenverbrauch
     (der die Abregelung zusätzlich senken würde). Dächer ohne jede Netzkapazität sind in B nicht enthalten.</div>
-  <div style="font-size:10.5px;color:var(--muted);margin-bottom:14px;">
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
     Rechenjahr ${jahr} · volle Einspeisung ${_fmt(modell.eingabe.daecher[0]?.einspFaktor, 2)} kW/kWp ohne gleichzeitige Last ·
     ΔU ≤ ${_fmt(modell.eingabe.duGrenzePct, 1)} % · Kabel mit Bestandsquerschnitt · Belegung: ertragsstärkste Dächer zuerst
     ${info.bestandPvKwp > 0 ? ` · ${_fmt(info.bestandPvKwp)} kWp Bestands-PV als Vorbelastung` : ''}</div>`;
@@ -902,7 +902,7 @@ export function pvnaTreppeSvg(t) {
   const xTicks = [0, 0.5, 1].map(f => `
     <text x="${x(maxX * f)}" y="${H - PB + 14}" font-size="9" fill="var(--muted)" text-anchor="middle">${_fmt(maxX * f / 1000)} T€</text>`).join('');
   return `
-  <div style="font-size:11px;font-weight:600;margin:4px 0 6px;">Ausbautreppe — angeschlossene PV über Ertüchtigungskosten</div>
+  <div style="font-size:12.5px;font-weight:600;margin:4px 0 6px;">Ausbautreppe — angeschlossene PV über Ertüchtigungskosten</div>
   <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;display:block;margin-bottom:14px;">
     ${yTicks}${xTicks}
     <line x1="${PL}" x2="${W - PR}" y1="${y(pot)}" y2="${y(pot)}" stroke="#ef5350" stroke-dasharray="4,3" stroke-width="1"/>
@@ -918,18 +918,18 @@ const _th = t => `<th style="text-align:left;font-weight:500;color:var(--muted);
 const _thR = t => `<th style="text-align:right;font-weight:500;color:var(--muted);padding:5px 8px;border-bottom:1px solid var(--border);">${t}</th>`;
 const _td = (t, r) => `<td style="padding:5px 8px;border-bottom:1px solid var(--border);${r ? 'text-align:right;white-space:nowrap;font-family:\'DM Mono\',monospace;' : ''}">${t}</td>`;
 const _tabelle = (kopf, zeilen) => `<div style="overflow-x:auto;margin-bottom:16px;">
-  <table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr>${kopf}</tr></thead><tbody>${zeilen}</tbody></table></div>`;
+  <table style="width:100%;border-collapse:collapse;font-size:12.5px;"><thead><tr>${kopf}</tr></thead><tbody>${zeilen}</tbody></table></div>`;
 
 function _massnahmenHtml(t) {
   if (!t.schritte.length) {
-    return `<div style="font-size:11px;color:var(--muted);margin-bottom:16px;">${t.restKwp > 0.5
+    return `<div style="font-size:12.5px;color:var(--muted);margin-bottom:16px;">${t.restKwp > 0.5
       ? 'Keine Standard-Ertüchtigung erschließt weitere Flächen (siehe Hinweise).'
       : 'Alle Flächen lassen sich ohne Ertüchtigung anschließen.'}</div>`;
   }
   const zeilen = [`<tr>${_td('0')}${_td('Bestand — keine Ertüchtigung')}${_td('—', 1)}${_td(_fmt(t.basis.summeKwp), 1)}${_td('—', 1)}${_td(_fmt(t.basis.summeKwp), 1)}</tr>`,
     ...t.schritte.map((s, i) => `<tr>${_td(i + 1)}${_td(s.massnahmen.map(m => escHtml(m.label)).join('<br>'))}
       ${_td(_fmt(s.investEUR), 1)}${_td('+' + _fmt(s.zuwachsKwp), 1)}${_td(_fmt(s.eurProKwp), 1)}${_td(_fmt(s.summeKwp), 1)}</tr>`)].join('');
-  return `<div style="font-size:11px;font-weight:600;margin-bottom:6px;">Ertüchtigungen in Reihenfolge der Wirksamkeit (€ je zusätzlichem kWp)</div>`
+  return `<div style="font-size:12.5px;font-weight:600;margin-bottom:6px;">Ertüchtigungen in Reihenfolge der Wirksamkeit (€ je zusätzlichem kWp)</div>`
     + _tabelle(_th('#') + _th('Maßnahme') + _thR('Invest €') + _thR('Zuwachs kWp') + _thR('€/kWp') + _thR('angeschlossen kWp'), zeilen);
 }
 
@@ -952,7 +952,7 @@ function _trafoHtml(modell, t) {
     return `<tr>${_td(name)}${_td(_fmt(v.pot), 1)}${_td(_fmt(v.a), 1)}${_td(v.pot > 0 ? _fmt(v.a / v.pot * 100) + ' %' : '—', 1)}
       ${_td(el ? _fmt(el.auslastungPct) + ' %' : '—', 1)}${_td(_fmt(v.b), 1)}</tr>`;
   }).join('');
-  return `<div style="font-size:11px;font-weight:600;margin-bottom:6px;">Je Trafo</div>`
+  return `<div style="font-size:12.5px;font-weight:600;margin-bottom:6px;">Je Trafo</div>`
     + _tabelle(_th('Trafo') + _thR('Potenzial kWp') + _thR('ohne Ertücht. kWp') + _thR('Anteil')
       + _thR('Trafo-Auslastung') + _thR('mit Ertücht. kWp'), zeilen);
 }
@@ -989,7 +989,7 @@ function _gebaeudeHtml(modell, t) {
       const ohneNetz = !o || o.pZulKw <= 0;
       const voll = d.anteil >= 0.999;
       return `<tr>${_td(`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${_anteilFarbe(d.anteil)};margin-right:6px;"></span>${escHtml(di.name || d.id)}`
-          + `<div style="color:var(--muted);font-size:10px;margin-left:14px;">${escHtml(di.art || '')}</div>`)}
+          + `<div style="color:var(--muted);font-size:12px;margin-left:14px;">${escHtml(di.art || '')}</div>`)}
         ${_td(_fmt(d.kwpMax), 1)}${_td(_fmt(o?.pZulKw), 1)}
         ${_td(_fmt(d.kwp), 1)}${_td(_fmt(d.anteil * 100) + ' %', 1)}${_td(_fmt(o?.a.nutzbarMwh, 1), 1)}
         ${_td(ohneNetz ? '—' : voll ? '<span style="color:var(--muted);">= A</span>' : _fmt(o.b.nutzbarMwh, 1), 1)}
@@ -1003,12 +1003,12 @@ function _gebaeudeHtml(modell, t) {
     + _thR('kWp') + _thR('Anteil') + _thR('MWh/a')
     + _thR('MWh/a nutzbar') + _thR('Abregelung') + _thR('kWh je Zusatz-kWp')
     + _thR('mit Ertücht. kWp') + _th('begrenzt durch (ohne Ertüchtigung)');
-  return `<div style="font-size:11px;font-weight:600;margin-bottom:4px;">Je Dach / PV-Anlage</div>
-    <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
+  return `<div style="font-size:12.5px;font-weight:600;margin-bottom:4px;">Je Dach / PV-Anlage</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
       <b>Netzgrenze</b> = Einspeiseleistung, die das Bestandsnetz an diesem Dach aufnimmt.
       <b>kWh je Zusatz-kWp</b> = nutzbarer Mehrertrag jedes über A hinaus gebauten kWp — liegt er nahe am
       normalen spezifischen Ertrag, lohnt sich Abregeln; sinkt er stark, lieber kleiner bauen.</div>`
-    + `<div style="overflow-x:auto;margin-bottom:16px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">
+    + `<div style="overflow-x:auto;margin-bottom:16px;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">
       <thead>${kopf1}<tr>${kopf2}</tr></thead><tbody>${zeilen}</tbody></table></div>`;
 }
 
@@ -1028,7 +1028,7 @@ function _hinweiseHtml(info) {
   h.push('Modellgrenzen: Hausanschlusskabel ohne Querschnitt, Mittelspannung und Netzanschlusspunkt werden hier nicht begrenzt '
     + '(NAP-Einspeisegrenze: Kapitel 4.1). Keine gleichzeitige Last angesetzt — konservativ. Blindleistungsregelung Q(U) und '
     + 'Einspeisebegrenzung am EZA-Regler lassen sich über „Einspeisung kW/kWp" abbilden (z. B. 0,6 bei 60-%-Begrenzung).');
-  return `<div style="font-size:10.5px;color:var(--muted);line-height:1.55;border-top:1px solid var(--border);padding-top:10px;">
+  return `<div style="font-size:12px;color:var(--muted);line-height:1.55;border-top:1px solid var(--border);padding-top:10px;">
     ${h.map(x => `<div style="margin-bottom:4px;">• ${x}</div>`).join('')}</div>`;
 }
 
@@ -1045,11 +1045,11 @@ let _labelsAn = true;
 function _karteKnopf() {
   const an = !!window.pvnaKarteAktiv;
   return `<div style="margin:-4px 0 14px;">
-    <button class="btn-confirm" style="padding:6px 14px;font-size:11px;margin-right:6px;"
+    <button class="btn-confirm" style="padding:6px 14px;font-size:12.5px;margin-right:6px;"
       data-click="pvaSetView('pvnaschema')">Einlinienschema mit Schiebern</button>
-    <button class="btn-confirm" style="padding:6px 14px;font-size:11px;"
+    <button class="btn-confirm" style="padding:6px 14px;font-size:12.5px;"
       data-click="${an ? 'pvnaKarteAus()' : 'pvnaKarteZeigen()'}">${an ? 'Kartenfärbung aus' : 'Dächer auf der Karte zeigen'}</button>
-    <span style="font-size:10px;color:var(--muted);margin-left:8px;">Anteil der Dachfläche, der ohne Ertüchtigung ans Netz kann:
+    <span style="font-size:12px;color:var(--muted);margin-left:8px;">Anteil der Dachfläche, der ohne Ertüchtigung ans Netz kann:
       ${ANTEIL_STUFEN.map(st => `<span style="color:${st.farbe};">■</span> ${st.label}`).join(' · ')}</span></div>`;
 }
 
@@ -1099,7 +1099,7 @@ function _labelsZeichnen(je) {
         className: '', iconSize: null,
         html: `<div style="transform:translate(-50%,-50%);white-space:nowrap;font:600 10.5px/1.2 'DM Mono',monospace;
           color:#111;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;text-align:center;pointer-events:none;">
-          ${_fmt(a * 100)} %<br><span style="font-weight:400;font-size:9.5px;">${_fmt(e.kwp)}/${_fmt(e.kwpMax)} kWp</span></div>`,
+          ${_fmt(a * 100)} %<br><span style="font-weight:400;font-size:11px;">${_fmt(e.kwp)}/${_fmt(e.kwpMax)} kWp</span></div>`,
       }),
     }));
   }
@@ -1154,7 +1154,7 @@ function _legendeZeigen() {
     el.id = LEGENDE_ID;
     el.style.cssText = 'position:fixed;left:50%;bottom:46px;transform:translateX(-50%);z-index:1200;'
       + 'background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;'
-      + 'font-size:11px;color:var(--text);box-shadow:0 4px 16px rgba(0,0,0,.35);display:flex;gap:12px;align-items:center;flex-wrap:wrap;max-width:calc(100vw - 32px);';
+      + 'font-size:12.5px;color:var(--text);box-shadow:0 4px 16px rgba(0,0,0,.35);display:flex;gap:12px;align-items:center;flex-wrap:wrap;max-width:calc(100vw - 32px);';
     document.body.appendChild(el);
   }
   const je = [..._jeGebaeude().values()].filter(e => e.kwpMax > 0);

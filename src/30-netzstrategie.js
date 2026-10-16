@@ -245,15 +245,15 @@ function _cssEinmal() {
   const st = document.createElement('style');
   st.id = 'ns-css';
   st.textContent = `
-  #${ROOT_ID} .ns-knopf{font-size:10.5px;padding:3px 9px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;}
+  #${ROOT_ID} .ns-knopf{font-size:12px;padding:3px 9px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;}
   #${ROOT_ID} .ns-karte{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:9px 12px;margin-bottom:10px;}
-  #${ROOT_ID} table{border-collapse:collapse;width:100%;font-size:10.5px;}
+  #${ROOT_ID} table{border-collapse:collapse;width:100%;font-size:12px;}
   #${ROOT_ID} th{font-weight:500;color:var(--muted);text-align:right;padding:3px 6px;border-bottom:1px solid var(--border);white-space:nowrap;}
   #${ROOT_ID} th.l,#${ROOT_ID} td.l{text-align:left;}
   #${ROOT_ID} td{padding:3px 6px;text-align:right;border-bottom:1px solid rgba(128,128,128,.12);white-space:nowrap;}
   #${ROOT_ID} td.m{font-family:'DM Mono',monospace;}
-  #${ROOT_ID} .ns-in{width:100%;padding:4px 6px;font-size:11px;box-sizing:border-box;}
-  #${ROOT_ID} .ns-lbl{display:block;color:var(--muted);font-size:10px;margin-bottom:3px;}`;
+  #${ROOT_ID} .ns-in{width:100%;padding:4px 6px;font-size:12.5px;box-sizing:border-box;}
+  #${ROOT_ID} .ns-lbl{display:block;color:var(--muted);font-size:12px;margin-bottom:3px;}`;
   document.head.appendChild(st);
 }
 
@@ -266,9 +266,9 @@ export function nsRender() {
   root.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
     <div style="font-size:12px;font-weight:600;">Netzstrategie — Anschlusswege je Flächengruppe</div>
-    <div style="font-size:10px;color:var(--muted);">Alle Wege hinter demselben Netzanschlusspunkt · Physik wie Netzaufnahme/Einlinienschema</div>
+    <div style="font-size:12px;color:var(--muted);">Alle Wege hinter demselben Netzanschlusspunkt · Physik wie Netzaufnahme/Einlinienschema</div>
   </div>
-  <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
+  <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
     Die Dächer im Zieljahr werden zu Gruppen zusammengefasst (Bestand und Neubau getrennt). Je Gruppe:
     <b style="color:${OPT_FARBE.A};">Bestandsnetz</b>, <b style="color:${OPT_FARBE['A~']};">voll + Abregelung</b>,
     <b style="color:${OPT_FARBE.B};">mit Ertüchtigung</b>, <b style="color:${OPT_FARBE.C};">neuer NS-Abgang</b>,
@@ -300,15 +300,15 @@ export function nsRender() {
     ${_ns.ziel.art === 'zielkwp' ? `<div style="flex:0 1 100px;"><span class="ns-lbl">Ziel kWp</span>
       <input class="ns-in" data-ns-feld="ziel.kwp" type="number" min="0" step="10" value="${_ns.ziel.kwp}"></div>` : ''}
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      ${_kn('rechnen', _erg && !_erg.fehler ? '↻ Strategien neu rechnen' : 'Strategien rechnen', 'Alle Kombinationen bewerten, Pareto-Front und Empfehlung bilden', true, 'style="padding:6px 14px;font-size:11px;"')}
+      ${_kn('rechnen', _erg && !_erg.fehler ? '↻ Strategien neu rechnen' : 'Strategien rechnen', 'Alle Kombinationen bewerten, Pareto-Front und Empfehlung bilden', true, 'style="padding:6px 14px;font-size:12.5px;"')}
       ${_kn('katalog', _katalogAuf ? '▾ Kostenkatalog' : '▸ Kostenkatalog', 'Kostenansätze für neue Anschlüsse, Stationen und MS-Trassen')}
     </div>
     ${_erg && !_erg.fehler ? `<div style="flex-basis:100%;">${window.stempelHinweisHtml?.(_erg.stempel, null) || ''}</div>` : ''}
-    ${ziel > stich ? '' : `<div style="flex-basis:100%;font-size:10px;color:var(--c-orange);">Zieljahr = Stichjahr: es gibt keine Neubau-Gruppen${neuJahr ? ` — Zieljahr ≥ ${neuJahr} setzen` : ''}.</div>`}
+    ${ziel > stich ? '' : `<div style="flex-basis:100%;font-size:12px;color:var(--c-orange);">Zieljahr = Stichjahr: es gibt keine Neubau-Gruppen${neuJahr ? ` — Zieljahr ≥ ${neuJahr} setzen` : ''}.</div>`}
   </div>
   ${_katalogAuf ? _katalogHtml() : ''}
-  ${_veraltet ? '<div style="margin:-4px 0 10px;font-size:10.5px;color:var(--c-orange);">Eingaben geändert — Strategien neu rechnen.</div>' : ''}
-  ${_meldung ? `<div style="margin:-4px 0 10px;font-size:10.5px;color:var(--c-teal);">${_meldung}</div>` : ''}
+  ${_veraltet ? '<div style="margin:-4px 0 10px;font-size:12px;color:var(--c-orange);">Eingaben geändert — Strategien neu rechnen.</div>' : ''}
+  ${_meldung ? `<div style="margin:-4px 0 10px;font-size:12px;color:var(--c-teal);">${_meldung}</div>` : ''}
   <div data-ns-ergebnis style="${_veraltet ? 'opacity:.55;' : ''}">${_ergebnisHtml()}</div>`;
   if (!root.dataset.nsEreignisse) { root.dataset.nsEreignisse = '1'; _ereignisse(root); }
 }
@@ -318,25 +318,25 @@ function _katalogHtml() {
   const zeilen = Object.entries(NS_KOSTEN_STANDARD).map(([key, v]) => {
     const abw = _ns.kosten[key] != null && +_ns.kosten[key] !== v.wert;
     return `<tr><td class="l">${escHtml(v.label)}</td>
-      <td><input data-ns-kosten="${key}" type="number" step="any" min="0" value="${k[key]}" style="width:90px;font-size:10.5px;text-align:right;${abw ? 'color:var(--c-orange);' : ''}"></td>
+      <td><input data-ns-kosten="${key}" type="number" step="any" min="0" value="${k[key]}" style="width:90px;font-size:12px;text-align:right;${abw ? 'color:var(--c-orange);' : ''}"></td>
       <td class="l" style="color:var(--muted);">${v.einheit}</td>
       <td class="l" style="color:var(--muted);">${abw ? `Standard ${_fmt(v.wert, v.wert % 1 ? 2 : 0)}` : ''}</td></tr>`;
   }).join('');
   return `<div class="ns-karte">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-      <b style="font-size:11px;">Kostenkatalog (im Projekt gespeichert)</b>
+      <b style="font-size:12.5px;">Kostenkatalog (im Projekt gespeichert)</b>
       ${_kn('katalog-standard', 'Standardwerte', 'Alle Abweichungen zurücksetzen')}</div>
     <table><thead><tr><th class="l">Position</th><th>Wert</th><th class="l"></th><th class="l"></th></tr></thead><tbody>${zeilen}</tbody></table>
-    <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5;">Neue NS-Kabel werden automatisch ausgelegt (NAYY, bis 4 × 240 mm²), ihr Materialpreis kommt aus der Kabeltabelle.
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5;">Neue NS-Kabel werden automatisch ausgelegt (NAYY, bis 4 × 240 mm²), ihr Materialpreis kommt aus der Kabeltabelle.
       Die Nutzungsdauer gilt für alle Netzmaßnahmen der PV-Analyse (Ertüchtigung, Fahrplanstufen, Netzstrategien). Orange = vom Standard abweichend.</div></div>`;
 }
 
 function _ergebnisHtml() {
-  if (!_erg) return `<div style="color:var(--muted);font-size:11px;text-align:center;padding:30px 0;">„Strategien rechnen" starten.</div>`;
-  if (_erg.fehler) return `<div style="color:var(--c-orange);font-size:11px;padding:10px 0;">${escHtml(_erg.fehler)}</div>`;
+  if (!_erg) return `<div style="color:var(--muted);font-size:12.5px;text-align:center;padding:30px 0;">„Strategien rechnen" starten.</div>`;
+  if (_erg.fehler) return `<div style="color:var(--c-orange);font-size:12.5px;padding:10px 0;">${escHtml(_erg.fehler)}</div>`;
   return `${_empfehlungHtml()}
-  <div class="ns-karte"><b style="font-size:11px;">Pareto-Front: Netz-Invest ↔ nutzbare Energie</b>
-    <span style="font-size:10px;color:var(--muted);"> · jeder Punkt eine bewertete Strategie, obere Kante = effizient · Marke anklicken lädt die Strategie in den Editor</span>
+  <div class="ns-karte"><b style="font-size:12.5px;">Pareto-Front: Netz-Invest ↔ nutzbare Energie</b>
+    <span style="font-size:12px;color:var(--muted);"> · jeder Punkt eine bewertete Strategie, obere Kante = effizient · Marke anklicken lädt die Strategie in den Editor</span>
     ${_paretoSvg()}</div>
   ${_vergleichHtml()}
   ${_editorHtml()}`;
@@ -374,10 +374,10 @@ function _empfehlungHtml() {
     <div style="font-size:12px;line-height:1.55;">
       <b>Empfehlung:</b> ${escHtml(_strategieName(e))} — ${b(_fmt(e.energie.kwp) + ' kWp')}, ${b(_fmt(e.energie.nutzbarMwh) + ' MWh/a')} nutzbar,
       Netz-Invest ${b(_tEur(e.investEUR))}, Jahres-Netto-Überschuss ${b(_fmt(e.wirt.ueberschuss) + ' €/a')}.</div>
-    <div style="font-size:10.5px;color:var(--muted);margin-top:4px;line-height:1.55;">Kriterium: ${zielTxt}. ${robT}</div>
-    <div style="font-size:10.5px;margin-top:6px;line-height:1.6;">${wegText}</div>
-    ${hinweise.length ? `<div style="font-size:10px;color:var(--c-orange);margin-top:5px;line-height:1.5;">${hinweise.map(h => '⚠ ' + escHtml(h)).join('<br>')}</div>` : ''}
-    <div style="font-size:10px;color:var(--muted);margin-top:5px;">${_erg.gruppen.length} Gruppen · ${_fmt(opt.kombinationen)} Kombinationen, ${_fmt(opt.bewertungen)} bewertet (${opt.methode}) · `
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.55;">Kriterium: ${zielTxt}. ${robT}</div>
+    <div style="font-size:12px;margin-top:6px;line-height:1.6;">${wegText}</div>
+    ${hinweise.length ? `<div style="font-size:12px;color:var(--c-orange);margin-top:5px;line-height:1.5;">${hinweise.map(h => '⚠ ' + escHtml(h)).join('<br>')}</div>` : ''}
+    <div style="font-size:12px;color:var(--muted);margin-top:5px;">${_erg.gruppen.length} Gruppen · ${_fmt(opt.kombinationen)} Kombinationen, ${_fmt(opt.bewertungen)} bewertet (${opt.methode}) · `
       + `${_fmt(_erg.dauerMs / 1000, 1)} s · Rechenjahr ${_erg.jahre.ziel}, Neubau = gebaut nach ${_erg.jahre.stich}</div>
     <div style="margin-top:6px;">${_kn('empf-editor', 'In den Editor laden', 'Die Empfehlung im Editor weiterbearbeiten')}</div></div>`;
 }
@@ -429,7 +429,7 @@ function _paretoSvg() {
   out.push(star(empfehlung, '#ffd54f', `Empfehlung: ${_strategieName(empfehlung)}`));
   if (_editor) out.push(`<circle cx="${x(_editor.investEUR)}" cy="${y(_editor.energie.nutzbarMwh)}" r="7" fill="none" stroke="#4fc3f7" stroke-width="1.8"><title>Editor-Auswahl</title></circle>`);
   return `<div style="overflow-x:auto;margin-top:6px;"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:560px;max-width:${W}px;display:block;">${out.join('')}</svg></div>
-    <div style="font-size:10px;color:var(--muted);">
+    <div style="font-size:12px;color:var(--muted);">
       <span style="color:var(--accent);">●</span> Pareto-Front · □ S0–S5 Standardstrategien · <span style="color:var(--c-amber);">★</span> Empfehlung ·
       <span style="color:var(--c-blue);">○</span> Editor</div>`;
 }
@@ -458,13 +458,13 @@ function _vergleichHtml() {
   };
   const aktuell = ueb.length && ueb.every(v => (window._pvAnalyse?.ergebnisse || []).some(e => e.strategieKey === v.key));
   return `<div class="ns-karte"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:4px;">
-    <b style="font-size:11px;">Strategien im Vergleich</b>
+    <b style="font-size:12.5px;">Strategien im Vergleich</b>
     <span>${_kn('var-rechnen', '↻ Gewählte in die PV-Analyse übernehmen', 'Angehakte Strategien als Auslegungen „Netzstrategie: …" anlegen und alle Auslegungen neu rechnen', ueb.length > 0 && !aktuell)}
-      <span style="font-size:10px;color:var(--muted);margin-left:6px;">${ueb.length ? `${ueb.length} gewählt${aktuell ? ' · stehen im Vergleich der Auslegungen' : ''}` : 'Häkchen = als Auslegung übernehmen'}</span></span></div>
+      <span style="font-size:12px;color:var(--muted);margin-left:6px;">${ueb.length ? `${ueb.length} gewählt${aktuell ? ' · stehen im Vergleich der Auslegungen' : ''}` : 'Häkchen = als Auslegung übernehmen'}</span></span></div>
     <div style="overflow-x:auto;"><table><thead><tr><th>Var.</th><th class="l">Strategie</th><th>kWp</th><th>MWh/a nutzbar</th><th>abgeregelt</th><th>EV-Quote</th>
       <th>Netz-Invest</th><th>Netz €/kWp</th><th>ct/kWh</th><th>Überschuss €/a</th></tr></thead>
       <tbody>${liste.map(zeile).join('')}</tbody></table></div>
-    <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5;">Überschuss = Erlöse (Eigenverbrauch × Bezugspreis + Einspeisung × Vergütung) − Annuität PV (inkl. Instandhaltung) − Annuität Netz, ohne Speicher.
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5;">Überschuss = Erlöse (Eigenverbrauch × Bezugspreis + Einspeisung × Vergütung) − Annuität PV (inkl. Instandhaltung) − Annuität Netz, ohne Speicher.
       ct/kWh = Jahreskosten je nutzbarer kWh. In der PV-Analyse wird jede übernommene Strategie mit dem vollen Modell nachgerechnet (Infrastruktur-Pauschalen, Direktvermarktung).</div></div>`;
 }
 
@@ -477,12 +477,12 @@ function _editorHtml() {
     const kwpBel = g.daecher.reduce((t, id) => t + (r.kwpJeDach.get(id) || 0), 0);
     const abreg = o.abregeln;
     const auf = _offen.has(g.key);
-    const sel = `<select data-ns-wahl="${i}" style="font-size:10.5px;max-width:260px;">${optionen[i].map((x, j) =>
+    const sel = `<select data-ns-wahl="${i}" style="font-size:12px;max-width:260px;">${optionen[i].map((x, j) =>
       `<option value="${j}" ${j === _editorWahl[i] ? 'selected' : ''} ${x.machbar === false ? 'disabled' : ''}>${escHtml(x.label)}${x.machbar === false ? ' — nicht machbar'
         : (x.investEUR + (x.massnahmenEUR || 0)) > 0 ? ` · ${_tEur(x.investEUR + (x.massnahmenEUR || 0))}` : ''}</option>`).join('')}</select>`;
     return `<tr>
       <td class="l"><span data-ns-gruppe="${escHtml(g.key)}" style="cursor:pointer;">${auf ? '▾' : '▸'} ${escHtml(g.label)}</span>
-        <span style="font-size:9.5px;padding:0 5px;border-radius:7px;margin-left:4px;background:${g.klasse === 'neu' ? 'rgba(224,64,251,.18)' : 'rgba(128,128,128,.18)'};">${g.klasse === 'neu' ? 'Neubau' : 'Bestand'}</span></td>
+        <span style="font-size:11px;padding:0 5px;border-radius:7px;margin-left:4px;background:${g.klasse === 'neu' ? 'rgba(224,64,251,.18)' : 'rgba(128,128,128,.18)'};">${g.klasse === 'neu' ? 'Neubau' : 'Bestand'}</span></td>
       <td class="m">${g.daecher.length}</td><td class="m">${_fmt(g.kwpMax)}</td>
       <td class="l"><span style="color:${OPT_FARBE[o.id]};">■</span> ${sel}</td>
       <td class="m">${abreg ? _fmt(g.kwpMax) + ' <span style="color:var(--muted);">(Netz ' + _fmt(kwpBel) + ')</span>' : _fmt(kwpBel)}</td>
@@ -491,17 +491,17 @@ function _editorHtml() {
   }).join('');
   const abg = e.erzeugungMwh > 0 ? (e.abgeregeltDachMwh + e.abgeregeltNapMwh) / e.erzeugungMwh * 100 : 0;
   return `<div class="ns-karte"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
-    <b style="font-size:11px;">Editor — Anschlussweg je Gruppe</b>
+    <b style="font-size:12.5px;">Editor — Anschlussweg je Gruppe</b>
     <span>${_kn('karte', _karte ? 'Karte aus' : 'Auf der Karte zeigen', 'Gruppen, neue Trassen und Stationen der Editor-Auswahl auf der Karte')}
       ${_kn('editor-empf', 'Empfehlung laden', '')} ${_kn('editor-voll', 'alle aufklappen', '')}</span></div>
-    <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:11px;margin-bottom:6px;">
+    <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;margin-bottom:6px;">
       <span>${b(_fmt(e.kwp) + ' kWp')}</span><span>${b(_fmt(e.nutzbarMwh) + ' MWh/a')} nutzbar</span>
       <span>abgeregelt ${_fmt(abg, 1)} %</span><span>Netz ${b(_tEur(r.investEUR))}${r.massnahmen.length ? ` (davon Ertüchtigung ${_tEur(r.investMassEUR)})` : ''}</span>
       <span>Rückspeisespitze ${_fmt(e.rueckspeiseSpitzeKw)} kW</span>
       <span>Überschuss <b style="color:${r.wirt.ueberschuss >= 0 ? '#66bb6a' : '#e57373'};">${_fmt(r.wirt.ueberschuss)} €/a</b></span></div>
     <div style="overflow-x:auto;"><table><thead><tr><th class="l">Gruppe</th><th>Dächer</th><th>Fläche kWp</th><th class="l">Anschlussweg</th><th>belegt kWp</th><th>Invest Weg</th></tr></thead>
       <tbody>${zeilen}</tbody></table></div>
-    <div style="font-size:10px;color:var(--muted);margin-top:4px;">Gruppe aufklappen: alle Wege im Vergleich (bei sonst gleicher Auswahl), Break-even des Erzeugungsnetzes, Kostenposten.</div></div>`;
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;">Gruppe aufklappen: alle Wege im Vergleich (bei sonst gleicher Auswahl), Break-even des Erzeugungsnetzes, Kostenposten.</div></div>`;
 }
 
 /** Alle Wege einer Gruppe bei sonst gleicher Editor-Auswahl + Break-even + Kostenposten. */
@@ -542,7 +542,7 @@ function _gruppeDetailHtml(i) {
   const posten = o.posten?.length ? `<div style="margin-top:4px;color:var(--muted);">Kostenposten „${escHtml(o.label)}": `
     + o.posten.slice(0, 8).map(p => `${escHtml(p.label)} ${_tEur(p.eur)}`).join(' · ') + (o.posten.length > 8 ? ` · … (${o.posten.length} Posten)` : '')
     + (o.msZiel ? ` · MS-Anschluss an ${escHtml(o.msZiel.name || o.msZiel.id)}` : '') + '</div>' : '';
-  return `<div style="font-size:10.5px;margin:3px 0 4px;">Dächer: ${g.namen.map(escHtml).join(', ')}</div>
+  return `<div style="font-size:12px;margin:3px 0 4px;">Dächer: ${g.namen.map(escHtml).join(', ')}</div>
     <table><thead><tr><th class="l">Weg (andere Gruppen wie im Editor)</th><th>+kWp</th><th>+MWh/a</th><th>+Netz</th><th>Netz €/kWp</th><th>+Überschuss €/a</th></tr></thead>
     <tbody>${zeilen}</tbody></table>
     ${be ? `<div style="margin-top:4px;">${be}</div>` : ''}${posten}${o.hinweis ? `<div style="color:var(--c-orange);margin-top:3px;">${escHtml(o.hinweis)}</div>` : ''}`;

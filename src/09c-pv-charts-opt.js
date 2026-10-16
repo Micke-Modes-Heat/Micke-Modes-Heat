@@ -795,7 +795,7 @@ export function _stromRenderFlussChart(weekIdx) {
 // ── PV + Speicher Optimierung ─────────────────────────────────────────────
 export function calcPvBatOptimierung() {
   const div = document.getElementById('opt-result');
-  if (div) div.innerHTML = '<div style="font-size:10px;color:var(--muted);text-align:center;padding:10px;">Berechne…</div>';
+  if (div) div.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:10px;">Berechne…</div>';
   setTimeout(() => _runPvBatOpt(div), 20);
 }
 
@@ -814,7 +814,7 @@ export function _runPvBatOpt(resultDiv) {
   const gesamtMwh = wpMwh + quartierMwh;
   if (gesamtMwh < 0.1) {
     if (resultDiv) resultDiv.innerHTML =
-      '<div style="font-size:10px;color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;">Kein Strombedarf definiert — Lastgang hochladen oder Jahressumme eingeben.</div>';
+      '<div style="font-size:12px;color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;">Kein Strombedarf definiert — Lastgang hochladen oder Jahressumme eingeben.</div>';
     return;
   }
 
@@ -948,7 +948,7 @@ export function _runPvBatOpt(resultDiv) {
   const r2 = isViable(bestJoint)  ? bestJoint  : null;
 
   if (!r1 && !r2) {
-    resultDiv.innerHTML = `<div style="font-size:10px;color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;text-align:center;">
+    resultDiv.innerHTML = `<div style="font-size:12px;color:var(--c-red);padding:8px;background:var(--surface2);border-radius:5px;text-align:center;">
       Bei den aktuellen Kosten und Preisen ist PV/Speicher nicht wirtschaftlich rentabel.</div>`;
     return;
   }
@@ -979,11 +979,11 @@ export function _runPvBatOpt(resultDiv) {
       ['Einspeisung',    fmt(r.einspeisungMwh) + ' MWh/a'],
     ].filter(Boolean);
     return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;flex:1;min-width:170px;">
-      <div style="font-size:9px;font-weight:700;color:${accent};margin-bottom:7px;letter-spacing:.04em;">${label}</div>
+      <div style="font-size:11px;font-weight:700;color:${accent};margin-bottom:7px;letter-spacing:.04em;">${label}</div>
       ${rows.map(([l,v,c,bold]) => `
         <div style="display:flex;justify-content:space-between;margin-bottom:3px;${bold?'background:rgba(var(--ink),0.04);margin:0 -4px;padding:2px 4px;border-radius:3px;':''}">
-          <span style="font-size:9px;color:${bold?'var(--text)':'var(--muted)'};">${l}</span>
-          <span style="font-family:'DM Mono',monospace;font-size:10px;${c?'color:'+c+';':''}${bold||c?'font-weight:600;':''}white-space:nowrap;">${v}</span>
+          <span style="font-size:11px;color:${bold?'var(--text)':'var(--muted)'};">${l}</span>
+          <span style="font-family:'DM Mono',monospace;font-size:12px;${c?'color:'+c+';':''}${bold||c?'font-weight:600;':''}white-space:nowrap;">${v}</span>
         </div>`).join('')}
     </div>`;
   };
@@ -992,13 +992,13 @@ export function _runPvBatOpt(resultDiv) {
   let addLine = '';
   if (r1 && r2) {
     if (bewertung === 'nettogewinn' && r2.netBenefit > r1.netBenefit) {
-      addLine = `<div style="font-size:9px;color:var(--c-green);text-align:center;margin-top:5px;">
+      addLine = `<div style="font-size:11px;color:var(--c-green);text-align:center;margin-top:5px;">
         Speicher bringt +${fmt(r2.netBenefit - r1.netBenefit)} €/a zusätzlichen Nettogewinn</div>`;
     } else if (bewertung === 'rendite' && r2.rendite > r1.rendite) {
-      addLine = `<div style="font-size:9px;color:var(--c-blue);text-align:center;margin-top:5px;">
+      addLine = `<div style="font-size:11px;color:var(--c-blue);text-align:center;margin-top:5px;">
         Speicher verbessert Rendite auf ${r2.rendite.toFixed(1)} %/a (statt ${r1.rendite.toFixed(1)} %/a)</div>`;
     } else if (bewertung === 'amortisation' && r2.payback < r1.payback) {
-      addLine = `<div style="font-size:9px;color:var(--c-amber);text-align:center;margin-top:5px;">
+      addLine = `<div style="font-size:11px;color:var(--c-amber);text-align:center;margin-top:5px;">
         Speicher verkürzt Amortisation auf ${fmtP(r2.payback)} a (statt ${fmtP(r1.payback)} a)</div>`;
     }
   }
@@ -1012,16 +1012,16 @@ export function _runPvBatOpt(resultDiv) {
     </div>${addLine}
     <div style="margin-top:10px;">
       <div style="display:flex;align-items:center;margin-bottom:4px;">
-        <span style="font-size:9px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;flex:1;">
+        <span style="font-size:11px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;flex:1;">
           Optimierungslandschaft — ${hmLabel}
         </span>
         <span style="display:flex;gap:0;border:1px solid var(--border);border-radius:4px;overflow:hidden;">
           <button id="opt-view-2d" data-click="_setOptView('2d')"
-            style="padding:2px 8px;border:none;font-size:9px;font-family:inherit;cursor:pointer;
+            style="padding:2px 8px;border:none;font-size:11px;font-family:inherit;cursor:pointer;
                    background:${window._optView==='3d'?'transparent':'var(--accent)'};
                    color:${window._optView==='3d'?'var(--muted)':'#000'};">2D</button>
           <button id="opt-view-3d" data-click="_setOptView('3d')"
-            style="padding:2px 8px;border:none;font-size:9px;font-family:inherit;cursor:pointer;
+            style="padding:2px 8px;border:none;font-size:11px;font-family:inherit;cursor:pointer;
                    background:${window._optView==='3d'?'var(--accent)':'transparent'};
                    color:${window._optView==='3d'?'#000':'var(--muted)'};">3D</button>
         </span>
@@ -1030,10 +1030,10 @@ export function _runPvBatOpt(resultDiv) {
         <canvas id="opt-heatmap" style="width:100%;display:block;border-radius:4px;cursor:crosshair;"></canvas>
         <div id="opt-tooltip" style="display:none;position:absolute;pointer-events:none;
           background:var(--surface);border:1px solid rgba(var(--ink),0.12);
-          border-radius:6px;padding:7px 10px;font-size:9px;font-family:'DM Mono',monospace;
+          border-radius:6px;padding:7px 10px;font-size:11px;font-family:'DM Mono',monospace;
           min-width:170px;z-index:10;line-height:1.7;"></div>
       </div>
-      <div id="opt-xaxis-label" style="display:flex;justify-content:space-between;margin-top:3px;font-size:8px;color:var(--muted);">
+      <div id="opt-xaxis-label" style="display:flex;justify-content:space-between;margin-top:3px;font-size:10.5px;color:var(--muted);">
         <span>0 kWp</span><span style="text-align:center;flex:1;">← PV-Leistung →</span><span>${Math.round(maxKwp)} kWp</span>
       </div>
     </div>`;

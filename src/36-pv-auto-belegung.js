@@ -250,7 +250,7 @@ function _rechenAnzeige(titel) {
     <div data-t style="margin-top:9px;font-size:12px;opacity:.85;"></div>
     <div style="margin-top:8px;height:8px;border-radius:4px;background:rgba(var(--ink),.15);overflow:hidden;">
       <div data-b style="height:100%;width:0;background:${CYAN};transition:width .15s;"></div></div>
-    <div style="margin-top:8px;font-size:11px;opacity:.6;">Bitte warten — die Karte reagiert währenddessen nicht.</div>`;
+    <div style="margin-top:8px;font-size:12.5px;opacity:.6;">Bitte warten — die Karte reagiert währenddessen nicht.</div>`;
   document.body.appendChild(el);
   return {
     set(text, anteil) {
@@ -1048,7 +1048,7 @@ const _opt = (w, l, an) => `<option value="${w}"${an ? ' selected' : ''}>${escHt
 
 function _kopfHtml(farbe, titel, modus) {
   return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
-      <span style="flex:1;color:${farbe};font-weight:600;font-size:11px;">${titel}</span>
+      <span style="flex:1;color:${farbe};font-weight:600;font-size:12.5px;">${titel}</span>
       <button class="btn-xs" data-click="pvabToggle('${modus}')" title="Schließen">✕</button>
     </div>`;
 }
@@ -1070,7 +1070,7 @@ function _umfangHtml(stich, alleLabel) {
           ${_opt('', '— Trafo wählen —', _ab.trafoId == null)}
           ${tr.map(t => _opt(String(t.id), `${t.name}${t.kva ? ` (${t.kva} kVA)` : ''}`, String(_ab.trafoId) === String(t.id))).join('')}
         </select>`
-      : `<div style="font-size:9px;color:var(--muted);margin-top:3px;">Im Projekt gibt es noch keinen Trafo.</div>`;
+      : `<div style="font-size:11px;color:var(--muted);margin-top:3px;">Im Projekt gibt es noch keinen Trafo.</div>`;
   }
   return `<div class="inp-group">
       <div class="inp-label">① Welche Dächer?</div>
@@ -1104,9 +1104,9 @@ function _entfernHtml() {
     <div style="margin-top:6px;border:1px solid ${ROT}66;border-radius:5px;padding:6px 7px;background:${ROT}0d;">
       ${_kopfHtml(ROT, 'Belegungen entfernen', 'entfernen')}
       ${_umfangHtml(stich, 'Alle belegten Dächer')}
-      <div style="font-size:10px;margin-top:6px;padding-top:5px;border-top:1px solid var(--border);">
+      <div style="font-size:12px;margin-top:6px;padding-top:5px;border-top:1px solid var(--border);">
         <b style="color:${ROT};">${liste.length}</b> Dächer mit Flächen${liste.length ? ` · <span style="font-family:'DM Mono',monospace;">${_fmt(kwp)} kWp</span>` : ''}
-        <div style="font-size:9px;color:var(--muted);line-height:1.4;">Belegungs- und Sperrflächen samt ${nPv} PV-Asset(s). Strg+Z nimmt den Schritt zurück.</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.4;">Belegungs- und Sperrflächen samt ${nPv} PV-Asset(s). Strg+Z nimmt den Schritt zurück.</div>
       </div>
       <button class="btn-xs" style="width:100%;margin-top:5px;border-color:${ROT};color:${ROT};" ${liste.length ? '' : 'disabled'}
         data-click="pvabEntfernen()" title="Fragt vorher noch einmal nach">🗑 ${liste.length} Belegungen entfernen</button>
@@ -1121,7 +1121,7 @@ function _belegenHtml() {
   for (const g of vorNutzung) { const k = g.nutzungstyp || ''; typen.set(k, (typen.get(k) || 0) + 1); }
   const nAus = [..._ab.ohneNutzung].filter(k => typen.has(k)).length;
   const typZeilen = [...typen.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `
-      <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;padding:1px 0;">
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;padding:1px 0;">
         <input type="checkbox" ${_ab.ohneNutzung.has(k) ? '' : 'checked'} style="accent-color:${CYAN};cursor:pointer;"
           data-change="pvabNutzung('${escHtml(k)}',this.checked)"/>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(_nutzungsLabel(k))}</span>
@@ -1131,7 +1131,7 @@ function _belegenHtml() {
   const ausgelassen = [raus.belegt && `${raus.belegt} schon belegt`, raus.klein && `${raus.klein} < ${_ab.minM2} m²`,
     raus.nutzung && `${raus.nutzung} Nutzung`, raus.weg && `${raus.weg} ausgeschl./abgerissen`].filter(Boolean).join(' · ');
 
-  const radio = (w, l, titel) => `<label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;" title="${titel}">
+  const radio = (w, l, titel) => `<label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;" title="${titel}">
       <input type="radio" name="pvab-menge" ${_ab.menge === w ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
         data-change="pvabSet('menge','${w}')"/>${l}</label>`;
 
@@ -1139,30 +1139,30 @@ function _belegenHtml() {
     <div style="margin-top:6px;border:1px solid ${CYAN}66;border-radius:5px;padding:6px 7px;background:${CYAN}0d;">
       ${_kopfHtml(CYAN, 'Dächer automatisch belegen', 'belegen')}
       ${_umfangHtml(stich, 'Alle Dächer')}
-      <div style="display:flex;align-items:center;gap:5px;margin-top:5px;font-size:10px;">
+      <div style="display:flex;align-items:center;gap:5px;margin-top:5px;font-size:12px;">
         <span style="flex:1;color:var(--muted);" title="Kleinere Gebäude (Garagen, Schuppen) bleiben frei">Mindestgröße</span>
         <input class="inp-field" type="number" min="0" step="10" value="${_ab.minM2}" style="width:58px;padding:2px 4px;"
           data-change="pvabSet('minM2',this.value)"/>
         <span style="color:var(--muted);">m²</span>
       </div>
       ${typen.size ? `
-      <div style="font-size:9px;color:var(--muted);margin-top:5px;cursor:pointer;display:flex;gap:4px;" data-click="pvabSet('nutzungOffen','')">
+      <div style="font-size:11px;color:var(--muted);margin-top:5px;cursor:pointer;display:flex;gap:4px;" data-click="pvabSet('nutzungOffen','')">
         <span style="flex:1;text-transform:uppercase;letter-spacing:.06em;">Nutzungstypen${nAus ? ` (${nAus} ausgenommen)` : ''}</span>
         <span>${_ab.nutzungOffen ? '▾' : '▸'}</span>
       </div>
       ${_ab.nutzungOffen ? `<div style="max-height:110px;overflow-y:auto;margin-top:2px;">${typZeilen}</div>` : ''}` : ''}
       <div class="inp-group" style="margin-top:6px;">
         <div class="inp-label">② Belegung</div>
-        <div style="font-size:9px;color:var(--muted);line-height:1.4;">Grundriss als Fläche mit diesen Annahmen — bei LoD2- oder Flügel-Dachflächen je Dachfläche mit echter Neigung und Ausrichtung. Sie gelten auch für einzeln belegte Dächer („Vorgaben für neue Dächer"). Echte Dachangaben (OSM, LoD2, von Hand) haben Vorrang vor Dachform und Neigung.</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.4;">Grundriss als Fläche mit diesen Annahmen — bei LoD2- oder Flügel-Dachflächen je Dachfläche mit echter Neigung und Ausrichtung. Sie gelten auch für einzeln belegte Dächer („Vorgaben für neue Dächer"). Echte Dachangaben (OSM, LoD2, von Hand) haben Vorrang vor Dachform und Neigung.</div>
         <div style="margin-top:4px;padding:4px 6px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">
           ${window.pvmVorgabeFelderHtml?.() || ''}
         </div>
-        <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:2px;"
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;margin-top:2px;"
           title="Gebäude mit L-, T-, U- oder Kammform ohne Dachflächen: jeder Flügel bekommt ein eigenes Dach (Dachform und Neigung der Vorgaben) und wird je Dachfläche belegt — statt eines Satteldachs über den ganzen Grundriss. Die berechneten Dachflächen gehen beim Übernehmen ins Projekt.">
           <input type="checkbox" ${_ab.fluegel ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
             data-change="pvabSet('fluegel',this.checked)"/>Verwinkelte Grundrisse in Flügel zerlegen
         </label>
-        <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:2px;"
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;margin-top:2px;"
           title="Je Dach die Verschattung durch Bäume und Nachbargebäude rechnen (PV-Modus › Bäume &amp; Verschattung): Einzelne Module mit einem Jahresverlust ab der Modulgrenze bleiben frei (Teilbelegung), Dachflächen bzw. Satteldachseiten ab der Schwelle „nicht belegen“ ebenfalls, ganz verschattete Dächer entfallen. Netzverträglich reiht die Erträge nach Verschattung.">
           <input type="checkbox" ${_ab.schatten ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
             data-change="pvabSet('schatten',this.checked)"/>Stark verschattete Module/Flächen auslassen
@@ -1177,15 +1177,15 @@ function _belegenHtml() {
           ${radio('gestuft', 'Gestuft — Gruppe voll, Rest netzverträglich', 'Erst eine Gruppe aus ① immer voll belegen (z. B. alle Neubauten oder die PV-Pflicht-Fälle), danach die übrigen Dächer nur, soweit das Netz es noch verträgt.')}
         </div>
         ${_ab.menge === 'gestuft' ? `
-        <div style="display:flex;align-items:center;gap:5px;margin-top:4px;font-size:10px;">
+        <div style="display:flex;align-items:center;gap:5px;margin-top:4px;font-size:12px;">
           <span style="color:var(--muted);white-space:nowrap;">Immer voll:</span>
           <select class="inp-field" style="flex:1;" data-change="pvabSet('vorrang',this.value)">
             ${VORRANG.map(([w]) => _opt(w, _vorrangLabel(w, stich), _ab.vorrang === w)).join('')}
           </select>
         </div>
-        <div style="font-size:9px;color:var(--muted);line-height:1.4;margin-top:2px;">Der Rest aus ① nur, soweit das Netz danach noch reicht.</div>` : ''}
+        <div style="font-size:11px;color:var(--muted);line-height:1.4;margin-top:2px;">Der Rest aus ① nur, soweit das Netz danach noch reicht.</div>` : ''}
         ${_ab.menge !== 'max' ? `
-        <div style="display:flex;align-items:center;gap:5px;margin-top:4px;font-size:10px;">
+        <div style="display:flex;align-items:center;gap:5px;margin-top:4px;font-size:12px;">
           <span style="color:var(--muted);white-space:nowrap;">Grenze:</span>
           <select class="inp-field" style="flex:1;" data-change="pvabSet('grenze',this.value)"
             title="„Nur Trafo“: Niederspannungskabel begrenzen weder Strom noch Spannung — für unbekannte Querschnitte oder Kabel, die im Projekt ohnehin vergrößert werden können.">
@@ -1194,14 +1194,14 @@ function _belegenHtml() {
           </select>
         </div>
         ${_netzentwicklungHtml()}
-        <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:3px;"
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;margin-top:3px;"
           title="Gebäude ohne Verbindung zum erfassten Stromnetz — ihre Netzgrenze ist unbekannt">
           <input type="checkbox" ${_ab.ohneNetzBelegen ? 'checked' : ''} style="accent-color:${CYAN};cursor:pointer;"
             data-change="pvabSet('ohneNetzBelegen',this.checked)"/>Dächer ohne Netzanbindung trotzdem belegen
         </label>` : ''}
       </div>
-      <div style="font-size:10px;margin-top:6px;padding-top:5px;border-top:1px solid var(--border);">
-        <b style="color:${CYAN};">${liste.length}</b> Dächer kommen in Frage${ausgelassen ? `<div style="font-size:9px;color:var(--muted);">ausgelassen: ${ausgelassen}</div>` : ''}
+      <div style="font-size:12px;margin-top:6px;padding-top:5px;border-top:1px solid var(--border);">
+        <b style="color:${CYAN};">${liste.length}</b> Dächer kommen in Frage${ausgelassen ? `<div style="font-size:11px;color:var(--muted);">ausgelassen: ${ausgelassen}</div>` : ''}
       </div>
       ${_vorschauHtml(liste.length, stich)}
     </div>`;
@@ -1210,13 +1210,13 @@ function _belegenHtml() {
 /** ③ Netzstand (Jahr) und Ertüchtigung — nur bei netzverträglich/gestuft. */
 function _netzentwicklungHtml() {
   const { ziel } = pvnaJahre(pvnaEinstellungen());
-  const zeile = 'display:flex;align-items:center;gap:5px;margin-top:4px;font-size:10px;';
+  const zeile = 'display:flex;align-items:center;gap:5px;margin-top:4px;font-size:12px;';
   return `
         <div style="${zeile}" title="Geplante Netzänderungen bis zu diesem Jahr zählen mit: neue Trafos und Kabel (Baujahr) sowie Maßnahmen wie Trafo-Tausch oder Kabelverstärkung — auch solche mit Status „geplant“. Leer = Rechenjahr der PV-Netzaufnahme (${ziel}). Nie vor dem Baujahr des letzten Neubaus unter den Dächern.">
           <span style="color:var(--muted);white-space:nowrap;">Netzstand im Jahr:</span>
           <input class="inp-field" type="number" min="1990" max="2100" step="1" value="${_ab.netzJahr ?? ''}" placeholder="${ziel}"
             style="width:64px;padding:2px 4px;" data-change="pvabSet('netzJahr',this.value)"/>
-          <span style="color:var(--muted);font-size:9px;">${_ab.netzJahr == null ? 'wie Netzaufnahme' : 'mit geplanten Änderungen'}</span>
+          <span style="color:var(--muted);font-size:11px;">${_ab.netzJahr == null ? 'wie Netzaufnahme' : 'mit geplanten Änderungen'}</span>
         </div>
         <div style="${zeile}" title="Rechnerische Ertüchtigung wie die Ausbautreppe der Netzaufnahme, aber bemessen auf genau diese Dächer: größerer Trafo, Kabel verstärken/parallel. Stufe für Stufe nach dem größten kWp-Zuwachs je Euro.">
           <span style="color:var(--muted);white-space:nowrap;">Ertüchtigung:</span>
@@ -1235,11 +1235,11 @@ function _ausbauHtml(a) {
   if (!a) return '';
   const T = x => _fmt((x || 0) / 1000);
   if (!a.stufenGesamt) {
-    return `<div style="margin-top:4px;padding:3px 5px;border-left:2px solid ${GRUEN};font-size:9px;line-height:1.4;">
+    return `<div style="margin-top:4px;padding:3px 5px;border-left:2px solid ${GRUEN};font-size:11px;line-height:1.4;">
       Ertüchtigung: keine nötig bzw. keine bringt mehr kWp — das Netz begrenzt hier nicht oder nur durch Kabel ohne Ausbauvorschlag.</div>`;
   }
   const liste = a.massnahmen.slice(0, 5).map(m => `<div style="display:flex;gap:4px;"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(m.label)}">⚒ ${escHtml(m.label)}</span><span style="font-family:'DM Mono',monospace;">${T(m.investEUR)} T€</span></div>`).join('');
-  return `<div style="margin-top:4px;padding:3px 5px;border-left:2px solid ${GRUEN};font-size:9px;line-height:1.45;">
+  return `<div style="margin-top:4px;padding:3px 5px;border-left:2px solid ${GRUEN};font-size:11px;line-height:1.45;">
       <div style="color:var(--text);"><b>Ertüchtigung:</b> ${a.massnahmen.length ? `${a.massnahmen.length} Maßnahme${a.massnahmen.length > 1 ? 'n' : ''} · ${T(a.investEUR)} T€ → ${_fmt(a.mitKwp)} kWp statt ${_fmt(a.ohneKwp)} kWp ohne` : `keine umgesetzt (${a.art === 'budget' ? 'Budget reicht für keine Stufe' : '—'}) · ${_fmt(a.ohneKwp)} kWp`}</div>
       ${liste}${a.massnahmen.length > 5 ? `<div>… und ${a.massnahmen.length - 5} weitere</div>` : ''}
       ${a.naechste ? `<div style="color:var(--muted);margin-top:2px;">Nächste Stufe: +${_fmt(a.naechste.zuwachsKwp)} kWp für ${T(a.naechste.investEUR)} T€ (${escHtml(a.naechste.label)}) · alle ${a.stufenGesamt} Stufen: ${_fmt(a.alleKwp)} kWp für ${T(a.alleInvestEUR)} T€</div>` : ''}
@@ -1258,7 +1258,7 @@ function _engstellenHtml(n, stich) {
       <div style="color:var(--muted);">${es.noetigN} Dächer · ${_fmt(es.noetigKwp)} kWp nötig — ${_fmt(es.passtKwp)} kWp passen ins Netz${fehlt > 0.5 ? `, <span style="color:${ROT};">${_fmt(fehlt)} kWp nicht</span>` : ''}${n.ausbau?.massnahmen?.length ? ' (nach der gewählten Ertüchtigung)' : ''}</div>`;
   const ohne = es.ohneNetz ? `<div style="color:var(--muted);">${es.ohneNetz} ${es.ohneNetz === 1 ? 'Dach' : 'Dächer'} ohne Netzanbindung — dort ist die Grenze unbekannt.</div>` : '';
   if (!es.liste.length) {
-    return `<div style="margin-top:5px;padding:3px 5px;border-left:2px solid ${GRUEN};font-size:9px;line-height:1.45;">
+    return `<div style="margin-top:5px;padding:3px 5px;border-left:2px solid ${GRUEN};font-size:11px;line-height:1.45;">
         ${kopf}<div style="color:${GRUEN};">✓ Keine Engstelle — die ganze Gruppe passt ${n.nurTrafo ? 'unter die Trafogrenze' : 'ins Netz'}.</div>${ohne}</div>`;
   }
   const zeilen = es.liste.map((e, i) => {
@@ -1290,7 +1290,7 @@ function _engstellenHtml(n, stich) {
   const ungeloest = es.liste.filter(e => !e.abhilfe || !e.abhilfe.loest).length;
   const summe = mitAbhilfe.length
     ? `<div style="color:var(--muted);margin-top:2px;">Abhilfe zusammen ≈ ${T([...jeElement.values()].reduce((s, x) => s + x, 0))} T€ (${jeElement.size} Maßnahme${jeElement.size === 1 ? '' : 'n'} für ${es.liste.length} Engstelle${es.liste.length === 1 ? '' : 'n'})${ungeloest ? ` — ${ungeloest} davon nicht vollständig gelöst, dort ist eine eigene Netzplanung nötig` : ''}.</div>` : '';
-  return `<div style="margin-top:5px;padding:3px 5px;border-left:2px solid ${ROT};font-size:9px;line-height:1.45;">
+  return `<div style="margin-top:5px;padding:3px 5px;border-left:2px solid ${ROT};font-size:11px;line-height:1.45;">
       ${kopf}${ohne}
       <div style="max-height:260px;overflow-y:auto;margin-top:3px;">${zeilen}</div>
       ${summe}
@@ -1426,20 +1426,20 @@ function _vorschauHtml(nKand, stich) {
   const belegen = v.zeilen.filter(_wirdBelegt);
   const gestuft = vorrang.length > 0;
   const zusatz = voll.concat(_ab.ohneNetzBelegen ? ohne : []);
-  const zeile = (farbe, n, text, kwp, einzug) => n ? `<div style="display:flex;align-items:center;gap:5px;font-size:10px;${einzug ? 'padding-left:12px;' : ''}">
+  const zeile = (farbe, n, text, kwp, einzug) => n ? `<div style="display:flex;align-items:center;gap:5px;font-size:12px;${einzug ? 'padding-left:12px;' : ''}">
       <span style="width:9px;height:9px;border-radius:2px;background:${farbe};flex:none;"></span>
       <span style="flex:1;">${n} ${text}</span>
       ${kwp != null ? `<span style="font-family:'DM Mono',monospace;">${_fmt(kwp)} kWp</span>` : ''}</div>` : '';
   const mitGrund = v.zeilen.filter(z => z.status === 'vorrangUeber' || z.status === 'netz' || z.status === 'schatten'
     || (z.status === 'vorrang' && z.grund) || (z.status === 'ohneNetz' && !_ab.ohneNetzBelegen));
   const gruende = mitGrund.slice(0, 10).map(z => `
-      <div style="font-size:9px;color:var(--muted);display:flex;gap:4px;cursor:pointer;" data-click="pvmWaehle(${z.g.id})" title="${escHtml(z.grund)}">
+      <div style="font-size:11px;color:var(--muted);display:flex;gap:4px;cursor:pointer;" data-click="pvmWaehle(${z.g.id})" title="${escHtml(z.grund)}">
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(_name(z.g))}</span>
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%;">${escHtml(z.grund)}</span>
       </div>`).join('');
   const vorrangName = escHtml(_vorrangLabel(_ab.vorrang, stich));
   const n = v.netz;
-  const netzInfo = n ? `<div style="font-size:9px;color:var(--muted);line-height:1.4;margin-top:4px;">
+  const netzInfo = n ? `<div style="font-size:11px;color:var(--muted);line-height:1.4;margin-top:4px;">
       Netzstand ${n.jahr}${n.netzJahrGesetzt || n.jahr !== n.basisJahr ? '' : ' (Rechenjahr der Netzaufnahme)'} · ${n.ausbau ? 'mit Ertüchtigung' : 'ohne Ertüchtigung'} · ${_fmt(n.einspFaktor, 1)} kW/kWp · ${n.nurTrafo ? 'nur Trafogrenze — NS-Kabel und ΔU ungeprüft' : `ΔU ≤ ${_fmt(n.duGrenzePct, 1)} %`}${n.vorlastKwp > 0 ? ` · ${_fmt(n.vorlastKwp)} kWp schon geplant (Vorrang)` : ''}
       ${n.ohneTrafo ? `<br><span style="color:${ROT};">Kein Trafo im Netzjahr — es gibt kein Netz zum Anschließen.</span>` : ''}
       ${ueber.length ? `<br><span style="color:${ORANGE};">${ueber.length} Dächer der Gruppe „${vorrangName}“ passen nicht mehr ${n.nurTrafo ? 'unter die Trafogrenze' : 'ins Netz'}${n.ausbau ? ' (auch nach der Ertüchtigung)' : ''} — sie werden trotzdem belegt, dort ist Netzausbau nötig.</span>` : ''}
@@ -1450,8 +1450,8 @@ function _vorschauHtml(nKand, stich) {
     </div>` : '';
   return `
     <div style="margin-top:6px;padding:5px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
-      ${veraltet ? `<div style="font-size:9px;color:${GELB};margin-bottom:3px;">Auswahl oder Vorgaben geändert — Vorschau neu berechnen.</div>` : ''}
-      ${v.annahmen ? `<div style="font-size:9px;color:var(--muted);line-height:1.35;margin-bottom:4px;" title="Mit diesen Vorgaben wurde die Vorschau gerechnet">Gerechnet mit: ${escHtml(v.annahmen)}</div>` : ''}
+      ${veraltet ? `<div style="font-size:11px;color:${GELB};margin-bottom:3px;">Auswahl oder Vorgaben geändert — Vorschau neu berechnen.</div>` : ''}
+      ${v.annahmen ? `<div style="font-size:11px;color:var(--muted);line-height:1.35;margin-bottom:4px;" title="Mit diesen Vorgaben wurde die Vorschau gerechnet">Gerechnet mit: ${escHtml(v.annahmen)}</div>` : ''}
       ${zeile(HELLGRUEN, vorrang.length, `${vorrangName} — immer voll`, sum(vorrang))}
       ${zeile(ORANGE, ueber.length, 'davon über der Netzgrenze', sum(ueber), true)}
       ${gestuft ? zeile(GRUEN, zusatz.length, 'zusätzlich, netzverträglich', sum(zusatz))
@@ -1460,8 +1460,8 @@ function _vorschauHtml(nKand, stich) {
       ${_ab.ohneNetzBelegen ? '' : zeile(GRAU, ohne.length, 'ohne Netzanbindung', sum(ohne))}
       ${zeile(GRAU, leer.length, 'kein Modul passt', null)}
       ${zeile(BRAUN, schatten.length, 'zu stark verschattet — bleiben frei', null)}
-      ${teilweise.length ? `<div style="font-size:9px;color:var(--muted);padding-left:14px;">davon ${teilweise.length} Dächer nur teilweise (verschattete Flächen bzw. Dachseiten frei)</div>` : ''}
-      ${fluegelN ? `<div style="font-size:9px;color:var(--muted);padding-left:14px;">${fluegelN} verwinkelte Dächer in Flügel zerlegt</div>` : ''}
+      ${teilweise.length ? `<div style="font-size:11px;color:var(--muted);padding-left:14px;">davon ${teilweise.length} Dächer nur teilweise (verschattete Flächen bzw. Dachseiten frei)</div>` : ''}
+      ${fluegelN ? `<div style="font-size:11px;color:var(--muted);padding-left:14px;">${fluegelN} verwinkelte Dächer in Flügel zerlegt</div>` : ''}
       ${gruende ? `<div style="margin-top:4px;max-height:96px;overflow-y:auto;">${gruende}</div>` : ''}
       ${netzInfo}
       <div style="display:flex;gap:4px;margin-top:6px;">

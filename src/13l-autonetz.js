@@ -131,12 +131,12 @@ export function showAutoNetzDialog() {
   modal.innerHTML = `
     <div class="ep-modal-title">Auto-Netz generieren</div>
     <div class="ep-modal-body" style="line-height:1.7;">
-      ${vor.ok ? '' : `<div style="margin:0 0 14px;padding:9px 11px;border:1px solid var(--c-orange);border-radius:6px;background:rgba(249,168,37,0.09);font-size:11.5px;color:var(--c-amber);line-height:1.55;">
+      ${vor.ok ? '' : `<div style="margin:0 0 14px;padding:9px 11px;border:1px solid var(--c-orange);border-radius:6px;background:rgba(249,168,37,0.09);font-size:12.5px;color:var(--c-amber);line-height:1.55;">
         <b>So kann noch kein Netz erzeugt werden.</b><br>
         Es fehlt: ${vor.fehlt.join(', ')}.<br>
         <span style="color:var(--muted);">Setz die fehlende Komponente über die Palette auf die Karte — das Auto-Netz verbindet NAP → Schaltanlage → Trafo → Verbraucher.</span>
       </div>`}
-      <p style="margin:0 0 14px;font-size:11px;color:var(--muted);">
+      <p style="margin:0 0 14px;font-size:12.5px;color:var(--muted);">
         Bestehende Auto-Kabel werden immer ersetzt. Manuell gezeichnete Kabel bleiben erhalten,
         sofern unten nicht anders gewählt.
       </p>
@@ -144,7 +144,7 @@ export function showAutoNetzDialog() {
         <input type="checkbox" id="an-overwrite-manual">
         <span>
           <b>Manuell gezeichnete Kabel überschreiben</b>
-          <div style="font-size:11px;color:var(--muted);margin-top:1px;">
+          <div style="font-size:12.5px;color:var(--muted);margin-top:1px;">
             Entfernt auch von Hand gezogene Leitungen und ersetzt sie durch das automatisch erzeugte Netz.
           </div>
         </span>
@@ -153,14 +153,14 @@ export function showAutoNetzDialog() {
         <input type="checkbox" id="an-ring">
         <span>
           <b>MS-Ring</b> zwischen Trafos
-          <div style="font-size:11px;color:var(--muted);margin-top:1px;">SA → T1 → T2 → … → Tn (Trennstelle am letzten Abschnitt)</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:1px;">SA → T1 → T2 → … → Tn (Trennstelle am letzten Abschnitt)</div>
         </span>
       </label>
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;">
         <input type="checkbox" id="an-erzeugung">
         <span>
           <b>Erzeugungsnetz</b> separat verdrahten
-          <div style="font-size:11px;color:var(--muted);margin-top:1px;">
+          <div style="font-size:12.5px;color:var(--muted);margin-top:1px;">
             PV / KWK / Wind → Einspeise-Trafos (Netzart = <i>Erzeugung</i>)<br>
             Verbraucher → Verbrauchs-Trafos. Ohne Einspeise-Trafos: nächste NSHV.
           </div>
@@ -170,14 +170,14 @@ export function showAutoNetzDialog() {
         <input type="checkbox" id="an-kvs" checked>
         <span>
           <b>KVS automatisch einfügen</b>
-          <div style="font-size:11px;color:var(--muted);margin-top:1px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <div style="font-size:12.5px;color:var(--muted);margin-top:1px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             Max.
             <input type="number" id="an-kvs-max" value="4" min="2" max="12"
-              style="width:38px;padding:1px 4px;background:var(--hover);color:var(--c-blue);border:1px solid var(--c-blue);border-radius:3px;font-size:11px;"
+              style="width:38px;padding:1px 4px;background:var(--hover);color:var(--c-blue);border:1px solid var(--c-blue);border-radius:3px;font-size:12.5px;"
               onclick="event.stopPropagation()">
             Abgänge · max.
             <input type="number" id="an-kvs-dist" value="80" min="20" max="500" step="10"
-              style="width:48px;padding:1px 4px;background:var(--hover);color:var(--c-blue);border:1px solid var(--c-blue);border-radius:3px;font-size:11px;"
+              style="width:48px;padding:1px 4px;background:var(--hover);color:var(--c-blue);border:1px solid var(--c-blue);border-radius:3px;font-size:12.5px;"
               onclick="event.stopPropagation()">
             m Kabellänge
           </div>

@@ -460,12 +460,12 @@ export function showKompaktstationDialog() {
     <div class="ep-modal-title">Standardgebäude platzieren</div>
     <div class="ep-modal-body" style="line-height:1.7;">
       <div style="margin-bottom:12px;">
-        <div style="font-size:11px;color:var(--c-blue);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Gebäudetyp</div>
+        <div style="font-size:12.5px;color:var(--c-blue);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Gebäudetyp</div>
         <select id="ks-preset" style="${selStyle}">${presetOpts}</select>
       </div>
       <div id="ks-params" style="margin-bottom:12px;"></div>
-      <div id="ks-preview" style="font-size:10px;color:var(--c-blue);background:var(--surface);border-radius:4px;padding:7px 9px;border:1px solid var(--border);margin-bottom:12px;"></div>
-      <div style="font-size:10px;color:var(--c-blue);background:var(--surface);border-radius:4px;padding:7px 9px;border:1px solid var(--border);">
+      <div id="ks-preview" style="font-size:12px;color:var(--c-blue);background:var(--surface);border-radius:4px;padding:7px 9px;border:1px solid var(--border);margin-bottom:12px;"></div>
+      <div style="font-size:12px;color:var(--c-blue);background:var(--surface);border-radius:4px;padding:7px 9px;border:1px solid var(--border);">
         Klicke nach OK auf die Karte um das Gebäude zu platzieren.<br>
         Mehrere hintereinander möglich · <b>Esc</b> oder erneut auf den Button klicken zum Beenden.
       </div>
@@ -512,7 +512,7 @@ export function showKompaktstationDialog() {
         field = `<input type="number" data-key="${prm.key}" value="${prm.default}" step="${prm.step || 1}" min="0" style="${selStyle}box-sizing:border-box;">`;
       }
       return `<div style="flex:1;min-width:110px;">
-        <div style="font-size:11px;color:var(--c-blue);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">${prm.label}</div>
+        <div style="font-size:12.5px;color:var(--c-blue);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">${prm.label}</div>
         ${field}
       </div>`;
     }).join('');

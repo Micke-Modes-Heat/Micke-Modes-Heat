@@ -312,7 +312,7 @@ export function gbiShowResults() {
 }
 
 export function gbiRenderMatchTable() {
-  var html = '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
   html += '<tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:3px 5px;color:var(--muted);">CSV-Zeile</th><th style="text-align:left;padding:3px 5px;color:var(--muted);">→ Kartengebäude</th><th style="padding:3px 5px;color:var(--muted);">Score</th><th style="padding:3px 5px;color:var(--muted);">Aktion</th></tr>';
   gbiMatches.forEach(function(m, i) {
     var csvRow = gbiData.find(function(d) { return d.idx === m.csvIdx; });
@@ -333,9 +333,9 @@ export function gbiRenderMatchTable() {
     html += '<td style="padding:3px 5px;text-align:center;color:' + color + ';">' + scoreStr + '</td>';
     html += '<td style="padding:3px 5px;text-align:center;">';
     if (m.status === 'rejected') {
-      html += '<button data-click="gbiUnreject(' + i + ')" style="font-size:9px;padding:1px 6px;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;">↩</button>';
+      html += '<button data-click="gbiUnreject(' + i + ')" style="font-size:11px;padding:1px 6px;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;">↩</button>';
     } else if (m.status === 'auto' || m.status === 'unsicher') {
-      html += '<button data-click="gbiReject(' + i + ')" style="font-size:9px;padding:1px 6px;border:1px solid var(--c-red);background:transparent;color:var(--c-red);border-radius:4px;cursor:pointer;">✕</button>';
+      html += '<button data-click="gbiReject(' + i + ')" style="font-size:11px;padding:1px 6px;border:1px solid var(--c-red);background:transparent;color:var(--c-red);border-radius:4px;cursor:pointer;">✕</button>';
     }
     html += '</td></tr>';
   });
@@ -1156,7 +1156,7 @@ export function glRenderSplit(lastgangKw, verlustPct) {
     const pct = (v, t) => t > 0 ? ' (' + Math.round(v/t*100) + ' %)' : '';
     kpi.innerHTML =
       `<span style="color:var(--c-red);">Raumwärme: <b>${fmt(rwMwh)} MWh/a</b>${pct(rwMwh,totMwh)}</span>` +
-      `<span style="color:var(--c-red);">TWW: <b>${fmt(twwMwh)} MWh/a</b>${pct(twwMwh,totMwh)} <span style="color:var(--muted);font-size:9px;">(Schätzung)</span></span>` +
+      `<span style="color:var(--c-red);">TWW: <b>${fmt(twwMwh)} MWh/a</b>${pct(twwMwh,totMwh)} <span style="color:var(--muted);font-size:11px;">(Schätzung)</span></span>` +
       `<span style="color:var(--c-blue);">Netzverluste: <b>${fmt(verlMwh)} MWh/a</b>${pct(verlMwh,totMwh)}</span>`;
   }
 }

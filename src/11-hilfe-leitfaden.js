@@ -94,7 +94,7 @@ export function _showHilfeOverlay() {
 
     if (!text) { _hilfeTooltip.style.display = 'none'; return; }
 
-    _hilfeTooltip.innerHTML = '<div style="font-weight:600;color:var(--c-green);margin-bottom:4px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">Hilfe</div>' + text;
+    _hilfeTooltip.innerHTML = '<div style="font-weight:600;color:var(--c-green);margin-bottom:4px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;">Hilfe</div>' + text;
     _hilfeTooltip.style.display = '';
 
     // Position: neben dem Cursor, im Viewport halten
@@ -289,8 +289,8 @@ export function _createLeitfadenPanel() {
 
   // Header — verschiebbar (Drag-Handle)
   let html = '<div id="lf-drag-handle" style="padding:12px 16px;border-bottom:1px solid var(--border,var(--border));display:flex;align-items:center;justify-content:space-between;cursor:grab;user-select:none;">';
-  html += '<span style="font-size:13px;font-weight:600;color:var(--text,var(--c-blue));">Leitfaden <span style="font-size:9px;color:var(--muted,var(--c-blue));font-weight:400;">— verschiebbar</span></span>';
-  html += '<div style="display:flex;gap:6px;align-items:center;"><span id="lf-progress" style="font-size:10px;color:var(--muted,var(--c-blue));font-family:\'DM Mono\',monospace;"></span>';
+  html += '<span style="font-size:13px;font-weight:600;color:var(--text,var(--c-blue));">Leitfaden <span style="font-size:11px;color:var(--muted,var(--c-blue));font-weight:400;">— verschiebbar</span></span>';
+  html += '<div style="display:flex;gap:6px;align-items:center;"><span id="lf-progress" style="font-size:12px;color:var(--muted,var(--c-blue));font-family:\'DM Mono\',monospace;"></span>';
   html += '<button data-click="toggleLeitfaden()" style="background:none;border:none;color:var(--muted,var(--c-blue));cursor:pointer;font-size:15px;padding:0;line-height:1;">✕</button></div></div>';
 
   html += '<div id="lf-steps" style="overflow-y:auto;padding:8px 12px;flex:1;min-height:0;">';
@@ -299,11 +299,11 @@ export function _createLeitfadenPanel() {
     html += '<div style="display:flex;align-items:center;gap:8px;">';
     html += '<span class="lf-check" data-step="' + i + '" style="font-size:14px;flex-shrink:0;cursor:pointer;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:.15s;" title="Klicken zum Abhaken">○</span>';
     html += '<span class="lf-step-title" style="font-size:12px;font-weight:500;color:var(--text,var(--c-blue));cursor:pointer;flex:1;">' + step.title + '</span>';
-    html += '<span class="lf-step-num" style="font-size:9px;color:var(--muted,var(--faint));font-family:\'DM Mono\',monospace;">' + (i+1) + '/' + LEITFADEN_STEPS.length + '</span></div>';
+    html += '<span class="lf-step-num" style="font-size:11px;color:var(--muted,var(--faint));font-family:\'DM Mono\',monospace;">' + (i+1) + '/' + LEITFADEN_STEPS.length + '</span></div>';
     // Bestätigungstext (wird bei erledigt eingeblendet)
-    html += '<div class="lf-done-text" style="display:none;margin-top:4px;padding:4px 0 0 30px;font-size:10px;color:var(--c-green);line-height:1.4;"></div>';
+    html += '<div class="lf-done-text" style="display:none;margin-top:4px;padding:4px 0 0 30px;font-size:12px;color:var(--c-green);line-height:1.4;"></div>';
     // Detailtext (wird beim aktiven/nächsten Schritt gezeigt)
-    html += '<div class="lf-detail" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border,var(--border));font-size:11px;color:var(--muted,var(--c-blue));line-height:1.6;">' + step.text + '</div>';
+    html += '<div class="lf-detail" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border,var(--border));font-size:12.5px;color:var(--muted,var(--c-blue));line-height:1.6;">' + step.text + '</div>';
     html += '</div>';
   });
   html += '</div>';

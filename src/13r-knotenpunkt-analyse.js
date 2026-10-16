@@ -489,7 +489,7 @@ function _ensureTip() {
   el.id='kna-tip';
   el.style.cssText='position:fixed;pointer-events:none;z-index:10000;display:none;'+
     'background:var(--surface);border:1px solid rgba(var(--ink),.2);border-radius:6px;'+
-    'padding:6px 10px;font-size:11px;color:var(--muted);font-family:"DM Mono",monospace;'+
+    'padding:6px 10px;font-size:12.5px;color:var(--muted);font-family:"DM Mono",monospace;'+
     'white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.6);line-height:1.6;';
   document.body.appendChild(el);
 }
@@ -544,7 +544,7 @@ function _attachHover(cv, prof, mode, zoomMonth=null) {
       _showTip(e.clientX,e.clientY,
         `<span style="color:var(--faint)">Rang ${(rank+1).toLocaleString('de-DE')} / 8.760 h</span><br>`+
         `<span style="color:${c};font-weight:700;">${v>=0?'+':''}${v.toFixed(1)} kW</span><br>`+
-        `<span style="color:var(--faint);font-size:10px;">überschritten ${(rank+1).toLocaleString('de-DE')} h/a</span>`);
+        `<span style="color:var(--faint);font-size:12px;">überschritten ${(rank+1).toLocaleString('de-DE')} h/a</span>`);
     });
 
   } else if (mode==='monat') {
@@ -710,12 +710,12 @@ function _renderRightPanel() {
   if (!panel || !_K.selectedId) return;
   const asset = getAsset(_K.selectedId);
   if (!asset || !INFRA_TYPES.has(asset.type)) {
-    panel.innerHTML = '<div style="padding:16px;color:#444;font-size:10px;">Kein Netzobjekt ausgewählt</div>';
+    panel.innerHTML = '<div style="padding:16px;color:#444;font-size:12px;">Kein Netzobjekt ausgewählt</div>';
     return;
   }
   const leaves = _bfsDownstream(asset.id);
   if (!leaves.length) {
-    panel.innerHTML = '<div style="padding:16px;color:#444;font-size:10px;">Keine nachgelagerten Assets gefunden.<br>Netz verkabeln um Superposition zu sehen.</div>';
+    panel.innerHTML = '<div style="padding:16px;color:#444;font-size:12px;">Keine nachgelagerten Assets gefunden.<br>Netz verkabeln um Superposition zu sehen.</div>';
     return;
   }
 
@@ -728,7 +728,7 @@ function _renderRightPanel() {
     const dir    = sign > 0 ? '↑' : '↓';
     const dirCol = sign > 0 ? '#ef9a9a' : '#a5d6a7';
     return `<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;
-      border-bottom:1px solid rgba(var(--ink),.04);font-size:10px;
+      border-bottom:1px solid rgba(var(--ink),.04);font-size:12px;
       opacity:${isOn ? 1 : 0.35};">
       <button onclick="knaToggleContrib('${da.id}')" title="${isOn?'Ausblenden':'Einblenden'}"
         style="width:11px;height:11px;border-radius:50%;cursor:pointer;padding:0;flex-shrink:0;
@@ -749,13 +749,13 @@ function _renderRightPanel() {
   const qBtn = (label, onclick, col) =>
     `<button onclick="${onclick}"
       style="padding:2px 5px;border:1px solid ${col}55;border-radius:3px;
-      background:transparent;color:${col};font-size:9px;cursor:pointer;white-space:nowrap;">
+      background:transparent;color:${col};font-size:11px;cursor:pointer;white-space:nowrap;">
       ${label}</button>`;
 
   panel.innerHTML = `
     <div style="padding:6px 10px;border-bottom:1px solid rgba(79,195,247,.12);background:var(--surface);">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
-        <span style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);">
+        <span style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);">
           Beiträge (${leaves.length}) · Jahr ${yr2}
         </span>
         <div style="display:flex;gap:3px;">
@@ -782,7 +782,7 @@ function _renderSidebar() {
   const tf = _K.typeFilter;  // muss VOR der ersten Verwendung stehen
   const tfBtn = (val, lbl) =>
     `<button onclick="knaSetTypeFilter('${val}')"
-      style="flex:1;padding:3px 2px;border-radius:3px;cursor:pointer;font-size:9px;
+      style="flex:1;padding:3px 2px;border-radius:3px;cursor:pointer;font-size:11px;
       border:1px solid ${tf===val?'#4fc3f7':'#2a3a3a'};
       background:${tf===val?'rgba(79,195,247,.12)':'transparent'};
       color:${tf===val?'#4fc3f7':'#555'};">${lbl}</button>`;
@@ -801,7 +801,7 @@ function _renderSidebar() {
 <div style="padding:8px 10px 4px;">
   <input id="kna-search" type="text" value="${q}" placeholder="Knoten suchen …"
     style="width:100%;box-sizing:border-box;padding:6px 8px;background:var(--surface2);
-    border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:10px;margin-bottom:6px;"
+    border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:12px;margin-bottom:6px;"
     oninput="knaSetFilter(this.value)">
   <div style="display:flex;gap:3px;">
     ${tfBtn('alle','Alle')}
@@ -814,13 +814,13 @@ function _renderSidebar() {
   for (const [grp,grpItems] of groups) {
     const filtered=q?grpItems.filter(a=>a.name.toLowerCase().includes(q)||(ASSET_CFG[a.type]?.label||'').toLowerCase().includes(q)):grpItems;
     if (!filtered.length) continue;
-    html+=`<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);
+    html+=`<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);
       padding:8px 10px 3px;">${grp} <span style="opacity:.5">(${filtered.length})</span></div>`;
     for (const a of filtered) {
       const cfg=ASSET_CFG[a.type]||{};
       const sel=a.id===_K.selectedId;
       html+=`<div onclick="knaSelectNode('${a.id}')" title="${a.name}"
-        style="display:flex;align-items:center;gap:7px;padding:6px 10px;cursor:pointer;font-size:11px;
+        style="display:flex;align-items:center;gap:7px;padding:6px 10px;cursor:pointer;font-size:12.5px;
         border-left:2px solid ${sel?cfg.color||'#4fc3f7':'transparent'};
         background:${sel?'rgba(79,195,247,.08)':'transparent'};"
         onmouseover="this.style.background='rgba(255,255,255,.04)'"
@@ -828,12 +828,12 @@ function _renderSidebar() {
         <span style="width:8px;height:8px;border-radius:50%;background:${cfg.color||'#888'};flex-shrink:0;"></span>
         <span style="width:14px;text-align:center;flex-shrink:0;">${cfg.icon||'?'}</span>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);">${a.name}</span>
-        <span style="font-size:9px;color:${cfg.color||'#666'};white-space:nowrap;">${cfg.label||a.type}</span>
+        <span style="font-size:11px;color:${cfg.color||'#666'};white-space:nowrap;">${cfg.label||a.type}</span>
       </div>`;
     }
   }
 
-  if (items.length===0) html+='<div style="padding:16px 10px;color:#444;font-size:10px;">Keine Assets vorhanden</div>';
+  if (items.length===0) html+='<div style="padding:16px 10px;color:#444;font-size:12px;">Keine Assets vorhanden</div>';
   sb.innerHTML=html;
 }
 
@@ -869,7 +869,7 @@ function _renderMain() {
 
   // Chart-Tabs
   const tabBtn=(id,label,mode)=>`<button onclick="knaSetChartMode('${mode}')"
-    style="padding:5px 12px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;
+    style="padding:5px 12px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;
     border:1px solid ${_K.chartMode===mode?col:' #2a3a3a'};
     background:${_K.chartMode===mode?col+'22':'transparent'};
     color:${_K.chartMode===mode?col:'#555'};">${label}</button>`;
@@ -886,12 +886,12 @@ function _renderMain() {
   const mZoomRow = canZoom ? `
     <div style="display:flex;gap:2px;margin-top:4px;flex-wrap:wrap;">
       <button onclick="knaSetZoomMonth(null)"
-        style="padding:2px 6px;border-radius:3px;cursor:pointer;font-size:9px;
+        style="padding:2px 6px;border-radius:3px;cursor:pointer;font-size:11px;
         border:1px solid ${zm===null?'#4fc3f7':'#2a3a3a'};
         background:${zm===null?'rgba(79,195,247,.12)':'transparent'};
         color:${zm===null?'#4fc3f7':'#555'};">Jahr</button>
       ${mShort.map((l,i)=>`<button onclick="knaSetZoomMonth(${i})"
-        style="padding:2px 5px;border-radius:3px;cursor:pointer;font-size:9px;
+        style="padding:2px 5px;border-radius:3px;cursor:pointer;font-size:11px;
         border:1px solid ${zm===i?col:'#2a3a3a'};
         background:${zm===i?col+'22':'transparent'};
         color:${zm===i?col:'#555'};">${l}</button>`).join('')}
@@ -905,7 +905,7 @@ function _renderMain() {
           <span style="font-size:18px;">${cfg.icon||'?'}</span>
           <div>
             <div style="font-weight:700;font-size:13px;color:var(--muted);">${asset.name}</div>
-            <div style="font-size:10px;color:var(--faint);">${cfg.label||asset.type}
+            <div style="font-size:12px;color:var(--faint);">${cfg.label||asset.type}
               ${asset.buildingId&&window.gebaeude?' · '+(window.gebaeude.find(g=>g.id===asset.buildingId)?.name||''):''}
             </div>
           </div>
@@ -923,7 +923,7 @@ function _renderMain() {
       </div>
     </div>
     ${mZoomRow}
-    ${noData?`<div style="display:flex;align-items:center;justify-content:center;flex:1;color:#444;font-size:11px;margin-top:8px;">
+    ${noData?`<div style="display:flex;align-items:center;justify-content:center;flex:1;color:#444;font-size:12.5px;margin-top:8px;">
       Noch keine Profildaten — bitte Strom-Berechnung und Dispatch ausführen.</div>`
     :`<canvas id="kna-canvas" style="flex:1;width:100%;min-height:0;border-radius:4px;background:var(--surface);margin-top:4px;"></canvas>`}`;
 
@@ -981,18 +981,18 @@ function _renderMain() {
   const warn = warnParts.length>0
     ? `<div style="background:${hasOverload?'rgba(239,83,80,.1)':'rgba(255,152,0,.08)'};
         border:1px solid ${hasOverload?'rgba(239,83,80,.35)':'rgba(255,152,0,.3)'};
-        border-radius:4px;padding:5px 10px;margin-top:8px;font-size:10px;
+        border-radius:4px;padding:5px 10px;margin-top:8px;font-size:12px;
         color:${hasOverload?'#ef9a9a':'#ff9800'};">
         ${warnParts.join('<br>')}
        </div>`
     : '';
 
   bot.innerHTML=`
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:8px;">Kennzahlen</div>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:8px;">Kennzahlen</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;">
       ${kpis.map(([c,l,v])=>`
         <div style="background:var(--surface2);border-radius:5px;padding:8px 10px;">
-          <div style="font-size:9px;color:var(--faint);margin-bottom:2px;">${l}</div>
+          <div style="font-size:11px;color:var(--faint);margin-bottom:2px;">${l}</div>
           <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:${c};">${v}</div>
         </div>`).join('')}
     </div>${warn}`;
@@ -1168,7 +1168,7 @@ export function knaBuildAnalyseSection() {
   <button id="kna-right-btn" onclick="knaToggleRightPanel()"
     style="width:22px;flex-shrink:0;background:var(--surface);border:none;
     border-left:1px solid rgba(79,195,247,.15);cursor:pointer;color:var(--faint);
-    font-size:9px;writing-mode:vertical-rl;text-orientation:mixed;
+    font-size:11px;writing-mode:vertical-rl;text-orientation:mixed;
     display:flex;align-items:center;justify-content:center;padding:10px 0;
     transition:color .15s;letter-spacing:.05em;"
     onmouseover="this.style.color='#4fc3f7'"

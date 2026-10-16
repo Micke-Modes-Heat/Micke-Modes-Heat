@@ -160,10 +160,10 @@ function _renderCableInspector(panel, edge) {
       <div style="margin:4px 0 8px;padding:6px 8px;background:var(--surface2);border-radius:6px;">
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="width:8px;height:8px;border-radius:50%;background:${stMeta.c};flex-shrink:0;"></span>
-          <span style="font-size:10px;color:var(--text);flex:1;">Lebenszyklus <b style="color:${stMeta.c};">${stMeta.t}</b></span>
-          <span style="font-size:9px;color:var(--muted);">${_lifeTxt}</span>
+          <span style="font-size:12px;color:var(--text);flex:1;">Lebenszyklus <b style="color:${stMeta.c};">${stMeta.t}</b></span>
+          <span style="font-size:11px;color:var(--muted);">${_lifeTxt}</span>
         </div>
-        <div style="font-size:8px;color:var(--muted);margin-top:3px;">Bau-/Abrissjahr von den verbundenen Assets übernommen.</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:3px;">Bau-/Abrissjahr von den verbundenen Assets übernommen.</div>
       </div>
       ${_cableMassnSection(edge)}
       <button class="asset-ins-delete" id="ci-del">Kabel löschen</button>
@@ -779,8 +779,8 @@ function _showEdgeSelectPopup(edges, latlng) {
     const badge = e.msLevel ? 'MS' : 'NS';
     return `<div class="edge-select-row" data-edge-id="${e.id}"
       style="display:flex;align-items:center;gap:7px;padding:5px 10px;cursor:pointer;border-radius:4px;">
-      <span style="background:${col};color:${_contrastFg(col)};font-size:9px;padding:1px 5px;border-radius:3px;flex-shrink:0;">${badge}</span>
-      <span style="font-size:11px;">${uName} → ${vName}</span>
+      <span style="background:${col};color:${_contrastFg(col)};font-size:11px;padding:1px 5px;border-radius:3px;flex-shrink:0;">${badge}</span>
+      <span style="font-size:12.5px;">${uName} → ${vName}</span>
     </div>`;
   }).join('');
 
@@ -831,17 +831,17 @@ function _showEdgeSelectPopup(edges, latlng) {
 function _ttKv(label, value, col) {
   const val = col ? `<span style="color:${col};font-weight:500;">${value}</span>` : value;
   return `<div style="display:flex;justify-content:space-between;gap:14px;padding:1px 0;">` +
-    `<span style="color:var(--c-blue);font-size:11px;white-space:nowrap;">${label}</span>` +
-    `<span style="font-size:11px;">${val}</span></div>`;
+    `<span style="color:var(--c-blue);font-size:12.5px;white-space:nowrap;">${label}</span>` +
+    `<span style="font-size:12.5px;">${val}</span></div>`;
 }
 const _ttHr = '<div style="border-top:1px solid var(--border);margin:4px 0;"></div>';
 function _ttHead(icon, badge, sub, bg, fg) {
   fg = fg || '#fff';
   const subHtml = sub
-    ? `<span style="color:var(--c-blue);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:155px;" title="${sub}">${sub}</span>`
+    ? `<span style="color:var(--c-blue);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:155px;" title="${sub}">${sub}</span>`
     : '';
   return `<div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;margin-bottom:4px;border-bottom:1px solid var(--c-blue);">` +
-    `<span style="background:${bg};color:${fg};border-radius:3px;padding:1px 6px 2px;font-size:10px;font-weight:700;white-space:nowrap;">${icon} ${badge}</span>` +
+    `<span style="background:${bg};color:${fg};border-radius:3px;padding:1px 6px 2px;font-size:12px;font-weight:700;white-space:nowrap;">${icon} ${badge}</span>` +
     subHtml + '</div>';
 }
 
@@ -933,16 +933,16 @@ export function buildStromEdgeTooltip(e) {
 
   h += `<div style="display:flex;gap:0;margin:3px 0;">` +
     `<div style="flex:1;text-align:center;padding:0 4px;">` +
-      `<div style="color:var(--c-blue);font-size:10px;margin-bottom:2px;">↑ Bezug (WC)</div>` +
-      `<div style="font-size:11px;font-weight:600;">${bezugKw.toFixed(1)} kW</div>` +
+      `<div style="color:var(--c-blue);font-size:12px;margin-bottom:2px;">↑ Bezug (WC)</div>` +
+      `<div style="font-size:12.5px;font-weight:600;">${bezugKw.toFixed(1)} kW</div>` +
     `</div>` +
     `<div style="flex:1;text-align:center;padding:0 4px;border-left:1px solid var(--border);border-right:1px solid var(--border);">` +
-      `<div style="color:var(--c-red);font-size:10px;margin-bottom:2px;">↓ Einsp. (WC)</div>` +
-      `<div style="font-size:11px;font-weight:600;">${einspKw.toFixed(1)} kW</div>` +
+      `<div style="color:var(--c-red);font-size:12px;margin-bottom:2px;">↓ Einsp. (WC)</div>` +
+      `<div style="font-size:12.5px;font-weight:600;">${einspKw.toFixed(1)} kW</div>` +
     `</div>` +
     `<div style="flex:1;text-align:center;padding:0 4px;">` +
-      `<div style="color:var(--c-amber);font-size:10px;margin-bottom:2px;">Max (WC)</div>` +
-      `<div style="font-size:11px;font-weight:600;">${wcKw.toFixed(1)} kW</div>` +
+      `<div style="color:var(--c-amber);font-size:12px;margin-bottom:2px;">Max (WC)</div>` +
+      `<div style="font-size:12.5px;font-weight:600;">${wcKw.toFixed(1)} kW</div>` +
     `</div>` +
   `</div>`;
 
@@ -965,7 +965,7 @@ export function buildStromEdgeTooltip(e) {
   } else if (dUKum != null) {
     h += _ttKv('Spannungsfall',
       `<span style="color:${_duCol(dUKum)}">ΔU ${dUKum.toFixed(2)} %</span>` +
-      `<span style="color:var(--c-blue);font-size:10px;"> (kum.)</span>`);
+      `<span style="color:var(--c-blue);font-size:12px;"> (kum.)</span>`);
   } else {
     h += _ttKv('Spannungsfall', `<span style="color:${_duCol(e.deltaUPct)}">ΔU ${e.deltaUPct.toFixed(2)} %</span>`);
   }
@@ -1174,7 +1174,7 @@ export function _autoRegisterErzeugerStromNodes() {
     // Create new erzeuger strom node
     const erzIcon = L.divIcon({
       className: '',
-      html: '<div class="strom-icon strom-icon-erz" style="background:' + erz.color + ';width:20px;height:20px;font-size:11px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.5);border:2px solid rgba(var(--ink),.3);cursor:pointer;">' + erz.icon + '</div>',
+      html: '<div class="strom-icon strom-icon-erz" style="background:' + erz.color + ';width:20px;height:20px;font-size:12.5px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.5);border:2px solid rgba(var(--ink),.3);cursor:pointer;">' + erz.icon + '</div>',
       iconSize: [20, 20], iconAnchor: [10, 10]
     });
     const marker = L.marker(L.latLng(erz.lat, erz.lng), { icon: erzIcon, interactive: true, zIndexOffset: 2100 });
@@ -3416,7 +3416,7 @@ export async function clearAllStromTrassen() {
     ? await window.epConfirm(
         'Elektro-Trassen löschen',
         `Alle ${removeCount} Elektro-Trassenabschnitte werden entfernt.` +
-          '<br><br><span style="color:var(--muted);font-size:10px">Wärmetrassen bleiben unangetastet. Kabel und Komponenten bleiben erhalten, verlieren aber ihre Ausrichtung entlang der Trasse.</span>',
+          '<br><br><span style="color:var(--muted);font-size:12px">Wärmetrassen bleiben unangetastet. Kabel und Komponenten bleiben erhalten, verlieren aber ihre Ausrichtung entlang der Trasse.</span>',
         { okText: 'Alle löschen', cancelText: 'Abbrechen', danger: true },
       )
     : window.confirm(`${removeCount} Elektro-Trassenabschnitte wirklich löschen?`);

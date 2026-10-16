@@ -85,7 +85,7 @@ export function renderSidebarAssetList() {
     container.innerHTML = `<div class="sb-asset-empty">
       <div style="font-size:20px;margin-bottom:6px;">⚡</div>
       <div>Noch keine Komponenten platziert.</div>
-      <div style="margin-top:4px;font-size:9px;opacity:.6;">⚡-Tab links → Komponenten platzieren</div>
+      <div style="margin-top:4px;font-size:11px;opacity:.6;">⚡-Tab links → Komponenten platzieren</div>
     </div>`;
     return;
   }
@@ -110,7 +110,7 @@ export function renderSidebarAssetList() {
       return `<div class="sb-asset-row" data-station-geb="${esc(g.id)}" title="Stations-Steckbrief öffnen">
         <span class="sb-asset-row-icon" style="background:#43a047;">📋</span>
         <span class="sb-asset-row-name">${esc(ssStationsLabel(g))}</span>
-        <span style="margin-left:auto;font-size:9px;color:var(--muted);flex-shrink:0;">${n ? n + ' Trafo' + (n > 1 ? 's' : '') : ''}</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--muted);flex-shrink:0;">${n ? n + ' Trafo' + (n > 1 ? 's' : '') : ''}</span>
       </div>`;
     }).join('');
     html += `<div class="sb-asset-group">
@@ -168,7 +168,7 @@ export function renderSidebarAssetList() {
       const ausl  = e.auslastungPct || 0;
       const dot   = ausl < 80 ? '#4caf50' : ausl < 100 ? '#f9a825' : '#e53935';
       return `<div class="sb-asset-row" data-edge-idx="${idx}">
-        <span class="sb-asset-row-icon" style="background:var(--surface2);color:var(--c-amber);font-size:11px;">━</span>
+        <span class="sb-asset-row-icon" style="background:var(--surface2);color:var(--c-amber);font-size:12.5px;">━</span>
         <span class="sb-asset-row-name">${esc(label)}${esc(lenStr)}</span>
         <span style="width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0;"></span>
       </div>`;
@@ -354,7 +354,7 @@ function _windGebietZeichnenBlock() {
     </button>
     ${has ? `<button class="ins-link-btn" onclick="clearWindGebiet()" style="margin:0;color:var(--c-red);">✕ löschen</button>` : ''}
   </div>
-  <div style="font-size:8px;color:var(--muted);margin:-2px 0 6px;">
+  <div style="font-size:10.5px;color:var(--muted);margin:-2px 0 6px;">
     ${has
       ? 'Eigenes Windgebiet aktiv — kann größer/anders als das allgemeine Plangebiet sein.'
       : window.areaPolygon
@@ -369,17 +369,17 @@ function _windEignungsHinweis(asset) {
   const s = asset._eignungsStats;
   const gebiet = _activeGebietLabel() || 'Gebiet';
   if (!s) {
-    return `<div style="font-size:9px;color:var(--muted);margin:-3px 0 4px;">Fläche wird berechnet …</div>`;
+    return `<div style="font-size:11px;color:var(--muted);margin:-3px 0 4px;">Fläche wird berechnet …</div>`;
   }
   if (s.error === 'no-plangebiet') {
-    return `<div style="font-size:9px;color:var(--c-orange);margin:-3px 0 4px;">⚠ Kein Windgebiet/Plangebiet gezeichnet — Button oben nutzen oder im Gebiet-Tab „Plangebiet / Bereich zeichnen".</div>`;
+    return `<div style="font-size:11px;color:var(--c-orange);margin:-3px 0 4px;">⚠ Kein Windgebiet/Plangebiet gezeichnet — Button oben nutzen oder im Gebiet-Tab „Plangebiet / Bereich zeichnen".</div>`;
   }
   if (!s.cells || !s.cells.length) {
-    return `<div style="font-size:9px;color:var(--c-orange);margin:-3px 0 4px;">Keine geeignete Fläche gefunden — ${gebiet} zu klein für ${s.radiusM.toFixed(0)} m Mindestabstand.</div>`;
+    return `<div style="font-size:11px;color:var(--c-orange);margin:-3px 0 4px;">Keine geeignete Fläche gefunden — ${gebiet} zu klein für ${s.radiusM.toFixed(0)} m Mindestabstand.</div>`;
   }
   const ha = (s.areaM2 / 10000).toLocaleString('de-DE', { maximumFractionDigits: 2 });
   const trunc = s.truncated ? ' (Raster unvollständig — Wert ist Untergrenze)' : '';
-  return `<div style="font-size:9px;color:var(--muted);margin:-3px 0 2px;">≈ ${ha} ha geeignete Fläche im ${gebiet} (Raster ${s.gridStepM} m, Mindestabstand ${s.radiusM.toFixed(0)} m zu Grenze &amp; Gebäuden)${trunc}.</div>`
+  return `<div style="font-size:11px;color:var(--muted);margin:-3px 0 2px;">≈ ${ha} ha geeignete Fläche im ${gebiet} (Raster ${s.gridStepM} m, Mindestabstand ${s.radiusM.toFixed(0)} m zu Grenze &amp; Gebäuden)${trunc}.</div>`
     + `<button class="ins-link-btn" onclick="zoomToWindEignungsflaeche()" style="margin:0 0 6px;">Zur Fläche zoomen</button>`;
 }
 
@@ -388,9 +388,9 @@ function _windScenarioRow(s) {
   const gh = s.gesamthoeheM;
   const ghCol = gh <= 50 ? '#4caf50' : '#f9a825';
   return `<div style="display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:6px 0;border-top:1px solid rgba(var(--ink),0.06);">
-    <div style="font-size:10px;font-weight:700;color:var(--text);">${esc(s.label)}</div>
-    <div style="font-size:10px;color:${ghCol};font-weight:700;">Gesamthöhe ${gh.toFixed(0)} m</div>
-    <div style="font-size:9px;color:var(--muted);grid-column:1/3;">
+    <div style="font-size:12px;font-weight:700;color:var(--text);">${esc(s.label)}</div>
+    <div style="font-size:12px;color:${ghCol};font-weight:700;">Gesamthöhe ${gh.toFixed(0)} m</div>
+    <div style="font-size:11px;color:var(--muted);grid-column:1/3;">
       ${s.ratedKw.toFixed(0)} kW · Ø ${s.rotorDurchmesserM.toFixed(0)} m · Nabenhöhe ${s.nabenhoheM.toFixed(0)} m
       &nbsp;→&nbsp; <span style="color:var(--c-teal);">${s.annualMWh.toLocaleString('de-DE',{maximumFractionDigits:0})} MWh/a</span>
       · ${s.volllaststundenH.toFixed(0)} Vlh
@@ -427,7 +427,7 @@ function _stationsName(a) {
 function _trennstelleFeldHtml(asset) {
   const kabel = _stationsKabel(asset);
   if (!kabel.length) {
-    return `<div style="font-size:10px;color:var(--muted);margin:2px 0 6px;">Keine MS-Kabel zu anderen Stationen — offenes Feld nicht wählbar.</div>`;
+    return `<div style="font-size:12px;color:var(--muted);margin:2px 0 6px;">Keine MS-Kabel zu anderen Stationen — offenes Feld nicht wählbar.</div>`;
   }
   const offen = kabel.find(k => k.e.trennstelle);
   const opts = [`<option value="">— offenes Feld wählen —</option>`]
@@ -437,7 +437,7 @@ function _trennstelleFeldHtml(asset) {
       <label class="ins-field-label">Offenes Feld (Normalbetrieb)</label>
       <select class="ins-field-input" data-ts-kabel="${asset.id}">${opts}</select>
     </div>
-    <div style="font-size:9px;color:var(--muted);margin:-2px 0 6px;line-height:1.4;">Das Kabel in diese Richtung ist im Normalbetrieb offen — daraus ermittelt das Übersichtsschaltbild, welche Stationen über welche Seite versorgt werden.</div>`;
+    <div style="font-size:11px;color:var(--muted);margin:-2px 0 6px;line-height:1.4;">Das Kabel in diese Richtung ist im Normalbetrieb offen — daraus ermittelt das Übersichtsschaltbild, welche Stationen über welche Seite versorgt werden.</div>`;
 }
 // ── Betriebsart mehrerer Trafos auf einem NS-Netz (lib/trafo-parallel.js) ────
 // Gruppe aus der letzten Elektroberechnung; vorher als Näherung: Trafos mit
@@ -463,7 +463,7 @@ function _trafoBetriebsartHtml(asset) {
   const p = asset._calcVerbrauchKw !== undefined ? asset._calcParallel : null;
   const pct = v => `${Math.round(v)} %`;
   const farbe = v => v > 100 ? '#e53935' : v > 80 ? '#fdd835' : '#4caf50';
-  const werte = p ? `<div style="display:grid;grid-template-columns:1fr auto;gap:1px 8px;font-size:10px;margin:2px 0 4px;">
+  const werte = p ? `<div style="display:grid;grid-template-columns:1fr auto;gap:1px 8px;font-size:12px;margin:2px 0 4px;">
       <span style="color:var(--muted);">Normalbetrieb (Anteil ${pct(p.anteil * 100)})</span>
       <b style="color:${farbe(p.normalPct)};">${pct(p.normalPct)}${art === 'parallel' ? ' ◂' : ''}</b>
       <span style="color:var(--muted);">Ausfall eines anderen Trafos (N-1)</span>
@@ -474,7 +474,7 @@ function _trafoBetriebsartHtml(asset) {
       <select class="ins-field-input" data-trafo-betriebsart="${asset.id}">${opts}</select>
     </div>
     ${werte}
-    <div style="font-size:9px;color:var(--muted);margin:-2px 0 6px;line-height:1.4;">Gilt für alle Trafos der Gruppe.
+    <div style="font-size:11px;color:var(--muted);margin:-2px 0 6px;line-height:1.4;">Gilt für alle Trafos der Gruppe.
       ◂ = Wert, der als Auslastung zählt (Karte, Ergebnisblatt, Engpässe). Parallelbetrieb teilt nach Sr/uk auf.</div>`;
 }
 
@@ -595,7 +595,7 @@ function buildPropsForm(asset) {
       );
       const hub = Math.max(0, res.ziel - res.tNet);
       const readout = `
-        <div style="margin-top:8px;padding:7px 9px;background:rgba(186,104,206,0.10);border-left:2px solid var(--c-violet);border-radius:4px;font-size:10px;line-height:1.5;">
+        <div style="margin-top:8px;padding:7px 9px;background:rgba(186,104,206,0.10);border-left:2px solid var(--c-violet);border-radius:4px;font-size:12px;line-height:1.5;">
           <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">VL am Gebäude${geb?'':' (global)'}</span><span>${res.tVl.toFixed(0)} °C → nutzbar ${res.tNet.toFixed(0)} °C</span></div>
           <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Hub auf ${res.ziel.toFixed(0)} °C · Nacherw.-Anteil</span><span>${hub.toFixed(0)} K · ${(res.anteil*100).toFixed(0)} %</span></div>
           <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">El. Energie</span><span>${Math.round(res.qNachEl).toLocaleString('de-DE')} kWh/a</span></div>
@@ -610,7 +610,7 @@ function buildPropsForm(asset) {
     case 'Geo':
     case 'FG': {
       const linked = asset.linkedErzeuger
-        ? `<div style="font-size:9px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">Aus dem Erzeuger-Tab synchronisiert</div>`
+        ? `<div style="font-size:11px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">Aus dem Erzeuger-Tab synchronisiert</div>`
         : '';
       return linked + row2(
         numField(id, 'leistungThKW', 'Th. Leistung (kW)', 100, {props:p}),
@@ -649,14 +649,14 @@ function buildPropsForm(asset) {
       const gzf  = parseFloat(p.gleichzeitigFaktor) || 0.3;
       const pStd = (parseInt(p.anzahlPunkte)||8) * (parseFloat(p.leistungProPunktKW)||11) * gzf;
       return `
-        <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Standard-Lader</div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Standard-Lader</div>
         ${row2(
           numField(id, 'anzahlPunkte',       'Anz. Punkte',     8,  {props:p, step:1, min:1}),
           numField(id, 'leistungProPunktKW', 'kW / Punkt',     11,  {props:p})
         )}
         ${numField(id, 'gleichzeitigFaktor', 'Gleichzeitigkeitsfaktor (0–1)', 0.3, {props:p, step:0.05, min:0})}
         <div style="padding:5px 8px;background:rgba(77,208,225,0.08);border-radius:4px;border-left:2px solid var(--c-teal);margin-top:6px;">
-          <div style="font-size:9px;color:var(--muted);">Gleichzeitige Spitzenlast</div>
+          <div style="font-size:11px;color:var(--muted);">Gleichzeitige Spitzenlast</div>
           <div style="font-size:13px;font-weight:700;color:var(--c-teal);" id="lade-peak-${id}">${pStd.toFixed(0)} kW</div>
         </div>
         <div class="ins-field-group" style="margin-top:8px;">
@@ -665,7 +665,7 @@ function buildPropsForm(asset) {
             <input class="ins-field-input" type="range" min="0" max="360" step="1"
               value="${rot}" data-prop="rotation" data-id="${id}"
               style="flex:1;padding:0;height:22px;cursor:pointer;">
-            <span id="lade-rot-val-${id}" style="min-width:30px;font-size:10px;text-align:right;color:var(--muted);">${Math.round(rot)}°</span>
+            <span id="lade-rot-val-${id}" style="min-width:30px;font-size:12px;text-align:right;color:var(--muted);">${Math.round(rot)}°</span>
           </div>
         </div>
       `;
@@ -680,7 +680,7 @@ function buildPropsForm(asset) {
       ) + row2(
         numField(id, 'tankKg',            'Tankinhalt (kg H₂)',       500, {props:p, step:10}),
         numField(id, 'druckBar',          'Speicherdruck (bar)',      300, {props:p, step:10})
-      ) + `<div style="padding:5px 8px;background:rgba(57,135,229,0.10);border-radius:4px;border-left:2px solid var(--c-blue);margin-top:6px;font-size:9.5px;color:var(--muted);line-height:1.5;">
+      ) + `<div style="padding:5px 8px;background:rgba(57,135,229,0.10);border-radius:4px;border-left:2px solid var(--c-blue);margin-top:6px;font-size:11px;color:var(--muted);line-height:1.5;">
           Tank ≈ <b style="color:var(--text);">${mwh.toLocaleString('de-DE', {maximumFractionDigits: 1})} MWh</b> H₂ (Hu) ≈ ${(mwh * 0.5).toLocaleString('de-DE', {maximumFractionDigits: 1})} MWh Strom über die Brennstoffzelle.
           Im Netz: Elektrolyseur ${ely} kW Bezug, Brennstoffzelle ${bz} kW Einspeisung.
           ${p.autarkieZiel ? `<br>Ausgelegt über PV-Analyse › Autarkieziel (${parseFloat(p.autarkieZiel) || 0} % je Stunde).` : '<br>Auslegung: PV-Analyse › Autarkieziel.'}</div>`;
@@ -696,14 +696,14 @@ function buildPropsForm(asset) {
 
     case 'Stromkessel': {
       const linked = asset.linkedErzeuger
-        ? `<div style="font-size:9px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">Aus dem Erzeuger-Tab synchronisiert</div>`
+        ? `<div style="font-size:11px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">Aus dem Erzeuger-Tab synchronisiert</div>`
         : '';
       return linked + numField(id, 'leistungKW', 'El. Leistung (kW)', 200, {props:p});
     }
 
     case 'KWK': {
       const linked = asset.linkedErzeuger
-        ? `<div style="font-size:9px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">Aus dem Erzeuger-Tab synchronisiert</div>`
+        ? `<div style="font-size:11px;color:var(--c-teal);margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">Aus dem Erzeuger-Tab synchronisiert</div>`
         : '';
       const brennstoff = p.brennstoff || 'Erdgas';
       return linked + row2(
@@ -728,7 +728,7 @@ function buildPropsForm(asset) {
       const y = computeWindYield({ vMean, k: wK, ratedKw, cutIn, ratedWind, cutOut, rotorDiameterM: rotorD });
       const rotorFlaeche = Math.PI * Math.pow(rotorD / 2, 2);
       const specWarn = y.spezFlaecheWm2 > 0 && (y.spezFlaecheWm2 < 150 || y.spezFlaecheWm2 > 500)
-        ? `<div style="font-size:9px;color:var(--c-orange);margin-top:4px;">⚠ Unübliches Verhältnis Leistung/Rotorfläche (${y.spezFlaecheWm2.toFixed(0)} W/m²) – Werte prüfen.</div>`
+        ? `<div style="font-size:11px;color:var(--c-orange);margin-top:4px;">⚠ Unübliches Verhältnis Leistung/Rotorfläche (${y.spezFlaecheWm2.toFixed(0)} W/m²) – Werte prüfen.</div>`
         : '';
       const zielJahresbedarfMWh = _liegenschaftJahresbedarfMWh();
       const maxRadiusM = _distanceToPlangebietM(asset.lat, asset.lng);
@@ -755,7 +755,7 @@ function buildPropsForm(asset) {
       ) + row2(
         numField(id, 'nennwindMs',         'Nennwind (m/s)',         12, {props:p, step:0.5}),
         numField(id, 'abschaltwindMs',     'Abschaltwind (m/s)',     25, {props:p, step:0.5})
-      ) + `<div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:8px 0 3px;">Ertragsschätzung (Weibull)</div>`
+      ) + `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:8px 0 3px;">Ertragsschätzung (Weibull)</div>`
         + row2(
           numField(id, 'mittlereWindMs', 'Ø Windgeschw. Nabenhöhe (m/s)', 6.0, {props:p, step:0.1, min:0}),
           numField(id, 'weibullK',       'Weibull-Formfaktor k',          2.0, {props:p, step:0.1, min:1})
@@ -767,27 +767,27 @@ function buildPropsForm(asset) {
             <div class="ins-result-sub">Spez. Flächenleistung: ${y.spezFlaecheWm2.toFixed(0)} W/m² (Rotorfläche ${rotorFlaeche.toFixed(0)} m²)</div>
           </div>`
         + specWarn
-        + `<div style="font-size:9px;color:var(--muted);margin-top:6px;">Vereinfachte Schätzung: Weibull-Windverteilung × generische kubische Leistungskurve. Für Genehmigungsunterlagen reale Herstellerkurve + Standortwindgutachten verwenden.</div>`
-        + `<div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 3px;">Abstände auf der Karte</div>`
+        + `<div style="font-size:11px;color:var(--muted);margin-top:6px;">Vereinfachte Schätzung: Weibull-Windverteilung × generische kubische Leistungskurve. Für Genehmigungsunterlagen reale Herstellerkurve + Standortwindgutachten verwenden.</div>`
+        + `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 3px;">Abstände auf der Karte</div>`
         + numField(id, 'abstandMultiplikator', 'Planungsabstand: x-facher Rotordurchmesser', 5, {props:p, step:0.5, min:1})
-        + `<div style="font-size:9px;color:var(--muted);margin:-4px 0 6px;">≈ ${(( parseFloat(p.abstandMultiplikator)||5) * rotorD).toFixed(0)} m Radius — Faustregel für Abstand zu Nachbaranlagen/Bebauung, ersetzt keine Einzelfallprüfung.</div>`
+        + `<div style="font-size:11px;color:var(--muted);margin:-4px 0 6px;">≈ ${(( parseFloat(p.abstandMultiplikator)||5) * rotorD).toFixed(0)} m Radius — Faustregel für Abstand zu Nachbaranlagen/Bebauung, ersetzt keine Einzelfallprüfung.</div>`
         + checkField(id, 'abstandVisible', 'Abstandsradius auf Karte anzeigen', p.abstandVisible !== false)
         + numField(id, 'windLwa', 'Schallleistungspegel Lwa (dB(A))', calcWindLwaAuto(ratedKw), {props:p, step:1})
         + checkField(id, 'laermVisible', 'Lärmringe auf Karte anzeigen', p.laermVisible === true)
         + checkField(id, 'eignungsflaecheVisible', 'Eignungsfläche auf Karte anzeigen', p.eignungsflaecheVisible === true)
         + _windGebietZeichnenBlock()
         + _windEignungsHinweis(asset)
-        + `<div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 0;">Szenarien-Vergleich</div>`
-        + `<div style="font-size:9px;color:var(--muted);margin:1px 0 2px;">Gleiche Windkennlinie &amp; spez. Flächenleistung wie oben — nur Größe/Höhe variiert.</div>`
+        + `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 0;">Szenarien-Vergleich</div>`
+        + `<div style="font-size:11px;color:var(--muted);margin:1px 0 2px;">Gleiche Windkennlinie &amp; spez. Flächenleistung wie oben — nur Größe/Höhe variiert.</div>`
         + _windScenarioRow(scen.scen50)
-        + (scen.scenBedarf ? _windScenarioRow(scen.scenBedarf) : `<div style="font-size:9px;color:var(--muted);padding:6px 0;border-top:1px solid rgba(var(--ink),0.06);">Bedarfsgerecht: ${bedarfHinweis}</div>`)
-        + (scen.scenBedarf ? `<div style="font-size:9px;color:var(--muted);margin:-3px 0 4px;">${bedarfHinweis}</div>` : '')
+        + (scen.scenBedarf ? _windScenarioRow(scen.scenBedarf) : `<div style="font-size:11px;color:var(--muted);padding:6px 0;border-top:1px solid rgba(var(--ink),0.06);">Bedarfsgerecht: ${bedarfHinweis}</div>`)
+        + (scen.scenBedarf ? `<div style="font-size:11px;color:var(--muted);margin:-3px 0 4px;">${bedarfHinweis}</div>` : '')
         + _windScenarioRow(scen.scenMax)
-        + `<div style="font-size:9px;color:var(--muted);margin:-3px 0 4px;">${flaechenHinweis}</div>`;
+        + `<div style="font-size:11px;color:var(--muted);margin:-3px 0 4px;">${flaechenHinweis}</div>`;
     }
 
     default:
-      return `<div style="font-size:10px;color:var(--muted);">Keine weiteren Eigenschaften.</div>`;
+      return `<div style="font-size:12px;color:var(--muted);">Keine weiteren Eigenschaften.</div>`;
   }
 }
 
@@ -872,9 +872,9 @@ export function showInvestitionsplan() {
       tableHtml += `<tr>
         <td><span class="ins-massn-dot" style="background:${s.color};display:inline-block;"></span> ${esc(r.asset.name)}</td>
         <td>${esc(r.m.titel || '—')}</td>
-        <td style="font-size:9px;white-space:nowrap;">${t.icon} ${t.label}</td>
+        <td style="font-size:11px;white-space:nowrap;">${t.icon} ${t.label}</td>
         <td class="inv-num">${r.m.kosten ? r.m.kosten.toLocaleString('de-DE') + ' €' : '—'}</td>
-        <td><span style="color:${s.color};font-size:9px;">${s.label}</span></td>
+        <td><span style="color:${s.color};font-size:11px;">${s.label}</span></td>
       </tr>`;
     }
   }
@@ -939,14 +939,14 @@ function _buildPvProfileSection(assetId) {
       <canvas id="pv-profile-canvas-${assetId}"
         style="width:100%;height:64px;border-radius:4px;display:block;
                background:rgba(var(--ink),0.04);margin-bottom:6px;"></canvas>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:10px;">
-        <div><div style="color:var(--muted);font-size:9px;">Jahresertrag</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:12px;">
+        <div><div style="color:var(--muted);font-size:11px;">Jahresertrag</div>
              <div id="pv-prof-annual-${assetId}"
                style="font-family:'DM Mono',monospace;color:var(--c-amber);">—</div></div>
-        <div><div style="color:var(--muted);font-size:9px;">Spez. Ertrag</div>
+        <div><div style="color:var(--muted);font-size:11px;">Spez. Ertrag</div>
              <div id="pv-prof-spez-${assetId}"
                style="font-family:'DM Mono',monospace;color:var(--c-amber);">—</div></div>
-        <div><div style="color:var(--muted);font-size:9px;">Ausrichtung</div>
+        <div><div style="color:var(--muted);font-size:11px;">Ausrichtung</div>
              <div id="pv-prof-aus-${assetId}"
                style="font-family:'DM Mono',monospace;color:var(--text);">—</div></div>
       </div>
@@ -1038,18 +1038,18 @@ function _buildWindProfileSection(assetId) {
       <canvas id="wind-profile-canvas-${assetId}"
         style="width:100%;height:64px;border-radius:4px;display:block;
                background:rgba(var(--ink),0.04);margin-bottom:6px;"></canvas>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:10px;">
-        <div><div style="color:var(--muted);font-size:9px;">Jahresertrag</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:12px;">
+        <div><div style="color:var(--muted);font-size:11px;">Jahresertrag</div>
              <div id="wind-prof-annual-${assetId}"
                style="font-family:'DM Mono',monospace;color:var(--c-teal);">—</div></div>
-        <div><div style="color:var(--muted);font-size:9px;">Volllaststunden</div>
+        <div><div style="color:var(--muted);font-size:11px;">Volllaststunden</div>
              <div id="wind-prof-vlh-${assetId}"
                style="font-family:'DM Mono',monospace;color:var(--c-teal);">—</div></div>
-        <div><div style="color:var(--muted);font-size:9px;">Kapazitätsfaktor</div>
+        <div><div style="color:var(--muted);font-size:11px;">Kapazitätsfaktor</div>
              <div id="wind-prof-kf-${assetId}"
                style="font-family:'DM Mono',monospace;color:var(--text);">—</div></div>
       </div>
-      <div style="font-size:9px;color:var(--muted);margin-top:4px;">${(() => {
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">${(() => {
         const s = getWindSiteData();
         return s
           ? `<span style="color:var(--c-teal);">Reale ERA5-Windreihe ${s.profilJahr}</span> (Ø ${s.vMean100.toFixed(1)} m/s @ 100 m, auf Nabenhöhe extrapoliert, α ${s.alpha.toFixed(2)}). Wird für alle Analysen verwendet.`
@@ -1146,7 +1146,7 @@ function _buildLadeZeitprofilSection(id) {
         style="width:100%;height:80px;display:block;border-radius:4px;
                background:rgba(var(--ink),0.03);cursor:crosshair;
                margin-top:2px;touch-action:none;"></canvas>
-      <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:9px;color:var(--muted);">
+      <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:11px;color:var(--muted);">
         <span id="lade-zp-avg-${id}">Ø —</span>
         <span id="lade-zp-max-${id}">Max —</span>
         <span id="lade-zp-kwh-${id}">— kWh/d</span>
@@ -1682,13 +1682,13 @@ function _renderAssetFelddaten(a) {
   const labels = { offen: 'Offen', besucht: 'Besucht', erledigt: 'Erledigt' };
   const statusLabel = labels[a.feldStatus] || '';
   const notizHtml = a.feldNotizen
-    ? '<div style="background:#fffbeb;border-left:3px solid var(--c-orange);padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#1a1a2e;white-space:pre-wrap;margin-bottom:6px;">' + esc(a.feldNotizen) + '</div>'
+    ? '<div style="background:#fffbeb;border-left:3px solid var(--c-orange);padding:6px 10px;border-radius:0 6px 6px 0;font-size:12.5px;color:#1a1a2e;white-space:pre-wrap;margin-bottom:6px;">' + esc(a.feldNotizen) + '</div>'
     : '';
   const fotoHtml = (a.feldFotos || []).map(foto =>
     '<img src="' + foto.dataUrl + '" title="' + esc(foto.name) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--c-blue);" onclick="openImageLightbox(this.src,this.title)">'
   ).join('');
   return '<div style="margin:8px 0;padding:8px 10px;background:var(--surface2,var(--surface2));border-radius:8px;border:1px solid var(--c-blue);">'
-    + '<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:4px;">FELDDATEN' + (statusLabel ? ' · ' + statusLabel : '') + '</div>'
+    + '<div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:4px;">FELDDATEN' + (statusLabel ? ' · ' + statusLabel : '') + '</div>'
     + notizHtml
     + (fotoHtml ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">' + fotoHtml + '</div>' : '')
     + '</div>';

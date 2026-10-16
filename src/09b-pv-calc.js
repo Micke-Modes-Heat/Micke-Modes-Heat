@@ -435,9 +435,9 @@ export function calcStromPanel() {
     const fmtK = v => (v >= 1000 ? (v/1000).toFixed(0) + ' T' : Math.round(v).toString());
     const kpi = (label, val, unit, color) => `
       <div style="background:var(--surface2);border-radius:5px;padding:7px 10px;">
-        <div style="font-size:9px;color:var(--muted);margin-bottom:3px;">${label}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:3px;">${label}</div>
         <div style="font-family:'DM Mono',monospace;font-size:13px;color:${color||'var(--text)'}">
-          ${val}&thinsp;<span style="font-size:9px;color:var(--muted);">${unit}</span>
+          ${val}&thinsp;<span style="font-size:11px;color:var(--muted);">${unit}</span>
         </div>
       </div>`;
     const hasPvOrBat = pvMwh > 0 || bat;
@@ -481,13 +481,13 @@ export function calcStromPanel() {
       const fmtE = v => Number(Math.round(v)).toLocaleString('de-DE');
       pvWirtDiv.style.display = '';
       pvWirtDiv.innerHTML =
-        `<div style="font-weight:600;color:var(--text);margin-bottom:5px;font-size:10px;">PV-Wirtschaftlichkeit (${totalKwp.toFixed(0)} kWp)</div>` +
+        `<div style="font-weight:600;color:var(--text);margin-bottom:5px;font-size:12px;">PV-Wirtschaftlichkeit (${totalKwp.toFixed(0)} kWp)</div>` +
         `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">` +
-          `<div><div style="font-size:8px;color:var(--muted);">Investition</div><div style="font-family:'DM Mono',monospace;color:var(--text);font-size:11px;">${fmtE(gesamtInvest)} €</div></div>` +
-          `<div><div style="font-size:8px;color:var(--muted);">Erlös/a</div><div style="font-family:'DM Mono',monospace;color:var(--c-green);font-size:11px;">${fmtE(erloesSumme)} €</div></div>` +
-          `<div><div style="font-size:8px;color:var(--muted);">Amortisation</div><div style="font-family:'DM Mono',monospace;color:${payback <= pvLife ? '#66bb6a' : '#ef9a9a'};font-size:11px;">${payback < Infinity ? payback.toFixed(1) + ' a' : '> ' + pvLife + ' a'}</div></div>` +
+          `<div><div style="font-size:10.5px;color:var(--muted);">Investition</div><div style="font-family:'DM Mono',monospace;color:var(--text);font-size:12.5px;">${fmtE(gesamtInvest)} €</div></div>` +
+          `<div><div style="font-size:10.5px;color:var(--muted);">Erlös/a</div><div style="font-family:'DM Mono',monospace;color:var(--c-green);font-size:12.5px;">${fmtE(erloesSumme)} €</div></div>` +
+          `<div><div style="font-size:10.5px;color:var(--muted);">Amortisation</div><div style="font-family:'DM Mono',monospace;color:${payback <= pvLife ? '#66bb6a' : '#ef9a9a'};font-size:12.5px;">${payback < Infinity ? payback.toFixed(1) + ' a' : '> ' + pvLife + ' a'}</div></div>` +
         `</div>` +
-        `<div style="margin-top:4px;font-size:8px;color:var(--muted);">` +
+        `<div style="margin-top:4px;font-size:10.5px;color:var(--muted);">` +
           `PV-Eigenverbrauch ${fmtE(pvEigenErsp)} €/a · PV-Einspeisung ${fmtE(pvEinspeisungserloes)} €/a · ` +
           `Invest-Basis: ${pvInvest} €/kWp, ${pvLife} a, ${(zinssatz*100).toFixed(1)}% p.a.` +
         `</div>`;

@@ -63,19 +63,19 @@ function _html() {
       : `${SCHICHT_META[k].icon} immer ${k === SCHICHT.ENTSCHEIDUNG ? 'nur aktive Variante' : SCHICHT_META[k].label}`;
     return `<button data-click="schichtSetModus('${k}')" style="display:block;width:100%;text-align:left;padding:4px 8px;margin:1px 0;
       border-radius:4px;border:1px solid ${an ? 'var(--accent)' : 'transparent'};background:${an ? 'rgba(212,168,85,.12)' : 'transparent'};
-      color:var(--text);font:inherit;font-size:11px;cursor:pointer;">${lab}</button>`;
+      color:var(--text);font:inherit;font-size:12.5px;cursor:pointer;">${lab}</button>`;
   }).join('');
 
   return `<span class="ctx-label">Neu</span>
     <div style="position:relative;display:flex;align-items:center;gap:3px;">
       <button data-click="schichtMenuToggle()" title="${titel}"
-        style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px;
+        style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12.5px;
                border:1px ${fest ? 'dashed' : 'solid'} ${z.m.farbe};color:${z.m.farbe};background:${z.m.farbe}1f;font-weight:600;white-space:nowrap;">
         ${z.m.icon} ${z.wo}<span style="font-weight:400;color:var(--muted);">· ${z.ab}${fest ? ' · fest' : ''}</span> ▾</button>
       ${fest ? `<button data-click="schichtSetModus('auto')" title="Wieder automatisch nach Jahr und Objektart"
-        style="padding:1px 6px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:11px;">✕</button>` : ''}
+        style="padding:1px 6px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:12.5px;">✕</button>` : ''}
       <div id="schicht-menu" style="display:${_menuOffen ? 'block' : 'none'};position:absolute;top:calc(100% + 6px);left:0;z-index:1300;min-width:260px;
-           background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;box-shadow:0 6px 18px rgba(0,0,0,.45);font-size:11px;color:var(--text);">
+           background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;box-shadow:0 6px 18px rgba(0,0,0,.45);font-size:12.5px;color:var(--text);">
         <div style="color:var(--muted);margin-bottom:6px;line-height:1.4;">Wohin gehen neu angelegte Objekte?</div>
         ${wahl}
         <div style="border-top:1px solid var(--border);margin:8px 0 4px;"></div>

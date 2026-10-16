@@ -194,24 +194,24 @@ function _cssEinmal() {
   const st = document.createElement('style');
   st.id = 'ah2-css';
   st.textContent = `
-  #${ROOT_ID} .ah2-knopf{font-size:10.5px;padding:3px 9px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;}
+  #${ROOT_ID} .ah2-knopf{font-size:12px;padding:3px 9px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;}
   #${ROOT_ID} .ah2-karte{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:9px 12px;margin-bottom:10px;}
-  #${ROOT_ID} table{border-collapse:collapse;width:100%;font-size:10.5px;}
+  #${ROOT_ID} table{border-collapse:collapse;width:100%;font-size:12px;}
   #${ROOT_ID} th{font-weight:500;color:var(--muted);text-align:right;padding:3px 6px;border-bottom:1px solid var(--border);white-space:nowrap;}
   #${ROOT_ID} th.l,#${ROOT_ID} td.l{text-align:left;}
   #${ROOT_ID} td{padding:3px 6px;text-align:right;border-bottom:1px solid rgba(128,128,128,.12);white-space:nowrap;}
   #${ROOT_ID} td.m{font-family:'DM Mono',monospace;}
-  #${ROOT_ID} .ah2-in{width:100%;padding:4px 6px;font-size:11px;box-sizing:border-box;}
-  #${ROOT_ID} .ah2-lbl{display:block;color:var(--muted);font-size:10px;margin-bottom:3px;}
+  #${ROOT_ID} .ah2-in{width:100%;padding:4px 6px;font-size:12.5px;box-sizing:border-box;}
+  #${ROOT_ID} .ah2-lbl{display:block;color:var(--muted);font-size:12px;margin-bottom:3px;}
   #${ROOT_ID} .ah2-kpi{flex:1 1 120px;background:var(--surface2);border-radius:6px;padding:7px 10px;}
   #${ROOT_ID} .ah2-kpi .w{font-family:'DM Mono',monospace;font-size:15px;color:var(--text);}
-  #${ROOT_ID} .ah2-kpi .t{font-size:9.5px;color:var(--muted);margin-top:1px;}
-  #${ROOT_ID} .ah2-leg{display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:10px;color:var(--muted);}
+  #${ROOT_ID} .ah2-kpi .t{font-size:11px;color:var(--muted);margin-top:1px;}
+  #${ROOT_ID} .ah2-leg{display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:12px;color:var(--muted);}
   #${ROOT_ID} .ah2-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;}
   #ah2-inhalt .ah2-karte{border:none;background:transparent;padding:0;margin:0 0 8px;}
   #ah2-inhalt .ah2-karte > b:first-child, #ah2-inhalt .ah2-karte > b:first-child + span{display:none;}
-  #ah2-inhalt table{font-size:11px;}
-  #ah2-inhalt .ah2-leg{font-size:11px;}`;
+  #ah2-inhalt table{font-size:12.5px;}
+  #ah2-inhalt .ah2-leg{font-size:12.5px;}`;
   document.head.appendChild(st);
 }
 
@@ -223,9 +223,9 @@ export function ah2Render() {
   root.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
     <div style="font-size:12px;font-weight:600;">Autarkieziel — Mindestdeckung in jeder Stunde mit Batterie, Wasserstoff oder BHKW</div>
-    <div style="font-size:10px;color:var(--muted);">Stündlich über 8.760 h · Daten wie die PV-Auslegungen</div>
+    <div style="font-size:12px;color:var(--muted);">Stündlich über 8.760 h · Daten wie die PV-Auslegungen</div>
   </div>
-  <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
+  <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
     In <b>jeder</b> Stunde des Jahres soll mindestens der Zielanteil der elektrischen Last aus eigener Erzeugung oder aus Speichern kommen.
     Das Tool sucht die Kombination aus PV (bis zum Dachpotenzial), Batterie und Wasserstoffkette
     (<b>Elektrolyseur → Drucktank → Brennstoffzelle</b>) mit den geringsten Jahreskosten.
@@ -234,36 +234,36 @@ export function ah2Render() {
 
   <div class="ah2-karte" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
     <div style="flex:0 1 120px;"><span class="ah2-lbl" title="Mindestanteil der Last, der in jeder Stunde aus eigener Erzeugung oder Speicher kommen muss">Ziel: Mindestdeckung je Stunde</span>
-      <div style="display:flex;align-items:center;gap:4px;"><input class="ah2-in" data-ah2-feld="zielPct" type="number" min="0" max="100" step="5" value="${_st.zielPct}"><span style="font-size:11px;">%</span></div></div>
+      <div style="display:flex;align-items:center;gap:4px;"><input class="ah2-in" data-ah2-feld="zielPct" type="number" min="0" max="100" step="5" value="${_st.zielPct}"><span style="font-size:12.5px;">%</span></div></div>
     <div style="flex:0 1 150px;"><span class="ah2-lbl" title="So viele der schlechtesten Stunden im Jahr dürfen unter dem Ziel liegen. 0 = streng jede Stunde. Schon wenige Stunden verkleinern die Brennstoffzelle deutlich.">Zulässige Stunden unter Ziel</span>
-      <div style="display:flex;align-items:center;gap:4px;"><input class="ah2-in" data-ah2-feld="toleranzH" type="number" min="0" step="1" value="${_st.toleranzH}"><span style="font-size:11px;">h/a</span></div></div>
+      <div style="display:flex;align-items:center;gap:4px;"><input class="ah2-in" data-ah2-feld="toleranzH" type="number" min="0" step="1" value="${_st.toleranzH}"><span style="font-size:12.5px;">h/a</span></div></div>
     <div style="flex:0 1 auto;display:flex;flex-direction:column;gap:4px;">
       <span class="ah2-lbl">Wintertechnik</span>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;">
         <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" data-ah2-schalter="h2Aktiv" ${_st.h2Aktiv ? 'checked' : ''}>
           <i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${FARBE.h2};"></i>Wasserstoff</label>
         <label style="display:flex;align-items:center;gap:4px;" title="BHKW mit biogenem Brennstoff als Alternative oder Ergänzung zum Wasserstoff">
           <input type="checkbox" data-ah2-schalter="bhkwAktiv" ${_st.bhkwAktiv ? 'checked' : ''}>
           <i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${FARBE.bhkw};"></i>BHKW</label>
-        <select data-ah2-brennstoff style="font-size:10.5px;padding:2px 4px;" ${_st.bhkwAktiv ? '' : 'disabled'}>${Object.entries(AH2_BRENNSTOFFE).map(([k, v]) =>
+        <select data-ah2-brennstoff style="font-size:12px;padding:2px 4px;" ${_st.bhkwAktiv ? '' : 'disabled'}>${Object.entries(AH2_BRENNSTOFFE).map(([k, v]) =>
           `<option value="${k}" ${k === _st.bhkwBrennstoff ? 'selected' : ''}>${escHtml(v.label)}</option>`).join('')}</select>
       </div></div>
     <div style="flex:0 1 250px;"><span class="ah2-lbl" title="Harte Obergrenze für den Tankinhalt. Unter 3.000 kg: keine BImSchG-Genehmigung für das Lager; unter 5.000 kg: nicht Störfall-Verordnung (andere Gefahrstoffe am Standort zählen mit). Leer = unbegrenzt.">H₂-Tank höchstens</span>
       <div style="display:flex;align-items:center;gap:4px;">
         <input class="ah2-in" data-ah2-feld="tankMaxKg" type="number" min="0" step="100" value="${_st.tankMaxKg > 0 ? _st.tankMaxKg : ''}" placeholder="unbegrenzt" ${_st.h2Aktiv ? '' : 'disabled'}>
-        <span style="font-size:11px;">kg</span>
+        <span style="font-size:12.5px;">kg</span>
         <button class="ah2-knopf" style="white-space:nowrap;" data-ah2-grenze="2990" title="knapp unter 3 t: ohne BImSchG-Genehmigung für das Lager">&lt; 3 t</button>
         <button class="ah2-knopf" style="white-space:nowrap;" data-ah2-grenze="4990" title="knapp unter 5 t: unter der Störfall-Schwelle">&lt; 5 t</button>
       </div></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      ${_kn('rechnen', _erg?.best ? '↻ Neu auslegen' : 'Auslegen', 'Kostenoptimale Auslegung für das Ziel suchen', true, 'style="padding:6px 14px;font-size:11px;"')}
+      ${_kn('rechnen', _erg?.best ? '↻ Neu auslegen' : 'Auslegen', 'Kostenoptimale Auslegung für das Ziel suchen', true, 'style="padding:6px 14px;font-size:12.5px;"')}
       ${_kn('annahmen', _annahmenAuf ? '▾ Annahmen' : '▸ Annahmen', 'Wirkungsgrade und Kosten von Speichern und BHKW')}
     </div>
-    <div style="flex-basis:100%;font-size:10px;color:var(--muted);line-height:1.5;">${_datenbasisHtml()}</div>
+    <div style="flex-basis:100%;font-size:12px;color:var(--muted);line-height:1.5;">${_datenbasisHtml()}</div>
   </div>
   ${_annahmenAuf ? _annahmenHtml() : ''}
-  ${_veraltet ? '<div style="margin:-4px 0 10px;font-size:10.5px;color:var(--c-orange);">Eingaben geändert — neu auslegen.</div>' : ''}
-  ${_meldung ? `<div style="margin:-4px 0 10px;font-size:10.5px;color:var(--c-teal);">${escHtml(_meldung)}</div>` : ''}
+  ${_veraltet ? '<div style="margin:-4px 0 10px;font-size:12px;color:var(--c-orange);">Eingaben geändert — neu auslegen.</div>' : ''}
+  ${_meldung ? `<div style="margin:-4px 0 10px;font-size:12px;color:var(--c-teal);">${escHtml(_meldung)}</div>` : ''}
   <div style="${_veraltet ? 'opacity:.55;' : ''}">${_ergebnisHtml()}</div>`;
   if (!root.dataset.ah2Ereignisse) { root.dataset.ah2Ereignisse = '1'; _ereignisse(root); }
   _heatmapZeichnen();
@@ -292,21 +292,21 @@ function _annahmenHtml() {
     const abw = _st[g][k] != null && _st[g][k] !== std;
     return `<tr><td class="l">${label}</td>
       <td><input data-ah2-annahme="${g}.${k}" type="number" step="any" min="0" value="${+(cfg[g][k] * f).toFixed(d + 2)}"
-        style="width:80px;font-size:10.5px;text-align:right;${abw ? 'color:var(--c-orange);' : ''}"></td>
+        style="width:80px;font-size:12px;text-align:right;${abw ? 'color:var(--c-orange);' : ''}"></td>
       <td class="l" style="color:var(--muted);">${einh}</td>
       <td class="l" style="color:var(--muted);">${abw ? `Standard ${_fmt(std * f, d)}` : ''}</td></tr>`;
   }).join('');
   const druck = cfg.tank.druckBar;
   return `<div class="ah2-karte">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-      <b style="font-size:11px;">Annahmen Speicher und BHKW (im Projekt gespeichert)</b>
+      <b style="font-size:12.5px;">Annahmen Speicher und BHKW (im Projekt gespeichert)</b>
       ${_kn('annahmen-standard', 'Standardwerte', 'Alle Abweichungen zurücksetzen')}</div>
     <table><thead><tr><th class="l">Größe</th><th>Wert</th><th class="l"></th><th class="l"></th></tr></thead><tbody>${zeilen}
       <tr><td class="l">H₂-Drucktank: Speicherdruck (nur für das Volumen)</td>
-        <td><select data-ah2-annahme="tank.druckBar" style="font-size:10.5px;">${Object.keys(H2_DICHTE_KG_M3).map(p =>
+        <td><select data-ah2-annahme="tank.druckBar" style="font-size:12px;">${Object.keys(H2_DICHTE_KG_M3).map(p =>
           `<option value="${p}" ${+p === druck ? 'selected' : ''}>${p} bar</option>`).join('')}</select></td>
         <td class="l" style="color:var(--muted);">${_fmt(H2_DICHTE_KG_M3[druck], 1)} kg/m³</td><td></td></tr></tbody></table>
-    <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5;">Richtwerte kleiner bis mittlerer Anlagen (PEM), Stand 2025/26.
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5;">Richtwerte kleiner bis mittlerer Anlagen (PEM), Stand 2025/26.
       Rundlauf Strom → H₂ → Strom = Wirkungsgrad Elektrolyseur × Brennstoffzelle (Standard 60 % × 50 % = 30 %).
       Wasserstoff-Energie bezieht sich auf den Heizwert Hu (33,33 kWh/kg). Orange = vom Standard abweichend.
       BHKW: Brennstoffpreis, Wirkungsgrade folgen dem gewählten Brennstoff (${escHtml(AH2_BRENNSTOFFE[_st.bhkwBrennstoff]?.label || '')}); Wärme zählt nur mit einem Abwärme-Wert.
@@ -354,10 +354,10 @@ const _datum = t => new Date(2025, 0, 1 + Math.floor(t / 24)).toLocaleDateString
 const _RESERVE_TXT = { 0: 'deckt die ganze Last', 0.5: 'deckt die ganze Last bis zur halben Ladung, darunter nur noch das Ziel', 1: 'arbeitet nur für das Ziel' };
 
 function _ergebnisHtml() {
-  if (!_erg) return `<div style="color:var(--muted);font-size:11px;text-align:center;padding:30px 0;">Ziel eingeben und „Auslegen" starten.</div>`;
-  if (!_erg.best) return `<div class="ah2-karte" style="border-left:3px solid var(--c-orange);font-size:11px;line-height:1.5;">
+  if (!_erg) return `<div style="color:var(--muted);font-size:12.5px;text-align:center;padding:30px 0;">Ziel eingeben und „Auslegen" starten.</div>`;
+  if (!_erg.best) return `<div class="ah2-karte" style="border-left:3px solid var(--c-orange);font-size:12.5px;line-height:1.5;">
     <b>Ziel nicht erreichbar.</b> ${escHtml(_erg.grund || '')}
-    <div style="font-size:10px;color:var(--muted);margin-top:4px;">Hebel: Ziel senken, zulässige Stunden erhöhen, BHKW zulassen, Tank-Obergrenze anheben, mehr PV-Fläche (Dachpotenzial / Freifläche) oder Wind einbeziehen.</div></div>`;
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;">Hebel: Ziel senken, zulässige Stunden erhöhen, BHKW zulassen, Tank-Obergrenze anheben, mehr PV-Fläche (Dachpotenzial / Freifläche) oder Wind einbeziehen.</div></div>`;
   return `<div id="ah2-kopf">${_kopfHtml()}</div>
   ${_schieberHtml()}
   <div id="ah2-tabs" style="display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid var(--border);margin-bottom:0;">${_tabsLeisteHtml()}</div>
@@ -369,7 +369,7 @@ function _tabsLeisteHtml() {
   return TABS.map(t => {
     const an = t.id === _tab;
     const label = t.id === 'hinweise' && n ? `${t.label} (${n})` : t.label;
-    return `<button data-ah2-tab="${t.id}" style="font-size:11px;padding:6px 12px;cursor:pointer;border:1px solid ${an ? 'var(--border)' : 'transparent'};
+    return `<button data-ah2-tab="${t.id}" style="font-size:12.5px;padding:6px 12px;cursor:pointer;border:1px solid ${an ? 'var(--border)' : 'transparent'};
       border-bottom:${an ? '1px solid var(--surface)' : 'none'};margin-bottom:-1px;border-radius:6px 6px 0 0;
       background:${an ? 'var(--surface)' : 'transparent'};color:${an ? 'var(--text)' : 'var(--muted)'};font-weight:${an ? 600 : 400};">${label}</button>`;
   }).join('');
@@ -378,7 +378,7 @@ function _tabsLeisteHtml() {
 /** Lesehilfe über jeder Grafik */
 const _lesehilfe = (titel, text) => `<div style="margin-bottom:10px;">
   <div style="font-size:12.5px;font-weight:600;margin-bottom:3px;">${titel}</div>
-  <div style="font-size:11px;color:var(--muted);line-height:1.55;max-width:980px;">${text}</div></div>`;
+  <div style="font-size:12.5px;color:var(--muted);line-height:1.55;max-width:980px;">${text}</div></div>`;
 
 function _tabInhaltHtml() {
   const r = _erg.best, a = r.ausl;
@@ -391,7 +391,7 @@ function _tabInhaltHtml() {
       'Tagesendwert des Tankinhalts im eingeschwungenen Betrieb (der Jahresanfang ist so gewählt, dass das Jahr zyklisch aufgeht). '
       + 'Im Sommer füllt der Elektrolyseur den Tank mit Überschussstrom, im Winter leert ihn die Brennstoffzelle. '
       + 'Die Kapazität ist genau so groß, dass der Tank an seinem tiefsten Punkt gerade leer wird — jede kWh mehr wäre ungenutzt.')
-      + (a.tankKwh > 0 ? _tankSvg() : `<div style="font-size:11px;color:var(--muted);padding:12px 0;">${a.bhkwKw > 0
+      + (a.tankKwh > 0 ? _tankSvg() : `<div style="font-size:12.5px;color:var(--muted);padding:12px 0;">${a.bhkwKw > 0
         ? 'Diese Variante kommt ohne Wasserstoff aus — das BHKW deckt die Winterlücke.' : 'Kein Wasserstoff nötig — PV und Batterie erfüllen das Ziel allein.'}</div>`);
     case 'dauer': return _lesehilfe('Eigene Deckung je Stunde, sortiert',
       'Alle 8.760 Stunden des Jahres nach ihrer eigenen Deckung sortiert — links die schlechteste Stunde, rechts die beste. '
@@ -400,11 +400,11 @@ function _tabInhaltHtml() {
     case 'raster': return _heatmapHtml();
     case 'varianten': return _lesehilfe('Varianten im Vergleich',
       'Jede zugelassene Wintertechnik wird für sich kostenoptimal ausgelegt — mit eigener PV- und Batteriegröße. ★ markiert die günstigste. '
-      + '„anzeigen" übernimmt eine Variante in alle Reiter und setzt die Schieber auf ihre Werte.') + (_variantenHtml() || '<div style="font-size:11px;color:var(--muted);">Nur eine Variante berechnet — für einen Vergleich Wasserstoff und BHKW zulassen.</div>');
+      + '„anzeigen" übernimmt eine Variante in alle Reiter und setzt die Schieber auf ihre Werte.') + (_variantenHtml() || '<div style="font-size:12.5px;color:var(--muted);">Nur eine Variante berechnet — für einen Vergleich Wasserstoff und BHKW zulassen.</div>');
     case 'preis': return _lesehilfe('Was kostet das Ziel?',
       'Vergleich der eingestellten Auslegung mit der günstigsten Auslegung ohne Ziel (gleiche Preise, PV und Batterie frei gewählt). Die Differenz der Jahreskosten ist der Preis des Ziels. '
       + 'Die Balken zeigen, aus welchen Posten er sich zusammensetzt; die Kennzahlen setzen ihn ins Verhältnis zur Energie aus der Wintertechnik und zur gesicherten Leistung.')
-      + (_zielKostenHtml() || '<div style="font-size:11px;color:var(--muted);">Bei Ziel 0 % gibt es keinen Preis des Ziels.</div>');
+      + (_zielKostenHtml() || '<div style="font-size:12.5px;color:var(--muted);">Bei Ziel 0 % gibt es keinen Preis des Ziels.</div>');
     case 'kosten': return _lesehilfe('Kosten der Auslegung',
       'Alle Posten der eingestellten Auslegung: Investition, Jahreskosten (Annuität + Instandhaltung), Brennstoff, Netzbezug und Erlöse. '
       + 'Die Summe ist die Größe, die die Optimierung minimiert.') + _kostenHtml();
@@ -443,7 +443,7 @@ function _kopfHtml() {
   const n = _hinweise().length;
   return `<div class="ah2-karte" style="border-left:3px solid ${erfuellt ? 'var(--accent)' : '#e57373'};">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-      <div style="font-size:11.5px;">${status}</div>
+      <div style="font-size:12.5px;">${status}</div>
       <div style="display:flex;gap:6px;align-items:center;">
         ${n ? `<button class="ah2-knopf" data-ah2-tab="hinweise" title="Genehmigung, Brennstoff, Grenzen">⚠ ${n} Hinweise</button>` : ''}
         ${_kn('uebernehmen', 'Als Anlagen übernehmen', 'Die eingestellten Anlagen als Assets auf die Karte legen bzw. frühere anpassen', false,
@@ -485,17 +485,17 @@ function _schieberHtml() {
     const v = akt[d.k] || 0, ov = d.k === 'tankKg' ? o.tankKg : o[d.k] || 0;
     const ueberGrenze = d.k === 'tankKg' && _erg.cfg.tankMaxKg > 0 && v > _erg.cfg.tankMaxKg;
     return `<div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:10.5px;color:var(--muted);width:96px;flex-shrink:0;">${d.label}</span>
+      <span style="font-size:12px;color:var(--muted);width:96px;flex-shrink:0;">${d.label}</span>
       <input type="range" data-ah2-schieber="${d.k}" min="0" max="${d.max}" step="${d.step}" value="${Math.round(v)}" style="flex:1;min-width:80px;accent-color:${d.farbe};">
-      <span data-ah2-wert="${d.k}" style="font-size:10.5px;font-family:'DM Mono',monospace;width:78px;text-align:right;color:${ueberGrenze ? '#e57373' : 'var(--text)'};">${_fmt(v)} ${d.einheit}</span>
-      <span style="font-size:9.5px;color:var(--muted);width:78px;" title="Wert der optimalen Auslegung">Opt. ${_fmt(ov)}</span></div>`;
+      <span data-ah2-wert="${d.k}" style="font-size:12px;font-family:'DM Mono',monospace;width:78px;text-align:right;color:${ueberGrenze ? '#e57373' : 'var(--text)'};">${_fmt(v)} ${d.einheit}</span>
+      <span style="font-size:11px;color:var(--muted);width:78px;" title="Wert der optimalen Auslegung">Opt. ${_fmt(ov)}</span></div>`;
   }).join('');
   return `<div class="ah2-karte" style="padding:9px 12px;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
-      <b style="font-size:11px;">Anlagen variieren</b>
-      <span style="font-size:10px;color:var(--muted);">Schieber ziehen — das Jahr wird stündlich neu gerechnet; Kennzahlen und Reiter folgen live.
+      <b style="font-size:12.5px;">Anlagen variieren</b>
+      <span style="font-size:12px;color:var(--muted);">Schieber ziehen — das Jahr wird stündlich neu gerechnet; Kennzahlen und Reiter folgen live.
         Batterie-Betriebsweise:
-        <select data-ah2-reserve style="font-size:10px;padding:1px 3px;">${[0, 0.5, 1].map(x =>
+        <select data-ah2-reserve style="font-size:12px;padding:1px 3px;">${[0, 0.5, 1].map(x =>
           `<option value="${x}" ${+akt.batReserve === x ? 'selected' : ''}>${{ 0: 'ganze Last', 0.5: 'Reserve 50 %', 1: 'nur Ziel' }[x]}</option>`).join('')}</select></span></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:6px 22px;">${zeilen}</div></div>`;
 }
@@ -591,7 +591,7 @@ function _auslegungHtml() {
     + 'Die Tabelle nennt für die optimale Auslegung jeweils die Regel und die Zahlen, die sie festlegen. Mit den Schiebern oben lässt sich jede Größe verändern; die Spalte „eingestellt" zeigt dann die Abweichung.')
     + `<table><thead><tr><th class="l" style="width:140px;">Anlage</th><th style="width:90px;">Optimum</th><th style="width:90px;">eingestellt</th><th class="l">ausgelegt nach</th></tr></thead>
       <tbody>${zeilen.join('')}</tbody></table>
-    <div style="font-size:10.5px;color:var(--muted);margin-top:10px;line-height:1.55;"><b>Randbedingungen:</b> ${bed.join(' · ')}.
+    <div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.55;"><b>Randbedingungen:</b> ${bed.join(' · ')}.
       Rechenweg: Batterie lädt vor dem Elektrolyseur und entlädt vor Brennstoffzelle/BHKW; die Größen der Wintertechnik folgen damit geschlossen aus dem stündlichen Verlauf nach der Batterie.
       ${_erg.gespeichert ? 'Gespeicherte Auslegung nachgerechnet.' : `${_fmt(_erg.ausgewertet)} Kombinationen bewertet in ${_fmt((_erg.dauerMs || 0) / 1000, 1)} s.`}</div>`;
 }
@@ -633,8 +633,8 @@ function _hinweiseHtml() {
   const h = _hinweise(), r = _erg.best, a = r.ausl, bil = r.bilanz;
   const gruppe = (art, titel, farbe) => {
     const liste = h.filter(x => x[0] === art);
-    return liste.length ? `<div style="margin-bottom:12px;"><div style="font-size:11.5px;font-weight:600;margin-bottom:4px;color:${farbe};">${titel}</div>
-      <ul style="margin:0;padding-left:18px;font-size:11px;line-height:1.6;">${liste.map(x => `<li>${escHtml(x[1])}</li>`).join('')}</ul></div>` : '';
+    return liste.length ? `<div style="margin-bottom:12px;"><div style="font-size:12.5px;font-weight:600;margin-bottom:4px;color:${farbe};">${titel}</div>
+      <ul style="margin:0;padding-left:18px;font-size:12.5px;line-height:1.6;">${liste.map(x => `<li>${escHtml(x[1])}</li>`).join('')}</ul></div>` : '';
   };
   const vol = a.tankM3 != null && a.tankKwh > 0 ? `Tankvolumen ≈ ${_fmt(a.tankM3)} m³ bei ${a.druckBar} bar. ` : '';
   const waerme = bil.waermeMwh > 0.5
@@ -642,13 +642,13 @@ function _hinweiseHtml() {
     : '';
   return _lesehilfe('Hinweise, Genehmigung und Modellgrenzen', 'Was bei der eingestellten Auslegung zu beachten ist. Genehmigungsschwellen sind Richtwerte — im Einzelfall mit der zuständigen Behörde klären.')
     + gruppe('warn', 'Achtung', '#e57373') + gruppe('recht', 'Genehmigung und Recht', '#ffb74d') + gruppe('info', 'Zur Einordnung', 'var(--text)')
-    + `<div style="font-size:11px;font-weight:600;margin:6px 0 4px;">Jahresbilanz</div>
-    <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+    + `<div style="font-size:12.5px;font-weight:600;margin:6px 0 4px;">Jahresbilanz</div>
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.6;">
       ${a.bhkwKw > 0 ? `BHKW ${_fmt(bil.bhkwMwh)} MWh/a (${_fmt(r.bhkwVbh)} Volllaststunden) aus ${_fmt(bil.bhkwBrennstoffMwh)} MWh Brennstoff. ` : ''}
       ${a.bzKw > 0 ? `Brennstoffzelle ${_fmt(bil.bzOutMwh)} MWh/a (${_fmt(r.bzVbh)} Volllaststunden), Elektrolyseur ${_fmt(bil.elyInMwh)} MWh/a Überschuss (${_fmt(r.elyVbh)} Volllaststunden). ${vol}` : ''}
       Netzbezug ${_fmt(bil.netzMwh)} MWh/a, Einspeisung ${_fmt(bil.einspMwh)} MWh/a${bil.abregMwh > 0.5 ? `, abgeregelt ${_fmt(bil.abregMwh)} MWh/a` : ''}. ${waerme}</div>
-    <div style="font-size:11px;font-weight:600;margin:10px 0 4px;">Modellgrenzen</div>
-    <div style="font-size:11px;color:var(--muted);line-height:1.6;">Stundenwerte (15-min-Lastgänge gemittelt) · ein Wetterjahr · Batterie- und Tankstand zyklisch über das Jahr ·
+    <div style="font-size:12.5px;font-weight:600;margin:10px 0 4px;">Modellgrenzen</div>
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.6;">Stundenwerte (15-min-Lastgänge gemittelt) · ein Wetterjahr · Batterie- und Tankstand zyklisch über das Jahr ·
       konstante Wirkungsgrade, keine Teillast-, Standby- und Selbstentladungsverluste · Kosten ohne Netzentgelt-Effekte, Förderung und Stack-Tausch.</div>`;
 }
 
@@ -724,7 +724,7 @@ function _tankSvg() {
   for (let d = 0; d < tage; d++) { const v = tank[d * 24 + 23]; if (v < minV) { minV = v; minD = d; } }
   const dtMin = new Date(2025, 0, 1 + minD).toLocaleDateString('de-DE', { day: '2-digit', month: 'long' });
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;margin-top:6px;">${out.join('')}</svg>
-    <div style="font-size:10px;color:var(--muted);">Kapazität ${_mwh(kap)} = ${_fmt(r.ausl.tankKg)} kg H₂ · tiefster Stand ${_fmt(minV / kap * 100)} % am ${dtMin}
+    <div style="font-size:12px;color:var(--muted);">Kapazität ${_mwh(kap)} = ${_fmt(r.ausl.tankKg)} kg H₂ · tiefster Stand ${_fmt(minV / kap * 100)} % am ${dtMin}
       · Der Tank ist so klein wie möglich: er leert sich einmal im Jahr fast vollständig.</div>`;
 }
 
@@ -767,7 +767,7 @@ function _dauerlinieSvg() {
   const mitTxt = r.ausl.bhkwKw > 0 && r.ausl.bzKw > 0 ? 'mit Wasserstoff + BHKW' : r.ausl.bhkwKw > 0 ? 'mit BHKW' : 'mit Wasserstoff';
   return `${_legende([[FARBE.h2, mitTxt], [FARBE.bat, 'nur PV + Batterie'], ['var(--text)', 'Ziel']])}
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;">${out.join('')}</svg>
-    <div style="font-size:10px;color:var(--muted);">Links liegen die kritischen Stunden (Winternächte, Dunkelflauten): dort heben Brennstoffzelle bzw. BHKW die Deckung auf das Ziel.</div>`;
+    <div style="font-size:12px;color:var(--muted);">Links liegen die kritischen Stunden (Winternächte, Dunkelflauten): dort heben Brennstoffzelle bzw. BHKW die Deckung auf das Ziel.</div>`;
 }
 
 // ── Was kostet das Ziel? ──────────────────────────────────────────────────────
@@ -821,8 +821,8 @@ function _zielKostenHtml() {
     </tbody></table>`;
   const kpi = (w, t) => `<div class="ah2-kpi"><div class="w">${w}</div><div class="t">${t}</div></div>`;
   return `<div class="ah2-karte">
-    <b style="font-size:11px;">Was kostet das Ziel?</b>
-    <span style="font-size:10px;color:var(--muted);"> · Vergleich mit der günstigsten Auslegung ohne Ziel (gleiche Preise, PV bis zum Dachpotenzial frei wählbar)</span>
+    <b style="font-size:12.5px;">Was kostet das Ziel?</b>
+    <span style="font-size:12px;color:var(--muted);"> · Vergleich mit der günstigsten Auslegung ohne Ziel (gleiche Preise, PV bis zum Dachpotenzial frei wählbar)</span>
     <div style="font-size:12px;line-height:1.6;margin-top:6px;">
       Die Mindestdeckung von ${b(_fmt(mit.zielPct) + ' %')} kostet ${b((zk.dJk >= 0 ? '+' : '') + _fmt(zk.dJk) + ' €/a')}
       gegenüber der wirtschaftlich besten Auslegung ohne Ziel (Investition ${zk.dInvest >= 0 ? '+' : ''}${_tEur(zk.dInvest)}).</div>
@@ -834,7 +834,7 @@ function _zielKostenHtml() {
     </div>
     ${_postenSvg(zk.posten)}
     ${tabelle}
-    <div style="font-size:10px;color:var(--muted);margin-top:5px;line-height:1.5;">
+    <div style="font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5;">
       Lesart: Das Ziel kauft vor allem <b>Versorgung in den schwachen Stunden</b> (Winternächte, Dunkelflauten). Der Autarkiegrad über das Jahr
       steigt dabei oft nur wenig, weil der größte Teil des Jahres ohnehin aus PV und Batterie kommt. Aussagekräftige Bezugsgrößen sind deshalb
       die Kosten je kWh aus dem Wasserstoff und je gesichertem kW, nicht je Prozentpunkt Autarkiegrad.
@@ -860,7 +860,7 @@ function _postenSvg(p) {
       <rect x="${xs}" y="${y + 3}" width="${Math.max(1, w)}" height="${zh - 7}" rx="2" fill="${v >= 0 ? FARBE.netz : FARBE.bat}"/>
       <text x="${v >= 0 ? xs + w + 5 : xs - 5}" y="${y + 13}" font-size="10" text-anchor="${v >= 0 ? 'start' : 'end'}" fill="var(--muted)">${v >= 0 ? '+' : ''}${_fmt(v)}</text></g>`);
   });
-  return `<div style="font-size:10.5px;margin-top:6px;">Woher der Preis kommt (Änderung je Posten in €/a; Erlöse: weniger Einspeisung = teurer):
+  return `<div style="font-size:12px;margin-top:6px;">Woher der Preis kommt (Änderung je Posten in €/a; Erlöse: weniger Einspeisung = teurer):
       <span class="ah2-leg" style="margin-left:8px;"><i style="background:${FARBE.netz};"></i>teurer</span><span class="ah2-leg"><i style="background:${FARBE.bat};"></i>günstiger</span></div>
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;">${out.join('')}</svg>`;
 }
@@ -931,17 +931,17 @@ function _heatmapHtml() {
         'Jede Spalte ist ein Tag, jede Zeile eine Stunde. Oben die Größe wählen: wer die Last deckt (Netz, Batterie, BHKW, Brennstoffzelle), wohin der Überschuss geht '
         + '(Batterie laden, Elektrolyse, Einspeisung) oder wie voll die Speicher sind. Je heller die Zelle, desto mehr. Maus über das Raster zeigt alle Flüsse dieser Stunde.')}</div>
       <div style="display:flex;align-items:center;gap:10px;">
-        <select data-ah2-hm="metrik" style="font-size:11px;padding:3px 5px;">${Object.entries(gruppen).map(([g, o]) =>
+        <select data-ah2-hm="metrik" style="font-size:12.5px;padding:3px 5px;">${Object.entries(gruppen).map(([g, o]) =>
           `<optgroup label="${escHtml(g)}">${o.join('')}</optgroup>`).join('')}</select>
-        <label style="font-size:10.5px;color:${m.last ? 'var(--text)' : 'var(--muted)'};display:flex;align-items:center;gap:4px;" title="Statt kW den Anteil an der Last der Stunde zeigen">
+        <label style="font-size:12px;color:${m.last ? 'var(--text)' : 'var(--muted)'};display:flex;align-items:center;gap:4px;" title="Statt kW den Anteil an der Last der Stunde zeigen">
           <input type="checkbox" data-ah2-hm="anteil" ${_hm.anteil ? 'checked' : ''} ${m.last ? '' : 'disabled'}> Anteil an der Last</label>
       </div></div>
     <div style="position:relative;margin-top:6px;">
       <canvas id="ah2-hm-canvas" style="width:100%;display:block;cursor:crosshair;"></canvas>
       <div id="ah2-hm-tip" style="position:absolute;display:none;pointer-events:none;background:var(--surface2);border:1px solid var(--border);
-        border-radius:5px;padding:6px 8px;font-size:10px;line-height:1.5;white-space:nowrap;z-index:5;"></div>
+        border-radius:5px;padding:6px 8px;font-size:12px;line-height:1.5;white-space:nowrap;z-index:5;"></div>
     </div>
-    <div id="ah2-hm-legende" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;font-size:10px;color:var(--muted);"></div>
+    <div id="ah2-hm-legende" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;font-size:12px;color:var(--muted);"></div>
   </div>`;
 }
 
@@ -1025,7 +1025,7 @@ function _variantenHtml() {
     if (_erg.cfg.h2Aktiv && !V.h2 && !V.pvbat) fehlt.push(_erg.cfg.tankMaxKg > 0
       ? `Nur Wasserstoff ist mit der Tank-Obergrenze von ${_fmt(_erg.cfg.tankMaxKg)} kg nicht machbar.`
       : 'Nur Wasserstoff ist nicht machbar (Überschuss reicht nicht).');
-    return fehlt.length ? `<div class="ah2-karte" style="font-size:10.5px;color:var(--c-orange);">${fehlt.map(escHtml).join(' ')}</div>` : '';
+    return fehlt.length ? `<div class="ah2-karte" style="font-size:12px;color:var(--c-orange);">${fehlt.map(escHtml).join(' ')}</div>` : '';
   }
   const bester = reihenfolge.reduce((m, k) => (!m || V[k].kosten.gesamt < V[m].kosten.gesamt ? k : m), null);
   const basisJk = _erg.basis?.kosten.gesamt;
@@ -1042,17 +1042,17 @@ function _variantenHtml() {
       <td class="m">${basisJk != null ? (k.gesamt - basisJk >= 0 ? '+' : '') + _fmt(k.gesamt - basisJk) : '—'}</td>
       <td class="m">${bil.bhkwBrennstoffMwh > 0.05 ? _fmt(bil.bhkwBrennstoffMwh) : '—'}</td>
       <td class="m">${_fmt(bil.autarkiePct, 1)} %</td><td class="l">${genehm}</td>
-      <td>${aktiv ? '<span style="font-size:10px;color:var(--muted);">angezeigt</span>' : `<button class="ah2-knopf" data-ah2-variante="${m}">anzeigen</button>`}</td></tr>`;
+      <td>${aktiv ? '<span style="font-size:12px;color:var(--muted);">angezeigt</span>' : `<button class="ah2-knopf" data-ah2-variante="${m}">anzeigen</button>`}</td></tr>`;
   }).join('');
-  return `<div class="ah2-karte"><b style="font-size:11px;">Varianten im Vergleich</b>
-    <span style="font-size:10px;color:var(--muted);"> · jede Variante für sich kostenoptimal ausgelegt (PV, Batterie, Speicher), ★ = günstigste</span>
+  return `<div class="ah2-karte"><b style="font-size:12.5px;">Varianten im Vergleich</b>
+    <span style="font-size:12px;color:var(--muted);"> · jede Variante für sich kostenoptimal ausgelegt (PV, Batterie, Speicher), ★ = günstigste</span>
     <div style="overflow-x:auto;margin-top:6px;"><table><thead><tr><th class="l">Variante</th><th>PV kWp</th><th>Batterie kWh</th><th class="l">Wintertechnik</th>
       <th>Invest</th><th>Jahreskosten €/a</th><th>Preis des Ziels €/a</th><th>Brennstoff MWh/a</th><th>Autarkie</th><th class="l">Genehmigung Tank</th><th></th></tr></thead>
     <tbody>${zeilen}</tbody></table></div>
-    ${_erg.cfg.h2Aktiv && !V.h2 && !V.pvbat ? `<div style="font-size:10.5px;color:var(--c-orange);margin-top:4px;">${_erg.cfg.tankMaxKg > 0
+    ${_erg.cfg.h2Aktiv && !V.h2 && !V.pvbat ? `<div style="font-size:12px;color:var(--c-orange);margin-top:4px;">${_erg.cfg.tankMaxKg > 0
       ? `„Nur Wasserstoff" fehlt: mit der Tank-Obergrenze von ${_fmt(_erg.cfg.tankMaxKg)} kg nicht machbar.`
       : '„Nur Wasserstoff" fehlt: der Überschuss reicht nicht für den nötigen Wasserstoff.'}</div>` : ''}
-    <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5;">Preis des Ziels = Jahreskosten gegenüber der günstigsten Auslegung ohne Ziel.
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5;">Preis des Ziels = Jahreskosten gegenüber der günstigsten Auslegung ohne Ziel.
       Kombination: das Tool prüft einen begrenzten Tank mit BHKW als Reserve und das BHKW als Grundlast mit Wasserstoff für die Spitzen.
       Das BHKW verbrennt zugekauften biogenen Brennstoff — ob das als „eigene erneuerbare Erzeugung" zählt, legt die Zieldefinition fest.</div></div>`;
 }
@@ -1061,7 +1061,7 @@ function _kostenHtml() {
   const r = _erg.best, a = r.ausl, k = r.kosten, cfg = _erg.cfg;
   const zeile = (name, groesse, inv, jk, detail = '') => `<tr><td class="l">${name}</td><td class="m">${groesse}</td>
     <td class="m">${inv != null ? _tEur(inv) : ''}</td><td class="m">${_fmt(jk)}</td><td class="l" style="color:var(--muted);">${detail}</td></tr>`;
-  return `<div class="ah2-karte"><b style="font-size:11px;">Kosten der Auslegung</b>
+  return `<div class="ah2-karte"><b style="font-size:12.5px;">Kosten der Auslegung</b>
     <table style="margin-top:4px;"><thead><tr><th class="l">Position</th><th>Größe</th><th>Invest</th><th>€/a</th><th class="l">Ansatz</th></tr></thead><tbody>
     ${zeile('PV', _fmt(a.pvKwp) + ' kWp', k.invest.pv, k.jk.pv, `${_fmt(cfg.pv.investKwp)} €/kWp · ${cfg.pv.life} a`)}
     ${k.jk.infra ? zeile('PV-Infrastruktur (Anschlussstufe)', '', null, k.jk.infra, 'wie PV-Analyse') : ''}
@@ -1078,7 +1078,7 @@ function _kostenHtml() {
     <tr><td class="l"><b>Summe</b></td><td></td><td class="m"><b>${_tEur(k.investGes)}</b></td><td class="m"><b>${_fmt(k.gesamt)}</b></td>
       <td class="l" style="color:var(--muted);">Referenz nur Netz ${_fmt(k.referenz)} €/a</td></tr>
     </tbody></table>
-    <div style="font-size:10px;color:var(--muted);margin-top:4px;">Jahreskosten = Annuität (Zins ${_fmt(cfg.zins * 100, 1)} %) + Instandhaltung + Brennstoff + Netzbezug − Erlöse. Die Optimierung minimiert diese Summe unter der Bedingung, dass das Ziel in jeder Stunde erfüllt ist.</div></div>`;
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;">Jahreskosten = Annuität (Zins ${_fmt(cfg.zins * 100, 1)} %) + Instandhaltung + Brennstoff + Netzbezug − Erlöse. Die Optimierung minimiert diese Summe unter der Bedingung, dass das Ziel in jeder Stunde erfüllt ist.</div></div>`;
 }
 
 function _kurveHtml() {
@@ -1119,8 +1119,8 @@ function _kurveHtml() {
     svg = _legende([[FARBE.h2, 'gegenüber reinem Netzbezug'], [FARBE.direkt, 'gegenüber der Auslegung ohne Ziel (Preis des Ziels)']])
       + `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;margin-top:2px;">${out.join('')}</svg>`;
   }
-  return `<div class="ah2-karte"><b style="font-size:11px;">Zielkurve: Jahreskosten je Ziel im Vergleich</b>
-    <span style="font-size:10px;color:var(--muted);"> · grobes Raster, ${_kurve.toleranzH} zulässige Stunden · unter der Nulllinie = günstiger als Netzbezug</span>
+  return `<div class="ah2-karte"><b style="font-size:12.5px;">Zielkurve: Jahreskosten je Ziel im Vergleich</b>
+    <span style="font-size:12px;color:var(--muted);"> · grobes Raster, ${_kurve.toleranzH} zulässige Stunden · unter der Nulllinie = günstiger als Netzbezug</span>
     ${svg}
     <div style="overflow-x:auto;margin-top:6px;"><table><thead><tr><th>Ziel</th><th>PV kWp</th><th>Batterie kWh</th><th>Elektrolyseur kW</th><th>Tank</th><th>BZ kW</th><th>BHKW kW</th><th class="l">Variante</th><th>Autarkie</th><th>€/a</th><th>ggü. Netz €/a</th><th>ggü. ohne Ziel €/a</th></tr></thead>
     <tbody>${zeilen}</tbody></table></div></div>`;

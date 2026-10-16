@@ -449,19 +449,19 @@ function _renderStich(edgeResults, label, assetList) {
     const tn  = assetList.find(a => a.id === e.to)?.name   || '?';
     const col = e.ausl_pct > 100 ? '#ef5350' : e.ausl_pct > 80 ? '#ffa726' : '#66bb6a';
     return `<tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:2px 3px;color:var(--text);font-size:9px;">${fn}→${tn}</td>
-      <td style="padding:2px 3px;text-align:right;font-size:9px;">${e.I_A.toFixed(1)}</td>
-      <td style="padding:2px 3px;text-align:right;font-size:9px;">${e.dU_pct.toFixed(2)}</td>
-      <td style="padding:2px 3px;text-align:right;color:${col};font-weight:600;font-size:9px;">${e.ausl_pct.toFixed(0)}%</td>
+      <td style="padding:2px 3px;color:var(--text);font-size:11px;">${fn}→${tn}</td>
+      <td style="padding:2px 3px;text-align:right;font-size:11px;">${e.I_A.toFixed(1)}</td>
+      <td style="padding:2px 3px;text-align:right;font-size:11px;">${e.dU_pct.toFixed(2)}</td>
+      <td style="padding:2px 3px;text-align:right;color:${col};font-weight:600;font-size:11px;">${e.ausl_pct.toFixed(0)}%</td>
     </tr>`;
   }).join('');
-  return `<div style="font-size:9px;color:var(--muted);margin:6px 0 2px;">${label}</div>
+  return `<div style="font-size:11px;color:var(--muted);margin:6px 0 2px;">${label}</div>
   <table style="width:100%;border-collapse:collapse;">
     <tr style="color:var(--muted);border-bottom:1px solid var(--border);">
-      <th style="text-align:left;padding:2px 3px;font-size:8px;">Kante</th>
-      <th style="text-align:right;padding:2px 3px;font-size:8px;">I (A)</th>
-      <th style="text-align:right;padding:2px 3px;font-size:8px;">ΔU (%)</th>
-      <th style="text-align:right;padding:2px 3px;font-size:8px;">Ausl.</th>
+      <th style="text-align:left;padding:2px 3px;font-size:10.5px;">Kante</th>
+      <th style="text-align:right;padding:2px 3px;font-size:10.5px;">I (A)</th>
+      <th style="text-align:right;padding:2px 3px;font-size:10.5px;">ΔU (%)</th>
+      <th style="text-align:right;padding:2px 3px;font-size:10.5px;">Ausl.</th>
     </tr>${rows}
   </table>`;
 }
@@ -482,7 +482,7 @@ export function elRunMSAnalyse() {
   if (!panel) return;
 
   if (rings.length === 0) {
-    panel.innerHTML = `<div style="font-size:10px;color:var(--muted);padding:6px 0;line-height:1.5;">
+    panel.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:6px 0;line-height:1.5;">
       Keine MS-Ringe erkannt.<br>
       Verbinde NAP, Schaltanlagen und Trafos zu einem Ring.</div>`;
     return;
@@ -491,7 +491,7 @@ export function elRunMSAnalyse() {
   const yr = globalYear || new Date().getFullYear();
   msHoverOverride = { year: yr, byId: elBuildMSHoverOverrides(rings) };
 
-  let html = `<div style="font-size:9px;color:var(--muted);padding:3px 0 5px;">
+  let html = `<div style="font-size:11px;color:var(--muted);padding:3px 0 5px;">
     Jahr: <b style="color:var(--text);">${yr}</b> · ${rings.length} Ring${rings.length !== 1 ? 'e' : ''} erkannt
   </div>`;
 
@@ -505,10 +505,10 @@ export function elRunMSAnalyse() {
 
     html += `<div style="background:var(--bg);border-radius:4px;padding:6px 8px;margin-top:6px;border-left:3px solid var(--c-orange);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
-        <span style="font-size:11px;font-weight:600;color:var(--c-orange);">Ring ${ri + 1}</span>
-        <span style="font-size:9px;color:${n1Color};font-weight:700;">${n1Text}</span>
+        <span style="font-size:12.5px;font-weight:600;color:var(--c-orange);">Ring ${ri + 1}</span>
+        <span style="font-size:11px;color:${n1Color};font-weight:700;">${n1Text}</span>
       </div>
-      <div style="font-size:10px;color:var(--muted);margin-bottom:5px;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:5px;">
         ${ring.nodes.length} Knoten · ${ring.edges.length} Kanten · ${Math.round(ring.totalLengthM)} m
         ${lf?.sticheMode
           ? ` · <span style="color:var(--c-blue);">Stichbetrieb</span>`
@@ -516,7 +516,7 @@ export function elRunMSAnalyse() {
       </div>`;
 
     if (lf) {
-      html += `<div style="font-size:10px;color:var(--text);margin-bottom:4px;">
+      html += `<div style="font-size:12px;color:var(--text);margin-bottom:4px;">
         Gesamt: <b>${lf.totalLoadKW.toFixed(0)} kW</b> · ${lf.U_kV} kV
       </div>`;
 
@@ -524,18 +524,18 @@ export function elRunMSAnalyse() {
       if (lf.feedEdgeResult) {
         const fe  = lf.feedEdgeResult;
         const col = fe.ausl_pct > 100 ? '#ef5350' : fe.ausl_pct > 80 ? '#ffa726' : '#66bb6a';
-        html += `<div style="font-size:9px;color:var(--muted);margin:4px 0 2px;">Zugang NAP → Ring</div>
+        html += `<div style="font-size:11px;color:var(--muted);margin:4px 0 2px;">Zugang NAP → Ring</div>
         <table style="width:100%;border-collapse:collapse;">
           <tr style="color:var(--muted);border-bottom:1px solid var(--border);">
-            <th style="text-align:left;padding:2px 3px;font-size:8px;">Kante</th>
-            <th style="text-align:right;padding:2px 3px;font-size:8px;">I (A)</th>
-            <th style="text-align:right;padding:2px 3px;font-size:8px;">ΔU (%)</th>
-            <th style="text-align:right;padding:2px 3px;font-size:8px;">Ausl.</th>
+            <th style="text-align:left;padding:2px 3px;font-size:10.5px;">Kante</th>
+            <th style="text-align:right;padding:2px 3px;font-size:10.5px;">I (A)</th>
+            <th style="text-align:right;padding:2px 3px;font-size:10.5px;">ΔU (%)</th>
+            <th style="text-align:right;padding:2px 3px;font-size:10.5px;">Ausl.</th>
           </tr>
-          <tr><td style="padding:2px 3px;font-size:9px;">${allAssets.find(a=>a.id===fe.from)?.name||'?'}→${allAssets.find(a=>a.id===fe.to)?.name||'?'}</td>
-            <td style="padding:2px 3px;text-align:right;font-size:9px;">${fe.I_A.toFixed(1)}</td>
-            <td style="padding:2px 3px;text-align:right;font-size:9px;">${fe.dU_pct.toFixed(2)}</td>
-            <td style="padding:2px 3px;text-align:right;color:${col};font-weight:600;font-size:9px;">${fe.ausl_pct.toFixed(0)}%</td>
+          <tr><td style="padding:2px 3px;font-size:11px;">${allAssets.find(a=>a.id===fe.from)?.name||'?'}→${allAssets.find(a=>a.id===fe.to)?.name||'?'}</td>
+            <td style="padding:2px 3px;text-align:right;font-size:11px;">${fe.I_A.toFixed(1)}</td>
+            <td style="padding:2px 3px;text-align:right;font-size:11px;">${fe.dU_pct.toFixed(2)}</td>
+            <td style="padding:2px 3px;text-align:right;color:${col};font-weight:600;font-size:11px;">${fe.ausl_pct.toFixed(0)}%</td>
           </tr>
         </table>`;
       }
@@ -545,7 +545,7 @@ export function elRunMSAnalyse() {
           ? (allAssets.find(a => a.id === lf.entryId)?.name || '?') + ' → '
           : 'NAP → ';
         html += _renderStich(lf.leftEdgeResults,  `Linker Stich (${pfx}${trennName})`, allAssets);
-        html += `<div style="font-size:9px;color:var(--c-orange);padding:3px 5px;margin:3px 0;
+        html += `<div style="font-size:11px;color:var(--c-orange);padding:3px 5px;margin:3px 0;
           background:rgba(249,168,37,.1);border-radius:3px;border:1px dashed #f9a82560;">
           ✂ ${trennName} — offen im Normalbetrieb · I = 0 A</div>`;
         html += _renderStich(lf.rightEdgeResults, `Rechter Stich (${pfx}${trennName})`, allAssets);
@@ -559,24 +559,24 @@ export function elRunMSAnalyse() {
       const hint = lf?.sticheMode
         ? '(n-1) · Trennstelle schließt bei Ausfall'
         : '(n-1) · Kabelausfall → Stichbetrieb';
-      html += `<div style="font-size:8px;text-transform:uppercase;letter-spacing:.05em;
+      html += `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;
         color:var(--muted);margin-top:9px;margin-bottom:3px;">${hint}</div>`;
 
       n1.contingencies.forEach(c => {
         const cCol = c.ok ? '#66bb6a' : '#ef5350';
         html += `<div style="display:flex;align-items:center;gap:5px;padding:3px 0;
             border-bottom:1px solid var(--border);">
-          <span style="color:${cCol};font-weight:700;font-size:10px;">${c.ok ? '✓' : '✗'}</span>
-          <span style="flex:1;color:var(--text);font-size:9px;overflow:hidden;
+          <span style="color:${cCol};font-weight:700;font-size:12px;">${c.ok ? '✓' : '✗'}</span>
+          <span style="flex:1;color:var(--text);font-size:11px;overflow:hidden;
               text-overflow:ellipsis;white-space:nowrap;" title="Ausfall: ${c.failedEdgeName}">
             ↯ ${c.failedEdgeName}</span>
-          <span style="color:${cCol};font-size:9px;font-weight:600;">${c.worstAusl.toFixed(0)}%</span>
-          <span style="color:var(--muted);font-size:9px;">ΔU ${c.worstDU.toFixed(1)}%</span>
+          <span style="color:${cCol};font-size:11px;font-weight:600;">${c.worstAusl.toFixed(0)}%</span>
+          <span style="color:var(--muted);font-size:11px;">ΔU ${c.worstDU.toFixed(1)}%</span>
         </div>`;
       });
 
       if (n1.worstCase) {
-        html += `<div style="font-size:9px;margin-top:5px;padding:4px 7px;
+        html += `<div style="font-size:11px;margin-top:5px;padding:4px 7px;
           background:rgba(${n1.allOk ? '102,187,106' : '239,83,80'},.08);
           border-radius:3px;color:${n1Color};line-height:1.5;">
           <b>Worst-Case:</b> ${n1.worstCase.failedEdgeName}<br>

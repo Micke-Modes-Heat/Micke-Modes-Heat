@@ -408,7 +408,7 @@ function _renderGebOverviewAnalysis() {
         <span title="${_gebTableEsc(row.label)}">${_gebTableEsc(row.label)}</span>
         <span class="geb-analysis-bar"><i style="width:${Math.max(2,row[key]/maximum*100)}%"></i></span>
         <em>${Math.round(row[key]).toLocaleString('de-DE')} ${unit}</em>
-      </div>`).join('') || '<span style="color:var(--muted);font-size:9px;">Keine Daten</span>'}</div>`;
+      </div>`).join('') || '<span style="color:var(--muted);font-size:11px;">Keine Daten</span>'}</div>`;
   };
   analysis.innerHTML =
     card('Wärmeverbrauch nach Nutzung','heat','MWh/a') +
@@ -1097,7 +1097,7 @@ export function showEdgePopup(e, mouseEvt) {
       <div>
         <div class="inp-label" style="margin-bottom:3px">Durchmesser</div>
         <select data-change="setEdgeDN(this.value)">${dnOptions}</select>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px">${e.dnOverride?'Manuell: DN '+e.dn:'Auto: DN '+e.dn}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${e.dnOverride?'Manuell: DN '+e.dn:'Auto: DN '+e.dn}</div>
       </div>
       <div>
         <div class="inp-label" style="margin-bottom:3px">Kostenklasse</div>
@@ -1109,24 +1109,24 @@ export function showEdgePopup(e, mouseEvt) {
           <span class="cost-badge hoch"
             data-click="setEdgeKost('hoch')" style="${kostKlasse==='hoch'?'opacity:1':'opacity:.45'}">Hoch</span>
         </div>
-        <div style="font-size:9px;color:var(--muted);margin-top:3px">${kostAuto?'Auto (OSM)':'Manuell'}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">${kostAuto?'Auto (OSM)':'Manuell'}</div>
       </div>
     </div>
-    <div style="font-size:10px;color:var(--muted);border-top:1px solid var(--border);padding-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:3px;">
-      <span>Last: <span style="color:var(--text)">${(e.load||0).toFixed(1)} kW</span>${e._gzf < 1 ? ` <span style="color:var(--muted);font-size:9px">(GZF ${e._gzf.toFixed(2)})</span>` : ''}</span>
+    <div style="font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:3px;">
+      <span>Last: <span style="color:var(--text)">${(e.load||0).toFixed(1)} kW</span>${e._gzf < 1 ? ` <span style="color:var(--muted);font-size:11px">(GZF ${e._gzf.toFixed(2)})</span>` : ''}</span>
       <span>Länge: <span style="color:var(--text)">${Math.round(e.length||0)} m</span></span>
       <span>WLD: <span style="color:${getWLDColor(getWLD(e))}">${getWLD(e).toFixed(2)} MWh/(m·a)</span></span>
       <span>Kosten: <span style="color:var(--c-blue)">${Math.round((getKostenProMKlasse(e.dn, e.kostKlasse||window.kostenSzenarioAktuell?.()||'mittel'))*(e.length||0)).toLocaleString('de-DE')} €</span></span>
     </div>
-    ${e.buildingConflict ? `<div style="margin-top:7px;padding:6px 8px;border:1px solid rgba(249,168,37,.55);border-radius:5px;background:rgba(249,168,37,.1);color:var(--c-amber);font-size:9px;line-height:1.45;">
+    ${e.buildingConflict ? `<div style="margin-top:7px;padding:6px 8px;border:1px solid rgba(249,168,37,.55);border-radius:5px;background:rgba(249,168,37,.1);color:var(--c-amber);font-size:11px;line-height:1.45;">
       ⚠ Automatischer Rückfall: Dieser Verlauf kreuzt einen Gebäudegrundriss. Das Netz wäre ohne diesen Abschnitt nicht vollständig verbunden. Bitte den Abschnitt bei Bedarf manuell umlegen.
     </div>` : ''}
     ${e.infoHtml ? `<div class="edge-popup-details">${e.infoHtml}</div>` : ''}
     <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;">
-      <button data-click="toggleEdgePruned()" style="width:100%;padding:5px 8px;background:${e.pruned?'#1b3a2a':'rgba(249,168,37,0.12)'};border:1px solid ${e.pruned?'#4caf50':'#f9a825'};border-radius:4px;color:${e.pruned?'#4caf50':'#f9a825'};cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">
+      <button data-click="toggleEdgePruned()" style="width:100%;padding:5px 8px;background:${e.pruned?'#1b3a2a':'rgba(249,168,37,0.12)'};border:1px solid ${e.pruned?'#4caf50':'#f9a825'};border-radius:4px;color:${e.pruned?'#4caf50':'#f9a825'};cursor:pointer;font-size:12px;font-family:'DM Mono',monospace;">
         ${e.pruned?'✓ Wieder anschließen':'Abschnitt deaktivieren'}
       </button>
-      ${e.pruned ? '' : `<button data-click="edgeAbgangAusZentrale()" title="Die Gebäude hinter diesem Abschnitt bekommen einen eigenen Abgang aus der Heizzentrale; dieser Abschnitt und nicht mehr benötigte Zuleitungen entfallen" style="width:100%;margin-top:5px;padding:5px 8px;background:rgba(79,195,247,0.1);border:1px solid var(--c-blue);border-radius:4px;color:var(--c-blue);cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">⇱ Eigener Abgang aus der Heizzentrale</button>`}
+      ${e.pruned ? '' : `<button data-click="edgeAbgangAusZentrale()" title="Die Gebäude hinter diesem Abschnitt bekommen einen eigenen Abgang aus der Heizzentrale; dieser Abschnitt und nicht mehr benötigte Zuleitungen entfallen" style="width:100%;margin-top:5px;padding:5px 8px;background:rgba(79,195,247,0.1);border:1px solid var(--c-blue);border-radius:4px;color:var(--c-blue);cursor:pointer;font-size:12px;font-family:'DM Mono',monospace;">⇱ Eigener Abgang aus der Heizzentrale</button>`}
     </div>`;
 
   // Position near mouse, clamped to viewport
@@ -1330,7 +1330,7 @@ export function updatePruningSummary() {
       <span style="color:var(--muted)">Deaktiviert:</span><span>${prunedEdges.length} Abschnitte (${Math.round(prunedLen)} m)</span>
       <span style="color:var(--muted)">Abgeklemmt:</span><span>${disconnected.length} Gebäude (${disconnectedMWh.toFixed(0)} MWh/a)</span>
     </div>
-    <button data-click="clearAllPruning()" style="margin-top:5px;width:100%;padding:3px 6px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);cursor:pointer;font-size:9px;font-family:'DM Mono',monospace;">Pruning aufheben</button>`;
+    <button data-click="clearAllPruning()" style="margin-top:5px;width:100%;padding:3px 6px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;">Pruning aufheben</button>`;
 }
 
 export function clearAllPruning() {
@@ -1412,7 +1412,8 @@ setTimeout(() => {
 
 /** Unterkante der App-Kopfleiste: Panels dürfen mit ihrer Kopfzeile nicht darunter verschwinden. */
 function _panelObergrenze() {
-  const kopf = document.querySelector('header')?.getBoundingClientRect();
+  // Unterkante der Prozessleiste (Oberfläche LKEBw), sonst der Kopfzeile
+  const kopf = (document.getElementById('ui-process') || document.querySelector('header'))?.getBoundingClientRect();
   return Math.max(0, Math.round(kopf?.bottom || 0)) + 4;
 }
 
@@ -1423,6 +1424,8 @@ function _panelObergrenze() {
  */
 function _panelImBild(panel) {
   if (!panel.isConnected || panel.classList.contains('inline-mode') || getComputedStyle(panel).position === 'static') return;
+  // Oberfläche LKEBw: nicht verschobene Fenster sind rechts angedockt (lkebw.css) und liegen immer im Bild
+  if (document.body.classList.contains('ui-lkebw') && !panel.classList.contains('dragging')) return;
   const r = panel.getBoundingClientRect();
   if (!r.height || !r.width) return;
   if (r.top <= 0.5 && r.height >= window.innerHeight - 1) return;   // Vollbild-Fenster (z. B. Schaltbild)
@@ -1698,7 +1701,7 @@ export function updateLpMeritOrder() {
   if (!container) return;
   const keys = meritOrderKeys;
   if (keys.length === 0) {
-    container.innerHTML = '<div style="font-size:10px;color:var(--muted);padding:4px;">Noch keine Erzeuger aktiv</div>';
+    container.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px;">Noch keine Erzeuger aktiv</div>';
     return;
   }
   const cfg = typeof ERZEUGER_CFG !== 'undefined' ? ERZEUGER_CFG : {};

@@ -717,7 +717,7 @@ export function updateNetzColorLegend() {
     `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;margin-bottom:2px;">
       <span style="width:20px;height:4px;background:${color};border-radius:2px;display:inline-block;flex-shrink:0"></span>
       <span style="color:${color}">${range}</span>
-      <span style="color:var(--muted);font-size:9px">${label}</span>
+      <span style="color:var(--muted);font-size:11px">${label}</span>
     </span>`
   ).join('');
 }

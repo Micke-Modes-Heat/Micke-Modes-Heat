@@ -457,11 +457,11 @@ export function windRestriktBlock() {
   const on = _restriktLayer && map.hasLayer(_restriktLayer);
   const setInputs = Object.entries(_RESTRIKT_CFG).map(([key, cfg]) => `
     <div>
-      <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">
         <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${cfg.color};margin-right:3px;"></span>${cfg.label.split(' (')[0]} (m)
       </div>
       <input id="winrx-${key}" type="number" value="${_restriktSetbacks[key]}" min="0" step="10"
-        style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+        style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;"/>
     </div>`).join('');
 
   // Höhenabhängige Referenz: Windradtyp wählen → Kipphöhe + Rotor-Ø → Abstände.
@@ -471,25 +471,25 @@ export function windRestriktBlock() {
   }).join('');
   const refInputs = `
     <div style="margin-bottom:6px;">
-      <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Windradtyp (setzt Kipphöhe &amp; Rotor)</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">Windradtyp (setzt Kipphöhe &amp; Rotor)</div>
       <select id="winrx-typ" onchange="windRestriktSelectTyp(this.value)"
-        style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;">
+        style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;">
         <option value="" ${_restriktTypId ? '' : 'selected'}>— manuell / aus Projekt —</option>
         ${typOpts}
       </select>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
       <div>
-        <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Gesamthöhe / Kipphöhe (m)</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">Gesamthöhe / Kipphöhe (m)</div>
         <input id="winrx-hoehe" type="number" value="${_restriktRef.gesamthoehe}" min="1" step="5"
           onchange="windRestriktDeriveSetbacks()"
-          style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+          style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;"/>
       </div>
       <div>
-        <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Rotordurchmesser (m)</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">Rotordurchmesser (m)</div>
         <input id="winrx-rotor" type="number" value="${_restriktRef.rotorD}" min="1" step="5"
           onchange="windRestriktDeriveSetbacks()"
-          style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+          style="width:100%;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;"/>
       </div>
     </div>`;
 
@@ -497,41 +497,41 @@ export function windRestriktBlock() {
   const gwaOn = !!_gwaLayer;
 
   return `
-    <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px;">Karten-Layer</div>
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px;">Karten-Layer</div>
 
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:6px;">
-      <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:6px;">Restriktionsflächen (OpenStreetMap)</div>
+      <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">Restriktionsflächen (OpenStreetMap)</div>
       ${refInputs}
-      <div style="font-size:8px;color:var(--muted);margin:-2px 0 4px;">↓ Abstände aus Höhe/Rotor abgeleitet (Gebäude/Straße/Bahn = Kipphöhe, Leitung = 1× Rotor-Ø) — manuell überschreibbar:</div>
+      <div style="font-size:10.5px;color:var(--muted);margin:-2px 0 4px;">↓ Abstände aus Höhe/Rotor abgeleitet (Gebäude/Straße/Bahn = Kipphöhe, Leitung = 1× Rotor-Ø) — manuell überschreibbar:</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">${setInputs}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
         <button class="ins-link-btn" onclick="windRestriktLoad()" ${_restriktLoading ? 'disabled' : ''} style="margin:0;">${_restriktLayer ? '↺ Neu laden' : 'Laden & puffern'}</button>
         ${_restriktLayer ? `<button class="ins-link-btn" onclick="windRestriktToggle()" style="margin:0;">${on ? 'ausblenden' : 'einblenden'}</button>` : ''}
         ${_restriktLayer ? `<button class="ins-link-btn" onclick="windRestriktClear()" style="margin:0;color:var(--c-red);">✕ löschen</button>` : ''}
       </div>
-      ${_restriktStatus ? `<div style="font-size:9px;color:${_restriktStatus.startsWith('✓') ? '#4dd0e1' : _restriktStatus.startsWith('⏳') ? '#4dd0e1' : '#f9a825'};margin-top:5px;">${_restriktStatus}</div>` : ''}
-      <div style="font-size:8px;color:var(--c-blue);margin-top:4px;">Abstände sind höhenabhängige Faustwerte (Land-/Einzelfallabhängig; Wohnbebauung braucht i.d.R. deutlich mehr als die Kipphöhe, Leitung ohne Schwingungsschutz bis 3× Rotor-Ø). Sichtbare Restriktionsflächen werden als Ausschluss in Eignungsfläche &amp; Platzierungsvorschläge eingerechnet.</div>
+      ${_restriktStatus ? `<div style="font-size:11px;color:${_restriktStatus.startsWith('✓') ? '#4dd0e1' : _restriktStatus.startsWith('⏳') ? '#4dd0e1' : '#f9a825'};margin-top:5px;">${_restriktStatus}</div>` : ''}
+      <div style="font-size:10.5px;color:var(--c-blue);margin-top:4px;">Abstände sind höhenabhängige Faustwerte (Land-/Einzelfallabhängig; Wohnbebauung braucht i.d.R. deutlich mehr als die Kipphöhe, Leitung ohne Schwingungsschutz bis 3× Rotor-Ø). Sichtbare Restriktionsflächen werden als Ausschluss in Eignungsfläche &amp; Platzierungsvorschläge eingerechnet.</div>
     </div>
 
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:6px;">
       <div style="display:flex;align-items:center;gap:6px;">
-        <span style="font-size:10px;font-weight:600;color:var(--text);flex:1;">Schutzgebiete (BfN-WMS)</span>
+        <span style="font-size:12px;font-weight:600;color:var(--text);flex:1;">Schutzgebiete (BfN-WMS)</span>
         <button class="ins-link-btn" onclick="windSchutzToggle()" style="margin:0;">${schutzOn ? 'aus' : 'ein'}</button>
       </div>
-      <div style="font-size:8px;color:var(--c-blue);margin-top:4px;">Amtliche Referenz: Nationalparke, NSG, Biosphärenreservate, FFH/Natura 2000, Vogelschutz. Reine Anzeige, keine Berechnung.</div>
+      <div style="font-size:10.5px;color:var(--c-blue);margin-top:4px;">Amtliche Referenz: Nationalparke, NSG, Biosphärenreservate, FFH/Natura 2000, Vogelschutz. Reine Anzeige, keine Berechnung.</div>
     </div>
 
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:6px;">
-        <span style="font-size:10px;font-weight:600;color:var(--text);flex:1;">Windressource-Overlay</span>
+        <span style="font-size:12px;font-weight:600;color:var(--text);flex:1;">Windressource-Overlay</span>
         <button class="ins-link-btn" onclick="windGwaSetUrl()" style="margin:0;">Quelle</button>
         <button class="ins-link-btn" onclick="windGwaToggle()" style="margin:0;">${gwaOn ? 'aus' : 'ein'}</button>
       </div>
       ${gwaOn ? `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
-        <span style="font-size:8px;color:var(--muted);">Deckkraft</span>
+        <span style="font-size:10.5px;color:var(--muted);">Deckkraft</span>
         <input type="range" min="0" max="1" step="0.05" value="${_gwaOpacity}" oninput="windGwaOpacity(this.value)" style="flex:1;"/>
       </div>` : ''}
-      <div style="font-size:8px;color:var(--c-blue);margin-top:4px;">Vorbelegt: Global Wind Atlas — Ø Windgeschw. 100 m (~250-m-Raster, DTU, CC BY 4.0). Farbskala 3–11 m/s. Bei aktivem Overlay zeigt ein Cursor-Tooltip den Windwert am Punkt. Über „⚙ Quelle" auf andere Höhe/eigene XYZ-/WMS-URL änderbar.</div>
+      <div style="font-size:10.5px;color:var(--c-blue);margin-top:4px;">Vorbelegt: Global Wind Atlas — Ø Windgeschw. 100 m (~250-m-Raster, DTU, CC BY 4.0). Farbskala 3–11 m/s. Bei aktivem Overlay zeigt ein Cursor-Tooltip den Windwert am Punkt. Über „⚙ Quelle" auf andere Höhe/eigene XYZ-/WMS-URL änderbar.</div>
     </div>`;
 }
 

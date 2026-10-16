@@ -82,7 +82,7 @@ export function uiSchritt(id, opt = {}) {
   const body = document.body;
   UI_SCHRITTE.forEach(x => body.classList.toggle('ui-schritt-' + x.id, x.id === s.id));
   body.dataset.uiLayout = s.layout;
-  body.dataset.uiSparte = _ui.sparte;
+  body.dataset.uiAktSparte = _ui.sparte;
   document.getElementById('center-projekt-view')?.toggleAttribute('hidden', s.id !== 'projekt');
 
   if (s.id === 'projekt') {
@@ -119,7 +119,7 @@ function _abschnittOeffnen(key, still) {
   window.setViewMode?.('analyse');
   window.setAnalyseSection?.(key);
   _ui.abschnitt[_ui.schritt] = key;
-  document.body.dataset.uiAbschnitt = key;
+  document.body.dataset.uiAktAbschnitt = key;
   _merken();
   _navRendern();
 }
@@ -410,14 +410,14 @@ function _ereignisse() {
   document.addEventListener('click', e => {
     const t = e.target;
     let x;
-    if ((x = t.closest('[data-ui-schritt]'))) { uiSchritt(x.dataset.uiSchritt); return; }
-    if ((x = t.closest('[data-ui-sprung]'))) { uiSchritt(x.dataset.uiSprung); return; }
-    if ((x = t.closest('[data-ui-fokus]'))) { const f = document.getElementById(x.dataset.uiFokus); f?.focus(); f?.scrollIntoView({ block: 'center' }); return; }
-    if ((x = t.closest('[data-ui-sparte]'))) { uiSchritt('planung', { sparte: x.dataset.uiSparte }); return; }
-    if ((x = t.closest('[data-ui-waerme]'))) { uiWaermeTab(x.dataset.uiWaerme); return; }
-    if ((x = t.closest('[data-ui-bestand]'))) { uiGebaeudetabelle(x.dataset.uiBestand === 'tabelle'); return; }
-    if ((x = t.closest('[data-ui-abschnitt]'))) { _abschnittOeffnen(x.dataset.uiAbschnitt); return; }
-    if ((x = t.closest('[data-ui-pal]'))) { _palAusfuehren(+x.dataset.uiPal); return; }
+    if ((x = t.closest('button[data-ui-schritt]'))) { uiSchritt(x.dataset.uiSchritt); return; }
+    if ((x = t.closest('button[data-ui-sprung]'))) { uiSchritt(x.dataset.uiSprung); return; }
+    if ((x = t.closest('button[data-ui-fokus]'))) { const f = document.getElementById(x.dataset.uiFokus); f?.focus(); f?.scrollIntoView({ block: 'center' }); return; }
+    if ((x = t.closest('button[data-ui-sparte]'))) { uiSchritt('planung', { sparte: x.dataset.uiSparte }); return; }
+    if ((x = t.closest('button[data-ui-waerme]'))) { uiWaermeTab(x.dataset.uiWaerme); return; }
+    if ((x = t.closest('button[data-ui-bestand]'))) { uiGebaeudetabelle(x.dataset.uiBestand === 'tabelle'); return; }
+    if ((x = t.closest('button[data-ui-abschnitt]'))) { _abschnittOeffnen(x.dataset.uiAbschnitt); return; }
+    if ((x = t.closest('button[data-ui-pal]'))) { _palAusfuehren(+x.dataset.uiPal); return; }
     if (t.id === 'ui-pal') { uiBefehlssucheSchliessen(); return; }
     // Menüs schließen bei Klick daneben
     if (!t.closest('.ui-proj-wrap')) document.querySelectorAll('.ui-menu[id]:not(#mehr-menu)').forEach(m => { m.hidden = true; });
@@ -449,7 +449,7 @@ function _ereignisse() {
       const def = _ABSCHNITTE[section];
       if (def && def.schritt !== _ui.schritt && document.body.dataset.uiLayout === 'nav') { _ui.schritt = def.schritt; _schritteRendern(); }
       if (def) { _ui.abschnitt[def.schritt] = section; _merken(); }
-      document.body.dataset.uiAbschnitt = section;
+      document.body.dataset.uiAktAbschnitt = section;
       _navRendern();
       return r;
     };

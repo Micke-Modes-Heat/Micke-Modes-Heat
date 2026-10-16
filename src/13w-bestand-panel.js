@@ -59,7 +59,7 @@ export function bestandPanelToggle() {
 /** Netz für das Basisjahr rechnen und alle Prüfungen ausführen. */
 export function bestandPruefenUndZeigen() {
   _ensurePanel().style.display = 'block';
-  _body().innerHTML = '<div style="padding:22px;color:var(--muted);font-size:11px;">Bestand wird geprüft …</div>';
+  _body().innerHTML = '<div style="padding:22px;color:var(--muted);font-size:12.5px;">Bestand wird geprüft …</div>';
   setTimeout(() => {
     try {
       const heute = new Date().getFullYear();
@@ -80,7 +80,7 @@ export function bestandPruefenUndZeigen() {
       elCalcAssets();
     } catch (err) {
       console.error('Bestandsprüfung:', err);
-      _body().innerHTML = '<div style="padding:18px;color:var(--c-red);font-size:11px;">Prüfung fehlgeschlagen — Details in der Konsole.</div>';
+      _body().innerHTML = '<div style="padding:18px;color:var(--c-red);font-size:12.5px;">Prüfung fehlgeschlagen — Details in der Konsole.</div>';
     }
   }, 50);
 }
@@ -118,7 +118,7 @@ function _render() {
 
 function _kopf() {
   const { zaehler } = _ergebnis;
-  const btn = 'padding:5px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:10px;cursor:pointer;';
+  const btn = 'padding:5px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:12px;cursor:pointer;';
   const chip = (n, meta) => n
     ? `<span style="color:${meta.farbe};font-weight:600;">${n} ${meta.label}${n > 1 ? 'e' : ''}</span>`
     : '';
@@ -131,7 +131,7 @@ function _kopf() {
   return `
   <div style="display:flex;align-items:center;gap:8px;margin:2px 0 10px;">
     <button style="${btn}border-color:var(--c-blue);color:var(--c-blue);" data-click="bestandPruefenUndZeigen()">↻ Neu prüfen</button>
-    <span style="margin-left:auto;font-size:10px;">
+    <span style="margin-left:auto;font-size:12px;">
       ${chips || '<span style="color:var(--c-green);">✓ keine Befunde</span>'}
     </span>
   </div>`;
@@ -140,19 +140,19 @@ function _kopf() {
 // Reifegrad: welche Analyse trägt mit dem aktuellen Datenstand
 function _reifegrad() {
   const zeilen = _ergebnis.reifegrad.map(s => `
-    <div style="display:flex;align-items:center;gap:8px;padding:3px 6px;font-size:10px;">
+    <div style="display:flex;align-items:center;gap:8px;padding:3px 6px;font-size:12px;">
       <span style="flex:0 0 14px;color:${s.erfuellt ? '#4caf50' : '#546e7a'};">${s.erfuellt ? '✓' : '○'}</span>
       <span style="flex:0 0 180px;color:${s.erfuellt ? 'var(--text)' : 'var(--muted)'};">${s.label}</span>
-      <span style="flex:1;color:var(--muted);font-size:9px;">${s.fehlt}</span>
+      <span style="flex:1;color:var(--muted);font-size:11px;">${s.fehlt}</span>
     </div>`).join('');
 
   return `
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
     Belastbar auswertbar
   </div>
   <div style="background:var(--surface2);border-radius:6px;padding:6px 4px;margin-bottom:12px;">
     ${zeilen}
-    <div style="font-size:8.5px;color:var(--muted);padding:5px 6px 0;line-height:1.6;">
+    <div style="font-size:10.5px;color:var(--muted);padding:5px 6px 0;line-height:1.6;">
       Kein Tor, das etwas verbietet — eine Aussage darüber, welche Analyse der aktuelle
       Datenstand trägt. Alles darüber lässt sich rechnen, ist aber nicht belastbar.
     </div>
@@ -162,7 +162,7 @@ function _reifegrad() {
 function _befunde() {
   const { befunde } = _ergebnis;
   if (!befunde.length) {
-    return `<div style="padding:14px;background:var(--surface2);border-radius:6px;font-size:11px;color:var(--c-green);">
+    return `<div style="padding:14px;background:var(--surface2);border-radius:6px;font-size:12.5px;color:var(--c-green);">
       ✓ Keine Auffälligkeiten im Bestand gefunden.</div>`;
   }
 
@@ -172,31 +172,31 @@ function _befunde() {
     const gezeigt = b.betroffene.slice(0, MAX);
     const rest = b.betroffene.length - gezeigt.length;
     const items = gezeigt.map(t => `
-      <span style="display:inline-block;font-size:9px;padding:1px 6px;margin:1px 2px 1px 0;border-radius:3px;
+      <span style="display:inline-block;font-size:11px;padding:1px 6px;margin:1px 2px 1px 0;border-radius:3px;
                    background:var(--surface);border:1px solid var(--border);color:var(--text);cursor:pointer;"
             data-click="bestandSpringeZu('${t.id}','${t.art}')"
             title="Auf der Karte anzeigen und Eigenschaften öffnen">${t.label}</span>`).join('');
-    const restTxt = rest > 0 ? `<span style="font-size:9px;color:var(--muted);"> +${rest} weitere</span>` : '';
+    const restTxt = rest > 0 ? `<span style="font-size:11px;color:var(--muted);"> +${rest} weitere</span>` : '';
 
     return `
     <div style="border-left:3px solid ${meta.farbe};background:var(--surface2);border-radius:0 6px 6px 0;
                 padding:6px 8px;margin-bottom:6px;">
-      <div style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text);">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);">
         <span style="color:${meta.farbe};font-weight:700;">${meta.icon}</span>
         <b>${b.titel}</b>
-        ${b.betroffene.length ? `<span style="color:var(--muted);font-size:9px;">${b.betroffene.length}×</span>` : ''}
+        ${b.betroffene.length ? `<span style="color:var(--muted);font-size:11px;">${b.betroffene.length}×</span>` : ''}
       </div>
-      <div style="font-size:9px;color:var(--muted);line-height:1.6;margin:3px 0 4px;">${b.detail}</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.6;margin:3px 0 4px;">${b.detail}</div>
       ${items}${restTxt}
     </div>`;
   }).join('');
 
   return `
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
     Befunde · ${befunde.length}
   </div>
   ${bloecke}
-  <div style="font-size:8.5px;color:var(--muted);padding:2px 6px;line-height:1.6;">
+  <div style="font-size:10.5px;color:var(--muted);padding:2px 6px;line-height:1.6;">
     Für schon heute überlastete Betriebsmittel schlägt der Engpass-Fahrplan unter
     „🔧 Bestandsmängel" konkrete Korrekturen der Dimensionierung vor.
   </div>`;

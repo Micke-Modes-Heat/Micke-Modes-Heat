@@ -481,7 +481,7 @@ export function updateViz(){
           const c = polygonCenter(g.polygon);
           const hzText = (window.weitereZentralen || []).length ? (weitereHz ? (weitereHz.name || 'HZ 2') : (window.hauptzentraleName || 'HZ 1')) : 'HZ';
           g.hzLabelMarker = L.marker(c, {
-            icon: L.divIcon({ className:'', html:`<div style="background:rgba(255,143,0,0.85);color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;white-space:nowrap;pointer-events:none;letter-spacing:0.5px;">${String(hzText).replace(/[<>&"]/g, '')}</div>`, iconAnchor:[10,8] }),
+            icon: L.divIcon({ className:'', html:`<div style="background:rgba(255,143,0,0.85);color:#fff;font-size:11px;font-weight:700;padding:1px 4px;border-radius:3px;white-space:nowrap;pointer-events:none;letter-spacing:0.5px;">${String(hzText).replace(/[<>&"]/g, '')}</div>`, iconAnchor:[10,8] }),
             interactive: false, zIndexOffset: 100
           }).addTo(map);
         }
@@ -668,10 +668,10 @@ export function buildTooltip(g){
   const stats = getComputedStats(g, globalYear);
   const lines=[`<span style="font-weight:normal;color:var(--accent)">${escHtml(g.name)}</span>`];
 
-  if (stats.status === 'geplant') lines.push(`<span style="color:var(--c-orange);font-size:10px">Geplanter Neubau (${g.baujahr})</span>`);
-  if (stats.status === 'abgerissen') lines.push(`<span style="color:var(--c-red);font-size:10px">Abgerissen (${g.abrissjahr})</span>`);
-  if (stats.status === 'saniert') lines.push(`<span style="color:var(--c-green);font-size:10px">Saniert</span>`);
-  if(g.fromOsm) lines.push(`<span style="color:var(--c-violet);font-size:10px">● OSM</span>`);
+  if (stats.status === 'geplant') lines.push(`<span style="color:var(--c-orange);font-size:12px">Geplanter Neubau (${g.baujahr})</span>`);
+  if (stats.status === 'abgerissen') lines.push(`<span style="color:var(--c-red);font-size:12px">Abgerissen (${g.abrissjahr})</span>`);
+  if (stats.status === 'saniert') lines.push(`<span style="color:var(--c-green);font-size:12px">Saniert</span>`);
+  if(g.fromOsm) lines.push(`<span style="color:var(--c-violet);font-size:12px">● OSM</span>`);
 
   if (stats.status !== 'geplant' && stats.status !== 'abgerissen') {
     if (window.currentMode === 'strom') {
@@ -1977,7 +1977,7 @@ export async function confirmClearTrasse() {
     ? await window.epConfirm(
       'Gezeichnete Haupttrasse löschen',
       'Die gezeichnete Haupttrasse und ihre Abzweige werden entfernt.' +
-        '<br><br><span style="color:var(--muted);font-size:10px">Das bereits erzeugte Wärme- und Stromnetz bleibt unverändert.</span>',
+        '<br><br><span style="color:var(--muted);font-size:12px">Das bereits erzeugte Wärme- und Stromnetz bleibt unverändert.</span>',
       {okText:'Haupttrasse löschen',cancelText:'Abbrechen',danger:true},
     )
     : window.confirm('Gezeichnete Haupttrasse löschen? Das bestehende Netz bleibt unverändert.');

@@ -447,10 +447,10 @@ function _renderKaelteResults(ks) {
     bd.innerHTML = ks.perErz.filter(e => e.kaelteMwh > 0.01).map(e => {
       const q = e.rueckkuehlModus === 'luft' ? 'luftgek.' : (e.quelleKey === 'fg' ? 'Fließgew.' : 'Erdsonde');
       return `<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;">
-        <span style="color:var(--text);"><span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${kaelteErzColor(e.key)};margin-right:4px;"></span>${e.label} <span style="color:var(--muted);font-size:9px;">(${q}${e.auto ? ', gekoppelt' : ''})</span></span>
+        <span style="color:var(--text);"><span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${kaelteErzColor(e.key)};margin-right:4px;"></span>${e.label} <span style="color:var(--muted);font-size:11px;">(${q}${e.auto ? ', gekoppelt' : ''})</span></span>
         <span style="font-family:'DM Mono',monospace;">${f1(e.kaelteMwh)} MWh · SEER ${e.seer.toFixed(2)}</span>
       </div>`;
-    }).join('') || '<div style="color:var(--muted);font-size:10px;">Kein Kälteerzeuger aktiv.</div>';
+    }).join('') || '<div style="color:var(--muted);font-size:12px;">Kein Kälteerzeuger aktiv.</div>';
   }
 
   _renderEerChart(ks.monthlyEer);

@@ -1941,25 +1941,25 @@ function _pvaFokusleisteZeichnen() {
       (v.batKwh > 0 ? ` · ${(v.batKwh / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MWh` : '');
     return `<button data-click="pvaSetFokus('${v.id}')" title="${escHtml(v.label)} — ${groesse}"
       style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid ${v.farbe};border-radius:12px;cursor:pointer;white-space:nowrap;
-             font-size:11px;background:${an ? v.farbe : 'transparent'};color:${an ? '#0a0e16' : v.farbe};font-weight:${an ? 700 : 500};">
+             font-size:12.5px;background:${an ? v.farbe : 'transparent'};color:${an ? '#0a0e16' : v.farbe};font-weight:${an ? 700 : 500};">
       <span>${v.icon}</span><span>${escHtml(kurz(v.label))}</span></button>`;
   }).join('');
   el.style.display = '';
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;padding:7px 0 8px;border-bottom:1px solid var(--border);margin-bottom:4px;"
       title="Steuert die Hervorhebung in 2.1 und 3.1, den Steckbrief 2.2, die Speicherkurven in 2.4, den Ausgangspunkt der Schieber in 3.2–3.4 und 6.1 sowie 5.2 und 5.3">
-      <span style="font-size:10.5px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;">Auslegung im Blick</span>
+      <span style="font-size:12px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;">Auslegung im Blick</span>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">${chips}</div>
     </div>`;
 }
 
 /** Zeile unter den Schiebern eines Abschnitts: Ausgangspunkt + Rücksprung zur Auslegung im Blick. */
 function _pvaFokusZeileHtml(v, hinweis = '') {
-  return `<div data-pva-fokuszeile style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-bottom:8px;">
+  return `<div data-pva-fokuszeile style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-bottom:8px;">
     <span>Ausgangspunkt: <b style="color:${v.farbe};">${v.icon} ${escHtml(v.label)}</b>${v.id === pvaFokusVariante()?.id ? ' (Auslegung im Blick)' : ''}</span>
     ${hinweis ? `<span style="color:var(--c-orange);">${hinweis}</span>` : ''}
     <span data-pva-frei style="display:none;color:var(--c-orange);">· Schieber frei verstellt</span>
-    <button data-pva-fokus-reset style="display:none;cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.2);border-radius:10px;color:var(--c-blue);font-size:11px;padding:1px 9px;">↺ zurück zur Auslegung</button>
+    <button data-pva-fokus-reset style="display:none;cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.2);border-radius:10px;color:var(--c-blue);font-size:12.5px;padding:1px 9px;">↺ zurück zur Auslegung</button>
   </div>`;
 }
 
@@ -2154,7 +2154,7 @@ function _pvaNavHtml() {
         style="padding:7px 12px 3px 12px;border-left:2px solid transparent;cursor:pointer;user-select:none;margin-top:${k.id === '0' ? 0 : 6}px;">
         <div style="display:flex;gap:8px;align-items:baseline;font-size:12px;font-weight:600;color:var(--text);">
           <span style="font-family:'DM Mono',monospace;color:var(--accent);min-width:14px;">${k.id}</span><span>${k.titel}</span></div>
-        <div style="font-size:9.5px;color:var(--c-blue);margin:1px 0 0 22px;">${k.bezug}</div></div>`;
+        <div style="font-size:11px;color:var(--c-blue);margin:1px 0 0 22px;">${k.bezug}</div></div>`;
     // Kapitel mit genau einem gleichnamigen Abschnitt (Annahmenblatt) brauchen keine Unterzeile
     const unter = views.length === 1 && views[0].label === k.titel ? '' : views.map(v => zeile(v.id, v.nr, v.label, true)).join('');
     return kopf + unter;
@@ -2163,11 +2163,11 @@ function _pvaNavHtml() {
   return `
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:10px 0;
               display:flex;flex-direction:column;gap:0;align-self:start;position:sticky;top:0;max-height:calc(100vh - 110px);overflow-y:auto;">
-    <div style="font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:0 12px 6px 12px;">Inhalt</div>
+    <div style="font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:0 12px 6px 12px;">Inhalt</div>
     ${kapitel}
-    <div style="font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:13px 12px 5px 12px;border-top:1px solid var(--border);margin-top:10px;">Werkzeuge</div>
+    <div style="font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:13px 12px 5px 12px;border-top:1px solid var(--border);margin-top:10px;">Werkzeuge</div>
     ${werkzeuge}
-    <div style="padding:9px 12px 0 12px;font-size:10px;color:var(--c-blue);line-height:1.5;">Werkzeuge öffnen sich als eigene Seite.</div>
+    <div style="padding:9px 12px 0 12px;font-size:12px;color:var(--c-blue);line-height:1.5;">Werkzeuge öffnen sich als eigene Seite.</div>
   </div>`;
 }
 
@@ -2177,7 +2177,7 @@ function _pvaDokumentHtml() {
     <div data-pva-kap="${k.id}" style="display:flex;align-items:baseline;gap:12px;margin:34px 0 14px;padding-bottom:7px;border-bottom:1px solid var(--border);">
       <span style="font-family:'DM Mono',monospace;font-size:18px;color:var(--accent);">${k.id}</span>
       <span style="font-size:17px;font-weight:600;color:var(--text);">${k.titel}</span>
-      <span style="font-size:11px;color:var(--muted);margin-left:auto;">${k.bezug}</span>
+      <span style="font-size:12.5px;color:var(--muted);margin-left:auto;">${k.bezug}</span>
     </div>`;
   const abschnitt = (v, mitKopf) => `
     <section data-pva-sec="${v.id}" style="margin-bottom:26px;scroll-margin-top:64px;">
@@ -2185,7 +2185,7 @@ function _pvaDokumentHtml() {
         <span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--accent);">${v.nr}</span>
         <span style="font-size:13.5px;font-weight:600;color:var(--text);">${v.label}</span></div>` : ''}
       <div data-pva-platz style="min-height:90px;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);
-           border-radius:7px;color:var(--muted);font-size:11px;">Erscheint nach „Auslegungen berechnen" (Kapitel 0).</div>
+           border-radius:7px;color:var(--muted);font-size:12.5px;">Erscheint nach „Auslegungen berechnen" (Kapitel 0).</div>
       <div id="${v.el}" style="overflow:hidden;"></div>
       ${(v.extraEl || []).map(id => `<div id="${id}" style="overflow:hidden;"></div>`).join('')}
     </section>`;
@@ -2201,7 +2201,7 @@ function _pvaWerkzeugHtml() {
   return `
   <div id="pva-werkzeug" style="display:none;min-width:0;">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);">
-      <button class="btn-secondary" style="font-size:11px;" data-click="pvaSetView('tabelle')">← zurück zum Dokument</button>
+      <button class="btn-secondary" style="font-size:12.5px;" data-click="pvaSetView('tabelle')">← zurück zum Dokument</button>
       <span style="font-size:13px;font-weight:600;color:var(--text);">⧉ <span id="pva-werkzeug-titel"></span></span>
     </div>
     ${PVA_VIEWS.filter(v => v.werkzeug).map(v => `<div id="${v.el}" style="display:none;"></div>`).join('')}
@@ -2217,10 +2217,10 @@ function _pvaDatenbasisHtml() {
                 border-radius:7px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;">
       <div style="display:flex;align-items:center;gap:6px;">
         <span style="width:7px;height:7px;border-radius:50%;background:${punkt};flex-shrink:0;"></span>
-        <span style="font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;">${titel}</span>
+        <span style="font-size:12px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;">${titel}</span>
       </div>
       <div style="font-family:'DM Mono',monospace;font-size:14px;color:var(--text);">${wert}</div>
-      <div style="font-size:10px;color:var(--c-blue);line-height:1.45;">${zeilen}</div>
+      <div style="font-size:12px;color:var(--c-blue);line-height:1.45;">${zeilen}</div>
     </div>`;
 
   // 1 · Lastgang
@@ -2288,18 +2288,18 @@ function renderAnnahmenblatt(varianten) {
   if (!el) return;
   const s = window._pvAnalyse;
   const p = s.lastParams;
-  if (!p) { el.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:20px;">Erst „Auslegungen berechnen".</div>'; return; }
+  if (!p) { el.innerHTML = '<div style="color:var(--muted);font-size:12.5px;padding:20px;">Erst „Auslegungen berechnen".</div>'; return; }
 
   const szenario = (() => { try { return getEconomicScenario()?.values; } catch (e) { return null; } })();
   const num = (v, d = 0) => Number(v).toLocaleString('de-DE', { minimumFractionDigits:d, maximumFractionDigits:d });
 
   const zeile = (k, v, quelle, abw) => `
     <tr>
-      <td style="padding:6px 0;border-bottom:1px solid rgba(var(--ink),.05);font-size:11.5px;color:${abw ? '#ffa726' : 'var(--text)'};">${k}</td>
-      <td style="padding:6px 0;border-bottom:1px solid rgba(var(--ink),.05);font-family:'DM Mono',monospace;font-size:11.5px;text-align:right;color:${abw ? '#ffa726' : 'var(--text)'};white-space:nowrap;">${v}</td>
-      <td style="padding:6px 0 6px 16px;border-bottom:1px solid rgba(var(--ink),.05);font-size:10.5px;color:${abw ? '#ffa726' : '#78909c'};">${quelle}</td>
+      <td style="padding:6px 0;border-bottom:1px solid rgba(var(--ink),.05);font-size:12.5px;color:${abw ? '#ffa726' : 'var(--text)'};">${k}</td>
+      <td style="padding:6px 0;border-bottom:1px solid rgba(var(--ink),.05);font-family:'DM Mono',monospace;font-size:12.5px;text-align:right;color:${abw ? '#ffa726' : 'var(--text)'};white-space:nowrap;">${v}</td>
+      <td style="padding:6px 0 6px 16px;border-bottom:1px solid rgba(var(--ink),.05);font-size:12px;color:${abw ? '#ffa726' : '#78909c'};">${quelle}</td>
     </tr>`;
-  const kapitel = (t) => `<tr><td colspan="3" style="padding:14px 0 6px 0;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);">${t}</td></tr>`;
+  const kapitel = (t) => `<tr><td colspan="3" style="padding:14px 0 6px 0;font-size:12.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);">${t}</td></tr>`;
 
   const q    = pvGetProfilQuelle();
   const kenn = pvProfilKennwerte(_pvBasisProfil8760(), pvGetSpez());
@@ -2319,26 +2319,26 @@ function renderAnnahmenblatt(varianten) {
     <div style="display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:12px;">
       <div>
         <div style="font-size:13px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;">Berechnungsannahmen</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:3px;">Anlage zum Gutachten — alle Eingaben der PV-Ausbauanalyse mit Herkunft</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:3px;">Anlage zum Gutachten — alle Eingaben der PV-Ausbauanalyse mit Herkunft</div>
       </div>
-      <button class="btn-secondary" data-click="pvaAnnahmenKopieren()" style="font-size:11px;">Als Text kopieren</button>
+      <button class="btn-secondary" data-click="pvaAnnahmenKopieren()" style="font-size:12.5px;">Als Text kopieren</button>
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:6px;">
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:9px 12px;">
-        <div style="font-size:10px;color:var(--muted);">Berechnungsstand</div>
+        <div style="font-size:12px;color:var(--muted);">Berechnungsstand</div>
         <div style="font-family:'DM Mono',monospace;font-size:12px;">${s.standText || '—'}</div>
       </div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:9px 12px;">
-        <div style="font-size:10px;color:var(--muted);">Parametersatz</div>
+        <div style="font-size:12px;color:var(--muted);">Parametersatz</div>
         <div style="font-family:'DM Mono',monospace;font-size:12px;">${szenario ? escHtml(getEconomicScenario().label || '—') : 'manuell'}</div>
       </div>
       <div style="background:var(--surface2);border:1px solid var(--border);${nAbw ? 'border-left:2px solid var(--c-orange);' : ''}border-radius:6px;padding:9px 12px;">
-        <div style="font-size:10px;color:var(--muted);">Abweichungen vom Szenario</div>
+        <div style="font-size:12px;color:var(--muted);">Abweichungen vom Szenario</div>
         <div style="font-family:'DM Mono',monospace;font-size:12px;color:${nAbw ? '#ffa726' : '#66bb6a'};">${nAbw} ${nAbw === 1 ? 'Position' : 'Positionen'}</div>
       </div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:9px 12px;">
-        <div style="font-size:10px;color:var(--muted);">Berechnete Auslegungen</div>
+        <div style="font-size:12px;color:var(--muted);">Berechnete Auslegungen</div>
         <div style="font-family:'DM Mono',monospace;font-size:12px;">${(varianten || []).length}</div>
       </div>
     </div>
@@ -2416,8 +2416,8 @@ function renderAnnahmenblatt(varianten) {
     </table>
 
     <div style="margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:12px 14px;">
-      <div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Modellgrenzen</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:6px 20px;font-size:10.5px;color:var(--muted);line-height:1.55;">
+      <div style="font-size:12.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Modellgrenzen</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:6px 20px;font-size:12px;color:var(--muted);line-height:1.55;">
         <div>Ein Wetterjahr; jahresübergreifende Ertragsschwankung von ±8 % nicht abgebildet.</div>
         <div>Wechselrichter-Kappung nicht modelliert — die Rückspeisespitze ist eine obere Abschätzung.</div>
         <div>Batterie-Kapazitätsalterung nicht abgebildet; Ersatz über die kürzere Annuität.</div>
@@ -2452,11 +2452,11 @@ function _pvBuildPanelHtml() {
   <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;">
     <div>
       <div style="font-size:15px;font-weight:600;color:var(--text);letter-spacing:.06em;text-transform:uppercase;">PV-Ausbauanalyse</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:3px;">Auslegungsstudie · Wirtschaftlichkeit · Netzintegration &nbsp;·&nbsp; Kapitel 3.4.2 / 3.5</div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:3px;">Auslegungsstudie · Wirtschaftlichkeit · Netzintegration &nbsp;·&nbsp; Kapitel 3.4.2 / 3.5</div>
     </div>
     <div style="display:flex;gap:6px;">
-      <button class="btn-secondary" data-click="pvaSetView('annahmen')" style="font-size:11px;">Annahmenblatt</button>
-      <button class="btn-secondary" data-click="setViewMode('karte')" style="font-size:11px;">← Zurück zur Karte</button>
+      <button class="btn-secondary" data-click="pvaSetView('annahmen')" style="font-size:12.5px;">Annahmenblatt</button>
+      <button class="btn-secondary" data-click="setViewMode('karte')" style="font-size:12.5px;">← Zurück zur Karte</button>
     </div>
   </div>
 
@@ -2469,7 +2469,7 @@ function _pvBuildPanelHtml() {
     <div data-pva-kap="0" style="display:flex;align-items:baseline;gap:12px;margin:0 0 14px;padding-bottom:7px;border-bottom:1px solid var(--border);">
       <span style="font-family:'DM Mono',monospace;font-size:18px;color:var(--accent);">0</span>
       <span style="font-size:17px;font-weight:600;color:var(--text);">Eingaben &amp; Datenbasis</span>
-      <span style="font-size:11px;color:var(--muted);margin-left:auto;">Womit wird gerechnet?</span>
+      <span style="font-size:12.5px;color:var(--muted);margin-left:auto;">Womit wird gerechnet?</span>
     </div>
   <!-- Datenbasis: womit wird gerechnet? -->
   <div id="pva-datenbasis">${_pvaDatenbasisHtml()}</div>
@@ -2480,20 +2480,20 @@ function _pvBuildPanelHtml() {
     <!-- ═══ 01 Wirtschaftliche Annahmen ═══ -->
     <div style="background:var(--surface2);border-radius:7px;padding:13px 15px;border:1px solid var(--border);">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-        <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);">01</span>
+        <span style="font-family:'DM Mono',monospace;font-size:12.5px;color:var(--accent);">01</span>
         <div style="font-size:12px;font-weight:600;color:var(--text);">Wirtschaftliche Annahmen</div>
         <span class="htip" data-tip="Preise, Zins und Nutzungsdauern. Grundlage ist das dokumentierte Projektszenario; Abweichungen werden im Annahmenblatt als „manuell überschrieben“ ausgewiesen.">?</span>
         ${(() => {
           try {
             const sc = getEconomicScenario();
             return `<div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
-              <span style="font-size:10px;color:var(--c-blue);">Grundlage</span>
-              <span style="padding:2px 9px;border-radius:11px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:10px;font-family:'DM Mono',monospace;">${escHtml(sc.label || sc.id)}</span>
+              <span style="font-size:12px;color:var(--c-blue);">Grundlage</span>
+              <span style="padding:2px 9px;border-radius:11px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;font-family:'DM Mono',monospace;">${escHtml(sc.label || sc.id)}</span>
             </div>`;
           } catch (e) { return ''; }
         })()}
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:9px;font-size:11px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:9px;font-size:12.5px;">
         ${_pvWirtInput('pva-p-strom', 'Strombezugspreis (ct/kWh)', _pvSzenarioWert('stromCtKwh', 30))}
         ${_pvWirtInput('pva-p-einsp', 'Einspeisevergütung (ct/kWh)', 8)}
         ${_pvWirtInput('pva-zins',    'Kalkulationszins (%)', _pvSzenarioWert('kapitalzinsPct', 3.5))}
@@ -2510,7 +2510,7 @@ function _pvBuildPanelHtml() {
 
       <div style="background:var(--surface2);border-radius:7px;padding:13px 15px;border:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);">02</span>
+          <span style="font-family:'DM Mono',monospace;font-size:12.5px;color:var(--accent);">02</span>
           <div style="font-size:12px;font-weight:600;color:var(--text);">Stromlastgang</div>
           <span class="htip" data-tip="Welche Lasten werden simuliert?&#10;· Nur Strom: hochgeladener Quartierlastgang&#10;· + Wärmepumpen: addiert WP- und Stromkesselstrom aus der Wärmesimulation&#10;· Endausbau: NAP-Messung plus Neubau-/Abrissmaßnahmen bis zum Planungsjahr">?</span>
         </div>
@@ -2523,7 +2523,7 @@ function _pvBuildPanelHtml() {
           const zj      = window._pvAnalyse.endausbauJahr || (curYear + 15);
           const btn = (id, label, aktiv, gesperrt) =>
             `<button data-pva-dm="${id}" ${gesperrt ? 'disabled' : ''}
-              style="flex:1;padding:6px;border-radius:5px;cursor:${gesperrt ? 'default' : 'pointer'};font-size:11px;font-weight:500;
+              style="flex:1;padding:6px;border-radius:5px;cursor:${gesperrt ? 'default' : 'pointer'};font-size:12.5px;font-weight:500;
                      border:1px solid ${aktiv ? 'var(--accent)' : 'var(--border)'};
                      background:${aktiv ? 'var(--accent)' : 'var(--surface)'};color:${aktiv ? '#000' : 'var(--text)'};
                      ${gesperrt ? 'opacity:.4;' : ''}">${label}</button>`;
@@ -2533,8 +2533,8 @@ function _pvBuildPanelHtml() {
             onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)'">
             <span style="font-size:15px;">📂</span>
             <div style="flex:1;min-width:0;">
-              <div style="font-size:10.5px;color:var(--muted);">Strom-Lastgang CSV — 15-min oder Stunden (kW)</div>
-              <div style="font-size:10.5px;margin-top:2px;color:${hasBase ? 'var(--text)' : '#ef9a9a'};">
+              <div style="font-size:12px;color:var(--muted);">Strom-Lastgang CSV — 15-min oder Stunden (kW)</div>
+              <div style="font-size:12px;margin-top:2px;color:${hasBase ? 'var(--text)' : '#ef9a9a'};">
                 ${hasBase ? escHtml(window.elQuartierFilename || 'geladen') : 'nicht geladen'}</div>
             </div>
           </div>
@@ -2545,54 +2545,54 @@ function _pvBuildPanelHtml() {
             ${btn('endausbau', 'Endausbau', mode === 'endausbau', !hasNap)}
           </div>
           <div style="display:flex;align-items:center;gap:9px;${mode === 'endausbau' ? '' : 'opacity:.45;'}">
-            <span style="font-size:10.5px;color:var(--muted);white-space:nowrap;">Planungsjahr</span>
+            <span style="font-size:12px;color:var(--muted);white-space:nowrap;">Planungsjahr</span>
             <input id="pva-endausbau-jahr" type="range" value="${zj}" min="${curYear}" max="2060" step="1"
               style="flex:1;accent-color:var(--accent);" ${mode === 'endausbau' ? '' : 'disabled'}
               data-input="document.getElementById('pva-endausbau-jahr-val').textContent=this.value;window._pvAnalyse.endausbauJahr=parseInt(this.value)||window._pvAnalyse.endausbauJahr;"/>
-            <span id="pva-endausbau-jahr-val" style="font-size:11px;color:var(--text);font-family:'DM Mono',monospace;min-width:34px;text-align:right;">${zj}</span>
+            <span id="pva-endausbau-jahr-val" style="font-size:12.5px;color:var(--text);font-family:'DM Mono',monospace;min-width:34px;text-align:right;">${zj}</span>
           </div>`;
         })()}
       </div>
 
       <div style="background:var(--surface2);border-radius:7px;padding:13px 15px;border:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);">03</span>
+          <span style="font-family:'DM Mono',monospace;font-size:12.5px;color:var(--accent);">03</span>
           <div style="font-size:12px;font-weight:600;color:var(--text);">Netzanschlusspunkt</div>
           <span class="htip" data-tip="Grenzen am Netzanschlusspunkt (0 = unbegrenzt) und Netzstärke für die Rückspeise-Bewertung. S_k″ hängt vom vorgelagerten Netz ab, nicht von der eigenen Anschlussleistung.">?</span>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12.5px;">
           <div>
-            <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">Max. Einspeisung (kW)</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:3px;">Max. Einspeisung (kW)</div>
             <input id="pva-nap-einsp" type="number" value="0" min="0" step="10"
-              style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;"
+              style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12.5px;"
               data-change="window._pvAnalyse.napMaxEinspKw=parseFloat(this.value)||0;window.elNapMaxEinspKw=window._pvAnalyse.napMaxEinspKw||null;(document.getElementById('strom-nap-einsp-kw')||{}).value=this.value"/>
           </div>
           <div>
-            <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">Max. Bezug (kVA)</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:3px;">Max. Bezug (kVA)</div>
             <input id="pva-nap-bezug" type="number" value="0" min="0" step="10"
-              style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;"
+              style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12.5px;"
               data-change="window._pvAnalyse.napMaxBezugKw=parseFloat(this.value)||0;window.elNapMaxBezugKw=window._pvAnalyse.napMaxBezugKw||null;(document.getElementById('strom-nap-bezug-kw')||{}).value=this.value;window.napOnNapGrenzenGeaendert&&window.napOnNapGrenzenGeaendert()"/>
           </div>
           <div style="grid-column:1/-1;">
-            <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">Spannungsebene (Richtwert für S_k″)</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:3px;">Spannungsebene (Richtwert für S_k″)</div>
             <select id="pva-spannungsebene" data-change="pvSpannungsebeneChanged(this.value)"
-              style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;">
+              style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12.5px;">
               <option value="">– wählen (nur Richtwert) –</option>
               <option value="ns">Niederspannung 0,4 kV — ~500 kVA</option>
               <option value="ms">Mittelspannung 10/20 kV — ~10.000 kVA</option>
             </select>
           </div>
           <div>
-            <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">S_k″ (kVA)</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:3px;">S_k″ (kVA)</div>
             <input id="pva-sk" type="number" value="0" min="0" step="100"
-              style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;"
+              style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12.5px;"
               data-change="window._pvAnalyse.skKVA=parseFloat(this.value)||0"/>
           </div>
           <div>
-            <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">Δu-Budget (%)</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:3px;">Δu-Budget (%)</div>
             <input id="pva-ubudget" type="number" value="" min="1" max="10" step="0.5" placeholder="auto"
               title="Leer = aus der Spannungsebene des Netzanschlusses (Niederspannung 3 %, Mittelspannung 2 %)"
-              style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;"
+              style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12.5px;"
               data-change="window._pvAnalyse.uBudgetManuell=parseFloat(this.value)>0;window._pvAnalyse.uBudgetPct=parseFloat(this.value)>0?parseFloat(this.value):3"/>
           </div>
         </div>
@@ -2604,33 +2604,33 @@ function _pvBuildPanelHtml() {
 
       <div style="background:var(--surface2);border-radius:7px;padding:13px 15px;border:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);">04</span>
+          <span style="font-family:'DM Mono',monospace;font-size:12.5px;color:var(--accent);">04</span>
           <div style="font-size:12px;font-weight:600;color:var(--text);">Anlagenpotenzial</div>
           <span class="htip" data-tip="Summe aller PV-Quellen. Gebäude mit eigenem Elektro-Asset werden nicht zusätzlich pauschal gezählt — dieselbe Dachfläche darf nur einmal zählen.">?</span>
         </div>
         ${(() => {
           return `
           <div id="pva-potenzial-kopf">${_pvPotenzialKopfHtml()}</div>
-          <div style="font-size:10.5px;color:var(--muted);margin:8px 0 3px 0;">Manuell überschreiben (0 = aus Projekt)</div>
+          <div style="font-size:12px;color:var(--muted);margin:8px 0 3px 0;">Manuell überschreiben (0 = aus Projekt)</div>
           <input id="pva-max-kwp" type="number" value="${window._pvAnalyse.pvMaxKwpOverride || 0}" min="0" step="10"
-            style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;"
+            style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12.5px;"
             data-change="window._pvAnalyse.pvMaxKwpOverride=parseFloat(this.value)||0"/>
 
           <div style="margin-top:11px;padding-top:9px;border-top:1px solid var(--border);">
             <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
               <span style="color:var(--c-violet);font-size:12px;">§</span>
-              <span style="font-size:11px;font-weight:600;color:var(--text);">Landesrechtliche PV-Pflicht</span>
+              <span style="font-size:12.5px;font-weight:600;color:var(--text);">Landesrechtliche PV-Pflicht</span>
               <span class="htip" data-tip="Mindestbelegung nach Bauordnung bzw. Solar-/Klimaschutzgesetz des Bundeslandes. Ergibt eine eigene Auslegung und prüft alle anderen Auslegungen gegen diese Untergrenze. Orientierungswert, keine Rechtsberatung.">?</span>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
               <select id="pva-pflicht-land" data-change="window._pvAnalyse.pflichtLand=this.value;window.pvPflichtRefresh&&window.pvPflichtRefresh()"
-                style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;">
+                style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12.5px;">
                 <option value="">aus der Karte bestimmen</option>
                 ${PV_PFLICHT_LISTE.map(l => `<option value="${l.id}">${escHtml(l.land)}${l.pflicht ? '' : ' — ohne Pflicht'}</option>`).join('')}
               </select>
               <select id="pva-pflicht-annahme" data-change="window._pvAnalyse.pflichtAnnahme=this.value;window.pvPflichtRefresh&&window.pvPflichtRefresh()"
                 title="Welche Gebäude als Pflichtfall gelten: nur geplante Fälle nimmt Gebäude mit Neubaujahr oder markierter Dachsanierung, alle Gebäude rechnet den Vollausbau als Worst Case."
-                style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;">
+                style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12.5px;">
                 <option value="auto">nur geplante Fälle</option>
                 <option value="alle">alle Gebäude (Worst Case)</option>
                 <option value="aus">Pflicht nicht prüfen</option>
@@ -2644,7 +2644,7 @@ function _pvBuildPanelHtml() {
 
       <div style="background:var(--surface2);border-radius:7px;padding:13px 15px;border:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);">05</span>
+          <span style="font-family:'DM Mono',monospace;font-size:12.5px;color:var(--accent);">05</span>
           <div style="font-size:12px;font-weight:600;color:var(--text);">Erzeugungsprofil &amp; Börsenpreise</div>
           <span class="htip" data-tip="Der zeitliche Verlauf bestimmt Rückspeisespitze, Abregelung und Eigenverbrauchsquote. Ein hochgeladenes PVGIS-/Messprofil hat Vorrang vor dem synthetischen; die Jahresmenge kommt weiterhin aus dem spezifischen Ertrag.">?</span>
         </div>
@@ -2654,12 +2654,12 @@ function _pvBuildPanelHtml() {
           onmouseenter="this.style.borderColor='#ab47bc'" onmouseleave="this.style.borderColor='var(--border)'">
           <span style="font-size:15px;">💹</span>
           <div style="flex:1;min-width:0;">
-            <div style="font-size:10.5px;color:var(--muted);">Spot-Preise CSV (EPEX DE, SMARD/ENTSO-E)</div>
-            <div id="pva-spot-status" style="font-size:10.5px;margin-top:2px;color:var(--muted);">nicht geladen</div>
+            <div style="font-size:12px;color:var(--muted);">Spot-Preise CSV (EPEX DE, SMARD/ENTSO-E)</div>
+            <div id="pva-spot-status" style="font-size:12px;margin-top:2px;color:var(--muted);">nicht geladen</div>
           </div>
         </div>
         <input type="file" id="pva-spot-file-input" accept=".csv,.txt" style="display:none;" data-change="spotPreisFileSelected(this.files[0])"/>
-        <div style="font-size:10px;color:var(--c-blue);margin-top:5px;">Mit Spot-Preisen rechnen „Wirtschaftlich optimiert" und „Max PV" mit Börsenerlösen statt fester Vergütung.</div>
+        <div style="font-size:12px;color:var(--c-blue);margin-top:5px;">Mit Spot-Preisen rechnen „Wirtschaftlich optimiert" und „Max PV" mit Börsenerlösen statt fester Vergütung.</div>
 
         <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--border);">
           ${(() => {
@@ -2667,17 +2667,17 @@ function _pvBuildPanelHtml() {
             const an = window._pvAnalyse.windEnabled === true && ws.count > 0;
             const tm = window._pvAnalyse.windTarifModus || 'gemeinsam';
             return `
-            <label style="display:flex;align-items:center;gap:7px;cursor:${ws.count > 0 ? 'pointer' : 'default'};font-size:11px;color:${ws.count > 0 ? 'var(--text)' : '#607d8b'};">
+            <label style="display:flex;align-items:center;gap:7px;cursor:${ws.count > 0 ? 'pointer' : 'default'};font-size:12.5px;color:${ws.count > 0 ? 'var(--text)' : '#607d8b'};">
               <input type="checkbox" id="pva-wind-enable" ${an ? 'checked' : ''} ${ws.count === 0 ? 'disabled' : ''}
                 data-change="window._pvAnalyse.windEnabled=this.checked;document.getElementById('pva-wind-detail').style.display=this.checked?'block':'none';"
                 style="accent-color:#4dd0e1;">
               Windkraftanlagen einbeziehen
               ${ws.count > 0 ? `<span style="color:var(--c-teal);font-weight:500;">(${ws.count}× · ${ws.mwh.toFixed(0)} MWh/a)</span>`
-                             : '<span style="font-size:10px;">— keine aktive Anlage im Projekt</span>'}
+                             : '<span style="font-size:12px;">— keine aktive Anlage im Projekt</span>'}
             </label>
             <div id="pva-wind-detail" style="display:${an ? 'block' : 'none'};margin-top:7px;padding-left:22px;">
               <select id="pva-wind-tarif-modus" data-change="window._pvAnalyse.windTarifModus=this.value;document.getElementById('pva-wind-p-einsp-row').style.display=this.value==='getrennt'?'block':'none';"
-                style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;margin-bottom:7px;">
+                style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12.5px;margin-bottom:7px;">
                 <option value="gemeinsam" ${tm !== 'getrennt' ? 'selected' : ''}>Gemeinsam mit PV-Einspeisevergütung</option>
                 <option value="getrennt" ${tm === 'getrennt' ? 'selected' : ''}>Getrennt — eigener Windkraft-Tarif</option>
               </select>
@@ -2695,61 +2695,61 @@ function _pvBuildPanelHtml() {
     <div style="background:var(--surface2);border-radius:7px;padding:13px 15px;border:1px solid var(--border);">
       <div data-click="pvaDeckToggle('infra')" style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;"
            title="Ein- und ausklappen">
-        <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);">06</span>
+        <span style="font-family:'DM Mono',monospace;font-size:12.5px;color:var(--accent);">06</span>
         <div style="font-size:12px;font-weight:600;color:var(--text);">Netzanschluss-Infrastruktur</div>
         <span class="htip" data-tip="Netzanschluss- und Zusatzkosten je PV-Leistungsstufe. Die Stufe wird jeder Auslegung automatisch nach ihrer PV-Leistung zugeordnet; alle Werte sind editierbar.">?</span>
-        <span id="pva-infra-summary" style="margin-left:auto;font-size:10px;color:var(--c-blue);">${_pvaInfraSummary()}</span>
-        <span id="pva-infra-caret" style="color:var(--c-blue);font-size:11px;width:12px;text-align:center;">${window._pvAnalyse.deckZu?.infra ? '▸' : '▾'}</span>
+        <span id="pva-infra-summary" style="margin-left:auto;font-size:12px;color:var(--c-blue);">${_pvaInfraSummary()}</span>
+        <span id="pva-infra-caret" style="color:var(--c-blue);font-size:12.5px;width:12px;text-align:center;">${window._pvAnalyse.deckZu?.infra ? '▸' : '▾'}</span>
       </div>
       <div id="pva-infra-body" style="display:${window._pvAnalyse.deckZu?.infra ? 'none' : 'grid'};
            grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-top:10px;">
-        <div id="pva-infra-stufen" style="font-size:10.5px;"></div>
+        <div id="pva-infra-stufen" style="font-size:12px;"></div>
         <div>
-          <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:11px;color:var(--text);margin-bottom:7px;">
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;color:var(--text);margin-bottom:7px;">
             <input type="checkbox" id="pva-erznetz-aktiv" style="accent-color:#fdd835;"
               data-change="window._pvAnalyse.erzNetzAktiv=this.checked;document.getElementById('pva-erznetz-detail').style.display=this.checked?'grid':'none'">
             Erzeugungsnetz (dediziert)
           </label>
           <div id="pva-erznetz-detail" style="display:none;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:9px;">
             <div>
-              <div style="font-size:10px;color:var(--muted);">Länge (m)</div>
+              <div style="font-size:12px;color:var(--muted);">Länge (m)</div>
               <input id="pva-erznetz-laenge" type="number" value="0" min="0" step="10"
-                style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:10.5px;"
+                style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:12px;"
                 data-change="window._pvAnalyse.erzNetz.laengeM=parseFloat(this.value)||0"/>
             </div>
             <div>
-              <div style="font-size:10px;color:var(--muted);">€/m</div>
+              <div style="font-size:12px;color:var(--muted);">€/m</div>
               <input id="pva-erznetz-preis" type="number" value="250" min="50" step="25"
-                style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:10.5px;"
+                style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:12px;"
                 data-change="window._pvAnalyse.erzNetz.preisPrM=parseFloat(this.value)||250"/>
             </div>
             <div style="grid-column:1/-1;">
-              <div style="font-size:10px;color:var(--muted);">Übergabepunkt / Schutz (€)</div>
+              <div style="font-size:12px;color:var(--muted);">Übergabepunkt / Schutz (€)</div>
               <input id="pva-erznetz-schutz" type="number" value="5000" min="0" step="500"
-                style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:10.5px;"
+                style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:12px;"
                 data-change="window._pvAnalyse.erzNetz.schutzEUR=parseFloat(this.value)||5000"/>
             </div>
           </div>
-          <div style="font-size:10.5px;color:var(--muted);margin-bottom:5px;">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:5px;">
             Mehrkosten (geteilte Infrastruktur)
             <span class="htip" data-tip="Infrastruktur, die ohnehin ertüchtigt werden müsste, wegen PV aber anders dimensioniert wird: nur die Differenzkosten eintragen.">?</span>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
             <div>
-              <div style="font-size:10px;color:var(--muted);">Invest (€)</div>
+              <div style="font-size:12px;color:var(--muted);">Invest (€)</div>
               <input id="pva-mehrkosten-invest" type="number" value="0" min="0" step="1000"
-                style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:10.5px;"
+                style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:12px;"
                 data-change="window._pvAnalyse.mehrkosten.investEUR=parseFloat(this.value)||0"/>
             </div>
             <div>
-              <div style="font-size:10px;color:var(--muted);">Jährlich (€/a)</div>
+              <div style="font-size:12px;color:var(--muted);">Jährlich (€/a)</div>
               <input id="pva-mehrkosten-jk" type="number" value="0" min="0" step="100"
-                style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:10.5px;"
+                style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:12px;"
                 data-change="window._pvAnalyse.mehrkosten.jaehrlichEUR=parseFloat(this.value)||0"/>
             </div>
           </div>
           <input id="pva-mehrkosten-label" type="text" placeholder="Beschreibung…"
-            style="width:100%;margin-top:5px;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:10.5px;box-sizing:border-box;"
+            style="width:100%;margin-top:5px;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:12px;box-sizing:border-box;"
             data-change="window._pvAnalyse.mehrkosten.label=this.value"/>
         </div>
       </div>
@@ -2759,7 +2759,7 @@ function _pvBuildPanelHtml() {
   <!-- Hinweis: Eingaben haben sich seit der letzten Berechnung geändert -->
   <div id="pva-stale-hinweis" style="margin-top:12px;padding:9px 13px;border-radius:7px;
     background:rgba(255,167,38,0.10);border:1px solid var(--c-orange);border-left:3px solid var(--c-orange);
-    font-size:11px;color:var(--c-orange);display:none;align-items:center;gap:9px;">
+    font-size:12.5px;color:var(--c-orange);display:none;align-items:center;gap:9px;">
     <span style="font-size:14px;">⚠</span>
     <span>Die Eingaben haben sich geändert — die Ergebnisse stammen noch aus der vorherigen
       Berechnung. <b>Auslegungen neu berechnen</b>, bevor Zahlen ins Gutachten übernommen werden.</span>
@@ -2776,7 +2776,7 @@ function _pvBuildPanelHtml() {
     <!-- Ergebniskapitel 1–7 (werden bei veralteten Eingaben abgeblendet) -->
     <div id="pva-ergebnis-kapitel" style="transition:opacity .15s;">
       <div id="pva-fokusleiste" style="position:sticky;top:0;z-index:20;background:var(--bg);display:none;"></div>
-      <div id="pva-leer-hinweis" style="margin-top:22px;padding:14px;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:11.5px;text-align:center;">
+      <div id="pva-leer-hinweis" style="margin-top:22px;padding:14px;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:12.5px;text-align:center;">
         ${(() => {
           const hasBase = !!(window.elQuartierH15 || window.elQuartierH);
           if (!hasBase) return 'Lastgang oben hochladen und anschließend „Auslegungen berechnen".';
@@ -3143,7 +3143,7 @@ function renderSteckbrief(varianten) {
 
   const kennzahl = (titel, wert, farbe) => `
     <div style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:5px 9px;min-width:74px;">
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">${titel}</div>
+      <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">${titel}</div>
       <div style="font-family:'DM Mono',monospace;font-size:13px;color:${farbe};">${wert}</div>
     </div>`;
 
@@ -3154,7 +3154,7 @@ function renderSteckbrief(varianten) {
         <div style="display:flex;align-items:baseline;gap:8px;">
           <span style="color:${v.farbe};font-size:16px;">${v.icon}</span>
           <span style="font-size:14px;font-weight:600;color:var(--text);">${escHtml(v.label)}</span>
-          ${v.id === fokus.id && _pvaSteckbriefAlle ? '<span style="font-size:10.5px;color:var(--accent);">Auslegung im Blick</span>' : ''}
+          ${v.id === fokus.id && _pvaSteckbriefAlle ? '<span style="font-size:12px;color:var(--accent);">Auslegung im Blick</span>' : ''}
         </div>
         <div style="font-size:12.5px;color:${v.farbe};font-weight:600;line-height:1.45;">${v.info.frage}</div>
         <div style="font-size:12px;color:var(--c-blue);line-height:1.6;"><b style="color:var(--text);">So entsteht sie:</b> ${v.info.herleitung}</div>
@@ -3175,7 +3175,7 @@ function renderSteckbrief(varianten) {
         <div style="font-size:12px;color:var(--c-blue);line-height:1.6;">${h.fazit}</div>
       </div>` : `
       <div style="display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:6px;
-                  color:var(--muted);font-size:11.5px;padding:24px;text-align:center;line-height:1.6;">
+                  color:var(--muted);font-size:12.5px;padding:24px;text-align:center;line-height:1.6;">
         Für diese Auslegung gibt es keine Suchspur — sie ist nicht optimiert, sondern vorgegeben
         (z. B. aus dem Einlinienschema, dem Fahrplan, einer Netzstrategie oder einer Dachbelegung aus dem PV-Modus).</div>`;
     return `
@@ -3189,12 +3189,12 @@ function renderSteckbrief(varianten) {
   el.innerHTML = `
   <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px;">
     <span style="font-size:12px;color:var(--c-blue);">Welche Frage die Auslegung beantwortet, wie sie entsteht — und der Beleg aus der Suchspur der Optimierung
-      <span style="font-size:11px;color:var(--muted);margin-left:6px;">${_pvaSteckbriefAlle ? 'alle Auslegungen' : 'Auslegung wechseln: Leiste oben oder Tabellenzeile'}</span></span>
-    <button data-click="pvaSteckbriefAlle()" style="flex-shrink:0;cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.2);border-radius:10px;color:var(--c-blue);font-size:11px;padding:2px 10px;">
+      <span style="font-size:12.5px;color:var(--muted);margin-left:6px;">${_pvaSteckbriefAlle ? 'alle Auslegungen' : 'Auslegung wechseln: Leiste oben oder Tabellenzeile'}</span></span>
+    <button data-click="pvaSteckbriefAlle()" style="flex-shrink:0;cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.2);border-radius:10px;color:var(--c-blue);font-size:12.5px;padding:2px 10px;">
       ${_pvaSteckbriefAlle ? 'nur Auslegung im Blick' : `alle ${kanon.length} Auslegungen untereinander`}</button>
   </div>
   <div style="display:flex;flex-direction:column;gap:12px;">${liste.map(karte).join('')}</div>
-  <div style="margin-top:8px;font-size:10.5px;color:var(--c-blue);line-height:1.55;">
+  <div style="margin-top:8px;font-size:12px;color:var(--c-blue);line-height:1.55;">
     Die Grafiken zeigen die tatsächlich ausgewerteten Stützstellen der jeweiligen Suche, keine nachträglich geglättete Kurve.
     Wo eine Suche abgebrochen hat, ist der auslösende Punkt rot markiert.
   </div>`;
@@ -3232,13 +3232,13 @@ function renderRechenweg(varianten) {
   const row = (label, formel, wert, strong) => `
     <tr style="border-bottom:1px solid rgba(var(--ink),0.04);">
       <td style="padding:3px 8px 3px 0;color:${strong ? 'var(--text)' : 'var(--muted)'};white-space:nowrap;${strong ? 'font-weight:600;' : ''}">${label}</td>
-      <td style="padding:3px 8px;color:var(--c-blue);font-family:'DM Mono',monospace;font-size:11px;">${formel}</td>
+      <td style="padding:3px 8px;color:var(--c-blue);font-family:'DM Mono',monospace;font-size:12.5px;">${formel}</td>
       <td style="padding:3px 0;text-align:right;font-family:'DM Mono',monospace;color:${strong ? '#a5d6a7' : 'var(--text)'};${strong ? 'font-weight:700;' : ''}white-space:nowrap;">${wert}</td>
     </tr>`;
   const block = (titel, rows) => `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:10px 12px;">
-      <div style="font-size:11px;font-weight:700;color:var(--text);letter-spacing:.04em;text-transform:uppercase;margin-bottom:5px;">${titel}</div>
-      <table style="width:100%;border-collapse:collapse;font-size:11px;">${rows}</table>
+      <div style="font-size:12.5px;font-weight:700;color:var(--text);letter-spacing:.04em;text-transform:uppercase;margin-bottom:5px;">${titel}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">${rows}</table>
     </div>`;
 
   const windAktiv = (s.windEigenMwh || 0) + (s.windEinspMwh || 0) > 0.01;
@@ -3288,9 +3288,9 @@ function renderRechenweg(varianten) {
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Rechenweg — Nachvollziehbarkeit
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">jede Zahl mit Formel; entspricht Anhang B der Grundlagen-Doku</span>
+      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;">jede Zahl mit Formel; entspricht Anhang B der Grundlagen-Doku</span>
     </span>
-    <span style="font-size:11.5px;color:var(--muted);">für <b style="color:${v.farbe};">${v.icon} ${escHtml(v.label)}</b> (Auslegung im Blick)</span>
+    <span style="font-size:12.5px;color:var(--muted);">für <b style="color:${v.farbe};">${v.icon} ${escHtml(v.label)}</b> (Auslegung im Blick)</span>
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;align-items:start;">
     ${blkEnergie}${blkInvest}${blkJk}${blkErloes}
@@ -3494,10 +3494,10 @@ function renderOptHeatmap(demandH, pvProfile, napParams, params, varianten, over
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Jahresüberschuss über PV-Leistung × Batteriekapazität
-      <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px;">Farbe = Netto-Überschuss €/a · weiße Linie = Bereich ≥ 95 % des Optimums · ✕ Optimum · ○ Auslegungen</span>
+      <span style="font-size:12.5px;color:var(--muted);font-weight:400;margin-left:6px;">Farbe = Netto-Überschuss €/a · weiße Linie = Bereich ≥ 95 % des Optimums · ✕ Optimum · ○ Auslegungen</span>
     </span>
     ${overrideEl ? '' : `<span style="display:flex;gap:6px;flex-shrink:0;">
-      <button data-pva-fs="surf" title="Dieselbe Fläche drehbar in 3D" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:11px;padding:2px 8px;">3D ansehen</button>
+      <button data-pva-fs="surf" title="Dieselbe Fläche drehbar in 3D" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12.5px;padding:2px 8px;">3D ansehen</button>
       <button data-pva-fs="heatmap" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button></span>`}
   </div>
   <svg width="${W}" height="${H}" style="display:block;overflow:hidden;cursor:crosshair;">
@@ -3598,7 +3598,7 @@ function renderOptSurface3D(demandH, pvProfile, napParams, params, varianten, ov
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">3D-Optimierung: Jahresüberschuss über PV-Leistung × Batteriekapazität
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">ziehen zum Drehen · Scrollen zoomt · ○ Auslegungen · ✕ Optimum</span>
+      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;">ziehen zum Drehen · Scrollen zoomt · ○ Auslegungen · ✕ Optimum</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="surf" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -3815,7 +3815,7 @@ function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Ausbau-Grenznutzen: Jahresüberschuss je PV-Größe <span style="color:var(--muted);font-weight:400;">(ohne Speicher)</span>
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">wo die Kurve kippt, kostet weiterer Ausbau mehr als er bringt · Sprünge = Infrastrukturstufen · ein Speicher verschiebt das Optimum nach rechts</span>
+      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;">wo die Kurve kippt, kostet weiterer Ausbau mehr als er bringt · Sprünge = Infrastrukturstufen · ein Speicher verschiebt das Optimum nach rechts</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="grenz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -3932,7 +3932,7 @@ function renderWindGrenznutzenChart(demandH, pvProfile, napParams, params, varia
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Wind-Ausbau-Grenznutzen: Jahresüberschuss je Windleistung <span style="color:var(--muted);font-weight:400;">(PV/Batterie fix: ${ref.icon || ''} ${Math.round(ref.pvKwp)} kWp / ${(ref.batKwh / 1000).toFixed(1)} MWh)</span>
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Profilform bleibt gleich (gleicher Standortwind) · Kosten: ${params.windInvestPerKw} €/kW + 3 %/a IH · Wake-Verluste nicht berücksichtigt</span>
+      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;">Profilform bleibt gleich (gleicher Standortwind) · Kosten: ${params.windInvestPerKw} €/kW + 3 %/a IH · Wake-Verluste nicht berücksichtigt</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="wind-grenz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -3956,7 +3956,7 @@ function renderWindGrenznutzenChart(demandH, pvProfile, napParams, params, varia
     <text x="${Math.min(xS(optKw) + 4, W - 150)}" y="${PT + 20}" fill="#4dd0e1" font-size="11" font-weight="600">Optimum ≈ ${fmtKw(optKw)}</text>
     <line id="pva-windgrenz-xhair" x1="-2" y1="${PT}" x2="-2" y2="${PT + cH}" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-dasharray="3,2"/>
   </svg>
-  <div style="font-size:10.5px;color:var(--c-blue);margin-top:2px;">
+  <div style="font-size:12px;color:var(--c-blue);margin-top:2px;">
     ${optKw > windKwInst * 1.05
       ? `Mehr Wind lohnt sich: Optimum bei ${fmtKw(optKw)} (+${(data[optIdx].netto - instNetto) >= 1000 ? ((data[optIdx].netto - instNetto) / 1000).toFixed(1) + ' k€/a' : Math.round(data[optIdx].netto - instNetto) + ' €/a'} gegenüber Bestand). Ob die Fläche das hergibt → Windanalyse-Platzierungsvorschläge.`
       : optKw < windKwInst * 0.95
@@ -4003,7 +4003,7 @@ function _pvProfilInfoHtml() {
   const icon   = q.id === 'synthetisch' ? '〜' : '📈';
 
   const spitzeGes = maxKwp > 0
-    ? `<div style="font-size:10.5px;color:var(--muted);margin-top:3px;">
+    ? `<div style="font-size:12px;color:var(--muted);margin-top:3px;">
          Bei ${maxKwp.toFixed(0)} kWp entspricht das einer Erzeugungsspitze von
          <b style="color:var(--c-amber);">${Math.round(k.peakKwPerKwp * maxKwp).toLocaleString('de-DE')} kW</b>
          — Bezugsgröße für Rückspeisung und Netzbeurteilung.</div>`
@@ -4011,22 +4011,22 @@ function _pvProfilInfoHtml() {
 
   const upload = q.id === 'synthetisch'
     ? `<div id="pva-profil-upload" data-click="document.getElementById('pv-file-input').click()"
-         style="border:1px dashed var(--border);border-radius:6px;padding:5px 8px;cursor:pointer;margin-top:6px;font-size:10.5px;color:var(--muted);"
+         style="border:1px dashed var(--border);border-radius:6px;padding:5px 8px;cursor:pointer;margin-top:6px;font-size:12px;color:var(--muted);"
          onmouseenter="this.style.borderColor='#66bb6a'" onmouseleave="this.style.borderColor='var(--border)'">
          PVGIS-Stundenprofil hochladen — ersetzt das synthetische Profil für alle Auslegungen
        </div>`
     : `<div style="margin-top:6px;">
-         <button data-click="pvClear()" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:1px 8px;font-size:10.5px;cursor:pointer;">
+         <button data-click="pvClear()" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:1px 8px;font-size:12px;cursor:pointer;">
            ✕ Profil entfernen (zurück zum synthetischen)</button>
        </div>`;
 
   return `
-    <div style="font-size:11px;color:var(--text);display:flex;align-items:baseline;gap:5px;">
+    <div style="font-size:12.5px;color:var(--text);display:flex;align-items:baseline;gap:5px;">
       <span style="color:${farbe};">${icon}</span>
       <b style="color:${farbe};">${escHtml(q.label)}</b>
-      ${q.detail ? `<span style="color:var(--muted);font-size:10.5px;">${escHtml(q.detail)}</span>` : ''}
+      ${q.detail ? `<span style="color:var(--muted);font-size:12px;">${escHtml(q.detail)}</span>` : ''}
     </div>
-    <div style="font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.5;">
+    <div style="font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5;">
       Quelle: ${escHtml(q.quelle)} · Spitze
       <b style="color:var(--text);">${k.peakKwPerKwp.toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2})} kW/kWp</b> ·
       ${Math.round(k.stundenMitErtrag).toLocaleString('de-DE')} Ertragsstunden/a
@@ -4116,9 +4116,9 @@ function _pvApplyStaleUi() {
 
 function _pvWirtInput(id, label, defVal) {
   return `<div style="display:flex;justify-content:space-between;align-items:center;">
-    <span style="color:var(--muted);font-size:11px;">${label}</span>
+    <span style="color:var(--muted);font-size:12.5px;">${label}</span>
     <input id="${id}" type="number" value="${defVal}" min="0" step="0.1"
-      style="width:80px;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:11px;text-align:right;"/>
+      style="width:80px;padding:3px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:12.5px;text-align:right;"/>
   </div>`;
 }
 
@@ -4252,18 +4252,18 @@ function _pvRenderInfraStufen() {
     const items = _pvInfraItems(stufe.id);
     const rows = items.map((item, idx) => `
       <div style="display:flex;align-items:center;gap:6px;padding:2px 0;border-bottom:1px solid rgba(var(--ink),0.04);">
-        <label style="flex:1;display:flex;align-items:center;gap:5px;color:var(--muted);font-size:10.5px;cursor:pointer;min-width:0;">
+        <label style="flex:1;display:flex;align-items:center;gap:5px;color:var(--muted);font-size:12px;cursor:pointer;min-width:0;">
           <input type="checkbox" ${item.aktiv ? 'checked' : ''} style="accent-color:#fdd835;flex-shrink:0;"
             data-change="window._pvAnalyse.infraKonfig['${stufe.id}'][${idx}].aktiv=this.checked"/>
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.label}</span>
         </label>
         <input type="number" value="${item.investEUR || 0}" min="0" step="100"
-          style="width:72px;flex-shrink:0;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:10.5px;text-align:right;"
+          style="width:72px;flex-shrink:0;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:12px;text-align:right;"
           data-change="window._pvAnalyse.infraKonfig['${stufe.id}'][${idx}].investEUR=parseFloat(this.value)||0"/>
-        <span style="font-size:10.5px;color:var(--muted);flex-shrink:0;">€${item.perKwh ? ` +${(item.perKwh * 100).toFixed(1)}ct/kWh` : ''}</span>
+        <span style="font-size:12px;color:var(--muted);flex-shrink:0;">€${item.perKwh ? ` +${(item.perKwh * 100).toFixed(1)}ct/kWh` : ''}</span>
       </div>`).join('');
     return `<div style="margin-bottom:6px;">
-      <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:2px;">${stufe.label}</div>
+      <div style="font-size:12.5px;font-weight:600;color:var(--text);margin-bottom:2px;">${stufe.label}</div>
       ${rows}
     </div>`;
   }).join('');
@@ -4275,7 +4275,7 @@ function renderVariantenTabelle(varianten) {
   const el = document.getElementById('pva-result-tabelle');
   if (!el) return;
   if (!varianten || varianten.length === 0) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:20px;text-align:center;">Keine Ergebnisse.</div>';
+    el.innerHTML = '<div style="color:var(--muted);font-size:12.5px;padding:20px;text-align:center;">Keine Ergebnisse.</div>';
     return;
   }
 
@@ -4300,12 +4300,12 @@ function renderVariantenTabelle(varianten) {
   let html = `
   <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px;">
     <div style="font-size:12px;font-weight:600;color:var(--text);">Auslegungen im Vergleich</div>
-    <div style="font-size:10.5px;color:var(--c-blue);">Auswahl über den höchsten Jahresüberschuss · fünf feste Auslegungen</div>
+    <div style="font-size:12px;color:var(--c-blue);">Auswahl über den höchsten Jahresüberschuss · fünf feste Auslegungen</div>
   </div>
   <div style="overflow-x:auto;">
-  <table style="width:100%;border-collapse:collapse;font-size:11px;">
+  <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
     <thead>
-      <tr style="color:var(--muted);text-align:right;border-bottom:1px solid var(--border);font-size:10px;">
+      <tr style="color:var(--muted);text-align:right;border-bottom:1px solid var(--border);font-size:12px;">
         <th style="text-align:left;padding:4px 6px;white-space:nowrap;">Auslegung</th>
         ${th('kWp')}
         ${th('Bat&nbsp;kWh')}
@@ -4350,7 +4350,7 @@ function renderVariantenTabelle(varianten) {
         <td style="padding:6px;white-space:nowrap;border-left:3px solid ${imBlick ? 'var(--accent)' : 'transparent'};">
           <span style="color:${v.farbe};font-size:12px;">${v.icon}</span>
           <span style="margin-left:5px;color:var(--text);${isKomp ? 'font-weight:600;' : ''}">${escHtml(v.label)}</span>
-          ${isKomp ? ' <span style="background:#66bb6a;color:#000;border-radius:3px;padding:1px 5px;font-size:11px;font-weight:700;">BEST</span>' : ''}
+          ${isKomp ? ' <span style="background:#66bb6a;color:#000;border-radius:3px;padding:1px 5px;font-size:12.5px;font-weight:700;">BEST</span>' : ''}
         </td>
         ${td(fmt(v.pvKwp), '#fdd835')}
         ${td(v.batKwh > 0 ? fmt(v.batKwh) : '—', v.batKwh > 0 ? '#80deea' : '#546e7a')}
@@ -4383,7 +4383,7 @@ function renderVariantenTabelle(varianten) {
 
   // Legende + Definitionen — im Gutachten muss jede Kennzahl definiert sein.
   html += `
-  <div style="margin-top:9px;display:flex;flex-wrap:wrap;gap:14px;font-size:10.5px;color:var(--c-blue);">
+  <div style="margin-top:9px;display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--c-blue);">
     <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#66bb6a;margin-right:5px;"></span>Rückspeisung netzverträglich</span>
     <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffa726;margin-right:5px;"></span>Prüfung durch den VNB nötig</span>
     <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef5350;margin-right:5px;"></span>Erzeugungsnetz / MS-Anschluss erforderlich</span>
@@ -4391,7 +4391,7 @@ function renderVariantenTabelle(varianten) {
     ${!napAktiv ? '<span style="color:var(--c-blue);">Abregelung: keine Einspeisegrenze gesetzt</span>' : ''}
     ${windAktiv ? '<span style="color:var(--c-teal);">Wind ist ein fester Sockel — in EV/Aut, Erlösen und Überschuss enthalten</span>' : ''}
   </div>
-  <div style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:4px 20px;font-size:10px;color:var(--c-blue);line-height:1.55;">
+  <div style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:4px 20px;font-size:12px;color:var(--c-blue);line-height:1.55;">
     <div><b style="color:var(--muted);">Überschuss/a</b> = Erlöse − alle Jahreskosten (Kapitaldienst, Betrieb, Infrastruktur).</div>
     <div><b style="color:var(--muted);">Amortisation</b> = Investition ÷ jährlicher Rückfluss (Erlöse − laufende Betriebskosten), statisch.</div>
     <div><b style="color:var(--muted);">Kapitalwert</b> = Barwert des Überschusses über ${fmt(p?.pvLife || 20)} a bei ${fmt((p?.zins || 0.035) * 100, 1)} % Zins.</div>
@@ -4409,7 +4409,7 @@ function renderVariantenTabelle(varianten) {
   if (pfAktiv) {
     const verletzt = varianten.filter(v => v.pflicht?.relevant && !v.pflicht.erfuellt);
     html += `
-    <div style="margin-top:9px;padding:8px 11px;border-radius:6px;font-size:10.5px;line-height:1.6;
+    <div style="margin-top:9px;padding:8px 11px;border-radius:6px;font-size:12px;line-height:1.6;
          background:${verletzt.length ? 'rgba(239,83,80,0.10)' : 'rgba(149,117,205,0.08)'};
          border:1px solid ${verletzt.length ? 'rgba(239,83,80,0.35)' : 'rgba(149,117,205,0.3)'};">
       <b style="color:${verletzt.length ? '#ef5350' : '#b39ddb'};">§ ${escHtml(pf?.land || '')} — ${escHtml(pf?.norm || '')}</b>
@@ -4427,7 +4427,7 @@ function renderVariantenTabelle(varianten) {
   // Infra-Detail je Variante
   const detail = varianten.filter(v => v.wirt.infDetail?.length);
   if (detail.length) {
-    html += '<div style="margin-top:10px;font-size:10px;color:var(--c-blue);">' + detail.map(v =>
+    html += '<div style="margin-top:10px;font-size:12px;color:var(--c-blue);">' + detail.map(v =>
       `<div style="margin-bottom:2px;"><span style="color:${v.farbe};">${v.icon} ${escHtml(v.label)}:</span> ` +
       `${escHtml(v.wirt.infDetail.join(', '))} · ${Math.round(v.wirt.infraInvest).toLocaleString('de-DE')} € Invest</div>`).join('') + '</div>';
   }
@@ -4443,7 +4443,7 @@ let _pvTTel = null;
 function _pvShowTT(ev, html) {
   if (!_pvTTel) {
     _pvTTel = document.createElement('div');
-    _pvTTel.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;background:var(--surface);border:1px solid rgba(var(--ink),0.15);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--c-blue);box-shadow:0 4px 24px rgba(0,0,0,0.7);display:none;line-height:1.75;white-space:nowrap;';
+    _pvTTel.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;background:var(--surface);border:1px solid rgba(var(--ink),0.15);border-radius:8px;padding:8px 12px;font-size:12.5px;color:var(--c-blue);box-shadow:0 4px 24px rgba(0,0,0,0.7);display:none;line-height:1.75;white-space:nowrap;';
     document.body.appendChild(_pvTTel);
   }
   _pvTTel.innerHTML = html;
@@ -4591,7 +4591,7 @@ function renderEvKurve(demandH, pvProfile, napParams, params, varianten, overrid
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Eigenverbrauchsquote und Autarkie je PV-Größe
-      <span style="font-size:11px;color:var(--muted);margin-left:6px;">durchgezogen ohne Speicher${refBat > 0 ? ` · gestrichelt mit dem Speicher von ${refVar.icon} ${escHtml(refVar.label)}` : ''}</span></span>
+      <span style="font-size:12.5px;color:var(--muted);margin-left:6px;">durchgezogen ohne Speicher${refBat > 0 ? ` · gestrichelt mit dem Speicher von ${refVar.icon} ${escHtml(refVar.label)}` : ''}</span></span>
     ${overrideEl ? '' : '<button data-pva-fs="ev" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
   <svg width="${W}" height="${H}" style="display:block;overflow:hidden;cursor:crosshair;">
@@ -4748,7 +4748,7 @@ function renderBilanzChart(varianten, overrideEl) {
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Woher der Bedarf gedeckt wird und wohin die Erzeugung geht
-      <span style="font-size:11px;color:var(--muted);margin-left:6px;">Prozent je Seite · Zahlen am Rand in MWh/a · Klick auf eine Zeile nimmt die Auslegung in den Blick</span>
+      <span style="font-size:12.5px;color:var(--muted);margin-left:6px;">Prozent je Seite · Zahlen am Rand in MWh/a · Klick auf eine Zeile nimmt die Auslegung in den Blick</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="bilanz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -4848,7 +4848,7 @@ function renderScatterChart(varianten, overrideEl) {
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Investition und Jahresüberschuss je Auslegung
-      <span style="font-size:11px;color:var(--muted);margin-left:6px;">je höher, desto mehr bleibt jährlich übrig · steilere Linie = mehr Überschuss je investiertem Euro</span>
+      <span style="font-size:12.5px;color:var(--muted);margin-left:6px;">je höher, desto mehr bleibt jährlich übrig · steilere Linie = mehr Überschuss je investiertem Euro</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="scatter" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -4939,20 +4939,20 @@ function renderRueckAmpel(varianten, overrideEl) {
   const na   = r0.ampel === 'na';
   let banner;
   if (na) {
-    banner = `<div style="background:rgba(120,144,156,0.12);border-left:3px solid var(--c-blue);padding:7px 10px;border-radius:5px;font-size:11px;color:var(--muted);">
+    banner = `<div style="background:rgba(120,144,156,0.12);border-left:3px solid var(--c-blue);padding:7px 10px;border-radius:5px;font-size:12.5px;color:var(--muted);">
       Für die Bewertung <a data-click="pvaZuFeld('pva-sk')" style="color:var(--accent);cursor:pointer;text-decoration:underline;">S_k″ eingeben</a> (Netzauskunft des VNB)
       und/oder die <a data-click="pvaZuFeld('pva-nap-einsp')" style="color:var(--accent);cursor:pointer;text-decoration:underline;">Max. Einspeisung</a>.
       Beurteilt wird dann die Rückspeisespitze gegen Spannungsband (Δu) und Anschlusskapazität. Bis dahin dient die bisherige Bezugsspitze als grobe Orientierung.</div>`;
   } else if (rot.length) {
-    banner = `<div style="background:rgba(239,83,80,0.12);border-left:3px solid var(--c-red);padding:7px 10px;border-radius:5px;font-size:11px;color:var(--c-red);">
+    banner = `<div style="background:rgba(239,83,80,0.12);border-left:3px solid var(--c-red);padding:7px 10px;border-radius:5px;font-size:12.5px;color:var(--c-red);">
       <b>Netzanschluss-Verstärkung notwendig</b> für: <b style="color:#fff">${rot.map(v=>v.label).join(', ')}</b>.
       Die Rückspeisespitze überschreitet Spannungsband (Δu &gt; ${uBudget} %) bzw. Anschlusskapazität → größere Übergabestation/Trafo, eigene bzw. verstärkte Anschlussleitung zum MS-Netz und/oder internes Erzeugungsnetz. Abregelung oder Speicher allein lösen es nicht.</div>`;
   } else if (gelb.length) {
-    banner = `<div style="background:rgba(255,183,77,0.12);border-left:3px solid var(--c-orange);padding:7px 10px;border-radius:5px;font-size:11px;color:var(--c-orange);">
+    banner = `<div style="background:rgba(255,183,77,0.12);border-left:3px solid var(--c-orange);padding:7px 10px;border-radius:5px;font-size:12.5px;color:var(--c-orange);">
       <b>Grenzfall</b> bei: <b style="color:#fff">${gelb.map(v=>v.label).join(', ')}</b>.
       Abregelung, NAP-Ertüchtigung und Erzeugungsnetz wirtschaftlich gegeneinander abwägen.</div>`;
   } else {
-    banner = `<div style="background:rgba(102,187,106,0.12);border-left:3px solid var(--c-green);padding:7px 10px;border-radius:5px;font-size:11px;color:var(--c-green);">
+    banner = `<div style="background:rgba(102,187,106,0.12);border-left:3px solid var(--c-green);padding:7px 10px;border-radius:5px;font-size:12.5px;color:var(--c-green);">
       <b>Kein Erzeugungsnetz erforderlich</b> — alle Auslegungen bleiben innerhalb von Spannungsband und Anschlusskapazität.</div>`;
   }
 
@@ -4988,7 +4988,7 @@ function renderRueckAmpel(varianten, overrideEl) {
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Rückspeise- &amp; Erzeugungsnetz-Bewertung
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Rückspeisespitze am NAP (Batterie schert sie) gegen Spannungsband &amp; Anschlusskapazität${varianten.some(v => (v.wirt?.windKw || 0) > 0) ? ' · inkl. Windkraft-Sockel' : ''}</span>
+      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;">Rückspeisespitze am NAP (Batterie schert sie) gegen Spannungsband &amp; Anschlusskapazität${varianten.some(v => (v.wirt?.windKw || 0) > 0) ? ' · inkl. Windkraft-Sockel' : ''}</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="rueck" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -5002,7 +5002,7 @@ function renderRueckAmpel(varianten, overrideEl) {
     ${[0,0.25,0.5,0.75,1].map(f=>`<text x="${(PL+f*cW).toFixed(1)}" y="${(PT+cH+12).toFixed(1)}" text-anchor="middle" fill="#607d8b" font-size="10.5">${Math.round(f*maxVal)}</text>`).join('')}
     <text x="${(PL+cW/2).toFixed(1)}" y="${(PT+cH+24).toFixed(1)}" text-anchor="middle" fill="#607d8b" font-size="10.5">Rückspeisespitze (kW)</text>
   </svg>
-  <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">
+  <div style="font-size:12px;color:var(--muted);margin-top:4px;">
     Δu ≈ 100 · P_rück / S_k″ (Screening, cos φ ≈ 1) · Ampel: <span style="color:var(--c-green)">grün</span> unkritisch · <span style="color:var(--c-orange)">gelb</span> Grenzfall · <span style="color:var(--c-red)">rot</span> Erzeugungsnetz/MS nötig
   </div>  ${_pvaBefund(befund)}`;
 
@@ -5041,30 +5041,30 @@ function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, ov
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Energiefluss bei frei wählbarer Auslegung
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Schieber ziehen — die Flüsse aktualisieren sich live</span>
+      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;">Schieber ziehen — die Flüsse aktualisieren sich live</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="fluss" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:8px;align-items:center;">
     <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:11px;color:var(--muted);width:64px;">PV-Leistung</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">PV-Leistung</span>
       <input id="pva-fluss-pv" type="range" min="0" max="${Math.round(maxKwp)}" step="${pvStep}" value="${Math.round(start.pvKwp)}" style="flex:1;accent-color:${COL.pv};">
-      <span id="pva-fluss-pv-val" style="font-size:11px;color:${COL.pv};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(start.pvKwp)} kWp</span>
+      <span id="pva-fluss-pv-val" style="font-size:12.5px;color:${COL.pv};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(start.pvKwp)} kWp</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:11px;color:var(--muted);width:64px;">Batterie</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">Batterie</span>
       <input id="pva-fluss-bat" type="range" min="0" max="${Math.round(batMax)}" step="${batStep}" value="${Math.round(start.batKwh)}" style="flex:1;accent-color:${COL.es};">
-      <span id="pva-fluss-bat-val" style="font-size:11px;color:${COL.es};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(start.batKwh/1000).toFixed(2)} MWh</span>
+      <span id="pva-fluss-bat-val" style="font-size:12.5px;color:${COL.es};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(start.batKwh/1000).toFixed(2)} MWh</span>
     </div>
     ${windKwInst > 0 ? `
     <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:11px;color:var(--muted);width:64px;">Wind</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">Wind</span>
       <input id="pva-fluss-wind" type="range" min="0" max="${windMax}" step="10" value="${Math.round(windKwInst)}" style="flex:1;accent-color:${COL.wd};">
-      <span id="pva-fluss-wind-val" style="font-size:11px;color:${COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(windKwInst)} kW</span>
+      <span id="pva-fluss-wind-val" style="font-size:12.5px;color:${COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(windKwInst)} kW</span>
     </div>` : ''}
   </div>
   ${start.label ? _pvaFokusZeileHtml(start) : ''}
-  <div id="pva-fluss-kpi" style="font-size:11px;color:var(--muted);margin-bottom:6px;"></div>
+  <div id="pva-fluss-kpi" style="font-size:12.5px;color:var(--muted);margin-bottom:6px;"></div>
   <div id="pva-fluss-svg" style="overflow:hidden;"></div>`;
 
   const svgWrap = el.querySelector('#pva-fluss-svg');
@@ -5279,30 +5279,30 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Wie der Speicher über das Jahr arbeitet
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Kennzahlen · Dauerlinie des Ladestands · Ø Tagesgang — seine Jahresbilanz steht in 3.2</span>
+      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;">Kennzahlen · Dauerlinie des Ladestands · Ø Tagesgang — seine Jahresbilanz steht in 3.2</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="speicherfluss" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:8px;align-items:center;">
     <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:11px;color:var(--muted);width:64px;">PV-Leistung</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">PV-Leistung</span>
       <input id="pva-sf-pv" type="range" min="0" max="${Math.round(maxKwp)}" step="1" value="${Math.round(start.pvKwp)}" style="flex:1;accent-color:${_PVSF_COL.pv};">
-      <span id="pva-sf-pv-val" style="font-size:11px;color:${_PVSF_COL.pv};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(start.pvKwp)} kWp</span>
+      <span id="pva-sf-pv-val" style="font-size:12.5px;color:${_PVSF_COL.pv};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(start.pvKwp)} kWp</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:11px;color:var(--muted);width:64px;">Batterie</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">Batterie</span>
       <input id="pva-sf-bat" type="range" min="0" max="${Math.round(batMax)}" step="5" value="${Math.round(start.batKwh)}" style="flex:1;accent-color:${_PVSF_COL.bat};">
-      <span id="pva-sf-bat-val" style="font-size:11px;color:${_PVSF_COL.bat};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(start.batKwh/1000).toFixed(2)} MWh</span>
+      <span id="pva-sf-bat-val" style="font-size:12.5px;color:${_PVSF_COL.bat};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(start.batKwh/1000).toFixed(2)} MWh</span>
     </div>
     ${windKwInst > 0 ? `
     <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:11px;color:var(--muted);width:64px;">Wind</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">Wind</span>
       <input id="pva-sf-wind" type="range" min="0" max="${windMax}" step="10" value="${Math.round(windKwInst)}" style="flex:1;accent-color:${_PVSF_COL.wd};">
-      <span id="pva-sf-wind-val" style="font-size:11px;color:${_PVSF_COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(windKwInst)} kW</span>
+      <span id="pva-sf-wind-val" style="font-size:12.5px;color:${_PVSF_COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(windKwInst)} kW</span>
     </div>` : ''}
   </div>
   ${start.label ? _pvaFokusZeileHtml(start, ersatz) : ''}
-  <div id="pva-sf-kpi" style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.7;"></div>
+  <div id="pva-sf-kpi" style="font-size:12.5px;color:var(--muted);margin-bottom:6px;line-height:1.7;"></div>
   <div id="pva-sf-svg" style="overflow:hidden;"></div>`;
 
   const svgWrap = el.querySelector('#pva-sf-svg');
@@ -5319,7 +5319,7 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
 
     if (bat <= 0) {
       kpiEl.innerHTML = '';
-      svgWrap.innerHTML = `<div style="color:var(--muted);font-size:10px;text-align:center;padding:38px 0;line-height:1.7;">
+      svgWrap.innerHTML = `<div style="color:var(--muted);font-size:12px;text-align:center;padding:38px 0;line-height:1.7;">
         Diese Auslegung hat keinen Speicher — es gibt keinen Speicherfluss darzustellen.<br>
         <span style="color:var(--c-blue);">Batterie-Slider aufziehen oder oben eine Auslegung mit Speicher wählen.</span></div>`;
       return;
@@ -5343,7 +5343,7 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
 
     if (lad < 0.01) {
       kpiEl.innerHTML = '';
-      svgWrap.innerHTML = `<div style="color:var(--muted);font-size:10px;text-align:center;padding:38px 0;line-height:1.7;">
+      svgWrap.innerHTML = `<div style="color:var(--muted);font-size:12px;text-align:center;padding:38px 0;line-height:1.7;">
         Der Speicher bleibt bei dieser Auslegung ungenutzt — die Erzeugung deckt den Bedarf nie mit Überschuss.<br>
         <span style="color:var(--c-blue);">PV-Leistung erhöhen, um Ladeenergie zu erzeugen.</span></div>`;
       return;
@@ -5508,7 +5508,7 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
 
     svgWrap.innerHTML = `
       <svg width="${W}" height="${DH}" style="display:block;overflow:visible;margin-top:6px;">${dauer}${tagesgang}</svg>
-      <div style="font-size:10.5px;color:var(--muted);margin-top:5px;line-height:1.6;">
+      <div style="font-size:12px;color:var(--muted);margin-top:5px;line-height:1.6;">
         Alle Mengen und Leistungen an den AC-Klemmen des Speichers (η = ${(PV_BAT_ETA*100).toFixed(0)} % je Wandlung,
         C-Rate ${PV_BAT_C_RATE} → max. ${Math.round(bat * PV_BAT_C_RATE).toLocaleString('de-DE')} kW Lade-/Entladeleistung).
         Die Balken sind Stundenmittel über alle Tage des jeweiligen Halbjahres und liegen daher deutlich unter dieser Grenze.
@@ -5644,33 +5644,33 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Jahresgang Tag × Stunde: Bedarfsdeckung oder Ladestand des Speichers
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Schieber ziehen — die Heatmap aktualisiert sich live</span>
-      <span id="pva-pvah-sub" style="display:block;font-size:10.5px;color:var(--c-green);margin-top:2px;"></span>
+      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;">Schieber ziehen — die Heatmap aktualisiert sich live</span>
+      <span id="pva-pvah-sub" style="display:block;font-size:12px;color:var(--c-green);margin-top:2px;"></span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="autarkie-heatmap" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;flex-shrink:0;">⤢</button>'}
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:8px;align-items:center;">
     <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:11px;color:var(--muted);width:64px;">PV-Leistung</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">PV-Leistung</span>
       <input id="pva-pvah-pv" type="range" min="0" max="${Math.round(maxKwp)}" step="${pvStep}" value="${Math.round(_pvahPvKwp)}" style="flex:1;accent-color:${COL.pv};">
-      <span id="pva-pvah-pv-val" style="font-size:11px;color:${COL.pv};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(_pvahPvKwp)} kWp</span>
+      <span id="pva-pvah-pv-val" style="font-size:12.5px;color:${COL.pv};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(_pvahPvKwp)} kWp</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:11px;color:var(--muted);width:64px;">Batterie</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">Batterie</span>
       <input id="pva-pvah-bat" type="range" min="0" max="${Math.round(batMax)}" step="${batStep}" value="${Math.round(_pvahBatKwh)}" style="flex:1;accent-color:${COL.es};">
-      <span id="pva-pvah-bat-val" style="font-size:11px;color:${COL.es};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(_pvahBatKwh/1000).toFixed(2)} MWh</span>
+      <span id="pva-pvah-bat-val" style="font-size:12.5px;color:${COL.es};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(_pvahBatKwh/1000).toFixed(2)} MWh</span>
     </div>
     ${windKwInst > 0 ? `
     <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:11px;color:var(--muted);width:64px;">Wind</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">Wind</span>
       <input id="pva-pvah-wind" type="range" min="0" max="${windMax}" step="10" value="${Math.round(_pvahWindKw)}" style="flex:1;accent-color:${COL.wd};">
-      <span id="pva-pvah-wind-val" style="font-size:11px;color:${COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(_pvahWindKw)} kW</span>
+      <span id="pva-pvah-wind-val" style="font-size:12.5px;color:${COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(_pvahWindKw)} kW</span>
     </div>` : ''}
   </div>
   ${fokus.label ? _pvaFokusZeileHtml(fokus) : ''}
-  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;color:var(--muted);">Zeigen:
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:12.5px;color:var(--muted);">Zeigen:
     ${[['deckung', 'Deckung des Bedarfs'], ['soc', 'Ladestand des Speichers']].map(([m, l]) =>
-      `<button data-pvah-modus="${m}" data-click="pvahSetModus('${m}')" style="cursor:pointer;border:1px solid var(--c-blue);border-radius:10px;padding:1px 9px;font-size:11px;background:transparent;color:var(--c-blue);">${l}</button>`).join('')}
+      `<button data-pvah-modus="${m}" data-click="pvahSetModus('${m}')" style="cursor:pointer;border:1px solid var(--c-blue);border-radius:10px;padding:1px 9px;font-size:12.5px;background:transparent;color:var(--c-blue);">${l}</button>`).join('')}
   </div>
   <div id="pva-pvah-svg"></div>
   <div id="pva-pvah-befund"></div>`;
@@ -5704,7 +5704,7 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
     if (soc && bat <= 0) {
       if (subEl) subEl.textContent = `Ladestand: diese Auslegung hat keinen Speicher (${label})`;
       if (befundEl) befundEl.innerHTML = '';
-      svgWrap.innerHTML = `<div style="color:var(--muted);font-size:11.5px;text-align:center;padding:40px 0;">
+      svgWrap.innerHTML = `<div style="color:var(--muted);font-size:12.5px;text-align:center;padding:40px 0;">
         Ohne Speicher gibt es keinen Ladestand — Batterie-Schieber aufziehen oder „Deckung" wählen.</div>`;
       return;
     }
@@ -6111,10 +6111,10 @@ function _pvResMinGen(loadEff, pvH, batKwh, start, durH, nHours, initSoc, fuel, 
 // öffnet er über pvResWaermeVollbild().
 function _pvResEnergyHeader(overrideEl) {
   const fsBtn = overrideEl ? '' : '<button data-pva-fs="resilienz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;margin-left:auto;">⤢</button>';
-  const blackout = overrideEl ? '' : `<button data-pvres-blackout style="padding:2px 10px;border:1px solid var(--c-red);border-radius:10px;background:transparent;color:var(--c-red);font-size:11px;cursor:pointer;"
+  const blackout = overrideEl ? '' : `<button data-pvres-blackout style="padding:2px 10px;border:1px solid var(--c-red);border-radius:10px;background:transparent;color:var(--c-red);font-size:12.5px;cursor:pointer;"
       title="Gebäude einstufen, Aggregate am Netz platzieren, Liegenschafts-Insel und Wärmeversorgung">Blackout-Modus öffnen</button>`;
   return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
-    <span style="font-size:11px;color:var(--muted);">Beitrag von PV und Speicher im Blackout · Gebäude, Netz, Liegenschaft und Wärme im</span>${blackout}${fsBtn}
+    <span style="font-size:12.5px;color:var(--muted);">Beitrag von PV und Speicher im Blackout · Gebäude, Netz, Liegenschaft und Wärme im</span>${blackout}${fsBtn}
   </div>`;
 }
 function _pvResWireEnergyHeader(el) {
@@ -6142,7 +6142,7 @@ function renderResilienz(varianten, overrideEl) {
 
 
   const hinweisKeineVarianten = () => {
-    el.innerHTML = energyHeader + '<div style="font-size:10px;color:var(--muted);padding:8px 0;">Erst „Auslegungen berechnen" nutzen, um die elektrische Resilienz zu betrachten.</div>';
+    el.innerHTML = energyHeader + '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Erst „Auslegungen berechnen" nutzen, um die elektrische Resilienz zu betrachten.</div>';
     _pvResWireEnergyHeader(el);
   };
   if (!varianten?.length) { hinweisKeineVarianten(); return; }
@@ -6195,14 +6195,14 @@ function renderResilienz(varianten, overrideEl) {
   const DURS = [ [6,'6 h'], [12,'12 h'], [24,'24 h'], [48,'2 Tage'], [72,'3 Tage'], [168,'7 Tage'], [336,'14 Tage'] ];
 
   const durBtns = DURS.map(([h,lbl]) =>
-    `<button data-pvres-dur="${h}" style="padding:2px 9px;border:1px solid ${h===_pvResDurH?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${h===_pvResDurH?'#ff8f00':'transparent'};color:${h===_pvResDurH?'#0a0e16':'#cfd8dc'};font-size:11px;cursor:pointer;font-weight:${h===_pvResDurH?'700':'400'};">${lbl}</button>`).join('');
+    `<button data-pvres-dur="${h}" style="padding:2px 9px;border:1px solid ${h===_pvResDurH?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${h===_pvResDurH?'#ff8f00':'transparent'};color:${h===_pvResDurH?'#0a0e16':'#cfd8dc'};font-size:12.5px;cursor:pointer;font-weight:${h===_pvResDurH?'700':'400'};">${lbl}</button>`).join('');
 
   const fuelOpts = Object.entries(_PV_FUELS).map(([k,f]) =>
     `<option value="${k}" ${k===_pvResFuel?'selected':''}>${f.label}</option>`).join('');
 
   const MODES = [['gen','Nur Notstrom'], ['bat-gen','Speicher + Notstrom'], ['pv-bat-gen','PV + Speicher + Notstrom'], ['pv-bat','Nur PV + Speicher']];
   const modeBtns = MODES.map(([m,lbl]) =>
-    `<button data-pvres-mode="${m}" style="padding:2px 9px;border:1px solid ${m===_pvResMode?'#4fc3f7':'rgba(255,255,255,0.22)'};border-radius:10px;background:${m===_pvResMode?'#4fc3f7':'transparent'};color:${m===_pvResMode?'#0a0e16':'#cfd8dc'};font-size:11px;cursor:pointer;font-weight:${m===_pvResMode?'700':'400'};white-space:nowrap;">${lbl}</button>`).join('');
+    `<button data-pvres-mode="${m}" style="padding:2px 9px;border:1px solid ${m===_pvResMode?'#4fc3f7':'rgba(255,255,255,0.22)'};border-radius:10px;background:${m===_pvResMode?'#4fc3f7':'transparent'};color:${m===_pvResMode?'#0a0e16':'#cfd8dc'};font-size:12.5px;cursor:pointer;font-weight:${m===_pvResMode?'700':'400'};white-space:nowrap;">${lbl}</button>`).join('');
 
   const elW = el.getBoundingClientRect().width || 700;
   const W   = Math.max(440, elW - 4);
@@ -6211,40 +6211,40 @@ function renderResilienz(varianten, overrideEl) {
   el.innerHTML = energyHeader + `
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Inselbetrieb-Simulation
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Batterie startet mit realem Ladestand (Jahressim.), Generator deckt die Restlast</span>
-      <span id="pva-pvres-sub" style="display:block;font-size:10.5px;color:var(--c-orange);margin-top:2px;"></span>
+      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;">Batterie startet mit realem Ladestand (Jahressim.), Generator deckt die Restlast</span>
+      <span id="pva-pvres-sub" style="display:block;font-size:12px;color:var(--c-orange);margin-top:2px;"></span>
     </span>
   </div>
 
   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
-    <span style="font-size:11px;color:var(--muted);">Betriebsweise</span>${modeBtns}
+    <span style="font-size:12.5px;color:var(--muted);">Betriebsweise</span>${modeBtns}
   </div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-    <span style="font-size:11px;color:var(--muted);">Autark sein für</span>${durBtns}
-    <label style="font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;margin-left:6px;opacity:${genActive?1:0.4};">Aggregat
-      <select id="pva-pvres-fuel" ${genActive?'':'disabled'} style="background:var(--surface);color:var(--c-blue);border:1px solid rgba(var(--ink),0.2);border-radius:4px;font-size:11px;padding:1px 3px;">${fuelOpts}</select></label>
+    <span style="font-size:12.5px;color:var(--muted);">Autark sein für</span>${durBtns}
+    <label style="font-size:12.5px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;margin-left:6px;opacity:${genActive?1:0.4};">Aggregat
+      <select id="pva-pvres-fuel" ${genActive?'':'disabled'} style="background:var(--surface);color:var(--c-blue);border:1px solid rgba(var(--ink),0.2);border-radius:4px;font-size:12.5px;padding:1px 3px;">${fuelOpts}</select></label>
   </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:8px;align-items:center;">
     <div style="display:flex;align-items:center;gap:8px;opacity:${pvActive?1:0.4};" title="${pvActive?'':'In dieser Betriebsweise ist PV im Inselbetrieb nicht aktiv'}">
-      <span style="font-size:11px;color:var(--muted);width:64px;">PV-Leistung</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">PV-Leistung</span>
       <input id="pva-pvres-pv" type="range" min="0" max="${Math.round(maxKwp)}" step="1" value="${Math.round(_pvResPvKwp)}" ${pvActive?'':'disabled'} style="flex:1;accent-color:${COL.pv};">
-      <span id="pva-pvres-pv-val" style="font-size:11px;color:${COL.pv};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(_pvResPvKwp)} kWp</span>
+      <span id="pva-pvres-pv-val" style="font-size:12.5px;color:${COL.pv};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(_pvResPvKwp)} kWp</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;opacity:${batActive?1:0.4};" title="${batActive?'':'In dieser Betriebsweise ist kein Speicher vorhanden'}">
-      <span style="font-size:11px;color:var(--muted);width:64px;">Batterie</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">Batterie</span>
       <input id="pva-pvres-bat" type="range" min="0" max="${Math.round(batMax)}" step="5" value="${Math.round(_pvResBatKwh)}" ${batActive?'':'disabled'} style="flex:1;accent-color:${COL.bat};">
-      <span id="pva-pvres-bat-val" style="font-size:11px;color:${COL.bat};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(_pvResBatKwh/1000).toFixed(2)} MWh</span>
+      <span id="pva-pvres-bat-val" style="font-size:12.5px;color:${COL.bat};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(_pvResBatKwh/1000).toFixed(2)} MWh</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;" title="Im Inselbetrieb gedeckte Last als Anteil der Normallast (Notbetrieb = nur kritische Verbraucher)">
-      <span style="font-size:11px;color:var(--muted);width:64px;">Notbetrieb</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">Notbetrieb</span>
       <input id="pva-pvres-load" type="range" min="10" max="100" step="5" value="${_pvResLoadFrac}" style="flex:1;accent-color:#ef9a9a;">
-      <span id="pva-pvres-load-val" style="font-size:11px;color:var(--c-red);font-family:'DM Mono',monospace;width:62px;text-align:right;">${_pvResLoadFrac} % Last</span>
+      <span id="pva-pvres-load-val" style="font-size:12.5px;color:var(--c-red);font-family:'DM Mono',monospace;width:62px;text-align:right;">${_pvResLoadFrac} % Last</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;" title="Im Notfall tatsächlich nutzbarer Anteil der Nennkapazität — berücksichtigt Entladetiefe (DoD) und Kapazitätsverlust bei Kälte (Worst-Case = Winter)">
-      <span style="font-size:11px;color:var(--muted);width:64px;">Nutzbare Kap.</span>
+      <span style="font-size:12.5px;color:var(--muted);width:64px;">Nutzbare Kap.</span>
       <input id="pva-pvres-usable" type="range" min="50" max="100" step="5" value="${_pvResUsable}" style="flex:1;accent-color:#80cbc4;">
-      <span id="pva-pvres-usable-val" style="font-size:11px;color:var(--c-teal);font-family:'DM Mono',monospace;width:62px;text-align:right;">${_pvResUsable} %</span>
+      <span id="pva-pvres-usable-val" style="font-size:12.5px;color:var(--c-teal);font-family:'DM Mono',monospace;width:62px;text-align:right;">${_pvResUsable} %</span>
     </div>
   </div>
   ${_pvaFokusZeileHtml(basis)}
@@ -6267,7 +6267,7 @@ function renderResilienz(varianten, overrideEl) {
 
   function kpiCard(label, value, color) {
     return `<div style="flex:1;min-width:110px;background:var(--surface);border:1px solid rgba(var(--ink),0.08);border-radius:6px;padding:6px 9px;">
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">${label}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:2px;">${label}</div>
       <div style="font-size:14px;font-weight:700;color:${color};font-family:'DM Mono',monospace;">${value}</div></div>`;
   }
 
@@ -6423,13 +6423,13 @@ function renderResilienz(varianten, overrideEl) {
     const aktuell = vres && vres.sig === sig && vres.zeilen?.length;
     const knopf = (txt, farbe) =>
       `<button data-pvres-varcalc style="padding:3px 12px;border:1px solid ${farbe};border-radius:11px;
-        background:transparent;color:${farbe};font-size:11.5px;cursor:pointer;">${txt}</button>`;
+        background:transparent;color:${farbe};font-size:12.5px;cursor:pointer;">${txt}</button>`;
 
     if (!aktuell) {
       varEl.innerHTML = `
       <div style="display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid rgba(var(--ink),0.08);
                   border-radius:6px;padding:8px 11px;">
-        <span style="font-size:11px;color:var(--muted);flex:1;">
+        <span style="font-size:12.5px;color:var(--muted);flex:1;">
           ${vres ? 'Randbedingungen geändert — der Vergleich der Auslegungen ist veraltet.'
                  : 'Wie schlagen sich die fünf PV-Auslegungen unter diesen Randbedingungen?'}
           <span style="color:var(--c-blue);"> Fünf Jahres-Scans, wenige Sekunden.</span>
@@ -6455,11 +6455,11 @@ function renderResilienz(varianten, overrideEl) {
       }).join('');
       varEl.innerHTML = `
       <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
-        <span style="font-size:11px;color:var(--muted);flex:1;">Resilienz je PV-Auslegung — jede an ihrem eigenen ungünstigsten Zeitpunkt,
+        <span style="font-size:12.5px;color:var(--muted);flex:1;">Resilienz je PV-Auslegung — jede an ihrem eigenen ungünstigsten Zeitpunkt,
           ${vres.durH} h Ausfall, ${MODE_LBL[vres.mode] || vres.mode}, ${Math.round(vres.frac*100)} % Notbetriebslast</span>
         ${knopf('Neu rechnen', 'rgba(255,255,255,0.25)')}
       </div>
-      <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">
+      <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">
         <thead><tr style="color:var(--muted);border-bottom:1px solid rgba(var(--ink),0.12);">
           <th style="text-align:left;padding:3px 6px;">Auslegung</th>
           <th style="text-align:right;padding:3px 6px;">kWp</th>
@@ -6516,8 +6516,8 @@ function renderResilienz(varianten, overrideEl) {
     const gradId = 'pvres-grad-' + (overrideEl ? 'fs' : 'm');
     heatEl.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;gap:8px;">
-      <span style="font-size:10.5px;color:var(--muted);">Überbrückung Batterie+PV je Blackout-Start — <b style="color:var(--c-blue);">Zelle anklicken</b> verschiebt den Ausfall-Start</span>
-      ${isWorst ? '' : '<button data-pvres-reset style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.22);border-radius:4px;color:var(--c-orange);font-size:10.5px;padding:1px 7px;white-space:nowrap;">↺ Worst-Case</button>'}
+      <span style="font-size:12px;color:var(--muted);">Überbrückung Batterie+PV je Blackout-Start — <b style="color:var(--c-blue);">Zelle anklicken</b> verschiebt den Ausfall-Start</span>
+      ${isWorst ? '' : '<button data-pvres-reset style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.22);border-radius:4px;color:var(--c-orange);font-size:12px;padding:1px 7px;white-space:nowrap;">↺ Worst-Case</button>'}
     </div>
     <svg width="${W}" height="${H+18}" style="display:block;overflow:hidden;cursor:pointer;">
       <defs><linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="0">
@@ -6589,8 +6589,8 @@ function renderResilienz(varianten, overrideEl) {
       <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:9px;height:9px;background:${COL.gen};border-radius:1px;"></span>Generator</span>
       <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:14px;height:2px;background:${COL.bat};"></span>Batterie-Ladestand</span>`;
     detailEl.innerHTML = `
-    <div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">${isWorst ? 'Worst-Case-Fenster' : 'Gewähltes Fenster'} im Detail — Lastdeckung je Stunde (Start ${_pvahDayToDate(Math.floor(startIdx/24))}, ${startIdx%24}:00)</div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:10.5px;color:var(--c-blue);margin-bottom:3px;">${legend}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:2px;">${isWorst ? 'Worst-Case-Fenster' : 'Gewähltes Fenster'} im Detail — Lastdeckung je Stunde (Start ${_pvahDayToDate(Math.floor(startIdx/24))}, ${startIdx%24}:00)</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--c-blue);margin-bottom:3px;">${legend}</div>
     <svg width="${W}" height="${H}" style="display:block;overflow:visible;cursor:default;">
       ${yticks}${bars}
       ${socPts ? `<polyline points="${socPts}" fill="none" stroke="${COL.bat}" stroke-width="1.4" stroke-dasharray="3,2" opacity="0.9"/>` : ''}
@@ -6651,8 +6651,8 @@ function renderResilienz(varianten, overrideEl) {
       <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:12px;height:2px;background:${COLl};"></span>Sprit im Fenster (l)</span>
       <span style="color:var(--c-blue);">┊ aktuelle Batterie</span>`;
     tradeEl.innerHTML = `
-    <div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">Trade-off im aktuellen Fenster — mehr Batterie senkt nötige Generatorleistung und Spritmenge (Batteriepuffer-Betrieb)</div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:10.5px;color:var(--c-blue);margin-bottom:3px;">${legend}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:2px;">Trade-off im aktuellen Fenster — mehr Batterie senkt nötige Generatorleistung und Spritmenge (Batteriepuffer-Betrieb)</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--c-blue);margin-bottom:3px;">${legend}</div>
     <svg width="${W}" height="${H}" style="display:block;overflow:visible;cursor:default;">
       <line x1="${nowX.toFixed(1)}" y1="${PT}" x2="${nowX.toFixed(1)}" y2="${(PT+cH).toFixed(1)}" stroke="#fff" stroke-width="1" stroke-dasharray="3,2" opacity="0.7"/>
       <polyline points="${genLine}" fill="none" stroke="${COLg}" stroke-width="1.6"/>
@@ -6727,7 +6727,7 @@ function renderResilienzWaerme(el, overrideEl) {
   if (!el) return;
   const ss = window.systemState;
   if (!ss || !ss.lastgangKw?.length || !ss.tempH?.length) {
-    el.innerHTML = '<div style="font-size:10px;color:var(--muted);padding:8px 0;">Erst den Wärme-Lastgang berechnen, um die Ausfallsicherheit der Wärmeversorgung zu betrachten.</div>';
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Erst den Wärme-Lastgang berechnen, um die Ausfallsicherheit der Wärmeversorgung zu betrachten.</div>';
     return;
   }
   const loadH  = ss.lastgangKw;                 // kW, Netzlast inkl. Verluste
@@ -6799,22 +6799,22 @@ function renderResilienzWaerme(el, overrideEl) {
   const W   = Math.max(440, elW - 4);
 
   const bauBtns = Object.entries(_PV_RES_BAUSCHWERE).map(([k, b]) =>
-    `<button data-pvresw-bau="${k}" style="padding:2px 9px;border:1px solid ${k===_pvResBauschwere?'#8d6e63':'rgba(255,255,255,0.22)'};border-radius:10px;background:${k===_pvResBauschwere?'#8d6e63':'transparent'};color:${k===_pvResBauschwere?'#0a0e16':'#cfd8dc'};font-size:11px;cursor:pointer;font-weight:${k===_pvResBauschwere?'700':'400'};white-space:nowrap;">${b.label}</button>`).join('');
+    `<button data-pvresw-bau="${k}" style="padding:2px 9px;border:1px solid ${k===_pvResBauschwere?'#8d6e63':'rgba(255,255,255,0.22)'};border-radius:10px;background:${k===_pvResBauschwere?'#8d6e63':'transparent'};color:${k===_pvResBauschwere?'#0a0e16':'#cfd8dc'};font-size:12.5px;cursor:pointer;font-weight:${k===_pvResBauschwere?'700':'400'};white-space:nowrap;">${b.label}</button>`).join('');
   const durBtns = DURS_W.map(([h,lbl]) =>
-    `<button data-pvresw-dur="${h}" style="padding:2px 9px;border:1px solid ${h===_pvResDurH?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${h===_pvResDurH?'#ff8f00':'transparent'};color:${h===_pvResDurH?'#0a0e16':'#cfd8dc'};font-size:11px;cursor:pointer;font-weight:${h===_pvResDurH?'700':'400'};">${lbl}</button>`).join('');
+    `<button data-pvresw-dur="${h}" style="padding:2px 9px;border:1px solid ${h===_pvResDurH?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${h===_pvResDurH?'#ff8f00':'transparent'};color:${h===_pvResDurH?'#0a0e16':'#cfd8dc'};font-size:12.5px;cursor:pointer;font-weight:${h===_pvResDurH?'700':'400'};">${lbl}</button>`).join('');
 
   el.innerHTML = `
   <div style="margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Totalausfall der Wärmezentrale
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Alle Erzeuger fallen aus — nur der Pufferspeicher überbrückt, danach kühlen die Gebäude aus</span>
+      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;">Alle Erzeuger fallen aus — nur der Pufferspeicher überbrückt, danach kühlen die Gebäude aus</span>
     </span>
   </div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-    <span style="font-size:11px;color:var(--muted);">Angenommene Ausfalldauer</span>${durBtns}
+    <span style="font-size:12.5px;color:var(--muted);">Angenommene Ausfalldauer</span>${durBtns}
   </div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-    <span style="font-size:11px;color:var(--muted);">Bauschwere (Auskühlzeit)</span>${bauBtns}
-    <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-left:6px;">Kritische Innentemp.
+    <span style="font-size:12.5px;color:var(--muted);">Bauschwere (Auskühlzeit)</span>${bauBtns}
+    <label style="font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-left:6px;">Kritische Innentemp.
       <input id="pva-pvresw-tcrit" type="range" min="5" max="18" step="1" value="${_pvResTcrit}" style="width:80px;accent-color:#ef9a9a;">
       <span id="pva-pvresw-tcrit-val" style="color:var(--c-red);font-family:'DM Mono',monospace;">${_pvResTcrit} °C</span>
     </label>
@@ -6829,7 +6829,7 @@ function renderResilienzWaerme(el, overrideEl) {
 
   function kpiCard(label, value, color) {
     return `<div style="flex:1;min-width:120px;background:var(--surface);border:1px solid rgba(var(--ink),0.08);border-radius:6px;padding:6px 9px;">
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">${label}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:2px;">${label}</div>
       <div style="font-size:14px;font-weight:700;color:${color};font-family:'DM Mono',monospace;">${value}</div></div>`;
   }
 
@@ -6902,8 +6902,8 @@ function renderResilienzWaerme(el, overrideEl) {
     const gradId = 'pvresw-grad-' + (overrideEl ? 'fs' : 'm');
     heatEl.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;gap:8px;">
-      <span style="font-size:10.5px;color:var(--muted);">Pufferstandzeit je Ausfall-Start — <b style="color:var(--c-blue);">Zelle anklicken</b> verschiebt den Ausfall-Start</span>
-      ${isWorst ? '' : '<button data-pvresw-reset style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.22);border-radius:4px;color:var(--c-orange);font-size:10.5px;padding:1px 7px;white-space:nowrap;">↺ Worst-Case</button>'}
+      <span style="font-size:12px;color:var(--muted);">Pufferstandzeit je Ausfall-Start — <b style="color:var(--c-blue);">Zelle anklicken</b> verschiebt den Ausfall-Start</span>
+      ${isWorst ? '' : '<button data-pvresw-reset style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.22);border-radius:4px;color:var(--c-orange);font-size:12px;padding:1px 7px;white-space:nowrap;">↺ Worst-Case</button>'}
     </div>
     <svg width="${W}" height="${H+18}" style="display:block;overflow:hidden;cursor:pointer;">
       <defs><linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="0">
@@ -6945,9 +6945,9 @@ function renderResilienzWaerme(el, overrideEl) {
       </tr>`;
     }).join('');
     tableEl.innerHTML = bList.length ? `
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:4px;">Zeit bis kritische Temperatur = Pufferstandzeit + Auskühlzeit (τ = C/UA, Bauschwere „${_PV_RES_BAUSCHWERE[_pvResBauschwere].label}“, kritisch ab ${_pvResTcrit} °C) — rot markiert: Nutzungstyp Pflege/Gesundheit/Bildung.</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Zeit bis kritische Temperatur = Pufferstandzeit + Auskühlzeit (τ = C/UA, Bauschwere „${_PV_RES_BAUSCHWERE[_pvResBauschwere].label}“, kritisch ab ${_pvResTcrit} °C) — rot markiert: Nutzungstyp Pflege/Gesundheit/Bildung.</div>
       <div style="max-height:260px;overflow-y:auto;border:1px solid rgba(var(--ink),0.08);border-radius:6px;">
-        <table style="width:100%;border-collapse:collapse;font-size:11px;color:var(--text);">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px;color:var(--text);">
           <thead style="position:sticky;top:0;background:var(--surface);"><tr style="text-align:left;color:var(--muted);">
             <th style="padding:3px 6px;">Gebäude</th><th style="padding:3px 6px;">Nutzung</th>
             <th style="padding:3px 6px;text-align:right;">Heizlast</th><th style="padding:3px 6px;text-align:right;">τ</th>
@@ -6955,7 +6955,7 @@ function renderResilienzWaerme(el, overrideEl) {
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
-      </div>` : '<div style="font-size:11px;color:var(--muted);">Keine Gebäude mit Heizlast/Fläche im Bestand gefunden.</div>';
+      </div>` : '<div style="font-size:12.5px;color:var(--muted);">Keine Gebäude mit Heizlast/Fläche im Bestand gefunden.</div>';
 
     window._pvResRecoWaerme = {
       hasSpeicher, bridgeH: rSel.bridge, durH, isWorst, selStart, worstStart, nHours,
@@ -7090,8 +7090,8 @@ function renderSensitivitaet(varianten, overrideEl) {
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
     <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Sensitivitätsanalyse: Hebel auf den Jahresüberschuss
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">jede Annahme einzeln variiert, übrige auf Basiswert — längster Balken = größter Hebel</span>
-      <span style="display:block;font-size:10.5px;color:var(--c-green);margin-top:2px;">Referenz: ${v.icon} ${v.label} (Auslegung im Blick) · Basis-Überschuss <b>${fmtEUR(baseSurplus)} €/a</b></span>
+      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;">jede Annahme einzeln variiert, übrige auf Basiswert — längster Balken = größter Hebel</span>
+      <span style="display:block;font-size:12px;color:var(--c-green);margin-top:2px;">Referenz: ${v.icon} ${v.label} (Auslegung im Blick) · Basis-Überschuss <b>${fmtEUR(baseSurplus)} €/a</b></span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="sensitivitaet" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;flex-shrink:0;">⤢</button>'}
   </div>
@@ -7159,7 +7159,7 @@ function _pvPotenzialKopfHtml() {
   const bd = pvGetAssetBreakdown();
   const total = (bd.stand?.kwp || 0) + bd.assetKwp + bd.gebKwp + bd.ffKwp + bd.manual;
   const zeile = (label, wert, warn) => wert > 0
-    ? `<div style="display:flex;justify-content:space-between;font-size:10.5px;padding:2px 0;color:${warn ? '#ef9a9a' : 'var(--muted)'};">
+    ? `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:${warn ? '#ef9a9a' : 'var(--muted)'};">
          <span>${label}</span><span style="font-family:'DM Mono',monospace;color:${warn ? '#ef9a9a' : 'var(--text)'};">${wert.toFixed(0)} kWp</span></div>`
     : '';
   const staende = window.pvbsListe?.() || [];
@@ -7167,20 +7167,20 @@ function _pvPotenzialKopfHtml() {
   const entwurf = window.pvbsEntwurfInfo?.() || null;     // ungespeicherte Belegung auf den Dächern (38)
   const potId = window._pvAnalyse.potenzialStandId;
   const name = id => staende.find(st => st.id === id)?.name || '';
-  const sel = 'width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;';
+  const sel = 'width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12.5px;';
   return `
     <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:6px;">
       <span id="pva-asset-kwp" style="font-family:'DM Mono',monospace;font-size:22px;color:${total > 0 ? '#fdd835' : '#ef9a9a'};">${total.toFixed(0)}</span>
-      <span style="font-size:11px;color:var(--muted);">kWp maximal</span>
+      <span style="font-size:12.5px;color:var(--muted);">kWp maximal</span>
     </div>
     <div data-ohne-stale style="margin-bottom:6px;" title="Mit welchem gespeicherten Belegungsstand der Variantenvergleich rechnet — z. B. „Gesamtpotenzial“ aus der automatischen Belegung, ohne die Dächer im Projekt belegen zu müssen.">
-      <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">Dächer: Belegungsstand</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:2px;">Dächer: Belegungsstand</div>
       ${staende.length || entwurf ? `<select data-change="pvaPotenzialStand(this.value)" style="${sel}">
         ${projektId ? `<option value=""${potId && potId !== projektId ? '' : ' selected'}>„${escHtml(name(projektId))}“ — im Projekt</option>` : ''}
         ${entwurf ? `<option value=""${potId ? '' : ' selected'}>Entwurf im Projekt (ungespeichert, ${entwurf.daecher} Dächer)</option>` : ''}
         ${staende.filter(st => st.id !== projektId).map(st => `<option value="${st.id}"${st.id === potId ? ' selected' : ''}>„${escHtml(st.name)}“</option>`).join('')}
-      </select>` : '<div style="font-size:10px;color:var(--muted);line-height:1.4;">Noch kein Belegungsstand — sie entstehen im PV-Modus („⚡ Dächer automatisch belegen“ → „💾 Als Belegungsstand speichern“) oder aus belegten Dächern im Projekt über „💾 als neuer Stand“.</div>'}
-      ${potId && !bd.stand ? '<div style="font-size:10px;color:var(--c-red);margin-top:3px;">Der gewählte Belegungsstand existiert nicht mehr — es gilt der Stand im Projekt.</div>' : ''}
+      </select>` : '<div style="font-size:12px;color:var(--muted);line-height:1.4;">Noch kein Belegungsstand — sie entstehen im PV-Modus („⚡ Dächer automatisch belegen“ → „💾 Als Belegungsstand speichern“) oder aus belegten Dächern im Projekt über „💾 als neuer Stand“.</div>'}
+      ${potId && !bd.stand ? '<div style="font-size:12px;color:var(--c-red);margin-top:3px;">Der gewählte Belegungsstand existiert nicht mehr — es gilt der Stand im Projekt.</div>' : ''}
     </div>
     ${bd.stand ? zeile(`Belegungsstand (${bd.stand.daecher} Dächer)`, bd.stand.kwp) : ''}
     ${zeile(`Elektro-Assets (${bd.assetN}×)${bd.stand ? ' übrige' : ''}`, bd.assetKwp)}
@@ -7212,14 +7212,14 @@ function _pvBelegungenHtml() {
   const kopf = `
     <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
       <span style="color:${PV_BELEGUNG_FARBEN[0]};font-size:12px;">▦</span>
-      <span style="font-size:11px;font-weight:600;color:var(--text);">Dachbelegungen aus dem PV-Modus</span>
+      <span style="font-size:12.5px;font-weight:600;color:var(--text);">Dachbelegungen aus dem PV-Modus</span>
       <span class="htip" data-tip="Jeder Belegungsstand aus dem PV-Modus lässt sich als eigene Auslegung rechnen, ohne das Projekt zu ändern. Ein Stand legt alle Dächer fest; dazu kommt nur PV außerhalb der Dächer (Freiflächen, Anlagen ohne Gebäude). Der Speicher wird je Belegung nach der gewählten Regel ausgelegt.">?</span>
     </div>`;
   if (!liste.length) {
-    return kopf + `<div style="font-size:10.5px;color:var(--muted);line-height:1.5;">Noch keine. Im PV-Modus unter „📚 Belegungsstände“ bei einem Stand „☀ als Auslegung“ wählen.</div>`;
+    return kopf + `<div style="font-size:12px;color:var(--muted);line-height:1.5;">Noch keine. Im PV-Modus unter „📚 Belegungsstände“ bei einem Stand „☀ als Auslegung“ wählen.</div>`;
   }
   const f0 = x => Math.round(+x || 0).toLocaleString('de-DE');
-  const sel = 'padding:3px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10.5px;';
+  const sel = 'padding:3px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;';
   const zeilen = liste.map(bvRoh => {
     const bv = pvaBelegungDaten(bvRoh);
     const n = Object.keys(bv.dachKwp || {}).length;
@@ -7228,25 +7228,25 @@ function _pvBelegungenHtml() {
     const netzFarbe = !bv.netz?.geprueft ? 'var(--muted)' : bv.netz.vertraeglich ? '#66bb6a' : '#ffa726';
     return `
       <div style="padding:4px 0;border-bottom:1px solid rgba(var(--ink),.05);">
-        <div style="display:flex;align-items:center;gap:6px;font-size:10.5px;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
           <span style="width:9px;height:9px;border-radius:2px;background:${_pvBelegungFarbe(bv.nr)};flex:none;"></span>
           <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);"
             title="${escHtml((bv.beschreibung || '') + (bv.netz?.text ? ' · ' + bv.netz.text : '') + (bv.stand ? ' · Stand ' + bv.stand : ''))}">${escHtml(bv.name)}</span>
           <button data-click="pvaBelegungEntfernen(${bv.nr})" title="Auslegung entfernen"
-            style="cursor:pointer;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:10px;padding:0 5px;">✕</button>
+            style="cursor:pointer;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:12px;padding:0 5px;">✕</button>
         </div>
-        <div style="font-size:10px;color:var(--muted);margin:2px 0 3px 15px;">
+        <div style="font-size:12px;color:var(--muted);margin:2px 0 3px 15px;">
           ${bv.fehltStand ? '<span style="color:var(--c-red);">Belegungsstand gelöscht — wird nicht gerechnet</span> · ' : ''}${bv.ausStand ? '📚 ' : ''}${n} Dächer · ${f0(bv.summeKwp)} kWp${bv.ausStand ? '' : ' neu'}${bat}
           · <span style="color:${netzFarbe};">${!bv.netz?.geprueft ? 'Netz ungeprüft' : bv.netz.vertraeglich ? 'netzverträglich' : 'über Netzgrenze'}</span></div>
         <div style="display:flex;align-items:center;gap:5px;margin-left:15px;">
-          <span style="font-size:10px;color:var(--muted);">Speicher</span>
+          <span style="font-size:12px;color:var(--muted);">Speicher</span>
           <select data-change="pvaBelegungSetze(${bv.nr},'speicher',this.value)" style="flex:1;${sel}"
             title="${escHtml(_pvSpeicherRegel(bv.speicher)[2])}">${_pvSpeicherOptionen(bv.speicher)}</select>
           ${bv.speicher === 'fest' ? `<input type="number" min="0" step="50" value="${Math.round(+bv.batKwh || 0)}"
             data-change="pvaBelegungSetze(${bv.nr},'batKwh',this.value)" style="width:70px;${sel}"/>
-            <span style="font-size:10px;color:var(--muted);">kWh</span>` : ''}
+            <span style="font-size:12px;color:var(--muted);">kWh</span>` : ''}
         </div>
-        <label data-ohne-stale style="display:flex;align-items:center;gap:5px;margin:3px 0 0 15px;font-size:10px;color:var(--muted);cursor:pointer;"
+        <label data-ohne-stale style="display:flex;align-items:center;gap:5px;margin:3px 0 0 15px;font-size:12px;color:var(--muted);cursor:pointer;"
           title="Im Gutachten (Kapitel 5.4.2 und 5.5) als weitere Auslegung neben den festen zeigen — mit eigenem Absatz, in Tabellen und Abbildungen">
           <input type="checkbox" ${bv.gutachten ? 'checked' : ''} style="accent-color:${_pvBelegungFarbe(bv.nr)};"
             data-change="pvaBelegungSetze(${bv.nr},'gutachten',this.checked)"/>im Gutachten zeigen</label>

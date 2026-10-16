@@ -80,7 +80,7 @@ export function showElSlpModal(onClose) {
             title="${changed ? 'Geändert (Standard: '+p.wpm2+' W/m²)' : ''}">
         </td>
         <td style="text-align:center;">
-          ${changed ? `<button class="nt-del-btn" data-reset="${esc(p.id)}" title="Auf Standard zurücksetzen">↺</button>` : '<span style="color:var(--muted);font-size:9px;">—</span>'}
+          ${changed ? `<button class="nt-del-btn" data-reset="${esc(p.id)}" title="Auf Standard zurücksetzen">↺</button>` : '<span style="color:var(--muted);font-size:11px;">—</span>'}
         </td>
       </tr>`;
     }).join('');
@@ -117,7 +117,7 @@ export function showElSlpModal(onClose) {
       </div>
       <div style="overflow-y:auto;flex:1;padding:12px 16px;">
 
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">
           BDEW-Standard (W/m² anpassbar)
         </div>
         <table class="aw-nt-table" style="margin-bottom:14px;">
@@ -130,10 +130,10 @@ export function showElSlpModal(onClose) {
         </table>
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">
             Eigene Profile
           </div>
-          <button class="aw-cfg-apply-btn" id="elslp-add" style="font-size:9px;padding:2px 8px;">+ Hinzufügen</button>
+          <button class="aw-cfg-apply-btn" id="elslp-add" style="font-size:11px;padding:2px 8px;">+ Hinzufügen</button>
         </div>
         <table class="aw-nt-table" id="elslp-custom-table">
           <thead><tr>
@@ -144,7 +144,7 @@ export function showElSlpModal(onClose) {
           <tbody>${customRows}</tbody>
         </table>
 
-        <div style="margin-top:10px;font-size:9px;color:var(--muted);font-style:italic;">
+        <div style="margin-top:10px;font-size:11px;color:var(--muted);font-style:italic;">
           W/m² = spezifische Spitzenlast. Formel: kW = Fläche [m²] × W/m² ÷ 1000
         </div>
       </div>

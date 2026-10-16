@@ -85,9 +85,9 @@ export function pvAnschlussHinweisHtml() {
   const { alle, mitZiel } = pvUnverbundene();
   if (!alle.length) return '';
   return `
-    <div style="margin-top:6px;border:1px solid ${ORANGE}66;border-radius:5px;padding:5px 7px;background:${ORANGE}0d;font-size:10px;line-height:1.4;">
+    <div style="margin-top:6px;border:1px solid ${ORANGE}66;border-radius:5px;padding:5px 7px;background:${ORANGE}0d;font-size:12px;line-height:1.4;">
       <div style="color:${ORANGE};font-weight:600;">🔌 ${alle.length} PV-Anlage${alle.length > 1 ? 'n' : ''} ohne Kabel</div>
-      <div style="font-size:9px;color:var(--muted);">Die Stromnetz-Berechnung und die PV-Netzaufnahme sehen sie sonst nicht.${
+      <div style="font-size:11px;color:var(--muted);">Die Stromnetz-Berechnung und die PV-Netzaufnahme sehen sie sonst nicht.${
         alle.length > mitZiel.length ? ` ${alle.length - mitZiel.length} davon ohne UV/NSHV im Gebäude.` : ''}</div>
       ${mitZiel.length ? `<button class="btn-xs" style="width:100%;margin-top:4px;border-color:${ORANGE};color:${ORANGE};"
         data-click="pvUnverbundeneAnschliessen()" title="Gebäudeinternes Kabel zur UV (ohne UV zur NSHV) — ein Strg+Z-Schritt">

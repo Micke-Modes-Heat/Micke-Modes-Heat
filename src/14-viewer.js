@@ -16,9 +16,9 @@ import { setViewMode, setLeftTab, setAnalyseSection, setWaermeTab } from './04a-
     // Header-Zeile
     '.vtoc-header { display: flex; justify-content: space-between; align-items: center;',
     '  margin-bottom: 10px; padding: 0 4px; }',
-    '.vtoc-header-label { font-size: 9px; letter-spacing: 0.08em; color: var(--muted);',
+    '.vtoc-header-label { font-size: 11px; letter-spacing: 0.08em; color: var(--muted);',
     '  text-transform: uppercase; }',
-    '.vtoc-badge { font-size: 8px; background: rgba(239,83,80,0.12);',
+    '.vtoc-badge { font-size: 10.5px; background: rgba(239,83,80,0.12);',
     '  border: 1px solid rgba(239,83,80,0.35); color: var(--c-red);',
     '  border-radius: 3px; padding: 2px 6px; letter-spacing: 0.05em; white-space: nowrap; }',
     // Nav
@@ -28,7 +28,7 @@ import { setViewMode, setLeftTab, setAnalyseSection, setWaermeTab } from './04a-
     '.vtoc-item { display: flex; align-items: center; gap: 8px; width: 100%;',
     '  text-align: left; padding: 7px 8px; background: none;',
     '  border: 1px solid transparent; border-radius: 5px;',
-    '  color: var(--muted); cursor: pointer; font-size: 11px; font-family: inherit;',
+    '  color: var(--muted); cursor: pointer; font-size: 12.5px; font-family: inherit;',
     '  transition: background 0.12s, border-color 0.12s, color 0.12s; }',
     '.vtoc-item:hover { background: rgba(var(--ink),0.04);',
     '  border-color: var(--border); color: var(--text); }',
@@ -38,9 +38,9 @@ import { setViewMode, setLeftTab, setAnalyseSection, setWaermeTab } from './04a-
     '.vtoc-num { flex-shrink: 0; width: 20px; height: 20px;',
     '  display: flex; align-items: center; justify-content: center;',
     "  border-radius: 50%; background: rgba(var(--ink),0.06);",
-    "  font-size: 9px; font-family: 'DM Mono', monospace; }",
+    "  font-size: 11px; font-family: 'DM Mono', monospace; }",
     '.vtoc-item.active .vtoc-num { background: rgba(79,195,247,0.18); }',
-    '.vtoc-label { font-size: 11px; line-height: 1.3; }',
+    '.vtoc-label { font-size: 12.5px; line-height: 1.3; }',
   ].join('\n');
 
   var _CHAPTERS = [

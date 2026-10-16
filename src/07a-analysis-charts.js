@@ -377,12 +377,12 @@ export function _daLegend(elId, keys, showResidual) {
       const label = (k === 'gaskessel' && hasManualGk && keys.includes('_autoGk'))
         ? 'Gaskessel (teil-auto)'  // manuell + auto zusammen
         : (DA_LABELS[k] || k);
-      return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:10px;">
+      return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:12px;">
         <span style="width:10px;height:10px;border-radius:2px;background:${_daColor(k)};display:inline-block;"></span>
         ${label}</span>`;
     });
   if (showResidual) items.push(
-    `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:10px;">
+    `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:12px;">
       <span style="width:10px;height:10px;border-radius:2px;background:${DA_COLORS_FALLBACK._residual};display:inline-block;"></span>
       Nicht gedeckt</span>`
   );
@@ -1090,7 +1090,7 @@ export function daRenderMetriken() {
   const n = lg.length || 8760;
 
   if (!keys.length) {
-    wrap.innerHTML = '<p style="color:var(--muted);font-size:11px;">Noch keine Berechnung vorhanden.</p>';
+    wrap.innerHTML = '<p style="color:var(--muted);font-size:12.5px;">Noch keine Berechnung vorhanden.</p>';
     return;
   }
 
@@ -1118,8 +1118,8 @@ export function daRenderMetriken() {
     const vbh   = pMax > 0 ? Math.round(kwh / pMax) : 0;
     const mwh   = kwh / 1000;
     return `<div style="background:var(--panel);border:1px solid ${_daColor(k)};border-radius:6px;padding:10px;">
-      <div style="font-size:11px;font-weight:600;color:${_daColor(k)};margin-bottom:8px;">${DA_LABELS[k]||k}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;">
+      <div style="font-size:12.5px;font-weight:600;color:${_daColor(k)};margin-bottom:8px;">${DA_LABELS[k]||k}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;">
         <div><div style="color:var(--text);font-family:'DM Mono',monospace">${Math.round(mwh).toLocaleString('de-DE')} MWh</div><div style="color:var(--muted)">Wärme/a</div></div>
         <div><div style="color:var(--text);font-family:'DM Mono',monospace">${deckP.toFixed(1)} %</div><div style="color:var(--muted)">Deckung</div></div>
         <div><div style="color:var(--text);font-family:'DM Mono',monospace">${Math.round(pMax).toLocaleString('de-DE')} kW</div><div style="color:var(--muted)">P<sub>max</sub></div></div>
@@ -1371,8 +1371,8 @@ export function dimDraw(pInst) {
       `<div style="color:var(--c-blue);font-weight:bold;">${Math.round(pInst).toLocaleString('de-DE')} kW</div>` +
       `<div>Energiedeckung: <b style="color:var(--c-blue);">${de1(covPct)} %</b></div>` +
       `<div>Volllaststunden: <b>${Math.round(res.vls).toLocaleString('de-DE')} h</b></div>` +
-      `<div style="color:var(--muted);font-size:9px;">Gesamt: ${Math.round(_dimTotalEnergy/1000).toLocaleString('de-DE')} MWh/a</div>` +
-      `<div style="color:var(--muted);font-size:9px;">P<sub>max</sub>: ${Math.round(pMax).toLocaleString('de-DE')} kW</div>`;
+      `<div style="color:var(--muted);font-size:11px;">Gesamt: ${Math.round(_dimTotalEnergy/1000).toLocaleString('de-DE')} MWh/a</div>` +
+      `<div style="color:var(--muted);font-size:11px;">P<sub>max</sub>: ${Math.round(pMax).toLocaleString('de-DE')} kW</div>`;
   }
 }
 

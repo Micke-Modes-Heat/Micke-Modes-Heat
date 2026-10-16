@@ -72,7 +72,7 @@ export function wirkungChipFuerSchicht(schicht) {
 /** Zeile über Dach-PV-Panels: Dachdaten gemeinsam, Belegung je Variante. */
 export function pvBelegungWirkungHtml(ort) {
   const kompakt = ort === 'pvm';
-  return `<div style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:10.5px;color:var(--muted);
+  return `<div style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:12px;color:var(--muted);
       ${kompakt ? 'padding:6px 10px;border-bottom:1px solid var(--border);background:var(--surface);' : 'margin:2px 0 8px;'}">
     <span>PV-Belegung</span>${wirkungChipHtml('variante')}
     <span>· Dachform und Neigung</span>${wirkungChipHtml('alle')}
@@ -93,11 +93,11 @@ function _waermeKennzeichenRendern() {
         <span>· Temperaturen</span>${wirkungChipHtml('variante')}`;
     } else if (aktiveVarianteNetzEigen()) {
       inhalt = `<span>Trasse</span>${wirkungChipHtml('variante', `eigenes Netz · nur ${esc(aktiverVariantenName())}`)}
-        <button data-click="variantenNetzEigen(false)" style="font:inherit;font-size:10px;padding:1px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;"
+        <button data-click="variantenNetzEigen(false)" style="font:inherit;font-size:12px;padding:1px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;"
           title="Die eigene Trasse dieser Variante verwerfen und wieder das gemeinsame Netz verwenden">gemeinsames Netz übernehmen</button>`;
     } else {
       inhalt = `<span>Trasse</span>${wirkungChipHtml('alle', 'gemeinsam mit allen Varianten')}
-        <button data-click="variantenNetzEigen(true)" style="font:inherit;font-size:10px;padding:1px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;"
+        <button data-click="variantenNetzEigen(true)" style="font:inherit;font-size:12px;padding:1px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;"
           title="Ab jetzt eine eigene Trasse nur für diese Variante zeichnen — z. B. ein anderes Versorgungsgebiet">eigenes Netz für diese Variante</button>
         <span>· Temperaturen</span>${wirkungChipHtml('variante')}`;
     }
@@ -199,7 +199,7 @@ function _menuHtml() {
       <button data-click="variantenMenuSchliessen();setViewMode('vergleich')">⇄ Vergleichen</button>
       <button data-click="variantenMenuSchliessen();variantenZeitstrahlToggle()">Zeitstrahl</button>
     </div>
-    <div style="padding:0 12px 10px;font-size:10px;color:var(--muted);line-height:1.45;">
+    <div style="padding:0 12px 10px;font-size:12px;color:var(--muted);line-height:1.45;">
       Jede Variante = gemeinsamer Stamm (Gebäude, Bestand, was ohnehin kommt) + ihre eigenen Entscheidungen
       (geplante Anlagen, Erzeuger, Dach-PV, zugeordnete Maßnahmen).
     </div>`;
@@ -306,8 +306,8 @@ export function variantenDialogNeu() {
     const gemeinsam = normSchicht(a.schicht) === SCHICHT.ENTWICKLUNG;
     return `<label class="obj">
       <input type="checkbox" data-asset="${esc(a.id)}" ${gemeinsam ? 'checked' : ''} style="accent-color:#f9a825;">
-      <span>${esc(a.name)} <span style="color:var(--muted);font-family:'DM Mono',monospace;font-size:10.5px;">${esc(a.baujahr ?? '')}</span></span>
-      <span class="vd-wo" style="font-size:10.5px;color:${gemeinsam ? '#f9a825' : '#66bb6a'};">${gemeinsam ? 'alle Varianten' : `nur ${esc(variantenName(null))}`}</span>
+      <span>${esc(a.name)} <span style="color:var(--muted);font-family:'DM Mono',monospace;font-size:12px;">${esc(a.baujahr ?? '')}</span></span>
+      <span class="vd-wo" style="font-size:12px;color:${gemeinsam ? '#f9a825' : '#66bb6a'};">${gemeinsam ? 'alle Varianten' : `nur ${esc(variantenName(null))}`}</span>
     </label>`;
   }).join('');
 
@@ -546,7 +546,7 @@ export function variantenVergleichAnsichtRender() {
   const aktivKey = aktiverVariantKey();
   const kopf = alle.map(v => `<th class="${v.key === aktivKey ? 'aktiv' : ''}" data-click="activateVariant(${idArg(v.id)});variantenVergleichAnsichtRender();renderVergleich()"
       title="${v.key === aktivKey ? 'aktive Variante' : 'Klicken zum Aktivieren'}">${esc(v.name)}${_gutachten() === v.key ? ' <span style="color:var(--accent);">★</span>' : ''}
-      <div style="font-weight:400;color:var(--muted);font-size:10px;">${v.key === aktivKey ? 'aktiv · ' : ''}${_herkunftText(v)}</div></th>`).join('');
+      <div style="font-weight:400;color:var(--muted);font-size:12px;">${v.key === aktivKey ? 'aktiv · ' : ''}${_herkunftText(v)}</div></th>`).join('');
   const zeile = (titel, fn) => `<tr><td class="rk">${titel}</td>${alle.map(v => `<td>${fn(v)}</td>`).join('')}</tr>`;
   const ul = arr => arr.length ? `<ul>${arr.join('')}</ul>` : '<span style="color:var(--muted);">—</span>';
   const html = `<table class="var-uebersicht"><thead><tr><th style="cursor:default;"></th>${kopf}</tr></thead><tbody>
@@ -559,7 +559,7 @@ export function variantenVergleichAnsichtRender() {
     ${zeile('Dach-PV belegt', v => { const n = _pvBelegt(v); return n == null ? '<span style="color:var(--muted);">wie Hauptplan (noch nicht getrennt)</span>' : `${n} Gebäude`; })}
     ${zeile('Wärme-Kennzahlen', v => { const st = variantenKennzahlStatus(v.key); return `<span class="var-status ${st}">${STATUS_TEXT[st]}</span>`; })}
   </tbody></table>
-  <div style="font-size:10px;color:var(--muted);margin-top:5px;">Gemeinsam in allen Varianten: Gebäude, Bestand und Entwicklung des Stromnetzes, Maßnahmen „für alle“ und — ohne eigenes Netz — die Wärmetrasse.</div>`;
+  <div style="font-size:12px;color:var(--muted);margin-top:5px;">Gemeinsam in allen Varianten: Gebäude, Bestand und Entwicklung des Stromnetzes, Maßnahmen „für alle“ und — ohne eigenes Netz — die Wärmetrasse.</div>`;
   el.innerHTML = html;
   window.variantenVergleichRender?.();
 }
@@ -619,12 +619,12 @@ function _zeitstrahlRender() {
       <div class="var-zs-spur" style="height:${hoehe}px;">${items || '<span style="position:absolute;left:1%;top:8px;color:var(--muted);">—</span>'}</div>`;
   };
   const ticks = [];
-  for (let y = b; y <= y1; y += (y1 - b > 20 ? 5 : 2)) ticks.push(`<span style="position:absolute;left:${pct(y)}%;transform:translateX(-50%);font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);">${y}</span>`);
+  for (let y = b; y <= y1; y += (y1 - b > 20 ? 5 : 2)) ticks.push(`<span style="position:absolute;left:${pct(y)}%;transform:translateX(-50%);font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);">${y}</span>`);
 
   el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap;">
       <b style="font-size:12px;">Zeitstrahl</b>
-      <span style="color:var(--muted);font-size:10.5px;">blass = nach dem Betrachtungsjahr ${jahr} · Klick zeigt das Objekt</span>
-      <span style="display:flex;gap:10px;font-size:10px;color:var(--muted);">
+      <span style="color:var(--muted);font-size:12px;">blass = nach dem Betrachtungsjahr ${jahr} · Klick zeigt das Objekt</span>
+      <span style="display:flex;gap:10px;font-size:12px;color:var(--muted);">
         <span><span class="var-zs-ev entwicklung" style="position:static;display:inline-block;padding:0 6px;">&nbsp;</span> kommt ohnehin</span>
         <span><span class="var-zs-ev entscheidung" style="position:static;display:inline-block;padding:0 6px;">&nbsp;</span> Entscheidung</span>
         <span><span class="var-zs-ev massnahme" style="position:static;display:inline-block;padding:0 6px;">&nbsp;</span> Maßnahme</span>

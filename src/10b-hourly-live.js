@@ -935,7 +935,7 @@ export function _buildFlowSankey(container, data, mode) {
   if (!tt) {
     tt = document.createElement('div');
     tt.className = 'live-sankey-tt';
-    tt.style.cssText = 'position:absolute;pointer-events:none;background:var(--surface);color:var(--c-blue);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;display:none;white-space:nowrap;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,0.5);';
+    tt.style.cssText = 'position:absolute;pointer-events:none;background:var(--surface);color:var(--c-blue);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-family:DM Mono,monospace;font-size:12px;display:none;white-space:nowrap;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,0.5);';
     container.style.position = 'relative';
     container.appendChild(tt);
   }

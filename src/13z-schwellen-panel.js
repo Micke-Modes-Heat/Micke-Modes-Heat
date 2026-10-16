@@ -125,13 +125,13 @@ export function schwellenPanelRender() {
 
   if (!schnapp.size) {
     el.innerHTML = `${_kopf(napLimit)}
-      <div style="background:var(--surface2);border-radius:6px;padding:10px;font-size:9.5px;color:var(--muted);line-height:1.7;">
+      <div style="background:var(--surface2);border-radius:6px;padding:10px;font-size:11px;color:var(--muted);line-height:1.7;">
         Noch keine Lastgänge eingefroren. Jede Variante muss dafür kurz aktiviert
         werden — das baut das Stromnetz jedes Mal neu auf.
         <div style="margin-top:7px;">
           <button data-click="schwellenAnalyseStarten()"
             style="padding:4px 10px;border-radius:5px;border:1px solid var(--c-teal);background:transparent;
-                   color:var(--c-teal);font-family:inherit;font-size:10px;cursor:pointer;">
+                   color:var(--c-teal);font-family:inherit;font-size:12px;cursor:pointer;">
             Analyse starten</button>
         </div>
       </div>`;
@@ -156,8 +156,8 @@ function _kopf(napLimit) {
   <div style="display:flex;align-items:center;gap:8px;margin:2px 0 10px;">
     <button data-click="schwellenAnalyseStarten()"
       style="padding:5px 10px;border-radius:5px;border:1px solid var(--c-teal);background:transparent;
-             color:var(--c-teal);font-family:inherit;font-size:10px;cursor:pointer;">↻ Neu rechnen</button>
-    <span style="margin-left:auto;font-size:10px;color:${napLimit ? 'var(--muted)' : '#f9a825'};">
+             color:var(--c-teal);font-family:inherit;font-size:12px;cursor:pointer;">↻ Neu rechnen</button>
+    <span style="margin-left:auto;font-size:12px;color:${napLimit ? 'var(--muted)' : '#f9a825'};">
       ${napLimit
         ? `NAP-Limit ${Math.round(napLimit)} kW`
         : '⚠ kein NAP-Limit gepflegt — Kapazität aus Trafosumme (zu großzügig)'}
@@ -175,7 +175,7 @@ function _variantenBlock(schnappschuss, analyse) {
   const komponenten = analyse.map(({ komponente, befund, varianten }) => {
     const st = STUFE[befund.stufe];
     const kopfZeile = `
-      <div style="display:flex;align-items:center;gap:8px;font-size:9.5px;padding:2px 0;">
+      <div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:2px 0;">
         <span style="flex:0 0 110px;color:var(--text);">
           ${komponente.napIds.length ? 'NAP-Cluster' : 'Cluster'} · ${komponente.trafoIds.length} Trafo${komponente.trafoIds.length === 1 ? '' : 's'}
         </span>
@@ -186,13 +186,13 @@ function _variantenBlock(schnappschuss, analyse) {
         <span style="flex:0 0 46px;text-align:right;font-family:'DM Mono',monospace;color:${st.col};">
           ${befund.ausgeschoepftPct == null ? '—' : Math.round(befund.ausgeschoepftPct) + ' %'}
         </span>
-        <span style="flex:1;color:${st.col};font-size:9px;">${st.txt}</span>
+        <span style="flex:1;color:${st.col};font-size:11px;">${st.txt}</span>
       </div>`;
 
     if (!varianten.length) return kopfZeile;
 
     const wege = varianten.filter(w => w.moeglich).map(w => `
-      <div style="display:flex;align-items:center;gap:8px;font-size:9px;padding:1px 0 1px 18px;
+      <div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:1px 0 1px 18px;
                   color:${w.guenstigste ? '#66bb6a' : 'var(--muted)'};">
         <span style="flex:0 0 240px;">${w.guenstigste ? '✓ ' : '· '}${w.label}</span>
         <span style="font-family:'DM Mono',monospace;">${_eur(w.kostenEUR)}</span>
@@ -208,28 +208,28 @@ function _variantenBlock(schnappschuss, analyse) {
   return `
   <div style="margin-bottom:10px;">
     <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px;">
-      <span style="font-size:10px;color:var(--text);font-weight:600;">${schnappschuss.varianteName}</span>
-      <span style="font-weight:400;color:var(--muted);font-size:9px;">· Jahr ${schnappschuss.jahr}</span>
-      <span style="color:${fCol};font-size:9px;">${fazit.text}</span>
+      <span style="font-size:12px;color:var(--text);font-weight:600;">${schnappschuss.varianteName}</span>
+      <span style="font-weight:400;color:var(--muted);font-size:11px;">· Jahr ${schnappschuss.jahr}</span>
+      <span style="color:${fCol};font-size:11px;">${fazit.text}</span>
       ${fazit.guenstigsteSummeEUR > 0
-        ? `<span style="color:var(--muted);font-size:9px;font-family:'DM Mono',monospace;">ab ${_eur(fazit.guenstigsteSummeEUR)}</span>`
+        ? `<span style="color:var(--muted);font-size:11px;font-family:'DM Mono',monospace;">ab ${_eur(fazit.guenstigsteSummeEUR)}</span>`
         : ''}
       <button data-click="schwellenVertiefen('${schnappschuss.varianteId ?? ''}')"
         title="Wechselt zu dieser Variante und rechnet den zeitlichen Engpass-Verlauf — inklusive Kabel, die das Screening nicht prüft."
-        style="margin-left:auto;padding:2px 8px;border-radius:4px;font-family:inherit;font-size:9px;cursor:pointer;
+        style="margin-left:auto;padding:2px 8px;border-radius:4px;font-family:inherit;font-size:11px;cursor:pointer;
                border:1px solid ${aktiv ? '#f9a825' : 'var(--border)'};background:transparent;
                color:${aktiv ? '#f9a825' : 'var(--muted)'};white-space:nowrap;">
         vertiefen${aktiv ? '' : ' →'}</button>
     </div>
     <div style="background:var(--surface2);border-radius:6px;padding:6px 9px;">
-      ${komponenten || '<span style="font-size:9px;color:var(--muted);">keine auswertbare Netzkomponente</span>'}
+      ${komponenten || '<span style="font-size:11px;color:var(--muted);">keine auswertbare Netzkomponente</span>'}
     </div>
   </div>`;
 }
 
 function _fussnote() {
   return `
-  <div style="font-size:8.5px;color:var(--muted);padding:2px 6px;line-height:1.7;">
+  <div style="font-size:10.5px;color:var(--muted);padding:2px 6px;line-height:1.7;">
     Rückspeisung gegen die Kapazität am Einspeisepunkt. Ein Erzeugungsnetz ist ein
     Sprungkostenblock — es lohnt erst, wenn genug Erzeugung dahintersteht; die
     Alternative ist, unter der Schwelle zu bleiben und zu stückeln.

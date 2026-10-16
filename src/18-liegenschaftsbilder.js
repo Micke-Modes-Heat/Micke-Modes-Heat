@@ -139,14 +139,14 @@ function lbCapSay(msg, err) {
   const el = document.getElementById('lb-cap-status');
   if (!el) return;
   el.textContent = msg;
-  el.style.color = err ? '#ef5350' : '#26a69a';
+  el.style.color = err ? 'var(--crit)' : 'var(--brand)';
 }
 
 function lbCapPanelHtml() {
   const chk = (key, label, title) => `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;" title="${lbEsc(title || '')}">
     <input type="checkbox" ${_lbCapLayers[key] ? 'checked' : ''} data-change="lbCapSetLayer('${key}',this.checked)">${lbEsc(label)}</label>`;
-  const presetBtn = (id) => `<button data-click="lbCapApplyPreset('${id}')" style="padding:5px 11px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;">${lbEsc(LB_CAP_PRESETS[id].label)}</button>`;
-  const scaleBtn = (v) => `<button data-click="lbCapSetScale(${v})" style="padding:4px 10px;border-radius:12px;border:1px solid ${_lbCapScale===v?'#26a69a':'rgba(255,255,255,.14)'};background:${_lbCapScale===v?'rgba(38,166,154,.16)':'transparent'};color:${_lbCapScale===v?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;">${v}× · ~${v*96} dpi</button>`;
+  const presetBtn = (id) => `<button data-click="lbCapApplyPreset('${id}')" style="padding:5px 11px;border-radius:14px;border:1px solid rgba(var(--ink),.14);background:rgba(var(--ink),.04);color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;">${lbEsc(LB_CAP_PRESETS[id].label)}</button>`;
+  const scaleBtn = (v) => `<button data-click="lbCapSetScale(${v})" style="padding:4px 10px;border-radius:12px;border:1px solid ${_lbCapScale===v?'var(--brand)':'rgba(var(--ink),.14)'};background:${_lbCapScale===v?'var(--brand-weak)':'transparent'};color:${_lbCapScale===v?'var(--brand)':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;">${v}× · ~${v*96} dpi</button>`;
 
   return `
   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Karten-Voreinstellung</div>
@@ -165,14 +165,14 @@ function lbCapPanelHtml() {
   <div style="display:flex;gap:6px;margin-bottom:14px;">${[2,3,4].map(scaleBtn).join('')}</div>
 
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-    <button data-click="lbCaptureMap()" style="padding:8px 16px;border-radius:6px;border:1px solid rgba(38,166,154,.6);background:rgba(38,166,154,.18);color:#26a69a;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">Bild aus aktuellem Kartenausschnitt erzeugen</button>
-    ${_lbCapBlob ? `<button data-click="lbCapDownload()" style="padding:8px 14px;border-radius:6px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:12px;cursor:pointer;">⤓ PNG herunterladen</button>` : ''}
+    <button data-click="lbCaptureMap()" style="padding:8px 16px;border-radius:6px;border:1px solid var(--brand);background:var(--brand-weak);color:var(--c-teal);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">Bild aus aktuellem Kartenausschnitt erzeugen</button>
+    ${_lbCapBlob ? `<button data-click="lbCapDownload()" style="padding:8px 14px;border-radius:6px;border:1px solid rgba(var(--ink),.14);background:rgba(var(--ink),.04);color:var(--muted);font-family:inherit;font-size:12px;cursor:pointer;">⤓ PNG herunterladen</button>` : ''}
   </div>
-  <div id="lb-cap-status" style="font-size:11px;color:#26a69a;min-height:16px;margin-bottom:10px;"></div>
+  <div id="lb-cap-status" style="font-size:11px;color:var(--c-teal);min-height:16px;margin-bottom:10px;"></div>
   <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:12px;">
     Nutzt den aktuellen Kartenausschnitt (Zoom/Ausschnitt vorher auf der Karte einstellen). Zoom-Regler und Copyright-Zeile werden für die Aufnahme automatisch ausgeblendet. Die Ebenen-Auswahl schaltet die echten Kartenebenen um — bleibt danach so stehen wie auf der Karte selbst.
   </div>
-  <div id="lb-cap-preview" style="border:1px solid rgba(255,255,255,.1);border-radius:6px;overflow:hidden;background:#11151d;min-height:80px;display:flex;align-items:center;justify-content:center;">
+  <div id="lb-cap-preview" style="border:1px solid rgba(var(--ink),.1);border-radius:6px;overflow:hidden;background:var(--surface);min-height:80px;display:flex;align-items:center;justify-content:center;">
     ${_lbCapUrl ? `<img src="${_lbCapUrl}" style="max-width:100%;display:block;">` : `<span style="font-size:11px;color:var(--muted);padding:20px;">Noch kein Bild erzeugt.</span>`}
   </div>`;
 }
@@ -1532,7 +1532,7 @@ function lpLiegenschaft() {
   return [name, adresse].filter(Boolean).join(' · ');
 }
 
-const LP_INP_STYLE = 'padding:5px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);font-family:inherit;font-size:11px;';
+const LP_INP_STYLE = 'padding:5px 6px;border-radius:4px;border:1px solid rgba(var(--ink),.14);background:rgba(var(--ink),.04);color:var(--text,#e8eaed);font-family:inherit;font-size:11px;';
 
 // Welche Bedien-Gruppen offen sind. Modul-State, nicht DOM-State: lpRenderPanel() baut das
 // Panel-HTML bei jeder Änderung komplett neu auf, ein rein im DOM gemerkter Zustand wäre weg.
@@ -1547,13 +1547,13 @@ const LP_PANEL_CSS = `<style>
   @media (max-width:1100px) { #lb-lp-panel .lp-grid { grid-template-columns:minmax(0,1fr); } }
   #lb-lp-panel .lp-blattspalte { position:sticky; top:8px; }
   @media (max-width:1100px) { #lb-lp-panel .lp-blattspalte { position:static; } }
-  #lb-lp-panel .lp-sekt { border:1px solid rgba(255,255,255,.09); border-radius:6px; overflow:hidden; }
+  #lb-lp-panel .lp-sekt { border:1px solid rgba(var(--ink),.09); border-radius:6px; overflow:hidden; }
   #lb-lp-panel .lp-sekt + .lp-sekt { margin-top:8px; }
   #lb-lp-panel .lp-sekt-kopf { width:100%; display:flex; align-items:center; gap:9px; text-align:left;
-    padding:10px 12px; background:rgba(255,255,255,.03); border:0; cursor:pointer; color:var(--text,#e8eaed); font:inherit; }
-  #lb-lp-panel .lp-sekt-kopf:hover { background:rgba(255,255,255,.06); }
+    padding:10px 12px; background:rgba(var(--ink),.03); border:0; cursor:pointer; color:var(--text,#e8eaed); font:inherit; }
+  #lb-lp-panel .lp-sekt-kopf:hover { background:rgba(var(--ink),.06); }
   #lb-lp-panel .lp-sekt-kopf .lp-chev { color:var(--muted); font-size:9px; flex:none; transition:transform .16s ease; }
-  #lb-lp-panel .lp-sekt-kopf[aria-expanded="true"] .lp-chev { transform:rotate(90deg); color:#26a69a; }
+  #lb-lp-panel .lp-sekt-kopf[aria-expanded="true"] .lp-chev { transform:rotate(90deg); color:var(--brand); }
   #lb-lp-panel .lp-sekt-titel { font-size:11.5px; font-weight:600; flex:none; }
   #lb-lp-panel .lp-sekt-stand { margin-left:auto; font-size:10px; color:var(--muted); text-align:right;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -1561,16 +1561,16 @@ const LP_PANEL_CSS = `<style>
   #lb-lp-panel .lp-feldname { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
   #lb-lp-panel .lp-zeile { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   #lb-lp-panel .lp-wz { display:flex; flex-wrap:wrap; gap:8px; align-items:center;
-    padding:8px 10px; border:1px solid rgba(255,255,255,.09); border-radius:6px 6px 0 0; border-bottom:0;
-    background:rgba(255,255,255,.04); }
+    padding:8px 10px; border:1px solid rgba(var(--ink),.09); border-radius:6px 6px 0 0; border-bottom:0;
+    background:rgba(var(--ink),.04); }
   #lb-lp-panel .lp-ikon { min-width:28px; height:26px; display:inline-flex; align-items:center; justify-content:center;
-    padding:0 7px; border:1px solid rgba(255,255,255,.14); border-radius:5px; background:rgba(255,255,255,.04);
+    padding:0 7px; border:1px solid rgba(var(--ink),.14); border-radius:5px; background:rgba(var(--ink),.04);
     color:var(--muted); font-family:inherit; font-size:11px; cursor:pointer; }
-  #lb-lp-panel .lp-ikon:hover { color:var(--text,#e8eaed); border-color:rgba(255,255,255,.28); }
-  #lb-lp-panel .lp-wz-trenner { width:1px; height:18px; background:rgba(255,255,255,.12); }
+  #lb-lp-panel .lp-ikon:hover { color:var(--text,#e8eaed); border-color:rgba(var(--ink),.28); }
+  #lb-lp-panel .lp-wz-trenner { width:1px; height:18px; background:rgba(var(--ink),.12); }
   #lb-lp-panel .lp-wert { font-size:10.5px; color:var(--muted); min-width:38px; text-align:center; }
-  #lb-lp-panel .lp-hinweis { margin:0; padding:7px 9px; border-left:2px solid rgba(255,255,255,.14);
-    background:rgba(255,255,255,.03); color:var(--muted); font-size:10px; line-height:1.5; }
+  #lb-lp-panel .lp-hinweis { margin:0; padding:7px 9px; border-left:2px solid rgba(var(--ink),.14);
+    background:rgba(var(--ink),.03); color:var(--muted); font-size:10px; line-height:1.5; }
 </style>`;
 
 /**
@@ -1582,8 +1582,8 @@ function lpWasserzeichenHtml() {
   const chk = (checked, label, onClick, title) => `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;" title="${lbEsc(title || '')}">
     <input type="checkbox" ${checked ? 'checked' : ''} data-change="${onClick}">${lbEsc(label)}</label>`;
   const pill = (an, label, onClick, title) => `<button data-click="${onClick}" title="${lbEsc(title || '')}"
-    style="padding:4px 10px;border-radius:12px;border:1px solid ${an?'#26a69a':'rgba(255,255,255,.14)'};background:${an?'rgba(38,166,154,.16)':'transparent'};color:${an?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
-  const btn = 'padding:6px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;';
+    style="padding:4px 10px;border-radius:12px;border:1px solid ${an?'var(--brand)':'rgba(var(--ink),.14)'};background:${an?'var(--brand-weak)':'transparent'};color:${an?'var(--brand)':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
+  const btn = 'padding:6px 12px;border-radius:5px;border:1px solid rgba(var(--ink),.12);background:rgba(var(--ink),.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;';
 
   const svg = lpRenderWasserzeichenSvg();
   const vorschau = svg
@@ -1611,7 +1611,7 @@ function lpWasserzeichenHtml() {
         <span style="font-size:10px;color:var(--muted);">${Math.round(_lpWm.staerke * 100)} %</span>
       </div>
       <div class="lp-zeile">
-        <button data-click="lpWmCopy()" style="${btn}border-color:rgba(38,166,154,.6);background:rgba(38,166,154,.18);color:#26a69a;">⧉ Für Word kopieren</button>
+        <button data-click="lpWmCopy()" style="${btn}border-color:var(--brand);background:var(--brand-weak);color:var(--brand);">⧉ Für Word kopieren</button>
         <button data-click="lpWmPng()" style="${btn}">⤓ PNG</button>
         <button data-click="lpWmSvg()" style="${btn}">⤓ SVG</button>
       </div>
@@ -1624,17 +1624,17 @@ function lpPanelHtml() {
   const inp = LP_INP_STYLE;
   const jahrFeld = (key, label, title) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);" title="${lbEsc(title || '')}">${lbEsc(label)}
     <input type="number" value="${_lpState[key]}" data-change="lpSetJahr('${key}',this.value)" style="${inp}width:76px;"></label>`;
-  const anzeigeBtn = (id, label) => `<button data-click="lpSetAnzeige('${id}')" style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.anzeige===id?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpState.anzeige===id?'rgba(38,166,154,.16)':'transparent'};color:${_lpState.anzeige===id?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
+  const anzeigeBtn = (id, label) => `<button data-click="lpSetAnzeige('${id}')" style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.anzeige===id?'var(--brand)':'rgba(var(--ink),.14)'};background:${_lpState.anzeige===id?'var(--brand-weak)':'transparent'};color:${_lpState.anzeige===id?'var(--brand)':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
   const chk = (checked, label, onClick, title) => `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;" title="${lbEsc(title || '')}">
     <input type="checkbox" ${checked ? 'checked' : ''} data-change="${onClick}">${lbEsc(label)}</label>`;
   const d = _lpState.drehung || 0;
   const drehBtn = (v, label) => `<button data-click="lpSetDrehung(${v})" title="Plan auf ${v}° drehen"
-    style="padding:4px 9px;border-radius:12px;border:1px solid ${d===v?'#26a69a':'rgba(255,255,255,.14)'};background:${d===v?'rgba(38,166,154,.16)':'transparent'};color:${d===v?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
-  const scaleBtn = (v) => `<button data-click="lpSetScale(${v})" title="Auflösung für PNG-Export und Zwischenablage" style="padding:4px 10px;border-radius:12px;border:1px solid ${_lpScale===v?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpScale===v?'rgba(38,166,154,.16)':'transparent'};color:${_lpScale===v?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;">${v}×</button>`;
+    style="padding:4px 9px;border-radius:12px;border:1px solid ${d===v?'var(--brand)':'rgba(var(--ink),.14)'};background:${d===v?'var(--brand-weak)':'transparent'};color:${d===v?'var(--brand)':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
+  const scaleBtn = (v) => `<button data-click="lpSetScale(${v})" title="Auflösung für PNG-Export und Zwischenablage" style="padding:4px 10px;border-radius:12px;border:1px solid ${_lpScale===v?'var(--brand)':'rgba(var(--ink),.14)'};background:${_lpScale===v?'var(--brand-weak)':'transparent'};color:${_lpScale===v?'var(--brand)':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;">${v}×</button>`;
   const msBtn = (v, label, title) => `<button data-click="lpSetMsModus('${v}')" title="${lbEsc(title)}"
-    style="padding:4px 10px;border-radius:12px;border:1px solid ${_lpState.msModus===v?'#FB8C00':'rgba(255,255,255,.14)'};background:${_lpState.msModus===v?'rgba(251,140,0,.16)':'transparent'};color:${_lpState.msModus===v?'#FB8C00':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
+    style="padding:4px 10px;border-radius:12px;border:1px solid ${_lpState.msModus===v?'#FB8C00':'rgba(var(--ink),.14)'};background:${_lpState.msModus===v?'rgba(251,140,0,.16)':'transparent'};color:${_lpState.msModus===v?'#FB8C00':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
   const vergleichBtn = `<button data-click="lpToggleVergleich()" title="Zeigt Referenzjahr (Bestand) und Zieljahr (Ausbauziel) als zwei Lagepläne nebeneinander — gleicher Maßstab und Kartenausschnitt für beide Seiten"
-    style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.vergleich?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpState.vergleich?'rgba(38,166,154,.16)':'transparent'};color:${_lpState.vergleich?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">Vorher/Nachher</button>`;
+    style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.vergleich?'var(--brand)':'rgba(var(--ink),.14)'};background:${_lpState.vergleich?'var(--brand-weak)':'transparent'};color:${_lpState.vergleich?'var(--brand)':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">Vorher/Nachher</button>`;
 
   const assetTypen = Object.keys(_lpAssetCounts).sort((a, b) =>
     (window.ASSET_CFG?.[a]?.label || a).localeCompare(window.ASSET_CFG?.[b]?.label || b));
@@ -1654,9 +1654,9 @@ function lpPanelHtml() {
       ebeneAus ? 'Diese Asset-Ebene wird gerade nicht gezeichnet — unter "Inhalt › Assets" einschalten, dann erscheinen auch die Namen.' : (cfg.beschreibung || ''));
   }).join('');
   const kleinBtn = (onClick, label, title) => `<button data-click="${onClick}" title="${lbEsc(title || '')}"
-    style="padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;">${label}</button>`;
+    style="padding:4px 10px;border-radius:5px;border:1px solid rgba(var(--ink),.14);background:rgba(var(--ink),.04);color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;">${label}</button>`;
   const knopf = (onClick, label, title, aus) => `<button data-click="${onClick}" title="${lbEsc(title || '')}" ${aus ? 'disabled' : ''}
-    style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:${aus ? 'var(--muted)' : 'var(--text,#e8eaed)'};font-family:inherit;font-size:10.5px;cursor:${aus ? 'default' : 'pointer'};">${label}</button>`;
+    style="padding:5px 11px;border-radius:5px;border:1px solid rgba(var(--ink),.14);background:rgba(var(--ink),.04);color:${aus ? 'var(--muted)' : 'var(--text,#e8eaed)'};font-family:inherit;font-size:10.5px;cursor:${aus ? 'default' : 'pointer'};">${label}</button>`;
 
   // Klappbare Gruppe. Der Stand in der Kopfzeile ist der Punkt der Sache: zugeklappt sieht man,
   // wie der Plan eingestellt ist, ohne ihn aufklappen zu müssen.
@@ -1754,8 +1754,8 @@ function lpPanelHtml() {
     </div>
     <div class="lp-zeile" style="gap:4px;">${drehBtn(0, 'Nord oben')}${drehBtn(-45, '−45°')}${drehBtn(-90, '−90°')}${drehBtn(45, '+45°')}${drehBtn(90, '+90°')}</div>
     <div class="lp-zeile">${_lpAchse
-      ? `<span style="font-size:10px;color:#ffcc80;">🖱 ${_lpAchse.p1 ? 'Zweiten' : 'Ersten'} Punkt der Achse im Plan anklicken …</span>
-         <button data-click="lpAbbrechenAchse()" style="padding:5px 11px;border-radius:5px;border:1px solid rgba(239,83,80,.4);background:transparent;color:#ef5350;font-family:inherit;font-size:10.5px;cursor:pointer;">Abbrechen</button>`
+      ? `<span style="font-size:10px;color:var(--c-orange);">🖱 ${_lpAchse.p1 ? 'Zweiten' : 'Ersten'} Punkt der Achse im Plan anklicken …</span>
+         <button data-click="lpAbbrechenAchse()" style="padding:5px 11px;border-radius:5px;border:1px solid rgba(239,83,80,.4);background:transparent;color:var(--c-red);font-family:inherit;font-size:10.5px;cursor:pointer;">Abbrechen</button>`
       : knopf('lpStartAchse()', 'An Achse ausrichten', 'Zwei Punkte im Plan anklicken (z. B. Anfang und Ende der Hauptstraße) — der Plan wird so gedreht, dass diese Achse senkrecht steht')}</div>
     <p class="lp-hinweis">Für Liegenschaften, deren Hauptachse schräg zur Nordrichtung liegt. Nordpfeil, Satellitenbild und freie Beschriftungen drehen mit. Nach einer Drehung das Satellitenbild neu einfangen — es wird dann passend zum gedrehten Blatt geholt.</p>`),
     feld('Luftbild', `<div class="lp-zeile">
@@ -1786,15 +1786,15 @@ function lpPanelHtml() {
         value="${lbEsc(_lpPlacing?.text ?? _lpAnnoEntwurf)}" ${_lpPlacing ? 'disabled' : ''}
         data-change="lpSetAnnoEntwurf(this.value)" style="${inp}flex:1;min-width:150px;">
       <input type="color" value="${lbEsc(_lpAnnoDefault.farbe)}" data-change="lpSetAnnoDefault('farbe',this.value)"
-        title="Farbe für neu platzierte Beschriftungen" style="width:30px;height:26px;padding:1px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:transparent;cursor:pointer;">
+        title="Farbe für neu platzierte Beschriftungen" style="width:30px;height:26px;padding:1px;border-radius:4px;border:1px solid rgba(var(--ink),.14);background:transparent;cursor:pointer;">
       <input type="number" min="6" max="48" step="1" value="${_lpAnnoDefault.size}" data-change="lpSetAnnoDefault('size',this.value)"
         title="Schriftgröße für neu platzierte Beschriftungen" style="${inp}width:52px;">
     </div>
     <div class="lp-zeile">
       ${knopf("lpStartPlacing('text')", '✎ Text setzen', 'Text eingeben, dann die Stelle im Plan anklicken', !!_lpPlacing)}
       ${knopf("lpStartPlacing('line')", 'Linie setzen', 'Zwei Punkte im Plan anklicken — Text optional', !!_lpPlacing)}
-      ${_lpPlacing ? `<span style="font-size:10px;color:#ffcc80;">Auf den Plan klicken${_lpPlacing.type === 'line' ? (_lpPlacing.lat1 == null ? ' — Startpunkt' : ' — Endpunkt') : ''} …</span>
-        <button data-click="lpCancelPlacing()" style="padding:5px 11px;border-radius:5px;border:1px solid rgba(239,83,80,.4);background:transparent;color:#ef5350;font-family:inherit;font-size:10.5px;cursor:pointer;">Abbrechen</button>` : ''}
+      ${_lpPlacing ? `<span style="font-size:10px;color:var(--c-orange);">Auf den Plan klicken${_lpPlacing.type === 'line' ? (_lpPlacing.lat1 == null ? ' — Startpunkt' : ' — Endpunkt') : ''} …</span>
+        <button data-click="lpCancelPlacing()" style="padding:5px 11px;border-radius:5px;border:1px solid rgba(239,83,80,.4);background:transparent;color:var(--c-red);font-family:inherit;font-size:10.5px;cursor:pointer;">Abbrechen</button>` : ''}
     </div>
     ${_lpAnnotations.length ? `<div style="display:flex;flex-direction:column;gap:4px;">
       ${_lpAnnotations.map(a => `<div style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--muted);">
@@ -1802,10 +1802,10 @@ function lpPanelHtml() {
         <input type="text" value="${lbEsc(a.text || '')}" placeholder="${a.type === 'line' ? 'Linie ohne Beschriftung' : 'Text'}"
           data-change="lpSetAnnoText(${a.id}, this.value)" style="${inp}flex:1;min-width:90px;">
         <input type="color" value="${lbEsc(a.farbe || LP_ANNO_FARBE)}" data-change="lpSetAnnoStil(${a.id},'farbe',this.value)"
-          title="Farbe" style="width:26px;height:24px;padding:1px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:transparent;cursor:pointer;">
+          title="Farbe" style="width:26px;height:24px;padding:1px;border-radius:4px;border:1px solid rgba(var(--ink),.14);background:transparent;cursor:pointer;">
         <input type="number" min="6" max="48" step="1" value="${a.size || 12}" data-change="lpSetAnnoStil(${a.id},'size',this.value)"
           title="${a.type === 'text' ? 'Schriftgröße' : 'Schriftgröße (bestimmt auch die Linienstärke)'}" style="${inp}width:48px;">
-        <button data-click="lpRemoveAnnotation(${a.id})" title="Entfernen" style="background:transparent;border:none;color:#ef5350;cursor:pointer;font-size:12px;">✕</button>
+        <button data-click="lpRemoveAnnotation(${a.id})" title="Entfernen" style="background:transparent;border:none;color:var(--c-red);cursor:pointer;font-size:12px;">✕</button>
       </div>`).join('')}
     </div>
     <p class="lp-hinweis">Im Plan anfassen und ziehen zum Verschieben. Sie hängen an ihrer Stelle der Liegenschaft — Verschieben, Zoomen und Drehen lassen sie dort, wo sie gesetzt wurden.</p>` : ''}`),
@@ -1815,7 +1815,7 @@ function lpPanelHtml() {
       ${[..._lpMarkierungen.entries()].filter(([key]) => key !== _lpSelected).map(([key, m]) => `<div style="display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--muted);">
         <span style="color:${LP_MARK_FARBE};opacity:${m.sichtbar === false ? 0.4 : 1};">●</span>
         <button data-click="lpSelectMarkierung('${lbEsc(key)}')" style="flex:1;text-align:left;background:transparent;border:none;color:var(--muted);cursor:pointer;padding:0;font:inherit;">${lbEsc(lpMarkObjName(m.kind, m.id))}${m.text ? ` — „${lbEsc(m.text)}“` : ''}${m.sichtbar === false ? ' (ausgeblendet)' : ''}</button>
-        <button data-click="lpRemoveMarkierung('${lbEsc(key)}')" title="Entfernen" style="background:transparent;border:none;color:#ef5350;cursor:pointer;font-size:12px;">✕</button>
+        <button data-click="lpRemoveMarkierung('${lbEsc(key)}')" title="Entfernen" style="background:transparent;border:none;color:var(--c-red);cursor:pointer;font-size:12px;">✕</button>
       </div>`).join('')}
     </div>` : (_lpSelected ? '' : `<p class="lp-hinweis">Auf ein Gebäude oder Asset im Plan klicken, um es hervorzuheben, auszublenden oder individuell zu beschriften.</p>`)}`),
   ].join('');
@@ -1823,16 +1823,16 @@ function lpPanelHtml() {
   /* Gruppe "Ausgabe" — Auflösung, Planblatt-Export, Wasserzeichen */
   const koerperAusgabe = [
     _lpGutZiel ? feld('Für den Gutachten-Editor', `<div class="lp-zeile">
-      <button data-click="lpUebernehmenFuerGutachten()" style="padding:7px 14px;border-radius:5px;border:1px solid rgba(38,166,154,.6);background:rgba(38,166,154,.22);color:#26a69a;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;">✓ Für „${lbEsc(_lpGutZiel)}“ übernehmen</button>
+      <button data-click="lpUebernehmenFuerGutachten()" style="padding:7px 14px;border-radius:5px;border:1px solid var(--brand);background:var(--brand-weak);color:var(--c-teal);font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;">✓ Für „${lbEsc(_lpGutZiel)}“ übernehmen</button>
     </div>
     <p class="lp-hinweis">Schreibt Plan und Einstellungen in genau diesen einen Gutachten-Block und springt zurück.</p>`) : '',
     feld('Planblatt', `<div class="lp-zeile">
       <span style="font-size:10px;color:var(--muted);">Auflösung</span>${[2,3,4].map(scaleBtn).join('')}
     </div>
     <div class="lp-zeile">
-      <button data-click="lpCopy()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(38,166,154,.6);background:rgba(38,166,154,.18);color:#26a69a;font-family:inherit;font-size:11px;cursor:pointer;">⧉ Für Word kopieren</button>
-      <button data-click="lpSavePng()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ PNG</button>
-      <button data-click="lpSaveSvg()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ SVG</button>
+      <button data-click="lpCopy()" style="padding:6px 12px;border-radius:5px;border:1px solid var(--brand);background:var(--brand-weak);color:var(--c-teal);font-family:inherit;font-size:11px;cursor:pointer;">⧉ Für Word kopieren</button>
+      <button data-click="lpSavePng()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(var(--ink),.12);background:rgba(var(--ink),.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ PNG</button>
+      <button data-click="lpSaveSvg()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(var(--ink),.12);background:rgba(var(--ink),.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ SVG</button>
     </div>
     <p class="lp-hinweis">In Word mit Strg+V einfügen — SVG bleibt Vektor über Einfügen › Bilder. Oder in einen Gutachten-Block
       übernehmen: im Gutachten-Editor beim Kapitel unter „Inhalt einfügen" auf „🗺 Lageplan einrichten" — springt hierher, und
@@ -1861,9 +1861,9 @@ function lpPanelHtml() {
         <span class="lp-wz-trenner"></span>
         ${knopf('lpCaptureSatellite()', 'Luftbild', 'Holt das Luftbild für genau den Bereich, den der Plan gerade zeigt', _lpSatBusy)}
         <span style="font-size:10px;color:var(--muted);">${_lpState.kartenausschnitt ? 'fester Ausschnitt' : 'Ausschnitt automatisch'}</span>
-        <div id="lp-status" style="margin-left:auto;font-size:10.5px;color:#26a69a;min-height:14px;"></div>
+        <div id="lp-status" style="margin-left:auto;font-size:10.5px;color:var(--c-teal);min-height:14px;"></div>
       </div>
-      <div id="lp-paper" style="background:#fff;border-radius:0 0 6px 6px;border:1px solid rgba(255,255,255,.09);padding:10px;overflow-x:auto;"></div>
+      <div id="lp-paper" style="background:#fff;border-radius:0 0 6px 6px;border:1px solid rgba(var(--ink),.09);padding:10px;overflow-x:auto;"></div>
     </div>
   </div>`;
 }
@@ -1902,7 +1902,7 @@ function lpSay(msg, err) {
   const el = document.getElementById('lp-status');
   if (!el) return;
   el.textContent = msg;
-  el.style.color = err ? '#ef5350' : '#26a69a';
+  el.style.color = err ? 'var(--crit)' : 'var(--brand)';
 }
 
 /**
@@ -2195,8 +2195,8 @@ function lpMarkEditorHtml() {
   return `
   <div style="padding:8px;border:1px solid rgba(233,30,99,.35);border-radius:6px;background:rgba(233,30,99,.06);margin-bottom:8px;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-      <span style="font-size:11px;font-weight:600;color:#e8eaed;flex:1;">${lbEsc(name)}</span>
-      <button data-click="lpDeselectMarkierung()" style="padding:3px 9px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:transparent;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;">Fertig</button>
+      <span style="font-size:11px;font-weight:600;color:var(--text);flex:1;">${lbEsc(name)}</span>
+      <button data-click="lpDeselectMarkierung()" style="padding:3px 9px;border-radius:4px;border:1px solid rgba(var(--ink),.14);background:transparent;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;">Fertig</button>
     </div>
     <input type="text" placeholder="Individuelle Beschriftung (leer = keine)" value="${lbEsc(m.text)}"
       data-change="lpSetMarkText('${lbEsc(_lpSelected)}', this.value)" style="${LP_INP_STYLE}width:100%;margin-bottom:8px;box-sizing:border-box;">
@@ -2205,7 +2205,7 @@ function lpMarkEditorHtml() {
         <input type="checkbox" ${m.hervorheben ? 'checked' : ''} data-change="lpSetMarkFlag('${lbEsc(_lpSelected)}','hervorheben',this.checked)">Hervorheben (Rahmen)</label>
       <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;">
         <input type="checkbox" ${m.sichtbar !== false ? 'checked' : ''} data-change="lpSetMarkFlag('${lbEsc(_lpSelected)}','sichtbar',this.checked)">Im Plan anzeigen</label>
-      ${verschoben ? `<button data-click="lpResetMarkOffset('${lbEsc(_lpSelected)}')" style="padding:3px 9px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:transparent;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;">Textposition zurücksetzen</button>` : ''}
+      ${verschoben ? `<button data-click="lpResetMarkOffset('${lbEsc(_lpSelected)}')" style="padding:3px 9px;border-radius:4px;border:1px solid rgba(var(--ink),.14);background:transparent;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;">Textposition zurücksetzen</button>` : ''}
     </div>
     ${m.text ? `<div style="font-size:10px;color:var(--muted);margin-top:6px;">Beschriftung im Plan direkt anfassen und verschieben.</div>` : ''}
   </div>`;
@@ -2514,7 +2514,7 @@ window.lbSetTab = lbSetTab;
 function lbRenderTabs() {
   const tabBar = document.getElementById('lb-subtabs');
   if (tabBar) {
-    const tabBtn = (id, label) => `<button data-click="lbSetTab('${id}')" style="padding:6px 14px;border-radius:14px;border:1px solid ${_lbTab===id?'#26a69a':'var(--border)'};background:${_lbTab===id?'rgba(38,166,154,.16)':'transparent'};color:${_lbTab===id?'#26a69a':'var(--muted)'};font-family:inherit;font-size:11px;cursor:pointer;">${label}</button>`;
+    const tabBtn = (id, label) => `<button data-click="lbSetTab('${id}')" style="padding:6px 14px;border-radius:14px;border:1px solid ${_lbTab===id?'var(--brand)':'var(--border)'};background:${_lbTab===id?'var(--brand-weak)':'transparent'};color:${_lbTab===id?'var(--brand)':'var(--muted)'};font-family:inherit;font-size:11px;cursor:pointer;">${label}</button>`;
     tabBar.innerHTML = tabBtn('karte', 'Kartenscreenshot') + tabBtn('lageplan', 'Vektor-Lageplan');
   }
   const capWrap = document.getElementById('lb-cap-wrap');

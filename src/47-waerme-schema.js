@@ -10,7 +10,8 @@ import { autoGkResult, isErzeugerAktiv } from './06c-dispatch-core.js';
 import { thermSpeicherAktiv, solarthermieAktiv } from './01-globals-varianten.js';
 
 const S = { ansicht: 'netz', zoom: 1, zentrale: null };
-const STRANG_FARBEN = ['#4fc3f7', '#ffb74d', '#81c784', '#ba68c8', '#e57373', '#4db6ac', '#fff176', '#f06292', '#aed581', '#7986cb', '#ffd54f', '#90a4ae'];
+// Druckfähig auf weißem Grund (LKEBw-Gutachten): gesättigte, dunkle Töne
+const STRANG_FARBEN = ['#1E5E98', '#B4531A', '#2E7D32', '#7B3F9E', '#B3261E', '#00796B', '#8A6100', '#AD1457', '#558B2F', '#3949AB', '#C77700', '#546E7A'];
 const nf = (v, d = 0) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const kurz = (s, n) => { const t = String(s ?? ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
@@ -96,7 +97,7 @@ function _netzSvg(L) {
     const a = pos.get(e.von), b = pos.get(e.nach);
     if (!a || !b) return;
     const xr = xRand + i * 14;
-    s += `<path d="M${a.x + 5},${a.y} H${xr} V${b.y} H${b.x + 5}" fill="none" stroke="#26c6da" stroke-width="2" stroke-dasharray="8 5"/>`;
+    s += `<path d="M${a.x + 5},${a.y} H${xr} V${b.y} H${b.x + 5}" fill="none" stroke="#00838F" stroke-width="2" stroke-dasharray="8 5"/>`;
     s += `<text x="${xr + 8}" y="${(a.y + b.y) / 2}" class="ws-kuppel">⇄ Verbindungsleitung ${esc(dnText(e.dnMin, e.dnMax))} · ${nf(e.laenge)} m · ${nf(e.last)} kW (Trennstelle)</text>`;
   });
   // Knoten
@@ -104,10 +105,10 @@ function _netzSvg(L) {
     if (k.typ === 'zentrale') {
       s += `<rect x="${k.x - 6}" y="${k.y - 14}" width="52" height="28" rx="5" fill="#ff8f00"/><text x="${k.x + 20}" y="${k.y + 4}" class="ws-hz">${esc(kurz(k.name, 8))}</text>`;
     } else if (k.typ === 'geb') {
-      s += `<rect x="${k.x - 5}" y="${k.y - 5}" width="10" height="10" rx="2" fill="#cfd8dc"/>`;
+      s += `<rect x="${k.x - 5}" y="${k.y - 5}" width="10" height="10" rx="2" fill="#90A4AE"/>`;
       s += `<text x="${k.x + 9}" y="${k.y - 7}" class="ws-geb">${esc(kurz(k.name, 30))}</text><text x="${k.x + 9}" y="${k.y + 15}" class="ws-gebkw">${nf(k.last)} kW</text>`;
     } else {
-      s += `<circle cx="${k.x}" cy="${k.y}" r="3.2" fill="#eceff1"/>`;
+      s += `<circle cx="${k.x}" cy="${k.y}" r="3.2" fill="#5A5F5A"/>`;
     }
   }
   return s;
@@ -170,7 +171,7 @@ function _zentraleSvg(d) {
     const y = yTop + 30 + i * zeile;
     s += `<line x1="${x0 + 150}" y1="${y - 8}" x2="${xV}" y2="${y - 8}" stroke="#e53935" stroke-width="2"/>`;
     s += `<line x1="${xR}" y1="${y + 8}" x2="${x0 + 150}" y2="${y + 8}" stroke="#1e88e5" stroke-width="2"/>`;
-    s += `<rect x="${x0}" y="${y - 22}" width="150" height="44" rx="6" fill="#1b2230" stroke="${farbe}" stroke-width="2"/>`;
+    s += `<rect x="${x0}" y="${y - 22}" width="150" height="44" rx="6" fill="#F6F7F5" stroke="${farbe}" stroke-width="2"/>`;
     s += `<text x="${x0 + 8}" y="${y - 4}" class="ws-sym" fill="${farbe}">${esc(sym)}</text>`;
     s += `<text x="${x0 + 50}" y="${y - 4}" class="ws-erz">${esc(kurz(titel, 16))}</text><text x="${x0 + 50}" y="${y + 12}" class="ws-erzkw">${esc(unter)}</text>`;
     i++;
@@ -181,7 +182,7 @@ function _zentraleSvg(d) {
   // Netzpumpe am Verteiler
   if (d.pumpe) {
     const yP = yTop - 34;
-    s += `<circle cx="${xV + 80}" cy="${yP}" r="11" fill="#1b2230" stroke="#eceff1" stroke-width="1.5"/><path d="M${xV + 74},${yP - 6} L${xV + 87},${yP} L${xV + 74},${yP + 6} Z" fill="#eceff1"/>`;
+    s += `<circle cx="${xV + 80}" cy="${yP}" r="11" fill="#FFFFFF" stroke="#5A5F5A" stroke-width="1.5"/><path d="M${xV + 74},${yP - 6} L${xV + 87},${yP} L${xV + 74},${yP + 6} Z" fill="#5A5F5A"/>`;
     s += `<text x="${xV + 96}" y="${yP + 4}" class="ws-erzkw">Netzpumpe ${nf(d.pumpe.pumpenLeistungKW, 1)} kW · ${nf(d.pumpe.foerderhoeheMWS, 1)} mWS · ${nf(d.pumpe.vDotGesamt, 1)} m³/h</text>`;
   }
   // Abgänge rechts
@@ -196,7 +197,7 @@ function _zentraleSvg(d) {
     j++;
   };
   d.abgaenge.forEach(a => abgangZeile(`Abgang ${a.nr} · ${dnText(a.dn, a.dn)}`, `${nf(a.last)} kW · ${a.gebaeude} Gebäude · ${nf(a.laenge)} m bis zum ersten Knoten`, STRANG_FARBEN[(a.strand ?? 0) % STRANG_FARBEN.length], false));
-  d.kuppel.forEach(e => abgangZeile(`Verbindungsleitung · ${dnText(e.dn, e.dn)}`, `${nf(e.load)} kW Übergabe · Trennstelle zur anderen Zentrale`, '#26c6da', true));
+  d.kuppel.forEach(e => abgangZeile(`Verbindungsleitung · ${dnText(e.dn, e.dn)}`, `${nf(e.load)} kW Übergabe · Trennstelle zur anderen Zentrale`, '#00838F', true));
   if (!d.abgaenge.length && !d.kuppel.length) s += `<text x="${xV + 30}" y="${yTop + 30}" class="ws-erzkw">Noch kein Netz berechnet</text>`;
   const sumKw = d.erzeuger.reduce((a, e) => a + (e.kw || 0), 0);
   s += `<text x="${x0}" y="24" class="ws-titel">${esc(d.z.name)}</text><text x="${x0}" y="40" class="ws-erzkw">Erzeugerleistung ${nf(sumKw)} kW · ${d.abgaenge.length} Abgänge · Netz ${nf(d.vl)}/${nf(d.rl)} °C</text>`;
@@ -226,13 +227,13 @@ export function wsRender() {
   wrap.className = '';
   wrap.innerHTML = `<svg id="ws-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" style="width:${W * S.zoom}px;height:${H * S.zoom}px;display:block;">
     <style>
-      .ws-dn{font:9px 'DM Mono',monospace;fill:#b0bec5}.ws-last{font:9px 'DM Mono',monospace;fill:#78909c}
-      .ws-geb{font:10px sans-serif;fill:#eceff1}.ws-gebkw{font:9px 'DM Mono',monospace;fill:#ffcc80}
-      .ws-hz{font:bold 10px sans-serif;fill:#fff;text-anchor:middle}.ws-kuppel{font:10px sans-serif;fill:#26c6da}
-      .ws-kopf{font:10px sans-serif;fill:#cfd8dc}.ws-sym{font:bold 13px 'DM Mono',monospace}
-      .ws-erz{font:11px sans-serif;fill:#eceff1}.ws-erzkw{font:9.5px 'DM Mono',monospace;fill:#90a4ae}.ws-titel{font:bold 13px sans-serif;fill:#ffb74d}
+      .ws-dn{font:9px Tahoma,Verdana,sans-serif;fill:#5A5F5A}.ws-last{font:9px Tahoma,Verdana,sans-serif;fill:#89918A}
+      .ws-geb{font:10px Tahoma,Verdana,sans-serif;fill:#1B1F1C}.ws-gebkw{font:9px Tahoma,Verdana,sans-serif;fill:#B4531A}
+      .ws-hz{font:bold 10px Tahoma,Verdana,sans-serif;fill:#fff;text-anchor:middle}.ws-kuppel{font:10px Tahoma,Verdana,sans-serif;fill:#00838F}
+      .ws-kopf{font:10px Tahoma,Verdana,sans-serif;fill:#5A5F5A}.ws-sym{font:bold 13px Tahoma,Verdana,sans-serif}
+      .ws-erz{font:11px Tahoma,Verdana,sans-serif;fill:#1B1F1C}.ws-erzkw{font:9.5px Tahoma,Verdana,sans-serif;fill:#5A5F5A}.ws-titel{font:bold 13px Tahoma,Verdana,sans-serif;fill:#266426}
     </style>
-    <rect width="100%" height="100%" fill="#0b0e18"/>${svg}</svg>`;
+    <rect width="100%" height="100%" fill="#FFFFFF"/>${svg}</svg>`;
 }
 
 /** Als SVG-Datei speichern (Druck/PDF über den Browser). */

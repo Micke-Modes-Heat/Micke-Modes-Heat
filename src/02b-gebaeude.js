@@ -275,7 +275,7 @@ export function _updateLastgangScaleInfo(faktor, year, nAbgerissen, nNeu, nSanie
   if (!el) {
     el = document.createElement('div');
     el.id = 'lastgang-scale-info';
-    el.style.cssText = 'font-size:9px;padding:4px 8px;border-radius:4px;margin-top:4px;font-family:"DM Mono",monospace;';
+    el.style.cssText = 'font-size:11px;padding:4px 8px;border-radius:4px;margin-top:4px;font-family:"DM Mono",monospace;';
     const container = document.getElementById('gl-status-text')?.parentElement;
     if (container) container.appendChild(el);
   }
@@ -535,7 +535,7 @@ export async function removeGebaeude(id){
     const edgeCount=window.netzEdges?.length||0;
     const message=`<strong>„${g.name || `Gebäude ${id}`}“</strong> ist derzeit als Heizzentrale des Wärmenetzes festgelegt.`+
       '<br><br>Beim Löschen werden auch die Zentralenzuordnung und das gesamte Wärmenetz entfernt.'+
-      `<br><br><span style="color:var(--muted);font-size:10px">${edgeCount} Leitungsabschnitt${edgeCount===1?'':'e'} betroffen. Anschließend muss eine neue Heizzentrale gewählt und das Netz neu aufgebaut werden.</span>`;
+      `<br><br><span style="color:var(--muted);font-size:12px">${edgeCount} Leitungsabschnitt${edgeCount===1?'':'e'} betroffen. Anschließend muss eine neue Heizzentrale gewählt und das Netz neu aufgebaut werden.</span>`;
     const confirmed=typeof window.epConfirm==='function'
       ? await window.epConfirm('Heizzentralengebäude löschen',message,{
         okText:'Gebäude und Netz löschen',cancelText:'Abbrechen',danger:true,

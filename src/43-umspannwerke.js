@@ -20,8 +20,8 @@ import {
 
 const WRAP_ID = 'na-modul-uw';
 const PANE = 'uwPane';
-const STIL_KNOPF = 'font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--accent);cursor:pointer;';
-const STIL_ZAHL = 'width:58px;box-sizing:border-box;text-align:right;font-size:10px;';
+const STIL_KNOPF = 'font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--accent);cursor:pointer;';
+const STIL_ZAHL = 'width:58px;box-sizing:border-box;text-align:right;font-size:12px;';
 const MAX_KANDIDATEN = 8;
 
 let _liste = [];          // Schnappschuss der Umspannwerke (OSM + von Hand)
@@ -339,13 +339,13 @@ function _kandidatenHtml(ref) {
         <td style="padding:2px 3px;text-align:right;">${uwMw(b.jeSystem.bezugMw)} / ${uwMw(b.jeSystem.einspMw)}</td>
       </tr>`;
   }).join('');
-  return `<table style="width:100%;border-collapse:collapse;font-size:9px;margin:4px 0;">
+  return `<table style="width:100%;border-collapse:collapse;font-size:11px;margin:4px 0;">
       <thead><tr style="color:var(--muted);text-align:left;">
         <th></th><th style="padding:2px 3px;">Umspannwerk</th><th style="padding:2px 3px;text-align:right;">kV</th>
         <th style="padding:2px 3px;text-align:right;" title="Luftlinie × Umwegfaktor">Trasse km</th>
         <th style="padding:2px 3px;text-align:right;" title="je Kabelsystem: Bezug / Einspeisung">MW je System</th>
       </tr></thead><tbody>${zeilen}</tbody></table>
-    <label style="font-size:9px;color:var(--muted);display:flex;gap:4px;align-items:center;">
+    <label style="font-size:11px;color:var(--muted);display:flex;gap:4px;align-items:center;">
       <input type="checkbox" ${_alleZeigen ? 'checked' : ''} data-change="uwAlleZeigen(this.checked)"/>
       auch übrige Anlagen auf der Karte zeigen (${rest} — Übertragungsnetz, MS-Stationen, Bahnstrom, Sonstiges)</label>`;
 }
@@ -379,35 +379,35 @@ function _detailHtml(ref) {
       + `${b.ziel.systeme > 3 ? '<br><span style="color:var(--c-orange);">⚠ Mehr als 3 Systeme: Hochspannungsanschluss bzw. eigener Trafo im UW ist dann meist günstiger.</span>' : ''}</div>`
     : '';
   const kvHinweis = b.uAusUw ? '' : ' <span style="color:var(--c-orange);">(MS-Spannung nicht aus OSM — bitte eintragen)</span>';
-  return `<div style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-top:6px;font-size:10px;line-height:1.45;">
+  return `<div style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-top:6px;font-size:12px;line-height:1.45;">
       <div style="display:grid;grid-template-columns:1fr 70px 80px;gap:6px;align-items:end;margin-bottom:4px;">
-        <label style="display:flex;flex-direction:column;gap:2px;"><span style="font-size:9px;color:var(--muted);">Umspannwerk</span>
-          <input class="inp-field" type="text" value="${esc(u.name)}" placeholder="ohne Namen" data-change="uwSetUwFeld('name',this.value)" style="width:100%;box-sizing:border-box;text-align:left;font-size:10px;"/></label>
-        <label style="display:flex;flex-direction:column;gap:2px;" title="MS-Spannung der Sammelschiene; leer = aus OSM bzw. NAP"><span style="font-size:9px;color:var(--muted);">MS kV</span>
+        <label style="display:flex;flex-direction:column;gap:2px;"><span style="font-size:11px;color:var(--muted);">Umspannwerk</span>
+          <input class="inp-field" type="text" value="${esc(u.name)}" placeholder="ohne Namen" data-change="uwSetUwFeld('name',this.value)" style="width:100%;box-sizing:border-box;text-align:left;font-size:12px;"/></label>
+        <label style="display:flex;flex-direction:column;gap:2px;" title="MS-Spannung der Sammelschiene; leer = aus OSM bzw. NAP"><span style="font-size:11px;color:var(--muted);">MS kV</span>
           <input class="inp-field" type="text" value="${esc(u.msKvHand ?? '')}" placeholder="${esc(u.msKv ?? ref.uKvNap ?? 20)}" data-change="uwSetUwFeld('msKv',this.value)" style="${STIL_ZAHL}"/></label>
-        <label style="display:flex;flex-direction:column;gap:2px;" title="z. B. „2 × 40“ (Anzahl × MVA); leer = aus OSM bzw. typisch"><span style="font-size:9px;color:var(--muted);">Trafos HS/MS</span>
-          <input class="inp-field" type="text" value="${u.trafosHand ? `${u.trafosHand.n} × ${u.trafosHand.mva}` : ''}" placeholder="z. B. 2 × 40" data-change="uwSetUwFeld('trafos',this.value)" style="width:80px;box-sizing:border-box;font-size:10px;"/></label>
+        <label style="display:flex;flex-direction:column;gap:2px;" title="z. B. „2 × 40“ (Anzahl × MVA); leer = aus OSM bzw. typisch"><span style="font-size:11px;color:var(--muted);">Trafos HS/MS</span>
+          <input class="inp-field" type="text" value="${u.trafosHand ? `${u.trafosHand.n} × ${u.trafosHand.mva}` : ''}" placeholder="z. B. 2 × 40" data-change="uwSetUwFeld('trafos',this.value)" style="width:80px;box-sizing:border-box;font-size:12px;"/></label>
       </div>
-      <div style="color:var(--muted);font-size:9px;">${esc(UW_KATEGORIEN[u.kategorie]?.label || '')}${u.betreiber ? ' · ' + esc(u.betreiber) : ''}${u.osm ? ` · <a href="https://www.openstreetmap.org/${esc(u.osm)}" target="_blank" rel="noopener" style="color:var(--accent);">OSM</a>` : ''}
+      <div style="color:var(--muted);font-size:11px;">${esc(UW_KATEGORIEN[u.kategorie]?.label || '')}${u.betreiber ? ' · ' + esc(u.betreiber) : ''}${u.osm ? ` · <a href="https://www.openstreetmap.org/${esc(u.osm)}" target="_blank" rel="noopener" style="color:var(--accent);">OSM</a>` : ''}
         · Luftlinie ${km(b.luftlinieM)} km · Trasse ≈ ${b.laengeKm.toLocaleString('de-DE', { maximumFractionDigits: 1 })} km · ${b.uKv.toLocaleString('de-DE')} kV${kvHinweis}
         ${u.kategorie === 'manuell' ? ` · <a href="#" data-click="event.preventDefault();uwEntfernen('${esc(u.id)}')" style="color:var(--muted);">entfernen</a>` : ''}</div>
-      <table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:6px;">
-        <thead><tr style="color:var(--muted);font-size:9px;text-align:left;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px;">
+        <thead><tr style="color:var(--muted);font-size:11px;text-align:left;">
           <th style="padding:2px 4px;">Systeme${_redundant ? ' (1 Reserve)' : ''}</th><th style="padding:2px 4px;text-align:right;">Bezug MW${_redundant ? ' gesichert' : ''}</th>
           <th style="padding:2px 4px;text-align:right;">Einsp. MW${_redundant ? ' gesichert' : ''}</th><th style="padding:2px 4px;text-align:right;">Anschluss (−20/+40 %)</th><th></th>
         </tr></thead><tbody>${zeilen}</tbody></table>
-      <div style="font-size:9px;color:var(--muted);margin-top:4px;">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">
         Je System begrenzt durch: Bezug ${grenze(b.jeSystem.grenzeBezug)}, Einspeisung ${grenze(b.jeSystem.grenzeEinsp)} (thermisch ${uwMw(b.jeSystem.thermMw)} MW).
         Umspannwerk (n-1): ${n1} — gilt für <i>alle</i> Kunden des UW, die Bestandslast kennt nur der Netzbetreiber.</div>
-      <div style="font-size:9px;color:var(--muted);margin-top:4px;">${heute}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">${heute}</div>
       <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:9px;color:var(--muted);">Zielleistung
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--muted);">Zielleistung
           ${_zielHand ? `(von Hand · <a href="#" data-click="event.preventDefault();uwZielAusBedarf()" style="color:var(--accent);">↺ aus Bedarf</a>):` : '(aus Schritt „Bedarf", Zieljahr):'}
           <label>Bezug <input class="inp-field" type="text" value="${esc(_ziel.bezugMw ?? '')}" placeholder="MW" data-change="uwSetZiel('bezugMw',this.value)" style="${STIL_ZAHL}"/> MW</label>
           <label>Einspeisung <input class="inp-field" type="text" value="${esc(_ziel.einspMw ?? '')}" placeholder="MW" data-change="uwSetZiel('einspMw',this.value)" style="${STIL_ZAHL}"/> MW</label>
         </div>${zielHtml}
       </div>
-      <div style="margin-top:6px;font-size:9px;line-height:1.5;">${esc(uwSatz({ ...u, name: u.name || '' }, b))}</div>
+      <div style="margin-top:6px;font-size:11px;line-height:1.5;">${esc(uwSatz({ ...u, name: u.name || '' }, b))}</div>
     </div>`;
 }
 
@@ -415,18 +415,18 @@ function _parameterHtml() {
   const geaendert = Object.keys(_param).length;
   const p = _p();
   const felder = Object.entries(UW_PARAMETER).map(([k, d]) => `<label style="display:flex;justify-content:space-between;gap:6px;align-items:center;">
-      <span style="font-size:9px;color:${k in _param ? 'var(--text)' : 'var(--muted)'};">${esc(d.label)}</span>
+      <span style="font-size:11px;color:${k in _param ? 'var(--text)' : 'var(--muted)'};">${esc(d.label)}</span>
       <span style="white-space:nowrap;"><input class="inp-field" type="text" value="${esc(p[k])}" data-change="uwSetParam('${k}',this.value)" style="${STIL_ZAHL}"/>
-      <span style="font-size:9px;color:var(--muted);display:inline-block;width:30px;">${esc(d.einheit)}</span></span></label>`).join('');
-  return `<details style="margin-top:6px;"><summary style="font-size:9px;color:var(--muted);cursor:pointer;">Annahmen und Kostenansätze${geaendert ? ` (${geaendert} geändert)` : ''}</summary>
+      <span style="font-size:11px;color:var(--muted);display:inline-block;width:30px;">${esc(d.einheit)}</span></span></label>`).join('');
+  return `<details style="margin-top:6px;"><summary style="font-size:11px;color:var(--muted);cursor:pointer;">Annahmen und Kostenansätze${geaendert ? ` (${geaendert} geändert)` : ''}</summary>
       <div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;">${felder}</div>
       ${geaendert ? `<button data-click="uwParamZuruecksetzen()" style="${STIL_KNOPF}margin-top:4px;">↺ auf Richtwerte zurücksetzen</button>` : ''}
     </details>`;
 }
 
 function _hinweiseHtml() {
-  return `<details style="margin-top:4px;"><summary style="font-size:9px;color:var(--muted);cursor:pointer;">Was die Zahlen bedeuten — und was nicht</summary>
-      <ul style="font-size:9px;color:var(--muted);line-height:1.5;margin:4px 0 0 14px;padding:0;">
+  return `<details style="margin-top:4px;"><summary style="font-size:11px;color:var(--muted);cursor:pointer;">Was die Zahlen bedeuten — und was nicht</summary>
+      <ul style="font-size:11px;color:var(--muted);line-height:1.5;margin:4px 0 0 14px;padding:0;">
         <li><b>Seriös</b> ist die Leistung über das <i>eigene</i> Kabel: Strombelastbarkeit NA2XS2Y und Spannungsfall bzw. -anhebung über die geschätzte Trassenlänge.</li>
         <li><b>Annahme</b> ist alles im Umspannwerk: Ob dort ein Feld frei ist und wie viel Trafoleistung neben der Bestandslast übrig bleibt, weiß nur der Netzbetreiber. Die (n-1)-Leistung ist eine Obergrenze, keine Zusage.</li>
         <li>Das nächstgelegene UW ist nicht unbedingt das zuständige (anderer Netzbetreiber, reines Übertragungsnetz-UW) — Zuständigkeit über VNB Digital prüfen.</li>
@@ -442,20 +442,20 @@ function _panelHtml() {
     ? `<button data-click="uwVonHandSetzen()" style="${STIL_KNOPF}color:var(--c-orange);border-color:var(--c-orange);">✕ Setzen abbrechen (Esc)</button>`
     : `<button data-click="uwVonHandSetzen()" title="Nächster Klick auf die Karte legt ein Umspannwerk an — wenn OSM es nicht kennt" style="${STIL_KNOPF}">UW von Hand setzen</button>`;
   const status = _setzen ? 'Auf die Karte klicken, wo das Umspannwerk liegt …' : _status;
-  return `<div class="sa-section-title" style="margin-top:4px;">Umspannwerk &amp; Direktanschluss <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">Größenordnung · ersetzt keine Netzanschlussanfrage</span></div>
+  return `<div class="sa-section-title" style="margin-top:4px;">Umspannwerk &amp; Direktanschluss <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px;">Größenordnung · ersetzt keine Netzanschlussanfrage</span></div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
       <button data-click="uwLaden()" ${_laedt ? 'disabled' : ''} style="${STIL_KNOPF}">${_liste.some(u => u.osm) ? '⟳ Neu laden' : 'Umspannwerke laden'} (${uwMw(_p().radiusKm)} km)</button>
       ${knopfSetzen}
-      ${_liste.length ? `<label style="font-size:9px;color:var(--muted);display:flex;gap:3px;align-items:center;"><input type="checkbox" ${_sichtbar ? 'checked' : ''} data-change="uwKarteUmschalten(this.checked)"/> Karte</label>` : ''}
+      ${_liste.length ? `<label style="font-size:11px;color:var(--muted);display:flex;gap:3px;align-items:center;"><input type="checkbox" ${_sichtbar ? 'checked' : ''} data-change="uwKarteUmschalten(this.checked)"/> Karte</label>` : ''}
       ${_auswahl() ? `<button data-click="uwZeigen()" style="${STIL_KNOPF}">zeigen</button>` : ''}
     </div>
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:9px;color:var(--muted);margin:2px 0 4px;">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--muted);margin:2px 0 4px;">
       <label style="display:flex;gap:4px;align-items:center;" title="Jedes Kabelsystem trägt die volle Leistung allein; ein System ist Reserve. Für den Bezug einer Liegenschaft oft gewünscht, für reine PV-Einspeisung meist nicht.">
         <input type="checkbox" ${_redundant ? 'checked' : ''} data-change="uwSetRedundant(this.checked)"/> n-1: ein Kabelsystem als Reserve</label>
       <label style="display:flex;gap:4px;align-items:center;" title="Kabelweg = Luftlinie × Faktor. VDE FNN rechnet ohne Trassenplanung mit 1,5.">
-        Umwegfaktor <input class="inp-field" type="text" value="${esc(_p().umwegFaktor)}" data-change="uwSetParam('umwegFaktor',this.value)" style="width:42px;box-sizing:border-box;text-align:right;font-size:10px;"/> <span>(FNN: 1,5)</span></label>
+        Umwegfaktor <input class="inp-field" type="text" value="${esc(_p().umwegFaktor)}" data-change="uwSetParam('umwegFaktor',this.value)" style="width:42px;box-sizing:border-box;text-align:right;font-size:12px;"/> <span>(FNN: 1,5)</span></label>
     </div>
-    <div style="font-size:9px;color:var(--muted);line-height:1.4;">Bezugspunkt: ${esc(ref.quelle)}${_geladenAm ? ` · OSM-Stand ${esc(_geladenAm)}` : ''}${status ? `<br>${esc(status)}` : ''}</div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.4;">Bezugspunkt: ${esc(ref.quelle)}${_geladenAm ? ` · OSM-Stand ${esc(_geladenAm)}` : ''}${status ? `<br>${esc(status)}` : ''}</div>
     ${_kandidatenHtml(ref)}
     ${_detailHtml(ref)}
     ${_liste.length || _auswahl() ? _parameterHtml() : ''}

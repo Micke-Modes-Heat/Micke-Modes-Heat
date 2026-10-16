@@ -22,9 +22,9 @@ function _inp(id, label, value, { min = 0, max, step = 1, change = '', title = '
   const chgA  = change ? `data-change="${change}"` : '';
   const tipA  = title  ? `title="${title}"` : '';
   return `<div>
-    <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">${label}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">${label}</div>
     <input id="${id}" type="number" value="${value}" min="${min}" ${maxA} step="${step}"
-      style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+      style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;"
       ${chgA} ${tipA}/>
   </div>`;
 }
@@ -66,7 +66,7 @@ function _html() { return `
     <span id="el-sec-anlagen-arrow">▼</span>
   </div>
   <div id="el-sec-anlagen">
-    <div style="font-size:9px;color:var(--muted);margin-bottom:5px;">Status aus dem Erzeuger-Tab (Wärme) — eine Anlage, hier nur gespiegelt:</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:5px;">Status aus dem Erzeuger-Tab (Wärme) — eine Anlage, hier nur gespiegelt:</div>
     <div id="el-gekoppelt-status" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;"></div>
     <div style="display:flex;flex-direction:column;gap:3px;">
       <button class="lp-tool-btn" data-click="setLeftTab('erzeuger')"
@@ -89,7 +89,7 @@ function _html() { return `
     <div id="el-ff-list" style="display:flex;flex-direction:column;gap:4px;margin-top:4px;"></div>
     <div id="el-ff-total" style="display:none;margin-top:5px;padding:5px 8px;
       background:var(--surface);border-radius:5px;border:1px solid rgba(255,213,79,0.2);">
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:10px;font-family:'DM Mono',monospace;">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:12px;font-family:'DM Mono',monospace;">
         <span style="color:var(--muted);">Gesamt</span>
         <span id="el-ff-total-kwp" style="color:var(--c-amber);font-weight:600;text-align:right;">—</span>
         <span style="color:var(--muted);">Ertrag</span>
@@ -159,7 +159,7 @@ function _html() { return `
     </button>
     <div id="el-kpi-tiles" class="el-kpi-tiles"></div>
     <div id="lp-el-calc-result"
-      style="display:none;margin-bottom:6px;font-size:9px;color:var(--text);
+      style="display:none;margin-bottom:6px;font-size:11px;color:var(--text);
              background:var(--surface);border-radius:4px;padding:4px 6px;border:1px solid var(--border);">
     </div>
     <div style="display:flex;gap:6px;">
@@ -188,9 +188,9 @@ function _html() { return `
       ${_stat('Komponenten',  'lp-strom-komp')}
     </div>
     <div id="lp-strom-param" style="display:none;margin-top:4px;">
-      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Kabeltyp</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Kabeltyp</div>
       <select id="strom-kabel-typ"
-        style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;margin-bottom:6px;">
+        style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;margin-bottom:6px;">
         ${kabelTypOptionen('NYY', ['ns'])}
       </select>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px;">
@@ -201,9 +201,9 @@ function _html() { return `
         ${_inp('strom-leiter-temp', 'Leitertemp. (°C)', '70',
           { min:20, max:90, step:5, change:'recalcStromNetz()', title:'Betriebstemperatur — NAYY/NYY max. 70 °C' })}
         <div>
-          <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">GZF-Methode</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">GZF-Methode</div>
           <select id="strom-gzf-methode"
-            style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+            style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;"
             data-change="document.getElementById('strom-gzf-manuell-wrap').style.display=this.value==='manuell'?'':'none'; recalcStromNetz()">
             <option value="din18015">DIN 18015-1 (Tabelle)</option>
             <option value="vde">VDE (1/n^0.4)</option>
@@ -222,9 +222,9 @@ function _html() { return `
         ${_inp('strom-iz-nkabel', 'Häufung (Kabel)', '1',
           { min:1, max:20, step:1, change:'recalcStromNetz()', title:'Parallel verlegte Kabel (kG, IEC 60364-5-52 Tab. B.52.17)' })}
         <div style="grid-column:1/-1;">
-          <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Verlegeart</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Verlegeart</div>
           <select id="strom-iz-verlegeart"
-            style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+            style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px;"
             data-change="recalcStromNetz()">
             <option value="erde">Erdverlegung direkt (D1) — Standard</option>
             <option value="luft">Freiluft, freie Luft (E/F) ×1.20</option>
@@ -313,7 +313,7 @@ function _html() { return `
     Darstellung <span id="lp-strom-viz-arrow">▼</span>
   </div>
   <div id="lp-strom-viz">
-    <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">Kabel einfärben nach</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Kabel einfärben nach</div>
     <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;">
       <button class="lp-tool-btn lp-btn-tile" data-colormode="auslastung" data-click="setStromColorMode('auslastung')" title="Kabel nach Auslastung in % einfärben (grün = gering, rot = überlastet)">Auslastung</button>
       <button class="lp-tool-btn lp-btn-tile" data-colormode="spannungsfall" data-click="setStromColorMode('spannungsfall')" title="Kabel nach Spannungsfall ΔU in % einfärben">ΔU%</button>
@@ -326,11 +326,11 @@ function _html() { return `
       </button>
     </div>
     <div id="lp-engpass-legende" style="display:none;margin-top:4px;"></div>
-    <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px;">
+    <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px;">
       <input type="checkbox" id="strom-dynamic-viz" data-change="setStromDynamicViz(this.checked)"/>
       Dynamische Darstellung (Flussanimation + Richtungspfeile)
     </label>
-    <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px;">
+    <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px;">
       <input type="checkbox" id="strom-netz-visible" checked data-change="setStromNetzVisible(this.checked)"/>
       Stromnetz sichtbar
     </label>
@@ -368,13 +368,13 @@ function _html() { return `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;">
         <div style="font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;" id="strom-kpi-invest">—</div>
-        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Investition</div>
+        <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Investition</div>
       </div>
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;">
         <div style="font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;" id="strom-kpi-annuitaet">—</div>
-        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Annuität/a</div>
+        <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Annuität/a</div>
       </div>
-      <div style="grid-column:1/-1;font-size:9px;color:var(--muted);padding:2px 0;" id="strom-kpi-detail"></div>
+      <div style="grid-column:1/-1;font-size:11px;color:var(--muted);padding:2px 0;" id="strom-kpi-detail"></div>
     </div>
   </div>
 
@@ -393,7 +393,7 @@ export function renderGekoppelteStatus() {
   const kw = (v) => (v != null && isFinite(v)) ? Math.round(v) : null;
   const chip = (label, color, info) => {
     const suffix = info ? ` · ${info}` : '';
-    return `<span style="font-size:10px;color:${color};border:1px solid ${color}66;border-radius:10px;padding:2px 8px;white-space:nowrap;">${label}${suffix}</span>`;
+    return `<span style="font-size:12px;color:${color};border:1px solid ${color}66;border-radius:10px;padding:2px 8px;white-space:nowrap;">${label}${suffix}</span>`;
   };
 
   const chips = [];
@@ -412,7 +412,7 @@ export function renderGekoppelteStatus() {
 
   box.innerHTML = chips.length
     ? chips.join('')
-    : '<span style="font-size:9px;color:var(--muted);">Keine aktiven Anlagen</span>';
+    : '<span style="font-size:11px;color:var(--muted);">Keine aktiven Anlagen</span>';
 }
 
 // ── Abschnitts-Zustand ────────────────────────────────────────────────────────

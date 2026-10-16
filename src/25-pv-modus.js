@@ -1229,7 +1229,7 @@ function _regler({ label, titel, min, max, step, wert, farbe, einheit, handler }
           style="flex:1;cursor:pointer;accent-color:${farbe};height:4px;"
           oninput="this.nextElementSibling.textContent=this.value+'${einheit}'"
           data-change="${handler}"/>
-        <span style="min-width:32px;text-align:right;font-size:11px;color:${farbe};font-weight:600;">${wert}${einheit}</span>
+        <span style="min-width:32px;text-align:right;font-size:12.5px;color:${farbe};font-weight:600;">${wert}${einheit}</span>
       </div>
     </div>`;
 }
@@ -1267,7 +1267,7 @@ function _dachRegler(g) {
 
 function _aktivBlock(g) {
   if (!g) {
-    return `<div style="padding:8px 2px;font-size:10px;color:var(--muted);line-height:1.5;text-align:center;">
+    return `<div style="padding:8px 2px;font-size:12px;color:var(--muted);line-height:1.5;text-align:center;">
       Noch kein Dach gewählt — eines anklicken oder „→ nächstes offenes".
     </div>`;
   }
@@ -1286,7 +1286,7 @@ function _aktivBlock(g) {
   const flaechen = (g.pvFlaechen || []).map(fl => {
     const bel = fl.typ !== 'sperr';
     const beschriftung = bel ? 'Belegung' : (fl.auto === 'nord' ? 'Sperr · Nordseite' : 'Sperrfläche');
-    return `<div style="display:flex;align-items:center;gap:6px;font-size:10px;padding:1px 0;">
+    return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:1px 0;">
       <span style="color:${bel ? GELB : ROT};">${bel ? '☀' : '⛔'}</span>
       <span style="flex:1;">${beschriftung}</span>
       <span style="font-family:'DM Mono',monospace;color:var(--muted);">${(fl.flaeche || 0).toFixed(0)} m²</span>
@@ -1298,10 +1298,10 @@ function _aktivBlock(g) {
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
       <span style="color:${GELB};">☀</span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;">${escHtml(_name(g))}</span>
-      <span style="font-family:'DM Mono',monospace;color:${GELB};font-size:11px;">${kwp.toFixed(1)} kWp</span>
+      <span style="font-family:'DM Mono',monospace;color:${GELB};font-size:12.5px;">${kwp.toFixed(1)} kWp</span>
     </div>
     ${g.dachFlaechen?.length ? `
-    <div style="font-size:9.5px;color:var(--muted);margin-bottom:4px;line-height:1.4;"
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;line-height:1.4;"
       title="${g.dachLod2?.quelle === 'grundriss' ? 'Aus dem Grundriss berechnet (Flügel mit Sattel-/Walmdach, Kehlen an den Anschlüssen) — folgt Dachform und Neigung des Gebäudes' : 'Amtliches 3D-Gebäudemodell: jede Dachfläche mit eigener Neigung und Ausrichtung'}">
       ${g.dachLod2?.quelle === 'grundriss' ? 'Aus Grundriss' : 'LoD2'}: ${g.dachFlaechen.length} Dachflächen${g.dachLod2 ? ` · Traufe ${g.dachLod2.traufeM.toFixed(1)} m · First ${g.dachLod2.firstM.toFixed(1)} m` : ''}
     </div>
@@ -1339,7 +1339,7 @@ function _aktivBlock(g) {
     <div style="display:flex;flex-direction:column;gap:4px;margin-top:5px;">${_dachRegler(g)}</div>
     ${flaechen
       ? `<div style="margin-top:6px;padding:4px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">${flaechen}</div>`
-      : '<div style="font-size:9px;color:var(--muted);margin-top:6px;text-align:center;">Noch keine Fläche an diesem Gebäude.</div>'}
+      : '<div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;">Noch keine Fläche an diesem Gebäude.</div>'}
     ${netto > 0 ? `
     <div class="geb-dach-kwp-row" style="margin-top:6px;">
       <span>${mod} Mod.${split}</span><span>${netto.toFixed(0)} m²</span>
@@ -1356,7 +1356,7 @@ function _aktivBlock(g) {
 function _vorgabeBlock() {
   const v = _vorgabe();
   if (!window.pvModusVorgabeOffen) {
-    return `<div style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--muted);margin-top:8px;cursor:pointer;"
+    return `<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:8px;cursor:pointer;"
         data-click="pvmVorgabeToggle()" title="Regeln für alle Dächer und Vorgaben, die jedes neu belegte Dach erbt">
       <span style="text-transform:uppercase;letter-spacing:.06em;flex:1;">Belegungsregeln</span>
       <span style="text-align:right;">${DACHFORMEN[v.dachform] || v.dachform} · ${v.belegung} %${v.neigung != null ? ' · ' + v.neigung + '°' : ''}${v.nordSperr ? ` · Nord ±${v.nordSektor}° aus` : ''} · Flach ${v.ausrichtung === 'ostwest' ? 'OW' : 'S'} ${_vorgabeGcr(v)} % · Rand ${_zahl(v.randabstand)} m${v.modulLage === 'quer' ? ' · quer' : ''}${v.mindestModule > 0 ? ` · ≥ ${v.mindestModule} Mod.` : ''}</span>
@@ -1365,9 +1365,9 @@ function _vorgabeBlock() {
   }
   const ue = _uebertrag();
   const ausgewaehlt = _mitPolygon().filter(g => g.selected && _hasBelegung(g)).length;
-  const zwischen = text => `<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:7px 0 3px;">${text}</div>`;
+  const zwischen = text => `<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:7px 0 3px;">${text}</div>`;
   return `
-    <div style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--muted);margin-top:8px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;"
+    <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:8px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;"
       data-click="pvmVorgabeToggle()">
       <span style="flex:1;">Belegungsregeln</span><span>▾</span>
     </div>
@@ -1377,13 +1377,13 @@ function _vorgabeBlock() {
       ${zwischen('Vorgaben beim Belegen')}
       ${pvmVorgabeFelderHtml()}
       <div style="display:flex;gap:4px;align-items:center;margin-top:6px;">
-        <select class="inp-field" style="flex:1;padding:2px 4px;font-size:10px;" data-change="pvmUebertrag('umfang',this.value)"
+        <select class="inp-field" style="flex:1;padding:2px 4px;font-size:12px;" data-change="pvmUebertrag('umfang',this.value)"
           title="Auf welche belegten Dächer die Vorgaben übertragen werden">
           <option value="alle"${ue.umfang !== 'auswahl' ? ' selected' : ''}>alle belegten Dächer</option>
           <option value="auswahl"${ue.umfang === 'auswahl' ? ' selected' : ''}${ausgewaehlt ? '' : ' disabled'}>nur ausgewählte (${ausgewaehlt})</option>
         </select>
       </div>
-      <label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;margin-top:3px;"
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;margin-top:3px;"
         title="Ohne Haken bleiben Dächer unberührt, an denen jemand Dachform/Neigung bzw. Belegungsgrad/Ausnutzung von Hand eingestellt hat. Dachdaten aus LoD2 oder OpenStreetMap werden nie überschrieben.">
         <input type="checkbox" ${ue.auchEigene ? 'checked' : ''} style="cursor:pointer;" data-change="pvmUebertrag('auchEigene',this.checked)"/>
         auch Dächer mit eigenen Angaben
@@ -1431,7 +1431,7 @@ export function pvmRegelnGlobalHtml() {
         <div class="inp-group"><div class="inp-label" title="Dachflächen bzw. Satteldachseiten mit weniger Modulen bleiben leer (lohnt nicht). 0 = aus.">Min. Mod.</div>
           ${zahlFeld('mindestModule', v.mindestModule, 0, 100, 1, 'Mindestzahl Module je Dachfläche bzw. Satteldachseite')}</div>
       </div>
-      <div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.35;">Ändert sofort die Module aller belegten Dächer; das kWp der PV-Assets wird nachgezogen.</div>`;
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35;">Ändert sofort die Module aller belegten Dächer; das kWp der PV-Assets wird nachgezogen.</div>`;
 }
 
 /** Regel ändern, die für alle Dächer gilt. */
@@ -1478,15 +1478,15 @@ export function pvmVorgabeFelderHtml() {
       ${_regler({ label:'Belegungsgrad (%)', titel:'Vorgabe für neu belegte Dächer', min:40, max:100, step:5,
                   wert: v.belegung, farbe:GELB, einheit:'%', handler:`pvmVorgabe('belegung',this.value)` })}
       <div style="display:flex;align-items:center;gap:5px;margin-top:4px;">
-        <label style="display:flex;align-items:center;gap:4px;flex:1;font-size:10px;cursor:pointer;"
+        <label style="display:flex;align-items:center;gap:4px;flex:1;font-size:12px;cursor:pointer;"
           title="Beim Satteldach die nach Norden zeigende Hälfte automatisch als Sperrfläche aussparen">
           <input type="checkbox" ${v.nordSperr ? 'checked' : ''} style="accent-color:${ROT};cursor:pointer;"
             data-change="pvmVorgabe('nordSperr',this.checked)"/>Nordseiten aussparen
         </label>
-        <span style="font-size:9px;color:var(--muted);" title="Halber Öffnungswinkel um Nord: 45° reicht von Nordost über Nord bis Nordwest">±</span>
+        <span style="font-size:11px;color:var(--muted);" title="Halber Öffnungswinkel um Nord: 45° reicht von Nordost über Nord bis Nordwest">±</span>
         <input class="inp-field" type="number" min="5" max="90" step="5" value="${v.nordSektor}"
           style="width:52px;padding:2px 4px;" data-change="pvmVorgabe('nordSektor',this.value)"/>
-        <span style="font-size:9px;color:var(--muted);">°</span>
+        <span style="font-size:11px;color:var(--muted);">°</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;">
         <div class="inp-group">
@@ -1514,7 +1514,7 @@ function _listenBlock() {
   const liste = zeigeOffen ? offen : mitPv;
 
   const zeilen = liste.map(g => `
-    <div style="display:flex;align-items:center;gap:6px;font-size:10px;padding:2px 0;cursor:pointer;
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0;cursor:pointer;
          ${g.id === aktiv ? 'color:' + GELB + ';' : 'color:var(--text);'}"
          data-click="pvmWaehle(${g.id})" title="Auf der Karte zeigen und hier bearbeiten">
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(_name(g))}</span>
@@ -1533,9 +1533,9 @@ function _listenBlock() {
         ${tab('offen', `offen (${offen.length})`,      zeigeOffen)}
       </div>
       <div style="max-height:150px;overflow-y:auto;">
-        ${zeilen || `<div style="font-size:10px;color:var(--muted);padding:2px 0;">${zeigeOffen ? '✓ Kein Dach mehr offen.' : 'Noch nichts gezeichnet.'}</div>`}
+        ${zeilen || `<div style="font-size:12px;color:var(--muted);padding:2px 0;">${zeigeOffen ? '✓ Kein Dach mehr offen.' : 'Noch nichts gezeichnet.'}</div>`}
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:5px;padding-top:4px;border-top:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:5px;padding-top:4px;border-top:1px solid var(--border);">
         <span style="color:var(--muted);">Σ ${mitPv.length} Dächer${offen.length ? ` · ${offen.length} offen` : ''}</span>
         <span style="color:${GELB};font-weight:600;font-family:'DM Mono',monospace;">${summe.toFixed(0)} kWp</span>
       </div>
@@ -1578,7 +1578,7 @@ function _html() {
         ? `<button class="btn-xs" style="width:100%;margin-top:4px;border-color:${GELB};color:${GELB};"
              data-click="pvmGrundrissAuswahl()"
              title="Für jedes ausgewählte Dach ohne Fläche den Grundriss als Belegungsfläche übernehmen">Grundriss für ${ziele} ausgewählte Dächer</button>`
-        : `<div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.4;">
+        : `<div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4;">
              Stapelweise: Gebäude in der Liste oder Gebäudetabelle ankreuzen (dort filtern) — dann erscheint hier „Grundriss für die Auswahl".
            </div>`}
       ${window.pvabBlockHtml?.() || ''}
@@ -1589,7 +1589,7 @@ function _html() {
       ${_vorgabeBlock()}
       ${_listenBlock()}
       ${window.pvModusHilfe ? `
-      <div style="font-size:9px;color:var(--muted);margin-top:8px;line-height:1.45;">
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.45;">
         Dach anklicken = erste Ecke · roter Startpunkt = abschließen · Rechtsklick = Ecke zurück ·
         Esc = Zeichnung abbrechen, nochmal = Modus beenden · Strg+Z = Schritt zurück.
         Die Fläche gehört dem Dach, auf dem sie liegt; das kWp geht sofort ins PV-Asset.

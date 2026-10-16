@@ -149,7 +149,7 @@ let _kdAchse = null;    // null | { p1: {lat,lng}|null, handler }
 let _kdHinweis = '';
 
 const KD_BTN = 'padding:4px 9px;border-radius:12px;border:1px solid rgba(var(--ink),.14);'
-  + 'background:transparent;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;';
+  + 'background:transparent;color:var(--muted);font-family:inherit;font-size:12px;cursor:pointer;white-space:nowrap;';
 
 function kdSchnellBtn(v, label, aktuell) {
   const an = aktuell === v;
@@ -168,7 +168,7 @@ export function kdRenderPanel() {
     <input type="checkbox" class="ebp-cb" ${gewuenscht ? 'checked' : ''} data-change="kdSetVersuch(this.checked)">Drehbare Karte (Versuch)</label>`;
 
   if (gewuenscht !== laeuft) {
-    html += `<div style="font-size:10px;color:var(--c-orange);margin:4px 0 6px;line-height:1.35;">
+    html += `<div style="font-size:12px;color:var(--c-orange);margin:4px 0 6px;line-height:1.35;">
       ${gewuenscht ? 'Wird nach einem Neustart der Seite aktiv.' : 'Bleibt bis zum Neustart der Seite aktiv.'}
       <button data-click="kdNeuLaden()" style="${KD_BTN}margin-left:4px;">Jetzt neu laden</button></div>`;
   }
@@ -180,8 +180,8 @@ export function kdRenderPanel() {
         data-input="kdWinkelVorschau(this.value)" data-change="kdSetWinkel(this.value)">
       <input id="kd-winkel-zahl" type="number" min="-180" max="180" step="1" value="${w}"
         data-change="kdSetWinkel(this.value)"
-        style="width:52px;padding:3px 4px;border-radius:4px;border:1px solid rgba(var(--ink),.14);background:rgba(var(--ink),.04);color:var(--text,var(--text));font-family:inherit;font-size:10px;">
-      <span style="font-size:10px;color:var(--muted);">°</span>
+        style="width:52px;padding:3px 4px;border-radius:4px;border:1px solid rgba(var(--ink),.14);background:rgba(var(--ink),.04);color:var(--text,var(--text));font-family:inherit;font-size:12px;">
+      <span style="font-size:12px;color:var(--muted);">°</span>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px;">
       ${kdSchnellBtn(0, 'Nord oben', w)}${kdSchnellBtn(-45, '−45°', w)}${kdSchnellBtn(-90, '−90°', w)}${kdSchnellBtn(45, '+45°', w)}${kdSchnellBtn(90, '+90°', w)}
@@ -194,7 +194,7 @@ export function kdRenderPanel() {
     </div>`;
   }
 
-  if (_kdHinweis) html += `<div style="font-size:10px;color:var(--c-orange);margin-top:5px;line-height:1.35;">${_kdHinweis}</div>`;
+  if (_kdHinweis) html += `<div style="font-size:12px;color:var(--c-orange);margin-top:5px;line-height:1.35;">${_kdHinweis}</div>`;
   el.innerHTML = html;
 }
 

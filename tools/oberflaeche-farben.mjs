@@ -133,7 +133,13 @@ for (const rel of dateien()) {
   const abs = path.join(ROOT, rel);
   const alt = fs.readFileSync(abs, 'utf8');
   const vorher = { ...zaehler };
-  const neu = umstellen(alt);
+  // AB=<Text> / BIS=<Text>: nur den Bereich dazwischen umstellen (z. B. die Panel-Oberfläche einer
+  // Datei, deren übrige Teile Abbildungen für Word erzeugen)
+  const a = process.env.AB ? alt.indexOf(process.env.AB) : 0;
+  const bRoh = process.env.BIS ? alt.indexOf(process.env.BIS, Math.max(a, 0)) : -1;
+  const b = bRoh < 0 ? alt.length : bRoh;
+  if (a < 0) { console.log('AB nicht gefunden in', rel); continue; }
+  const neu = alt.slice(0, a) + umstellen(alt.slice(a, b)) + alt.slice(b);
   const n = Object.keys(zaehler).reduce((s, k) => s + (zaehler[k] - (vorher[k] || 0)), 0);
   if (n) { gesamt += n; console.log(String(n).padStart(5), rel); }
   if (WRITE && neu !== alt) fs.writeFileSync(abs, neu);

@@ -90,14 +90,14 @@ export function clusterRenderPanel() {
       <button class="ins-link-btn" onclick="toggleDrawCluster()" style="margin:0;">
         ${_drawing ? '✎ Zeichnen läuft … (ESC zum Abbrechen)' : '＋ Cluster zeichnen'}
       </button>
-      <label style="font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+      <label style="font-size:12.5px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
         <input type="checkbox" ${_sichtbar ? 'checked' : ''} onchange="clusterShowLayers(this.checked)"> Overlay
       </label>
       <button class="ins-link-btn" style="margin:0;" onclick="clusterZeitreiseToggle()">${_zeitAktiv ? '■ Zeitreise aus' : 'Zeitreise'}</button>
     </div>`;
 
   if (!clusters.length) {
-    el.innerHTML = kopf + `<div style="font-size:11px;color:var(--muted);padding:8px 0;line-height:1.5;">
+    el.innerHTML = kopf + `<div style="font-size:12.5px;color:var(--muted);padding:8px 0;line-height:1.5;">
       Noch keine Cluster. Klicke <b>＋ Cluster zeichnen</b> und umfahre einen Bereich der Liegenschaft
       (Startpunkt erneut anklicken zum Schließen). Danach kannst du Stufe und Jahr hinterlegen.</div>`;
     return;
@@ -113,8 +113,8 @@ export function clusterRenderPanel() {
         .filter(e => e.anlass?.quelle === 'cluster' && e.anlass.ref === c.id)
         .sort((a, b) => (a.nr ?? 0) - (b.nr ?? 0))
         .map(e => `
-          <div style="display:flex;align-items:center;gap:6px;font-size:11px;margin:3px 0;">
-            <span style="font-family:ui-monospace,Consolas,monospace;font-size:10px;color:var(--accent);font-weight:600;">M${String(e.nr ?? '').padStart(2, '0')}</span>
+          <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:3px 0;">
+            <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--accent);font-weight:600;">M${String(e.nr ?? '').padStart(2, '0')}</span>
             <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);">${MASSN_LABEL[e.art] || _esc(e.art)} · ${e._wirkung?.length || 0} Geb.</span>
             <input type="number" min="0" step="1000" value="${Number(e.kosten?.investEur) || ''}" placeholder="Kosten €"
                    title="Investition für das ganze Paket (zählt im Gutachten einmal)"
@@ -123,7 +123,7 @@ export function clusterRenderPanel() {
             <span style="color:var(--muted);">€</span>
           </div>`).join('');
       const typChecks = CLUSTER_MASSN_TYPEN.map(t => `
-        <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--fg);cursor:pointer;">
+        <label style="display:inline-flex;align-items:center;gap:3px;font-size:12.5px;color:var(--fg);cursor:pointer;">
           <input type="checkbox" data-cl-typ="${c.id}" value="${t}"> ${MASSN_LABEL[t] || t}
         </label>`).join('');
       return `
@@ -135,11 +135,11 @@ export function clusterRenderPanel() {
           <input type="text" value="${_esc(c.name)}" title="Name"
                  onchange="clusterEditFeld('${c.id}','name',this.value)"
                  style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 6px;font-size:12px;font-weight:600;">
-          <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${n} Geb.</span>
+          <span style="font-size:12.5px;color:var(--muted);white-space:nowrap;">${n} Geb.</span>
           <span onclick="clusterLoeschenUI('${c.id}')" title="Cluster löschen"
                 style="cursor:pointer;color:var(--c-red);font-size:13px;">✕</span>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);flex-wrap:wrap;">
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:12.5px;color:var(--muted);flex-wrap:wrap;">
           <label style="display:inline-flex;align-items:center;gap:4px;">Stufe
             <input type="number" min="0" max="9" value="${c.stufe ?? ''}" placeholder="–"
                    onchange="clusterEditFeld('${c.id}','stufe',this.value)"
@@ -152,7 +152,7 @@ export function clusterRenderPanel() {
                   onclick="clusterEditPolygon('${c.id}')">${_editId === c.id ? '✓ fertig' : '✎ Umriss'}</button>
         </div>
         <div style="border-top:1px dashed var(--border);margin-top:7px;padding-top:6px;">
-          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Maßnahmenpaket auf ${n} Mitglied(er)${nM ? ` · <b style="color:var(--fg);">${nM} Maßnahme(n) aktiv</b>` : ''}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Maßnahmenpaket auf ${n} Mitglied(er)${nM ? ` · <b style="color:var(--fg);">${nM} Maßnahme(n) aktiv</b>` : ''}</div>
           ${paketeHtml}
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:5px;">${typChecks}</div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
@@ -210,7 +210,7 @@ export function clusterRenderLayers() {
 
     const center = _ringCenter(c.polygon);
     const sub = (c.stufe != null || c.jahr != null)
-      ? `<span style="display:block;font-size:9px;font-weight:500;opacity:.95;">${c.stufe != null ? 'Stufe ' + c.stufe : ''}${c.stufe != null && c.jahr != null ? ' · ' : ''}${c.jahr != null ? c.jahr : ''}</span>`
+      ? `<span style="display:block;font-size:11px;font-weight:500;opacity:.95;">${c.stufe != null ? 'Stufe ' + c.stufe : ''}${c.stufe != null && c.jahr != null ? ' · ' : ''}${c.jahr != null ? c.jahr : ''}</span>`
       : '';
     const check = umgesetzt ? '✓ ' : '';
     const badge = L.marker(center, {
@@ -255,7 +255,7 @@ function _renderZeitMarker(map, zustand) {
       interactive: false,
       icon: L.divIcon({
         className: 'cluster-massn-marker',
-        html: `<div style="width:14px;height:14px;border-radius:50%;background:${farbe};color:#fff;font-size:9px;line-height:14px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.5);border:1px solid var(--border);">✓</div>`,
+        html: `<div style="width:14px;height:14px;border-radius:50%;background:${farbe};color:#fff;font-size:11px;line-height:14px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.5);border:1px solid var(--border);">✓</div>`,
         iconSize: [14, 14], iconAnchor: [7, 7],
       }),
       zIndexOffset: 1400,
@@ -508,7 +508,7 @@ function _zeitBarRender() {
   bar.innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:7px;">
       <span style="font-size:15px;font-weight:700;color:var(--accent);white-space:nowrap;">${_zeitJahr}${stufeTxt ? ` · ${stufeTxt}` : ''}</span>
-      <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${z.massnahmenDone}/${z.massnahmenTotal} Maßnahmen · Invest kumuliert ${investTxt}</span>
+      <span style="font-size:12.5px;color:var(--muted);white-space:nowrap;">${z.massnahmenDone}/${z.massnahmenTotal} Maßnahmen · Invest kumuliert ${investTxt}</span>
       <span style="margin-left:auto;cursor:pointer;color:var(--muted);font-size:14px;" title="Zeitreise beenden" onclick="clusterZeitreiseToggle()">✕</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
@@ -516,7 +516,7 @@ function _zeitBarRender() {
       <input type="range" min="0" max="${ms.length - 1}" value="${idx}" step="1"
              oninput="clusterZeitSet(this.value)"
              style="flex:1;accent-color:var(--accent);cursor:pointer;">
-      <span style="font-size:10px;color:var(--muted);white-space:nowrap;">${ms[0]}–${ms[ms.length - 1]}</span>
+      <span style="font-size:12px;color:var(--muted);white-space:nowrap;">${ms[0]}–${ms[ms.length - 1]}</span>
     </div>`;
 }
 

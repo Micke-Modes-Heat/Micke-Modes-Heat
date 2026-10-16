@@ -199,12 +199,12 @@ function _zeile(u) {
   const kurz = g => escHtml(_name(g).slice(0, 16));
   return `
     <div style="padding:5px 0 6px;border-bottom:1px solid rgba(var(--ink),.07);${_markiert === k ? `background:${ORANGE}12;` : ''}${u.ok ? 'opacity:.6;' : ''}">
-      <div style="display:flex;align-items:center;gap:5px;font-size:10.5px;cursor:pointer;" data-click="grundrissZeigen(${u.a},${u.b})" title="Auf der Karte zeigen">
-        <span style="font-size:8.5px;padding:1px 5px;border-radius:3px;border:1px solid ${art.farbe};color:${art.farbe};white-space:nowrap;">${art.text}</span>
+      <div style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;" data-click="grundrissZeigen(${u.a},${u.b})" title="Auf der Karte zeigen">
+        <span style="font-size:10.5px;padding:1px 5px;border-radius:3px;border:1px solid ${art.farbe};color:${art.farbe};white-space:nowrap;">${art.text}</span>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span style="color:${ORANGE};">${escHtml(_name(A))}</span> ↔ <span style="color:${CYAN};">${escHtml(_name(B))}</span></span>
       </div>
-      <div style="font-size:9.5px;color:var(--muted);margin-top:2px;">${_fmt(u.m2)} m² überdeckt · ${_fmt(u.anteilA * 100)} % von ${escHtml(_name(A).slice(0, 22))}, ${_fmt(u.anteilB * 100)} % von ${escHtml(_name(B).slice(0, 22))}</div>
-      <div style="font-size:9.5px;line-height:1.4;margin-top:2px;">${escHtml(e.text)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px;">${_fmt(u.m2)} m² überdeckt · ${_fmt(u.anteilA * 100)} % von ${escHtml(_name(A).slice(0, 22))}, ${_fmt(u.anteilB * 100)} % von ${escHtml(_name(B).slice(0, 22))}</div>
+      <div style="font-size:11px;line-height:1.4;margin-top:2px;">${escHtml(e.text)}</div>
       <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">
         ${_knopf(`grundrissZeigen(${u.a},${u.b})`, '👁', 'Auf der Karte zeigen')}
         ${u.art !== 'teil' ? _knopf(`grundrissAufnehmen(${ziel},${quelle})`, `⇥ in ${kurz(_geb(ziel))}`,
@@ -231,18 +231,18 @@ function _html() {
       <button class="btn-xs" data-click="grundrissPanelToggle()" title="Schließen">✕</button>
     </div>
     <div class="pvm-body">
-      <div style="font-size:10px;line-height:1.5;">
+      <div style="font-size:12px;line-height:1.5;">
         ${offen.length
           ? `<b>${offen.length}</b> überlappende Grundrisse: ${[n.doppelt && `${n.doppelt} Doppelerfassung${n.doppelt > 1 ? 'en' : ''}`,
               n.enthalten && `${n.enthalten} Gebäudeteil${n.enthalten > 1 ? 'e' : ''} im Gebäude`, n.teil && `${n.teil} Teilüberlappung${n.teil > 1 ? 'en' : ''}`].filter(Boolean).join(', ')}`
           : '<span style="color:var(--c-green);">✓ Keine offenen Überlappungen.</span>'}
       </div>
-      <div style="font-size:9px;color:var(--muted);line-height:1.45;margin-top:3px;">
+      <div style="font-size:11px;color:var(--muted);line-height:1.45;margin-top:3px;">
         Überlappende Grundrisse verfälschen Wärme- und Strombedarf, Dachpotenzial und Verschattung. Doppelerfassung: beide decken sich
         zu ≥ ${_fmt(GU_DECKUNG * 100)} %. Neubau über einem Gebäude, das vorher abgerissen wird, gilt nicht als Überlappung.
         Zusammenfügen und Löschen fragen nach und sind nicht per Strg+Z umkehrbar.
       </div>
-      ${belassen.length ? `<label style="display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--muted);margin-top:4px;cursor:pointer;">
+      ${belassen.length ? `<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer;">
         <input type="checkbox" ${_zeigeOk ? 'checked' : ''} data-change="grundrissOkZeigen(this.checked)"/>${belassen.length} bewusst belassene einblenden</label>` : ''}
       ${liste ? `<div style="margin-top:5px;">${liste}</div>` : ''}
     </div>`;
