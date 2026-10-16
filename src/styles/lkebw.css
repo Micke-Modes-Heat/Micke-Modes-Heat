@@ -422,3 +422,8 @@ body.ui-lkebw .float-panel.dragging{border-radius:var(--r-2)!important}
 
 /* Inline gesetzte Altschriften (DM Mono / DM Sans) auf die Oberflächenschrift umlenken */
 [style*="DM Mono"],[style*="DM Sans"]{font-family:var(--font-num)!important;font-variant-numeric:tabular-nums}
+
+/* LKEBw-Wortmarke in der Kopfzeile */
+.ui-logo{display:block;height:26px;width:auto}
+.ui-brand-sub{padding-left:12px;border-left:1px solid var(--frame-2);font-weight:600;color:var(--on-frame)!important;letter-spacing:.01em}
+#ui-thema-btn[aria-pressed="true"]{color:var(--on-frame)}

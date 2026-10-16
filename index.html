@@ -32,6 +32,7 @@
     <symbol id="ui-i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l4 4"/></symbol>
     <symbol id="ui-i-help" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4M8 11.6v.1"/></symbol>
     <symbol id="ui-i-moon" viewBox="0 0 16 16"><path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z"/></symbol>
+    <symbol id="ui-i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3 3l1.1 1.1M11.9 11.9L13 13M3 13l1.1-1.1M11.9 4.1L13 3"/></symbol>
     <symbol id="ui-i-down" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
     <symbol id="ui-i-up" viewBox="0 0 16 16"><path d="M4 10l4-4 4 4"/></symbol>
     <symbol id="ui-i-chev" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5L6 12.5"/></symbol>
@@ -65,7 +66,7 @@
 </svg>
 
 <header class="ui-frame" id="ui-frame">
-  <div class="ui-brand" title="LKEBw Energieplaner"><i class="ui-brand-mark" aria-hidden="true"></i><span class="ui-brand-word">LKEBw</span><span class="ui-brand-sub">Energieplaner</span><span class="app-version" id="app-version" title="Stand der ausgelieferten Anwendung"></span></div>
+  <div class="ui-brand" title="LKEBw Energieplaner"><img class="ui-logo" id="ui-logo" alt="LKEBw" width="88" height="26"><span class="ui-brand-sub">Energieplaner</span><span class="app-version" id="app-version" title="Stand der ausgelieferten Anwendung"></span></div>
 
   <div class="ui-proj-wrap">
     <button class="ui-proj" id="ui-proj-btn" type="button" data-click="uiMenuUmschalten('ui-proj-menu')" aria-haspopup="menu" title="Projektdatei öffnen, speichern, importieren">
@@ -98,6 +99,7 @@
 
   <div class="ui-frame-right">
     <button class="ui-fbtn ui-fbtn-txt" id="btn-feedback-main" type="button" data-click="sendAppFeedback()" title="Testversion: Feedback oder Fehler melden"><svg class="ui-i"><use href="#ui-i-mail"/></svg>Feedback</button>
+    <button class="ui-fbtn" id="ui-thema-btn" type="button" data-click="cycleTheme()" title="Dunkle Darstellung einschalten" aria-label="Darstellung hell oder dunkel"><svg class="ui-i"><use href="#ui-i-moon"/></svg></button>
     <div class="ui-proj-wrap">
       <button class="ui-fbtn ui-fbtn-txt" id="btn-mehr-menu" type="button" data-click="toggleMehrMenu()" aria-haspopup="menu" title="Hilfe, Werkzeuge und Einstellungen"><svg class="ui-i"><use href="#ui-i-help"/></svg>Hilfe<svg class="ui-i"><use href="#ui-i-down"/></svg></button>
       <div id="mehr-menu" class="ui-menu ui-menu-rechts" role="menu" style="display:none;">

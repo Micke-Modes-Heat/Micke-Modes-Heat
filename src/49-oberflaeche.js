@@ -8,6 +8,8 @@
 //
 // Präfix: ui… · Zustand im localStorage unter 'micke.ui'
 
+import { LKEBW_LOGO_HELL } from './config/lkebw-logo.js';
+
 const _KEY = 'micke.ui';
 const _ui = { schritt: 'projekt', sparte: 'waerme', waermeTab: 'netz', abschnitt: { auswertung: 'uebersicht', gutachten: 'ggrafik' } };
 try { Object.assign(_ui, JSON.parse(localStorage.getItem(_KEY) || '{}')); } catch (e) { /* ohne Speicher weiter */ }
@@ -460,8 +462,23 @@ function _ereignisse() {
   setInterval(() => { _schritteRendern(); if (_ui.schritt === 'projekt') uiProjektseiteRendern(); }, 3000);
 }
 
+/** Umschalter hell/dunkel in der Kopfzeile: Symbol und Hinweis passend zum aktuellen Thema. */
+function _themaKnopf() {
+  const btn = document.getElementById('ui-thema-btn');
+  if (!btn) return;
+  const dunkel = document.documentElement.dataset.theme === 'dark';
+  btn.innerHTML = _ic(dunkel ? 'sun' : 'moon');
+  btn.title = dunkel ? 'Helle Darstellung einschalten' : 'Dunkle Darstellung einschalten';
+  btn.setAttribute('aria-pressed', String(dunkel));
+}
+
 export function uiInit() {
   if (!_aufbau()) return;
+  // LKEBw-Wortmarke: Programmrahmen ist in beiden Darstellungen dunkel → Fassung mit weißer Schrift
+  const logo = document.getElementById('ui-logo');
+  if (logo) logo.src = LKEBW_LOGO_HELL;
+  _themaKnopf();
+  new MutationObserver(_themaKnopf).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   _ereignisse();
   document.body.classList.add('ui-lkebw');
   uiSchritt(_ui.schritt || 'projekt');
