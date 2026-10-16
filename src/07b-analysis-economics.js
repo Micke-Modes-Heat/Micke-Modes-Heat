@@ -3,6 +3,7 @@
 // NOTE: _calcKostenShared is also stringified into the Web Worker via .toString(), so it must remain a named global function.
 
 // ── Wirtschaftlichkeit Hilfsfunktionen ────────────────────────────────────
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { kostenJeErzeuger, kostentreiber } from './lib/kostenanalyse.js';
 import { bedienErlaeuterung, bedienModulStunden, bedienStunden } from './lib/vdi-bedien.js';
 import { speicherInvestEur } from './lib/waermespeicher.js';
@@ -1452,7 +1453,7 @@ export function _wirtRenderKurven() {
 
   // Gitter + Achsen
   ctx.font = '9px system-ui'; ctx.fillStyle = '#78909c';
-  ctx.strokeStyle = '#333844'; ctx.lineWidth = 0.5;
+  ctx.strokeStyle = cvTok('border'); ctx.lineWidth = 0.5;
   const xTicks = [10, 30, 100, 300, 1000, 3000, 10000];
   ctx.textAlign = 'center';
   for (const kw of xTicks) {
@@ -1470,7 +1471,7 @@ export function _wirtRenderKurven() {
       ctx.fillText(v.toLocaleString('de-DE') + ' €/kW', pad.left - 4, py + 3);
     }
   }
-  ctx.fillStyle = '#9aa4b0'; ctx.textAlign = 'left';
+  ctx.fillStyle = cvTok('muted'); ctx.textAlign = 'left';
   ctx.fillText('Anlagengröße (thermisch, log.)', pad.left, H - 6);
 
   // Kurven zeichnen
@@ -1495,9 +1496,9 @@ export function _wirtRenderKurven() {
     if (eur <= 0) continue;
     const t = _KURVEN_TECHS.find(tt => tt.ce === ce);
     const px = x(Math.max(KW_MIN, Math.min(KW_MAX, kw))), py = y(eur);
-    ctx.fillStyle = t?.color || '#fff';
+    ctx.fillStyle = t?.color || cvTok('text');
     ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#0f1116'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = cvTok('surface'); ctx.lineWidth = 1.5; ctx.stroke();
     dots.push({ x: px, y: py, label: (t?.label || ce) + ' (eigene Anlage)', kw, eur });
   }
 
@@ -1563,7 +1564,7 @@ export function _wirtRenderWaterfall() {
 
   const items = window._wirtWaterfallData;
   if (!items || !items.length) {
-    ctx.fillStyle = '#888'; ctx.font = '11px sans-serif';
+    ctx.fillStyle = cvTok('faint'); ctx.font = '11px sans-serif';
     ctx.fillText('Keine Investitionsdaten.', 20, H / 2);
     return;
   }
@@ -1583,7 +1584,7 @@ export function _wirtRenderWaterfall() {
   const gridStep = maxVal / step > 6 ? step * 2 : step;
   for (let v = 0; v <= maxVal; v += gridStep) {
     const y = pad.top + plotH - v * yScale;
-    ctx.strokeStyle = '#333844'; ctx.lineWidth = 0.5;
+    ctx.strokeStyle = cvTok('border'); ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
     ctx.fillText((v / 1000).toFixed(0) + 'k €', pad.left - 4, y + 3);
   }
@@ -1606,7 +1607,7 @@ export function _wirtRenderWaterfall() {
     ctx.fill();
 
     // Value above
-    ctx.fillStyle = '#e8eaf0'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillStyle = cvTok('text'); ctx.font = '9px system-ui'; ctx.textAlign = 'center';
     ctx.fillText((item.value / 1000).toFixed(0) + 'k', x + barW / 2, y1 - 4);
 
     // X label
@@ -1619,7 +1620,7 @@ export function _wirtRenderWaterfall() {
     if (i < items.length - 1) {
       const nextX = pad.left + gapX * (i + 1) + (gapX - barW) / 2;
       const cy = pad.top + plotH - running * yScale;
-      ctx.strokeStyle = '#333844'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = cvTok('border'); ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
       ctx.beginPath(); ctx.moveTo(x + barW, cy); ctx.lineTo(nextX, cy); ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -1637,7 +1638,7 @@ export function _wirtRenderWaterfall() {
   ctx.lineTo(tx + barW, ty + tH); ctx.lineTo(tx, ty + tH);
   ctx.lineTo(tx, ty + r); ctx.quadraticCurveTo(tx, ty, tx + r, ty);
   ctx.fill();
-  ctx.fillStyle = '#e8eaf0'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillStyle = cvTok('text'); ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
   ctx.fillText((total / 1000).toFixed(0) + 'k €', tx + barW / 2, ty - 4);
   ctx.fillStyle = '#ff9800'; ctx.font = 'bold 9px system-ui';
   ctx.save(); ctx.translate(tx + barW / 2, H - pad.bottom + 8);
@@ -1748,20 +1749,20 @@ export function _renderWirtCo2Chart(keys, en) {
     maxV = maxV * 1.12 || 1;
 
     // Hintergrund-Grid
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.strokeStyle = cvInk(0.06);
     ctx.lineWidth = 1;
     for (let i = 1; i <= 4; i++) {
       const yy = PAD.t + iH - iH * i / 4;
       ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(W - PAD.r, yy); ctx.stroke();
-      ctx.fillStyle = 'rgba(200,200,200,0.4)';
-      ctx.font = '8px "DM Mono", monospace';
+      ctx.fillStyle = cvInk(0.4);
+      ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText((maxV * i / 4).toFixed(1), PAD.l - 3, yy + 3);
     }
 
     // Y-Achse
     ctx.save();
-    ctx.fillStyle = 'rgba(200,200,200,0.5)';
+    ctx.fillStyle = cvInk(0.5);
     ctx.font = '7px sans-serif';
     ctx.translate(8, PAD.t + iH / 2);
     ctx.rotate(-Math.PI / 2);
@@ -1770,13 +1771,13 @@ export function _renderWirtCo2Chart(keys, en) {
     ctx.restore();
 
     // X-Achse (Jahreszahlen)
-    ctx.fillStyle = 'rgba(200,200,200,0.5)';
+    ctx.fillStyle = cvInk(0.5);
     ctx.font = '8px sans-serif';
     ctx.textAlign = 'center';
     for (let y = 0; y < nYears; y += 5) {
       const x = PAD.l + (y / (nYears - 1)) * iW;
       ctx.fillText(String(START_YEAR + y), x, H - 5);
-      ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+      ctx.strokeStyle = cvInk(0.04);
       ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, PAD.t + iH); ctx.stroke();
     }
 
@@ -1827,7 +1828,7 @@ export function _renderWirtCo2Chart(keys, en) {
     const redPct = totalHeute > 0 ? ((totalHeute - total2050) / totalHeute * 100) : 0;
     if (redPct > 1) {
       ctx.fillStyle = '#a5d6a7';
-      ctx.font = 'bold 10px "DM Mono", monospace';
+      ctx.font = 'bold 10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText('−' + redPct.toFixed(0) + '%', W - PAD.r - 2, PAD.t + 12);
     }
@@ -2129,17 +2130,17 @@ export function renderJahresscheibenChart(years, laufzeit) {
   const gap = iW / barData.length;
 
   // Grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.strokeStyle = cvInk(0.06);
   ctx.lineWidth = 1;
   for (let i = 1; i <= 4; i++) {
     const y = PAD.t + iH - iH * i / 4;
     ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W - PAD.r, y); ctx.stroke();
-    ctx.fillStyle = 'rgba(200,200,200,0.4)';
-    ctx.font = '8px DM Mono, monospace';
+    ctx.fillStyle = cvInk(0.4);
+    ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText(euroKompakt(maxVal * i / 4).replace(' €', ''), PAD.l - 3, y + 3);
   }
-  ctx.fillStyle = 'rgba(200,200,200,0.5)';
+  ctx.fillStyle = cvInk(0.5);
   ctx.font = '7px sans-serif';
   ctx.save();
   ctx.translate(10, PAD.t + iH / 2);
@@ -2170,8 +2171,8 @@ export function renderJahresscheibenChart(years, laufzeit) {
 
     // Year label every 5 years or first/last
     if (d.y === 1 || d.y === laufzeit || d.y % 5 === 0) {
-      ctx.fillStyle = 'rgba(200,200,200,0.6)';
-      ctx.font = '8px DM Mono, monospace';
+      ctx.fillStyle = cvInk(0.6);
+      ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(d.y, cx, H - 6);
     }
@@ -2185,7 +2186,7 @@ export function renderJahresscheibenChart(years, laufzeit) {
   legend.forEach(lg => {
     ctx.fillStyle = lg.c;
     ctx.fillRect(lx, 1, 8, 8);
-    ctx.fillStyle = 'rgba(200,200,200,0.6)';
+    ctx.fillStyle = cvInk(0.6);
     ctx.fillText(lg.l, lx + 10, 9);
     lx += ctx.measureText(lg.l).width + 26;
   });
@@ -2237,18 +2238,18 @@ export function _renderOptKostenUebersicht() {
     {k:'pv',       label:'PV-Anlage',       inv:OPT_INVEST_DEFAULT.pv, unit:'€/kWp', n:20, ih:1.0, wart:0.5, bed:0, color:'#ffd54f', fuel:'—', grp:'strom', note:'Größenabh. 600–1.400 €/kWp'},
     {k:'bat',      label:'Batterie',        inv:OPT_INVEST_DEFAULT.bat, unit:'€/kWh', n:15, ih:1.0, wart:0.5, bed:0, color:'#b39ddb', fuel:'—', grp:'strom'},
     // Nebenkomponenten (Infrastruktur)
-    {k:'schornstein',label:'Schornstein',   inv:60, unit:'€/kWₜₕ', n:40, ih:1.0, wart:2.0, bed:0, color:'#616161', fuel:'—', grp:'neben', note:'bei Feuerungsanlagen'},
+    {k:'schornstein',label:'Schornstein',   inv:60, unit:'€/kWₜₕ', n:40, ih:1.0, wart:2.0, bed:0, color:cvTok('line-2'), fuel:'—', grp:'neben', note:'bei Feuerungsanlagen'},
     {k:'puffer',   label:'Pufferspeicher',  inv:'~175', unit:'€/kW (25L/kW × 7€/L)', n:20, ih:1.0, wart:1.0, bed:0, color:'#546e7a', fuel:'—', grp:'neben'},
     {k:'schall',   label:'Schallschutz',    inv:75, unit:'€/kW', n:25, ih:0.5, wart:0.5, bed:0, color:'#78909c', fuel:'—', grp:'neben', note:'bei Luft-WP, BHKW'},
     {k:'entstaub', label:'Entstaubung',     inv:'20–40k', unit:'€ pauschal', n:15, ih:2.0, wart:3.0, bed:100, color:'#795548', fuel:'—', grp:'neben', note:'bei Biomasse >200 kW'},
     {k:'huest',    label:'Hausübergabestationen', inv:'5–15k', unit:'€/Geb.', n:25, ih:1.0, wart:1.0, bed:0, color:'#607d8b', fuel:'—', grp:'neben'},
-    {k:'netzanschl',label:'Netzanschluss (Strom)',inv:40, unit:'€/kWₑₗ', n:40, ih:0.5, wart:0, bed:0, color:'#9e9e9e', fuel:'—', grp:'neben', note:'bei >500 kWₑₗ'},
+    {k:'netzanschl',label:'Netzanschluss (Strom)',inv:40, unit:'€/kWₑₗ', n:40, ih:0.5, wart:0, bed:0, color:cvTok('muted'), fuel:'—', grp:'neben', note:'bei >500 kWₑₗ'},
     {k:'waermenetz',label:'Wärmenetz (KMR)',inv:'—', unit:'strangweise', n:50, ih:1.0, wart:0, bed:40, color:'#c62828', fuel:'—', grp:'neben', note:'aus Netzplanung'},
     // Prozentuale Zuschläge
-    {k:'bauteil',  label:'Bautechnik',      inv:'5%', unit:'der Basisinvest.', n:50, ih:1.0, wart:1.0, bed:0, color:'#9e9e9e', fuel:'—', grp:'zuschlag'},
-    {k:'hydr_elt', label:'Hydraulik + E-Technik',inv:'12%', unit:'der Basisinvest.', n:40, ih:1.0, wart:0, bed:0, color:'#9e9e9e', fuel:'—', grp:'zuschlag'},
-    {k:'planung',  label:'Planung + Projektsteuerung',inv:'10%', unit:'der Basisinvest.', n:20, ih:0, wart:0, bed:0, color:'#9e9e9e', fuel:'—', grp:'zuschlag'},
-    {k:'unvorg',   label:'Unvorhergesehenes',inv:'7%', unit:'der Basisinvest.', n:20, ih:0, wart:0, bed:0, color:'#9e9e9e', fuel:'—', grp:'zuschlag'},
+    {k:'bauteil',  label:'Bautechnik',      inv:'5%', unit:'der Basisinvest.', n:50, ih:1.0, wart:1.0, bed:0, color:cvTok('muted'), fuel:'—', grp:'zuschlag'},
+    {k:'hydr_elt', label:'Hydraulik + E-Technik',inv:'12%', unit:'der Basisinvest.', n:40, ih:1.0, wart:0, bed:0, color:cvTok('muted'), fuel:'—', grp:'zuschlag'},
+    {k:'planung',  label:'Planung + Projektsteuerung',inv:'10%', unit:'der Basisinvest.', n:20, ih:0, wart:0, bed:0, color:cvTok('muted'), fuel:'—', grp:'zuschlag'},
+    {k:'unvorg',   label:'Unvorhergesehenes',inv:'7%', unit:'der Basisinvest.', n:20, ih:0, wart:0, bed:0, color:cvTok('muted'), fuel:'—', grp:'zuschlag'},
   ];
 
   let html = '<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Investitions-, Nutzungsdauer- und Instandhaltungswerte der Optimierung. Energiepreise aus dem Wirtschaftlichkeits-Panel. VDI 2067 / KWW-Technikkatalog.</div>';

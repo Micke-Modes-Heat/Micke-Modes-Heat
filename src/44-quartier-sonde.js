@@ -3,6 +3,7 @@
 // Wärmelastgang dieser Gebäude sehen: Jahresverlauf, Dauerlinie, Monate, Typtage, Nutzungsmix, Kennwerte.
 // Rein lesend — das Projekt bleibt unverändert. Lastgang wie in den Wärme-Grundlagen aus den Gebäudeprofilen
 // (Nutzwärme ohne Netzverluste).
+import { cvInk } from './lib/canvas-farben.js';
 import { buildBuildingHeatProfiles } from './lib/building-heat-profiles.js';
 import { dauerlinie, gleichzeitigkeit, lastgangKennwerte, lastgangMonate, typtag } from './lib/lastgang-kennwerte.js';
 import { nutzflaeche } from './lib/gebaeude-analyse.js';
@@ -198,12 +199,12 @@ function _flaeche() {
   const ctx = c.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  ctx.font = '10px "DM Mono", monospace';
+  ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
   return { ctx, W, H };
 }
 
 function _yAchse(ctx, L, T, ph, W, R, max, einheit) {
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.strokeStyle = cvInk(0.07); ctx.fillStyle = cvInk(0.55);
   for (let i = 0; i <= 4; i++) {
     const y = T + ph * (1 - i / 4);
     ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(W - R, y); ctx.stroke();
@@ -234,7 +235,7 @@ function _zeichne(d) {
       ctx.fillStyle = 'rgba(79,195,247,0.25)'; ctx.fillRect(L + x, yM, 1, T + ph - yM);
       ctx.fillStyle = '#4fc3f7'; ctx.fillRect(L + x, yS, 1, T + ph - yS);
     }
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillStyle = cvInk(0.5);
     [0, 744, 1416, 2160, 2880, 3624, 4344, 5088, 5832, 6552, 7296, 8016].forEach((h, m) => ctx.fillText(MON[m], L + h / 8760 * pw + 2, H - 4));
     if (leg) leg.innerHTML = '<span style="color:var(--c-blue)">■</span> Mittel <span style="color:rgba(79,195,247,0.5)">■</span> Spitze je Zeitabschnitt';
   } else if (S.ansicht === 'dauer') {
@@ -243,7 +244,7 @@ function _zeichne(d) {
     ctx.fillStyle = 'rgba(79,195,247,0.35)';
     for (let x = 0; x < pw; x++) { const v = d.jdl[Math.floor(x / pw * 8760)]; const y = T + ph * (1 - v / max); ctx.fillRect(L + x, y, 1, T + ph - y); }
     linie(Array.from({ length: 200 }, (_, i) => d.jdl[Math.floor(i / 199 * 8759)]), max, '#4fc3f7');
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillStyle = cvInk(0.5);
     [0, 2000, 4000, 6000, 8000].forEach(h => ctx.fillText(nf(h) + ' h', L + h / 8760 * pw + 2, H - 4));
     if (leg) leg.innerHTML = `Stunden des Jahres nach Last sortiert · ${nf(d.k.vbh)} Vollbenutzungsstunden`;
   } else if (S.ansicht === 'monate') {
@@ -253,7 +254,7 @@ function _zeichne(d) {
     d.monate.forEach((v, m) => {
       const y = T + ph * (1 - v / max);
       ctx.fillStyle = '#4fc3f7'; ctx.globalAlpha = 0.8; ctx.fillRect(L + m * bw + bw * 0.15, y, bw * 0.7, T + ph - y); ctx.globalAlpha = 1;
-      ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillText(MON[m], L + m * bw + bw * 0.2, H - 4);
+      ctx.fillStyle = cvInk(0.55); ctx.fillText(MON[m], L + m * bw + bw * 0.2, H - 4);
     });
     if (leg) leg.innerHTML = 'Wärme je Monat';
   } else if (S.ansicht === 'typtage') {
@@ -261,7 +262,7 @@ function _zeichne(d) {
     _yAchse(ctx, L, T, ph, W, R, max, 'kW');
     linie(d.winterWt, max, '#4fc3f7', 2); linie(d.winterWe, max, '#4fc3f7', 1);
     linie(d.sommerWt, max, '#ffb74d', 2); linie(d.sommerWe, max, '#ffb74d', 1);
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillStyle = cvInk(0.5);
     [0, 6, 12, 18, 23].forEach(h => ctx.fillText(h + ' Uhr', L + h / 23 * pw - (h === 23 ? 34 : 0), H - 4));
     if (leg) leg.innerHTML = '<span style="color:var(--c-blue)">━</span> Winter (Dez–Feb) <span style="color:var(--c-orange)">━</span> Sommer (Jun–Aug) · dick: Werktag, dünn: Wochenende';
   } else {
@@ -270,9 +271,9 @@ function _zeichne(d) {
     const zh = Math.min(22, (H - 10) / Math.max(1, zeilen.length));
     zeilen.forEach(([name, mwh], i) => {
       const y = 6 + i * zh, w = mwh / zeilen[0][1] * Math.max(40, W - 160 - 130);
-      ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillText(name.length > 24 ? name.slice(0, 23) + '…' : name, 4, y + zh * 0.65);
+      ctx.fillStyle = cvInk(0.7); ctx.fillText(name.length > 24 ? name.slice(0, 23) + '…' : name, 4, y + zh * 0.65);
       ctx.fillStyle = FARBEN[i % FARBEN.length]; ctx.globalAlpha = 0.8; ctx.fillRect(160, y + 3, Math.max(2, w), zh - 6); ctx.globalAlpha = 1;
-      ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillText(`${nf(mwh)} MWh · ${nf(mwh / ges * 100)} %`, 166 + Math.max(2, w), y + zh * 0.65);
+      ctx.fillStyle = cvInk(0.7); ctx.fillText(`${nf(mwh)} MWh · ${nf(mwh / ges * 100)} %`, 166 + Math.max(2, w), y + zh * 0.65);
     });
     if (leg) leg.innerHTML = 'Wärmeverbrauch nach Nutzung';
   }

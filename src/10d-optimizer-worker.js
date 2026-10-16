@@ -1,4 +1,5 @@
 // ── 10d-optimizer-worker.js — Worker-Code der Optimierung, Ergebnis-Charts ──
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { _dispatchCore } from './06c-dispatch-core.js';
 import { _calcKostenShared } from './07b-analysis-economics.js';
@@ -625,7 +626,7 @@ export function _optRenderBarChart(results, container) {
       const erz = r.config[ci];
       const simErz = simList[ci];
       const mwh = simErz?.waermeMwh || (r.erzWaermeMwh ? r.erzWaermeMwh[ci] : 0) || 0;
-      eSegments.push({ frac: mwh / totalMwh, pct: mwh / totalMwh * 100, name: _fullName(erz.key), color: ERZEUGER_CFG[erz.key]?.color || '#aaa' });
+      eSegments.push({ frac: mwh / totalMwh, pct: mwh / totalMwh * 100, name: _fullName(erz.key), color: ERZEUGER_CFG[erz.key]?.color || cvTok('muted') });
     }
     if (r.sim?.autoGkMwh > 0) {
       eSegments.push({ frac: r.sim.autoGkMwh / totalMwh, pct: r.sim.autoGkMwh / totalMwh * 100, name: 'Backup-GK', color: '#78909c' });
@@ -637,12 +638,12 @@ export function _optRenderBarChart(results, container) {
       const erz = r.config[ci];
       const kw = (r.erzLeistKw ? r.erzLeistKw[ci] : erz.leistKw) || 0;
       totalKw += kw;
-      pParts.push({ kw, name: _fullName(erz.key), color: ERZEUGER_CFG[erz.key]?.color || '#aaa' });
+      pParts.push({ kw, name: _fullName(erz.key), color: ERZEUGER_CFG[erz.key]?.color || cvTok('muted') });
     }
     if (totalKw < 0.1) totalKw = 1;
     const pSegments = pParts.map(p => ({ frac: p.kw / totalKw, pct: p.kw / totalKw * 100, name: p.name, color: p.color }));
     // Label links (Variantenname)
-    ctx.fillStyle = '#e0e0e0';
+    ctx.fillStyle = cvTok('text');
     ctx.font = '10px "DM Sans", sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
@@ -663,18 +664,18 @@ export function _optRenderBarChart(results, container) {
     // WGK + Invest rechts (vertikal zentriert)
     const midY = y + 12 + (energyH + gapH + powerH) / 2;
     ctx.fillStyle = '#fdd835';
-    ctx.font = 'bold 11px "DM Mono", monospace';
+    ctx.font = 'bold 11px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(r.kw.wgk.toFixed(1) + ' ct', PAD.l + barW + 6, midY - 6);
     ctx.fillStyle = '#90a4ae';
-    ctx.font = '9px "DM Mono", monospace';
+    ctx.font = '9px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     ctx.fillText((r.kw.investGesamt / 1000).toFixed(0) + ' k\u20ac', PAD.l + barW + 6, midY + 7);
 
     // Trennlinie zwischen Varianten
     if (idx < results.length - 1) {
       const lineY = y + energyH + gapH + powerH + 18;
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.strokeStyle = cvInk(0.08);
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(8, lineY);
@@ -769,7 +770,7 @@ export function _optRenderRadar(results, container) {
   }
 
   // Hintergrund-Ringe
-  ctx.strokeStyle = '#2a3050';
+  ctx.strokeStyle = cvTok('border');
   ctx.lineWidth = 0.5;
   for (let ring = 1; ring <= 4; ring++) {
     const frac = ring / 4;
@@ -871,7 +872,7 @@ export function _optRenderScatter(container) {
   const _fullName = k => ERZEUGER_CFG[k]?.label || k;
   const allGenKeys = [...new Set(allRes.flatMap(r => r.keys))];
   const genColors = {};
-  allGenKeys.forEach(k => { genColors[k] = ERZEUGER_CFG[k]?.color || '#aaa'; });
+  allGenKeys.forEach(k => { genColors[k] = ERZEUGER_CFG[k]?.color || cvTok('muted'); });
 
   // State
   let activeFilter = null;
@@ -973,7 +974,7 @@ export function _optRenderScatter(container) {
     if (is3D) render3D(ctx, W, H); else render2D(ctx, W, H);
   }
 
-  function pointColor(r) { return genColors[r.keys[0]] || '#aaa'; }
+  function pointColor(r) { return genColors[r.keys[0]] || cvTok('muted'); }
 
   function render2D(ctx, W, H) {
     const PAD = { l: 52, r: 16, t: 16, b: 34 };
@@ -982,7 +983,7 @@ export function _optRenderScatter(container) {
     const yOf = co2 => PAD.t + ph - (co2 - minCo2) / (maxCo2 - minCo2) * ph;
 
     // Gitter
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = cvInk(0.05); ctx.lineWidth = 1;
     for (let i = 1; i <= 4; i++) {
       const y = PAD.t + ph - ph * i / 4;
       ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + pw, y); ctx.stroke();
@@ -993,27 +994,27 @@ export function _optRenderScatter(container) {
     }
 
     // Achsen
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = cvInk(0.18); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t + ph); ctx.lineTo(PAD.l + pw, PAD.t + ph); ctx.stroke();
 
     // Achsen-Beschriftung
-    ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '10px "DM Sans",sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = cvInk(0.5); ctx.font = '10px "DM Sans",sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('WGK (ct/kWh)', PAD.l + pw / 2, H - 4);
     ctx.save(); ctx.translate(13, PAD.t + ph / 2); ctx.rotate(-Math.PI / 2);
     ctx.fillText('CO\u2082 (t/a)', 0, 0); ctx.restore();
 
     // Ticks
-    ctx.font = '8px "DM Mono",monospace';
+    ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     for (let i = 0; i <= 5; i++) {
       const v = minWgk + (maxWgk - minWgk) * i / 5;
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillStyle = cvInk(0.35);
       ctx.fillText(v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }), xOf(v), PAD.t + ph + 5);
     }
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     for (let i = 0; i <= 4; i++) {
       const v = minCo2 + (maxCo2 - minCo2) * i / 4;
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillStyle = cvInk(0.35);
       ctx.fillText(Math.round(v).toLocaleString('de-DE'), PAD.l - 5, yOf(v));
     }
 
@@ -1028,7 +1029,7 @@ export function _optRenderScatter(container) {
       ctx.fill();
       if (isTop) {
         ctx.globalAlpha = match ? 1 : 0.15;
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.8; ctx.stroke();
+        ctx.strokeStyle = cvTok('text'); ctx.lineWidth = 1.8; ctx.stroke();
       }
     }
     ctx.globalAlpha = 1;
@@ -1040,7 +1041,7 @@ export function _optRenderScatter(container) {
       if (top3Final) {
         ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2);
         ctx.fillStyle = pointColor(r); ctx.fill();
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.strokeStyle = cvTok('text'); ctx.lineWidth = 2; ctx.stroke();
         ctx.fillStyle = '#000'; ctx.textAlign = 'center'; ctx.font = 'bold 9px "DM Sans",sans-serif';
         ctx.fillText(String(i + 1), x, y + 0.5);
         ctx.font = '10px "DM Sans",sans-serif';
@@ -1052,9 +1053,9 @@ export function _optRenderScatter(container) {
       const ty = y - 14 - i * 13;
       const tx = x + (rechts ? -12 : 12);
       const tw = ctx.measureText(truncTxt).width;
-      ctx.fillStyle = 'rgba(15,17,23,0.8)';
+      ctx.fillStyle = cvTok('surface2');
       ctx.fillRect(rechts ? tx - tw - 3 : tx - 3, ty - 7, tw + 6, 14);
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillStyle = cvInk(0.85);
       ctx.fillText(truncTxt, tx, ty);
     });
 
@@ -1075,7 +1076,7 @@ export function _optRenderScatter(container) {
     }
 
     // Boden-Gitter (WGK x Invest bei minCo2)
-    ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 0.5;
+    ctx.strokeStyle = cvInk(0.04); ctx.lineWidth = 0.5;
     for (let i = 0; i <= 5; i++) {
       const wgk = minWgk + (maxWgk - minWgk) * i / 5;
       const a = proj(wgk, minCo2, minInv), b = proj(wgk, minCo2, maxInv);
@@ -1114,7 +1115,7 @@ export function _optRenderScatter(container) {
     }
 
     // Achsen-Ticks (Enden)
-    ctx.font = '7px "DM Mono",monospace'; ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '7px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.fillStyle = cvInk(0.3);
     const tw0 = proj(minWgk, minCo2, minInv), tw1 = proj(maxWgk, minCo2, minInv);
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.fillText(minWgk.toFixed(1), tw0.px, tw0.py + 4);
@@ -1185,14 +1186,14 @@ export function _optRenderScatter(container) {
       ctx.fill();
       if (isTop) {
         ctx.globalAlpha = match ? 1 : 0.15;
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.8; ctx.stroke();
+        ctx.strokeStyle = cvTok('text'); ctx.lineWidth = 1.8; ctx.stroke();
       }
     }
     ctx.globalAlpha = 1;
     canvas._proj = pts.map(p => ({ x: p.px, y: p.py, r: p.r }));
 
     // Dreh-Hinweis
-    ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.font = '8px "DM Sans",sans-serif';
+    ctx.fillStyle = cvInk(0.2); ctx.font = '8px "DM Sans",sans-serif';
     ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
     ctx.fillText('\u21BB Ziehen zum Drehen', W - 8, H - 6);
   }

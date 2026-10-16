@@ -1,5 +1,6 @@
 // ── 06a-gbi-lastgang.js — CSV-Import, Lastgang-UI, Klimadaten ──
 // ── Globaler Systemzustand ────────────────────────────────────────────────
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { baTwwArtAusText, baZustandAusText } from './lib/bestandsanlage.js';
 import { gebaeude } from './01-globals-varianten.js';
 import { calcAutoEnergy, getNutzungstypen } from './02b-gebaeude.js';
@@ -1103,17 +1104,17 @@ export function glRenderSplit(lastgangKw, verlustPct) {
   const scl = v => (v / pMax) * PH;
 
   // Hintergrund
-  ctx.fillStyle = '#13151f';
+  ctx.fillStyle = cvTok('surface');
   ctx.fillRect(0, 0, W, H);
 
   // Gitterlinien + Y-Labels
-  ctx.font = '8px monospace';
+  ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
   ctx.textAlign = 'right';
   [25, 50, 75, 100].forEach(pct => {
     const y = MT + PH - scl(pMax * pct / 100);
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = cvInk(0.06); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(ML, y); ctx.lineTo(W, y); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillStyle = cvInk(0.3);
     ctx.fillText(Math.round(pMax * pct / 100 / 1000) + ' MWh', ML - 2, y + 3);
   });
 
@@ -1140,7 +1141,7 @@ export function glRenderSplit(lastgangKw, verlustPct) {
     ctx.fillRect(x, Math.round(y - hT), bw, Math.max(1, Math.ceil(hT)));
 
     // Monatslabel
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillStyle = cvInk(0.45);
     ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(MLBL[m], x + bw / 2, H - 3);
   }

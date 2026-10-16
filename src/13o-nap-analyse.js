@@ -6,6 +6,7 @@
 //   • Lastentwicklungs-Balkendiagramm (Bestand + Maßnahmen bis 2050)
 //   • PDF-Export
 
+import { cvTok } from './lib/canvas-farben.js';
 import { ASSETS, getAssetStatus } from './13a-assets-core.js';
 import { globalYear } from './01-globals-varianten.js';
 import { getSlpProfile } from './02b-gebaeude.js';
@@ -893,19 +894,19 @@ function _napRenderSidebar() {
   <div style="display:flex;gap:3px;margin-bottom:6px;flex-wrap:wrap;">
     <button onclick="napSetTopSeriesMode('gemessen')"
       style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;min-width:60px;
-      border:1px solid ${topMode==='gemessen'?'#26a69a':'#333'};
+      border:1px solid ${topMode==='gemessen'?'#26a69a':cvTok('border')};
       background:${topMode==='gemessen'?'rgba(38,166,154,.12)':'transparent'};
-      color:${topMode==='gemessen'?'#80cbc4':'#555'};">Messung</button>
+      color:${topMode==='gemessen'?'#80cbc4':cvTok('line-2')};">Messung</button>
     ${hasBfsSynth?`<button onclick="napSetTopSeriesMode('synthetisch')"
       style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;min-width:60px;
-      border:1px solid ${topMode==='synthetisch'?'#ef9a9a':'#333'};
+      border:1px solid ${topMode==='synthetisch'?'#ef9a9a':cvTok('border')};
       background:${topMode==='synthetisch'?'rgba(239,154,154,.12)':'transparent'};
-      color:${topMode==='synthetisch'?'#ef9a9a':'#555'};">Synthetisch</button>`:''}
+      color:${topMode==='synthetisch'?'#ef9a9a':cvTok('line-2')};">Synthetisch</button>`:''}
     <button onclick="napSetTopSeriesMode('messungPlusProfil')"
       style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;min-width:60px;
-      border:1px solid ${topMode==='messungPlusProfil'?'#ab47bc':'#333'};
+      border:1px solid ${topMode==='messungPlusProfil'?'#ab47bc':cvTok('border')};
       background:${topMode==='messungPlusProfil'?'rgba(171,71,188,.12)':'transparent'};
-      color:${topMode==='messungPlusProfil'?'#ce93d8':'#555'};">📊 + Maßnahmen</button>
+      color:${topMode==='messungPlusProfil'?'#ce93d8':cvTok('line-2')};">📊 + Maßnahmen</button>
   </div>
   ${hasBfsSynth && topMode==='synthetisch'?`<div style="font-size:11px;color:var(--c-red);">⚡ ${synthData.sourceAssets} Assets · ${synthData.withStaticFallback} statisch — ${synthData.filename||''}</div>`:''}
   ${synthData?.isOverlay?`<div style="font-size:11px;color:var(--c-violet);">✓ ${synthData.sourceAssets} Profile + ${synthData.withStaticFallback} statisch</div>`:''}
@@ -925,8 +926,8 @@ function _napRenderSidebar() {
     ${naps.map(n=>`<option value="${n.id}"${n.id===selId?' selected':''}>${n.name}</option>`).join('')}
   </select>
   ${selNap?`<button onclick="napComputeSyntheticAndShow()"
-    style="width:100%;padding:5px;border:1px solid ${profileCount>0?'#ab47bc55':'#333'};border-radius:4px;
-    background:transparent;color:${profileCount>0?'#ce93d8':'#555'};cursor:pointer;font-size:12px;font-weight:600;">
+    style="width:100%;padding:5px;border:1px solid ${profileCount>0?'#ab47bc55':cvTok('border')};border-radius:4px;
+    background:transparent;color:${profileCount>0?'#ce93d8':cvTok('line-2')};cursor:pointer;font-size:12px;font-weight:600;">
     Synthetisch berechnen (${profileCount} Profile)</button>`:''}
 </div>` : '';
   }
@@ -986,7 +987,7 @@ function _napRenderSidebar() {
   <div style="background:var(--surface2);border-radius:5px;padding:7px 8px;">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
       <span style="font-size:12px;color:var(--muted);">Max. Bezug:</span>
-      <span style="flex:1;font-size:12px;font-weight:600;color:${cap != null ? '#ccc' : '#666'};"
+      <span style="flex:1;font-size:12px;font-weight:600;color:${cap != null ? cvTok('muted') : cvTok('line-2')};"
         title="Vereinbarte Anschlussleistung — Feld „Max. Bezug“ unter ⚡ Strom-Grundlagen › NAP-Grenzen">${cap != null ? Math.round(cap).toLocaleString('de-DE') + ' kVA' : 'nicht hinterlegt'}</span>
       <button onclick="sgNaOeffnen()" title="In ⚡ Strom-Grundlagen › Netzanschluss bearbeiten"
         style="padding:1px 6px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--c-teal);font-size:11px;cursor:pointer;">✎ Netzanschluss</button>
@@ -1007,7 +1008,7 @@ function _napRenderSidebar() {
     // Jahr-Spalte: Neubau → Baujahr, Abriss → Abrissjahr (rot)
     const yrVal  = isAbr ? m.abrissjahr : m.baujahr;
     const yrCell = yrVal
-      ? `<span style="color:${isAbr?'#ef7373':'#666'}">${yrVal}</span>`
+      ? `<span style="color:${isAbr?'#ef7373':cvTok('line-2')}">${yrVal}</span>`
       : `<span style="color:#444">–</span>`;
     // Last-/Einspeise-Zellen: Neubau = positiv, Abriss = negativ (Farben invertiert)
     const loadCell = m.loadKW > 0
@@ -1098,8 +1099,8 @@ function _napRenderMainTop() {
     :'background:transparent;color:var(--faint);border-color:var(--border);'}`;
   const zm = _N.zeitMonth;
   const moBtn = (i, lbl) => `<button onclick="_napSetZeitMonth(${i})"
-    style="padding:2px 7px;border:1px solid ${i===zm?'#26a69a':'#222'};border-radius:3px;
-    background:${i===zm?'rgba(38,166,154,.18)':'transparent'};color:${i===zm?'#80cbc4':'#555'};font-size:11px;cursor:pointer;">${lbl}</button>`;
+    style="padding:2px 7px;border:1px solid ${i===zm?'#26a69a':cvTok('surface')};border-radius:3px;
+    background:${i===zm?'rgba(38,166,154,.18)':'transparent'};color:${i===zm?'#80cbc4':cvTok('line-2')};font-size:11px;cursor:pointer;">${lbl}</button>`;
   const moBtns = mode==='zeitreihe'?`
 <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:5px;">
   ${moBtn(null,'Jahr')}
@@ -1171,8 +1172,8 @@ function _napDrawChart() {
   const ctx=c.getContext('2d'); ctx.clearRect(0,0,c.width,c.height);
   const d=_activeTopData();
   if (!d?.stats) {
-    ctx.fillStyle='#1a1a2e'; ctx.fillRect(0,0,c.width,c.height);
-    ctx.fillStyle='#333'; ctx.font='12px sans-serif'; ctx.textAlign='center';
+    ctx.fillStyle=cvTok('surface'); ctx.fillRect(0,0,c.width,c.height);
+    ctx.fillStyle=cvTok('border'); ctx.font='12px sans-serif'; ctx.textAlign='center';
     ctx.fillText('Keine Daten geladen',c.width/2,c.height/2);
     return;
   }
@@ -1185,8 +1186,8 @@ function _napDrawChart() {
 
 // ── Gemeinsame Canvas-Helfer ──────────────────────────────────────────────────
 function _napBg(ctx,w,h,m) {
-  ctx.fillStyle='#1a1a2e'; ctx.fillRect(0,0,w,h);
-  ctx.fillStyle='#202030'; ctx.fillRect(m.l,m.t,w-m.l-m.r,h-m.t-m.b);
+  ctx.fillStyle=cvTok('surface'); ctx.fillRect(0,0,w,h);
+  ctx.fillStyle=cvTok('surface'); ctx.fillRect(m.l,m.t,w-m.l-m.r,h-m.t-m.b);
   return {cw:w-m.l-m.r,ch:h-m.t-m.b};
 }
 function _napGridY(ctx,w,h,m,maxV) {
@@ -1194,13 +1195,13 @@ function _napGridY(ctx,w,h,m,maxV) {
   ctx.font='9px sans-serif'; ctx.textAlign='right'; ctx.setLineDash([2,4]);
   for (let i=0;i<=4;i++) {
     const v=maxV*(4-i)/4, y=m.t+i/4*ch;
-    ctx.strokeStyle='#2a2a3e'; ctx.lineWidth=1;
+    ctx.strokeStyle=cvTok('border'); ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(m.l,y); ctx.lineTo(w-m.r,y); ctx.stroke();
-    ctx.fillStyle='#666';
+    ctx.fillStyle=cvTok('line-2');
     ctx.fillText(v>=1000?`${(v/1000).toFixed(1)}M`:v.toFixed(0),m.l-4,y+3);
   }
   ctx.setLineDash([]);
-  ctx.strokeStyle='#444'; ctx.lineWidth=1;
+  ctx.strokeStyle=cvTok('border'); ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(m.l,m.t); ctx.lineTo(m.l,m.t+ch); ctx.stroke();
 }
 
@@ -1218,9 +1219,9 @@ function _napDrawZeitreihe(ctx,w,h,data) {
   let maxV=0; for (const p of pts) if (p.kw>maxV) maxV=p.kw;
   maxV=Math.max(maxV*1.05,1);
   const {cw,ch}=_napBg(ctx,w,h,m); _napGridY(ctx,w,h,m,maxV);
-  ctx.strokeStyle='#444'; ctx.lineWidth=1;
+  ctx.strokeStyle=cvTok('border'); ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(m.l,m.t+ch); ctx.lineTo(m.l+cw,m.t+ch); ctx.stroke();
-  ctx.font='9px sans-serif'; ctx.fillStyle='#555'; ctx.textAlign='center';
+  ctx.font='9px sans-serif'; ctx.fillStyle=cvTok('line-2'); ctx.textAlign='center';
   const yr=data.year;
   if (selMonth==null) {
     const ys=+new Date(yr,0,1),ye=+new Date(yr+1,0,1);
@@ -1278,9 +1279,9 @@ function _napDrawDauerlinie(ctx,w,h,data) {
   const s=data.stats,m={l:52,r:10,t:15,b:28};
   const {cw,ch}=_napBg(ctx,w,h,m); _napGridY(ctx,w,h,m,s.peak);
   const totalH=s.sorted.length*0.25;
-  ctx.strokeStyle='#444'; ctx.lineWidth=1;
+  ctx.strokeStyle=cvTok('border'); ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(m.l,m.t+ch); ctx.lineTo(m.l+cw,m.t+ch); ctx.stroke();
-  ctx.font='9px sans-serif'; ctx.textAlign='center'; ctx.fillStyle='#666';
+  ctx.font='9px sans-serif'; ctx.textAlign='center'; ctx.fillStyle=cvTok('line-2');
   [0,1000,2000,3000,4000,5000,6000,7000,8000,8760].filter(v=>v<=totalH+50).forEach(hv=>{
     const x=m.l+(hv/totalH)*cw;
     ctx.beginPath(); ctx.moveTo(x,m.t+ch); ctx.lineTo(x,m.t+ch+3); ctx.stroke();
@@ -1347,9 +1348,9 @@ function _napDrawDauerlinie(ctx,w,h,data) {
 function _napDrawTagesgang(ctx,w,h,data) {
   const s=data.stats,m={l:52,r:10,t:15,b:28};
   const {cw,ch}=_napBg(ctx,w,h,m); _napGridY(ctx,w,h,m,s.peak);
-  ctx.strokeStyle='#444'; ctx.lineWidth=1;
+  ctx.strokeStyle=cvTok('border'); ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(m.l,m.t+ch); ctx.lineTo(m.l+cw,m.t+ch); ctx.stroke();
-  ctx.font='9px sans-serif'; ctx.textAlign='center'; ctx.fillStyle='#666';
+  ctx.font='9px sans-serif'; ctx.textAlign='center'; ctx.fillStyle=cvTok('line-2');
   for (let hr=0;hr<=24;hr+=3) {
     const x=m.l+(hr/24)*cw;
     ctx.beginPath(); ctx.moveTo(x,m.t+ch); ctx.lineTo(x,m.t+ch+3); ctx.stroke();
@@ -1374,7 +1375,7 @@ function _napDrawTagesgang(ctx,w,h,data) {
   let lx=m.l+4;
   for (const {c,t} of lg) {
     ctx.fillStyle=c; ctx.fillRect(lx,m.t+4,10,6); lx+=12;
-    ctx.fillStyle='#aaa'; ctx.fillText(t,lx,m.t+10); lx+=ctx.measureText(t).width+8;
+    ctx.fillStyle=cvTok('muted'); ctx.fillText(t,lx,m.t+10); lx+=ctx.measureText(t).width+8;
   }
 }
 
@@ -1382,7 +1383,7 @@ function _napDrawTagesgang(ctx,w,h,data) {
 function _napDrawHeatmap(ctx,w,h,data) {
   const s=data.stats,m={l:32,r:5,t:5,b:16};
   const cw=w-m.l-m.r,ch=h-m.t-m.b;
-  ctx.fillStyle='#1a1a2e'; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle=cvTok('surface'); ctx.fillRect(0,0,w,h);
   const SLOTS=96; const cellW=cw/365,cellH=ch/SLOTS;
   let maxV=0; for (let i=0;i<s.heatmapGrid.length;i++) if (s.heatmapGrid[i]>maxV) maxV=s.heatmapGrid[i];
   for (let day=0;day<365;day++) for (let slot=0;slot<SLOTS;slot++) {
@@ -1390,7 +1391,7 @@ function _napDrawHeatmap(ctx,w,h,data) {
     ctx.fillStyle=_napHeatColor(maxV>0?v/maxV:0);
     ctx.fillRect(m.l+day*cellW,m.t+slot*cellH,Math.ceil(cellW)+0.5,Math.ceil(cellH)+0.5);
   }
-  ctx.font='8px sans-serif'; ctx.textAlign='right'; ctx.fillStyle='#666';
+  ctx.font='8px sans-serif'; ctx.textAlign='right'; ctx.fillStyle=cvTok('line-2');
   for (let hr=0;hr<24;hr+=6) ctx.fillText(`${hr}:00`,m.l-3,m.t+hr*4*cellH+4);
   const yr=s.year||new Date().getFullYear(),ys=+new Date(yr,0,1);
   const mo=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
@@ -1418,13 +1419,13 @@ function _napHeatColor(t) {
 function _napDrawLastentwicklung(ctx,w,h) {
   const rows=_napCalcYearlyLoads(); const cap=_napKapazitaetKw();
   const m={l:58,r:20,t:30,b:28};
-  ctx.fillStyle='#1a1a2e'; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle=cvTok('surface'); ctx.fillRect(0,0,w,h);
   if (!rows.length) {
-    ctx.fillStyle='#333'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillStyle=cvTok('border'); ctx.font='11px sans-serif'; ctx.textAlign='center';
     ctx.fillText('Keine Maßnahmen / keine Messdaten',w/2,h/2); return;
   }
   const cw=w-m.l-m.r,ch=h-m.t-m.b;
-  ctx.fillStyle='#1e1e2e'; ctx.fillRect(m.l,m.t,cw,ch);
+  ctx.fillStyle=cvTok('surface'); ctx.fillRect(m.l,m.t,cw,ch);
   let maxY=0;
   for (const r of rows) {
     const bezug=r.basePeak+r.addLoad;
@@ -1460,7 +1461,7 @@ function _napDrawLastentwicklung(ctx,w,h) {
     i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
   }
   ctx.stroke();
-  ctx.font='9px sans-serif'; ctx.textAlign='center'; ctx.fillStyle='#555';
+  ctx.font='9px sans-serif'; ctx.textAlign='center'; ctx.fillStyle=cvTok('line-2');
   const step=Math.max(1,Math.floor(rows.length/12));
   for (let i=0;i<rows.length;i+=step) ctx.fillText(rows[i].year,m.l+i*bSlot+bSlot/2,m.t+ch+12);
   if (cap&&cap>0) {
@@ -1474,7 +1475,7 @@ function _napDrawLastentwicklung(ctx,w,h) {
   ctx.font='9px sans-serif'; ctx.textAlign='left';
   const lg=[{c:'#2a3a5a',t:'Bezug Bestand'},{c:'rgba(255,138,60,.80)',t:'+ Zubau Last'},{c:'rgba(100,200,130,.80)',t:'Einsp. Zubau'}];
   let lx=m.l+4;
-  for (const e of lg) { ctx.fillStyle=e.c; ctx.fillRect(lx,m.t-15,9,7); lx+=11; ctx.fillStyle='#666'; ctx.fillText(e.t,lx,m.t-9); lx+=ctx.measureText(e.t).width+8; }
+  for (const e of lg) { ctx.fillStyle=e.c; ctx.fillRect(lx,m.t-15,9,7); lx+=11; ctx.fillStyle=cvTok('line-2'); ctx.fillText(e.t,lx,m.t-9); lx+=ctx.measureText(e.t).width+8; }
 }
 
 // ── Hover-Tooltips ────────────────────────────────────────────────────────────
@@ -1489,7 +1490,7 @@ function _napBindChartHover(canvas) {
     tt.style.left=(rawX+ttW>rect.width?rawX-ttW-28:rawX)+'px';
     tt.style.top=Math.max(4,Math.min(rawY,rect.height-ttH-4))+'px';
   }
-  function ttRow(l,v,c){return`<div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0;"><span style="color:var(--faint)">${l}</span><span style="font-weight:600;color:${c||'#ccc'}">${v}</span></div>`;}
+  function ttRow(l,v,c){return`<div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0;"><span style="color:var(--faint)">${l}</span><span style="font-weight:600;color:${c||cvTok('muted')}">${v}</span></div>`;}
   function ttHdr(t){return`<div style="font-size:12px;font-weight:700;color:var(--c-teal);margin-bottom:5px;border-bottom:1px solid var(--c-blue);padding-bottom:4px;">${t}</div>`;}
 
   canvas.addEventListener('mousemove',e=>{
@@ -1532,7 +1533,7 @@ function _napBindChartHover(canvas) {
       const wt=['So','Mo','Di','Mi','Do','Fr','Sa'];
       const mo=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
       const h2=Math.floor(slot/4),min2=(slot%4)*15;
-      showTT(e,ttHdr(`${wt[date.getDay()]}, ${date.getDate()}. ${mo[date.getMonth()]} ${yr2}`)+ttRow('Uhrzeit',`${String(h2).padStart(2,'0')}:${String(min2).padStart(2,'0')} Uhr`,'#aaa')+ttRow('Leistung',fmt(val),_napHeatColor(maxV>0?val/maxV:0)));
+      showTT(e,ttHdr(`${wt[date.getDay()]}, ${date.getDate()}. ${mo[date.getMonth()]} ${yr2}`)+ttRow('Uhrzeit',`${String(h2).padStart(2,'0')}:${String(min2).padStart(2,'0')} Uhr`,cvTok('muted'))+ttRow('Leistung',fmt(val),_napHeatColor(maxV>0?val/maxV:0)));
       return;
     }
     // Zeitreihe

@@ -2,6 +2,7 @@
 // ══════════════════════════════════════════════════════════════════
 // ── Sankey-Diagramm ─────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { _getEtaMap, fernwaermeEmF, freiflaechen, gasEmF, gebaeude, heizoelEmF, hhsEmF, netzEdges, pelletsEmF, stromEmF } from './01-globals-varianten.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { spitzenkessel } from './06c-dispatch-core.js';
@@ -50,7 +51,7 @@ export function _buildSankeyData(perBuilding) {
   // Feste Farben: Wärme=Rot, Strom=Gelb, Verluste=Grau/Schwarz
   const C_WAERME = '#e53935';   // Rot
   const C_STROM  = '#fdd835';   // Gelb
-  const C_VERLUST = '#616161';  // Dunkelgrau
+  const C_VERLUST = cvTok('line-2');  // Dunkelgrau
   // Energieträger-Farben (konsistent mit Programm)
   const C_ERDGAS      = _cfg.gaskessel?.color || '#78909c';
   const C_HEIZOEL     = _cfg.heizoel?.color   || '#455a64';
@@ -258,7 +259,7 @@ export function _buildSankeyCO2Data() {
   };
   const COLOR = {
     lwwp: '#66bb6a', fg: '#4fc3f7', geo: '#8d6e63',
-    gaskessel: '#ff9800', heizoel: '#546e7a', pellets: '#d7ccc8',
+    gaskessel: '#ff9800', heizoel: '#546e7a', pellets: cvTok('muted'),
     hhs: '#a1887f', fernwaerme: '#e53935', bhkw: '#ffb74d',
     stromkessel: '#fdd835', _autoGk: '#90a4ae', solarthermie: '#ffab40'
   };
@@ -286,7 +287,7 @@ export function _buildSankeyCO2Data() {
     } else if (kk === 'pellets') {
       const brennstoffMwh = d.waermeMwh / _getEtaMap().pellets;
       co2_t = brennstoffMwh * 1000 * pelletsEmF / 1e6;
-      flows.push({ from: 'Pellets', to: label, value: co2_t, color: '#d7ccc8' });
+      flows.push({ from: 'Pellets', to: label, value: co2_t, color: cvTok('muted') });
     } else if (kk === 'hhs') {
       const brennstoffMwh = d.waermeMwh / _getEtaMap().hhs;
       co2_t = brennstoffMwh * 1000 * hhsEmF / 1e6;
@@ -572,8 +573,8 @@ export function _drawSankey(canvas, data) {
     if (avgThick > 14 && fromCol === 0) {
       const mx = (fromX + toX) / 2;
       const my = (y0 + y1) / 2 + avgThick / 2;
-      ctx.fillStyle = 'rgba(255,255,255,0.75)';
-      ctx.font = '10px "DM Mono", monospace';
+      ctx.fillStyle = cvInk(0.75);
+      ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
       ctx.textAlign = 'center';
       const valTxt = f.value >= 10 ? f.value.toFixed(0) : f.value.toFixed(1);
       ctx.fillText(valTxt + ' ' + unit, mx, my);
@@ -617,9 +618,9 @@ export function _drawSankey(canvas, data) {
     'Trinkwarmwasser': '#ff8a65',     // TWW = orange (wie im Split-Chart)
     'Strombedarf Quartier': '#fdd835', // Strom = gelb
     // Verluste = dunkelgrau
-    'Netzverluste': '#616161',
-    'Speicherverluste': '#616161',
-    'Wirkungsgrad-\nverluste': '#616161',
+    'Netzverluste': cvTok('line-2'),
+    'Speicherverluste': cvTok('line-2'),
+    'Wirkungsgrad-\nverluste': cvTok('line-2'),
     // CO2
     'CO\u2082 gesamt': '#ef5350',
     'KWK-Gutschrift': '#81c784',
@@ -633,11 +634,11 @@ export function _drawSankey(canvas, data) {
     const h = nodeH[n];
     ctx.fillStyle = NODE_COLORS[n] || '#78909c';
     ctx.fillRect(x, y, NODE_W, h);
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.strokeStyle = cvInk(0.15);
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, NODE_W, h);
 
-    ctx.fillStyle = '#e8eaf0';
+    ctx.fillStyle = cvTok('text');
     ctx.font = '11px Inter, system-ui, sans-serif';
     const myCol = col[n];
     const isLeft = myCol === 0;
@@ -648,12 +649,12 @@ export function _drawSankey(canvas, data) {
     // Mehrzeilige Labels (mit \n)
     const lines = n.split('\n');
     lines.forEach((ln, li) => {
-      ctx.fillStyle = '#e8eaf0';
+      ctx.fillStyle = cvTok('text');
       ctx.font = '11px Inter, system-ui, sans-serif';
       ctx.fillText(ln, lx, ly + li * 13);
     });
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.font = '9px "DM Mono", monospace';
+    ctx.fillStyle = cvInk(0.45);
+    ctx.font = '9px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     const valTxt = nodeVal[n] >= 10 ? nodeVal[n].toFixed(0) : nodeVal[n].toFixed(1);
     ctx.fillText(valTxt + ' ' + unit, lx, ly + lines.length * 13);
   });

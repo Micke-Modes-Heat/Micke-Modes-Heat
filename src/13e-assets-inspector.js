@@ -1,5 +1,6 @@
 // ── 13e-assets-inspector.js — Editor-Panel für selektiertes Asset ──────────
 
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { createId } from './lib/util.js';
 import { massnahmenSektionHtml, massnahmenSektionVerdrahten, MASSN_TYPEN_ASSET } from './40-massnahmen-ui.js';
 import { anschlussWirksam } from './lib/anschlussleistung.js';
@@ -141,7 +142,7 @@ export function renderSidebarAssetList() {
         <span class="sb-asset-row-icon" style="background:${cfg.color};opacity:${opacity};">${cfg.icon}</span>
         <span class="sb-asset-row-name">${esc(a.name)}</span>
         ${pendingDot}
-        <button onclick="event.stopPropagation();toggleVormerkenAsset('${a.id}')" title="${a.feldVorgemerkt ? 'Vorgemerkt' : 'Vormerken'}" style="background:none;border:none;cursor:pointer;font-size:${a.feldVorgemerkt ? 13 : 11}px;color:${a.feldVorgemerkt ? '#f59e0b' : '#666'};padding:0 2px;margin-left:auto;line-height:1;flex-shrink:0;">★</button>
+        <button onclick="event.stopPropagation();toggleVormerkenAsset('${a.id}')" title="${a.feldVorgemerkt ? 'Vorgemerkt' : 'Vormerken'}" style="background:none;border:none;cursor:pointer;font-size:${a.feldVorgemerkt ? 13 : 11}px;color:${a.feldVorgemerkt ? '#f59e0b' : cvTok('line-2')};padding:0 2px;margin-left:auto;line-height:1;flex-shrink:0;">★</button>
         <span class="sb-asset-row-status sb-asset-row-status-${status}"></span>
       </div>`;
     }).join('');
@@ -796,7 +797,7 @@ function buildPropsForm(asset) {
 const MASSN_STATUS = {
   geplant:    { label: 'Geplant',   color: '#4fc3f7' },
   umgesetzt:  { label: 'Umgesetzt', color: '#4caf50' },
-  abgelehnt:  { label: 'Abgelehnt', color: '#9e9e9e' },
+  abgelehnt:  { label: 'Abgelehnt', color: cvTok('muted') },
 };
 
 const MASSN_TYP = {
@@ -995,7 +996,7 @@ function _drawPvInspectorChart(panel, asset) {
   const H  = 64;
   cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d');
-  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  ctx.fillStyle = cvInk(0.04);
   ctx.fillRect(0, 0, W, H);
 
   const mMax = Math.max(...mKwh);
@@ -1016,7 +1017,7 @@ function _drawPvInspectorChart(panel, asset) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillText(Math.round(mKwh[m] / 1000), x + barW / 2, H - 16 - bH + 10);
     }
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillStyle = cvInk(0.4);
     ctx.fillText(MLBL[m], x + barW / 2, H - 2);
   }
 
@@ -1093,7 +1094,7 @@ function _drawWindInspectorChart(panel, asset) {
   const H = 64;
   cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d');
-  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  ctx.fillStyle = cvInk(0.04);
   ctx.fillRect(0, 0, W, H);
 
   const mMax = Math.max(...mKwh);
@@ -1113,7 +1114,7 @@ function _drawWindInspectorChart(panel, asset) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillText(Math.round(mKwh[m] / 1000), x + barW / 2, H - 16 - bH + 10);
     }
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillStyle = cvInk(0.4);
     ctx.fillText(MLBL[m], x + barW / 2, H - 2);
   }
   ctx.textAlign = 'right';
@@ -1239,7 +1240,7 @@ function _wireZeitprofil(panel, asset) {
 
     // Stunden-Labels (0, 6, 12, 18)
     ctx.font      = '8px sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.fillStyle = cvInk(0.28);
     ctx.textAlign = 'center';
     [0, 6, 12, 18].forEach(h => {
       ctx.fillText(h + 'h', h * barW + barW / 2, H - 2);
@@ -1356,7 +1357,7 @@ function renderInspector(asset) {
     <div class="asset-ins-header" style="background:${cfg.color};">
       <span class="asset-ins-icon">${cfg.icon}</span>
       <span class="asset-ins-title">${cfg.label}</span>
-      <button onclick="toggleVormerkenAsset('${asset.id}')" title="${asset.feldVorgemerkt ? 'Vorgemerkt – klicken zum Entfernen' : 'Für Feldbegehung vormerken'}" style="background:none;border:none;cursor:pointer;margin-left:auto;font-size:${asset.feldVorgemerkt ? 16 : 13}px;color:${asset.feldVorgemerkt ? '#f59e0b' : '#888'};padding:0 6px;line-height:1;">★</button>
+      <button onclick="toggleVormerkenAsset('${asset.id}')" title="${asset.feldVorgemerkt ? 'Vorgemerkt – klicken zum Entfernen' : 'Für Feldbegehung vormerken'}" style="background:none;border:none;cursor:pointer;margin-left:auto;font-size:${asset.feldVorgemerkt ? 16 : 13}px;color:${asset.feldVorgemerkt ? '#f59e0b' : cvTok('faint')};padding:0 6px;line-height:1;">★</button>
       ${SS_STATIONS_TYPEN.has(asset.type) && ssIstStationsGebaeude(asset.buildingId, ASSETS.items) ? `<button data-click="openStationsSteckbriefFuerAsset('${asset.id}')" title="Stations-Steckbrief: die ganze Station (Schaltanlage, Trafos, NSHV) auf einem Blatt"
         style="background:rgba(0,0,0,0.25);border:1px solid rgba(102,187,106,0.55);border-radius:4px;
         cursor:pointer;color:var(--c-green);padding:2px 7px;line-height:1;font-size:12px;margin-right:4px;">Station</button>` : ''}

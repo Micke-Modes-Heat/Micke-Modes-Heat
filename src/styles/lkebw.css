@@ -558,3 +558,55 @@ body.ui-lkebw .float-panel.dragging{border-radius:var(--r-2)!important}
   .ebp-body{grid-template-columns:1fr}
   .ebp-spalte+.ebp-spalte{border-left:0;border-top:1px solid var(--border)}
 }
+
+/* ── 11. Kontextleiste: Platz und Anzeige „Neu“ ─────────────────────── */
+/* Die Leiste schnitt bisher rechts ab (overflow) — samt Aufklappmenü. Jetzt passt sie
+   sich stufenweise an: erst Zusatztexte weg, dann Untertitel der Schritte nur als Punkt. */
+.ui-ctx{overflow:visible;gap:16px}
+.ui-ctx .timeline-slider{width:110px}
+#schicht-bar{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.ui-schicht-wrap{position:relative;display:flex;align-items:center;gap:4px}
+.ui-schicht-btn{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 8px 0 10px;border:1px solid var(--line-2);border-radius:var(--r)!important;
+  background:var(--surface);color:var(--text);font:600 12.5px var(--font-ui);white-space:nowrap;cursor:pointer}
+.ui-schicht-btn:hover{border-color:var(--text)}
+.ui-schicht-btn.fest{border-style:dashed;border-color:var(--warn)}
+.ui-schicht-btn svg{color:var(--muted)}
+.ui-schicht-ab{font-weight:400;color:var(--muted)}
+.ui-schicht-fest{font-size:11px;font-weight:600;color:var(--warn);border:1px solid currentColor;border-radius:3px;padding:0 4px}
+.ui-schicht-x{display:grid;place-items:center;width:26px;height:26px;border:0;border-radius:var(--r)!important;background:none;color:var(--muted);cursor:pointer}
+.ui-schicht-x:hover{background:var(--surface2);color:var(--text)}
+.ui-schicht-punkt{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--sw,transparent);border:1px solid var(--sw,var(--line-2));flex:none}
+.ui-schicht-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:1500;min-width:280px;padding:4px 0 6px;flex-direction:column;
+  background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--r-2);box-shadow:var(--shadow-2)}
+.ui-schicht-menu>button{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;width:100%;padding:7px 14px;font-size:13px;color:var(--text);white-space:nowrap}
+.ui-schicht-menu>button:hover{background:var(--hover)}
+.ui-schicht-menu>button.active{color:var(--brand);font-weight:600;background:var(--brand-weak)}
+.ui-schicht-auge{display:flex;align-items:center;gap:9px;padding:5px 14px;font-size:13px;cursor:pointer}
+.ui-schicht-auge:hover{background:var(--hover)}
+.ui-schicht-auge input{margin:0}
+
+/* Ergebnisleiste: rechte Variantenangabe darf nicht über den Rand laufen */
+.ui-erg .fs-txt{max-width:220px}
+
+@media (max-width:1680px){
+  .ui-schicht-ab{display:none}
+  .ui-step{padding:0 16px 0 12px}
+  .ui-erg-var{display:none}
+}
+@media (max-width:1500px){
+  .ui-ctx-jahr .ui-ctx-label{display:none}
+  .ui-ctx .timeline-slider{width:90px}
+  .ui-ctx{gap:14px;padding:0 12px}
+  .ui-erg .fs-txt{max-width:170px}
+}
+@media (max-width:1366px){
+  /* Untertitel der Schritte nur noch als Statuspunkt; der Text steht auf der Projektseite */
+  .ui-step small{font-size:0;gap:0}
+  .ui-step{padding:0 12px 0 10px;column-gap:8px}
+  .ui-ctx-label,.ui-ctx .ctx-label{display:none}
+}
+
+/* ── 12. Diagrammflächen ────────────────────────────────────────────── */
+/* Canvas-Farben kommen aus src/lib/canvas-farben.js; die Flächen hinter einigen Canvas
+   waren in app.css als dunkler Schleier (rgba(0,0,0,.12)) gesetzt. */
+#sa-tab-speicher canvas,.ga-flaeche canvas,#qs-canvas,#hz-canvas{background:var(--surface2)}

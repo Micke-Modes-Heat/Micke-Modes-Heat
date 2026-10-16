@@ -1,6 +1,7 @@
 // ── 43-gebaeude-analyse.js — frei wählbare Gebäudeanalyse in der Gebäudeübersicht ──
 // Kennwert × Gruppierung × Darstellung (Boxplot, Balken, Streudiagramm). Rechnet mit den Werten im
 // Betrachtungsjahr (Sanierungen, Abriss, Neubau). Klick auf einen Punkt markiert das Gebäude in der Tabelle.
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { GA_GRUPPIERUNGEN, GA_KENNWERTE, gaAuswerten, gaBalkenwert, nutzflaeche } from './lib/gebaeude-analyse.js';
 import { nwgVergleichswert } from './lib/vergleichswerte-nwg.js';
 import { baZustandAusText } from './lib/bestandsanlage.js';
@@ -80,7 +81,7 @@ function _flaeche() {
   const ctx = c.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  ctx.font = '10px "DM Mono", monospace';
+  ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
   return { ctx, W, H };
 }
 
@@ -97,7 +98,7 @@ function _skala(lo, hi, ziel = 5) {
 const _fmt = (v, jahr, schritt) => jahr ? String(Math.round(v)) : nf(v, schritt < 1 ? 1 : 0);
 
 function _achseY(ctx, L, T, ph, W, R, sk, einheit, jahr) {
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.strokeStyle = cvInk(0.07); ctx.fillStyle = cvInk(0.55);
   for (const v of sk.ticks) {
     const y = T + ph * (1 - (v - sk.lo) / (sk.hi - sk.lo));
     ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(W - R, y); ctx.stroke();
@@ -116,7 +117,7 @@ function _zeichne() {
   const info = document.getElementById('ga-info');
   const kw = a.kennwert;
   if (!a.gesamt.n) {
-    ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fillText('Keine Gebäude mit Werten für diesen Kennwert.', 12, H / 2);
+    ctx.fillStyle = cvInk(0.4); ctx.fillText('Keine Gebäude mit Werten für diesen Kennwert.', 12, H / 2);
     if (info) info.textContent = '';
     return;
   }
@@ -126,7 +127,7 @@ function _zeichne() {
     const kx = GA_KENNWERTE[S.x] || GA_KENNWERTE.baujahr;
     const pts = [];
     a.gruppen.forEach((gr, gi) => gr.punkte.forEach(p => { const xv = kx.wert(p.g, p.st, ctxD); if (Number.isFinite(xv)) pts.push({ ...p, xv, gi }); }));
-    if (!pts.length) { ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fillText('Keine Wertepaare für diese Achsen.', 12, H / 2); return; }
+    if (!pts.length) { ctx.fillStyle = cvInk(0.4); ctx.fillText('Keine Wertepaare für diese Achsen.', 12, H / 2); return; }
     const xJahr = S.x === 'baujahr', yJahr = S.kennwert === 'baujahr';
     let xmin = Math.min(...pts.map(p => p.xv)), xmax = Math.max(...pts.map(p => p.xv));
     if (xmax - xmin < 1e-9) { xmin -= 1; xmax += 1; }
@@ -134,7 +135,7 @@ function _zeichne() {
     const skY = _skala(yJahr ? Math.min(...pts.map(p => p.wert)) : 0, Math.max(...pts.map(p => p.wert)), 5);
     const xlo = skX.lo, xhi = skX.hi, ylo = skY.lo, yhi = skY.hi;
     _achseY(ctx, L, T, ph, W, R, skY, kw.einheit, yJahr);
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillStyle = cvInk(0.55);
     skX.ticks.forEach((v, i) => {
       const t = _fmt(v, xJahr, skX.schritt), x = L + (v - xlo) / (xhi - xlo) * pw, tw = ctx.measureText(t).width;
       ctx.fillText(t, i === skX.ticks.length - 1 ? x - tw : i === 0 ? x : x - tw / 2, H - 16);
@@ -179,18 +180,18 @@ function _zeichne() {
       // Einzelwerte als Punkte (leicht gestreut)
       g.punkte.forEach((p, j) => {
         const x = cx + ((j * 37) % 17 - 8) / 8 * w * 0.35, y = yv(p.wert);
-        ctx.globalAlpha = 0.85; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 1.8, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+        ctx.globalAlpha = 0.85; ctx.fillStyle = cvTok('text'); ctx.beginPath(); ctx.arc(x, y, 1.8, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
         _treffer.push({ x, y, r: 4, g: p.g, text: `${esc(p.g.name || 'Gebäude ' + p.g.id)}<br>${kw.label}: ${nf(p.wert, 1)} ${kw.einheit}` });
       });
       _treffer.push({ x: cx, y: yv(s.median), r: w / 2, box: true, text: `<b>${esc(g.name)}</b> (${s.n} Gebäude)<br>Median ${nf(s.median, 1)} · Mittel ${nf(s.gewMittel, 1)} ${kw.einheit}<br>25–75 %: ${nf(s.q1, 1)} – ${nf(s.q3, 1)}<br>Min ${nf(s.min, 1)} · Max ${nf(s.max, 1)}` });
     } else {
       const v = gaBalkenwert(s, kw, S.aggregat);
       ctx.globalAlpha = 0.8; ctx.fillRect(cx - w / 2, yv(v), w, Math.max(1, yv(lo) - yv(v))); ctx.globalAlpha = 1;
-      ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillText(nf(v, v < 100 ? 1 : 0), cx - w / 2, yv(v) - 3);
+      ctx.fillStyle = cvInk(0.8); ctx.fillText(nf(v, v < 100 ? 1 : 0), cx - w / 2, yv(v) - 3);
       _treffer.push({ x: cx, y: (yv(v) + yv(lo)) / 2, r: Math.max(w / 2, (yv(lo) - yv(v)) / 2), box: true, text: `<b>${esc(g.name)}</b> (${s.n} Gebäude)<br>${S.aggregat === 'median' ? 'Median' : (S.aggregat === 'summe' || (S.aggregat === 'auto' && kw.summierbar)) ? 'Summe' : kw.gewicht ? 'flächengewichtetes Mittel' : 'Mittel'}: ${nf(v, 1)} ${kw.einheit}` });
     }
     // Gruppenname schräg darunter
-    ctx.save(); ctx.translate(cx, H - B + 10); ctx.rotate(-0.35); ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.save(); ctx.translate(cx, H - B + 10); ctx.rotate(-0.35); ctx.fillStyle = cvInk(0.6);
     const name = g.name.length > 18 ? g.name.slice(0, 17) + '…' : g.name;
     ctx.fillText(name, -ctx.measureText(name).width / 2 - 4, 4); ctx.restore();
   });

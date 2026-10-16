@@ -3,6 +3,7 @@
 // Fadenkreuz, Streuung mit Farbskala, Carpet (Tag × Stunde), Monatsbalken, Dauerlinie. Darauf aufbauend die
 // COP-Analyse je Wärmepumpe im Reiter „VL / COP“ (Stundenreihen aus der Einsatzplanung, window._wpStunden).
 
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import {
   MONATE, MONATS_START_H, stundeAlsText, klassieren, monatsSummen, dauerlinie, statistik, quotient,
@@ -259,7 +260,7 @@ export class DaDiagramm {
       if (t < g.a || t >= g.b) { this._tip(null); this.zeichnen(); return; }
       this.zeichnen();
       const ctx = this.c.getContext('2d');
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(g.x(t), g.PAD.t); ctx.lineTo(g.x(t), g.PAD.t + g.pH); ctx.stroke();
+      ctx.strokeStyle = cvInk(0.35); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(g.x(t), g.PAD.t); ctx.lineTo(g.x(t), g.PAD.t + g.pH); ctx.stroke();
       const zeilen = s.reihen.map(r => `<span style="color:${r.farbe}">■</span> ${esc(r.name)}: <b>${nf(r.werte[t], Math.abs(r.werte[t]) < 20 ? 2 : 0)}</b> ${esc(r.einheit || '')}`);
       this._tip(`<b>${stundeAlsText(t)}</b><br>${zeilen.join('<br>')}`, mx, my);
     } else if (s.art === 'streu') {
@@ -366,7 +367,7 @@ export function wpAnalyseRender() {
       : '';
   wrap.innerHTML = `
     <div class="wpa-kopf">
-      <div class="wpa-chips">${chip('alle', 'Alle', '#4fc3f7')}${d.keys.map(k => chip(k, ERZEUGER_CFG[k]?.label || k, ERZEUGER_CFG[k]?.color || '#aaa')).join('')}</div>
+      <div class="wpa-chips">${chip('alle', 'Alle', '#4fc3f7')}${d.keys.map(k => chip(k, ERZEUGER_CFG[k]?.label || k, ERZEUGER_CFG[k]?.color || cvTok('muted'))).join('')}</div>
       <div class="wpa-ansicht">${ansicht}</div>
     </div>
     <div class="wpa-kpis">
@@ -398,7 +399,7 @@ export function wpAnalyseRender() {
     const reihen = [{ name: 'COP', farbe: d.farbe, werte: Float32Array.from(d.cop), achse: 'l', einheit: '', band: true }];
     if (d.tq) reihen.push({ name: 'Quelltemperatur', farbe: '#29b6f6', werte: d.tq, achse: 'r', einheit: '°C' });
     if (d.vl) reihen.push({ name: 'Vorlauf', farbe: '#ef5350', werte: d.vl, achse: 'r', einheit: '°C' });
-    if (d.at) reihen.push({ name: 'Außentemperatur', farbe: '#9e9e9e', werte: d.at, achse: 'r', einheit: '°C' });
+    if (d.at) reihen.push({ name: 'Außentemperatur', farbe: cvTok('muted'), werte: d.at, achse: 'r', einheit: '°C' });
     _wpaDiagramm.setze({ art: 'zeit', reihen, fenster: WPA.fenster, einheitL: 'COP', einheitR: '°C', beiZoom: (aa, bb) => { WPA.fenster = [aa, bb]; wpAnalyseRender(); } });
     leg(reihen.map(r => [r.farbe, r.name + (r.band ? ' (Linie Mittel, Band min–max)' : '')]));
   } else if (WPA.ansicht === 'kennlinie') {
@@ -407,7 +408,7 @@ export function wpAnalyseRender() {
     const farbe = WPA.xAchse === 'vl' ? d.at : d.vl, farbName = WPA.xAchse === 'vl' ? 'Außentemp. °C' : 'Vorlauf °C';
     const grau = WPA.mitTheorie && d.copTheorie ? { x: Float32Array.from(xw, (v, t) => (maske[t] && !betrieb[t] && d.copTheorie[t] > 0 ? v : NaN)), y: d.copTheorie } : null;
     _wpaDiagramm.setze({ art: 'streu', x: xw, y: copNaN, farbe, maske: betrieb, xName, yName: 'COP', farbName, grau });
-    leg([['#4fc3f7', 'je Betriebsstunde ein Punkt, Farbe = ' + farbName], ...(grau ? [['#999', 'COP, den die WP in Stunden ohne Betrieb hätte']] : [])]);
+    leg([['#4fc3f7', 'je Betriebsstunde ein Punkt, Farbe = ' + farbName], ...(grau ? [[cvTok('muted'), 'COP, den die WP in Stunden ohne Betrieb hätte']] : [])]);
   } else if (WPA.ansicht === 'carpet') {
     if (WPA.carpet === 'status') {
       _wpaDiagramm.setze({ art: 'carpet', werte: Float32Array.from(d.status), maske, name: 'Zustand', kategorien: STATUS_KAT });
@@ -416,7 +417,7 @@ export function wpAnalyseRender() {
       const w = WPA.carpet === 'th' ? d.th : WPA.carpet === 'el' ? d.el : copNaN;
       const name = WPA.carpet === 'th' ? 'Wärme' : WPA.carpet === 'el' ? 'Strom' : 'COP', einheit = WPA.carpet === 'cop' ? '' : 'kW';
       _wpaDiagramm.setze({ art: 'carpet', werte: w, maske: WPA.carpet === 'cop' ? betrieb : maske, name, einheit });
-      leg([['#888', 'je Tag eine Spalte (x), je Stunde eine Zeile (y); leer = nicht im Zeitraum bzw. kein Betrieb']]);
+      leg([[cvTok('faint'), 'je Tag eine Spalte (x), je Stunde eine Zeile (y); leer = nicht im Zeitraum bzw. kein Betrieb']]);
     }
   } else if (WPA.ansicht === 'monate') {
     const ths = monatsSummen(d.th, maske), els = monatsSummen(d.el, maske);

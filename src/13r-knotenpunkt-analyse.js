@@ -8,6 +8,7 @@
 //   Verbraucher → _elQuartierFromGeb × Gebäudeanteil
 //   Trafo/UV/…  → Topologie-BFS: Σ(downstream Last) − Σ(downstream Erzeuger)
 
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { ASSETS, ASSET_CFG, TYPE_RANK, getAsset, getAssetStatus } from './13a-assets-core.js';
 import { makePvProfile8760, _PV_SPEZ_DEFAULT } from './09a-pv-profile.js';
 import { globalYear } from './01-globals-varianten.js';
@@ -230,10 +231,10 @@ function _monthlyMwh(prof) {
 // ── Chart-Renderer ────────────────────────────────────────────────────────────
 // Gleicher dark-Stil wie NAP-Analyse
 
-const BG   = '#0f0f1a';
-const SFX  = 'rgba(255,255,255,0.06)';
-const GRID = 'rgba(255,255,255,0.10)';
-const LBL  = 'rgba(255,255,255,0.40)';
+const BG   = cvTok('surface');
+const SFX  = cvInk(0.06);
+const GRID = cvInk(0.1);
+const LBL  = cvInk(0.4);
 
 function _profileColor(asset) {
   if (GENERATOR_TYPES.has(asset.type)) return '#a5d6a7';
@@ -250,7 +251,7 @@ function _vLine(ctx,x,H,col) {
   ctx.beginPath(); ctx.moveTo(x+.5,0); ctx.lineTo(x+.5,H); ctx.stroke(); ctx.restore();
 }
 function _noData(ctx,W,H) {
-  ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.font='12px sans-serif'; ctx.textAlign='center';
+  ctx.fillStyle=cvInk(0.25); ctx.font='12px sans-serif'; ctx.textAlign='center';
   ctx.fillText('Keine Profildaten — bitte Berechnung starten',W/2,H/2);
 }
 function _axisY(ctx,vMax,vMin,H,hasNeg) {
@@ -272,7 +273,7 @@ function _drawZeitReihe(cv, prof, color, zoomMonth=null) {
   const range=vMax-vMin||1;
   const hasNeg=vMin<-0.1;
   const zeroY=hasNeg?Math.round(vMax/range*H):H;
-  if (hasNeg) _hLine(ctx,zeroY,W,'rgba(255,255,255,0.18)');
+  if (hasNeg) _hLine(ctx,zeroY,W,cvInk(0.18));
 
   const n=prof.length;
   for (let col=0;col<W;col++) {
@@ -321,7 +322,7 @@ function _drawDauerlinie(cv,prof,color) {
   const range=vMax-vMin||1;
   const hasNeg=vMin<-0.1;
   const zeroY=hasNeg?Math.round(vMax/range*H):H;
-  if (hasNeg) _hLine(ctx,zeroY,W,'rgba(255,255,255,0.18)');
+  if (hasNeg) _hLine(ctx,zeroY,W,cvInk(0.18));
 
   // Fläche füllen
   ctx.fillStyle=color+'55';
@@ -379,7 +380,7 @@ function _drawMonat(cv,prof,color) {
   const hasNeg=mwh.some(v=>v<-0.01);
   const posMax=Math.max(...mwh.filter(v=>v>0),0)||mMax;
   const zeroY=hasNeg?Math.round(posMax/(posMax+Math.abs(Math.min(...mwh,0)))*(H-20)):H-20;
-  if (hasNeg) _hLine(ctx,zeroY,W,'rgba(255,255,255,0.18)');
+  if (hasNeg) _hLine(ctx,zeroY,W,cvInk(0.18));
 
   const barW=Math.floor((W-24)/12);
   const gap =Math.max(1,Math.floor((W-24-barW*12)/11));
@@ -393,7 +394,7 @@ function _drawMonat(cv,prof,color) {
     ctx.fillRect(x,v>=0?zeroY-bH:zeroY,barW,bH);
     // Wert
     const fmt=Math.abs(v)>=100?Math.round(v).toLocaleString('de-DE'):v.toFixed(1);
-    ctx.fillStyle='rgba(255,255,255,0.7)';
+    ctx.fillStyle=cvInk(0.7);
     if (bH>12) ctx.fillText(fmt,x+barW/2,v>=0?zeroY-bH-2:zeroY+bH+9);
     // Monatskürzel
     ctx.fillStyle=LBL;
@@ -489,7 +490,7 @@ function _ensureTip() {
   el.id='kna-tip';
   el.style.cssText='position:fixed;pointer-events:none;z-index:10000;display:none;'+
     'background:var(--surface);border:1px solid rgba(var(--ink),.2);border-radius:6px;'+
-    'padding:6px 10px;font-size:12.5px;color:var(--muted);font-family:"DM Mono",monospace;'+
+    'padding:6px 10px;font-size:12.5px;color:var(--muted);font-family:"Source Sans 3","Segoe UI",Tahoma,sans-serif;'+
     'white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.6);line-height:1.6;';
   document.body.appendChild(el);
 }
@@ -732,7 +733,7 @@ function _renderRightPanel() {
       opacity:${isOn ? 1 : 0.35};">
       <button onclick="knaToggleContrib('${da.id}')" title="${isOn?'Ausblenden':'Einblenden'}"
         style="width:11px;height:11px;border-radius:50%;cursor:pointer;padding:0;flex-shrink:0;
-        border:2px solid ${dcfg.color||'#888'};background:${isOn?dcfg.color||'#888':'transparent'};"></button>
+        border:2px solid ${dcfg.color||cvTok('faint')};background:${isOn?dcfg.color||cvTok('faint'):'transparent'};"></button>
       <span style="width:14px;text-align:center;flex-shrink:0;">${dcfg.icon||'?'}</span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);">${da.name}</span>
       <span style="color:${dirCol};font-weight:700;">${dir}</span>
@@ -760,7 +761,7 @@ function _renderRightPanel() {
         </span>
         <div style="display:flex;gap:3px;">
           ${qBtn('Alle ☑',  'knaToggleAllContribs(true)',  '#4fc3f7')}
-          ${qBtn('Keine',   'knaToggleAllContribs(false)', '#555')}
+          ${qBtn('Keine',   'knaToggleAllContribs(false)', cvTok('line-2'))}
         </div>
       </div>
       <div style="display:flex;gap:3px;">
@@ -783,9 +784,9 @@ function _renderSidebar() {
   const tfBtn = (val, lbl) =>
     `<button onclick="knaSetTypeFilter('${val}')"
       style="flex:1;padding:3px 2px;border-radius:3px;cursor:pointer;font-size:11px;
-      border:1px solid ${tf===val?'#4fc3f7':'#2a3a3a'};
+      border:1px solid ${tf===val?'#4fc3f7':cvTok('border')};
       background:${tf===val?'rgba(79,195,247,.12)':'transparent'};
-      color:${tf===val?'#4fc3f7':'#555'};">${lbl}</button>`;
+      color:${tf===val?'#4fc3f7':cvTok('line-2')};">${lbl}</button>`;
 
   const showInfra = tf==='alle'||tf==='infra';
   const showErzg  = tf==='alle'||tf==='erzeuger';
@@ -825,10 +826,10 @@ function _renderSidebar() {
         background:${sel?'rgba(79,195,247,.08)':'transparent'};"
         onmouseover="this.style.background='rgba(255,255,255,.04)'"
         onmouseout="this.style.background='${sel?'rgba(79,195,247,.08)':'transparent'}'">
-        <span style="width:8px;height:8px;border-radius:50%;background:${cfg.color||'#888'};flex-shrink:0;"></span>
+        <span style="width:8px;height:8px;border-radius:50%;background:${cfg.color||cvTok('faint')};flex-shrink:0;"></span>
         <span style="width:14px;text-align:center;flex-shrink:0;">${cfg.icon||'?'}</span>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);">${a.name}</span>
-        <span style="font-size:11px;color:${cfg.color||'#666'};white-space:nowrap;">${cfg.label||a.type}</span>
+        <span style="font-size:11px;color:${cfg.color||cvTok('line-2')};white-space:nowrap;">${cfg.label||a.type}</span>
       </div>`;
     }
   }
@@ -870,9 +871,9 @@ function _renderMain() {
   // Chart-Tabs
   const tabBtn=(id,label,mode)=>`<button onclick="knaSetChartMode('${mode}')"
     style="padding:5px 12px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;
-    border:1px solid ${_K.chartMode===mode?col:' #2a3a3a'};
+    border:1px solid ${_K.chartMode===mode?col:cvTok('border')};
     background:${_K.chartMode===mode?col+'22':'transparent'};
-    color:${_K.chartMode===mode?col:'#555'};">${label}</button>`;
+    color:${_K.chartMode===mode?col:cvTok('line-2')};">${label}</button>`;
 
   // Monats-Zoom: Profil slicen wenn aktiv (nur für zeitreihe + heatmap)
   const canZoom  = (_K.chartMode==='zeitreihe'||_K.chartMode==='heatmap');
@@ -887,21 +888,21 @@ function _renderMain() {
     <div style="display:flex;gap:2px;margin-top:4px;flex-wrap:wrap;">
       <button onclick="knaSetZoomMonth(null)"
         style="padding:2px 6px;border-radius:3px;cursor:pointer;font-size:11px;
-        border:1px solid ${zm===null?'#4fc3f7':'#2a3a3a'};
+        border:1px solid ${zm===null?'#4fc3f7':cvTok('border')};
         background:${zm===null?'rgba(79,195,247,.12)':'transparent'};
-        color:${zm===null?'#4fc3f7':'#555'};">Jahr</button>
+        color:${zm===null?'#4fc3f7':cvTok('line-2')};">Jahr</button>
       ${mShort.map((l,i)=>`<button onclick="knaSetZoomMonth(${i})"
         style="padding:2px 5px;border-radius:3px;cursor:pointer;font-size:11px;
-        border:1px solid ${zm===i?col:'#2a3a3a'};
+        border:1px solid ${zm===i?col:cvTok('border')};
         background:${zm===i?col+'22':'transparent'};
-        color:${zm===i?col:'#555'};">${l}</button>`).join('')}
+        color:${zm===i?col:cvTok('line-2')};">${l}</button>`).join('')}
     </div>` : '';
 
   top.innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;
-          border-left:3px solid ${cfg.color||'#888'};background:rgba(var(--ink),.03);border-radius:0 4px 4px 0;">
+          border-left:3px solid ${cfg.color||cvTok('faint')};background:rgba(var(--ink),.03);border-radius:0 4px 4px 0;">
           <span style="font-size:18px;">${cfg.icon||'?'}</span>
           <div>
             <div style="font-weight:700;font-size:13px;color:var(--muted);">${asset.name}</div>
@@ -965,7 +966,7 @@ function _renderMain() {
       if (h100neg>0) kpis.push(['#ef5350','↓ > 100% Einsp.',   h100neg.toLocaleString('de-DE')+' h/a']);
       if (h80neg>0)  kpis.push(['#ff9800','↓ > 80% Einsp.',    (h80neg+h100neg).toLocaleString('de-DE')+' h/a']);
     } else {
-      kpis.push(['#444','Nennleistung', 'nicht konfiguriert']);
+      kpis.push([cvTok('border'),'Nennleistung', 'nicht konfiguriert']);
     }
   }
 

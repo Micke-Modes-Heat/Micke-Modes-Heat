@@ -7,6 +7,7 @@
 // ==========================================================================
 
 // ── Stundenscharfer Zeitschieber (Hourly Live-Modus) ─────────────────────
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { currentViewMode, setViewMode } from './04a-ui-panels.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 
@@ -93,7 +94,7 @@ export function _drawStackedDispatch(canvas, currentHour, keys, hourly, ss) {
     if (!hourly[k]) continue;
     if (k === '_autoGk' || k === '_thermSpeicher' || k === 'solarthermie') continue; // separat unten
     allKeys.push(k);
-    allColors.push(ERZEUGER_CFG[k]?.color || '#aaa');
+    allColors.push(ERZEUGER_CFG[k]?.color || cvTok('muted'));
     allLabels.push(ERZEUGER_CFG[k]?.label || k);
   }
   if (hourly['solarthermie']) { allKeys.push('solarthermie'); allColors.push('#ffab40'); allLabels.push('ST'); }
@@ -150,22 +151,22 @@ export function _drawStackedDispatch(canvas, currentHour, keys, hourly, ss) {
   bgGrad.addColorStop(1, 'rgba(0,0,0,0.08)');
   ctx.fillStyle = bgGrad;
   ctx.beginPath(); ctx.roundRect(PAD.l, PAD.t, plotW, plotH, 6); ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1;
+  ctx.strokeStyle = cvInk(0.04); ctx.lineWidth = 1;
   ctx.beginPath(); ctx.roundRect(PAD.l, PAD.t, plotW, plotH, 6); ctx.stroke();
 
   // ── Horizontale Rasterlinien + Y-Achse ──
   const nTicks = 4;
-  ctx.font = '9px "DM Mono", monospace';
+  ctx.font = '9px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   for (let i = 0; i <= nTicks; i++) {
     const frac = i / nTicks;
     const yy = PAD.t + plotH * (1 - frac);
     const kw = maxKw * frac;
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.strokeStyle = cvInk(0.06);
     ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(PAD.l + plotW, yy); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillStyle = cvInk(0.35);
     ctx.fillText(kw >= 1000 ? (kw / 1000).toFixed(1) + ' MW' : kw.toFixed(0) + ' kW', PAD.l - 4, yy);
   }
 
@@ -189,7 +190,7 @@ export function _drawStackedDispatch(canvas, currentHour, keys, hourly, ss) {
     }
     ctx.closePath();
     // Solid fill
-    const _col = allColors[ki] || '#aaa';
+    const _col = allColors[ki] || cvTok('muted');
     ctx.fillStyle = _col;
     ctx.globalAlpha = 0.3;
     ctx.fill();
@@ -218,7 +219,7 @@ export function _drawStackedDispatch(canvas, currentHour, keys, hourly, ss) {
     if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   // Lastgang-Linie
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.strokeStyle = cvInk(0.4);
   ctx.lineWidth = 1;
   ctx.globalAlpha = 1;
   ctx.stroke();
@@ -249,7 +250,7 @@ export function _drawStackedDispatch(canvas, currentHour, keys, hourly, ss) {
     ctx.setLineDash([]);
     // Rechte Y-Achse: Speicher SoC
     ctx.textAlign = 'left';
-    ctx.font = '8px "DM Mono", monospace';
+    ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     ctx.fillStyle = 'rgba(38,166,154,0.5)';
     for (let i = 0; i <= 2; i++) {
       const frac = i / 2;
@@ -294,15 +295,15 @@ export function _drawStackedDispatch(canvas, currentHour, keys, hourly, ss) {
     ctx.globalAlpha = 0.8;
     ctx.beginPath(); ctx.roundRect(legX, legY - 4, 8, 8, 2); ctx.fill();
     ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillStyle = cvInk(0.45);
     ctx.fillText(allLabels[ki], legX + 11, legY + 3);
     legX += ctx.measureText(allLabels[ki]).width + 20;
   }
   // Bedarf
-  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = cvTok('text'); ctx.lineWidth = 1.5; ctx.globalAlpha = 0.5;
   ctx.beginPath(); ctx.moveTo(legX, legY); ctx.lineTo(legX + 10, legY); ctx.stroke();
   ctx.globalAlpha = 1;
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fillStyle = cvInk(0.45);
   ctx.fillText('Bedarf', legX + 14, legY + 3);
   // Speicher-Legende
   if (tss && tss.socH && tss.params?.kapKwh > 0) {
@@ -312,7 +313,7 @@ export function _drawStackedDispatch(canvas, currentHour, keys, hourly, ss) {
     ctx.strokeStyle = '#26a69a'; ctx.lineWidth = 1.2; ctx.globalAlpha = 0.7;
     ctx.beginPath(); ctx.moveTo(legX, legY); ctx.lineTo(legX + 10, legY); ctx.stroke();
     ctx.restore();
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillStyle = cvInk(0.45);
     ctx.fillText('Speicher SoC', legX + 14, legY + 3);
   }
 }
@@ -349,7 +350,7 @@ export function _drawStromBilanz(canvas, currentHour) {
   const hasQuartier = quartierH && quartierH.some(v => v > 0.1);
 
   if (!hasPv && !hasBhkw && !hasWp && !hasSk && !hasQuartier) {
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillStyle = cvInk(0.15);
     ctx.font = '11px "DM Sans", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Keine Stromdaten', W / 2, H / 2);
@@ -393,15 +394,15 @@ export function _drawStromBilanz(canvas, currentHour) {
   // ── Hintergrund ──
   ctx.fillStyle = 'rgba(0,0,0,0.15)';
   ctx.beginPath(); ctx.roundRect(PAD.l, PAD.t, plotW, plotH, 6); ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1;
+  ctx.strokeStyle = cvInk(0.04); ctx.lineWidth = 1;
   ctx.beginPath(); ctx.roundRect(PAD.l, PAD.t, plotW, plotH, 6); ctx.stroke();
 
   // ── Nulllinie ──
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 0.5;
+  ctx.strokeStyle = cvInk(0.12); ctx.lineWidth = 0.5;
   ctx.beginPath(); ctx.moveTo(PAD.l, zeroY); ctx.lineTo(PAD.l + plotW, zeroY); ctx.stroke();
 
   // ── Y-Achse ──
-  ctx.font = '9px "DM Mono", monospace';
+  ctx.font = '9px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
   ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
   const nTicks = 3;
   for (let i = 1; i <= nTicks; i++) {
@@ -410,18 +411,18 @@ export function _drawStromBilanz(canvas, currentHour) {
     if (maxPos > 0.1) {
       const yy = zeroY - (zeroY - PAD.t) * frac;
       const kw = maxPos * frac;
-      ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 0.5;
+      ctx.strokeStyle = cvInk(0.05); ctx.lineWidth = 0.5;
       ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(PAD.l + plotW, yy); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillStyle = cvInk(0.3);
       ctx.fillText(kw >= 1000 ? (kw / 1000).toFixed(1) + ' MW' : kw.toFixed(0) + ' kW', PAD.l - 4, yy);
     }
     // Negative Achse
     if (maxNeg > 0.1) {
       const yy = zeroY + (PAD.t + plotH - zeroY) * frac;
       const kw = maxNeg * frac;
-      ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 0.5;
+      ctx.strokeStyle = cvInk(0.05); ctx.lineWidth = 0.5;
       ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(PAD.l + plotW, yy); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillStyle = cvInk(0.3);
       ctx.fillText(kw >= 1000 ? (kw / 1000).toFixed(1) + ' MW' : kw.toFixed(0) + ' kW', PAD.l - 4, yy);
     }
   }
@@ -504,7 +505,7 @@ export function _drawStromBilanz(canvas, currentHour) {
 
   // ── Achsen-Labels ──
   ctx.font = '8px "DM Sans", sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillStyle = cvInk(0.25);
   ctx.textAlign = 'left';
   if (maxPos > 0.1) ctx.fillText('Erzeugung \u2191', PAD.l + 4, PAD.t + 10);
   if (maxNeg > 0.1) ctx.fillText('Verbrauch \u2193', PAD.l + 4, PAD.t + plotH - 4);
@@ -522,7 +523,7 @@ export function _drawStromBilanz(canvas, currentHour) {
   for (const [lbl, col] of legItems) {
     ctx.fillStyle = col; ctx.globalAlpha = 0.8;
     ctx.beginPath(); ctx.roundRect(legX, legY - 4, 8, 8, 2); ctx.fill();
-    ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.globalAlpha = 1; ctx.fillStyle = cvInk(0.45);
     ctx.fillText(lbl, legX + 11, legY + 3);
     legX += ctx.measureText(lbl).width + 18;
   }
@@ -537,11 +538,11 @@ export function _buildFlowSVG(container, data) {
 
   // Farben — dezent, passend zum var(--surface)/var(--border) Stil
   const C = {
-    waerme: '#9b5b5b', strom: '#8a7a3d', wp: '#5e8a82', gk: '#6b7b7c',
+    waerme: '#9b5b5b', strom: '#8a7a3d', wp: '#5e8a82', gk: cvTok('line-2'),
     pellets: '#7a6248', bhkw: '#8a6b40', solar: '#8a7040', speicher: '#4a7568',
     pv: '#8a7a3d', netz: '#5a6878', hh: '#5e6b70', bat: '#6e6488',
     einsp: '#4e7a52', umwelt: '#4a7b6e', verlust: '#4a5060',
-    text: '#7a8898', dim: '#4a5568', bus: '#3a4250', bg: '#111318',
+    text: '#7a8898', dim: '#4a5568', bus: '#3a4250', bg: cvTok('surface'),
   };
   const erzCMap = { lwwp:C.wp, fg:C.wp, geo:C.wp, gaskessel:C.gk, _autoGk:C.gk, bhkw:C.bhkw, pellets:C.pellets, hhs:C.pellets, heizoel:C.gk, fernwaerme:C.waerme, stromkessel:C.strom, solarthermie:C.solar };
 
@@ -779,7 +780,7 @@ export function _buildFlowSVG(container, data) {
 const _SANKEY_C = {
   netz:'#5a6878', pv:'#8a7a3d', bhkw:'#8a6b40', hh:'#5e6b70', sk:'#7a5b8a',
   bat:'#6e6488', wp:'#5e8a82', fw:'#9b5b5b', pellets:'#7a6248', hhs:'#5d4838',
-  gk:'#6b7b7c', speicher:'#4a7568', bedarf:'#9b5b5b',
+  gk:cvTok('line-2'), speicher:'#4a7568', bedarf:'#9b5b5b',
   hubStrom:'#8a7a3d', hubWaerme:'#9b5b5b',
   bandStrom:'#8a7a3d', bandWaerme:'#9b5b5b',
   bandUmwelt:'#5a8a6e', bandBrennstoff:'#5a6878',
@@ -935,7 +936,7 @@ export function _buildFlowSankey(container, data, mode) {
   if (!tt) {
     tt = document.createElement('div');
     tt.className = 'live-sankey-tt';
-    tt.style.cssText = 'position:absolute;pointer-events:none;background:var(--surface);color:var(--c-blue);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-family:DM Mono,monospace;font-size:12px;display:none;white-space:nowrap;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,0.5);';
+    tt.style.cssText = 'position:absolute;pointer-events:none;background:var(--surface);color:var(--c-blue);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-family:"Source Sans 3","Segoe UI",Tahoma,sans-serif;font-size:12px;display:none;white-space:nowrap;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,0.5);';
     container.style.position = 'relative';
     container.appendChild(tt);
   }
@@ -1079,8 +1080,8 @@ function _drawSankeyOnCanvas(canvas, data, detail, tt) {
     let total = 0;
     if (h === hubStrom) total = stromInBoxes.reduce((s,b)=>s+b.value,0) + bridges.filter(b=>b.kind==='bhkw').reduce((s,b)=>s+(b.stromOut||0),0);
     else total = waermeInBoxes.reduce((s,b)=>s+b.value,0) + bridges.reduce((s,b)=>s+(b.waermeOut||0),0);
-    ctx.font = '10px DM Mono, monospace';
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
+    ctx.fillStyle = cvInk(0.7);
     ctx.fillText(Math.round(total) + ' kW', h.cx, h.cy + 8);
   }
 
@@ -1091,15 +1092,15 @@ function _drawSankeyOnCanvas(canvas, data, detail, tt) {
     ctx.globalAlpha = 1;
     ctx.strokeStyle = color || '#5e6b70'; ctx.lineWidth = isDezent?0.7:1;
     ctx.strokeRect(b.x+0.5, b.y+0.5, b.w-1, b.h-1);
-    ctx.fillStyle = color || '#cfd8dc'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle = color || cvTok('muted'); ctx.textAlign='center'; ctx.textBaseline='middle';
     if (isDezent) {
-      ctx.font = '8px DM Mono, monospace';
+      ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
       ctx.fillText(b.label + ' ' + Math.round(b.value||b.kw) + ' kW', b.x+b.w/2, b.y+b.h/2);
     } else {
-      ctx.font = '10px DM Mono, monospace';
+      ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
       ctx.fillText(b.displayLabel || b.label, b.x+b.w/2, b.y+b.h/2 - 4);
-      ctx.font = '9px DM Mono, monospace';
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.font = '9px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
+      ctx.fillStyle = cvInk(0.55);
       const valueText = b.valueText || (Math.round(b.value||b.kw) + ' kW' + (b.cop?' · COP '+b.cop.toFixed(1):''));
       ctx.fillText(valueText, b.x+b.w/2, b.y+b.h/2 + 7);
     }
@@ -1107,7 +1108,7 @@ function _drawSankeyOnCanvas(canvas, data, detail, tt) {
 
   function drawAnnotations() {
     if (!detail || !annotations || !annotations.length) return;
-    ctx.font = '9px DM Mono, monospace'; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.font = '9px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top';
     for (const a of annotations) {
       let target = null;
       if (a.anchor==='erzeuger' && a.erzKey) {
@@ -1123,11 +1124,11 @@ function _drawSankeyOnCanvas(canvas, data, detail, tt) {
       const textW = ctx.measureText(text).width;
       const px = target.x + target.w/2 - (textW+padX*2)/2;
       const py = (verlustBox ? verlustBox.y + verlustBox.h : target.y + target.h) + 5;
-      ctx.fillStyle = 'rgba(15,17,22,0.85)';
+      ctx.fillStyle = cvTok('surface2');
       ctx.fillRect(px, py, textW+padX*2, 12+padY*2);
       ctx.strokeStyle = '#3a4250'; ctx.lineWidth = 0.5;
       ctx.strokeRect(px+0.5, py+0.5, textW+padX*2-1, 12+padY*2-1);
-      ctx.fillStyle = '#cfd8dc';
+      ctx.fillStyle = cvTok('muted');
       ctx.fillText(text, target.x+target.w/2, py+padY+1);
     }
   }
@@ -1360,7 +1361,7 @@ export function _updateHourlyOverlay(t) {
     if (!arr) continue;
     const kw = arr[t] || 0;
     if (kw < 0.01 && !['lwwp','fg','geo','gaskessel','bhkw','pellets','hhs','heizoel','fernwaerme','stromkessel'].includes(k)) continue;
-    erzeuger.push({ label: ERZEUGER_CFG[k]?.label || k, kw, color: ERZEUGER_CFG[k]?.color || '#aaa', key: k });
+    erzeuger.push({ label: ERZEUGER_CFG[k]?.label || k, kw, color: ERZEUGER_CFG[k]?.color || cvTok('muted'), key: k });
   }
   if (hourly['solarthermie']?.[t] > 0.01) erzeuger.push({ label: 'Solarthermie', kw: hourly['solarthermie'][t], color: '#ffab40', key: 'solarthermie' });
   if (hourly['_thermSpeicher']?.[t] > 0.01) erzeuger.push({ label: 'Speicher \u2192', kw: hourly['_thermSpeicher'][t], color: '#26a69a', key: '_thermSpeicher' });
@@ -1483,7 +1484,7 @@ export function _updateHourlyOverlay(t) {
     // PV/Strom
     const pvKwVal = strom.pvKw;
     const gridIcon = strom.netzbezugKw > 0.1 ? '\u25bc' : (strom.einspeisungKw > 0.1 ? '\u25b2' : '\u2500');
-    const gridColor = strom.netzbezugKw > 0.1 ? 'rgba(239,83,80,0.6)' : (strom.einspeisungKw > 0.1 ? 'rgba(76,175,80,0.6)' : 'rgba(255,255,255,0.3)');
+    const gridColor = strom.netzbezugKw > 0.1 ? 'rgba(239,83,80,0.6)' : (strom.einspeisungKw > 0.1 ? 'rgba(76,175,80,0.6)' : cvInk(0.3));
     const gridSub = strom.netzbezugKw > 0.1 ? '<span style="color:' + gridColor + '">' + gridIcon + ' Bezug ' + strom.netzbezugKw.toFixed(0) + ' kW</span>'
       : (strom.einspeisungKw > 0.1 ? '<span style="color:' + gridColor + '">' + gridIcon + ' Einsp. ' + strom.einspeisungKw.toFixed(0) + ' kW</span>' : '<span style="color:' + gridColor + '">' + gridIcon + ' Ausgeglichen</span>');
     kpiHtml += cell('PV / Strom', pvKwVal.toFixed(0), 'kW', '#fdd835', gridSub);
@@ -1613,16 +1614,16 @@ export function _drawSpeicherSocChart(canvas, currentHour) {
   ctx.beginPath(); ctx.roundRect(PAD.l, PAD.t, plotW, plotH, 4); ctx.fill();
 
   // Y-Axis (0%, 50%, 100%)
-  ctx.font = '8px "DM Mono", monospace';
+  ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   for (let i = 0; i <= 2; i++) {
     const frac = i / 2;
     const yy = PAD.t + plotH * (1 - frac);
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.strokeStyle = cvInk(0.05);
     ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(PAD.l + plotW, yy); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillStyle = cvInk(0.45);
     ctx.fillText((frac * 100).toFixed(0) + '%', PAD.l - 4, yy);
   }
 
@@ -1715,7 +1716,7 @@ export function _getLiveZoomRange(currentHour) {
 export function _drawLiveXAxis(ctx, PAD, plotW, plotH, range) {
   ctx.font = '8px "DM Sans", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.fillStyle = cvInk(0.3);
   const rangeLen = range.end - range.start;
   if (rangeLen <= 48) {
     // Tag/2-Tag: show hour labels
@@ -1743,7 +1744,7 @@ export function _drawLiveXAxis(ctx, PAD, plotW, plotH, range) {
     const mHours = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016];
     for (let m = 0; m < 12; m++) {
       const x = PAD.l + (mHours[m] / 8760) * plotW;
-      ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 0.5;
+      ctx.strokeStyle = cvInk(0.04); ctx.lineWidth = 0.5;
       ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, PAD.t + plotH); ctx.stroke();
       const midX = PAD.l + ((mHours[m] + (m < 11 ? mHours[m + 1] : 8760)) / 2 / 8760) * plotW;
       ctx.fillText(months[m], midX, PAD.t + plotH + 12);

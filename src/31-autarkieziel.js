@@ -18,6 +18,7 @@
 // Kombination) und zeigt sie nebeneinander. Eine Tank-Obergrenze (z. B. unter 3 t
 // oder 5 t H₂ wegen BImSchG bzw. Störfall-Verordnung) wirkt als harte Grenze.
 
+import { cvTok } from './lib/canvas-farben.js';
 import {
   AH2_BRENNSTOFFE, AH2_MODI, AH2_STANDARD, H2_DICHTE_KG_M3, H2_KWH_PRO_KG, ah2BhkwGrenzkosten, ah2Mischen, ah2Nachweis,
   ah2Optimieren, ah2OhneH2, ah2Simulieren, ah2Zielkurve, ah2ZielKosten,
@@ -908,9 +909,9 @@ const _hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const _mix = (a, c, t) => a.map((v, i) => Math.round(v + (c[i] - v) * t));
 /** Sequenzielle Rampe in EINEM Farbton: dunkel (nahe Hintergrund) → Farbton → aufgehellt. 0 = leere Zelle. */
 function _rampe(farbe) {
-  const bg = _hex('#1c1a15'), f = _hex(farbe), hell = _mix(f, [255, 255, 255], 0.5), start = _mix(bg, f, 0.18);
+  const bg = _hex(cvTok('surface')), f = _hex(farbe), hell = _mix(f, [255, 255, 255], 0.5), start = _mix(bg, f, 0.18);
   return t => {
-    if (!(t > 0)) return 'rgb(40,38,31)';
+    if (!(t > 0)) return cvTok('surface');
     const c = t < 0.65 ? _mix(start, f, t / 0.65) : _mix(f, hell, Math.min(1, (t - 0.65) / 0.35));
     return `rgb(${c[0]},${c[1]},${c[2]})`;
   };

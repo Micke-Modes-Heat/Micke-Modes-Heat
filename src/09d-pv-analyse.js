@@ -2,6 +2,7 @@
 // Eigenständiges Modul — kein Eingriff in bestehende 09a–09c, 10a–10d.
 // Nutzt window.elQuartierH15 (15-min nativ) wenn vorhanden, sonst window.elQuartierH (8760h).
 
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { freiflaechen, gebaeude, globalYear, isExcluded, thermSpeicherAktiv } from './01-globals-varianten.js';
 import { calcFFKwp } from './03a-erzeuger.js';
 import { calcGebKwp, escHtml } from './03c-gebaeude-io.js';
@@ -1941,7 +1942,7 @@ function _pvaFokusleisteZeichnen() {
       (v.batKwh > 0 ? ` · ${(v.batKwh / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MWh` : '');
     return `<button data-click="pvaSetFokus('${v.id}')" title="${escHtml(v.label)} — ${groesse}"
       style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid ${v.farbe};border-radius:12px;cursor:pointer;white-space:nowrap;
-             font-size:12.5px;background:${an ? v.farbe : 'transparent'};color:${an ? '#0a0e16' : v.farbe};font-weight:${an ? 700 : 500};">
+             font-size:12.5px;background:${an ? v.farbe : 'transparent'};color:${an ? cvTok('surface') : v.farbe};font-weight:${an ? 700 : 500};">
       <span>${v.icon}</span><span>${escHtml(kurz(v.label))}</span></button>`;
   }).join('');
   el.style.display = '';
@@ -3424,7 +3425,7 @@ function renderOptHeatmap(demandH, pvProfile, napParams, params, varianten, over
   for (let j = 0; j < ny - 1; j++) {
     for (let i = 0; i < nx - 1; i++) {
       const ecken = [grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]].filter(v => v != null);
-      const fill = ecken.length ? farbe(ecken.reduce((s, v) => s + v, 0) / ecken.length) : '#1a2030';
+      const fill = ecken.length ? farbe(ecken.reduce((s, v) => s + v, 0) / ecken.length) : cvTok('surface');
       kacheln += `<rect x="${xG(i).toFixed(1)}" y="${yG(j + 1).toFixed(1)}" width="${(xG(i + 1) - xG(i) + 0.6).toFixed(1)}" height="${(yG(j) - yG(j + 1) + 0.6).toFixed(1)}" fill="${fill}"/>`;
     }
   }
@@ -3444,7 +3445,7 @@ function renderOptHeatmap(demandH, pvProfile, napParams, params, varianten, over
     if (s === 0) continue;
     const segs = _pvIsolinien(grid, s, xAt, yAt);
     linien += `<path d="${pfad(segs)}" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>`;
-    linien += beschrift(segs, fmtK(s) + ' k€', 'rgba(255,255,255,0.8)');
+    linien += beschrift(segs, fmtK(s) + ' k€', cvInk(0.8));
   }
   if (vMin < 0 && vMax > 0) {
     const segs = _pvIsolinien(grid, 0, xAt, yAt);
@@ -3453,7 +3454,7 @@ function renderOptHeatmap(demandH, pvProfile, napParams, params, varianten, over
   const stufe95 = opt.val > 0 ? 0.95 * opt.val : null;
   if (stufe95 != null) {
     const segs = _pvIsolinien(grid, stufe95, xAt, yAt);
-    linien += `<path d="${pfad(segs)}" fill="none" stroke="#fff" stroke-width="2.2"/>` + beschrift(segs, '≥ 95 % des Optimums', '#fff');
+    linien += `<path d="${pfad(segs)}" fill="none" stroke="#fff" stroke-width="2.2"/>` + beschrift(segs, '≥ 95 % des Optimums', cvTok('text'));
   }
 
   // Achsen
@@ -3643,7 +3644,7 @@ function renderOptSurface3D(demandH, pvProfile, napParams, params, varianten, ov
     ctx.beginPath();
     fc.forEach((p, k) => { k ? ctx.lineTo(p.sx, p.sy) : ctx.moveTo(p.sx, p.sy); });
     ctx.closePath();
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = cvInk(0.12); ctx.lineWidth = 1; ctx.stroke();
 
     // Quads sammeln + nach Tiefe sortieren (hinten zuerst)
     const quads = [];
@@ -3677,14 +3678,14 @@ function renderOptSurface3D(demandH, pvProfile, napParams, params, varianten, ov
     // Z-Achse (vertikale Kante hinten-links) mit Ticks
     const zc0 = project(-1, 1, 0), zc1 = project(-1, 1, zSpan);
     ctx.beginPath(); ctx.moveTo(zc0.sx, zc0.sy); ctx.lineTo(zc1.sx, zc1.sy);
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = cvInk(0.18); ctx.lineWidth = 1; ctx.stroke();
     ctx.fillStyle = '#90a4ae'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
     ctx.fillText(`${(vMax/1000).toFixed(0)}k €/a`, zc1.sx - 4, zc1.sy + 3);
     ctx.fillText(`${(vMin/1000).toFixed(0)}k`, zc0.sx - 4, zc0.sy + 3);
 
     // Achsenbeschriftung Boden
     const pvMid = project(0, -1, 0), batMid = project(1, 0, 0);
-    ctx.fillStyle = '#b0bec5'; ctx.font = '12px sans-serif';
+    ctx.fillStyle = cvTok('muted'); ctx.font = '12px sans-serif';
     ctx.textAlign = 'center'; ctx.fillText('PV-Leistung →', pvMid.sx, pvMid.sy + 16);
     ctx.save(); ctx.translate(batMid.sx + 22, batMid.sy);
     ctx.fillText('Batterie →', 0, 0); ctx.restore();
@@ -3699,15 +3700,15 @@ function renderOptSurface3D(demandH, pvProfile, napParams, params, varianten, ov
     const drawMarker = (mx, my, val, color, icon, isOpt) => {
       const base = project(mx, my, 0), top = project(mx, my, MZ(val));
       ctx.beginPath(); ctx.moveTo(base.sx, base.sy); ctx.lineTo(top.sx, top.sy);
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.strokeStyle = cvInk(0.5); ctx.lineWidth = 1; ctx.stroke();
       if (isOpt) {
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.8;
+        ctx.strokeStyle = cvTok('text'); ctx.lineWidth = 1.8;
         ctx.beginPath();
         ctx.moveTo(top.sx-5, top.sy-5); ctx.lineTo(top.sx+5, top.sy+5);
         ctx.moveTo(top.sx+5, top.sy-5); ctx.lineTo(top.sx-5, top.sy+5); ctx.stroke();
       } else {
         ctx.beginPath(); ctx.arc(top.sx, top.sy, 4.5, 0, 7); ctx.fillStyle = color;
-        ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.stroke();
+        ctx.fill(); ctx.strokeStyle = cvTok('text'); ctx.lineWidth = 1.2; ctx.stroke();
         ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText(icon, top.sx, top.sy - 8);
       }
@@ -3717,7 +3718,7 @@ function renderOptSurface3D(demandH, pvProfile, napParams, params, varianten, ov
       const val = Math.max(vMin, Math.min(vMax, -v.wirt.nettoJk));
       drawMarker((v.pvKwp / maxKwp) * 2 - 1, (Math.min(v.batKwh, batMax) / batMax) * 2 - 1, val, v.farbe, v.icon, false);
     });
-    drawMarker(MX(opt.i), MY(opt.j), opt.val, '#fff', '', true);
+    drawMarker(MX(opt.i), MY(opt.j), opt.val, cvTok('text'), '', true);
   }
 
   draw();
@@ -4716,7 +4717,7 @@ function renderBilanzChart(varianten, overrideEl) {
         <rect x="0" y="${PT + i * rowH}" width="${W}" height="${rowH}" fill="${an ? 'rgba(212,168,85,0.10)' : 'transparent'}"/>
         ${an ? `<rect x="0" y="${PT + i * rowH}" width="3" height="${rowH}" fill="var(--accent)"/>` : ''}
         <text x="10" y="${y + barH / 2 + 4}" fill="${r.v.farbe}" font-size="12.5">${r.v.icon}</text>
-        <text x="28" y="${y + barH / 2 + 4}" fill="${an ? 'var(--text)' : '#cfd8dc'}" font-size="12" font-weight="${an ? 700 : 400}">${escHtml(name)}</text>
+        <text x="28" y="${y + barH / 2 + 4}" fill="${an ? 'var(--text)' : cvTok('muted')}" font-size="12" font-weight="${an ? 700 : 400}">${escHtml(name)}</text>
         ${L.svg}${R.svg}
         <text x="${(L.ende - 6).toFixed(1)}" y="${y + barH / 2 + 4}" text-anchor="end" fill="#90a4ae" font-size="11">${fmt(r.bedarf)}</text>
         <text x="${(R.ende + 6).toFixed(1)}" y="${y + barH / 2 + 4}" fill="#90a4ae" font-size="11">${fmt(r.erzeugung)}</text>
@@ -4855,7 +4856,7 @@ function renderScatterChart(varianten, overrideEl) {
   <svg width="${W}" height="${H}" style="display:block;overflow:hidden;cursor:default;">
     ${yTicks.map(v => {
       const y = yS(v).toFixed(1);
-      return `<line x1="${PL}" y1="${y}" x2="${PL + cW}" y2="${y}" stroke="${v === 0 ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.06)'}" stroke-width="1"/>
+      return `<line x1="${PL}" y1="${y}" x2="${PL + cW}" y2="${y}" stroke="${v === 0 ? cvInk(0.3) : cvInk(0.06)}" stroke-width="1"/>
         <text x="${PL - 6}" y="${(parseFloat(y) + 4).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="11">${fmtK(v)} k€</text>`;
     }).join('')}
     ${[0, 0.25, 0.5, 0.75, 1].map(f => {
@@ -4996,7 +4997,7 @@ function renderRueckAmpel(varianten, overrideEl) {
   <svg width="${W}" height="${H}" style="display:block;overflow:visible;">
     ${refLine(anschlussKw, '#ef5350', 'Anschluss')}
     ${refLine(sZul, '#ffb74d', 'Δu-Grenze')}
-    ${refLine(bezugKw, '#b0bec5', 'bisherige Bezugsspitze')}
+    ${refLine(bezugKw, cvTok('muted'), 'bisherige Bezugsspitze')}
     ${bars}
     <line x1="${PL}" y1="${(PT+cH).toFixed(1)}" x2="${(PL+cW).toFixed(1)}" y2="${(PT+cH).toFixed(1)}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
     ${[0,0.25,0.5,0.75,1].map(f=>`<text x="${(PL+f*cW).toFixed(1)}" y="${(PT+cH+12).toFixed(1)}" text-anchor="middle" fill="#607d8b" font-size="10.5">${Math.round(f*maxVal)}</text>`).join('')}
@@ -5113,7 +5114,7 @@ function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, ov
 
     // Senken rechts: Bedarf (aus PV · Speicher · Netz), Einspeisung (aus PV · Speicher), Abregelung, Verluste, Restladung
     const senken = [
-      { key: 'bed', v: bedarf, t: 'Bedarf', c: '#90a4ae', tc: '#cfd8dc' },
+      { key: 'bed', v: bedarf, t: 'Bedarf', c: '#90a4ae', tc: cvTok('muted') },
       { key: 'esp', v: einsp,  t: 'Einspeisung', c: COL.es },
       { key: 'ct',  v: curt,   t: 'Abregelung', c: COL.ct },
       { key: 'vl',  v: verl,   t: 'Speicherverluste', c: COL.vl },
@@ -5690,7 +5691,7 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
     el.querySelectorAll('[data-pvah-modus]').forEach(b => {
       const an = b.dataset.pvahModus === _pvahModus;
       b.style.background = an ? '#4fc3f7' : 'transparent';
-      b.style.color = an ? '#0a0e16' : '#cfd8dc';
+      b.style.color = an ? cvTok('surface') : cvTok('muted');
       b.style.fontWeight = an ? '700' : '400';
     });
 
@@ -6195,14 +6196,14 @@ function renderResilienz(varianten, overrideEl) {
   const DURS = [ [6,'6 h'], [12,'12 h'], [24,'24 h'], [48,'2 Tage'], [72,'3 Tage'], [168,'7 Tage'], [336,'14 Tage'] ];
 
   const durBtns = DURS.map(([h,lbl]) =>
-    `<button data-pvres-dur="${h}" style="padding:2px 9px;border:1px solid ${h===_pvResDurH?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${h===_pvResDurH?'#ff8f00':'transparent'};color:${h===_pvResDurH?'#0a0e16':'#cfd8dc'};font-size:12.5px;cursor:pointer;font-weight:${h===_pvResDurH?'700':'400'};">${lbl}</button>`).join('');
+    `<button data-pvres-dur="${h}" style="padding:2px 9px;border:1px solid ${h===_pvResDurH?'#ff8f00':cvInk(0.22)};border-radius:10px;background:${h===_pvResDurH?'#ff8f00':'transparent'};color:${h===_pvResDurH?cvTok('surface'):cvTok('muted')};font-size:12.5px;cursor:pointer;font-weight:${h===_pvResDurH?'700':'400'};">${lbl}</button>`).join('');
 
   const fuelOpts = Object.entries(_PV_FUELS).map(([k,f]) =>
     `<option value="${k}" ${k===_pvResFuel?'selected':''}>${f.label}</option>`).join('');
 
   const MODES = [['gen','Nur Notstrom'], ['bat-gen','Speicher + Notstrom'], ['pv-bat-gen','PV + Speicher + Notstrom'], ['pv-bat','Nur PV + Speicher']];
   const modeBtns = MODES.map(([m,lbl]) =>
-    `<button data-pvres-mode="${m}" style="padding:2px 9px;border:1px solid ${m===_pvResMode?'#4fc3f7':'rgba(255,255,255,0.22)'};border-radius:10px;background:${m===_pvResMode?'#4fc3f7':'transparent'};color:${m===_pvResMode?'#0a0e16':'#cfd8dc'};font-size:12.5px;cursor:pointer;font-weight:${m===_pvResMode?'700':'400'};white-space:nowrap;">${lbl}</button>`).join('');
+    `<button data-pvres-mode="${m}" style="padding:2px 9px;border:1px solid ${m===_pvResMode?'#4fc3f7':cvInk(0.22)};border-radius:10px;background:${m===_pvResMode?'#4fc3f7':'transparent'};color:${m===_pvResMode?cvTok('surface'):cvTok('muted')};font-size:12.5px;cursor:pointer;font-weight:${m===_pvResMode?'700':'400'};white-space:nowrap;">${lbl}</button>`).join('');
 
   const elW = el.getBoundingClientRect().width || 700;
   const W   = Math.max(440, elW - 4);
@@ -6360,7 +6361,7 @@ function renderResilienz(varianten, overrideEl) {
       (genActive
         ? kpiCard('Versorgungslücke', eUnmet > 0.5 ? `${(eUnmet/1000).toFixed(2)} MWh` : 'keine ✓', eUnmet > 0.5 ? COL.unmet : '#66bb6a')
         : kpiCard('Autark gedeckt', `${(covered*100).toFixed(0)} %`, covered > 0.999 ? '#66bb6a' : COL.unmet)) +
-      kpiCard('Energiebedarf im Fenster', `${(eLoad/1000).toFixed(2)} MWh`, '#cfd8dc') +
+      kpiCard('Energiebedarf im Fenster', `${(eLoad/1000).toFixed(2)} MWh`, cvTok('muted')) +
       // #7 Kosten-Karten
       kpiCard('Aggregat (Capex)', hasGenset ? fmtK(gensetCost) : '–', '#a5d6a7') +
       kpiCard('Tankvolumen', hasGenset && tankL > 0 ? `${tankL.toLocaleString('de-DE')} l` : '–', '#a5d6a7') +
@@ -6457,7 +6458,7 @@ function renderResilienz(varianten, overrideEl) {
       <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
         <span style="font-size:12.5px;color:var(--muted);flex:1;">Resilienz je PV-Auslegung — jede an ihrem eigenen ungünstigsten Zeitpunkt,
           ${vres.durH} h Ausfall, ${MODE_LBL[vres.mode] || vres.mode}, ${Math.round(vres.frac*100)} % Notbetriebslast</span>
-        ${knopf('Neu rechnen', 'rgba(255,255,255,0.25)')}
+        ${knopf('Neu rechnen', cvInk(0.25))}
       </div>
       <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">
         <thead><tr style="color:var(--muted);border-bottom:1px solid rgba(var(--ink),0.12);">
@@ -6510,7 +6511,7 @@ function renderResilienz(varianten, overrideEl) {
       return `<rect x="${(mx-1).toFixed(1)}" y="${(my-1).toFixed(1)}" width="${(cellW+2).toFixed(1)}" height="${(cellH+2).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="1.6"${dash?` stroke-dasharray="${dash}"`:''}/>`
         + `<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" fill="${stroke}" font-size="10.5" font-weight="700">${label}</text>`;
     };
-    const marker = cellMark(worstStart, '#fff', 'Worst-Case')
+    const marker = cellMark(worstStart, cvTok('text'), 'Worst-Case')
       + (isWorst ? '' : cellMark(selStart, '#4fc3f7', 'gewählt', '2,1.5'));
     const legW = 130, legH = 8, legX = PL, legY = PT + cH + 14;
     const gradId = 'pvres-grad-' + (overrideEl ? 'fs' : 'm');
@@ -6799,9 +6800,9 @@ function renderResilienzWaerme(el, overrideEl) {
   const W   = Math.max(440, elW - 4);
 
   const bauBtns = Object.entries(_PV_RES_BAUSCHWERE).map(([k, b]) =>
-    `<button data-pvresw-bau="${k}" style="padding:2px 9px;border:1px solid ${k===_pvResBauschwere?'#8d6e63':'rgba(255,255,255,0.22)'};border-radius:10px;background:${k===_pvResBauschwere?'#8d6e63':'transparent'};color:${k===_pvResBauschwere?'#0a0e16':'#cfd8dc'};font-size:12.5px;cursor:pointer;font-weight:${k===_pvResBauschwere?'700':'400'};white-space:nowrap;">${b.label}</button>`).join('');
+    `<button data-pvresw-bau="${k}" style="padding:2px 9px;border:1px solid ${k===_pvResBauschwere?'#8d6e63':cvInk(0.22)};border-radius:10px;background:${k===_pvResBauschwere?'#8d6e63':'transparent'};color:${k===_pvResBauschwere?cvTok('surface'):cvTok('muted')};font-size:12.5px;cursor:pointer;font-weight:${k===_pvResBauschwere?'700':'400'};white-space:nowrap;">${b.label}</button>`).join('');
   const durBtns = DURS_W.map(([h,lbl]) =>
-    `<button data-pvresw-dur="${h}" style="padding:2px 9px;border:1px solid ${h===_pvResDurH?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${h===_pvResDurH?'#ff8f00':'transparent'};color:${h===_pvResDurH?'#0a0e16':'#cfd8dc'};font-size:12.5px;cursor:pointer;font-weight:${h===_pvResDurH?'700':'400'};">${lbl}</button>`).join('');
+    `<button data-pvresw-dur="${h}" style="padding:2px 9px;border:1px solid ${h===_pvResDurH?'#ff8f00':cvInk(0.22)};border-radius:10px;background:${h===_pvResDurH?'#ff8f00':'transparent'};color:${h===_pvResDurH?cvTok('surface'):cvTok('muted')};font-size:12.5px;cursor:pointer;font-weight:${h===_pvResDurH?'700':'400'};">${lbl}</button>`).join('');
 
   el.innerHTML = `
   <div style="margin-bottom:8px;">
@@ -6864,10 +6865,10 @@ function renderResilienzWaerme(el, overrideEl) {
       kpiCard('Gewählter Ausfall-Start' + (isWorst ? ' (Worst-Case)' : ''), `${_pvahDayToDate(selDay)}, ${selHr}:00`, isWorst ? '#ffcc80' : '#4fc3f7') +
       kpiCard('Worst-Case-Start', `${_pvahDayToDate(wDay)}, ${wHr}:00`, '#ffcc80') +
       kpiCard('Pufferstandzeit', hasSpeicher ? bridgeLabel : 'kein Puffer · 0 h', hasSpeicher ? '#80cbc4' : '#ef5350') +
-      kpiCard('Energiebedarf im Fenster', `${(rSel.total/1000).toFixed(2)} MWh`, '#cfd8dc') +
+      kpiCard('Energiebedarf im Fenster', `${(rSel.total/1000).toFixed(2)} MWh`, cvTok('muted')) +
       kpiCard('Davon durch Puffer gedeckt', `${(rSel.covered/1000).toFixed(2)} MWh`, '#80cbc4') +
       kpiCard('Ungedeckt', rSel.unmet > 0.5 ? `${(rSel.unmet/1000).toFixed(2)} MWh` : 'keine ✓', rSel.unmet > 0.5 ? '#ef5350' : '#66bb6a') +
-      kpiCard('Betroffene Gebäude (Netz gesamt)', `${bList.length}`, '#cfd8dc') +
+      kpiCard('Betroffene Gebäude (Netz gesamt)', `${bList.length}`, cvTok('muted')) +
       kpiCard('Unter kritischer Temp. binnen Ausfalldauer', `${unterSchwelleInFenster}` + (kritischBetroffen > 0 ? ` (⚠ ${kritischBetroffen} kritisch)` : ''), unterSchwelleInFenster > 0 ? '#ef5350' : '#66bb6a');
 
     // Heatmap: Pufferstandzeit je möglichem Ausfall-Start im Jahr (wie Strom-Pendant)
@@ -6897,7 +6898,7 @@ function renderResilienzWaerme(el, overrideEl) {
       return `<rect x="${(mx-1).toFixed(1)}" y="${(my-1).toFixed(1)}" width="${(cellW+2).toFixed(1)}" height="${(cellH+2).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="1.6"${dash?` stroke-dasharray="${dash}"`:''}/>`
         + `<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" fill="${stroke}" font-size="10.5" font-weight="700">${label}</text>`;
     };
-    const marker = cellMark(worstStart, '#fff', 'Worst-Case') + (isWorst ? '' : cellMark(selStart, '#4fc3f7', 'gewählt', '2,1.5'));
+    const marker = cellMark(worstStart, cvTok('text'), 'Worst-Case') + (isWorst ? '' : cellMark(selStart, '#4fc3f7', 'gewählt', '2,1.5'));
     const legW = 130, legH = 8, legX = PL, legY = PT + cH + 14;
     const gradId = 'pvresw-grad-' + (overrideEl ? 'fs' : 'm');
     heatEl.innerHTML = `

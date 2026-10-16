@@ -2,6 +2,7 @@
 // Split from 07-analysis-views.js
 
 // ── Tab state ──────────────────────────────────────────────────────────────
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { autoGkResult, spitzenkessel } from './06c-dispatch-core.js';
@@ -59,7 +60,7 @@ export function _updateLogoBars() {
 
 export function _daColor(k) {
   return (typeof ERZEUGER_CFG !== 'undefined' && ERZEUGER_CFG[k]?.color)
-    || DA_COLORS_FALLBACK[k] || '#aaa';
+    || DA_COLORS_FALLBACK[k] || cvTok('muted');
 }
 
 // ── Zoom-Zustand ──────────────────────────────────────────────────────────
@@ -121,7 +122,7 @@ export function _daRenderHeatmap() {
 
   const { hourly, keys, lg } = _daGetData();
   if (!keys.length || !window._dispatchHourly) {
-    ctx.fillStyle = '#888'; ctx.font = '11px sans-serif';
+    ctx.fillStyle = cvTok('faint'); ctx.font = '11px sans-serif';
     ctx.fillText('Erst Grundlagen berechnen.', 20, H / 2);
     return;
   }
@@ -224,7 +225,7 @@ export function _daRenderMultiples() {
 
   const { hourly, keys, lg } = _daGetData();
   if (!keys.length || !window._dispatchHourly) {
-    ctx.fillStyle = '#888'; ctx.font = '11px sans-serif';
+    ctx.fillStyle = cvTok('faint'); ctx.font = '11px sans-serif';
     ctx.fillText('Erst Grundlagen berechnen.', 20, H / 2);
     return;
   }
@@ -269,7 +270,7 @@ export function _daRenderMultiples() {
     const profile = monthData[m];
 
     // Background
-    ctx.fillStyle = '#23262f';
+    ctx.fillStyle = cvTok('surface');
     const cr = 4;
     ctx.beginPath();
     ctx.moveTo(ox2 + cr, oy2); ctx.lineTo(ox2 + cellW - cr, oy2);
@@ -283,7 +284,7 @@ export function _daRenderMultiples() {
     ctx.fill();
 
     // Title
-    ctx.fillStyle = '#e8eaf0'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'left';
+    ctx.fillStyle = cvTok('text'); ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'left';
     ctx.fillText(months[m], ox2 + 6, oy2 + 13);
 
     const pL = 6, pT = 18, pR = 4, pB = 4;
@@ -315,7 +316,7 @@ export function _daRenderMultiples() {
     }
 
     // Baseline
-    ctx.strokeStyle = '#333844'; ctx.lineWidth = 0.5;
+    ctx.strokeStyle = cvTok('border'); ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.moveTo(ox2 + pL, oy2 + pT + ph); ctx.lineTo(ox2 + pL + pw, oy2 + pT + ph); ctx.stroke();
   }
 
@@ -357,12 +358,12 @@ export function _daSetupCanvas(id) {
 
 /** Achsenbeschriftung mit dunklem Hintergrund, innerhalb der Zeichenfläche gehalten. */
 export function _daAchsText(ctx, text, x, y, H) {
-  ctx.font = '10px "DM Mono", monospace';
+  ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
   const w = ctx.measureText(text).width + 8;
   const yy = Math.min(Math.max(y, 12), H - 3);
-  ctx.fillStyle = 'rgba(15,17,23,0.72)';
+  ctx.fillStyle = cvTok('surface2');
   ctx.fillRect(x - 3, yy - 10, w, 13);
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillStyle = cvInk(0.75);
   ctx.fillText(text, x + 1, yy);
 }
 
@@ -396,7 +397,7 @@ export function _daMaxArr(arr) {
 }
 
 export function _daNoData(ctx, W, H) {
-  ctx.fillStyle = '#888';
+  ctx.fillStyle = cvTok('faint');
   ctx.font = '12px sans-serif';
   ctx.fillText('Noch keine Berechnung vorhanden', 20, H / 2);
 }
@@ -406,13 +407,13 @@ export const MONATSH = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016,
 export const MONAT_LABELS = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
 
 export function _daMonatLinien(ctx, W, H, n) {
-  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.strokeStyle = cvInk(0.2);
   ctx.lineWidth = 1;
   MONATSH.forEach((h,i) => {
     const x = Math.round(h / n * W);
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
     if (i < 12) {
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillStyle = cvInk(0.35);
       ctx.font = '9px sans-serif';
       const nx = Math.round(MONATSH[i+1] / n * W);
       ctx.fillText(MONAT_LABELS[i], x + 2, H - 3);
@@ -458,7 +459,7 @@ export function daRenderLastgang() {
 
   if (!keys.length) { _daNoData(ctx, W, H); return; }
   if (!window._dispatchHourly) {
-    ctx.fillStyle = '#888'; ctx.font = '11px sans-serif';
+    ctx.fillStyle = cvTok('faint'); ctx.font = '11px sans-serif';
     ctx.fillText('Stunden-Lastgang verfügbar nach', 20, H/2 - 8);
     ctx.fillText('Grundlagen-Berechnung (📋)', 20, H/2 + 8);
     return;
@@ -517,7 +518,7 @@ export function daRenderLastgang() {
   // Y-Achsen-Hilfslinien (Beschriftung mit Hintergrund; die 100-%-Linie unterhalb, sonst läge sie außerhalb)
   [25, 50, 75, 100].forEach(pct => {
     const y = H - (pct / 100) * H;
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.strokeStyle = cvInk(0.08);
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     _daAchsText(ctx, Math.round(pMax * pct / 100).toLocaleString('de-DE') + ' kW', 4, pct === 100 ? y + 12 : y - 3, H);
@@ -540,10 +541,10 @@ export function _daZeitlinien(ctx, W, H, startH, endH, nVis) {
     MHOURS.forEach((mh, i) => {
       if (mh < startH || mh > endH) return;
       const x = Math.round((mh - startH) / nVis * W);
-      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.strokeStyle = cvInk(0.2);
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
       if (i < 12 && mh >= startH) {
-        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fillStyle = cvInk(0.35);
         ctx.fillText(MLABELS[i], x + 2, H - 3);
       }
     });
@@ -554,9 +555,9 @@ export function _daZeitlinien(ctx, W, H, startH, endH, nVis) {
       const mh = d * 24;
       if (mh < startH || mh > endH) continue;
       const x = Math.round((mh - startH) / nVis * W);
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.strokeStyle = cvInk(0.15);
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillStyle = cvInk(0.3);
       const doy = d + 1;
       ctx.fillText(`Tag ${doy}`, x + 2, H - 3);
     }
@@ -564,10 +565,10 @@ export function _daZeitlinien(ctx, W, H, startH, endH, nVis) {
     // Stundenlinien
     for (let hh = startH; hh <= endH; hh++) {
       const x = Math.round((hh - startH) / nVis * W);
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.strokeStyle = cvInk(0.1);
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
       if ((hh % 6) === 0) {
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillStyle = cvInk(0.3);
         ctx.fillText(`${hh%24}:00`, x + 2, H - 3);
       }
     }
@@ -608,16 +609,16 @@ export function _daBindEvents(canvas, hourly, keys, lg, pMax, nTotal, W, H, star
       _daDrawChart(ctx, hourly, keys, lg, W, H, startH, endH, nVis, pMax);
       _daZeitlinien(ctx, W, H, startH, endH, nVis);
       // Overlay
-      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillStyle = cvInk(0.08);
       ctx.fillRect(x0, 0, x1 - x0, H);
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.strokeStyle = cvInk(0.7);
       ctx.lineWidth = 1;
       ctx.strokeRect(x0, 0, x1 - x0, H);
       // Label der Selektion
       const h0 = hAtX(x0), h1 = hAtX(x1);
       if (h1 > h0 + 1) {
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
-        ctx.font = '10px monospace';
+        ctx.fillStyle = cvInk(0.8);
+        ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
         ctx.fillText(_daZoomLabel(h0, h1), x0 + 4, 14);
       }
       return;
@@ -708,7 +709,7 @@ export function _daDrawChart(ctx, hourly, keys, lg, W, H, startH, endH, nVis, pM
   // Y-Hilfslinien
   [25,50,75,100].forEach(pct => {
     const y = H - (pct/100)*H;
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = cvInk(0.08); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
     _daAchsText(ctx, Math.round(pMax*pct/100).toLocaleString('de-DE')+' kW', 4, pct === 100 ? y + 12 : y - 3, H);
   });
@@ -776,19 +777,19 @@ export function daRenderJdl() {
   }
 
   // X-Achse: Stunden-Labels
-  ctx.font = '10px "DM Mono", monospace';
+  ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
   [2000, 4000, 6000, 8000].forEach(h => {
     const x = Math.round(h / n * W);
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.strokeStyle = cvInk(0.1);
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillStyle = cvInk(0.55);
     ctx.fillText(h.toLocaleString('de-DE') + ' h', x + 3, H - 4);
   });
   // Y-Achse
   [25, 50, 75, 100].forEach(pct => {
     const y = H - (pct / 100) * H;
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.strokeStyle = cvInk(0.06);
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     _daAchsText(ctx, Math.round(pMax * pct / 100).toLocaleString('de-DE') + ' kW', W - 90, pct === 100 ? y + 12 : y - 3, H);
   });
@@ -878,7 +879,7 @@ export function daRenderWoche() {
   }
 
   // Tages-Trennlinien + Datum (die Woche beginnt nicht zwingend montags — daher Datum statt Wochentag)
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
+  ctx.strokeStyle = cvInk(0.25); ctx.lineWidth = 1;
   const datum = tag => { const d = new Date(Date.UTC(2023, 0, 1 + tag)); return `${d.getUTCDate()}.${d.getUTCMonth() + 1}.`; };
   const tag0 = Math.floor(startH / 24);
   const titel = document.getElementById('da-woche-titel');
@@ -891,7 +892,7 @@ export function daRenderWoche() {
   // Y-Achse
   [50, 100].forEach(pct => {
     const y = H - (pct / 100) * H;
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.strokeStyle = cvInk(0.08);
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     _daAchsText(ctx, Math.round(pMax * pct / 100).toLocaleString('de-DE') + ' kW', W - 90, pct === 100 ? y + 26 : y - 3, H);
   });
@@ -945,7 +946,7 @@ export function daRenderTempVL() {
   ctx.clearRect(0, 0, cW, cH);
 
   if (!vlH) {
-    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.font = '11px sans-serif';
+    ctx.fillStyle = cvInk(0.25); ctx.font = '11px sans-serif';
     ctx.fillText('Keine VL-Daten — Dispatch ausführen', 10, cH / 2);
     return;
   }
@@ -996,8 +997,8 @@ export function daRenderTempVL() {
   // Monats-Trennlinien
   const mStarts = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016,8760];
   const mNames = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.5;
-  ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.font = '8px "DM Mono",monospace'; ctx.textAlign = 'center';
+  ctx.strokeStyle = cvInk(0.06); ctx.lineWidth = 0.5;
+  ctx.fillStyle = cvInk(0.25); ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'center';
   for (let m = 0; m < 12; m++) {
     const x1 = PAD.l + (mStarts[m] / N) * pW;
     const x2 = PAD.l + (mStarts[m+1] / N) * pW;
@@ -1006,13 +1007,13 @@ export function daRenderTempVL() {
   }
 
   // Y-Achse links (°C)
-  ctx.fillStyle = bothATandCOP ? 'rgba(255,255,255,0.3)' : 'rgba(239,83,80,0.5)';
-  ctx.font = '8px "DM Mono",monospace'; ctx.textAlign = 'right';
+  ctx.fillStyle = bothATandCOP ? cvInk(0.3) : 'rgba(239,83,80,0.5)';
+  ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'right';
   for (let i = 0; i <= 5; i++) {
     const v = tLo + (tR / 5) * i;
     const yy = tY(v);
     ctx.fillText(v.toFixed(0) + '°C', PAD.l - 4, yy + 3);
-    ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(PAD.l + pW, yy); ctx.stroke();
+    ctx.strokeStyle = cvInk(0.04); ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(PAD.l + pW, yy); ctx.stroke();
   }
 
   // Downsampling für Performance (max ~700 Punkte)
@@ -1031,7 +1032,7 @@ export function daRenderTempVL() {
 
     // Y-Achse rechts (AT °C) — nur wenn AT allein (ohne COP)
     if (onlyAT) {
-      ctx.fillStyle = 'rgba(79,195,247,0.5)'; ctx.font = '8px "DM Mono",monospace'; ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(79,195,247,0.5)'; ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'left';
       for (let i = 0; i <= 5; i++) {
         const v = atMin + (atR / 5) * i;
         ctx.fillText(v.toFixed(0) + '°C', PAD.l + pW + 4, atY(v) + 3);
@@ -1065,7 +1066,7 @@ export function daRenderTempVL() {
     ctx.globalAlpha = 1;
 
     // Y-Achse rechts (COP)
-    ctx.fillStyle = 'rgba(102,187,106,0.5)'; ctx.font = '8px "DM Mono",monospace'; ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(102,187,106,0.5)'; ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'left';
     for (let i = 0; i <= 4; i++) {
       const v = copMin + (cR / 4) * i;
       ctx.fillText(v.toFixed(1), PAD.l + pW + 4, cY(v) + 3);
@@ -1191,7 +1192,7 @@ export function dimRender() {
     const ctx = canvas.getContext('2d');
     canvas.width = canvas.offsetWidth || 600;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#888'; ctx.font = '12px sans-serif';
+    ctx.fillStyle = cvTok('faint'); ctx.font = '12px sans-serif';
     ctx.fillText('Erst Dispatch ausführen (Grundlagen berechnen).', 20, canvas.height / 2);
     return;
   }
@@ -1228,22 +1229,22 @@ export function dimDraw(pInst) {
   ctx.clearRect(0, 0, W, H);
 
   // Hintergrund
-  ctx.fillStyle = '#13151f';
+  ctx.fillStyle = cvTok('surface');
   ctx.fillRect(0, 0, W, H);
 
   // Y-Gitter + Labels
-  ctx.font = '9px monospace';
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = '9px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
+  ctx.fillStyle = cvInk(0.35);
   ctx.textAlign = 'right';
   // Gitterlinien je 25 %; beschriftet nur 0 und Spitzenlast — die Kreuzlinien tragen ihre eigenen Werte
   [0, 25, 50, 75, 100].forEach(pct => {
     const p = pMax * pct / 100;
     const y = py(p);
-    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.strokeStyle = cvInk(0.07);
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(ML, y); ctx.lineTo(W, y); ctx.stroke();
     if (pct === 0 || pct === 100) {
-      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillStyle = cvInk(0.45);
       ctx.fillText(Math.round(p).toLocaleString('de-DE') + (pct === 100 ? ' kW' : ''), ML - 3, y + 3);
     }
   });
@@ -1252,19 +1253,19 @@ export function dimDraw(pInst) {
   ctx.textAlign = 'center';
   [2000, 4000, 6000, 8000].forEach(h => {
     const x = px(h);
-    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.strokeStyle = cvInk(0.07);
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x, MT); ctx.lineTo(x, H - MB); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillStyle = cvInk(0.3);
     ctx.fillText(h.toLocaleString('de-DE') + ' h', x, H - 5);
   });
-  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.fillStyle = cvInk(0.3);
   ctx.fillText('0', px(0), H - 5);
   ctx.textAlign = 'right';
   ctx.fillText(n.toLocaleString('de-DE') + ' h', W - 2, H - 5);
 
   // Achsenlinien
-  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.strokeStyle = cvInk(0.2);
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(ML, MT); ctx.lineTo(ML, H - MB); ctx.lineTo(W, H - MB); ctx.stroke();
 
@@ -1277,7 +1278,7 @@ export function dimDraw(pInst) {
   ctx.lineTo(px(n), py(0));
   ctx.lineTo(px(0), py(0));
   ctx.closePath();
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillStyle = cvInk(0.06);
   ctx.fill();
 
   // JDL-Kurve (Linie)
@@ -1285,7 +1286,7 @@ export function dimDraw(pInst) {
   ctx.moveTo(px(0), py(_dimJdlSorted[0]));
   for (let h = 0; h < n; h += step) ctx.lineTo(px(h), py(_dimJdlSorted[h]));
   ctx.lineTo(px(n - 1), py(_dimJdlSorted[n - 1]));
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.strokeStyle = cvInk(0.7);
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
@@ -1317,7 +1318,7 @@ export function dimDraw(pInst) {
     const r = 4;
     ctx.fillStyle = color;
     ctx.beginPath(); ctx.arc(xC, yC, r, 0, 2 * Math.PI); ctx.fill();
-    ctx.strokeStyle = '#13151f'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = cvTok('surface'); ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(xC, yC, r, 0, 2 * Math.PI); ctx.stroke();
 
     // Label rechts vom Schnittpunkt (oder links wenn zu nah am Rand)
@@ -1325,22 +1326,22 @@ export function dimDraw(pInst) {
     const rechts = xC > W * 0.75;
     const lx = rechts ? xC - 8 : xC + 8;
     const zeile2 = `${de1(covPct)} % Energie · ${Math.round(vls).toLocaleString('de-DE')} Volllaststunden`;
-    ctx.font = '10px monospace';
+    ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     const bw = Math.max(ctx.measureText(zeile2).width, ctx.measureText(label).width) + 8;
     const bx = rechts ? lx - bw + 4 : lx - 4;
-    ctx.fillStyle = 'rgba(19,21,31,0.85)';
+    ctx.fillStyle = cvTok('surface2');
     ctx.fillRect(bx, yC - 18, bw, 34);
     ctx.fillStyle = color;
     ctx.textAlign = rechts ? 'right' : 'left';
-    ctx.font = 'bold 10px monospace';
+    ctx.font = 'bold 10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     ctx.fillText(label, lx, yC - 6);
-    ctx.font = '10px monospace';
+    ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     ctx.fillText(zeile2, lx, yC + 10);
 
     // P-Label auf y-Achse
     ctx.textAlign = 'right';
     ctx.fillStyle = color;
-    ctx.font = '9px monospace';
+    ctx.font = '9px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     ctx.fillText(Math.round(pVal).toLocaleString('de-DE'), ML - 3, yC - 3);
 
     // h-Label auf x-Achse
@@ -1443,7 +1444,7 @@ export function _splitRenderTreemap() {
   const { hourly, keys } = _daGetData();
   const en = window._dispatchEnergy || {};
   if (!keys.length) {
-    ctx.fillStyle = '#888'; ctx.font = '11px sans-serif';
+    ctx.fillStyle = cvTok('faint'); ctx.font = '11px sans-serif';
     ctx.fillText('Erst Grundlagen berechnen.', 20, H / 2); return;
   }
 
@@ -1454,7 +1455,7 @@ export function _splitRenderTreemap() {
     if (wMwh < 0.01) return;
     data.push({ label: DA_LABELS[k] || k, value: wMwh, color: _daColor(k) });
   });
-  if (!data.length) { ctx.fillStyle = '#888'; ctx.font = '11px sans-serif'; ctx.fillText('Keine Daten.', 20, H / 2); return; }
+  if (!data.length) { ctx.fillStyle = cvTok('faint'); ctx.font = '11px sans-serif'; ctx.fillText('Keine Daten.', 20, H / 2); return; }
   data.sort((a, b) => b.value - a.value);
   const total = data.reduce((s, d) => s + d.value, 0);
 
@@ -1524,7 +1525,7 @@ export function _splitRenderTreemap() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const pct = (r.value / total * 100).toFixed(1);
     ctx.fillText(r.label, rx + rw / 2, ry + rh / 2 - fs * 0.6);
-    ctx.font = `${Math.round(fs * 0.85)}px system-ui`; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.font = `${Math.round(fs * 0.85)}px system-ui`; ctx.fillStyle = cvInk(0.7);
     ctx.fillText(r.value.toFixed(0) + ' MWh (' + pct + '%)', rx + rw / 2, ry + rh / 2 + fs * 0.6);
     ctx.textBaseline = 'alphabetic';
   });
@@ -1537,8 +1538,8 @@ export function splitRender() {
     if (!canvas) return;
     canvas.width = canvas.offsetWidth || 600;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#13151f'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#888'; ctx.font = '12px sans-serif';
+    ctx.fillStyle = cvTok('surface'); ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = cvTok('faint'); ctx.font = '12px sans-serif';
     ctx.fillText('Erst Grundlagen berechnen.', 20, canvas.height / 2);
     return;
   }
@@ -1575,7 +1576,7 @@ export function splitDraw() {
   const ML = 50, MB = 18, MT = 6;
   const PW = W - ML, PH = H - MB - MT;
 
-  ctx.fillStyle = '#13151f'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = cvTok('surface'); ctx.fillRect(0, 0, W, H);
 
   // Stundenwerte per Pixel zusammenfassen
   const step = Math.max(1, Math.floor(nVis / PW));
@@ -1605,13 +1606,13 @@ export function splitDraw() {
   if (pMax <= 0) pMax = 1;
 
   // Y-Gitter + Labels
-  ctx.font = '9px monospace'; ctx.textAlign = 'right';
+  ctx.font = '9px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'right';
   [25,50,75,100].forEach(pct => {
     const p = pMax * pct / 100;
     const y = MT + PH - (p / pMax) * PH;
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = cvInk(0.06); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(ML, y); ctx.lineTo(W, y); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillStyle = cvInk(0.45);
     ctx.fillText(Math.round(p).toLocaleString('de-DE'), ML - 2, y + 3);
   });
 
@@ -1639,11 +1640,11 @@ export function splitDraw() {
 
   // Rubber-Band-Overlay
   if (_splitRubber) {
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillStyle = cvInk(0.08);
     const x0 = Math.min(_splitRubber.x0, _splitRubber.x1);
     const x1 = Math.max(_splitRubber.x0, _splitRubber.x1);
     ctx.fillRect(x0, MT, x1 - x0, PH);
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+    ctx.strokeStyle = cvInk(0.4); ctx.lineWidth = 1; ctx.setLineDash([3,3]);
     ctx.strokeRect(x0, MT, x1 - x0, PH);
     ctx.setLineDash([]);
   }

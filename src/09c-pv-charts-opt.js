@@ -1,6 +1,7 @@
 // ── 09c-pv-charts-opt.js — Strom-Charts, Sankey, JDL, PV+Bat-Optimierung ──
 
 // ── Monatschart ───────────────────────────────────────────────────────────
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { lerpColor } from './02a-netz-physik.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
 import { pvBatteryStep } from './lib/pv-battery-core.js';
@@ -34,7 +35,7 @@ export function _stromRenderMonatsChart(monthlyQuartier, monthlyWp, monthlyPv) {
   const MONTHS = ['J','F','M','A','M','J','J','A','S','O','N','D'];
 
   // Gitternetz
-  ctx.strokeStyle = '#2a3050';
+  ctx.strokeStyle = cvTok('border');
   ctx.lineWidth   = 0.5;
   [0, 0.5, 1].forEach(f => {
     const y = PAD.t + iH - f * iH;
@@ -324,18 +325,18 @@ export function _stromRenderLastgang() {
   }
 
   // Gitternetz
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.strokeStyle = cvInk(0.05);
   ctx.lineWidth   = 1;
   [0.25, 0.5, 0.75, 1].forEach(f => {
     const y = PAD.t + iH * (1 - f);
     ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W - PAD.r, y); ctx.stroke();
     const v = maxVal * f;
-    ctx.fillStyle = 'rgba(180,180,200,0.5)';
-    ctx.font = '8px DM Mono,monospace';
+    ctx.fillStyle = cvInk(0.5);
+    ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText(v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v), PAD.l - 3, y + 3);
   });
-  ctx.fillStyle = 'rgba(180,180,200,0.4)';
+  ctx.fillStyle = cvInk(0.4);
   ctx.font = '8px sans-serif';
   ctx.textAlign = 'right';
   ctx.fillText('kWh/d', PAD.l - 3, PAD.t - 6);
@@ -364,7 +365,7 @@ export function _stromRenderLastgang() {
   // ── Monatsmarkierungen ──
   const MONTH_START = [0,31,59,90,120,151,181,212,243,273,304,334];
   const MONTH_NAMES = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
-  ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+  ctx.strokeStyle = cvInk(0.1);
   ctx.lineWidth   = 1;
   MONTH_START.forEach((md, mi) => {
     const x = xAt(md);
@@ -431,20 +432,20 @@ export function _stromRenderJdl() {
   const maxV = spitze * 1.05 || 1;
 
   // Grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+  ctx.strokeStyle = cvInk(0.06); ctx.lineWidth = 1;
   for (let i=1; i<=4; i++) {
     const y = PAD.t + iH - iH*i/4;
     ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W-PAD.r, y); ctx.stroke();
-    ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '8px DM Mono,monospace'; ctx.textAlign = 'right';
+    ctx.fillStyle = cvInk(0.4); ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'right';
     ctx.fillText((maxV*i/4).toFixed(0), PAD.l-3, y+3);
   }
   // X-Achse Beschriftung
-  ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = cvInk(0.4); ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('0 h', PAD.l, H-3);
   ctx.fillText('4380 h', PAD.l + iW/2, H-3);
   ctx.fillText('8760 h', W-PAD.r, H-3);
   // Y-Label
-  ctx.save(); ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '7px sans-serif';
+  ctx.save(); ctx.fillStyle = cvInk(0.5); ctx.font = '7px sans-serif';
   ctx.translate(8, PAD.t+iH/2); ctx.rotate(-Math.PI/2); ctx.textAlign='center';
   ctx.fillText('kW', 0, 0); ctx.restore();
 
@@ -566,7 +567,7 @@ export function _stromRenderFlussChart(weekIdx) {
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#111827';
+  ctx.fillStyle = cvTok('surface');
   ctx.fillRect(0, 0, W, H);
 
   const PAD = { l: 40, r: 8, t: 8, b: 18 };
@@ -583,7 +584,7 @@ export function _stromRenderFlussChart(weekIdx) {
   // ── Gitternetz ────────────────────────────────────────────────────────────
   // horizontale Linien
   [0, 0.5, 1].forEach(f => {
-    ctx.strokeStyle = f === 0 ? '#3a4060' : '#222840';
+    ctx.strokeStyle = f === 0 ? '#3a4060' : cvTok('border');
     ctx.lineWidth   = f === 0 ? 1 : 0.5;
     ctx.beginPath();
     ctx.moveTo(PAD.l, yOfGen(f * maxVal));
@@ -621,7 +622,7 @@ export function _stromRenderFlussChart(weekIdx) {
   const labelY     = HMain - 4;       // y-position of day labels (within canvas)
   for (let d = 0; d < 7; d++) {
     const x = xOf(d * 24);
-    ctx.strokeStyle = '#2a3050';
+    ctx.strokeStyle = cvTok('border');
     ctx.lineWidth   = 0.7;
     ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, lineBottom); ctx.stroke();
@@ -718,7 +719,7 @@ export function _stromRenderFlussChart(weekIdx) {
   if (SOC && maxSoc > 0) {
     const sy  = HMain + 4;
     const sH  = HSoc - 6;
-    ctx.fillStyle = '#1a2035';
+    ctx.fillStyle = cvTok('surface');
     ctx.fillRect(PAD.l, sy, iW, sH);
 
     ctx.beginPath();
@@ -1083,10 +1084,10 @@ export function _renderOptHeatmap(grid, NX, NY, maxKwp, maxBat, bestPvOnly, best
   function valToColor(v) {
     if (v <= 0) {
       const t = Math.max(0, Math.min(1, v / Math.min(vMin, -1)));
-      return lerpColor('#1a0000', '#2a2a3a', t); // dunkelrot → neutral
+      return lerpColor(cvTok('surface'), cvTok('border'), t); // dunkelrot → neutral
     }
     const t = Math.max(0, Math.min(1, v / Math.max(vMax, 1)));
-    if (t < 0.5) return lerpColor('#2a2a3a', '#ffd54f', t * 2);
+    if (t < 0.5) return lerpColor(cvTok('border'), '#ffd54f', t * 2);
     return lerpColor('#ffd54f', '#00c853', (t - 0.5) * 2);
   }
 
@@ -1104,7 +1105,7 @@ export function _renderOptHeatmap(grid, NX, NY, maxKwp, maxBat, bestPvOnly, best
   }
 
   // Null-Konturlinie (Wirtschaftlichkeitsschwelle)
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.strokeStyle = cvInk(0.35);
   ctx.lineWidth   = 1;
   ctx.setLineDash([3, 2]);
   ctx.beginPath();
@@ -1140,7 +1141,7 @@ export function _renderOptHeatmap(grid, NX, NY, maxKwp, maxBat, bestPvOnly, best
     const yj = bestJoint.batKwh / maxBat * NY;
     const x  = PAD.l + xi * cellW;
     const y  = PAD.t + (NY - yj) * cellH;
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = cvTok('text');
     ctx.lineWidth   = 1.5;
     const s = 5;
     ctx.beginPath(); ctx.moveTo(x-s, y); ctx.lineTo(x+s, y); ctx.moveTo(x, y-s); ctx.lineTo(x, y+s); ctx.stroke();
@@ -1157,7 +1158,7 @@ export function _renderOptHeatmap(grid, NX, NY, maxKwp, maxBat, bestPvOnly, best
   [0, 0.5, 1].forEach(f => {
     const y = PAD.t + (1 - f) * NY * cellH;
     ctx.fillText(Math.round(f * maxBat), PAD.l - 3, y);
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 0.5;
+    ctx.strokeStyle = cvInk(0.08); ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + iW, y); ctx.stroke();
   });
 
@@ -1363,10 +1364,10 @@ export function _renderOpt3D() {
   function valToColor(v, alpha) {
     let hex;
     if (v <= 0) {
-      hex = lerpColor('#1a0000', '#2a2a3a', Math.max(0, Math.min(1, v / Math.min(vMin, -1))));
+      hex = lerpColor(cvTok('surface'), cvTok('border'), Math.max(0, Math.min(1, v / Math.min(vMin, -1))));
     } else {
       const t = Math.max(0, Math.min(1, v / Math.max(vMax, 1)));
-      hex = t < 0.5 ? lerpColor('#2a2a3a', '#ffd54f', t * 2) : lerpColor('#ffd54f', '#00c853', (t - 0.5) * 2);
+      hex = t < 0.5 ? lerpColor(cvTok('border'), '#ffd54f', t * 2) : lerpColor('#ffd54f', '#00c853', (t - 0.5) * 2);
     }
     if (!alpha || alpha === 1) return hex;
     const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
@@ -1379,7 +1380,7 @@ export function _renderOpt3D() {
   const jArr = Array.from({length: NY}, (_, k) => cosA >= 0 ? NY - 1 - k : k);
 
   // Bodengitter
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.strokeStyle = cvInk(0.07);
   ctx.lineWidth   = 0.5;
   for (let i = 0; i <= NX; i += Math.ceil(NX / 6)) {
     const p0 = proj(i/NX, 0, 0), p1 = proj(i/NX, 0, 1);
@@ -1414,7 +1415,7 @@ export function _renderOpt3D() {
 
   // Achsen
   const aO = proj(0,0,0), aX = proj(1,0,0), aZ = proj(0,0,1), aY = proj(0,1,0);
-  ctx.strokeStyle = 'rgba(200,210,230,0.5)';
+  ctx.strokeStyle = cvInk(0.5);
   ctx.lineWidth = 1.2;
   [[aO,aX],[aO,aZ],[aO,aY]].forEach(([a,b]) => {
     ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke();

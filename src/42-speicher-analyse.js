@@ -3,6 +3,7 @@
 // wählbarer Größe. Rechnet den Haupt-Dispatch mit und ohne Speicher, zeigt den stündlichen Füllstand,
 // die Wirkung auf Kessel-/Spitzenlastwärme und EE-Anteil und die Wirtschaftlichkeit über eine Größenvariation.
 // Das Projekt bleibt unverändert, bis „Als Wärmespeicher übernehmen“ geklickt wird.
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { _dispatchCore, _quelleTemp, dispatchEingaben, updateAllDeckungen } from './06c-dispatch-core.js';
 import { _optKennwerte2, _optWirtParams } from './10a-optimizer-core.js';
 import { _calcBausteinJK } from './07b-analysis-economics.js';
@@ -230,7 +231,7 @@ function _flaeche(id) {
   const ctx = c.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  ctx.font = '10px "DM Mono", monospace';
+  ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
   return { c, ctx, W, H };
 }
 
@@ -254,7 +255,7 @@ function _zeichneSoc(d) {
   const { ctx, W, H } = f;
   const L = 44, R = 8, T = 8, B = 18, pw = W - L - R, ph = H - T - B;
   const soc = d.stunden.soc, kap = d.auswahl.param.kapKwh;
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.strokeStyle = cvInk(0.08); ctx.fillStyle = cvInk(0.55);
   for (const p of [0, 50, 100]) {
     const y = T + ph * (1 - p / 100);
     ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(W - R, y); ctx.stroke();
@@ -274,7 +275,7 @@ function _zeichneSoc(d) {
     }
     const MON = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
     const MS = [0, 744, 1416, 2160, 2880, 3624, 4344, 5088, 5832, 6552, 7296, 8016];
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillStyle = cvInk(0.5);
     MS.forEach((h, m) => ctx.fillText(MON[m], L + h / n * pw + 2, H - 5));
     return;
   }
@@ -298,7 +299,7 @@ function _zeichneSoc(d) {
     if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
   }
   ctx.stroke(); ctx.lineWidth = 1;
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillStyle = cvInk(0.5);
   const TAG = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
   const ersterTag = new Date(Date.UTC(Number(window.globalYear) || 2026, 0, 1)).getUTCDay();
   for (let tg = 0; tg < 7; tg++) {
@@ -321,8 +322,8 @@ function _zeichneVariation(d) {
   const y0 = T + ph * dMax / (dMax - dMin);
   const yD = v => y0 - v / (dMax - dMin) * ph;
   const bw = pw / st.length;
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.moveTo(L, y0); ctx.lineTo(W - R, y0); ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.strokeStyle = cvInk(0.25); ctx.beginPath(); ctx.moveTo(L, y0); ctx.lineTo(W - R, y0); ctx.stroke();
+  ctx.fillStyle = cvInk(0.55);
   ctx.fillText('+' + eur(dMax), 2, T + 4); ctx.fillText('0 €/a', 2, y0 + 3);
   if (dMin < 0 && T + ph - y0 > 14) ctx.fillText('−' + eur(-dMin), 2, T + ph);
   ctx.fillText(nf(kMax) + ' MWh', W - R + 4, T + 4); ctx.fillText('0', W - R + 4, T + ph);
@@ -331,9 +332,9 @@ function _zeichneVariation(d) {
     ctx.fillStyle = s.deltaJk < 0 ? FARBE.gut : FARBE.schlecht; ctx.globalAlpha = 0.75;
     ctx.fillRect(x, Math.min(y, y0), w, Math.max(1, Math.abs(y - y0)));
     ctx.globalAlpha = 1;
-    if (i % Math.ceil(st.length / 7) === 0 || i === st.length - 1) { ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillText(nf(s.vol), x - 2, H - 16); }
+    if (i % Math.ceil(st.length / 7) === 0 || i === st.length - 1) { ctx.fillStyle = cvInk(0.5); ctx.fillText(nf(s.vol), x - 2, H - 16); }
   });
-  ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fillText('Volumen m³', L + pw / 2 - 30, H - 3);
+  ctx.fillStyle = cvInk(0.4); ctx.fillText('Volumen m³', L + pw / 2 - 30, H - 3);
   ctx.strokeStyle = FARBE.akzent; ctx.lineWidth = 2; ctx.beginPath();
   st.forEach((s, i) => { const x = L + (i + 0.5) * bw, y = T + ph * (1 - s.kw.kesselVermiedenMwh / kMax); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
   ctx.stroke(); ctx.lineWidth = 1;
@@ -343,7 +344,7 @@ function _zeichneVariation(d) {
     ctx.fillStyle = farbe; ctx.beginPath(); ctx.moveTo(x - 5, T - 10); ctx.lineTo(x + 5, T - 10); ctx.lineTo(x, T - 3); ctx.fill();
   };
   if (d.bestand?.vol > 0) marke(d.bestand.vol, '#ffd54f');
-  marke(d.auswahl.vol, '#ffffff');
+  marke(d.auswahl.vol, cvTok('text'));
   c.onclick = ev => {
     const rect = c.getBoundingClientRect();
     const i = Math.floor((ev.clientX - rect.left - L) / bw);

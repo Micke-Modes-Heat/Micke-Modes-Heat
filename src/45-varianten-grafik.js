@@ -2,6 +2,7 @@
 // Wählbare Diagramme aus den gespeicherten Kennzahlen je Variante (variantResults):
 // Wärmegestehungskosten nach Bestandteilen, Erzeugermix, CO₂ je Erzeuger, Investition/Jahreskosten,
 // installierte Leistung und ein Netzdiagramm aller Kennzahlen (relativ zur besten Variante).
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { variantResults, varianten, activeVariantId } from './01-globals-varianten.js';
 import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
 
@@ -99,7 +100,7 @@ function _flaeche() {
   const ctx = c.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  ctx.font = '10px "DM Mono", monospace';
+  ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
   return { ctx, W, H };
 }
 
@@ -123,7 +124,7 @@ function _balken() {
   const sk = _skala(maxRoh * (anteil ? 1 : 1.08));
   const L = 56, R = 14, T = 22, B = 40, pw = W - L - R, ph = H - T - B;
   const y = v => T + ph * (1 - v / sk.max);
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.strokeStyle = cvInk(0.07); ctx.fillStyle = cvInk(0.55);
   for (let v = 0; v <= sk.max + 1e-9; v += sk.schritt) {
     ctx.beginPath(); ctx.moveTo(L, y(v)); ctx.lineTo(W - R, y(v)); ctx.stroke();
     ctx.fillText(nf(v, sk.schritt < 1 ? 1 : 0), 4, y(v) + 3);
@@ -144,9 +145,9 @@ function _balken() {
       legende.set(t.key, t);
       basis += wert;
     });
-    if (!r.teile.length) { ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillText('—', cx - 3, y(0) - 4); }
-    else if (!anteil) { ctx.fillStyle = 'rgba(255,255,255,0.85)'; const t = nf(ges, ges < 100 ? 1 : 0); ctx.fillText(t, cx - ctx.measureText(t).width / 2, y(ges) - 4); }
-    ctx.fillStyle = r.aktiv ? '#fff' : 'rgba(255,255,255,0.6)';
+    if (!r.teile.length) { ctx.fillStyle = cvInk(0.3); ctx.fillText('—', cx - 3, y(0) - 4); }
+    else if (!anteil) { ctx.fillStyle = cvInk(0.85); const t = nf(ges, ges < 100 ? 1 : 0); ctx.fillText(t, cx - ctx.measureText(t).width / 2, y(ges) - 4); }
+    ctx.fillStyle = r.aktiv ? cvTok('text') : cvInk(0.6);
     const lab = r.label.length > 16 ? r.label.slice(0, 15) + '…' : r.label;
     ctx.fillText(lab, cx - ctx.measureText(lab).width / 2, H - 22);
     if (r.aktiv) ctx.fillText('aktiv', cx - 12, H - 9);
@@ -168,7 +169,7 @@ function _kosten() {
   const skJ0 = vier(Math.max(...d.map(x => x.r.jkGes || 0), 1) * 1.08);
   const skI = { max: Math.ceil(skI0.max / 4 / skI0.schritt) * skI0.schritt * 4 }, skJ = { max: Math.ceil(skJ0.max / 4 / skJ0.schritt) * skJ0.schritt * 4 };
   const mio = v => v >= 1e6 ? nf(v / 1e6, 2).replace(/,?0+$/, '') + ' Mio' : nf(v / 1e3) + ' T';
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.strokeStyle = cvInk(0.07); ctx.fillStyle = cvInk(0.55);
   for (let i = 0; i <= 4; i++) {
     const yy = T + ph * (1 - i / 4);
     ctx.beginPath(); ctx.moveTo(L, yy); ctx.lineTo(W - R, yy); ctx.stroke();
@@ -187,7 +188,7 @@ function _kosten() {
     ctx.globalAlpha = 1;
     _treffer.push({ x0: cx - w - 2, x1: cx + w + 2, y0: T + ph - Math.max(hI, hJ), y1: T + ph, id, aktiv,
       text: `<b>${esc(r.label)}</b><br>Investition: ${nf(r.investGes)} €<br>Jahreskosten: ${nf(r.jkGes)} €/a${r.wgkNum ? `<br>WGK: ${nf(r.wgkNum, 1)} ct/kWh` : ''}` });
-    ctx.fillStyle = aktiv ? '#fff' : 'rgba(255,255,255,0.6)';
+    ctx.fillStyle = aktiv ? cvTok('text') : cvInk(0.6);
     const lab = (r.label || id).length > 16 ? (r.label || id).slice(0, 15) + '…' : (r.label || id);
     ctx.fillText(lab, cx - ctx.measureText(lab).width / 2, H - 22);
   });
@@ -230,13 +231,13 @@ function _netz() {
   const { achsen, reihen } = vgNetzWerte();
   const cx = W / 2 - 80, cy = H / 2 + 6, rad = Math.min(H / 2 - 30, W / 2 - 140);
   const winkel = i => -Math.PI / 2 + i * 2 * Math.PI / achsen.length;
-  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.strokeStyle = cvInk(0.1);
   for (const s of [0.25, 0.5, 0.75, 1]) {
     ctx.beginPath();
     achsen.forEach((_, i) => { const x = cx + Math.cos(winkel(i)) * rad * s, y = cy + Math.sin(winkel(i)) * rad * s; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
     ctx.closePath(); ctx.stroke();
   }
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillStyle = cvInk(0.7);
   achsen.forEach((a, i) => {
     ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(winkel(i)) * rad, cy + Math.sin(winkel(i)) * rad); ctx.stroke();
     const x = cx + Math.cos(winkel(i)) * (rad + 14), y = cy + Math.sin(winkel(i)) * (rad + 14);
@@ -252,7 +253,7 @@ function _netz() {
     // Legende rechts
     const ly = 24 + ri * 18, lx = W - 200;
     ctx.fillRect(lx, ly - 8, 10, 10);
-    ctx.fillStyle = r.aktiv ? '#fff' : 'rgba(255,255,255,0.75)';
+    ctx.fillStyle = r.aktiv ? cvTok('text') : cvInk(0.75);
     ctx.fillText(r.label.length > 24 ? r.label.slice(0, 23) + '…' : r.label, lx + 16, ly + 1);
     _treffer.push({ x0: lx, x1: W - 10, y0: ly - 10, y1: ly + 6, id: r.id, aktiv: r.aktiv,
       text: `<b>${esc(r.label)}</b><br>` + achsen.map((a, i) => `${a.name}: ${r.roh[i] != null ? nf(r.roh[i], r.roh[i] < 100 ? 1 : 0) : '—'}`).join('<br>') });

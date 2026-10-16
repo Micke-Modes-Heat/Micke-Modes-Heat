@@ -50,36 +50,31 @@ function _html() {
     ? `Fest eingestellt: neue Objekte werden „${z.m.label}“ (${z.wo}). ✕ = wieder automatisch nach Jahr und Objektart.`
     : `Automatisch: Slider auf ${basis} = Bestand. In der Zukunft gehen Gebäude und Verbraucher in alle Varianten (Entwicklung), Anlagen, Netz und Speicher nur in die aktive Variante.${nebenbei ? ' Gebäude und Verbraucher gehen jetzt in alle Varianten.' : ''}`;
 
+  // Erscheinungsbild in src/styles/lkebw.css (Abschnitt 11); Farbe der Schicht nur als Punkt.
+  const punkt = farbe => `<i class="ui-schicht-punkt" style="--sw:${farbe}"></i>`;
   const augen = SCHICHT_REIHENFOLGE.map(k => {
     const m = SCHICHT_META[k];
     const an = schichtSichtbar(k);
-    return `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;">
+    return `<label class="ui-schicht-auge">
       <input type="checkbox" ${an ? 'checked' : ''} style="accent-color:${m.farbe};"
-        data-change="schichtSetSichtbar('${k}', this.checked)">${m.icon} ${m.label} zeigen</label>`;
+        data-change="schichtSetSichtbar('${k}', this.checked)">${punkt(m.farbe)}${m.label} zeigen</label>`;
   }).join('');
   const wahl = ['auto', ...SCHICHT_REIHENFOLGE].map(k => {
-    const an = modus === k;
     const lab = k === 'auto' ? 'automatisch (empfohlen)'
-      : `${SCHICHT_META[k].icon} immer ${k === SCHICHT.ENTSCHEIDUNG ? 'nur aktive Variante' : SCHICHT_META[k].label}`;
-    return `<button data-click="schichtSetModus('${k}')" style="display:block;width:100%;text-align:left;padding:4px 8px;margin:1px 0;
-      border-radius:4px;border:1px solid ${an ? 'var(--accent)' : 'transparent'};background:${an ? 'rgba(212,168,85,.12)' : 'transparent'};
-      color:var(--text);font:inherit;font-size:12.5px;cursor:pointer;">${lab}</button>`;
+      : `immer ${k === SCHICHT.ENTSCHEIDUNG ? 'nur aktive Variante' : SCHICHT_META[k].label}`;
+    return `<button type="button" class="${modus === k ? 'active' : ''}" data-click="schichtSetModus('${k}')">${
+      k === 'auto' ? '<i class="ui-schicht-punkt"></i>' : punkt(SCHICHT_META[k].farbe)}${lab}</button>`;
   }).join('');
 
   return `<span class="ctx-label">Neu</span>
-    <div style="position:relative;display:flex;align-items:center;gap:3px;">
-      <button data-click="schichtMenuToggle()" title="${titel}"
-        style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12.5px;
-               border:1px ${fest ? 'dashed' : 'solid'} ${z.m.farbe};color:${z.m.farbe};background:${z.m.farbe}1f;font-weight:600;white-space:nowrap;">
-        ${z.m.icon} ${z.wo}<span style="font-weight:400;color:var(--muted);">· ${z.ab}${fest ? ' · fest' : ''}</span> ▾</button>
-      ${fest ? `<button data-click="schichtSetModus('auto')" title="Wieder automatisch nach Jahr und Objektart"
-        style="padding:1px 6px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:12.5px;">✕</button>` : ''}
-      <div id="schicht-menu" style="display:${_menuOffen ? 'block' : 'none'};position:absolute;top:calc(100% + 6px);left:0;z-index:1300;min-width:260px;
-           background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;box-shadow:0 6px 18px rgba(0,0,0,.45);font-size:12.5px;color:var(--text);">
-        <div style="color:var(--muted);margin-bottom:6px;line-height:1.4;">Wohin gehen neu angelegte Objekte?</div>
+    <div class="ui-schicht-wrap">
+      <button type="button" class="ui-schicht-btn${fest ? ' fest' : ''}" data-click="schichtMenuToggle()" title="${titel} Jetzt: ${z.wo} · ${z.ab}." aria-haspopup="menu" aria-expanded="${_menuOffen}">
+        ${punkt(z.m.farbe)}<span>${z.wo}</span><span class="ui-schicht-ab">· ${z.ab}</span>${fest ? '<span class="ui-schicht-fest">fest</span>' : ''}<svg class="ui-i ui-i-sm"><use href="#ui-i-down"/></svg></button>
+      ${fest ? `<button type="button" class="ui-schicht-x" data-click="schichtSetModus('auto')" title="Wieder automatisch nach Jahr und Objektart" aria-label="Wieder automatisch"><svg class="ui-i ui-i-sm"><use href="#ui-i-x"/></svg></button>` : ''}
+      <div id="schicht-menu" class="ui-schicht-menu" role="menu" style="display:${_menuOffen ? 'flex' : 'none'};">
+        <div class="ui-menu-grp">Wohin gehen neu angelegte Objekte?</div>
         ${wahl}
-        <div style="border-top:1px solid var(--border);margin:8px 0 4px;"></div>
-        <div style="color:var(--muted);margin-bottom:2px;">Auf der Karte</div>
+        <div class="ui-menu-grp">Auf der Karte</div>
         ${augen}
       </div>
     </div>`;
@@ -119,11 +114,12 @@ function _markiereKarte() {
   el.style.boxShadow = m === 'auto' ? '' : `inset 0 0 0 3px ${SCHICHT_META[m].farbe}`;
 }
 
-// Menü schließen bei Klick daneben
+// Menü schließen bei Klick daneben. composedPath() statt closest(): der Klick auf den
+// Knopf zeichnet die Leiste neu, das Ziel hängt danach nicht mehr im Dokument.
 if (typeof document !== 'undefined') {
   document.addEventListener('click', e => {
     if (!_menuOffen) return;
-    if (e.target.closest?.('#schicht-bar')) return;
+    if (e.composedPath().some(n => n.id === BAR_ID)) return;
     _menuOffen = false;
     schichtBarRender();
   });

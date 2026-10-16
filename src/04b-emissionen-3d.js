@@ -2,6 +2,7 @@
 // ══════════════════════════════════════════════════════════════════════════
 // ── Emissionen-Tab: Sub-Tab-Steuerung + Rendering ────────────────────────
 // ══════════════════════════════════════════════════════════════════════════
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { _getEtaMap, bhkwCo2Gutschrift, gasEmF, pefGas } from './01-globals-varianten.js';
 import { calcVerdraengungEmF } from './03a-erzeuger.js';
 import { glKannBerechnen } from './06b-gl-berechnen.js';
@@ -215,7 +216,7 @@ export function _renderEmStunden() {
   ctx.clearRect(0, 0, W, H);
 
   if (!emData || !emData.keys.length) {
-    ctx.fillStyle = '#888'; ctx.font = '12px sans-serif';
+    ctx.fillStyle = cvTok('faint'); ctx.font = '12px sans-serif';
     ctx.fillText('Dispatch ausführen um Emissionen zu sehen.', 20, H / 2);
     return;
   }
@@ -238,22 +239,22 @@ export function _renderEmStunden() {
   maxV = maxV * 1.08 || 1;
 
   // Hintergrund-Grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+  ctx.strokeStyle = cvInk(0.06); ctx.lineWidth = 1;
   const nGrid = 4;
   for (let i = 1; i <= nGrid; i++) {
     const yy = PAD.t + iH - iH * i / nGrid;
     ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(W - PAD.r, yy); ctx.stroke();
-    ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'right';
+    ctx.fillStyle = cvInk(0.4); ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'right';
     ctx.fillText(_de(maxV * i / nGrid, 0), PAD.l - 3, yy + 3);
   }
 
   // Y-Achse Label
-  ctx.save(); ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '7px sans-serif';
+  ctx.save(); ctx.fillStyle = cvInk(0.5); ctx.font = '7px sans-serif';
   ctx.translate(8, PAD.t + iH / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center';
   ctx.fillText('kg CO₂/h', 0, 0); ctx.restore();
 
   // X-Achse
-  ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = cvInk(0.5); ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
   const monthLabels = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
   const mStarts = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016];
   if (span > 2000) {
@@ -391,7 +392,7 @@ export function _renderEmDauerlinie() {
   ctx.clearRect(0, 0, W, H);
 
   if (!emData || !emData.keys.length) {
-    ctx.fillStyle = '#888'; ctx.font = '12px sans-serif';
+    ctx.fillStyle = cvTok('faint'); ctx.font = '12px sans-serif';
     ctx.fillText('Dispatch ausführen um Emissionen zu sehen.', 20, H / 2); return;
   }
 
@@ -410,21 +411,21 @@ export function _renderEmDauerlinie() {
   const iH = H - PAD.t - PAD.b;
 
   // Hintergrund-Grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+  ctx.strokeStyle = cvInk(0.06); ctx.lineWidth = 1;
   for (let i = 1; i <= 4; i++) {
     const yy = PAD.t + iH - iH * i / 4;
     ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(W - PAD.r, yy); ctx.stroke();
-    ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'right';
+    ctx.fillStyle = cvInk(0.4); ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'right';
     ctx.fillText(_de(maxV * i / 4, 0), PAD.l - 3, yy + 3);
   }
 
   // Y-Achse
-  ctx.save(); ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '7px sans-serif';
+  ctx.save(); ctx.fillStyle = cvInk(0.5); ctx.font = '7px sans-serif';
   ctx.translate(8, PAD.t + iH / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center';
   ctx.fillText('kg CO₂/h', 0, 0); ctx.restore();
 
   // X-Achse
-  ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = cvInk(0.5); ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
   for (let h = 0; h <= N; h += 1000) {
     const x = PAD.l + h / N * iW;
     ctx.fillText(h.toString(), x, H - 4);
@@ -462,7 +463,7 @@ export function _renderEmDauerlinie() {
     ctx.setLineDash([4, 3]); ctx.strokeStyle = color; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + iW, y); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = color; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'left';
+    ctx.fillStyle = color; ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'left';
     ctx.fillText(label + ': ' + _de(val, 1) + ' kg/h', PAD.l + 4, y - 3);
   };
   drawDash(median, 'Median', '#ffd54f');
@@ -489,7 +490,7 @@ export function _renderEmMonat() {
   ctx.clearRect(0, 0, W, H);
 
   if (!emData || !emData.keys.length) {
-    ctx.fillStyle = '#888'; ctx.font = '12px sans-serif';
+    ctx.fillStyle = cvTok('faint'); ctx.font = '12px sans-serif';
     ctx.fillText('Dispatch ausführen um Emissionen zu sehen.', 20, H / 2); return;
   }
 
@@ -523,16 +524,16 @@ export function _renderEmMonat() {
   const gap  = iW / 12 * 0.3;
 
   // Grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+  ctx.strokeStyle = cvInk(0.06); ctx.lineWidth = 1;
   for (let i = 1; i <= 4; i++) {
     const yy = PAD.t + iH - iH * i / 4;
     ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(W - PAD.r, yy); ctx.stroke();
-    ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'right';
+    ctx.fillStyle = cvInk(0.4); ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'right';
     ctx.fillText(_de(maxM * i / 4, 1), PAD.l - 3, yy + 3);
   }
 
   // Y-Achse
-  ctx.save(); ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '7px sans-serif';
+  ctx.save(); ctx.fillStyle = cvInk(0.5); ctx.font = '7px sans-serif';
   ctx.translate(8, PAD.t + iH / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center';
   ctx.fillText('t CO₂', 0, 0); ctx.restore();
 
@@ -548,11 +549,11 @@ export function _renderEmMonat() {
       cumY += barH;
     }
     // Monatslabel
-    ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = cvInk(0.5); ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(monthLabels[m], bx + barW / 2, H - 4);
     // Summe oben
     let mTotal = 0; for (const k of keys) mTotal += monatData[m][k] || 0;
-    ctx.fillStyle = 'rgba(200,200,200,0.6)'; ctx.font = '7px "DM Mono", monospace';
+    ctx.fillStyle = cvInk(0.6); ctx.font = '7px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     ctx.fillText(_de(mTotal, 1), bx + barW / 2, PAD.t + iH - cumY - 3);
   }
 
@@ -584,7 +585,7 @@ export function _renderEmPef() {
     canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#888'; ctx.font = '12px sans-serif';
+    ctx.fillStyle = cvTok('faint'); ctx.font = '12px sans-serif';
     ctx.fillText('Dispatch ausführen um Primärenergie zu sehen.', 20, H / 2);
     if (tableEl) tableEl.innerHTML = '';
     return;
@@ -607,15 +608,15 @@ export function _renderEmPef() {
   const maxPE = Math.max(...rows.map(r => r.peMwh)) * 1.1 || 1;
 
   // Vertikale Grid-Linien
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
-  ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '8px "DM Mono", monospace'; ctx.textAlign = 'center';
+  ctx.strokeStyle = cvInk(0.06); ctx.lineWidth = 1;
+  ctx.fillStyle = cvInk(0.4); ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'center';
   for (let i = 0; i <= 4; i++) {
     const x = PAD.l + iW * i / 4;
     ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, H - PAD.b); ctx.stroke();
     if (i > 0) ctx.fillText(_de(maxPE * i / 4, 0) + ' MWh', x, H - PAD.b + 12);
   }
   // X-Achsen-Titel
-  ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = cvInk(0.5); ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('Primärenergie (nicht-erneuerbar) MWh/a', PAD.l + iW / 2, H - 4);
 
   rows.forEach((r, i) => {
@@ -624,7 +625,7 @@ export function _renderEmPef() {
 
     // Hintergrund: Endenergie (leichter, als Vergleich)
     const endLen = (r.endenergieMwh / maxPE) * iW;
-    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    ctx.fillStyle = cvInk(0.04);
     ctx.fillRect(PAD.l, y + 2, endLen, rowH - 4);
 
     // Primärenergie-Balken
@@ -643,9 +644,9 @@ export function _renderEmPef() {
     ctx.fillText(r.label, PAD.l - 8, y + rowH / 2 + 4);
 
     // Werte rechts vom Balken: PE MWh + fp
-    ctx.fillStyle = 'rgba(230,230,230,0.8)'; ctx.font = '9px "DM Mono", monospace'; ctx.textAlign = 'left';
+    ctx.fillStyle = cvInk(0.8); ctx.font = '9px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'left';
     ctx.fillText(_de(r.peMwh, 0) + ' MWh', PAD.l + barLen + 6, y + rowH / 2 + 1);
-    ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '8px "DM Mono", monospace';
+    ctx.fillStyle = cvInk(0.5); ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
     ctx.fillText('fp ' + _de(r.fp, 1), PAD.l + barLen + 6, y + rowH / 2 + 11);
   });
 
@@ -655,7 +656,7 @@ export function _renderEmPef() {
   ctx.setLineDash([4, 3]); ctx.strokeStyle = 'rgba(79,195,247,0.5)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(PAD.l + totalLen, PAD.t); ctx.lineTo(PAD.l + totalLen, totalY); ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = 'var(--accent)'; ctx.font = 'bold 10px "DM Mono", monospace'; ctx.textAlign = 'left';
+  ctx.fillStyle = 'var(--accent)'; ctx.font = 'bold 10px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('Σ ' + _de(pefData.totalPE, 0) + ' MWh PE | fp,ges = ' + _de(pefData.fpGes, 2), PAD.l, totalY + 12);
 
   // Legende
@@ -705,8 +706,8 @@ export function renderAnalyseDispatch() {
     if (canvas) {
       const ctx = canvas.getContext('2d');
       canvas.width = canvas.clientWidth || 600; canvas.height = 200;
-      ctx.fillStyle = 'rgba(15,17,23,0.5)'; ctx.fillRect(0, 0, canvas.width, 200);
-      ctx.fillStyle = '#888'; ctx.font = '12px sans-serif';
+      ctx.fillStyle = cvTok('surface2'); ctx.fillRect(0, 0, canvas.width, 200);
+      ctx.fillStyle = cvTok('faint'); ctx.font = '12px sans-serif';
       const msg = glKannBerechnen() ? 'Bitte „Grundlage berechnen" klicken oder warten…' : 'Gebäude mit Verbrauchsdaten importieren.';
       ctx.fillText(msg, 20, 100);
     }
@@ -778,7 +779,7 @@ export function renderAnalyseDispatch() {
         keys.forEach(k => {
           const h = (avg[k] / maxP) * H;
           if (h < 0.3) return;
-          ctx.fillStyle = typeof _daColor === 'function' ? _daColor(k) : (DA_COLORS_FALLBACK[k] || '#aaa');
+          ctx.fillStyle = typeof _daColor === 'function' ? _daColor(k) : (DA_COLORS_FALLBACK[k] || cvTok('muted'));
           ctx.fillRect(x, Math.round(yBase - h), 1, Math.max(1, Math.ceil(h)));
           yBase -= h;
         });
@@ -799,7 +800,7 @@ export function renderAnalyseDispatch() {
           const kw = lgAvg * share;
           const h = (kw / maxP) * H;
           if (h < 0.3) return;
-          ctx.fillStyle = typeof _daColor === 'function' ? _daColor(k) : (DA_COLORS_FALLBACK[k] || '#aaa');
+          ctx.fillStyle = typeof _daColor === 'function' ? _daColor(k) : (DA_COLORS_FALLBACK[k] || cvTok('muted'));
           ctx.fillRect(x, Math.round(yBase - h), 1, Math.max(1, Math.ceil(h)));
           yBase -= h;
         });
@@ -827,24 +828,24 @@ export function renderAnalyseDispatch() {
   ctx.font = '9px sans-serif';
   MHOURS.forEach((mh, i) => {
     const x = Math.round(mh / n * W);
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.strokeStyle = cvInk(0.15);
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
     if (i < 12) {
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillStyle = cvInk(0.3);
       ctx.fillText(MLABELS[i], x + 2, H - 3);
     }
   });
 
   // Y-Achsen-Labels
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  ctx.font = '10px "DM Mono", monospace';
+  ctx.fillStyle = cvInk(0.4);
+  ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
   ctx.fillText(_de(maxP, 0) + ' kW', 4, 12);
   [25, 50, 75].forEach(pct => {
     const y = H - (pct / 100) * H;
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.strokeStyle = cvInk(0.06);
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillStyle = cvInk(0.35);
     ctx.fillText(Math.round(maxP * pct / 100) + ' kW', 4, y - 2);
   });
 
@@ -857,7 +858,7 @@ export function renderAnalyseDispatch() {
         .filter(k => !(k === '_autoGk' && hasManualGk))
         .map(k => {
           const label = (k === 'gaskessel' && hasManualGk && keys.includes('_autoGk')) ? 'Gaskessel (teil-auto)' : (DA_LABELS?.[k] || k);
-          const c = typeof _daColor === 'function' ? _daColor(k) : (DA_COLORS_FALLBACK[k] || '#aaa');
+          const c = typeof _daColor === 'function' ? _daColor(k) : (DA_COLORS_FALLBACK[k] || cvTok('muted'));
           return `<span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;border-radius:1px;background:${c};"></span>${label}</span>`;
         }).join('');
     }
@@ -875,7 +876,7 @@ export function renderAnalyseDispatch() {
     jdlCanvas.style.height = jH + 'px';
     jCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     jCtx.clearRect(0, 0, jW, jH);
-    jCtx.fillStyle = 'rgba(15,17,23,0.5)';
+    jCtx.fillStyle = cvTok('surface2');
     jCtx.fillRect(0, 0, jW, jH);
 
     const hourly = window._dispatchHourly || {};
@@ -915,14 +916,14 @@ export function renderAnalyseDispatch() {
         keys.forEach(k => {
           const h = (avg[k] / jdlMaxP) * plotH;
           if (h < 0.3) return;
-          jCtx.fillStyle = typeof _daColor === 'function' ? _daColor(k) : (DA_COLORS_FALLBACK[k] || '#aaa');
+          jCtx.fillStyle = typeof _daColor === 'function' ? _daColor(k) : (DA_COLORS_FALLBACK[k] || cvTok('muted'));
           jCtx.fillRect(px, Math.round(yBase - h), 1, Math.max(1, Math.ceil(h)));
           yBase -= h;
         });
       }
 
-      jCtx.fillStyle = 'rgba(255,255,255,0.4)';
-      jCtx.font = '10px "DM Mono", monospace';
+      jCtx.fillStyle = cvInk(0.4);
+      jCtx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
       jCtx.fillText(_de(jdlMaxP, 0) + ' kW', 4, 12);
     } else {
       // Fallback: einfache sortierte Kurve
@@ -939,8 +940,8 @@ export function renderAnalyseDispatch() {
       jCtx.strokeStyle = 'rgba(102,187,106,0.6)';
       jCtx.lineWidth = 1;
       jCtx.stroke();
-      jCtx.fillStyle = 'rgba(255,255,255,0.4)';
-      jCtx.font = '10px "DM Mono", monospace';
+      jCtx.fillStyle = cvInk(0.4);
+      jCtx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
       jCtx.fillText(_de(maxP, 0) + ' kW', 4, 12);
     }
   }
@@ -999,8 +1000,8 @@ export function _renderEnergiekrone() {
     const W2 = canvas.offsetWidth || 600;
     canvas.width = W2; canvas.height = 300;
     const c2 = canvas.getContext('2d');
-    c2.fillStyle = 'rgba(15,17,23,0.5)'; c2.fillRect(0, 0, W2, 300);
-    c2.fillStyle = '#888'; c2.font = '12px sans-serif';
+    c2.fillStyle = cvTok('surface2'); c2.fillRect(0, 0, W2, 300);
+    c2.fillStyle = cvTok('faint'); c2.font = '12px sans-serif';
     c2.fillText('Dispatch-Berechnung erforderlich', 20, 150);
     return;
   }
@@ -1036,7 +1037,7 @@ export function _renderEnergiekrone() {
 
   // Background
   const bg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, W * 0.45);
-  bg.addColorStop(0, 'rgba(20,22,30,0.6)'); bg.addColorStop(1, 'rgba(10,12,18,0.3)');
+  bg.addColorStop(0, cvTok('surface2')); bg.addColorStop(1, cvTok('surface2'));
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
   _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, az, el, zoom);
@@ -1094,7 +1095,7 @@ export function _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, 
 
       let domK = null, maxC = 0;
       for (const k in contribs) { if (contribs[k] > maxC) { maxC = contribs[k]; domK = k; } }
-      const color = domK ? _daColor(domK) : '#333';
+      const color = domK ? _daColor(domK) : cvTok('border');
 
       const top = [[x0, ht, z0], [x1, ht, z0], [x1, ht, z1], [x0, ht, z1]];
       const bot = [[x0, 0, z0], [x1, 0, z0], [x1, 0, z1], [x0, 0, z1]];
@@ -1106,7 +1107,7 @@ export function _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, 
   quads.sort((a, b) => a.depth - b.depth);
 
   // Ground grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 0.5;
+  ctx.strokeStyle = cvInk(0.04); ctx.lineWidth = 0.5;
   for (let g = 0; g <= 12; g++) {
     const x = (g / 12 - 0.5) * 2;
     const p0 = proj(x, 0, -0.6), p1 = proj(x, 0, 0.6);
@@ -1149,7 +1150,7 @@ export function _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, 
       ctx.fillText(months[m], p.sx, p.sy + 10);
     }
 
-    ctx.fillStyle = 'rgba(140,150,180,0.5)'; ctx.font = '7px "DM Mono", monospace'; ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(140,150,180,0.5)'; ctx.font = '7px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'right';
     for (let h = 0; h < 24; h += 6) {
       const z = (h / 24 - 0.5) * 1.2;
       const p = proj(-1.06, 0, z);
@@ -1283,7 +1284,7 @@ export function renderAnalyseErzeugerTable() {
   // Kopf: Anteile an Leistung und Energie als 100-%-Balken — zeigt, wer Grund- und wer Spitzenlast fährt
   const anteile = keys.map(k => {
     const c = cfg[k] || {};
-    return { label: c.label || k, color: c.color || '#fff', kw: c.leistungId ? (parseFloat(document.getElementById(c.leistungId)?.value) || 0) : 0, mwh: dispEn[k]?.waermeMwh || 0 };
+    return { label: c.label || k, color: c.color || cvTok('text'), kw: c.leistungId ? (parseFloat(document.getElementById(c.leistungId)?.value) || 0) : 0, mwh: dispEn[k]?.waermeMwh || 0 };
   });
   if (autoGkResult && autoGkResult.waermeMwh > 0) anteile.push({ label: 'Spitzenlast-Gaskessel (automatisch)', color: '#78909c', kw: autoGkResult.leistungKw || 0, mwh: autoGkResult.waermeMwh });
   const sumKw = anteile.reduce((s, a) => s + a.kw, 0), sumMwh = anteile.reduce((s, a) => s + a.mwh, 0);
@@ -1297,7 +1298,7 @@ export function renderAnalyseErzeugerTable() {
   keys.forEach(k => {
     const c = cfg[k] || {};
     const leistung = c.leistungId ? (parseFloat(document.getElementById(c.leistungId)?.value) || 0) : 0;
-    html += zeile(c.label || k, c.color || '#fff', leistung, dispEn[k]?.waermeMwh || 0);
+    html += zeile(c.label || k, c.color || cvTok('text'), leistung, dispEn[k]?.waermeMwh || 0);
   });
   // Auto-GK wenn vorhanden
   if (autoGkResult && autoGkResult.waermeMwh > 0) {

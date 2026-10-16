@@ -1,3 +1,4 @@
+import { cvInk, cvTok } from './lib/canvas-farben.js';
 import { ERDGAS_HS_HI } from './config/erzeuger-cfg.js';
 import { _getEtaMap } from './01-globals-varianten.js';
 import { spitzenkessel } from './06c-dispatch-core.js';
@@ -1005,7 +1006,7 @@ function _renderSensTornado(bars, basisEnergie) {
     ctx.fillText('Basis: ' + Math.round(basisEnergie).toLocaleString('de-DE') + ' €/a Energiekosten', W / 2, 14);
 
     // Basislinie (vertikal, Mitte)
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = cvInk(0.2); ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(cx, pad.t); ctx.lineTo(cx, H - pad.b); ctx.stroke();
     ctx.setLineDash([]);
@@ -1031,17 +1032,17 @@ function _renderSensTornado(bars, basisEnergie) {
       ctx.globalAlpha = 1.0;
 
       // Label links
-      ctx.fillStyle = '#b0bec5'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+      ctx.fillStyle = cvTok('muted'); ctx.font = '9px system-ui'; ctx.textAlign = 'right';
       ctx.fillText(b.traeger, pad.l - 4, y + barH / 2 + 3);
 
       // ±% rechts
-      ctx.fillStyle = '#78909c'; ctx.font = '9px "DM Mono",monospace'; ctx.textAlign = 'left';
+      ctx.fillStyle = '#78909c'; ctx.font = '9px "Source Sans 3","Segoe UI",Tahoma,sans-serif'; ctx.textAlign = 'left';
       ctx.fillText('±' + b.incr + '%', W - pad.r + 4, y + barH / 2 + 3);
 
       // Werte an Balkenenden
-      ctx.font = '8px "DM Mono",monospace';
+      ctx.font = '8px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
       // Plus-Seite
-      ctx.fillStyle = '#e0e0e0'; ctx.textAlign = 'left';
+      ctx.fillStyle = cvTok('text'); ctx.textAlign = 'left';
       const plusLabel = '+' + Math.round(b.deltaPlus).toLocaleString('de-DE') + ' €';
       if (wPlus > 50) { ctx.fillText(plusLabel, cx + wPlus - ctx.measureText(plusLabel).width - 3, y + barH / 2 + 3); }
       else { ctx.fillText(plusLabel, cx + wPlus + 3, y + barH / 2 + 3); }
@@ -1083,7 +1084,7 @@ function _renderSensFan(fanData, fanRange, basisEnergie, verbrauch) {
     minK -= kRange * 0.05; maxK += kRange * 0.05;
 
     // Grid
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.5;
+    ctx.strokeStyle = cvInk(0.06); ctx.lineWidth = 0.5;
     const nGrid = 4;
     for (let i = 0; i <= nGrid; i++) {
       const y = pad.t + plotH * (1 - i / nGrid);
@@ -1100,7 +1101,7 @@ function _renderSensFan(fanData, fanRange, basisEnergie, verbrauch) {
       ctx.fillStyle = '#78909c'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
       ctx.fillText((pct >= 0 ? '+' : '') + pct + '%', x, H - 6);
       // Vertikale Gitterlinien
-      ctx.strokeStyle = pct === 0 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)';
+      ctx.strokeStyle = pct === 0 ? cvInk(0.15) : cvInk(0.04);
       ctx.lineWidth = pct === 0 ? 1 : 0.5;
       ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, H - pad.b); ctx.stroke();
     });
@@ -1239,7 +1240,7 @@ function _sensRenderBump() {
     // Grid
     for (let r = 1; r <= nRanks; r++) {
       const y = yPos(r);
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.5;
+      ctx.strokeStyle = cvInk(0.06); ctx.lineWidth = 0.5;
       ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
       ctx.fillStyle = '#78909c'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
       ctx.fillText('Rang ' + r, pad.left - 8, y + 3);
@@ -1275,7 +1276,7 @@ function _sensRenderBump() {
       ranks.forEach((rank, i) => {
         ctx.fillStyle = color; ctx.beginPath();
         ctx.arc(xPos(i), yPos(rank), 4, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#23262f'; ctx.beginPath();
+        ctx.fillStyle = cvTok('surface'); ctx.beginPath();
         ctx.arc(xPos(i), yPos(rank), 1.5, 0, Math.PI * 2); ctx.fill();
       });
 

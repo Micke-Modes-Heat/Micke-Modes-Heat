@@ -5,6 +5,7 @@
 // Einsatz für das ganze Netz — jeder Erzeuger hat einen Standort (Zentrale). Daraus folgt stündlich, was jede
 // Zentrale einspeist und was über die Verbindungsleitungen fließt.
 
+import { cvInk } from './lib/canvas-farben.js';
 import { getVFlowForDN } from './02a-netz-physik.js';
 import { rohrLeistungKw, wasserStoffwerte } from './lib/netz-hydraulik.js';
 
@@ -279,15 +280,15 @@ function _zeichneUebergabe(d) {
   c.width = W * dpr; c.height = H * dpr; c.style.width = W + 'px'; c.style.height = H + 'px';
   const ctx = c.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.font = '10px "DM Mono", monospace';
+  ctx.font = '10px "Source Sans 3","Segoe UI",Tahoma,sans-serif';
   const u = d.ueber.get(d.zentralen[0].id)?.uebergabeKw;
   if (!u) return;
   const L = 52, R = 8, T = 10, B = 18, pw = W - L - R, ph = H - T - B;
   let max = 1; for (let t = 0; t < u.length; t++) max = Math.max(max, Math.abs(u[t]));
   if (d.kuppelKapazitaetKw > 0) max = Math.max(max, d.kuppelKapazitaetKw * 1.05);
   const y0 = T + ph / 2, sk = (ph / 2) / max;
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.moveTo(L, y0); ctx.lineTo(W - R, y0); ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.strokeStyle = cvInk(0.25); ctx.beginPath(); ctx.moveTo(L, y0); ctx.lineTo(W - R, y0); ctx.stroke();
+  ctx.fillStyle = cvInk(0.55);
   ctx.fillText('+' + nf(max) + ' kW', 2, T + 8); ctx.fillText('0', 2, y0 + 3); ctx.fillText('−' + nf(max), 2, T + ph);
   for (let x = 0; x < pw; x++) {
     const i0 = Math.floor(x / pw * u.length), i1 = Math.max(i0 + 1, Math.floor((x + 1) / pw * u.length));
@@ -302,7 +303,7 @@ function _zeichneUebergabe(d) {
     ctx.setLineDash([]);
     ctx.fillStyle = '#e57373'; ctx.fillText('übertragbar', W - R - 70, y0 - d.kuppelKapazitaetKw * sk - 3);
   }
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillStyle = cvInk(0.5);
   ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'].forEach((m, i) => ctx.fillText(m, L + i / 12 * pw + 2, H - 4));
 }
 
