@@ -12415,6 +12415,199 @@ th{color:var(--muted)}
 .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface);color:var(--text);box-shadow:var(--shadow-2)}
 .leaflet-tooltip{background:var(--frame);color:var(--on-frame);border:0;box-shadow:var(--shadow-1)}
 .leaflet-control-attribution{background:rgba(var(--ink),.04)!important;color:var(--faint)!important}
+
+/* ── 4. Rahmen: Kopfzeile, Prozessleiste, Arbeitsbereiche ─────────────── */
+:root{--lp-w:340px;--nav-w:240px;--sb-w:340px}
+svg.ui-i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.ui-i-sm{width:13px;height:13px;stroke-width:1.8}
+kbd{font:11px var(--font-mono);padding:1px 5px;border:1px solid currentColor;border-radius:3px;opacity:.65}
+
+/* Kopfzeile (Programmrahmen) */
+header.ui-frame{display:flex;align-items:center;gap:16px;height:46px;padding:0 10px 0 0;background:var(--frame);color:var(--on-frame);border:0;white-space:nowrap;position:relative;z-index:1400;flex-shrink:0}
+.ui-brand{display:flex;align-items:center;gap:10px;height:100%;padding:0 16px;border-right:1px solid var(--frame-2);font-weight:700;font-size:14px;letter-spacing:.01em}
+.ui-brand-mark{width:22px;height:22px;background:var(--brand);border-radius:2px;display:grid;place-items:center}
+html[data-theme="dark"] .ui-brand-mark{background:#266426}
+.ui-brand-mark::after{content:"";width:8px;height:8px;border:2px solid #fff;border-radius:1px}
+.ui-brand-sub{color:var(--on-frame-muted);font-weight:400}
+.ui-brand .app-version{font-size:11px;font-weight:400;color:var(--on-frame-muted);border:1px solid var(--frame-2);border-radius:3px;padding:0 5px}
+.ui-brand .app-version:empty{display:none}
+.ui-proj-wrap{position:relative}
+.ui-proj{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:var(--r);font-weight:600;font-size:14px;max-width:360px}
+.ui-proj:hover,.ui-proj:focus-visible{background:var(--frame-2)}
+.ui-proj .header-projekt-name{overflow:hidden;text-overflow:ellipsis;font:inherit;color:inherit;margin:0;max-width:300px}
+.ui-proj-leer{color:var(--on-frame-muted);font-weight:400}
+.header-projekt-name:not([style*="display: none"]):not([style*="display:none"]) + .ui-proj-leer{display:none}
+.ui-cmd{all:unset;cursor:text;display:flex;align-items:center;gap:8px;width:min(420px,32vw);height:30px;padding:0 10px;margin-left:auto;border-radius:var(--r);background:var(--frame-2);color:var(--on-frame-muted);font-size:13px}
+.ui-cmd:hover{color:var(--on-frame)}
+.ui-cmd kbd{margin-left:auto}
+.ui-frame-right{display:flex;align-items:center;gap:2px;margin-left:auto}
+.ui-fbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;min-width:32px;padding:0 8px;border-radius:var(--r);color:var(--on-frame-muted);font-size:13px;box-sizing:border-box}
+.ui-fbtn:hover,.ui-fbtn:focus-visible{background:var(--frame-2);color:var(--on-frame)}
+/* Menüs */
+.ui-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:1500;min-width:280px;padding:6px 0;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--r-2);box-shadow:var(--shadow-2);flex-direction:column}
+.ui-menu:not([hidden]):not([style*="none"]){display:flex}
+.ui-menu[hidden]{display:none!important}
+.ui-menu-rechts{left:auto;right:0}
+.ui-menu>button{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;width:100%;padding:7px 14px;font-size:13px;color:var(--text);white-space:nowrap}
+.ui-menu>button:hover,.ui-menu>button:focus-visible{background:var(--hover)}
+.ui-menu>button svg{color:var(--muted)}
+.ui-menu>button kbd{margin-left:auto;color:var(--faint)}
+.ui-menu>button.active{color:var(--brand);font-weight:600}
+.ui-menu-grp{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:600;padding:10px 14px 4px}
+.ui-menu-status{font-size:12px;color:var(--muted);padding:6px 14px 8px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
+.ui-badge{background:var(--crit);color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:auto}
+
+/* Prozessleiste */
+.ui-process{display:flex;align-items:stretch;min-height:56px;background:var(--surface);border-bottom:1px solid var(--border);padding-left:6px;flex-shrink:0;position:relative;z-index:1300}
+.ui-steps{display:flex;align-items:stretch}
+.ui-step{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:auto auto;column-gap:10px;align-content:center;padding:0 22px 0 14px;position:relative;min-width:148px}
+.ui-step+.ui-step::before{content:"";position:absolute;left:0;top:16px;bottom:16px;width:1px;background:var(--border)}
+.ui-step-nr{grid-row:1/3;width:24px;height:24px;border-radius:50%;border:1.5px solid var(--line-2);display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--muted);align-self:center}
+.ui-step b{font-size:14px;font-weight:600;line-height:1.2}
+.ui-step small{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);line-height:1.3}
+.ui-step small::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--line-2);flex:none}
+.ui-step[data-stufe="ok"] small::before{background:var(--ok)}
+.ui-step[data-stufe="offen"] small::before{background:var(--warn)}
+.ui-step[data-stufe="ok"] .ui-step-nr{border-color:var(--ok);color:var(--ok)}
+.ui-step:hover b{color:var(--brand)}
+.ui-step[aria-current="true"]::after{content:"";position:absolute;left:10px;right:18px;bottom:-1px;height:3px;background:var(--brand)}
+.ui-step[aria-current="true"] .ui-step-nr{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.ui-step[aria-current="true"] b{color:var(--brand)}
+.ui-ctx{display:flex;align-items:center;gap:18px;margin-left:auto;padding:0 14px;border-left:1px solid var(--border);overflow-x:auto;scrollbar-width:none}
+.ui-ctx::-webkit-scrollbar{display:none}
+.ui-ctx-group{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.ui-ctx-group:empty{display:none}
+.ui-ctx-label,.ui-ctx .ctx-label{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:600}
+.ui-ctx .timeline-slider{width:120px}
+.ui-ctx .timeline-label{font:700 14px var(--font-num);color:var(--text);min-width:36px;font-variant-numeric:tabular-nums}
+.var-pills{display:flex;gap:4px;align-items:center}
+.var-pill{border-radius:var(--r)!important;border:1px solid var(--line-2)!important;background:var(--surface)!important;color:var(--muted)!important;font-size:12.5px!important;font-weight:600;padding:3px 10px!important}
+.var-pill:hover{color:var(--text)!important;border-color:var(--text)!important}
+.var-pill.active,.var-pill-base.active{background:var(--brand-weak)!important;color:var(--brand)!important;border-color:var(--brand)!important}
+.var-add-btn{min-height:26px;width:28px;justify-content:center;padding:0!important}
+#schicht-bar button{border-radius:var(--r)!important}
+
+/* Hauptbereich */
+body.ui-lkebw .main{position:relative}
+.left-panel{width:var(--lp-w)!important;background:var(--surface)}
+.left-panel.collapsed{width:0!important}
+.lp-head,.lp-tabs{display:none!important}
+.lp-body{padding:12px 16px 20px}
+.lp-toggle{left:var(--lp-w)!important;background:var(--surface);color:var(--muted);border-color:var(--border)}
+#left-panel.collapsed ~ .lp-toggle{left:0!important}
+.lp-step{display:none!important}
+.ui-lp-kopf{padding:14px 16px 0;border-bottom:1px solid var(--border);display:grid;gap:10px;flex-shrink:0}
+.ui-lp-kopf:empty{display:none}
+.ui-lp-titel{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:12px}
+.ui-lp-titel h2{margin:0;font-size:18px;font-weight:700;line-height:1.2}
+.ui-lp-hinweis{font-size:12px;color:var(--muted)}
+.ui-lp-titel + .ui-tabs{margin-top:-4px}
+.ui-tabs{display:flex;gap:18px}
+.ui-tabs button{all:unset;cursor:pointer;padding:8px 0;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.ui-tabs button:hover{color:var(--text)}
+.ui-tabs button[aria-selected="true"]{color:var(--text);border-bottom-color:var(--brand)}
+.ui-seg{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden}
+.ui-seg button{all:unset;cursor:pointer;padding:0 12px;height:26px;display:flex;align-items:center;font-size:13px;font-weight:600;color:var(--muted)}
+.ui-seg button+button{border-left:1px solid var(--line-2)}
+.ui-seg button[aria-pressed="true"]{background:var(--text);color:var(--surface)}
+.sidebar{width:var(--sb-w)}
+
+/* Seitennavigation (Auswertung, Gutachten) */
+.ui-seitennav{width:var(--nav-w);flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:12px 0 20px;display:none}
+.ui-nav-titel{font-size:18px;font-weight:700;padding:4px 18px 10px}
+.ui-nav-grp{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:600;padding:14px 18px 4px}
+.ui-nav-it{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:6px 18px;font-size:13px;color:var(--muted)}
+.ui-nav-it:hover{color:var(--text);background:var(--hover)}
+.ui-nav-it[aria-current="true"]{color:var(--text);font-weight:700;background:var(--brand-weak);box-shadow:inset 3px 0 0 var(--brand)}
+.ui-nav-fenster{color:var(--faint)}
+
+/* Layouts je Schritt */
+body[data-ui-layout="karte"] .ui-seitennav{display:none}
+body[data-ui-layout="nav"] .ui-seitennav{display:block}
+body[data-ui-layout="nav"] #left-panel,body[data-ui-layout="nav"] .lp-toggle,
+body[data-ui-layout="seite"] #left-panel,body[data-ui-layout="seite"] .lp-toggle,body[data-ui-layout="seite"] .ui-seitennav{display:none!important}
+body[data-ui-layout="nav"] #center-analyse-view,body[data-ui-layout="nav"] #center-optimierung-view,
+body[data-ui-layout="nav"] #center-vergleich-view,body[data-ui-layout="nav"] #center-gebaeude-view{left:var(--nav-w)}
+#center-analyse-view,#center-optimierung-view,#center-vergleich-view,#center-gebaeude-view{background:var(--bg);padding:20px 28px 40px}
+/* Rückwege „Zurück zur Karte“ entfallen: die Prozessleiste zeigt, wo man ist */
+button[data-click="setViewMode('karte')"]{display:none!important}
+#center-analyse-view>div:first-child{display:none}
+#analyse-view-tabs{display:none!important}
+body[data-ui-layout="nav"]:not([data-ui-abschnitt="uebersicht"]):not([data-ui-abschnitt="waerme"]):not([data-ui-abschnitt="wirtschaft"]):not([data-ui-abschnitt="emissionen"]) #analyse-kpi-bar{display:none}
+.analyse-kpi{background:var(--surface)!important;border:1px solid var(--border)!important;border-radius:var(--r-2)!important;box-shadow:none!important}
+.analyse-kpi::before,.analyse-kpi::after{display:none!important}
+
+/* Projektseite */
+.ui-projektseite{position:absolute;inset:0;z-index:600;background:var(--bg);overflow:auto}
+.ui-projektseite[hidden]{display:none}
+.ui-seite-in{max-width:1180px;margin:0 auto;padding:26px 28px 48px}
+header.ui-seite-kopf{all:unset;display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px}
+.ui-seite-kopf h1{margin:2px 0 0;font-size:26px;font-weight:700;line-height:1.2}
+.ui-seite-kopf p{margin:4px 0 0;color:var(--muted)}
+.ui-eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:600}
+.ui-projekt-raster{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:20px;align-items:start}
+.ui-stapel{display:grid;gap:20px}
+.ui-karte{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);min-width:0}
+.ui-karte>header{all:unset;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+.ui-karte>header h4{margin:0;font-size:15px;font-weight:700}
+.ui-karte-in{padding:14px 16px}
+.ui-next{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--brand-weak);border-bottom:1px solid var(--border)}
+.ui-next>svg{color:var(--brand)}
+.ui-next div{flex:1}
+.ui-next b{display:block}
+.ui-next small{font-size:13px;color:var(--muted)}
+.ui-ck{display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)}
+.ui-ck:last-child{border-bottom:0}
+.ui-ck-ic{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--surface2);color:var(--faint);border:1px solid var(--border)}
+.ui-ck[data-stufe="ok"] .ui-ck-ic{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.ui-ck[data-stufe="offen"] .ui-ck-ic{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.ui-ck-t b{display:block;font-size:14px}
+.ui-ck-t small{font-size:12.5px;color:var(--muted)}
+.ui-stammdaten-raster{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ui-stammdaten-raster label{font-size:12px!important;color:var(--muted)!important;margin-bottom:3px!important}
+#pd-projektname-preview{font-size:12px!important;color:var(--muted);margin-top:10px}
+.ui-text-muted{color:var(--muted);margin:0 0 12px}
+.ui-knopfreihe{display:flex;flex-wrap:wrap;gap:8px}
+
+/* Kartenwerkzeuge */
+.ui-map-tools{position:absolute;top:10px;left:56px;z-index:800;display:flex;gap:8px;align-items:flex-start}
+body>.ui-map-tools{display:none}
+.ui-map-tools .addr-search-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);box-shadow:var(--shadow-1)}
+.ui-map-tools .addr-search-input{width:260px!important;border:0!important;border-radius:var(--r-2)!important;background:transparent!important;padding:7px 10px 7px 32px!important;font-size:13px!important;font-family:var(--font-ui)!important;cursor:text!important}
+.ui-map-tools .addr-search-input::placeholder{color:var(--faint)!important}
+.ui-map-tools .addr-search-icon{left:8px;color:var(--muted)}
+.ui-map-btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);box-shadow:var(--shadow-1);color:var(--text);font-size:13px;font-weight:600;cursor:pointer}
+.ui-map-btn:hover{border-color:var(--text)}
+.ebenen-panel{top:118px!important;border-radius:var(--r-2)!important;box-shadow:var(--shadow-2)!important;border-color:var(--border)!important;width:260px!important}
+
+/* Ergebnisleiste */
+.ui-ergebnis{display:flex;align-items:stretch;height:34px;background:var(--surface);border-top:1px solid var(--border);font-size:12.5px;flex-shrink:0;overflow-x:auto;white-space:nowrap;scrollbar-width:none;font-family:var(--font-ui)}
+.ui-erg-titel{display:flex;align-items:center;padding:0 14px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:600;border-right:1px solid var(--border)}
+.ui-erg{display:flex;align-items:center;gap:7px;padding:0 14px;border-right:1px solid var(--border)}
+.ui-erg .fs-dot{width:7px;height:7px;border-radius:50%;background:var(--line-2);flex:none}
+.ui-erg-lbl{color:var(--muted)}
+.ui-erg .fs-txt{font-weight:700;font-variant-numeric:tabular-nums;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.ui-erg-var{margin-left:auto;display:flex;align-items:center;padding:0 14px;color:var(--muted);border-left:1px solid var(--border)}
+#print-legend{display:none}
+@media print{#print-legend{display:flex}}
+
+/* Befehlssuche */
+.ui-pal-overlay{position:fixed;inset:0;z-index:5000;background:rgba(15,20,17,.35);display:flex;justify-content:center;align-items:flex-start;padding-top:90px}
+.ui-pal-overlay[hidden]{display:none}
+.ui-pal{width:min(640px,92vw);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--r-2);box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden}
+.ui-pal-in{display:flex;align-items:center;gap:10px;padding:0 16px;height:52px;border-bottom:1px solid var(--border);color:var(--muted)}
+.ui-pal-in input{all:unset;flex:1;font-size:16px;color:var(--text)}
+.ui-pal-liste{max-height:min(420px,60vh);overflow:auto;padding:6px 0}
+.ui-pal-grp{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:600;padding:10px 16px 4px}
+.ui-pal-it{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:12px;width:100%;padding:7px 16px;font-size:14px}
+.ui-pal-it svg{color:var(--faint)}
+.ui-pal-it:hover,.ui-pal-it.act{background:var(--brand-weak)}
+.ui-pal-it.act svg{color:var(--brand)}
+.ui-pal-leer{padding:18px 16px;color:var(--muted)}
+.ui-pal-fuss{display:flex;gap:16px;padding:8px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--faint)}
+#view-tabs{display:none!important}
+.ui-step{min-width:0}
+.ui-step small{white-space:nowrap}
 </style>
 
 
@@ -12432,10 +12625,120 @@ if (typeof L !== 'undefined') {
 </head>
 <body>
 
-<header>
-  <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span><span class="logo-word">Energiekonzepte</span> <span class="logo-sep">·</span> <span class="logo-sub" style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span><span class="app-version" id="app-version" title="Stand der ausgelieferten Anwendung" style="margin-left:6px;font-size:10px;font-weight:400;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:1px 6px;font-family:'DM Mono',monospace;"></span></div>
-  <div class="header-projekt-name" id="header-projekt-name" style="display:none;margin-left:14px;font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title=""></div>
-  <div class="view-tabs" id="view-tabs">
+<!-- ══ Symbolsatz (Linien-Icons) — einheitlich 16 px, 1,5 px Strich ═══════════ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="ui-i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l4 4"/></symbol>
+    <symbol id="ui-i-help" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4M8 11.6v.1"/></symbol>
+    <symbol id="ui-i-moon" viewBox="0 0 16 16"><path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z"/></symbol>
+    <symbol id="ui-i-down" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
+    <symbol id="ui-i-up" viewBox="0 0 16 16"><path d="M4 10l4-4 4 4"/></symbol>
+    <symbol id="ui-i-chev" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5L6 12.5"/></symbol>
+    <symbol id="ui-i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+    <symbol id="ui-i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></symbol>
+    <symbol id="ui-i-alert" viewBox="0 0 16 16"><path d="M8 2l6.5 11.5h-13zM8 6.5v3.2M8 11.6v.1"/></symbol>
+    <symbol id="ui-i-circle" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5"/></symbol>
+    <symbol id="ui-i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.8v.1"/></symbol>
+    <symbol id="ui-i-layers" viewBox="0 0 16 16"><path d="M8 2l6.5 3.5L8 9 1.5 5.5zM1.5 8.5L8 12l6.5-3.5M1.5 11.5L8 15l6.5-3.5"/></symbol>
+    <symbol id="ui-i-folder" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-7H8L6.5 3.5h-5z"/></symbol>
+    <symbol id="ui-i-save" viewBox="0 0 16 16"><path d="M2.5 2.5h9l2 2v9h-11zM5 2.5v3.5h5V2.5M5 13.5V9.5h6v4"/></symbol>
+    <symbol id="ui-i-import" viewBox="0 0 16 16"><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M2.5 12v1.5h11V12"/></symbol>
+    <symbol id="ui-i-export" viewBox="0 0 16 16"><path d="M8 10V2M4.5 5.5L8 2l3.5 3.5M2.5 12v1.5h11V12"/></symbol>
+    <symbol id="ui-i-table" viewBox="0 0 16 16"><path d="M2 3h12v10H2zM2 6.5h12M2 10h12M6.5 3v10"/></symbol>
+    <symbol id="ui-i-phone" viewBox="0 0 16 16"><path d="M5 1.5h6v13H5zM7.3 12.5h1.4"/></symbol>
+    <symbol id="ui-i-undo" viewBox="0 0 16 16"><path d="M5 3L2 6l3 3M2 6h7.5a4 4 0 0 1 0 8H6"/></symbol>
+    <symbol id="ui-i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
+    <symbol id="ui-i-mail" viewBox="0 0 16 16"><path d="M1.5 3.5h13v9h-13zM1.5 4l6.5 5 6.5-5"/></symbol>
+    <symbol id="ui-i-doc" viewBox="0 0 16 16"><path d="M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3"/></symbol>
+    <symbol id="ui-i-arrow" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></symbol>
+    <symbol id="ui-i-pen" viewBox="0 0 16 16"><path d="M2.5 13.5l2-6 6-5 3 3-5 6zM2.5 13.5l4-4"/></symbol>
+    <symbol id="ui-i-play" viewBox="0 0 16 16"><path d="M4.5 2.5l9 5.5-9 5.5z"/></symbol>
+    <symbol id="ui-i-map" viewBox="0 0 16 16"><path d="M1.5 3.5l4-1.5 5 2 4-1.5v10l-4 1.5-5-2-4 1.5zM5.5 2v10M10.5 4v10"/></symbol>
+    <symbol id="ui-i-screen" viewBox="0 0 16 16"><path d="M1.5 2.5h13v8.5h-13zM5.5 14h5M8 11v3"/></symbol>
+    <symbol id="ui-i-lock" viewBox="0 0 16 16"><path d="M3.5 7.5h9v6.5h-9zM5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"/></symbol>
+    <symbol id="ui-i-pulse" viewBox="0 0 16 16"><path d="M1 8h3l2-4.5 3.5 9L11.5 8H15"/></symbol>
+    <symbol id="ui-i-compass" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M10.5 5.5l-1.5 3.5-3.5 1.5 1.5-3.5z"/></symbol>
+    <symbol id="ui-i-list" viewBox="0 0 16 16"><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.1M2.5 8h.1M2.5 12h.1"/></symbol>
+    <symbol id="ui-i-calc" viewBox="0 0 16 16"><path d="M3 1.5h10v13H3zM5.5 4h5v2.5h-5zM5.5 9.5h.1M8 9.5h.1M10.5 9.5h.1M5.5 12h.1M8 12h.1M10.5 12h.1"/></symbol>
+  </defs>
+</svg>
+
+<header class="ui-frame" id="ui-frame">
+  <div class="ui-brand" title="LKEBw Energieplaner"><i class="ui-brand-mark" aria-hidden="true"></i><span class="ui-brand-word">LKEBw</span><span class="ui-brand-sub">Energieplaner</span><span class="app-version" id="app-version" title="Stand der ausgelieferten Anwendung"></span></div>
+
+  <div class="ui-proj-wrap">
+    <button class="ui-proj" id="ui-proj-btn" type="button" data-click="uiMenuUmschalten('ui-proj-menu')" aria-haspopup="menu" title="Projektdatei öffnen, speichern, importieren">
+      <span class="header-projekt-name" id="header-projekt-name" style="display:none;" title=""></span><span class="ui-proj-leer">Unbenanntes Projekt</span>
+      <svg class="ui-i"><use href="#ui-i-down"/></svg>
+    </button>
+    <div class="ui-menu" id="ui-proj-menu" role="menu" hidden>
+      <input type="file" id="import-file" style="display:none" accept=".json" data-change="importJSON(event)">
+      <input type="file" id="import-buildings-file" style="display:none" accept=".json,application/json" multiple data-change="importBuildingsFromProjects(event)">
+      <div class="ui-menu-status" id="project-file-status">Noch keine Projektdatei geöffnet</div>
+      <div class="ui-menu-grp">Projektdatei</div>
+      <button role="menuitem" data-click="openProjectFile()"><svg class="ui-i"><use href="#ui-i-folder"/></svg>Öffnen …<kbd>Strg O</kbd></button>
+      <button role="menuitem" data-click="saveProject()"><svg class="ui-i"><use href="#ui-i-save"/></svg>Speichern<kbd>Strg S</kbd></button>
+      <button role="menuitem" data-click="saveProjectAs()"><svg class="ui-i"><use href="#ui-i-save"/></svg>Speichern unter …</button>
+      <button role="menuitem" data-click="restoreLatestAutosave()"><svg class="ui-i"><use href="#ui-i-undo"/></svg>Letzte automatische Sicherung laden</button>
+      <div class="ui-menu-grp">Daten übernehmen</div>
+      <button role="menuitem" data-click="openBuildingProjectImport()"><svg class="ui-i"><use href="#ui-i-plus"/></svg>Gebäude aus anderen Projekten ergänzen</button>
+      <button role="menuitem" data-click="importVollstaendigXLSX()"><svg class="ui-i"><use href="#ui-i-import"/></svg>Excel-Datei importieren</button>
+      <button role="menuitem" data-click="exportVollstaendigXLSX()"><svg class="ui-i"><use href="#ui-i-export"/></svg>Excel-Datei exportieren</button>
+      <div class="ui-menu-grp">Feldaufnahme</div>
+      <button role="menuitem" data-click="exportFeldapp()"><svg class="ui-i"><use href="#ui-i-phone"/></svg>Für die Feldapp exportieren</button>
+      <button role="menuitem" data-click="importFelddaten()"><svg class="ui-i"><use href="#ui-i-import"/></svg>Felddaten importieren</button>
+      <button role="menuitem" id="btn-send-to-lr" data-click="sendToLiegenschaftsrechner()" style="display:none;"><svg class="ui-i"><use href="#ui-i-export"/></svg>An Liegenschaftsrechner senden</button>
+    </div>
+  </div>
+
+  <button class="ui-cmd" id="ui-cmd-btn" type="button" data-click="uiBefehlssucheOeffnen()" title="Jede Funktion des Tools per Name finden">
+    <svg class="ui-i"><use href="#ui-i-search"/></svg><span>Funktion suchen</span><kbd>Strg K</kbd>
+  </button>
+
+  <div class="ui-frame-right">
+    <button class="ui-fbtn ui-fbtn-txt" id="btn-feedback-main" type="button" data-click="sendAppFeedback()" title="Testversion: Feedback oder Fehler melden"><svg class="ui-i"><use href="#ui-i-mail"/></svg>Feedback</button>
+    <div class="ui-proj-wrap">
+      <button class="ui-fbtn ui-fbtn-txt" id="btn-mehr-menu" type="button" data-click="toggleMehrMenu()" aria-haspopup="menu" title="Hilfe, Werkzeuge und Einstellungen"><svg class="ui-i"><use href="#ui-i-help"/></svg>Hilfe<svg class="ui-i"><use href="#ui-i-down"/></svg></button>
+      <div id="mehr-menu" class="ui-menu ui-menu-rechts" role="menu" style="display:none;">
+        <div class="ui-menu-grp">Hilfe</div>
+        <button role="menuitem" id="btn-leitfaden" data-click="toggleLeitfaden()"><svg class="ui-i"><use href="#ui-i-list"/></svg>Leitfaden</button>
+        <button role="menuitem" id="btn-gefuehrt" data-click="guideToggle()"><svg class="ui-i"><use href="#ui-i-compass"/></svg><span class="btn-text">Geführter Modus Strom</span></button>
+        <button role="menuitem" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')"><svg class="ui-i"><use href="#ui-i-calc"/></svg>So wird gerechnet</button>
+        <div class="ui-menu-grp">Werkzeuge</div>
+        <button role="menuitem" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()"><svg class="ui-i"><use href="#ui-i-phone"/></svg>Felddaten auswerten</button>
+        <button role="menuitem" id="btn-dualscreen-toggle" data-click="toggleDualScreen()"><svg class="ui-i"><use href="#ui-i-screen"/></svg>Zwei-Bildschirm-Ansicht</button>
+        <button role="menuitem" id="btn-cluster-toggle" data-click="clusterTogglePanel()"><svg class="ui-i"><use href="#ui-i-map"/></svg>Cluster und Ausbaustufen</button>
+        <div class="ui-menu-grp">Einstellungen</div>
+        <button role="menuitem" id="btn-theme" data-click="cycleTheme()"><svg class="ui-i"><use href="#ui-i-moon"/></svg>Hell / dunkel umschalten</button>
+        <button role="menuitem" id="btn-privacy" data-click="showPrivacyPanel()"><svg class="ui-i"><use href="#ui-i-lock"/></svg>Datenschutz und lokale Daten</button>
+        <button role="menuitem" id="btn-diagnostics" data-click="showDiagnostics()"><svg class="ui-i"><use href="#ui-i-pulse"/></svg>Diagnose <span id="diagnostics-badge" class="ui-badge" style="display:none;"></span></button>
+        <button role="menuitem" id="btn-feedback" data-click="sendAppFeedback()"><svg class="ui-i"><use href="#ui-i-mail"/></svg>Feedback geben</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ══ Prozessleiste: fünf Arbeitsschritte + Kontext (Variante, Jahr, Schicht) ══ -->
+<nav class="ui-process" id="ui-process" aria-label="Arbeitsschritte">
+  <div class="ui-steps" id="ui-steps"></div>
+  <div class="ui-ctx">
+    <div class="ui-ctx-group" id="varianten-bar">
+      <span class="ui-ctx-label">Variante</span>
+      <div class="var-pills" id="var-pills">
+        <span class="var-pill var-pill-base active" data-click="activateVariant(null)">Hauptplan</span>
+      </div>
+      <button class="var-add-btn" data-click="addVariante()" title="Neue Variante anlegen: Name, Ausgangspunkt und Zweck"><svg class="ui-i"><use href="#ui-i-plus"/></svg></button>
+    </div>
+    <div class="ui-ctx-group ui-ctx-jahr">
+      <span class="ui-ctx-label">Betrachtungsjahr</span>
+      <input type="range" class="timeline-slider" id="year-slider" min="2026" max="2050" value="2026" step="1" data-input="setGlobalYear(this.value)" aria-label="Betrachtungsjahr">
+      <span class="timeline-label" id="year-display">2026</span>
+    </div>
+    <!-- Planungsschicht-Umschalter — Inhalt wird aus src/13v-schicht-bar.js gerendert -->
+    <div class="ui-ctx-group" id="schicht-bar"></div>
+  </div>
+  <!-- Alte Ansichtsreiter: unsichtbar, setViewMode() hält sie weiter aktuell -->
+  <div class="view-tabs" id="view-tabs" hidden>
     <button class="view-tab active" data-mode="karte" data-click="setViewMode('karte')">Karte</button>
     <button class="view-tab" data-mode="live" id="view-tab-live" data-click="setViewMode('live')" style="display:none;">Live</button>
     <button class="view-tab" data-mode="gebaeude" data-click="setViewMode('gebaeude')">Gebäude</button>
@@ -12443,51 +12746,20 @@ if (typeof L !== 'undefined') {
     <button class="view-tab" data-mode="optimierung" data-click="setViewMode('optimierung')">Optimierung</button>
     <button class="view-tab" data-mode="vergleich" data-click="setViewMode('vergleich')">Vergleich</button>
   </div>
-  <div class="ctx-sep"></div>
-  <div class="ctx-group">
-    <span class="ctx-label">Jahr</span>
-    <input type="range" class="timeline-slider" id="year-slider" min="2026" max="2050" value="2026" step="1" data-input="setGlobalYear(this.value)" style="width:120px;accent-color:var(--accent);cursor:pointer;">
-    <span class="timeline-label" id="year-display" style="font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:32px;">2026</span>
-  </div>
-  <div class="ctx-sep"></div>
-  <!-- Planungsschicht-Umschalter — Inhalt wird aus src/13v-schicht-bar.js gerendert -->
-  <div class="ctx-group" id="schicht-bar"></div>
-  <div class="ctx-sep"></div>
-  <div class="ctx-group" id="varianten-bar">
-    <span class="ctx-label">Variante</span>
-    <div class="var-pills" id="var-pills" style="display:flex;gap:3px;">
-      <span class="var-pill var-pill-base active" data-click="activateVariant(null)">Hauptplan</span>
-    </div>
-    <button class="var-add-btn" data-click="addVariante()" style="font-size:10px;" title="Neue Variante anlegen: Name, Ausgangspunkt und Zweck">＋ Variante</button>
-  </div>
-  <div class="header-spacer" style="flex:1;"></div>
-  <button class="tool-btn" id="btn-gefuehrt" data-click="guideToggle()" style="border-color:var(--c-orange);color:var(--c-orange);font-size:11px;padding:0 10px;gap:5px;" title="Geführter Modus: Schritt für Schritt durch ein Stromgutachten — blendet aus, was im aktuellen Schritt nicht gebraucht wird">🧭<span class="btn-text"> Geführt</span></button>
-  <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:var(--c-blue);color:var(--c-blue);font-size:11px;padding:0 10px;gap:5px;" title="Ansicht: Einfärbung, Gebäude-Symbole und Karten­ebenen">⊞ Ansicht</button>
-  <button class="tool-btn" id="btn-feedback-main" data-click="sendAppFeedback()" style="background:#e65100;border-color:var(--c-orange);color:#fff;font-size:11px;padding:0 14px;font-weight:600;letter-spacing:0.2px;" title="Testversion: Feedback oder Fehler melden">✉ Feedback geben</button>
-  <div style="position:relative;display:inline-block;">
-    <button class="tool-btn" id="btn-mehr-menu" data-click="toggleMehrMenu()" style="border-color:var(--c-blue);color:var(--c-blue);font-size:11px;padding:0 10px;" title="Weitere Funktionen: Feldapp, Farbschema, Satellit, Hilfe, Leitfaden, Feedback, Berechnungslogik">⋯ Mehr</button>
-    <div id="mehr-menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;min-width:190px;box-shadow:0 6px 18px rgba(0,0,0,0.45);flex-direction:column;gap:3px;">
-      <button class="tool-btn" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()" style="border-color:var(--c-violet);color:var(--c-violet);justify-content:flex-start;font-size:11px;" title="Feldapp-Funktionen: Felddaten-Filter, Galerie, Begehungsbericht">📱 Feldapp</button>
-      <button class="tool-btn" id="btn-dualscreen-toggle" data-click="toggleDualScreen()" style="border-color:var(--c-teal);color:var(--c-teal);justify-content:flex-start;font-size:11px;" title="Fenster über zwei Monitore aufziehen: Karte links, Panels rechts">🖥 Zwei-Bildschirm-Modus</button>
-      <button class="tool-btn" id="btn-cluster-toggle" data-click="clusterTogglePanel()" style="border-color:var(--c-blue);color:var(--c-blue);justify-content:flex-start;font-size:11px;" title="Liegenschaft in Cluster/Ausbaustufen gliedern (Klimafahrplan)">🗺 Cluster / Ausbaustufen</button>
-      <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:var(--c-blue);color:var(--c-blue);justify-content:flex-start;font-size:11px;" title="Farbschema wechseln">🎨 Farbschema</button>
-      <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:var(--c-blue);color:var(--c-blue);justify-content:flex-start;font-size:11px;">🛰 Satellit</button>
-      <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:var(--c-blue);color:var(--c-blue);justify-content:flex-start;font-size:11px;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓ Hilfe-Modus</button>
-      <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:var(--c-orange);color:var(--c-orange);justify-content:flex-start;font-size:11px;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋 Leitfaden</button>
-      <button class="tool-btn" id="btn-feedback" data-click="sendAppFeedback()" style="border-color:var(--c-green);color:var(--c-green);justify-content:flex-start;font-size:11px;" title="Feedback geben (lädt Datei mit Screenshot &amp; Versionsangabe herunter)">✉ Feedback</button>
-      <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:var(--c-amber);color:var(--c-amber);justify-content:flex-start;font-size:11px;" title="Berechnungslogik — Wie wird gerechnet?">📐 Berechnungslogik</button>
-      <button class="tool-btn" id="btn-privacy" data-click="showPrivacyPanel()" style="border-color:var(--c-blue);color:var(--c-blue);justify-content:flex-start;font-size:11px;">🔒 Datenschutz &amp; lokale Daten</button>
-      <button class="tool-btn" id="btn-diagnostics" data-click="showDiagnostics()" style="border-color:var(--c-blue);color:var(--c-blue);justify-content:flex-start;font-size:11px;">🩺 Diagnose <span id="diagnostics-badge" style="display:none;background:#e53935;color:#fff;border-radius:9px;padding:0 5px;"></span></button>
-    </div>
-  </div>
-  <div class="addr-search-wrap" style="flex-shrink:0;">
-    <button class="addr-search-icon" id="addr-search-submit" type="button"
-            data-click="addrSubmit()" title="Ersten Suchtreffer anzeigen" aria-label="Ort suchen">🔍</button>
-    <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse suchen…"
-      data-input="addrSearch(this.value)" data-keydown="addrKeydown(event)" autocomplete="off"/>
+</nav>
+
+<!-- Ältere Schalter ohne eigenen Platz in der Oberfläche; Code spricht sie weiter an -->
+<div hidden><button id="btn-tile" data-click="toggleTile()">Satellit</button><button id="btn-hilfe-toggle" data-click="toggleHilfeModus()">Hilfe-Modus</button></div>
+
+<!-- Kartenwerkzeuge, die beim Start in die Karte verschoben werden (src/48-oberflaeche.js) -->
+<div class="ui-map-tools" id="ui-map-tools">
+  <div class="addr-search-wrap">
+    <button class="addr-search-icon" id="addr-search-submit" type="button" data-click="addrSubmit()" title="Ersten Suchtreffer anzeigen" aria-label="Ort suchen"><svg class="ui-i"><use href="#ui-i-search"/></svg></button>
+    <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse oder Ort suchen" data-input="addrSearch(this.value)" data-keydown="addrKeydown(event)" autocomplete="off"/>
     <div class="addr-results" id="addr-results"></div>
   </div>
-</header>
+  <button class="ui-map-btn" id="btn-ebenen" type="button" data-click="toggleEbenenPanel()" title="Einfärbung, Symbole und Kartenebenen"><svg class="ui-i"><use href="#ui-i-layers"/></svg>Ebenen</button>
+</div>
 
 <div class="float-panel" id="privacy-panel" style="min-width:420px;max-width:620px;--panel-accent:#90a4ae;">
   <div class="panel-drag-handle"><span style="font-weight:700;">🔒 Datenschutz &amp; lokale Daten</span><button data-click="document.getElementById('privacy-panel').classList.remove('visible')" aria-label="Schließen">✕</button></div>
@@ -13716,29 +13988,6 @@ if (typeof L !== 'undefined') {
         <div class="total-card" id="tc-stromlast" title="Summe der elektrischen Spitzenlasten"><div class="total-val tot-strom" id="tot-stromlast">—</div><div class="total-lbl">Stromlast (kW)</div></div>
         <div class="total-sources" id="tot-sources"></div>
       </div>
-      <div class="export-bar">
-        <input type="file" id="import-file" style="display:none" accept=".json" data-change="importJSON(event)">
-        <input type="file" id="import-buildings-file" style="display:none" accept=".json,application/json" multiple data-change="importBuildingsFromProjects(event)">
-        <div class="export-row">
-          <button class="btn-export primary" data-click="openProjectFile()">📂 Öffnen</button>
-          <button class="btn-export primary" data-click="saveProject()">💾 Speichern</button>
-          <button class="btn-export" data-click="saveProjectAs()" title="Projekt unter einem neuen Dateinamen speichern">Speichern unter</button>
-        </div>
-        <div class="export-row">
-          <button class="btn-export" data-click="openBuildingProjectImport()" title="Gebäudedaten aus einer oder mehreren Projektdateien ergänzen">＋ Gebäude aus Projekten</button>
-          <button class="btn-export" data-click="restoreLatestAutosave()" title="Letzte automatische lokale Sicherung wiederherstellen">↶ Autosave</button>
-        </div>
-        <div id="project-file-status" style="font-size:8px;color:var(--muted);padding:1px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Noch keine Projektdatei geöffnet</div>
-        <div class="export-row">
-          <button class="btn-export" data-click="exportVollstaendigXLSX()" title="Excel-Export erzeugen">📊 Excel</button>
-          <button class="btn-export" data-click="importVollstaendigXLSX()" title="Excel-Datei importieren">📥 Excel</button>
-        </div>
-        <div class="export-row">
-          <button class="btn-export" data-click="exportFeldapp()" title="Für Feldapp exportieren" style="border-color:var(--c-blue);color:var(--c-blue);">📱 Feldapp</button>
-          <button class="btn-export" data-click="importFelddaten()" title="Felddaten importieren" style="border-color:var(--c-green);color:var(--c-green);">📥 Felddaten</button>
-        </div>
-        <button class="btn-export" id="btn-send-to-lr" data-click="sendToLiegenschaftsrechner()" style="display:none;" title="An Liegenschaftsrechner">📤 LR</button>
-      </div>
     </div>
 
     <!-- ── Tab: Elektro ────────────────────────────────────────────────────── -->
@@ -13858,14 +14107,15 @@ if (typeof L !== 'undefined') {
 </div>
 
 <!-- ══ Footer-Statuszeile ═══════════════════════════════════════════════ -->
-<div id="footer-status" style="display:flex;align-items:center;padding:3px 14px;background:var(--surface);border-top:1px solid var(--border);gap:14px;flex-shrink:0;font-size:10px;font-family:'DM Mono',monospace;overflow-x:auto;white-space:nowrap;">
-  <span id="fs-waerme" style="display:flex;align-items:center;gap:4px;"><span class="fs-dot" style="width:6px;height:6px;border-radius:50%;background:#455a64;flex-shrink:0;"></span><span class="fs-txt">Wärme: —</span></span>
-  <span id="fs-heizlast" style="display:flex;align-items:center;gap:4px;"><span class="fs-dot" style="width:6px;height:6px;border-radius:50%;background:#455a64;flex-shrink:0;"></span><span class="fs-txt">Heizlast: —</span></span>
-  <span id="fs-strom" style="display:flex;align-items:center;gap:4px;"><span class="fs-dot" style="width:6px;height:6px;border-radius:50%;background:#455a64;flex-shrink:0;"></span><span class="fs-txt">Strom: —</span></span>
-  <span id="fs-erzeuger" style="display:flex;align-items:center;gap:4px;"><span class="fs-dot" style="width:6px;height:6px;border-radius:50%;background:#455a64;flex-shrink:0;"></span><span class="fs-txt">Erzeuger: —</span></span>
-  <span id="fs-wgk" style="display:flex;align-items:center;gap:4px;"><span class="fs-dot" style="width:6px;height:6px;border-radius:50%;background:#455a64;flex-shrink:0;"></span><span class="fs-txt">WGK: —</span></span>
-  <span id="fs-ee" style="display:flex;align-items:center;gap:4px;"><span class="fs-dot" style="width:6px;height:6px;border-radius:50%;background:#455a64;flex-shrink:0;"></span><span class="fs-txt">EE: —</span></span>
-  <span id="fs-variante" style="color:var(--muted);margin-left:auto;">—</span>
+<div id="footer-status" class="ui-ergebnis" role="status" aria-label="Ergebnisse">
+  <span class="ui-erg-titel">Ergebnis</span>
+  <span id="fs-waerme" class="ui-erg"><span class="fs-dot"></span><span class="ui-erg-lbl">Wärmebedarf</span><span class="fs-txt">—</span></span>
+  <span id="fs-heizlast" class="ui-erg"><span class="fs-dot"></span><span class="ui-erg-lbl">Heizlast</span><span class="fs-txt">—</span></span>
+  <span id="fs-strom" class="ui-erg"><span class="fs-dot"></span><span class="ui-erg-lbl">Strombedarf</span><span class="fs-txt">—</span></span>
+  <span id="fs-erzeuger" class="ui-erg"><span class="fs-dot"></span><span class="ui-erg-lbl">Erzeugung</span><span class="fs-txt">—</span></span>
+  <span id="fs-wgk" class="ui-erg"><span class="fs-dot"></span><span class="ui-erg-lbl">Wärmekosten</span><span class="fs-txt">—</span></span>
+  <span id="fs-ee" class="ui-erg"><span class="fs-dot"></span><span class="ui-erg-lbl">Erneuerbar</span><span class="fs-txt">—</span></span>
+  <span id="fs-variante" class="ui-erg-var">—</span>
 </div>
 
 <div class="float-panel purple-border" id="overlay-panel" style="width:380px">
@@ -16123,9 +16373,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-10-14';
+  var d = '2026-10-16';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'cf32b4a';
+  var c = 'eeeb54e';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -74812,7 +75062,7 @@ window._isSingleFileBuild = true;
   let _klein = false;       // eingeklappt: nur Kopfzeile (beim Zeichnen, damit die Karte frei bleibt)
   let _ticker = null;
 
-  const _esc$8 = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const _esc$9 = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
   const ZUSTAND = {
     offen:         { ico: '○', text: 'ausstehend' },
@@ -74972,7 +75222,7 @@ window._isSingleFileBuild = true;
     const link = t => `<span role="button" tabindex="0" data-click="ladeStatusToggle()" title="Ladeübersicht ein-/ausblenden" style="color:${FARBE$3};text-decoration:underline;cursor:pointer;">${t}</span>`;
     if (!_schritte || !_lauf$1) return _schritte || window.areaLatLngs ? link('Ladeübersicht') : '';
     const z = lsZusammenfassung(_schritte);
-    if (_laufAktiv) return link(`⟳ Laden läuft${z.aktiv ? `: ${_esc$8(z.aktiv.titel)}` : ''} (${z.erledigt}/${z.gesamt})`);
+    if (_laufAktiv) return link(`⟳ Laden läuft${z.aktiv ? `: ${_esc$9(z.aktiv.titel)}` : ''} (${z.erledigt}/${z.gesamt})`);
     if (z.phase === 'fehler') return link(`⚠ Laden mit ${z.fehler} Fehler${z.fehler === 1 ? '' : 'n'}`);
     if (z.phase === 'fertig') return link('✓ Laden abgeschlossen');
     return '';
@@ -75007,14 +75257,14 @@ window._isSingleFileBuild = true;
 
   function _zeile$3(s) {
     const zs = s.id === 'gebiet' && s.zustand === 'laeuft' ? { text: 'zeichnen …' } : ZUSTAND[s.zustand] || ZUSTAND.offen;
-    const ico = s.zustand === 'laeuft' ? '<span class="ls-spin" aria-hidden="true"></span>' : _esc$8(zs.ico);
+    const ico = s.zustand === 'laeuft' ? '<span class="ls-spin" aria-hidden="true"></span>' : _esc$9(zs.ico);
     const unter = s.unter?.length
-      ? `<div class="ls-unter">${s.unter.map(u => `<div>${_esc$8(u)}</div>`).join('')}</div>` : '';
+      ? `<div class="ls-unter">${s.unter.map(u => `<div>${_esc$9(u)}</div>`).join('')}</div>` : '';
     return `<div class="ls-row ls-${s.zustand}">
     <span class="ls-ico">${ico}</span>
     <div class="ls-main">
-      <div class="ls-t">${_esc$8(s.titel)}</div>
-      ${s.info ? `<div class="ls-i">${_esc$8(s.info)}</div>` : ''}
+      <div class="ls-t">${_esc$9(s.titel)}</div>
+      ${s.info ? `<div class="ls-i">${_esc$9(s.info)}</div>` : ''}
       ${unter}
     </div>
     <div class="ls-st"><span>${zs.text}</span><span class="ls-zeit">${_zeitText(s)}</span></div>
@@ -75037,14 +75287,14 @@ window._isSingleFileBuild = true;
     el.style.left = `${Math.round((lp && lp.width ? lp.right : 0) + 12)}px`;
     const z = lsZusammenfassung(_schritte);
     el.className = `ls-phase-${_laufAktiv ? 'laeuft' : _lauf$1 ? z.phase : 'bereit'}${_klein ? ' ls-klein' : ''}`;
-    const aktiv = _klein && _lauf$1 && z.aktiv ? `<div class="ls-akt">${_esc$8(z.aktiv.titel)}${z.aktiv.info ? ` · ${_esc$8(z.aktiv.info)}` : ''}</div>` : '';
+    const aktiv = _klein && _lauf$1 && z.aktiv ? `<div class="ls-akt">${_esc$9(z.aktiv.titel)}${z.aktiv.info ? ` · ${_esc$9(z.aktiv.info)}` : ''}</div>` : '';
     el.innerHTML = `
     <div class="ls-head">
       <span class="ls-head-title">⬡ Plangebiet &amp; Laden</span>
       <button class="btn-xs" data-click="ladeStatusKlein()" title="${_klein ? 'Alle Schritte zeigen' : 'Einklappen'}">${_klein ? '▴ Schritte' : '▾'}</button>
       <button class="btn-xs" data-click="ladeStatusSchliessen()" title="Übersicht ausblenden — Laden läuft weiter">✕</button>
     </div>
-    <div class="ls-kopf">${_esc$8(_kopfText(z))}</div>
+    <div class="ls-kopf">${_esc$9(_kopfText(z))}</div>
     ${aktiv}
     ${_klein ? '' : `<div class="ls-chips">${_chips(z)}</div>
     <div class="ls-body">${_schritte.map(_zeile$3).join('')}</div>`}`;
@@ -102102,7 +102352,7 @@ window._isSingleFileBuild = true;
   function updateFooterStatus() {
     function _fsDot(el, ok, warn) {
       const d = el?.querySelector('.fs-dot');
-      if (d) d.style.background = ok ? (warn ? '#f9a825' : '#66bb6a') : '#455a64';
+      if (d) d.style.background = ok ? (warn ? 'var(--warn)' : 'var(--ok)') : 'var(--line-2)';
     }
     function _fsTxt(el, txt) {
       const t = el?.querySelector('.fs-txt');
@@ -102134,7 +102384,7 @@ window._isSingleFileBuild = true;
       _fsTxt(fsW, '~' + Math.round(gebMwh).toLocaleString('de-DE') + ' MWh (Gebäude)');
       _fsDot(fsW, true, true);
     } else {
-      _fsTxt(fsW, 'Wärme: —'); _fsDot(fsW, false);
+      _fsTxt(fsW, '—'); _fsDot(fsW, false);
     }
 
     // Heizlast (mit Quellenangabe)
@@ -102150,7 +102400,7 @@ window._isSingleFileBuild = true;
       _fsTxt(fsHL, '~' + Math.round(gebKw).toLocaleString('de-DE') + ' kW (Gebäude)');
       _fsDot(fsHL, true, true);
     } else {
-      _fsTxt(fsHL, 'Heizlast: —'); _fsDot(fsHL, false);
+      _fsTxt(fsHL, '—'); _fsDot(fsHL, false);
     }
 
     // Strom (mit Quellenangabe)
@@ -102172,22 +102422,22 @@ window._isSingleFileBuild = true;
       const prefix = sQuelle === 'Gebäude' ? '~' : '';
       _fsTxt(fsS, prefix + Math.round(sMwh).toLocaleString('de-DE') + ' MWh (' + sQuelle + ')');
       _fsDot(fsS, true, sQuelle === 'Gebäude');
-    } else { _fsTxt(fsS, 'Strom: —'); _fsDot(fsS, false); }
+    } else { _fsTxt(fsS, '—'); _fsDot(fsS, false); }
 
     // Erzeuger
     const fsE = document.getElementById('fs-erzeuger');
     const aktiv = meritOrderKeys.filter(k => isErzeugerAktiv(k));
     if (aktiv.length > 0) {
       const namen = aktiv.map(k => ERZEUGER_CFG[k]?.label || k).join(', ');
-      _fsTxt(fsE, aktiv.length + ' Erz: ' + namen);
+      _fsTxt(fsE, aktiv.length + ' · ' + namen);
       _fsDot(fsE, true);
-    } else { _fsTxt(fsE, 'Erzeuger: —'); _fsDot(fsE, false); }
+    } else { _fsTxt(fsE, '—'); _fsDot(fsE, false); }
 
     // WGK
     const fsWgk = document.getElementById('fs-wgk');
     const wgk = window._lastWgk;
-    if (wgk && wgk > 0) { _fsTxt(fsWgk, 'WGK: ' + wgk.toFixed(1) + ' ct'); _fsDot(fsWgk, true); }
-    else { _fsTxt(fsWgk, 'WGK: —'); _fsDot(fsWgk, false); }
+    if (wgk && wgk > 0) { _fsTxt(fsWgk, wgk.toFixed(1).replace('.', ',') + ' ct/kWh'); _fsDot(fsWgk, true); }
+    else { _fsTxt(fsWgk, '—'); _fsDot(fsWgk, false); }
 
     // EE-Anteil
     const fsEE = document.getElementById('fs-ee');
@@ -102196,9 +102446,9 @@ window._isSingleFileBuild = true;
     if (lastMwh(en) > 0) {
       const eePct = eeAnteilPct(en);
       window._lastEeAnteil = eePct;
-      _fsTxt(fsEE, 'EE: ' + eePct.toFixed(0) + ' %');
+      _fsTxt(fsEE, eePct.toFixed(0) + ' %');
       _fsDot(fsEE, true, eePct < 65);
-    } else { window._lastEeAnteil = null; _fsTxt(fsEE, 'EE: —'); _fsDot(fsEE, false); }
+    } else { window._lastEeAnteil = null; _fsTxt(fsEE, '—'); _fsDot(fsEE, false); }
 
     // Variante + Jahr
     const fsV = document.getElementById('fs-variante');
@@ -158146,7 +158396,7 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
     },
   };
 
-  const _esc$7 = text => String(text ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const _esc$8 = text => String(text ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
   /** Arbeitsliste für Schritt ③: offene Gebäude, Leitungen durch Gebäude, hydraulische Engpässe. */
   function _netzArbeitslisteHtml(status) {
@@ -158168,7 +158418,7 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
     const sichtbar = punkte.slice(0, 8);
     return kopf + '<div class="na-liste">' + sichtbar.map(punkt =>
       `<button type="button" class="na-punkt ${punkt.stufe}" data-click="netzPunktZeigen('${punkt.typ}', ${punkt.typ === 'geb' ? punkt.id : `'${punkt.id}'`})">` +
-      `<span class="na-punkt-titel">${_esc$7(punkt.titel)}</span><span class="na-punkt-text">${_esc$7(punkt.text)}</span><em>${punkt.aktion} →</em></button>`).join('') +
+      `<span class="na-punkt-titel">${_esc$8(punkt.titel)}</span><span class="na-punkt-text">${_esc$8(punkt.text)}</span><em>${punkt.aktion} →</em></button>`).join('') +
       (punkte.length > sichtbar.length ? `<div class="na-mehr-punkte">+ ${punkte.length - sichtbar.length} weitere</div>` : '') + '</div>' +
       (status.bestand ? '<div class="nws-klein">Im Bestandsnetz bleiben DN und Leitungsverläufe gesperrt; neue Hausanschlüsse sind möglich.</div>' : '');
   }
@@ -210929,7 +211179,7 @@ self.onmessage = function(e) {
 
   // SVG-Text muss maskiert werden — ein & oder < in einem Gebäudenamen zerlegt
   // sonst das ganze Diagramm.
-  const _esc$6 = s => String(s ?? '')
+  const _esc$7 = s => String(s ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   // Namen wie „Verbraucher Gewerbe, Handel, Dienstleistung 28" sind doppelt so
@@ -210940,10 +211190,10 @@ self.onmessage = function(e) {
   function _passend(text, breitePx, schriftPx) {
     const s = String(text ?? '');
     const maxZeichen = Math.max(6, Math.floor(breitePx / (schriftPx * 0.55)));
-    if (s.length <= maxZeichen) return _esc$6(s);
+    if (s.length <= maxZeichen) return _esc$7(s);
     const kopf = Math.ceil((maxZeichen - 1) * 0.6);
     const schwanz = maxZeichen - 1 - kopf;
-    return _esc$6(s.slice(0, kopf).trimEnd() + '…' + (schwanz > 0 ? s.slice(-schwanz) : ''));
+    return _esc$7(s.slice(0, kopf).trimEnd() + '…' + (schwanz > 0 ? s.slice(-schwanz) : ''));
   }
 
   // Zwei Gebäude derselben Nutzung heißen gleich („Kfz-Abstellhalle") — erst die
@@ -211217,10 +211467,10 @@ self.onmessage = function(e) {
       const cfg = ASSET_CFG[n.type] || {};
       const nr  = _gebNummer(n);
       const meta = n._chips ? `${n._chips.length} Anlagen` : (cfg.label || n.type);
-      return `<div class="sld-suche-row" data-click="sldSucheWahl('${_esc$6(String(n.id)).replace(/'/g, "\\'")}')">
-      <span class="sld-suche-nr">${_esc$6(nr || cfg.icon || '·')}</span>
-      <span class="sld-suche-name">${_esc$6(n.name)}</span>
-      <span class="sld-suche-meta">${_esc$6(meta)}</span>
+      return `<div class="sld-suche-row" data-click="sldSucheWahl('${_esc$7(String(n.id)).replace(/'/g, "\\'")}')">
+      <span class="sld-suche-nr">${_esc$7(nr || cfg.icon || '·')}</span>
+      <span class="sld-suche-name">${_esc$7(n.name)}</span>
+      <span class="sld-suche-meta">${_esc$7(meta)}</span>
     </div>`;
     }).join('')
     + (gefunden.length > 25 ? `<div class="sld-suche-leer">… ${gefunden.length - 25} weitere</div>` : '');
@@ -222937,7 +223187,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   }
 
   // ── Panel-Inhalt ────────────────────────────────────────────────────────────────────────
-  function _esc$5(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
+  function _esc$6(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
 
   function clusterRenderPanel() {
     const el = document.getElementById('cluster-content');
@@ -222976,10 +223226,10 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
           .map(e => `
           <div style="display:flex;align-items:center;gap:6px;font-size:11px;margin:3px 0;">
             <span style="font-family:ui-monospace,Consolas,monospace;font-size:10px;color:var(--accent);font-weight:600;">M${String(e.nr ?? '').padStart(2, '0')}</span>
-            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);">${MASSN_LABEL[e.art] || _esc$5(e.art)} · ${e._wirkung?.length || 0} Geb.</span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);">${MASSN_LABEL[e.art] || _esc$6(e.art)} · ${e._wirkung?.length || 0} Geb.</span>
             <input type="number" min="0" step="1000" value="${Number(e.kosten?.investEur) || ''}" placeholder="Kosten €"
                    title="Investition für das ganze Paket (zählt im Gutachten einmal)"
-                   onchange="clusterPaketKosten('${_esc$5(e.id)}',this.value)"
+                   onchange="clusterPaketKosten('${_esc$6(e.id)}',this.value)"
                    style="width:92px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 4px;">
             <span style="color:var(--muted);">€</span>
           </div>`).join('');
@@ -222993,7 +223243,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
           <input type="color" value="${c.farbe}" title="Farbe"
                  onchange="clusterEditFeld('${c.id}','farbe',this.value)"
                  style="width:22px;height:22px;padding:0;border:none;background:none;cursor:pointer;flex-shrink:0;">
-          <input type="text" value="${_esc$5(c.name)}" title="Name"
+          <input type="text" value="${_esc$6(c.name)}" title="Name"
                  onchange="clusterEditFeld('${c.id}','name',this.value)"
                  style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 6px;font-size:12px;font-weight:600;">
           <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${n} Geb.</span>
@@ -223078,7 +223328,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         interactive: false,
         icon: L.divIcon({
           className: 'cluster-badge',
-          html: `<div style="background:${c.farbe};color:#fff;border-radius:14px;padding:2px 9px;font-weight:700;font-size:12px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;line-height:1.15;opacity:${geplant ? 0.55 : 1};">${check}${_esc$5(c.name)}${sub}</div>`,
+          html: `<div style="background:${c.farbe};color:#fff;border-radius:14px;padding:2px 9px;font-weight:700;font-size:12px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;line-height:1.15;opacity:${geplant ? 0.55 : 1};">${check}${_esc$6(c.name)}${sub}</div>`,
           iconSize: [0, 0],
         }),
         zIndexOffset: 1500,
@@ -223732,7 +223982,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   let _flussLaeuft = false;   // rAF-Schleife der Lastfluss-Animation
   let _flussOffset = 0;
 
-  const _esc$4 = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const _esc$5 = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const _node = id => PD.nodes.find(n => n.id === id) || null;
   const _link = id => PD.links.find(l => l.id === id) || null;
 
@@ -224134,7 +224384,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const marken = alt ? PD.nodes.filter(n => n.planId === alt.id).length : 0;
     if (marken) {
       epConfirm('Markierungen übernehmen?',
-        `„${_esc$4(alt.name)}" trägt ${marken} Eintrag/Einträge samt Kabeln und deren Verknüpfungen `
+        `„${_esc$5(alt.name)}" trägt ${marken} Eintrag/Einträge samt Kabeln und deren Verknüpfungen `
         + `zur Karte. Sie lassen sich auf den neuen Stand übertragen — sinnvoll, solange es `
         + `dieselbe Zeichnung im selben Ausschnitt ist. Wurde der Plan neu gesetzt, besser leer beginnen.`,
         { okText: 'Übertragen', cancelText: 'Leer beginnen' })
@@ -224251,7 +224501,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const b = _blatt$1(id);
     if (!b || !b.url) return;
     epConfirm('Bild verwerfen?',
-      `Das Planbild von „${_esc$4(b.name)}" wird aus dem Projekt entfernt (${_blattGroesse(b)}). `
+      `Das Planbild von „${_esc$5(b.name)}" wird aus dem Projekt entfernt (${_blattGroesse(b)}). `
       + `Die ${PD.nodes.filter(n => n.planId === b.id).length} Marken bleiben als Nachweis erhalten, `
       + `sind ohne Bild aber nicht mehr sinnvoll zu betrachten. Nicht umkehrbar.`,
       { okText: 'Bild verwerfen', cancelText: 'Behalten', danger: true }).then(ja => {
@@ -224269,7 +224519,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     if (!b) return;
     const anz = PD.nodes.filter(n => n.planId === id).length;
     epConfirm('Blatt entfernen?',
-      `„${_esc$4(b.name)}" wird samt ${anz} Eintrag/Einträgen und deren Kabeln aus dem Plan entfernt. `
+      `„${_esc$5(b.name)}" wird samt ${anz} Eintrag/Einträgen und deren Kabeln aus dem Plan entfernt. `
       + `Bereits in die Karte übernommene Anlagen und Leitungen bleiben bestehen.`,
       { okText: 'Entfernen', cancelText: 'Abbrechen', danger: true }).then(ja => {
       if (!ja) return;
@@ -224312,8 +224562,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         + `${b.w}×${b.h} px (Seitenverhältnis ${(b.h ? b.w / b.h : 0).toFixed(3)}), ${_blattGroesse(b)}`
         + (archiv ? ' · Archiv: zählt im Abgleich nicht mit' : '');
       return `<button class="pd-blatt${b.id === PD.aktivId ? ' active' : ''}${archiv ? ' archiv' : ''}"
-      data-click="pdBlattWechseln('${b.id}')" title="${_esc$4(titel)}">
-      ${archiv ? '🗄 ' : ''}${_esc$4(b.name)}${b.stand ? ` <i>${_esc$4(b.stand)}</i>` : ''}
+      data-click="pdBlattWechseln('${b.id}')" title="${_esc$5(titel)}">
+      ${archiv ? '🗄 ' : ''}${_esc$5(b.name)}${b.stand ? ` <i>${_esc$5(b.stand)}</i>` : ''}
       <span class="pd-blatt-zahl">${anz}</span>
     </button>`;
     }).join('');
@@ -224524,9 +224774,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       // Kein Treffer ist selbst ein Befund: der Plan kennt ein Gebäude, die Karte
       // nicht. Statt in eine Sackgasse zu laufen, lässt es sich hier erfassen.
       box.innerHTML = `<div class="pd-suche-leer">Kein Gebäude auf der Karte gefunden</div>
-      <div class="pd-suche-row" data-click="pdFehlendesGebaeude('${_esc$4(s).replace(/'/g, "\\'")}')">
+      <div class="pd-suche-row" data-click="pdFehlendesGebaeude('${_esc$5(s).replace(/'/g, "\\'")}')">
         <span class="pd-suche-nr" style="color:var(--c-red)">+</span>
-        <span class="pd-suche-name">„${_esc$4(q)}" als <b>fehlend</b> im Plan erfassen</span>
+        <span class="pd-suche-name">„${_esc$5(q)}" als <b>fehlend</b> im Plan erfassen</span>
         <span class="pd-suche-meta">nicht auf der Karte</span>
       </div>`;
       box.style.display = 'block';
@@ -224540,9 +224790,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const fremd = drinNode && drinNode.planId !== PD.aktivId;
       const wo = fremd ? `auf „${_blatt$1(drinNode.planId)?.name || '?'}"` : 'schon im Plan';
       return `<div class="pd-suche-row${drinNode ? ' drin' : ''}" data-click="pdPlatziereGebaeude('${g.id}')">
-      <span class="pd-suche-nr">${_esc$4(g.gebaeudenummer || '–')}</span>
-      <span class="pd-suche-name">${_esc$4(g.name)}</span>
-      <span class="pd-suche-meta">${drinNode ? _esc$4(wo) : (n ? n + ' Anlage' + (n === 1 ? '' : 'n') : 'ohne Anlagen')}</span>
+      <span class="pd-suche-nr">${_esc$5(g.gebaeudenummer || '–')}</span>
+      <span class="pd-suche-name">${_esc$5(g.name)}</span>
+      <span class="pd-suche-meta">${drinNode ? _esc$5(wo) : (n ? n + ' Anlage' + (n === 1 ? '' : 'n') : 'ohne Anlagen')}</span>
     </div>`;
     }).join('');
     box.style.display = 'block';
@@ -224573,7 +224823,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const anz = _anschlussKandidaten(g.id).length;
     const hint = document.getElementById('pd-modehint');
     if (hint) {
-      hint.innerHTML = `Klick in den Plan setzt <b>${_esc$4(g.name)}</b>`
+      hint.innerHTML = `Klick in den Plan setzt <b>${_esc$5(g.name)}</b>`
         + (anz ? ` samt ${anz} Anlage${anz === 1 ? '' : 'n'}` : ' (Gebäude hat noch keine Anlagen)')
         + ' — Esc bricht ab.';
     }
@@ -224597,7 +224847,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     pdSetMode('knoten');
     _pendingSetzen = { art: 'fehlend', obj: { name, nummer } };
     const hint = document.getElementById('pd-modehint');
-    if (hint) hint.innerHTML = `Klick in den Plan erfasst <b>${_esc$4(name)}</b> als <b>auf der Karte fehlend</b> — Esc bricht ab.`;
+    if (hint) hint.innerHTML = `Klick in den Plan erfasst <b>${_esc$5(name)}</b> als <b>auf der Karte fehlend</b> — Esc bricht ab.`;
   }
 
   function _setzeFehlendesGebaeude(o, p) {
@@ -224988,7 +225238,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     pdSetMode('knoten');
     _pendingSetzen = { art: 'asset', obj: a };
     const hint = document.getElementById('pd-modehint');
-    if (hint) hint.innerHTML = `Klick in den Plan setzt <b>${_esc$4(a.name)}</b> (${_esc$4(ASSET_CFG[a.type]?.label || a.type)}) — Esc bricht ab.`;
+    if (hint) hint.innerHTML = `Klick in den Plan setzt <b>${_esc$5(a.name)}</b> (${_esc$5(ASSET_CFG[a.type]?.label || a.type)}) — Esc bricht ab.`;
   }
 
   function _setzeAssetKnoten(a, p) {
@@ -225193,7 +225443,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       line.bindTooltip(
         () => kante
           ? buildStromEdgeTooltip(kante)
-          : `<b>${_esc$4(l.label || '(Kabel ohne Angabe)')}</b><br>
+          : `<b>${_esc$5(l.label || '(Kabel ohne Angabe)')}</b><br>
            <span style="color:var(--c-blue)">noch nicht in die Karte übernommen</span>`,
         { sticky: true, className: 'geb-tooltip' });
       line.on('click', ev => {
@@ -225267,7 +225517,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         _marks.addLayer(L.marker(ll, {
           icon: L.divIcon({
             className: 'pd-wert-icon',
-            html: `<div class="pd-wert" style="color:${_linkFarbe(l)}">${_esc$4(_rechenText(e))}</div>`,
+            html: `<div class="pd-wert" style="color:${_linkFarbe(l)}">${_esc$5(_rechenText(e))}</div>`,
             iconSize: null,
           }),
           interactive: false, keyboard: false, zIndexOffset: 300,
@@ -225305,7 +225555,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
           const mk = L.marker(_ll(t.x, t.y), {
             icon: L.divIcon({
               className: 'pd-text-icon',
-              html: `<div class="pd-textmark${kabel ? ' kabel' : ''}">${_esc$4(t.str)}</div>`,
+              html: `<div class="pd-textmark${kabel ? ' kabel' : ''}">${_esc$5(t.str)}</div>`,
               iconSize: null,
             }),
             keyboard: false, zIndexOffset: 400,
@@ -225402,7 +225652,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
              <div class="pd-node${n.uebertragen ? ' uebertragen' : ''}" style="background:${STATUS_COL[st]};border-color:${rand};${hervor ? 'box-shadow:0 0 0 3px rgba(233,30,99,.45);' : ''}">
                <span>${cfg.icon || '◻'}</span>
              </div>
-             <div class="pd-node-lbl">${_esc$4(n.label || '?')}</div>
+             <div class="pd-node-lbl">${_esc$5(n.label || '?')}</div>
            </div>`,
       iconSize: [22, 22], iconAnchor: [11, 11],
     });
@@ -225416,7 +225666,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       return L.divIcon({
         className: 'pd-geb-icon',
         html: `<div class="pd-geb fehlt${hervor ? ' sel' : ''}" style="border-color:${STATUS_COL.fehlt};transform:translate(-50%,-50%) scale(${_symbolFaktor(n).toFixed(3)});">
-               <span class="pd-geb-name">${_esc$4(n.label || 'Gebäude')}</span>
+               <span class="pd-geb-name">${_esc$5(n.label || 'Gebäude')}</span>
                <span class="pd-chips"><span class="pd-chips-leer">nicht auf der Karte</span></span>
              </div>`,
         iconSize: null,
@@ -225427,13 +225677,13 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const chips = kand.slice(0, 6).map(a => {
       const c = ASSET_CFG[a.type] || {};
       return `<span class="pd-chip${a.id === an?.id ? ' an' : ''}" style="color:${c.color || '#90a4ae'}"
-             title="${_esc$4(a.name)}">${c.icon || '◻'}</span>`;
+             title="${_esc$5(a.name)}">${c.icon || '◻'}</span>`;
     }).join('');
     const mehr = kand.length > 6 ? `<span class="pd-chip pd-chip-mehr">+${kand.length - 6}</span>` : '';
     return L.divIcon({
       className: 'pd-geb-icon',
       html: `<div class="pd-geb${hervor ? ' sel' : ''}${n.uebertragen ? ' uebertragen' : ''}" style="border-color:${STATUS_COL[st]};transform:translate(-50%,-50%) scale(${_symbolFaktor(n).toFixed(3)});">
-             <span class="pd-geb-name">${_esc$4(n.label || 'Gebäude')}</span>
+             <span class="pd-geb-name">${_esc$5(n.label || 'Gebäude')}</span>
              <span class="pd-chips">${chips || '<span class="pd-chips-leer">ohne Anlagen</span>'}${mehr}</span>
            </div>`,
       iconSize: null,
@@ -225504,10 +225754,10 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const assets = ASSETS.items
       .filter(a => a.domain === 'strom' || a.domain === 'hybrid')
       .filter(a => !belegt.has(a.id))
-      .map(a => `<option value="a:${a.id}"${n.linkKind === 'a' && n.linkId === a.id ? ' selected' : ''}>${_esc$4(a.name)} · ${_esc$4(ASSET_CFG[a.type]?.label || a.type)}</option>`)
+      .map(a => `<option value="a:${a.id}"${n.linkKind === 'a' && n.linkId === a.id ? ' selected' : ''}>${_esc$5(a.name)} · ${_esc$5(ASSET_CFG[a.type]?.label || a.type)}</option>`)
       .join('');
     const geb = (window.gebaeude || [])
-      .map(g => `<option value="g:${g.id}"${n.linkKind === 'g' && String(n.linkId) === String(g.id) ? ' selected' : ''}>${_esc$4(g.name)}${g.gebaeudenummer ? ' (Nr. ' + _esc$4(g.gebaeudenummer) + ')' : ''}</option>`)
+      .map(g => `<option value="g:${g.id}"${n.linkKind === 'g' && String(n.linkId) === String(g.id) ? ' selected' : ''}>${_esc$5(g.name)}${g.gebaeudenummer ? ' (Nr. ' + _esc$5(g.gebaeudenummer) + ')' : ''}</option>`)
       .join('');
     return `<option value=""${!n.linkKind ? ' selected' : ''}>— offen —</option>
     <option value="n:"${n.linkKind === 'neu' ? ' selected' : ''}>➕ neu anlegen — Position aus dem Plan geschätzt</option>
@@ -225541,14 +225791,14 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       box.innerHTML = `
       <div class="pd-form-head"><span class="pd-dot" style="background:${STATUS_COL.fehlt}"></span> Fehlt auf der Karte</div>
       <label class="pd-lbl">Bezeichnung im Plan</label>
-      <input id="pd-f-label" class="pd-in" type="text" value="${_esc$4(n.label)}"
+      <input id="pd-f-label" class="pd-in" type="text" value="${_esc$5(n.label)}"
              data-change="pdUpdateNode('label', this.value)"/>
       <label class="pd-lbl">Gebäudenummer</label>
-      <input class="pd-in" type="text" value="${_esc$4(n.gebNummer || '')}"
+      <input class="pd-in" type="text" value="${_esc$5(n.gebNummer || '')}"
              placeholder="z. B. 135"
              data-change="pdUpdateNode('gebNummer', this.value)"/>
       ${treffer
-        ? `<div class="pd-ok">Auf der Karte gibt es jetzt „${_esc$4(treffer.name)}"
+        ? `<div class="pd-ok">Auf der Karte gibt es jetzt „${_esc$5(treffer.name)}"
              <button class="pd-mini" data-click="pdVerknuepfeFehlend('${n.id}')">→ verknüpfen</button></div>`
         : `<div class="pd-warn">Wird nicht übernommen — der Eintrag hält nur fest, dass der Plan
              dieses Gebäude kennt und die Karte nicht. Sobald es auf der Karte gezeichnet ist,
@@ -225566,7 +225816,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const kand = _anschlussKandidaten(n.linkId);
       const an = _anschlussAsset(n);
       const typen = NODE_TYPES
-        .map(t => `<option value="${t}"${t === n.assetType ? ' selected' : ''}>${_esc$4(ASSET_CFG[t]?.label || t)}</option>`)
+        .map(t => `<option value="${t}"${t === n.assetType ? ' selected' : ''}>${_esc$5(ASSET_CFG[t]?.label || t)}</option>`)
         .join('');
       const liste = kand.map(a => {
         const c = ASSET_CFG[a.type] || {};
@@ -225574,15 +225824,15 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
                    data-click="pdUpdateNode('anschluss','${a.id}')"
                    title="Kabel an diesem Kasten enden an dieser Anlage">
                 <span style="color:${c.color || '#90a4ae'}">${c.icon || '◻'}</span>
-                <span class="pd-anschluss-name">${_esc$4(a.name)}</span>
-                <span class="pd-anschluss-typ">${_esc$4(c.label || a.type)}</span>
+                <span class="pd-anschluss-name">${_esc$5(a.name)}</span>
+                <span class="pd-anschluss-typ">${_esc$5(c.label || a.type)}</span>
               </div>`;
       }).join('');
       box.innerHTML = `
       <div class="pd-form-head"><span class="pd-dot" style="background:${STATUS_COL[st]}"></span> Gebäude</div>
-      <div class="pd-route">${_esc$4(g?.name || '(Gebäude gelöscht)')}${g?.gebaeudenummer ? ` <span style="color:var(--muted)">· Nr. ${_esc$4(g.gebaeudenummer)}</span>` : ''}</div>
+      <div class="pd-route">${_esc$5(g?.name || '(Gebäude gelöscht)')}${g?.gebaeudenummer ? ` <span style="color:var(--muted)">· Nr. ${_esc$5(g.gebaeudenummer)}</span>` : ''}</div>
       <label class="pd-lbl">Beschriftung im Plan</label>
-      <input id="pd-f-label" class="pd-in" type="text" value="${_esc$4(n.label)}"
+      <input id="pd-f-label" class="pd-in" type="text" value="${_esc$5(n.label)}"
              data-change="pdUpdateNode('label', this.value)"/>
       <label class="pd-lbl">Anschlusspunkt — hier enden die Kabel</label>
       ${kand.length
@@ -225600,21 +225850,21 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const n = _node(_sel.id);
       if (!n) { _sel = null; return _renderForm(); }
       const typen = NODE_TYPES
-        .map(t => `<option value="${t}"${t === n.assetType ? ' selected' : ''}>${_esc$4(ASSET_CFG[t]?.label || t)}</option>`)
+        .map(t => `<option value="${t}"${t === n.assetType ? ' selected' : ''}>${_esc$5(ASSET_CFG[t]?.label || t)}</option>`)
         .join('');
       const st = _statusNode(n);
       const asset = n.assetId ? ASSETS.items.find(a => a.id === n.assetId) : null;
       box.innerHTML = `
       <div class="pd-form-head"><span class="pd-dot" style="background:${STATUS_COL[st]}"></span> Betriebsmittel</div>
       <label class="pd-lbl">Bezeichnung im Plan</label>
-      <input id="pd-f-label" class="pd-in" type="text" value="${_esc$4(n.label)}"
+      <input id="pd-f-label" class="pd-in" type="text" value="${_esc$5(n.label)}"
              placeholder="z. B. Station IV, KV 50"
              data-change="pdUpdateNode('label', this.value)"/>
       <label class="pd-lbl">Komponententyp</label>
       <select class="pd-in" data-change="pdUpdateNode('assetType', this.value)">${typen}</select>
       <label class="pd-lbl">Verortung auf der Karte</label>
       <select class="pd-in" data-change="pdUpdateNode('verortung', this.value)">${_verortungOptions(n)}</select>
-      ${asset ? `<div class="pd-ok">✔ übernommen als „${_esc$4(asset.name)}"
+      ${asset ? `<div class="pd-ok">✔ übernommen als „${_esc$5(asset.name)}"
              <button class="pd-mini" data-click="pdZeigeAufKarte('${n.id}')">→ auf Karte zeigen</button></div>` : ''}
       ${!n.linkKind && !asset ? `<div class="pd-warn">Ohne Verortung wird dieser Eintrag nicht übernommen.</div>` : ''}
       ${_anschlussleistungFeld(n)}
@@ -225642,25 +225892,25 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const unbekannt = l.cableType && !KABEL_TYPEN[l.cableType];
     box.innerHTML = `
     <div class="pd-form-head"><span class="pd-dot" style="background:${STATUS_COL[st]}"></span> Kabel</div>
-    <div class="pd-route">${_esc$4(a?.label || '?')} <span style="color:var(--muted)">→</span> ${_esc$4(b?.label || '?')}</div>
+    <div class="pd-route">${_esc$5(a?.label || '?')} <span style="color:var(--muted)">→</span> ${_esc$5(b?.label || '?')}</div>
     <div class="pd-enden">
-      <span>${endA ? _esc$4(endA.name) + ' <i>' + _esc$4(ASSET_CFG[endA.type]?.label || endA.type) + '</i>' : '<i>noch keine Anlage</i>'}</span>
+      <span>${endA ? _esc$5(endA.name) + ' <i>' + _esc$5(ASSET_CFG[endA.type]?.label || endA.type) + '</i>' : '<i>noch keine Anlage</i>'}</span>
       <span class="pd-enden-pfeil">→</span>
-      <span>${endB ? _esc$4(endB.name) + ' <i>' + _esc$4(ASSET_CFG[endB.type]?.label || endB.type) + '</i>' : '<i>noch keine Anlage</i>'}</span>
+      <span>${endB ? _esc$5(endB.name) + ' <i>' + _esc$5(ASSET_CFG[endB.type]?.label || endB.type) + '</i>' : '<i>noch keine Anlage</i>'}</span>
     </div>
-    ${gleicheAnlage ? `<div class="pd-warn">Beide Enden zeigen auf <b>dieselbe Anlage</b> (${_esc$4(endA.name)}).
+    ${gleicheAnlage ? `<div class="pd-warn">Beide Enden zeigen auf <b>dieselbe Anlage</b> (${_esc$5(endA.name)}).
       Dieses Kabel wird nicht übernommen. Oben den Anschlusspunkt eines der beiden
       Kästen auf eine andere Anlage stellen — oder prüfen, ob beide Einträge
       versehentlich auf dasselbe Gebäude verortet sind.</div>` : ''}
-    ${gleichesGeb ? `<div class="pd-warn">Beide Enden liegen in <b>${_esc$4((window.gebaeude || []).find(x => String(x.id) === String(endA.buildingId))?.name || 'demselben Gebäude')}</b>.
+    ${gleichesGeb ? `<div class="pd-warn">Beide Enden liegen in <b>${_esc$5((window.gebaeude || []).find(x => String(x.id) === String(endA.buildingId))?.name || 'demselben Gebäude')}</b>.
       Das Kabel wird stationsintern mit 0 m angelegt. Falls die Planlinie zwei verschiedene
       Gebäude verbindet, oben den Anschlusspunkt des jeweiligen Kastens prüfen.</div>` : ''}
     <label class="pd-lbl">Beschriftung aus dem Plan</label>
-    <input id="pd-f-kabel" class="pd-in" type="text" value="${_esc$4(l.label)}"
+    <input id="pd-f-kabel" class="pd-in" type="text" value="${_esc$5(l.label)}"
            placeholder="z. B. NYY-J 5x70 oder 3x NA2XS2Y 1x185"
            data-change="pdUpdateLink('label', this.value)"/>
-    ${p ? `<div class="pd-parsed">erkannt: ${_esc$4(p)}</div>` : `<div class="pd-warn">Noch keine Kabelangabe erkannt.</div>`}
-    ${unbekannt ? `<div class="pd-warn">Typ „${_esc$4(l.cableType)}" ist nicht in der Kabeltabelle — Auslegung fällt auf NAYY zurück.</div>` : ''}
+    ${p ? `<div class="pd-parsed">erkannt: ${_esc$5(p)}</div>` : `<div class="pd-warn">Noch keine Kabelangabe erkannt.</div>`}
+    ${unbekannt ? `<div class="pd-warn">Typ „${_esc$5(l.cableType)}" ist nicht in der Kabeltabelle — Auslegung fällt auf NAYY zurück.</div>` : ''}
     <div class="pd-stuetz">
       <span>${(l.points || []).length} Stützpunkt${(l.points || []).length === 1 ? '' : 'e'} entlang der Planlinie</span>
       ${(l.points || []).length ? `<button class="pd-mini" data-click="pdUpdateLink('pointsClear','')">gerade ziehen</button>` : ''}
@@ -225711,12 +225961,12 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     if (!gebKnoten && !ziel && !wirdVerbraucher && n.anschlussKW == null) return '';
     const wert = n.anschlussKW ?? ziel?.props?.anschlussleistungKW ?? '';
     const hinweis = ziel
-      ? `wird an „${_esc$4(ziel.name)}" übertragen`
+      ? `wird an „${_esc$5(ziel.name)}" übertragen`
       : wirdVerbraucher
         ? 'wird beim Übernehmen an den neuen Verbraucher übertragen'
         : 'kein Verbraucher an diesem Gebäude — Wert bleibt nur im Plan';
     return `<label class="pd-lbl">Anschlussleistung laut Plan (kW)</label>
-    <input class="pd-in" type="number" min="0" step="any" value="${_esc$4(String(wert))}"
+    <input class="pd-in" type="number" min="0" step="any" value="${_esc$5(String(wert))}"
            placeholder="z. B. 35"
            data-change="pdUpdateNode('anschlussKW', this.value)"/>
     <div class="pd-parsed">${hinweis}</div>`;
@@ -225844,8 +226094,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const zeile = (kind, id, st, txt, sub) => `
     <div class="pd-row${_sel?.kind === kind && _sel.id === id ? ' sel' : ''}" data-click="pdSelect('${kind}','${id}')">
       <span class="pd-dot" style="background:${STATUS_COL[st]}"></span>
-      <span class="pd-row-txt">${_esc$4(txt)}</span>
-      <span class="pd-row-sub">${_esc$4(sub)}</span>
+      <span class="pd-row-txt">${_esc$5(txt)}</span>
+      <span class="pd-row-sub">${_esc$5(sub)}</span>
     </div>`;
     // Die Liste zeigt das sichtbare Blatt — dieselbe Sicht wie der Plan daneben.
     const sichtNodes = _sichtNodes();
@@ -225865,13 +226115,13 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       return `<div class="pd-row${_sel?.kind === 'link' && _sel.id === l.id ? ' sel' : ''}"
                  data-click="pdSelect('link','${l.id}')">
       <span class="pd-dot" style="background:${farbe}"></span>
-      <span class="pd-row-txt">${_esc$4(`${a?.label || '?'} → ${b?.label || '?'}`)}</span>
-      <span class="pd-row-sub">${_esc$4(l.label || 'ohne Angabe')}</span>
+      <span class="pd-row-txt">${_esc$5(`${a?.label || '?'} → ${b?.label || '?'}`)}</span>
+      <span class="pd-row-sub">${_esc$5(l.label || 'ohne Angabe')}</span>
     </div>`;
     }).join('');
     // Bei mehreren Blättern muss der Kopf sagen, wovon die Zahl handelt —
     // sonst liest man die Einträge eines Blattes als die des ganzen Planwerks.
-    const mehr = PD.plaene.length > 1 ? ` · Blatt „${_esc$4(PD.plan.name)}"` : '';
+    const mehr = PD.plaene.length > 1 ? ` · Blatt „${_esc$5(PD.plan.name)}"` : '';
     box.innerHTML =
       `<div class="pd-list-head">Einträge (${sichtNodes.length})${mehr}</div>${nodes || '<div class="pd-empty">—</div>'}
      <div class="pd-list-head">Kabel (${sichtLinks.length})</div>${links || '<div class="pd-empty">—</div>'}`;
@@ -225884,8 +226134,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const setzen = o.art === 'g' ? `pdPlatziereGebaeude('${o.id}')` : `pdPlatziereAsset('${o.id}')`;
       return `<div class="pd-ab-row">
       <span class="pd-dot" style="background:${STATUS_COL.offen}"></span>
-      <span class="pd-row-txt" title="${_esc$4(o.name)}">${_esc$4(o.name)}</span>
-      <span class="pd-row-sub">${_esc$4(o.zusatz)}</span>
+      <span class="pd-row-txt" title="${_esc$5(o.name)}">${_esc$5(o.name)}</span>
+      <span class="pd-row-sub">${_esc$5(o.zusatz)}</span>
       <span class="pd-ab-akt">
         <button class="pd-mini" data-click="${setzen}" title="Im Plan gefunden — jetzt setzen">im Plan setzen</button>
         <button class="pd-mini" data-click="pdZeigeKarte('${o.art}','${o.id}')" title="Auf der Karte zeigen (wechselt ins Fenster)">→ Karte</button>
@@ -225895,8 +226145,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     };
     const abgehakt = o => `<div class="pd-ab-row erledigt">
       <span class="pd-dot" style="background:#546e7a"></span>
-      <span class="pd-row-txt">${_esc$4(o.name)}</span>
-      <span class="pd-row-sub">${_esc$4(o.grund)}</span>
+      <span class="pd-row-txt">${_esc$5(o.name)}</span>
+      <span class="pd-row-sub">${_esc$5(o.grund)}</span>
       <span class="pd-ab-akt">
         <button class="pd-mini" data-click="pdAbhaken('${o.art}','${o.id}')" title="Abhaken rückgängig">↺</button>
       </span>
@@ -225907,11 +226157,11 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const treffer = _kartenTreffer(n);
       return `<div class="pd-ab-row">
       <span class="pd-dot" style="background:${STATUS_COL.fehlt}"></span>
-      <span class="pd-row-txt">${_esc$4(n.label || '(ohne Bezeichnung)')}</span>
-      <span class="pd-row-sub">${n.gebNummer ? 'Nr. ' + _esc$4(n.gebNummer) : 'ohne Nummer'}</span>
+      <span class="pd-row-txt">${_esc$5(n.label || '(ohne Bezeichnung)')}</span>
+      <span class="pd-row-sub">${n.gebNummer ? 'Nr. ' + _esc$5(n.gebNummer) : 'ohne Nummer'}</span>
       <span class="pd-ab-akt">
         ${treffer ? `<button class="pd-mini" data-click="pdVerknuepfeFehlend('${n.id}')"
-              title="Auf der Karte gefunden: ${_esc$4(treffer.name)}">→ verknüpfen</button>` : ''}
+              title="Auf der Karte gefunden: ${_esc$5(treffer.name)}">→ verknüpfen</button>` : ''}
         <button class="pd-mini" data-click="pdSelect('node','${n.id}')">zeigen</button>
       </span>
     </div>`;
@@ -225938,9 +226188,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         const kreis = (m.kreis || []).map(nm);
         return `<div class="pd-ab-row">
           <span class="pd-dot" style="background:#ffa726"></span>
-          <span class="pd-row-txt">${_esc$4(`${nm(e.u)} → ${nm(e.v)}`)}</span>
-          <span class="pd-row-sub">${_esc$4(`${e.cableType || '?'} ${e.crossSection || '?'} mm² · ${Math.round(e.lengthM || 0)} m`)}</span>
-          ${kreis.length ? `<span class="pd-kreis">Kreis: ${_esc$4(kreis.join(' → '))}</span>` : ''}
+          <span class="pd-row-txt">${_esc$5(`${nm(e.u)} → ${nm(e.v)}`)}</span>
+          <span class="pd-row-sub">${_esc$5(`${e.cableType || '?'} ${e.crossSection || '?'} mm² · ${Math.round(e.lengthM || 0)} m`)}</span>
+          ${kreis.length ? `<span class="pd-kreis">Kreis: ${_esc$5(kreis.join(' → '))}</span>` : ''}
           <span class="pd-ab-akt">
             ${l ? `<button class="pd-mini" data-click="pdSelect('link','${l.id}')">im Plan zeigen</button>` : ''}
             <button class="pd-mini" data-click="pdRingBestaetigt('${e.id}')"
@@ -225956,7 +226206,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
         return `<div class="pd-ab-row erledigt">
           <span class="pd-dot" style="background:#546e7a"></span>
-          <span class="pd-row-txt">${_esc$4(`${nm(m.kante.u)} → ${nm(m.kante.v)}`)}</span>
+          <span class="pd-row-txt">${_esc$5(`${nm(m.kante.u)} → ${nm(m.kante.v)}`)}</span>
           <span class="pd-row-sub">gewollter Ring</span>
           <span class="pd-ab-akt">
             <button class="pd-mini" data-click="pdRingBestaetigt('${m.kante.id}')" title="Wieder als offen führen">↺</button>
@@ -225971,8 +226221,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
         return `<div class="pd-ab-row">
           <span class="pd-dot" style="background:${STATUS_COL.fehlt}"></span>
-          <span class="pd-row-txt">${_esc$4(`${nm(e.u)} → ${nm(e.v)}`)}</span>
-          <span class="pd-row-sub">${_esc$4(`${e.cableType || '?'} ${e.crossSection || '?'} mm²`)}</span>
+          <span class="pd-row-txt">${_esc$5(`${nm(e.u)} → ${nm(e.v)}`)}</span>
+          <span class="pd-row-sub">${_esc$5(`${e.cableType || '?'} ${e.crossSection || '?'} mm²`)}</span>
         </div>`;
       }).join('')}
       ${ab.napNs.length > 40 ? `<div class="pd-empty">… und ${ab.napNs.length - 40} weitere</div>` : ''}
@@ -225985,8 +226235,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         const a = l && _node(l.a), b = l && _node(l.b);
         return `<div class="pd-ab-row">
           <span class="pd-dot" style="background:#4dd0e1"></span>
-          <span class="pd-row-txt">${_esc$4(a && b ? `${a.label || '?'} → ${b.label || '?'}` : e.id)}</span>
-          <span class="pd-row-sub">${_esc$4(`${e.cableType || '?'} ${e.crossSection || '?'} mm² · ${e.qsQuelle || 'geschätzt'}`)}</span>
+          <span class="pd-row-txt">${_esc$5(a && b ? `${a.label || '?'} → ${b.label || '?'}` : e.id)}</span>
+          <span class="pd-row-sub">${_esc$5(`${e.cableType || '?'} ${e.crossSection || '?'} mm² · ${e.qsQuelle || 'geschätzt'}`)}</span>
           <span class="pd-ab-akt">
             ${l ? `<button class="pd-mini" data-click="pdSelect('link','${l.id}')">im Plan zeigen</button>` : ''}
             <button class="pd-mini" data-click="pdQuerschnittBestaetigt('${e.id}')" title="Querschnitt stimmt so">passt</button>
@@ -225999,8 +226249,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     ${ab.vorlaeufig.length ? `<div class="pd-list-head">Position prüfen (${ab.vorlaeufig.length})</div>
       ${ab.vorlaeufig.map(a => `<div class="pd-ab-row">
           <span class="pd-dot" style="background:#ba68c8"></span>
-          <span class="pd-row-txt">${_esc$4(a.name)}</span>
-          <span class="pd-row-sub">${_esc$4(ASSET_CFG[a.type]?.label || a.type)}</span>
+          <span class="pd-row-txt">${_esc$5(a.name)}</span>
+          <span class="pd-row-sub">${_esc$5(ASSET_CFG[a.type]?.label || a.type)}</span>
           <span class="pd-ab-akt">
             <button class="pd-mini" data-click="pdZeigeKarte('a','${a.id}')" title="Auf der Karte zeigen und dort zurechtziehen">→ Karte</button>
             <button class="pd-mini" data-click="pdPositionBestaetigt('${a.id}')" title="Lage stimmt so">passt</button>
@@ -226013,7 +226263,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     ${offenPlan ? `<div class="pd-list-head">Im Plan, noch nicht verortet (${offenPlan})</div>
       ${ab.nurImPlan.map(n => `<div class="pd-row" data-click="pdSelect('node','${n.id}')">
           <span class="pd-dot" style="background:${STATUS_COL[_statusNode(n)]}"></span>
-          <span class="pd-row-txt">${_esc$4(n.label || '(ohne Bezeichnung)')}</span>
+          <span class="pd-row-txt">${_esc$5(n.label || '(ohne Bezeichnung)')}</span>
           <span class="pd-row-sub">ohne Gegenstück</span></div>`).join('')}
       <div class="pd-ab-hinweis">Noch keiner Karte zugeordnet — über das Suchfeld verknüpfen,
         oder als <b>fehlend</b> erfassen, wenn es auf der Karte gar nicht existiert.</div>` : ''}
@@ -226047,7 +226297,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     // Die Kartenseite gehört dazu: ohne sie liest sich „12/12" wie „fertig",
     // obwohl vierzig Gebäude nie betrachtet wurden.
     const ab = pdAbgleich();
-    el.innerHTML = `<b>${_esc$4(PD.plan.name)}</b>${PD.plan.rolle === 'archiv' ? ' <span class="pd-archiv-tag">Archiv</span>' : ''}`
+    el.innerHTML = `<b>${_esc$5(PD.plan.name)}</b>${PD.plan.rolle === 'archiv' ? ' <span class="pd-archiv-tag">Archiv</span>' : ''}`
       + ` · Einträge ${nOk}/${sn.length} · Kabel ${lOk}/${sl.length}${gesamt}`
       + (ab.uebertragen.length ? ` · <span class="pd-vorl">${ab.uebertragen.length} übertragen, Lage prüfen</span>` : '')
       + (ab.nurKarte.length ? ` · <span class="pd-offen">Karte: ${ab.nurKarte.length} nicht im Plan</span>` : ' · Karte vollständig')
@@ -227171,7 +227421,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   const _laenge = m => m >= 1000 ? _num$1(m / 1000, 2) + ' km' : _num$1(m, 0) + ' m';
 
-  const _esc$3 = s => String(s ?? '').replace(/[&<>"]/g, c =>
+  const _esc$4 = s => String(s ?? '').replace(/[&<>"]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   // Für Werte in data-click="fn('…')"
@@ -227837,8 +228087,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     return `
   <div class="eb-kopf">
     <div class="eb-kopf-meta">
-      <b>${_esc$3(k.projekt)}</b>
-      <span>${_esc$3(k.variante)}</span>
+      <b>${_esc$4(k.projekt)}</b>
+      <span>${_esc$4(k.variante)}</span>
       <span>Jahr ${k.jahr}</span>
       <span>gerechnet ${zeit}</span>
       ${stand}
@@ -227888,7 +228138,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     <div class="eb-nw${n.ziel && !druck ? ' eb-klick' : ''}"${n.ziel ? ` data-click="ebSpringeZu('${_arg(n.ziel[0])}','${n.ziel[1]}')" title="Auf der Karte zeigen"` : ''}>
       <div class="eb-nw-k"><span>${n.label}</span><b class="eb-${AMPEL[n.stufe]}">${_num$1(n.wert, n.d)}<small> ${n.einheit}</small></b></div>
       ${_balken$1(n.wert, n.grenze, n.stufe)}
-      <div class="eb-nw-f"><span>${n.grenzText}${n.wo ? ' · ' + _esc$3(n.wo) : ''}</span>
+      <div class="eb-nw-f"><span>${n.grenzText}${n.wo ? ' · ' + _esc$4(n.wo) : ''}</span>
         <span class="eb-${n.ok ? 'ok' : 'bad'}">${n.ok ? '✓ eingehalten' : '✕ verletzt'}</span></div>
     </div>`);
     karten.push(k.minIkKa != null
@@ -227907,9 +228157,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         <div class="eb-mz">
           <span class="eb-punkt is-${AMPEL[x.stufe]}"></span>
           <div class="eb-mz-text">
-            <b>${_esc$3(x.titel)}</b> <span class="eb-mut">${x.gruende.map(_esc$3).join(' · ')}</span>
-            ${x.kontext ? `<div class="eb-mut">${_esc$3(x.kontext)}</div>` : ''}
-            <div>${_esc$3(x.rat)}</div>
+            <b>${_esc$4(x.titel)}</b> <span class="eb-mut">${x.gruende.map(_esc$4).join(' · ')}</span>
+            ${x.kontext ? `<div class="eb-mut">${_esc$4(x.kontext)}</div>` : ''}
+            <div>${_esc$4(x.rat)}</div>
           </div>
           <span class="eb-mz-akt">
             ${x.art === 'kabel' ? `<button class="eb-link" data-click="ebZeigeStrecke('${_arg(x.id)}')">Rechnung ↓</button>` : ''}
@@ -227921,7 +228171,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const html = `
     <div class="eb-urteil is-${AMPEL[u.stufe]}">
       <div class="eb-urteil-sym">${sym}</div>
-      <div><b>${_esc$3(u.titel)}</b><span>${_esc$3(u.text)}</span></div>
+      <div><b>${_esc$4(u.titel)}</b><span>${_esc$4(u.text)}</span></div>
     </div>
     ${veraltet}
     <div class="eb-nachweise">${karten.join('')}</div>
@@ -227956,10 +228206,10 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         const links = lauf / skala * 100, breite = z.kw / skala * 100;
         lauf += z.kw;
         return `
-        <div class="eb-bil-z"><span class="eb-bil-l">${_esc$3(z.label)}</span>
+        <div class="eb-bil-z"><span class="eb-bil-l">${_esc$4(z.label)}</span>
           <span class="eb-bil-bar"><i class="is-${art}${z.blass ? ' is-blass' : ''}" style="left:${links.toFixed(1)}%;width:${breite.toFixed(1)}%"></i></span>
           <span class="eb-bil-v">${_num$1(z.kw, 0)} kW</span></div>
-        ${z.herkunft ? `<div class="eb-bil-h">${_esc$3(z.herkunft)}</div>` : ''}`;
+        ${z.herkunft ? `<div class="eb-bil-h">${_esc$4(z.herkunft)}</div>` : ''}`;
       }).join('');
       return `
       <div class="eb-bil">
@@ -228054,12 +228304,12 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       <div class="eb-st-bar-t"><span>Bezug ${_num$1(t.bezugKw, 0)} kW · Einsp. ${_num$1(t.einspKw, 0)} kW → ${t.richtung} maßgebend · Reserve ${_num$1(t.reserveKw, 0)} kW</span>
         <span class="eb-${AMPEL[t.stufe]}">${_num$1(t.auslastung, 0)} %</span></div>
       ${_balken$1(t.auslastung, 100, t.stufe)}
-      ${t.parallel ? `<div class="eb-mut">${_esc$3(_betriebsartText(t.parallel))} · ${_esc$3(_gegenfallText(t.parallel))}</div>` : ''}
+      ${t.parallel ? `<div class="eb-mut">${_esc$4(_betriebsartText(t.parallel))} · ${_esc$4(_gegenfallText(t.parallel))}</div>` : ''}
     </div>` : '<div></div>';
 
     const kopf = `
     <div class="eb-st-k${druck ? '' : ' eb-klick'}"${druck ? '' : ` data-click="ebToggle('${_arg(sKey)}')"`}>
-      <div><b>${druck ? '' : (offen ? '▾ ' : '▸ ')}${_esc$3(st.name)}</b><div class="eb-mut">${_esc$3(info)}</div></div>
+      <div><b>${druck ? '' : (offen ? '▾ ' : '▸ ')}${_esc$4(st.name)}</b><div class="eb-mut">${_esc$4(info)}</div></div>
       ${trafoBar}
       ${pill}
     </div>`;
@@ -228089,7 +228339,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const ms = st.art === 'ms';
     const kopf = einzeln ? '' : `
     <tr class="eb-abg${druck ? '' : ' eb-klick'}"${druck ? '' : ` data-click="ebToggle('${_arg(aKey)}')"`}>
-      <td>${druck ? '' : (offen ? '▾ ' : '▸ ')}${_esc$3(ab.label)} <span class="eb-mut">→ ${_esc$3(ab.ziel)}</span></td>
+      <td>${druck ? '' : (offen ? '▾ ' : '▸ ')}${_esc$4(ab.label)} <span class="eb-mut">→ ${_esc$4(ab.ziel)}</span></td>
       <td class="eb-mut">${ab.kabel.length} ${ab.kabel.length === 1 ? 'Strecke' : 'Strecken'}</td>
       <td class="eb-num">${_num$1(ab.laengeM, 0)} m</td>
       <td class="eb-num">${_num$1(ab.massgebendKw, 0)} kW</td>
@@ -228113,9 +228363,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       k.ausgelegt ? '' : '<span class="eb-tag" title="Gebäudeanschluss: wird von dieser Rechnung nicht ausgelegt">Gebäude</span>',
     ].join('');
     const zeile = `
-    <tr id="eb-str-${_esc$3(k.id)}" class="eb-str${einzeln ? ' eb-str-flach' : ''}${druck ? '' : ' eb-klick'}${offen ? ' is-offen' : ''}${k.stufe === 2 ? ' is-bad' : ''}"${druck ? '' : ` data-click="ebRechnung('${_arg(k.id)}')"`}>
-      <td>${_esc$3(k.von)} → ${_esc$3(k.nach)} ${tags}</td>
-      <td>${_esc$3(_kabelText(k))}</td>
+    <tr id="eb-str-${_esc$4(k.id)}" class="eb-str${einzeln ? ' eb-str-flach' : ''}${druck ? '' : ' eb-klick'}${offen ? ' is-offen' : ''}${k.stufe === 2 ? ' is-bad' : ''}"${druck ? '' : ` data-click="ebRechnung('${_arg(k.id)}')"`}>
+      <td>${_esc$4(k.von)} → ${_esc$4(k.nach)} ${tags}</td>
+      <td>${_esc$4(_kabelText(k))}</td>
       <td class="eb-num">${_num$1(k.laengeM, 0)} m</td>
       <td class="eb-num">${_num$1(k.massgebendKw, 1)} kW${k.rueckspeisung ? ' ↑' : ''}</td>
       <td class="eb-num">${_num$1(k.stromA, 0)} / ${_num$1(k.izA, 0)} A</td>
@@ -228156,9 +228406,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const uTxt = ms ? `${_num$1((st.uMsV || 20000) / 1000, 0)} kV` : '400 V';
     zeile('Betriebsstrom Ib', `${_num$1(k.massgebendKw, 1)} kW ÷ (√3 · ${uTxt} · cos φ ${_num$1(cos, 2)})`, `${_num$1(k.stromA, 0)} A`);
     if (ms) {
-      zeile('Belastbarkeit Iz', `Tabellenwert MS-Kabel ${k.querschnitt} mm²${k.typ !== '—' ? ' (' + _esc$3(k.typ) + ')' : ''}`, `${_num$1(k.izA, 0)} A`);
+      zeile('Belastbarkeit Iz', `Tabellenwert MS-Kabel ${k.querschnitt} mm²${k.typ !== '—' ? ' (' + _esc$4(k.typ) + ')' : ''}`, `${_num$1(k.izA, 0)} A`);
     } else {
-      const kat = k.izKatA != null ? `${_num$1(k.izKatA, 0)} A (${_esc$3(_kabelText(k))})` : _esc$3(_kabelText(k));
+      const kat = k.izKatA != null ? `${_num$1(k.izKatA, 0)} A (${_esc$4(_kabelText(k))})` : _esc$4(_kabelText(k));
       zeile('Belastbarkeit Iz', `${kat} × kIz ${_num$1(k.kIz ?? st.kIz ?? 1, 2)}`, `${_num$1(k.izA, 0)} A`);
     }
     const sAus = _stufe(k.auslastung, 80, 100);
@@ -228167,7 +228417,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     if (!ms) {
       const sDu = _stufe(_duBetrag(k.duKum), DU_WARN, MAX_DELTA_U_PCT);
       const f = k.duVon != null
-        ? `${_num$1(k.duVon, 2)} % bis ${_esc$3(k.von)} + ${_num$1(k.duSegment, 2)} % auf ${_num$1(k.laengeM, 0)} m, Grenze ${MAX_DELTA_U_PCT} %`
+        ? `${_num$1(k.duVon, 2)} % bis ${_esc$4(k.von)} + ${_num$1(k.duSegment, 2)} % auf ${_num$1(k.laengeM, 0)} m, Grenze ${MAX_DELTA_U_PCT} %`
         : `${_num$1(k.duSegment, 2)} % auf ${_num$1(k.laengeM, 0)} m, Grenze ${MAX_DELTA_U_PCT} %`;
       zeile('Spannungsfall', f, `${_num$1(k.duKum, 2)} % ${_duBetrag(k.duKum) <= MAX_DELTA_U_PCT ? '✓' : '✕'}`, 'eb-' + AMPEL[sDu]);
     }
@@ -228199,9 +228449,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
     const body = rows.map(n => `
     <tr class="${druck ? '' : 'eb-klick'}"${druck ? '' : ` data-click="ebSpringeZu('${_arg(n.id)}','asset')"`}>
-      <td>${_esc$3(n.name)}</td>
-      <td class="eb-mut">${_esc$3(n.typ)}</td>
-      <td class="eb-mut">${_esc$3(n.ort)}</td>
+      <td>${_esc$4(n.name)}</td>
+      <td class="eb-mut">${_esc$4(n.typ)}</td>
+      <td class="eb-mut">${_esc$4(n.ort)}</td>
       <td class="eb-num">${n.verbrauchKw > 0 ? _num$1(n.verbrauchKw, 1) : '—'}</td>
       <td class="eb-num">${n.erzeugungKw > 0 ? _num$1(n.erzeugungKw, 1) : '—'}</td>
       <td class="eb-num">${n.duKum == null ? '—' : _zelle$1(_duBetrag(n.duKum), MAX_DELTA_U_PCT, n.stufe, _num$1(n.duKum, 2) + ' %')}</td>
@@ -228237,7 +228487,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const kabelM   = z.laengeM * z.nParallel;   // Parallelstränge liegen in derselben Trasse
       const material = z.eurM != null ? kabelM * z.eurM : null;
       return `<tr>
-      <td>${z.nParallel > 1 ? z.nParallel + '× ' : ''}${_esc$3(z.typ)} ${z.querschnitt || '—'} mm²</td>
+      <td>${z.nParallel > 1 ? z.nParallel + '× ' : ''}${_esc$4(z.typ)} ${z.querschnitt || '—'} mm²</td>
       <td class="eb-num">${z.n}</td>
       <td class="eb-num">${_num$1(z.laengeM, 0)}</td>
       <td class="eb-num">${_num$1(kabelM, 0)}</td>
@@ -228298,13 +228548,13 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     let letzteGruppe = '';
     const rows = _modell$1.annahmen.map(([gruppe, was, wert]) => {
       const kopf = gruppe !== letzteGruppe
-        ? `<tr class="eb-gruppe"><td colspan="2">${_esc$3(gruppe)}</td></tr>` : '';
+        ? `<tr class="eb-gruppe"><td colspan="2">${_esc$4(gruppe)}</td></tr>` : '';
       letzteGruppe = gruppe;
-      return kopf + `<tr><td>${_esc$3(was)}</td><td>${_esc$3(wert)}</td></tr>`;
+      return kopf + `<tr><td>${_esc$4(was)}</td><td>${_esc$4(wert)}</td></tr>`;
     }).join('');
 
     const warnungen = _modell$1.kopf.warnungen.length
-      ? `<div class="eb-hinweis eb-warn">${_modell$1.kopf.warnungen.map(_esc$3).join('<br/>')}</div>` : '';
+      ? `<div class="eb-hinweis eb-warn">${_modell$1.kopf.warnungen.map(_esc$4).join('<br/>')}</div>` : '';
 
     return { sub: 'Nur Werte, die in diese Rechnung eingehen', html: `
     <table class="eb-tab eb-tab-schmal"><tbody>${rows}</tbody></table>
@@ -228340,7 +228590,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     if (!_modell$1) { showHint('⚠ Erst rechnen — dann liegt ein Ergebnis zum Drucken vor.'); return; }
     const k = _modell$1.kopf;
     const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
-<title>Ergebnisblatt Elektro — ${_esc$3(k.projekt)}</title>
+<title>Ergebnisblatt Elektro — ${_esc$4(k.projekt)}</title>
 <style>
   @page { size: A4 landscape; margin: 13mm; }
   body { font-family: "Segoe UI", Arial, sans-serif; font-size: 9pt; color: #1a1a1a; margin: 0; }
@@ -228411,8 +228661,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 <div class="druckleiste"><button onclick="window.print()">🖨 Drucken / Als PDF speichern</button></div>
 <h1>Ergebnisblatt Elektroberechnung</h1>
 <div class="meta">
-  <span><b>${_esc$3(k.projekt)}</b></span>
-  <span>Variante: ${_esc$3(k.variante)}</span>
+  <span><b>${_esc$4(k.projekt)}</b></span>
+  <span>Variante: ${_esc$4(k.variante)}</span>
   <span>Betrachtungsjahr: ${k.jahr}</span>
   <span>Rechenstand: ${k.gerechnetAm.toLocaleString('de-DE')}</span>
   ${k.frisch === false ? '<span class="eb-warn">Stand veraltet</span>' : ''}
@@ -229545,7 +229795,7 @@ ${_fuerDruck(_inhalt(true))}
 
   // ── Darstellung ─────────────────────────────────────────────────────────────
 
-  function _esc$2(s) {
+  function _esc$3(s) {
     return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
@@ -229555,8 +229805,8 @@ ${_fuerDruck(_inhalt(true))}
       const st = guideStatus(i);
       const klasse = i === _idx ? 'on' : (st.ok ? 'done' : 'fut');
       const marke  = st.ok && i !== _idx ? '✓' : String(i + 1);
-      return `<button class="gm-st ${klasse}" data-click="guideGoTo(${i})" title="${_esc$2(s.ziel)}">
-      <span class="gm-d">${marke}</span>${_esc$2(s.kurz || s.titel)}</button>`;
+      return `<button class="gm-st ${klasse}" data-click="guideGoTo(${i})" title="${_esc$3(s.ziel)}">
+      <span class="gm-d">${marke}</span>${_esc$3(s.kurz || s.titel)}</button>`;
     }).join('<span class="gm-line"></span>');
 
     return `<div class="gm-steps">${knoepfe}</div>
@@ -229574,38 +229824,38 @@ ${_fuerDruck(_inhalt(true))}
       const hinweis = typeof g.hinweis === 'function' ? g.hinweis() : g.hinweis;
       return `
     <div class="gm-group">
-      <div class="gm-glabel">${_esc$2(g.label)}</div>
-      ${g.aktionen.map(a => `<button class="gm-tool${a.pri ? ' pri' : ''}" data-click="${_esc$2(a.click)}">${_esc$2(a.label)}</button>`).join('')}
-      ${hinweis ? `<div class="gm-ghint">${_esc$2(hinweis)}</div>` : ''}
+      <div class="gm-glabel">${_esc$3(g.label)}</div>
+      ${g.aktionen.map(a => `<button class="gm-tool${a.pri ? ' pri' : ''}" data-click="${_esc$3(a.click)}">${_esc$3(a.label)}</button>`).join('')}
+      ${hinweis ? `<div class="gm-ghint">${_esc$3(hinweis)}</div>` : ''}
     </div>`;
     }).join('');
 
     const zeilen = (st.zeilen || []).map(z => {
       const ic = z.status === 'ok' ? '✓' : z.status === 'warn' ? '!' : '○';
       const aktion = z.aktion
-        ? `<button class="gm-mini" data-click="${_esc$2(z.aktion.click)}">${_esc$2(z.aktion.label)}</button>` : '';
-      return `<div class="gm-row is-${z.status}"><span class="gm-ic">${ic}</span><span>${_esc$2(z.text)}</span>${aktion}</div>`;
+        ? `<button class="gm-mini" data-click="${_esc$3(z.aktion.click)}">${_esc$3(z.aktion.label)}</button>` : '';
+      return `<div class="gm-row is-${z.status}"><span class="gm-ic">${ic}</span><span>${_esc$3(z.text)}</span>${aktion}</div>`;
     }).join('');
 
     const manuell = step.manuell ? `
     <label class="gm-check"><input type="checkbox" ${_manuell.has(step.id) ? 'checked' : ''}
-      data-change="guideBestaetigen('${step.id}')"> ${_esc$2(step.manuell)}</label>` : '';
+      data-change="guideBestaetigen('${step.id}')"> ${_esc$3(step.manuell)}</label>` : '';
 
     const letzter = _idx === GUIDE_STEPS.length - 1;
-    const weiter  = letzter ? 'Führung beenden' : `Weiter: ${_esc$2(GUIDE_STEPS[_idx + 1].titel)} →`;
+    const weiter  = letzter ? 'Führung beenden' : `Weiter: ${_esc$3(GUIDE_STEPS[_idx + 1].titel)} →`;
     const klick   = letzter ? 'guideStop()' : 'guideNext()';
 
     return `
     <div class="gm-kicker">Schritt ${_idx + 1} von ${GUIDE_STEPS.length}</div>
-    <h4 class="gm-titel">${_esc$2(step.titel)}</h4>
-    <p class="gm-text">${_esc$2(step.text)}</p>
+    <h4 class="gm-titel">${_esc$3(step.titel)}</h4>
+    <p class="gm-text">${_esc$3(step.text)}</p>
     ${step.schicht ? `<span class="gm-layer">Schicht: ${step.schicht === SCHICHT.BESTAND ? 'Bestand' : 'Entscheidung'} · automatisch</span>` : ''}
     ${gruppen}
     <div class="gm-gate">
       <div class="gm-gate-t">Prüfung vor dem nächsten Schritt</div>
       ${zeilen}
       ${manuell}
-      ${st.hinweis ? `<div class="gm-hint">${_esc$2(st.hinweis)}</div>` : ''}
+      ${st.hinweis ? `<div class="gm-hint">${_esc$3(st.hinweis)}</div>` : ''}
     </div>
     <div class="gm-foot">
       <div class="gm-nav">
@@ -240702,7 +240952,7 @@ ${_fuerDruck(_inhalt(true))}
     </div>
   </div>`;
 
-    if (!root.dataset.pvnaEreignisse) { root.dataset.pvnaEreignisse = '1'; _ereignisse$2(root); }
+    if (!root.dataset.pvnaEreignisse) { root.dataset.pvnaEreignisse = '1'; _ereignisse$3(root); }
     _aktualisieren();
     _groesseAnpassen();
     _navigationAnpassen();
@@ -240751,7 +241001,7 @@ ${_fuerDruck(_inhalt(true))}
   document.addEventListener('keydown', ev => { if (_vollbild && ev.key === 'Escape') _vollbildUmschalten(false); });
 
   /** Einmal je Container — die Handler lesen das aktuelle Ergebnis aus _quelle. */
-  function _ereignisse$2(root) {
+  function _ereignisse$3(root) {
     const live = () => _quelle.modell.eingabe.daecher.length <= LIVE_MAX_DAECHER;
     const daecher = () => _quelle.modell.eingabe.daecher;
 
@@ -242332,7 +242582,7 @@ ${_fuerDruck(_inhalt(true))}
   ${_veraltet$1 ? '<div style="margin:-4px 0 10px;font-size:10.5px;color:var(--c-orange);">Eingaben geändert — Strategien neu rechnen.</div>' : ''}
   ${_meldung$1 ? `<div style="margin:-4px 0 10px;font-size:10.5px;color:var(--c-teal);">${_meldung$1}</div>` : ''}
   <div data-ns-ergebnis style="${_veraltet$1 ? 'opacity:.55;' : ''}">${_ergebnisHtml$2()}</div>`;
-    if (!root.dataset.nsEreignisse) { root.dataset.nsEreignisse = '1'; _ereignisse$1(root); }
+    if (!root.dataset.nsEreignisse) { root.dataset.nsEreignisse = '1'; _ereignisse$2(root); }
   }
 
   function _katalogHtml() {
@@ -242615,7 +242865,7 @@ ${_fuerDruck(_inhalt(true))}
     if (_erg$1) _veraltet$1 = true;
   }
 
-  function _ereignisse$1(root) {
+  function _ereignisse$2(root) {
     root.addEventListener('change', ev => {
       const t = ev.target;
       if (t.dataset.nsFeld) { _setzeFeld(t.dataset.nsFeld, t.value); nsRender(); return; }
@@ -243820,7 +244070,7 @@ ${_fuerDruck(_inhalt(true))}
   ${_veraltet ? '<div style="margin:-4px 0 10px;font-size:10.5px;color:var(--c-orange);">Eingaben geändert — neu auslegen.</div>' : ''}
   ${_meldung ? `<div style="margin:-4px 0 10px;font-size:10.5px;color:var(--c-teal);">${escHtml(_meldung)}</div>` : ''}
   <div style="${_veraltet ? 'opacity:.55;' : ''}">${_ergebnisHtml$1()}</div>`;
-    if (!root.dataset.ah2Ereignisse) { root.dataset.ah2Ereignisse = '1'; _ereignisse(root); }
+    if (!root.dataset.ah2Ereignisse) { root.dataset.ah2Ereignisse = '1'; _ereignisse$1(root); }
     _heatmapZeichnen();
   }
 
@@ -244690,7 +244940,7 @@ ${_fuerDruck(_inhalt(true))}
     _kurve = null;
   }
 
-  function _ereignisse(root) {
+  function _ereignisse$1(root) {
     root.addEventListener('change', ev => {
       const t = ev.target;
       if (t.dataset.ah2Feld) {
@@ -249449,7 +249699,7 @@ ${_fuerDruck(_inhalt(true))}
   let _gebId = null;     // aktuell gezeigte Station (Gebäude-ID)
   let _modell = null;
 
-  const _esc$1 = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  const _esc$2 = s => String(s ?? '').replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const _js = v => JSON.stringify(v).replace(/"/g, '&quot;');   // Wert als JS-Literal im data-Attribut
   const _label = (liste, wert) => SS_OPTIONEN[liste].find(o => o.wert === wert)?.label ?? '';
@@ -249658,7 +249908,7 @@ ${_fuerDruck(_inhalt(true))}
     const an = aktiv?.wert === o.wert;
     const cls = an ? (aktiv.auto ? ' is-auto' : ' is-an') : '';
     const tip = an && aktiv.auto ? ' title="Aus dem Netzmodell abgeleitet — anklicken übernimmt den Wert fest"' : an ? ' title="Erneut klicken hebt die Auswahl auf"' : '';
-    return `<button class="ssb-opt${cls}"${tip} data-click="${aufruf(_js(o.wert))}">${_esc$1(o.label)}</button>`;
+    return `<button class="ssb-opt${cls}"${tip} data-click="${aufruf(_js(o.wert))}">${_esc$2(o.label)}</button>`;
   }).join('')}</span>`;
   }
 
@@ -249666,7 +249916,7 @@ ${_fuerDruck(_inhalt(true))}
   const _propAufruf = (id, key) => w => `ssbSetProp(${id}, '${key}', ${w}, 'text', true)`;
 
   const _autoBadge = (text = 'auto', tip = 'Aus dem Netzmodell abgeleitet') =>
-    `<span class="ssb-auto" title="${_esc$1(tip)}">${_esc$1(text)}</span>`;
+    `<span class="ssb-auto" title="${_esc$2(tip)}">${_esc$2(text)}</span>`;
 
   function _zeile$1(label, inhalt, extra = '') {
     return `<div class="ssb-zeile${extra}"><div class="ssb-lbl">${label}</div><div class="ssb-wert">${inhalt}</div></div>`;
@@ -249674,21 +249924,21 @@ ${_fuerDruck(_inhalt(true))}
 
   function _zahlInput(wert, aufruf, { placeholder = '—', breite = 70, step = 1, min = null } = {}) {
     return `<input class="ssb-in" type="number" style="width:${breite}px" step="${step}"${min != null ? ` min="${min}"` : ''}
-    value="${wert ?? ''}" placeholder="${_esc$1(placeholder)}" data-change="${aufruf}">`;
+    value="${wert ?? ''}" placeholder="${_esc$2(placeholder)}" data-change="${aufruf}">`;
   }
 
   function _fotos(liste) {
     const fotos = (liste || []).filter(f => f?.dataUrl);
     if (!fotos.length) return `<div class="ssb-fotos-leer">Keine Fotos — Fotos kommen aus der Feld-App (Begehung) an Gebäude bzw. Komponente.</div>`;
     return `<div class="ssb-fotos">${fotos.map(f =>
-    `<img src="${f.dataUrl}" title="${_esc$1(f.name)}" onclick="openImageLightbox(this.src,this.title)">`).join('')}</div>`;
+    `<img src="${f.dataUrl}" title="${_esc$2(f.name)}" onclick="openImageLightbox(this.src,this.title)">`).join('')}</div>`;
   }
 
   function _assetKopf(a, zusatz = '') {
     const cfg = ASSET_CFG[a.type] || {};
     return `<div class="ssb-karte-kopf">
     <span class="ssb-icon" style="background:${cfg.color}">${cfg.icon || ''}</span>
-    <input class="ssb-in ssb-name" value="${_esc$1(a.name)}" data-change="ssbSetName(${_js(a.id)}, this.value)" title="Bezeichnung">
+    <input class="ssb-in ssb-name" value="${_esc$2(a.name)}" data-change="ssbSetName(${_js(a.id)}, this.value)" title="Bezeichnung">
     ${zusatz}
     <button class="ssb-link" data-click="ssbOeffneAsset(${_js(a.id)})" title="Einzelne Komponente im Inspector öffnen (Maßnahmen, Schicht, alle Eigenschaften)">Inspector ↗</button>
   </div>`;
@@ -249703,7 +249953,7 @@ ${_fuerDruck(_inhalt(true))}
     const m = _modell;
     const sb = m.steckbrief;
     const stationen = ssStationsGebaeude(ASSETS.items, _gebaeude());
-    const opts = stationen.map(g => `<option value="${_esc$1(g.id)}"${String(g.id) === String(_gebId) ? ' selected' : ''}>${_esc$1(ssStationsLabel(g))}</option>`).join('');
+    const opts = stationen.map(g => `<option value="${_esc$2(g.id)}"${String(g.id) === String(_gebId) ? ' selected' : ''}>${_esc$2(ssStationsLabel(g))}</option>`).join('');
     const lieg = String(window.pdKaserneName || '').trim();
     const adr = String(window.pdLiegenschaftAdresse || '').trim();
     const we = String(window.pdWeNummer || '').trim();
@@ -249719,12 +249969,12 @@ ${_fuerDruck(_inhalt(true))}
       </span>
     </div>
     <table class="ssb-kopf-tab"><tr>
-      <td><div class="ssb-mut">Liegenschaft</div><b>${_esc$1(lieg || '— (Projektdaten)')}</b>${adr ? `<div class="ssb-mut">${_esc$1(adr)}</div>` : ''}</td>
-      <td><div class="ssb-mut">WE-Nr.</div>${_esc$1(we || '—')}</td>
-      <td><div class="ssb-mut">Gebäude-Nr. · Station</div><b>${_esc$1(m.geb.nummer ? 'Geb. ' + m.geb.nummer : '—')}</b> · ${_esc$1(m.geb.name || '')}</td>
-      <td><div class="ssb-mut">Stationsart</div>${_esc$1(art)}</td>
+      <td><div class="ssb-mut">Liegenschaft</div><b>${_esc$2(lieg || '— (Projektdaten)')}</b>${adr ? `<div class="ssb-mut">${_esc$2(adr)}</div>` : ''}</td>
+      <td><div class="ssb-mut">WE-Nr.</div>${_esc$2(we || '—')}</td>
+      <td><div class="ssb-mut">Gebäude-Nr. · Station</div><b>${_esc$2(m.geb.nummer ? 'Geb. ' + m.geb.nummer : '—')}</b> · ${_esc$2(m.geb.name || '')}</td>
+      <td><div class="ssb-mut">Stationsart</div>${_esc$2(art)}</td>
       <td><div class="ssb-mut">Datum der Begehung</div>
-        <input class="ssb-in" type="date" value="${_esc$1(sb.begehung || '')}" data-change="ssbSetStation('begehung', this.value)"></td>
+        <input class="ssb-in" type="date" value="${_esc$2(sb.begehung || '')}" data-change="ssbSetStation('begehung', this.value)"></td>
     </tr></table>
   </div>`;
   }
@@ -249732,7 +249982,7 @@ ${_fuerDruck(_inhalt(true))}
   function _hinweise() {
     const h = _modell.hinweise;
     if (!h.length) return '';
-    return `<div class="ssb-hinweise">${h.map(x => `<div>⚠ ${_esc$1(x)}</div>`).join('')}</div>`;
+    return `<div class="ssb-hinweise">${h.map(x => `<div>⚠ ${_esc$2(x)}</div>`).join('')}</div>`;
   }
 
   // ── Stationsschema (MS-Schiene · Felder · Trafos · NSHV) ─────────────────────
@@ -249758,13 +250008,13 @@ ${_fuerDruck(_inhalt(true))}
     }
     spalten.forEach((f, i) => {
       const x = x0 + i * dx;
-      const titel = _esc$1(f.name || f.auto);
+      const titel = _esc$2(f.name || f.auto);
       if (f.art === 'einspeisung' || f.art === 'kabel') {
         const ts = f.trennstelle;
         s += `<line x1="${x}" y1="${yMS}" x2="${x}" y2="20" class="ssb-sch-ltg${ts ? ' is-offen' : ''}"/>`;
         s += `<rect x="${x - 7}" y="${yMS - 22}" width="14" height="14" rx="2" class="ssb-sch-feld${ts ? ' is-offen' : ''}"><title>${titel}${ts ? ' — offene Trennstelle' : ''}</title></rect>`;
         const ziel = f.art === 'einspeisung' ? 'VNB' : (f.ziel || '').replace(/\s*\(Geb\. [^)]*\)/, '');
-        s += `<text x="${x + 4}" y="16" class="ssb-sch-klein" transform="rotate(-18 ${x + 4} 16)">${_esc$1(ziel.length > 18 ? ziel.slice(0, 17) + '…' : ziel)}</text>`;
+        s += `<text x="${x + 4}" y="16" class="ssb-sch-klein" transform="rotate(-18 ${x + 4} 16)">${_esc$2(ziel.length > 18 ? ziel.slice(0, 17) + '…' : ziel)}</text>`;
       } else if (f.art === 'trafo' || f.art === 'trafo-direkt') {
         const t = trafo(f.trafoId);
         if (f.art === 'trafo') {
@@ -249775,8 +250025,8 @@ ${_fuerDruck(_inhalt(true))}
         }
         const nd = t?.nd?.status;
         s += `<g class="ssb-sch-trafo${nd ? ' nd-' + nd : ''}"><circle cx="${x}" cy="${yTr - 8}" r="11"/><circle cx="${x}" cy="${yTr + 6}" r="11"/>
-        <title>${_esc$1(t?.asset.name || 'Trafo')}${t?.kva ? ' · ' + t.kva + ' kVA' : ''}${nd ? ' · Nutzungsdauer ' + _label('ndStatus', nd) : ''}</title></g>`;
-        s += `<text x="${x + 16}" y="${yTr - 4}" class="ssb-sch-txt">${_esc$1(t?.asset.name || 'Trafo')}</text>`;
+        <title>${_esc$2(t?.asset.name || 'Trafo')}${t?.kva ? ' · ' + t.kva + ' kVA' : ''}${nd ? ' · Nutzungsdauer ' + _label('ndStatus', nd) : ''}</title></g>`;
+        s += `<text x="${x + 16}" y="${yTr - 4}" class="ssb-sch-txt">${_esc$2(t?.asset.name || 'Trafo')}</text>`;
         s += `<text x="${x + 16}" y="${yTr + 9}" class="ssb-sch-klein">${t?.kva ? t.kva + ' kVA' : '? kVA'}</text>`;
         if (m.nshvs.length) s += `<line x1="${x}" y1="${yTr + 17}" x2="${x}" y2="${yNS}" class="ssb-sch-ltg"/>`;
       } else {
@@ -249790,7 +250040,7 @@ ${_fuerDruck(_inhalt(true))}
       const a = xs.length ? Math.min(...xs) - 30 : x0 - 30, b = xs.length ? Math.max(...xs) + 120 : x0 + 160;
       s += `<line x1="${a}" y1="${yNS}" x2="${b}" y2="${yNS}" class="ssb-sch-schiene is-ns"/>`;
       const txt = m.nshvs.map(nv => `${nv.asset.name || 'NSHV'}${nv.abgaenge != null ? ` · ${nv.abgaenge} Abgänge` : ''} (${nv.belegt} belegt${nv.frei != null ? `, ${nv.frei} frei` : ''})`).join('  ·  ');
-      s += `<text x="${a}" y="${yNS + 18}" class="ssb-sch-txt">${_esc$1(txt)}</text>`;
+      s += `<text x="${a}" y="${yNS + 18}" class="ssb-sch-txt">${_esc$2(txt)}</text>`;
       s += `<text x="${a - 6}" y="${yNS + 4}" text-anchor="end" class="ssb-sch-klein">NS</text>`;
     }
     return `<div class="ssb-schema"><svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:${H}px">${s}</svg>
@@ -249813,9 +250063,9 @@ ${_fuerDruck(_inhalt(true))}
       : '<span class="ssb-mut">— (keine Übergabestation)</span>';
     const anb = st.anbindung.length
       ? st.anbindung.map(x => x.art === 'netz'
-        ? `<span class="ssb-chip is-netz">⚡ ${_esc$1(x.label)}</span>`
+        ? `<span class="ssb-chip is-netz">⚡ ${_esc$2(x.label)}</span>`
         : `<button class="ssb-chip" ${x.gebId != null ? `data-click="openStationsSteckbrief(${_js(x.gebId)})"` : ''} title="Steckbrief dieser Station öffnen">
-          ${x.trennstelle ? '✂ ' : ''}${_esc$1(x.label)}${x.systeme > 1 ? ` · ${x.systeme} Systeme` : ''}</button>`).join('')
+          ${x.trennstelle ? '✂ ' : ''}${_esc$2(x.label)}${x.systeme > 1 ? ` · ${x.systeme} Systeme` : ''}</button>`).join('')
         + _autoBadge('aus Kabeln', 'Aus den MS-Kabeln des Netzmodells; ✂ = offene Trennstelle auf der Verbindung')
       : '<span class="ssb-mut">Keine MS-Kabel erfasst.</span>';
     const kompakt = st.bauweise.wert === 'kompakt';
@@ -249829,9 +250079,9 @@ ${_fuerDruck(_inhalt(true))}
       + _wahl('lage', st.lage, _stAufruf('lage')))}
     ${_zeile$1('Anbindung an', anb)}
     ${_zeile$1('Einspeisung', _wahl('einspeisung', st.einspeisung, _stAufruf('einspeisung'))
-      + (st.einspeisung.text ? ` <span class="ssb-mut">${_esc$1(st.einspeisung.text)}</span>` : ''))}
+      + (st.einspeisung.text ? ` <span class="ssb-mut">${_esc$2(st.einspeisung.text)}</span>` : ''))}
     ${_zeile$1('Bauart <span class="ssb-mut">(wenn begehbar)</span>', _wahl('bauart', st.bauart, _stAufruf('bauart'), { gesperrt: kompakt })
-      + `<input class="ssb-in" style="width:160px" placeholder="Anmerkung Bauart" value="${_esc$1(sb.bauartText || '')}" data-change="ssbSetStation('bauartText', this.value)">`)}
+      + `<input class="ssb-in" style="width:160px" placeholder="Anmerkung Bauart" value="${_esc$2(sb.bauartText || '')}" data-change="ssbSetStation('bauartText', this.value)">`)}
   </div>`;
     return _abschnitt(1, 'MS-Station (inkl. Gebäude)', inhalt, _fotos(g?.feldFotos));
   }
@@ -249848,9 +250098,9 @@ ${_fuerDruck(_inhalt(true))}
       const felderTab = `<table class="ssb-tab"><thead><tr><th style="width:44px">Feld</th><th>Feldbezeichnung</th><th style="width:150px">aus dem Netzmodell</th></tr></thead><tbody>
       ${s.felder.map((f, i) => `<tr class="${f.art === 'reserve' ? 'is-reserve' : ''}">
         <td>${f.nr}</td>
-        <td><input class="ssb-in ssb-voll" value="${_esc$1(f.name || '')}" placeholder="${_esc$1(f.auto)}"
+        <td><input class="ssb-in ssb-voll" value="${_esc$2(f.name || '')}" placeholder="${_esc$2(f.auto)}"
              data-change="ssbSetFeldName(${id}, ${i}, this.value)"></td>
-        <td class="ssb-mut">${_esc$1({ einspeisung: 'Übergabe', kabel: 'Kabel', trafo: 'Trafo', reserve: 'Reserve' }[f.art])}${f.trennstelle ? ' · ✂ offen' : ''}</td>
+        <td class="ssb-mut">${_esc$2({ einspeisung: 'Übergabe', kabel: 'Kabel', trafo: 'Trafo', reserve: 'Reserve' }[f.art])}${f.trennstelle ? ' · ✂ offen' : ''}</td>
       </tr>`).join('')}
     </tbody></table>`;
       return `<div class="ssb-karte">
@@ -249887,7 +250137,7 @@ ${_fuerDruck(_inhalt(true))}
       <span class="ssb-mut">${t.nd.alter} a${t.nd.rest > 0 ? ` · noch ${t.nd.rest} a` : ''}</span>`;
     };
     const tab = `<table class="ssb-tab ssb-tab-quer">
-    <tr><th>Bezeichnung</th>${sp((t, a, p, id) => `<input class="ssb-in ssb-voll" value="${_esc$1(a.name)}" data-change="ssbSetName(${id}, this.value)">`)}</tr>
+    <tr><th>Bezeichnung</th>${sp((t, a, p, id) => `<input class="ssb-in ssb-voll" value="${_esc$2(a.name)}" data-change="ssbSetName(${id}, this.value)">`)}</tr>
     <tr><th>Leistung</th>${sp(kvaSel)}</tr>
     <tr><th>uk</th>${sp((t, a, p, id) => _zahlInput(p.ukProzent, `ssbSetProp(${id}, 'ukProzent', this.value)`, { step: 0.1, breite: 56, placeholder: '4' }) + ' %')}</tr>
     <tr><th>Baujahr</th>${sp((t, a, p, id) => _zahlInput(a.baujahr, `ssbSetBaujahr(${id}, this.value)`))}</tr>
@@ -249932,11 +250182,11 @@ ${_fuerDruck(_inhalt(true))}
 
   function _sec5() {
     const liste = _modell.maengel;
-    const dl = `<datalist id="ssb-felder">${BETRACHTUNGSFELDER.map(f => `<option value="${_esc$1(f)}">`).join('')}</datalist>`;
+    const dl = `<datalist id="ssb-felder">${BETRACHTUNGSFELDER.map(f => `<option value="${_esc$2(f)}">`).join('')}</datalist>`;
     const zeilen = liste.map((x, i) => `<tr>
-    <td><input class="ssb-in ssb-voll" list="ssb-felder" value="${_esc$1(x.feld)}" placeholder="z. B. Raumaufteilung"
+    <td><input class="ssb-in ssb-voll" list="ssb-felder" value="${_esc$2(x.feld)}" placeholder="z. B. Raumaufteilung"
          data-change="ssbMangelSet(${i}, 'feld', this.value)"></td>
-    <td><textarea class="ssb-in ssb-voll" rows="2" placeholder="Feststellungen" data-change="ssbMangelSet(${i}, 'text', this.value)">${_esc$1(x.text)}</textarea></td>
+    <td><textarea class="ssb-in ssb-voll" rows="2" placeholder="Feststellungen" data-change="ssbMangelSet(${i}, 'text', this.value)">${_esc$2(x.text)}</textarea></td>
     <td style="width:24px"><button class="ssb-x" data-click="ssbMangelWeg(${i})" title="Zeile entfernen">✕</button></td>
   </tr>`).join('');
     const tab = `${dl}<table class="ssb-tab"><thead><tr><th style="width:34%">Betrachtungsfeld</th><th>Mängel, Anmerkungen (Feststellungen)</th><th></th></tr></thead>
@@ -249949,7 +250199,7 @@ ${_fuerDruck(_inhalt(true))}
     const w = _modell.weitere;
     if (!w.length) return '';
     return `<div class="ssb-weitere"><span class="ssb-mut">Weitere Komponenten im Gebäude:</span>
-    ${w.map(a => `<button class="ssb-chip" data-click="ssbOeffneAsset(${_js(a.id)})">${ASSET_CFG[a.type]?.icon || ''} ${_esc$1(a.name)}</button>`).join('')}</div>`;
+    ${w.map(a => `<button class="ssb-chip" data-click="ssbOeffneAsset(${_js(a.id)})">${ASSET_CFG[a.type]?.icon || ''} ${_esc$2(a.name)}</button>`).join('')}</div>`;
   }
 
   // ── Druckfassung im Layout der Vorlage ───────────────────────────────────────
@@ -249968,7 +250218,7 @@ ${_fuerDruck(_inhalt(true))}
     const blatt = _blatt(_modell);
     const k = blatt.kopf;
     const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
-<title>${_esc$1(ssSteckbriefTitel(blatt))}</title>
+<title>${_esc$2(ssSteckbriefTitel(blatt))}</title>
 <style>
   @page { size: A4 portrait; margin: 16mm 14mm 18mm; }
   body { font-family: Arial, "Segoe UI", sans-serif; font-size: 9pt; color: #1a1a1a; margin: 0; }
@@ -249978,8 +250228,8 @@ ${_fuerDruck(_inhalt(true))}
   .druckleiste { margin: 0 0 4mm; } @media print { .druckleiste { display: none; } }
 </style></head><body>
 <div class="druckleiste"><button onclick="window.print()">🖨 Drucken / Als PDF speichern</button></div>
-<table class="kopf"><tr><td class="anl">Anlage ?</td><td><b>${_esc$1(k.liegenschaft || 'Liegenschaftsbezeichnung')}</b></td>
-  <td><b>${_esc$1([k.gebNummer ? 'Geb. ' + k.gebNummer : '', k.station].filter(Boolean).join(' – '))}</b></td></tr></table>
+<table class="kopf"><tr><td class="anl">Anlage ?</td><td><b>${_esc$2(k.liegenschaft || 'Liegenschaftsbezeichnung')}</b></td>
+  <td><b>${_esc$2([k.gebNummer ? 'Geb. ' + k.gebNummer : '', k.station].filter(Boolean).join(' – '))}</b></td></tr></table>
 ${ssSteckbriefHtml(blatt)}
 </body></html>`;
     const win = window.open('', '_blank');
@@ -253192,7 +253442,7 @@ ${ssSteckbriefHtml(blatt)}
     zu: false,
   };
   /** @type {null | { id:string, gruppe:any, versteckt:any[] }} */
-  let _ansicht = null;
+  let _ansicht$1 = null;
   /** Signatur der Projektbelegung beim letzten Abgleich */
   let _letzteSig = null;
   /** Belegung kam von außen (Laden, Variantenwechsel): passenden Stand suchen */
@@ -253280,7 +253530,7 @@ ${ssSteckbriefHtml(blatt)}
     _bs.projektId = z.projektId;
     if (z.entwurf) {
       _entwurf = _entwurfSumme();
-      if (_ansicht && bearbeitet) {
+      if (_ansicht$1 && bearbeitet) {
         pvbsAnsichtEnde(false);
         window.showHint?.('Ansicht beendet — die Änderungen im Projekt sind ein ungespeicherter Entwurf (📚 Belegungsstände → 💾).', 6000);
       }
@@ -253302,7 +253552,7 @@ ${ssSteckbriefHtml(blatt)}
   function pvbsVarianteGewechselt() {
     _neuAufloesen = true;
     _basisLoesen = true;
-    if (_ansicht) pvbsAnsichtEnde(false);
+    if (_ansicht$1) pvbsAnsichtEnde(false);
   }
 
   /**
@@ -253400,7 +253650,7 @@ ${ssSteckbriefHtml(blatt)}
     if (!confirm(`Belegungsstand „${s.name}“ löschen?`
       + (pot ? '\n\nEr ist die Grundlage der PV-Analyse — danach rechnet sie mit dem Stand im Projekt.' : '')
       + (nAusl ? `\n\n${nAusl} Auslegung(en) der PV-Analyse hängen daran und werden mit entfernt.` : ''))) return;
-    if (_ansicht?.id === id) pvbsAnsichtEnde();
+    if (_ansicht$1?.id === id) pvbsAnsichtEnde();
     _bs.liste = _bs.liste.filter(x => x !== s);
     if (s.id === _bs.projektId) _bs.projektId = null;      // Basis des Entwurfs gelöscht
     if (pot) pva.potenzialStandId = null;
@@ -253473,8 +253723,8 @@ ${ssSteckbriefHtml(blatt)}
     pvbsAbgleich();
     const s = pvbsStand(id);
     if (!s) return;
-    if ((id === _bs.projektId && !_entwurf) || _ansicht?.id === id) { pvbsAnsichtEnde(); return; }
-    if (_ansicht) pvbsAnsichtEnde(false);
+    if ((id === _bs.projektId && !_entwurf) || _ansicht$1?.id === id) { pvbsAnsichtEnde(); return; }
+    if (_ansicht$1) pvbsAnsichtEnde(false);
     window.showHint?.(`⏳ „${s.name}“ wird gezeichnet …`, 0);
     setTimeout(() => {
       try {
@@ -253498,7 +253748,7 @@ ${ssSteckbriefHtml(blatt)}
           n++;
         }
         gruppe.addTo(map);
-        _ansicht = { id, gruppe, versteckt };
+        _ansicht$1 = { id, gruppe, versteckt };
         _bannerZeigen(s, n);
         if (window.pvModusAktiv) pvModusMarkiereKarte();
         window.hideHint?.();
@@ -253512,17 +253762,17 @@ ${ssSteckbriefHtml(blatt)}
 
   /** Andere Ansicht beenden: eigene Ebene weg, die Dächer des Projekts wieder zeigen. */
   function pvbsAnsichtEnde(rendern = true) {
-    if (!_ansicht) return;
-    try { map.removeLayer(_ansicht.gruppe); } catch { /* schon weg */ }
-    for (const l of _ansicht.versteckt) { try { l.addTo(map); } catch { /* Layer inzwischen ersetzt */ } }
-    _ansicht = null;
+    if (!_ansicht$1) return;
+    try { map.removeLayer(_ansicht$1.gruppe); } catch { /* schon weg */ }
+    for (const l of _ansicht$1.versteckt) { try { l.addTo(map); } catch { /* Layer inzwischen ersetzt */ } }
+    _ansicht$1 = null;
     document.getElementById('pvbs-banner')?.remove();
     window.updateSperrVisibility?.();
     if (window.pvModusAktiv) pvModusMarkiereKarte();
     if (rendern) _nachAenderung();
   }
 
-  function pvbsAnsichtId() { return _ansicht?.id || null; }
+  function pvbsAnsichtId() { return _ansicht$1?.id || null; }
 
   /**
    * PV-Modus-Färbung während einer Ansicht (25 pvModusMarkiereKarte): Dächer des
@@ -253531,7 +253781,7 @@ ${ssSteckbriefHtml(blatt)}
    * @returns {boolean} true = gefärbt (PV-Modus färbt dann nicht selbst)
    */
   function pvbsMarkiereKarte() {
-    const s = _ansicht && pvbsStand(_ansicht.id);
+    const s = _ansicht$1 && pvbsStand(_ansicht$1.id);
     if (!s || !window.pvModusAktiv) return false;
     for (const g of _geb$1()) {
       if (!g.polygonLayer) continue;
@@ -253744,7 +253994,7 @@ ${ssSteckbriefHtml(blatt)}
   function pvbsBlockHtml() {
     const ps = pvbsAbgleich();
     const pva = window._pvAnalyse;
-    const anzeigeId = _ansicht?.id || (_entwurf ? null : _bs.projektId);
+    const anzeigeId = _ansicht$1?.id || (_entwurf ? null : _bs.projektId);
     const analyseId = _analyseId();
     const gibtEs = _gibtEs();
 
@@ -253800,7 +254050,7 @@ ${ssSteckbriefHtml(blatt)}
     const uebersicht = `
     <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 6px;font-size:9.5px;margin:4px 0 5px;padding:4px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;align-items:baseline;">
       ${_rolle(GRUEN$1, 'IM PROJEKT', 'Liegt auf den Dächern')}<span>${_entwurf ? entwurfName : ps ? name(_bs.projektId) : '<span style="color:var(--muted);">noch keine Dächer belegt</span>'}</span>
-      ${_rolle(LILA, 'ANGEZEIGT', 'Auf der Karte')}<span>${anzeigeId ? name(anzeigeId) : _entwurf ? entwurfName : name(null)}${_ansicht ? ` <a style="cursor:pointer;color:${LILA};text-decoration:underline;" data-click="pvbsAnsichtEnde()">beenden</a>` : ''}</span>
+      ${_rolle(LILA, 'ANGEZEIGT', 'Auf der Karte')}<span>${anzeigeId ? name(anzeigeId) : _entwurf ? entwurfName : name(null)}${_ansicht$1 ? ` <a style="cursor:pointer;color:${LILA};text-decoration:underline;" data-click="pvbsAnsichtEnde()">beenden</a>` : ''}</span>
       ${_rolle(GELB$1, 'PV-ANALYSE', 'Grundlage des Variantenvergleichs')}<span>${analyseId ? name(analyseId) : _entwurf ? entwurfName : name(null)}</span>
     </div>`;
     // Entwurf: liegt auf den Dächern, ist aber noch kein Stand
@@ -254798,7 +255048,7 @@ ${ssSteckbriefHtml(blatt)}
   const _quartiere = () => (Array.isArray(window.netzQuartiere) ? window.netzQuartiere : (window.netzQuartiere = []));
   const _zentraleId = () => parseInt(document.getElementById('netz-zentrale')?.value, 10);
   const _istZentrale = id => (window.netzZentralenIds?.() || [_zentraleId()]).includes(id);
-  const _esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const _esc$1 = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   /** Quartier festlegen: mit angehakten Gebäuden direkt, sonst Bereich auf der Karte umfahren. */
   function netzQuartierHinzufuegen() {
@@ -254920,7 +255170,7 @@ ${ssSteckbriefHtml(blatt)}
       const umriss = q.bereich?.length >= 3 ? q.bereich : bereichUmGebaeude(geb, 12);
       if (umriss) {
         L.polygon(umriss, { color: q.farbe, weight: 2, dashArray: '6 5', fillColor: q.farbe, fillOpacity: 0.06, interactive: false, className: 'netz-quartier-flaeche' })
-          .bindTooltip(_esc(q.name), { permanent: true, direction: 'center', className: 'netz-quartier-label', opacity: 0.95 })
+          .bindTooltip(_esc$1(q.name), { permanent: true, direction: 'center', className: 'netz-quartier-label', opacity: 0.95 })
           .addTo(_anzeige);
       }
       for (const g of geb) L.polygon(g.polygon, { color: q.farbe, weight: 2.5, fill: false, interactive: false }).addTo(_anzeige);
@@ -254961,12 +255211,12 @@ ${ssSteckbriefHtml(blatt)}
       const s = status.get(q.id);
       const info = !s || !s.angeschlossen ? '<span class="nq-status">noch nicht berechnet</span>'
         : s.eigener ? `<span class="nq-status ok">✓ eigener Strang${s.abgaenge > 1 ? ` (${s.abgaenge} Abgänge)` : ''}</span>`
-          : `<span class="nq-status warn">teilt Strang</span> <button type="button" class="nq-fix" title="Gebäude dieses Quartiers, die über einen fremden Strang versorgt werden, bekommen einen eigenen Abgang aus der Heizzentrale" data-click="netzQuartierStrangHerstellen('${_esc(q.id)}')">eigenen Strang herstellen</button>`;
-      return `<div class="nq-zeile" data-quartier="${_esc(q.id)}">
-      <span class="nq-farbe" style="background:${_esc(q.farbe)}"></span>
-      <input class="nq-name" value="${_esc(q.name)}" aria-label="Name des Quartiers" data-change="netzQuartierUmbenennen('${_esc(q.id)}', this.value)">
+          : `<span class="nq-status warn">teilt Strang</span> <button type="button" class="nq-fix" title="Gebäude dieses Quartiers, die über einen fremden Strang versorgt werden, bekommen einen eigenen Abgang aus der Heizzentrale" data-click="netzQuartierStrangHerstellen('${_esc$1(q.id)}')">eigenen Strang herstellen</button>`;
+      return `<div class="nq-zeile" data-quartier="${_esc$1(q.id)}">
+      <span class="nq-farbe" style="background:${_esc$1(q.farbe)}"></span>
+      <input class="nq-name" value="${_esc$1(q.name)}" aria-label="Name des Quartiers" data-change="netzQuartierUmbenennen('${_esc$1(q.id)}', this.value)">
       <span class="nq-anzahl">${(q.gebIds || []).length} Geb.</span>${info}
-      <button type="button" class="nq-weg" title="Quartier entfernen" aria-label="Quartier entfernen" data-click="netzQuartierEntfernen('${_esc(q.id)}')">×</button>
+      <button type="button" class="nq-weg" title="Quartier entfernen" aria-label="Quartier entfernen" data-click="netzQuartierEntfernen('${_esc$1(q.id)}')">×</button>
     </div>`;
     }).join('');
     const details = document.getElementById('na-quartiere');
@@ -261221,6 +261471,457 @@ out center tags;`;
     naModulZieljahr: naModulZieljahr
   });
 
+  // ── 49-oberflaeche.js — Rahmen der Oberfläche (LKEBw) ──────────────────────
+  //
+  // Fünf Arbeitsschritte (Projekt · Bestand · Planung · Auswertung · Gutachten) in der
+  // Prozessleiste. Jeder Schritt schaltet über die vorhandenen Funktionen (setViewMode,
+  // setLeftTab, setAnalyseSection) auf die passende Ansicht — die Fachmodule bleiben
+  // unverändert. Dazu: Seitennavigation für Auswertung/Gutachten, Projektseite,
+  // Befehlssuche (Strg K) und Statuspunkte je Schritt.
+  //
+  // Präfix: ui… · Zustand im localStorage unter 'micke.ui'
+
+  const _KEY = 'micke.ui';
+  const _ui = { schritt: 'projekt', sparte: 'waerme', waermeTab: 'netz', abschnitt: { auswertung: 'uebersicht', gutachten: 'ggrafik' } };
+  try { Object.assign(_ui, JSON.parse(localStorage.getItem(_KEY) || '{}')); } catch (e) { /* ohne Speicher weiter */ }
+  const _merken = () => { try { localStorage.setItem(_KEY, JSON.stringify(_ui)); } catch (e) { /* optional */ } };
+
+  const _esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const _ic = (id, cls = 'ui-i') => `<svg class="${cls}"><use href="#ui-i-${id}"/></svg>`;
+  // Emojis und Pfeil-Präfixe aus alten Beschriftungen entfernen
+  const uiLabel = t => String(t || '')
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, '')
+    .replace(/^[\s⬡↓↑⇄⊞⋯＋+✕↻↶⚙€·•▶◀▼]+/u, '')
+    .replace(/&shy;|­/g, '')
+    .replace(/\s+/g, ' ').trim();
+
+  // ── Schritte ───────────────────────────────────────────────────────────
+  const UI_SCHRITTE = [
+    { id: 'projekt',    titel: 'Projekt',    layout: 'seite' },
+    { id: 'bestand',    titel: 'Bestand',    layout: 'karte' },
+    { id: 'planung',    titel: 'Planung',    layout: 'karte' },
+    { id: 'auswertung', titel: 'Auswertung', layout: 'nav' },
+    { id: 'gutachten',  titel: 'Gutachten',  layout: 'nav' },
+  ];
+
+  // Zuordnung der Analyse-Abschnitte (data-section der Reiter in #analyse-view-tabs)
+  const _ABSCHNITTE = {
+    uebersicht:          { schritt: 'auswertung', gruppe: '',             titel: 'Übersicht' },
+    waerme:              { schritt: 'auswertung', gruppe: 'Wärme',        titel: 'Lastgang und Dauerlinie' },
+    strom:               { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Strombilanz' },
+    nap:                 { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Netzanschluss-Lastgang' },
+    kna:                 { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Knotenpunkt-Analyse' },
+    pva:                 { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Photovoltaik' },
+    wirtschaft:          { schritt: 'auswertung', gruppe: 'Übergreifend', titel: 'Wirtschaftlichkeit' },
+    emissionen:          { schritt: 'auswertung', gruppe: 'Übergreifend', titel: 'Emissionen' },
+    ausbauplaner:        { schritt: 'auswertung', gruppe: 'Übergreifend', titel: 'Maßnahmen und Fahrplan' },
+    ggrafik:             { schritt: 'gutachten',  gruppe: '',             titel: 'Gutachten' },
+    liegenschaftsbilder: { schritt: 'gutachten',  gruppe: '',             titel: 'Liegenschaftsbilder' },
+  };
+  // Einträge, die keine Analyse-Abschnitte sind (eigene Ansichten oder Fenster)
+  const _EXTRA = {
+    auswertung: [
+      // Kartenbezogene Auswertungen (Netzanalyse, Engpässe, Blackout …) bleiben in Planung › Strom,
+      // weil sie die Karte einfärben; über die Befehlssuche sind sie von überall erreichbar.
+      { key: 'v:optimierung', gruppe: 'Wärme', titel: 'Optimierung der Erzeugung', los: () => _ansicht('optimierung') },
+      { key: 'f:sankey', gruppe: 'Wärme', titel: 'Energieflüsse (Sankey)', los: () => window.showSankey?.(), fenster: true },
+      { key: 'v:vergleich', gruppe: 'Übergreifend', titel: 'Variantenvergleich', los: () => _ansicht('vergleich') },
+      { key: 'v:gebaeude', gruppe: 'Übergreifend', titel: 'Gebäudeauswertung', los: () => _ansicht('gebaeude') },
+    ],
+    gutachten: [
+      { key: 'f:ergebnisblatt', gruppe: 'Anlagen und Blätter', titel: 'Ergebnisblatt Elektro', los: () => window.ergebnisblattToggle?.(), fenster: true },
+      { key: 'f:steckbriefe', gruppe: 'Anlagen und Blätter', titel: 'Investitionsplan', los: () => window.showInvestitionsplan?.(), fenster: true },
+      { key: 'a:bericht', gruppe: 'Exporte', titel: 'Projektbericht erstellen', los: () => window.openProjectReportWizard?.(), aktion: true },
+      { key: 'a:massnahmen', gruppe: 'Exporte', titel: 'Maßnahmenbericht (PDF)', los: () => window.exportMassnahmenPDF?.(), aktion: true },
+      { key: 'a:digest', gruppe: 'Exporte', titel: 'Kennzahlen-Digest (Markdown)', los: () => window.exportGutachtenDigest?.(), aktion: true },
+      { key: 'a:dispatch', gruppe: 'Exporte', titel: 'Einsatzplanung als CSV', los: () => window.exportDispatchCSV?.(), aktion: true },
+      { key: 'a:gebcsv', gruppe: 'Exporte', titel: 'Gebäudeliste als CSV', los: () => window.exportGebaeudeCSV?.(), aktion: true },
+    ],
+  };
+
+  function _ansicht(mode) {
+    window.setViewMode?.(mode);
+    _ui.abschnitt[_ui.schritt] = 'v:' + mode;
+    _merken();
+    _navRendern();
+  }
+
+  // ── Schritt wechseln ───────────────────────────────────────────────────
+  function uiSchritt(id, opt = {}) {
+    const s = UI_SCHRITTE.find(x => x.id === id) || UI_SCHRITTE[0];
+    _ui.schritt = s.id;
+    if (opt.sparte) _ui.sparte = opt.sparte;
+    _merken();
+    const body = document.body;
+    UI_SCHRITTE.forEach(x => body.classList.toggle('ui-schritt-' + x.id, x.id === s.id));
+    body.dataset.uiLayout = s.layout;
+    body.dataset.uiSparte = _ui.sparte;
+    document.getElementById('center-projekt-view')?.toggleAttribute('hidden', s.id !== 'projekt');
+
+    if (s.id === 'projekt') {
+      window.setViewMode?.('karte');
+      uiProjektseiteRendern();
+    } else if (s.id === 'bestand') {
+      window.setViewMode?.('karte');
+      window.setLeftTab?.('gebiet');
+    } else if (s.id === 'planung') {
+      window.setViewMode?.('karte');
+      if (_ui.sparte === 'strom') window.setLeftTab?.('elektro');
+      else window.setLeftTab?.(_ui.waermeTab === 'erzeuger' ? 'erzeuger' : 'netz');
+    } else {
+      const ab = _ui.abschnitt[s.id] || (s.id === 'gutachten' ? 'ggrafik' : 'uebersicht');
+      _abschnittOeffnen(ab, true);
+    }
+    _lpKopfRendern();
+    _schritteRendern();
+    _navRendern();
+    setTimeout(() => window.map?.invalidateSize?.(), 120);
+  }
+
+  function _abschnittOeffnen(key, still) {
+    if (key.startsWith('v:')) { _ansicht(key.slice(2)); return; }
+    const eintrag = [..._EXTRA.auswertung, ..._EXTRA.gutachten].find(e => e.key === key);
+    if (eintrag) {
+      if (eintrag.fenster || eintrag.aktion) {
+        if (!still) eintrag.los();
+        if (still) { window.setViewMode?.('analyse'); window.setAnalyseSection?.(_ui.schritt === 'gutachten' ? 'ggrafik' : 'uebersicht'); }
+        return;
+      }
+      eintrag.los(); return;
+    }
+    window.setViewMode?.('analyse');
+    window.setAnalyseSection?.(key);
+    _ui.abschnitt[_ui.schritt] = key;
+    document.body.dataset.uiAbschnitt = key;
+    _merken();
+    _navRendern();
+  }
+
+  // ── Prozessleiste ──────────────────────────────────────────────────────
+  function _schritteRendern() {
+    const box = document.getElementById('ui-steps');
+    if (!box) return;
+    const st = uiSchrittStatus();
+    box.innerHTML = UI_SCHRITTE.map((s, i) => {
+      const z = st[s.id] || { stufe: 'leer', text: '' };
+      const aktiv = s.id === _ui.schritt;
+      const nr = z.stufe === 'ok' && !aktiv ? _ic('check', 'ui-i ui-i-sm') : String(i + 1);
+      return `<button class="ui-step" type="button" data-ui-schritt="${s.id}" data-stufe="${z.stufe}" aria-current="${aktiv}">
+      <span class="ui-step-nr">${nr}</span><b>${s.titel}</b><small>${_esc(z.text)}</small></button>`;
+    }).join('');
+  }
+
+  // Status je Schritt aus dem Datenstand (leer · offen · ok). Bewusst einfach und schnell.
+  function uiSchrittStatus() {
+    const geb = Array.isArray(window.gebaeude) ? window.gebaeude : [];
+    const name = (window.getProjektName?.() || '').trim();
+    const assets = Array.isArray(window.assets) ? window.assets.length : 0;
+    const erz = typeof window.isErzeugerAktiv === 'function' && Array.isArray(window.meritOrderKeys)
+      ? window.meritOrderKeys.filter(k => window.isErzeugerAktiv(k)).length : 0;
+    const netzKm = (window.trasseSegments || []).length;
+    const ss = window.systemState;
+    const kap = window._gutStatus?.() || null;
+    return {
+      projekt: name ? { stufe: 'ok', text: 'Stammdaten erfasst' } : { stufe: 'offen', text: 'Name fehlt' },
+      bestand: geb.length ? { stufe: 'ok', text: `${geb.length.toLocaleString('de-DE')} Gebäude` } : { stufe: 'leer', text: 'Gebäude laden' },
+      planung: (erz || netzKm || assets) ? { stufe: 'ok', text: [erz ? `${erz} Erzeuger` : '', assets ? `${assets} Elektro-Objekte` : ''].filter(Boolean).join(' · ') || 'Netz angelegt' }
+        : { stufe: geb.length ? 'offen' : 'leer', text: 'noch nichts geplant' },
+      auswertung: ss && (ss.gesamtMwhMitNV || ss.nutzwaermeMwh) ? { stufe: 'ok', text: 'Ergebnisse liegen vor' } : { stufe: 'leer', text: 'noch nicht gerechnet' },
+      gutachten: kap ? { stufe: kap.fertig ? 'ok' : 'offen', text: kap.text } : { stufe: 'leer', text: 'Gliederung anlegen' },
+    };
+  }
+
+  // ── Kopf des linken Arbeitsbereichs ────────────────────────────────────
+  function _lpKopfRendern() {
+    const kopf = document.getElementById('ui-lp-kopf');
+    if (!kopf) return;
+    if (_ui.schritt === 'bestand') {
+      kopf.innerHTML = `<div class="ui-lp-titel"><h2>Bestand</h2><span class="ui-lp-hinweis">Gebiet, Gebäude, Grundlagen</span></div>`;
+    } else if (_ui.schritt === 'planung') {
+      const sp = _ui.sparte;
+      const reiter = sp === 'waerme'
+        ? `<div class="ui-tabs" role="tablist">
+          <button type="button" role="tab" data-ui-waerme="netz" aria-selected="${_ui.waermeTab !== 'erzeuger'}">Wärmenetz</button>
+          <button type="button" role="tab" data-ui-waerme="erzeuger" aria-selected="${_ui.waermeTab === 'erzeuger'}">Erzeugung und Speicher</button></div>`
+        : '';
+      kopf.innerHTML = `<div class="ui-lp-titel"><h2>Planung</h2>
+      <div class="ui-seg" role="group" aria-label="Sparte">
+        <button type="button" data-ui-sparte="waerme" aria-pressed="${sp === 'waerme'}">Wärme</button>
+        <button type="button" data-ui-sparte="strom" aria-pressed="${sp === 'strom'}">Strom</button></div></div>${reiter}`;
+    } else kopf.innerHTML = '';
+  }
+
+  // ── Seitennavigation (Auswertung, Gutachten) ───────────────────────────
+  function _navEintraege(schritt) {
+    const out = [];
+    document.querySelectorAll('#analyse-view-tabs .analyse-section-tab').forEach(btn => {
+      const key = btn.dataset.section;
+      const def = _ABSCHNITTE[key] || { schritt: 'auswertung', gruppe: 'Weitere', titel: uiLabel(btn.textContent) };
+      if (def.schritt !== schritt) return;
+      out.push({ key, gruppe: def.gruppe, titel: def.titel, tip: btn.title || '' });
+    });
+    (_EXTRA[schritt] || []).forEach(e => out.push(e));
+    const reihenfolge = schritt === 'gutachten' ? ['', 'Anlagen und Blätter', 'Exporte'] : ['', 'Wärme', 'Strom', 'Übergreifend', 'Weitere'];
+    out.sort((a, b) => reihenfolge.indexOf(a.gruppe) - reihenfolge.indexOf(b.gruppe));
+    return out;
+  }
+
+  function _navRendern() {
+    const nav = document.getElementById('ui-seitennav');
+    if (!nav) return;
+    if (!['auswertung', 'gutachten'].includes(_ui.schritt)) { nav.innerHTML = ''; return; }
+    const aktiv = _ui.abschnitt[_ui.schritt];
+    let gruppe = null, h = `<div class="ui-nav-titel">${_ui.schritt === 'gutachten' ? 'Gutachten' : 'Auswertung'}</div>`;
+    for (const e of _navEintraege(_ui.schritt)) {
+      if (e.gruppe !== gruppe) { gruppe = e.gruppe; if (gruppe) h += `<div class="ui-nav-grp">${_esc(gruppe)}</div>`; }
+      const zusatz = e.fenster ? _ic('chev', 'ui-i ui-i-sm ui-nav-fenster') : e.aktion ? _ic('export', 'ui-i ui-i-sm ui-nav-fenster') : '';
+      h += `<button type="button" class="ui-nav-it" data-ui-abschnitt="${e.key}" aria-current="${e.key === aktiv}" title="${_esc(e.tip || (e.fenster ? 'Öffnet ein Fenster' : e.aktion ? 'Erzeugt eine Datei' : ''))}"><span>${_esc(e.titel)}</span>${zusatz}</button>`;
+    }
+    nav.innerHTML = h;
+  }
+
+  // ── Projektseite ───────────────────────────────────────────────────────
+  function uiProjektseiteRendern() {
+    const v = document.getElementById('center-projekt-view');
+    if (!v) return;
+    const st = uiSchrittStatus();
+    const name = (window.getProjektName?.() || '').trim();
+    const geb = Array.isArray(window.gebaeude) ? window.gebaeude : [];
+    const naechster = UI_SCHRITTE.find(s => st[s.id]?.stufe !== 'ok');
+    const zeile = (stufe, titel, text, sprung) => `<div class="ui-ck" data-stufe="${stufe}">
+      <span class="ui-ck-ic">${_ic(stufe === 'ok' ? 'check' : stufe === 'offen' ? 'alert' : 'circle', 'ui-i ui-i-sm')}</span>
+      <span class="ui-ck-t"><b>${_esc(titel)}</b><small>${_esc(text)}</small></span>
+      ${sprung ? `<button type="button" class="btn-secondary ui-ck-btn" data-ui-sprung="${sprung}">Öffnen</button>` : '<span></span>'}</div>`;
+    v.querySelector('#ui-projekt-kopf').innerHTML = `
+    <div><span class="ui-eyebrow">Projekt</span><h1>${_esc(name || 'Unbenanntes Projekt')}</h1>
+      <p>${geb.length ? `${geb.length.toLocaleString('de-DE')} Gebäude im Plangebiet` : 'Noch keine Gebäude geladen'}</p></div>`;
+    v.querySelector('#ui-projekt-stand').innerHTML = `
+    ${naechster ? `<div class="ui-next">${_ic('arrow')}<div><b>Nächster Schritt: ${_esc(naechster.titel)}</b><small>${_esc(st[naechster.id].text)}</small></div>
+      ${naechster.id === 'projekt'
+        ? '<button type="button" class="btn-confirm" data-ui-fokus="pd-kaserne-name">Namen eintragen</button>'
+        : `<button type="button" class="btn-confirm" data-ui-sprung="${naechster.id}">Weiter zu ${_esc(naechster.titel)}</button>`}</div>` : ''}
+    ${UI_SCHRITTE.map(s => zeile(st[s.id].stufe, s.titel, st[s.id].text, s.id === 'projekt' ? null : s.id)).join('')}`;
+  }
+
+  // ── Befehlssuche (Strg K) ──────────────────────────────────────────────
+  // Liest die Knöpfe der Arbeitsbereiche ein; neue Funktionen sind damit automatisch auffindbar.
+  const _QUELLEN = [
+    { sel: '#lp-gebiet', schritt: 'bestand', ort: 'Bestand' },
+    { sel: '#lp-netz', schritt: 'planung', sparte: 'waerme', waermeTab: 'netz', ort: 'Planung · Wärmenetz' },
+    { sel: '#lp-erzeuger', schritt: 'planung', sparte: 'waerme', waermeTab: 'erzeuger', ort: 'Planung · Erzeugung' },
+    { sel: '#lp-elektro', schritt: 'planung', sparte: 'strom', ort: 'Planung · Strom' },
+    { sel: '#ui-proj-menu', ort: 'Projektdatei' },
+    { sel: '#mehr-menu', ort: 'Hilfe und Einstellungen' },
+    { sel: '#ebenen-panel', schritt: null, ort: 'Kartenebenen' },
+  ];
+  let _palTreffer = [], _palSel = 0;
+
+  function _palIndex() {
+    if (!document.querySelector('#lp-elektro button')) { try { window.buildElektroPanel?.(); } catch (e) { /* Panel baut sich beim ersten Öffnen */ } }
+    const liste = [], gesehen = new Set();
+    for (const q of _QUELLEN) {
+      document.querySelectorAll(`${q.sel} button, ${q.sel} [data-click]`).forEach(el => {
+        if (el.tagName === 'INPUT' || el.closest('[hidden]:not(#ui-proj-menu)') && !el.closest('#ui-proj-menu')) return;
+        const text = uiLabel(el.textContent);
+        if (text.length < 3 || /^[\d\s.,%–-]+$/.test(text)) return;
+        const k = q.ort + '|' + text;
+        if (gesehen.has(k)) return; gesehen.add(k);
+        liste.push({ text, ort: q.ort, tip: el.title || '', los: () => { if (q.schritt) uiSchritt(q.schritt, { sparte: q.sparte }); if (q.waermeTab) uiWaermeTab(q.waermeTab); setTimeout(() => el.click(), 60); } });
+      });
+    }
+    for (const s of ['auswertung', 'gutachten']) {
+      for (const e of _navEintraege(s)) {
+        liste.push({ text: e.titel, ort: s === 'auswertung' ? 'Auswertung' : 'Gutachten', tip: e.tip || '', los: () => { uiSchritt(s); _abschnittOeffnen(e.key); } });
+      }
+    }
+    UI_SCHRITTE.forEach(s => liste.push({ text: `${s.titel} öffnen`, ort: 'Arbeitsschritt', los: () => uiSchritt(s.id) }));
+    return liste;
+  }
+  let _palListe = [];
+
+  function uiBefehlssucheOeffnen() {
+    const ov = document.getElementById('ui-pal');
+    if (!ov) return;
+    _palListe = _palIndex();
+    ov.hidden = false;
+    const inp = document.getElementById('ui-pal-input');
+    inp.value = ''; _palSel = 0; _palRendern();
+    setTimeout(() => inp.focus(), 0);
+  }
+  function uiBefehlssucheSchliessen() { const ov = document.getElementById('ui-pal'); if (ov) ov.hidden = true; }
+
+  function _palRendern() {
+    const q = (document.getElementById('ui-pal-input')?.value || '').trim().toLowerCase();
+    const woerter = q.split(/\s+/).filter(Boolean);
+    _palTreffer = _palListe.filter(e => { const h = (e.text + ' ' + e.ort + ' ' + e.tip).toLowerCase(); return woerter.every(w => h.includes(w)); }).slice(0, 60);
+    _palSel = Math.min(_palSel, Math.max(_palTreffer.length - 1, 0));
+    const box = document.getElementById('ui-pal-liste');
+    if (!box) return;
+    if (!_palTreffer.length) { box.innerHTML = '<div class="ui-pal-leer">Keine Funktion gefunden. Anders formulieren, z. B. „Kabel“, „Excel“ oder „Netzanschluss“.</div>'; return; }
+    let ort = null, h = '';
+    _palTreffer.forEach((e, i) => {
+      if (e.ort !== ort) { ort = e.ort; h += `<div class="ui-pal-grp">${_esc(ort)}</div>`; }
+      h += `<button type="button" class="ui-pal-it${i === _palSel ? ' act' : ''}" data-ui-pal="${i}" title="${_esc(e.tip)}">${_ic('arrow', 'ui-i ui-i-sm')}<span>${_esc(e.text)}</span></button>`;
+    });
+    box.innerHTML = h;
+    box.querySelector('.act')?.scrollIntoView({ block: 'nearest' });
+  }
+  function _palAusfuehren(i) { const e = _palTreffer[i]; if (!e) return; uiBefehlssucheSchliessen(); e.los(); }
+
+  // ── Menüs ──────────────────────────────────────────────────────────────
+  function uiMenuUmschalten(id) {
+    const m = document.getElementById(id);
+    if (!m) return;
+    const auf = m.hidden;
+    document.querySelectorAll('.ui-menu[id]').forEach(x => { if (x.id !== 'mehr-menu') x.hidden = true; });
+    m.hidden = !auf;
+  }
+
+  function uiWaermeTab(tab) {
+    _ui.waermeTab = tab === 'erzeuger' ? 'erzeuger' : 'netz';
+    _merken();
+    window.setLeftTab?.(_ui.waermeTab);
+    _lpKopfRendern();
+  }
+
+  // ── Aufbau ─────────────────────────────────────────────────────────────
+  function _aufbau() {
+    const main = document.querySelector('.main');
+    const lp = document.getElementById('left-panel');
+    if (!main || !lp) return false;
+
+    // Kopf im linken Arbeitsbereich (ersetzt Titelzeile und Reiter)
+    if (!document.getElementById('ui-lp-kopf')) {
+      const kopf = document.createElement('div');
+      kopf.id = 'ui-lp-kopf'; kopf.className = 'ui-lp-kopf';
+      lp.insertBefore(kopf, lp.querySelector('.lp-body'));
+    }
+    // Seitennavigation
+    if (!document.getElementById('ui-seitennav')) {
+      const nav = document.createElement('aside');
+      nav.id = 'ui-seitennav'; nav.className = 'ui-seitennav'; nav.setAttribute('aria-label', 'Bereiche');
+      main.insertBefore(nav, main.firstChild);
+    }
+    // Projektseite
+    if (!document.getElementById('center-projekt-view')) {
+      const v = document.createElement('section');
+      v.id = 'center-projekt-view'; v.className = 'ui-projektseite'; v.hidden = true;
+      v.innerHTML = `<div class="ui-seite-in">
+      <header class="ui-seite-kopf" id="ui-projekt-kopf"></header>
+      <div class="ui-projekt-raster">
+        <section class="ui-karte"><header><h4>Projektstand</h4></header><div id="ui-projekt-stand"></div></section>
+        <div class="ui-stapel">
+          <section class="ui-karte"><header><h4>Stammdaten</h4></header><div class="ui-karte-in" id="ui-projekt-stammdaten"></div></section>
+          <section class="ui-karte"><header><h4>Projektweite Annahmen</h4></header><div class="ui-karte-in" id="ui-projekt-annahmen"></div></section>
+        </div>
+      </div></div>`;
+      main.appendChild(v);
+      // Stammdaten-Felder aus dem alten Gebiet-Reiter übernehmen (gleiche IDs, gleiche Handler)
+      const ziel = v.querySelector('#ui-projekt-stammdaten');
+      const felder = document.getElementById('pd-kaserne-name')?.closest('div[style*="grid-template-columns"]');
+      if (felder) { ziel.appendChild(felder); felder.classList.add('ui-stammdaten-raster'); felder.removeAttribute('style'); }
+      const vorschau = document.getElementById('pd-projektname-preview');
+      if (vorschau) ziel.appendChild(vorschau);
+      const ann = v.querySelector('#ui-projekt-annahmen');
+      ann.innerHTML = `<p class="ui-text-muted">Emissionsfaktoren, Preise und Kostenansätze gelten für alle Varianten.</p>
+      <div class="ui-knopfreihe"><button type="button" class="btn-secondary" data-click="toggleKennwertePanel()">Kennwerte bearbeiten</button>
+      <button type="button" class="btn-secondary" data-click="toggleGrundlagenPanel()">Wärme-Grundlagen</button>
+      <button type="button" class="btn-secondary" data-click="toggleStromPanel()">Strom-Grundlagen</button></div>`;
+    }
+    // Kartenwerkzeuge (Adresssuche, Ebenen) in die Karte holen
+    const tools = document.getElementById('ui-map-tools');
+    const mapEl = document.getElementById('map');
+    if (tools && mapEl && tools.parentElement !== mapEl) {
+      mapEl.appendChild(tools);
+      if (window.L?.DomEvent) { L.DomEvent.disableClickPropagation(tools); L.DomEvent.disableScrollPropagation(tools); }
+    }
+    // Befehlssuche
+    if (!document.getElementById('ui-pal')) {
+      const ov = document.createElement('div');
+      ov.id = 'ui-pal'; ov.className = 'ui-pal-overlay'; ov.hidden = true;
+      ov.innerHTML = `<div class="ui-pal" role="dialog" aria-label="Funktion suchen">
+      <div class="ui-pal-in">${_ic('search')}<input id="ui-pal-input" type="text" autocomplete="off" placeholder="Was möchtest du tun? z. B. Kabel zeichnen, Excel, Netzanschluss"><kbd>Esc</kbd></div>
+      <div class="ui-pal-liste" id="ui-pal-liste"></div>
+      <div class="ui-pal-fuss"><span>↑ ↓ auswählen</span><span>Enter öffnen</span><span>Durchsucht alle Arbeitsbereiche</span></div></div>`;
+      document.body.appendChild(ov);
+    }
+    return true;
+  }
+
+  function _ereignisse() {
+    document.addEventListener('click', e => {
+      const t = e.target;
+      let x;
+      if ((x = t.closest('[data-ui-schritt]'))) { uiSchritt(x.dataset.uiSchritt); return; }
+      if ((x = t.closest('[data-ui-sprung]'))) { uiSchritt(x.dataset.uiSprung); return; }
+      if ((x = t.closest('[data-ui-fokus]'))) { const f = document.getElementById(x.dataset.uiFokus); f?.focus(); f?.scrollIntoView({ block: 'center' }); return; }
+      if ((x = t.closest('[data-ui-sparte]'))) { uiSchritt('planung', { sparte: x.dataset.uiSparte }); return; }
+      if ((x = t.closest('[data-ui-waerme]'))) { uiWaermeTab(x.dataset.uiWaerme); return; }
+      if ((x = t.closest('[data-ui-abschnitt]'))) { _abschnittOeffnen(x.dataset.uiAbschnitt); return; }
+      if ((x = t.closest('[data-ui-pal]'))) { _palAusfuehren(+x.dataset.uiPal); return; }
+      if (t.id === 'ui-pal') { uiBefehlssucheSchliessen(); return; }
+      // Menüs schließen bei Klick daneben
+      if (!t.closest('.ui-proj-wrap')) document.querySelectorAll('.ui-menu[id]:not(#mehr-menu)').forEach(m => { m.hidden = true; });
+      // Menüeintrag gewählt → Menü zu
+      if (t.closest('#ui-proj-menu button')) document.getElementById('ui-proj-menu').hidden = true;
+      if (t.closest('#mehr-menu button')) document.getElementById('mehr-menu').style.display = 'none';
+    });
+    document.getElementById('ui-pal-input')?.addEventListener('input', () => { _palSel = 0; _palRendern(); });
+    document.addEventListener('keydown', e => {
+      const strg = e.ctrlKey || e.metaKey;
+      if (strg && e.key.toLowerCase() === 'k') { e.preventDefault(); const ov = document.getElementById('ui-pal'); ov && !ov.hidden ? uiBefehlssucheSchliessen() : uiBefehlssucheOeffnen(); return; }
+      if (strg && e.key.toLowerCase() === 's' && !e.shiftKey) { e.preventDefault(); window.saveProject?.(); return; }
+      if (strg && e.key.toLowerCase() === 'o') { e.preventDefault(); window.openProjectFile?.(); return; }
+      const ov = document.getElementById('ui-pal');
+      if (!ov || ov.hidden) return;
+      if (e.key === 'Escape') uiBefehlssucheSchliessen();
+      else if (e.key === 'ArrowDown') { e.preventDefault(); _palSel = Math.min(_palSel + 1, _palTreffer.length - 1); _palRendern(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); _palSel = Math.max(_palSel - 1, 0); _palRendern(); }
+      else if (e.key === 'Enter') { e.preventDefault(); _palAusfuehren(_palSel); }
+    });
+    // Neue Analyse-Reiter (werden von Modulen nachträglich eingehängt) → Navigation nachziehen
+    const tabs = document.getElementById('analyse-view-tabs');
+    if (tabs) new MutationObserver(() => _navRendern()).observe(tabs, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    // Aktiven Abschnitt mitführen, wenn ein Modul selbst umschaltet (z. B. Sprung in die PV-Analyse)
+    const orig = window.setAnalyseSection;
+    if (typeof orig === 'function' && !orig._ui) {
+      const huelle = function (section) {
+        const r = orig.apply(this, arguments);
+        const def = _ABSCHNITTE[section];
+        if (def && def.schritt !== _ui.schritt && document.body.dataset.uiLayout === 'nav') { _ui.schritt = def.schritt; _schritteRendern(); }
+        if (def) { _ui.abschnitt[def.schritt] = section; _merken(); }
+        document.body.dataset.uiAbschnitt = section;
+        _navRendern();
+        return r;
+      };
+      huelle._ui = true;
+      window.setAnalyseSection = huelle;
+    }
+    // Status regelmäßig auffrischen (billig: zählt nur)
+    setInterval(() => { _schritteRendern(); if (_ui.schritt === 'projekt') uiProjektseiteRendern(); }, 3000);
+  }
+
+  function uiInit() {
+    if (!_aufbau()) return;
+    _ereignisse();
+    document.body.classList.add('ui-lkebw');
+    uiSchritt(_ui.schritt || 'projekt');
+  }
+
+  var oberflaeche = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    UI_SCHRITTE: UI_SCHRITTE,
+    uiBefehlssucheOeffnen: uiBefehlssucheOeffnen,
+    uiBefehlssucheSchliessen: uiBefehlssucheSchliessen,
+    uiInit: uiInit,
+    uiLabel: uiLabel,
+    uiMenuUmschalten: uiMenuUmschalten,
+    uiProjektseiteRendern: uiProjektseiteRendern,
+    uiSchritt: uiSchritt,
+    uiSchrittStatus: uiSchrittStatus,
+    uiWaermeTab: uiWaermeTab
+  });
+
   // ── main.js — ES Module entry point ────────────────────────────────────────
   // Imports all modules and exposes their exports on window for data-* handlers.
 
@@ -261241,7 +261942,7 @@ out center tags;`;
     napAnalyse, knotenAnalyse, windAnalyse,
     kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
     clusterCore, clusterMap, engpassSweep$1, engpassPanel,
-    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, pvBelegungsStaende, pvAnschluss, lod2Import, quartierHerausloesen$1, netzQuartiere, speicherAnalyse, gebaeudeAnalyse, quartierSonde, variantenGrafik, heizzentralen, waermeSchema, datenanalyse, baeume, grundrissPruefung, ladeStatus, umspannwerke, netzanschlussModul, variantenRegeln,
+    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, pvBelegungsStaende, pvAnschluss, lod2Import, quartierHerausloesen$1, netzQuartiere, speicherAnalyse, gebaeudeAnalyse, quartierSonde, variantenGrafik, heizzentralen, waermeSchema, datenanalyse, baeume, grundrissPruefung, ladeStatus, umspannwerke, netzanschlussModul, variantenRegeln, oberflaeche,
   ];
   window.pdfjsLib = pdfjsLib;
   appLifecycle.listen(window,'pagehide',()=>appLifecycle.dispose(),{once:true});
@@ -261308,6 +262009,7 @@ out center tags;`;
       initAccessibilityBaseline();
       initResponsiveLayout();
       dsInit();
+      uiInit();
     });
   } else {
     initBdewProfiles();
@@ -261316,6 +262018,7 @@ out center tags;`;
     initAccessibilityBaseline();
     initResponsiveLayout();
     dsInit();
+    uiInit();
   }
 
 })();

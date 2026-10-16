@@ -870,7 +870,7 @@ export function _optVarianteUebernehmen(result, btnEl, _transactionActive = fals
 export function updateFooterStatus() {
   function _fsDot(el, ok, warn) {
     const d = el?.querySelector('.fs-dot');
-    if (d) d.style.background = ok ? (warn ? '#f9a825' : '#66bb6a') : '#455a64';
+    if (d) d.style.background = ok ? (warn ? 'var(--warn)' : 'var(--ok)') : 'var(--line-2)';
   }
   function _fsTxt(el, txt) {
     const t = el?.querySelector('.fs-txt');
@@ -902,7 +902,7 @@ export function updateFooterStatus() {
     _fsTxt(fsW, '~' + Math.round(gebMwh).toLocaleString('de-DE') + ' MWh (Gebäude)');
     _fsDot(fsW, true, true);
   } else {
-    _fsTxt(fsW, 'Wärme: —'); _fsDot(fsW, false);
+    _fsTxt(fsW, '—'); _fsDot(fsW, false);
   }
 
   // Heizlast (mit Quellenangabe)
@@ -918,7 +918,7 @@ export function updateFooterStatus() {
     _fsTxt(fsHL, '~' + Math.round(gebKw).toLocaleString('de-DE') + ' kW (Gebäude)');
     _fsDot(fsHL, true, true);
   } else {
-    _fsTxt(fsHL, 'Heizlast: —'); _fsDot(fsHL, false);
+    _fsTxt(fsHL, '—'); _fsDot(fsHL, false);
   }
 
   // Strom (mit Quellenangabe)
@@ -940,22 +940,22 @@ export function updateFooterStatus() {
     const prefix = sQuelle === 'Gebäude' ? '~' : '';
     _fsTxt(fsS, prefix + Math.round(sMwh).toLocaleString('de-DE') + ' MWh (' + sQuelle + ')');
     _fsDot(fsS, true, sQuelle === 'Gebäude');
-  } else { _fsTxt(fsS, 'Strom: —'); _fsDot(fsS, false); }
+  } else { _fsTxt(fsS, '—'); _fsDot(fsS, false); }
 
   // Erzeuger
   const fsE = document.getElementById('fs-erzeuger');
   const aktiv = meritOrderKeys.filter(k => isErzeugerAktiv(k));
   if (aktiv.length > 0) {
     const namen = aktiv.map(k => ERZEUGER_CFG[k]?.label || k).join(', ');
-    _fsTxt(fsE, aktiv.length + ' Erz: ' + namen);
+    _fsTxt(fsE, aktiv.length + ' · ' + namen);
     _fsDot(fsE, true);
-  } else { _fsTxt(fsE, 'Erzeuger: —'); _fsDot(fsE, false); }
+  } else { _fsTxt(fsE, '—'); _fsDot(fsE, false); }
 
   // WGK
   const fsWgk = document.getElementById('fs-wgk');
   const wgk = window._lastWgk;
-  if (wgk && wgk > 0) { _fsTxt(fsWgk, 'WGK: ' + wgk.toFixed(1) + ' ct'); _fsDot(fsWgk, true); }
-  else { _fsTxt(fsWgk, 'WGK: —'); _fsDot(fsWgk, false); }
+  if (wgk && wgk > 0) { _fsTxt(fsWgk, wgk.toFixed(1).replace('.', ',') + ' ct/kWh'); _fsDot(fsWgk, true); }
+  else { _fsTxt(fsWgk, '—'); _fsDot(fsWgk, false); }
 
   // EE-Anteil
   const fsEE = document.getElementById('fs-ee');
@@ -964,9 +964,9 @@ export function updateFooterStatus() {
   if (lastMwh(en) > 0) {
     const eePct = eeAnteilPct(en);
     window._lastEeAnteil = eePct;
-    _fsTxt(fsEE, 'EE: ' + eePct.toFixed(0) + ' %');
+    _fsTxt(fsEE, eePct.toFixed(0) + ' %');
     _fsDot(fsEE, true, eePct < 65);
-  } else { window._lastEeAnteil = null; _fsTxt(fsEE, 'EE: —'); _fsDot(fsEE, false); }
+  } else { window._lastEeAnteil = null; _fsTxt(fsEE, '—'); _fsDot(fsEE, false); }
 
   // Variante + Jahr
   const fsV = document.getElementById('fs-variante');

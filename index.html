@@ -26,10 +26,120 @@
 </head>
 <body>
 
-<header>
-  <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span><span class="logo-word">Energiekonzepte</span> <span class="logo-sep">·</span> <span class="logo-sub" style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span><span class="app-version" id="app-version" title="Stand der ausgelieferten Anwendung" style="margin-left:6px;font-size:10px;font-weight:400;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:1px 6px;font-family:'DM Mono',monospace;"></span></div>
-  <div class="header-projekt-name" id="header-projekt-name" style="display:none;margin-left:14px;font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title=""></div>
-  <div class="view-tabs" id="view-tabs">
+<!-- ══ Symbolsatz (Linien-Icons) — einheitlich 16 px, 1,5 px Strich ═══════════ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="ui-i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l4 4"/></symbol>
+    <symbol id="ui-i-help" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4M8 11.6v.1"/></symbol>
+    <symbol id="ui-i-moon" viewBox="0 0 16 16"><path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z"/></symbol>
+    <symbol id="ui-i-down" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
+    <symbol id="ui-i-up" viewBox="0 0 16 16"><path d="M4 10l4-4 4 4"/></symbol>
+    <symbol id="ui-i-chev" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5L6 12.5"/></symbol>
+    <symbol id="ui-i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+    <symbol id="ui-i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></symbol>
+    <symbol id="ui-i-alert" viewBox="0 0 16 16"><path d="M8 2l6.5 11.5h-13zM8 6.5v3.2M8 11.6v.1"/></symbol>
+    <symbol id="ui-i-circle" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5"/></symbol>
+    <symbol id="ui-i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.8v.1"/></symbol>
+    <symbol id="ui-i-layers" viewBox="0 0 16 16"><path d="M8 2l6.5 3.5L8 9 1.5 5.5zM1.5 8.5L8 12l6.5-3.5M1.5 11.5L8 15l6.5-3.5"/></symbol>
+    <symbol id="ui-i-folder" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-7H8L6.5 3.5h-5z"/></symbol>
+    <symbol id="ui-i-save" viewBox="0 0 16 16"><path d="M2.5 2.5h9l2 2v9h-11zM5 2.5v3.5h5V2.5M5 13.5V9.5h6v4"/></symbol>
+    <symbol id="ui-i-import" viewBox="0 0 16 16"><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M2.5 12v1.5h11V12"/></symbol>
+    <symbol id="ui-i-export" viewBox="0 0 16 16"><path d="M8 10V2M4.5 5.5L8 2l3.5 3.5M2.5 12v1.5h11V12"/></symbol>
+    <symbol id="ui-i-table" viewBox="0 0 16 16"><path d="M2 3h12v10H2zM2 6.5h12M2 10h12M6.5 3v10"/></symbol>
+    <symbol id="ui-i-phone" viewBox="0 0 16 16"><path d="M5 1.5h6v13H5zM7.3 12.5h1.4"/></symbol>
+    <symbol id="ui-i-undo" viewBox="0 0 16 16"><path d="M5 3L2 6l3 3M2 6h7.5a4 4 0 0 1 0 8H6"/></symbol>
+    <symbol id="ui-i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
+    <symbol id="ui-i-mail" viewBox="0 0 16 16"><path d="M1.5 3.5h13v9h-13zM1.5 4l6.5 5 6.5-5"/></symbol>
+    <symbol id="ui-i-doc" viewBox="0 0 16 16"><path d="M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3"/></symbol>
+    <symbol id="ui-i-arrow" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></symbol>
+    <symbol id="ui-i-pen" viewBox="0 0 16 16"><path d="M2.5 13.5l2-6 6-5 3 3-5 6zM2.5 13.5l4-4"/></symbol>
+    <symbol id="ui-i-play" viewBox="0 0 16 16"><path d="M4.5 2.5l9 5.5-9 5.5z"/></symbol>
+    <symbol id="ui-i-map" viewBox="0 0 16 16"><path d="M1.5 3.5l4-1.5 5 2 4-1.5v10l-4 1.5-5-2-4 1.5zM5.5 2v10M10.5 4v10"/></symbol>
+    <symbol id="ui-i-screen" viewBox="0 0 16 16"><path d="M1.5 2.5h13v8.5h-13zM5.5 14h5M8 11v3"/></symbol>
+    <symbol id="ui-i-lock" viewBox="0 0 16 16"><path d="M3.5 7.5h9v6.5h-9zM5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"/></symbol>
+    <symbol id="ui-i-pulse" viewBox="0 0 16 16"><path d="M1 8h3l2-4.5 3.5 9L11.5 8H15"/></symbol>
+    <symbol id="ui-i-compass" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M10.5 5.5l-1.5 3.5-3.5 1.5 1.5-3.5z"/></symbol>
+    <symbol id="ui-i-list" viewBox="0 0 16 16"><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.1M2.5 8h.1M2.5 12h.1"/></symbol>
+    <symbol id="ui-i-calc" viewBox="0 0 16 16"><path d="M3 1.5h10v13H3zM5.5 4h5v2.5h-5zM5.5 9.5h.1M8 9.5h.1M10.5 9.5h.1M5.5 12h.1M8 12h.1M10.5 12h.1"/></symbol>
+  </defs>
+</svg>
+
+<header class="ui-frame" id="ui-frame">
+  <div class="ui-brand" title="LKEBw Energieplaner"><i class="ui-brand-mark" aria-hidden="true"></i><span class="ui-brand-word">LKEBw</span><span class="ui-brand-sub">Energieplaner</span><span class="app-version" id="app-version" title="Stand der ausgelieferten Anwendung"></span></div>
+
+  <div class="ui-proj-wrap">
+    <button class="ui-proj" id="ui-proj-btn" type="button" data-click="uiMenuUmschalten('ui-proj-menu')" aria-haspopup="menu" title="Projektdatei öffnen, speichern, importieren">
+      <span class="header-projekt-name" id="header-projekt-name" style="display:none;" title=""></span><span class="ui-proj-leer">Unbenanntes Projekt</span>
+      <svg class="ui-i"><use href="#ui-i-down"/></svg>
+    </button>
+    <div class="ui-menu" id="ui-proj-menu" role="menu" hidden>
+      <input type="file" id="import-file" style="display:none" accept=".json" data-change="importJSON(event)">
+      <input type="file" id="import-buildings-file" style="display:none" accept=".json,application/json" multiple data-change="importBuildingsFromProjects(event)">
+      <div class="ui-menu-status" id="project-file-status">Noch keine Projektdatei geöffnet</div>
+      <div class="ui-menu-grp">Projektdatei</div>
+      <button role="menuitem" data-click="openProjectFile()"><svg class="ui-i"><use href="#ui-i-folder"/></svg>Öffnen …<kbd>Strg O</kbd></button>
+      <button role="menuitem" data-click="saveProject()"><svg class="ui-i"><use href="#ui-i-save"/></svg>Speichern<kbd>Strg S</kbd></button>
+      <button role="menuitem" data-click="saveProjectAs()"><svg class="ui-i"><use href="#ui-i-save"/></svg>Speichern unter …</button>
+      <button role="menuitem" data-click="restoreLatestAutosave()"><svg class="ui-i"><use href="#ui-i-undo"/></svg>Letzte automatische Sicherung laden</button>
+      <div class="ui-menu-grp">Daten übernehmen</div>
+      <button role="menuitem" data-click="openBuildingProjectImport()"><svg class="ui-i"><use href="#ui-i-plus"/></svg>Gebäude aus anderen Projekten ergänzen</button>
+      <button role="menuitem" data-click="importVollstaendigXLSX()"><svg class="ui-i"><use href="#ui-i-import"/></svg>Excel-Datei importieren</button>
+      <button role="menuitem" data-click="exportVollstaendigXLSX()"><svg class="ui-i"><use href="#ui-i-export"/></svg>Excel-Datei exportieren</button>
+      <div class="ui-menu-grp">Feldaufnahme</div>
+      <button role="menuitem" data-click="exportFeldapp()"><svg class="ui-i"><use href="#ui-i-phone"/></svg>Für die Feldapp exportieren</button>
+      <button role="menuitem" data-click="importFelddaten()"><svg class="ui-i"><use href="#ui-i-import"/></svg>Felddaten importieren</button>
+      <button role="menuitem" id="btn-send-to-lr" data-click="sendToLiegenschaftsrechner()" style="display:none;"><svg class="ui-i"><use href="#ui-i-export"/></svg>An Liegenschaftsrechner senden</button>
+    </div>
+  </div>
+
+  <button class="ui-cmd" id="ui-cmd-btn" type="button" data-click="uiBefehlssucheOeffnen()" title="Jede Funktion des Tools per Name finden">
+    <svg class="ui-i"><use href="#ui-i-search"/></svg><span>Funktion suchen</span><kbd>Strg K</kbd>
+  </button>
+
+  <div class="ui-frame-right">
+    <button class="ui-fbtn ui-fbtn-txt" id="btn-feedback-main" type="button" data-click="sendAppFeedback()" title="Testversion: Feedback oder Fehler melden"><svg class="ui-i"><use href="#ui-i-mail"/></svg>Feedback</button>
+    <div class="ui-proj-wrap">
+      <button class="ui-fbtn ui-fbtn-txt" id="btn-mehr-menu" type="button" data-click="toggleMehrMenu()" aria-haspopup="menu" title="Hilfe, Werkzeuge und Einstellungen"><svg class="ui-i"><use href="#ui-i-help"/></svg>Hilfe<svg class="ui-i"><use href="#ui-i-down"/></svg></button>
+      <div id="mehr-menu" class="ui-menu ui-menu-rechts" role="menu" style="display:none;">
+        <div class="ui-menu-grp">Hilfe</div>
+        <button role="menuitem" id="btn-leitfaden" data-click="toggleLeitfaden()"><svg class="ui-i"><use href="#ui-i-list"/></svg>Leitfaden</button>
+        <button role="menuitem" id="btn-gefuehrt" data-click="guideToggle()"><svg class="ui-i"><use href="#ui-i-compass"/></svg><span class="btn-text">Geführter Modus Strom</span></button>
+        <button role="menuitem" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')"><svg class="ui-i"><use href="#ui-i-calc"/></svg>So wird gerechnet</button>
+        <div class="ui-menu-grp">Werkzeuge</div>
+        <button role="menuitem" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()"><svg class="ui-i"><use href="#ui-i-phone"/></svg>Felddaten auswerten</button>
+        <button role="menuitem" id="btn-dualscreen-toggle" data-click="toggleDualScreen()"><svg class="ui-i"><use href="#ui-i-screen"/></svg>Zwei-Bildschirm-Ansicht</button>
+        <button role="menuitem" id="btn-cluster-toggle" data-click="clusterTogglePanel()"><svg class="ui-i"><use href="#ui-i-map"/></svg>Cluster und Ausbaustufen</button>
+        <div class="ui-menu-grp">Einstellungen</div>
+        <button role="menuitem" id="btn-theme" data-click="cycleTheme()"><svg class="ui-i"><use href="#ui-i-moon"/></svg>Hell / dunkel umschalten</button>
+        <button role="menuitem" id="btn-privacy" data-click="showPrivacyPanel()"><svg class="ui-i"><use href="#ui-i-lock"/></svg>Datenschutz und lokale Daten</button>
+        <button role="menuitem" id="btn-diagnostics" data-click="showDiagnostics()"><svg class="ui-i"><use href="#ui-i-pulse"/></svg>Diagnose <span id="diagnostics-badge" class="ui-badge" style="display:none;"></span></button>
+        <button role="menuitem" id="btn-feedback" data-click="sendAppFeedback()"><svg class="ui-i"><use href="#ui-i-mail"/></svg>Feedback geben</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ══ Prozessleiste: fünf Arbeitsschritte + Kontext (Variante, Jahr, Schicht) ══ -->
+<nav class="ui-process" id="ui-process" aria-label="Arbeitsschritte">
+  <div class="ui-steps" id="ui-steps"></div>
+  <div class="ui-ctx">
+    <div class="ui-ctx-group" id="varianten-bar">
+      <span class="ui-ctx-label">Variante</span>
+      <div class="var-pills" id="var-pills">
+        <span class="var-pill var-pill-base active" data-click="activateVariant(null)">Hauptplan</span>
+      </div>
+      <button class="var-add-btn" data-click="addVariante()" title="Neue Variante anlegen: Name, Ausgangspunkt und Zweck"><svg class="ui-i"><use href="#ui-i-plus"/></svg></button>
+    </div>
+    <div class="ui-ctx-group ui-ctx-jahr">
+      <span class="ui-ctx-label">Betrachtungsjahr</span>
+      <input type="range" class="timeline-slider" id="year-slider" min="2026" max="2050" value="2026" step="1" data-input="setGlobalYear(this.value)" aria-label="Betrachtungsjahr">
+      <span class="timeline-label" id="year-display">2026</span>
+    </div>
+    <!-- Planungsschicht-Umschalter — Inhalt wird aus src/13v-schicht-bar.js gerendert -->
+    <div class="ui-ctx-group" id="schicht-bar"></div>
+  </div>
+  <!-- Alte Ansichtsreiter: unsichtbar, setViewMode() hält sie weiter aktuell -->
+  <div class="view-tabs" id="view-tabs" hidden>
     <button class="view-tab active" data-mode="karte" data-click="setViewMode('karte')">Karte</button>
     <button class="view-tab" data-mode="live" id="view-tab-live" data-click="setViewMode('live')" style="display:none;">Live</button>
     <button class="view-tab" data-mode="gebaeude" data-click="setViewMode('gebaeude')">Gebäude</button>
@@ -37,51 +147,20 @@
     <button class="view-tab" data-mode="optimierung" data-click="setViewMode('optimierung')">Optimierung</button>
     <button class="view-tab" data-mode="vergleich" data-click="setViewMode('vergleich')">Vergleich</button>
   </div>
-  <div class="ctx-sep"></div>
-  <div class="ctx-group">
-    <span class="ctx-label">Jahr</span>
-    <input type="range" class="timeline-slider" id="year-slider" min="2026" max="2050" value="2026" step="1" data-input="setGlobalYear(this.value)" style="width:120px;accent-color:var(--accent);cursor:pointer;">
-    <span class="timeline-label" id="year-display" style="font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:32px;">2026</span>
-  </div>
-  <div class="ctx-sep"></div>
-  <!-- Planungsschicht-Umschalter — Inhalt wird aus src/13v-schicht-bar.js gerendert -->
-  <div class="ctx-group" id="schicht-bar"></div>
-  <div class="ctx-sep"></div>
-  <div class="ctx-group" id="varianten-bar">
-    <span class="ctx-label">Variante</span>
-    <div class="var-pills" id="var-pills" style="display:flex;gap:3px;">
-      <span class="var-pill var-pill-base active" data-click="activateVariant(null)">Hauptplan</span>
-    </div>
-    <button class="var-add-btn" data-click="addVariante()" style="font-size:10px;" title="Neue Variante anlegen: Name, Ausgangspunkt und Zweck">＋ Variante</button>
-  </div>
-  <div class="header-spacer" style="flex:1;"></div>
-  <button class="tool-btn" id="btn-gefuehrt" data-click="guideToggle()" style="border-color:var(--c-orange);color:var(--c-orange);font-size:11px;padding:0 10px;gap:5px;" title="Geführter Modus: Schritt für Schritt durch ein Stromgutachten — blendet aus, was im aktuellen Schritt nicht gebraucht wird">🧭<span class="btn-text"> Geführt</span></button>
-  <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:var(--c-blue);color:var(--c-blue);font-size:11px;padding:0 10px;gap:5px;" title="Ansicht: Einfärbung, Gebäude-Symbole und Karten­ebenen">⊞ Ansicht</button>
-  <button class="tool-btn" id="btn-feedback-main" data-click="sendAppFeedback()" style="background:#e65100;border-color:var(--c-orange);color:#fff;font-size:11px;padding:0 14px;font-weight:600;letter-spacing:0.2px;" title="Testversion: Feedback oder Fehler melden">✉ Feedback geben</button>
-  <div style="position:relative;display:inline-block;">
-    <button class="tool-btn" id="btn-mehr-menu" data-click="toggleMehrMenu()" style="border-color:var(--c-blue);color:var(--c-blue);font-size:11px;padding:0 10px;" title="Weitere Funktionen: Feldapp, Farbschema, Satellit, Hilfe, Leitfaden, Feedback, Berechnungslogik">⋯ Mehr</button>
-    <div id="mehr-menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;min-width:190px;box-shadow:0 6px 18px rgba(0,0,0,0.45);flex-direction:column;gap:3px;">
-      <button class="tool-btn" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()" style="border-color:var(--c-violet);color:var(--c-violet);justify-content:flex-start;font-size:11px;" title="Feldapp-Funktionen: Felddaten-Filter, Galerie, Begehungsbericht">📱 Feldapp</button>
-      <button class="tool-btn" id="btn-dualscreen-toggle" data-click="toggleDualScreen()" style="border-color:var(--c-teal);color:var(--c-teal);justify-content:flex-start;font-size:11px;" title="Fenster über zwei Monitore aufziehen: Karte links, Panels rechts">🖥 Zwei-Bildschirm-Modus</button>
-      <button class="tool-btn" id="btn-cluster-toggle" data-click="clusterTogglePanel()" style="border-color:var(--c-blue);color:var(--c-blue);justify-content:flex-start;font-size:11px;" title="Liegenschaft in Cluster/Ausbaustufen gliedern (Klimafahrplan)">🗺 Cluster / Ausbaustufen</button>
-      <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:var(--c-blue);color:var(--c-blue);justify-content:flex-start;font-size:11px;" title="Farbschema wechseln">🎨 Farbschema</button>
-      <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:var(--c-blue);color:var(--c-blue);justify-content:flex-start;font-size:11px;">🛰 Satellit</button>
-      <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:var(--c-blue);color:var(--c-blue);justify-content:flex-start;font-size:11px;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓ Hilfe-Modus</button>
-      <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:var(--c-orange);color:var(--c-orange);justify-content:flex-start;font-size:11px;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋 Leitfaden</button>
-      <button class="tool-btn" id="btn-feedback" data-click="sendAppFeedback()" style="border-color:var(--c-green);color:var(--c-green);justify-content:flex-start;font-size:11px;" title="Feedback geben (lädt Datei mit Screenshot &amp; Versionsangabe herunter)">✉ Feedback</button>
-      <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:var(--c-amber);color:var(--c-amber);justify-content:flex-start;font-size:11px;" title="Berechnungslogik — Wie wird gerechnet?">📐 Berechnungslogik</button>
-      <button class="tool-btn" id="btn-privacy" data-click="showPrivacyPanel()" style="border-color:var(--c-blue);color:var(--c-blue);justify-content:flex-start;font-size:11px;">🔒 Datenschutz &amp; lokale Daten</button>
-      <button class="tool-btn" id="btn-diagnostics" data-click="showDiagnostics()" style="border-color:var(--c-blue);color:var(--c-blue);justify-content:flex-start;font-size:11px;">🩺 Diagnose <span id="diagnostics-badge" style="display:none;background:#e53935;color:#fff;border-radius:9px;padding:0 5px;"></span></button>
-    </div>
-  </div>
-  <div class="addr-search-wrap" style="flex-shrink:0;">
-    <button class="addr-search-icon" id="addr-search-submit" type="button"
-            data-click="addrSubmit()" title="Ersten Suchtreffer anzeigen" aria-label="Ort suchen">🔍</button>
-    <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse suchen…"
-      data-input="addrSearch(this.value)" data-keydown="addrKeydown(event)" autocomplete="off"/>
+</nav>
+
+<!-- Ältere Schalter ohne eigenen Platz in der Oberfläche; Code spricht sie weiter an -->
+<div hidden><button id="btn-tile" data-click="toggleTile()">Satellit</button><button id="btn-hilfe-toggle" data-click="toggleHilfeModus()">Hilfe-Modus</button></div>
+
+<!-- Kartenwerkzeuge, die beim Start in die Karte verschoben werden (src/48-oberflaeche.js) -->
+<div class="ui-map-tools" id="ui-map-tools">
+  <div class="addr-search-wrap">
+    <button class="addr-search-icon" id="addr-search-submit" type="button" data-click="addrSubmit()" title="Ersten Suchtreffer anzeigen" aria-label="Ort suchen"><svg class="ui-i"><use href="#ui-i-search"/></svg></button>
+    <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse oder Ort suchen" data-input="addrSearch(this.value)" data-keydown="addrKeydown(event)" autocomplete="off"/>
     <div class="addr-results" id="addr-results"></div>
   </div>
-</header>
+  <button class="ui-map-btn" id="btn-ebenen" type="button" data-click="toggleEbenenPanel()" title="Einfärbung, Symbole und Kartenebenen"><svg class="ui-i"><use href="#ui-i-layers"/></svg>Ebenen</button>
+</div>
 
 <div class="float-panel" id="privacy-panel" style="min-width:420px;max-width:620px;--panel-accent:#90a4ae;">
   <div class="panel-drag-handle"><span style="font-weight:700;">🔒 Datenschutz &amp; lokale Daten</span><button data-click="document.getElementById('privacy-panel').classList.remove('visible')" aria-label="Schließen">✕</button></div>
@@ -1310,29 +1389,6 @@
         <div class="total-card" id="tc-stromlast" title="Summe der elektrischen Spitzenlasten"><div class="total-val tot-strom" id="tot-stromlast">—</div><div class="total-lbl">Stromlast (kW)</div></div>
         <div class="total-sources" id="tot-sources"></div>
       </div>
-      <div class="export-bar">
-        <input type="file" id="import-file" style="display:none" accept=".json" data-change="importJSON(event)">
-        <input type="file" id="import-buildings-file" style="display:none" accept=".json,application/json" multiple data-change="importBuildingsFromProjects(event)">
-        <div class="export-row">
-          <button class="btn-export primary" data-click="openProjectFile()">📂 Öffnen</button>
-          <button class="btn-export primary" data-click="saveProject()">💾 Speichern</button>
-          <button class="btn-export" data-click="saveProjectAs()" title="Projekt unter einem neuen Dateinamen speichern">Speichern unter</button>
-        </div>
-        <div class="export-row">
-          <button class="btn-export" data-click="openBuildingProjectImport()" title="Gebäudedaten aus einer oder mehreren Projektdateien ergänzen">＋ Gebäude aus Projekten</button>
-          <button class="btn-export" data-click="restoreLatestAutosave()" title="Letzte automatische lokale Sicherung wiederherstellen">↶ Autosave</button>
-        </div>
-        <div id="project-file-status" style="font-size:8px;color:var(--muted);padding:1px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Noch keine Projektdatei geöffnet</div>
-        <div class="export-row">
-          <button class="btn-export" data-click="exportVollstaendigXLSX()" title="Excel-Export erzeugen">📊 Excel</button>
-          <button class="btn-export" data-click="importVollstaendigXLSX()" title="Excel-Datei importieren">📥 Excel</button>
-        </div>
-        <div class="export-row">
-          <button class="btn-export" data-click="exportFeldapp()" title="Für Feldapp exportieren" style="border-color:var(--c-blue);color:var(--c-blue);">📱 Feldapp</button>
-          <button class="btn-export" data-click="importFelddaten()" title="Felddaten importieren" style="border-color:var(--c-green);color:var(--c-green);">📥 Felddaten</button>
-        </div>
-        <button class="btn-export" id="btn-send-to-lr" data-click="sendToLiegenschaftsrechner()" style="display:none;" title="An Liegenschaftsrechner">📤 LR</button>
-      </div>
     </div>
 
     <!-- ── Tab: Elektro ────────────────────────────────────────────────────── -->
@@ -1452,14 +1508,15 @@
 </div>
 
 <!-- ══ Footer-Statuszeile ═══════════════════════════════════════════════ -->
-<div id="footer-status" style="display:flex;align-items:center;padding:3px 14px;background:var(--surface);border-top:1px solid var(--border);gap:14px;flex-shrink:0;font-size:10px;font-family:'DM Mono',monospace;overflow-x:auto;white-space:nowrap;">
-  <span id="fs-waerme" style="display:flex;align-items:center;gap:4px;"><span class="fs-dot" style="width:6px;height:6px;border-radius:50%;background:#455a64;flex-shrink:0;"></span><span class="fs-txt">Wärme: —</span></span>
-  <span id="fs-heizlast" style="display:flex;align-items:center;gap:4px;"><span class="fs-dot" style="width:6px;height:6px;border-radius:50%;background:#455a64;flex-shrink:0;"></span><span class="fs-txt">Heizlast: —</span></span>
-  <span id="fs-strom" style="display:flex;align-items:center;gap:4px;"><span class="fs-dot" style="width:6px;height:6px;border-radius:50%;background:#455a64;flex-shrink:0;"></span><span class="fs-txt">Strom: —</span></span>
-  <span id="fs-erzeuger" style="display:flex;align-items:center;gap:4px;"><span class="fs-dot" style="width:6px;height:6px;border-radius:50%;background:#455a64;flex-shrink:0;"></span><span class="fs-txt">Erzeuger: —</span></span>
-  <span id="fs-wgk" style="display:flex;align-items:center;gap:4px;"><span class="fs-dot" style="width:6px;height:6px;border-radius:50%;background:#455a64;flex-shrink:0;"></span><span class="fs-txt">WGK: —</span></span>
-  <span id="fs-ee" style="display:flex;align-items:center;gap:4px;"><span class="fs-dot" style="width:6px;height:6px;border-radius:50%;background:#455a64;flex-shrink:0;"></span><span class="fs-txt">EE: —</span></span>
-  <span id="fs-variante" style="color:var(--muted);margin-left:auto;">—</span>
+<div id="footer-status" class="ui-ergebnis" role="status" aria-label="Ergebnisse">
+  <span class="ui-erg-titel">Ergebnis</span>
+  <span id="fs-waerme" class="ui-erg"><span class="fs-dot"></span><span class="ui-erg-lbl">Wärmebedarf</span><span class="fs-txt">—</span></span>
+  <span id="fs-heizlast" class="ui-erg"><span class="fs-dot"></span><span class="ui-erg-lbl">Heizlast</span><span class="fs-txt">—</span></span>
+  <span id="fs-strom" class="ui-erg"><span class="fs-dot"></span><span class="ui-erg-lbl">Strombedarf</span><span class="fs-txt">—</span></span>
+  <span id="fs-erzeuger" class="ui-erg"><span class="fs-dot"></span><span class="ui-erg-lbl">Erzeugung</span><span class="fs-txt">—</span></span>
+  <span id="fs-wgk" class="ui-erg"><span class="fs-dot"></span><span class="ui-erg-lbl">Wärmekosten</span><span class="fs-txt">—</span></span>
+  <span id="fs-ee" class="ui-erg"><span class="fs-dot"></span><span class="ui-erg-lbl">Erneuerbar</span><span class="fs-txt">—</span></span>
+  <span id="fs-variante" class="ui-erg-var">—</span>
 </div>
 
 <div class="float-panel purple-border" id="overlay-panel" style="width:380px">
