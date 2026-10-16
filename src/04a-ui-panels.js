@@ -2080,14 +2080,38 @@ export function stromAnalyseTab(tab) {
 // ── Ebenen-Panel ─────────────────────────────────────────────────────────────
 let _ebpOpen = false;
 
+// Das Menü klappt unter dem Knopf „Ebenen“ in der Karte auf. Geschlossen wird es
+// über den Knopf, Esc oder einen Klick daneben. Gelauscht wird in der Capture-Phase,
+// weil die Karte (Leaflet) mousedown/pointerdown nicht weiterreicht.
+function _ebpDaneben(e) {
+  if (_ebpOpen && !e.target.closest?.('.ui-ebenen-wrap')) toggleEbenenPanel();
+}
+function _ebpEsc(e) {
+  if (_ebpOpen && e.key === 'Escape') { toggleEbenenPanel(); document.getElementById('btn-ebenen')?.focus(); }
+}
+
 export function toggleEbenenPanel() {
   _ebpOpen = !_ebpOpen;
-  const panel   = document.getElementById('ebenen-panel');
-  const backdrop = document.getElementById('ebenen-backdrop');
+  const panel = document.getElementById('ebenen-panel');
   if (!panel) return;
-  panel.style.display    = _ebpOpen ? '' : 'none';
-  if (backdrop) backdrop.style.display = _ebpOpen ? '' : 'none';
-  if (_ebpOpen) _ebpSyncAll();
+  panel.style.display = _ebpOpen ? '' : 'none';
+  const btn = document.getElementById('btn-ebenen');
+  if (btn) { btn.setAttribute('aria-expanded', String(_ebpOpen)); btn.classList.toggle('active', _ebpOpen); }
+  const fn = _ebpOpen ? 'addEventListener' : 'removeEventListener';
+  document[fn]('pointerdown', _ebpDaneben, true);
+  document[fn]('keydown', _ebpEsc, true);
+  if (_ebpOpen) { _ebpSyncAll(); _ebpInKarte(panel); }
+}
+
+// Ist die Karte schmal (Arbeitsbereich und Seitenleiste offen), rückt das Menü
+// so weit nach links, dass es nicht über den rechten Kartenrand hinausragt.
+function _ebpInKarte(panel) {
+  panel.style.removeProperty('left');
+  const karte = document.getElementById('map')?.getBoundingClientRect();
+  if (!karte) return;
+  const r = panel.getBoundingClientRect();
+  const ueber = r.right - (karte.right - 8);
+  if (ueber > 0) panel.style.setProperty('left', -Math.min(ueber, r.left - karte.left - 8) + 'px', 'important');
 }
 
 // Liest den aktuellen Zustand der bestehenden Gebiet-Tab-Checkboxen und synchronisiert den Panel

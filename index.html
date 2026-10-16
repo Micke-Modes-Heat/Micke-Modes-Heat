@@ -42,6 +42,7 @@
     <symbol id="ui-i-circle" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5"/></symbol>
     <symbol id="ui-i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.8v.1"/></symbol>
     <symbol id="ui-i-layers" viewBox="0 0 16 16"><path d="M8 2l6.5 3.5L8 9 1.5 5.5zM1.5 8.5L8 12l6.5-3.5M1.5 11.5L8 15l6.5-3.5"/></symbol>
+    <symbol id="ui-i-cube" viewBox="0 0 16 16"><path d="M8 1.5l6 3.2v6.6l-6 3.2-6-3.2V4.7zM2 4.7l6 3.2 6-3.2M8 7.9v6.6"/></symbol>
     <symbol id="ui-i-folder" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-7H8L6.5 3.5h-5z"/></symbol>
     <symbol id="ui-i-save" viewBox="0 0 16 16"><path d="M2.5 2.5h9l2 2v9h-11zM5 2.5v3.5h5V2.5M5 13.5V9.5h6v4"/></symbol>
     <symbol id="ui-i-import" viewBox="0 0 16 16"><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M2.5 12v1.5h11V12"/></symbol>
@@ -162,7 +163,84 @@
     <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse oder Ort suchen" data-input="addrSearch(this.value)" data-keydown="addrKeydown(event)" autocomplete="off"/>
     <div class="addr-results" id="addr-results"></div>
   </div>
-  <button class="ui-map-btn" id="btn-ebenen" type="button" data-click="toggleEbenenPanel()" title="Einfärbung, Symbole und Kartenebenen"><svg class="ui-i"><use href="#ui-i-layers"/></svg>Ebenen</button>
+  <div class="ui-ebenen-wrap">
+    <button class="ui-map-btn" id="btn-ebenen" type="button" data-click="toggleEbenenPanel()" aria-haspopup="dialog" aria-expanded="false" aria-controls="ebenen-panel" title="Einfärbung, Symbole und Kartenebenen"><svg class="ui-i"><use href="#ui-i-layers"/></svg>Ebenen<svg class="ui-i ui-i-sm ebp-pfeil"><use href="#ui-i-down"/></svg></button>
+
+    <!-- Ebenen-Menü: klappt direkt unter dem Knopf auf (Zustand in src/04a-ui-panels.js) -->
+    <div id="ebenen-panel" class="ebenen-panel" style="display:none;" role="dialog" aria-label="Kartenebenen">
+      <div class="ebp-head">
+        <span class="ebp-title">Kartenebenen</span>
+        <button class="ebp-close" type="button" data-click="toggleEbenenPanel()" aria-label="Schließen"><svg class="ui-i ui-i-sm"><use href="#ui-i-x"/></svg></button>
+      </div>
+
+      <div class="ebp-body">
+        <!-- Linke Spalte: wie die Karte aussieht -->
+        <div class="ebp-spalte">
+          <div class="ebp-cat">
+            <div class="ebp-cat-label">Einfärbung</div>
+            <div class="ebp-wahl" role="radiogroup" aria-label="Einfärbung der Gebäude">
+              <button class="mode-btn active" type="button" data-click="setMode('spez')"     id="btn-spez"     title="Spezifischer Wärmebedarf (kWh/m²a)">Spez. Wärmebedarf<small>kWh/m²a</small></button>
+              <button class="mode-btn"        type="button" data-click="setMode('heizlast')" id="btn-heizlast" title="Heizlast (kW)">Heizlast<small>kW</small></button>
+              <button class="mode-btn"        type="button" data-click="setMode('verlust')"  id="btn-verlust"  title="Wärmeverlust der Hausanschlüsse">Netzverlust<small>Hausanschlüsse</small></button>
+            </div>
+          </div>
+
+          <div class="ebp-cat">
+            <div class="ebp-cat-label">Gebäude-Symbole</div>
+            <div class="ebp-seg">
+              <button class="viz-btn active" type="button" id="vbtn-circle" data-click="setViz('circle')" title="Kreise (Größe = Wärmebedarf)">Kreise</button>
+              <button class="viz-btn"        type="button" id="vbtn-bar"    data-click="setViz('bar')"    title="Balken">Balken</button>
+              <button class="viz-btn"        type="button" id="vbtn-none"   data-click="setViz('none')"   title="Keine Symbole">Keine</button>
+            </div>
+          </div>
+
+          <div class="ebp-cat">
+            <div class="ebp-cat-label">Hintergrund</div>
+            <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-satellit-visible" data-change="_ebpSatellit(this.checked)">Satellitenbild</label>
+          </div>
+
+          <div class="ebp-cat">
+            <div class="ebp-cat-label">Weitere Ansichten</div>
+            <button class="ebp-aktion" type="button" data-click="d3dUmschalten()" title="Gebäude als 3D-Körper (Höhe = Geschosse × 3 m) in den Farben der Karte — neigen, drehen, als Bild speichern"><svg class="ui-i"><use href="#ui-i-cube"/></svg>3D-Ansicht öffnen / schließen</button>
+            <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-chart-visible" data-change="_ebpChart(this.checked)">Zeitstrahl-Diagramm</label>
+            <details class="ebp-mehr">
+              <summary>Kartendrehung <span class="ebp-versuch">Versuch</span></summary>
+              <!-- Inhalt wird von src/20-kartendrehung.js gerendert (kdRenderPanel) -->
+              <div id="kd-panel"></div>
+            </details>
+          </div>
+        </div>
+
+        <!-- Rechte Spalte: was auf der Karte liegt -->
+        <div class="ebp-spalte">
+          <div class="ebp-cat">
+            <div class="ebp-cat-label"><i class="ebp-sw" style="--sw:var(--c-orange)"></i>Gebäude</div>
+            <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-geb-visible"    checked data-change="setGebVisible(this.checked);_ebpSync('geb-visible',this.checked)">Umrisse</label>
+            <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-viz-circles"    checked data-change="_ebpViz(this.checked)">Wärme-Symbole</label>
+            <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-labels-visible"         data-change="setLabelsVisible(this.checked);_ebpSync('labels-visible',this.checked)">Beschriftung</label>
+          </div>
+
+          <div class="ebp-cat">
+            <div class="ebp-cat-label"><i class="ebp-sw" style="--sw:var(--c-red)"></i>Wärmenetz</div>
+            <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-netz-visible"    checked data-change="setNetzVisible(this.checked);_ebpSync('netz-visible-ansicht',this.checked)">Leitungen</label>
+            <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-trasse-visible"          data-change="setTrasseVisible(this.checked)">Planungskorridore</label>
+            <label class="ebp-row ebp-row-unter" title="Strömungsanimation der Leitungen abschalten"><input type="checkbox" class="ebp-cb" id="el-netz-motionless" data-change="setNetzMotionless(this.checked)">Ohne Fließanimation</label>
+          </div>
+
+          <div class="ebp-cat">
+            <div class="ebp-cat-label"><i class="ebp-sw" style="--sw:var(--c-blue)"></i>Stromnetz</div>
+            <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-assets-visible"    data-change="setAssetLayerVisible(this.checked);_ebpSync('assets-visible',this.checked)">Komponenten</label>
+            <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-stromnetz-visible" data-change="setStromNetzVisible(this.checked)">Kabel</label>
+          </div>
+
+          <div class="ebp-cat">
+            <div class="ebp-cat-label"><i class="ebp-sw" style="--sw:var(--c-amber)"></i>Photovoltaik</div>
+            <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-pv-visible" checked data-change="setPvVisible(this.checked)">PV-Anlagen</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="float-panel" id="privacy-panel" style="min-width:420px;max-width:620px;--panel-accent:#90a4ae;">
@@ -187,74 +265,6 @@
   <button class="tool-btn" data-click="clearDiagnostics()" style="margin-top:9px;">Meldungen leeren</button>
 </div>
 
-<!-- ══ Ebenen-Panel ════════════════════════════════════════════════════════ -->
-<div id="ebenen-panel" class="ebenen-panel" style="display:none;" role="dialog" aria-label="Kartenebenen">
-  <div class="ebp-head">
-    <span class="ebp-title">Ansicht</span>
-    <button class="ebp-close" data-click="toggleEbenenPanel()">✕</button>
-  </div>
-
-  <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#d4a855;">Einfärbung</div>
-    <div style="display:flex;flex-direction:column;gap:3px;">
-      <button class="mode-btn active" data-click="setMode('spez')"     id="btn-spez"     style="text-align:left;" title="Spezifischer Wärmebedarf (kWh/m²a)">Spez. Wärmebedarf</button>
-      <button class="mode-btn"        data-click="setMode('heizlast')" id="btn-heizlast" style="text-align:left;" title="Heizlast (kW)">Heizlast</button>
-      <button class="mode-btn"        data-click="setMode('verlust')"  id="btn-verlust"  style="text-align:left;" title="Wärmeverlust der Hausanschlüsse">Netzverlust</button>
-    </div>
-  </div>
-
-  <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#26a69a;">⬤ Gebäude-Symbole</div>
-    <div class="viz-toggle">
-      <button class="viz-btn active" id="vbtn-circle" data-click="setViz('circle')" title="Kreise (Größe = Wärmebedarf)">⬤ Kreise</button>
-      <button class="viz-btn"        id="vbtn-bar"    data-click="setViz('bar')"    title="Balken">▮ Balken</button>
-      <button class="viz-btn"        id="vbtn-none"   data-click="setViz('none')"   title="Keine Symbole">▣ Keine</button>
-    </div>
-  </div>
-
-  <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#ff9800;">Gebäude &amp; Gebiet</div>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-geb-visible"     checked data-change="setGebVisible(this.checked);_ebpSync('geb-visible',this.checked)">Gebäude</label>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-labels-visible"         data-change="setLabelsVisible(this.checked);_ebpSync('labels-visible',this.checked)">Beschriftung</label>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-chart-visible"          data-change="_ebpChart(this.checked)">Zeitstrahl-Chart</label>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-viz-circles"    checked data-change="_ebpViz(this.checked)">Wärme-Visualisierung</label>
-  </div>
-
-  <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#ef5350;">Wärmenetz</div>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-netz-visible"   checked data-change="setNetzVisible(this.checked);_ebpSync('netz-visible-ansicht',this.checked)">Leitungen</label>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-netz-motionless" data-change="setNetzMotionless(this.checked)">Netz bewegungslos</label>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-trasse-visible"        data-change="setTrasseVisible(this.checked)">Planungskorridore</label>
-  </div>
-
-  <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#4fc3f7;">Elektro</div>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-assets-visible"         data-change="setAssetLayerVisible(this.checked);_ebpSync('assets-visible',this.checked)">Stromnetz-Komponenten</label>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-stromnetz-visible"      data-change="setStromNetzVisible(this.checked)">Stromnetz (Kabel)</label>
-  </div>
-
-  <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#ffd54f;">PV</div>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-pv-visible" checked data-change="setPvVisible(this.checked)">PV-Anlagen</label>
-  </div>
-
-  <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#4fc3f7;">3D</div>
-    <button class="mode-btn" data-click="d3dUmschalten()" style="text-align:left;" title="Gebäude als 3D-Körper (Höhe = Geschosse × 3 m) in den Farben der Karte — neigen, drehen, als Bild speichern">3D-Ansicht öffnen / schließen</button>
-  </div>
-
-  <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#ba68c8;">Kartendrehung <span style="opacity:.55;font-weight:400;">Versuch</span></div>
-    <!-- Inhalt wird von src/20-kartendrehung.js gerendert (kdRenderPanel) -->
-    <div id="kd-panel"></div>
-  </div>
-
-  <div class="ebp-cat">
-    <div class="ebp-cat-label" style="--ebp-c:#78909c;">Hintergrund</div>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-satellit-visible"       data-change="_ebpSatellit(this.checked)">Satellit</label>
-  </div>
-</div>
-<div id="ebenen-backdrop" style="display:none;position:fixed;inset:0;z-index:1199;" data-click="toggleEbenenPanel()"></div>
 
 <!-- Erzeuger-Buttons (hidden, referenced by ID from JS) -->
 <div class="erzeuger-bar" style="display:none !important;">

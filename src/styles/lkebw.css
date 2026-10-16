@@ -416,7 +416,6 @@ body.ui-lkebw .float-panel.dragging{border-radius:var(--r-2)!important}
 /* Werkzeugpanels, die bisher unter der alten Kopfzeile (≈ 40–76 px) standen */
 #pv-modus-panel,#baum-panel,#grundriss-panel,#blackout-modus-panel{top:calc(var(--kopf-h) + 12px)!important;border-radius:var(--r-2)!important;box-shadow:var(--shadow-2)!important}
 .gm-card.gm-float{top:calc(var(--kopf-h) + 12px)!important}
-.ebenen-panel{top:calc(var(--kopf-h) + 56px)!important;max-height:calc(100vh - var(--kopf-h) - var(--fuss-h) - 70px)!important}
 .pd-panel{z-index:1450!important}
 #asset-inspector{top:12px}
 
@@ -494,3 +493,68 @@ body.ui-lkebw .float-panel.dragging{border-radius:var(--r-2)!important}
 #lp-elektro .lp-netz-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px}
 #lp-elektro .lp-netz-row .lbl{color:var(--muted)}
 #lp-elektro .lp-netz-row .val{font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ── 10. Kartenebenen: Menü unter dem Knopf „Ebenen“ ─────────────────── */
+/* Gleiche Sprache wie das Projektdatei-Menü (.ui-menu): helle Karte, ruhige Gruppentitel,
+   Schalter statt Häkchen. Zwei Spalten: links Darstellung, rechts Ebenen auf der Karte. */
+.ui-ebenen-wrap{position:relative}
+.ui-map-btn.active{border-color:var(--brand);color:var(--brand);background:var(--brand-weak)}
+.ebp-pfeil{color:var(--muted);margin-left:-1px;transition:transform .15s}
+.ui-map-btn[aria-expanded="true"] .ebp-pfeil{transform:rotate(180deg);color:var(--brand)}
+.ebenen-panel{position:absolute!important;top:calc(100% + 6px)!important;left:0!important;right:auto!important;z-index:1;
+  width:520px;max-width:calc(100vw - 32px);max-height:calc(100vh - var(--kopf-h) - var(--fuss-h) - 70px)!important;
+  background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--r-2);box-shadow:var(--shadow-2);
+  font-size:13px;overflow-x:hidden;overflow-y:auto}
+.ebenen-panel .ebp-head{display:flex;align-items:center;justify-content:space-between;padding:8px 8px 8px 14px;background:var(--surface);border-bottom:1px solid var(--border)}
+.ebenen-panel .ebp-title{font-size:14px;font-weight:700;letter-spacing:0;color:var(--text)}
+.ebenen-panel .ebp-close{display:grid;place-items:center;width:26px;height:26px;border-radius:var(--r);color:var(--muted)}
+.ebenen-panel .ebp-close:hover{background:var(--surface2);color:var(--text)}
+.ebp-body{display:grid;grid-template-columns:1fr 1fr}
+.ebp-spalte{padding:4px 0 8px;min-width:0}
+.ebp-spalte+.ebp-spalte{border-left:1px solid var(--border)}
+.ebenen-panel .ebp-cat{padding:10px 14px 4px}
+.ebenen-panel .ebp-cat+.ebp-cat{border-top:0}
+.ebenen-panel .ebp-cat-label{display:flex;align-items:center;gap:7px;margin:0 0 6px;padding:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--faint)}
+.ebp-sw{display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--sw);flex:none}
+/* Einfärbung: Auswahlliste mit Optionspunkt */
+.ebp-wahl{display:grid;gap:1px}
+.ebenen-panel .ebp-wahl .mode-btn{position:relative;display:flex!important;align-items:baseline;justify-content:space-between;gap:8px;width:100%;min-height:0;
+  padding:6px 8px 6px 28px!important;border:0!important;border-radius:var(--r)!important;background:none!important;color:var(--text)!important;
+  font-size:13px!important;font-weight:400;text-align:left}
+.ebenen-panel .ebp-wahl .mode-btn small{font-size:11.5px;color:var(--faint)}
+.ebenen-panel .ebp-wahl .mode-btn::before{content:"";position:absolute;left:8px;top:50%;width:12px;height:12px;margin-top:-7px;border:1.5px solid var(--line-2);border-radius:50%;background:var(--surface)}
+.ebenen-panel .ebp-wahl .mode-btn:hover{background:var(--hover)!important}
+.ebenen-panel .ebp-wahl .mode-btn.active{background:var(--brand-weak)!important;color:var(--text)!important;font-weight:600}
+.ebenen-panel .ebp-wahl .mode-btn.active::before{border-color:var(--brand);background:var(--brand);box-shadow:inset 0 0 0 2.5px var(--surface)}
+/* Gebäude-Symbole: Segmentschalter wie .ui-seg */
+.ebp-seg{display:flex;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden}
+.ebenen-panel .ebp-seg .viz-btn{flex:1;height:28px;padding:0 6px;border:0;border-radius:0;background:var(--surface);color:var(--muted)!important;font-size:12.5px;font-weight:600;cursor:pointer}
+.ebenen-panel .ebp-seg .viz-btn+.viz-btn{border-left:1px solid var(--line-2)!important}
+.ebenen-panel .ebp-seg .viz-btn:hover{color:var(--text)!important}
+.ebenen-panel .ebp-seg .viz-btn.active{background:var(--text)!important;color:var(--surface)!important;border-color:var(--line-2)!important}
+/* Ebenen: Zeilen mit Schalter rechts */
+.ebenen-panel .ebp-row{display:flex;align-items:center;gap:10px;padding:5px 0;border-radius:0;font-size:13px;color:var(--text);cursor:pointer}
+.ebenen-panel .ebp-row:hover{background:none;color:var(--brand)}
+.ebenen-panel .ebp-row-unter{padding-left:14px;font-size:12.5px;color:var(--muted)}
+.ebenen-panel .ebp-cb{order:2;margin:0 0 0 auto;appearance:none;-webkit-appearance:none;position:relative;flex:none;width:28px;height:16px;border-radius:8px;background:var(--line-2);cursor:pointer;transition:background .15s}
+.ebenen-panel .ebp-cb::before{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s}
+.ebenen-panel .ebp-cb:checked{background:var(--brand)}
+.ebenen-panel .ebp-cb:checked::before{left:14px}
+.ebenen-panel .ebp-cb:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+/* Weitere Ansichten */
+.ebp-aktion{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;width:100%;padding:5px 0;font-size:13px;color:var(--text)}
+.ebp-aktion svg{color:var(--muted)}
+.ebp-aktion:hover,.ebp-aktion:hover svg{color:var(--brand)}
+.ebp-mehr{margin:2px 0 0}
+.ebp-mehr>summary{cursor:pointer;padding:5px 0;font-size:13px;color:var(--muted);list-style:none;display:flex;align-items:center;gap:6px}
+.ebp-mehr>summary::-webkit-details-marker{display:none}
+.ebp-mehr>summary::after{content:"";width:6px;height:6px;margin-left:auto;margin-right:4px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translateY(-2px);transition:transform .15s}
+.ebp-mehr[open]>summary::after{transform:rotate(225deg) translate(-1px,-1px)}
+.ebp-mehr>summary:hover{color:var(--text)}
+.ebp-mehr>#kd-panel{padding:2px 0 4px 2px}
+.ebp-versuch{font-size:11px;font-weight:600;color:var(--faint);border:1px solid var(--border);border-radius:3px;padding:0 4px}
+@media (max-width:760px){
+  .ebenen-panel{width:300px}
+  .ebp-body{grid-template-columns:1fr}
+  .ebp-spalte+.ebp-spalte{border-left:0;border-top:1px solid var(--border)}
+}
