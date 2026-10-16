@@ -115,7 +115,10 @@ const cssCode = readFileSync(join(SRC, 'styles', 'app.css'), 'utf8')
 
 // Inline-Favicon: SVG muss URL-encodiert sein, da < und > in HTML-Attributen den Parser brechen
 // (unencoded <svg> im href → leerer href → Browser lädt aktuelle Seite → Unsafe attempt + ERR_FILE_NOT_FOUND)
-const FAVICON = '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Crect width=\'100\' height=\'100\' rx=\'12\' fill=\'%23266426\'/%3E%3Crect x=\'33\' y=\'33\' width=\'34\' height=\'34\' fill=\'none\' stroke=\'white\' stroke-width=\'9\'/%3E%3C/svg%3E">';
+// LKEBw-Zeichen aus src/config/lkebw-logo.js (erzeugt mit tools/lkebw-favicon.mjs); sonst Ersatzsymbol.
+const LKEBW_ZEICHEN = readFileSync(join(SRC, 'config', 'lkebw-logo.js'), 'utf8')
+  .match(/export const LKEBW_ZEICHEN = '(data:image\/png;base64,[A-Za-z0-9+/=]+)'/)?.[1];
+const FAVICON = LKEBW_ZEICHEN ? `<link rel="icon" type="image/png" href="${LKEBW_ZEICHEN}">` : '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Crect width=\'100\' height=\'100\' rx=\'12\' fill=\'%23266426\'/%3E%3Crect x=\'33\' y=\'33\' width=\'34\' height=\'34\' fill=\'none\' stroke=\'white\' stroke-width=\'9\'/%3E%3C/svg%3E">';
 
 // Leaflet-Icon-Fix: verhindert "Unsafe attempt"-Fehler durch relative Marker-Bild-URLs
 const LEAFLET_ICON_FIX = `
