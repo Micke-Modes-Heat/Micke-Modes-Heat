@@ -52,8 +52,8 @@ const GUT_TABELLE_RGB = '197,138,249';
 const PAPIER_STIL = 'background:#fff;color:#1B1F1C;max-width:794px;margin:0 auto;padding:56px 72px 72px;box-sizing:border-box;'
   + 'font-family:Tahoma,Verdana,sans-serif;font-size:14px;line-height:1.5;box-shadow:0 2px 14px rgba(0,0,0,.45);';
 const PLATZHALTER_STIL = `background:#fff3cd;border-bottom:1.5px solid ${GUT_WARN};padding:0 3px;color:#7a5b00;font-weight:normal;`;
-const EINGABE_STIL = 'font-family:inherit;font-size:11px;padding:5px 7px;border-radius:4px;border:1px solid rgba(255,255,255,.12);'
-  + 'background:rgba(255,255,255,.04);color:var(--text,#e8eaed);width:100%;box-sizing:border-box;';
+const EINGABE_STIL = 'font-family:inherit;font-size:11px;padding:5px 7px;border-radius:4px;border:1px solid rgba(var(--ink),.12);'
+  + 'background:rgba(var(--ink),.04);color:var(--text,var(--text));width:100%;box-sizing:border-box;';
 
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -71,9 +71,9 @@ const ueberschrift = text => `<div style="font-size:10px;text-transform:uppercas
 const feldLabel = text => `<div style="font-size:10px;color:var(--muted);margin:10px 0 3px;">${text}</div>`;
 const hinweis = html => `<div style="margin-top:8px;font-size:10px;color:var(--muted);line-height:1.5;">${html}</div>`;
 const panelKopf = titel => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-    <div style="font-size:12px;font-weight:600;color:var(--text,#e8eaed);">${titel}</div>
+    <div style="font-size:12px;font-weight:600;color:var(--text,var(--text));">${titel}</div>
     <button data-click="gutWaehle(null,null)" title="Auswahl aufheben" style="font-size:11px;padding:2px 7px;border-radius:4px;cursor:pointer;
-      border:1px solid rgba(255,255,255,.12);background:transparent;color:var(--muted);">✕</button></div>`;
+      border:1px solid rgba(var(--ink),.12);background:transparent;color:var(--muted);">✕</button></div>`;
 
 function gutSay(msg, err) {
   const el = document.getElementById('gut-status');
@@ -142,11 +142,11 @@ export function gutBuildAnalyseSection() {
   wrap.id = 'analyse-ggrafik-wrap';
   wrap.style.display = 'none';
   wrap.innerHTML = `
-<div style="display:flex;flex-direction:column;height:calc(100vh - 160px);min-height:420px;background:#0f0f1a;border-radius:8px;overflow:hidden;">
+<div style="display:flex;flex-direction:column;height:calc(100vh - 160px);min-height:420px;background:var(--surface);border-radius:8px;overflow:hidden;">
   <div id="gut-modusleiste" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid rgba(38,166,154,.15);flex-shrink:0;"></div>
   <div id="gut-dokument" style="flex:1;min-height:0;display:flex;">
     <div id="gut-gliederung" style="width:270px;flex-shrink:0;overflow-y:auto;border-right:1px solid rgba(38,166,154,.15);padding:10px;"></div>
-    <div id="gut-seite-scroll" style="flex:1;min-width:0;overflow-y:auto;padding:20px;background:#161622;"><div id="gut-seite"></div></div>
+    <div id="gut-seite-scroll" style="flex:1;min-width:0;overflow-y:auto;padding:20px;background:var(--bg);"><div id="gut-seite"></div></div>
     <div id="gut-eigenschaften" style="width:300px;flex-shrink:0;overflow-y:auto;border-left:1px solid rgba(38,166,154,.15);padding:10px;"></div>
   </div>
   <div id="gut-einzel" style="flex:1;min-height:0;display:none;"></div>
@@ -214,7 +214,7 @@ function plausiKnopf() {
 }
 function plausiListe() {
   const p = plausiPunkte();
-  return `<div style="flex-basis:100%;margin-top:6px;padding:8px 10px;border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:11px;line-height:1.5;">
+  return `<div style="flex-basis:100%;margin-top:6px;padding:8px 10px;border:1px solid rgba(var(--ink),.1);border-radius:6px;font-size:11px;line-height:1.5;">
     ${p.length ? p.map(x => `<div style="color:${x.stufe === 'warn' ? GUT_WARN : 'var(--muted)'};">${x.stufe === 'warn' ? '⚠' : 'ℹ'} ${esc(x.text)}</div>`).join('') : '✓ Keine Auffälligkeiten.'}
     <div style="margin-top:4px;opacity:.6;">Nur Hinweise — der Export funktioniert trotzdem. <a href="#" data-click="event.preventDefault();gutPlausiUmschalten()" style="color:inherit;">schließen</a></div></div>`;
 }
@@ -254,19 +254,19 @@ export function gutAktualisieren() {
 function leerzustandHtml() {
   return `<div style="${PAPIER_STIL}text-align:center;padding:70px 60px;">
     <div style="font-size:20px;font-weight:bold;margin-bottom:10px;">Noch kein Gutachten angelegt</div>
-    <div style="color:#555;max-width:480px;margin:0 auto 22px;">Die Standardgliederung übernimmt die Kapitel des bestehenden
+    <div style="color:var(--faint);max-width:480px;margin:0 auto 22px;">Die Standardgliederung übernimmt die Kapitel des bestehenden
       Gutachtens und setzt alle vorhandenen Abbildungen und Textbausteine gleich in ihr Kapitel. Danach lässt sich
       alles verschieben, umbenennen und ergänzen.</div>
     <button data-click="gutStandardAnlegen()" style="font-family:inherit;font-size:13px;padding:8px 18px;border-radius:5px;cursor:pointer;
       border:1px solid ${GUT_AKZENT};background:${GUT_AKZENT};color:#fff;">Standardgliederung anlegen</button>
     <button data-click="gutLeeresAnlegen()" style="font-family:inherit;font-size:13px;padding:8px 18px;border-radius:5px;cursor:pointer;
-      border:1px solid #bbb;background:#fff;color:#333;margin-left:8px;">Leeres Dokument</button>
+      border:1px solid var(--border);background:#fff;color:#333;margin-left:8px;">Leeres Dokument</button>
   </div>`;
 }
 
 function textBlockHtml(text) {
   const absaetze = String(text || '').split(/\n\s*\n/).map(a => a.trim()).filter(Boolean);
-  if (!absaetze.length) return '<p style="margin:0;color:#999;font-style:italic;">Leerer Textblock — Text rechts unter „Freitext“ eingeben.</p>';
+  if (!absaetze.length) return '<p style="margin:0;color:var(--faint);font-style:italic;">Leerer Textblock — Text rechts unter „Freitext“ eingeben.</p>';
   return absaetze.map(a => `<p style="margin:0 0 10px;text-align:justify;">${esc(a).replace(/\n/g, '<br>')}</p>`).join('');
 }
 
@@ -296,7 +296,7 @@ function bildSvgElement(b) {
 
 function beschriftungEl(nr, text) {
   const d = document.createElement('div');
-  d.style.cssText = 'font-size:11.5px;color:#5A5F5A;margin:5px 0 0;';
+  d.style.cssText = 'font-size:11.5px;color:var(--faint);margin:5px 0 0;';
   d.textContent = `${nr.art} ${nr.nr}: ${text}`;
   return d;
 }
@@ -304,13 +304,13 @@ function beschriftungEl(nr, text) {
 function figurBlockInhalt(box, b, nummern, zuEinpassen) {
   if (!ggFigurSichtbar(b.figurId)) {
     const titel = ggFigurenKatalog().find(f => f.id === b.figurId)?.titel || b.figurId;
-    box.innerHTML = `<div style="font-size:11px;color:#9a9f9a;padding:2px 0;" title="Erscheint nicht im Export und nicht in der Präsentation. Ändern über den Fragebogen des Kapitels (rechts) bzw. die Projektdaten.">⊘ ${esc(titel)} — ${esc(ggFigurAusblendGrund(b.figurId))}</div>`;
+    box.innerHTML = `<div style="font-size:11px;color:var(--faint);padding:2px 0;" title="Erscheint nicht im Export und nicht in der Präsentation. Ändern über den Fragebogen des Kapitels (rechts) bzw. die Projektdaten.">⊘ ${esc(titel)} — ${esc(ggFigurAusblendGrund(b.figurId))}</div>`;
     return;
   }
   const erg = figurErgebnis(b);
   if (erg.fehler) {
     box.innerHTML = `<div style="padding:14px;border:1px dashed ${GUT_WARN};color:#7a5b00;background:#fff8e1;font-size:12px;">
-      ⚠ ${esc(erg.fehler)} <span style="color:#999;">(${esc(b.figurId)})</span></div>`;
+      ⚠ ${esc(erg.fehler)} <span style="color:var(--faint);">(${esc(b.figurId)})</span></div>`;
     return;
   }
   const titel = b.unterschrift.trim() || erg.titel;
@@ -401,18 +401,18 @@ function renderSeite() {
   if (anlagen.length) {
     const anr = gdAnlagenNummern(anlagen);
     const verz = document.createElement('div');
-    verz.style.cssText = 'margin:40px 0 0;padding-top:18px;border-top:2px dashed #c5ccc4;';
+    verz.style.cssText = 'margin:40px 0 0;padding-top:18px;border-top:2px dashed var(--border);';
     verz.innerHTML = `<div style="font-size:21px;font-weight:bold;margin-bottom:8px;">Anlagen</div>`
       + `<table style="width:100%;border-collapse:collapse;font-size:13px;">${anlagen.map((a, i) =>
-          `<tr><td style="width:110px;border-top:1px solid #E2E4DF;border-bottom:1px solid #E2E4DF;padding:4px 6px;color:#266426;">Anlage ${anr[i]}</td>`
-          + `<td style="border-top:1px solid #E2E4DF;border-bottom:1px solid #E2E4DF;padding:4px 6px;">${esc(anlageInhalt(a).titel)}</td></tr>`).join('')}</table>`;
+          `<tr><td style="width:110px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:4px 6px;color:#266426;">Anlage ${anr[i]}</td>`
+          + `<td style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:4px 6px;">${esc(anlageInhalt(a).titel)}</td></tr>`).join('')}</table>`;
     papier.appendChild(verz);
     anlagen.forEach((a, i) => {
       const inhalt = anlageInhalt(a);
       const box = document.createElement('div');
       box.dataset.gutEl = 'anlage:' + a.id;
       box.dataset.click = `gutWaehle('anlage','${a.id}')`;
-      box.style.cssText = 'margin:34px 0 0;padding:14px 6px 4px;border-top:2px dashed #c5ccc4;border-radius:3px;cursor:pointer;';
+      box.style.cssText = 'margin:34px 0 0;padding:14px 6px 4px;border-top:2px dashed var(--border);border-radius:3px;cursor:pointer;';
       box.innerHTML = `<div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#3F9C3F;">Anlage ${anr[i]}</div>`
         + `<div style="font-size:21px;font-weight:bold;margin:2px 0 10px;">${esc(inhalt.titel)}</div>`
         + (inhalt.fehler
@@ -543,9 +543,9 @@ function dokumentPanel() {
   const nummernJetzt = gdKapitelNummern(dok.kapitel);
   const nrJetzt = new Map(dok.kapitel.map((k, i) => [k.id, nummernJetzt[i]]));
   const nFehlendK = abgleich.neueKapitel.length, nFehlendB = abgleich.neueBloecke.length, nUmbenannt = abgleich.umbenannt.length;
-  const kachel = (wert, label) => `<div style="background:rgba(255,255,255,.04);border-radius:5px;padding:7px 9px;">
-      <div style="font-size:15px;color:var(--text,#e8eaed);">${wert}</div><div style="font-size:10px;color:var(--muted);">${label}</div></div>`;
-  return `<div style="font-size:12px;font-weight:600;color:var(--text,#e8eaed);margin-bottom:8px;">Dokument</div>`
+  const kachel = (wert, label) => `<div style="background:rgba(var(--ink),.04);border-radius:5px;padding:7px 9px;">
+      <div style="font-size:15px;color:var(--text,var(--text));">${wert}</div><div style="font-size:10px;color:var(--muted);">${label}</div></div>`;
+  return `<div style="font-size:12px;font-weight:600;color:var(--text,var(--text));margin-bottom:8px;">Dokument</div>`
     + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">${kachel(dok.kapitel.length, 'Kapitel')}${kachel(nAbb, 'Abbildungen')}${kachel(nTab, 'Tabellen')}${kachel(nText, 'Freitexte')}</div>`
     + (offen
         ? `<div style="margin-top:10px;font-size:11px;color:${GUT_WARN};line-height:1.45;">⚠ ${offen} offene Platzhalter bzw. fehlende Kapiteltitel — in der Gliederung gelb gezählt.</div>`
@@ -646,7 +646,7 @@ function figurMenuHtml(kapId, nr) {
     const drin = imDok.has(f.id);
     return `<div data-click="gutAddFigur('${kapId}','${esc(f.id)}')" title="${esc(f.titel)}"
         style="display:flex;align-items:center;gap:6px;padding:3px 6px 3px ${einr}px;border-radius:4px;cursor:pointer;margin:1px 0;
-        font-size:11px;line-height:1.35;color:var(--text,#e8eaed);opacity:${drin ? '.55' : '1'};
+        font-size:11px;line-height:1.35;color:var(--text,var(--text));opacity:${drin ? '.55' : '1'};
         background:rgba(${ggBausteinRgb(f)},${drin ? '.06' : '.16'});">
         <span style="flex-shrink:0;width:11px;text-align:center;color:${ggBausteinFarbe(f)};">${drin ? '✓' : ggBausteinIcon(f)}</span>
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(f.titel)}</span></div>`;
@@ -663,20 +663,20 @@ function figurMenuHtml(kapId, nr) {
       : '';
     return `<div style="display:flex;align-items:center;gap:6px;padding:5px 4px 3px ${einr}px;">
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;
-          font-weight:${knoten.ebene === 1 ? 700 : 600};color:var(--text,#e8eaed);">${titel}</span>${ganzesKapitel}</div>`;
+          font-weight:${knoten.ebene === 1 ? 700 : 600};color:var(--text,var(--text));">${titel}</span>${ganzesKapitel}</div>`;
   };
   let html = '';
   if (passend.length) {
     html += `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:${GUT_AKZENT};padding:4px 4px 2px;">Passend zu Kapitel ${esc(nr)}</div>`
       + passend.map(f => itemZeile(f, 4)).join('')
-      + `<div style="height:1px;background:rgba(255,255,255,.08);margin:6px 0;"></div>`;
+      + `<div style="height:1px;background:rgba(var(--ink),.08);margin:6px 0;"></div>`;
   }
   const { liste } = ggMenuBaum();
   for (const knoten of liste) {
     html += headerZeile(knoten);
     html += knoten.figuren.map(f => itemZeile(f, (knoten.ebene - 1) * 10 + 14)).join('');
   }
-  return `<div style="margin-top:6px;max-height:320px;overflow-y:auto;border:1px solid rgba(255,255,255,.12);
+  return `<div style="margin-top:6px;max-height:320px;overflow-y:auto;border:1px solid rgba(var(--ink),.12);
       border-radius:5px;background:rgba(0,0,0,.25);padding:4px 6px;">${html}</div>`;
 }
 
@@ -754,7 +754,7 @@ function blockPanel(b, kapIdx) {
   const erg = _gut.cache.get(id)?.ergebnis;
   const meldung = erg?.meldung || '';
   let html = panelKopf(f.istText ? 'Textbaustein' : f.istTabelle ? 'Tabelle' : 'Abbildung')
-    + `<div style="font-size:12px;color:var(--text,#e8eaed);margin-top:6px;">${esc(f.titel)}</div>` + ort;
+    + `<div style="font-size:12px;color:var(--text,var(--text));margin-top:6px;">${esc(f.titel)}</div>` + ort;
   if (meldung) {
     html += `<div style="margin-top:8px;font-size:11px;line-height:1.45;color:${meldung.startsWith('⚠') ? GUT_WARN : GUT_AKZENT};">${esc(meldung)}</div>`;
   }
@@ -793,7 +793,7 @@ function anlagePanel(a) {
   const inhalt = anlageInhalt(a);
   const hw = inhalt.hinweise || [];
   return panelKopf(`Anlage ${esc(nr)}`)
-    + `<div style="font-size:12px;color:var(--text,#e8eaed);margin-top:6px;">${esc(inhalt.titel)}</div>`
+    + `<div style="font-size:12px;color:var(--text,var(--text));margin-top:6px;">${esc(inhalt.titel)}</div>`
     + (inhalt.fehler ? `<div style="margin-top:8px;font-size:11px;line-height:1.45;color:${GUT_WARN};">⚠ ${esc(inhalt.fehler)}</div>` : '')
     + hinweis('Der Inhalt kommt live aus dem Stations-Steckbrief — Bestand zum heutigen Jahr. Angaben dort ändern, '
       + 'hier erscheinen sie beim nächsten Zeichnen bzw. im Word-Export.')
@@ -1328,7 +1328,7 @@ export function gutPlatzhalterKlick(name) {
 function frageHtml(f, ctx) {
   const antworten = _gut.dok?.fragen || {};
   const std = gfStandard(f, ctx);
-  const lbl = `<div style="font-size:11px;color:var(--text,#e8eaed);margin:8px 0 3px;">${esc(f.frage)}</div>`;
+  const lbl = `<div style="font-size:11px;color:var(--text,var(--text));margin:8px 0 3px;">${esc(f.frage)}</div>`;
   const hw = f.hinweis ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;line-height:1.35;">${esc(f.hinweis)}</div>` : '';
   if (f.art === 'mehrfach') {
     const an = new Set(antworten[f.id] ?? std);
@@ -1592,25 +1592,25 @@ function praesVorschau(f, nr) {
   box.style.cssText = `position:relative;width:100%;max-width:880px;aspect-ratio:16/9;margin:0 auto 18px;background:#fff;color:#1B1F1C;font-family:Tahoma,Arial,sans-serif;
     box-shadow:0 2px 10px rgba(0,0,0,.35);overflow:hidden;cursor:pointer;opacity:${f.an ? 1 : 0.35};outline:${gewaehlt ? `3px solid ${GUT_AKZENT}` : 'none'};outline-offset:3px;`;
   const logo = `<img src="data:image/png;base64,${GV_LOGO_PNG}" style="position:absolute;right:4%;top:3.4%;width:13%;">`;
-  const fuss = `<div style="position:absolute;left:4%;right:4%;bottom:7%;border-top:1px solid #E2E4DF;"></div>
-    <div style="position:absolute;left:4%;bottom:2.4%;font-size:1.1cqw;color:#5A5F5A;">${esc(`LKEBw · ${deckblattFuerExport().liegenschaft || 'Gutachten zur zukünftigen Energieversorgung'}`)}</div>
-    <div style="position:absolute;right:4%;bottom:2.4%;font-size:1.1cqw;color:#5A5F5A;">${nr}</div>`;
+  const fuss = `<div style="position:absolute;left:4%;right:4%;bottom:7%;border-top:1px solid var(--border);"></div>
+    <div style="position:absolute;left:4%;bottom:2.4%;font-size:1.1cqw;color:var(--faint);">${esc(`LKEBw · ${deckblattFuerExport().liegenschaft || 'Gutachten zur zukünftigen Energieversorgung'}`)}</div>
+    <div style="position:absolute;right:4%;bottom:2.4%;font-size:1.1cqw;color:var(--faint);">${nr}</div>`;
   box.style.containerType = 'inline-size';
   if (f.art === 'titel') {
     box.innerHTML = `<div style="position:absolute;inset:0 0 38% 0;background:${PRAES_GRUEN};"></div><div style="position:absolute;left:0;right:0;top:62%;height:0.7%;background:${PRAES_GRUEN_HELL};"></div>
       <div style="position:absolute;left:7.5%;right:7.5%;bottom:44%;color:#fff;"><div style="font-size:4.2cqw;font-weight:bold;">${esc(f.titel)}</div><div style="font-size:2.4cqw;margin-top:1%;">${esc(f.unter || '')}</div></div>
-      <div style="position:absolute;left:7.5%;top:68%;font-size:1.6cqw;color:#5A5F5A;line-height:1.5;">${(f.zeilen || []).filter(Boolean).map(esc).join('<br>')}</div>
+      <div style="position:absolute;left:7.5%;top:68%;font-size:1.6cqw;color:var(--faint);line-height:1.5;">${(f.zeilen || []).filter(Boolean).map(esc).join('<br>')}</div>
       <img src="data:image/png;base64,${GV_LOGO_PNG}" style="position:absolute;right:7.5%;top:70%;width:20%;">`;
   } else if (f.art === 'kapitel') {
     box.innerHTML = `<div style="position:absolute;inset:0 0 auto 0;height:1.3%;background:${PRAES_GRUEN};"></div>${logo}
       <div style="position:absolute;left:0;top:38%;width:1.5%;height:24%;background:${PRAES_GRUEN_HELL};"></div>
       <div style="position:absolute;left:7.5%;top:36%;"><div style="font-size:6.3cqw;font-weight:bold;color:${PRAES_GRUEN};line-height:1.1;">${esc(f.nr)}</div><div style="font-size:3.7cqw;font-weight:bold;">${esc(f.titel)}</div></div>
-      <div style="position:absolute;right:4%;bottom:2.4%;font-size:1.1cqw;color:#5A5F5A;">${nr}</div>`;
+      <div style="position:absolute;right:4%;bottom:2.4%;font-size:1.1cqw;color:var(--faint);">${nr}</div>`;
   } else {
     const punkte = (f.punkte || []).map(p => `<li style="margin:0 0 0.8em;">${esc(p)}</li>`).join('');
     box.innerHTML = `<div style="position:absolute;inset:0 0 auto 0;height:1.3%;background:${PRAES_GRUEN};"></div>${logo}
       <div style="position:absolute;left:4%;top:4.4%;right:20%;font-size:2.8cqw;font-weight:bold;"><span style="color:${PRAES_GRUEN};">${esc(f.nr)}</span>&nbsp; ${esc(f.titel)}</div>
-      <div data-praes-unter style="position:absolute;left:4%;top:12.4%;right:4%;font-size:1.6cqw;color:#5A5F5A;">${esc(f.unter || '')}</div>
+      <div data-praes-unter style="position:absolute;left:4%;top:12.4%;right:4%;font-size:1.6cqw;color:var(--faint);">${esc(f.unter || '')}</div>
       <div data-praes-bild style="position:absolute;left:4%;top:18%;bottom:9%;width:${f.art === 'inhalt' && punkte ? '59%' : '92%'};display:flex;align-items:center;justify-content:center;"></div>
       ${punkte ? `<div style="position:absolute;top:18%;bottom:12%;${f.art === 'inhalt' ? 'left:66%' : 'left:4%'};right:4%;border-left:${f.art === 'inhalt' ? `2px solid ${PRAES_GRUEN_HELL}` : 'none'};padding-left:2%;
         font-size:1.75cqw;line-height:1.35;overflow:hidden;"><ul style="margin:0;padding-left:1.2em;">${punkte}</ul></div>` : ''}${fuss}`;
@@ -1648,7 +1648,7 @@ function renderPraes() {
         <option value="lang"${pd.fassung === 'lang' ? ' selected' : ''}>Ausführlich (alle Abbildungen)</option></select>
       <div style="font-size:10px;color:var(--muted);margin:8px 0 10px;">${aktive.length} von ${folien.length} Folien · Haken = Folie ist dabei${Object.keys(pd.an || {}).length ? ` · <a href="#" data-click="event.preventDefault();gutPraesZuruecksetzen()" style="color:inherit;">Auswahl zurücksetzen</a>` : ''}</div>
       ${liste}</div>
-    <div id="gut-praes-scroll" style="flex:1;min-width:0;overflow-y:auto;padding:20px;background:#161622;"></div>
+    <div id="gut-praes-scroll" style="flex:1;min-width:0;overflow-y:auto;padding:20px;background:var(--surface);"></div>
     <div style="width:300px;flex-shrink:0;overflow-y:auto;border-left:1px solid rgba(38,166,154,.15);padding:10px;">${praesPanel(folien.find(f => f.key === _gut.praesAuswahl))}</div>`;
   const scroll = document.getElementById('gut-praes-scroll');
   folien.forEach(f => scroll.appendChild(praesVorschau(f, nrVon.get(f.key) || '–')));
@@ -1662,7 +1662,7 @@ function praesPanel(f) {
   const punkte = f.art === 'titel' || f.art === 'kapitel' ? '' : feldLabel('Stichpunkte (eine Zeile je Punkt)')
     + `<textarea rows="8" data-change="gutPraesPunkte('${f.key}',this.value)" style="${EINGABE_STIL}width:100%;box-sizing:border-box;resize:vertical;">${esc((f.punkte || []).join('\n'))}</textarea>`
     + (f.eigenePunkte ? `<div style="margin-top:4px;">${knopf('↺ Stichpunkte aus dem Gutachtentext', `gutPraesPunkte('${f.key}',null)`, { klein: true })}</div>` : hinweis('Automatisch aus den Texten des Kapitels (Sätze mit Zahlen bevorzugt). Änderungen gelten nur für die Präsentation.'));
-  return `<div style="font-size:12px;font-weight:600;color:var(--text,#e8eaed);margin-bottom:8px;">${f.art === 'titel' ? 'Titelfolie' : f.art === 'kapitel' ? `Kapitelfolie ${esc(f.nr)}` : `Folie zu ${esc(f.nr)}`}</div>`
+  return `<div style="font-size:12px;font-weight:600;color:var(--text,var(--text));margin-bottom:8px;">${f.art === 'titel' ? 'Titelfolie' : f.art === 'kapitel' ? `Kapitelfolie ${esc(f.nr)}` : `Folie zu ${esc(f.nr)}`}</div>`
     + `<label style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--muted);"><input type="checkbox" ${f.an ? 'checked' : ''} data-change="gutPraesFolieAn('${f.key}',this.checked)"> Folie in die Präsentation aufnehmen</label>`
     + titelFeld + punkte
     + (f.block?.typ === 'figur' ? hinweis('Die Abbildung ist dieselbe wie im Gutachten — Kopfzeile, Haken und Werte in „🖼 Einzelgrafiken“ ändern.') : '')

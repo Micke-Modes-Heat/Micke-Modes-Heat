@@ -25,6 +25,8 @@ const AUSNAHMEN = new Set([
 ]);
 
 function dateien() {
+  // NUR=src/a.js,src/b.js → nur diese Dateien (auch ausgenommene, z. B. für gezielte Nacharbeit)
+  if (process.env.NUR) return process.env.NUR.split(',');
   const out = ['index.html', 'src/styles/app.css'];
   for (const f of fs.readdirSync(path.join(ROOT, 'src'))) {
     if (f.endsWith('.js') && !AUSNAHMEN.has('src/' + f)) out.push('src/' + f);
@@ -62,6 +64,7 @@ function ersetzeHex(hex, art) {
   if (low.length === 9 || low.length === 5) return null;            // mit Alpha: unverändert
   if (low === '#fff' || low === '#ffffff') return art === 'border' ? 'var(--border)' : null;
   if (low === '#000' || low === '#000000') return null;
+  if (low === '#266426' || low === '#3f9c3f') return null;                 // LKEBw-Grün bleibt
   const [h, s, l] = hsl(hexRgb(low));
   if (art === 'text') {
     if (s < 0.15) {

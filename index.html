@@ -325,57 +325,79 @@
 
       <!-- ══ Tab 1: Gebiet ══════════════════════════════════════ -->
       <div class="lp-content active" id="lp-gebiet">
-        <div class="lp-step">
-          <div class="lp-step-num" data-num="1">1</div>
-          <div class="lp-step-text">Quartier definieren<span>Gebäude importieren, Plangebiet festlegen</span></div>
+        <div id="lp-gebiet-status" class="ui-status-zeile"></div>
+
+        <div class="ui-gruppe">
+          <div class="ui-gruppe-titel">Gebiet</div>
+          <button class="ui-aufgabe" id="btn-draw-area-main" data-click="toggleDrawArea()">
+            <svg class="ui-i"><use href="#ui-i-pen"/></svg><span><b>Plangebiet zeichnen</b><small>Bereich auf der Karte festlegen, in dem Gebäude geladen werden</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg>
+          </button>
+          <button class="ui-aufgabe" id="btn-overlay-main" data-click="toggleOverlayPanel()">
+            <svg class="ui-i"><use href="#ui-i-map"/></svg><span><b>Lageplan als Hintergrund</b><small>Bild oder PDF über die Karte legen und ausrichten</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg>
+          </button>
+          <button class="ui-aufgabe" id="btn-quartier-herausloesen" data-click="quartierHerausloesen()" title="Einen Teil der Liegenschaft als eigenes Projekt speichern — z. B. ein Quartier, das früher gebaut wird oder eine eigene Zentrale bekommt.">
+            <svg class="ui-i"><use href="#ui-i-export"/></svg><span><b>Quartier als eigenes Projekt</b><small>Teil der Liegenschaft herauslösen und getrennt speichern</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg>
+          </button>
         </div>
-        <button id="btn-draw-area-main" data-click="toggleDrawArea()" style="width:100%;padding:10px 12px;border-radius:7px;border:1.5px solid var(--c-violet);background:rgba(171,71,188,0.08);color:var(--c-violet);font-family:inherit;font-size:12px;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:8px;justify-content:center;">
-          <span style="font-size:16px;">⬡</span> Plangebiet / Bereich zeichnen
-        </button>
-        <button id="btn-overlay-main" data-click="toggleOverlayPanel()" style="width:100%;margin-top:6px;padding:10px 12px;border-radius:7px;border:1.5px solid var(--c-blue);background:rgba(120,144,156,0.08);color:var(--c-blue);font-family:inherit;font-size:12px;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:8px;justify-content:center;" title="Bild oder PDF-Grundriss transparent über die Karte legen, skalieren, drehen und Gebäude nachzeichnen">
-          <span style="font-size:16px;">📐</span> Plan-Overlay laden…
-        </button>
-        <button id="btn-gebliste-import-main" data-click="openGebListImport()" style="width:100%;margin-top:6px;padding:10px 12px;border-radius:7px;border:1.5px solid var(--c-orange);background:rgba(255,152,0,0.08);color:var(--c-orange);font-family:inherit;font-size:12px;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:8px;justify-content:center;" title="Gebäudeliste (CSV) mit Name, Nutzung, Baujahr u.a. importieren und automatisch den Gebäuden auf der Karte zuordnen">
-          <span style="font-size:16px;">📋</span> Gebäudeliste importieren (CSV)
-        </button>
-        <div id="lp-gebiet-status" style="font-size:9px;color:var(--muted);margin-bottom:10px;padding:2px 0;min-height:14px;"></div>
-        <div class="lp-section-title">Projektdaten</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px;">
-          <div>
-            <label for="pd-bearbeiter-waerme" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;">Bearbeiter Wärme</label>
-            <input class="inp-field" id="pd-bearbeiter-waerme" type="text" placeholder="Name" style="width:100%;" data-input="setPdBearbeiterWaerme(this.value)">
-          </div>
-          <div>
-            <label for="pd-bearbeiter-strom" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;">Bearbeiter Strom</label>
-            <input class="inp-field" id="pd-bearbeiter-strom" type="text" placeholder="Name" style="width:100%;" data-input="setPdBearbeiterStrom(this.value)">
-          </div>
-          <div>
-            <label for="pd-kaserne-name" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;">Name Kaserne</label>
-            <input class="inp-field" id="pd-kaserne-name" type="text" placeholder="z. B. Kaserne Musterstadt" style="width:100%;" data-input="setPdKaserneName(this.value); syncProjektname()">
-          </div>
-          <div>
-            <label for="pd-we-nummer" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;">WE-Nummer</label>
-            <input class="inp-field" id="pd-we-nummer" type="text" placeholder="z. B. 12345" style="width:100%;" data-input="setPdWeNummer(this.value); syncProjektname()">
-          </div>
-          <div style="grid-column:1/-1;">
-            <label for="pd-liegenschaft-adresse" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;" title="Reale Anschrift für Deckblatt &amp; Grafik-Köpfe — unabhängig vom Klimastandort unter Wärme-Grundlagen">Adresse Liegenschaft</label>
-            <input class="inp-field" id="pd-liegenschaft-adresse" type="text" placeholder="z. B. Musterstr. 1, 12345 Musterstadt" style="width:100%;" data-input="setPdLiegenschaftAdresse(this.value)">
+
+        <div class="ui-gruppe">
+          <div class="ui-gruppe-titel">Gebäude</div>
+          <button class="ui-aufgabe" id="btn-osm-import" data-click="showOsmPanel()">
+            <svg class="ui-i"><use href="#ui-i-import"/></svg><span><b>Gebäude aus OpenStreetMap laden</b><small>Grundrisse, Geschosse und Nutzung im Plangebiet</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg>
+          </button>
+          <button class="ui-aufgabe" id="btn-gebliste-import-main" data-click="openGebListImport()">
+            <svg class="ui-i"><use href="#ui-i-table"/></svg><span><b>Gebäudeliste importieren</b><small>CSV mit Bezeichnung, Fläche, Baujahr und Verbrauch</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg>
+          </button>
+          <button class="ui-aufgabe" id="btn-grundriss-pruefen" data-click="grundrissPanelToggle()" title="Überlappende Grundrisse finden — Doppelerfassungen (OSM und Kataster), Gebäudeteile als eigene Gebäude, Teilüberlappungen.">
+            <svg class="ui-i"><use href="#ui-i-check"/></svg><span><b>Grundrisse prüfen</b><small>Doppelt erfasste und überlappende Gebäude finden</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg>
+          </button>
+          <button class="ui-aufgabe" data-click="uiGebaeudetabelle()">
+            <svg class="ui-i"><use href="#ui-i-list"/></svg><span><b>Gebäudetabelle</b><small>Alle Gebäude prüfen, sortieren und gemeinsam bearbeiten</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg>
+          </button>
+          <div class="ui-gruppe-unter">Dächer</div>
+          <div class="ui-knopfreihe">
+            <button class="btn-secondary" id="btn-lod2-import" data-click="lod2Laden()" title="Amtliches 3D-Gebäudemodell (LoD2) laden — in NRW, Niedersachsen und Baden-Württemberg direkt vom Landesdienst, sonst als CityGML-Datei.">3D-Modell (LoD2) laden</button>
+            <button class="btn-secondary" id="btn-osm-dach" data-click="dachformenAusOsmErgaenzen({nachfragen:true})" title="Dachform, Neigung und Richtung aus OpenStreetMap für alle Gebäude ohne eigene Dachangabe übernehmen.">Dachformen aus OSM</button>
+            <button class="btn-secondary" id="btn-dach-grundriss" data-click="dachGrundrissBerechnen()" title="Für Gebäude ohne LoD2 (auch geplante Neubauten): Dachflächen aus dem rechtwinkligen Grundriss berechnen.">Dach aus Grundriss</button>
           </div>
         </div>
-        <div id="pd-projektname-preview" style="font-size:9px;color:var(--muted);margin-bottom:8px;min-height:12px;"></div>
-        <div class="lp-tool-grid">
-          <button class="lp-tool-btn" id="btn-grundlagen" data-click="toggleGrundlagenPanel()" style="border-color:var(--c-green);color:var(--c-green);">🔥 Wärme-Grundlagen</button>
-          <button class="lp-tool-btn" id="btn-strom-grundlagen" data-click="toggleStromPanel()" style="border-color:var(--c-amber);color:var(--c-amber);">⚡ Strom-Grundlagen</button>
-          <button class="lp-tool-btn" id="btn-kennwerte" data-click="toggleKennwertePanel()" style="border-color:var(--c-blue);color:var(--c-blue);grid-column:1/-1;">⚙ Kennwerte</button>
+
+        <div class="ui-gruppe">
+          <div class="ui-gruppe-titel">Grundlagen</div>
+          <button class="ui-aufgabe" id="btn-strom-grundlagen" data-click="toggleStromPanel()">
+            <svg class="ui-i"><use href="#ui-i-pulse"/></svg><span><b>Strom-Grundlagen</b><small>Messjahre, Lastgang, Netzanschluss, Strompreise</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg>
+          </button>
+          <button class="ui-aufgabe" id="btn-grundlagen" data-click="toggleGrundlagenPanel()">
+            <svg class="ui-i"><use href="#ui-i-calc"/></svg><span><b>Wärme-Grundlagen</b><small>Klimastandort, Lastprofil, Temperaturen, Verbrauch</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg>
+          </button>
+          <button class="ui-aufgabe" id="btn-kennwerte" data-click="toggleKennwertePanel()">
+            <svg class="ui-i"><use href="#ui-i-list"/></svg><span><b>Kennwerte</b><small>Emissionsfaktoren und Bedarfskennwerte für das ganze Projekt</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg>
+          </button>
         </div>
-        <div class="lp-section-title" style="margin-top:12px;">Gebäude laden</div>
-        <div class="lp-tool-grid">
-          <button class="lp-tool-btn" id="btn-osm-import" data-click="showOsmPanel()" style="border-color:var(--c-green);color:var(--c-green);grid-column:1/-1;">↓ OSM-Import (OpenStreetMap)</button>
-          <button class="lp-tool-btn" id="btn-osm-dach" data-click="dachformenAusOsmErgaenzen({nachfragen:true})" style="border-color:var(--c-orange);color:var(--c-red);grid-column:1/-1;" title="Dachform, Neigung und Richtung (roof:shape, roof:angle, roof:direction) aus OpenStreetMap für alle Gebäude ohne eigene Dachangabe übernehmen — z. B. nach einem Import aus dem amtlichen Kataster, das keine Dachform liefert">🏠 Dachformen aus OSM ergänzen</button>
-          <button class="lp-tool-btn" id="btn-lod2-import" data-click="lod2Laden()" style="border-color:var(--c-orange);color:var(--c-orange);grid-column:1/-1;" title="Amtliches 3D-Gebäudemodell (LoD2) laden — in NRW, Niedersachsen und Baden-Württemberg direkt vom Landesdienst, sonst als CityGML-Datei (.gml/.xml oder .zip vom Geoportal des Landes): jede Dachfläche mit echter Neigung und Ausrichtung — für PV-Belegung und 3D-Ansicht">🏠 Dachflächen aus LoD2 laden …</button>
-          <button class="lp-tool-btn" id="btn-dach-grundriss" data-click="dachGrundrissBerechnen()" style="border-color:var(--c-orange);color:var(--c-orange);grid-column:1/-1;" title="Für Gebäude ohne LoD2 (auch geplante Neubauten): Dachflächen aus dem rechtwinkligen Grundriss berechnen — L-, T- und U-Formen mit Kehlen und Giebeln, nach Dachform und Neigung des Gebäudes. Mit Auswahl in der Gebäudeliste nur für die ausgewählten Gebäude.">📐 Dachflächen aus Grundriss berechnen</button>
-          <button class="lp-tool-btn" id="btn-quartier-herausloesen" data-click="quartierHerausloesen()" style="border-color:var(--c-amber);color:var(--c-orange);grid-column:1/-1;" title="Einen Teil der Liegenschaft als eigenes Projekt speichern — z. B. ein Quartier, das früher gebaut wird oder eine eigene Zentrale bekommt. Bereich auf der Karte umfahren oder vorher Gebäude in der Liste anhaken. Das geöffnete Projekt bleibt unverändert.">✂ Quartier als eigenes Projekt herauslösen …</button>
-          <button class="lp-tool-btn" id="btn-grundriss-pruefen" data-click="grundrissPanelToggle()" style="border-color:var(--c-orange);color:var(--c-orange);grid-column:1/-1;" title="Überlappende Grundrisse finden — Doppelerfassungen (OSM und Kataster), Gebäudeteile als eigene Gebäude, Teilüberlappungen. Sie verfälschen Wärme- und Strombedarf, Dachpotenzial und Verschattung. Je Fall: zeigen, zusammenfügen, eines löschen oder bewusst so lassen.">⧉ Grundrisse prüfen</button>
+
+        <!-- Stammdaten: werden beim Start auf die Projektseite verschoben (src/49-oberflaeche.js) -->
+        <div class="ui-stammdaten-raster" id="ui-stammdaten-vorlage">
+          <div class="inp-group">
+            <label class="inp-label" for="pd-kaserne-name">Name der Liegenschaft</label>
+            <input class="inp-field" id="pd-kaserne-name" type="text" placeholder="z. B. Kaserne Musterstadt" data-input="setPdKaserneName(this.value); syncProjektname()">
+          </div>
+          <div class="inp-group">
+            <label class="inp-label" for="pd-we-nummer">WE-Nummer</label>
+            <input class="inp-field" id="pd-we-nummer" type="text" placeholder="z. B. 12345" data-input="setPdWeNummer(this.value); syncProjektname()">
+          </div>
+          <div class="inp-group ui-spalte-voll">
+            <label class="inp-label" for="pd-liegenschaft-adresse" title="Reale Anschrift für Deckblatt und Grafik-Köpfe — unabhängig vom Klimastandort unter Wärme-Grundlagen">Anschrift</label>
+            <input class="inp-field" id="pd-liegenschaft-adresse" type="text" placeholder="z. B. Musterstr. 1, 12345 Musterstadt" data-input="setPdLiegenschaftAdresse(this.value)">
+          </div>
+          <div class="inp-group">
+            <label class="inp-label" for="pd-bearbeiter-strom">Bearbeitung Strom</label>
+            <input class="inp-field" id="pd-bearbeiter-strom" type="text" placeholder="Name" data-input="setPdBearbeiterStrom(this.value)">
+          </div>
+          <div class="inp-group">
+            <label class="inp-label" for="pd-bearbeiter-waerme">Bearbeitung Wärme</label>
+            <input class="inp-field" id="pd-bearbeiter-waerme" type="text" placeholder="Name" data-input="setPdBearbeiterWaerme(this.value)">
+          </div>
+          <div id="pd-projektname-preview" class="ui-spalte-voll"></div>
         </div>
       </div>
 

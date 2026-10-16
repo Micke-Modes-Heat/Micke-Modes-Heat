@@ -89,7 +89,7 @@ export function uiSchritt(id, opt = {}) {
     window.setViewMode?.('karte');
     uiProjektseiteRendern();
   } else if (s.id === 'bestand') {
-    window.setViewMode?.('karte');
+    window.setViewMode?.(_ui.bestandAnsicht === 'tabelle' ? 'gebaeude' : 'karte');
     window.setLeftTab?.('gebiet');
   } else if (s.id === 'planung') {
     window.setViewMode?.('karte');
@@ -163,7 +163,11 @@ function _lpKopfRendern() {
   const kopf = document.getElementById('ui-lp-kopf');
   if (!kopf) return;
   if (_ui.schritt === 'bestand') {
-    kopf.innerHTML = `<div class="ui-lp-titel"><h2>Bestand</h2><span class="ui-lp-hinweis">Gebiet, Gebäude, Grundlagen</span></div>`;
+    const tab = _ui.bestandAnsicht === 'tabelle';
+    kopf.innerHTML = `<div class="ui-lp-titel"><h2>Bestand</h2>
+      <div class="ui-seg" role="group" aria-label="Ansicht">
+        <button type="button" data-ui-bestand="karte" aria-pressed="${!tab}">Karte</button>
+        <button type="button" data-ui-bestand="tabelle" aria-pressed="${tab}">Tabelle</button></div></div>`;
   } else if (_ui.schritt === 'planung') {
     const sp = _ui.sparte;
     const reiter = sp === 'waerme'
@@ -205,6 +209,11 @@ function _navRendern() {
     h += `<button type="button" class="ui-nav-it" data-ui-abschnitt="${e.key}" aria-current="${e.key === aktiv}" title="${_esc(e.tip || (e.fenster ? 'Öffnet ein Fenster' : e.aktion ? 'Erzeugt eine Datei' : ''))}"><span>${_esc(e.titel)}</span>${zusatz}</button>`;
   }
   nav.innerHTML = h;
+  const titel = document.getElementById('ui-seitentitel');
+  if (titel) {
+    const e = _navEintraege(_ui.schritt).find(x => x.key === aktiv);
+    titel.innerHTML = `<span class="ui-eyebrow">${_ui.schritt === 'gutachten' ? 'Gutachten' : 'Auswertung'}${e?.gruppe ? ' · ' + _esc(e.gruppe) : ''}</span><h1>${_esc(e?.titel || '')}</h1>`;
+  }
 }
 
 // ── Projektseite ───────────────────────────────────────────────────────
@@ -304,6 +313,15 @@ export function uiMenuUmschalten(id) {
   m.hidden = !auf;
 }
 
+/** Bestand: zwischen Karte und Gebäudetabelle wechseln (Tabelle lässt die Arbeitsliste stehen). */
+export function uiGebaeudetabelle(an = true) {
+  _ui.bestandAnsicht = an ? 'tabelle' : 'karte';
+  _merken();
+  if (_ui.schritt !== 'bestand') { uiSchritt('bestand'); return; }
+  window.setViewMode?.(an ? 'gebaeude' : 'karte');
+  _lpKopfRendern();
+}
+
 export function uiWaermeTab(tab) {
   _ui.waermeTab = tab === 'erzeuger' ? 'erzeuger' : 'netz';
   _merken();
@@ -345,15 +363,21 @@ function _aufbau() {
     main.appendChild(v);
     // Stammdaten-Felder aus dem alten Gebiet-Reiter übernehmen (gleiche IDs, gleiche Handler)
     const ziel = v.querySelector('#ui-projekt-stammdaten');
-    const felder = document.getElementById('pd-kaserne-name')?.closest('div[style*="grid-template-columns"]');
-    if (felder) { ziel.appendChild(felder); felder.classList.add('ui-stammdaten-raster'); felder.removeAttribute('style'); }
-    const vorschau = document.getElementById('pd-projektname-preview');
-    if (vorschau) ziel.appendChild(vorschau);
+    const felder = document.getElementById('ui-stammdaten-vorlage');
+    if (felder) ziel.appendChild(felder);
     const ann = v.querySelector('#ui-projekt-annahmen');
     ann.innerHTML = `<p class="ui-text-muted">Emissionsfaktoren, Preise und Kostenansätze gelten für alle Varianten.</p>
       <div class="ui-knopfreihe"><button type="button" class="btn-secondary" data-click="toggleKennwertePanel()">Kennwerte bearbeiten</button>
       <button type="button" class="btn-secondary" data-click="toggleGrundlagenPanel()">Wärme-Grundlagen</button>
       <button type="button" class="btn-secondary" data-click="toggleStromPanel()">Strom-Grundlagen</button></div>`;
+  }
+  // Seitentitel über der Analyse-Ansicht (ersetzt die alte Überschrift „Systemanalyse“)
+  const av = document.getElementById('center-analyse-view');
+  if (av && !document.getElementById('ui-seitentitel')) {
+    const t = document.createElement('header');
+    t.id = 'ui-seitentitel'; t.className = 'ui-seitentitel';
+    av.insertBefore(t, av.firstChild);
+    [...av.querySelectorAll(':scope > div')].find(d => /Systemanalyse/.test(d.textContent) && d.querySelector('button'))?.style.setProperty('display', 'none', 'important');
   }
   // Kartenwerkzeuge (Adresssuche, Ebenen) in die Karte holen
   const tools = document.getElementById('ui-map-tools');
@@ -384,6 +408,7 @@ function _ereignisse() {
     if ((x = t.closest('[data-ui-fokus]'))) { const f = document.getElementById(x.dataset.uiFokus); f?.focus(); f?.scrollIntoView({ block: 'center' }); return; }
     if ((x = t.closest('[data-ui-sparte]'))) { uiSchritt('planung', { sparte: x.dataset.uiSparte }); return; }
     if ((x = t.closest('[data-ui-waerme]'))) { uiWaermeTab(x.dataset.uiWaerme); return; }
+    if ((x = t.closest('[data-ui-bestand]'))) { uiGebaeudetabelle(x.dataset.uiBestand === 'tabelle'); return; }
     if ((x = t.closest('[data-ui-abschnitt]'))) { _abschnittOeffnen(x.dataset.uiAbschnitt); return; }
     if ((x = t.closest('[data-ui-pal]'))) { _palAusfuehren(+x.dataset.uiPal); return; }
     if (t.id === 'ui-pal') { uiBefehlssucheSchliessen(); return; }

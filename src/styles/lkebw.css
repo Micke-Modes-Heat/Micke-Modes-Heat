@@ -261,7 +261,6 @@ body[data-ui-layout="nav"] #center-vergleich-view,body[data-ui-layout="nav"] #ce
 #center-analyse-view,#center-optimierung-view,#center-vergleich-view,#center-gebaeude-view{background:var(--bg);padding:20px 28px 40px}
 /* Rückwege „Zurück zur Karte“ entfallen: die Prozessleiste zeigt, wo man ist */
 button[data-click="setViewMode('karte')"]{display:none!important}
-#center-analyse-view>div:first-child{display:none}
 #analyse-view-tabs{display:none!important}
 body[data-ui-layout="nav"]:not([data-ui-abschnitt="uebersicht"]):not([data-ui-abschnitt="waerme"]):not([data-ui-abschnitt="wirtschaft"]):not([data-ui-abschnitt="emissionen"]) #analyse-kpi-bar{display:none}
 .analyse-kpi{background:var(--surface)!important;border:1px solid var(--border)!important;border-radius:var(--r-2)!important;box-shadow:none!important}
@@ -338,3 +337,29 @@ body>.ui-map-tools{display:none}
 #view-tabs{display:none!important}
 .ui-step{min-width:0}
 .ui-step small{white-space:nowrap}
+
+/* ── 5. Arbeitslisten (Bestand) ─────────────────────────────────────── */
+.ui-status-zeile{font-size:12.5px;color:var(--muted);margin:0 0 6px;min-height:18px}
+.ui-status-zeile:empty{display:none}
+.ui-gruppe{margin:0 0 18px}
+.ui-gruppe-titel{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:600;padding:0 0 6px;border-bottom:1px solid var(--border)}
+.ui-gruppe-unter{font-size:12px;color:var(--muted);font-weight:600;margin:12px 0 6px}
+.ui-aufgabe{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:18px 1fr 14px;gap:12px;align-items:center;width:100%;padding:10px 4px;border-bottom:1px solid var(--border)}
+.ui-aufgabe>svg:first-child{color:var(--muted)}
+.ui-aufgabe b{display:block;font-size:13.5px;font-weight:600;color:var(--text)}
+.ui-aufgabe small{display:block;font-size:12px;color:var(--muted);line-height:1.35;margin-top:1px}
+.ui-aufgabe>svg:last-child{color:var(--faint)}
+.ui-aufgabe:hover{background:var(--hover)}
+.ui-aufgabe:hover>svg:first-child,.ui-aufgabe.active>svg:first-child{color:var(--brand)}
+.ui-aufgabe.active{background:var(--brand-weak)}
+.ui-aufgabe:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.ui-spalte-voll{grid-column:1/-1}
+#lp-gebiet>#ui-stammdaten-vorlage{display:none}
+body.ui-schritt-bestand #center-gebaeude-view{left:var(--lp-w)}
+body.ui-schritt-bestand #left-panel.collapsed ~ #center-gebaeude-view{left:0}
+header.ui-seitentitel{all:unset;display:block;margin:0 0 18px}
+header.ui-seitentitel h1{margin:2px 0 0;font-size:24px;font-weight:700;line-height:1.2}
+header.ui-seitentitel:empty{display:none}
+
+/* ── 6. Papier: Seitenvorschauen bleiben in beiden Darstellungen hell ── */
+#gut-seite,.ui-papier{--text:#191D1A;--muted:#58615A;--faint:#89918A;--border:#DADFD9;--line-2:#C3C9C2;--surface:#FFFFFF;--surface2:#F6F7F5;--bg:#EEF0ED;--hover:#EEF3EC;--ink:25,29,26;--c-red:#B3261E;--c-orange:#B4531A;--c-amber:#8A6100;--c-green:#2E7D32;--c-teal:#00796B;--c-blue:#1E5E98;--c-violet:#7B3F9E;color-scheme:light}
