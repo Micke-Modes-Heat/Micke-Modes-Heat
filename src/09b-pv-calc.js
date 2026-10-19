@@ -168,6 +168,7 @@ export function calcStromPanel() {
   let pvEigenMwh = 0, pvEinspMwh = 0, bhkwEigenMwh = 0, bhkwEinspMwh = 0;
   let batLadeVerlustMwh = 0;
   let batDischargeKwh = 0;
+  let netzbezugSpitzeKw = 0; // höchster Stundenwert des Netzbezugs (Übersicht: Spitzenlast am Netzanschluss)
   // Aufschlüsselung Strom-Quellen pro Verbraucher (für Sankey)
   let pvToWp = 0, pvToSk = 0, pvToQuartier = 0;
   // PV-Strom an Wärmepumpen und Stromkessel: direkt (inkl. Überschuss → WP → Wärmespeicher) bzw. über die Batterie
@@ -267,6 +268,7 @@ export function calcStromPanel() {
       eigenverbrauchMwh += evThisH;
       einspeisungMwh    += rGen / 1000;
       netzbezugMwh      += rDem / 1000;
+      if (rDem > netzbezugSpitzeKw) netzbezugSpitzeKw = rDem;
       mEigen[_mIdx]     += evThisH;
       mEinsp[_mIdx]     += rGen / 1000;
       mNetz[_mIdx]      += rDem / 1000;
@@ -315,10 +317,12 @@ export function calcStromPanel() {
     let mi = 0;
     for (let t = 0; t < 8760; t++) {
       if (mi < 11 && t >= GL_MONTH_START[mi + 1]) mi++;
-      mNetz[mi] += ((window._wpElHourly ? window._wpElHourly[t] : 0)
-                 + (window._skElHourly ? window._skElHourly[t] : (skMwh * 1000 / 8760))
-                 + (qArrM ? qArrM[t] : (quartierMwh * 1000 / 8760))
-                 + (kaelteH ? (kaelteH[t] || 0) : 0)) / 1000;
+      const bezugKw = (window._wpElHourly ? window._wpElHourly[t] : 0)
+                    + (window._skElHourly ? window._skElHourly[t] : (skMwh * 1000 / 8760))
+                    + (qArrM ? qArrM[t] : (quartierMwh * 1000 / 8760))
+                    + (kaelteH ? (kaelteH[t] || 0) : 0);
+      mNetz[mi] += bezugKw / 1000;
+      if (bezugKw > netzbezugSpitzeKw) netzbezugSpitzeKw = bezugKw;
     }
   }
 
@@ -376,7 +380,9 @@ export function calcStromPanel() {
     quartierMwh: quartierMwh + kaelteMwh,
     // Grundlage „PV-Strom für Wärmepumpen anrechnen“ (Wirtschaftlichkeit, Optimierung)
     pvKwp: pvKwpGesamt, pvErtragMwh: pvMwh, pvSpez, batEntladungMwh: batDischargeKwh / 1000,
-    pvZuWpDirektMwh: pvZuWpDirekt, pvZuWpBatMwh: pvZuWpBat };
+    pvZuWpDirektMwh: pvZuWpDirekt, pvZuWpBatMwh: pvZuWpBat,
+    // Kennzahlen-Übersicht (51-kennzahlen.js): Bezug aus dem Netz und dessen höchster Stundenwert
+    netzbezugMwh, netzbezugSpitzeKw, gesamtMwh };
   // CO₂-Bilanz Strom (inkl. optionaler PV-Einspeisung-Gutschrift)
   const vEmF = calcVerdraengungEmF();
   const pvCo2GutschriftT = pvCo2Gutschrift && einspeisungMwh > 0 ? einspeisungMwh * vEmF / 1e3 : 0; // t CO₂/a — Einspeisung verdrängt Marginalstrom

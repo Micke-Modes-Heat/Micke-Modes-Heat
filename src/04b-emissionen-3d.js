@@ -1284,7 +1284,7 @@ export function renderAnalyseErzeugerTable() {
   // Kopf: Anteile an Leistung und Energie als 100-%-Balken — zeigt, wer Grund- und wer Spitzenlast fährt
   const anteile = keys.map(k => {
     const c = cfg[k] || {};
-    return { label: c.label || k, color: c.color || cvTok('text'), kw: c.leistungId ? (parseFloat(document.getElementById(c.leistungId)?.value) || 0) : 0, mwh: dispEn[k]?.waermeMwh || 0 };
+    return { label: c.label || DA_LABELS[k] || k, color: c.color || _daColor(k), kw: c.leistungId ? (parseFloat(document.getElementById(c.leistungId)?.value) || 0) : 0, mwh: dispEn[k]?.waermeMwh || 0 };
   });
   if (autoGkResult && autoGkResult.waermeMwh > 0) anteile.push({ label: 'Spitzenlast-Gaskessel (automatisch)', color: '#78909c', kw: autoGkResult.leistungKw || 0, mwh: autoGkResult.waermeMwh });
   const sumKw = anteile.reduce((s, a) => s + a.kw, 0), sumMwh = anteile.reduce((s, a) => s + a.mwh, 0);
@@ -1298,7 +1298,8 @@ export function renderAnalyseErzeugerTable() {
   keys.forEach(k => {
     const c = cfg[k] || {};
     const leistung = c.leistungId ? (parseFloat(document.getElementById(c.leistungId)?.value) || 0) : 0;
-    html += zeile(c.label || k, c.color || cvTok('text'), leistung, dispEn[k]?.waermeMwh || 0);
+    // ohne Eintrag in ERZEUGER_CFG (z. B. _thermSpeicher) den Anzeigenamen der Einsatzplanung nehmen, nie den Schlüssel
+    html += zeile(c.label || DA_LABELS[k] || k, c.color || _daColor(k), leistung, dispEn[k]?.waermeMwh || 0);
   });
   // Auto-GK wenn vorhanden
   if (autoGkResult && autoGkResult.waermeMwh > 0) {

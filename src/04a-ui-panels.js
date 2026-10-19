@@ -3,7 +3,6 @@
 
 import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, networkLocked, variantResults } from './01-globals-varianten.js';
 import { getWLD } from './02a-netz-physik.js';
-import { eeAnteilPct, lastMwh } from './lib/dispatch-energie.js';
 import { _invalidateStats, getComputedStats, getNutzungstypen, map } from './02b-gebaeude.js';
 import { setGebVisible, setMode, setSchallVisible, updateViz } from './02c-karte-werkzeuge.js';
 import { hidePanels, recalcNetz, setNetzVisible } from './03b-netz.js';
@@ -1943,35 +1942,8 @@ export function _restoreInlinePanels() {
 }
 
 export function refreshAnalyseView() {
-  // Populate KPIs from footer-status or system state
-  const ss = window.systemState;
-  const setKpi = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-
-  if (ss) {
-    setKpi('av-kpi-waerme', Math.round(ss.gesamtMwhMitNV || ss.nutzwaermeMwh || 0).toLocaleString('de-DE'));
-    setKpi('av-kpi-pmax', Math.round(ss.pMaxKw || 0).toLocaleString('de-DE'));
-  } else {
-    // Try from gebaeude
-    const tw = gebaeude.reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
-    const thl = gebaeude.reduce((s, g) => s + (parseFloat(g.heizlast) || 0), 0);
-    setKpi('av-kpi-waerme', Math.round(tw).toLocaleString('de-DE'));
-    setKpi('av-kpi-pmax', Math.round(thl).toLocaleString('de-DE'));
-  }
-
-  // WGK + EE from globals (zuverlässiger als DOM-Footer)
-  const _nf = (v, d = 0) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
-  setKpi('av-kpi-wgk', window._lastWgk ? _nf(window._lastWgk, 1) : '—');
-  // EE-Anteil direkt berechnen
-  // wie Variantenvergleich und Optimierer: Speicherwärme nach Herkunft der Ladung (lib/dispatch-energie.js)
-  const _den = window._dispatchEnergy || {};
-  const _eePct = lastMwh(_den) > 0 ? eeAnteilPct(_den) : null;
-  setKpi('av-kpi-ee', _eePct != null ? _nf(_eePct) : '—');
-  const _eeBar = document.getElementById('av-kpi-ee-bar');
-  if (_eeBar) { _eeBar.style.width = (_eePct != null ? Math.min(100, _eePct) : 0) + '%'; _eeBar.classList.toggle('ok', _eePct != null && _eePct >= 65); }
-
-  // CO₂: dieselbe Rechnung wie Variantenvergleich und Emissionen-Reiter (inkl. BHKW-Stromgutschrift)
-  const _co2Tot = Object.keys(_den).length && typeof window.co2EinsatzAktuell === 'function' ? window.co2EinsatzAktuell() : 0;
-  setKpi('av-kpi-co2', _co2Tot > 0.01 ? _nf(_co2Tot, _co2Tot < 100 ? 1 : 0) : '—');
+  // Kennzahlen Wärme · Strom · übergreifend (51-kennzahlen.js; über window, damit 51 nicht in den Importzyklus gerät)
+  window.kzUebersichtRendern?.(analyseCurrentSection);
 
   // Render the active section
   const grid    = document.getElementById('analyse-dispatch-grid');

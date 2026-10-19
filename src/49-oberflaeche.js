@@ -204,6 +204,7 @@ export function uiSchrittStatus() {
   const auswertung = {
     stufe: erg.includes('veraltet') ? 'veraltet' : erg.every(x => x === 'gerechnet') ? 'ok' : erg.includes('gerechnet') ? 'offen' : 'leer',
     text: wErg === 'offen' && sErg === 'offen' ? 'noch nicht gerechnet' : `Wärme ${wErg} · Strom ${sErg}`,
+    waerme: wErg, strom: sErg,   // je Sparte für die Kennzahlen-Übersicht (51-kennzahlen.js)
   };
   auswertung.detail = [
     wErg === 'veraltet' ? 'Wärme: Planung seit der Berechnung geändert — neu berechnen' : `Wärme: ${wErg === 'gerechnet' ? 'Ergebnisse liegen vor' : 'noch nicht berechnet'}`,

@@ -892,13 +892,8 @@
       <span style="font-size:14px;color:var(--accent);letter-spacing:.04em;">Systemanalyse</span>
       <button class="btn-secondary" data-click="setViewMode('karte')" style="font-size:12.5px;">← Zurück zur Karte</button>
     </div>
-    <div class="analyse-kpi-bar" id="analyse-kpi-bar">
-      <div class="analyse-kpi" style="--kpi-c:#ef8a3c;"><div class="analyse-kpi-lbl">Wärmebedarf <span class="htip" data-tip="Gesamter Wärmebedarf des Quartiers pro Jahr, inkl. Netzverluste.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-waerme">—</span><small>MWh/a</small></div></div>
-      <div class="analyse-kpi" style="--kpi-c:#e53935;"><div class="analyse-kpi-lbl">Spitzenlast <span class="htip" data-tip="Höchste Wärmeleistung, die in einer einzelnen Stunde des Jahres benötigt wird — bestimmt die nötige Erzeuger-Gesamtleistung.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-pmax">—</span><small>kW</small></div></div>
-      <div class="analyse-kpi" style="--kpi-c:#ffb300;"><div class="analyse-kpi-lbl">Wärmegestehungskosten <span class="htip" data-tip="Was kostet eine kWh Wärme aus dem Gesamtsystem? Enthält Investition, Wartung, Energie — abzgl. Stromerlöse.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-wgk">—</span><small>ct/kWh</small></div></div>
-      <div class="analyse-kpi" style="--kpi-c:#90a4ae;"><div class="analyse-kpi-lbl">CO₂-Emissionen <span class="htip" data-tip="Jährliche CO₂-Emissionen aller Erzeuger. Wärmepumpen: indirekt über Strommix. BHKW: Gutschrift für verdrängten Netzstrom.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-co2">—</span><small>t/a</small></div></div>
-      <div class="analyse-kpi" style="--kpi-c:#43a047;"><div class="analyse-kpi-lbl">Erneuerbarer Anteil <span class="htip" data-tip="Anteil erneuerbarer Energien an der Wärmeversorgung (WP, Pellets, HHS, Solarthermie, Speicher). Ziel: mind. 65 %.">?</span></div><div class="analyse-kpi-val"><span id="av-kpi-ee">—</span><small>%</small></div><div class="analyse-kpi-bar-mini"><i id="av-kpi-ee-bar"></i><b title="Ziel 65 %"></b></div></div>
-    </div>
+    <!-- Kennzahlen Wärme · Strom · übergreifend — gezeichnet von src/51-kennzahlen.js -->
+    <div class="av-kpi-gruppen" id="analyse-kpi-bar"></div>
     <div class="analyse-section-tabs" id="analyse-view-tabs">
       <button class="analyse-section-tab active" data-section="uebersicht" data-click="setAnalyseSection('uebersicht')">Übersicht</button>
       <button class="analyse-section-tab" data-section="waerme" data-click="setAnalyseSection('waerme')">Wärme</button>
