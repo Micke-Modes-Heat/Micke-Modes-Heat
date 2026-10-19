@@ -16,6 +16,8 @@ import { ASSETS } from './13a-assets-core.js';
 import { computeWindElHourly, getWindAssetsSummary } from './13q-wind-ertrag.js';
 import { PV_PFLICHT_LISTE, PV_PFLICHT_META } from './config/pv-pflicht-laender.js';
 import { pflichtCheck } from './lib/pv-pflicht.js';
+import { zlZusammensetzen } from './lib/zielausbau-last.js';
+import { pvnkAusTreppe, pvnkErzeugungsnetzEUR, pvnkKosten } from './lib/pv-netzkostenkurve.js';
 
 // Die App-Schicht der PV-Pflicht (09e-pv-pflicht.js) wird bewusst NICHT importiert:
 // sie hängt an 03c/02b/13a und würde über diesen Import in den Altkern-Zyklus
@@ -71,6 +73,8 @@ const PV_VARIANTEN_INFO = {
     herleitung:'Summe der Mindestbelegung aus der Bauordnung bzw. dem Solar-/Klimaschutzgesetz des Bundeslandes, gebäudescharf über die auslösenden Fälle (Neubau, grundlegende Dachsanierung).',
     bewertung: 'Untergrenze, kein Optimum: keine Variante darunter ist genehmigungsfähig. Wirtschaftlich liegt das Optimum meist deutlich darüber.',
   },
+  // Seit 10/2026 keine eigene Auslegung mehr, sondern Marke auf dem Ausbaupfad (100 kWp).
+  // Der Eintrag bleibt, damit ältere gespeicherte Ergebnisse bis zur Neuberechnung lesbar sind.
   'minimal': {
     label: 'Minimal',            farbe: '#78909c', icon: '▽',
     frage:     'Was ist der günstigste Einstieg?',
@@ -82,8 +86,8 @@ const PV_VARIANTEN_INFO = {
     label: 'Bestandsnetz',       farbe: '#26a69a', icon: '⌂',
     frage:     'Wie viel PV passt ohne Netzausbau?',
     ziel:      'Größte Anlage ohne neue Trafos oder Kabel',
-    herleitung:'Die Dachflächen werden — ertragsstärkste zuerst — belegt, bis im bestehenden Netz das erste Kabel oder der erste Trafo an seine Belastbarkeit stößt oder die Spannungsanhebung 3 % erreicht. Erlaubt sind nur EZA-Regler und Einspeisemanagement, keine Ertüchtigung.',
-    bewertung: 'Schnell umsetzbar, ohne Tiefbau und Netzplanung. Lässt das Potenzial hinter den Engpässen ungenutzt; welche Ertüchtigung den Rest zu welchen Kosten erschließt, zeigt die Ansicht „Netzaufnahme (Bestand)".',
+    herleitung:'Die Dachflächen des Anlagenpotenzials werden — ertragsstärkste zuerst — belegt, bis im Netz des Zieljahres das erste Kabel oder der erste Trafo an seine Belastbarkeit stößt oder die Spannungsanhebung 3 % erreicht. Erlaubt sind nur EZA-Regler und Einspeisemanagement, keine Ertüchtigung. Erste Stufe des Ausbaupfads.',
+    bewertung: 'Schnell umsetzbar, ohne Tiefbau und Netzplanung. Lässt das Potenzial hinter den Engpässen ungenutzt; welche Ertüchtigung den Rest zu welchen Kosten erschließt, zeigt der Ausbaupfad (1.2).',
   },
   // Nur vorhanden, wenn im Einlinienschema eine Belegung übernommen wurde (state.eigeneBelegung)
   'netz-eigen': {
@@ -93,6 +97,7 @@ const PV_VARIANTEN_INFO = {
     herleitung:'Belegung Dach für Dach von Hand im Einlinienschema festgelegt (Schieber je Dach bzw. Gesamtschieber). Beim Berechnen wird sie gegen das aktuelle Netzmodell geprüft: Kabel- und Trafo-Belastbarkeit sowie die Spannungsanhebung.',
     bewertung: 'Zeigt eine planerisch gewünschte Verteilung — etwa gleichmäßig über alle Gebäude statt ertragsstärkste Dächer zuerst. Hält sie das Netz ein, entfallen wie bei „Bestandsnetz" die Netzbau-Positionen; sonst steht ein Warnhinweis an der Variante und Ertüchtigungskosten sind nicht enthalten.',
   },
+  // Seit 10/2026 Marke „Eigenverbrauch ≥ 90 %" auf dem Ausbaupfad; Eintrag nur für ältere Ergebnisse.
   'ev-opt': {
     label: 'Eigenverbrauchs-optimiert', farbe: '#42a5f5', icon: '⊙',
     frage:     'Welche Größe verbraucht das Quartier selbst?',
@@ -104,8 +109,8 @@ const PV_VARIANTEN_INFO = {
     label: 'Wirtschaftlich optimiert', farbe: '#66bb6a', icon: '◆',
     frage:     'Was bringt den höchsten Jahresüberschuss?',
     ziel:      'Beste Wirtschaftlichkeit (max. Netto-Erlös/a)',
-    herleitung:'PV- und Batteriegröße werden gemeinsam variiert; gewählt wird die Kombination mit dem höchsten jährlichen Netto-Überschuss (Erlöse minus alle Jahreskosten inkl. Infrastruktur).',
-    bewertung: 'Betriebswirtschaftlich beste Variante. Etwas Abregelung wird bewusst hingenommen, weil ihre Vermeidung teurer wäre als der entgangene Erlös.',
+    herleitung:'PV- und Batteriegröße werden entlang des Ausbaupfads gemeinsam variiert; gewählt wird die Kombination mit dem höchsten jährlichen Netto-Überschuss (Erlöse minus alle Jahreskosten inkl. Netzertüchtigung nach der Ausbautreppe und Anschlusskosten).',
+    bewertung: 'Betriebswirtschaftlich beste Variante. Sie endet oft an einer Stufengrenze des Netzes — der nächste Ausbauschritt kostet mehr, als er einbringt. Etwas Abregelung wird bewusst hingenommen, weil ihre Vermeidung teurer wäre als der entgangene Erlös.',
   },
   'autarkie': {
     label: 'Autarkie-optimiert', farbe: '#4fc3f7', icon: '⬢',
@@ -118,8 +123,8 @@ const PV_VARIANTEN_INFO = {
     label: 'Maximaler PV-Ausbau', farbe: '#fdd835', icon: '△',
     frage:     'Wie viel PV passt maximal auf die Flächen?',
     ziel:      'Maximaler Stromertrag / Klimabeitrag',
-    herleitung:'Gesamtes verfügbares PV-Potenzial aller Anlagen — bewusst ohne Speicher, um das reine Dachpotenzial zu zeigen.',
-    bewertung: 'Maximaler Klimabeitrag und Ertrag, erfordert aber die höchste Netzanschluss-Infrastruktur; ohne Speicher wird ein Teil am Einspeiselimit abgeregelt.',
+    herleitung:'Gesamtes verfügbares PV-Potenzial aller Anlagen — Ende des Ausbaupfads, bewusst ohne Speicher, um das reine Dachpotenzial zu zeigen.',
+    bewertung: 'Maximaler Klimabeitrag und Ertrag, erfordert aber alle Netzertüchtigungen der Ausbautreppe und ggf. ein Erzeugungsnetz; ohne Speicher wird ein Teil am Einspeiselimit abgeregelt.',
   },
 };
 
@@ -194,8 +199,6 @@ function _pvBelegungInfo(id) {
 const _pvVarInfo = id => PV_VARIANTEN_INFO[id]
   || (/^fahrplan-\d+$/.test(id || '') ? PV_FAHRPLAN_INFO : /^strategie-\d+$/.test(id || '') ? PV_STRATEGIE_INFO
     : _pvBelegungInfo(id));
-/** Farbe je Fahrplanstufe: von Türkis (Stufe 1) nach Dunkelblau (letzte Stufe). */
-const _pvFahrplanFarbe = (k, n) => `hsl(${190 + Math.round(40 * (n > 1 ? (k - 1) / (n - 1) : 0))}, 70%, ${62 - Math.round(22 * (n > 1 ? (k - 1) / (n - 1) : 0))}%)`;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MODUL-STATE
@@ -215,7 +218,7 @@ function _pvStandardZustand() {
     eigeneBelegung: null,       // im Einlinienschema übernommene Belegung → Variante „netz-eigen"
                                 //   { belegung: {dachId: kWp}, summeKwp, stand,
                                 //     massnahmen: [{ elementId, label, investEUR }] }
-    fahrplanVarianten: null,    // Fahrplanstufen als Varianten 'fahrplan-<k>': { alle: bool, stufen: [k, …] }
+    fahrplanVarianten: null,    // bis 10/2026 Fahrplanstufen als Varianten 'fahrplan-<k>' — jetzt Stufen im Ausbaupfad, ungenutzt
     netzStrategien: null,       // Netzstrategien als Varianten 'strategie-<k>' (30-netzstrategie.js):
                                 //   [{ key, label, kwp, investEUR, abregelung, detail, stand, jahre }]
     belegungsVarianten: null,   // Dachbelegungen aus dem PV-Modus (36) als Varianten 'belegung-<nr>':
@@ -225,8 +228,13 @@ function _pvStandardZustand() {
     pflichtLand: '',            // Bundesland für die PV-Pflicht ('' = aus der Karte bestimmen)
     pflichtAnnahme: 'auto',     // 'auto' = nur geplante Neubauten/Dachsanierungen | 'alle' | 'aus'
     deckZu: { infra: true },    // eingeklappte Gruppen des Steuer-Decks (Infra: selten geändert)
-    demandMode: 'basis',        // 'basis' = nur Strom-Lastgang | 'gesamt' = + WP + SK | 'endausbau' = NAP-Endausbau-Lastgang
-    endausbauJahr: new Date().getFullYear() + 15, // Zieljahr für Endausbau-Lastgang
+    demandMode: 'ziel',         // 'ziel' = Zielausbau (Messung + Gebäude + Wärmekonzept + Laden, lib/zielausbau-last)
+                                //   | 'basis' = nur Messung. Bis 10/2026 auch 'gesamt'/'endausbau' (→ 'ziel', pvRestoreState)
+    zielJahr: null,             // Zieljahr des Zielausbaus; null = Endausbau der Bedarfsprognose (spätestes Maßnahmenjahr)
+    netzkurveAktiv: true,       // Netzbau aus der Ausbautreppe statt der kWp-Pauschalen (Trafo/MS-Trasse/Übergabe)
+    netzkurve: null,            // Netzkostenkurve des letzten Laufs (_pvNetzkurveRechnen)
+    netzkurveHinweis: '',       // warum pauschal / was das Netzmodell nicht kennt
+    ausbaupfad: null,           // Ausbaupfad des letzten Laufs (_pvAusbaupfad): Punkte + Marken
     feldWerte: {},              // gemerkte Eingabefelder (_pvMerkeFeld)
     ergebnisse: [],             // berechnete Varianten-Ergebnisse
     berechnet: false,
@@ -260,60 +268,43 @@ function annF(z, n) {
 }
 
 /**
- * Gibt den Lastgang zurück:
- * - 'basis': nur hochgeladener Strom-Lastgang
- * - 'gesamt': Strom + Wärmepumpen (_wpElHourly) + Stromkessel (_skElHourly)
- *
- * Bei 15-min-Basislast werden stündliche WP/SK-Werte 4× wiederholt (kW = gleich pro 15-min-Step).
+ * Lastgang der Simulation:
+ * - 'ziel' (Standard): Zielausbau = Messung + Gebäudezubau/Rückbau + Wärmekonzept + Ladeinfrastruktur
+ *   bis zum Zieljahr (lib/zielausbau-last, Stundenwerte je Baustein aus der NAP-Analyse 13o) —
+ *   dieselben Maßnahmen wie die Bedarfsprognose im Gutachten 5.3.
+ * - 'basis': nur der gemessene Lastgang (Referenzjahr der Strom-Grundlagen).
+ * Der Zielausbau wird zwischengespeichert (pvGetDemandH läuft in jeder Wirtschaftlichkeitsrechnung);
+ * pvBerechneAlle und ein Wechsel von Modus/Zieljahr rechnen ihn neu.
  */
+let _pvZielCache = null;   // { sig, res: zlZusammensetzen-Ergebnis + Metadaten }
+function _pvZielausbau(neu = false) {
+  const s = window._pvAnalyse;
+  const basis = window.elQuartierH15 || window.elQuartierH;
+  if (!basis) return null;
+  const sig = `${basis.length}|${basis === window.elQuartierH15 ? 15 : 60}|${window.elQuartierFilename || ''}|${s?.zielJahr ?? ''}`
+    + `|${basis[1000]}|${basis[Math.floor(basis.length / 2)]}|${basis[basis.length - 1000]}`;
+  if (!neu && _pvZielCache?.sig === sig) return _pvZielCache.res;
+  let b = null;
+  try { b = window.napZielausbauBeitraege?.(Number.isFinite(s?.zielJahr) ? s.zielJahr : null) || null; }
+  catch (err) { console.warn('[PV-Analyse] Zielausbau nicht berechenbar:', err); }
+  const dt = basis.length > 8784 ? 0.25 : 1;
+  const res = { ...zlZusammensetzen(basis, b?.beitraege || {}, { dt }),
+    zielJahr: b?.zielJahr ?? null, dataYear: b?.dataYear ?? null,
+    nNeubau: b?.nNeubau || 0, nAbriss: b?.nAbriss || 0, ersatzWaerme: b?.ersatzWaerme || [],
+    verfuegbar: !!b };
+  _pvZielCache = { sig, res };
+  return res;
+}
+/** Zusammensetzung des Zielausbaus (Datenbasis, Annahmenblatt, Gutachten) — null im Modus „nur Messung". */
+function pvZielausbauInfo() {
+  return (window._pvAnalyse?.demandMode || 'ziel') === 'ziel' ? _pvZielausbau() : null;
+}
+
 function pvGetDemandH() {
-  const mode  = window._pvAnalyse?.demandMode || 'basis';
-  const b15   = window.elQuartierH15;
-  const b1h   = window.elQuartierH;
-  const wpH   = window._wpElHourly;
-  const skH   = window._skElHourly;
-
-  // Endausbau-Modus: gemessener Lastgang + NAP-Maßnahmen (Neubau/Abriss) bis Zieljahr
-  if (mode === 'endausbau') {
-    const jahr = window._pvAnalyse?.endausbauJahr;
-    // Nur Verbrauch überlagern und auf ≥ 0 kappen: Eine negative Last (Rückspeisung
-    // anderer Erzeuger) zählte die Simulation als negativen Eigenverbrauch und als
-    // PV-Einspeisung — Folge waren EV 0 %, negative Autarkie und Verluste kleiner Varianten.
-    const result = window.napGetEndausbauLastgang?.(jahr, { nurLast: true });
-    if (result?.arr) {
-      const arr = result.arr;
-      for (let i = 0; i < arr.length; i++) if (arr[i] < 0) arr[i] = 0;
-      return arr;
-    }
-    return b15 || b1h || null; // Fallback auf Basis, falls keine NAP-Messung/Maßnahmen vorhanden
-  }
-
-  // Im Basis-Modus oder wenn keine Zusatzdaten vorhanden: nativen Lastgang zurückgeben
-  if (mode === 'basis' || (!wpH && !skH)) return b15 || b1h || null;
-
-  // Gesamt-Modus: Basis + WP + SK addieren
-  if (b15) {
-    const N = b15.length;
-    const out = new Float32Array(N);
-    for (let i = 0; i < N; i++) {
-      const h = Math.floor(i / 4);
-      out[i] = b15[i]
-        + (wpH && h < wpH.length ? wpH[h] : 0)
-        + (skH && h < skH.length ? skH[h] : 0);
-    }
-    return out;
-  }
-  if (b1h) {
-    const N = b1h.length;
-    const out = new Float32Array(N);
-    for (let i = 0; i < N; i++) {
-      out[i] = b1h[i]
-        + (wpH && i < wpH.length ? wpH[i] : 0)
-        + (skH && i < skH.length ? skH[i] : 0);
-    }
-    return out;
-  }
-  return null;
+  const mode = window._pvAnalyse?.demandMode || 'ziel';
+  const basis = window.elQuartierH15 || window.elQuartierH || null;
+  if (!basis || mode === 'basis') return basis;
+  return _pvZielausbau()?.arr || basis;
 }
 
 /** Jahressumme eines Float32Array in MWh (für Statusanzeige) */
@@ -569,13 +560,66 @@ function pvInfraStufeFuer(kwp) {
 // Variante „Bestandsnetz" ist genau so ausgelegt, dass sie ohne sie auskommt.
 const PV_INFRA_NETZBAU_IDS = new Set(['trafo', 'kabel_ms', 'ues']);
 
+/**
+ * Netzkostenkurve des letzten Rechenlaufs (lib/pv-netzkostenkurve) im Zustand `netzkurve`
+ * ({ kurve, faktor, jahr, … }, mit dem Projekt gespeichert — die Ansichten rechnen nach dem
+ * Laden dieselben Kosten). Gesetzt von pvBerechneAlle, solange es ein Netzmodell mit Trafo
+ * gibt. Bei netzkurveAktiv ersetzt sie die pauschalen Netzbau-Positionen der kWp-Stufen.
+ */
+const _pvNetzkurveAktiv = () => (window._pvAnalyse?.netzkurveAktiv !== false ? window._pvAnalyse?.netzkurve || null : null);
+
+/** Netzkostenkurve für das Anlagenpotenzial der Analyse neu rechnen (28, per window wegen des Importzyklus). */
+function _pvNetzkurveRechnen(maxKwp) {
+  const s = window._pvAnalyse;
+  s.netzkurve = null;
+  const st = _pvPotenzialStand();
+  const z = pvZielausbauInfo();
+  let na = null;
+  try {
+    na = window.pvnaKostenkurve?.({ jahr: z?.zielJahr ?? null, dachKwp: st ? st.dachKwp : null }) || null;
+  } catch (err) { console.warn('[PV-Analyse] Netzkostenkurve nicht berechenbar:', err); }
+  s.netzkurveHinweis = '';
+  if (!na || !(na.potenzialKwp > 0)) {
+    s.netzkurveHinweis = 'Kein Netzmodell mit Trafo und Dächern im Zieljahr — Anschlusskosten pauschal nach Anlagengröße.';
+    return null;
+  }
+  // nur Dächer mit Anbindung im Netzmodell zählen; nicht angebundene sind eine Erfassungslücke
+  const angebundenKwp = Math.max(0, na.potenzialKwp - (na.ohneAnschlussKwp || 0));
+  if (!(angebundenKwp > 0.5)) {
+    s.netzkurveHinweis = `Keines der ${na.ohneAnschlussDaecher || ''} Dächer ist im Netzmodell an einen Trafo angebunden (Kabel fehlen) — `
+      + 'Anschlusskosten deshalb pauschal nach Anlagengröße. Im Stromnetz die Gebäude bzw. Unterverteilungen an den Trafo anschließen.';
+    return null;
+  }
+  const restKw = Math.max(0, angebundenKwp - na.mitErtuechtigungKwp) * (na.einspFaktor || 0.8);
+  const katalog = window.nsKostenKatalog?.() || null;
+  const en = restKw > 0 && katalog ? pvnkErzeugungsnetzEUR(restKw, katalog, s.erzNetz?.laengeM > 0 ? s.erzNetz.laengeM : 300) : null;
+  const kurve = pvnkAusTreppe({ basisKwp: na.ohneErtuechtigungKwp, potenzialKwp: angebundenKwp, schritte: na.schritte },
+    en ? { rest: { investEUR: en.investEUR, label: `Erzeugungsnetz (${en.text})` } } : {});
+  // kWp der Analyse → kWp des Netzmodells (Freiflächen, nicht angebundene Dächer, Override):
+  // was das Modell nicht kennt, wird wie die angebundenen Dächer angesetzt
+  const faktor = maxKwp > 0 ? angebundenKwp / maxKwp : 1;
+  s.netzkurve = { kurve, faktor, jahr: na.jahr, erzeugungsnetz: en, potenzialAnalyseKwp: maxKwp,
+    potenzialNetzKwp: angebundenKwp, ohneAnschlussKwp: na.ohneAnschlussKwp || 0, ohneAnschlussDaecher: na.ohneAnschlussDaecher || 0,
+    einspFaktor: na.einspFaktor || 0.8, trafoAnzahl: na.trafoAnzahl,
+    quelle: st ? `Belegungsstand „${st.name}“` : 'PV im Projekt' };
+  if (na.ohneAnschlussKwp > 0.5) {
+    s.netzkurveHinweis = `${Math.round(na.ohneAnschlussKwp).toLocaleString('de-DE')} kWp auf ${na.ohneAnschlussDaecher} Dächern ohne Anbindung im Netzmodell — `
+      + 'wie die angebundenen Dächer angesetzt.';
+  }
+  return na;
+}
+
 function pvInfraKosten(pvKwp, pvErtragMwh, opts = {}) {
   const stufe = pvInfraStufeFuer(pvKwp);
   const konfig = window._pvAnalyse.infraKonfig;
   const alleItems = konfig?.[stufe.id] ?? stufe.items;
-  const items = opts.ohneNetzbau ? alleItems.filter(it => !PV_INFRA_NETZBAU_IDS.has(it.id)) : alleItems;
+  const nk = _pvNetzkurveAktiv();
+  // Netzbau kommt aus der Netzkostenkurve, wenn es sie gibt — die Pauschalen der kWp-Stufen
+  // (Trafo, MS-Trasse, Übergabestation) entfallen dann; Anmeldung, NA-Schutz, EZA-Regler und
+  // Direktvermarktung hängen weiter an der Anlagengröße.
+  const items = (opts.ohneNetzbau || nk) ? alleItems.filter(it => !PV_INFRA_NETZBAU_IDS.has(it.id)) : alleItems;
 
-  let investEUR = 0, jaehrlichEUR = 0;
+  let investEUR = 0, jaehrlichEUR = 0, netzKurveEUR = 0, netz = null;
   const detail = [];
 
   for (const item of items) {
@@ -587,8 +631,20 @@ function pvInfraKosten(pvKwp, pvErtragMwh, opts = {}) {
     }
   }
 
-  // Erzeugungsnetz (optional) — entfällt für die Bestandsnetz-Variante
-  if (window._pvAnalyse.erzNetzAktiv && !opts.ohneNetzbau) {
+  // Netzbau nach der Ausbautreppe: kleinste Stufe, deren Kapazität die Leistung trägt.
+  // Auslegungen mit eigener Netzrechnung (Ertüchtigung, Strategie) bringen ihre Kosten selbst mit.
+  if (nk && !opts.ohneNetzbau && !(opts.netzausbauEUR > 0)) {
+    netz = pvnkKosten(nk.kurve, pvKwp, nk.faktor);
+    netzKurveEUR = netz.investEUR;
+    if (netzKurveEUR > 0) {
+      investEUR += netzKurveEUR;
+      detail.push(netz.stufe > 0 ? `Netz Stufe ${netz.stufe}: ${netz.label}` : 'Netz');
+    }
+  }
+
+  // Erzeugungsnetz (optional) — entfällt für die Bestandsnetz-Variante; mit Netzkostenkurve
+  // steckt es dort schon im Rest über der letzten Ertüchtigungsstufe
+  if (window._pvAnalyse.erzNetzAktiv && !opts.ohneNetzbau && !nk) {
     const en = window._pvAnalyse.erzNetz;
     const kabelKosten = (en.laengeM || 0) * (en.preisPrM || 250);
     investEUR += kabelKosten + (en.schutzEUR || 5000);
@@ -607,7 +663,7 @@ function pvInfraKosten(pvKwp, pvErtragMwh, opts = {}) {
   jaehrlichEUR += window._pvAnalyse.mehrkosten.jaehrlichEUR || 0;
   if (window._pvAnalyse.mehrkosten.investEUR > 0) detail.push('Mehrkosten: ' + window._pvAnalyse.mehrkosten.label);
 
-  return { investEUR, jaehrlichEUR, stufeLabel: stufe.label, detail };
+  return { investEUR, jaehrlichEUR, stufeLabel: stufe.label, detail, netzKurveEUR, netz };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -912,28 +968,6 @@ function pvCalcEvOptKwp(demandH, pvProfile, napParams, params) {
   return Math.max(bestKwp, 10);
 }
 
-/**
- * EIGENVERBRAUCHS-OPTIMUM (quotenbasiert) — größte PV-Leistung, bei der die
- * Eigenverbrauchsquote noch ≥ minQuote bleibt (fast alles wird selbst verbraucht).
- * Bewusst ohne Batterie gerechnet → klar abgegrenzt von der wirtschaftlichen Optimierung.
- */
-function pvCalcEvQuoteKwp(demandH, pvProfile, napParams, minQuote = 90, spur = null) {
-  const spez   = pvGetSpez();
-  const maxKwp = pvGetMaxKwpFromAssets() || 500;
-  let best = 10;
-  for (let kwp = 10; kwp <= maxKwp; kwp += (kwp < 100 ? 10 : kwp < 500 ? 25 : 50)) {
-    const sim = pvNapSim(kwp, 0, demandH, pvProfile, napParams, 'none', null);
-    const ert = kwp * spez / 1000;
-    const q   = ert > 0 ? sim.eigenMwh / ert * 100 : 0;
-    // Auch der Punkt, der das Kriterium reißt, wird protokolliert — er ist in der
-    // Herleitungs-Grafik die Begründung für den Abbruch.
-    if (spur) spur.push({ kwp, quote: q });
-    if (q < minQuote) break;
-    best = kwp;
-  }
-  return best;
-}
-
 /** Gesamter Jahres-Strombedarf des aktiven Lastgangs in MWh/a. */
 function pvGesamtBedarfMwh() {
   const d = pvGetDemandH();
@@ -956,14 +990,18 @@ function pvGesamtBedarfMwh() {
  *
  * @returns {{ pvKwp:number, batKwh:number, strategie:string }}
  */
-function pvCalcWirtschaftOptimum(demandH, pvProfile, napParams, params, spotH, maxKwp, spur = null) {
+function pvCalcWirtschaftOptimum(demandH, pvProfile, napParams, params, spotH, maxKwp, spur = null, extraKwp = []) {
   const spez = pvGetSpez();
   const strat = spotH ? 'spot-dyn' : 'ev';
 
-  // PV-Stützstellen: fein bei kleinen Anlagen, gröber bei großen
-  const steps = [];
-  for (let k = 50; k <= maxKwp; k += (k < 200 ? 25 : k < 1000 ? 100 : 250)) steps.push(k);
-  if (steps.length === 0 || steps[steps.length - 1] !== Math.round(maxKwp)) steps.push(Math.round(maxKwp));
+  // PV-Stützstellen: fein bei kleinen Anlagen, gröber bei großen — dazu die Stufengrenzen
+  // der Netzkostenkurve (extraKwp): Das Optimum liegt oft genau an einer Grenze, kurz bevor
+  // die nächste Ertüchtigung fällig wird; das Raster allein würde sie verfehlen.
+  const roh = [];
+  for (let k = 50; k <= maxKwp; k += (k < 200 ? 25 : k < 1000 ? 100 : 250)) roh.push(k);
+  for (const k of extraKwp) if (k > 1 && k < maxKwp) roh.push(Math.floor(k));
+  roh.push(Math.round(maxKwp));
+  const steps = [...new Set(roh)].sort((a, b) => a - b);
 
   let best = null;
   for (const kwp of steps) {
@@ -1013,6 +1051,67 @@ function pvCalcAutarkieMax(maxKwp, demandH, pvProfile, napParams, spur = null) {
     bestBat = bat; prevAut = aut; prevBat = bat;
   }
   return { pvKwp: maxKwp, batKwh: bestBat, strategie: bestBat > 0 ? 'ev' : 'none' };
+}
+
+/**
+ * AUSBAUPFAD — alle PV-Größen von 0 bis zum Vollausbau in der Reihenfolge der Netztreppe
+ * (ertragsstärkste Dächer zuerst, dann die Ertüchtigung mit den meisten kWp je Euro).
+ * Ersetzt seit 10/2026 die Einzel-Auslegungen „Minimal", „Eigenverbrauchs-optimiert" und
+ * „Fahrplan Stufe k": Was diese beantworteten, steht als Marke auf derselben Kurve.
+ *
+ * Je Stützstelle: Simulation ohne Speicher + Wirtschaftlichkeit mit Netzkosten aus der
+ * Netzkostenkurve. Stützstellen zusätzlich an jeder Stufengrenze und knapp dahinter, damit
+ * die Sprünge sichtbar sind. „Mit Speicher" ist die Suchspur des wirtschaftlichen Optimums.
+ *
+ * @returns {{ punkte, mitSpeicher, stufen, marken, optOhneSpeicher, maxKwp, netzkurve, quelle, jahr, faktor, erzeugungsnetz }}
+ */
+function _pvAusbaupfadRechnen({ demandH, pvProfile, napParams, params, maxKwp, spurWirt, pflichtKwp = 0 }) {
+  const spez = pvGetSpez();
+  const nk = _pvNetzkurveAktiv();
+  const f = nk?.faktor || 1;
+  const stufen = nk ? nk.kurve.stufen.map(st => ({
+    stufe: st.stufe, bisKwp: Math.min(maxKwp, st.bisKwp / f), investEUR: st.investEUR, label: st.label,
+    zuwachsKwp: st.zuwachsKwp / f, eurProKwp: st.eurProKwp != null ? st.eurProKwp * f : null,
+    rest: !!st.rest, sammel: !!st.sammel,
+  })).filter((st, i, a) => i === 0 || st.bisKwp > a[i - 1].bisKwp + 0.05) : [];
+
+  const roh = [];
+  const n = 40;
+  for (let i = 1; i <= n; i++) roh.push(maxKwp * i / n);
+  const d = Math.max(0.5, maxKwp * 0.004);
+  const grenzen = [...stufen.map(st => st.bisKwp), ...PV_INFRA_STUFEN.map(st => st.bisKwp).filter(Number.isFinite)];
+  for (const g of grenzen) if (g > 0 && g < maxKwp) roh.push(g, g + d);
+  if (pflichtKwp > 0 && pflichtKwp < maxKwp) roh.push(pflichtKwp);
+  const kwps = [...new Set(roh.map(k => Math.round(Math.min(maxKwp, k) * 10) / 10))].filter(k => k > 0).sort((a, b) => a - b);
+
+  const punkte = kwps.map(kwp => {
+    const sim = pvNapSim(kwp, 0, demandH, pvProfile, napParams, 'none', null);
+    const w = pvWirtschaft(kwp, 0, sim, kwp * spez / 1000, params, 'none');
+    return { kwp, ueberschuss: -w.nettoJk, investGes: w.investGes, netzEUR: w.netzKurveEUR || 0, infraEUR: w.infraInvest,
+      evQuote: w.pvEigenQuote, autarkie: w.autarkie, abregelungPct: w.curtailQuote, stufe: w.netzStufe?.stufe ?? null };
+  });
+  const mitSpeicher = (spurWirt || []).map(p => ({ kwp: p.kwp, batKwh: p.bat, ueberschuss: p.ueber }))
+    .sort((a, b) => a.kwp - b.kwp);
+
+  const marken = [];
+  if (pflichtKwp > 0) marken.push({ id: 'pflicht', kwp: Math.min(pflichtKwp, maxKwp), label: 'PV-Pflicht', art: 'pflicht' });
+  if (maxKwp > 100) marken.push({ id: 'dv', kwp: 100, label: '100 kWp', art: 'regel',
+    text: 'ab 100 kWp Direktvermarktung und Fernsteuerbarkeit' });
+  // Eigenverbrauch ≥ 90 %: größte Stützstelle, bis zu der die Quote durchgehend hält
+  let ev90 = null;
+  for (const p of punkte) { if (p.evQuote >= 90) ev90 = p.kwp; else break; }
+  if (ev90) marken.push({ id: 'ev90', kwp: ev90, label: 'Eigenverbrauch ≥ 90 %', art: 'ev',
+    text: 'bis hierhin wird die Erzeugung zu mindestens 90 % vor Ort verbraucht' });
+  for (const st of stufen) {
+    if (st.bisKwp >= maxKwp - 0.5 && st.stufe > 0) continue;   // Ende = Vollausbau
+    marken.push({ id: 'stufe-' + st.stufe, kwp: st.bisKwp, art: st.stufe === 0 ? 'bestand' : 'stufe', investEUR: st.investEUR,
+      label: st.stufe === 0 ? 'Bestandsnetz' : `Stufe ${st.stufe}`, text: st.stufe === 0 ? 'Grenze des Netzes ohne Ertüchtigung' : st.label });
+  }
+  const opt = punkte.reduce((b, p) => (!b || p.ueberschuss > b.ueberschuss ? p : b), null);
+  return { punkte, mitSpeicher, stufen, marken,
+    optOhneSpeicher: opt ? { kwp: opt.kwp, ueberschuss: opt.ueberschuss, stufe: opt.stufe } : null,
+    maxKwp, netzkurve: !!nk, quelle: nk?.quelle || null, jahr: nk?.jahr || null, faktor: f,
+    erzeugungsnetz: nk?.erzeugungsnetz || null };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1086,7 +1185,7 @@ function pvWirtschaft(pvKwp, batKwh, simResult, pvErtragMwh, params, strategie, 
   const batJk  = batInvest * (annBat + (OPT_IH.bat || 0.01));
   // Gezielte Netzmaßnahmen (Ertüchtigung, Netzstrategie) über die Nutzungsdauer aus dem
   // Kostenkatalog der Netzstrategie annuisieren, die übrige Infrastruktur wie bisher über 20 a.
-  const netzA  = Math.min(infra.investEUR, params.netzausbauEUR || 0);
+  const netzA  = Math.min(infra.investEUR, (params.netzausbauEUR || 0) + (infra.netzKurveEUR || 0));
   const infJk  = (infra.investEUR - netzA) * annF(zins, 20) + netzA * annF(zins, params.netzLife || 20) + infra.jaehrlichEUR;
 
   // Windkraft: Erlöse fließen über simResult ein — dann müssen auch die Kosten rein,
@@ -1160,6 +1259,7 @@ function pvWirtschaft(pvKwp, batKwh, simResult, pvErtragMwh, params, strategie, 
 
   return {
     pvInvest, batInvest, infraInvest: infra.investEUR, infraLabel: infra.stufeLabel,
+    netzKurveEUR: infra.netzKurveEUR || 0, netzStufe: infra.netz,
     investGes, pvJk, batJk, infJk, gesamtJk, gesamtErloes, nettoJk,
     windKw, windInvest, windJk,
     eigenErsparnis, einspeisErloes, abregelVerlust,
@@ -1284,6 +1384,8 @@ function _pvBelegungSpeicher(bv, kwp, demandH, pvProfile, napParams, spotH, para
 
 export function pvBerechneAlle() {
   const state    = window._pvAnalyse;
+  // Zielausbau frisch (Maßnahmen, Wärmeberechnung oder Ladepunkte können sich geändert haben)
+  if ((state.demandMode || 'ziel') === 'ziel') _pvZielausbau(true);
   const demandH  = pvGetDemandH();
   if (!demandH) {
     alert('Kein Stromlastgang vorhanden. Bitte zuerst in ⚡ Strom-Grundlagen hochladen.');
@@ -1292,6 +1394,12 @@ export function pvBerechneAlle() {
 
   const pvProfile  = pvGetPvProfile();
   const maxKwp     = pvGetMaxKwpFromAssets();
+  // Netzkostenkurve für genau dieses Potenzial im Netz des Zieljahres — VOR allen
+  // Wirtschaftlichkeitsrechnungen, die sie über pvInfraKosten nutzen.
+  const naKurve    = _pvNetzkurveRechnen(maxKwp);
+  const nk         = _pvNetzkurveAktiv();
+  /** Stufengrenzen der Netzkostenkurve in kWp der Analyse. */
+  const stufenKwp  = nk ? nk.kurve.stufen.map(st => st.bisKwp / (nk.faktor || 1)).filter(k => k > 0 && k < maxKwp) : [];
   // NAP-Grenzen (null = kein Limit, Zahl = Limit in kW).
   // Priorität: PVA-Panel-Feld (was der Nutzer HIER editiert) → Strom-Grundlagen-DOM →
   // window-Global → State. In den PVA-Feldern bedeutet 0 = kein Limit (null).
@@ -1340,7 +1448,7 @@ export function pvBerechneAlle() {
 
   const ergebnisse = [];
   // Suchspuren der Optimierer — Grundlage der Ansicht „Herleitung"
-  const spurEv = [], spurWirt = [], spurAut = [];
+  const spurWirt = [], spurAut = [];
 
   const spez = pvGetSpez();
 
@@ -1377,25 +1485,26 @@ export function pvBerechneAlle() {
     }
   }
 
-  // ═══ 1) MINIMAL — schwellen-optimiert, knapp unter 100 kWp ═══════════════════
-  berechne('minimal', Math.min(99, maxKwp || 99), 0, 'none');
+  // „Minimal" (knapp unter 100 kWp) und die Fahrplanstufen sind seit 10/2026 keine eigenen
+  // Auslegungen mehr, sondern Marken auf dem Ausbaupfad (_pvAusbaupfadRechnen, Ansicht 1.2).
 
   // ═══ 1b) BESTANDSNETZ — größte PV ohne Kabel-/Trafo-Ertüchtigung ═══════════
-  //     Rechnet über die Netztopologie (28-pv-netzaufnahme.js, per window wegen
-  //     des Importzyklus 28 → 14b → 14a → 09d). Ohne Trafo im Netz entfällt sie.
-  //     Infrastrukturkosten ohne Netzbau-Positionen (Trafo, MS-Trasse, Übergabe).
-  let naBestand = null;
-  try { naBestand = window.pvnaFuerVariante?.() || null; }
-  catch (err) { console.warn('[PV-Analyse] Netzaufnahme fehlgeschlagen:', err); }
+  //     Erste Stufe der Netzkostenkurve: Ausbautreppe der Netzaufnahme (28, per window
+  //     wegen des Importzyklus 28 → 14b → 14a → 09d) für das Anlagenpotenzial der Analyse
+  //     im Netz des Zieljahres. Ohne Trafo im Netz entfällt sie.
+  const naBestand = naKurve;
+  const nkFaktor = state.netzkurve?.faktor || 1;
   if (naBestand && naBestand.ohneErtuechtigungKwp > 0) {
-    const kwpBn = maxKwp > 0 ? Math.min(naBestand.ohneErtuechtigungKwp, maxKwp) : naBestand.ohneErtuechtigungKwp;
+    const kwpBnRoh = naBestand.ohneErtuechtigungKwp / nkFaktor;
+    const kwpBn = maxKwp > 0 ? Math.min(kwpBnRoh, maxKwp) : kwpBnRoh;
     berechne('bestandsnetz', kwpBn, 0, 'none', '', { ohneNetzbau: true });
     const eBn = ergebnisse[ergebnisse.length - 1];
     if (eBn?.id === 'bestandsnetz') {
       eBn.netzaufnahme = naBestand;
       if (naBestand.restKwp > 0.5 || naBestand.mitErtuechtigungKwp > naBestand.ohneErtuechtigungKwp + 0.5) {
-        eBn.hinweis = `Mit Ertüchtigung (${Math.round(naBestand.investEUR / 1000)} T€) wären ${Math.round(naBestand.mitErtuechtigungKwp)} kWp anschließbar`
-          + (naBestand.restKwp > 0.5 ? `; ${Math.round(naBestand.restKwp)} kWp bleiben auch dann offen.` : '.');
+        eBn.hinweis = `Mit Ertüchtigung (${Math.round(naBestand.investEUR / 1000)} T€) wären ${Math.round(Math.min(maxKwp || Infinity, naBestand.mitErtuechtigungKwp / nkFaktor))} kWp anschließbar`
+          + (naBestand.restKwp > 0.5 ? `; ${Math.round(naBestand.restKwp / nkFaktor)} kWp brauchen ein Erzeugungsnetz` : '')
+          + ' — Stufen im Ausbaupfad (1.2).';
       }
       const ab = naBestand.abregelung;
       if (ab && ab.vollKwp > kwpBn + 0.5) {
@@ -1446,37 +1555,6 @@ export function pvBerechneAlle() {
     }
   }
 
-  // ═══ 1d) FAHRPLANSTUFEN — Bestandsnetz + Ertüchtigungen der Stufen 1…k ═══════
-  //     Stufen aus der aktuellen Ausbautreppe (pvnaFuerVariante hat eben neu gerechnet).
-  //     Invest = kumulierte Ertüchtigung; die pauschalen Netzbau-Positionen entfallen.
-  const fv = state.fahrplanVarianten;
-  if (fv && (fv.alle || fv.stufen?.length)) {
-    let stufen = null;
-    try { stufen = window.pvnaFahrplanStufen?.() || null; }
-    catch (err) { console.warn('[PV-Analyse] Fahrplanstufen nicht verfügbar:', err); }
-    const n = stufen?.length || 0;
-    for (const st of stufen || []) {
-      if (!fv.alle && !fv.stufen.includes(st.stufe)) continue;
-      const kwpS = maxKwp > 0 ? Math.min(st.summeKwp, maxKwp) : st.summeKwp;
-      berechne(`fahrplan-${st.stufe}`, kwpS, 0, 'none', ` ${st.stufe}`, {
-        ohneNetzbau: true, netzausbauEUR: st.kumInvestEUR,
-        netzausbauLabel: `Netzertüchtigung Fahrplan Stufe${st.stufe > 1 ? 'n 1–' : ' '}${st.stufe}`,
-      });
-      const eF = ergebnisse[ergebnisse.length - 1];
-      if (eF?.id !== `fahrplan-${st.stufe}`) continue;
-      eF.farbe = _pvFahrplanFarbe(st.stufe, n);
-      eF.fahrplan = st;
-      eF.hinweis = `Stufe ${st.stufe}${st.sammel ? ' (Sammelstufe)' : ''}: ${st.massnahmen.map(m => m.label).join('; ')} — `
-        + `+${Math.round(st.zuwachsKwp)} kWp für ${Math.round(st.investEUR / 1000)} T€ (${Math.round(st.eurProKwp || 0)} €/kWp); `
-        + `kumuliert ${st.anzahlKum} Maßnahme${st.anzahlKum > 1 ? 'n' : ''}, ${Math.round(st.kumInvestEUR / 1000)} T€.`
-        + (kwpS < st.summeKwp - 0.5 ? ` Auf das Anlagenpotenzial von ${Math.round(maxKwp)} kWp begrenzt.` : '');
-    }
-    if (!fv.alle) {
-      const fehlt = fv.stufen.filter(k => k > n);
-      if (fehlt.length) console.warn(`[PV-Analyse] Fahrplanstufe(n) ${fehlt.join(', ')} gibt es nicht mehr (Fahrplan hat ${n} Stufen).`);
-    }
-  }
-
   // ═══ 1e) NETZSTRATEGIEN — im Netzstrategie-Editor gewählte Strategien ═══════
   //     Momentaufnahme aus 30-netzstrategie.js: kWp und Netz-Invest der Strategie.
   //     Die Variantenrechnung nutzt das gemeinsame Profil der Liegenschaft; eine
@@ -1496,15 +1574,23 @@ export function pvBerechneAlle() {
       + (st.abregelung ? ' Enthält Gruppen mit Abregelung je Dach — die Auslegungsrechnung setzt die volle Leistung ohne diese Kappung an, der Ertrag ist hier eher zu hoch.' : '');
   });
 
-  // ═══ 2) EIGENVERBRAUCHS-OPTIMIERT — größte PV mit ≥90 % Eigenverbrauch + EV-Batterie
-  const evKwp = pvCalcEvQuoteKwp(demandH, pvProfile, napParams, 90, spurEv);
-  const evBat = pvOptBat(evKwp, demandH, pvProfile, napParams, 'ev', null, params);
-  berechne('ev-opt', evKwp, evBat, evBat > 0 ? 'ev' : 'none');
+  // „Eigenverbrauchs-optimiert" ist seit 10/2026 die Marke „Eigenverbrauch ≥ 90 %" auf dem Ausbaupfad.
 
   // ═══ 3) WIRTSCHAFTLICH OPTIMIERT — gemeinsame (PV × Batterie)-Optimierung ═════
+  //     entlang des Ausbaupfads: Netzkosten aus der Netzkostenkurve, Stufengrenzen als Stützstellen
   if (maxKwp > 0) {
-    const wo = pvCalcWirtschaftOptimum(demandH, pvProfile, napParams, params, spotH, maxKwp, spurWirt);
+    const wo = pvCalcWirtschaftOptimum(demandH, pvProfile, napParams, params, spotH, maxKwp, spurWirt, stufenKwp);
     berechne('wirt-opt', wo.pvKwp, wo.batKwh, wo.strategie);
+    const eW = ergebnisse[ergebnisse.length - 1];
+    const ns = eW?.id === 'wirt-opt' ? eW.wirt.netzStufe : null;
+    if (nk && ns) {
+      const stufen = nk.kurve.stufen;
+      const naechste = stufen.find(st => st.stufe === ns.stufe + 1);
+      const t = x => Math.round(x / 1000).toLocaleString('de-DE');
+      eW.hinweis = (ns.stufe === 0 ? 'Kommt ohne Netzertüchtigung aus.'
+        : `Netz bis Stufe ${ns.stufe} (${ns.label}), Netzinvest ${t(ns.investEUR)} T€.`)
+        + (naechste ? ` Weiterer Ausbau senkt den Jahresüberschuss; die nächste Netzstufe wäre ${naechste.label} (+${Math.round(naechste.zuwachsKwp / (nk.faktor || 1)).toLocaleString('de-DE')} kWp für ${t(naechste.investEUR - ns.investEUR)} T€).` : '');
+    }
   }
 
   // ═══ 4) AUTARKIE-OPTIMIERT — volle PV + Batterie bis zur Sättigung ═══════════
@@ -1642,6 +1728,12 @@ export function pvBerechneAlle() {
     })),
   };
 
+  // ── Ausbaupfad: alle Größen von 0 bis zum Vollausbau entlang der Netztreppe ──
+  state.ausbaupfad = maxKwp > 0
+    ? _pvAusbaupfadRechnen({ demandH, pvProfile, napParams, params, maxKwp, spurWirt, ergebnisse,
+        pflichtKwp: pflicht.bezifferbar ? pflicht.kwp : 0 })
+    : null;
+
   // ── Herleitung je Variante: Kriterium + Suchspur für die Grafik ─────────
   const eMin = ergebnisse.find(e => e.id === 'minimal');
   const eMax = ergebnisse.find(e => e.id === 'max-pv');
@@ -1663,7 +1755,7 @@ export function pvBerechneAlle() {
       grenzeKwp: 100,
     } : null,
     bestandsnetz: naBestand ? { ...naBestand } : null,
-    evOpt: spurEv.length ? { punkte: spurEv, schwelle: 90, gewaehlt: evKwp } : null,
+    evOpt: null,   // seit 10/2026 Marke auf dem Ausbaupfad (state.ausbaupfad)
     wirtOpt: spurWirt.length ? { punkte: spurWirt } : null,
     autarkie: spurAut.length > 1 ? {
       punkte: spurAut, schwelle: 0.3,
@@ -1698,7 +1790,14 @@ export function pvBerechneAlle() {
   // Stand zeigt wie Tabelle und Abbildungen, nicht zwischenzeitlich geänderte Eingaben.
   state.basis = {
     bedarfMwh: pvGesamtBedarfMwh(), dt: pvGetDt(), lastgangDatei: window.elQuartierFilename || '',
-    lastfall: state.demandMode || 'basis', endausbauJahr: state.endausbauJahr,
+    lastfall: state.demandMode || 'ziel',
+    zielausbau: (() => {
+      const z = pvZielausbauInfo();
+      return z ? { zielJahr: z.zielJahr, dataYear: z.dataYear, basisMwh: z.basisMwh, summeMwh: z.summeMwh,
+        bilanz: z.bilanz.map(b => ({ key: b.key, label: b.label, mwh: b.mwh })), ersatzWaerme: z.ersatzWaerme } : null;
+    })(),
+    netzkurve: state.netzkurve ? { quelle: state.netzkurve.quelle, jahr: state.netzkurve.jahr,
+      stufen: state.ausbaupfad?.stufen?.map(st => ({ stufe: st.stufe, bisKwp: st.bisKwp, label: st.label, rest: st.rest })) || [] } : null,
     spezKwhKwp: spez, profil: state.lastProfilQuelle,
     potenzialKwp: maxKwp, potenzialOverride: state.pvMaxKwpOverride > 0, quellen: bd,
     napEinspKw: _napEinsp, skKVA, uBudgetPct,
@@ -1859,8 +1958,9 @@ const PVA_VIEWS = [
   { id:'netzaufnahme', kap:'1', nr:'1.1', label:'Netzaufnahme im Bestand', el:'pva-netzaufnahme',
     ohneBerechnung:true, render:() => window.pvnaRender?.() },
   // Das Wind-Ausbau-Diagramm hat einen eigenen Container im selben Abschnitt.
-  { id:'abb2', kap:'1', nr:'1.2', label:'Ausbau-Grenznutzen', el:'pva-chart-grenznutzen', extraEl:['pva-chart-wind-grenz'], args:true,
-    render:(v, a) => { renderGrenznutzenChart(a.demandH, a.pvProfile, a.napParams, a.params, v);
+  // 1.2 Ausbaupfad (seit 10/2026, ersetzt den Ausbau-Grenznutzen mit kWp-Pauschalstufen) — View-ID bleibt 'abb2'
+  { id:'abb2', kap:'1', nr:'1.2', label:'Ausbaupfad', el:'pva-chart-grenznutzen', extraEl:['pva-chart-wind-grenz'], args:true,
+    render:(v, a) => { renderAusbaupfad(v);
                        renderWindGrenznutzenChart(a.demandH, a.pvProfile, a.napParams, a.params, v); } },
   // 2 — Welche Auslegung?
   { id:'tabelle', fokus:true,    kap:'2', nr:'2.1', label:'Auslegungen im Vergleich', el:'pva-result-tabelle', render:(v) => renderVariantenTabelle(v) },
@@ -2212,6 +2312,54 @@ function _pvaWerkzeugHtml() {
 // ── Datenbasis-Leiste: womit wird gerade gerechnet? ──────────────────────────
 // Die vier Größen, an denen jedes Ergebnis hängt, immer sichtbar über der
 // Auswertung — vorher musste man sie aus vier verschiedenen Panels zusammensuchen.
+/** Karte 02: Zusammensetzung des Zielausbaus mit Zieljahr (bzw. Hinweis „nur Messung"). */
+function _pvaZielausbauHtml() {
+  const s = window._pvAnalyse;
+  if (!(window.elQuartierH15 || window.elQuartierH)) return '';
+  const f0 = x => Math.round(x).toLocaleString('de-DE');
+  const klein = t => `<div style="font-size:12px;color:var(--muted);line-height:1.5;">${t}</div>`;
+  if ((s.demandMode || 'ziel') === 'basis') {
+    return klein('Gerechnet wird nur mit dem gemessenen Lastgang — Gebäudezubau, Wärmepumpen und Ladepunkte des Zielausbaus fehlen. Zum Vergleich, nicht fürs Gutachten.');
+  }
+  const z = _pvZielausbau();
+  if (!z) return '';
+  const zeile = (label, mwh, stark) => `<tr><td style="padding:2px 0;color:${stark ? 'var(--text)' : 'var(--muted)'};${stark ? 'font-weight:600;' : ''}">${label}</td>
+    <td style="padding:2px 0;text-align:right;font-family:'DM Mono',monospace;color:var(--text);${stark ? 'font-weight:600;' : ''}">${mwh}</td></tr>`;
+  const vz = x => (x >= 0 ? '+ ' : '− ') + f0(Math.abs(x));
+  const endausbau = z.zielJahr ?? '';
+  return `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="font-size:12px;color:var(--muted);white-space:nowrap;">Zieljahr</span>
+      <input id="pva-ziel-jahr" type="number" min="2000" max="2100" step="1" value="${Number.isFinite(s.zielJahr) ? s.zielJahr : ''}"
+        placeholder="${endausbau ? 'Endausbau ' + endausbau : 'Endausbau'}" data-ohne-stale="1"
+        style="width:120px;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12.5px;"
+        data-change="pvaZieljahrSetzen(this.value)"/>
+      <span style="font-size:12px;color:var(--muted);">${Number.isFinite(s.zielJahr) ? '' : 'leer = Endausbau der Bedarfsprognose'}</span>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      ${zeile(`Messung${z.dataYear ? ' ' + z.dataYear : ''}`, f0(z.basisMwh) + ' MWh/a')}
+      ${z.bilanz.map(b => zeile(escHtml(b.label), vz(b.mwh) + ' MWh/a')).join('')}
+      ${z.gekapptMwh > 0.5 ? zeile('Rückbau über der Restlast (gekappt)', '+ ' + f0(z.gekapptMwh) + ' MWh/a') : ''}
+      <tr><td colspan="2" style="border-top:1px solid var(--border);padding:0;"></td></tr>
+      ${zeile(`Zielausbau${z.zielJahr ? ' ' + z.zielJahr : ''}`, f0(z.summeMwh) + ' MWh/a', true)}
+    </table>
+    ${!z.verfuegbar ? klein('<span style="color:var(--c-orange);">NAP-Analyse nicht geladen — nur Messung.</span>')
+      : !z.bilanz.length ? klein('Keine Maßnahmen nach dem Messjahr (Bau-/Abrissjahr an Verbrauchern, Wärmeerzeugern, Ladepunkten) — der Zielausbau entspricht der Messung.')
+      : klein(`${z.nNeubau} neue, ${z.nAbriss} rückgebaute Anlagen — Auswahl wie die Bedarfsprognose (Haken in der NAP-Analyse).`)}
+    ${z.ersatzWaerme.length ? klein(`<span style="color:var(--c-orange);">Ohne Stundenwerte der Wärmeberechnung, mit Ersatzprofil (2.000 Volllaststunden): ${escHtml(z.ersatzWaerme.join(', '))}.</span>`) : ''}`;
+}
+
+/** Zieljahr des Zielausbaus setzen ('' = Endausbau der Bedarfsprognose). */
+window.pvaZieljahrSetzen = function pvaZieljahrSetzen(wert) {
+  const j = parseInt(wert);
+  window._pvAnalyse.zielJahr = Number.isFinite(j) ? j : null;
+  _pvZielCache = null;
+  const el = document.getElementById('pva-zielausbau-info');
+  if (el) el.innerHTML = _pvaZielausbauHtml();
+  _pvaRefreshDatenbasis();
+  pvMarkStale();
+};
+
 function _pvaDatenbasisHtml() {
   const karte = (punkt, titel, wert, zeilen, akzent) => `
     <div style="background:var(--surface2);border:1px solid var(--border);${akzent ? 'border-left:2px solid ' + akzent + ';' : ''}
@@ -2228,11 +2376,14 @@ function _pvaDatenbasisHtml() {
   const a = window.elQuartierH15 || window.elQuartierH;
   let lastWert = '—', lastSub = '<span style="color:var(--c-red);">nicht geladen — unten hochladen</span>', lastDot = '#ef5350';
   if (a) {
+    const z = pvZielausbauInfo();
     let sum = 0; for (let i = 0; i < a.length; i++) sum += a[i];
-    const mwh = (sum * (a.length > 9000 ? 0.25 : 1) / 1000).toFixed(0);
-    const modus = window._pvAnalyse.demandMode || 'basis';
-    const modusTxt = modus === 'gesamt' ? '+ Wärmepumpen / Stromkessel'
-                   : modus === 'endausbau' ? 'Endausbau ' + (window._pvAnalyse.endausbauJahr || '') : 'nur Strom';
+    const messMwh = sum * (a.length > 9000 ? 0.25 : 1) / 1000;
+    const mwh = Math.round(z ? z.summeMwh : messMwh).toLocaleString('de-DE');
+    const modusTxt = z
+      ? `Zielausbau${z.zielJahr ? ' ' + z.zielJahr : ''} — Messung ${Math.round(messMwh).toLocaleString('de-DE')} MWh/a`
+        + (z.bilanz.length ? ` ${z.summeMwh >= messMwh ? '+' : '−'} ${Math.round(Math.abs(z.summeMwh - messMwh)).toLocaleString('de-DE')} MWh/a Zubau` : ', keine Maßnahmen')
+      : 'nur Messung (ohne Zielausbau)';
     lastWert = mwh + ' MWh/a'; lastDot = '#66bb6a';
     lastSub = `${escHtml(window.elQuartierFilename || 'Lastgang')} · ${a.length > 9000 ? '15-min' : 'stündlich'} · ${a.length.toLocaleString('de-DE')} Werte<br>${modusTxt}`;
   }
@@ -2307,7 +2458,7 @@ function renderAnnahmenblatt(varianten) {
   const bd   = pvGetAssetBreakdown();
   const dem  = pvGetDemandH();
   const bedarf = pvGesamtBedarfMwh();
-  const modus = s.demandMode || 'basis';
+  const modus = s.demandMode || 'ziel';
   const napE = window.elNapMaxEinspKw, napB = window.elNapMaxBezugKw;
   const abwPreis = szenario && Math.abs(p.pStrom - szenario.stromCtKwh) > 0.01;
   const abwZins  = szenario && Math.abs(p.zins * 100 - szenario.kapitalzinsPct) > 0.01;
@@ -2348,10 +2499,16 @@ function renderAnnahmenblatt(varianten) {
       ${kapitel('1 · Datenbasis')}
       ${zeile('Stromlastgang', dem ? num(bedarf) + ' MWh/a' : '—',
               dem ? `${escHtml(window.elQuartierFilename || 'Upload')} · ${pvGetDt() === 1 ? 'stündlich' : '15-min'}, ${pvGetN().toLocaleString('de-DE')} Werte` : 'nicht geladen')}
-      ${zeile('Lastfall', modus === 'gesamt' ? 'Strom + Wärmepumpen' : modus === 'endausbau' ? 'Endausbau ' + (s.endausbauJahr || '') : 'nur Strom',
-              modus === 'gesamt' ? 'inkl. WP-/Stromkesselstrom aus der Wärmesimulation'
-              : modus === 'endausbau' ? 'NAP-Messung plus Neubau-/Abrissmaßnahmen bis zum Zieljahr'
-              : 'gemessener Quartierlastgang ohne Zusatzlasten')}
+      ${(() => {
+        const z = modus === 'ziel' ? _pvZielausbau() : null;
+        if (!z) return zeile('Lastfall', 'nur Messung', 'gemessener Lastgang des Referenzjahres ohne Zielausbau', true);
+        return zeile('Lastfall', 'Zielausbau' + (z.zielJahr ? ' ' + z.zielJahr : ''),
+                'Messung plus Maßnahmen der Bedarfsprognose (Gutachten 5.3) bis zum Zieljahr')
+          + zeile('— Messung', num(z.basisMwh) + ' MWh/a', escHtml(window.elQuartierFilename || 'Referenzjahr'))
+          + z.bilanz.map(b => zeile('— ' + escHtml(b.label), (b.mwh >= 0 ? '+' : '−') + num(Math.abs(b.mwh)) + ' MWh/a',
+              b.key === 'waerme' ? 'Stundenwerte der Wärmeberechnung' + (z.ersatzWaerme.length ? `; Ersatzprofil (2.000 h) für ${escHtml(z.ersatzWaerme.join(', '))}` : '')
+              : b.key === 'lade' ? 'Ladeprofil je Ladepark' : 'Lastprofil (SLP/Profil) der Verbraucher')).join('');
+      })()}
       ${zeile('Erzeugungsprofil', escHtml(q.label), escHtml(q.quelle) + (q.detail ? ' · ' + escHtml(q.detail) : ''))}
       ${zeile('— Spitzenleistung', num(kenn.peakKwPerKwp, 2) + ' kW/kWp', 'ohne Wechselrichter-Kappung — konservative Obergrenze für die Netzbeurteilung')}
       ${zeile('— Spezifischer Ertrag', num(pvGetSpez()) + ' kWh/kWp·a', 'Ausrichtungs-Mix der erfassten Anlagen')}
@@ -2371,6 +2528,11 @@ function renderAnnahmenblatt(varianten) {
       ${zeile('CO₂-Verdrängungsfaktor', num(p.co2Faktor) + ' g/kWh', 'Strommix-Pfad, Mittel über die Nutzungsdauer')}
 
       ${kapitel('3 · Netzanschluss')}
+      ${s.netzkurve
+        ? zeile('Netzkosten', 'Ausbautreppe', `${escHtml(s.netzkurve.quelle)} im Netz ${s.netzkurve.jahr || ''}: ${Math.max(0, (s.netzkurve.kurve?.stufen?.length || 1) - 1)} Stufe(n) Ertüchtigung`
+            + (s.netzkurve.erzeugungsnetz ? ', Rest als Erzeugungsnetz (Kostenkatalog Netzstrategie)' : '') + ' — ersetzt die Pauschalen für Trafo, MS-Trasse und Übergabestation'
+            + (s.netzkurveHinweis ? '. ' + escHtml(s.netzkurveHinweis) : ''), !!s.netzkurveHinweis)
+        : zeile('Netzkosten', 'pauschal nach kWp', escHtml(s.netzkurveHinweis || 'Infrastrukturstufen (Kapitel 0, Karte 06)'), true)}
       ${zeile('Max. Einspeiseleistung', napE ? num(napE) + ' kW' : 'unbegrenzt', napE ? 'Netzanschluss-Zusage / VNB-Auskunft' : 'keine Begrenzung gesetzt — Abregelung wird nicht ausgewiesen')}
       ${zeile('Max. Bezugsleistung', napB ? num(napB) + ' kVA' : 'unbegrenzt', napB ? 'vereinbarte Anschlussleistung laut Netzanschlussvertrag' : 'keine Begrenzung gesetzt')}
       ${zeile('Kurzschlussleistung S_k″', s.skKVA ? num(s.skKVA) + ' kVA' : 'unbekannt', s.skKVA ? 'VNB-Netzauskunft' : 'ohne S_k″ greift nur das Leistungskriterium')}
@@ -2513,15 +2675,11 @@ function _pvBuildPanelHtml() {
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
           <span style="font-family:'DM Mono',monospace;font-size:12.5px;color:var(--accent);">02</span>
           <div style="font-size:12px;font-weight:600;color:var(--text);">Stromlastgang</div>
-          <span class="htip" data-tip="Welche Lasten werden simuliert?&#10;· Nur Strom: hochgeladener Quartierlastgang&#10;· + Wärmepumpen: addiert WP- und Stromkesselstrom aus der Wärmesimulation&#10;· Endausbau: NAP-Messung plus Neubau-/Abrissmaßnahmen bis zum Planungsjahr">?</span>
+          <span class="htip" data-tip="Gegen welche Last wird die PV ausgelegt?&#10;· Zielausbau (Standard): Messung plus Gebäudezubau/-rückbau, neue Wärmepumpen und Stromkessel (Stundenwerte der Wärmeberechnung) und neue Ladepunkte bis zum Zieljahr — dieselben Maßnahmen wie die Bedarfsprognose (NAP-Analyse, Gutachten 5.3)&#10;· Nur Messung: der gemessene Lastgang des Referenzjahres">?</span>
         </div>
         ${(() => {
           const hasBase = !!(window.elQuartierH15 || window.elQuartierH);
-          const hasWP   = !!(window._wpElHourly || window._skElHourly);
-          const mode    = window._pvAnalyse.demandMode || 'basis';
-          const hasNap  = !!window.napHasMeasuredData?.();
-          const curYear = globalYear || new Date().getFullYear();
-          const zj      = window._pvAnalyse.endausbauJahr || (curYear + 15);
+          const mode    = window._pvAnalyse.demandMode || 'ziel';
           const btn = (id, label, aktiv, gesperrt) =>
             `<button data-pva-dm="${id}" ${gesperrt ? 'disabled' : ''}
               style="flex:1;padding:6px;border-radius:5px;cursor:${gesperrt ? 'default' : 'pointer'};font-size:12.5px;font-weight:500;
@@ -2541,17 +2699,10 @@ function _pvBuildPanelHtml() {
           </div>
           <input type="file" id="pva-strom-file-input" accept=".csv,.txt" style="display:none;" data-change="stromFileSelected(this.files[0])"/>
           <div style="display:flex;gap:5px;margin-bottom:8px;">
-            ${btn('basis', 'Nur Strom', mode === 'basis', false)}
-            ${btn('gesamt', '+ Wärmepumpen', mode === 'gesamt', !hasWP)}
-            ${btn('endausbau', 'Endausbau', mode === 'endausbau', !hasNap)}
+            ${btn('ziel', 'Zielausbau', mode === 'ziel', !hasBase)}
+            ${btn('basis', 'Nur Messung', mode === 'basis', false)}
           </div>
-          <div style="display:flex;align-items:center;gap:9px;${mode === 'endausbau' ? '' : 'opacity:.45;'}">
-            <span style="font-size:12px;color:var(--muted);white-space:nowrap;">Planungsjahr</span>
-            <input id="pva-endausbau-jahr" type="range" value="${zj}" min="${curYear}" max="2060" step="1"
-              style="flex:1;accent-color:var(--accent);" ${mode === 'endausbau' ? '' : 'disabled'}
-              data-input="document.getElementById('pva-endausbau-jahr-val').textContent=this.value;window._pvAnalyse.endausbauJahr=parseInt(this.value)||window._pvAnalyse.endausbauJahr;"/>
-            <span id="pva-endausbau-jahr-val" style="font-size:12.5px;color:var(--text);font-family:'DM Mono',monospace;min-width:34px;text-align:right;">${zj}</span>
-          </div>`;
+          <div id="pva-zielausbau-info">${_pvaZielausbauHtml()}</div>`;
         })()}
       </div>
 
@@ -3760,124 +3911,166 @@ function _pvPflichtKwpFuerChart(maxKwp) {
   return kwp > 0 && kwp <= maxKwp ? kwp : 0;
 }
 
-function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten, overrideEl) {
+// ── 1.2 Ausbaupfad ───────────────────────────────────────────────────────────
+// Eine Kurve statt vieler Einzel-Auslegungen: Jahresüberschuss über der PV-Leistung, in
+// der Reihenfolge der Netztreppe gebaut. Die Stufen des Netzes sind Bänder, Pflicht,
+// 100-kWp-Grenze und Eigenverbrauch ≥ 90 % sind Marken, die Auslegungen Punkte darauf.
+// Gezeichnet aus state.ausbaupfad (pvBerechneAlle) — keine eigene Simulation.
+function renderAusbaupfad(varianten, overrideEl) {
   const el = overrideEl || document.getElementById('pva-chart-grenznutzen');
   if (!el) return;
+  const ap = window._pvAnalyse?.ausbaupfad;
+  if (!ap?.punkte?.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:12.5px;padding:16px 0;">Ausbaupfad: erst „Auslegungen berechnen“.</div>';
+    return;
+  }
+  const f0 = x => Math.round(x).toLocaleString('de-DE');
+  const tEur = x => (x / 1000).toLocaleString('de-DE', { maximumFractionDigits: x >= 100000 ? 0 : 1 });
+  const maxKwp = ap.maxKwp;
+  const kanon = (varianten || []).filter(v => v.info && v.info.frage && v.wirt);
+  const werte = [...ap.punkte.map(p => p.ueberschuss), ...ap.mitSpeicher.map(p => p.ueberschuss), ...kanon.map(v => -v.wirt.nettoJk)];
+  const yMax = Math.max(1000, ...werte) * 1.08;
+  const yMin = Math.min(0, ...werte);
 
-  const maxKwp = _pvAchsenMaxKwp();
-  const spez   = pvGetSpez();
-  const steps  = [];
-  for (let k = 0; k <= maxKwp; k += Math.max(5, Math.round(maxKwp / 50))) steps.push(k);
-  if (steps[steps.length - 1] !== Math.round(maxKwp)) steps.push(Math.round(maxKwp));
-
-  // Netto-Jahresüberschuss je kWp (ohne Batterie)
-  const data = steps.map(kwp => {
-    if (kwp <= 0) return { kwp, netto: 0, infra: 0 };
-    const sim  = pvNapSim(kwp, 0, demandH, pvProfile, napParams, 'none', null);
-    const wirt = pvWirtschaft(kwp, 0, sim, kwp * spez / 1000, params, 'none');
-    return { kwp, netto: -wirt.nettoJk, infra: wirt.infraInvest }; // netto>0 = Gewinn/a
-  });
-
-  const nettoVals = data.map(d => d.netto);
-  const yMax = Math.max(1000, ...nettoVals);
-  const yMin = Math.min(0, ...nettoVals);
-
-  const elW = el.getBoundingClientRect().width || 700;
-  const W   = Math.max(400, elW - 4);
-  const H   = overrideEl ? 440 : 300;
-  const PL = 58, PT = 16, PR = 20, PB = 36;
+  const elW = el.getBoundingClientRect().width || 760;
+  const W = Math.max(420, elW - 4);
+  const H = overrideEl ? 460 : 320;
+  const PL = 62, PT = 30, PR = 20, PB = 36;
   const cW = W - PL - PR, cH = H - PT - PB;
   const xS = v => PL + (v / maxKwp) * cW;
   const yS = v => PT + cH - ((v - yMin) / (yMax - yMin)) * cH;
+  const pfad = pts => pts.map((p, i) => `${i ? 'L' : 'M'}${xS(p.kwp).toFixed(1)},${yS(p.ueberschuss).toFixed(1)}`).join(' ');
 
-  const nettoPath = data.map((d, i) => `${i === 0 ? 'M' : 'L'}${xS(d.kwp).toFixed(1)},${yS(d.netto).toFixed(1)}`).join(' ');
+  // Netzstufen als Bänder (abwechselnd getönt) mit Beschriftung
+  let von = 0;
+  const baender = ap.stufen.map((st, i) => {
+    const x0 = xS(von), x1 = xS(Math.max(von, st.bisKwp));
+    von = st.bisKwp;
+    const breit = x1 - x0;
+    const farbe = st.stufe === 0 ? 'var(--c-teal)' : st.rest ? 'var(--c-violet)' : 'var(--c-orange)';
+    const txt = st.stufe === 0 ? 'Bestandsnetz' : st.rest ? 'Erzeugungsnetz' : `Stufe ${st.stufe}`;
+    return `<rect x="${x0.toFixed(1)}" y="${PT}" width="${Math.max(0, breit).toFixed(1)}" height="${cH}" style="fill:${farbe};opacity:${i % 2 ? 0.05 : 0.09}"/>
+      ${breit > 46 ? `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${PT - 15}" text-anchor="middle" style="fill:${farbe};font-size:11px;font-weight:600">${txt}</text>
+      <text x="${((x0 + x1) / 2).toFixed(1)}" y="${PT - 3}" text-anchor="middle" style="fill:var(--muted);font-size:10.5px">${st.stufe === 0 ? '0 €' : tEur(st.investEUR) + ' T€ kum.'}</text>` : ''}
+      ${st.bisKwp < maxKwp - 0.5 ? `<line x1="${x1.toFixed(1)}" y1="${PT}" x2="${x1.toFixed(1)}" y2="${PT + cH}" style="stroke:${farbe};stroke-width:1;stroke-dasharray:4,3;opacity:.7"/>` : ''}`;
+  }).join('');
 
-  // Optimum = Maximum der Netto-Kurve (Fallback auf ersten Punkt, falls die Simulation
-  // z.B. durch fehlerhafte Eingaben NaN liefert — Chart soll nie hart abstürzen)
-  const optIdxRaw = nettoVals.indexOf(Math.max(...nettoVals));
-  const optIdx = optIdxRaw >= 0 ? optIdxRaw : 0;
-  const optKwp = data[optIdx]?.kwp ?? 0;
+  const markeFarbe = { pflicht: '#9575cd', regel: 'var(--muted)', ev: 'var(--c-blue)' };
+  const marken = ap.marken.filter(m => markeFarbe[m.art]).map((m, i) => {
+    const x = xS(m.kwp).toFixed(1);
+    return `<line x1="${x}" y1="${PT}" x2="${x}" y2="${PT + cH}" style="stroke:${markeFarbe[m.art]};stroke-width:1.3;stroke-dasharray:2,3"/>
+      <text x="${Math.min(+x + 4, W - 130)}" y="${PT + cH - 6 - i * 13}" style="fill:${markeFarbe[m.art]};font-size:10.5px">${escHtml(m.label)}</text>`;
+  }).join('');
 
-  // Infrastruktur-Stufengrenzen als vertikale Marker
-  const infraGrenzen = PV_INFRA_STUFEN.filter(s => isFinite(s.bisKwp) && s.bisKwp < maxKwp).map(s => s.bisKwp);
+  const opt = ap.optOhneSpeicher;
+  const yAchse = [0, 0.25, 0.5, 0.75, 1].map(fr => {
+    const val = yMin + fr * (yMax - yMin);
+    const y = yS(val).toFixed(1);
+    return `<line x1="${PL}" y1="${y}" x2="${PL + cW}" y2="${y}" style="stroke:var(--border);stroke-width:1"/>
+      <text x="${PL - 6}" y="${(+y + 3.5).toFixed(1)}" text-anchor="end" style="fill:var(--muted);font-size:10.5px">${f0(val / 1000)}k</text>`;
+  }).join('');
+  const xAchse = [0, 0.25, 0.5, 0.75, 1].map(fr => `<text x="${xS(maxKwp * fr).toFixed(1)}" y="${PT + cH + 15}" text-anchor="middle" style="fill:var(--muted);font-size:10.5px">${f0(maxKwp * fr)}</text>`).join('');
 
-  const yZero = yS(0).toFixed(1);
-  const pfKwp = _pvPflichtKwpFuerChart(maxKwp);
+  const punkteV = kanon.map(v => {
+    const x = xS(Math.min(maxKwp, v.pvKwp)).toFixed(1), y = yS(-v.wirt.nettoJk).toFixed(1);
+    return `<g data-pva-ap-var="${v.id}" style="cursor:pointer"><circle cx="${x}" cy="${y}" r="5.5" fill="${v.farbe}" style="stroke:var(--surface);stroke-width:1.5"/>
+      <text x="${x}" y="${(+y - 9).toFixed(1)}" text-anchor="middle" fill="${v.farbe}" style="font-size:11.5px;font-weight:700">${v.icon}</text></g>`;
+  }).join('');
 
-  const optNetto = data[optIdx]?.netto ?? 0;
-  const k95 = optNetto > 0 ? data.find(d => d.netto >= 0.95 * optNetto)?.kwp : null;
-  const kw = n => Math.round(n).toLocaleString('de-DE');
-  const befund = optNetto > 0
-    ? `Ohne Speicher bringt <b>${kw(optKwp)} kWp</b> den höchsten Jahresüberschuss (<b>${kw(optNetto / 1000)} k€/a</b>)` +
-      (k95 != null && k95 < optKwp * 0.9 ? `; 95 % davon sind schon mit ${kw(k95)} kWp erreicht — darüber wächst der Überschuss kaum noch.`
-        : optKwp >= maxKwp * 0.97 ? ' — bis zur vollen Dachfläche lohnt jeder weitere Ausbauschritt.' : '.')
-    : 'Ohne Speicher erreicht keine Anlagengröße einen positiven Jahresüberschuss.';
+  // Netzinvestition als Treppe darunter
+  const H2 = 84, PT2 = 8, cH2 = H2 - PT2 - 22;
+  const netzMax = Math.max(1, ...ap.stufen.map(st => st.investEUR), ...ap.punkte.map(p => p.netzEUR));
+  const y2 = v => PT2 + cH2 - (v / netzMax) * cH2;
+  let treppe = `M${xS(0).toFixed(1)},${y2(0).toFixed(1)}`;
+  for (const p of ap.punkte) treppe += ` L${xS(p.kwp).toFixed(1)},${y2(p.netzEUR).toFixed(1)}`;
+
+  // Tabelle der Abschnitte
+  const ueberBei = kwp => ap.punkte.reduce((b, p) => Math.abs(p.kwp - kwp) < Math.abs(b.kwp - kwp) ? p : b, ap.punkte[0]);
+  let vorKwp = 0;
+  const zeilen = ap.stufen.map(st => {
+    const p = ueberBei(st.bisKwp);
+    const z = `<tr>
+      <td style="padding:4px 8px 4px 0;">${st.stufe === 0 ? 'Bestandsnetz' : st.rest ? 'Erzeugungsnetz' : 'Stufe ' + st.stufe}</td>
+      <td style="padding:4px 8px;text-align:right;font-family:'DM Mono',monospace;">${f0(st.bisKwp)}</td>
+      <td style="padding:4px 8px;text-align:right;font-family:'DM Mono',monospace;">+${f0(st.bisKwp - vorKwp)}</td>
+      <td style="padding:4px 8px;color:var(--muted);">${st.stufe === 0 ? 'keine Ertüchtigung (EZA-Regler, Einspeisemanagement)' : escHtml(st.label)}</td>
+      <td style="padding:4px 8px;text-align:right;font-family:'DM Mono',monospace;">${st.stufe === 0 ? '0' : tEur(st.investEUR)}</td>
+      <td style="padding:4px 8px;text-align:right;font-family:'DM Mono',monospace;">${st.eurProKwp != null && st.stufe > 0 ? f0(st.eurProKwp) : '—'}</td>
+      <td style="padding:4px 0 4px 8px;text-align:right;font-family:'DM Mono',monospace;color:${p.ueberschuss >= 0 ? 'var(--c-green)' : 'var(--c-red)'};">${tEur(p.ueberschuss)}</td>
+    </tr>`;
+    vorKwp = st.bisKwp;
+    return z;
+  }).join('');
+  const tabelle = ap.stufen.length ? `
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;">
+      <thead><tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border);">
+        <th style="padding:4px 8px 4px 0;font-weight:500;">Abschnitt</th><th style="padding:4px 8px;font-weight:500;text-align:right;">bis kWp</th>
+        <th style="padding:4px 8px;font-weight:500;text-align:right;">Zuwachs</th><th style="padding:4px 8px;font-weight:500;">Maßnahme</th>
+        <th style="padding:4px 8px;font-weight:500;text-align:right;">Netz kum. T€</th><th style="padding:4px 8px;font-weight:500;text-align:right;">€/kWp</th>
+        <th style="padding:4px 0 4px 8px;font-weight:500;text-align:right;">Überschuss T€/a*</th></tr></thead>
+      <tbody>${zeilen}</tbody>
+    </table>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">* am Ende des Abschnitts, ohne Speicher, inkl. Netz- und Anschlusskosten · Netz ${escHtml(ap.quelle || '')}${ap.jahr ? ', Rechenjahr ' + ap.jahr : ''}</div>` : '';
+
+  const wo = kanon.find(v => v.id === 'wirt-opt');
+  const ev = ap.marken.find(m => m.id === 'ev90');
+  const bn = ap.stufen[0];
+  const befund = [
+    bn && ap.netzkurve ? `Das Netz nimmt ohne Ertüchtigung <b>${f0(bn.bisKwp)} kWp</b> auf${ap.stufen.length > 1 ? `, mit ${ap.stufen.length - 1} weiteren Stufe${ap.stufen.length > 2 ? 'n' : ''} für zusammen ${tEur(ap.stufen.at(-1).investEUR)} T€ das ganze Potenzial von ${f0(maxKwp)} kWp` : ''}.`
+      : 'Ohne nutzbares Netzmodell gelten die pauschalen Anschlusskosten nach kWp-Stufen.',
+    window._pvAnalyse.netzkurveHinweis ? `<span style="color:var(--c-orange);">${escHtml(window._pvAnalyse.netzkurveHinweis)}</span>` : '',
+    opt ? `Ohne Speicher liegt das Optimum bei <b>${f0(opt.kwp)} kWp</b> (${tEur(opt.ueberschuss)} T€/a)` + (wo ? `, mit wirtschaftlichem Speicher bei <b>${f0(wo.pvKwp)} kWp</b> (${tEur(-wo.wirt.nettoJk)} T€/a).` : '.') : '',
+    ev ? `Bis ${f0(ev.kwp)} kWp wird die Erzeugung zu mindestens 90 % vor Ort verbraucht.` : '',
+  ].filter(Boolean).join(' ');
 
   el.innerHTML = `
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-    <span style="font-size:12px;font-weight:400;color:var(--c-blue);">Ausbau-Grenznutzen: Jahresüberschuss je PV-Größe <span style="color:var(--muted);font-weight:400;">(ohne Speicher)</span>
-      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;">wo die Kurve kippt, kostet weiterer Ausbau mehr als er bringt · Sprünge = Infrastrukturstufen · ein Speicher verschiebt das Optimum nach rechts</span>
-    </span>
-    ${overrideEl ? '' : '<button data-pva-fs="grenz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+    <span style="font-size:12px;color:var(--c-blue);">Jahresüberschuss über der PV-Leistung — gebaut in der Reihenfolge der Netztreppe
+      <span style="color:var(--muted);margin-left:6px;">Bänder = Netzstufen mit kumulierter Ertüchtigung · Linie ohne Speicher, gestrichelt mit wirtschaftlichem Speicher · Punkte = Auslegungen</span></span>
+    ${overrideEl ? '' : '<button data-pva-fs="ausbaupfad" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(var(--ink),0.18);border-radius:4px;color:var(--c-blue);font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
-  <svg width="${W}" height="${H}" style="display:block;overflow:hidden;cursor:crosshair;">
-    ${[0, 0.25, 0.5, 0.75, 1].map(f => {
-      const val = yMin + f * (yMax - yMin);
-      const y = yS(val).toFixed(1);
-      return `<line x1="${PL}" y1="${y}" x2="${PL + cW}" y2="${y}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-        <text x="${PL - 5}" y="${(parseFloat(y) + 3).toFixed(1)}" text-anchor="end" fill="#607d8b" font-size="10.5">${(val / 1000).toFixed(0)}k</text>`;
-    }).join('')}
-    <line x1="${PL}" y1="${yZero}" x2="${PL + cW}" y2="${yZero}" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
-    ${infraGrenzen.map(g => `
-      <line x1="${xS(g).toFixed(1)}" y1="${PT}" x2="${xS(g).toFixed(1)}" y2="${PT + cH}" stroke="#ff8a65" stroke-width="1" stroke-dasharray="2,3" opacity="0.5"/>
-      <text x="${xS(g).toFixed(1)}" y="${PT + 9}" text-anchor="middle" fill="#ff8a65" font-size="10.5" opacity="0.8">${g} kWp</text>
-    `).join('')}
-    ${[0, Math.round(maxKwp * 0.25), Math.round(maxKwp * 0.5), Math.round(maxKwp * 0.75), maxKwp].map(v => `
-      <text x="${xS(v).toFixed(1)}" y="${PT + cH + 14}" text-anchor="middle" fill="#607d8b" font-size="10.5">${v}</text>
-    `).join('')}
-    <text x="${PL + cW / 2}" y="${H - 3}" text-anchor="middle" fill="#607d8b" font-size="11">PV-Leistung (kWp)</text>
-    <text x="11" y="${PT + cH / 2}" text-anchor="middle" fill="#607d8b" font-size="11" transform="rotate(-90,11,${PT + cH / 2})">Netto-Überschuss (€/a)</text>
-    <path d="${nettoPath}" fill="none" stroke="#66bb6a" stroke-width="2.5"/>
-    ${pfKwp > 0 ? `
-      <rect x="${PL}" y="${PT}" width="${Math.max(0, xS(pfKwp) - PL).toFixed(1)}" height="${cH}" fill="#9575cd" opacity="0.07"/>
-      <line x1="${xS(pfKwp).toFixed(1)}" y1="${PT}" x2="${xS(pfKwp).toFixed(1)}" y2="${PT + cH}" stroke="#9575cd" stroke-width="1.5" stroke-dasharray="5,3"/>
-      <text x="${Math.min(xS(pfKwp) + 4, W - 90)}" y="${PT + cH - 6}" fill="#b39ddb" font-size="11">§ Pflicht ${Math.round(pfKwp).toLocaleString('de-DE')} kWp</text>` : ''}
-    <line x1="${xS(optKwp).toFixed(1)}" y1="${PT}" x2="${xS(optKwp).toFixed(1)}" y2="${PT + cH}" stroke="#66bb6a" stroke-width="1" stroke-dasharray="3,2" opacity="0.8"/>
-    <text x="${Math.min(xS(optKwp) + 4, W - 150)}" y="${PT + 20}" fill="#66bb6a" font-size="11" font-weight="600">Optimum ≈ ${optKwp.toLocaleString('de-DE')} kWp</text>
-    ${(varianten || []).filter(v => v.info && v.info.frage).map(v => {
-      const d = data.reduce((b, c) => Math.abs(c.kwp - v.pvKwp) < Math.abs(b.kwp - v.pvKwp) ? c : b);
-      const x = xS(v.pvKwp).toFixed(1), y = yS(d.netto).toFixed(1);
-      return `<circle cx="${x}" cy="${y}" r="5" fill="${v.farbe}" stroke="#000" stroke-width="1" opacity="0.9"/>
-        <text x="${x}" y="${(parseFloat(y) - 8).toFixed(1)}" text-anchor="middle" fill="${v.farbe}" font-size="11" font-weight="600">${v.icon}</text>`;
-    }).join('')}
-    <line id="pva-grenz-xhair" x1="-2" y1="${PT}" x2="-2" y2="${PT + cH}" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-dasharray="3,2"/>
-  </svg>  ${_pvaBefund(befund)}`;
+  <svg width="${W}" height="${H}" style="display:block;overflow:visible;cursor:crosshair;">
+    ${baender}${yAchse}
+    <line x1="${PL}" y1="${yS(0).toFixed(1)}" x2="${PL + cW}" y2="${yS(0).toFixed(1)}" style="stroke:var(--muted);stroke-width:1;opacity:.6"/>
+    ${xAchse}
+    <text x="${PL + cW / 2}" y="${H - 3}" text-anchor="middle" style="fill:var(--muted);font-size:11px">PV-Leistung (kWp)</text>
+    <text x="13" y="${PT + cH / 2}" text-anchor="middle" style="fill:var(--muted);font-size:11px" transform="rotate(-90,13,${PT + cH / 2})">Jahresüberschuss (€/a)</text>
+    ${marken}
+    <path d="${pfad(ap.punkte)}" style="fill:none;stroke:var(--c-green);stroke-width:2.5"/>
+    ${ap.mitSpeicher.length > 1 ? `<path d="${pfad(ap.mitSpeicher)}" style="fill:none;stroke:var(--c-blue);stroke-width:1.8;stroke-dasharray:5,4"/>` : ''}
+    ${punkteV}
+    <line id="pva-ap-xhair" x1="-2" y1="${PT}" x2="-2" y2="${PT + cH}" style="stroke:var(--muted);stroke-width:1;stroke-dasharray:3,2"/>
+  </svg>
+  ${ap.netzkurve ? `<div style="font-size:11.5px;color:var(--muted);margin:2px 0 0 ${PL}px;">Netzinvestition kumuliert (T€)</div>
+  <svg width="${W}" height="${H2}" style="display:block;overflow:visible;">
+    <text x="${PL - 6}" y="${(y2(netzMax) + 4).toFixed(1)}" text-anchor="end" style="fill:var(--muted);font-size:10.5px">${tEur(netzMax)}</text>
+    <text x="${PL - 6}" y="${(y2(0) + 4).toFixed(1)}" text-anchor="end" style="fill:var(--muted);font-size:10.5px">0</text>
+    <line x1="${PL}" y1="${y2(0).toFixed(1)}" x2="${PL + cW}" y2="${y2(0).toFixed(1)}" style="stroke:var(--border)"/>
+    <path d="${treppe}" style="fill:none;stroke:var(--c-orange);stroke-width:2"/>
+  </svg>` : ''}
+  ${tabelle}
+  ${_pvaBefund(befund)}`;
 
   const svg = el.querySelector('svg');
-  svg.addEventListener('mousemove', ev => {
+  svg.addEventListener('mousemove', ev2 => {
     const r = svg.getBoundingClientRect();
-    const lx = ev.clientX - r.left;
+    const lx = ev2.clientX - r.left;
     if (lx < PL || lx > PL + cW) { _pvHideTT(); return; }
     const kwpHit = (lx - PL) / cW * maxKwp;
-    const d = data.reduce((b, c) => Math.abs(c.kwp - kwpHit) < Math.abs(b.kwp - kwpHit) ? c : b);
-    const xhair = el.querySelector('#pva-grenz-xhair');
-    if (xhair) { xhair.setAttribute('x1', xS(d.kwp).toFixed(1)); xhair.setAttribute('x2', xS(d.kwp).toFixed(1)); }
-    const varHit = (varianten || []).find(v => v.info && v.info.frage && Math.abs(v.pvKwp - d.kwp) < maxKwp * 0.04);
-    const varLine = varHit ? `<br><span style="color:${varHit.farbe};font-weight:700">${varHit.icon} ${varHit.label}</span>` : '';
-    _pvShowTT(ev,
-      `<strong style="color:var(--c-amber)">${d.kwp.toLocaleString('de-DE')} kWp</strong>${varLine}` +
-      `<br><span style="color:var(--c-green)">●</span> Netto-Überschuss: <strong>${(d.netto / 1000).toFixed(1)} k€/a</strong>` +
-      `<br><span style="color:var(--c-red)">●</span> Infrastruktur: <strong>${(d.infra / 1000).toFixed(0)} k€</strong> Invest`
-    );
+    const p = ueberBei(kwpHit);
+    const xh = el.querySelector('#pva-ap-xhair');
+    if (xh) { xh.setAttribute('x1', xS(p.kwp).toFixed(1)); xh.setAttribute('x2', xS(p.kwp).toFixed(1)); }
+    const st = ap.stufen.find(s => p.kwp <= s.bisKwp + 0.5);
+    _pvShowTT(ev2, `<strong style="color:var(--c-amber)">${f0(p.kwp)} kWp</strong>${st ? ` · ${st.stufe === 0 ? 'Bestandsnetz' : st.rest ? 'Erzeugungsnetz' : 'Netzstufe ' + st.stufe}` : ''}`
+      + `<br>Jahresüberschuss ohne Speicher: <strong>${tEur(p.ueberschuss)} T€/a</strong>`
+      + `<br>Netzinvest kum.: ${tEur(p.netzEUR)} T€ · Invest gesamt ${tEur(p.investGes)} T€`
+      + `<br>Eigenverbrauch ${p.evQuote.toFixed(0)} % · Autarkie ${p.autarkie.toFixed(0)} %${p.abregelungPct > 0.5 ? ` · Abregelung ${p.abregelungPct.toFixed(1)} %` : ''}`);
   });
   svg.addEventListener('mouseleave', _pvHideTT);
-
-  const fsBtn = el.querySelector('[data-pva-fs="grenz"]');
+  el.querySelectorAll('[data-pva-ap-var]').forEach(g => g.addEventListener('click', () => window.pvaSetFokus?.(g.dataset.pvaApVar)));
+  const fsBtn = el.querySelector('[data-pva-fs="ausbaupfad"]');
   if (fsBtn) fsBtn.addEventListener('click', () =>
-    _pvOpenFs('Ausbau-Grenznutzen — Jahresüberschuss je PV-Größe', cnt =>
-      renderGrenznutzenChart(_pvFsArgs.demandH, _pvFsArgs.pvProfile, _pvFsArgs.napParams, _pvFsArgs.params, window._pvAnalyse.ergebnisse, cnt)
-    )
-  );
+    _pvOpenFs('Ausbaupfad — Jahresüberschuss über der PV-Leistung', cnt => renderAusbaupfad(window._pvAnalyse.ergebnisse, cnt)));
 }
 
 // ── Abb. 2b — Wind-Ausbau-Grenznutzen: wie viel Windleistung lohnt sich? ───────
@@ -4160,11 +4353,13 @@ function _pvBindEvents() {
     btn.addEventListener('click', () => {
       const mode = btn.dataset.pvaDm;
       if (btn.disabled) return;
+      if (window._pvAnalyse.demandMode === mode) return;
       window._pvAnalyse.demandMode = mode;
-      window._pvAnalyse.berechnet  = false; // Ergebnisse invalidieren
-      // Panel komplett neu rendern (Zieljahr-Input-Status + Endausbau-Vorschau aktualisieren)
+      _pvZielCache = null;
+      // Panel komplett neu rendern (Zieljahr + Zusammensetzung); die Ergebnisse gelten noch für den alten Lastfall
       const wrap = document.getElementById('analyse-pva-wrap');
       if (wrap) _pvInitInWrap(wrap);
+      if (window._pvAnalyse.berechnet) pvMarkStale();
     });
   });
 }
@@ -4185,9 +4380,6 @@ function _pvSyncFromState() {
   set('pva-max-kwp',            s.pvMaxKwpOverride || 0);
   set('pva-pflicht-land',       s.pflichtLand || '');
   set('pva-pflicht-annahme',    s.pflichtAnnahme || 'auto');
-  set('pva-endausbau-jahr',     s.endausbauJahr || ((globalYear || new Date().getFullYear()) + 15));
-  const jahrVal = document.getElementById('pva-endausbau-jahr-val');
-  if (jahrVal) jahrVal.textContent = s.endausbauJahr || ((globalYear || new Date().getFullYear()) + 15);
   set('pva-erznetz-laenge',     s.erzNetz.laengeM  || 0);
   set('pva-erznetz-preis',      s.erzNetz.preisPrM || 250);
   set('pva-erznetz-schutz',     s.erzNetz.schutzEUR || 5000);
@@ -4199,7 +4391,7 @@ function _pvSyncFromState() {
   const erzDetail = document.getElementById('pva-erznetz-detail');
   if (erzDetail) erzDetail.style.display = s.erzNetzAktiv ? 'grid' : 'none';
   // Stromlast-Basis: aktiven Button setzen
-  const dm = s.demandMode || 'basis';
+  const dm = s.demandMode || 'ziel';
   document.querySelectorAll('[data-pva-dm]').forEach(b => {
     const active = b.dataset.pvaDm === dm;
     b.style.background  = active ? 'var(--accent)' : 'var(--surface)';
@@ -7332,7 +7524,7 @@ const _pvDekodiere = (k, v) => (typeof v === 'string' && v.startsWith('__zahl:')
 
 export function pvCaptureState() {
   const s = window._pvAnalyse;
-  const daten = { version: 1 };
+  const daten = { version: 2 };   // 2 = Zielausbau-Lastgang, Netzkostenkurve, Ausbaupfad (10/2026)
   for (const k of _PV_SPEICHER_FELDER) daten[k] = s[k];
   daten.ergebnisse = (s.ergebnisse || []).map(e => {
     const kopie = { ...e };
@@ -7368,6 +7560,15 @@ export function pvRestoreState(daten) {
     .filter(e => _pvVarInfo(e.id))
     .map(e => ({ ...e, info: _pvVarInfo(e.id) }));
   if (!s.ergebnisse.length) { s.berechnet = false; s.stale = false; }
+  // Bis 10/2026 (version 1): Lastfälle 'basis' (Standard) / 'gesamt' / 'endausbau'. Seitdem wird
+  // grundsätzlich gegen den Zielausbau gerechnet — ältere Ergebnisse gelten als veraltet.
+  if (!(d.version >= 2) && d.demandMode != null) {
+    if (d.demandMode === 'endausbau' && Number.isFinite(d.endausbauJahr)) s.zielJahr = d.endausbauJahr;
+    s.demandMode = 'ziel';
+    if (s.ergebnisse.length) s.stale = true;
+  }
+  if (!['ziel', 'basis'].includes(s.demandMode)) s.demandMode = 'ziel';
+  _pvZielCache = null;
   s.napMaxEinspKw = window.elNapMaxEinspKw ?? 0;
   s.napMaxBezugKw = window.elNapMaxBezugKw ?? 0;
   _pvFsArgs = null;

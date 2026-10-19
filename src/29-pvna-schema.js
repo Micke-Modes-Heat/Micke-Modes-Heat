@@ -1071,11 +1071,6 @@ function _ereignisse(root) {
   });
   root.addEventListener('change', ev => {
     if (ev.target.dataset.pvnaNurpv != null) { _nurPv = ev.target.checked; pvnaSchemaRender(); return; }
-    if (ev.target.dataset.pvnaFvar != null) {
-      _fahrplanWahl(+ev.target.dataset.pvnaFvar, ev.target.checked);
-      _aktualisieren({ spielraum: false });
-      return;
-    }
     if (ev.target.dataset.pvnaEinpassen != null) { _einpassen = ev.target.checked; _groesseAnpassen(); return; }
     if (ev.target.dataset.pvnaErsatz != null) {
       // Neue Annahme → Netzaufnahme neu rechnen; die eingestellte Belegung bleibt (gleicher Dachbestand)
@@ -1180,17 +1175,6 @@ function _ereignisse(root) {
         return;
       }
       if (a === 'uebernehmen' || a === 'entfernen') { _varianteAendern(a); return; }
-      if (a === 'fvar-alle' || a === 'fvar-keine') {
-        window._pvAnalyse.fahrplanVarianten = a === 'fvar-alle' ? { alle: true, stufen: [] } : null;
-        _aktualisieren({ spielraum: false });
-        return;
-      }
-      if (a === 'fvar-rechnen') {
-        const n = _fahrplanGewaehlt(erg.treppe.schritte.length).length;
-        _neuRechnen(n ? `${n} Fahrplanstufe${n > 1 ? 'n' : ''} als Varianten übernommen` : 'Fahrplan-Varianten entfernt',
-          n ? ' — sie stehen im Varianten-Vergleich als „Fahrplan Stufe k".' : '.');
-        return;
-      }
       if (a === 'laden') _eigeneLaden(erg);
       else if (a === 'fuellen') _fuellen(erg);
       else if (a === 'variante') { _mass = new Set(); _setzeVariante(erg); }
@@ -1362,12 +1346,8 @@ function _fahrplanAktualisieren(root, erg) {
       border:1px solid var(--c-blue);${an ? 'background:#4fc3f7;color:#0b1a24;' : 'color:var(--c-blue);'}">${an ? '✓' : '⚒'} ${escHtml(m.label)}</span>`;
   };
   const alleAn = ids => ids.length && ids.every(id => _mass.has(id));
-  const fv = window._pvAnalyse?.fahrplanVarianten;
-  const gewaehlt = k => !!fv && (fv.alle || fv.stufen?.includes(k));
   const zeile = (k, inhalt, zuwachs, invest, eurKwp, summe, kum, an) => `
     <tr style="${an ? 'background:rgba(79,195,247,.10);' : ''}">
-      <td style="padding:3px 6px;text-align:center;">${k ? `<input type="checkbox" data-pvna-fvar="${k}" ${gewaehlt(k) ? 'checked' : ''}
-        title="Stufe ${k} als Variante „Fahrplan Stufe ${k}" in die PV-Analyse übernehmen">` : ''}</td>
       <td style="padding:3px 6px;white-space:nowrap;"><button class="pvna-knopf" data-pvna-stufe="${k}"
         title="${k ? `Stufen 1–${k} umsetzen und bis zur neuen Netzgrenze füllen` : 'Alle Maßnahmen zurücknehmen, Bestandsnetz füllen'}">▶ ${k ? 'bis Stufe ' + k : 'Bestand'}</button></td>
       <td style="padding:3px 6px;">${inhalt}</td>
@@ -1399,9 +1379,9 @@ function _fahrplanAktualisieren(root, erg) {
         · Netzgrenze damit <b style="color:var(--text);">${_fmt(f.summeKwp)} kWp</b> von ${_fmt(f.potenzialKwp)} kWp</span>
     </div>
     ${_wasserfallSvg(erg)}
-    ${_fahrplanVariantenLeiste(t.schritte.length)}
+    <div style="margin:2px 0 6px;color:var(--muted);">Diese Treppe ist zugleich die Netzkostenkurve der PV-Analyse: Ihre Stufen bestimmen dort die Netzkosten jeder Auslegung und erscheinen im Ausbaupfad (1.2).</div>
     <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
-      <thead><tr>${th('als Variante')}${th('')}${th('Maßnahmen — anklicken zum Umsetzen/Zurücknehmen')}${th('Zuwachs kWp', 1)}${th('Invest T€', 1)}${th('€/kWp', 1)}${th('Σ kWp', 1)}${th('Σ T€', 1)}</tr></thead>
+      <thead><tr>${th('')}${th('Maßnahmen — anklicken zum Umsetzen/Zurücknehmen')}${th('Zuwachs kWp', 1)}${th('Invest T€', 1)}${th('€/kWp', 1)}${th('Σ kWp', 1)}${th('Σ T€', 1)}</tr></thead>
       <tbody>${zeilen.join('')}</tbody></table></div>
     ${ohneStufe.length ? `<div style="margin-top:5px;color:var(--muted);">Weitere Maßnahmen ohne Zuwachs im Fahrplan (vorher begrenzt ein anderes Element — frei schaltbar zum Ausprobieren):
       ${ohneStufe.map(m => chip(m, _warumOhneZuwachs(erg, m.id))).join('')}
@@ -1415,47 +1395,6 @@ function _fahrplanAktualisieren(root, erg) {
     ${teilweise.length ? `<div style="margin-top:4px;color:var(--c-orange);line-height:1.5;">Größte Standardlösung (8 Parallelstränge) reicht nicht für alle Flächen:
       ${teilweise.slice(0, 6).map(escHtml).join(', ')}${teilweise.length > 6 ? ` und ${teilweise.length - 6} weitere` : ''} — als Teil-Ertüchtigung im Fahrplan; der Rest dahinter braucht eine Strukturänderung
       (zusätzlicher Abgang, eigene Anbindung, weiterer Trafo).</div>` : ''}`;
-}
-
-/** Stufen, die gerade als Variante im Ergebnis stehen (Stand der letzten Variantenrechnung). */
-function _fahrplanImErgebnis() {
-  return new Set((window._pvAnalyse?.ergebnisse || [])
-    .map(e => /^fahrplan-(\d+)$/.exec(e.id)?.[1]).filter(Boolean).map(Number));
-}
-
-/** Gewählte Stufen als Liste (aus { alle } oder { stufen }). */
-function _fahrplanGewaehlt(n) {
-  const fv = window._pvAnalyse?.fahrplanVarianten;
-  if (!fv) return [];
-  return fv.alle ? Array.from({ length: n }, (_, i) => i + 1) : (fv.stufen || []).filter(k => k <= n);
-}
-
-function _fahrplanVariantenLeiste(n) {
-  if (!n) return '';
-  const gew = _fahrplanGewaehlt(n);
-  const ist = _fahrplanImErgebnis();
-  const aktuell = gew.length === ist.size && gew.every(k => ist.has(k));
-  const knopf = (akt, txt, tip, betont) => `<button class="${betont ? 'btn-confirm' : 'pvna-knopf'}" style="padding:3px 9px;font-size:12px;"
-    data-pvna-aktion="${akt}" title="${tip}">${txt}</button>`;
-  return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 6px;">
-    <span style="font-weight:600;">Stufen als Varianten:</span>
-    ${knopf('fvar-alle', 'alle Stufen', `Alle ${n} Stufen als Varianten „Fahrplan Stufe 1…${n}" übernehmen`)}
-    ${knopf('fvar-keine', '☐ keine', 'Keine Fahrplanstufe als Variante')}
-    ${knopf('fvar-rechnen', '↻ Varianten neu rechnen', 'Die Auswahl in die PV-Analyse übernehmen und alle Varianten neu rechnen', !aktuell)}
-    <span style="color:var(--muted);">${gew.length ? `${gew.length} von ${n} gewählt` : 'keine gewählt'}
-      ${aktuell ? (ist.size ? ' · stehen im Varianten-Vergleich' : '') : ' · <span style="color:var(--c-orange);">Auswahl geändert — neu rechnen</span>'}
-      · erscheinen im Varianten-Vergleich, nicht in Abbildungen und Gutachten</span>
-  </div>`;
-}
-
-/** Auswahl der Fahrplan-Varianten ändern (ohne zu rechnen). */
-function _fahrplanWahl(stufe, an) {
-  const s = window._pvAnalyse;
-  if (!s || !_quelle) return;
-  const n = _quelle.treppe.schritte.length;
-  const set = new Set(_fahrplanGewaehlt(n));
-  if (an) set.add(stufe); else set.delete(stufe);
-  s.fahrplanVarianten = set.size ? (set.size === n ? { alle: true, stufen: [] } : { alle: false, stufen: [...set].sort((a, b) => a - b) }) : null;
 }
 
 /**

@@ -294,9 +294,13 @@ export function pvnaModell(opts = {}) {
   const daecher = [];
   const dachInfo = new Map();
   const gebMitAsset = new Set();
+  // opts.dachKwp ({gebId: kWp}, Belegungsstand der PV-Analyse): der Stand legt alle Dächer
+  // fest — PV-Anlagen an Gebäuden entfallen, jedes Gebäude des Stands wird ein Dach.
+  const standKwp = opts.dachKwp || null;
   for (const a of aktiveA.filter(a => a.type === 'PV')) {
     if (a.buildingId != null) gebMitAsset.add(a.buildingId);
     if (istBestandPv(a)) continue;                                  // schon Vorlast
+    if (standKwp && a.buildingId != null) continue;
     const g = a.buildingId != null ? gebById.get(a.buildingId) : null;
     if (g && !pvnaGebaeudeSteht(g, yr)) continue;                   // Gebäude (noch) nicht da bzw. abgerissen
     const neu = g ? pvnaIstNeubau(g, stich) : (_int(a.baujahr) ?? 0) > stich;
@@ -315,16 +319,21 @@ export function pvnaModell(opts = {}) {
       ostwest: p.ausrichtung === 'ostwest', neu, pos: knotenPos(a.id) || (g ? gebMitte(g) : null) });
   }
   for (const g of gebArr) {
-    if (gebMitAsset.has(g.id)) continue;
-    if (quelle === 'aktiv' && !g.pvAktiv) continue;
+    const ausStand = standKwp ? (+standKwp[g.id] || +standKwp[String(g.id)] || 0) : null;
+    if (standKwp && !(ausStand > 0)) continue;
+    if (!standKwp && gebMitAsset.has(g.id)) continue;
+    if (!standKwp && quelle === 'aktiv' && !g.pvAktiv) continue;
     if (!pvnaGebaeudeSteht(g, yr)) continue;                        // im Rechenjahr nicht vorhanden
     const neu = pvnaIstNeubau(g, stich);
     if (!flaecheOk(neu)) continue;
-    const kwp = calcGebKwp(g) || 0;
+    // Stand: ertragskorrigierte kWp (wie die PV-Analyse sie zählt), Einspeisung je kWp wie üblich
+    const kwp = standKwp ? ausStand : (calcGebKwp(g) || 0);
     if (kwp <= 0) continue;
     const id = 'G:' + g.id;
-    daecher.push({ id, elementId: knotenEl.get(g.id) ?? null, kwpMax: kwp,
-      ertragFaktor: (calcGebKwpKorr(g) || kwp) / kwp, einspFaktor });
+    let elementId = knotenEl.get(g.id) ?? null;
+    if (elementId == null && standKwp) elementId = (assetsJeGeb.get(g.id) || []).map(x => knotenEl.get(x.id)).find(e => e != null) ?? null;
+    daecher.push({ id, elementId, kwpMax: kwp,
+      ertragFaktor: standKwp ? 1 : (calcGebKwpKorr(g) || kwp) / kwp, einspFaktor });
     dachInfo.set(id, { name: g.name || ('Gebäude ' + g.id), gebId: g.id, trafoId: knotenTrafo.get(g.id),
       art: g.pvAktiv ? 'Dachfläche' : 'Dachpotenzial', ostwest: g.pvFlAusrichtung === 'ostwest', neu, pos: gebMitte(g) });
   }
@@ -685,6 +694,36 @@ export function pvnaFuerVariante() {
   const k = window._pvNetzaufnahme;
   if (!k.trafoAnzahl || !r.modell.eingabe.daecher.length) return null;
   return k;
+}
+
+/**
+ * Für die PV-Analyse (Netzkostenkurve und Ausbaupfad, lib/pv-netzkostenkurve): rechnet die
+ * Ausbautreppe für GENAU das Anlagenpotenzial der Analyse — Belegungsstand (dachKwp) oder
+ * die PV im Projekt — im Netz des Zieljahres. Übrige Eingaben (Einspeisefaktor, ΔU-Grenze,
+ * Ersatzquerschnitt, Bestands-PV, Stichjahr) wie in der Ansicht. Das Ergebnis wird das
+ * letzte Ergebnis der Ansicht (Einlinienschema, Fahrplan zeigen dieselbe Treppe).
+ * Rückgabe: Zusammenfassung wie pvnaFuerVariante, zusätzlich basisKwp, einspFaktor;
+ * null ohne Trafo oder ohne Dächer.
+ */
+export function pvnaKostenkurve({ jahr = null, dachKwp = null } = {}) {
+  const ein = { ..._ein, quelle: dachKwp ? 'alle' : 'aktiv', flaechen: 'alle' };
+  const { stich } = pvnaJahre(ein);
+  const rechenjahr = Number.isFinite(jahr) ? Math.max(jahr, stich) : null;
+  if (rechenjahr != null) ein.zieljahr = rechenjahr;
+  const modell = pvnaModell({ ...ein, dachKwp });
+  if (!modell.eingabe.elemente.some(e => e.typ === 'trafo') || !modell.eingabe.daecher.length) return null;
+  const treppe = pvnaTreppe(modell.eingabe);
+  const optionen = _optionen(modell, treppe);
+  _letztes = { modell, treppe, optionen, eingaben: { ...ein, ausAnalyse: true }, jahr: modell.info.jahr };
+  window._pvNetzaufnahme = _kompakt(_letztes);
+  if (window.pvnaKarteAktiv) { pvnaMarkiereKarte(); _legendeZeigen(); }
+  if (document.getElementById('pva-netzaufnahme')?.style.display === 'block') pvnaRender();
+  // Dächer ohne Anbindung im Netzmodell sind eine Lücke der Erfassung, kein Netzengpass —
+  // die PV-Analyse rechnet sie nicht in den Rest (sonst bekämen sie ein Erzeugungsnetz)
+  const elIds = new Set(modell.eingabe.elemente.map(e => e.id));
+  const ohneAnschluss = modell.eingabe.daecher.filter(d => !elIds.has(d.elementId));
+  return { ...window._pvNetzaufnahme, basisKwp: treppe.basis.summeKwp, einspFaktor: modell.info.einspFaktor,
+    ohneAnschlussKwp: ohneAnschluss.reduce((s, d) => s + (+d.kwpMax || 0), 0), ohneAnschlussDaecher: ohneAnschluss.length };
 }
 
 export function pvnaLetztesErgebnis() { return _letztes; }
@@ -1243,6 +1282,7 @@ window.pvnaEinstellungen = pvnaEinstellungen;
 window.pvnaEinstellungenSetzen = pvnaEinstellungenSetzen;
 window.pvnaRechnen = pvnaRechnen;
 window.pvnaFuerVariante = pvnaFuerVariante;
+window.pvnaKostenkurve = pvnaKostenkurve;
 window.pvnaBelegungPruefen = pvnaBelegungPruefen;
 window.pvnaFahrplanStufen = pvnaFahrplanStufen;
 window.pvnaTreppeSvg = pvnaTreppeSvg;

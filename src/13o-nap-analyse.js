@@ -15,7 +15,8 @@ import { getElSlpProfiles } from './13k-elslp-registry.js';
 import { windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
 import { escHtml } from './03c-gebaeude-io.js';
 import { SCHICHT, normSchicht } from './lib/schichten.js';
-import { BP_LEISTUNGS_TYPEN, bpAssetLeistung, bpMassnahmen, bpLastJahr, bpNormGzf, bpLadeLeistung, bpZieljahr, bpGzfFuer } from './lib/bedarfsprognose.js';
+import { BP_LEISTUNGS_TYPEN, bpAssetLeistung, bpMassnahmen, bpLastJahr, bpNormGzf, bpLadeLeistung, bpZieljahr, bpGzfFuer, bpStufeVonTyp } from './lib/bedarfsprognose.js';
+import { zlWpErsatzProfil } from './lib/zielausbau-last.js';
 
 // ── Modulzustand ─────────────────────────────────────────────────────────────
 const _N = {
@@ -93,6 +94,26 @@ function _tsToHoy(tsMs) {
   return Math.min(8759, Math.max(0, Math.floor((tsMs - jan1) / 3_600_000)));
 }
 
+// Elektrische Wärmeerzeuger (verknüpft über linkedErzeuger, 13p)
+const WAERME_EL_TYPEN = ['WP', 'Geo', 'FG', 'Stromkessel'];
+
+/**
+ * Stromverbrauch eines elektrischen Wärmeerzeugers je Stunde (8.760 Werte, kW):
+ * aus der Wärmeberechnung (06c: je Wärmepumpe `_wpStunden[key].el`, Stromkessel
+ * `_skElHourly`), sonst Ersatzprofil nach Monatsanteilen (lib/zielausbau-last).
+ * null ohne Leistung.
+ */
+function _waermeStunden(asset) {
+  const key = asset.linkedErzeuger;
+  const ausWaerme = asset.type === 'Stromkessel'
+    ? (key === 'stromkessel' ? window._skElHourly : null)
+    : (key ? window._wpStunden?.[key]?.el : null);
+  if (ausWaerme?.length >= 8760) return { arr: ausWaerme, quelle: 'waerme' };
+  const kw = bpAssetLeistung(asset).loadKW;
+  if (!(kw > 0)) return null;
+  return { arr: zlWpErsatzProfil(kw, asset.type === 'Stromkessel' ? 500 : undefined), quelle: 'ersatz' };
+}
+
 /**
  * Erstellt einen Profil-Descriptor für ein Asset.
  * Priorität: 1) importiertes Zeitreihen-Profil  2) BDEW-SLP  3) PV-Solarprofil
@@ -121,6 +142,14 @@ function _napBuildProfileDescriptor(asset, gzfGlobal) {
       if (peak > 0) return { mode: 'lade', arr, gzf };
     }
     return null; // statischer Fallback im Aufrufer
+  }
+
+  // 2b. Elektrische Wärmeerzeuger: Stundenwerte der Wärmeberechnung, sonst ein Ersatzprofil.
+  // Bis 10/2026 fielen sie ohne eigenes Profil auf den statischen Fallback — eine
+  // Wärmepumpe lief damit rechnerisch 8.760 h im Jahr mit voller Leistung.
+  if (WAERME_EL_TYPEN.includes(asset.type)) {
+    const w = _waermeStunden(asset);
+    if (w) return { mode: 'stunden', arr: w.arr, gzf: 1, quelle: w.quelle };
   }
 
   // 3. BDEW-SLP: z.B. Verbraucher mit slpTyp='H0'
@@ -200,7 +229,7 @@ function _napEvalDescriptor(desc, tsMs) {
     const v = desc.pvProf[Math.min(hoy, desc.pvProf.length - 1)] * desc.scale;
     return { bezugKW: 0, einspKW: Math.max(0, v) };
   }
-  if (desc.mode === 'lade') {
+  if (desc.mode === 'lade' || desc.mode === 'stunden') {
     const v = desc.arr[Math.min(hoy, desc.arr.length - 1)] * desc.gzf;
     return { bezugKW: v, einspKW: 0 };
   }
@@ -772,6 +801,51 @@ export function napGetEndausbauLastgang(bisJahr, { nurAngehakt = false, nurLast 
     nNeubau: entries.filter(e => !e.isAbbruch).length,
     nAbriss: entries.filter(e => e.isAbbruch).length,
   };
+}
+
+/**
+ * Zielausbau für die PV-Analyse (09d, lib/zielausbau-last): zusätzliche Last je Baustein der
+ * Bedarfsprognose als Stundenreihe des Messjahres — Gebäude, Wärmekonzept, Ladeinfrastruktur,
+ * sonstige. Dieselben angehakten Maßnahmen wie Gutachten 5.3.1–5.3.3; Rückbau mit negativem
+ * Vorzeichen; nur die Verbrauchsseite (die PV-Analyse legt die Erzeugung selbst aus).
+ * bisJahr: Zieljahr (null = Endausbau der Bedarfsprognose, spätestes Maßnahmenjahr).
+ * @returns {{ dataYear, zielJahr, beitraege: {gebaeude?, waerme?, lade?, sonstige?: Float32Array},
+ *             nNeubau, nAbriss, ersatzWaerme: string[], ohneMessung: boolean }}
+ */
+export function napZielausbauBeitraege(bisJahr = null) {
+  const stand = napBedarfsStand();
+  const dataYear = stand.dataYear;
+  const zielJahr = Number.isFinite(bisJahr) ? bisJahr : (bpZieljahr(stand.massnahmen) ?? dataYear);
+  const angehakt = new Set(stand.massnahmen.filter(m => m.checked).map(m => m.id));
+  const gzf = _N.gzf;
+  const jan1 = +new Date(dataYear, 0, 1);
+  const beitraege = {};
+  const ersatzWaerme = [];
+  let nNeubau = 0, nAbriss = 0;
+
+  for (const a of _allAssets()) {
+    if (!BP_LEISTUNGS_TYPEN.includes(a.type)) continue;
+    const { loadKW } = _assetPower(a);
+    if (!(loadKW > 0)) continue;                       // Erzeuger: legt die PV-Analyse selbst aus
+    const bj = parseInt(a.baujahr) || null;
+    const aj = parseInt(a.abrissjahr) || null;
+    let vz = 0;
+    if (bj && bj > dataYear && bj <= zielJahr && angehakt.has(a.id) && !(aj && aj <= zielJahr)) { vz = 1; nNeubau++; }
+    else if (aj && aj > dataYear && aj <= zielJahr && (!bj || bj <= dataYear) && angehakt.has(a.id + '__abr')) { vz = -1; nAbriss++; }
+    if (!vz) continue;
+
+    const stufe = bpStufeVonTyp(a.type);
+    const arr = beitraege[stufe] || (beitraege[stufe] = new Float32Array(8760));
+    const desc = _napBuildProfileDescriptor(a, gzf);
+    if (desc?.quelle === 'ersatz') ersatzWaerme.push(a.name || a.type);
+    if (desc) {
+      for (let h = 0; h < 8760; h++) arr[h] += vz * (_napEvalDescriptor(desc, jan1 + h * 3_600_000)?.bezugKW || 0);
+    } else {
+      const kw = vz * loadKW * bpGzfFuer(a.type, gzf);
+      for (let h = 0; h < 8760; h++) arr[h] += kw;
+    }
+  }
+  return { dataYear, zielJahr, beitraege, nNeubau, nAbriss, ersatzWaerme, ohneMessung: !stand.gemessen };
 }
 
 /**
@@ -2068,6 +2142,7 @@ window.napApplyKalibrierungMitProfil = napApplyKalibrierungMitProfil;
 window.napKalUpdateFactor           = napKalUpdateFactor;
 window.napKalToggleNurBestand       = napKalToggleNurBestand;
 window.napGetEndausbauLastgang      = napGetEndausbauLastgang;
+window.napZielausbauBeitraege       = napZielausbauBeitraege;
 window.napHasMeasuredData           = napHasMeasuredData;
 window.napBedarfsStand              = napBedarfsStand;
 window.napCaptureState              = napCaptureState;

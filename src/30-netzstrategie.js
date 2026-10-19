@@ -727,3 +727,5 @@ window.nsRechnen = nsRechnen;
 window.nsEinstellungen = nsEinstellungen;
 window.nsEinstellungenSetzen = nsEinstellungenSetzen;
 window.nsNetzLebensdauer = nsNetzLebensdauer;
+// Kostenkatalog des Projekts (Standard + Abweichungen) — PV-Analyse: Erzeugungsnetz in der Netzkostenkurve
+window.nsKostenKatalog = () => nsKostenMischen(_ns.kosten);

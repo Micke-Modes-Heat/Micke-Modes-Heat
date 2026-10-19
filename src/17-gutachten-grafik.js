@@ -8644,16 +8644,30 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
   const name = document.querySelector('.header-projekt-name')?.textContent?.trim() || '';
   const absaetze = [];
 
+  // Lastfall: seit 10/2026 grundsätzlich der Zielausbau (Messung + Maßnahmen der Bedarfsprognose 5.3);
+  // 'gesamt'/'endausbau' nur noch in älteren Rechenständen
+  const za = b?.zielausbau;
+  const zaTeile = (za?.bilanz || []).map(x => `${x.mwh >= 0 ? 'zusätzlich' : 'abzüglich'} ${ggPvFeld(Math.abs(x.mwh), x.label)} MWh/a `
+    + ({ gebaeude: 'aus Gebäudezubau und Rückbau', waerme: 'für das Wärmekonzept (Wärmepumpen, Stromkessel)', lade: 'für die Ladeinfrastruktur' }[x.key] || 'für sonstige Verbraucher'));
   const lastfall = b?.lastfall === 'gesamt'
     ? ' Der Lastgang enthält zusätzlich den Strombedarf der elektrischen Wärmeerzeugung (Wärmepumpen und Stromkessel, vgl. Kapitel 7).'
     : b?.lastfall === 'endausbau'
       ? ` Der Lastgang bildet den Endausbau bis zum Jahr ${ggTextFeld(b.endausbauJahr, 'Zieljahr')} einschließlich der geplanten Neubau- und Rückbaumaßnahmen ab (vgl. Kapitel 5.3.1).`
+      : b?.lastfall === 'basis' ? ' Gerechnet wurde mit dem gemessenen Lastgang ohne die geplanten Maßnahmen.'
       : '';
+  const bedarfSatz = !b || b.lastfall === 'ziel' || !b.lastfall
+    ? `Ausgelegt wird auf den Zielausbau im Jahr ${ggTextFeld(za?.zielJahr, 'Zieljahr')}: Grundlage ist der gemessene Stromlastgang `
+      + `${ggTextFeld(b?.lastgangDatei, 'Lastgang-Datei')} mit ${ggPvFeld(za?.basisMwh ?? b?.bedarfMwh, 'Strombedarf Messung')} MWh/a`
+      + (zaTeile.length ? `, ${ggAufzaehlung(zaTeile)} (Maßnahmen der Bedarfsprognose, vgl. Kapitel 5.3)` : '')
+      + `. Daraus ergibt sich ein Jahresstrombedarf von ${ggPvFeld(b?.bedarfMwh, 'Jahresstrombedarf')} MWh/a in `
+      + `${ggTextFeld(b ? (b.dt === 1 ? 'stündlicher' : 'viertelstündlicher') : '', 'Auflösung')} Auflösung. `
+      + `Wärmepumpen gehen mit den stündlichen Werten der Wärmeberechnung ein, Ladepunkte mit ihrem Ladeprofil.`
+    : `Grundlage ist der Stromlastgang ${ggTextFeld(b?.lastgangDatei, 'Lastgang-Datei')} mit einem Jahresstrombedarf von `
+      + `${ggPvFeld(b?.bedarfMwh, 'Jahresstrombedarf')} MWh/a in `
+      + `${ggTextFeld(b ? (b.dt === 1 ? 'stündlicher' : 'viertelstündlicher') : '', 'Auflösung')} Auflösung.${lastfall}`;
   absaetze.push(`Für die Liegenschaft ${ggTextFeld(name, 'Name Liegenschaft')} wurde untersucht, in welchem Umfang `
     + `Photovoltaikanlagen zusammen mit Batteriespeichern den Strombezug aus dem öffentlichen Netz verringern können. `
-    + `Grundlage ist der Stromlastgang ${ggTextFeld(b?.lastgangDatei, 'Lastgang-Datei')} mit einem Jahresstrombedarf von `
-    + `${ggPvFeld(b?.bedarfMwh, 'Jahresstrombedarf')} MWh/a in `
-    + `${ggTextFeld(b ? (b.dt === 1 ? 'stündlicher' : 'viertelstündlicher') : '', 'Auflösung')} Auflösung.${lastfall}`);
+    + bedarfSatz);
 
   const q = b && !b.potenzialOverride ? b.quellen || {} : {};
   const teile = [
@@ -8686,11 +8700,25 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
   }
 
   const belegungen = kanon.filter(v => /^belegung-/.test(v.id));
-  const anzahl = b ? kanon.length - belegungen.length : 5;
-  absaetze.push(`Auftraggeber, Nutzer und Betreiber verfolgen unterschiedliche Ziele. Deshalb wurden `
+  const anzahl = b ? kanon.length - belegungen.length : 4;
+  // Ausbaupfad (seit 10/2026): alle Auslegungen sind Punkte auf derselben Kurve, die Netzstufen bestimmen die Kosten
+  const nkb = b ? b.netzkurve : { stufen: [] };
+  const nkStufen = (nkb?.stufen || []).filter(st => st.stufe > 0);
+  absaetze.push(`Untersucht wurde ein Ausbaupfad von der kleinsten Anlage bis zum vollen Potenzial. Belegt werden die `
+    + `ertragsstärksten Flächen zuerst; stößt das Stromnetz an eine Grenze, folgt jeweils die Netzertüchtigung, die je `
+    + `Euro die meiste zusätzliche PV-Leistung erschließt.`
+    + (b && !nkb ? ' Ein Netzmodell mit Transformatoren lag nicht vor; die Anschlusskosten sind deshalb pauschal nach der Anlagengröße angesetzt.'
+      : ` Das Netz${nkb?.jahr ? ` im Zustand des Jahres ${ggTextFeld(nkb.jahr, 'Rechenjahr Netz')}` : ''} nimmt `
+        + `${ggPvFeld(nkb?.stufen?.[0]?.bisKwp, 'kWp ohne Ertüchtigung')} kWp ohne Ertüchtigung auf`
+        + (nkStufen.length ? `; ${GG_ZAHLWORT[nkStufen.length] || nkStufen.length} weitere Ausbaustufe${nkStufen.length > 1 ? 'n' : ''} `
+          + `(${gEsc(nkStufen.map(st => st.label).join('; '))}) ${nkStufen.length > 1 ? 'erschließen' : 'erschließt'} das übrige Potenzial.` : '.')
+        + ' Die Kosten dieser Stufen gehen in die Wirtschaftlichkeit jeder Auslegung ein.'));
+  absaetze.push(`Auftraggeber, Nutzer und Betreiber verfolgen unterschiedliche Ziele. Deshalb wurden auf diesem Pfad `
     + `${GG_ZAHLWORT[anzahl] || anzahl} Auslegungen gebildet, von denen jede genau eine Frage beantwortet:`);
 
   const zeige = id => !b || !!ggPvVariante(id);
+  // bis 10/2026 eigene Auslegungen, jetzt Marken auf dem Ausbaupfad — nur noch in älteren Rechenständen
+  const zeigeAlt = id => !!b && !!ggPvVariante(id);
   const label = id => gEsc(ggPvVariante(id)?.label || GG_PV_LANG[id]);
   const kwp = (id, feld) => ggPvFeld(ggPvVariante(id)?.pvKwp, feld);
 
@@ -8704,7 +8732,7 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
       + `. Sie ist kein Optimum, sondern die Untergrenze: Eine Auslegung darunter ist nicht genehmigungsfähig.`);
   }
 
-  if (zeige('minimal')) {
+  if (zeigeAlt('minimal')) {
     absaetze.push(`${label('minimal')}: ${kwp('minimal', 'kWp Minimal')} kWp ohne Speicher. Die Anlage bleibt unter `
       + `100 kWp, ab denen nach EEG die Direktvermarktung und weitergehende technische Anforderungen greifen.`);
   }
@@ -8738,7 +8766,7 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
         : ` Diese Verteilung überschreitet im bestehenden Netz die Belastbarkeit einzelner Betriebsmittel oder die zulässige `
           + `Spannungsanhebung; sie setzt eine Ertüchtigung voraus, deren Kosten hier nicht enthalten sind.`) : ''));
   }
-  if (zeige('ev-opt')) {
+  if (zeigeAlt('ev-opt')) {
     const ev = ggPvVariante('ev-opt');
     absaetze.push(`${label('ev-opt')}: die größte Anlage, deren Erzeugung zu mindestens ${ggNum(H.evOpt?.schwelle ?? 90)} % `
       + `vor Ort verbraucht wird, hier ${kwp('ev-opt', 'kWp EV-optimiert')} kWp.`
@@ -8748,9 +8776,14 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
   }
   if (zeige('wirt-opt')) {
     const w = ggPvVariante('wirt-opt');
-    absaetze.push(`${label('wirt-opt')}: PV- und Speichergröße wurden gemeinsam variiert. Gewählt ist die Kombination `
+    const ns = w?.wirt?.netzStufe;
+    absaetze.push(`${label('wirt-opt')}: PV- und Speichergröße wurden entlang des Ausbaupfads gemeinsam variiert, die Kosten `
+      + `der jeweils nötigen Netzertüchtigung eingeschlossen. Gewählt ist die Kombination `
       + `mit dem höchsten jährlichen Netto-Überschuss: ${kwp('wirt-opt', 'kWp wirtschaftlich')} kWp `
-      + (w && !(w.batKwh > 0) ? 'ohne Speicher.' : `und ${ggPvFeld(w?.batKwh, 'kWh wirtschaftlich')} kWh.`));
+      + (w && !(w.batKwh > 0) ? 'ohne Speicher.' : `und ${ggPvFeld(w?.batKwh, 'kWh wirtschaftlich')} kWh.`)
+      + (ns ? (ns.stufe === 0 ? ' Sie kommt ohne Ertüchtigung des Netzes aus.'
+        : ns.stufe === 1 ? ` Sie setzt die Netzertüchtigung „${gEsc(ns.label)}“ voraus.`
+        : ` Sie setzt die ersten ${GG_ZAHLWORT[ns.stufe] || ns.stufe} Ausbaustufen des Netzes voraus, zuletzt „${gEsc(ns.label)}“.`) : ''));
   }
   if (zeige('autarkie')) {
     const a = ggPvVariante('autarkie');
@@ -8782,7 +8815,7 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
         + 'auf den betroffenen Dächern nach den oben genannten Belegungsregeln tatsächlich Platz findet. Beide Werte können deshalb voneinander abweichen.');
     }
   }
-  if (!b || H.evOpt || H.wirtOpt || H.autarkie) {
+  if (!b || H.wirtOpt || H.autarkie) {
     absaetze.push((ggImText('pv-herleitung') ? 'Die folgende Abbildung zeigt' : `Die ${GG_VERTIEFUNG_ANLAGE} zeigt`)
       + ' für die optimierten Auslegungen, wie sich die jeweilige Größe aus dem Auswahlkriterium ergibt.');
   }

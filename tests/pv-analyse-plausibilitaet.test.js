@@ -35,6 +35,8 @@ beforeAll(() => {
   loadScript('config/optimizer-defaults.js');
   loadScript('06a-gbi-lastgang.js');
   loadScript('09a-pv-profile.js');
+  loadScript('lib/zielausbau-last.js');   // Zielausbau-Lastgang (ohne NAP-Analyse = Messung)
+  loadScript('lib/pv-netzkostenkurve.js');
   loadScript('09d-pv-analyse.js');
   demandH   = makeDemand();
   pvProfile = pvGetPvProfile();           // reale 8760er PV-Form
@@ -242,5 +244,48 @@ describe('pvWirtschaft — wirtschaftliche Invarianten', () => {
     const w = wirtAt(600, 1500);
     expect(w.autarkie).toBeGreaterThanOrEqual(0);
     expect(w.autarkie).toBeLessThanOrEqual(100);
+  });
+});
+
+// ── Netzkostenkurve statt kWp-Pauschalen (10/2026) ──────────────────────────
+describe('pvInfraKosten — Netzbau aus der Netzkostenkurve', () => {
+  // erst im Test bauen — die Skripte lädt beforeAll, der describe-Rumpf läuft vorher
+  const kurve = () => pvnkAusTreppe({ basisKwp: 400, potenzialKwp: 1500,
+    schritte: [{ summeKwp: 900, kumInvestEUR: 60000, label: 'Trafo 630 → 1000 kVA' }] });
+  const mitKurve = fn => {
+    const s = window._pvAnalyse;
+    const alt = s.netzkurve;
+    s.netzkurve = { kurve: kurve(), faktor: 1 };
+    try { return fn(); } finally { s.netzkurve = alt; }
+  };
+
+  it('ohne Kurve gelten die Pauschalen der kWp-Stufen (Trafo + MS-Trasse ab 500 kWp)', () => {
+    window._pvAnalyse.netzkurve = null;
+    const k = pvInfraKosten(800, 800);
+    expect(k.detail.join(' ')).toMatch(/Trafo/);
+    expect(k.netzKurveEUR).toBe(0);
+  });
+
+  it('mit Kurve: im Bestandsnetz keine Netzkosten, die Pauschalen entfallen', () => {
+    const k = mitKurve(() => pvInfraKosten(800 * 0.45, 360));
+    expect(k.netzKurveEUR).toBe(0);
+    const k2 = mitKurve(() => pvInfraKosten(800, 800));
+    expect(k2.detail.join(' ')).not.toMatch(/Trafo NS\/MS|MS-Kabeltrasse/);
+    expect(k2.netzKurveEUR).toBe(60000);
+    expect(k2.netz.stufe).toBe(1);
+  });
+
+  it('Auslegungen mit eigener Netzrechnung bekommen keine Kurvenkosten dazu', () => {
+    const k = mitKurve(() => pvInfraKosten(800, 800, { ohneNetzbau: true, netzausbauEUR: 25000 }));
+    expect(k.netzKurveEUR).toBe(0);
+    expect(k.investEUR).toBeGreaterThanOrEqual(25000);
+  });
+
+  it('die Netzkosten mindern den Jahresüberschuss', () => {
+    const sim = pvNapSim(800, 0, demandH, pvProfile, { maxEinspeisKw: null, maxBezugKw: null }, 'none', null);
+    const ohne = pvWirtschaft(800, 0, sim, 800 * SPEZ / 1000, { ...PARAMS, netzLife: 40 }, 'none');
+    const mit = mitKurve(() => pvWirtschaft(800, 0, sim, 800 * SPEZ / 1000, { ...PARAMS, netzLife: 40 }, 'none'));
+    expect(mit.netzKurveEUR).toBe(60000);
+    expect(mit.nettoJk).not.toBe(ohne.nettoJk);
   });
 });
