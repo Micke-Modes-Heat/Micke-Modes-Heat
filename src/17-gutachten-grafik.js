@@ -17,6 +17,7 @@ import { sdJahresuebersicht, sdJahresauswertung, sdTrend, sdZeitraumText, sdDaue
 import { ENGPASS_GRENZEN, ENGPASS_VORLAUF_J, engpassVersorgung } from './lib/engpass-core.js';
 import { EK_GRUPPEN, EK_ARTEN, EK_VORGABEN, ekNormKennwerte, ekAuswertung, ekNetzPositionen } from './lib/elektro-kosten.js';
 import { mrStatusAusStand } from './lib/massnahmen-register.js';
+import { EF_STATUS, EF_PV_GEWICHTE, EF_PV_KRITERIEN, efKernaussagen, efPvBewertung, efMassnahmen } from './lib/gutachten-elektro-fazit.js';
 import { resilienzZielMatrix, zielKraftstoffL } from './lib/resilienz-core.js';
 import { nuNetzUebersicht } from './lib/netz-uebersicht.js';
 import {
@@ -13704,6 +13705,320 @@ export function ggFigurEinstellungenRestore(daten) {
     }
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Elektrotechnik: Kernaussagen (5), Bewertung (5.6), Empfehlung (5.7), Fazit (9.2), offene Angaben
+ * Logik in lib/gutachten-elektro-fazit.js; hier nur das Einsammeln der Ergebnisse aus 5.1–5.5.
+ * ═══════════════════════════════════════════════════════════════════════ */
+let _ggElektroStandCache = null;
+/** Ergebnisse von Kapitel 5 als einfache Zahlen — kurz zwischengespeichert, mehrere Bausteine lesen sie beim Zeichnen. */
+function ggElektroStand() {
+  if (_ggElektroStandCache && Date.now() - _ggElektroStandCache.t < 1500) return _ggElektroStandCache.d;
+  const w = window;
+  const d = { heute: new Date().getFullYear(), vorlaufJ: ENGPASS_VORLAUF_J };
+  const { st, r } = ggLies(() => ggBedarfRechnung(), {}) || {};
+  const cap = ggPositiv(w.elNapMaxBezugKw);
+  if (r) {
+    d.anschluss = { endKw: r.endKw, capKva: cap, zieljahr: r.zieljahr,
+                    erstesJahr: cap && r.endKw > cap ? ggLies(() => ggErsteUeberschreitung(st, r, cap), null) : null };
+    d.einspeisung = { kw: r.einspeisung?.kw || 0, zusageKw: ggPositiv(w.elNapMaxEinspKw) };
+  }
+  const res = (w.stromEdges || []).length ? ggEngpassErgebnis() : null;
+  if (res) {
+    const liste = ggEngpassListe(res);
+    const zubau = liste.filter(e => !e.bestand && !e.ms);
+    d.netz = { zubau: zubau.length, ungeloest: zubau.filter(e => e.v?.ungeloest).length, bestand: liste.filter(e => e.bestand).length,
+               erstesJahr: zubau.length ? Math.min(...zubau.map(e => e.item.engpassJahr)) : null, bis: res.bis };
+  } else {
+    d.netz = null;
+  }
+  const pv = ggPvBasis() ? ggPvAuswahl().v : null;
+  if (pv) {
+    const nb = ggPvNetzbedarf(pv);
+    d.pv = { label: pv.label, kwp: pv.pvKwp, batKwh: pv.batKwh, autarkiePct: pv.wirt?.autarkie,
+             ueberKwp: nb?.ueberKwp || 0, bnKwp: nb?.bnKwp ?? ggPvVariante('bestandsnetz')?.pvKwp ?? null, netzInvestEur: nb?.investEUR || null };
+  }
+  const ns = ggNotstromStand();
+  d.notstrom = { berechnet: !!ns.r, erforderlichKw: ns.erforderlichKw, bestandKw: ns.bestandKw || 0, geplantKw: ns.geplantKw || 0 };
+  const lp = ggLadeparks();
+  d.lade = { parks: lp.alle.length, zubauKw: ggLadeReserve()?.ladeKw || 0, zuleitung: ggLadeZuleitungsMaengel(lp.alle, lp.res).length };
+  const kp = ggKostenPositionen();
+  d.kosten = { investEur: kp.a.summeInvestEur, offen: kp.offen.length };
+  d.positionen = kp.a.positionen;
+  _ggElektroStandCache = { t: Date.now(), d };
+  return d;
+}
+const GG_EF_FARBE = () => ({ ok: GG_THEME.accents.gruen, pruefen: GG_THEME.energy.gas, handeln: GG_THEME.energy.waerme, offen: GG_THEME.text.faint });
+const GG_EF_THEMA_DATIV = { 'Netzanschluss': 'beim Netzanschluss', 'Einspeisung': 'bei der Einspeisung', 'Internes Stromnetz': 'im internen Stromnetz',
+  'Photovoltaik': 'bei der Photovoltaik', 'Notstromversorgung': 'bei der Notstromversorgung', 'Ladeinfrastruktur': 'bei der Ladeinfrastruktur', 'Investitionen': 'bei den Investitionen' };
+
+/** Typische reale Quelle einer offenen Angabe — nach Stichworten im Platzhalternamen. */
+function ggAngabeQuelle(name) {
+  // Reihenfolge zählt: abgeleitete Ergebnisse vor den Stichworten, die auch in ihnen vorkommen
+  const n = String(name || '');
+  if (/^(Name Liegenschaft|WE-Nr)/i.test(n)) return 'Projektstammdaten';
+  if (/^(Ergebnis|Reserve bzw|verfügbare Ladeleistung|Umsetzung)/i.test(n)) return 'Gutachter (aus den übrigen Angaben)';
+  if (/Netzbetreiber|Anschlussleistung|Scheinleistung|Einspeisezusage|Einspeiseleistung|Sk″|Spannungsebene|Nennspannung|Messverfahren|Messort|Übergabepunkt|^Station|Kabeltyp|Vorlaufzeit/i.test(n)) return 'Netzbetreiber, Netzanschlussvertrag';
+  if (/Kosten|Angebot|Ergänzung/i.test(n)) return 'Angebote, Kostenschätzung Fachplanung';
+  if (/Einspeisepunkt|USV|Aufstellort|Einbindung|Umschaltung|automatisch oder manuell|Anbindung|Speichertechnologie|Begehung/i.test(n)) return 'Begehung, Bestandsunterlagen';
+  if (/^Anlage|Nr\. Anlage/i.test(n)) return 'Gutachten (Anlagen)';
+  if (/Planungsgrundlage|Neubau|Fuhrpark|Stellplatz|Grundlage|Variante|Nutzung|notstromberechtigt|Verbraucher|Notbetriebslast|Bewertung|Vorhaltung|Anforderungen/i.test(n)) return 'Auftraggeber, Nutzer';
+  return 'Gutachter';
+}
+/** Offene Platzhalter der sichtbaren Textbausteine von Kapitel 5: [{ name, kapitel, quelle }] in Dokumentreihenfolge. */
+function ggOffeneAngabenElektro() {
+  const out = new Map();
+  for (const f of GG_FIGUREN) {
+    if (!f.istText || !/^5[.\s]/.test(f.kapitel || '') || /^elektro-/.test(f.id) || !ggFigurSichtbar(f.id)) continue;
+    let el = null;
+    try { el = f.render(f.config); } catch (e) { void e; }
+    if (!el?.querySelectorAll) continue;
+    const nr = String(f.kapitel).split(' ')[0];
+    el.querySelectorAll('[data-gg-feld="offen"]').forEach(sp => {
+      const name = sp.dataset.ggName || String(sp.textContent || '').replace(/^\[|\]$/g, '');
+      if (!name) return;
+      if (!out.has(name)) out.set(name, new Set());
+      out.get(name).add(nr);
+    });
+  }
+  return [...out].map(([name, kap]) => ({ name, kapitel: [...kap].join(', '), quelle: ggAngabeQuelle(name) }));
+}
+
+function ggRenderElektroKernText(cfg, T = GG_THEME) {
+  void cfg;
+  const k = efKernaussagen(ggElektroStand());
+  const handeln = k.filter(z => z.status === 'handeln'), offen = k.filter(z => z.status === 'offen');
+  const absaetze = ['Dieses Kapitel bewertet die elektrische Versorgung der Liegenschaft: Netzanschluss, internes Stromnetz, '
+    + 'Erzeugung und Speicherung, Notstromversorgung und Ladeinfrastruktur. Die folgende Tabelle fasst die Ergebnisse zusammen; '
+    + 'die Einzelheiten stehen in den genannten Abschnitten.'];
+  if (handeln.length) {
+    absaetze.push(`Handlungsbedarf besteht ${ggAufzaehlung(handeln.map(z => GG_EF_THEMA_DATIV[z.thema] || z.thema))}; `
+      + 'die Maßnahmen sind in Kapitel 5.7 zusammengestellt.');
+  }
+  if (offen.length) {
+    absaetze.push(`Noch nicht abschließend bewertbar ${offen.length === 1 ? 'ist' : 'sind'} ${ggAufzaehlung(offen.map(z => z.thema))}; `
+      + 'die fehlenden Angaben sind in der Tabelle „Noch zu klärende Angaben“ in Kapitel 5.7 aufgeführt.');
+  }
+  return ggTextBlatt(absaetze, T);
+}
+
+function ggRenderElektroBewertungText(cfg, T = GG_THEME) {
+  void cfg;
+  const absaetze = ['Netzanschluss, Photovoltaik, Batteriespeicher, Notstromversorgung und Ladeinfrastruktur sind in der '
+    + 'Elektrotechnik Bausteine und keine Alternativen: Ihr Umfang ergibt sich aus der Bedarfsprognose (Kapitel 5.3) und den '
+    + 'Anforderungen an Netz und Versorgungssicherheit (Kapitel 5.4). Eine echte Wahl besteht bei der Auslegung der PV-Anlage.'];
+  const m = ggPvBewertung();
+  if (!m) {
+    absaetze.push('Eine Bewertung der PV-Auslegungen setzt mindestens zwei berechnete Auslegungen voraus.');
+    return ggTextBlatt(absaetze, T);
+  }
+  const g = m.gewichte;
+  absaetze.push(`Die Auslegungen werden nach ${EF_PV_KRITERIEN.wirtschaft} (${g.wirtschaft} %, Kapitalwert), `
+    + `${EF_PV_KRITERIEN.netz} (${g.netz} %, Anschluss ohne Ertüchtigung des Bestandsnetzes), ${EF_PV_KRITERIEN.autarkie} `
+    + `(${g.autarkie} %) und ${EF_PV_KRITERIEN.invest} (${g.invest} %) bewertet. Je Kriterium erhält der beste Wert 100 Punkte, `
+    + 'die übrigen im Verhältnis dazu.');
+  const erste = m.zeilen[0], gew = ggPvAuswahl().v;
+  const weiter = gew && m.zeilen.find(z => z.a.id === gew.id);
+  absaetze.push(`Die höchste Gesamtnote erreicht die Auslegung „${gEsc(erste.a.label)}“ mit ${ggNum(erste.gesamt)} Punkten. `
+    + (!weiter ? ''
+      : weiter === erste ? 'Sie wird in der weiteren Planung zugrunde gelegt (vgl. Kapitel 5.4.2 und 5.5).'
+        : `Weiterverfolgt wird die Auslegung „${gEsc(weiter.a.label)}“ (Rang ${weiter.rang}, ${ggNum(weiter.gesamt)} Punkte); `
+          + `Begründung: ${ggTextFeld('', 'Begründung der Abweichung von der Bewertung')}.`));
+  return ggTextBlatt(absaetze, T);
+}
+/** Bewertung der PV-Auslegungen im Gutachten (lib/gutachten-elektro-fazit.js). */
+function ggPvBewertung() {
+  if (!ggPvBasis()) return null;
+  const kanon = ggPvKanon().filter(v => v.wirt);
+  return efPvBewertung({
+    auslegungen: kanon.map(v => ({ id: v.id, label: v.label, kwp: v.pvKwp, batKwh: v.batKwh, investEur: v.wirt.investGes,
+                                   kapitalwert: v.wirt.kapitalwert, autarkiePct: v.wirt.autarkie })),
+    bnKwp: ggPvVariante('bestandsnetz')?.pvKwp ?? null,
+    gewichte: EF_PV_GEWICHTE,
+  });
+}
+
+function ggRenderElektroEmpfehlungText(cfg, T = GG_THEME) {
+  void cfg;
+  const d = ggElektroStand();
+  const k = new Map(efKernaussagen(d).map(z => [z.thema, z]));
+  const s = [];
+  const st = t => k.get(t)?.status;
+  if (st('Netzanschluss') === 'handeln') s.push(`den Antrag auf Erhöhung der Anschlussleistung auf mindestens ${ggNum(Math.ceil(d.anschluss.endKw))} kVA frühzeitig beim Netzbetreiber zu stellen`);
+  else if (st('Netzanschluss') === 'offen') s.push('die vereinbarte Anschlussleistung und die Einspeisezusage beim Netzbetreiber zu erfragen und den Netzanschluss danach zu bewerten');
+  if (st('Einspeisung') === 'handeln') s.push('die Einspeisezusage für die geplanten Erzeugungsanlagen zu erhöhen');
+  if (d.netz?.zubau) s.push(`die Ertüchtigungen des internen Netzes jeweils ${ENGPASS_VORLAUF_J} Jahre vor dem Engpassjahr umzusetzen`);
+  if (d.netz?.bestand) s.push('die rechnerisch auffälligen Bestandsdaten bei der Begehung zu prüfen');
+  if (d.pv) s.push(`die PV-Anlage in der Auslegung „${gEsc(d.pv.label)}“ (${ggNum(d.pv.kwp)} kWp${d.pv.batKwh > 0 ? `, Speicher ${ggNum(d.pv.batKwh)} kWh` : ''}) umzusetzen`
+    + (d.pv.ueberKwp > 0 ? ' und die dafür nötige Netzertüchtigung einzuplanen' : ''));
+  if (st('Notstromversorgung') === 'offen') s.push('ein Notstromkonzept mit den notstromberechtigten Verbrauchern zu erstellen (vgl. Kapitel 8)');
+  else if (st('Notstromversorgung') === 'handeln') s.push(`die Notstromversorgung auf ${ggNum(d.notstrom.erforderlichKw)} kW zu ergänzen`);
+  if (d.lade?.zuleitung) s.push('die Zuleitungen der Ladeparks zu prüfen');
+  const absaetze = [s.length
+    ? `Für die elektrische Versorgung der Liegenschaft wird empfohlen, ${ggAufzaehlung(s)}.`
+    : 'Aus der Untersuchung ergibt sich derzeit kein Handlungsbedarf für die elektrische Versorgung.'];
+  absaetze.push('Die folgende Tabelle listet die Maßnahmen mit Umsetzungsjahr und Investition; die Kosten entsprechen Kapitel 5.5. '
+    + 'Die Angaben, die für die weitere Planung noch zu beschaffen sind, stehen in der anschließenden Tabelle.');
+  return ggTextBlatt(absaetze, T);
+}
+
+function ggRenderFazitElektroText(cfg, T = GG_THEME) {
+  void cfg;
+  const d = ggElektroStand();
+  const k = efKernaussagen(d);
+  // Ein Absatz je Thema — der Word-Export kennt in Textbausteinen keine Aufzählungen
+  const absaetze = ['Zusammengefasst ergibt sich für die Elektrotechnik:', ...k.map(z => `${z.thema}: ${z.ergebnis}`)];
+  const m = efMassnahmen(d);
+  const pvNetz = d.pv?.ueberKwp > 0 && d.pv.netzInvestEur > 0 ? d.pv.netzInvestEur : 0;
+  absaetze.push(m.length
+    ? `Daraus folgt der Maßnahmenfahrplan in der folgenden Tabelle mit ${m.length} ${m.length === 1 ? 'Maßnahme' : 'Maßnahmen'}`
+      + (d.kosten?.investEur > 0 ? `; die in Kapitel 5.5 bezifferten Investitionen betragen ${d.kosten.offen > 0 ? 'mindestens ' : ''}rund ${ggEuro(d.kosten.investEur)}` : '')
+      + (pvNetz ? `, hinzu kommt die Netzertüchtigung für die PV-Anlage mit geschätzt rund ${ggEuro(pvNetz)}` : '')
+      + '. Einzelheiten und Begründungen stehen in Kapitel 5.7.'
+    : 'Maßnahmen sind nicht erforderlich.');
+  return ggTextBlatt(absaetze, T);
+}
+
+GG_FIGUREN.push(
+  {
+    id: 'elektro-kernaussagen-text', istText: true, reihe: -20, kapitel: '5 Elektrotechnik',
+    titel: 'Gutachtentext: Kernaussagen Elektrotechnik', datei: 'elektro-kernaussagen-text',
+    hinweis: 'Einleitung zu Kapitel 5 mit Handlungsbedarf und fehlenden Angaben — aus derselben Zusammenstellung wie die Kernaussagen-Tabelle.',
+    render: cfg => ggRenderElektroKernText(cfg), config: {},
+  },
+  {
+    id: 'elektro-kernaussagen', autoSync: true, reihe: -10, kapitel: '5 Elektrotechnik',
+    titel: 'Kernaussagen Elektrotechnik', datei: 'elektro-kernaussagen',
+    hinweis: 'Ein Ergebnis je Thema mit Ampel (in Ordnung · prüfen · Handlungsbedarf · Angaben fehlen) — aus den Rechnungen der '
+           + 'Kapitel 5.3–5.5 (lib/gutachten-elektro-fazit.js).',
+    render: cfg => ggRenderTabelle(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten', titel: 'Kernaussagen Elektrotechnik', leer: 'Keine Ergebnisse.',
+      spalten: [{ label: 'Thema', weight: 1.4, align: 'left', mono: false }, { label: 'Ergebnis', weight: 4.2, align: 'left', mono: false },
+                { label: 'Bewertung', weight: 1.3, align: 'left', mono: false }, { label: 'Kapitel', weight: 0.8 }],
+      zeilen: [], fussnote: '',
+    },
+    ausProjekt(cfg) {
+      const k = efKernaussagen(ggElektroStand());
+      const farbe = GG_EF_FARBE();
+      cfg.zeilen = k.map(z => ({ werte: [z.thema, z.ergebnis, EF_STATUS[z.status], z.kapitel], akzent: farbe[z.status] }));
+      cfg.fussnote = 'Bewertung: in Ordnung · prüfen · Handlungsbedarf · Angaben fehlen';
+      return `✓ ${k.length} Kernaussagen · ${k.filter(z => z.status === 'handeln').length} mit Handlungsbedarf.`;
+    },
+  },
+  {
+    id: 'elektro-bewertung-text', istText: true, reihe: 5, kapitel: '5.6 Bewertungsmatrix',
+    titel: 'Gutachtentext: Bewertung Elektrotechnik', datei: 'elektro-bewertung-text',
+    hinweis: 'Warum im Strom nur die PV-Auslegung eine echte Wahl ist, Kriterien und Gewichte, Ergebnis und weiterverfolgte Auslegung.',
+    render: cfg => ggRenderElektroBewertungText(cfg), config: {},
+  },
+  {
+    id: 'elektro-pv-bewertung', autoSync: true, reihe: 10, kapitel: '5.6 Bewertungsmatrix',
+    titel: 'Bewertung der PV-Auslegungen', datei: 'elektro-pv-bewertung',
+    hinweis: `Punkte je Kriterium (bester Wert 100) und gewichtete Gesamtnote. Gewichte (Vorschlag): ${Object.entries(EF_PV_GEWICHTE).map(([k, v]) => `${EF_PV_KRITERIEN[k]} ${v} %`).join(', ')}.`,
+    sichtbar: () => ggWenn(ggPvKanon().length > 1, 'weniger als zwei PV-Auslegungen berechnet'),
+    render: cfg => ggRenderTabelle(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten', titel: 'Bewertung der PV-Auslegungen', leer: 'Keine PV-Auslegungen berechnet.',
+      spalten: [{ label: 'Auslegung', weight: 2.2, align: 'left', mono: false }, { label: 'PV / Speicher', weight: 1.5 },
+                { label: 'Wirtschaftl.', weight: 1.0 }, { label: 'Netz', weight: 0.9 }, { label: 'Autarkie', weight: 0.9 },
+                { label: 'Investition', weight: 1.0 }, { label: 'Gesamt', weight: 0.9 }, { label: 'Rang', weight: 0.6 }],
+      zeilen: [], fussnote: '',
+    },
+    ausProjekt(cfg) {
+      const m = ggPvBewertung();
+      if (!m) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Weniger als zwei PV-Auslegungen berechnet.'; }
+      const gew = ggPvAuswahl().v;
+      const p = v => (Number.isFinite(v) ? ggNum(v) : '—');
+      cfg.zeilen = m.zeilen.map(z => ({
+        werte: [z.a.label, `${ggNum(z.a.kwp)} kWp${z.a.batKwh > 0 ? ` · ${ggNum(z.a.batKwh)} kWh` : ''}`,
+                p(z.punkte.wirtschaft), p(z.punkte.netz), p(z.punkte.autarkie), p(z.punkte.invest), p(z.gesamt), String(z.rang)],
+        highlight: gew && z.a.id === gew.id,
+      }));
+      const g = m.gewichte;
+      cfg.fussnote = `Punkte: bester Wert 100 · Gewichte ${EF_PV_KRITERIEN.wirtschaft} ${g.wirtschaft} %, ${EF_PV_KRITERIEN.netz} ${g.netz} %, `
+                   + `${EF_PV_KRITERIEN.autarkie} ${g.autarkie} %, ${EF_PV_KRITERIEN.invest} ${g.invest} % · Netz: 100 = ohne Ertüchtigung `
+                   + 'des Bestandsnetzes anschließbar · hervorgehoben: weiterverfolgte Auslegung';
+      return `✓ ${m.zeilen.length} Auslegungen bewertet · Rang 1: ${m.zeilen[0].a.label}.`;
+    },
+  },
+  {
+    id: 'elektro-empfehlung-text', istText: true, reihe: 5, kapitel: '5.7 Empfehlung Elektrotechnik',
+    titel: 'Gutachtentext: Empfehlung Elektrotechnik', datei: 'elektro-empfehlung-text',
+    hinweis: 'Empfehlung in einem Satz je Handlungsfeld, abgeleitet aus den Kernaussagen; danach Maßnahmenliste und offene Angaben.',
+    render: cfg => ggRenderElektroEmpfehlungText(cfg), config: {},
+  },
+  {
+    id: 'elektro-massnahmen', autoSync: true, reihe: 10, kapitel: '5.7 Empfehlung Elektrotechnik',
+    titel: 'Maßnahmen Elektrotechnik', datei: 'elektro-massnahmen',
+    hinweis: 'Maßnahmen aus 5.4 mit Umsetzungsjahr und Investition (Kostenpositionen aus 5.5); Netzmaßnahmen je Jahr zusammengefasst.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten', titel: 'Maßnahmen Elektrotechnik', leer: 'Keine Maßnahmen erforderlich.',
+      spalten: [{ label: 'Nr.', weight: 0.5 }, { label: 'Bereich', weight: 1.4, align: 'left', mono: false },
+                { label: 'Maßnahme', weight: 3.0, align: 'left', mono: false }, { label: 'bis', weight: 0.7 },
+                { label: 'Investition', weight: 1.1 }, { label: 'Begründung', weight: 2.4, align: 'left', mono: false }],
+      zeilen: [], fussnote: '',
+    },
+    ausProjekt(cfg) {
+      const m = efMassnahmen(ggElektroStand());
+      cfg.zeilen = m.map((x, i) => ({ werte: [String(i + 1), x.bereich, x.massnahme, x.bis ?? 'offen', x.investEur > 0 ? ggEuro(x.investEur) : '—', x.begruendung] }));
+      cfg.fussnote = 'Investition: Kostenschätzung aus Kapitel 5.5 · — = nicht beziffert · „bis“ = spätestes Umsetzungsjahr';
+      return `✓ ${m.length} Maßnahmen.`;
+    },
+  },
+  {
+    id: 'elektro-offene-angaben', autoSync: true, reihe: 30, kapitel: '5.7 Empfehlung Elektrotechnik',
+    titel: 'Noch zu klärende Angaben', datei: 'elektro-offene-angaben',
+    hinweis: 'Alle offenen Platzhalter der Textbausteine von Kapitel 5 mit Kapitel und typischer Quelle — eine Liste für die '
+           + 'Unterlagenanforderung. Im Editor ausgefüllte Platzhalter fallen weg.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten', titel: 'Noch zu klärende Angaben', leer: 'Alle Angaben liegen vor.',
+      spalten: [{ label: 'Angabe', weight: 3.2, align: 'left', mono: false }, { label: 'Kapitel', weight: 1.2, align: 'left', mono: false },
+                { label: 'Quelle', weight: 2.2, align: 'left', mono: false }],
+      zeilen: [], fussnote: '',
+    },
+    ausProjekt(cfg) {
+      const l = ggOffeneAngabenElektro();
+      cfg.zeilen = l.map(x => ({ werte: [x.name, x.kapitel, x.quelle] }));
+      cfg.fussnote = l.length ? 'Quelle = typische Herkunft der Angabe; im Gutachten als gelbe Platzhalter markiert' : '';
+      return `✓ ${l.length} offene Angaben.`;
+    },
+  },
+  {
+    id: 'fazit-elektro-text', istText: true, reihe: 10, kapitel: '9.2 Elektrotechnik',
+    titel: 'Gutachtentext: Fazit Elektrotechnik', datei: 'fazit-elektro-text',
+    hinweis: 'Kernaussagen in einem Absatz und Überleitung zum Maßnahmenfahrplan.',
+    render: cfg => ggRenderFazitElektroText(cfg), config: {},
+  },
+  {
+    id: 'fazit-elektro-fahrplan', autoSync: true, reihe: 20, kapitel: '9.2 Elektrotechnik',
+    titel: 'Maßnahmenfahrplan Elektrotechnik', datei: 'fazit-elektro-fahrplan',
+    hinweis: 'Die Maßnahmen aus 5.7 je Umsetzungsjahr.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: {
+      eyebrow: 'Fazit', titel: 'Maßnahmenfahrplan Elektrotechnik', leer: 'Keine Maßnahmen erforderlich.',
+      spalten: [{ label: 'Jahr', weight: 0.8 }, { label: 'Maßnahmen', weight: 5.0, align: 'left', mono: false }, { label: 'Investition', weight: 1.2 }],
+      zeilen: [], fussnote: '',
+    },
+    ausProjekt(cfg) {
+      const m = efMassnahmen(ggElektroStand());
+      const jahre = new Map();
+      for (const x of m) {
+        const j = x.bis ?? 'offen';
+        if (!jahre.has(j)) jahre.set(j, []);
+        jahre.get(j).push(x);
+      }
+      cfg.zeilen = [...jahre].map(([j, xs]) => {
+        const s = xs.reduce((a, x) => a + (x.investEur || 0), 0);
+        return { werte: [String(j), xs.map(x => x.massnahme), s > 0 ? ggEuro(s) + (xs.some(x => !(x.investEur > 0)) ? ' +' : '') : '—'] };
+      });
+      cfg.fussnote = '„+“ = zusätzlich nicht bezifferte Maßnahmen · Kosten aus Kapitel 5.5';
+      return `✓ ${m.length} Maßnahmen in ${jahre.size} Jahresschritten.`;
+    },
+  },
+);
 
 /** Teile einer Figur im Dokument: Abbildung, Blatt + Kennzahlentabelle, reine Tabelle oder Fließtext (null = keine Beschriftung). */
 function ggTeilArten(figur, { layout = 'reduziert', kennzahlen = true } = {}) {
