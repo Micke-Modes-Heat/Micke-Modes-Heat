@@ -6,10 +6,16 @@ import { lerpColor } from './02a-netz-physik.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
 import { pvBatteryStep } from './lib/pv-battery-core.js';
 import { estimateBatteryAging } from './lib/battery-aging.js';
+import { zeichneWennSichtbar } from './lib/zeichnen-bei-sicht.js';
 
 export function _stromRenderMonatsChart(monthlyQuartier, monthlyWp, monthlyPv) {
   const canvas = document.getElementById('strom-monats-canvas');
   if (!canvas) return;
+  // Läuft mit jeder Strombilanz — ausgeblendet erst beim Öffnen zeichnen (lib/zeichnen-bei-sicht.js)
+  zeichneWennSichtbar(canvas, () => _monatsChartZeichnen(canvas, monthlyQuartier, monthlyWp, monthlyPv));
+}
+
+function _monatsChartZeichnen(canvas, monthlyQuartier, monthlyWp, monthlyPv) {
   const W = canvas.offsetWidth || 500;
   const H = 110;
   canvas.width  = W * (window.devicePixelRatio || 1);
@@ -503,6 +509,10 @@ export function _stromFlussWeekChange(val) {
 export function _stromRenderFlussChart(weekIdx) {
   const canvas = document.getElementById('strom-fluss-canvas');
   if (!canvas) return;
+  zeichneWennSichtbar(canvas, () => _flussChartZeichnen(canvas, weekIdx));
+}
+
+function _flussChartZeichnen(canvas, weekIdx) {
 
   // ── Datenquellen ──────────────────────────────────────────────────────────
   const pvH    = window._stromPvH;          // Float32Array[8760] kWh/h

@@ -18,6 +18,7 @@ import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
 import { syntheticPvProfileMeta } from './lib/pv-profile-import.js';
 import { glTimeSeriesMeta } from './06a-gbi-lastgang.js';
 import { appLifecycle } from './lib/lifecycle.js';
+import { ausstehendeZeichnen } from './lib/zeichnen-bei-sicht.js';
 
 // Anzeigenamen je Asset-Typ — zugleich die Reiternamen des Excel-Vollexports (35-excel.js),
 // darum stabil halten: ein umbenannter Reiter wird beim Import nicht mehr erkannt.
@@ -420,6 +421,7 @@ async function exportPDFReport() {
   const canvasIds = ['sankey-canvas','da-canvas','da-canvas-jdl','da-canvas-woche','strom-monats-canvas','strom-jdl-canvas',
     'ep-hourly-canvas','ep-monthly-canvas','av-lastgang-canvas','av-jdl-canvas','gl-split-canvas','em-stunden-canvas','em-monat-canvas'];
   const cImg = {};
+  ausstehendeZeichnen();   // ausgeblendete Diagramme sind sonst noch nicht gezeichnet (lib/zeichnen-bei-sicht.js)
   canvasIds.forEach(id => {
     try { const c = document.getElementById(id); if (c && c.width > 0) cImg[id] = c.toDataURL('image/png'); } catch(e) {}
   });

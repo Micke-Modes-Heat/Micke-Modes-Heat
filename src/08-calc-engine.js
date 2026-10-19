@@ -5,6 +5,7 @@ import { spitzenkessel } from './06c-dispatch-core.js';
 import { redrawErzeugerIcons } from './03a-erzeuger.js';
 import { glInit } from './06a-gbi-lastgang.js';
 import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
+import { zeichneWennSichtbar } from './lib/zeichnen-bei-sicht.js';
 
 export const CalcEngine = (() => {
   'use strict';
@@ -1053,8 +1054,7 @@ function _renderSensTornado(bars, basisEnergie) {
       else { ctx.fillText(minusLabel, cx - wMinus - 3, y + barH / 2 + 3); }
     });
   };
-  if (canvas.clientWidth > 10) _doDraw();
-  else requestAnimationFrame(_doDraw);
+  zeichneWennSichtbar(canvas, _doDraw);
 }
 
 // ── Preissensitivitäts-Fächer ───────────────────────────────────────────
@@ -1151,8 +1151,7 @@ function _renderSensFan(fanData, fanRange, basisEnergie, verbrauch) {
       ).join('') + '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;"><span style="width:6px;height:6px;background:#66bb6a;border-radius:50%;display:inline-block;"></span><span style="color:var(--muted);">Basis ' + Math.round(basisEnergie).toLocaleString('de-DE') + ' €/a</span></span>';
     }
   };
-  if (canvas.clientWidth > 10) _doDraw();
-  else requestAnimationFrame(_doDraw);
+  zeichneWennSichtbar(canvas, _doDraw);
 }
 
 // ── Bump Chart (Technologie-Ranking bei Preisänderung) ──────────────────
@@ -1288,8 +1287,7 @@ function _sensRenderBump() {
       ctx.fillText(DA_LABELS[k] || k, W - pad.right + 12, yPos(ranks[ranks.length - 1]) + 3);
     });
   };
-  if (canvas.clientWidth > 10) _doDraw();
-  else requestAnimationFrame(_doDraw);
+  zeichneWennSichtbar(canvas, _doDraw);
 }
 
 // ── Init (CalcEngine now available) ───────────────────────────────────────

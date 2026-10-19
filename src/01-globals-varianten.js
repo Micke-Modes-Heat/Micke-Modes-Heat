@@ -17,6 +17,7 @@ import { massnahmeJahrAus } from './lib/phasen-core.js';
 import { mrAbgleich } from './lib/massnahmen-register.js';
 import { ENGPASS_AUTO_TAG } from './lib/engpass-core.js';
 import { createId } from './lib/util.js';
+import { zeichneWennSichtbar } from './lib/zeichnen-bei-sicht.js';
 
 export let gebaeude = [];
 export function setGebaeude(v) { gebaeude = v; }
@@ -838,8 +839,7 @@ export function _renderParetoChart() {
     }
   };
 
-  if (canvas.clientWidth > 10) _doDraw();
-  else requestAnimationFrame(_doDraw);
+  zeichneWennSichtbar(canvas, _doDraw);
 }
 
 // ── Zentrale ETA-Tabelle (liest Pellets/HHS aus DOM) ─────────────────────────

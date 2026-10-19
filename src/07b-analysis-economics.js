@@ -26,6 +26,7 @@ import { autoGkResult, spitzenkessel } from './06c-dispatch-core.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, solarthermieAktiv, stromEmF, stromEmFLZ, thermSpeicherAktiv } from './01-globals-varianten.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { runSensitivitaet } from './08-calc-engine.js';
+import { zeichneWennSichtbar } from './lib/zeichnen-bei-sicht.js';
 
 window._wirtBausteineOverrides = window._wirtBausteineOverrides || {};
 window._wirtVdiOverrides       = window._wirtVdiOverrides       || {};
@@ -1834,8 +1835,7 @@ export function _renderWirtCo2Chart(keys, en) {
     }
   };
 
-  if (canvas.clientWidth > 10) _doDrawCo2();
-  else requestAnimationFrame(_doDrawCo2);
+  zeichneWennSichtbar(canvas, _doDrawCo2);
 }
 
 // ── Jahresscheiben-Berechnung (NPV) ──────────────────────────────────────
@@ -2108,7 +2108,10 @@ export function renderJahresscheibenChart(years, laufzeit) {
   const canvas = document.getElementById('js-canvas');
   if (!wrap || !canvas) return;
   wrap.style.display = 'block';
+  zeichneWennSichtbar(canvas, () => _jahresscheibenZeichnen(canvas, years, laufzeit));
+}
 
+function _jahresscheibenZeichnen(canvas, years, laufzeit) {
   const dpr = window.devicePixelRatio || 1;
   const W = canvas.offsetWidth || 460;
   const H = 160;
