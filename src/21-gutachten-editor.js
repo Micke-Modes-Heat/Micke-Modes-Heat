@@ -13,6 +13,7 @@ import {
   ggFigurenKatalog, ggFigurTeilArten, ggRenderFigurFuerDokument, ggCopyDokumentTeil, ggCopyForWord, ggFitLabels,
   ggMountEinzelansicht, ggShowSection, ggSelectFigur, ggFigurEinstellungenCapture, ggFigurEinstellungenRestore,
   ggFigurWordDaten, ggSvgToPngBlob, ggTrafostationenIstListe, ggFigurSichtbar, ggFigurAusblendGrund, ggFrageKontext, ggPlausiPruefung,
+  ggFigurInVertiefung, ggFigurSichtbarOhneFassung, GG_VERTIEFUNG_TITEL,
 } from './17-gutachten-grafik.js';
 import { GF_FRAGEN, gfFragenZuKapitel, gfOptionen, gfStandard } from './lib/gutachten-fragen.js';
 import {
@@ -21,13 +22,13 @@ import {
   gdKapitelEinfuegen, gdKapitelLoeschen, gdKapitelVerschieben, gdKapitelEbene,
   gdNeuerTextBlock, gdNeuerFigurBlock, gdNeuerBildBlock, gdBlockEinfuegen, gdBlockLoeschen, gdBlockVerschieben,
   gdFindeBlock, gdBeschriftungen, gdFigurIds, gdNormDeckblatt, GUTACHTEN_DECKBLATT_VORGABEN,
-  gdAnlagenNummern, gdStationsAnlagenErgaenzen, gdAnlageLoeschen, gdAnlageVerschieben,
+  gdAnlagenNummern, gdStationsAnlagenErgaenzen, gdAnlageLoeschen, gdAnlageVerschieben, gdRoemisch,
 } from './lib/gutachten-dokument.js';
 import { ssStationModell, ssBestandsStationen, ssSteckbriefBlatt, ssSteckbriefTitel, ssSteckbriefHtml, ssStationsLabel } from './lib/stations-steckbrief.js';
-import { ssdxAnlagenVerzeichnis, ssdxSteckbriefAnlage } from './lib/steckbrief-docx.js';
+import { ssdxAnlagenVerzeichnis, ssdxSteckbriefAnlage, ssdxAnlage } from './lib/steckbrief-docx.js';
 import {
   gdxKontext, gdxDeckblatt, gdxInhaltsverzeichnis, gdxVerzeichnis, gdxUeberschrift, gdxFreitext,
-  gdxBausteinAbsaetze, gdxTabelle, gdxAbbildung, gdxBeschriftung, gdxErzeugePaket,
+  gdxBausteinAbsaetze, gdxTabelle, gdxAbbildung, gdxBeschriftung, gdxErzeugePaket, gdxAbsatz, gdxLauf,
 } from './lib/gutachten-docx.js';
 import { gpxErzeugePaket, gpxStichpunkte } from './lib/gutachten-pptx.js';
 import { GV_LOGO_PNG, GV_WAPPEN_PNG, GV_NETZGRAFIK_PNG } from './config/gutachten-vorlage-assets.js';
@@ -111,6 +112,35 @@ function anlageInhalt(a) {
     liegenschaft: String(window.pdKaserneName || ''), adresse: String(window.pdLiegenschaftAdresse || ''), weNummer: String(window.pdWeNummer || ''),
   });
   return { blatt, titel: ssSteckbriefTitel(blatt), hinweise: m.hinweise };
+}
+/* ── Anlage „Technische Vertiefung Elektrotechnik“ (Fragebogen 5: Grundkonzept) ──
+ * Nicht im Dokument gespeichert: entsteht beim Zeichnen und Exportieren aus den Bausteinen, die im
+ * Grundkonzept aus dem Text in die Anlage wandern (ggFigurInVertiefung), und steht hinter den
+ * gespeicherten Anlagen. Wechsel auf „ausführlich“ = die Bausteine stehen wieder an ihrem Platz. */
+function vertiefungAnlage() {
+  const dok = _gut.dok;
+  if (!dok) return null;
+  const nummern = gdKapitelNummern(dok.kapitel);
+  const gruppen = [];
+  dok.kapitel.forEach((k, ki) => {
+    const bloecke = k.bloecke.filter(b => b.typ === 'figur' && ggFigurInVertiefung(b.figurId) && ggFigurSichtbarOhneFassung(b.figurId));
+    if (bloecke.length) gruppen.push({ kapitel: `${nummern[ki]} ${k.titel}`.trim(), bloecke });
+  });
+  if (!gruppen.length) return null;
+  return { nr: gdRoemisch((dok.anlagen || []).length + 1), titel: GG_VERTIEFUNG_TITEL, gruppen };
+}
+/** Abbildungs-/Tabellennummern der Anlage, fortlaufend hinter denen des Textes — wie die SEQ-Felder in Word. */
+function vertiefungBeschriftungen(va, textNummern) {
+  const z = { Abbildung: 0, Tabelle: 0 };
+  for (const liste of textNummern.values()) for (const x of liste || []) if (x && x.nr > z[x.art]) z[x.art] = x.nr;
+  const out = new Map();
+  for (const g of va.gruppen) {
+    for (const b of g.bloecke) {
+      const arten = ggFigurTeilArten(b.figurId, { layout: b.layout, kennzahlen: b.kennzahlen });
+      out.set(b.id, arten.map(art => (art in z ? { art, nr: ++z[art] } : null)));
+    }
+  }
+  return out;
 }
 const findeAnlage = id => (_gut.dok?.anlagen || []).find(a => a.id === id) || null;
 /** Bestehende Stationen, für die noch keine Anlage existiert */
@@ -301,8 +331,8 @@ function beschriftungEl(nr, text) {
   return d;
 }
 
-function figurBlockInhalt(box, b, nummern, zuEinpassen) {
-  if (!ggFigurSichtbar(b.figurId)) {
+function figurBlockInhalt(box, b, nummern, zuEinpassen, { inAnlage = false } = {}) {
+  if (!inAnlage && !ggFigurSichtbar(b.figurId)) {
     const titel = ggFigurenKatalog().find(f => f.id === b.figurId)?.titel || b.figurId;
     box.innerHTML = `<div style="font-size:11px;color:var(--faint);padding:2px 0;" title="Erscheint nicht im Export und nicht in der Präsentation. Ändern über den Fragebogen des Kapitels (rechts) bzw. die Projektdaten.">⊘ ${esc(titel)} — ${esc(ggFigurAusblendGrund(b.figurId))}</div>`;
     return;
@@ -398,14 +428,16 @@ function renderSeite() {
   });
 
   const anlagen = _gut.dok.anlagen || [];
-  if (anlagen.length) {
+  const va = vertiefungAnlage();
+  if (anlagen.length || va) {
     const anr = gdAnlagenNummern(anlagen);
+    const liste = [...anlagen.map((a, i) => ({ nr: anr[i], titel: anlageInhalt(a).titel })), ...(va ? [{ nr: va.nr, titel: va.titel }] : [])];
     const verz = document.createElement('div');
     verz.style.cssText = 'margin:40px 0 0;padding-top:18px;border-top:2px dashed var(--border);';
     verz.innerHTML = `<div style="font-size:21px;font-weight:bold;margin-bottom:8px;">Anlagen</div>`
-      + `<table style="width:100%;border-collapse:collapse;font-size:13px;">${anlagen.map((a, i) =>
-          `<tr><td style="width:110px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:4px 6px;color:#266426;">Anlage ${anr[i]}</td>`
-          + `<td style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:4px 6px;">${esc(anlageInhalt(a).titel)}</td></tr>`).join('')}</table>`;
+      + `<table style="width:100%;border-collapse:collapse;font-size:13px;">${liste.map(x =>
+          `<tr><td style="width:110px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:4px 6px;color:#266426;">Anlage ${x.nr}</td>`
+          + `<td style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:4px 6px;">${esc(x.titel)}</td></tr>`).join('')}</table>`;
     papier.appendChild(verz);
     anlagen.forEach((a, i) => {
       const inhalt = anlageInhalt(a);
@@ -420,6 +452,27 @@ function renderSeite() {
           : `<div style="font-size:11.5px;">${ssSteckbriefHtml(inhalt.blatt)}</div>`);
       papier.appendChild(box);
     });
+    if (va) {
+      const box = document.createElement('div');
+      box.style.cssText = 'margin:34px 0 0;padding:14px 6px 4px;border-top:2px dashed var(--border);';
+      box.title = 'Entsteht automatisch aus dem Fragebogen Kapitel 5 („Umfang Elektrotechnik: Grundkonzept“) — nicht gespeichert.';
+      box.innerHTML = `<div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#3F9C3F;">Anlage ${va.nr}</div>`
+        + `<div style="font-size:21px;font-weight:bold;margin:2px 0 10px;">${esc(va.titel)}</div>`;
+      const nrMap = vertiefungBeschriftungen(va, beschriftungen);
+      for (const g of va.gruppen) {
+        const kopf = document.createElement('div');
+        kopf.style.cssText = 'font-weight:bold;margin:18px 0 6px;';
+        kopf.textContent = `Zu Kapitel ${g.kapitel}`;
+        box.appendChild(kopf);
+        for (const b of g.bloecke) {
+          const fb = document.createElement('div');
+          fb.style.cssText = 'margin:8px 0;';
+          figurBlockInhalt(fb, b, nrMap.get(b.id) || [], zuEinpassen, { inAnlage: true });
+          box.appendChild(fb);
+        }
+      }
+      papier.appendChild(box);
+    }
   }
 
   host.appendChild(papier);
@@ -1429,6 +1482,29 @@ export function gutSetDeckblattPerson(i, feld, wert) {
 
 const pngDaten = async svg => new Uint8Array(await (await ggSvgToPngBlob(svg, 3)).arrayBuffer());
 
+/** Ein Figur-Block als OOXML (Text, Tabelle oder Bild samt Beschriftung) — für Kapitel und Vertiefungs-Anlage. */
+async function figurWordXml(ctx, b, nrListe, warnungen) {
+  const erg = figurErgebnis(b);
+  if (erg.fehler) { warnungen.push(`${b.figurId}: ${erg.fehler}`); return ''; }
+  const titel = b.unterschrift.trim() || erg.titel;
+  let xml = '';
+  for (let ti = 0; ti < erg.teile.length; ti++) {
+    const text = ti === 0 ? titel : `${erg.tabelleTitel}: ${titel}`;
+    const daten = ggFigurWordDaten(b.figurId, ti);
+    if (daten?.art === 'text') {
+      xml += gdxBausteinAbsaetze(daten.absaetze);
+    } else if (daten?.art === 'tabelle') {
+      xml += gdxTabelle(daten);
+    } else {
+      const svg = erg.teile[ti].el;
+      const rId = ctx.bild(await pngDaten(svg), b.figurId);
+      xml += gdxAbbildung(ctx, rId, +svg.getAttribute('width'), +svg.getAttribute('height'), text);
+    }
+    if (nrListe[ti]) xml += gdxBeschriftung(nrListe[ti].art, nrListe[ti].nr, text);
+  }
+  return xml;
+}
+
 /**
  * Gutachten als Word-Paket zusammenstellen — [{pfad, inhalt, base64}], noch ungezippt.
  * Abbildungen werden aus den gezeichneten (eingepassten) SVGs der Seitenansicht gerastert,
@@ -1444,7 +1520,9 @@ export async function gutWordPaket() {
 
   const nummern = gdKapitelNummern(dok.kapitel);
   const beschriftungen = gdBeschriftungen(dok, teilArten);
-  const alle = [...beschriftungen.values()].flat().filter(Boolean);
+  const va = vertiefungAnlage();
+  const vaNummern = va ? vertiefungBeschriftungen(va, beschriftungen) : new Map();
+  const alle = [...beschriftungen.values(), ...vaNummern.values()].flat().filter(Boolean);
   koerper += gdxInhaltsverzeichnis();
   let neueSeite = true;
   if (alle.some(x => x.art === 'Abbildung')) { koerper += gdxVerzeichnis('Abbildungsverzeichnis', 'Abbildung', { neueSeite }); neueSeite = false; }
@@ -1453,7 +1531,7 @@ export async function gutWordPaket() {
   const warnungen = [];
   // Anlagen wie in der Vorlage: Liste hinter den Verzeichnissen, Inhalte hinter dem letzten Kapitel
   const anlagen = (dok.anlagen || []).map((a, i) => ({ a, nr: gdAnlagenNummern(dok.anlagen)[i], ...anlageInhalt(a) }));
-  koerper += ssdxAnlagenVerzeichnis(anlagen.map(x => ({ nr: x.nr, titel: x.titel })));
+  koerper += ssdxAnlagenVerzeichnis([...anlagen.map(x => ({ nr: x.nr, titel: x.titel })), ...(va ? [{ nr: va.nr, titel: va.titel }] : [])]);
   for (let ki = 0; ki < dok.kapitel.length; ki++) {
     const k = dok.kapitel[ki];
     koerper += gdxUeberschrift(k.ebene, nummern[ki], k.titel);
@@ -1470,30 +1548,21 @@ export async function gutWordPaket() {
         if (nr) koerper += gdxBeschriftung(nr.art, nr.nr, titel);
         continue;
       }
-      if (!ggFigurSichtbar(b.figurId)) continue;   // über den Fragebogen ausgeblendet
-      const erg = figurErgebnis(b);
-      if (erg.fehler) { warnungen.push(`${b.figurId}: ${erg.fehler}`); continue; }
-      const titel = b.unterschrift.trim() || erg.titel;
-      const nrListe = beschriftungen.get(b.id) || [];
-      for (let ti = 0; ti < erg.teile.length; ti++) {
-        const text = ti === 0 ? titel : `${erg.tabelleTitel}: ${titel}`;
-        const daten = ggFigurWordDaten(b.figurId, ti);
-        if (daten?.art === 'text') {
-          koerper += gdxBausteinAbsaetze(daten.absaetze);
-        } else if (daten?.art === 'tabelle') {
-          koerper += gdxTabelle(daten);
-        } else {
-          const svg = erg.teile[ti].el;
-          const rId = ctx.bild(await pngDaten(svg), b.figurId);
-          koerper += gdxAbbildung(ctx, rId, +svg.getAttribute('width'), +svg.getAttribute('height'), text);
-        }
-        if (nrListe[ti]) koerper += gdxBeschriftung(nrListe[ti].art, nrListe[ti].nr, text);
-      }
+      if (!ggFigurSichtbar(b.figurId)) continue;   // über den Fragebogen ausgeblendet bzw. in der Vertiefungs-Anlage
+      koerper += await figurWordXml(ctx, b, beschriftungen.get(b.id) || [], warnungen);
     }
   }
   for (const x of anlagen) {
     if (x.fehler) { warnungen.push(`Anlage ${x.nr}: ${x.fehler}`); continue; }
     koerper += ssdxSteckbriefAnlage(x.nr, x.titel, x.blatt);
+  }
+  if (va) {
+    let inhalt = '';
+    for (const g of va.gruppen) {
+      inhalt += gdxAbsatz(gdxLauf(`Zu Kapitel ${g.kapitel}`, { b: true }), { keepNext: true, abstand: 'w:before="240" w:after="120"' });
+      for (const b of g.bloecke) inhalt += await figurWordXml(ctx, b, vaNummern.get(b.id) || [], warnungen);
+    }
+    koerper += ssdxAnlage({ nr: va.nr, titel: va.titel, inhalt });
   }
   const titel = 'Gutachten zur zukünftigen Energieversorgung' + (deckblatt.liegenschaft ? ` der ${deckblatt.liegenschaft}` : '');
   return { paket: gdxErzeugePaket(ctx, koerper, { titel }), warnungen };

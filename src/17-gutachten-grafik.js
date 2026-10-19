@@ -1404,7 +1404,8 @@ function ggRenderNetzanschlussText(cfg, T = GG_THEME) {
       + `${ggTextFeld(naKvaText(window.elNapMaxBezugKw), 'Vereinbarte max. Scheinleistung')} kVA.`,
     `Die Messung erfolgt als ${ggTextFeld(window.naMessverfahren, 'Messverfahren')}`
       + (ggMesskonzeptWerte().ns ? '' : `, ${ggTextFeld(NA_MESSORTE.find(o => o.wert === window.naMessort)?.text, 'Messort')}`)
-      + '. Das Übergabe- und Messkonzept zeigt die folgende Abbildung.',
+      + (ggImText('netzanschluss-messkonzept') ? '. Das Übergabe- und Messkonzept zeigt die folgende Abbildung.'
+        : `. Das Übergabe- und Messkonzept zeigt die ${GG_VERTIEFUNG_ANLAGE}.`),
     `Der Netzbetreiber erteilt grundsätzlich keine Auskunft über die physikalisch maximal mögliche Anschlussleistung `
       + `der Liegenschaft. Eine Bewertung der verfügbaren Netzkapazitäten erfolgt ausschließlich auf Basis eines `
       + `konkreten Netzanschlussantrags. Hierzu ist das vom Netzbetreiber bereitgestellte Antragsformular zur Anmeldung `
@@ -1688,18 +1689,56 @@ const ggPot = k => ggFrage(`pot-${k}`);
  * Sichtbarkeit eines Katalogbausteins: `sichtbar()` liefert true, false (über den Fragebogen ausgeblendet) oder einen
  * Text mit dem Grund, warum der Baustein nach den Projektdaten nichts aussagt (automatisch ausgeblendet).
  */
-function ggSichtbarRoh(id) {
+function ggSichtbarRoh(id, { ohneFassung = false } = {}) {
+  if (!ohneFassung && ggFigurInVertiefung(id)) return false;
   const f = GG_FIGUREN.find(x => x.id === id);
   const regel = f && (typeof f.sichtbar === 'function' ? f.sichtbar : GG_REGELN[id]);
   if (!regel) return true;
   try { const r = regel(); return r === undefined ? true : r; } catch (e) { void e; return true; }
 }
 export function ggFigurSichtbar(id) { return ggSichtbarRoh(id) === true; }
+/** Sichtbar, wenn man die Fassung „Grundkonzept“ außer Acht lässt — Inhalt der Anlage „Technische Vertiefung“. */
+export function ggFigurSichtbarOhneFassung(id) { return ggSichtbarRoh(id, { ohneFassung: true }) === true; }
 /** Grund der Ausblendung für den Editor ('' = sichtbar). */
 export function ggFigurAusblendGrund(id) {
+  if (ggFigurInVertiefung(id)) return `Grundkonzept: steht in der ${GG_VERTIEFUNG_ANLAGE} (Fragebogen Kapitel 5)`;
   const r = ggSichtbarRoh(id);
   return r === true ? '' : typeof r === 'string' && r ? `automatisch ausgeblendet: ${r}` : 'über den Fragebogen ausgeblendet';
 }
+
+/* ── Fassung Elektrotechnik (Fragebogen 5 „Umfang Elektrotechnik“) ─────────────────────────
+ * Grundkonzept: Kernaussagen im Text; Prinzipskizzen, Detailtabellen und weitere Lastgang-Grafiken
+ * stehen in einer Anlage, die der Editor (21) hinter die übrigen Anlagen setzt. Kennzahlen-Tabellen
+ * entfallen in Kapitel 5, 5.3 zeigt eine Leistungsbilanz mit einer Maßnahmentabelle. Nichts davon
+ * ändert das Dokument — ein Wechsel auf „ausführlich“ zeigt wieder alles an seinem Platz. */
+export const GG_VERTIEFUNG_TITEL = 'Technische Vertiefung Elektrotechnik';
+const GG_VERTIEFUNG_ANLAGE = `Anlage „${GG_VERTIEFUNG_TITEL}“`;
+const GG_ELEKTRO_VERTIEFUNG = new Set([
+  'netzanschluss-messkonzept', 'redundanz-prinzip', 'ms-kabel-ist',
+  'lastgang-strom', 'lastgang-strom-heatmap', 'lastgang-strom-tagesgang', 'monatsbilanz-strom', 'stromdaten-jahressummen',
+  'bedarf-gebaeude-wasserfall', 'bedarf-gebaeude-tabelle', 'bedarf-waerme-wasserfall', 'bedarf-waerme-tabelle',
+  'bedarf-lade-wasserfall', 'bedarf-lade-tabelle',
+  'anschlussleistung-entwicklung', 'netz-intern-bestandsdaten', 'trafostationen',
+  'pv-herleitung', 'pv-verschattung-tabelle', 'pv-speicher-tabelle', 'pv-rueckspeisung',
+  'pv-einlinienschema', 'pv-einlinienschema-eigen', 'pv-eza-prinzip',
+  'res-fensterverlauf', 'lade-recht-text', 'kosten-jahre', 'kosten-aufteilung',
+]);
+export function ggElektroGrundkonzept() { return ggFrage('umfang-elektro') !== 'ausfuehrlich'; }
+/** Mehrere Messjahre: der Dauerlinien-Vergleich ersetzt die Einzel-Dauerlinie, sonst umgekehrt. */
+const ggMehrereMessjahre = () => ggLies(() => ggMessjahre().zeilen.length > 1, false);
+/** Steht der Baustein in der Fassung Grundkonzept in der Anlage statt im Text? */
+export function ggFigurInVertiefung(id) {
+  if (!ggElektroGrundkonzept()) return false;
+  if (id === 'stromdaten-dauerlinien') return !ggMehrereMessjahre();
+  if (id === 'lastgang-strom-dauerlinie') return ggMehrereMessjahre();
+  return GG_ELEKTRO_VERTIEFUNG.has(id);
+}
+/** Kennzahlen-Tabellen unter den Abbildungen entfallen im Grundkonzept für Kapitel 5. */
+function ggOhneKennzahlen(figur) {
+  return /^5[.\s]/.test(figur?.kapitel || '') && ggElektroGrundkonzept();
+}
+/** Steht der Baustein im Text? Sonst verweisen die Texte statt auf „die folgende Abbildung“ auf die Anlage. */
+const ggImText = id => !ggFigurInVertiefung(id);
 /** Umfang der Bestandsanalyse: Fragebogen, sonst aus den Daten (lib/gutachten-gebaeude.js). */
 function ggBestandUmfang() {
   const f = ggFrage('umfang-bestand');
@@ -1745,6 +1784,11 @@ const GG_REGELN = {
   'pv-resilienz': () => ggWenn(!!window._pvResReco, 'keine Resilienz-Rechnung (☀ PV-Analyse › Kapitel 6.1)'),
   'res-varianten': () => ggWenn(!!window._pvResVarianten?.zeilen?.length, 'kein Variantenvergleich in der Resilienz-Rechnung (☀ PV-Analyse › Kapitel 6.1)'),
   'res-ziele-matrix': () => ggWenn(!!ggResZiele()?.bewertungen?.length, 'keine Schutzziele (🛡 Blackout-Modus › Ziele)'),
+  // Mit nur einem Messjahr wiederholen „Jahresverbrauch“ und „Dauerlinien im Vergleich“ nur Tabelle und Einzel-Dauerlinie
+  'stromdaten-jahressummen': () => ggWenn(ggMehrereMessjahre(), 'nur ein Messjahr – die Werte stehen in der Tabelle'),
+  'stromdaten-dauerlinien': () => ggWenn(ggMehrereMessjahre(), 'nur ein Messjahr – siehe Jahresdauerlinie Strom'),
+  // Ohne Resilienz-Rechnung und ohne Aggregate hätte die Soll-Ist-Tabelle nur „Keine Angaben“
+  'notstrom-soll-ist': () => { const s = ggNotstromStand(); return ggWenn(!!s.r || s.bestand.length > 0 || s.geplant.length > 0, 'keine Notstromauslegung und keine Aggregate'); },
 };
 
 /**
@@ -1828,6 +1872,8 @@ export function ggPlausiPruefung() {
       if (fehlt.length) add('warn', `PV: ${fehlt.length} Dachbelegung(en) mit Haken „im Gutachten zeigen“ hängen an einem gelöschten Belegungsstand und fehlen im Gutachten.`);
       const a = ggPvAuswahl();
       if (a.ungueltig) add('warn', `PV: Die gewählte Auslegung für Kapitel 5.5 steht nicht mehr im Gutachten – es gilt die Vorgabe „${a.v?.label || 'Wirtschaftlich optimiert'}“ (Fragebogen 5.4.2).`);
+      const nb = ggPvNetzbedarf(a.v);
+      if (nb && !a.v?.netzausbau?.massnahmen?.length) add('warn', `PV: Die weiterverfolgte Auslegung „${a.v.label}“ (${ggNum(a.v.pvKwp)} kWp) liegt ${ggNum(nb.ueberKwp)} kWp über der Aufnahme des Bestandsnetzes – die Netzertüchtigung fehlt in den Kosten 5.5 (dort als „nicht beziffert“ geführt). Ggf. eine netzverträgliche Auslegung wählen (Fragebogen 5.4.2).`);
       if (ggVs() && g.abweichend.length) add('info', `PV: Die Verschattung ist nur für die Belegung im Projekt gerechnet; ${ggAufzaehlung(g.abweichend.map(x => `„${x}“`))} beruh${g.abweichend.length === 1 ? 't' : 'en'} auf anderen Dachbelegungen.`);
     }
   } catch (e) { void e; }
@@ -2131,6 +2177,18 @@ function ggStromDaten() {
   if (!daten) return null;
   const istViertel = daten === viertel;
   return { daten, istViertel, h: istViertel ? 0.25 : 1 };
+}
+
+/**
+ * Viertelstundenspitze aus 5.2, wenn eine stündlich gerechnete Spitze (Resilienz) sichtbar darunter liegt — sonst null.
+ * Dann ist die Stundenspitze als „Stundenmittel“ zu kennzeichnen, sonst stünden zwei verschiedene „Spitzenlasten“ im Gutachten.
+ */
+function ggViertelSpitzeUeber(stundenKw) {
+  const info = ggStromDaten();
+  if (!info?.istViertel || !(stundenKw > 0)) return null;
+  let max = 0;
+  for (const v of info.daten) if (v > max) max = v;
+  return max > stundenKw * 1.01 ? max : null;
 }
 
 /** Kennzahl-Beschriftung des Ist-Lastgangs: mit BHKW im Referenzjahr ist es der Verbrauch, nicht nur der Bezug. */
@@ -4044,7 +4102,8 @@ const GG_FIGUREN = [
       meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
       achseY: 'Stunde des Tages',
       achseX: 'Monat',
-      legendeLabel: 'Leistung in kW',
+      // Stundenmittel: die Skala endet unter der Viertelstundenspitze aus Tabelle/Text von 5.2
+      legendeLabel: 'Leistung in kW (Stundenmittel)',
       leer: 'Kein Stromlastgang importiert — unter Strom-Grundlagen eine Lastgangdatei laden.',
       grid: null, jahr: null, maxV: 0, kpiLinks: [], kpiRechts: [],
     },
@@ -4084,9 +4143,9 @@ const GG_FIGUREN = [
     kapitel: '5.2 Stromverbrauchsdaten',
     titel: 'Monatsbilanz Strom',
     datei: 'monatsbilanz-strom',
-    hinweis: 'Netzbezug, Eigenverbrauch und Einspeisung je Monat. Sobald die Strom-/PV-Berechnung '
-           + 'gelaufen ist, kommen alle drei Anteile aus deren Bilanz; sonst wird ersatzweise der '
-           + 'reine Netzbezug aus dem importierten Lastgang gezeigt.',
+    hinweis: 'Gemessener Netzbezug je Monat aus dem Lastgang des Referenzjahres (Ist-Zustand). Die Strombilanz der '
+           + 'Berechnung (window._stromMonatsBilanz) bleibt bewusst außen vor: sie enthält geplante PV und Wärmepumpen und '
+           + 'gehört nicht ins Kapitel Stromverbrauchsdaten — die Bilanz mit PV steht je Variante in 5.4.2.',
     render: cfg => ggRenderBalken(cfg),
     config: {
       eyebrow: 'Elektrotechnisches Gutachten',
@@ -4105,29 +4164,18 @@ const GG_FIGUREN = [
       cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
       ggMetaDefaults(cfg, 'pdBearbeiterStrom');
 
-      const bil = window._stromMonatsBilanz;
       const summe = a => (a || []).reduce((x, y) => x + y, 0);
-      let netz, eigen, einsp, quelle;
-
-      if (bil && summe(bil.netzbezug) + summe(bil.eigenverbrauch) > 0) {
-        netz  = bil.netzbezug;
-        eigen = bil.eigenverbrauch;
-        einsp = bil.einspeisung;
-        quelle = 'der Strombilanz';
-      } else {
-        // Ersatzweg: nur der gemessene Bezug. Ohne gelaufene Strom-Berechnung
-        // gibt es keine Aufteilung in Eigenverbrauch/Einspeisung — dann lieber
-        // eine ehrliche Einzelreihe als eine geschaetzte Aufteilung.
-        const info = ggStromDaten();
-        if (!info) { cfg.gruppen = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Keine Strommengen vorhanden.'; }
-        const reihe = ggStundenReihe(info.daten, info.istViertel);
-        const startMs = (window.elQuartierStartDate || new Date(new Date().getFullYear(), 0, 1)).getTime();
-        netz = new Array(12).fill(0);
-        for (let i = 0; i < reihe.length; i++) netz[new Date(startMs + i * 3600000).getMonth()] += reihe[i] / 1000;
-        eigen = new Array(12).fill(0);
-        einsp = new Array(12).fill(0);
-        quelle = 'dem importierten Lastgang (ohne PV-Aufteilung)';
-      }
+      // Nur der gemessene Bezug (Ist). Die Strombilanz der Berechnung rechnet mit geplanter PV und
+      // Wärmepumpen und widerspräche hier dem gemessenen Jahresverbrauch aus Tabelle und Text von 5.2.
+      const info = ggStromDaten();
+      if (!info) { cfg.gruppen = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Keine Strommengen vorhanden.'; }
+      const reihe = ggStundenReihe(info.daten, info.istViertel);
+      const startMs = (window.elQuartierStartDate || new Date(new Date().getFullYear(), 0, 1)).getTime();
+      const netz = new Array(12).fill(0);
+      for (let i = 0; i < reihe.length; i++) netz[new Date(startMs + i * 3600000).getMonth()] += reihe[i] / 1000;
+      const eigen = new Array(12).fill(0);
+      const einsp = new Array(12).fill(0);
+      const quelle = 'dem gemessenen Lastgang';
 
       const hatEigen = summe(eigen) > 0, hatEinsp = summe(einsp) > 0;
       cfg.gruppen = [
@@ -4144,7 +4192,7 @@ const GG_FIGUREN = [
       const jeMonat = netz.map((v, i) => v + (eigen[i] || 0));
       const iMax = jeMonat.indexOf(Math.max(...jeMonat));
       cfg.kpiLinks = [
-        { wert: ggNum(gesamt, 1) + ' MWh', label: 'Stromverbrauch gesamt' },
+        { wert: ggNum(gesamt, 1) + ' MWh', label: hatEigen ? 'Stromverbrauch gesamt' : 'Strombezug gesamt' },
         { prozent: gesamt > 0 ? ggNum(summe(netz) / gesamt * 100) + ' %' : undefined,
           wert: ggNum(summe(netz), 1) + ' MWh', label: 'Netzbezug' },
       ];
@@ -4350,16 +4398,18 @@ const GG_FIGUREN = [
     autoSync: true,   // nutzt den Sweep, den der Text 5.4.1 ohnehin rechnet (ggEngpassErgebnis) — sonst bliebe die Abbildung im Dokument leer
     reihe: 25,   // nach dem Text zum internen Netz, vor der Engpass-Tabelle
     kapitel: '5.4.1 Netzanschluss und internes Stromnetz',
-    titel: 'Entwicklung der Anschlussleistung',
+    // Titel bewusst NICHT „Anschlussleistung“: die Summe der Trafo-Höchstlasten ist nicht zeitgleich und liegt
+    // über der resultierenden Anschlussleistung aus 5.3.4 — mit gleichem Namen widersprächen sich beide Kapitel
+    titel: 'Belastung der Transformatoren im Betrachtungszeitraum',
     datei: 'anschlussleistung-entwicklung',
-    hinweis: 'Höchstlast am Liegenschaftsanschluss über den Planungshorizont, gegen Anschlusswert und '
-           + 'Einspeisezusage. Ohne vorhandenes Ergebnis wird dafür der Engpass-Sweep gestartet — er rechnet '
-           + 'das Netz für jedes Stützjahr durch und dauert einen Moment. Rechnet über das Netzmodell '
-           + '(Trafo-Spitzen) und weicht deshalb von der resultierenden Anschlussleistung in 5.3.4 ab.',
+    hinweis: 'Summe der Höchstlasten aller Transformatoren je Jahr über den Planungshorizont (Netzmodell, nicht zeitgleich), '
+           + 'gegen Anschlusswert und Einspeisezusage. Ohne vorhandenes Ergebnis wird dafür der Engpass-Sweep gestartet — er '
+           + 'rechnet das Netz für jedes Stützjahr durch und dauert einen Moment. Maßgeblich für den Netzanschluss bleibt die '
+           + 'resultierende Anschlussleistung in 5.3.4.',
     render: cfg => ggRenderGanglinie(cfg),
     config: {
       eyebrow: 'Elektrotechnisches Gutachten',
-      titel: 'Entwicklung der Anschlussleistung',
+      titel: 'Belastung der Transformatoren im Betrachtungszeitraum',
       ort: '',
       meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
       achseY: 'Leistung in kW',
@@ -4401,8 +4451,8 @@ const GG_FIGUREN = [
 
       const hatRueck = rueck.some(v => v > 0);
       cfg.serien = [
-        ...(hatRueck ? [{ daten: rueck, farbe: GG_THEME.accents.gruen, breite: 1.8, label: 'Rückspeisung (Höchstwert)' }] : []),
-        { daten: bezug, farbe: GG_THEME.energy.strom, breite: 2, label: 'Netzbezug (Höchstlast)' },
+        ...(hatRueck ? [{ daten: rueck, farbe: GG_THEME.accents.gruen, breite: 1.8, label: 'Rückspeisung (Summe der Trafos)' }] : []),
+        { daten: bezug, farbe: GG_THEME.energy.strom, breite: 2, label: 'Bezug (Summe der Trafo-Höchstlasten)' },
       ];
       cfg.xTicks = jahre
         .map((j, i) => ({ pos: i, label: String(j) }))
@@ -4431,18 +4481,20 @@ const GG_FIGUREN = [
       const letzte = bezug[bezug.length - 1];
       const reserve = napBezug > 0 ? napBezug - letzte : null;
       cfg.kpiLinks = [
-        { wert: ggNum(bezug[0]) + ' kW', label: `Höchstlast Bezug ${res.von}` },
+        { wert: ggNum(bezug[0]) + ' kW', label: `Summe Trafo-Höchstlasten ${res.von}` },
         { prozent: napBezug > 0 ? ggNum(letzte / napBezug * 100) + ' %' : undefined,
-          wert: ggNum(letzte) + ' kW', label: `Höchstlast Bezug ${res.bis}` },
+          wert: ggNum(letzte) + ' kW', label: `Summe Trafo-Höchstlasten ${res.bis}` },
       ];
       cfg.kpiRechts = [
         hatRueck
           ? { wert: ggNum(Math.max(...rueck)) + ' kW', label: 'Höchste Rückspeisung im Horizont' }
           : { wert: kvaGleich ? ggNum(res.proJahr[0].trafoKVA) + ' kVA' : 'wechselnd', label: 'Installierte Trafoleistung' },
+        // Keine „Reserve“ gegen die Anschlussleistung: die Trafo-Summe ist nicht zeitgleich (Reserve steht in 5.3.4)
         idx >= 0
           ? { wert: String(jahre[idx]), label: 'Grenzwert erstmals überschritten', highlight: true }
-          : { wert: reserve != null ? ggNum(reserve) + ' kW' : '—', label: `Reserve ${res.bis}`, highlight: true },
+          : { wert: ggNum(res.proJahr[res.proJahr.length - 1].trafoKVA) + ' kVA', label: `Installierte Trafoleistung ${res.bis}`, highlight: true },
       ];
+      void reserve;
       return `✓ ${jahre.length} Jahre aus ${res.proJahr.length} Stützjahren (${res.von}–${res.bis}) übernommen.`;
     },
   },
@@ -4495,9 +4547,13 @@ function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
   let zeilen = trafos.map(t => {
     const g = geb(t.buildingId);
     const bj = parseInt(t.baujahr ?? g?.baujahr);
+    const ab = parseInt(t.abrissjahr ?? g?.abrissjahr);
     const geplant = t.schicht === 'entwicklung' || t.schicht === 'entscheidung'
                  || (Number.isFinite(bj) && bj > heute);
     return {
+      // Abrissjahr wie im Übersichtsschaltbild (lib/netz-uebersicht): vor heute = schon weg,
+      // sonst entfällt der Trafo im Zielnetz (Spalte „Rückbau JJJJ“, zählt nicht zur Summe)
+      abriss:      Number.isFinite(ab) ? ab : null,
       gebIdx:      g ? gebListe.indexOf(g) : 1e9,
       gebLabel:    String(g?.gebaeudenummer || g?.name || '—').trim(),
       gebNummer:   String(g?.gebaeudenummer || '').trim(),
@@ -4512,6 +4568,7 @@ function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
       geplant,
     };
   });
+  zeilen = zeilen.filter(z => !(z.abriss != null && z.abriss < heute));
   if (nurBestand) zeilen = zeilen.filter(z => !z.geplant);
 
   // Bestand zuerst, danach die geplanten Stationen; innerhalb der Gruppe in
@@ -4550,23 +4607,29 @@ function ggTrafoStationen(trafos, opts) {
     if (!map.has(z.stationKey)) map.set(z.stationKey, { key: z.stationKey, station: z.station, gebNummer: z.gebNummer, trafos: [] });
     map.get(z.stationKey).trafos.push(z);
   }
+  // Mit Planung (Zielnetz) zählen Trafos mit Abrissjahr nicht mehr — wie im Zielnetz-Schaltbild
+  const mitPlanung = !opts?.nurBestand;
+  const zaehlt = z => !(mitPlanung && z.abriss != null);
   const stationen = [...map.values()].map(s => ({
     ...s,
-    kva: s.trafos.reduce((a, z) => a + z.kva, 0),
+    kva: s.trafos.filter(zaehlt).reduce((a, z) => a + z.kva, 0),
     geplant: s.trafos.some(z => z.geplant),
+    entfaellt: mitPlanung && s.trafos.every(z => !zaehlt(z)),
   }));
-  return { stationen, zeilen };
+  return { stationen, zeilen: zeilen.filter(zaehlt), entfallen: zeilen.filter(z => !zaehlt(z)) };
 }
 
 /** Tabellenwerte einer Station: Name · Gebäude-Nr. · Trafos · Leistung · Baujahr · Summe (Trafospalten mehrzeilig). */
 function ggTrafoStationWerte(s, { mitPlanung = false } = {}) {
+  const jahr = z => (mitPlanung && z.abriss != null ? `Rückbau ${z.abriss}`
+    : mitPlanung && z.geplant ? 'geplant' : String(z.bj || '—'));
   return [
     s.station,
     s.gebNummer || '—',
     s.trafos.map(z => z.trafo),
     s.trafos.map(z => (z.kva > 0 ? ggNum(z.kva) + ' kVA' : '—')),
-    s.trafos.map(z => (mitPlanung && z.geplant ? 'geplant' : String(z.bj || '—'))),
-    s.kva > 0 ? ggNum(s.kva) + ' kVA' : '—',
+    s.trafos.map(jahr),
+    s.entfaellt ? 'entfällt' : s.kva > 0 ? ggNum(s.kva) + ' kVA' : '—',
   ];
 }
 
@@ -4685,7 +4748,7 @@ GG_FIGUREN.push(
         return '⚠ Keine Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.';
       }
 
-      const { stationen, zeilen } = ggTrafoStationen(trafos);
+      const { stationen, zeilen, entfallen } = ggTrafoStationen(trafos);
 
       // Grüner Akzent, sobald die Station einen geplanten Trafo enthält (neue Station oder Zubau)
       cfg.zeilen = stationen.map(s => ({
@@ -4695,9 +4758,11 @@ GG_FIGUREN.push(
 
       const summe = zeilen.reduce((s, z) => s + z.kva, 0);
       const nGeplant = zeilen.filter(z => z.geplant).length;
-      cfg.fussnote = `${zeilen.length} Transformatoren in ${stationen.length} Stationen · installierte Leistung `
+      const nStationen = stationen.filter(s => !s.entfaellt).length;
+      cfg.fussnote = `Zielzustand: ${zeilen.length} Transformatoren in ${nStationen} Stationen · installierte Leistung `
                    + `${ggNum(summe)} kVA`
-                   + (nGeplant ? ` · davon ${nGeplant} geplant (Station grün markiert)` : '');
+                   + (nGeplant ? ` · davon ${nGeplant} geplant (Station grün markiert)` : '')
+                   + (entfallen.length ? ` · ${entfallen.length} ${entfallen.length === 1 ? 'Trafo entfällt' : 'Trafos entfallen'} durch Rückbau` : '');
       return `✓ ${zeilen.length} Trafos aus dem Elektromodell übernommen`
            + (nGeplant ? `, davon ${nGeplant} geplant.` : '.');
     },
@@ -7021,6 +7086,13 @@ function ggBedarfListe(teile) {
   return ggAufzaehlung(teile.length <= 6 ? teile : [...teile.slice(0, 5), `${teile.length - 5} weitere (vgl. Tabelle)`]);
 }
 
+/** Schlusssatz 5.3.1–5.3.3: eigene Abbildung + Tabelle (ausführlich) oder Verweis auf die Sammeltabelle in 5.3.4. */
+function ggBedarfVerweis(key, was) {
+  return ggImText(`bedarf-${key}-wasserfall`)
+    ? `Die folgende Abbildung zeigt die Leistungsbilanz, die anschließende Tabelle die einzelnen ${was}.`
+    : `Die einzelnen ${was} sind in der Tabelle „Maßnahmen der Bedarfsprognose“ in Kapitel 5.3.4 aufgeführt.`;
+}
+
 /** „um 145 kW beziehungsweise 14 %“ — Veränderung einer Stufe gegenüber ihrem Ausgangswert. */
 function ggBedarfDelta(s) {
   const d = s.endKw - s.startKw;
@@ -7083,7 +7155,7 @@ function ggRenderBedarfGebaeudeText(cfg, T = GG_THEME) {
       + (Math.abs(d) < 0.5
         ? 'Gegenüber dem Bestand bleibt er damit praktisch unverändert. '
         : `Gegenüber dem Bestand ${d > 0 ? 'steigt' : 'sinkt'} er ${ggBedarfDelta(s)}. `)
-      + 'Die folgende Abbildung zeigt die Leistungsbilanz, die anschließende Tabelle die einzelnen Maßnahmen.');
+      + ggBedarfVerweis('gebaeude', 'Maßnahmen'));
   }
 
   absaetze.push('Der zusätzliche Strombedarf aus dem Wärmekonzept und aus der Ladeinfrastruktur wird in den Kapiteln '
@@ -7128,7 +7200,7 @@ function ggRenderBedarfWaermeText(cfg, T = GG_THEME) {
     absaetze.push('Die Wärmeerzeuger gehen ohne Gleichzeitigkeitsfaktor ein, da sie bei Normaußentemperatur gemeinsam mit '
       + `voller Leistung laufen. Der Leistungsbedarf ${d >= 0 ? 'steigt' : 'sinkt'} dadurch ${ggBedarfDelta(s)}, von `
       + `${ggBedarfFeld(s.startKw, 'Übertrag aus 5.3.1')} kW auf ${ggBedarfFeld(s.endKw, 'Leistung inkl. Wärmekonzept')} kW. `
-      + 'Die folgende Abbildung zeigt die Leistungsbilanz, die anschließende Tabelle die einzelnen Anlagen.');
+      + ggBedarfVerweis('waerme', 'Anlagen'));
   }
   return ggTextBlatt(absaetze, T);
 }
@@ -7184,8 +7256,8 @@ function ggRenderBedarfLadeText(cfg, T = GG_THEME) {
       + `der Ladevorgänge bereits im Faktor des Ladeparks enthalten ist. Der Leistungsbedarf ${d >= 0 ? 'steigt' : 'sinkt'} damit `
       + `${ggBedarfDelta(s)}, von ${ggBedarfFeld(s.startKw, 'Übertrag aus 5.3.2')} kW auf `
       + `${ggBedarfFeld(s.endKw, 'Leistung inkl. Ladeinfrastruktur')} kW. Ein gesteuertes Laden kann die gleichzeitig `
-      + 'abgerufene Leistung weiter begrenzen; es wird bei der Variantenbildung betrachtet. Die folgende Abbildung zeigt '
-      + 'die Leistungsbilanz, die anschließende Tabelle die einzelnen Standorte.');
+      + 'abgerufene Leistung weiter begrenzen; es wird bei der Variantenbildung betrachtet. '
+      + ggBedarfVerweis('lade', 'Standorte'));
   }
 
   absaetze.push('Die resultierende Anschlussleistung und die Einspeiseleistung geplanter Erzeugungsanlagen werden in Kapitel 5.3.4 zusammengeführt.');
@@ -7461,7 +7533,8 @@ function ggRenderBedarfResultierendText(cfg, T = GG_THEME) {
       + 'voller Leistung ein. '
       + `Daraus ergibt sich eine resultierende Anschlussleistung von ${ggBedarfFeld(r.endKw, 'Resultierende Anschlussleistung')} kW`
       + (basis ? ` (${d >= 0 ? '+' : '−'}${ggNum(Math.abs(d) / basis * 100)} % gegenüber dem Bestand)` : '')
-      + '. Die folgende Abbildung zeigt ihre Zusammensetzung.');
+      + '. Die folgende Abbildung zeigt ihre Zusammensetzung'
+      + (ggFigurSichtbar('bedarf-massnahmen-tabelle') ? ', die anschließende Tabelle die einzelnen Maßnahmen.' : '.'));
   }
 
   const ein = r?.einspeisung;
@@ -7498,7 +7571,8 @@ function ggRenderBedarfResultierendText(cfg, T = GG_THEME) {
       + `der resultierenden Anschlussleistung ergibt sich ${ggTextFeld('', 'Reserve bzw. Überschreitung kW')} kW.`);
   }
 
-  const lg = stufen.length && typeof window.napEndausbauKennzahlen === 'function' ? window.napEndausbauKennzahlen() : null;
+  // Vergleich mit dem überlagerten Endausbau-Lastgang: nur in der ausführlichen Fassung — im Grundkonzept eine zweite Zahl ohne Folgen
+  const lg = stufen.length && !ggElektroGrundkonzept() && typeof window.napEndausbauKennzahlen === 'function' ? window.napEndausbauKennzahlen() : null;
   if (lg && r) {
     const diff = r.endKw - lg.bezugMaxKw;
     absaetze.push(`Ergänzend wurde der gemessene Lastgang des Jahres ${lg.dataYear} zeitgleich mit den Lastprofilen der Maßnahmen `
@@ -7597,6 +7671,68 @@ GG_FIGUREN.push(
       if (!(st.basisKw > 0)) return '⚠ Keine Strommessung geladen (⚡ Strom-Grundlagen) — der Bestand steht auf 0 kW.';
       return `✓ Resultierende Anschlussleistung ${ggNum(r.endKw)} kW${zj ? ` (${zj})` : ''}`
            + (cap ? ` gegen ${ggNum(cap)} kVA vereinbarte Anschlussleistung.` : ' — vereinbarte Anschlussleistung fehlt (⚡ Strom-Grundlagen).');
+    },
+  },
+
+  // ── Maßnahmen der Bedarfsprognose (Grundkonzept: ersetzt die drei Tabellen aus 5.3.1–5.3.3) ──
+  {
+    id: 'bedarf-massnahmen-tabelle',
+    autoSync: true,
+    reihe: 20,
+    kapitel: GG_KAP_RESULTIEREND,
+    titel: 'Maßnahmen der Bedarfsprognose',
+    datei: 'bedarf-massnahmen-tabelle',
+    hinweis: 'Alle Maßnahmen aus 5.3.1–5.3.3 (und sonstige Verbraucher) in einer Tabelle, mit Veränderung und resultierender '
+           + 'Anschlussleistung. Nur in der Fassung Grundkonzept (Fragebogen Kapitel 5) — ausführlich stehen die drei '
+           + 'Einzeltabellen in ihren Kapiteln.',
+    sichtbar: () => ggElektroGrundkonzept(),
+    render: cfg => ggRenderTabelle(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten',
+      titel: 'Maßnahmen der Bedarfsprognose',
+      leer: 'Keine Maßnahmen mit Wirkung auf den Leistungsbedarf vorgesehen.',
+      spalten: [
+        { label: 'Bereich',     weight: 1.3, align: 'left', mono: false },
+        { label: 'Bezeichnung', weight: 1.8, align: 'left', mono: false },
+        { label: 'Art',         weight: 1.8, align: 'left', mono: false },
+        { label: 'Maßnahme',    weight: 1.0, align: 'left', mono: false },
+        { label: 'Jahr',        weight: 0.7 },
+        { label: 'Leistung',    weight: 1.0 },
+      ],
+      zeilen: [], fussnote: '',
+    },
+    ausProjekt(cfg) {
+      const { fehler, st, r } = ggBedarfRechnung();
+      if (fehler) { cfg.zeilen = []; cfg.fussnote = ''; return fehler; }
+      const bereiche = [
+        ...r.stufen.map(s => ({ key: s.key, label: s.label, stufe: s, K: GG_BEDARF_TEXTE[s.key] })),
+        ...(r.sonstige.eintraege.length ? [{ key: 'sonstige', label: 'Sonstige', stufe: r.sonstige, K: { zubau: 'Zubau' } }] : []),
+      ];
+      cfg.zeilen = [];
+      for (const b of bereiche) {
+        for (const z of ggBedarfGruppen(b.key, b.stufe)) {
+          const g = z.g;
+          let art = b.key === 'gebaeude' ? (ggGebNutzung(g) || '—') : (GG_BEDARF_TYP[z.m.type] || z.m.type);
+          if (z.m.type === 'Lade') {
+            const l = bpLadeLeistung(ggBedarfAsset(z.m)?.props);
+            art = `${l.punkte} × ${ggNum(l.kwProPunkt)} kW · GZF ${ggNum(l.gzf, 2)}` + (l.schnell ? ` + ${l.schnell} × ${ggNum(l.kwSchnell)} kW` : '');
+          }
+          cfg.zeilen.push({
+            werte: [b.label, b.key === 'gebaeude' ? (ggGebLabel(g) || z.m.name) : z.m.name, art,
+                    z.m.isAbbruch ? 'Rückbau' : (b.K?.zubau || 'Zubau'), z.jahr || '—', ggKwDelta(z.kw)],
+            akzent: z.kw < 0 ? GG_THEME.energy.waerme : GG_THEME.accents.gruen,
+          });
+        }
+      }
+      if (!cfg.zeilen.length) { cfg.fussnote = ''; return '✓ Keine Maßnahmen in der Bedarfsprognose.'; }
+      const summe = (label, wert) => ({ werte: [label, ' ', ' ', ' ', ' ', wert], highlight: true });
+      cfg.zeilen.push(summe(`Höchstlast Bestand ${st.dataYear}`, `${ggNum(st.basisKw)} kW`),
+                      summe(`Veränderung bis ${r.zieljahr}`, ggKwDelta(r.endKw - st.basisKw)),
+                      summe('Resultierende Anschlussleistung', `${ggNum(r.endKw)} kW`));
+      cfg.fussnote = `Gebäude: Anschlussleistung × Gleichzeitigkeitsfaktor ${ggNum(st.gzf, 2)} · Wärmeerzeuger: elektrische `
+                   + 'Leistungsaufnahme ohne Gleichzeitigkeitsfaktor · Ladeinfrastruktur: inkl. GZF des Ladeparks · '
+                   + 'Maßnahmenauswahl wie in der NAP-Analyse';
+      return `✓ ${cfg.zeilen.length - 3} Maßnahmen bis ${r.zieljahr} übernommen.`;
     },
   },
 );
@@ -7708,8 +7844,10 @@ function ggEngpassErgebnis() {
 function ggEngpassListe(res) {
   let bestand = new Set();
   try { bestand = new Set((window.engpassBestandsmaengel?.(res) || []).map(b => b.item.id)); } catch (e) { void e; }
+  // Stationsinterne Kabel (Trafo → NSHV) sind auf die Trafonennleistung ausgelegt und nie ein eigener
+  // Engpass — wie in engpassGeneriereMassnahmen (14h) übergangen, sonst stünden sie ohne Ertüchtigung in der Tabelle
   return [...res.trafos, ...res.kabel]
-    .filter(x => x.engpassJahr != null)
+    .filter(x => x.engpassJahr != null && !(x.art === 'kabel' && x.stationsintern))
     .map(item => ({
       item,
       bestand: bestand.has(item.id),
@@ -7717,6 +7855,25 @@ function ggEngpassListe(res) {
       v: typeof window.engpassVorschlag === 'function' ? window.engpassVorschlag(item, res) : null,
     }))
     .sort((a, b) => a.item.engpassJahr - b.item.engpassJahr || b.item.maxAuslPct - a.item.maxAuslPct);
+}
+
+/** Kabelabschnitte im Netzmodell ohne stationsinterne Verbindungen (zählt wie die Engpassliste). */
+const ggNetzKabelAnzahl = res => res.kabel.filter(k => !k.stationsintern).length;
+
+/**
+ * Gleiche Tabellenzeilen zusammenfassen (parallele Kabel derselben Verbindung, gleiche Werte) —
+ * die erste Spalte bekommt „(2 Kabel)“. zeilen: [{werte, akzent}], Schlüssel = alle Werte; nur Kabelzeilen
+ * (Spalte 2 „Kabel …“), gleichnamige Trafos verschiedener Stationen bleiben getrennt.
+ */
+function ggZeilenBuendeln(zeilen) {
+  const map = new Map();
+  for (const [i, z] of zeilen.entries()) {
+    const k = String(z.werte[1]).startsWith('Kabel') ? JSON.stringify(z.werte) : 'einzeln:' + i;
+    const e = map.get(k);
+    if (e) e.n++; else map.set(k, { z, n: 1 });
+  }
+  return [...map.values()].map(({ z, n }) => (n > 1
+    ? { ...z, werte: [`${z.werte[0]} (${n} Kabel)`, ...z.werte.slice(1)] } : z));
 }
 
 function ggRenderNetzInternText(cfg, T = GG_THEME) {
@@ -7736,19 +7893,20 @@ function ggRenderNetzInternText(cfg, T = GG_THEME) {
   const bestand = liste.filter(e => e.bestand);
   const ungeloest = liste.filter(e => e.v?.ungeloest && !e.bestand);
   const ms = liste.filter(e => e.ms);
-  const nT = res.trafos.length, nK = res.kabel.length;
+  const nT = res.trafos.length, nK = ggNetzKabelAnzahl(res);
   const anzahl = (n, eins, viele) => `${n} ${n === 1 ? eins : viele}`;
   const absaetze = [];
 
-  absaetze.push(`Zur Bewertung des internen Stromnetzes wurde das Netzmodell der Liegenschaft mit `
-    + `${anzahl(nT, 'Transformator', 'Transformatoren')} und ${anzahl(nK, 'Kabelabschnitt', 'Kabelabschnitten')} für jedes Jahr, in `
+  // „Bestand und Planung“: das Netzmodell enthält alle Trafos des Betrachtungszeitraums — mehr als die Bestandstabelle in 5.1.2
+  absaetze.push(`Zur Bewertung des internen Stromnetzes wurde das Netzmodell der Liegenschaft mit insgesamt `
+    + `${anzahl(nT, 'Transformator', 'Transformatoren')} und ${anzahl(nK, 'Kabelabschnitt', 'Kabelabschnitten')} (Bestand und Planung) für jedes Jahr, in `
     + `dem sich Lasten oder Netz ändern, bis zum Jahr ${res.bis} durchgerechnet. Geplante Verbraucher und Erzeugungsanlagen `
     + `gehen ab ihrem Baujahr ein. Als Engpass gilt eine Auslastung über ${g.trafoPct} % der Trafonennleistung bzw. über `
     + `${g.auslastungPct} % der Strombelastbarkeit eines Kabels oder ein kumulierter Spannungsfall über ${ggNum(g.deltaUKumPct)} %.`);
 
   if (!liste.length) {
     absaetze.push('Im Betrachtungszeitraum wird keines der Betriebsmittel zum Engpass. Das interne Netz kann die zusätzlichen '
-      + 'Lasten ohne Ertüchtigung aufnehmen. Die folgende Abbildung zeigt die Höchstlast des Netzes über den Betrachtungszeitraum.');
+      + `Lasten ohne Ertüchtigung aufnehmen. ${ggTrafoSummeSatz()}`);
     return ggTextBlatt(absaetze, T);
   }
 
@@ -7763,8 +7921,11 @@ function ggRenderNetzInternText(cfg, T = GG_THEME) {
   }
   if (bestand.length) {
     absaetze.push(`${anzahl(bestand.length, 'Betriebsmittel ist', 'Betriebsmittel sind')} bereits im heutigen Zustand überlastet, `
-      + 'ohne dass ein Zubau die Ursache ist. Hier sind zunächst die Bestandsdaten (Kabelquerschnitte, Trafoleistungen) im Rahmen '
-      + 'der Begehung zu überprüfen, bevor eine Ertüchtigung festgelegt wird.');
+      + 'ohne dass ein Zubau die Ursache ist. Das deutet in der Regel auf unvollständig oder falsch erfasste Bestandsdaten '
+      + '(Kabelquerschnitte, Leitungslängen, Trafoleistungen) hin. Diese Betriebsmittel sind deshalb nicht Teil der Engpassbewertung, '
+      + `sondern in der Tabelle „Zu prüfende Bestandsdaten im internen Netz“ ${ggImText('netz-intern-bestandsdaten') ? '' : `der ${GG_VERTIEFUNG_ANLAGE} `}`
+      + 'gesondert aufgeführt; sie sind im Rahmen der Begehung '
+      + 'zu überprüfen, bevor eine Ertüchtigung festgelegt wird.');
   }
   if (ungeloest.length) {
     absaetze.push(`${anzahl(ungeloest.length, 'Engpass lässt', 'Engpässe lassen')} sich mit Standardertüchtigungen nicht beheben. `
@@ -7775,9 +7936,18 @@ function ggRenderNetzInternText(cfg, T = GG_THEME) {
     absaetze.push(`${anzahl(ms.length, 'Engpass betrifft', 'Engpässe betreffen')} das Mittelspannungsnetz; diese sind im Rahmen `
       + 'der Mittelspannungsplanung bzw. mit dem Netzbetreiber gesondert zu betrachten.');
   }
-  absaetze.push('Die folgende Abbildung zeigt die Höchstlast des Netzes über den Betrachtungszeitraum, die anschließende Tabelle '
+  absaetze.push(`${ggTrafoSummeSatz()} ${ggImText('anschlussleistung-entwicklung') ? 'Die anschließende' : 'Die folgende'} Tabelle zeigt `
     + 'die einzelnen Engpässe mit der vorgesehenen Ertüchtigung. Die Kosten der Ertüchtigungen werden in Kapitel 5.5 ausgewiesen.');
   return ggTextBlatt(absaetze, T);
+}
+
+/** Einordnung der Abbildung „Belastung der Transformatoren“ gegenüber der Anschlussleistung aus 5.3.4. */
+function ggTrafoSummeSatz() {
+  return (ggImText('anschlussleistung-entwicklung') ? 'Die folgende Abbildung zeigt' : `Die ${GG_VERTIEFUNG_ANLAGE} zeigt`)
+    + ' die Summe der Höchstlasten aller Transformatoren über den Betrachtungszeitraum. Da die Höchstlasten der einzelnen '
+    + 'Stationen nicht gleichzeitig auftreten und das Netzmodell alle bis zum Ende des Betrachtungszeitraums geplanten Verbraucher '
+    + 'enthält, liegt dieser Wert über der resultierenden Anschlussleistung aus Kapitel 5.3.4; er dient der Bewertung der '
+    + 'Transformatoren, maßgeblich für den Netzanschluss bleibt Kapitel 5.3.4.';
 }
 
 /** Einzelansicht des Textbausteins zum internen Netz: Stand des Netzmodells und Einordnung der Engpässe. */
@@ -7790,7 +7960,7 @@ function ggNetzInternStandHtml() {
   }
   const liste = ggEngpassListe(res);
   const n = f => liste.filter(f).length;
-  return zeile('Netzmodell', `${res.trafos.length} Trafos · ${res.kabel.length} Kabel · ${res.von}–${res.bis} (${res.jahre.length} Stützjahre)`)
+  return zeile('Netzmodell', `${res.trafos.length} Trafos · ${ggNetzKabelAnzahl(res)} Kabel · ${res.von}–${res.bis} (${res.jahre.length} Stützjahre)`)
     + zeile('Engpässe durch Zubau', String(n(e => !e.bestand && !e.ms)))
     + zeile('Bestandsmängel', String(n(e => e.bestand)))
     + zeile('Ohne Standardlösung', String(n(e => e.v?.ungeloest && !e.bestand)))
@@ -7870,11 +8040,14 @@ GG_FIGUREN.push(
       }
       cfg.leer = `Keine Engpässe im Netzmodell bis ${res.bis}.`;
       const g = ENGPASS_GRENZEN;
-      const liste = ggEngpassListe(res);
+      // Bestandsmängel (heute schon überlastet ohne Zubau = Datenlücke) stehen in „Zu prüfende Bestandsdaten“
+      const alle = ggEngpassListe(res);
+      const liste = alle.filter(e => !e.bestand);
+      const nBestand = alle.length - liste.length;
       // Steht am Betriebsmittel eine Maßnahme, zeigt die Tabelle sie — dieselbe Quelle wie die Kosten in 5.5
       const netz = ggNetzKosten();
       const geplant = id => netz.positionen.filter(p => p.quelle === 'plan' && (p.objIds || [p.objId]).includes(id));
-      cfg.zeilen = liste.map(({ item, bestand, ms, v }) => {
+      cfg.zeilen = ggZeilenBuendeln(liste.map(({ item, bestand, ms, v }) => {
         const spannung = String(item.ursache || '').includes('spannung');
         const plan = geplant(item.id);
         const planJahre = plan.map(p => p.jahr).filter(j => j != null);
@@ -7891,14 +8064,67 @@ GG_FIGUREN.push(
           akzent: plan.length ? GG_THEME.accents.gruen
             : bestand ? GG_THEME.energy.gas : v?.ungeloest ? GG_THEME.energy.waerme : GG_THEME.accents.gruen,
         };
-      });
+      }));
       cfg.fussnote = `Netzmodell ${res.von}–${res.bis} · Engpass: Trafo > ${g.trafoPct} %, Kabel > ${g.auslastungPct} % Iz `
-                   + `oder ΔU > ${ggNum(g.deltaUKumPct)} % · Umsetzung ${ENGPASS_VORLAUF_J} Jahre vor Engpass · Kosten siehe Kapitel 5.5`;
+                   + `oder ΔU > ${ggNum(g.deltaUKumPct)} % · Umsetzung ${ENGPASS_VORLAUF_J} Jahre vor Engpass · Kosten siehe Kapitel 5.5`
+                   + (nBestand ? ` · ohne ${nBestand} Bestandsmängel (Tabelle „Zu prüfende Bestandsdaten“)` : '');
       const nV = netz.vorschlaege.length;
       return liste.length
         ? `✓ ${liste.length} Engpässe aus dem Netzmodell (${res.von}–${res.bis}) übernommen`
           + (nV ? ` · ${nV} ohne geplante Maßnahme, dort steht der Vorschlag der Engpass-Analyse.` : '.')
-        : `✓ Keine Engpässe im Netzmodell bis ${res.bis}.`;
+        : `✓ Keine Engpässe durch Zubau im Netzmodell bis ${res.bis}.`;
+    },
+  },
+
+  // ── Zu prüfende Bestandsdaten (heute schon überlastet ohne Zubau) ───────
+  {
+    id: 'netz-intern-bestandsdaten',
+    autoSync: true,
+    reihe: 35,
+    kapitel: GG_KAP_NETZ,
+    titel: 'Zu prüfende Bestandsdaten im internen Netz',
+    datei: 'netz-intern-bestandsdaten',
+    hinweis: 'Betriebsmittel, die schon im Startjahr ohne auslösenden Zubau überlastet sind — fast immer fehlende oder falsch '
+           + 'erfasste Querschnitte, Längen oder Trafoleistungen. Getrennt von der Engpasstabelle, damit Datenlücken nicht als '
+           + 'Ausbaubedarf erscheinen. Korrigieren unter Elektro › Engpass-Fahrplan › Bestandsmängel.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten',
+      titel: 'Zu prüfende Bestandsdaten im internen Netz',
+      leer: 'Keine Auffälligkeiten in den Bestandsdaten.',
+      spalten: [
+        { label: 'Betriebsmittel',     weight: 2.4, align: 'left', mono: false },
+        { label: 'Art',                weight: 1.0, align: 'left', mono: false },
+        { label: 'Rechnerische Auslastung heute', weight: 1.6 },
+        { label: 'Zu prüfen',          weight: 2.0, align: 'left', mono: false },
+      ],
+      zeilen: [], fussnote: '',
+    },
+    ausProjekt(cfg) {
+      const res = ggEngpassErgebnis();
+      if (!res) {
+        cfg.zeilen = []; cfg.fussnote = '';
+        return '⚠ Kein Stromnetz modelliert — im Elektro-Tab Trafos und Kabel anlegen.';
+      }
+      const liste = ggEngpassListe(res).filter(e => e.bestand);
+      cfg.zeilen = ggZeilenBuendeln(liste.map(({ item }) => {
+        const spannung = String(item.ursache || '').includes('spannung');
+        return {
+          werte: [
+            item.label,
+            item.art === 'trafo' ? 'Trafo' : 'Kabel NS',
+            `${ggNum(item.maxAuslPct)} %` + (spannung ? ` · ΔU ${ggNum(item.maxDuPct, 1)} %` : ''),
+            item.art === 'trafo' ? 'Nennleistung, angeschlossene Last'
+              : spannung && item.maxAuslPct <= 100 ? 'Leitungslänge, Querschnitt' : 'Querschnitt, Anzahl paralleler Leiter',
+          ],
+          akzent: GG_THEME.energy.gas,
+        };
+      }));
+      cfg.fussnote = liste.length
+        ? `${liste.length} Betriebsmittel schon im Bestand ${res.von} rechnerisch überlastet, ohne auslösenden Zubau · `
+          + 'Werte sind kein Ausbaubedarf, sondern ein Hinweis auf zu prüfende Bestandsdaten (Begehung, Bestandspläne)'
+        : '';
+      return liste.length ? `✓ ${liste.length} Bestandsmängel aus dem Netzmodell übernommen.` : '✓ Keine Bestandsmängel im Netzmodell.';
     },
   },
 );
@@ -8556,8 +8782,8 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
     }
   }
   if (!b || H.evOpt || H.wirtOpt || H.autarkie) {
-    absaetze.push('Die folgende Abbildung zeigt für die optimierten Auslegungen, wie sich die jeweilige Größe aus dem '
-      + 'Auswahlkriterium ergibt.');
+    absaetze.push((ggImText('pv-herleitung') ? 'Die folgende Abbildung zeigt' : `Die ${GG_VERTIEFUNG_ANLAGE} zeigt`)
+      + ' für die optimierten Auslegungen, wie sich die jeweilige Größe aus dem Auswahlkriterium ergibt.');
   }
   return ggTextBlatt(absaetze, T);
 }
@@ -8664,7 +8890,8 @@ function ggRenderPvSpeicherText(cfg, T = GG_THEME) {
     + `sind in der Planung abzustimmen. Wie gut die Speicher Netzausfälle überbrücken, wird in Kapitel 8.2 bewertet. `
     + `Die Notstromversorgung beschreibt Kapitel 5.4.3.`);
   if (!b || mit.length) {
-    absaetze.push('Die folgende Tabelle zeigt je Auslegung, wie der Speicher bemessen ist, wie stark er genutzt wird und was er bewirkt.');
+    absaetze.push((ggImText('pv-speicher-tabelle') ? 'Die folgende Tabelle zeigt' : `Die ${GG_VERTIEFUNG_ANLAGE} zeigt`)
+      + ' je Auslegung, wie der Speicher bemessen ist, wie stark er genutzt wird und was er bewirkt.');
   }
   return ggTextBlatt(absaetze, T);
 }
@@ -8681,7 +8908,8 @@ function ggRenderPvNetzText(cfg, T = GG_THEME) {
   absaetze.push(`Für die Netzintegration zählt neben der Jahresenergie vor allem, wie viel Leistung gleichzeitig ins Netz `
     + `zurückgespeist wird. Diese Rückspeiseleistung wurde je Variante ohne Begrenzung berechnet. Sie liegt zwischen `
     + `${ggPvFeld(lo?.rueck.maxKw, 'Rückspeisung min')} kW (${variante(lo, 'Variante')}) und `
-    + `${ggPvFeld(hi?.rueck.maxKw, 'Rückspeisung max')} kW (${variante(hi, 'Variante')}), siehe folgende Abbildung.`);
+    + `${ggPvFeld(hi?.rueck.maxKw, 'Rückspeisung max')} kW (${variante(hi, 'Variante')}), `
+    + (ggImText('pv-rueckspeisung') ? 'siehe folgende Abbildung.' : `siehe ${GG_VERTIEFUNG_ANLAGE}.`));
 
   const r0 = kanon[0]?.rueck || {};
   const anschluss = r0.anschlussKw > 0 ? r0.anschlussKw : null;
@@ -8741,22 +8969,65 @@ function ggRenderPvNetzText(cfg, T = GG_THEME) {
   absaetze.push(ergebnis.join(' '));
   // Überleitung zum Einlinienschema (reihe 82), das nach der Rückspeise-Abbildung folgt
   if (!b || ggPvVariante('bestandsnetz')) {
+    const bn = b ? ggPvVariante('bestandsnetz') : null;
     absaetze.push('Innerhalb der Liegenschaft begrenzen zusätzlich die Kabel und Transformatoren des eigenen Netzes, '
-      + 'wie viel PV an welcher Stelle angeschlossen werden kann. Das Einlinienschema im Anschluss an die Rückspeise-Abbildung '
-      + `zeigt dies für die Auslegung ${b ? ggPvName(ggPvVariante('bestandsnetz')) : '„Bestandsnetz“'}: Auslastung der `
+      + 'wie viel PV an welcher Stelle angeschlossen werden kann'
+      + (bn?.pvKwp > 0 ? `; ohne Ertüchtigung nimmt das bestehende Netz ${ggNum(bn.pvKwp)} kWp auf. ` : '. ')
+      + (ggImText('pv-einlinienschema')
+        ? 'Das Einlinienschema im Anschluss an die Rückspeise-Abbildung zeigt '
+        : `Das Einlinienschema in der ${GG_VERTIEFUNG_ANLAGE} zeigt `)
+      + `dies für die Auslegung ${bn ? ggPvName(bn) : '„Bestandsnetz“'}: Auslastung der `
       + 'Betriebsmittel, Spannungsanhebung an den Knoten und die begrenzenden Engpässe.');
   }
   return ggTextBlatt(absaetze, T);
+}
+
+/**
+ * Netzbedarf einer PV-Auslegung im internen Netz: überschreitet sie die Aufnahme des Bestandsnetzes
+ * (Auslegung „Bestandsnetz“ der PV-Analyse), braucht der Rest eine Ertüchtigung — deren Kosten stecken
+ * NICHT in den PV-Jahreskosten (dort nur die netzseitige Infrastruktur der Anlage).
+ * @returns {null | {bnKwp, ueberKwp, mitKwp, investEUR, restKwp}}
+ */
+function ggPvNetzbedarf(v) {
+  const bn = ggPvVariante('bestandsnetz');
+  if (!v || !bn || v.id === 'bestandsnetz' || !(bn.pvKwp > 0)) return null;
+  const ueber = (v.pvKwp || 0) - bn.pvKwp;
+  if (ueber <= Math.max(1, bn.pvKwp * 0.01)) return null;
+  const na = bn.netzaufnahme || {};
+  return {
+    bnKwp: bn.pvKwp, ueberKwp: ueber,
+    mitKwp: na.mitErtuechtigungKwp > 0 ? na.mitErtuechtigungKwp : null,
+    investEUR: na.investEUR > 0 ? na.investEUR : null,
+    restKwp: na.restKwp > 0.5 ? na.restKwp : 0,
+  };
+}
+
+/** Satz zum Netzbedarf der weiterverfolgten Auslegung (5.4.2 und 5.5) — leer, wenn sie ins Bestandsnetz passt. */
+function ggPvNetzbedarfSatz(v) {
+  const nb = ggPvNetzbedarf(v);
+  if (!nb) return '';
+  const kosten = nb.investEUR
+    ? ` Die Netzaufnahme-Analyse beziffert die Ertüchtigung des internen Netzes mit rund ${ggNum(nb.investEUR / 1000)} T€`
+      + (nb.mitKwp ? `; damit wären ${ggNum(nb.mitKwp)} kWp anschließbar` : '')
+      + (nb.restKwp ? `, ${ggNum(nb.restKwp)} kWp erfordern darüber hinaus ein Erzeugungsnetz bzw. eine Anbindung an das Mittelspannungsnetz` : '')
+      + '.'
+    : '';
+  return `Die Auslegung überschreitet mit ${ggNum(v.pvKwp)} kWp die Aufnahme des bestehenden Netzes von ${ggNum(nb.bnKwp)} kWp `
+    + `(Auslegung ${ggPvName(ggPvVariante('bestandsnetz'))}) um ${ggNum(nb.ueberKwp)} kWp; dafür sind Kabel bzw. Transformatoren `
+    + `zu ertüchtigen.${kosten} Diese Netzkosten sind in den Jahreskosten der PV-Analyse nicht enthalten und in Kapitel 5.5 `
+    + 'gesondert auszuweisen.';
 }
 
 /** 3.4.2 Teil 5 — Abgrenzung zu 3.5 und Modellgrenzen. */
 function ggRenderPvAbgrenzungText(cfg, T = GG_THEME) {
   void cfg;
   const gew = ggPvAuswahl().v;
+  const netz = ggPvNetzbedarfSatz(gew);
   return ggTextBlatt([
     (gew ? `Für die weitere Planung wird die Auslegung ${ggPvName(gew)} zugrunde gelegt (${ggNum(gew.pvKwp)} kWp`
-      + `${gew.batKwh > 0 ? `, Speicher ${ggNum(gew.batKwh)} kWh` : ', ohne Speicher'}); ihre Kosten gehen in Kapitel 5.5 ein. ` : '')
-    + `Die wirtschaftliche Bewertung folgt in Kapitel 5.5. Die Berechnung beruht auf einem einzigen Wetterjahr und `
+      + `${gew.batKwh > 0 ? `, Speicher ${ggNum(gew.batKwh)} kWh` : ', ohne Speicher'}); ihre Kosten und die wirtschaftliche `
+      + 'Bewertung folgen in Kapitel 5.5. ' + (netz ? netz + ' ' : '') : 'Die wirtschaftliche Bewertung folgt in Kapitel 5.5. ')
+    + `Die Berechnung beruht auf einem einzigen Wetterjahr und `
       + `berücksichtigt keine Alterung von Modulen und Speichern. Die Leistungsbegrenzung der Wechselrichter ist nicht `
       + `abgebildet, die Rückspeiseleistungen sind deshalb eher zu hoch als zu niedrig angesetzt. Alle `
       + `Berechnungsannahmen stehen in Anlage ${ggTextFeld('', 'Nr. Anlage Berechnungsannahmen')}.`,
@@ -8828,7 +9099,10 @@ function ggRenderPvVerschattungText(cfg, T = GG_THEME) {
     + (n.nicht
       ? `${ggNum(n.nicht)} ${n.nicht === 1 ? 'Fläche verliert' : 'Flächen verlieren'} ${ggNum(s.nicht)} % oder mehr; für sie wird keine Belegung empfohlen.`
       : `Keine Fläche erreicht die Schwelle von ${ggNum(s.nicht)} %, ab der eine Belegung nicht empfohlen wird.`)
-    + (n.pruefen + n.nicht ? ' Die betroffenen Flächen sind in der folgenden Tabelle aufgeführt.' : ''));
+    + (n.pruefen + n.nicht
+      ? (ggImText('pv-verschattung-tabelle') ? ' Die betroffenen Flächen sind in der folgenden Tabelle aufgeführt.'
+        : ` Die betroffenen Flächen sind in der ${GG_VERTIEFUNG_ANLAGE} aufgeführt.`)
+      : ''));
 
   // 3 — Wirkung auf die Auslegungen. Gerechnet ist nur die Belegung im Projekt (40); beruhen Potenzial oder
   // Dachbelegungs-Auslegungen auf anderen Belegungsständen (38), gilt der Abschlag dort nicht für jedes Dach.
@@ -8884,10 +9158,15 @@ function ggEinlinienFigur(id, reihe, quelle, titel, hinweis) {
         return '⚠ Kein Netzmodell mit Trafo und PV-Flächen.';
       }
       const k = d.kennzahlen;
+      // Das Schema rechnet live, die Auslegung „Bestandsnetz“ stammt aus dem letzten „Varianten berechnen“ —
+      // weichen beide ab, widerspricht die Abbildung dem Text in 5.4.2 (Netz seither geändert)
+      const bn = quelle === 'variante' ? ggPvVariante('bestandsnetz') : null;
+      const veraltet = bn?.pvKwp > 0 && Math.abs(bn.pvKwp - k.summeKwp) > Math.max(5, bn.pvKwp * 0.02);
       cfg.schema = { breite: d.breite, hoehe: d.hoehe, zeichnung: d.zeichnung };
       cfg.kpiLinks = [
         { wert: ggNum(k.summeKwp) + ' kWp', label: quelle === 'eigene' ? 'Belegung (eigene)' : 'Aufnahme ohne Ertüchtigung' },
-        { wert: ggNum(k.anteilPct) + ' %', label: `des Flächenpotenzials von ${ggNum(k.potenzialKwp)} kWp` },
+        // Dachsumme des Netzmodells (je Fläche voll belegt) — nicht das PV-Potenzial der PV-Analyse aus dem Text
+        { wert: ggNum(k.anteilPct) + ' %', label: `der Dachflächen im Netzmodell (${ggNum(k.potenzialKwp)} kWp voll belegt)` },
       ];
       cfg.kpiRechts = [
         { wert: ggNum(k.maxTrafoPct) + ' %', label: 'höchste Trafo-Auslastung' },
@@ -8898,6 +9177,10 @@ function ggEinlinienFigur(id, reihe, quelle, titel, hinweis) {
         + `Rechenjahr ${k.jahr}`
         + (k.unbekannteQs ? ` · ${k.unbekannteQs} Kabel ohne erfassten Querschnitt${k.ersatzQs ? ` (angenommen ${k.ersatzQs} mm² NAYY)` : ' (ohne Grenze gerechnet)'}` : '')
         + (k.massnahmen ? ` · ${k.massnahmen} Ertüchtigung${k.massnahmen > 1 ? 'en' : ''} umgesetzt` : '');
+      if (veraltet) {
+        return `⚠ Einlinienschema ${ggNum(k.summeKwp)} kWp, die Auslegung „Bestandsnetz“ im Text aber ${ggNum(bn.pvKwp)} kWp — `
+          + 'das Netz wurde seit der letzten PV-Berechnung geändert. In ☀ PV-Analyse „Varianten neu berechnen“.';
+      }
       return `✓ Einlinienschema übernommen: ${ggNum(k.summeKwp)} kWp, ${k.engpaesse} Engpass${k.engpaesse === 1 ? '' : 'stellen'}`
         + (k.zulaessig ? '.' : ' — Netz hält bei dieser Belegung nicht.');
     },
@@ -9716,14 +9999,18 @@ function ggPvFiguren() {
         const schaerfste = kanon.reduce((a, b) =>
           (['gruen', 'gelb', 'rot'].indexOf(b.rueck.ampel) > ['gruen', 'gelb', 'rot'].indexOf(a.rueck.ampel) ? b : a));
         const groesste = kanon.reduce((a, b) => (b.rueck.maxKw > a.rueck.maxKw ? b : a));
-        const kritisch = kanon.filter(v => v.rueck.ampel === 'rot').length;
+        // Netzausbau: am NAP (Ampel rot) ODER im internen Netz (mehr PV als die Auslegung „Bestandsnetz“ aufnimmt)
+        const kritisch = kanon.filter(v => v.rueck.ampel === 'rot' || ggPvNetzbedarf(v)).length;
+        const napOffen = kanon.every(v => v.rueck.ampel === 'na' || !v.rueck.ampel);
         cfg.kpiLinks = [
           { wert: ggNum(groesste.rueck.maxKw) + ' kW', label: `Höchste Rückspeisespitze (${groesste.label})` },
           { wert: groesste.rueck.deltaU != null ? ggNum(groesste.rueck.deltaU, 2) + ' %' : '—', label: 'Zugehörige Spannungsanhebung Δu' },
         ];
         cfg.kpiRechts = [
-          { wert: r0.anschlussKw > 0 ? ggNum(r0.anschlussKw) + ' kW' : 'unbegrenzt', label: 'Vorhandene Einspeise-Anschlussleistung' },
-          { wert: String(kritisch), label: kritisch === 1 ? 'Variante erfordert Netzausbau' : 'Varianten erfordern Netzausbau',
+          { wert: r0.anschlussKw > 0 ? ggNum(r0.anschlussKw) + ' kW' : 'nicht bekannt', label: 'Einspeisezusage am Netzanschlusspunkt' },
+          { wert: String(kritisch),
+            label: (kritisch === 1 ? 'Variante erfordert Netzausbau' : 'Varianten erfordern Netzausbau')
+              + (napOffen ? ' (internes Netz; NAP nicht bewertbar)' : ''),
             highlight: kritisch > 0 },
         ];
         return `✓ ${kanon.length} Varianten bewertet · schärfste Einstufung: ${schaerfste.rueck.ampel}.`;
@@ -10507,7 +10794,11 @@ function ggRenderResLiegenschaftText(cfg, T = GG_THEME) {
   }
   const lab = r.lastabwurf, zs = r.zuschaltung;
   const absaetze = [
-    einleitung + ` Die Spitzenlast der Liegenschaft beträgt ${ggNum(r.spitzeKw)} kW (ermittelt ${gEsc(ggResQuelle(sz.lastQuelle))}). `
+    einleitung + ` Die Spitzenlast der Liegenschaft beträgt ${ggNum(r.spitzeKw)} kW (ermittelt ${gEsc(ggResQuelle(sz.lastQuelle))}`
+      + (ggViertelSpitzeUeber(r.spitzeKw)
+        ? ` als Stundenmittel; die viertelstündliche Höchstlast in Kapitel 5.2 beträgt ${ggNum(ggViertelSpitzeUeber(r.spitzeKw))} kW`
+        : '')
+      + '). '
       + (r.anteilPct >= 100
         ? `Abgesichert wird die volle Spitzenlast über ${dauer}.`
         : `Abgesichert werden ${ggNum(r.anteilPct)} % davon, also ${ggNum(r.zielKw)} kW über ${dauer}; die übrige Last wird durch `
@@ -12037,7 +12328,7 @@ function ggResSzenarienFiguren() {
           { wert: ggResEur(sz.s2.mobil.gesamt), label: 'Investition Szenario 2 mobil' },
           { wert: ggResEur(sz.s3.bewertung.kosten), label: 'Investition Szenario 3', highlight: true },
         ];
-        cfg.titel = `Versorgungsumfang je Szenario (Liegenschaftsspitze ${ggNum(spitze)} kW)`;
+        cfg.titel = `Versorgungsumfang je Szenario (Liegenschaftsspitze ${ggNum(spitze)} kW${ggViertelSpitzeUeber(spitze) ? ', Stundenmittel' : ''})`;
         return '✓ Drei Szenarien übernommen.';
       },
     },
@@ -12277,8 +12568,8 @@ function ggRenderNotstromAuslegungText(cfg, T = GG_THEME) {
   }
 
   absaetze.push(`Die Einspeisung der Notstromversorgung erfolgt ${ggTextFeld('', 'Einbindung, z. B. über eine Netzumschaltung an der NSHV Gebäude xx')}; `
-    + `die Umschaltung auf Netzersatzbetrieb erfolgt ${ggTextFeld('', 'automatisch oder manuell')}. Die folgende Tabelle stellt Bestand, `
-    + 'Anforderung und Planung gegenüber.');
+    + `die Umschaltung auf Netzersatzbetrieb erfolgt ${ggTextFeld('', 'automatisch oder manuell')}.`
+    + (ggFigurSichtbar('notstrom-soll-ist') ? ' Die folgende Tabelle stellt Bestand, Anforderung und Planung gegenüber.' : ''));
   return ggTextBlatt(absaetze, T);
 }
 
@@ -12343,8 +12634,8 @@ function ggRenderNotstromLastabwurfText(cfg, T = GG_THEME) {
     + 'Der Umfang der notstromberechtigten Verbraucher ist mit dem Nutzer abzustimmen, da jeder weitere Verbraucher '
     + 'Aggregatleistung und Kraftstoffbedarf erhöht.');
   if (r) {
-    absaetze.push('Die folgende Abbildung zeigt Stunde für Stunde, wie PV, Speicher und Notstromaggregat die Notbetriebslast '
-      + 'während des betrachteten Ausfalls decken.');
+    absaetze.push((ggImText('res-fensterverlauf') ? 'Die folgende Abbildung zeigt' : `Die ${GG_VERTIEFUNG_ANLAGE} zeigt`)
+      + ' Stunde für Stunde, wie PV, Speicher und Notstromaggregat die Notbetriebslast während des betrachteten Ausfalls decken.');
   }
   return ggTextBlatt(absaetze, T);
 }
@@ -12541,6 +12832,20 @@ function ggLadeparks() {
   return { alle, res };
 }
 
+/** Ladeparks, deren direkt angeschlossenes Kabel im Netzmodell ein Engpass oder Bestandsmangel ist: [{park, item}]. */
+function ggLadeZuleitungsMaengel(alle, res) {
+  if (!res) return [];
+  const liste = ggEngpassListe(res);
+  const edges = window.stromEdges || [];
+  const out = [];
+  for (const z of alle) {
+    const ids = new Set(edges.filter(k => k.u === z.e.a.id || k.v === z.e.a.id).map(k => k.id));
+    const treffer = liste.find(x => x.item.art === 'kabel' && ids.has(x.item.id));
+    if (treffer) out.push({ park: z.e.a.name || 'Ladepark', item: treffer.item, bestand: treffer.bestand });
+  }
+  return out;
+}
+
 /** Ausbaustufen: Bestand, je Ausbaujahr, geplant ohne Jahr — in der Reihenfolge von ggLadeparks. */
 function ggLadeStufen(alle) {
   const map = new Map();
@@ -12680,8 +12985,22 @@ function ggRenderLadeNetzText(cfg, T = GG_THEME) {
       + `${ggBedarfListe(engpaesse.map(i => `${gEsc(i.label)} (${i.engpassJahr})`))}. Die erforderlichen Ertüchtigungen sind in `
       + 'Kapitel 5.4.1 aufgeführt und vor der Inbetriebnahme der Ladepunkte umzusetzen.');
   } else if (angebunden.length) {
-    absaetze.push('Keiner der Ladeparks löst im internen Netz einen Engpass aus; Trafostationen und Kabel können die zusätzliche '
-      + 'Ladeleistung aufnehmen.');
+    // „Kein Engpass ausgelöst“ heißt nicht „Zuleitung in Ordnung“: steht die Zuleitung eines Ladeparks schon im Bestand
+    // über der Grenze (Bestandsmangel), darf der Text nicht behaupten, die Kabel könnten die Leistung aufnehmen
+    const zuleitung = ggLadeZuleitungsMaengel(alle, res);
+    const imBestand = zuleitung.filter(x => x.bestand), spaeter = zuleitung.filter(x => !x.bestand);
+    const namen = l => ggBedarfListe(l.map(x => gEsc(x.park)));
+    absaetze.push('Keiner der Ladeparks löst im internen Netz einen neuen Engpass aus.'
+      + (imBestand.length
+        ? ` Die Zuleitung${imBestand.length === 1 ? '' : 'en'} von ${namen(imBestand)} ${imBestand.length === 1 ? 'ist' : 'sind'} jedoch `
+          + 'bereits im Bestand rechnerisch überlastet; die Bestandsdaten sind zu prüfen (Tabelle „Zu prüfende Bestandsdaten im '
+          + `internen Netz“ ${ggImText('netz-intern-bestandsdaten') ? 'in Kapitel 5.4.1' : `in der ${GG_VERTIEFUNG_ANLAGE}`}).`
+        : '')
+      + (spaeter.length
+        ? ` Die Zuleitung${spaeter.length === 1 ? '' : 'en'} von ${namen(spaeter)} ${spaeter.length === 1 ? 'wird' : 'werden'} durch `
+          + 'andere geplante Maßnahmen zum Engpass; die Ertüchtigung steht in Kapitel 5.4.1.'
+        : '')
+      + (zuleitung.length ? '' : ' Trafostationen und Kabel können die Ladeleistung aufnehmen.'));
   }
   absaetze.push('Die folgende Tabelle fasst die Netzanbindung je Ladepark zusammen.');
   return ggTextBlatt(absaetze, T);
@@ -12783,6 +13102,8 @@ GG_FIGUREN.push(
     ausProjekt(cfg) {
       const { alle, res } = ggLadeparks();
       if (!alle.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Ladeinfrastruktur im Elektro-Tab.'; }
+      // Zuleitung schon überlastet (ohne dass der Ladepark auslöst) — wie im Text, sonst stünde dort „keiner“
+      const zuleitung = new Map(ggLadeZuleitungsMaengel(alle, res).map(x => [x.park, x]));
       cfg.zeilen = alle.map(z => ({
         werte: [
           z.e.a.name || 'Ladepark',
@@ -12790,7 +13111,9 @@ GG_FIGUREN.push(
           `${z.l.punkte} LP${z.l.schnell ? ` + ${z.l.schnell} SL` : ''} · ${ggNum(z.l.kw)} kW`,
           !res ? '—' : !z.angebunden ? 'nicht angebunden' : ggVersorgungText(z.versorgung),
           // Mehrere Engpässe nur gezählt — die Einzelheiten stehen im Text, sonst läuft die Zelle über
-          !res ? '—' : !z.engpaesse.length ? 'keiner'
+          !res ? '—' : !z.engpaesse.length
+            ? (zuleitung.get(z.e.a.name || 'Ladepark')?.bestand ? 'Zuleitung: Bestandsdaten prüfen'
+              : zuleitung.has(z.e.a.name || 'Ladepark') ? 'Zuleitung: Engpass (5.4.1)' : 'keiner')
             : z.engpaesse.length === 1 ? `${z.engpaesse[0].label} (${z.engpaesse[0].engpassJahr})`
             : `${z.engpaesse.length} Engpässe ab ${Math.min(...z.engpaesse.map(i => i.engpassJahr))}`,
           !z.geplant ? 'Bestand' : (z.jahr ?? 'offen'),
@@ -12877,6 +13200,13 @@ function ggKostenPositionen() {
                umfang: `${ggNum(pv.pvKwp)} kWp${pv.batKwh > 0 ? ` · ${ggNum(pv.batKwh)} kWh` : ''}`,
                investEur: pv.wirt.investGes, jahreskostenEur: pv.wirt.gesamtJk, nutzungsdauer: p?.pvLife || 20,
                jahr: pvJahre.length ? Math.min(...pvJahre) : null });
+    // Mehr PV als das Bestandsnetz aufnimmt: die Ertüchtigung dafür steckt nicht in den PV-Jahreskosten.
+    // Nicht summiert — sie kann sich mit den Engpass-Positionen des internen Netzes überschneiden.
+    const nb = !pv.netzausbau?.massnahmen?.length ? ggPvNetzbedarf(pv) : null;
+    if (nb) {
+      offen.push(`Netzertüchtigung für ${ggNum(nb.ueberKwp)} kWp PV über die Aufnahme des Bestandsnetzes hinaus`
+        + (nb.investEUR ? ` (Netzaufnahme-Analyse: rund ${ggNum(nb.investEUR / 1000)} T€, soweit nicht im internen Netz enthalten)` : ''));
+    }
   } else {
     offen.push('PV und Batteriespeicher (PV-Varianten nicht berechnet)');
   }
@@ -12893,7 +13223,7 @@ function ggKostenPositionen() {
                  jahr: jahre.length ? Math.min(...jahre) : null });
     }
   } else if (!ns.r) {
-    offen.push('Notstromversorgung (Resilienz-Rechnung nicht geöffnet)');
+    offen.push('Notstromversorgung (Auslegung liegt noch nicht vor)');
   }
 
   // Ladeinfrastruktur (3.4.4): geplante Ladeparks × Kennwert je Ladepunkt
@@ -12976,8 +13306,10 @@ function ggRenderKostenText(cfg, T = GG_THEME) {
     absaetze.push('Für die betrachteten Maßnahmen ergeben sich derzeit keine bezifferbaren Investitionen.');
   } else {
     const groesste = mit.reduce((x, g) => (g.investEur > x.investEur ? g : x), mit[0]);
-    absaetze.push(`Die Investitionen belaufen sich auf insgesamt rund ${ggEuro(a.summeInvestEur)} mit jährlichen Kosten von rund `
-      + `${ggEuro(a.summeJahreskostenEur)}/a. Im Einzelnen entfallen ${ggAufzaehlung(mit.map(g => `${ggEuro(g.investEur)} auf ${g.label === 'Netzanschluss' ? 'den Netzanschluss' : g.label === 'Internes Stromnetz' ? 'das interne Stromnetz' : g.label === 'Notstromversorgung' ? 'die Notstromversorgung' : g.label === 'Ladeinfrastruktur' ? 'die Ladeinfrastruktur' : 'PV und Batteriespeicher'}`))}. `
+    // Fehlen Positionen, ist die Summe eine Untergrenze — das muss im Satz selbst stehen, nicht erst am Absatzende
+    absaetze.push(`Die bezifferten Investitionen belaufen sich auf ${offen.length ? 'mindestens' : 'insgesamt'} rund ${ggEuro(a.summeInvestEur)} `
+      + `mit jährlichen Kosten von rund ${ggEuro(a.summeJahreskostenEur)}/a`
+      + (offen.length ? ' (ohne die unten genannten, nicht bezifferten Positionen)' : '') + `. Im Einzelnen entfallen ${ggAufzaehlung(mit.map(g => `${ggEuro(g.investEur)} auf ${g.label === 'Netzanschluss' ? 'den Netzanschluss' : g.label === 'Internes Stromnetz' ? 'das interne Stromnetz' : g.label === 'Notstromversorgung' ? 'die Notstromversorgung' : g.label === 'Ladeinfrastruktur' ? 'die Ladeinfrastruktur' : 'PV und Batteriespeicher'}`))}. `
       + (mit.length > 1
         ? `Den größten Anteil hat ${groesste.label === 'PV und Batteriespeicher' ? 'die Gruppe PV und Batteriespeicher' : `die Gruppe „${groesste.label}“`} `
           + `mit ${ggNum(groesste.investEur / a.summeInvestEur * 100)} %. `
@@ -13168,12 +13500,15 @@ GG_FIGUREN.push(
         ],
         akzent: GG_KOSTEN_FARBEN[g.key],
       }));
-      cfg.zeilen.push({ werte: ['Summe', ' ', ggEuro(a.summeInvestEur), ' ', `${ggEuro(a.summeJahreskostenEur)}/a`, ' '], highlight: true });
+      cfg.zeilen.push({ werte: [offen.length ? 'Summe beziffert' : 'Summe', offen.length ? 'Untergrenze' : ' ', ggEuro(a.summeInvestEur), ' ',
+                                `${ggEuro(a.summeJahreskostenEur)}/a`, ' '], highlight: true });
+      // Was fehlt, steht als eigene Zeile unter der Summe — sonst liest sich die Summe als Gesamtkosten
+      for (const o of offen) cfg.zeilen.push({ werte: ['nicht beziffert', o, '—', ' ', '—', ' '], akzent: GG_THEME.energy.gas });
       const kw = a.kennwerte;
       cfg.fussnote = `Kostenschätzung · Zins ${ggNum(kw.zinsPct, 1)} % · Baukostenzuschuss ${ggNum(kw.bkzEurKw)} €/kW · `
                    + `Ladepunkt ${ggNum(kw.ladepunktEur)} € / Schnellladepunkt ${ggNum(kw.schnellladepunktEur)} € · PV: Werte der PV-Analyse`
                    + (ggKostenVonHand() ? '' : ' · Vorschlagswerte')
-                   + (offen.length ? ' · nicht beziffert siehe Text' : '');
+                   + (offen.length ? ' · Summe ohne die nicht bezifferten Positionen' : '');
       const nV = netz.vorschlaege.length;
       return `✓ ${a.positionen.length} Kostenpositionen übernommen` + (offen.length ? ` — ${offen.length} Punkte nicht beziffert` : '')
         + (nV ? ` · ${nV} Netz-${nV === 1 ? 'Position ist' : 'Positionen sind'} nur Vorschlag der Engpass-Analyse` : '') + '.';
@@ -13372,6 +13707,7 @@ export function ggFigurEinstellungenRestore(daten) {
 
 /** Teile einer Figur im Dokument: Abbildung, Blatt + Kennzahlentabelle, reine Tabelle oder Fließtext (null = keine Beschriftung). */
 function ggTeilArten(figur, { layout = 'reduziert', kennzahlen = true } = {}) {
+  if (ggOhneKennzahlen(figur)) kennzahlen = false;
   if (figur.istText) return [null];
   if (ggIstTabellenFigur(figur)) return ['Tabelle'];
   if (ggIstBlatt(figur) && layout === 'reduziert' && kennzahlen) return ['Abbildung', 'Tabelle'];
@@ -13410,7 +13746,7 @@ export function ggRenderFigurFuerDokument(id, opts = {}) {
   const vorherLeer = figur.config.leer;
   if (blatt) {
     figur.config.layout = opts.layout === 'voll' ? 'voll' : 'reduziert';
-    figur.config.kennzahlen = opts.kennzahlen !== false;
+    figur.config.kennzahlen = opts.kennzahlen !== false && !ggOhneKennzahlen(figur);
   }
   if (vorherLeer) figur.config.leer = ggDokLeer(vorherLeer);   // ohne Anweisung ans Tool, s. ggDokLeer
   try {
