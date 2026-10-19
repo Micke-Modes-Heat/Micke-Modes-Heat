@@ -299,6 +299,15 @@ header.ui-seite-kopf{all:unset;display:flex;align-items:flex-end;justify-content
 .ui-ck[data-stufe="veraltet"] .ui-ck-ic{background:var(--crit-bg);color:var(--crit);border-color:transparent}
 .ui-ck-t b{display:block;font-size:14px}
 .ui-ck-t small{font-size:12.5px;color:var(--muted)}
+/* Checkliste Projektstand: Gruppenkopf je Sparte, erledigte Punkte nur mit leisem Link */
+.ui-ck{padding:9px 16px}
+.ui-ck-grp{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:12px 16px 6px;border-bottom:1px solid var(--border);background:var(--surface2)}
+.ui-ck-grp span{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.ui-ck-grp small{font-size:12px;color:var(--faint)}
+.ui-ck-link{all:unset;cursor:pointer;font-size:12.5px;color:var(--faint);padding:4px 8px}
+.ui-ck-link:hover,.ui-ck-link:focus-visible{color:var(--brand);text-decoration:underline}
+.ui-ck-opt{font-style:normal;font-weight:400;font-size:11.5px;color:var(--faint);margin-left:6px}
+.ui-ck[data-stufe="leer"] .ui-ck-t b{color:var(--muted)}
 .ui-stammdaten-raster{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .ui-stammdaten-raster label{font-size:12px!important;color:var(--muted)!important;margin-bottom:3px!important}
 #pd-projektname-preview{font-size:12px!important;color:var(--muted);margin-top:10px}

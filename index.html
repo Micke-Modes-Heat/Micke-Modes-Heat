@@ -107,8 +107,9 @@
       <button class="ui-fbtn ui-fbtn-txt" id="btn-mehr-menu" type="button" data-click="toggleMehrMenu()" aria-haspopup="menu" title="Hilfe, Werkzeuge und Einstellungen"><svg class="ui-i"><use href="#ui-i-help"/></svg>Hilfe<svg class="ui-i"><use href="#ui-i-down"/></svg></button>
       <div id="mehr-menu" class="ui-menu ui-menu-rechts" role="menu" style="display:none;">
         <div class="ui-menu-grp">Hilfe</div>
-        <button role="menuitem" id="btn-leitfaden" data-click="toggleLeitfaden()"><svg class="ui-i"><use href="#ui-i-list"/></svg>Leitfaden</button>
-        <button role="menuitem" id="btn-gefuehrt" data-click="guideToggle()"><svg class="ui-i"><use href="#ui-i-compass"/></svg><span class="btn-text">Geführter Modus Strom</span></button>
+        <!-- Leitfaden (src/11) und Geführter Modus Strom (src/24) nicht mehr angeboten:
+             ihre Schritte stehen als Checkliste im Projektstand der Projektseite. -->
+        <button role="menuitem" data-click="uiSchritt('projekt')" title="Checkliste für Wärme und Strom mit dem nächsten Schritt — ersetzt Leitfaden und Geführten Modus"><svg class="ui-i"><use href="#ui-i-list"/></svg>Projektstand und nächster Schritt</button>
         <button role="menuitem" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')"><svg class="ui-i"><use href="#ui-i-calc"/></svg>So wird gerechnet</button>
         <div class="ui-menu-grp">Werkzeuge</div>
         <button role="menuitem" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()"><svg class="ui-i"><use href="#ui-i-phone"/></svg>Felddaten auswerten</button>

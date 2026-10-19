@@ -588,11 +588,10 @@ export function guideRender() {
 
 export function guideInit() {
   _laden();
-  if (!_an) return;
-  guideStart();
-  // initResponsiveLayout() laeuft ebenfalls beim Start und kann das linke
-  // Panel danach zuklappen — dann waere die Schrittkarte unsichtbar.
-  setTimeout(_panelOeffnen, 600);
+  // Oberfläche LKEBw: Die Führung steht nicht mehr im Hilfe-Menü — ihre Schritte prüft die
+  // Checkliste auf der Projektseite (uiCheckliste in 49-oberflaeche.js). Ein früher gemerkter
+  // „an“-Zustand würde die Leiste ohne Ausschalter wieder öffnen, also nicht wiederherstellen.
+  if (_an) { _an = false; _sichern(); }
 }
 
 // Tore und Schrittleiste aktuell halten, solange die Führung läuft.

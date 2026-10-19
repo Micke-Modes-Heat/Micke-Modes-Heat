@@ -240,13 +240,14 @@ function _html() { return `
   </section>
 
   <!-- ═══ Reiter 4 · Prüfen ═════════════════════════════════════════════════ -->
+  <!-- Nur was die Karte einfärbt oder direkt am Netz arbeitet. Ergebnisblatt, Knotenanalyse
+       und Variantenvergleich stehen unter Auswertung, Maßnahmenbericht und Investitionsplan
+       unter Gutachten (src/49-oberflaeche.js) — hier nur Verweise (.ui-verweis, nicht in der
+       Befehlssuche, damit sie dort nicht doppelt erscheinen). -->
   <section id="el-sec-auswerten" class="el-pane" data-el-tab="pruefen" hidden>
-    ${_gruppe('Ergebnis ansehen', `
-      ${_aufgabe('Ergebnisblatt', 'Alle Rechenergebnisse mit Nachweisen, Tabellen, Kosten und Annahmen', 'ergebnisblattToggle()', { id: 'btn-ergebnisblatt-toggle', icon: 'doc',
-        title: 'Vollständige Rechenergebnisse: Kennzahlen, Grenzwertnachweis, Kabel- und Knotentabellen, Mengengerüst, Kosten und alle Annahmen — druckbar und als CSV' })}
-      ${_aufgabe('Einlinienschema', 'Das Stromnetz als Schaltbild', 'sldToggle()', { id: 'btn-sld-toggle', icon: 'pulse' })}
+    ${_gruppe('Netz ansehen', `
       ${_aufgabe('Netzanalyse', 'Auslastung, Spannungsfall und Schwachstellen', 'naTogglePanel()', { id: 'btn-netzanalyse-toggle', icon: 'chart' })}
-      ${_aufgabe('Knotenanalyse', 'Last und Spannung an einzelnen Knoten über das Jahr', 'openKnotenanalyse()', { icon: 'circle' })}`)}
+      ${_aufgabe('Einlinienschema', 'Das Stromnetz als Schaltbild', 'sldToggle()', { id: 'btn-sld-toggle', icon: 'pulse' })}`)}
 
     ${_gruppe('Zukunft und Netzanschluss', `
       ${_aufgabe('Engpass-Fahrplan', 'Wann wird was zum Engpass, mit Ertüchtigungs-Maßnahmen', 'engpassPanelToggle()', { id: 'btn-engpass-panel-toggle', icon: 'chart',
@@ -261,14 +262,15 @@ function _html() { return `
       ${_aufgabe('Resilienz-Abfrage', 'Fragebogen für die zuständige Stelle erzeugen und einlesen', 'raPanelToggle()', { id: 'btn-resilienz-abfrage-toggle', icon: 'table',
         title: 'Abfragedatei (.xlsx) für die zuständige Stelle erzeugen, ausgefüllt wieder einlesen und in Resilienzanforderungen übersetzen' })}`)}
 
-    ${_gruppe('Prüfen und vergleichen', `
+    ${_gruppe('Bestand', `
       ${_aufgabe('Bestand prüfen', 'Kabellängen, Querschnitte, Topologie und Lebenszyklus', 'bestandPanelToggle()', { id: 'btn-bestand-panel-toggle', icon: 'check',
-        title: 'Plausibilität des Bestands prüfen: Kabellängen, Querschnitte, Topologie, Lebenszyklus — und welche Analyse der aktuelle Datenstand trägt' })}
-      ${_aufgabe('Varianten vergleichen', 'Planungsentscheidungen aller Varianten nebeneinander', 'variantenVergleichToggle()', { id: 'btn-varianten-vergleich-toggle', icon: 'table' })}`)}
+        title: 'Plausibilität des Bestands prüfen: Kabellängen, Querschnitte, Topologie, Lebenszyklus — und welche Analyse der aktuelle Datenstand trägt' })}`)}
 
-    ${_gruppe('Exportieren', `
-      ${_aufgabe('Maßnahmenbericht (PDF)', 'Alle Elektro-Maßnahmen als Bericht', 'exportMassnahmenPDF()', { icon: 'export' })}
-      ${_aufgabe('Investitionsplan', 'Investitionen nach Jahren', 'showInvestitionsplan()', { icon: 'list' })}`)}
+    ${_gruppe('An anderer Stelle', `
+      ${_aufgabe('Ergebnisblatt', 'Unter Auswertung › Strom', "uiGeheZu('auswertung','f:ergebnisblatt')", { icon: 'arrow', klasse: 'ui-verweis' })}
+      ${_aufgabe('Knotenanalyse', 'Unter Auswertung › Strom', "uiGeheZu('auswertung','kna')", { icon: 'arrow', klasse: 'ui-verweis' })}
+      ${_aufgabe('Varianten vergleichen', 'Unter Auswertung › Übergreifend', "uiGeheZu('auswertung','v:vergleich')", { icon: 'arrow', klasse: 'ui-verweis' })}
+      ${_aufgabe('Maßnahmenbericht und Investitionsplan', 'Unter Gutachten', "uiSchritt('gutachten')", { icon: 'arrow', klasse: 'ui-verweis' })}`)}
   </section>
 `; }
 
@@ -506,7 +508,7 @@ export function elPanelRefreshStatus() {
     } else {
       html = _naechster('ok', 'Netz berechnet, keine Überlast',
         'Als Nächstes die kommenden Jahre prüfen oder das Ergebnis dokumentieren.',
-        [['Engpass-Fahrplan', "elTab('pruefen'); engpassPanelToggle()", true], ['Ergebnisblatt', "elTab('pruefen'); ergebnisblattToggle()"]]);
+        [['Engpass-Fahrplan', "elTab('pruefen'); engpassPanelToggle()", true], ['Ergebnisblatt', "uiGeheZu('auswertung','f:ergebnisblatt')"]]);
     }
     if (naechster.innerHTML !== html) naechster.innerHTML = html;
   }

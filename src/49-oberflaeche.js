@@ -9,10 +9,12 @@
 // Präfix: ui… · Zustand im localStorage unter 'micke.ui'
 
 import { LKEBW_LOGO_HELL } from './config/lkebw-logo.js';
-import { activeVariantId, gebaeude, stromEdges, trassePoints, trasseSegments } from './01-globals-varianten.js';
+import { activeVariantId, gebaeude, netzEdges, stromEdges, trassePoints, trasseSegments } from './01-globals-varianten.js';
 import { isErzeugerAktiv, meritOrderKeys } from './06c-dispatch-core.js';
 import { ASSETS } from './13a-assets-core.js';
 import { gutStand } from './21-gutachten-editor.js';
+import { bestandPruefen } from './lib/bestand-check.js';
+import { SCHICHT } from './lib/schichten.js';
 
 const _KEY = 'micke.ui';
 const _ui = { schritt: 'projekt', sparte: 'waerme', waermeTab: 'netz', abschnitt: { auswertung: 'uebersicht', gutachten: 'ggrafik' } };
@@ -56,13 +58,16 @@ const _EXTRA = {
   auswertung: [
     // Kartenbezogene Auswertungen (Netzanalyse, Engpässe, Blackout …) bleiben in Planung › Strom,
     // weil sie die Karte einfärben; über die Befehlssuche sind sie von überall erreichbar.
+    // Jede Funktion an genau einem Ort: Ergebnisblatt, Knotenanalyse und Variantenvergleich nur hier,
+    // Maßnahmenbericht und Investitionsplan nur unter Gutachten. Planung › Strom › Prüfen verweist nur.
     { key: 'v:optimierung', gruppe: 'Wärme', titel: 'Optimierung der Erzeugung', los: () => _ansicht('optimierung') },
     { key: 'f:sankey', gruppe: 'Wärme', titel: 'Energieflüsse (Sankey)', los: () => window.showSankey?.(), fenster: true },
-    { key: 'v:vergleich', gruppe: 'Übergreifend', titel: 'Variantenvergleich', los: () => _ansicht('vergleich') },
+    { key: 'f:ergebnisblatt', gruppe: 'Strom', titel: 'Ergebnisblatt Elektro', los: () => window.ergebnisblattToggle?.(), fenster: true,
+      tip: 'Vollständige Rechenergebnisse: Kennzahlen, Grenzwertnachweis, Kabel- und Knotentabellen, Mengengerüst, Kosten und alle Annahmen — druckbar und als CSV' },
+    { key: 'v:vergleich', gruppe: 'Übergreifend', titel: 'Variantenvergleich', los: () => _ansicht('vergleich'), tip: 'Varianten vergleichen: Kennzahlen und Planungsentscheidungen aller Varianten nebeneinander' },
     { key: 'v:gebaeude', gruppe: 'Übergreifend', titel: 'Gebäudeauswertung', los: () => _ansicht('gebaeude') },
   ],
   gutachten: [
-    { key: 'f:ergebnisblatt', gruppe: 'Anlagen und Blätter', titel: 'Ergebnisblatt Elektro', los: () => window.ergebnisblattToggle?.(), fenster: true },
     { key: 'f:steckbriefe', gruppe: 'Anlagen und Blätter', titel: 'Investitionsplan', los: () => window.showInvestitionsplan?.(), fenster: true },
     { key: 'a:bericht', gruppe: 'Exporte', titel: 'Projektbericht erstellen', los: () => window.openProjectReportWizard?.(), aktion: true },
     { key: 'a:massnahmen', gruppe: 'Exporte', titel: 'Maßnahmenbericht (PDF)', los: () => window.exportMassnahmenPDF?.(), aktion: true },
@@ -109,6 +114,12 @@ export function uiSchritt(id, opt = {}) {
   _schritteRendern();
   _navRendern();
   setTimeout(() => window.map?.invalidateSize?.(), 120);
+}
+
+/** Sprung an einen Eintrag der Seitennavigation, z. B. uiGeheZu('auswertung', 'kna') — für Verweise. */
+export function uiGeheZu(schritt, key) {
+  uiSchritt(schritt);
+  if (key) _abschnittOeffnen(key);
 }
 
 function _abschnittOeffnen(key, still) {
@@ -223,6 +234,107 @@ export function uiSchrittStatus() {
   };
 }
 
+// ── Checkliste (Projektseite) ──────────────────────────────────────────
+// Ersetzt Leitfaden (src/11, Wärmepfad) und Geführten Modus (src/24, Strompfad): dieselben
+// Prüfungen als eine Liste je Sparte, jeder Punkt mit Sprung an die Stelle, wo er erledigt wird.
+// stufe: ok · offen · veraltet (= Fehler oder überholt) · leer (optional, nicht begonnen).
+// optional: zählt nicht für „Nächster Schritt“.
+const _strom = (...wohin) => () => { uiSchritt('planung', { sparte: 'strom' }); window.elTab?.(wohin[0]); wohin[1]?.(); };
+const _CK_LOS = {
+  name: () => { const f = document.getElementById('pd-kaserne-name'); f?.focus(); f?.scrollIntoView({ block: 'center' }); },
+  we: () => { const f = document.getElementById('pd-we-nummer'); f?.focus(); f?.scrollIntoView({ block: 'center' }); },
+  gebaeude: () => uiSchritt('bestand'),
+  namen: () => uiGebaeudetabelle(true),
+  waermebedarf: () => uiGebaeudetabelle(true),
+  waermenetz: () => { uiSchritt('planung', { sparte: 'waerme' }); uiWaermeTab('netz'); },
+  erzeuger: () => { uiSchritt('planung', { sparte: 'waerme' }); uiWaermeTab('erzeuger'); },
+  waermeErg: () => { uiSchritt('auswertung'); _abschnittOeffnen('waerme'); },
+  stromlast: () => window.showAutofillWizard?.(),
+  referenz: () => window.toggleStromPanel?.(),
+  stromnetz: _strom('netz'),
+  bestandpruefung: _strom('pruefen', () => window.bestandPanelToggle?.()),
+  anschluss: () => window.sgNaOeffnen?.(),
+  entscheidung: _strom('erzeugung'),
+  pv: _strom('pv'),
+  stromErg: _strom('berechnen'),
+  gutachten: () => uiSchritt('gutachten'),
+};
+
+export function uiCheckliste() {
+  const st = uiSchrittStatus();
+  const geb = gebaeude, nGeb = geb.length;
+  const assets = ASSETS.items;
+  const strom = assets.filter(a => a.domain === 'strom' || a.domain === 'hybrid');
+  const nStat = strom.filter(a => _STATIONEN.includes(a.type)).length;
+  const nNap = strom.filter(a => a.type === 'NAP').length;
+  const erzKeys = meritOrderKeys.filter(k => isErzeugerAktiv(k));
+  const p = (id, stufe, titel, text, optional = false) => ({ id, stufe, titel, text, optional });
+  const name = (window.getProjektName?.() || '').trim();
+  const we = (document.getElementById('pd-we-nummer')?.value || '').trim();
+  const ohneName = geb.filter(g => !String(g.name || '').trim()).length;
+
+  const grundlagen = [
+    p('name', name ? 'ok' : 'offen', 'Name der Liegenschaft', name || 'Trägt das Deckblatt des Gutachtens'),
+    p('we', we ? 'ok' : 'offen', 'WE-Nummer', we || 'Fehlt noch'),
+    p('gebaeude', nGeb ? 'ok' : 'offen', 'Plangebiet und Gebäude', nGeb ? `${nGeb.toLocaleString('de-DE')} Gebäude geladen` : 'Plangebiet zeichnen, Gebäude aus OSM laden'),
+    p('namen', !nGeb ? 'leer' : ohneName ? 'offen' : 'ok', 'Gebäude benannt und geprüft',
+      !nGeb ? 'Erst Gebäude laden' : ohneName ? `${ohneName} von ${nGeb} Gebäuden ohne Namen` : `Alle ${nGeb} Gebäude benannt`),
+  ];
+
+  // Wärme (Pfad des alten Leitfadens)
+  const mitWaerme = geb.filter(g => parseFloat(g.waerme) > 0 || g.lastgangKw).length;
+  const nNetz = netzEdges.length;
+  const wErg = st.auswertung.waerme;
+  const waerme = [
+    p('waermebedarf', !nGeb ? 'leer' : mitWaerme ? 'ok' : 'offen', 'Wärmebedarf der Gebäude',
+      !nGeb ? 'Erst Gebäude laden' : mitWaerme ? `${mitWaerme} von ${nGeb} Gebäuden mit Wärmebedarf` : 'Kein Gebäude mit Wärmebedarf'),
+    p('waermenetz', nNetz ? 'ok' : 'offen', 'Wärmenetz', nNetz ? `${nNetz} Netzabschnitte` : 'Heizzentrale wählen, Netz erzeugen oder zeichnen'),
+    p('erzeuger', erzKeys.length ? 'ok' : 'offen', 'Erzeuger und Speicher', erzKeys.length ? `${erzKeys.length} Erzeuger aktiv` : 'Grund- und Spitzenlast festlegen'),
+    p('waermeErg', wErg === 'gerechnet' ? 'ok' : wErg === 'veraltet' ? 'veraltet' : 'offen', 'Wärme berechnet',
+      wErg === 'gerechnet' ? 'Ergebnisse liegen vor' : wErg === 'veraltet' ? 'Planung seit der Berechnung geändert' : 'Rechnet, sobald Netz und Erzeuger da sind'),
+  ];
+
+  // Strom (Pfad des alten Geführten Modus)
+  const mitLast = new Set(assets.filter(a => a.type === 'Verbraucher' && (Number(a.props?.leistungKW) > 0 || Number(a.leistungKW) > 0)).map(a => String(a.buildingId)));
+  const nLast = geb.filter(g => mitLast.has(String(g.id))).length;
+  const ref = Number(window.elQuartierH?.length) > 0;   // Float32Array — Array.isArray ist dafür blind
+  const nNetzS = nStat + stromEdges.length;
+  let best = null;
+  if (nNetzS) { try { best = bestandPruefen({ assets, edges: stromEdges, gebaeude: geb, heute: new Date().getFullYear() }); } catch (e) { /* Prüfung optional */ } }
+  const topo = best?.reifegrad?.find(s => s.id === 'topologie');
+  const bezug = Number(window.elNapMaxBezugKw) > 0, einsp = Number(window.elNapMaxEinspKw) > 0;
+  const nEnt = [...assets, ...stromEdges].filter(o => o?.schicht === SCHICHT.ENTSCHEIDUNG).length;
+  const nPv = new Set([...geb.filter(g => g.pvAktiv).map(g => String(g.id)), ...strom.filter(a => a.type === 'PV').map(a => String(a.buildingId ?? a.id))]).size;
+  const sErg = st.auswertung.strom;
+  const anschlussFehlt = [!nNap && 'NAP', !bezug && 'max. Bezug', !einsp && 'Einspeiselimit'].filter(Boolean);
+  const stromListe = [
+    p('stromlast', !nGeb ? 'leer' : nLast === nGeb ? 'ok' : 'offen', 'Stromverbrauch der Gebäude',
+      !nGeb ? 'Erst Gebäude laden' : nLast === nGeb ? `Alle ${nGeb} Gebäude mit Verbrauchswert` : `${nGeb - nLast} von ${nGeb} Gebäuden ohne Verbrauchswert — automatisch ermitteln`),
+    p('referenz', ref ? 'ok' : 'offen', 'Gemessener Lastgang (Referenzjahr)', ref ? 'Referenzjahr gewählt' : 'Messjahr in den Strom-Grundlagen laden'),
+    p('stromnetz', nNetzS ? 'ok' : 'offen', 'Bestandsnetz erfasst',
+      nNetzS ? `${nStat} ${nStat === 1 ? 'Station' : 'Stationen'}, ${stromEdges.length} Kabel` : 'Bestandsplan digitalisieren oder Netz automatisch erzeugen'),
+    p('bestandpruefung', !best ? 'leer' : best.zaehler.fehler ? 'veraltet' : topo && !topo.erfuellt ? 'offen' : 'ok', 'Bestand geprüft',
+      !best ? 'Erst Netz erfassen' : best.zaehler.fehler ? `${best.zaehler.fehler} Fehler in der Bestandsprüfung`
+        : topo && !topo.erfuellt ? `Netzstruktur: ${topo.fehlt || 'unvollständig'}` : `Keine Fehler · ${best.zaehler.warnung} Warnungen`),
+    p('anschluss', anschlussFehlt.length ? 'offen' : 'ok', 'Netzanschluss und Grenzen',
+      anschlussFehlt.length ? `Fehlt: ${anschlussFehlt.join(', ')}` : 'NAP, max. Bezug und Einspeiselimit hinterlegt'),
+    p('entscheidung', nEnt ? 'ok' : 'offen', 'Geplante Maßnahmen der Variante',
+      nEnt ? `${nEnt} geplante Objekte in der Variante` : 'Noch nichts in der Entscheidungsschicht'),
+    p('pv', nPv ? 'ok' : 'leer', 'Photovoltaik', nPv ? `PV auf ${nPv} ${nPv === 1 ? 'Gebäude bzw. Fläche' : 'Gebäuden bzw. Flächen'}` : 'Dächer und Freiflächen belegen', true),
+    p('stromErg', sErg === 'gerechnet' ? 'ok' : sErg === 'veraltet' ? 'veraltet' : 'offen', 'Netz berechnet',
+      sErg === 'gerechnet' ? 'Elektroberechnung liegt vor' : sErg === 'veraltet' ? 'Netz oder Parameter seit der Berechnung geändert' : 'Elektroberechnung starten'),
+  ];
+
+  const g = st.gutachten;
+  const gutachten = [p('gutachten', g.stufe, 'Gutachten', g.text)];
+  return [
+    { id: 'grundlagen', titel: 'Grundlagen', punkte: grundlagen },
+    { id: 'waerme', titel: 'Wärme', punkte: waerme },
+    { id: 'strom', titel: 'Strom', punkte: stromListe },
+    { id: 'gutachten', titel: 'Gutachten', punkte: gutachten },
+  ];
+}
+
 // ── Kopf des linken Arbeitsbereichs ────────────────────────────────────
 function _lpKopfRendern() {
   const kopf = document.getElementById('ui-lp-kopf');
@@ -287,23 +399,27 @@ function _navRendern() {
 export function uiProjektseiteRendern() {
   const v = document.getElementById('center-projekt-view');
   if (!v) return;
-  const st = uiSchrittStatus();
   const name = (window.getProjektName?.() || '').trim();
   const geb = gebaeude;
-  const naechster = UI_SCHRITTE.find(s => st[s.id]?.stufe !== 'ok');
-  const zeile = (stufe, titel, text, sprung) => `<div class="ui-ck" data-stufe="${stufe}">
-      <span class="ui-ck-ic">${_ic(stufe === 'ok' ? 'check' : stufe === 'offen' || stufe === 'veraltet' ? 'alert' : 'circle', 'ui-i ui-i-sm')}</span>
-      <span class="ui-ck-t"><b>${_esc(titel)}</b><small>${_esc(text)}</small></span>
-      ${sprung ? `<button type="button" class="btn-secondary ui-ck-btn" data-ui-sprung="${sprung}">Öffnen</button>` : '<span></span>'}</div>`;
+  const liste = uiCheckliste();
+  const alle = liste.flatMap(gr => gr.punkte.map(pk => ({ ...pk, gruppe: gr.titel })));
+  const naechster = alle.find(pk => !pk.optional && pk.stufe !== 'ok' && pk.stufe !== 'leer');
+  const zeile = pk => `<div class="ui-ck" data-stufe="${pk.stufe}">
+      <span class="ui-ck-ic">${_ic(pk.stufe === 'ok' ? 'check' : pk.stufe === 'offen' || pk.stufe === 'veraltet' ? 'alert' : 'circle', 'ui-i ui-i-sm')}</span>
+      <span class="ui-ck-t"><b>${_esc(pk.titel)}${pk.optional ? ' <em class="ui-ck-opt">optional</em>' : ''}</b><small>${_esc(pk.text)}</small></span>
+      <button type="button" class="${pk.stufe === 'ok' ? 'ui-ck-link' : 'btn-secondary ui-ck-btn'}" data-ui-ck="${pk.id}">Öffnen</button></div>`;
   v.querySelector('#ui-projekt-kopf').innerHTML = `
     <div><span class="ui-eyebrow">Projekt</span><h1>${_esc(name || 'Unbenanntes Projekt')}</h1>
       <p>${geb.length ? `${geb.length.toLocaleString('de-DE')} Gebäude im Plangebiet` : 'Noch keine Gebäude geladen'}</p></div>`;
   v.querySelector('#ui-projekt-stand').innerHTML = `
-    ${naechster ? `<div class="ui-next">${_ic('arrow')}<div><b>Nächster Schritt: ${_esc(naechster.titel)}</b><small>${_esc(st[naechster.id].detail || st[naechster.id].text)}</small></div>
-      ${naechster.id === 'projekt'
-        ? '<button type="button" class="btn-confirm" data-ui-fokus="pd-kaserne-name">Namen eintragen</button>'
-        : `<button type="button" class="btn-confirm" data-ui-sprung="${naechster.id}">Weiter zu ${_esc(naechster.titel)}</button>`}</div>` : ''}
-    ${UI_SCHRITTE.map(s => zeile(st[s.id].stufe, s.titel, st[s.id].detail || st[s.id].text, s.id === 'projekt' ? null : s.id)).join('')}`;
+    ${naechster ? `<div class="ui-next">${_ic('arrow')}<div><b>Nächster Schritt: ${_esc(naechster.titel)}</b><small>${_esc(naechster.gruppe)} · ${_esc(naechster.text)}</small></div>
+      <button type="button" class="btn-confirm" data-ui-ck="${naechster.id}">Erledigen</button></div>`
+      : `<div class="ui-next">${_ic('check')}<div><b>Alle Punkte erledigt</b><small>Gutachten prüfen und das Projekt speichern.</small></div></div>`}
+    ${liste.map(gr => {
+      const pflicht = gr.punkte.filter(pk => !pk.optional);
+      const fertig = pflicht.filter(pk => pk.stufe === 'ok').length;
+      return `<div class="ui-ck-grp"><span>${_esc(gr.titel)}</span><small>${fertig} von ${pflicht.length} erledigt</small></div>${gr.punkte.map(zeile).join('')}`;
+    }).join('')}`;
 }
 
 // ── Befehlssuche (Strg K) ──────────────────────────────────────────────
@@ -324,13 +440,21 @@ function _palIndex() {
   const liste = [], gesehen = new Set();
   for (const q of _QUELLEN) {
     document.querySelectorAll(`${q.sel} button, ${q.sel} [data-click]`).forEach(el => {
-      if (el.tagName === 'INPUT' || el.closest('[hidden]:not(#ui-proj-menu)') && !el.closest('#ui-proj-menu')) return;
+      // Versteckt = nicht anbieten; ausgenommen das Projektmenü und die gerade nicht gewählten
+      // Strom-Reiter (.el-pane) — die schaltet der Treffer unten selbst auf.
+      const versteckt = el.closest('[hidden]');
+      if (el.tagName === 'INPUT' || versteckt && !versteckt.matches('.el-pane') && !el.closest('#ui-proj-menu')) return;
+      // Verweise auf den eigentlichen Ort und die wechselnden Knöpfe von „Nächster Schritt“ nicht
+      // aufnehmen — die Funktion steht sonst doppelt in der Trefferliste.
+      if (el.closest('.ui-verweis, #el-fuehrung')) return;
       const icon = el.querySelector('.asset-palette-btn-icon');
-      const text = uiLabel(icon ? el.textContent.replace(icon.textContent, '') : el.textContent);
+      // Aufgabenzeile: Titel (b) als Name, Kurzbeschreibung (small) nur als Suchtext
+      const kopf = el.matches('.ui-aufgabe') ? el.querySelector('b') : null;
+      const text = uiLabel(kopf ? kopf.textContent : icon ? el.textContent.replace(icon.textContent, '') : el.textContent);
       if (text.length < 3 || /^[\d\s.,%–-]+$/.test(text)) return;
       const k = q.ort + '|' + text;
       if (gesehen.has(k)) return; gesehen.add(k);
-      liste.push({ text, ort: q.ort, tip: el.title || '', los: () => {
+      liste.push({ text, ort: q.ort, tip: el.title || (kopf ? uiLabel(el.querySelector('small')?.textContent) : ''), los: () => {
         if (q.schritt) uiSchritt(q.schritt, { sparte: q.sparte });
         if (q.waermeTab) uiWaermeTab(q.waermeTab);
         const elReiter = el.closest('[data-el-tab]')?.dataset.elTab;
@@ -488,6 +612,7 @@ function _ereignisse() {
     let x;
     if ((x = t.closest('button[data-ui-schritt]'))) { uiSchritt(x.dataset.uiSchritt); return; }
     if ((x = t.closest('button[data-ui-sprung]'))) { uiSchritt(x.dataset.uiSprung); return; }
+    if ((x = t.closest('button[data-ui-ck]'))) { _CK_LOS[x.dataset.uiCk]?.(); return; }
     if ((x = t.closest('button[data-ui-fokus]'))) { const f = document.getElementById(x.dataset.uiFokus); f?.focus(); f?.scrollIntoView({ block: 'center' }); return; }
     if ((x = t.closest('button[data-ui-sparte]'))) { uiSchritt('planung', { sparte: x.dataset.uiSparte }); return; }
     if ((x = t.closest('button[data-ui-waerme]'))) { uiWaermeTab(x.dataset.uiWaerme); return; }
