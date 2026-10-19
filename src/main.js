@@ -132,6 +132,7 @@ import * as umspannwerke from './43-umspannwerke.js';
 import * as netzanschlussModul from './44-netzanschluss-modul.js';
 import * as variantenRegeln from './lib/varianten-regeln.js';
 import * as oberflaeche from './49-oberflaeche.js';
+import * as datenqualitaet from './50-datenqualitaet.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -149,7 +150,7 @@ const modules = [
   napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap, engpassSweep, engpassPanel,
-  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, pvBelegungsStaende, pvAnschluss, lod2Import, quartierHerausloesen, netzQuartiere, speicherAnalyse, gebaeudeAnalyse, quartierSonde, variantenGrafik, heizzentralen, waermeSchema, datenanalyse, baeume, grundrissPruefung, ladeStatus, umspannwerke, netzanschlussModul, variantenRegeln, oberflaeche,
+  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, pvBelegungsStaende, pvAnschluss, lod2Import, quartierHerausloesen, netzQuartiere, speicherAnalyse, gebaeudeAnalyse, quartierSonde, variantenGrafik, heizzentralen, waermeSchema, datenanalyse, baeume, grundrissPruefung, ladeStatus, umspannwerke, netzanschlussModul, variantenRegeln, oberflaeche, datenqualitaet,
 ];
 window.pdfjsLib = pdfjsLib;
 lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});
@@ -217,6 +218,7 @@ if (document.readyState === 'loading') {
     uiPanels.initResponsiveLayout();
     dualScreen.dsInit();
     oberflaeche.uiInit();
+    datenqualitaet.dqInit();
   });
 } else {
   slpEditor.initBdewProfiles();
@@ -226,4 +228,5 @@ if (document.readyState === 'loading') {
   uiPanels.initResponsiveLayout();
   dualScreen.dsInit();
   oberflaeche.uiInit();
+  datenqualitaet.dqInit();
 }

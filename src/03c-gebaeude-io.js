@@ -3509,8 +3509,8 @@ export function _buildProjectData() {
     fliessgewaesser: fliessgewaesser ? { latlngs: fliessgewaesser.latlngs, durchflussLs: fliessgewaesser.durchflussLs, leistungKw: fliessgewaesser.leistungKw, jaz: fliessgewaesser.jaz, visible: fliessgewaesserVisible } : null,
     lwWp: lwWp ? { lat: lwWp.lat, lng: lwWp.lng, leistungKw: lwWp.leistungKw, lwaDb: lwWp.lwaDb, jaz: _finiteNumberOr(document.getElementById('lwwp-jaz').value, 3.0), waerme: document.getElementById('lwwp-waerme').value, minCop: document.getElementById('lwwp-min-cop')?.value || '', visible: lwWpVisible, ...(lwWp.aufstellung ? { aufstellung: lwWp.aufstellung } : {}), ...(lwWp.lwaManuell ? { lwaManuell: true } : {}), ...(lwWp.gebiet ? { gebiet: lwWp.gebiet } : {}), ...(lwWp.schallschutz ? { schallschutz: lwWp.schallschutz } : {}), ...(lwWp.ausbreitung === '3d' ? { ausbreitung: '3d' } : {}), ...(lwWp.baeume ? { baeume: lwWp.baeume } : {}), ...(lwWp.spektrum ? { spektrum: lwWp.spektrum } : {}) } : null,
     geoThermie: geoThermie ? { ...geoThermie, heizlast: document.getElementById('geo-heizlast').value, waerme: document.getElementById('geo-waerme').value, jaz: _finiteNumberOr(document.getElementById('geo-jaz').value, 4.5), tiefe: _finiteNumberOr(document.getElementById('geo-tiefe').value, 100), qPerM: _finiteNumberOr(document.getElementById('geo-q-perm').value, 50), abstand: _finiteNumberOr(document.getElementById('geo-abstand').value, 10), dtAbsenkung: _finiteNumberOr(document.getElementById('geo-dt-absenkung').value, 0) } : null,
-    gasKessel: gasKessel ? { leistungKw: gasKessel.leistungKw, eta: document.getElementById('gk-eta').value, waerme: document.getElementById('gk-waerme').value } : null,
-    heizoelKessel: heizoelKessel ? { leistungKw: heizoelKessel.leistungKw, eta: document.getElementById('hko-eta').value, waerme: document.getElementById('hko-waerme').value } : null,
+    gasKessel: gasKessel ? { leistungKw: _finiteNumberOr(document.getElementById('gk-leistung')?.value, gasKessel.leistungKw), eta: document.getElementById('gk-eta').value, waerme: document.getElementById('gk-waerme').value } : null,
+    heizoelKessel: heizoelKessel ? { leistungKw: _finiteNumberOr(document.getElementById('hko-leistung')?.value, heizoelKessel.leistungKw), eta: document.getElementById('hko-eta').value, waerme: document.getElementById('hko-waerme').value } : null,
     bhkw: bhkw ? { leistungThKw: _finiteNumberOr(document.getElementById('bhkw-leistung-th').value, 100), skz: document.getElementById('bhkw-skz').value, eta: document.getElementById('bhkw-eta').value, waerme: document.getElementById('bhkw-waerme').value } : null,
     stromkessel: stromkessel ? { leistungKw: _finiteNumberOr(document.getElementById('sk-leistung').value, 200), eta: document.getElementById('sk-eta').value, waerme: document.getElementById('sk-waerme').value } : null,
     solarthermie: solarthermieAktiv ? { flaeche: _finiteNumberOr(document.getElementById('st-flaeche')?.value, 0), spez: _finiteNumberOr(document.getElementById('st-spez')?.value, 400), polygon: window._stPolygon || null } : null,
@@ -3554,8 +3554,8 @@ export function _buildProjectData() {
     meritOrderKeys: [...meritOrderKeys],
     spitzenkesselArt: document.getElementById('agk-art')?.value || 'gas',
     kaelte: _captureKaelte(),
-    pelletsKessel: pelletsKessel ? { leistungKw: pelletsKessel.leistungKw, eta: document.getElementById('pk-eta').value, waerme: document.getElementById('pk-waerme').value, lat: pelletsKessel.lat, lng: pelletsKessel.lng } : null,
-    heizhackschnitzel: heizhackschnitzel ? { leistungKw: heizhackschnitzel.leistungKw, eta: document.getElementById('hhs-eta').value, waerme: document.getElementById('hhs-waerme').value, lat: heizhackschnitzel.lat, lng: heizhackschnitzel.lng } : null,
+    pelletsKessel: pelletsKessel ? { leistungKw: _finiteNumberOr(document.getElementById('pk-leistung')?.value, pelletsKessel.leistungKw), eta: document.getElementById('pk-eta').value, waerme: document.getElementById('pk-waerme').value, lat: pelletsKessel.lat, lng: pelletsKessel.lng } : null,
+    heizhackschnitzel: heizhackschnitzel ? { leistungKw: _finiteNumberOr(document.getElementById('hhs-leistung')?.value, heizhackschnitzel.leistungKw), eta: document.getElementById('hhs-eta').value, waerme: document.getElementById('hhs-waerme').value, lat: heizhackschnitzel.lat, lng: heizhackschnitzel.lng } : null,
     fernwaerme: fernwaerme ? { leistungKw: fernwaerme.leistungKw, waerme: document.getElementById('fw-waerme').value, co2f: document.getElementById('fw-co2f').value, lat: fernwaerme.lat, lng: fernwaerme.lng } : null,
     heizoelEmF: heizoelEmF, gasEmF: gasEmF,
     pelletsEmF: pelletsEmF, hhsEmF: hhsEmF, fernwaermeEmF: fernwaermeEmF,
@@ -4053,6 +4053,8 @@ export function _loadProject(project) {
         if (typeof window.withoutPlanningTransactions === 'function') window.withoutPlanningTransactions(() => _applyProjectData(prepared.project));
         else _applyProjectData(prepared.project);
         if (typeof window.clearPlanningTransactionHistory === 'function') window.clearPlanningTransactionHistory();
+        // Datenqualität (src/50): Korrekturen beim Laden merken, Werte neu prüfen
+        window.dqNachImport?.(prepared.korrekturen || []);
       } catch (importError) {
         console.error('Projektimport fehlgeschlagen – stelle vorherigen Stand wieder her:', importError);
         try {

@@ -1,6 +1,7 @@
 // @ts-check
 // Zentrale, DOM-freie Prüfung und Migration von Projektdateien.
 // Wichtig: Diese Funktionen verändern das Eingabeobjekt nicht.
+import { migriereWirkungsgrade } from './plausibilitaet.js';
 
 export const PROJECT_SCHEMA_VERSION = 2;
 
@@ -117,7 +118,9 @@ export function validateProjectData(input) {
 /**
  * Validiert, migriert und klont eine Projektdatei für den Import.
  * @param {unknown} input
- * @returns {{project: Record<string, any>, warnings: string[]}}
+ * `korrekturen` listet Werte, die sonst falsch gelesen worden wären und beim Laden
+ * umgerechnet wurden (für die Hinweisliste „Datenqualität“).
+ * @returns {{project: Record<string, any>, warnings: string[], korrekturen: import('./plausibilitaet.js').PlausiHinweis[]}}
  */
 export function prepareProjectForImport(input) {
   const result = validateProjectData(input);
@@ -135,5 +138,8 @@ export function prepareProjectForImport(input) {
     project.version = 2;
     warnings.push('Projektdatei wurde von Schema v1 auf v2 migriert');
   }
-  return { project, warnings };
+  // Wirkungsgrade alter Dateien als Bruchteil (0.92) → Prozent (92)
+  const korrekturen = migriereWirkungsgrade(project);
+  korrekturen.forEach(k => warnings.push(`${k.label}: ${k.text}`));
+  return { project, warnings, korrekturen };
 }
