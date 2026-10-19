@@ -25,7 +25,7 @@ const _esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': 
 const _ic = (id, cls = 'ui-i') => `<svg class="${cls}"><use href="#ui-i-${id}"/></svg>`;
 // Emojis und Pfeil-Präfixe aus alten Beschriftungen entfernen
 export const uiLabel = t => String(t || '')
-  .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, '')
+  .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]|\u{FE0F}|\u{200D}/gu, '')
   .replace(/^[\s⬡↓↑⇄⊞⋯＋+✕↻↶⚙€·•▶◀▼]+/u, '')
   .replace(/&shy;|­/g, '')
   .replace(/\s+/g, ' ').trim();
