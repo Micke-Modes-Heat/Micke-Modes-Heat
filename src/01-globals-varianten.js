@@ -1505,7 +1505,6 @@ export function applyErzeugerState(state) {
     document.getElementById('ts-lade-kw').value = state.waermespeicher.ladeKw || state.waermespeicher.entladeKw || 200;
     thermSpeicherAktiv = (state.waermespeicher.volumen || 0) > 0;
     updateThermSpeicherDisplay();
-    document.getElementById('therm-speicher-panel').style.display = 'block';
   }
   // Art des automatischen Spitzenlastkessels (ältere Stände: Erdgas)
   const agkSel = document.getElementById('agk-art');

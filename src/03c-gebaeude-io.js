@@ -4378,7 +4378,6 @@ function _applyProjectData(project) {
         document.getElementById('ts-lade-kw').value = project.waermespeicher.ladeKw ?? project.waermespeicher.entladeKw ?? 200;
         setThermSpeicherAktiv((project.waermespeicher.volumen ?? 0) > 0);
         updateThermSpeicherDisplay();
-        document.getElementById('therm-speicher-panel').style.display = 'block';
       }
       if (project.kaelte?.eingabe) {
         const e = project.kaelte.eingabe;
