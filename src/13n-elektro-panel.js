@@ -96,12 +96,13 @@ function _html() { return `
       </div>`)}
   </section>
 
-  <!-- ═══ Reiter 2 · Erzeugung ══════════════════════════════════════════════ -->
-  <section id="el-sec-anlagen" class="el-pane" data-el-tab="erzeugung" hidden>
-    ${_gruppe('Anlagen setzen', `<div id="asset-palette-erz" class="asset-palette-inline"></div>`,
-      'PV, Wind, Batterie, Notstrom: Typ wählen, dann auf die Karte klicken.')}
-
-    ${_gruppe('PV-Freiflächen', `
+  <!-- ═══ Reiter 2 · Photovoltaik ══════════════════════════════════════════ -->
+  <!-- Der Reiter ist der PV-Modus (25-pv-modus.js): Öffnen startet ihn, die fünf
+       Stufen rendert pvModusRender() in #el-pv-host. Die Freiflächen-Gruppe steht
+       statisch hier (IDs für renderFFPanel) und wird in Stufe 3 eingehängt. -->
+  <section id="el-sec-pv" class="el-pane" data-el-tab="pv" hidden>
+    <div id="el-pv-host"></div>
+    <div id="el-pv-ff" hidden>
       <div class="el-werkzeuge">
         ${_werkzeug('Freifläche zeichnen', 'startDrawFF()', { id: 'el-btn-ff-draw', swatch: '#ffd54f',
           title: 'PV-Freifläche auf der Karte einzeichnen (Klick auf Eckpunkte, Doppelklick zum Abschluss)' })}
@@ -111,7 +112,17 @@ function _html() { return `
       <div id="el-ff-total" class="el-ff-total" style="display:none;">
         <span>Gesamt</span><b id="el-ff-total-kwp">—</b>
         <span>Ertrag</span><b id="el-ff-total-mwh">—</b>
-      </div>`)}
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Reiter 3 · Erzeugung ══════════════════════════════════════════════ -->
+  <section id="el-sec-anlagen" class="el-pane" data-el-tab="erzeugung" hidden>
+    ${_gruppe('Anlagen setzen', `<div id="asset-palette-erz" class="asset-palette-inline"></div>`,
+      'Wind, Batterie, Notstrom, PV ohne Dach: Typ wählen, dann auf die Karte klicken.')}
+
+    ${_gruppe('Photovoltaik', `
+      ${_aufgabe('Im Reiter Photovoltaik planen', 'Dächer belegen, Freiflächen, Belegungsstände, PV-Pflicht', "elTab('pv')", { icon: 'arrow' })}`)}
 
     ${_gruppe('Aus der Wärmeplanung', `
       <p class="el-hinweis">Wärmepumpen, BHKW, PV und Batterie aus der Wärmeplanung wirken automatisch in der Strombilanz. Sie werden dort bearbeitet.</p>
@@ -121,7 +132,6 @@ function _html() { return `
         title: 'Verbrauchs- und PV-Werte automatisch ermitteln' })}`)}
 
     ${_gruppe('Prüfen', `
-      ${_aufgabe('PV-Übersicht', 'Gezeichnete PV-Flächen gegen die kWp der Anlagen abgleichen', 'pvuTogglePanel()', { id: 'btn-pv-uebersicht-toggle', icon: 'list' })}
       ${_aufgabe('Windanalyse', 'Ertrag, Abstände, Eignungsfläche und Szenarien der Windkraftanlagen', 'windaTogglePanel()', { id: 'btn-windanalyse-toggle', icon: 'chart' })}`)}
   </section>
 
@@ -306,6 +316,7 @@ export function renderGekoppelteStatus() {
 // nur die Bereiche umgeschaltet. Zustand bleibt im Browser gespeichert.
 export const EL_TABS = [
   { id: 'netz',      titel: 'Netz' },
+  { id: 'pv',        titel: 'Photovoltaik' },
   { id: 'erzeugung', titel: 'Erzeugung' },
   { id: 'berechnen', titel: 'Berechnen' },
   { id: 'pruefen',   titel: 'Prüfen' },
@@ -329,6 +340,11 @@ export function elTab(id) {
   _tab = id;
   try { localStorage.setItem(_TAB_KEY, id); } catch (e) { /* optional */ }
   document.querySelectorAll('#lp-elektro .el-pane').forEach(p => { p.hidden = p.dataset.elTab !== id; });
+  const lp = document.getElementById('lp-elektro');
+  if (lp) lp.dataset.elTabAkt = id;
+  // Der Reiter Photovoltaik ist der PV-Modus: öffnen startet ihn, verlassen beendet ihn.
+  if (id === 'pv') { if (window.pvModusAktiv) window.pvModusRender?.(); else window.pvModusStart?.(); }
+  else if (window.pvModusAktiv) window.pvModusStop?.();
   window.uiLpKopfAktualisieren?.();
 }
 

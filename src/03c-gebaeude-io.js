@@ -4055,6 +4055,8 @@ export function _loadProject(project) {
         if (typeof window.clearPlanningTransactionHistory === 'function') window.clearPlanningTransactionHistory();
         // Datenqualität (src/50): Korrekturen beim Laden merken, Werte neu prüfen
         window.dqNachImport?.(prepared.korrekturen || []);
+        // Offener Reiter Photovoltaik (PV-Modus): mit den neuen Gebäuden neu aufsetzen
+        if (window.pvModusAktiv) { window.pvModusStop?.(); window.pvModusStart?.(); }
       } catch (importError) {
         console.error('Projektimport fehlgeschlagen – stelle vorherigen Stand wieder her:', importError);
         try {

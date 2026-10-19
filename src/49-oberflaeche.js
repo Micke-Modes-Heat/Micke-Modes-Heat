@@ -89,6 +89,8 @@ export function uiSchritt(id, opt = {}) {
   const s = UI_SCHRITTE.find(x => x.id === id) || UI_SCHRITTE[0];
   _ui.schritt = s.id;
   if (opt.sparte) _ui.sparte = opt.sparte;
+  // Der PV-Modus ist der Reiter Planung › Strom › Photovoltaik — woanders hin = Modus aus
+  if (window.pvModusAktiv && !(s.id === 'planung' && _ui.sparte === 'strom')) window.pvModusStop?.();
   _merken();
   const body = document.body;
   UI_SCHRITTE.forEach(x => body.classList.toggle('ui-schritt-' + x.id, x.id === s.id));
@@ -104,7 +106,10 @@ export function uiSchritt(id, opt = {}) {
     window.setLeftTab?.('gebiet');
   } else if (s.id === 'planung') {
     window.setViewMode?.('karte');
-    if (_ui.sparte === 'strom') window.setLeftTab?.('elektro');
+    if (_ui.sparte === 'strom') {
+      window.setLeftTab?.('elektro');
+      if (window.elTabAktiv?.() === 'pv') window.pvModusStart?.();
+    }
     else window.setLeftTab?.(_ui.waermeTab === 'erzeuger' ? 'erzeuger' : 'netz');
   } else {
     const ab = _ui.abschnitt[s.id] || (s.id === 'gutachten' ? 'ggrafik' : 'uebersicht');

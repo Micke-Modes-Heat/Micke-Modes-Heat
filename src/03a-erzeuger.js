@@ -70,15 +70,14 @@ function _removeFFPvAsset(ffId) {
 export function toggleFFPvPanel() {
   // Läuft schon eine Zeichnung → Klick bricht ab (Toggle-Verhalten)
   if (ffDrawId !== null) { cancelDrawFF(); return; }
-  // Elektro-Tab öffnen (dort liegen Liste + Ausrichtung Süd/Ost-West) und
-  // direkt das Flächen-Zeichnen starten — Fläche abklicken verortet die PV.
-  if (typeof window.setLeftTab === 'function') {
-    window.setLeftTab('elektro');
-    setTimeout(() => {
-      window.elTab?.('erzeugung');   // Liste und Ausrichtung liegen im Strom-Reiter „Erzeugung“
-      renderFFPanel();
-    }, 120);
-  }
+  // Reiter Planung › Strom › Photovoltaik öffnen (dort liegen Liste + Ausrichtung
+  // Süd/Ost-West) und direkt das Flächen-Zeichnen starten. Reihenfolge: erst der
+  // Reiter (startet den PV-Modus), dann das Zeichnen — das pausiert den Modus,
+  // bis die Fläche fertig ist.
+  window.elTab?.('pv');
+  if (typeof window.uiSchritt === 'function') window.uiSchritt('planung', { sparte: 'strom' });
+  else window.setLeftTab?.('elektro');
+  renderFFPanel();
   startDrawFF();
 }
 

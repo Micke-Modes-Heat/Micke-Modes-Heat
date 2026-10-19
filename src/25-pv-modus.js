@@ -23,7 +23,7 @@
 // bleiben in 03c-gebaeude-io.js; hier stehen Bedienung und Zuordnung. Was das
 // Panel anfasst, ruft dieselben Handler wie die Gebäudekarte.
 
-import { beginInteraction, cancelInteraction } from './lib/interaction-state.js';
+import { beginInteraction, cancelInteraction, getActiveInteraction } from './lib/interaction-state.js';
 import { ensureSatellite, map } from './02b-gebaeude.js';
 import { polygonCenter, polygonAreaM2, forwardClickToMap, updateViz } from './02c-karte-werkzeuge.js';
 import {
@@ -37,6 +37,7 @@ import { getAssetsForBuilding, deleteAsset, ASSETS } from './13a-assets-core.js'
 import { pvnaAbrissGeplant } from './28-pv-netzaufnahme.js';
 
 const PANEL_ID    = 'pv-modus-panel';
+const WL_ID       = 'pvm-werkzeugleiste';   // Werkzeugleiste auf der Karte (nur im Reiter)
 const INTERAKTION = 'pv-modus';
 const DACHFORMEN  = { flach: 'Flachdach', sattel: 'Satteldach', walm: 'Walmdach', pult: 'Pultdach' };
 const GELB = '#ffd54f';
@@ -284,12 +285,16 @@ export function pvModusStart() {
   beginInteraction({
     id: INTERAKTION,
     label: 'PV-Modus',
-    hint: 'Dach anklicken = Fläche zeichnen · B/S = Belegung/Sperrfläche · N = nächstes offenes Dach',
-    cancel: () => pvModusStop(),
+    hint: 'A = Dach auswählen · B/S = Belegungs-/Sperrfläche zeichnen · R = Polygon/Rechteck · N = nächstes offenes Dach',
+    // Beendet ein anderes Kartenwerkzeug den Modus (z. B. Freifläche zeichnen),
+    // macht der Reiter danach von selbst weiter (_weiterNachWerkzeug).
+    cancel: () => { if (!_stoppt && _reiterHost()) _autoWeiter = true; pvModusStop(); },
   });
   window.pvModusAktiv = true;
   if (!window.pvModusTyp)   window.pvModusTyp   = 'belegung';
-  if (!window.pvModusForm)  window.pvModusForm  = 'polygon';
+  // Im Reiter beginnt man mit „Auswählen": ein Klick aufs Dach soll nicht ungefragt zeichnen
+  if (!window.pvModusForm)  window.pvModusForm  = 'auswahl';
+  if (!window.pvModusZeichenForm) window.pvModusZeichenForm = 'polygon';
   if (!window.pvModusListe) window.pvModusListe = 'mit';
   if (window.pvModusHilfe === undefined) window.pvModusHilfe = true;
   _vorgabe();
@@ -304,8 +309,32 @@ export function pvModusStart() {
   document.addEventListener('keydown', _tastenHandler, true);
   map.on('click', _rechteckKartenklick);
   document.getElementById('btn-pv-modus-toggle')?.classList.add('active');
+  _reiterZeigen();
   pvModusRender();
   pvModusMarkiereKarte();
+}
+
+/**
+ * Der PV-Modus ist der Reiter Planung › Strom › Photovoltaik. Wer ihn von
+ * woanders startet (Gebäudekarte, Befehlssuche), landet dort. elTab('pv') ruft
+ * pvModusStart erneut auf — das kehrt sofort zurück, weil der Modus schon läuft.
+ */
+function _reiterZeigen() {
+  if (_reiterHost()) return;
+  if (!document.getElementById('lp-elektro') || typeof window.elTab !== 'function') return;
+  // Reiter zuerst setzen: baut uiSchritt das Elektro-Panel erst auf, öffnet es
+  // sonst den zuletzt gemerkten Reiter — und der würde den Modus wieder beenden.
+  window.elTab('pv');
+  window.uiSchritt?.('planung', { sparte: 'strom' });
+}
+
+/** Container im Reiter, wenn der Reiter gerade sichtbar ist (sonst null → schwebendes Fenster). */
+function _reiterHost() {
+  const sec = document.getElementById('el-sec-pv');
+  if (!sec || sec.hidden || !document.getElementById('lp-elektro')?.classList.contains('active')) return null;
+  // In Auswertung/Gutachten bleibt der Elektro-Bereich „aktiv", ist aber ausgeblendet
+  if (sec.offsetParent === null) return null;
+  return document.getElementById('el-pv-host');
 }
 
 /**
@@ -315,7 +344,8 @@ export function pvModusStart() {
  */
 export function pvModusStartFuer(gId) {
   window.pvModusGeb = gId;
-  if (!window.pvModusAktiv) pvModusStart();
+  _stufenOffen()[3] = true;
+  if (!window.pvModusAktiv) pvModusStart(); else _reiterZeigen();
   flyTo(gId);
   pvModusRender();
   pvModusMarkiereKarte();
@@ -334,11 +364,40 @@ export function pvModusStop() {
     map.off('click', _rechteckKartenklick);
     _verlauf = [];
     document.getElementById(PANEL_ID)?.remove();
+    document.getElementById(WL_ID)?.remove();
     document.getElementById('btn-pv-modus-toggle')?.classList.remove('active');
     cancelInteraction(INTERAKTION);            // no-op, wenn der Stopp von dort kam
     window.updateSperrVisibility?.();
     updateViz();                               // Gebäudestile zurück auf die normale Darstellung
+    _reiterPausiert();
   } finally { _stoppt = false; }
+}
+
+/**
+ * Reiter offen, Modus aber aus — ein anderes Kartenwerkzeug hat ihn beendet
+ * (Interaktionsregistrierung). Dann bietet der Reiter das Weitermachen an.
+ */
+let _autoWeiter = false;
+// Das Ende jedes Kartenwerkzeugs meldet die Registrierung mit detail:null — auch
+// mitten in beginInteraction des nächsten Werkzeugs. Darum erst im nächsten Takt
+// prüfen, ob wirklich keins mehr läuft.
+if (typeof window !== 'undefined') window.addEventListener?.('mapinteractionchange', e => {
+  if (e.detail || !_autoWeiter) return;
+  setTimeout(() => {
+    if (!_autoWeiter || getActiveInteraction() || window.pvModusAktiv) return;
+    _autoWeiter = false;
+    if (_reiterHost()) pvModusStart();
+  }, 0);
+});
+
+function _reiterPausiert() {
+  const host = _reiterHost();
+  if (!host) return;
+  _ffParken();
+  host.innerHTML = `<div class="el-naechster-in" data-stufe="leer">
+      <div><b>Kartenbearbeitung pausiert</b><small>Ein anderes Kartenwerkzeug ist aktiv, zum Beispiel Freifläche zeichnen. Ist es fertig, geht es hier von selbst weiter.</small></div>
+      <div class="el-naechster-knoepfe"><button class="btn-confirm" data-click="pvModusStart()">PV-Planung fortsetzen</button></div>
+    </div>`;
 }
 
 /** Belegung/Sperrfläche umschalten — wirkt auch mitten in einer laufenden Zeichnung. */
@@ -358,10 +417,36 @@ export function pvModusSetTyp(typ) {
 
 /** Zeichenart: freies Polygon oder Rechteck aus zwei Klicks. */
 export function pvmSetForm(form) {
-  window.pvModusForm = form === 'rechteck' ? 'rechteck' : 'polygon';
+  window.pvModusForm = form === 'rechteck' ? 'rechteck' : form === 'auswahl' ? 'auswahl' : 'polygon';
+  if (window.pvModusForm !== 'auswahl') window.pvModusZeichenForm = window.pvModusForm;
   window.cancelGebPvDraw?.();
   _rechteckAbbruch();
   pvModusRender();
+}
+
+/**
+ * Werkzeug der Kartenleiste: „auswahl" (Klick wählt das Dach), „belegung" oder
+ * „sperr" (Klick zeichnet in der zuletzt benutzten Form Polygon/Rechteck).
+ */
+export function pvmWerkzeug(w) {
+  if (w === 'auswahl') { pvmSetForm('auswahl'); return; }
+  if (window.pvModusForm === 'auswahl') {
+    window.pvModusForm = window.pvModusZeichenForm || 'polygon';
+    _rechteckAbbruch();
+  }
+  pvModusSetTyp(w);
+}
+
+/** 3D-Ansicht öffnen und dort gleich „Dachflächen bearbeiten" einschalten. */
+export function pvm3d() {
+  if (!window.d3dIstOffen?.()) window.d3dUmschalten?.();
+  let n = 0;
+  const haken = () => {
+    const cb = document.querySelector('input[data-d3d="bearbeiten"]');
+    if (cb) { if (!cb.checked) cb.click(); return; }
+    if (++n < 20) setTimeout(haken, 150);
+  };
+  setTimeout(haken, 150);
 }
 
 function _taste(event) {
@@ -383,6 +468,9 @@ function _taste(event) {
       pvModusRender();
       return;
     }
+    // Im Reiter beendet Esc den Modus nicht (das tut der Reiterwechsel), sondern
+    // legt das Zeichenwerkzeug weg.
+    if (_reiterHost()) { if (window.pvModusForm !== 'auswahl') pvmSetForm('auswahl'); return; }
     pvModusStop();
     return;
   }
@@ -395,9 +483,14 @@ function _taste(event) {
   }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   const k = event.key.toLowerCase();
-  if (k === 'b' || k === 's') { pvModusSetTyp(k === 'b' ? 'belegung' : 'sperr'); event.preventDefault(); }
+  if (k === 'b' || k === 's') { pvmWerkzeug(k === 'b' ? 'belegung' : 'sperr'); event.preventDefault(); }
+  else if (k === 'a')         { pvmWerkzeug('auswahl'); event.preventDefault(); }
   else if (k === 'n')         { pvmNaechstesOffenes(); event.preventDefault(); }
-  else if (k === 'r')         { pvmSetForm(window.pvModusForm === 'rechteck' ? 'polygon' : 'rechteck'); event.preventDefault(); }
+  else if (k === 'r')         {
+    const jetzt = window.pvModusForm === 'auswahl' ? window.pvModusZeichenForm : window.pvModusForm;
+    pvmSetForm(jetzt === 'rechteck' ? 'polygon' : 'rechteck');
+    event.preventDefault();
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -427,6 +520,13 @@ export function pvModusBuildingClick(gId, event) {
       return true;
     }
     g = neu; gId = neu.id;
+  }
+  if (window.pvModusForm === 'auswahl') {
+    window.pvModusGeb = gId;
+    _stufenOffen()[3] = true;
+    pvModusRender();
+    pvModusMarkiereKarte();
+    return true;
   }
   if (window.pvModusForm === 'rechteck') {
     if (latlng) _rechteckKlick(latlng, gId);
@@ -460,7 +560,8 @@ export function pvModusFlaecheClick(gId) {
   const g = _geb(gId);
   if (!g) return false;
   window.pvModusGeb = gId;
-  if (window.pvModusTyp === 'sperr') {
+  if (window.pvModusForm === 'auswahl') _stufenOffen()[3] = true;
+  else if (window.pvModusTyp === 'sperr') {
     _assetStandErfassen();
     window.startGebPvDraw?.(gId, 'sperr', { keepView: true });
   }
@@ -1209,6 +1310,19 @@ export function pvModusMarkiereKarte() {
 
 export function pvModusRender() {
   if (!window.pvModusAktiv) return;
+  // Im Reiter Planung › Strom › Photovoltaik: fünf Stufen + Kartenleiste statt Fenster
+  const host = _reiterHost();
+  if (host) {
+    document.getElementById(PANEL_ID)?.remove();
+    _ffParken();
+    host.innerHTML = (window.pvBelegungWirkungHtml?.('pvm') || '') + _reiterHtml();
+    const slot = document.getElementById('pvr-ff-slot');
+    const ff = document.getElementById('el-pv-ff');
+    if (slot && ff) { slot.appendChild(ff); ff.hidden = false; }
+    _werkzeugleisteRendern();
+    return;
+  }
+  document.getElementById(WL_ID)?.remove();
   let el = document.getElementById(PANEL_ID);
   if (!el) {
     el = document.createElement('div');
@@ -1219,6 +1333,194 @@ export function pvModusRender() {
   }
   // Wo die Belegung gilt: Dachdaten gemeinsam, Belegung nur in der aktiven Variante
   el.innerHTML = (window.pvBelegungWirkungHtml?.('pvm') || '') + _html();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// REITER „PHOTOVOLTAIK" — fünf Stufen in Arbeitsreihenfolge
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Dieselben Bausteine wie im Fenster, nur geordnet: 1 Dachdaten · 2 Regeln ·
+// 3 Belegen · 4 Stände · 5 Prüfen. Die Zeichenwerkzeuge stehen auf der Karte
+// (_werkzeugleisteRendern). Zugeklappte Stufen zeigen nur ihre Kurzzeile.
+
+const _ic = id => `<svg class="ui-i"><use href="#ui-i-${id}"/></svg>`;
+
+/** Aufgeklappte Stufen (Sitzung). Stufe 3 ist anfangs offen. */
+function _stufenOffen() {
+  if (!window.pvModusStufen) window.pvModusStufen = { 3: true };
+  return window.pvModusStufen;
+}
+
+export function pvmStufe(n) {
+  const of = _stufenOffen();
+  of[n] = !of[n];
+  pvModusRender();
+}
+
+/** Die Freiflächen-Gruppe (13n, #el-pv-ff) vor dem Neuzeichnen in Sicherheit bringen. */
+function _ffParken() {
+  const ff = document.getElementById('el-pv-ff');
+  const sec = document.getElementById('el-sec-pv');
+  if (ff && sec && ff.parentElement !== sec) { ff.hidden = true; sec.appendChild(ff); }
+}
+
+const _aufg = (titel, text, click, { icon = 'chev', id = '' } = {}) =>
+  `<button class="ui-aufgabe"${id ? ` id="${id}"` : ''} data-click="${click}">${_ic(icon)}<span><b>${titel}</b><small>${text}</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg></button>`;
+
+function _stufeHtml(n, titel, kurz, zustand, inhalt) {
+  const offen = !!_stufenOffen()[n];
+  return `
+    <div class="pvr-stufe${offen ? ' offen' : ''}">
+      <button type="button" class="pvr-kopf" data-click="pvmStufe(${n})" aria-expanded="${offen}">
+        <span class="pvr-nr" data-z="${zustand}">${zustand === 'ok' ? _ic('check') : n}</span>
+        <span class="pvr-txt"><b>${titel}</b><small>${kurz}</small></span>
+        <svg class="ui-i ui-i-sm pvr-chev"><use href="#ui-i-chev"/></svg>
+      </button>
+      ${offen ? `<div class="pvr-in">${inhalt}</div>` : ''}
+    </div>`;
+}
+
+function _naechsterPv(alle, mitPv, offen) {
+  const karte = (stufe, titel, text, knoepfe) => `<div class="el-naechster-in" data-stufe="${stufe}">
+      <div><b>${titel}</b><small>${text}</small></div>
+      <div class="el-naechster-knoepfe">${knoepfe.map(([l, c, p]) =>
+        `<button class="${p ? 'btn-confirm' : 'btn-secondary'}" data-click="${c}">${l}</button>`).join('')}</div>
+    </div>`;
+  if (!alle.length) return karte('leer', 'Noch keine Gebäude', 'Dächer gibt es erst, wenn im Schritt Bestand Gebäude geladen sind.',
+    [['Zum Bestand', "uiSchritt('bestand')", true]]);
+  if (!mitPv.length) return karte('leer', 'Noch kein Dach belegt',
+    'Am schnellsten: alle Dächer automatisch nach den Regeln belegen und dann einzeln nacharbeiten.',
+    [['Dächer automatisch belegen', "pvabToggle('belegen')", true], ['Regeln ansehen', 'pvmStufe(2)']]);
+  if (offen.length) return karte('offen', `${offen.length} ${offen.length === 1 ? 'Dach' : 'Dächer'} noch ohne Fläche`,
+    'Offene Dächer sind auf der Karte gestrichelt. Automatisch belegen oder einzeln durchgehen (Taste N).',
+    [['Offene automatisch belegen', "pvabToggle('belegen')", true], ['Nächstes offenes', 'pvmNaechstesOffenes()']]);
+  return karte('ok', 'Alle Dächer haben eine Fläche',
+    'Jetzt Anlagen abgleichen und die PV-Analyse rechnen.',
+    [['PV-Analyse öffnen', "uiSchritt('auswertung'); setAnalyseSection('pva')", true], ['Prüfen', 'pvmStufe(5)']]);
+}
+
+function _reiterHtml() {
+  const g     = _geb(window.pvModusGeb);
+  const alle  = _mitPolygon();
+  const mitPv = alle.filter(_hasBelegung);
+  const offen = alle.filter(x => !_hasBelegung(x));
+  const summe = mitPv.reduce((s, x) => s + (calcGebKwpKorr(x) || 0), 0);
+  const ziele = _stapelZiele().length;
+  const fmt = x => Math.round(x).toLocaleString('de-DE');
+
+  // 1 · Dachdaten
+  const lod2  = alle.filter(x => x.dachFlaechen?.length && x.dachLod2?.quelle !== 'grundriss').length;
+  const grund = alle.filter(x => x.dachFlaechen?.length && x.dachLod2?.quelle === 'grundriss').length;
+  const osm   = alle.filter(x => !x.dachFlaechen?.length && x.dachQuelle === 'osm').length;
+  const ohne  = alle.length - lod2 - grund - osm;
+  const pauschal = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
+  const s1 = _stufeHtml(1, 'Dachdaten',
+    alle.length ? `${fmt(alle.length)} Gebäude · ${fmt(lod2)} LoD2 · ${fmt(grund)} aus Grundriss` : 'keine Gebäude',
+    !alle.length ? 'leer' : (lod2 + grund) ? 'ok' : 'offen', `
+      <dl class="pvr-kv">
+        <dt>LoD2 (amtlich)</dt><dd>${fmt(lod2)}</dd>
+        <dt>Dach aus Grundriss</dt><dd>${fmt(grund)}</dd>
+        <dt>nur Dachform aus OSM</dt><dd>${fmt(osm)}</dd>
+        <dt>ohne Dachdaten</dt><dd>${fmt(ohne)}</dd>
+      </dl>
+      <p class="el-hinweis">Ohne Dachflächen rechnet die Belegung mit Dachform und Neigung aus den Regeln (Stufe 2).</p>
+      <div class="pvr-knoepfe">
+        <button class="btn-secondary" data-click="lod2Laden()" title="Amtliches 3D-Gebäudemodell laden (NRW, NI, BW direkt, sonst Datei)">LoD2 laden</button>
+        <button class="btn-secondary" data-click="dachGrundrissBerechnen()" title="Dachflächen aus dem Grundriss berechnen (auch für geplante Neubauten)">Dach aus Grundriss</button>
+      </div>
+      ${window.baumBlockHtml?.() || ''}
+      <div class="pvr-unter">Schnellabschätzung ohne Dächer</div>
+      <p class="el-hinweis">Pauschale PV-Anlage (kWp × spezifischer Ertrag oder PVGIS-Lastgang) für frühe Abschätzungen, bevor Dächer belegt sind.</p>
+      ${pauschal > 0 && mitPv.length ? `<p class="pvr-warn">Die pauschale Anlage (${fmt(pauschal)} kWp) zählt zusätzlich zu den belegten Dächern. Sobald Dächer belegt sind, auf 0 setzen.</p>` : ''}
+      <button class="btn-secondary" data-click="togglePvPanel()">${pauschal > 0 ? `Pauschale Anlage · ${fmt(pauschal)} kWp` : 'Pauschale Anlage öffnen'}</button>`);
+
+  // 2 · Regeln
+  const v = _vorgabe();
+  const s2 = _stufeHtml(2, 'Regeln',
+    `${_regelnText()}${v.nordSperr ? ` · Nord ±${v.nordSektor}° aus` : ''}`, 'ok', _vorgabeInhalt());
+
+  // 3 · Belegen
+  const s3 = _stufeHtml(3, 'Belegen',
+    alle.length ? `${fmt(mitPv.length)} von ${fmt(alle.length)} Dächern · ${fmt(summe)} kWp` : '—',
+    !mitPv.length ? 'leer' : offen.length ? 'offen' : 'ok', `
+      <div class="pvr-unter">Automatisch</div>
+      ${window.pvabBlockHtml?.() || ''}
+      <div class="pvr-unter">Einzeln auf der Karte</div>
+      <p class="el-hinweis">Dach anklicken wählt es aus. Zum Zeichnen oben auf der Karte „Belegungsfläche" oder „Sperrfläche" nehmen (B / S, Esc legt das Werkzeug weg).</p>
+      ${ziele ? `<button class="btn-secondary" style="width:100%;" data-click="pvmGrundrissAuswahl()"
+          title="Für jedes ausgewählte Dach ohne Fläche den Grundriss als Belegungsfläche übernehmen">Grundriss für ${ziele} ausgewählte Dächer</button>` : ''}
+      <div class="pvr-dach">${_aktivBlock(g)}</div>
+      ${_listenBlock()}
+      <div class="pvr-unter">Freiflächen</div>
+      <div id="pvr-ff-slot"></div>`);
+
+  // 4 · Stände
+  const staende = window.pvbsListe?.() || [];
+  const entwurf = window.pvbsEntwurfInfo?.();
+  const s4 = _stufeHtml(4, 'Stände',
+    `${staende.length ? `${staende.length} ${staende.length === 1 ? 'Stand' : 'Stände'}` : 'noch keiner gespeichert'}${entwurf ? ' · Entwurf offen' : ''}`,
+    entwurf ? 'offen' : staende.length ? 'ok' : 'leer', window.pvbsBlockHtml?.() || '');
+
+  // 5 · Prüfen
+  const s5 = _stufeHtml(5, 'Prüfen', 'Anlagen abgleichen · PV-Pflicht · PV-Analyse', 'leer', `
+      ${window.pvAnschlussHinweisHtml?.() || ''}
+      ${_aufg('Anlagen abgleichen', 'Gezeichnete kWp gegen die PV-Anlagen im Stromnetz', 'pvuTogglePanel()', { icon: 'list', id: 'btn-pv-uebersicht-toggle' })}
+      ${_aufg('PV-Pflicht', 'Landesrechtliche Pflicht je Gebäude und Stand der Erfüllung', 'pvPflichtUebersichtOeffnen()', { icon: 'check' })}
+      ${_aufg('PV-Analyse', 'Auslegungen, Energiefluss, Netz, Wirtschaftlichkeit', "uiSchritt('auswertung'); setAnalyseSection('pva')", { icon: 'arrow' })}
+      ${_aufg('Netzstrategie-Editor', 'Anschlusswege je Flächengruppe vergleichen', "uiSchritt('auswertung'); setAnalyseSection('pva'); pvaSetView('netzstrategie')", { icon: 'arrow' })}
+      ${_aufg('Autarkieziel', 'Batterie und H₂/BHKW für eine Mindestdeckung auslegen', "uiSchritt('auswertung'); setAnalyseSection('pva'); pvaSetView('autarkieziel')", { icon: 'arrow' })}`);
+
+  return `
+    <div class="pvr">
+      ${_naechsterPv(alle, mitPv, offen)}
+      ${s1}${s2}${s3}${s4}${s5}
+    </div>`;
+}
+
+/** Werkzeugleiste oben auf der Karte (nur solange der Reiter offen ist). */
+function _werkzeugleisteRendern() {
+  let el = document.getElementById(WL_ID);
+  if (!window.pvModusAktiv || !_reiterHost()) { el?.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = WL_ID;
+    el.className = 'pvm-wl';
+    el.setAttribute('role', 'toolbar');
+    el.setAttribute('aria-label', 'PV-Werkzeuge');
+    map.getContainer().appendChild(el);
+    // Klicks dürfen nicht als Kartenklick (= Ecke) ankommen — daher eigener Handler
+    // statt data-click (die Weitergabe an document ist hier gesperrt).
+    window.L?.DomEvent?.disableClickPropagation(el);
+    window.L?.DomEvent?.disableScrollPropagation(el);
+    el.addEventListener('click', e => {
+      const b = e.target.closest('button[data-pvm]');
+      if (!b) return;
+      const w = b.dataset.pvm;
+      if (w === 'auswahl' || w === 'belegung' || w === 'sperr') pvmWerkzeug(w);
+      else if (w === 'polygon' || w === 'rechteck') pvmSetForm(w);   // nimmt den Flächentyp von zuvor
+      else if (w === 'naechstes') pvmNaechstesOffenes();
+      else if (w === 'undo') pvmUndo();
+      else if (w === '3d') pvm3d();
+    });
+  }
+  const form = window.pvModusForm || 'auswahl';
+  const zeichnet = form !== 'auswahl';
+  const typ = window.pvModusTyp || 'belegung';
+  const zf = zeichnet ? form : (window.pvModusZeichenForm || 'polygon');
+  const offen = _offeneDaecher().length;
+  const k = (w, text, an, titel, extra = '') =>
+    `<button type="button" data-pvm="${w}" aria-pressed="${an}" title="${titel}"${extra}>${text}</button>`;
+  el.innerHTML =
+    k('auswahl', 'Auswählen', !zeichnet, 'Dach anklicken wählt es aus (Taste A)') +
+    k('belegung', 'Belegungsfläche', zeichnet && typ === 'belegung', 'Belegungsfläche zeichnen (Taste B)') +
+    k('sperr', 'Sperrfläche', zeichnet && typ === 'sperr', 'Sperrfläche zeichnen: Kamine, Gauben, Verschattung (Taste S)', ' data-sperr') +
+    '<span class="pvm-wl-tr"></span>' +
+    k('polygon', 'Polygon', zf === 'polygon', 'Ecken einzeln klicken, Startpunkt schließt (Taste R wechselt)', zeichnet ? '' : ' data-blass') +
+    k('rechteck', 'Rechteck', zf === 'rechteck', 'Zwei Klicks, am First ausgerichtet (Taste R wechselt)', zeichnet ? '' : ' data-blass') +
+    '<span class="pvm-wl-tr"></span>' +
+    k('naechstes', `Nächstes offenes${offen ? ` (${offen})` : ''}`, false, 'Zum nächstgelegenen Dach ohne Fläche (Taste N)') +
+    k('undo', 'Rückgängig', false, 'Letzten Schritt zurücknehmen (Strg+Z)') +
+    k('3d', '3D', false, '3D-Ansicht mit „Dachflächen bearbeiten" öffnen');
 }
 
 function _regler({ label, titel, min, max, step, wert, farbe, einheit, handler }) {
@@ -1363,15 +1665,22 @@ function _vorgabeBlock() {
       <span>▸</span>
     </div>`;
   }
-  const ue = _uebertrag();
-  const ausgewaehlt = _mitPolygon().filter(g => g.selected && _hasBelegung(g)).length;
-  const zwischen = text => `<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:7px 0 3px;">${text}</div>`;
   return `
     <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:8px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;"
       data-click="pvmVorgabeToggle()">
       <span style="flex:1;">Belegungsregeln</span><span>▾</span>
     </div>
     <div style="padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);margin-top:3px;">
+      ${_vorgabeInhalt()}
+    </div>`;
+}
+
+/** Inhalt der Belegungsregeln — im Fenster aufgeklappt, im Reiter als Stufe 2. */
+function _vorgabeInhalt() {
+  const ue = _uebertrag();
+  const ausgewaehlt = _mitPolygon().filter(g => g.selected && _hasBelegung(g)).length;
+  const zwischen = text => `<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:7px 0 3px;">${text}</div>`;
+  return `
       ${zwischen('Gelten sofort für alle Dächer')}
       ${pvmRegelnGlobalHtml()}
       ${zwischen('Vorgaben beim Belegen')}
@@ -1389,8 +1698,7 @@ function _vorgabeBlock() {
         auch Dächer mit eigenen Angaben
       </label>
       <button class="btn-xs" style="width:100%;margin-top:4px;" data-click="pvmVorgabeAufAlle()"
-        title="Dachform, Neigung, Belegungsgrad und Flachdachvorgaben auf die belegten Dächer übertragen (Strg+Z nimmt es zurück)">↧ Vorgaben auf Dächer übertragen</button>
-    </div>`;
+        title="Dachform, Neigung, Belegungsgrad und Flachdachvorgaben auf die belegten Dächer übertragen (Strg+Z nimmt es zurück)">↧ Vorgaben auf Dächer übertragen</button>`;
 }
 
 /** Einstellungen des Übertragens (Sitzung). */

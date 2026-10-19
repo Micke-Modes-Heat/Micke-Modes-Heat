@@ -1,0 +1,615 @@
+<title>PV-Planungsschritt</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Layout: Konzeptpapier, eine Spalte ~880px; in der Mitte ein breiter Bildschirmentwurf im Programmrahmen */
+:root{
+  --frame:#1D2320; --frame-2:#2A322D; --on-frame:#E9EDEA; --on-frame-muted:#9DA8A0;
+  --bg:#EEF0ED; --surface:#FFFFFF; --surface2:#F6F7F5; --border:#DADFD9; --line-2:#C3C9C2;
+  --text:#191D1A; --muted:#58615A; --faint:#89918A;
+  --brand:#266426; --brand-weak:#E7F0E5;
+  --ok:#22795C; --warn:#A8640A; --crit:#C0262D; --info:#1E5E98;
+  --ok-bg:#E2F1EB; --warn-bg:#FBEFD9; --crit-bg:#FAE3E3; --info-bg:#E3EDF7;
+  --sun:#8A6100; --sun-fill:#F4D35E; --sun-weak:#FBF3D6;
+  --map:#E6E9E2; --map-street:#FFFFFF; --roof:#C9CEC6; --roof-line:#9AA39A;
+  --font-ui:"Source Sans 3","Segoe UI",Tahoma,Verdana,sans-serif;
+  --font-mono:Consolas,"Cascadia Mono",ui-monospace,monospace;
+  --r:3px; --r-2:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --frame:#0E1210; --frame-2:#1C221E; --on-frame:#E2E7E3; --on-frame-muted:#8D978F;
+  --bg:#141816; --surface:#1B201D; --surface2:#212723; --border:#2E3631; --line-2:#3E4842;
+  --text:#E4E8E5; --muted:#A3ACA5; --faint:#78817A;
+  --brand:#5FB55F; --brand-weak:#1F2E21;
+  --ok:#5CC39D; --warn:#E3AE52; --crit:#F07C7C; --info:#77AFE3;
+  --ok-bg:#1A2D26; --warn-bg:#33291A; --crit-bg:#3A2222; --info-bg:#1A2836;
+  --sun:#FFD54F; --sun-fill:#C9A227; --sun-weak:#2E2914;
+  --map:#1F2521; --map-street:#2C332E; --roof:#39413B; --roof-line:#56605A;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --frame:#0E1210; --frame-2:#1C221E; --on-frame:#E2E7E3; --on-frame-muted:#8D978F;
+  --bg:#141816; --surface:#1B201D; --surface2:#212723; --border:#2E3631; --line-2:#3E4842;
+  --text:#E4E8E5; --muted:#A3ACA5; --faint:#78817A;
+  --brand:#5FB55F; --brand-weak:#1F2E21;
+  --ok:#5CC39D; --warn:#E3AE52; --crit:#F07C7C; --info:#77AFE3;
+  --ok-bg:#1A2D26; --warn-bg:#33291A; --crit-bg:#3A2222; --info-bg:#1A2836;
+  --sun:#FFD54F; --sun-fill:#C9A227; --sun-weak:#2E2914;
+  --map:#1F2521; --map-street:#2C332E; --roof:#39413B; --roof-line:#56605A;
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 64px}
+.wrap{max-width:900px;margin:0 auto}
+.wide{max-width:1180px;margin:0 auto}
+h1,h2,h3{text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:30px;font-weight:700}
+h2{font-size:21px;font-weight:700;margin-bottom:10px}
+h3{font-size:16px;font-weight:600}
+p{margin:0;max-width:68ch}
+.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.num{font-variant-numeric:tabular-nums}
+code,.mono{font-family:var(--font-mono);font-size:.86em}
+
+/* Kopf */
+.kopf{background:var(--frame);color:var(--on-frame);margin-inline:calc(-1 * max(16px,env(safe-area-inset-left,0px)));padding-block:28px 26px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.kopf .eyebrow{color:var(--on-frame-muted)}
+.kopf p{color:var(--on-frame-muted);margin-top:10px}
+.kopf .meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:16px;font-size:13px;color:var(--on-frame-muted)}
+.kopf .meta b{color:var(--on-frame);font-weight:600}
+
+section{margin-top:44px;display:flex;flex-direction:column;gap:14px}
+.lead{font-size:16.5px}
+
+/* Kernaussage */
+.kern{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.kern div{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.kern b{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+.kern span{font-size:13.5px;color:var(--muted)}
+@media (max-width:640px){.kern{grid-template-columns:1fr}}
+
+/* Befund-Karte: wo PV heute steckt */
+.orte{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (max-width:640px){.orte{grid-template-columns:1fr}}
+.ort{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.ort .pfad{font-size:12.5px;color:var(--muted)}
+.ort ul{margin:0;padding-left:18px;font-size:14px}
+.ort li{margin:2px 0}
+.ort.haupt{border-color:var(--sun);box-shadow:inset 3px 0 0 var(--sun)}
+.tag{display:inline-block;font-size:11.5px;font-weight:600;padding:1px 7px;border-radius:10px;white-space:nowrap}
+.tag.doppelt{background:var(--warn-bg);color:var(--warn)}
+.tag.versteckt{background:var(--crit-bg);color:var(--crit)}
+.tag.gut{background:var(--ok-bg);color:var(--ok)}
+
+.befunde{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.befunde li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;align-items:baseline}
+.befunde li::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--warn);transform:translateY(-1px)}
+.befunde li.rot::before{background:var(--crit)}
+
+/* ── Bildschirmentwurf ─────────────────────────────── */
+.screen{border:1px solid var(--line-2);border-radius:var(--r-2);overflow:hidden;background:var(--surface);box-shadow:0 1px 2px rgba(20,30,25,.08),0 8px 28px rgba(20,30,25,.10);font-size:12.5px;line-height:1.4}
+.scroll-x{overflow-x:auto}
+.screen-inner{min-width:1060px}
+.s-top{background:var(--frame);color:var(--on-frame);display:flex;align-items:center;gap:16px;padding:8px 14px;font-size:12.5px}
+.s-top .logo{font-weight:700;letter-spacing:.02em}
+.s-top .such{margin-left:auto;background:var(--frame-2);color:var(--on-frame-muted);padding:3px 10px;border-radius:var(--r);min-width:200px}
+.s-steps{display:flex;border-bottom:1px solid var(--border);background:var(--surface)}
+.s-step{display:flex;align-items:center;gap:8px;padding:8px 16px;border-right:1px solid var(--border);color:var(--muted)}
+.s-step i{font-style:normal;width:20px;height:20px;border-radius:50%;border:1px solid var(--line-2);display:grid;place-items:center;font-size:11px}
+.s-step.an{color:var(--text);font-weight:600;box-shadow:inset 0 -2px 0 var(--brand)}
+.s-step.an i{background:var(--brand);border-color:var(--brand);color:#fff}
+.s-step.ok i{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+.s-step.rest{margin-left:auto;border-right:0;border-left:1px solid var(--border);gap:12px}
+.s-body{display:grid;grid-template-columns:300px minmax(0,1fr) 270px;min-height:560px}
+.s-left{border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface)}
+.s-lp-kopf{padding:10px 12px 0;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--border)}
+.s-lp-titel{display:flex;align-items:center;gap:8px}
+.s-lp-titel h4{margin:0;font-size:15px}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden;margin-left:auto}
+.seg span{padding:2px 9px;font-size:12px;color:var(--muted)}
+.seg span.an{background:var(--brand);color:#fff}
+.tabs{display:flex;gap:2px;font-size:12px;overflow:hidden}
+.tabs span{padding:5px 7px;color:var(--muted);white-space:nowrap}
+.tabs span.an{color:var(--text);font-weight:600;box-shadow:inset 0 -2px 0 var(--brand)}
+.tabs span.neu{color:var(--sun);font-weight:600;box-shadow:inset 0 -2px 0 var(--sun)}
+.s-lp-inhalt{padding:10px 12px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.naechst{background:var(--brand-weak);border:1px solid var(--brand);border-radius:var(--r-2);padding:8px 10px;display:flex;flex-direction:column;gap:5px}
+.naechst small{color:var(--muted)}
+.naechst .btn{align-self:flex-start}
+.btn{display:inline-block;border:1px solid var(--line-2);border-radius:var(--r);padding:3px 9px;background:var(--surface);color:var(--text);font-size:12px;white-space:nowrap}
+.btn.prim{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.sun{border-color:var(--sun);color:var(--sun)}
+.stufe{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface)}
+.stufe-kopf{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 9px}
+.stufe-kopf i{font-style:normal;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:10.5px;border:1px solid var(--line-2);color:var(--muted)}
+.stufe-kopf i.ok{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+.stufe-kopf i.an{background:var(--sun-fill);border-color:var(--sun);color:#1D2320}
+.stufe-kopf b{font-weight:600;font-size:13px}
+.stufe-kopf small{display:block;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stufe-kopf .chev{color:var(--faint)}
+.stufe-inhalt{border-top:1px solid var(--border);padding:8px 9px;display:flex;flex-direction:column;gap:7px}
+.zeile{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.feld{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.feld label{font-size:11px;color:var(--muted)}
+.feld span{border:1px solid var(--line-2);border-radius:var(--r);padding:3px 6px;background:var(--surface);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.chip{border:1px solid var(--line-2);border-radius:10px;padding:1px 8px;font-size:11.5px;color:var(--muted)}
+.chip.an{border-color:var(--sun);color:var(--sun);background:var(--sun-weak)}
+.unter{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+
+.s-map{position:relative;background:var(--map);overflow:hidden}
+.s-map svg{display:block;width:100%;height:100%}
+.werkzeug{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:2px;background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-2);padding:3px;box-shadow:0 1px 2px rgba(20,30,25,.1)}
+.werkzeug span{padding:4px 9px;border-radius:var(--r);white-space:nowrap;color:var(--text)}
+.werkzeug span.an{background:var(--sun-weak);color:var(--sun);font-weight:600;box-shadow:inset 0 0 0 1px var(--sun)}
+.werkzeug .tr{width:1px;background:var(--border);padding:0;margin:3px 2px}
+.schicht{position:absolute;right:10px;bottom:10px;background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-2);padding:7px 9px;display:flex;flex-direction:column;gap:4px;font-size:12px}
+.schicht label{display:flex;gap:6px;align-items:center}
+.schicht .dot{width:10px;height:10px;border-radius:50%;border:1px solid var(--line-2)}
+.schicht .dot.an{background:var(--sun-fill);border-color:var(--sun)}
+.legende{position:absolute;left:10px;bottom:10px;background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-2);padding:6px 9px;display:flex;gap:12px;font-size:11.5px;color:var(--muted)}
+.legende span{display:flex;align-items:center;gap:5px}
+.legende i{width:12px;height:9px;display:inline-block;border:1px solid var(--roof-line)}
+
+.s-right{border-left:1px solid var(--border);background:var(--surface);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.s-right h5{margin:0;font-size:14px;display:flex;justify-content:space-between;gap:8px}
+.s-right h5 em{font-style:normal;color:var(--sun);font-variant-numeric:tabular-nums}
+.dachfl{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.dachfl div{display:grid;grid-template-columns:minmax(0,1fr) 48px 52px;gap:6px;padding:4px 7px;font-variant-numeric:tabular-nums}
+.dachfl div+div{border-top:1px solid var(--border)}
+.dachfl .h{background:var(--surface2);color:var(--muted);font-size:11px}
+.dachfl .aus{color:var(--faint);text-decoration:line-through}
+.kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px;font-variant-numeric:tabular-nums}
+.kv dt{color:var(--muted)} .kv dd{margin:0;text-align:right}
+.hinweis{font-size:11.5px;padding:5px 7px;border-radius:var(--r)}
+.hinweis.warn{background:var(--warn-bg);color:var(--warn)}
+.hinweis.ok{background:var(--ok-bg);color:var(--ok)}
+
+.s-bar{display:flex;border-top:1px solid var(--border);background:var(--surface2);font-size:12px}
+.s-bar span{padding:7px 14px;border-right:1px solid var(--border);color:var(--muted);white-space:nowrap}
+.s-bar b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;margin-left:4px}
+.s-bar .pv b{color:var(--sun)}
+.s-bar .label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+
+.bild-notiz{font-size:13px;color:var(--muted)}
+
+/* Nummerierte Erklärungen zum Entwurf */
+.erkl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 22px;margin:0;padding:0;list-style:none;counter-reset:e}
+@media (max-width:700px){.erkl{grid-template-columns:1fr}}
+.erkl li{counter-increment:e;display:grid;grid-template-columns:26px minmax(0,1fr);gap:8px}
+.erkl li::before{content:counter(e,upper-alpha);width:22px;height:22px;border-radius:50%;background:var(--frame);color:var(--on-frame);display:grid;place-items:center;font-size:12px;font-weight:700}
+.erkl b{display:block}
+.erkl p{font-size:14px;color:var(--muted)}
+
+/* Stufen-Erklärung */
+.ablauf{display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface);overflow:hidden}
+.ablauf > div{display:grid;grid-template-columns:44px minmax(0,190px) minmax(0,1fr);gap:12px;padding:12px 14px;align-items:baseline}
+.ablauf > div + div{border-top:1px solid var(--border)}
+.ablauf .n{font-size:22px;font-weight:700;color:var(--sun);font-variant-numeric:tabular-nums}
+.ablauf h3{font-size:15px}
+.ablauf h3 small{display:block;font-weight:400;color:var(--muted);font-size:13px;margin-top:2px}
+.ablauf p{font-size:14px}
+.ablauf p + p{margin-top:4px;color:var(--muted);font-size:13px}
+@media (max-width:640px){.ablauf > div{grid-template-columns:34px minmax(0,1fr)}.ablauf > div > div:last-child{grid-column:2}}
+
+/* Tabelle alt → neu */
+.tab-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:680px;font-size:13.5px}
+th,td{text-align:left;padding:8px 12px;vertical-align:top;border-bottom:1px solid var(--border)}
+th{background:var(--surface2);font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}
+td:first-child{color:var(--muted);white-space:nowrap}
+td.wird b{font-weight:600}
+
+/* Entscheidungen */
+.entsch{display:flex;flex-direction:column;gap:10px}
+.frage{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);padding:13px 15px;display:flex;flex-direction:column;gap:6px}
+.frage h3{display:flex;gap:10px;align-items:baseline}
+.frage h3 span{font-size:12px;color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+.frage .empf{font-size:14px;border-left:3px solid var(--brand);padding-left:10px}
+.frage .empf b{color:var(--brand)}
+.frage p{font-size:14px;color:var(--muted)}
+
+/* Umsetzung */
+.stufen{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.stufen{grid-template-columns:1fr}}
+.stufen > div{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);padding:13px 15px;display:flex;flex-direction:column;gap:7px;min-width:0}
+.stufen ul{margin:0;padding-left:18px;font-size:13.5px}
+.stufen li{margin:3px 0}
+.stufen .aufw{font-size:12.5px;color:var(--muted);margin-top:auto}
+.fallen{font-size:14px;margin:0;padding-left:18px}
+.fallen li{margin:4px 0}
+footer{margin-top:40px;font-size:12.5px;color:var(--faint)}
+</style>
+
+<header class="kopf">
+  <div class="wrap">
+    <div class="eyebrow">Energieplaner · Oberflächen-Umbau · Konzept</div>
+    <h1 style="margin-top:6px;">Photovoltaik als ein Planungsschritt</h1>
+    <p>Heute verteilt sich die PV-Planung auf sechs Stellen der Oberfläche. Vorschlag: ein eigener Reiter „Photovoltaik“ unter Planung › Strom, gebaut aus dem PV-Modus (Karte). Wer ihn öffnet, ist im PV-Modus. Was dort heute untereinander gestapelt ist, wird zu fünf Stufen in Arbeitsreihenfolge.</p>
+    <div class="meta">
+      <span>Stand <b>16.10.2026</b></span>
+      <span>Grundlage <b>Branch redesign/lkebw-oberflaeche</b> (3418f64)</span>
+      <span>Status <b>Entwurf, nichts umgesetzt</b></span>
+    </div>
+  </div>
+</header>
+
+<main>
+<div class="wrap">
+
+<section>
+  <div class="kern">
+    <div><b>6</b><span>Stellen, an denen PV geplant oder eingestellt wird: Wärme, Strom, Gebäudekarte, Bestand, 3D und Auswertung</span></div>
+    <div><b>3</b><span>Stellen, an denen „wie viel vom Dach“ eingestellt wird: Dachanteil, Auto-Befüllen, Belegungsgrad</span></div>
+    <div><b>12</b><span>Blöcke stehen im PV-Modus-Fenster untereinander, vom Zeichenwerkzeug bis zur Gebäudeliste</span></div>
+  </div>
+</section>
+
+<section id="befund">
+  <div class="eyebrow">1 · Befund</div>
+  <h2>Wo PV heute steckt</h2>
+  <p class="lead">Im Code laufen alle Wege auf dasselbe Datenmodell hinaus: Belegungsflächen am Gebäude, daraus Module und kWp, daraus das PV-Asset. Die Oberfläche bietet trotzdem viele parallele Türen an, und die beste davon ist am schlechtesten zu finden.</p>
+
+  <div class="orte">
+    <div class="ort haupt">
+      <div class="pfad">Planung › Wärme › Erzeugung und Speicher › Stromerzeugung</div>
+      <h3>Vier Knöpfe nebeneinander</h3>
+      <ul>
+        <li>PV-Anlage (pauschal kWp oder PVGIS-CSV)</li>
+        <li><b>PV-Modus</b> <span class="tag versteckt">nur hier</span></li>
+        <li>Gebäude-PV (Modulmaß, Dachanteil, „Allen zuweisen“)</li>
+        <li>Freifläche-PV (springt in den Strom-Teil)</li>
+      </ul>
+    </div>
+    <div class="ort">
+      <div class="pfad">Planung › Strom › Erzeugung</div>
+      <h3>Anlagen, Freiflächen, Prüfen</h3>
+      <ul>
+        <li>Palette: PV-Anlage per Klick setzen</li>
+        <li>PV-Freiflächen zeichnen <span class="tag doppelt">doppelt</span></li>
+        <li>Verbrauch und PV automatisch ermitteln <span class="tag doppelt">doppelt</span></li>
+        <li>PV-Übersicht (Flächen gegen Asset-kWp)</li>
+      </ul>
+    </div>
+    <div class="ort">
+      <div class="pfad">Gebäudekarte › Dach &amp; PV</div>
+      <h3>Zweiter Dach-Editor</h3>
+      <ul>
+        <li>Dachform, Neigung, Ausrichtung, Belegungsgrad <span class="tag doppelt">doppelt</span></li>
+        <li>+ Belegungsfläche / + Sperrfläche</li>
+        <li>„Im PV-Modus zeichnen“</li>
+      </ul>
+    </div>
+    <div class="ort">
+      <div class="pfad">Bestand · 3D-Ansicht</div>
+      <h3>Dachdaten und 3D-Bearbeitung</h3>
+      <ul>
+        <li>LoD2 laden, Dach aus Grundriss <span class="tag gut">gehört zum Bestand</span></li>
+        <li>3D: Schalter „Dachflächen bearbeiten“</li>
+      </ul>
+    </div>
+    <div class="ort">
+      <div class="pfad">Auswertung › Photovoltaik</div>
+      <h3>PV-Analyse als Dokument</h3>
+      <ul>
+        <li>Kapitel 0–7, Auslegungen, Netzaufnahme 1.1</li>
+        <li>Werkzeuge: Einlinienschema, Netzstrategie-Editor, Autarkieziel</li>
+      </ul>
+    </div>
+    <div class="ort">
+      <div class="pfad">Fenster und Einschübe</div>
+      <h3>Im PV-Modus eingehängt</h3>
+      <ul>
+        <li>Dächer automatisch belegen / entfernen</li>
+        <li>Belegungsstände, Bäume und Verschattung</li>
+        <li>PV-Pflicht (Hinweis am Dach + eigenes Fenster), Anschluss-Hinweis</li>
+      </ul>
+    </div>
+  </div>
+
+  <ul class="befunde">
+    <li class="rot"><span><b>Der ausgereifteste Weg ist versteckt.</b> Den PV-Modus erreicht man nur über Wärme › Erzeugung, über die Gebäudekarte oder die Befehlssuche. Im neuen Reiter Strom › Erzeugung fehlt er.</span></li>
+    <li><span><b>Drei Regler für dieselbe Frage.</b> „Standard-Dachanteil“ (Gebäude-PV), „Dachanteil“ (Auto-Befüllen) und „Belegungsgrad“ (PV-Modus) bestimmen jeweils, wie viel vom Dach genutzt wird, mit drei verschiedenen Rechenwegen.</span></li>
+    <li><span><b>Zwei Dach-Editoren.</b> Die Gebäudekarte und der Aktiv-Block des PV-Modus zeigen dieselben Felder in unterschiedlicher Anordnung.</span></li>
+    <li><span><b>Die Modulmaße hängen am Gebäude-PV-Fenster.</b> Sie sind Eingabefelder in diesem Fenster; der PV-Modus liest und schreibt sie über deren IDs. Eine Regel für alle Dächer liegt damit in einem Fenster, das man beim Arbeiten im PV-Modus nie öffnet.</span></li>
+    <li><span><b>Ein Modus statt eines Schritts.</b> Der PV-Modus ist ein schwebendes Fenster mit „Fertig“. Er stapelt zwölf Blöcke ohne Reihenfolge, von Zeichenform über Massenbelegung und Stände bis zur Liste. Wer neu ist, sieht nicht, wo er anfängt.</span></li>
+  </ul>
+</section>
+
+<section id="vorschlag">
+  <div class="eyebrow">2 · Vorschlag</div>
+  <h2>Ein Reiter, fünf Stufen, die Karte als Werkzeug</h2>
+  <p class="lead">Planung › Strom bekommt einen Reiter <b>Photovoltaik</b> zwischen Netz und Erzeugung. Öffnen heißt PV-Modus an: Karte in PV-Färbung, Klick auf ein Dach wählt es aus. Gezeichnet wird nur mit aktivem Werkzeug. Links steht die Arbeitsliste, rechts das gewählte Dach, unten die PV-Summen.</p>
+</section>
+</div>
+
+<div class="wide" style="margin-top:20px;">
+  <div class="scroll-x">
+  <div class="screen" role="img" aria-label="Bildschirmentwurf des Reiters Photovoltaik mit Arbeitsliste, Karte und Dach-Eigenschaften">
+   <div class="screen-inner">
+    <div class="s-top"><span class="logo">LKEBw</span><span>Energieplaner</span><span style="color:var(--on-frame-muted)">Kaserne Musterstadt (Beispiel)</span><span class="such">Funktion suchen … Strg K</span></div>
+    <div class="s-steps">
+      <div class="s-step ok"><i>✓</i>Projekt</div>
+      <div class="s-step ok"><i>✓</i>Bestand</div>
+      <div class="s-step an"><i>3</i>Planung</div>
+      <div class="s-step"><i>4</i>Auswertung</div>
+      <div class="s-step"><i>5</i>Gutachten</div>
+      <div class="s-step rest"><span>Variante <b style="color:var(--text)">Hauptplan</b></span><span>Jahr <b style="color:var(--text)">2030</b></span><span class="btn prim">Berechnen</span></div>
+    </div>
+    <div class="s-body">
+      <!-- Arbeitsliste -->
+      <div class="s-left">
+        <div class="s-lp-kopf">
+          <div class="s-lp-titel"><h4>Planung</h4><div class="seg"><span>Wärme</span><span class="an">Strom</span></div></div>
+          <div class="tabs"><span>Netz</span><span class="neu">Photovoltaik</span><span>Erzeugung</span><span>Berechnen</span><span>Prüfen</span></div>
+        </div>
+        <div class="s-lp-inhalt">
+          <div class="naechst">
+            <b>Nächster Schritt</b>
+            <small>14 Dächer sind noch offen, 9 davon über 100 m².</small>
+            <span class="btn prim">Offene Dächer automatisch belegen</span>
+          </div>
+
+          <div class="stufe"><div class="stufe-kopf"><i class="ok">✓</i><div><b>Dachdaten</b><small>86 Gebäude · 71 LoD2 · 15 aus Grundriss · 212 Bäume</small></div><span class="chev">▸</span></div></div>
+
+          <div class="stufe"><div class="stufe-kopf"><i class="ok">✓</i><div><b>Regeln</b><small>Modul 1,13 × 1,72 m · 430 Wp · Rand 0,3 m · Nord ±45° aus</small></div><span class="chev">▸</span></div></div>
+
+          <div class="stufe">
+            <div class="stufe-kopf"><i class="an">3</i><div><b>Belegen</b><small>72 von 86 Dächern belegt</small></div><span class="chev">▾</span></div>
+            <div class="stufe-inhalt">
+              <div class="unter">Automatisch</div>
+              <div class="zeile">
+                <div class="feld"><label>Welche Dächer</label><span>offene Dächer</span></div>
+                <div class="feld"><label>Netz</label><span>netzverträglich</span></div>
+              </div>
+              <div class="chips"><span class="chip an">alle</span><span class="chip">Neubauten</span><span class="chip">PV-Pflicht</span><span class="chip">Bereich</span><span class="chip">Trafo-Gebiet</span></div>
+              <div class="zeile"><span class="btn sun">Vorschau</span><span class="btn">Entfernen …</span></div>
+              <div class="unter" style="margin-top:3px;">Einzeln</div>
+              <div style="color:var(--muted);font-size:11.5px;">Dach auf der Karte wählen, oben ein Werkzeug nehmen. Auswahl mehrerer Dächer: Grundriss oder Regeln für alle übernehmen.</div>
+              <div class="unter" style="margin-top:3px;">Freiflächen</div>
+              <div class="zeile"><span class="btn">Freifläche zeichnen</span><span style="color:var(--muted)" class="num">2 Flächen · 740 kWp</span></div>
+            </div>
+          </div>
+
+          <div class="stufe"><div class="stufe-kopf"><i>4</i><div><b>Stände</b><small>Entwurf · zuletzt „Potenzial gesamt“</small></div><span class="chev">▸</span></div></div>
+
+          <div class="stufe"><div class="stufe-kopf"><i>5</i><div><b>Prüfen</b><small>3 Anlagen weichen ab · Pflicht 2 offen</small></div><span class="chev">▸</span></div></div>
+        </div>
+      </div>
+
+      <!-- Karte -->
+      <div class="s-map">
+        <svg viewBox="0 0 520 560" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <defs>
+            <pattern id="mod" width="7" height="11" patternUnits="userSpaceOnUse">
+              <rect width="7" height="11" fill="var(--sun-fill)"/>
+              <path d="M0 0H7M0 0V11" stroke="var(--sun)" stroke-width=".7" fill="none"/>
+            </pattern>
+            <pattern id="sperr" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect width="6" height="6" fill="var(--crit-bg)"/>
+              <path d="M0 0V6" stroke="var(--crit)" stroke-width="1.2"/>
+            </pattern>
+          </defs>
+          <rect width="520" height="560" fill="var(--map)"/>
+          <path d="M-10 300 L530 250" stroke="var(--map-street)" stroke-width="18" fill="none"/>
+          <path d="M250 -10 L290 570" stroke="var(--map-street)" stroke-width="14" fill="none"/>
+          <path d="M-10 470 L260 440" stroke="var(--map-street)" stroke-width="9" fill="none"/>
+          <!-- belegte Dächer -->
+          <g stroke="var(--roof-line)" stroke-width="1">
+            <rect x="40" y="80" width="150" height="60" fill="var(--roof)"/>
+            <rect x="48" y="86" width="134" height="22" fill="url(#mod)"/>
+            <rect x="48" y="112" width="134" height="22" fill="url(#sperr)"/>
+            <rect x="40" y="170" width="70" height="90" fill="var(--roof)"/>
+            <rect x="46" y="176" width="58" height="78" fill="url(#mod)"/>
+            <rect x="130" y="175" width="90" height="80" fill="var(--roof)"/>
+            <rect x="320" y="70" width="160" height="70" fill="var(--roof)"/>
+            <rect x="328" y="77" width="144" height="56" fill="url(#mod)"/>
+            <rect x="320" y="160" width="75" height="60" fill="var(--roof)"/>
+            <rect x="410" y="160" width="75" height="60" fill="var(--roof)"/>
+            <rect x="416" y="166" width="63" height="48" fill="url(#mod)"/>
+            <rect x="30" y="330" width="100" height="90" fill="var(--roof)"/>
+            <rect x="150" y="335" width="80" height="55" fill="var(--roof)"/>
+            <rect x="156" y="341" width="68" height="43" fill="url(#mod)"/>
+            <rect x="320" y="300" width="170" height="110" fill="var(--roof)"/>
+            <rect x="330" y="310" width="150" height="40" fill="url(#mod)"/>
+            <rect x="330" y="360" width="150" height="40" fill="url(#mod)"/>
+            <rect x="330" y="440" width="70" height="70" fill="var(--roof)"/>
+            <rect x="420" y="440" width="70" height="70" fill="var(--roof)"/>
+            <rect x="60" y="495" width="140" height="45" fill="var(--roof)"/>
+            <rect x="66" y="500" width="128" height="35" fill="url(#mod)"/>
+          </g>
+          <!-- Auswahl -->
+          <rect x="316" y="296" width="178" height="118" fill="none" stroke="var(--brand)" stroke-width="3"/>
+          <!-- offene Dächer markiert -->
+          <g fill="none" stroke="var(--warn)" stroke-width="1.6" stroke-dasharray="4 3">
+            <rect x="130" y="175" width="90" height="80"/>
+            <rect x="320" y="160" width="75" height="60"/>
+            <rect x="30" y="330" width="100" height="90"/>
+            <rect x="330" y="440" width="70" height="70"/>
+            <rect x="420" y="440" width="70" height="70"/>
+          </g>
+          <!-- Bäume -->
+          <g fill="var(--ok)" opacity=".45"><circle cx="232" cy="150" r="13"/><circle cx="140" cy="290" r="10"/><circle cx="300" cy="430" r="12"/></g>
+        </svg>
+        <div class="werkzeug">
+          <span class="an">Auswählen</span><span>Belegungsfläche</span><span>Sperrfläche</span><span class="tr"></span><span>Rechteck</span><span>Grundriss übernehmen</span><span class="tr"></span><span>Nächstes offenes</span><span>Rückgängig</span><span>3D</span>
+        </div>
+        <div class="legende"><span><i style="background:var(--sun-fill)"></i>belegt</span><span><i style="background:var(--crit-bg);border-color:var(--crit)"></i>Sperrfläche</span><span><i style="border:1.5px dashed var(--warn);background:transparent"></i>offen</span></div>
+        <div class="schicht">
+          <b style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Kartenschicht</b>
+          <label><span class="dot an"></span>Belegung</label>
+          <label><span class="dot"></span>Netzaufnahme (Bestand)</label>
+          <label><span class="dot"></span>PV-Pflicht</label>
+          <label><span class="dot"></span>Verschattung</label>
+        </div>
+      </div>
+
+      <!-- Eigenschaften -->
+      <div class="s-right">
+        <div class="unter">Gewähltes Dach</div>
+        <h5>Geb. 14 Werkhalle <em>118,4 kWp</em></h5>
+        <div style="color:var(--muted);font-size:11.5px;">LoD2 · 4 Dachflächen · Traufe 7,2 m · First 10,9 m</div>
+        <div class="dachfl">
+          <div class="h"><span>Dachfläche</span><span>Neig.</span><span>kWp</span></div>
+          <div><span>Süd, Hauptdach</span><span class="num">22°</span><span class="num">61,2</span></div>
+          <div><span>Nord, Hauptdach</span><span class="num aus">22°</span><span class="aus">aus</span></div>
+          <div><span>Süd, Anbau</span><span class="num">15°</span><span class="num">39,7</span></div>
+          <div><span>Ost, Vordach</span><span class="num">10°</span><span class="num">17,5</span></div>
+        </div>
+        <div class="zeile">
+          <div class="feld"><label>Belegungsgrad</label><span>90 %</span></div>
+          <div class="feld"><label>Ausrichtung</label><span>184°</span></div>
+        </div>
+        <dl class="kv" style="margin:0;">
+          <dt>Module</dt><dd>275</dd>
+          <dt>Ertragsfaktor</dt><dd>94 %</dd>
+          <dt>Verschattung</dt><dd>−3 %</dd>
+          <dt>Ertrag</dt><dd>112 MWh/a</dd>
+        </dl>
+        <div class="hinweis ok">PV-Pflicht erfüllt (Neubau 2027)</div>
+        <div class="hinweis warn">Anschluss: Trafo T2 ab 95 kWp ausgelastet</div>
+        <div class="zeile" style="margin-top:auto;"><span class="btn">Regeln anwenden</span><span class="btn">Leeren</span><span class="btn">In 3D</span></div>
+      </div>
+    </div>
+    <div class="s-bar">
+      <span class="label">PV</span>
+      <span class="pv">Leistung<b>2.310 kWp</b></span>
+      <span>Dächer<b>72 / 86</b></span>
+      <span>Ertrag<b>2.140 MWh/a</b></span>
+      <span>Pflicht<b>11 / 13</b></span>
+      <span>ohne Netzausbau<b>1.480 kWp</b></span>
+      <span style="margin-left:auto;border-right:0;border-left:1px solid var(--border)">Stand<b>Entwurf</b></span>
+    </div>
+   </div>
+  </div>
+  </div>
+  <p class="bild-notiz" style="margin-top:8px;">Beispielwerte. Der Entwurf zeigt Stufe 3 aufgeklappt; die Stufen 1, 2, 4 und 5 sind zu ihrer Kurzzeile eingeklappt.</p>
+</div>
+
+<div class="wrap">
+<section style="margin-top:28px;">
+  <ol class="erkl">
+    <li><div><b>Der Reiter ist der Modus</b><p>Reiter öffnen startet den PV-Modus, Reiter verlassen beendet ihn. „Fertig“ und das schwebende Fenster entfallen. Die Befehlssuche und „Im PV-Modus zeichnen“ an der Gebäudekarte springen in diesen Reiter.</p></div></li>
+    <li><div><b>Nächster Schritt</b><p>Dieselbe Karte wie im Netz-Reiter. Sie folgt der Kette Dachdaten → Regeln → offene Dächer → Abweichungen → Stand sichern → PV-Analyse rechnen und bietet genau eine Aktion an.</p></div></li>
+    <li><div><b>Werkzeugleiste auf der Karte</b><p>Die heutigen Knopfpaare (Belegung/Sperrfläche, Polygon/Rechteck, Nächstes offenes, Rückgängig) wandern aus dem Fenster an die Karte. Die Tasten B, S, R, N und Strg Z bleiben. „3D“ öffnet die 3D-Ansicht mit eingeschaltetem „Dachflächen bearbeiten“.</p></div></li>
+    <li><div><b>Kartenschicht</b><p>Ein Umschalter statt verstreuter Färbungen: Belegung, Netzaufnahme im Bestand (grün/gelb/rot aus Modul 28), PV-Pflicht, Verschattung. Immer nur eine Schicht färbt die Dächer.</p></div></li>
+    <li><div><b>Ein Dach-Editor rechts</b><p>Der Aktiv-Block des PV-Modus wird die Eigenschaftsspalte. Die Gebäudekarte zeigt unter „Dach &amp; PV“ dieselbe Komponente statt eigener Felder. Bei Mehrfachauswahl erscheinen dort die Stapel-Aktionen.</p></div></li>
+    <li><div><b>PV in der Ergebnisleiste</b><p>Solange der Reiter offen ist, zeigt die Leiste unten die PV-Summen statt der Gesamtbilanz: kWp, belegte Dächer, Ertrag, Pflicht, Anteil ohne Netzausbau und den aktiven Belegungsstand.</p></div></li>
+  </ol>
+</section>
+
+<section id="stufen">
+  <div class="eyebrow">3 · Die fünf Stufen</div>
+  <h2>Was in welcher Stufe steht</h2>
+  <p>Die Reihenfolge ist echt: Regeln ohne Dachdaten raten, Belegen ohne Regeln erzeugt Nacharbeit, Prüfen ohne Belegung ist leer. Jede Stufe zeigt eingeklappt eine Kurzzeile mit ihrem Stand und einen Statuspunkt wie die Prozessleiste.</p>
+  <div class="ablauf">
+    <div><span class="n">1</span><h3>Dachdaten<small>Woraus wird gerechnet?</small></h3><div><p>Zählt LoD2-Gebäude, Gebäude mit Dach aus Grundriss, Gebäude nur mit Dachform aus OSM und Bäume. Bietet „LoD2 laden“ und „Dach aus Grundriss“ an; beides bleibt im Bestand zuhause, hier steht nur der Stand mit Sprung. Der Bäume-Block zieht aus dem PV-Modus hierher.</p><p>Heute: Bestand (LoD2, Grundriss), PV-Modus-Einschub Bäume.</p></div></div>
+    <div><span class="n">2</span><h3>Regeln<small>Wie wird belegt?</small></h3><div><p>Eine Stelle für Modulmaß, Lage, Randabstand, Mindestmodule (gelten sofort für alle Dächer) und die Vorgaben fürs Belegen (Dachform, Neigung, Belegungsgrad, Nordseiten, Flachdach-Aufständerung). „Auf belegte Dächer übertragen“ mit dem bestehenden Schutz für eigene Angaben.</p><p>Heute: PV-Modus „Belegungsregeln“, Gebäude-PV-Fenster (Modulmaß, Dachanteil), Auto-Befüllen (Dachanteil).</p></div></div>
+    <div><span class="n">3</span><h3>Belegen<small>Welche Dächer, wie viel?</small></h3><div><p>Automatisch (Umfang alle / Neubauten / PV-Pflicht / Bereich / Trafo-Gebiet, Netz ohne / netzverträglich / gestuft, mit Vorschau), einzeln über die Werkzeugleiste, Freiflächen, Entfernen eingeklappt unter „Aufräumen“ wie im Netz-Reiter.</p><p>Heute: PV-Modus, Einschub „Dächer automatisch belegen“, Strom › Erzeugung (Freiflächen), Wärme (Freifläche-PV).</p></div></div>
+    <div><span class="n">4</span><h3>Stände<small>Welche Belegung gilt?</small></h3><div><p>Die Belegungsstände aus Modul 38 als Liste: Gesamtpotenzial, gespeicherte Stände, Entwurf. Ansehen legt die Belegung als Schicht über die Karte, Aktivieren übernimmt sie in die Variante. Der aktive Stand steht in der Ergebnisleiste.</p><p>Heute: PV-Modus-Einschub „Belegungsstände“.</p></div></div>
+    <div><span class="n">5</span><h3>Prüfen<small>Passt alles zusammen?</small></h3><div><p>Anlagen abgleichen (gezeichnete kWp gegen PV-Assets), PV-Pflicht je Gebäude, Anschluss-Hinweise, dann Sprung in Auswertung › Photovoltaik. Die Netzaufnahme ist hier eine Kartenschicht, die Analyse bleibt im Dokument.</p><p>Heute: PV-Übersicht (Strom › Erzeugung › Prüfen), PV-Pflicht-Fenster, Anschluss-Hinweis im PV-Modus.</p></div></div>
+  </div>
+</section>
+
+<section id="zuordnung">
+  <div class="eyebrow">4 · Zuordnung</div>
+  <h2>Alt → neu</h2>
+  <div class="tab-wrap">
+    <table>
+      <thead><tr><th>Heute</th><th>Bedienelement</th><th>Wird zu</th></tr></thead>
+      <tbody>
+        <tr><td>Wärme › Erzeugung</td><td>PV-Anlage, PV-Modus, Gebäude-PV, Freifläche-PV</td><td class="wird"><b>Eine Zeile</b> „Photovoltaik: 2.310 kWp auf 72 Dächern“ mit Sprung in Strom › Photovoltaik. Wirkung in der Wärmebilanz bleibt.</td></tr>
+        <tr><td>Strom › Erzeugung</td><td>PV-Freiflächen</td><td class="wird">Stufe 3 Belegen › Freiflächen</td></tr>
+        <tr><td>Strom › Erzeugung</td><td>Verbrauch und PV automatisch ermitteln</td><td class="wird">PV-Teil entfällt (ersetzt durch Automatisch belegen); der Verbrauchsteil bleibt dort</td></tr>
+        <tr><td>Strom › Erzeugung</td><td>PV-Übersicht</td><td class="wird">Stufe 5 Prüfen › Anlagen abgleichen</td></tr>
+        <tr><td>Strom › Erzeugung</td><td>Palette: PV-Anlage setzen</td><td class="wird">Bleibt für Anlagen ohne Dachbezug; Hinweis auf den PV-Reiter</td></tr>
+        <tr><td>Fenster Gebäude-PV</td><td>Modulmaß, Standard-Dachanteil, Allen zuweisen</td><td class="wird">Modulmaß → Stufe 2 Regeln; Dachanteil siehe Entscheidung 3; das Fenster entfällt</td></tr>
+        <tr><td>PV-Modus-Fenster</td><td>Typ, Form, Nächstes offenes, Rückgängig</td><td class="wird">Werkzeugleiste auf der Karte</td></tr>
+        <tr><td>PV-Modus-Fenster</td><td>Stapel „Grundriss für die Auswahl“</td><td class="wird">Eigenschaftsspalte bei Mehrfachauswahl</td></tr>
+        <tr><td>PV-Modus-Fenster</td><td>Aktives Dach</td><td class="wird">Eigenschaftsspalte rechts</td></tr>
+        <tr><td>PV-Modus-Fenster</td><td>Belegungsregeln</td><td class="wird">Stufe 2 Regeln</td></tr>
+        <tr><td>PV-Modus-Fenster</td><td>Automatisch belegen / entfernen, Belegungsstände, Bäume, Anschluss</td><td class="wird">Stufen 3, 4, 1 und 5</td></tr>
+        <tr><td>PV-Modus-Fenster</td><td>Liste „mit Fläche / offen“</td><td class="wird">Kurzzeile von Stufe 3 + Kartenmarkierung „offen“ + „Nächstes offenes“; die volle Liste als Klappteil</td></tr>
+        <tr><td>Gebäudekarte</td><td>Dach &amp; PV</td><td class="wird">Dieselbe Dach-Komponente wie rechts; „Im PV-Modus zeichnen“ öffnet den Reiter</td></tr>
+        <tr><td>3D-Ansicht</td><td>Dachflächen bearbeiten</td><td class="wird">Bleibt; aus dem Reiter über „3D“ direkt mit diesem Schalter</td></tr>
+        <tr><td>Auswertung</td><td>Photovoltaik (Kapitel 0–7, Werkzeuge)</td><td class="wird">Bleibt als Dokument; Stufe 5 springt hinein. Werkzeuge siehe Entscheidung 4</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="entscheidungen">
+  <div class="eyebrow">5 · Offene Entscheidungen</div>
+  <h2>Was du entscheiden müsstest</h2>
+  <div class="entsch">
+    <div class="frage">
+      <h3><span>1</span>Wo sitzt der Schritt?</h3>
+      <div class="empf"><b>Empfehlung:</b> eigener Reiter in Planung › Strom, nach „Netz“.</div>
+      <p>PV-Assets sind Strom-Objekte, und „netzverträglich belegen“ braucht das Netz. Alternative: eine dritte Sparte „PV“ neben Wärme | Strom. Das wäre sichtbarer, aber die Sparten würden dann nicht mehr Energieträger trennen.</p>
+    </div>
+    <div class="frage">
+      <h3><span>2</span>Was wird aus der pauschalen PV-Anlage?</h3>
+      <div class="empf"><b>Empfehlung:</b> als „Schnellabschätzung ohne Dächer“ in Stufe 1 behalten, sichtbar abgeschaltet, sobald Dächer belegt sind.</div>
+      <p>Die zentrale Anlage (kWp × spezifischer Ertrag oder PVGIS-CSV) ist für frühe Abschätzungen nützlich, läuft aber neben den Gebäude-PV-Assets her. Wie die beiden heute in der Bilanz zusammengezählt werden, ist vor dem Umbau zu prüfen.</p>
+    </div>
+    <div class="frage">
+      <h3><span>3</span>Bleibt der pauschale Dachanteil?</h3>
+      <div class="empf"><b>Empfehlung:</b> nein. „Automatisch belegen“ mit Grundriss ersetzt ihn und liefert echte Flächen.</div>
+      <p>Der Dachanteil in Prozent (Gebäude-PV, Auto-Befüllen) rechnet ohne Fläche und ohne Module. Bestehende Projekte mit Dachanteil müssten beim Laden weiter rechnen; nur die Eingabe entfiele.</p>
+    </div>
+    <div class="frage">
+      <h3><span>4</span>Netzstrategie-Editor und Autarkieziel in die Planung?</h3>
+      <div class="empf"><b>Empfehlung:</b> vorerst in der Auswertung lassen, aus Stufe 5 verlinken.</div>
+      <p>Beide entscheiden etwas (Anschlusswege, Speichergrößen) und gehören fachlich eher zur Planung. Sie sind aber große eigene Seiten. Ein Umzug lohnt erst, wenn der PV-Reiter steht.</p>
+    </div>
+  </div>
+</section>
+
+<section id="umsetzung">
+  <div class="eyebrow">6 · Umsetzung</div>
+  <h2>In drei Stufen, jede für sich lauffähig</h2>
+  <div class="stufen">
+    <div>
+      <h3>A · Umhängen</h3>
+      <ul>
+        <li>Reiter „Photovoltaik“ in <code>EL_TABS</code> (13n), Betreten = <code>pvModusStart</code></li>
+        <li>Blöcke aus <code>_html()</code> (25) als Stufen in den Reiter, Logik unverändert</li>
+        <li>Werkzeugleiste auf der Karte statt Knopfpaare</li>
+        <li>Wärme-Knöpfe → eine Verweiszeile</li>
+      </ul>
+      <span class="aufw">Kein Rechenweg ändert sich.</span>
+    </div>
+    <div>
+      <h3>B · Ein Dach-Editor</h3>
+      <ul>
+        <li>Aktiv-Block (25) und „Dach &amp; PV“ (03c) zu einer Komponente</li>
+        <li>Eigenschaftsspalte rechts, Mehrfachauswahl mit Stapel-Aktionen</li>
+        <li>Kartenschicht-Umschalter</li>
+        <li>PV-Werte in der Ergebnisleiste</li>
+      </ul>
+      <span class="aufw">Berührt 03c, dort arbeitet auch der Kollege.</span>
+    </div>
+    <div>
+      <h3>C · Dubletten abbauen</h3>
+      <ul>
+        <li>Modulmaß aus dem Gebäude-PV-Fenster lösen (eigener Speicherort statt Feld-IDs)</li>
+        <li>Gebäude-PV-Fenster, PV-Teil im Auto-Befüllen, zweite Freiflächen-Tür entfernen</li>
+        <li>Karte „Nächster Schritt“ für PV</li>
+      </ul>
+      <span class="aufw">Erst nach den Entscheidungen 2 und 3.</span>
+    </div>
+  </div>
+  <h3 style="margin-top:6px;">Bekannte Fallen</h3>
+  <ul class="fallen">
+    <li><code>updateViz</code> überschreibt Polygonstile. Die Kartenschicht muss nach jedem <code>updateViz</code> neu färben, wie es <code>pvModusMarkiereKarte</code> heute schon tut.</li>
+    <li>Klicks auf Dächer kommen über einen Capture-Handler, weil die PV-Layer darüber liegen. Ein Auswahlklick darf nicht automatisch eine Fläche beginnen.</li>
+    <li>Angedockte Fenster (<code>.float-panel.visible:not(.dragging)</code>): Vorschau und Engstellen der Auto-Belegung öffnen heute eigene Fenster, die im Reiter Platz brauchen.</li>
+    <li>Nach jeder Änderung an 25/36/38 neu bauen. Der Dev-Server ist für diese Module unzuverlässig.</li>
+  </ul>
+</section>
+
+<footer>Grundlage: Code-Durchsicht von 25-pv-modus, 36-pv-auto-belegung, 38-pv-belegungsstaende, 13n-elektro-panel, 03c-gebaeude-io, 09d-pv-analyse und 49-oberflaeche auf dem Branch redesign/lkebw-oberflaeche. Zahlen im Bildschirmentwurf sind Beispielwerte.</footer>
+</div>
+</main>
