@@ -9271,12 +9271,21 @@ export function ggRenderEzaPrinzip(cfg, T = GG_THEME) {
   const msY = top + 276;            // MS-Sammelschiene der Übergabestation
   const ringY = msY + 84;           // Ringkabel durch die Stationen
   const nsY = ringY + 92;           // NS-Sammelschienen der Stationen
-  const grenzeU = nsY + 164;        // Unterkante Liegenschaftsgrenze
+  const eY = nsY + 58;              // Erzeugungsschiene hinter dem Sammel-Kuppelschalter
+  const kuY = eY + 8;                // Kuppelschalter je Erzeugungseinheit (Kreuz bei kuY + 30)
+  const yB = nsY + 46;              // ÜEKS-Wirkweg b) unter den Hauptverteilungen
+  const grenzeU = nsY + 250;        // Unterkante Liegenschaftsgrenze
   const legTop = grenzeU + 22;
   // Legende zweispaltig, bis zu drei Zeilen je Punkt — Zeilenhöhe je Reihe nach dem längeren Punkt
-  const punkte = cfg.punkte || [];
+  // Punkt 17 (Sammel-Kuppelschalter) nur, wenn er gezeichnet wird
+  // Punkt 4 und 9 je nach Schutzkonzept: ÜEKS nur auf die EZE bzw. EKS-Kuppelschalter mit zweitem Auslöseweg
+  const ueksCfg = cfg.ueks || 'eze';
+  const zweiweg = cfg.sammelKs !== true && (ueksCfg === 'beide' || ueksCfg === 'eze');
+  const punkte = (cfg.punkte || [])
+    .map((t, i) => i === 3 && ueksCfg === 'eze' ? GG_EZA_PUNKT_UEKS_EZE : i === 8 && zweiweg ? GG_EZA_PUNKT_EKS_ZWEIWEG : t)
+    .filter((_, i) => i !== 16 || cfg.sammelKs === true);
   const colW = (W - 2 * S.padX) / 2;
-  const legZeilen = punkte.map(t => ggResUmbruch(t, Math.floor((colW - 40) / (11 * 0.53))).slice(0, 3));
+  const legZeilen = punkte.map(t => ggResUmbruch(t, Math.floor((colW - 40) / (11 * 0.53))).slice(0, 5));
   const reihenH = [];
   for (let i = 0; i < legZeilen.length; i += 2) {
     reihenH.push(Math.max(legZeilen[i].length, legZeilen[i + 1]?.length || 0, 2) * 14 + 10);
@@ -9303,11 +9312,21 @@ export function ggRenderEzaPrinzip(cfg, T = GG_THEME) {
   const wandler = (x, y) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="7" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.6"/>`;
   const trafo = (x, y, r = 10) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="${r}" fill="none" stroke="${strich}" stroke-width="1.5"/>
       <circle cx="${gR(x)}" cy="${gR(y + r * 1.4)}" r="${r}" fill="none" stroke="${strich}" stroke-width="1.5"/>`;
-  const naSchutz = (x, y) => kasten(x, y, 20, 16, { rand: rot, breite: 1.2 })
-    + txt(x + 10, y + 11.5, 'NA', { anchor: 'middle', size: 9, weight: 700, fill: rot });
+  // externer Entkupplungsschutz je Erzeugungseinheit, links neben ihrem Kuppelschalter
+  const eksW = 34, eksH = 18;
+  const eksSchutz = (x, y) => kasten(x, y, eksW, eksH, { rand: rot, breite: 1.3 })
+    + txt(x + eksW / 2, y + 12.5, 'EKS', { anchor: 'middle', size: 9.5, weight: 700, fill: rot });
+  // ÜEKS: 'beide' (Wirkweg a und b als Varianten), 'uebergabe' (nur a), 'eze' (nur b), 'ohne'
+  const ueks = ['beide', 'uebergabe', 'eze', 'ohne'].includes(cfg.ueks) ? cfg.ueks : 'eze';
+  const ueksA = ueks === 'beide' || ueks === 'uebergabe', ueksB = ueks === 'beide' || ueks === 'eze';
+  // Sammel-Kuppelschalter je Station vor der Erzeugung (Ziel von Wirkweg b); aus = b wirkt auf jede Einheit
+  const sammel = cfg.sammelKs === true;
+  // nur Wirkweg b: Leistungsschalter der Übergabe bleibt Rückfallebene bei Schalterversagen
+  const rueckfall = ueks === 'eze' && cfg.rueckfall !== false;
   out = `<defs>
       <marker id="gg-eza-pf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="${fein}"/></marker>
       <marker id="gg-eza-pf-rot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="${rot}"/></marker>
+      <marker id="gg-eza-pf-sw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="${strich}"/></marker>
     </defs>` + out;
 
   // ── Liegenschaftsgrenze (zuerst, damit alles darüber liegt) ──
@@ -9337,17 +9356,31 @@ export function ggRenderEzaPrinzip(cfg, T = GG_THEME) {
   out += txt(hx + 99, w1 + 4.5, 'Zähler ⇄ (RLM)', { anchor: 'middle', size: 11, weight: 600 });
   out += nr(hx + 172, w1, 3);
 
-  // ── Übergeordneter Entkupplungsschutz → Leistungsschalter der Übergabe ──
-  const ex = 40, ew = 196, ey = top + 124, eh = 70;
-  out += kasten(ex, ey, ew, eh, { rand: rot, breite: 1.6 });
-  out += txt(ex + ew / 2, ey + 19, 'Entkupplungsschutz', { anchor: 'middle', size: 12, weight: 700 });
-  out += txt(ex + ew / 2, ey + 35, 'übergeordnet, am NAP', { anchor: 'middle', size: 10.5, fill: T.text.muted });
-  out += txt(ex + ew / 2, ey + 52, 'U<  U>  U>>  ·  Q-U-Schutz', { anchor: 'middle', size: 10.5, mono: true, fill: T.text.muted });
-  out += linie(hx - 7, w2, ex + ew + 2, w2, { farbe: fein, breite: 1.2, strich: '4 3', pfeil: 'gg-eza-pf' });
-  out += nr(ex + ew, ey, 4);
+  // ── Übergeordneter Entkupplungsschutz (ÜEKS), gestrichelt = Erfordernis und Wirkort je nach Leistungsklasse ──
+  // Wirkweg a) auf den Leistungsschalter der Übergabe, b) über die NA-Schutzgeräte auf die Kuppelschalter der EZE
+  const ex = 40, ew = 196, ey = top + 124, eh = 84;
+  const sumE = (w.pvKwp || 0) + (w.batKw || 0) + (w.kwkKw || 0);
+  const klasse = !sumE ? 'Erfordernis nach Leistungsklasse'
+    : sumE > 500 || (w.einspKw || 0) > 270 ? 'ΣP > 500 kW: erforderlich (4110)'
+    : sumE > 270 ? 'ΣP 270–500 kW: erforderlich (EAAV)'
+    : 'ΣP ≤ 270 kW: nicht gefordert (EAAV)';
   out += schalter(hx, ky);
-  out += pfad(`M${ex + ew / 2} ${ey + eh}V${ky + 18}H${hx - 10}`, { farbe: rot, breite: 1.4, strich: '5 3', pfeil: 'gg-eza-pf-rot' });
-  out += txt(ex + ew / 2 + 8, ky + 12, 'Auslösung', { size: 10.5, fill: rot });
+  if (ueks !== 'ohne') {
+    out += kasten(ex, ey, ew, eh, { rand: rot, breite: 1.6, strich: '6 3' });
+    out += txt(ex + ew / 2, ey + 19, 'Entkupplungsschutz (ÜEKS)', { anchor: 'middle', size: 12, weight: 700 });
+    out += txt(ex + ew / 2, ey + 35, 'übergeordnet, am NAP', { anchor: 'middle', size: 10.5, fill: T.text.muted });
+    out += txt(ex + ew / 2, ey + 52, 'U<  U>  U>>  ·  Q-U-Schutz', { anchor: 'middle', size: 10.5, mono: true, fill: T.text.muted });
+    out += txt(ex + ew / 2, ey + 70, klasse, { anchor: 'middle', size: 10, weight: 600, fill: rot });
+    out += linie(hx - 7, w2, ex + ew + 2, w2, { farbe: fein, breite: 1.2, strich: '4 3', pfeil: 'gg-eza-pf' });
+    out += nr(ex + ew, ey, 4);
+  }
+  if (ueksA) {
+    out += pfad(`M${ex + ew / 2} ${ey + eh}V${ky + 18}H${hx - 10}`, { farbe: rot, breite: 1.4, strich: '5 3', pfeil: 'gg-eza-pf-rot' });
+    out += txt(ex + ew / 2 + 8, ky + 12, ueksB ? 'a) Auslösung Übergabe' : 'Auslösung', { size: 10.5, fill: rot });
+  } else if (rueckfall) {
+    out += pfad(`M${ex + ew / 2} ${ey + eh}V${ky + 18}H${hx - 10}`, { farbe: rot, breite: 1, strich: '2 3', pfeil: 'gg-eza-pf-rot' });
+    out += txt(ex + ew / 2 + 8, ky + 12, 'nur bei Schalterversagen', { size: 10, fill: rot });
+  }
   out += txt(hx + 22, ky + 12, 'Leistungsschalter Übergabe', { size: 11.5, weight: 600 });
   out += txt(hx + 22, ky + 27, 'Kurzschlussschutz, Kuppelschalter', { size: 11, fill: T.text.muted });
   out += nr(hx + 230, ky + 16, 5);
@@ -9368,10 +9401,10 @@ export function ggRenderEzaPrinzip(cfg, T = GG_THEME) {
     { x: 785, titel: stN > 3 ? `Station ${stN}` : 'Station n', abg: ['pv', 'bhkw'] },
   ];
   const trennX = (stationen[1].x + stationen[2].x) / 2;
-  const wrW = 56, wrH = 40, wrY = nsY + 34, busK = nsY + 20;
+  const wrW = 56, wrH = 40, wrY = eY + 62, busK = eY + 50;
   const gy = wrY + wrH + 12;
-  const wrPunkte = [];
-  let bhkwX = null;
+  const wrPunkte = [], ziele = [];   // ziele: Auslösepunkte von Wirkweg b) { x, y, sammel }
+  let bhkwX = null, sammelX1 = null, eksX1 = null;
   for (const st of stationen) {
     const sx = st.x - 88, sw = 176;
     out += kasten(sx, ringY - 26, sw, 94, { fill: T.tint, rand: T.accents.gruen, breite: 1.2 });
@@ -9386,9 +9419,38 @@ export function ggRenderEzaPrinzip(cfg, T = GG_THEME) {
     out += txt(st.x + 16, ringY + 30, `${uTxt}/0,4 kV`, { size: 10, fill: T.text.muted });
     out += linie(st.x, ringY + 46, st.x, nsY);
     out += linie(st.x - 96, nsY, st.x + 96, nsY, { breite: 4 });
+    // Jede Erzeugungseinheit hat ihren eigenen externen EKS mit Kuppelschalter. Optional davor ein
+    // Sammel-Kuppelschalter je Station: schaltet die Erzeugung gesammelt ab, die Verbraucher bleiben an der
+    // Hauptverteilung. Eine Einheit: Sammelschalter im Abgang; mehrere: eigene Erzeugungsschiene.
+    const gen = st.abg.map((art, i) => st.x + (i ? 50 : -50)).filter((_, i) => st.abg[i] !== 'last');
+    if (sammel) {
+      const xk = gen.length === 1 ? gen[0] : st.x;
+      out += linie(xk, nsY, xk, nsY + 4) + schalter(xk, nsY + 4);
+      out += linie(xk, nsY + 34, xk, gen.length > 1 ? eY : kuY);
+      if (gen.length > 1) out += linie(Math.min(...gen) - 10, eY, Math.max(...gen) + 10, eY, { breite: 3 });
+      out += txt(xk + 30, nsY + 23, 'Sammel-KS', { size: 9.5, weight: 600, fill: T.text.muted });
+      ziele.push({ x: xk, sammel: true });
+      if (sammelX1 == null) sammelX1 = xk;
+    }
+    for (const ax of gen) {
+      if (!sammel) out += linie(ax, nsY, ax, kuY);
+      else if (gen.length > 1) out += linie(ax, eY, ax, kuY);
+      out += schalter(ax, kuY);
+      const kx0 = ax - 12 - eksW;
+      out += eksSchutz(kx0, kuY + 6);
+      out += linie(kx0 + eksW + 1, kuY + 15, ax - 3, kuY + 15, { farbe: rot, breite: 1.2, strich: '3 2', pfeil: 'gg-eza-pf-rot' });
+      // ohne Sammelschalter: ÜEKS als zweiter Auslöseweg auf denselben Kuppelschalter (von rechts)
+      if (!sammel) ziele.push({ x: ax });
+      if (eksX1 == null) eksX1 = kx0;
+    }
+    if (!st.abg.includes('last')) {
+      out += linie(st.x - 84, nsY, st.x - 84, nsY + 24, { breite: 1.6, pfeil: 'gg-eza-pf-sw' });
+      out += txt(st.x - 78, nsY + 22, 'Last', { size: 9.5, fill: T.text.muted });
+    }
     // Abgänge auf der NS-Seite
     st.abg.forEach((art, i) => {
       const ax = st.x + (i ? 50 : -50);
+      const ab = kuY + 30;   // unter dem Kuppelschalter der Einheit
       if (art === 'last') {
         out += linie(ax, nsY, ax, wrY);
         out += kasten(ax - 40, wrY, 80, 34, { rand: T.rule });
@@ -9396,15 +9458,14 @@ export function ggRenderEzaPrinzip(cfg, T = GG_THEME) {
         return;
       }
       if (art === 'bhkw') {
-        // Synchrongenerator direkt am Netz, angetrieben vom Gasmotor; Einheitenschutz am Generator
+        // Synchrongenerator hinter dem Kuppelschalter, angetrieben vom Gasmotor
         bhkwX = ax;
-        out += linie(ax, nsY, ax, wrY + 2);
+        out += linie(ax, ab, ax, wrY + 2);
         out += linie(ax + 14, busK, ax + 14, wrY + 8, { farbe: gruen, breite: 1.3, strich: '4 3' });
         wrPunkte.push(ax + 14);
         out += `<circle cx="${ax}" cy="${wrY + 20}" r="18" fill="${T.tint}" stroke="${gruen}" stroke-width="1.6"/>`;
         out += txt(ax, wrY + 19, 'G', { anchor: 'middle', size: 12, weight: 700, fill: gruen });
         out += txt(ax, wrY + 31, '3~', { anchor: 'middle', size: 9, fill: gruen });
-        out += naSchutz(ax - 44, wrY + 11);
         out += linie(ax, wrY + 38, ax, gy, { breite: 3 });
         out += kasten(ax - 28, gy, 56, 28, { rand: strich, breite: 1.2 });
         out += txt(ax, gy + 18, 'Motor', { anchor: 'middle', size: 9.5, weight: 600 });
@@ -9413,7 +9474,7 @@ export function ggRenderEzaPrinzip(cfg, T = GG_THEME) {
         out += txt(ax, gy + 42, 'BHKW (KWK)', { anchor: 'middle', size: 10.5, fill: T.text.muted });
         return;
       }
-      out += linie(ax, nsY, ax, wrY);
+      out += linie(ax, ab, ax, wrY);
       out += linie(ax + 14, busK, ax + 14, wrY - 1, { farbe: gruen, breite: 1.3, strich: '4 3' });
       wrPunkte.push(ax + 14);
       const bx = ax - wrW / 2;
@@ -9421,7 +9482,6 @@ export function ggRenderEzaPrinzip(cfg, T = GG_THEME) {
       out += linie(bx, wrY + wrH, bx + wrW, wrY, { farbe: gruen, breite: 1 });
       out += txt(bx + 11, wrY + 15, '=', { anchor: 'middle', size: 12, weight: 700 });
       out += txt(bx + wrW - 11, wrY + wrH - 7, '~', { anchor: 'middle', size: 13, weight: 700 });
-      out += naSchutz(bx - 24, wrY + 11);
       out += linie(ax, wrY + wrH, ax, gy, { farbe: blau, breite: 1.6 });
       if (art === 'pv') {
         out += kasten(ax - 28, gy, 56, 28, { fill: '#FFF8D6', rand: strich, breite: 1.2 });
@@ -9442,7 +9502,23 @@ export function ggRenderEzaPrinzip(cfg, T = GG_THEME) {
   out += txt(trennX, ringY + 20, 'offene', { anchor: 'middle', size: 10, fill: T.text.muted })
     + txt(trennX, ringY + 32, 'Trennstelle', { anchor: 'middle', size: 10, fill: T.text.muted });
   out += nr(trennX, ringY - 22, 12);
-  out += nr(stationen[0].x - 50 - wrW / 2 - 38, wrY + 4, 9);
+  out += nr(eksX1 - 14, kuY + 15, 9);
+  if (sammelX1 != null) out += nr(sammelX1 - 18, nsY + 26, 17);
+  // ÜEKS-Wirkweg b): links an der Grenze hinab, unter den Hauptverteilungen entlang zu den Sammel-Kuppelschaltern
+  // bzw. ohne Sammelschalter zu jedem EKS
+  if (ueksB) {
+    const bx0 = ex + 14;
+    const zx = z => z.sammel ? z.x + 22 : z.x + 12;
+    out += pfad(`M${bx0} ${ey + eh}V${yB}H${Math.max(...ziele.map(zx))}`, { farbe: rot, breite: 1.4, strich: '5 3' });
+    for (const z of ziele) {
+      out += z.sammel
+        ? pfad(`M${zx(z)} ${yB}V${nsY + 19}H${z.x + 5}`, { farbe: rot, breite: 1.4, strich: '5 3', pfeil: 'gg-eza-pf-rot' })
+        : pfad(`M${zx(z)} ${yB}V${kuY + 15}H${z.x + 4}`, { farbe: rot, breite: 1.4, strich: '5 3', pfeil: 'gg-eza-pf-rot' });
+    }
+    const bMitte = (ey + eh + yB) / 2;
+    out += txt(bx0 - 6, bMitte, `${ueksA ? 'b) ' : ''}${sammel ? 'Auslösung Sammel-Kuppelschalter' : 'Mitnahme Kuppelschalter der EZE'}`, {
+      anchor: 'middle', size: 10, weight: 600, fill: rot, transform: `rotate(-90 ${bx0 - 6} ${gR(bMitte)})` });
+  }
   out += nr(stationen[1].x + 50 + wrW / 2 + 14, wrY + 4, 10);
   if (bhkwX != null) out += nr(bhkwX + 32, wrY + 2, 13);
 
@@ -9504,7 +9580,7 @@ export function ggRenderEzaPrinzip(cfg, T = GG_THEME) {
     w.batKw ? `Batterie ${ggNum(w.batKw)} kW` : null,
     w.kwkKw ? `BHKW ${ggNum(w.kwkKw)} kW el.` : null,
   ].filter(Boolean);
-  if (kenn.length) out += txt(W / 2, nsY + 150, kenn.join('  ·  '), { anchor: 'middle', size: 11, weight: 600, fill: gruen });
+  if (kenn.length) out += txt(W / 2, nsY + 236, kenn.join('  ·  '), { anchor: 'middle', size: 11, weight: 600, fill: gruen });
 
   // ── Nummernlegende zweispaltig ──
   let py = legTop;
@@ -9526,16 +9602,19 @@ const GG_EZA_PUNKTE = Object.freeze([
   'Netzanschlusspunkt: Eigentumsgrenze zum Netzbetreiber, Übergabestation der Liegenschaft',
   'Strom- und Spannungswandler am NAP liefern die Messgrößen für Schutz und Regelung',
   'Zähler für Bezug und Einspeisung (registrierende Leistungsmessung, Zweirichtung)',
-  'übergeordneter Entkupplungsschutz am NAP: Spannungsschutz und Q-U-Schutz nach VDE-AR-N 4110',
+  'übergeordneter Entkupplungsschutz (ÜEKS) am NAP, gestrichelt: Spannungs- und Q-U-Schutz; Erfordernis je '
+    + 'Leistungsklasse (≤ 270 / 270–500 / > 500 kW, EAAV bzw. VDE-AR-N 4110). Wirkung a) auf die Übergabe oder '
+    + 'b) auf die Kuppelschalter vor der Erzeugung – Vorzug bei Mischanlagen, Verbraucher bleiben versorgt',
   'Leistungsschalter der Übergabe mit Kurzschlussschutz, trennt bei Auslösung das Liegenschaftsnetz vom Netz',
   'EZA-Regler: regelt Wirk- und Blindleistung aller Erzeugungseinheiten am NAP, begrenzt die Einspeisung auf die Anschlusszusage',
   'Fernwirktechnik zum Netzbetreiber: Sollwerte und Reduzierstufen, Rückmeldung von Messwerten',
   'Steuerbox des Direktvermarkters: Fernsteuerung der Einspeisung nach Marktsignalen',
-  'Wechselrichter mit Einheitenschutz (integrierter NA-Schutz) und Einheitenzertifikat',
+  'unterlagerter Entkupplungsschutz (EKS) je Erzeugungseinheit, extern statt im Wechselrichter, mit eigenem '
+    + 'Kuppelschalter; Einstellwerte nach VDE-AR-N 4110, Wechselrichter mit Einheitenzertifikat',
   'Batteriespeicher über eigenen Wechselrichter, ebenfalls vom EZA-Regler geführt',
   'eigenes MS-Netz der Liegenschaft: Trafostationen mit Ringkabelfeldern, Erzeugung speist auf der NS-Seite ein',
   'offene Trennstelle: Ring offen betrieben, bei Kabelfehler Umschaltung auf die zweite Einspeiserichtung',
-  'KWK-Anlage (BHKW) mit Synchrongenerator und eigenem Einheitenschutz; Teil der Erzeugungsanlage am NAP, '
+  'KWK-Anlage (BHKW) mit Synchrongenerator, eigenem EKS und Generatorschutz; Teil der Erzeugungsanlage am NAP, '
     + 'ebenfalls vom EZA-Regler geführt (P über die Motorregelung, Q über die Erregung)',
   'Steuernetz EZA-Regler – Wechselrichter/BHKW über zwei eigene Fasern des BWI-LWL-Netzes: physisch getrenntes Netz '
     + 'ohne Verbindung zur übrigen IT der Liegenschaft',
@@ -9543,8 +9622,190 @@ const GG_EZA_PUNKTE = Object.freeze([
     + 'mit Positivliste und DMZ, Protokoll-Gateway (z. B. IEC 60870-5-104 → OPC UA); Zonen nach IEC 62443',
   'Leitsystem der Liegenschaft (GLT/Energiemanagement): Anzeige und Auswertung, kein direkter Schreibzugriff auf '
     + 'EZA-Regler, Wechselrichter oder BHKW',
+  // Index 16 — entfällt in der Legende, wenn cfg.sammelKs === false
+  'Sammel-Kuppelschalter je Station vor der Erzeugung: schaltet alle Einheiten der Station gesammelt ab (ÜEKS-Wirkweg b, '
+    + 'Freischalten, Zubau), die Verbraucher bleiben an der Hauptverteilung',
 ]);
+// Ersatz für Punkt 4, wenn der ÜEKS nur auf die Erzeugung wirkt (cfg.ueks === 'eze')
+const GG_EZA_PUNKT_UEKS_EZE = 'übergeordneter Entkupplungsschutz (ÜEKS) am NAP, gestrichelt: Spannungs- und Q-U-Schutz, '
+  + 'Erfordernis je Leistungsklasse. Wirkt nicht auf die Übergabe, sondern auf die Kuppelschalter der Erzeugung – die '
+  + 'Verbraucher bleiben versorgt; der Leistungsschalter der Übergabe nur als Rückfallebene bei Schalterversagen';
+// Ersatz für Punkt 9 ohne Sammel-Kuppelschalter: ein Schalter, zwei Auslösewege
+const GG_EZA_PUNKT_EKS_ZWEIWEG = 'unterlagerter Entkupplungsschutz (EKS) je Erzeugungseinheit, extern, mit eigenem '
+  + 'Kuppelschalter. Ein Schalter, zwei Auslösewege: eigener EKS (links) und Mitnahme durch den ÜEKS (rechts); '
+  + 'Einstellwerte nach VDE-AR-N 4110, Wechselrichter mit Einheitenzertifikat';
 const GG_EZA_FUSSNOTE = 'Prinzipskizze ohne Auslegung. Nachweise nach VDE-AR-N 4110: Einheitenzertifikate, Anlagenzertifikat (alle Einheiten am NAP), Konformitätserklärung.';
+
+/* ── 3.4.2 Prinzipskizze Speichereinbindung zentral / dezentral / hybrid ──────
+ * Drei Felder nebeneinander, je Feld dasselbe Liegenschaftsnetz: NAP mit Bilanzgrenze, MS-Sammelschiene,
+ * drei Stationen mit je einem Gebäude — an Station 2 ein Engpass im NS-Kabel, an Station 3 ein kritisches
+ * Gebäude. Dezentrale Speicher sitzen am Gebäude, also elektrisch unterhalb des Engpasses. Unter jedem Feld
+ * Vor- und Nachteile, unten die Herleitung: welcher Nutzen an welchem Ort wirkt. Rein schematisch.
+ * cfg.nutzen = [[Nutzen, wirkt an, Standort, ortsgebunden]] · cfg.merksatz · cfg.fussnote */
+const GG_SPEICHER_VARIANTEN = Object.freeze([
+  { k: 'Z', name: 'Zentral am NAP', zentral: true, dez: [],
+    wirkung: [null, ['Engpass bleibt', 'rot'], ['ohne Insel', 'rot']],
+    plus: ['günstigster Preis je kWh, ein Aufstellort im Freien', 'nutzt die Durchmischung aller Lasten am NAP',
+      'eine Anlage für Betrieb und Wartung'],
+    minus: ['entlastet keine Engpässe im eigenen Netz', 'Inselbetrieb nur mit eigenem Schutzkonzept für das ganze Netz',
+      'eigener Trafo und Anbindung an die MS nötig'] },
+  { k: 'D', name: 'Dezentral je Station', zentral: false, dez: [0, 1, 2],
+    wirkung: [['ohne Ortsnutzen', 'fein'], ['entlastet Engpass', 'gruen'], ['Inselbetrieb', 'gruen']],
+    plus: ['entlastet Engpässe direkt am Ort', 'Inselbetrieb einzelner Gebäude mit Standardtechnik',
+      'Anschluss an die NSHV, kein eigener Trafo'],
+    minus: ['höherer Preis je kWh, mehrere Aufstellräume mit Brandschutz', 'Speicher ohne Ortsnutzen bringen nur Mehrkosten',
+      'nur mit gemeinsamem EMS so wirksam wie zentral'] },
+  { k: 'H', name: 'Hybrid', zentral: true, dez: [1, 2],
+    wirkung: [null, ['entlastet Engpass', 'gruen'], ['Inselbetrieb', 'gruen']],
+    plus: ['zentraler Teil trägt Eigenverbrauch und Spitzenkappung', 'dezentral nur, wo Engpass oder Schutzziel es verlangt',
+      'Mehrkosten nur an begründeten Standorten'],
+    minus: ['zwei Anlagentypen, gemeinsames EMS nötig', 'Aufteilung der Kapazität muss begründet werden'] },
+]);
+const GG_SPEICHER_NUTZEN = Object.freeze([
+  ['Eigenverbrauch erhöhen (PV-Überschuss in die Abendlast)', 'Bilanzgrenze (NAP)', 'beliebig – zentral günstiger', false],
+  ['Lastspitze kappen (Leistungspreis)', 'Bilanzgrenze (NAP)', 'beliebig – zentral günstiger', false],
+  ['Rückspeisung am NAP begrenzen', 'Bilanzgrenze (NAP)', 'beliebig – zentral günstiger', false],
+  ['Engpass an Kabel oder Trafo beheben, Netzausbau aufschieben', 'belasteter Knoten', 'unterhalb des Engpasses – dezentral', true],
+  ['Inselbetrieb kritischer Verbraucher', 'kritisches Gebäude', 'am Gebäude – dezentral', true],
+  ['getrennte Nutzer oder Abrechnung', 'eigener Zählpunkt', 'hinter dem Zählpunkt – dezentral', true],
+]);
+
+export function ggRenderSpeicherStandortPrinzip(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const gruen = T.accents.gruenDunkel, rot = T.energy.waerme, blau = T.energy.strom;
+  const strich = T.text.strong, fein = T.text.faint;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  const farbe = { rot, gruen, fein };
+  const top = S.headBand + S.headHSchmal + 24;
+  const gap = 20, pw = (W - 2 * S.padX - 2 * gap) / 3;
+
+  // Vor- und Nachteile vorab umbrechen, damit alle Felder gleich hoch werden
+  const listMax = Math.floor((pw - 44) / (11 * 0.53));
+  const listen = GG_SPEICHER_VARIANTEN.map(v => [
+    ...v.plus.map(t => ['+', ggResUmbruch(t, listMax).slice(0, 3)]),
+    ...v.minus.map(t => ['−', ggResUmbruch(t, listMax).slice(0, 3)]),
+  ]);
+  const listTop = 338;
+  const listH = Math.max(...listen.map(l => l.reduce((s, [, z]) => s + z.length * 14 + 6, 0)));
+  const ph = listTop + listH + 6;
+
+  const nutzen = cfg.nutzen || GG_SPEICHER_NUTZEN;
+  const tTop = top + ph + 34, tKopf = 26, tZeile = 24;
+  const tH = tKopf + nutzen.length * tZeile;
+  const merk = ggResUmbruch(cfg.merksatz || '', Math.floor((W - 2 * S.padX) / (12.5 * 0.53)));
+  const merkY = tTop + 14 + tH + 28;
+  const legY = merkY + merk.length * 17 + 18;
+  const fuss = ggResUmbruch(cfg.fussnote || '', 150);
+  const height = legY + 26 + fuss.length * 15 + S.footSpace;
+  const G = { S, W, headH: S.headHSchmal, reduziert: true, height };
+  let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.titel }, T, G);
+
+  const pfad = (d, o = {}) => `<path d="${d}" fill="none" stroke="${o.farbe || strich}" stroke-width="${o.breite || 2}"`
+    + `${o.strich ? ` stroke-dasharray="${o.strich}"` : ''} stroke-linejoin="round"/>`;
+  const linie = (x1, y1, x2, y2, o = {}) => pfad(`M${gR(x1)} ${gR(y1)}L${gR(x2)} ${gR(y2)}`, o);
+  const kasten = (x, y, bw, bh, o = {}) => `<rect x="${gR(x) + 0.5}" y="${gR(y) + 0.5}" width="${gR(bw)}" height="${gR(bh)}"
+      fill="${o.fill || T.neutral.cardBg}" stroke="${o.rand || T.rule}" stroke-width="${o.breite || 1.4}"${o.strich ? ` stroke-dasharray="${o.strich}"` : ''}/>`;
+  // Trafo stehend: zwei Kreise übereinander, belegt y … y + 24
+  const trafo = (x, y) => `<circle cx="${gR(x)}" cy="${gR(y + 7)}" r="7" fill="none" stroke="${strich}" stroke-width="1.4"/>`
+    + `<circle cx="${gR(x)}" cy="${gR(y + 17)}" r="7" fill="none" stroke="${strich}" stroke-width="1.4"/>`;
+  // Batteriespeicher: Kasten mit Zellsymbol (langer und kurzer Strich)
+  const batterie = (cx, y, gross) => {
+    const bw = gross ? 52 : 30, bh = gross ? 28 : 20;
+    let o = kasten(cx - bw / 2, y, bw, bh, { rand: gruen, breite: 1.6, fill: T.tint });
+    const d = gross ? [-9, 5] : [-4, 4];
+    o += `<path d="M${gR(cx + d[0])} ${gR(y + 4)}v${bh - 8}M${gR(cx + d[1])} ${gR(y + 6)}v${bh - 12}" stroke="${gruen}" stroke-width="2.4"/>`;
+    if (gross) o += `<path d="M${gR(cx - 21)} ${gR(y + 4)}v${bh - 8}M${gR(cx + 19)} ${gR(y + 6)}v${bh - 12}" stroke="${gruen}" stroke-width="2.4"/>`;
+    return o;
+  };
+
+  const feld = (v, liste, px, py) => {
+    let o = `<rect x="${gR(px) + 0.5}" y="${gR(py) + 0.5}" width="${gR(pw - 1)}" height="${gR(ph - 1)}"
+              fill="${T.neutral.cardBg}" stroke="${T.line}" stroke-width="1"/>`;
+    o += txt(px + 16, py + 31, v.k, { size: 20, weight: 700, fill: gruen });
+    o += txt(px + 42, py + 30, v.name, { size: 13, weight: 700 });
+    o += linie(px + 16, py + 44, px + pw - 16, py + 44, { farbe: T.line, breite: 1 });
+
+    const xFeed = px + pw * 0.3, xZ = px + pw * 0.72;
+    const yB = py + 94, busY = py + 176, nsY = busY + 46, gebY = nsY + 40;
+    // Netz des Netzbetreibers, NAP und Bilanzgrenze
+    o += kasten(xFeed - 34, py + 54, 68, 22, { rand: blau, strich: '5 3', breite: 1.2 });
+    o += txt(xFeed, py + 69, 'Netz', { anchor: 'middle', size: 10.5, weight: 600 });
+    o += linie(xFeed, py + 76, xFeed, busY);
+    o += linie(px + 10, yB, px + pw - 10, yB, { farbe: T.text.muted, breite: 1.2, strich: '6 4' });
+    o += `<circle cx="${gR(xFeed)}" cy="${gR(yB)}" r="3.5" fill="${strich}"/>`;
+    o += txt(xFeed + 8, yB - 6, 'NAP · Bilanzgrenze', { size: 10, fill: T.text.muted });
+    // MS-Sammelschiene der Liegenschaft
+    o += linie(px + 14, busY, px + pw - 14, busY, { farbe: gruen, breite: 4.5 });
+    // zentraler Speicher mit eigenem Trafo an der MS-Sammelschiene
+    if (v.zentral) {
+      o += batterie(xZ, py + 108, true);
+      o += linie(xZ, py + 136, xZ, py + 139, { breite: 1.6 }) + trafo(xZ, py + 139) + linie(xZ, py + 163, xZ, busY);
+      o += txt(xZ - 34, py + 119, 'Container', { anchor: 'end', size: 10.5, weight: 700, fill: gruen });
+      o += txt(xZ - 34, py + 133, v.dez.length ? 'Grundlast am NAP' : 'wirkt am NAP', { anchor: 'end', size: 10, fill: T.text.muted });
+    }
+    // drei Stationen mit je einem Gebäude
+    [0.16, 0.47, 0.78].forEach((f, i) => {
+      const x = px + pw * f;
+      o += linie(x, busY, x, busY + 12, { breite: 1.6 }) + trafo(x, busY + 12) + linie(x, busY + 36, x, nsY, { breite: 1.6 });
+      o += txt(x - 12, busY + 30, `S${i + 1}`, { anchor: 'end', size: 10, fill: T.text.muted });
+      o += linie(x - 22, nsY, x + 22, nsY, { breite: 4 });
+      const eng = i === 1, krit = i === 2;
+      o += linie(x, nsY, x, gebY, eng ? { farbe: rot, breite: 3.2 } : { breite: 1.8 });
+      if (eng) o += txt(x + 6, nsY + 24, 'Engpass', { size: 10, weight: 700, fill: rot });
+      o += kasten(x - 22, gebY, 44, 28, krit ? { rand: rot, breite: 1.6 } : { fill: T.neutral.band, rand: T.rule });
+      o += txt(x, gebY + 18, krit ? 'kritisch' : 'Gebäude', { anchor: 'middle', size: 9.5, weight: krit ? 700 : 400, fill: krit ? rot : strich });
+      // dezentraler Speicher am Gebäude — elektrisch unterhalb des Engpasses
+      const dez = v.dez.includes(i);
+      if (dez) o += linie(x + 22, gebY + 14, x + 28, gebY + 14, { breite: 1.6 }) + batterie(x + 43, gebY + 4, false);
+      const w = v.wirkung[i];
+      if (w) o += txt(dez ? x + 18 : x, gebY + 44, w[0], { anchor: 'middle', size: 9.5, weight: 600, fill: farbe[w[1]] });
+    });
+
+    // Vor- und Nachteile
+    o += linie(px + 16, py + listTop - 18, px + pw - 16, py + listTop - 18, { farbe: T.line, breite: 1 });
+    let ly = py + listTop;
+    for (const [zeichen, zeilen] of liste) {
+      o += txt(px + 18, ly, zeichen, { anchor: 'middle', size: 12, weight: 700, fill: zeichen === '+' ? T.accents.gruen : rot });
+      zeilen.forEach((z, j) => { o += txt(px + 30, ly + j * 14, z, { size: 11 }); });
+      ly += zeilen.length * 14 + 6;
+    }
+    return o;
+  };
+
+  GG_SPEICHER_VARIANTEN.forEach((v, i) => { out += feld(v, listen[i], S.padX + i * (pw + gap), top); });
+
+  // ── Herleitung: welcher Nutzen wirkt wo ──
+  out += txt(S.padX, tTop, 'Welcher Nutzen wirkt wo?', { size: 13, weight: 700 });
+  const t0 = tTop + 14, cN = S.padX + 12, cW = S.padX + 450, cS = S.padX + 640;
+  out += `<rect x="${S.padX}" y="${gR(t0)}" width="${W - 2 * S.padX}" height="${tKopf}" fill="${T.tint}"/>`;
+  [['NUTZEN', cN], ['WIRKT AN', cW], ['STANDORT', cS]].forEach(([k, x]) => {
+    out += txt(x, t0 + 17, k, { mono: true, size: S.fsTabHead, weight: 500, tracking: S.trackTabHead, fill: T.text.muted });
+  });
+  nutzen.forEach(([n, wo, ort, gebunden], i) => {
+    const y = t0 + tKopf + i * tZeile;
+    out += txt(cN, y + 16, n, { size: 11.5 });
+    out += txt(cW, y + 16, wo, { size: 11.5, fill: T.text.muted });
+    out += `<rect x="${cS}" y="${gR(y + 7)}" width="10" height="10" fill="${gebunden ? gruen : T.rule}"/>`;
+    out += txt(cS + 18, y + 16, ort, { size: 11.5, weight: gebunden ? 700 : 400 });
+    out += linie(S.padX, y + tZeile, W - S.padX, y + tZeile, { farbe: T.line, breite: 1 });
+  });
+  merk.forEach((z, i) => { out += txt(S.padX, merkY + i * 17, z, { size: 12.5, weight: 700, fill: gruen }); });
+
+  // ── Legende ──
+  let lx = S.padX;
+  const leg = (zeichen, zw, text) => {
+    out += zeichen(lx, legY);
+    out += txt(lx + zw + 8, legY + 4, text, { size: 11 });
+    lx += zw + 8 + ggEstW(text, 11) + 26;
+  };
+  leg(x => batterie(x + 15, legY - 10, false), 30, 'Batteriespeicher');
+  leg((x, y) => linie(x, y, x + 30, y, { farbe: gruen, breite: 4.5 }), 30, 'MS-Netz der Liegenschaft');
+  leg((x, y) => linie(x, y, x + 30, y, { farbe: rot, breite: 3.2 }), 30, 'Engpass');
+  leg((x, y) => kasten(x, y - 6, 16, 12, { rand: rot, breite: 1.6 }), 16, 'kritisches Gebäude');
+  leg((x, y) => linie(x, y, x + 30, y, { farbe: T.text.muted, breite: 1.2, strich: '6 4' }), 30, 'Bilanzgrenze');
+  fuss.forEach((z, i) => { out += txt(S.padX, legY + 28 + i * 15, z, { size: S.fsTab - 2, fill: fein }); });
+  return ggFinishSvg(out, W, height);
+}
 
 function ggPvFiguren() {
   const pvText = (id, reihe, titel, hinweis, render) => ({
@@ -9634,6 +9895,32 @@ function ggPvFiguren() {
       + 'offen, bis der Anlagenteil im Editor abgebildet ist.',
       cfg => ggRenderPvAbgrenzungText(cfg)),
 
+    // ── Prinzipskizze Speichereinbindung zentral / dezentral / hybrid ────
+    {
+      id: 'pv-speicher-standort-prinzip',
+      autoSync: true,
+      reihe: 67,   // nach Speichertext und Speichertabelle, vor dem Netztext
+      kapitel: GG_PV_KAPITEL,
+      titel: 'Prinzip Einbindung des Batteriespeichers: zentral, dezentral, hybrid',
+      datei: 'pv-speicher-standort-prinzip',
+      hinweis: 'Prinzipskizze ohne Projektdaten: dasselbe Liegenschaftsnetz dreimal — Speicher zentral am NAP, dezentral '
+             + 'je Station (am Gebäude, unterhalb des Engpasses) und hybrid — mit Vor- und Nachteilen. Darunter die '
+             + 'Herleitung, welcher Nutzen an der Bilanzgrenze und welcher an einem bestimmten Ort im Netz wirkt. Dient '
+             + 'als Begründung für den gewählten Aufstellort.',
+      render: cfg => ggRenderSpeicherStandortPrinzip(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten · Batteriespeicher',
+        titel: 'Einbindung des Batteriespeichers: zentral, dezentral, hybrid',
+        merksatz: 'Hinter einem Netzanschlusspunkt ist der Standort für Eigenverbrauch und Lastspitze nahezu gleichgültig. '
+          + 'Dezentrale Speicher lohnen sich nur dort, wo ein Nutzen an einen bestimmten Ort im Netz gebunden ist.',
+        fussnote: 'Prinzipskizze ohne Auslegung. Ob sich ein dezentraler Standort lohnt, zeigt der Vergleich bei gleicher '
+          + 'Gesamtkapazität: Mehrkosten gegenüber der zentralen Lösung gegen den vermiedenen Netzausbau. Ein Inselbetrieb '
+          + 'der ganzen Liegenschaft über den zentralen Speicher erfordert ein eigenes Schutzkonzept, weil Wechselrichter '
+          + 'nur einen geringen Kurzschlussstrom liefern.',
+      },
+      ausProjekt() { return '✓ Prinzipskizze — keine Projektdaten nötig.'; },
+    },
+
     // ── Prinzipskizze Netzanbindung mit EZA-Regler ───────────────────────
     {
       id: 'pv-eza-prinzip',
@@ -9642,8 +9929,10 @@ function ggPvFiguren() {
       kapitel: GG_PV_KAPITEL,
       titel: 'Prinzip Netzanbindung mit EZA-Regler und Entkupplungsschutz',
       datei: 'pv-eza-regler-prinzip',
-      hinweis: 'Prinzipskizze: Übergabestation am NAP mit Wandlern, Zähler, übergeordnetem Entkupplungsschutz und '
-             + 'Leistungsschalter; eigenes MS-Netz mit Trafostationen im Ring (offene Trennstelle), PV, Batterie und BHKW auf '
+      hinweis: 'Prinzipskizze: Übergabestation am NAP mit Wandlern, Zähler und Leistungsschalter, übergeordneter '
+             + 'Entkupplungsschutz mit Leistungsklasse aus dem Projekt, Standard: wirkt nur auf die Erzeugung (Übergabe nur '
+             + 'Rückfallebene; cfg.ueks/rueckfall); externer EKS mit Kuppelschalter je Erzeugungseinheit, ÜEKS als zweiter '
+             + 'Auslöseweg auf denselben Schalter oder auf einen Sammel-Kuppelschalter je Station (cfg.sammelKs); eigenes MS-Netz mit Trafostationen im Ring (offene Trennstelle), PV, Batterie und BHKW auf '
              + 'der NS-Seite; EZA-Regler mit Fernwirktechnik und Direktvermarkter führt alle Einheiten über ein eigenes '
              + 'LWL-Steuernetz (2 Fasern BWI-Netz), zum Leitsystem nur über eine IT-sichere Schnittstelle; gestrichelt die '
              + 'Liegenschaftsgrenze. Nennspannung aus dem NAP, Zahl der Trafostationen, BHKW-Leistung und '
@@ -9654,6 +9943,9 @@ function ggPvFiguren() {
         eyebrow: 'Elektrotechnisches Gutachten · Netzintegration PV',
         titel: 'Netzanbindung mit EZA-Regler und Entkupplungsschutz',
         werte: {},
+        ueks: 'eze',      // Wirkweg des ÜEKS: 'eze' (nur Erzeugung) · 'beide' (a + b als Varianten) · 'uebergabe' · 'ohne'
+        sammelKs: false,  // Sammel-Kuppelschalter je Station; false = ÜEKS als zweiter Auslöseweg auf jeden EKS-Schalter
+        rueckfall: true,  // bei 'eze': Übergabe-Leistungsschalter als Rückfallebene bei Schalterversagen
         punkte: GG_EZA_PUNKTE,
         fussnote: GG_EZA_FUSSNOTE,
       },

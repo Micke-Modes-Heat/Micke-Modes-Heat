@@ -465,8 +465,12 @@ function renderSeite() {
         kopf.textContent = `Zu Kapitel ${g.kapitel}`;
         box.appendChild(kopf);
         for (const b of g.bloecke) {
+          // anklickbar wie im Text: derselbe Block, Eigenschaften rechts, von dort in die Einzelansicht
           const fb = document.createElement('div');
-          fb.style.cssText = 'margin:8px 0;';
+          fb.dataset.gutEl = 'block:' + b.id;
+          fb.dataset.gutVertiefung = '1';
+          fb.dataset.click = `gutWaehle('block','${b.id}')`;
+          fb.style.cssText = 'margin:8px 0;padding:4px 6px;border-radius:3px;cursor:pointer;';
           figurBlockInhalt(fb, b, nrMap.get(b.id) || [], zuEinpassen, { inAnlage: true });
           box.appendChild(fb);
         }
@@ -575,7 +579,9 @@ export function gutWaehle(art, id, scrollen = false) {
   markiereAuswahl();
   renderGliederung();
   renderEigenschaften();
-  if (scrollen && _gut.auswahl) seitenElement(art, id)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  // Bausteine der Anlage „Technische Vertiefung“ stehen im Text nur als Hinweiszeile — zur Grafik in der Anlage springen
+  const ziel = document.querySelector(`#gut-seite [data-gut-vertiefung][data-gut-el="${art}:${id}"]`) || seitenElement(art, id);
+  if (scrollen && _gut.auswahl) ziel?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -808,6 +814,9 @@ function blockPanel(b, kapIdx) {
   const meldung = erg?.meldung || '';
   let html = panelKopf(f.istText ? 'Textbaustein' : f.istTabelle ? 'Tabelle' : 'Abbildung')
     + `<div style="font-size:12px;color:var(--text,var(--text));margin-top:6px;">${esc(f.titel)}</div>` + ort;
+  if (ggFigurInVertiefung(b.figurId) && ggFigurSichtbarOhneFassung(b.figurId)) {
+    html += hinweis(`Steht in dieser Fassung in der Anlage „${esc(GG_VERTIEFUNG_TITEL)}“ — bearbeiten wie jede andere Grafik.`);
+  }
   if (meldung) {
     html += `<div style="margin-top:8px;font-size:11px;line-height:1.45;color:${meldung.startsWith('⚠') ? GUT_WARN : GUT_AKZENT};">${esc(meldung)}</div>`;
   }
