@@ -110,8 +110,17 @@ jsAll += `${appCode}\n`;
 
 // 2. CSS lesen
 // lkebw.css (Erscheinungsbild) liegt über app.css und wird deshalb dahinter eingefügt
-const cssCode = readFileSync(join(SRC, 'styles', 'app.css'), 'utf8')
-  + '\n' + readFileSync(join(SRC, 'styles', 'lkebw.css'), 'utf8');
+// Schrift „Source Sans 3" aus @fontsource eingebettet (base64) statt von Google Fonts geladen.
+const fontFace = [400, 600, 700].map(w => {
+  const woff2 = readFileSync(resolve(`node_modules/@fontsource/source-sans-3/files/source-sans-3-latin-${w}-normal.woff2`));
+  return `@font-face{font-family:'Source Sans 3';font-style:normal;font-display:swap;font-weight:${w};`
+    + `src:url(data:font/woff2;base64,${woff2.toString('base64')}) format('woff2');}`;
+}).join('\n');
+const lkebwCss = readFileSync(join(SRC, 'styles', 'lkebw.css'), 'utf8')
+  .replace(/@import\s+'@fontsource\/source-sans-3\/[^']+';\s*/g, '');
+if (/@import/.test(lkebwCss)) throw new Error('lkebw.css enthält ein unerwartetes @import');
+const cssCode = fontFace + '\n' + readFileSync(join(SRC, 'styles', 'app.css'), 'utf8')
+  + '\n' + lkebwCss;
 
 // Inline-Favicon: SVG muss URL-encodiert sein, da < und > in HTML-Attributen den Parser brechen
 // (unencoded <svg> im href → leerer href → Browser lädt aktuelle Seite → Unsafe attempt + ERR_FILE_NOT_FOUND)

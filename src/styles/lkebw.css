@@ -6,7 +6,11 @@
    3. Bausteine (Knöpfe, Felder, Fenster, Reiter, Tabellen)
    Rahmen, Prozessleiste und Ergebnisleiste stehen in Abschnitt 4.
    ══════════════════════════════════════════════════════════════════════ */
-@import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap');
+/* Schrift lokal statt von Google (keine IP-Weitergabe). Im Build ersetzt
+   build-singlefile.mjs diese Zeilen durch eingebettete @font-face-Regeln. */
+@import '@fontsource/source-sans-3/latin-400.css';
+@import '@fontsource/source-sans-3/latin-600.css';
+@import '@fontsource/source-sans-3/latin-700.css';
 
 /* ── 1. Tokens ───────────────────────────────────────────────────────── */
 :root{

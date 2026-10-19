@@ -10,12 +10,12 @@
 //     angefragt (Neu laden mit { frisch: true } bzw. osmZwischenspeicherLeeren()).
 //   • overpass-api.de verlangt seit 2026 bei Anfragen aus dem Browser eine Herkunftsangabe (HTTP-Referer) und lehnt
 //     sonst mit 406 ab. Eine lokal geöffnete Datei (file://) sendet keine — dann wird dieser Server übersprungen.
+//   • Nur Server in DE/AT: Der Kartenausschnitt verrät, welche Liegenschaft untersucht wird.
 
 export const OVERPASS_SERVER = Object.freeze([
   { name: 'overpass-api.de', url: 'https://overpass-api.de/api/interpreter', brauchtHerkunft: true },
   { name: 'private.coffee', url: 'https://overpass.private.coffee/api/interpreter' },
   { name: 'kumi.systems', url: 'https://overpass.kumi.systems/api/interpreter' },
-  { name: 'maps.mail.ru', url: 'https://maps.mail.ru/osm/tools/overpass/api/interpreter' },
 ]);
 
 const SPEICHER_TAGE = 30;

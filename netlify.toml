@@ -13,3 +13,19 @@
 [build]
   command = "npm run build && npm run build:feldapp"
   publish = "dist"
+
+# Schutz-Header für alle Seiten:
+#   • keine Aufnahme in Suchmaschinen (internes Werkzeug)
+#   • nicht in fremde Seiten einbettbar (Clickjacking)
+#   • keine Plugins/<object>, Formulare nur an die eigene Seite (Netlify Forms)
+#   • Herkunftsangabe nur als Domain — overpass-api.de verlangt sie, Pfade bleiben intern
+#   • Kamera/Mikrofon aus; Standort nur für die eigene Seite (GPS in der Feldapp)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(self)"
+    Content-Security-Policy = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'"

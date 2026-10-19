@@ -3122,12 +3122,12 @@ export async function loadOsmStrassen() {
     const enc = encodeURIComponent(q);
     const body = 'data=' + enc;
     const postHeaders = { 'Content-Type': 'application/x-www-form-urlencoded' };
-    const getTarget = 'https://overpass-api.de/api/interpreter?data=' + enc;
+    // Nur Server in DE/AT — keine Proxys Dritter, keine Server außerhalb der EU
+    // (der Kartenausschnitt verrät, welche Liegenschaft untersucht wird).
     const requests = [
-      {url:'https://maps.mail.ru/osm/tools/overpass/api/interpreter', options:{method:'POST',headers:postHeaders,body}},
       {url:'https://overpass-api.de/api/interpreter', options:{method:'POST',headers:postHeaders,body}},
+      {url:'https://overpass.kumi.systems/api/interpreter', options:{method:'POST',headers:postHeaders,body}},
       {url:'https://overpass.private.coffee/api/interpreter?data=' + enc, options:{}},
-      {url:'https://corsproxy.io/?' + getTarget, options:{}},
     ];
     const controllers = requests.map(() => new AbortController());
     const remainingBudget = Math.max(1000,totalLoadBudgetMs - (Date.now() - loadStartedAt));
