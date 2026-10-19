@@ -1278,6 +1278,12 @@ export function gutStandardtextDaten() {
 export function gutFragenLesen() { return _gut.dok?.fragen || {}; }
 /** Gibt es ein Gutachten-Dokument? Ohne Dokument kann der Fragebogen nicht beantwortet werden (17 Einzelansicht). */
 export function gutHatDokument() { return !!_gut.dok; }
+/** Kurzstand für den Projektstand: Kapitelzahl und Kapitel ohne Inhalt, null = kein Dokument */
+export function gutStand() {
+  const kap = _gut.dok?.kapitel;
+  if (!kap) return null;
+  return { kapitel: kap.length, leer: kap.filter(k => !(k.bloecke || []).length).length };
+}
 /** Verweistabelle Standardnummer → Nummer im Dokument (C5); zwischengespeichert, solange sich die Gliederung nicht ändert. */
 let _verweisCache = { schluessel: '', map: new Map() };
 export function gutVerweisNummern() {

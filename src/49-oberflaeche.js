@@ -9,6 +9,10 @@
 // Präfix: ui… · Zustand im localStorage unter 'micke.ui'
 
 import { LKEBW_LOGO_HELL } from './config/lkebw-logo.js';
+import { activeVariantId, gebaeude, stromEdges, trassePoints, trasseSegments } from './01-globals-varianten.js';
+import { isErzeugerAktiv, meritOrderKeys } from './06c-dispatch-core.js';
+import { ASSETS } from './13a-assets-core.js';
+import { gutStand } from './21-gutachten-editor.js';
 
 const _KEY = 'micke.ui';
 const _ui = { schritt: 'projekt', sparte: 'waerme', waermeTab: 'netz', abschnitt: { auswertung: 'uebersicht', gutachten: 'ggrafik' } };
@@ -135,28 +139,86 @@ function _schritteRendern() {
     const z = st[s.id] || { stufe: 'leer', text: '' };
     const aktiv = s.id === _ui.schritt;
     const nr = z.stufe === 'ok' && !aktiv ? _ic('check', 'ui-i ui-i-sm') : String(i + 1);
-    return `<button class="ui-step" type="button" data-ui-schritt="${s.id}" data-stufe="${z.stufe}" aria-current="${aktiv}">
+    return `<button class="ui-step" type="button" data-ui-schritt="${s.id}" data-stufe="${z.stufe}" aria-current="${aktiv}"${z.detail ? ` title="${_esc(z.detail)}"` : ''}>
       <span class="ui-step-nr">${nr}</span><b>${s.titel}</b><small>${_esc(z.text)}</small></button>`;
   }).join('');
 }
 
-// Status je Schritt aus dem Datenstand (leer · offen · ok). Bewusst einfach und schnell.
+// Wärmeberechnung: systemState trägt keinen Stempel. Beim ersten Blick auf ein neues
+// Ergebnis merken wir uns den Planungsstand; weicht er später ab → „veraltet“.
+let _waermeStempel = { ss: null, sig: '' };
+const _waermeSignatur = erzKeys => [activeVariantId ?? '-', erzKeys.join(','), gebaeude.length, trasseSegments.length, trassePoints.length].join('|');
+const _seit = t => {
+  const min = Math.round(Math.max(0, Date.now() - t) / 60000);
+  return min < 1 ? 'gerade eben' : min < 60 ? `vor ${min} min` : `vor ${Math.round(min / 60)} h`;
+};
+const _STATIONEN = ['NAP', 'Trafo', 'NSHV', 'Schaltanlage'];
+
+// Status je Schritt aus dem Datenstand (leer · offen · veraltet · ok). Bewusst einfach und schnell.
+// text = kurz für die Prozessleiste, detail = ausführlich für Projektseite und Hinweis.
+// Daten über die Modul-Bindings lesen: window.meritOrderKeys u. ä. sind für Nicht-globals-Module
+// nach einem set…() veraltet, window.assets gibt es gar nicht (Anlagen liegen in ASSETS.items).
 export function uiSchrittStatus() {
-  const geb = Array.isArray(window.gebaeude) ? window.gebaeude : [];
   const name = (window.getProjektName?.() || '').trim();
-  const assets = Array.isArray(window.assets) ? window.assets.length : 0;
-  const erz = typeof window.isErzeugerAktiv === 'function' && Array.isArray(window.meritOrderKeys)
-    ? window.meritOrderKeys.filter(k => window.isErzeugerAktiv(k)).length : 0;
-  const netzKm = (window.trasseSegments || []).length;
+  const erzKeys = meritOrderKeys.filter(k => isErzeugerAktiv(k));
+  const nErz = erzKeys.length, nStr = trasseSegments.length;
+  // Strom: Netz erst ab Station oder Kabel — UV/Verbraucher legt das Tool je Gebäude selbst an.
+  // PV zählt als Gebäude mit PV (Gebäudeangabe oder PV-Anlage).
+  const strom = ASSETS.items.filter(a => a.domain === 'strom' || a.domain === 'hybrid');
+  const nNap = strom.filter(a => a.type === 'NAP').length;
+  const nStat = strom.filter(a => _STATIONEN.includes(a.type)).length;
+  const nNetz = nStat + stromEdges.length;
+  const pvGeb = new Set(gebaeude.filter(g => g.pvAktiv).map(g => String(g.id)));
+  strom.forEach(a => { if (a.type === 'PV' && a.buildingId != null) pvGeb.add(String(a.buildingId)); });
+  const nPv = pvGeb.size;
+
+  // ── Planung ──
+  const wKurz = nErz ? `${nErz} Erzeuger` : nStr ? 'Wärmenetz' : '';
+  const sKurz = nNetz ? (nNap ? 'Stromnetz' : 'Stromnetz ohne NAP') : '';
+  const pvKurz = nPv ? (nNetz ? 'PV' : 'PV ohne Stromnetz') : '';
+  const wDet = nErz || nStr ? [nErz ? `${nErz} Erzeuger` : 'keine Erzeuger', nStr ? `Wärmenetz mit ${nStr} ${nStr === 1 ? 'Strang' : 'Strängen'}` : 'kein Wärmenetz'].join(', ') : 'offen';
+  const sDet = nNetz || nPv ? [
+    nNetz ? `${nStat} ${nStat === 1 ? 'Station' : 'Stationen'}, ${stromEdges.length} Kabel` : 'kein Stromnetz',
+    nNetz ? (nNap ? `${nNap} NAP` : 'NAP fehlt') : '',
+    nPv ? `PV auf ${nPv} ${nPv === 1 ? 'Gebäude' : 'Gebäuden'}` : '',
+  ].filter(Boolean).join(', ') : 'offen';
+  let planung;
+  if (!wKurz && !sKurz && !pvKurz) planung = { stufe: gebaeude.length ? 'offen' : 'leer', text: 'noch nichts geplant' };
+  else planung = {
+    stufe: wKurz && sKurz && nNap ? 'ok' : 'offen',
+    text: [wKurz || 'Wärme offen', sKurz || (pvKurz ? '' : 'Strom offen'), pvKurz].filter(Boolean).join(' · '),
+  };
+  planung.detail = planung.text === 'noch nichts geplant' ? planung.text : `Wärme: ${wDet} · Strom: ${sDet}`;
+
+  // ── Auswertung: Wärme und Strom getrennt ──
   const ss = window.systemState;
-  const kap = window._gutStatus?.() || null;
+  let wErg = 'offen';
+  if (ss && (ss.gesamtMwhMitNV || ss.nutzwaermeMwh)) {
+    const sig = _waermeSignatur(erzKeys);
+    if (_waermeStempel.ss !== ss) _waermeStempel = { ss, sig };
+    wErg = _waermeStempel.sig === sig ? 'gerechnet' : 'veraltet';
+  }
+  const el = window.elCalcStand?.() || null;   // null = in dieser Sitzung nicht gerechnet
+  const sErg = !el ? 'offen' : el.frisch ? 'gerechnet' : 'veraltet';
+  const erg = [wErg, sErg];
+  const auswertung = {
+    stufe: erg.includes('veraltet') ? 'veraltet' : erg.every(x => x === 'gerechnet') ? 'ok' : erg.includes('gerechnet') ? 'offen' : 'leer',
+    text: wErg === 'offen' && sErg === 'offen' ? 'noch nicht gerechnet' : `Wärme ${wErg} · Strom ${sErg}`,
+  };
+  auswertung.detail = [
+    wErg === 'veraltet' ? 'Wärme: Planung seit der Berechnung geändert — neu berechnen' : `Wärme: ${wErg === 'gerechnet' ? 'Ergebnisse liegen vor' : 'noch nicht berechnet'}`,
+    sErg === 'veraltet' ? `Strom: Netz oder Parameter seit der Berechnung (${_seit(el.t)}) geändert — neu berechnen`
+      : sErg === 'gerechnet' ? `Strom: berechnet ${_seit(el.t)}` : 'Strom: Elektroberechnung in dieser Sitzung noch nicht gelaufen',
+  ].join(' · ');
+
+  const kap = gutStand();
   return {
     projekt: name ? { stufe: 'ok', text: 'Stammdaten erfasst' } : { stufe: 'offen', text: 'Name fehlt' },
-    bestand: geb.length ? { stufe: 'ok', text: `${geb.length.toLocaleString('de-DE')} Gebäude` } : { stufe: 'leer', text: 'Gebäude laden' },
-    planung: (erz || netzKm || assets) ? { stufe: 'ok', text: [erz ? `${erz} Erzeuger` : '', assets ? `${assets} Elektro-Objekte` : ''].filter(Boolean).join(' · ') || 'Netz angelegt' }
-      : { stufe: geb.length ? 'offen' : 'leer', text: 'noch nichts geplant' },
-    auswertung: ss && (ss.gesamtMwhMitNV || ss.nutzwaermeMwh) ? { stufe: 'ok', text: 'Ergebnisse liegen vor' } : { stufe: 'leer', text: 'noch nicht gerechnet' },
-    gutachten: kap ? { stufe: kap.fertig ? 'ok' : 'offen', text: kap.text } : { stufe: 'leer', text: 'Gliederung anlegen' },
+    bestand: gebaeude.length ? { stufe: 'ok', text: `${gebaeude.length.toLocaleString('de-DE')} Gebäude` } : { stufe: 'leer', text: 'Gebäude laden' },
+    planung,
+    auswertung,
+    gutachten: !kap ? { stufe: 'leer', text: 'Gliederung anlegen' }
+      : { stufe: kap.leer ? 'offen' : 'ok', text: kap.leer ? `${kap.kapitel} Kapitel · ${kap.leer} ohne Inhalt` : `${kap.kapitel} Kapitel angelegt` },
   };
 }
 
@@ -226,21 +288,21 @@ export function uiProjektseiteRendern() {
   if (!v) return;
   const st = uiSchrittStatus();
   const name = (window.getProjektName?.() || '').trim();
-  const geb = Array.isArray(window.gebaeude) ? window.gebaeude : [];
+  const geb = gebaeude;
   const naechster = UI_SCHRITTE.find(s => st[s.id]?.stufe !== 'ok');
   const zeile = (stufe, titel, text, sprung) => `<div class="ui-ck" data-stufe="${stufe}">
-      <span class="ui-ck-ic">${_ic(stufe === 'ok' ? 'check' : stufe === 'offen' ? 'alert' : 'circle', 'ui-i ui-i-sm')}</span>
+      <span class="ui-ck-ic">${_ic(stufe === 'ok' ? 'check' : stufe === 'offen' || stufe === 'veraltet' ? 'alert' : 'circle', 'ui-i ui-i-sm')}</span>
       <span class="ui-ck-t"><b>${_esc(titel)}</b><small>${_esc(text)}</small></span>
       ${sprung ? `<button type="button" class="btn-secondary ui-ck-btn" data-ui-sprung="${sprung}">Öffnen</button>` : '<span></span>'}</div>`;
   v.querySelector('#ui-projekt-kopf').innerHTML = `
     <div><span class="ui-eyebrow">Projekt</span><h1>${_esc(name || 'Unbenanntes Projekt')}</h1>
       <p>${geb.length ? `${geb.length.toLocaleString('de-DE')} Gebäude im Plangebiet` : 'Noch keine Gebäude geladen'}</p></div>`;
   v.querySelector('#ui-projekt-stand').innerHTML = `
-    ${naechster ? `<div class="ui-next">${_ic('arrow')}<div><b>Nächster Schritt: ${_esc(naechster.titel)}</b><small>${_esc(st[naechster.id].text)}</small></div>
+    ${naechster ? `<div class="ui-next">${_ic('arrow')}<div><b>Nächster Schritt: ${_esc(naechster.titel)}</b><small>${_esc(st[naechster.id].detail || st[naechster.id].text)}</small></div>
       ${naechster.id === 'projekt'
         ? '<button type="button" class="btn-confirm" data-ui-fokus="pd-kaserne-name">Namen eintragen</button>'
         : `<button type="button" class="btn-confirm" data-ui-sprung="${naechster.id}">Weiter zu ${_esc(naechster.titel)}</button>`}</div>` : ''}
-    ${UI_SCHRITTE.map(s => zeile(st[s.id].stufe, s.titel, st[s.id].text, s.id === 'projekt' ? null : s.id)).join('')}`;
+    ${UI_SCHRITTE.map(s => zeile(st[s.id].stufe, s.titel, st[s.id].detail || st[s.id].text, s.id === 'projekt' ? null : s.id)).join('')}`;
 }
 
 // ── Befehlssuche (Strg K) ──────────────────────────────────────────────
