@@ -150,11 +150,13 @@ export function pvbsAbgleich() {
     const st = pvbsStand(z.projektId);
     if (st && st === ps) for (const [id, e] of Object.entries(_projektEintraege())) if (st.geb[id]) Object.assign(st.geb[id], pvbsNeu({ id: 'x', eintraege: { [id]: e } }).geb[id]);
   }
-  if (bearbeitet) window.pvMarkStale?.();
-  if (bearbeitet || vorher !== `${_bs.projektId}|${!!_entwurf}`) window._pvBelegungenRefresh?.();
+  // Erst den Stand merken, dann nach außen melden: _pvBelegungenRefresh (09d) fragt
+  // über pvbsProjektId wieder hier nach — mit altem _letzteSig lief das endlos.
   _letzteSig = sig;
   _neuAufloesen = false;
   _basisLoesen = false;
+  if (bearbeitet) window.pvMarkStale?.();
+  if (bearbeitet || vorher !== `${_bs.projektId}|${!!_entwurf}`) window._pvBelegungenRefresh?.();
   return pvbsStand(_bs.projektId);
 }
 

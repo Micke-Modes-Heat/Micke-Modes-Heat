@@ -1853,6 +1853,7 @@ export function pvBerechneAlle() {
   _pvaRenderView();
   const infraSum = document.getElementById('pva-infra-summary');
   if (infraSum) infraSum.innerHTML = _pvaInfraSummary();
+  _pvRenderInfraStufen();   // Karte 06 zeigt die eben ermittelten Netzstufen
   _pvUpdateBerechnenBtn(false);
 }
 
@@ -2884,8 +2885,8 @@ function _pvBuildPanelHtml() {
       <div data-click="pvaDeckToggle('infra')" style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;"
            title="Ein- und ausklappen">
         <span style="font-family:'DM Mono',monospace;font-size:12.5px;color:var(--accent);">06</span>
-        <div style="font-size:12px;font-weight:600;color:var(--text);">Netzanschluss-Infrastruktur</div>
-        <span class="htip" data-tip="Netzanschluss- und Zusatzkosten je PV-Leistungsstufe. Die Stufe wird jeder Auslegung automatisch nach ihrer PV-Leistung zugeordnet; alle Werte sind editierbar.">?</span>
+        <div style="font-size:12px;font-weight:600;color:var(--text);">Netzanschluss und Netzausbau</div>
+        <span class="htip" data-tip="Netzausbau: aus dem Netzmodell (Ausbautreppe der Netzaufnahme) — jede Auslegung trägt die Ertüchtigungen, die ihre Leistung braucht.&#10;Anschluss und Regelung (Anmeldung, NA-Schutz, EZA-Regler, Direktvermarktung): nach Anlagengröße, editierbar.&#10;Pauschaler Netzbau (Trafo, MS-Trasse, Übergabestation): nur, wenn es kein nutzbares Netzmodell gibt.">?</span>
         <span id="pva-infra-summary" style="margin-left:auto;font-size:12px;color:var(--c-blue);">${_pvaInfraSummary()}</span>
         <span id="pva-infra-caret" style="color:var(--c-blue);font-size:12.5px;width:12px;text-align:center;">${window._pvAnalyse.deckZu?.infra ? '▸' : '▾'}</span>
       </div>
@@ -2996,6 +2997,16 @@ window.pvaDeckToggle = function pvaDeckToggle(key) {
  *  und — sobald gerechnet wurde — die Stufe der hervorgehobenen Variante. */
 function _pvaInfraSummary() {
   try {
+    const s = window._pvAnalyse;
+    const nk = s.netzkurveAktiv !== false ? s.netzkurve : null;
+    if (nk?.kurve?.stufen?.length) {
+      const st = nk.kurve.stufen, f = nk.faktor || 1;
+      const f0 = x => Math.round(x).toLocaleString('de-DE');
+      const best = (s.ergebnisse || []).find(e => e.id === 'wirt-opt');
+      const ns = best?.wirt?.netzStufe;
+      return `Netzmodell: Bestand bis ${f0(st[0].bisKwp / f)} kWp · ${st.length - 1} Ausbaustufe${st.length === 2 ? '' : 'n'} bis ${f0(st.at(-1).investEUR)} €`
+        + (ns ? ` · Wirtschaftlich: ${ns.stufe === 0 ? 'Bestandsnetz' : 'Stufe ' + ns.stufe} (${f0(ns.investEUR)} €)` : '');
+    }
     const stufen = PV_INFRA_STUFEN.map(st => {
       const items = _pvInfraItems(st.id);
       return { label: st.label, bisKwp: st.bisKwp,
@@ -3004,10 +3015,10 @@ function _pvaInfraSummary() {
     const erg  = window._pvAnalyse.ergebnisse || [];
     const best = erg.find(e => e.id === 'wirt-opt') || erg[0];
     const teil = best ? stufen.find(st => best.pvKwp <= st.bisKwp) : null;
-    const basis = stufen.length + ' Stufen · ' +
-      Math.round(stufen.reduce((x, y) => x + y.invest, 0)).toLocaleString('de-DE') + ' € hinterlegt';
+    const basis = 'pauschal nach Anlagengröße (kein Netzmodell genutzt)';
     return teil
-      ? basis + ' · gewählte Auslegung: ' + escHtml(teil.label) + ' (' + Math.round(teil.invest).toLocaleString('de-DE') + ' €)'
+      ? basis + ' · Wirtschaftlich: ' + _pvInfraKlasse(PV_INFRA_STUFEN.find(x => x.label === teil.label) || PV_INFRA_STUFEN[0])
+        + ' (' + Math.round(teil.invest).toLocaleString('de-DE') + ' €)'
       : basis;
   } catch (e) { return 'Kosten je PV-Leistungsstufe'; }
 }
@@ -4474,29 +4485,109 @@ function _pvInfraItems(stufeId) {
   return state.infraKonfig[stufeId];
 }
 
+/** Größenklasse einer Infrastruktur-Stufe ohne die alte Netzbau-Annahme im Namen („< 30 kWp", „500–2.000 kWp"). */
+function _pvInfraKlasse(stufe) {
+  const i = PV_INFRA_STUFEN.indexOf(stufe);
+  const von = i > 0 ? PV_INFRA_STUFEN[i - 1].bisKwp : 0;
+  const f = x => x.toLocaleString('de-DE');
+  return !von ? `< ${f(stufe.bisKwp)} kWp` : Number.isFinite(stufe.bisKwp) ? `${f(von)}–${f(stufe.bisKwp)} kWp` : `> ${f(von)} kWp`;
+}
+
+/**
+ * Karte 06: Netzausbau aus dem Netzmodell (Ausbautreppe) + Anschluss/Regelung nach
+ * Anlagengröße. Die pauschalen Netzbau-Positionen der kWp-Stufen (Trafo, MS-Trasse,
+ * Übergabestation) gelten nur noch als Rückfall ohne Netzmodell.
+ */
 function _pvRenderInfraStufen() {
   const el = document.getElementById('pva-infra-stufen');
   if (!el) return;
-  el.innerHTML = PV_INFRA_STUFEN.map(stufe => {
-    const items = _pvInfraItems(stufe.id);
-    const rows = items.map((item, idx) => `
-      <div style="display:flex;align-items:center;gap:6px;padding:2px 0;border-bottom:1px solid rgba(var(--ink),0.04);">
+  const s = window._pvAnalyse;
+  const nk = s.netzkurve;
+  const kurveAn = s.netzkurveAktiv !== false;
+  const f0 = x => Math.round(x).toLocaleString('de-DE');
+  const ueberschrift = (t, sub) => `<div style="font-size:12.5px;font-weight:600;color:var(--text);margin:10px 0 3px;">${t}
+    ${sub ? `<span style="font-weight:400;color:var(--muted);margin-left:6px;">${sub}</span>` : ''}</div>`;
+  const zeile = (stufeId, idx, item, gedimmt) => `
+      <div style="display:flex;align-items:center;gap:6px;padding:2px 0;border-bottom:1px solid rgba(var(--ink),0.04);${gedimmt ? 'opacity:.45;' : ''}">
         <label style="flex:1;display:flex;align-items:center;gap:5px;color:var(--muted);font-size:12px;cursor:pointer;min-width:0;">
           <input type="checkbox" ${item.aktiv ? 'checked' : ''} style="accent-color:#fdd835;flex-shrink:0;"
-            data-change="window._pvAnalyse.infraKonfig['${stufe.id}'][${idx}].aktiv=this.checked"/>
+            data-change="window._pvAnalyse.infraKonfig['${stufeId}'][${idx}].aktiv=this.checked"/>
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.label}</span>
         </label>
         <input type="number" value="${item.investEUR || 0}" min="0" step="100"
           style="width:72px;flex-shrink:0;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:12px;text-align:right;"
-          data-change="window._pvAnalyse.infraKonfig['${stufe.id}'][${idx}].investEUR=parseFloat(this.value)||0"/>
+          data-change="window._pvAnalyse.infraKonfig['${stufeId}'][${idx}].investEUR=parseFloat(this.value)||0"/>
         <span style="font-size:12px;color:var(--muted);flex-shrink:0;">€${item.perKwh ? ` +${(item.perKwh * 100).toFixed(1)}ct/kWh` : ''}</span>
-      </div>`).join('');
-    return `<div style="margin-bottom:6px;">
-      <div style="font-size:12.5px;font-weight:600;color:var(--text);margin-bottom:2px;">${stufe.label}</div>
-      ${rows}
-    </div>`;
+      </div>`;
+
+  // ── A · Netzausbau aus dem Netzmodell ──
+  let netz = ueberschrift('Netzausbau aus dem Netzmodell', nk ? `${escHtml(nk.quelle)} · Netz ${nk.jahr || ''}` : '');
+  netz += `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;margin-bottom:4px;">
+      <input type="checkbox" ${kurveAn ? 'checked' : ''} style="accent-color:#fdd835;" data-change="pvaNetzkurveAktiv(this.checked)"/>
+      Netzkosten aus der Ausbautreppe (statt Pauschalen nach Anlagengröße)</label>`;
+  if (nk?.kurve?.stufen?.length) {
+    const f = nk.faktor || 1;
+    let vor = 0;
+    netz += `<table style="width:100%;border-collapse:collapse;font-size:12px;${kurveAn ? '' : 'opacity:.45;'}">
+      <tr style="color:var(--muted);"><td style="padding:2px 4px 2px 0;">Abschnitt</td><td style="padding:2px 4px;text-align:right;">bis kWp</td>
+        <td style="padding:2px 4px;">Maßnahme</td><td style="padding:2px 0 2px 4px;text-align:right;">kum. €</td></tr>
+      ${nk.kurve.stufen.map(st => {
+        const bis = st.bisKwp / f;
+        const z = `<tr style="border-top:1px solid rgba(var(--ink),0.05);">
+          <td style="padding:3px 4px 3px 0;white-space:nowrap;color:var(--text);">${st.stufe === 0 ? 'Bestandsnetz' : st.rest ? 'Rest' : 'Stufe ' + st.stufe}</td>
+          <td style="padding:3px 4px;text-align:right;font-family:'DM Mono',monospace;">${f0(bis)}</td>
+          <td style="padding:3px 4px;color:var(--muted);">${st.stufe === 0 ? 'keine Ertüchtigung' : escHtml(st.label)}${bis > vor ? ` <span style="opacity:.8;">(+${f0(bis - vor)} kWp)</span>` : ''}</td>
+          <td style="padding:3px 0 3px 4px;text-align:right;font-family:'DM Mono',monospace;">${f0(st.investEUR)}</td></tr>`;
+        vor = bis;
+        return z;
+      }).join('')}
+    </table>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.45;">Jede Auslegung trägt die Kosten der Stufe, die ihre Leistung braucht.
+      Maßnahmen und Kosten kommen aus der Netzaufnahme (Kabel/Trafo) und dem Kostenkatalog der Netzstrategie (Erzeugungsnetz).</div>`;
+  } else {
+    netz += `<div style="font-size:12px;color:var(--muted);line-height:1.5;">Die Stufen werden beim Berechnen aus dem Netzmodell ermittelt
+      <button class="pvna-knopf" data-click="pvaNetzkurveErmitteln()" style="margin-left:6px;padding:2px 8px;font-size:12px;">jetzt ermitteln</button></div>`;
+  }
+  if (s.netzkurveHinweis) netz += `<div style="font-size:12px;color:var(--c-orange);margin-top:4px;line-height:1.45;">${escHtml(s.netzkurveHinweis)}</div>`;
+
+  // ── B · Anschluss und Regelung nach Anlagengröße (ohne Netzbau) ──
+  let anschluss = ueberschrift('Anschluss und Regelung nach Anlagengröße', 'gelten immer');
+  anschluss += PV_INFRA_STUFEN.map(stufe => {
+    const items = _pvInfraItems(stufe.id);
+    const rows = items.map((it, idx) => (PV_INFRA_NETZBAU_IDS.has(it.id) ? '' : zeile(stufe.id, idx, it, false))).join('');
+    return rows ? `<div style="font-size:12px;font-weight:600;color:var(--muted);margin-top:4px;">${_pvInfraKlasse(stufe)}</div>${rows}` : '';
   }).join('');
+
+  // ── C · Pauschaler Netzbau — nur ohne Netzmodell ──
+  const pauschalAktiv = !(kurveAn && nk);
+  let pauschal = ueberschrift('Pauschaler Netzbau', pauschalAktiv ? 'gilt, weil kein Netzmodell genutzt wird' : 'nur Rückfall ohne Netzmodell — derzeit nicht verwendet');
+  pauschal += PV_INFRA_STUFEN.map(stufe => {
+    const items = _pvInfraItems(stufe.id);
+    const rows = items.map((it, idx) => (PV_INFRA_NETZBAU_IDS.has(it.id) ? zeile(stufe.id, idx, it, !pauschalAktiv) : '')).join('');
+    return rows ? `<div style="font-size:12px;font-weight:600;color:var(--muted);margin-top:4px;${pauschalAktiv ? '' : 'opacity:.45;'}">${_pvInfraKlasse(stufe)}</div>${rows}` : '';
+  }).join('');
+
+  el.innerHTML = netz + anschluss + pauschal;
 }
+
+/** Schalter „Netzkosten aus der Ausbautreppe" (Karte 06). */
+window.pvaNetzkurveAktiv = function pvaNetzkurveAktiv(an) {
+  window._pvAnalyse.netzkurveAktiv = !!an;
+  _pvRenderInfraStufen();
+  const sum = document.getElementById('pva-infra-summary');
+  if (sum) sum.innerHTML = _pvaInfraSummary();
+  pvMarkStale();
+};
+
+/** Netzstufen schon vor dem Rechenlauf ermitteln (Karte 06). */
+window.pvaNetzkurveErmitteln = function pvaNetzkurveErmitteln() {
+  if ((window._pvAnalyse.demandMode || 'ziel') === 'ziel') _pvZielausbau(true);   // Zieljahr des Netzes
+  _pvNetzkurveRechnen(pvGetMaxKwpFromAssets());
+  _pvRenderInfraStufen();
+  const sum = document.getElementById('pva-infra-summary');
+  if (sum) sum.innerHTML = _pvaInfraSummary();
+  if (window._pvAnalyse.berechnet) pvMarkStale();
+};
 
 // ── Vergleichstabelle ──────────────────────────────────────────────────────
 
