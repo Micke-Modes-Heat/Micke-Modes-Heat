@@ -247,6 +247,42 @@ describe('pvWirtschaft — wirtschaftliche Invarianten', () => {
   });
 });
 
+// ── Heute gegen Zielausbau (10/2026) ─────────────────────────────────────────
+describe('_pvHeuteVergleich — gleiche Anlage mit dem Verbrauch von heute', () => {
+  it('rechnet gegen die Messung; mehr Last im Zielausbau hebt den Eigenverbrauch', () => {
+    // Zielausbau: +60 kW Dauerlast (z. B. Ladepark) über die NAP-Brücke
+    window.napZielausbauBeitraege = () => ({ dataYear: 2025, zielJahr: 2030,
+      beitraege: { lade: new Float32Array(8760).fill(60) }, nNeubau: 1, nAbriss: 0, ersatzWaerme: [] });
+    window._pvAnalyse.demandMode = 'ziel';
+    try {
+      _pvZielausbau(true);
+      const ziel = pvGetDemandH();
+      expect(ziel[0]).toBeCloseTo(demandH[0] + 60, 3);
+      const np = { maxEinspeisKw: null, maxBezugKw: null };
+      const sim = pvNapSim(600, 0, ziel, pvProfile, np, 'none', null);
+      const e = { id: 'x', pvKwp: 600, batKwh: 0, strategie: 'none', ertragMwh: 600 * SPEZ / 1000, sim,
+        wirt: pvWirtschaft(600, 0, sim, 600 * SPEZ / 1000, PARAMS, 'none'), paramsExtra: null };
+      _pvHeuteVergleich([e], { demandH: ziel, pvProfile, napParams: np, spotH: null, params: PARAMS });
+      expect(e.heute).toBeTruthy();
+      expect(e.heute.bedarfMwh).toBeCloseTo(demandH.reduce((s, v) => s + v, 0) / 1000, 1);
+      expect(e.heute.evQuote).toBeLessThan(e.wirt.pvEigenQuote);
+      expect(e.heute.einspeiseMwh).toBeGreaterThan(e.sim.einspeiseMwh);
+      expect(e.heute.autarkie).toBeGreaterThanOrEqual(0);
+      expect(e.heute.autarkie).toBeLessThanOrEqual(100);
+    } finally {
+      delete window.napZielausbauBeitraege;
+      _pvZielausbau(true);
+    }
+  });
+
+  it('entfällt ohne Maßnahmen im Zielausbau', () => {
+    _pvZielausbau(true);
+    const e = { pvKwp: 300, batKwh: 0, strategie: 'none', ertragMwh: 300, heute: { alt: true } };
+    _pvHeuteVergleich([e], { demandH, pvProfile, napParams: { maxEinspeisKw: null, maxBezugKw: null }, spotH: null, params: PARAMS });
+    expect(e.heute).toBeUndefined();
+  });
+});
+
 // ── Netzkostenkurve statt kWp-Pauschalen (10/2026) ──────────────────────────
 describe('pvInfraKosten — Netzbau aus der Netzkostenkurve', () => {
   // erst im Test bauen — die Skripte lädt beforeAll, der describe-Rumpf läuft vorher

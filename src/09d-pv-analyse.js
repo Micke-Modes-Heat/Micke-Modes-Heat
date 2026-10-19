@@ -1114,6 +1114,36 @@ function _pvAusbaupfadRechnen({ demandH, pvProfile, napParams, params, maxKwp, s
     erzeugungsnetz: nk?.erzeugungsnetz || null };
 }
 
+/**
+ * HEUTE GEGEN ZIELAUSBAU — jede Auslegung zusätzlich gegen den gemessenen Lastgang
+ * (ohne Gebäudezubau, Wärmepumpen und Ladepunkte des Zielausbaus). Gleiche PV,
+ * gleicher Speicher, gleiche Kosten; schreibt e.heute. Nur im Lastfall Zielausbau
+ * mit tatsächlichen Maßnahmen, sonst wird e.heute entfernt.
+ */
+function _pvHeuteVergleich(ergebnisse, { demandH, pvProfile, napParams, spotH, params }) {
+  const z = pvZielausbauInfo();
+  const messung = window.elQuartierH15 || window.elQuartierH;
+  const aktiv = z && z.bilanz.length && messung && messung.length === demandH.length;
+  for (const e of ergebnisse) delete e.heute;
+  if (!aktiv) return;
+  const dt = pvGetDt();
+  let bedarfMwh = 0;
+  for (let i = 0; i < messung.length; i++) bedarfMwh += messung[i];
+  bedarfMwh *= dt / 1000;
+  for (const e of ergebnisse) {
+    const sim = pvNapSim(e.pvKwp, e.batKwh, messung, pvProfile, napParams, e.strategie, spotH);
+    const w = pvWirtschaft(e.pvKwp, e.batKwh, sim, e.ertragMwh, e.paramsExtra ? { ...params, ...e.paramsExtra } : params, e.strategie);
+    e.heute = {
+      bedarfMwh,
+      evQuote: w.pvEigenQuote,
+      // pvWirtschaft bezieht die Autarkie auf den Lastgang der Simulation (Zielausbau) — hier auf den von heute
+      autarkie: bedarfMwh > 0 ? (1 - sim.netzbezugMwh / bedarfMwh) * 100 : 0,
+      ueberschuss: -w.nettoJk,
+      eigenMwh: sim.eigenMwh, einspeiseMwh: sim.einspeiseMwh, curtailMwh: sim.curtailMwh,
+    };
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // RÜCKSPEISE- & ERZEUGUNGSNETZ-BEURTEILUNG
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1463,6 +1493,7 @@ export function pvBerechneAlle() {
     ergebnisse.push({
       id, label: info.label + (labelSuffix || ''), farbe: info.farbe, icon: info.icon, info,
       pvKwp, batKwh, strategie, ertragMwh, sim, wirt,
+      paramsExtra: paramsExtra || null,   // für den Vergleich heute ↔ Zielausbau (gleiche Kostenbasis)
     });
   }
 
@@ -1705,6 +1736,11 @@ export function pvBerechneAlle() {
       },
     };
   }
+
+  // ── Heute gegen Zielausbau: dieselbe Auslegung gegen den gemessenen Lastgang ──
+  //     Zeigt, wie sehr eine Auslegung von der geplanten Elektrifizierung abhängt —
+  //     PV, Speicher, Strategie und Kosten bleiben gleich, nur die Last ist die von heute.
+  _pvHeuteVergleich(ergebnisse, { demandH, pvProfile, napParams, spotH, params });
 
   // Pflicht-Kontext für Tabelle, Charts und Gutachten mitschreiben
   state.pflicht = {
@@ -4464,6 +4500,60 @@ function _pvRenderInfraStufen() {
 
 // ── Vergleichstabelle ──────────────────────────────────────────────────────
 
+/**
+ * Teil von 2.1: Heute gegen Zielausbau — Eigenverbrauch, Autarkie, Einspeisung und
+ * Jahresüberschuss jeder Auslegung mit dem Verbrauch von heute und im Zieljahr.
+ */
+function _pvaHeuteZielHtml(varianten, fokusId) {
+  const mit = (varianten || []).filter(v => v.heute);
+  if (!mit.length) return '';
+  const za = window._pvAnalyse.basis?.zielausbau;
+  const f = (x, d = 0) => (Number.isFinite(x) ? x.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }) : '—');
+  const k = x => (x / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 });
+  const paar = (heute, ziel, einheit, d = 0, besserHoeher = true) => {
+    const diff = ziel - heute;
+    const farbe = Math.abs(diff) < 0.05 ? 'var(--muted)' : (diff > 0) === besserHoeher ? 'var(--c-green)' : 'var(--c-orange)';
+    return `<td style="padding:5px 6px;text-align:right;font-family:'DM Mono',monospace;white-space:nowrap;">
+      <span style="color:var(--muted);">${f(heute, d)}</span> → <span style="color:var(--text);">${f(ziel, d)}</span>${einheit}
+      <span style="color:${farbe};font-size:11.5px;margin-left:4px;">${diff >= 0 ? '+' : '−'}${f(Math.abs(diff), d)}</span></td>`;
+  };
+  const zeilen = mit.map(v => `
+    <tr style="border-bottom:1px solid rgba(var(--ink),0.04);${v.id === fokusId ? 'background:rgba(212,168,85,0.10);' : ''}">
+      <td style="padding:5px 6px;white-space:nowrap;"><span style="color:${v.farbe};">${v.icon}</span> ${escHtml(v.label)}</td>
+      ${paar(v.heute.evQuote, v.wirt.pvEigenQuote, ' %')}
+      ${paar(v.heute.autarkie, v.wirt.autarkie, ' %', 0, true)}
+      ${paar(v.heute.einspeiseMwh, v.sim.einspeiseMwh, ' MWh', 0, false)}
+      ${paar(v.heute.ueberschuss / 1000, -v.wirt.nettoJk / 1000, ' T€', 1)}
+    </tr>`).join('');
+  const fokus = mit.find(v => v.id === fokusId) || mit.find(v => v.id === 'wirt-opt') || mit[0];
+  const befund = fokus ? `${escHtml(fokus.label)}: Mit dem Verbrauch von heute würden ${f(fokus.heute.evQuote)} % des PV-Stroms selbst genutzt, `
+    + `im Zielausbau ${f(fokus.wirt.pvEigenQuote)} %; der Jahresüberschuss ${-fokus.wirt.nettoJk >= fokus.heute.ueberschuss ? 'steigt' : 'sinkt'} `
+    + `von ${k(fokus.heute.ueberschuss)} auf ${k(-fokus.wirt.nettoJk)} T€/a. `
+    + (fokus.heute.evQuote >= fokus.wirt.pvEigenQuote - 5
+      ? 'Die Auslegung hängt kaum von der Elektrifizierung ab.'
+      : fokus.heute.ueberschuss > 0
+        ? 'Sie ist schon mit dem heutigen Verbrauch wirtschaftlich; den vollen Eigenverbrauch erreicht sie erst mit der geplanten Elektrifizierung — bis dahin speist sie mehr ein.'
+        : 'Wirtschaftlich wird sie erst mit der geplanten Elektrifizierung — den PV-Ausbau mit Wärmepumpen und Ladeinfrastruktur zeitlich abstimmen.') : '';
+  return `
+  <div style="margin-top:14px;">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;">
+      <div style="font-size:12px;font-weight:600;color:var(--text);">Heute gegen Zielausbau${za?.zielJahr ? ' ' + za.zielJahr : ''}</div>
+      <div style="font-size:12px;color:var(--c-blue);">gleiche Anlage, Verbrauch heute ${f(mit[0].heute.bedarfMwh)} MWh/a → Zielausbau ${f(window._pvAnalyse.basis?.bedarfMwh)} MWh/a</div>
+    </div>
+    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+      <thead><tr style="color:var(--muted);text-align:right;border-bottom:1px solid var(--border);font-size:12px;">
+        <th style="text-align:left;padding:4px 6px;">Auslegung</th>
+        <th style="padding:4px 6px;" title="Eigenverbrauchsquote der PV-Erzeugung">Eigenverbrauch</th>
+        <th style="padding:4px 6px;" title="Anteil des Bedarfs aus eigener Erzeugung">Autarkie</th>
+        <th style="padding:4px 6px;" title="Ins Netz eingespeiste Energie">Einspeisung</th>
+        <th style="padding:4px 6px;" title="Erlöse minus alle Jahreskosten">Überschuss/a</th>
+      </tr></thead>
+      <tbody>${zeilen}</tbody>
+    </table></div>
+    ${_pvaBefund(befund)}
+  </div>`;
+}
+
 function renderVariantenTabelle(varianten) {
   const el = document.getElementById('pva-result-tabelle');
   if (!el) return;
@@ -4493,7 +4583,7 @@ function renderVariantenTabelle(varianten) {
   let html = `
   <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px;">
     <div style="font-size:12px;font-weight:600;color:var(--text);">Auslegungen im Vergleich</div>
-    <div style="font-size:12px;color:var(--c-blue);">Auswahl über den höchsten Jahresüberschuss · fünf feste Auslegungen</div>
+    <div style="font-size:12px;color:var(--c-blue);">Auslegungen auf dem Ausbaupfad · Auswahl über den höchsten Jahresüberschuss</div>
   </div>
   <div style="overflow-x:auto;">
   <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
@@ -4573,6 +4663,7 @@ function renderVariantenTabelle(varianten) {
   }
 
   html += `</tbody></table></div>`;
+  html += _pvaHeuteZielHtml(varianten, fokusId);
 
   // Legende + Definitionen — im Gutachten muss jede Kennzahl definiert sein.
   html += `

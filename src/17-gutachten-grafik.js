@@ -8840,6 +8840,34 @@ function ggRenderPvEnergiebilanzText(cfg, T = GG_THEME) {
     + `der Autarkiegrad zwischen ${ggPvFeld(autLo?.wirt.autarkie, 'Autarkie min')} % und `
     + `${ggPvFeld(autHi?.wirt.autarkie, 'Autarkie max')} %.`);
 
+  // Heute gegen Zielausbau (09d e.heute): dieselbe Anlage mit dem Verbrauch von heute —
+  // zeigt, wie stark die Auslegung von der geplanten Elektrifizierung abhängt
+  const mitHeute = b ? kanon.filter(v => v.heute) : [];
+  if (!b || mitHeute.length) {
+    const auswahl = b ? (ggPvAuswahl().v || ggPvVariante('wirt-opt') || mitHeute[0]) : null;
+    const v = auswahl?.heute ? auswahl : mitHeute[0] || null;
+    const anstiege = mitHeute.map(x => x.wirt.pvEigenQuote - x.heute.evQuote);
+    const [dLo, dHi] = anstiege.length ? [Math.min(...anstiege), Math.max(...anstiege)] : [null, null];
+    const za = b?.zielausbau;
+    absaetze.push(`Gerechnet wurde gegen den Verbrauch im Zielausbau. Mit dem heutigen Verbrauch von `
+      + `${ggPvFeld(v?.heute.bedarfMwh ?? za?.basisMwh, 'Strombedarf heute')} MWh/a — also ohne die geplanten Wärmepumpen, `
+      + `Ladepunkte und Gebäudeänderungen — würde ${variante(v, 'Auslegung')} nur ${ggPvFeld(v?.heute.evQuote, 'EV-Quote heute')} % `
+      + `ihres Stroms selbst nutzen und den Bedarf zu ${ggPvFeld(v?.heute.autarkie, 'Autarkie heute')} % decken; im Zielausbau `
+      + `${za?.zielJahr ? `${ggTextFeld(za.zielJahr, 'Zieljahr')} ` : ''}sind es ${ggPvFeld(v?.wirt.pvEigenQuote, 'EV-Quote Ziel')} % `
+      + `und ${ggPvFeld(v?.wirt.autarkie, 'Autarkie Ziel')} %`
+      + (v && v.wirt.autarkie < v.heute.autarkie - 0.5 ? ' — der Deckungsgrad sinkt, weil der Bedarf stärker wächst als der selbst genutzte PV-Strom. ' : '. ')
+      + (mitHeute.length > 1 && dHi != null
+        ? `Über alle Auslegungen steigt die Eigenverbrauchsquote durch die Elektrifizierung um ${ggPvFeld(Math.max(0, dLo), 'Anstieg min')} `
+          + `bis ${ggPvFeld(Math.max(0, dHi), 'Anstieg max')} Prozentpunkte. ` : '')
+      + (!v || v.wirt.pvEigenQuote - v.heute.evQuote <= 5
+        ? (v ? 'Die Auslegung hängt damit kaum von der geplanten Elektrifizierung ab.' : '')
+        : v.heute.ueberschuss > 0
+          ? 'Die Anlage ist bereits mit dem heutigen Verbrauch wirtschaftlich; ihren vollen Eigenverbrauch erreicht sie aber erst '
+            + 'mit der geplanten Elektrifizierung, bis dahin wird ein größerer Teil des Stroms eingespeist.'
+          : 'Wirtschaftlich wird die Anlage erst mit der geplanten Elektrifizierung. Der Ausbau der PV-Anlage sollte deshalb '
+            + 'zeitlich mit den Wärmepumpen und der Ladeinfrastruktur abgestimmt werden.'));
+  }
+
   if (!b) return ggTextBlatt(absaetze, T);
 
   const autMax = ggPvVariante('autarkie') || autHi;
