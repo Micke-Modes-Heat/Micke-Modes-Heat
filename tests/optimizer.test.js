@@ -19,6 +19,7 @@ beforeAll(() => {
   globalThis.thermSpeicherAktiv = false;
   if (!globalThis.performance) globalThis.performance = { now: () => Date.now() };
   loadScript('08-calc-engine.js');
+  loadScript('lib/zielgroessen.js');
   loadScript('06c-dispatch-core.js');
   loadScript('lib/vdi-bedien.js');
   loadScript('lib/waermespeicher.js');

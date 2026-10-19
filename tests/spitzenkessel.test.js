@@ -20,6 +20,7 @@ beforeAll(() => {
   globalThis.getComputedStats = g => ({ waerme: parseFloat(g.waerme) || 0, heizlast: parseFloat(g.heizlast) || 0 });
   globalThis.glLastgangKw = null;
   loadScript('08-calc-engine.js');
+  loadScript('lib/zielgroessen.js');
   loadScript('06c-dispatch-core.js');
   loadScript('lib/vdi-bedien.js');
   loadScript('lib/waermespeicher.js');

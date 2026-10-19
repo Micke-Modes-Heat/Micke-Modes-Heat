@@ -21,6 +21,7 @@ import { updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, upd
 import { _glIsRunning } from './06b-gl-berechnen.js';
 import { erstelleEisZustand, eisQuellTempNaeherung } from './lib/eisspeicher.js';
 import { spitzenkesselSpec } from './lib/spitzenkessel.js';
+import { erstelleZielCache, reihenAbdruck, zielgroessenSuche } from './lib/zielgroessen.js';
 
 export let meritOrderKeys = [];
 export let autoGkResult = null; // { leistungKw, deckungPct, waermeMwh } | false | null
@@ -247,7 +248,9 @@ export function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hi
     const fmt = value => Math.round(Math.max(0, value)).toLocaleString('de-DE');
     const energyTarget = requirements?.energyTargetKw;
     const powerTarget = requirements?.powerTargetKw;
-    const targetRow = (label, target) => Number.isFinite(target)
+    const targetRow = (label, target) => requirements?.offen
+      ? `<span style="color:var(--muted);">${label}</span><span style="color:var(--muted);">wird ermittelt …</span>`
+      : Number.isFinite(target)
       ? `<span style="color:var(--muted);">${label}</span><strong style="color:${cfg.color}">${fmt(target)} kW gesamt${target > nennKw + .5 ? ` · noch +${fmt(target - nennKw)} kW` : ' · ausreichend'}</strong>`
       : `<span style="color:var(--muted);">${label}</span><strong style="color:#ef9a9a">mit Betriebsgrenze nicht vollständig erreichbar</strong>`;
     requirementHtml=`
@@ -789,6 +792,43 @@ export function dispatchEingaben(ss) {
   return { lastgangKw, tempH, vlH, activeKeys, erzList, leistungen, _guetegrad, bhkwSigma, skEta, lwwpMinCop, thSp, stProfile, eisSpeicher, speicherStartKwh, auslegung, agkStromEta };
 }
 
+// ── Zielgrößen im Hintergrund ─────────────────────────────────────────────
+// Jede Dispatch-Rechnung mit neuem Eingangsstand plant die Suche neu; ein schneller zweiter Aufruf (recalcNetz →
+// kurz danach Lastgang neu) verwirft den ersten, bevor er viel gerechnet hat. Derselbe Stand rechnet nicht doppelt.
+const _zielCache = erstelleZielCache();
+let _zielAktiv = null;   // { sig, render, gen?, timer } — laufende Suche
+const ZIEL_VERZOEGERUNG_MS = 300;
+const ZIEL_STUECK_MS = 12;
+
+function _zielgroessenPlanen(sig, render, starte) {
+  if (_zielAktiv?.sig === sig) { _zielAktiv.render = render; return; }
+  if (_zielAktiv) clearTimeout(_zielAktiv.timer);
+  const lauf = { sig, render, gen: null, timer: 0 };
+  _zielAktiv = lauf;
+  const stueck = () => {
+    if (_zielAktiv !== lauf) return;
+    if (!lauf.gen) lauf.gen = starte();
+    const ende = performance.now() + ZIEL_STUECK_MS;
+    let s;
+    try {
+      do s = lauf.gen.next(); while (!s.done && performance.now() < ende);
+    } catch (err) {
+      console.error('Zielgrößen-Fehler:', err);
+      _zielAktiv = null;
+      return;
+    }
+    if (!s.done) { lauf.timer = setTimeout(stueck, 0); return; }
+    _zielAktiv = null;
+    _zielCache.set(sig, s.value);
+    // Nur Fenster nachzeichnen, die noch zu diesem Stand gehören und sichtbar geschaltet sind
+    for (const args of lauf.render) {
+      const w = document.getElementById(args[1].wrapId);
+      if (w && w.style.display !== 'none') _renderDeckungWrap(...args, s.value[args[0]]);
+    }
+  };
+  lauf.timer = setTimeout(stueck, ZIEL_VERZOEGERUNG_MS);
+}
+
 export function _deckungen8760(ss) {
   const { lastgangKw, tempH, vlH, activeKeys, erzList, leistungen, _guetegrad, bhkwSigma, skEta, lwwpMinCop, thSp, stProfile, eisSpeicher, speicherStartKwh, auslegung, agkStromEta } = dispatchEingaben(ss);
   window._dimLastgangKw = lastgangKw;
@@ -905,45 +945,18 @@ export function _deckungen8760(ss) {
 
   // Zielgrößen je Erzeuger unter Berücksichtigung aller ANDEREN tatsächlich
   // gewählten Erzeuger. Der automatische Restkessel ist kein Kandidat.
-  const requirementsByKey = {};
-  activeKeys.forEach(key => {
-    const currentIndex = erzList.findIndex(erzeuger => erzeuger.key === key);
-    const current = erzList[currentIndex];
-    const simulationCache = new Map();
-    const simulateCandidate = capacity => {
-      const cacheKey = capacity.toFixed(6);
-      if (simulationCache.has(cacheKey)) return simulationCache.get(cacheKey);
-      const trial = erzList.filter(erzeuger => erzeuger.key !== key).map(erzeuger => ({ ...erzeuger }));
-      trial.splice(currentIndex, 0, { ...current, leistKw: capacity });
-      const result = _dispatchCore({
-        lastgangKw, tempH, vlH, erzList: trial, speicherParams: thSp, stProfile, stExcessH: null,
-        bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false, eisSpeicher, speicherStartKwh, auslegung, agkStromEta,
-      });
-      simulationCache.set(cacheKey, result);
-      return result;
-    };
-    const findRequiredCapacity = (resultKey, tolerance) => {
-      let upper = Math.max(1, current.leistKw || 0);
-      const hardLimit = Math.max(upper, _spitzenlastKw * 20);
-      while (simulateCandidate(upper)[resultKey] > tolerance && upper < hardLimit) {
-        upper = Math.min(hardLimit, upper * 2);
-      }
-      if (simulateCandidate(upper)[resultKey] > tolerance) return null;
-      let lower = 0;
-      for (let iteration = 0; iteration < 14; iteration++) {
-        const middle = (lower + upper) / 2;
-        if (simulateCandidate(middle)[resultKey] <= tolerance) upper = middle;
-        else lower = middle;
-      }
-      return upper;
-    };
-    // Beide Ziele werden gegen den echten Stundenverlauf gerechnet. Dadurch
-    // zählen nur die übrigen gewählten Erzeuger; der Auto-Gaskessel bleibt Rest.
-    // Bei WPs wirken Leistungsabfall, Quelltemperatur und Mindest-COP mit.
-    const energyTargetKw = findRequiredCapacity('autoGkKwh', Math.max(1, gesamtKwh * .0001));
-    const powerTargetKw = findRequiredCapacity('autoGkPeakKw', Math.max(.1, _spitzenlastKw * .0001));
-    requirementsByKey[key] = { energyTargetKw, powerTargetKw };
-  });
+  // Beide Ziele werden gegen den echten Stundenverlauf gerechnet (lib/zielgroessen.js): Es zählen nur die
+  // übrigen gewählten Erzeuger, bei WPs wirken Leistungsabfall, Quelltemperatur und Mindest-COP mit.
+  // Das kostet je Erzeuger rund 34 Jahressimulationen (bei großen Projekten ~1 s) und dient nur der Anzeige —
+  // deshalb aus dem Cache, sonst nach der Rechnung in kleinen Stücken (_zielgroessenPlanen).
+  const zielSig = JSON.stringify([
+    reihenAbdruck(lastgangKw), reihenAbdruck(tempH), reihenAbdruck(vlH), reihenAbdruck(stProfile),
+    erzList, thSp, bhkwSigma, skEta, lwwpMinCop, eisSpeicher, speicherStartKwh, auslegung, agkStromEta,
+    // Quelltemperaturen u. Ä. lesen weitere Eingaben — sie wirken auf das Hauptergebnis und fließen so mit ein
+    thKwh, elKwh, autoGkKwh, autoGkPeakKw,
+  ]);
+  const requirementsByKey = _zielCache.get(zielSig) || Object.fromEntries(activeKeys.map(k => [k, { offen: true }]));
+  const zielRender = [];
 
   activeKeys.forEach((key, i) => {
     const cfg = ERZEUGER_CFG[key];
@@ -968,9 +981,22 @@ export function _deckungen8760(ss) {
     } else {
       _updateErzeugerWaerme(key, erzeugtKwh / 1000);
     }
-    _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, i + 1, 'stundenscharf · ' + leistungen[key].toFixed(0) + ' kW', vbh, allDeckungen, heizlastInfos[key],systemSummary,requirementsByKey[key]);
+    const renderArgs = [key, cfg, deckungPct, wpMwh, jazStr, i + 1, 'stundenscharf · ' + leistungen[key].toFixed(0) + ' kW', vbh, allDeckungen, heizlastInfos[key], systemSummary];
+    _renderDeckungWrap(...renderArgs, requirementsByKey[key]);
+    zielRender.push(renderArgs);
     processed.add(key);
   });
+  if (!_zielCache.get(zielSig) && activeKeys.length) {
+    _zielgroessenPlanen(zielSig, zielRender, () => zielgroessenSuche({
+      erzList, keys: activeKeys, gesamtKwh, spitzenlastKw: _spitzenlastKw,
+      dispatch: trial => _dispatchCore({
+        lastgangKw, tempH, vlH, erzList: trial, speicherParams: thSp, stProfile, stExcessH: null,
+        bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false, eisSpeicher, speicherStartKwh, auslegung, agkStromEta,
+      }),
+    }));
+  } else {
+    _zielAktiv = null;   // Cache-Treffer: eine noch laufende Suche gehört zu einem überholten Stand
+  }
 
   Object.entries(ERZEUGER_CFG).forEach(([key, cfg]) => {
     if (!processed.has(key)) {

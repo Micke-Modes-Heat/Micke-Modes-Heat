@@ -16,6 +16,7 @@ beforeAll(() => {
   globalThis.isExcluded = () => false;
   globalThis.getComputedStats = () => ({ waerme: 0, heizlast: 0 });
   globalThis.glLastgangKw = null;
+  loadScript('lib/zielgroessen.js');
   loadScript('06c-dispatch-core.js');
 });
 
