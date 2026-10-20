@@ -52,6 +52,7 @@ let _an = false;              // Verschattung im Ertrag berücksichtigen
 let _sichtbar = true;         // Bäume auf der Arbeitskarte
 let _bearbeiten = false;
 let _offen = false;
+let _teil = 'baeume';         // Panelinhalt: 'baeume' (Bestand) | 'verschattung' (Photovoltaik)
 let _laedt = false;
 let _ladeInfo = '';
 /** Empfehlungsschwellen: Verlust durch Verschattung in % */
@@ -145,6 +146,7 @@ export function baumRestore(s) {
   _zeichnen();
   window.d3dBaeumeNeu?.();
   baumPanelRender();
+  baumBestandInfo();
   window.lwWpBaeumeGeaendert?.();
 }
 
@@ -154,6 +156,7 @@ function _geaendert() {
   _zeichnen();
   window.d3dBaeumeNeu?.();
   baumPanelRender();
+  baumBestandInfo();
   window.pvModusRender?.();
   window.lwWpBaeumeGeaendert?.();   // Schallrechnung der Luft-WP (Bewuchsdämpfung) neu
 }
@@ -199,7 +202,11 @@ export function baumSichtbar(an) {
   _sichtbar = !!an;
   _zeichnen();
   baumPanelRender();
+  const cb = document.getElementById('el-baeume-visible');   // Ebenen-Menü
+  if (cb) cb.checked = _sichtbar;
 }
+
+export function baumIstSichtbar() { return _sichtbar; }
 
 /* ── Bearbeiten ──────────────────────────────────────────────────────────── */
 
@@ -874,16 +881,41 @@ export function baumVerschattungZeileHtml(g) {
     </div>`;
 }
 
-/** Einstieg im PV-Modus-Panel. */
-export function baumBlockHtml() {
+/** Einstieg unter Planung › Strom › Photovoltaik: nur die Verschattung (die Bäume selbst pflegt der Bestand). */
+export function verschattungBlockHtml() {
   const mitPv = _mitPv();
   const aktuell = mitPv.filter(g => _status(g) === 'aktuell').length;
   return `<button class="btn-xs" style="width:100%;margin-top:6px;border-color:${GRUEN};color:${GRUEN};${_an ? `background:${GRUEN}1a;` : ''}"
-      data-click="baumPanelToggle()" title="Bäume im Projekt und ihre Verschattung der PV-Dächer">
-      Bäume & Verschattung · ${_fmt(_baeume.length)} Bäume${mitPv.length ? ` · ${aktuell}/${mitPv.length} gerechnet` : ''}${_an ? ' · im Ertrag' : ''}</button>`;
+      data-click="baumPanelToggle('verschattung')" title="Verschattung der PV-Dächer durch Bäume und Nachbargebäude rechnen und im Ertrag berücksichtigen. Die Bäume selbst werden unter Bestand › Umgebung geladen und gesetzt.">
+      Verschattung · ${_fmt(_baeume.length)} Bäume${mitPv.length ? ` · ${aktuell}/${mitPv.length} gerechnet` : ''}${_an ? ' · im Ertrag' : ''}</button>`;
 }
 
-export function baumPanelToggle() {
+/** Kurzstand am Knopf „Bäume“ unter Bestand › Umgebung. */
+export function baumBestandInfo() {
+  const el = document.getElementById('btn-baeume-info');
+  if (!el) return;
+  const n = _baeume.length;
+  const osm = _baeume.filter(b => b.quelle === 'osm').length;
+  el.textContent = n
+    ? `${_fmt(n)} im Projekt · ${_fmt(osm)} aus OSM · ${_fmt(n - osm)} eigene`
+    : 'Aus OpenStreetMap laden oder selbst setzen — für PV-Verschattung und Schall';
+}
+
+/** Titel des Fensters (auch für den Reiter der Andock-Spalte). */
+export function baumPanelTitel() { return _teil === 'verschattung' ? 'Verschattung' : 'Bäume'; }
+
+/**
+ * Fenster öffnen/schließen. `teil` wählt den Inhalt: 'baeume' (Bestand › Umgebung) oder
+ * 'verschattung' (Photovoltaik). Ist das Fenster schon mit dem anderen Teil offen, wird nur umgeschaltet.
+ */
+export function baumPanelToggle(teil) {
+  if (teil && _offen && teil !== _teil) {
+    if (teil === 'verschattung' && _bearbeiten) cancelInteraction(INTERAKTION);
+    _teil = teil;
+    baumPanelRender();
+    return;
+  }
+  if (teil) _teil = teil;
   _offen = !_offen;
   if (!_offen) {
     if (_bearbeiten) cancelInteraction(INTERAKTION);
@@ -899,9 +931,11 @@ export function baumPanelRender() {
     el = document.createElement('div');
     el.id = PANEL_ID;
     el.setAttribute('role', 'region');
-    el.setAttribute('aria-label', 'Bäume und Verschattung');
     document.body.appendChild(el);
   }
+  el.setAttribute('aria-label', _teil === 'verschattung' ? 'Verschattung der PV-Dächer' : 'Bäume im Projekt');
+  // Klassenwechsel weckt die Andock-Spalte (52), damit der Reiter den neuen Titel zeigt
+  el.classList.toggle('baum-teil-verschattung', _teil === 'verschattung');
   el.innerHTML = _html();
 }
 
@@ -1353,11 +1387,35 @@ function _html() {
   const feld = (f, wert, min, max, step) => `<input class="inp-field" type="number" min="${min}" max="${max}" step="${step}" value="${wert}"
       style="width:100%;padding:2px 4px;" data-change="baumVorgabe('${f}',this.value)"/>`;
 
-  return `
+  const kopf = `
     <div class="pvm-head">
-      <span class="pvm-head-title">Bäume & Verschattung</span>
+      <span class="pvm-head-title">${_teil === 'verschattung' ? 'Verschattung der PV-Dächer' : 'Bäume im Projekt'}</span>
       <button class="btn-xs" data-click="baumPanelToggle()" title="Schließen">✕</button>
-    </div>
+    </div>`;
+
+  // Photovoltaik: nur der Stand der Bäume, gepflegt werden sie unter Bestand › Umgebung
+  const baumKurz = `
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;line-height:1.5;">
+        <span style="flex:1;"><b>${_fmt(anzahl)}</b> Bäume im Projekt${vorgabe ? ` · <span style="color:${GELB};" title="Höhe nur geschätzt">${_fmt(vorgabe)} geschätzt</span>` : ''}</span>
+        <button class="btn-xs" data-click="baumPanelToggle('baeume')" title="Bäume laden, setzen und bearbeiten (Bestand › Umgebung)">Bäume bearbeiten</button>
+      </div>
+      ${anzahl ? '' : `<div style="font-size:11px;color:var(--muted);margin-top:3px;">Ohne Bäume rechnet die Verschattung nur mit den Nachbargebäuden.</div>`}`;
+
+  // Bestand: wofür die Bäume gebraucht werden
+  const verwendung = `
+      <div style="margin-top:9px;border-top:1px solid var(--border);padding-top:7px;font-size:11px;color:var(--muted);line-height:1.45;">
+        Verwendet für die <b>Verschattung der PV-Dächer</b>${mitPv.length ? ` (${st.aktuell}/${mitPv.length} Dächer gerechnet${_an ? ', im Ertrag' : ''})` : ''}
+        und die <b>Schallausbreitung der Luft-Wärmepumpe</b> (Bewuchsdämpfung).
+        <button class="btn-xs" style="width:100%;margin-top:5px;border-color:${GRUEN};color:${GRUEN};" data-click="baumPanelToggle('verschattung')">Verschattung öffnen</button>
+      </div>`;
+
+  if (_teil === 'verschattung') return `${kopf}
+    <div class="pvm-body">
+      ${baumKurz}
+      ${_verschattungHtml({ mitPv, st, offen, auswertung, zeilen })}
+    </div>`;
+
+  return `${kopf}
     <div class="pvm-body">
       <div style="font-size:12px;line-height:1.5;">
         <b>${_fmt(anzahl)}</b> Bäume im Projekt${anzahl ? ` · ${_fmt(osm)} aus OSM · ${_fmt(anzahl - osm)} eigene` : ''}
@@ -1405,9 +1463,14 @@ function _html() {
         ${anzahl ? `<button class="btn-xs" data-click="baumAlleLoeschen(true)" title="Unveränderte OSM-Bäume entfernen">OSM</button>
         <button class="btn-xs red" data-click="baumAlleLoeschen(false)" title="Alle Bäume entfernen">alle</button>` : ''}
       </div>
+      ${verwendung}
+    </div>`;
+}
 
+/** Verschattungsteil des Fensters (Photovoltaik): Schalter, Rechnen, Empfehlung, Liste je Dach. */
+function _verschattungHtml({ mitPv, st, offen, auswertung, zeilen }) {
+  return `
       <div style="margin-top:9px;border-top:1px solid var(--border);padding-top:7px;">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Verschattung der PV-Dächer</div>
         <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"
           title="Der Faktor je Dach mindert die wirksame Leistung (kWp × Ertragsfaktor) — und damit PV-Asset, Stromnetz, PV-Analyse und Gutachten">
           <input type="checkbox" ${_an ? 'checked' : ''} style="accent-color:${GRUEN};" data-change="verschattungUmschalten(this.checked)"/>
@@ -1432,8 +1495,7 @@ function _html() {
           Kronen lassen Licht durch — Laubbäume belaubt ≈ 20 %, kahl ≈ 60 %, Nadelbäume ≈ 15 %.
           Nachbargebäude zählen bis Traufe + halbe Dachhöhe (ohne LoD2 höchstens 8 m Dach). Nach Änderungen an Nachbargebäuden „Alle neu berechnen".
         </div>
-      </div>
-    </div>`;
+      </div>`;
 }
 
 // Für data-click im Panel (main.js spiegelt die Exporte ebenfalls auf window)

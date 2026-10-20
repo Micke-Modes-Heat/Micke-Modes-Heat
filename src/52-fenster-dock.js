@@ -32,7 +32,7 @@ const _schemaOffen = p => p.classList.contains('visible') && !p.classList.contai
 const WERKZEUGE = {
   'blackout-modus-panel': { titel: 'Blackout-Modus', zu: () => window.blackoutModusStop?.() },
   'pv-modus-panel':       { titel: 'PV-Modus', zu: () => window.pvModusStop?.() },
-  'baum-panel':           { titel: 'Bäume', zu: () => window.baumPanelToggle?.() },
+  'baum-panel':           { get titel() { return window.baumPanelTitel?.() || 'Bäume'; }, zu: () => window.baumPanelToggle?.() },
   'grundriss-panel':      { titel: 'Grundrisse prüfen', zu: () => window.grundrissPanelToggle?.() },
   'sld-panel':            { titel: 'Einlinienschema', zu: () => window.sldToggle?.(), offen: _schemaOffen, breite: 600, neu: () => window.sldRefresh?.() },
   'ws-panel':             { titel: 'Wärmeschema', zu: () => window.wsToggle?.(), offen: _schemaOffen, breite: 600, neu: () => window.wsRender?.() },

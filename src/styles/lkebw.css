@@ -559,6 +559,10 @@ body.ui-lkebw .float-panel.dragging{border-radius:var(--r-2)!important}
 .ebenen-panel .ebp-cb:checked{background:var(--brand)}
 .ebenen-panel .ebp-cb:checked::before{left:14px}
 .ebenen-panel .ebp-cb:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+/* Ebene ohne Inhalt im Projekt (z. B. keine Wärmepumpe platziert): gedimmt, nicht schaltbar */
+.ebenen-panel .ebp-row-leer{color:var(--faint);cursor:default}
+.ebenen-panel .ebp-row-leer:hover{color:var(--faint)}
+.ebenen-panel .ebp-row-leer .ebp-cb{opacity:.45;cursor:default}
 /* Weitere Ansichten */
 .ebp-aktion{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;width:100%;padding:5px 0;font-size:13px;color:var(--text)}
 .ebp-aktion svg{color:var(--muted)}

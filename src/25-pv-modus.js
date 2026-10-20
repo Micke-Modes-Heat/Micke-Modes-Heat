@@ -1428,7 +1428,7 @@ function _reiterHtml() {
         <button class="btn-secondary" data-click="lod2Laden()" title="Amtliches 3D-Gebäudemodell laden (NRW, NI, BW direkt, sonst Datei)">LoD2 laden</button>
         <button class="btn-secondary" data-click="dachGrundrissBerechnen()" title="Dachflächen aus dem Grundriss berechnen (auch für geplante Neubauten)">Dach aus Grundriss</button>
       </div>
-      ${window.baumBlockHtml?.() || ''}
+      ${window.verschattungBlockHtml?.() || ''}
       <div class="pvr-unter">Schnellabschätzung ohne Dächer</div>
       <p class="el-hinweis">Pauschale PV-Anlage (kWp × spezifischer Ertrag oder PVGIS-Lastgang) für frühe Abschätzungen, bevor Dächer belegt sind.</p>
       ${pauschal > 0 && mitPv.length ? `<p class="pvr-warn">Die pauschale Anlage (${fmt(pauschal)} kWp) zählt zusätzlich zu den belegten Dächern. Sobald Dächer belegt sind, auf 0 setzen.</p>` : ''}
@@ -1891,7 +1891,7 @@ function _html() {
            </div>`}
       ${window.pvabBlockHtml?.() || ''}
       ${window.pvbsBlockHtml?.() || ''}
-      ${window.baumBlockHtml?.() || ''}
+      ${window.verschattungBlockHtml?.() || ''}
       ${window.pvAnschlussHinweisHtml?.() || ''}
       <div style="margin-top:8px;">${_aktivBlock(g)}</div>
       ${_vorgabeBlock()}

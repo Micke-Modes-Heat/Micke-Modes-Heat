@@ -56,6 +56,7 @@
     <symbol id="ui-i-arrow" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></symbol>
     <symbol id="ui-i-pen" viewBox="0 0 16 16"><path d="M2.5 13.5l2-6 6-5 3 3-5 6zM2.5 13.5l4-4"/></symbol>
     <symbol id="ui-i-play" viewBox="0 0 16 16"><path d="M4.5 2.5l9 5.5-9 5.5z"/></symbol>
+    <symbol id="ui-i-tree" viewBox="0 0 16 16"><path d="M8 14.5V9.5M8 1.5a4 4 0 0 0-3.8 5.2A3 3 0 0 0 5.5 12.5h5a3 3 0 0 0 1.3-5.8A4 4 0 0 0 8 1.5zM6 10.5l2 1.5 2-2"/></symbol>
     <symbol id="ui-i-map" viewBox="0 0 16 16"><path d="M1.5 3.5l4-1.5 5 2 4-1.5v10l-4 1.5-5-2-4 1.5zM5.5 2v10M10.5 4v10"/></symbol>
     <symbol id="ui-i-screen" viewBox="0 0 16 16"><path d="M1.5 2.5h13v8.5h-13zM5.5 14h5M8 11v3"/></symbol>
     <symbol id="ui-i-lock" viewBox="0 0 16 16"><path d="M3.5 7.5h9v6.5h-9zM5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"/></symbol>
@@ -239,6 +240,20 @@
             <div class="ebp-cat-label"><i class="ebp-sw" style="--sw:var(--c-amber)"></i>Photovoltaik</div>
             <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-pv-visible" checked data-change="setPvVisible(this.checked)">PV-Anlagen</label>
           </div>
+
+          <!-- Zustand und „nicht angelegt“ setzt _ebpSyncAll (src/04a-ui-panels.js) beim Öffnen -->
+          <div class="ebp-cat">
+            <div class="ebp-cat-label"><i class="ebp-sw" style="--sw:var(--c-teal)"></i>Wärmeerzeuger</div>
+            <label class="ebp-row" data-ebp-da="lwwp"><input type="checkbox" class="ebp-cb" id="el-lwwp-visible" checked data-change="setLwWpVisible(this.checked);_ebpSync('lwwp-visible',this.checked);_ebpSyncAll()">Luft-Wasser-WP</label>
+            <label class="ebp-row ebp-row-unter" data-ebp-da="lwwp" title="Isophonen 35–55 dB(A) um die Außengeräte"><input type="checkbox" class="ebp-cb" id="el-lwwp-schall-visible" checked data-change="setSchallVisible(this.checked);_ebpSync('lwwp-schall-visible',this.checked)">Schallringe</label>
+            <label class="ebp-row" data-ebp-da="geo"><input type="checkbox" class="ebp-cb" id="el-geo-visible" checked data-change="setGeoVisible(this.checked);_ebpSync('geo-visible',this.checked)">Erdwärme-Sondenfeld</label>
+            <label class="ebp-row" data-ebp-da="fg"><input type="checkbox" class="ebp-cb" id="el-fg-visible" checked data-change="setFliessgewaesserVisible(this.checked);_ebpSync('fg-visible',this.checked)">Fließgewässer</label>
+          </div>
+
+          <div class="ebp-cat">
+            <div class="ebp-cat-label"><i class="ebp-sw" style="--sw:var(--c-green)"></i>Umgebung</div>
+            <label class="ebp-row" data-ebp-da="baeume"><input type="checkbox" class="ebp-cb" id="el-baeume-visible" checked data-change="baumSichtbar(this.checked)">Bäume</label>
+          </div>
         </div>
       </div>
     </div>
@@ -375,6 +390,13 @@
             <button class="btn-secondary" id="btn-osm-dach" data-click="dachformenAusOsmErgaenzen({nachfragen:true})" title="Dachform, Neigung und Richtung aus OpenStreetMap für alle Gebäude ohne eigene Dachangabe übernehmen.">Dachformen aus OSM</button>
             <button class="btn-secondary" id="btn-dach-grundriss" data-click="dachGrundrissBerechnen()" title="Für Gebäude ohne LoD2 (auch geplante Neubauten): Dachflächen aus dem rechtwinkligen Grundriss berechnen.">Dach aus Grundriss</button>
           </div>
+        </div>
+
+        <div class="ui-gruppe">
+          <div class="ui-gruppe-titel">Umgebung</div>
+          <button class="ui-aufgabe" id="btn-baeume" data-click="baumPanelToggle('baeume')" title="Einzelbäume, Baumreihen, Wald und Streuobst — gebraucht für die Verschattung der PV-Dächer und die Schallausbreitung der Luft-Wärmepumpe.">
+            <svg class="ui-i"><use href="#ui-i-tree"/></svg><span><b>Bäume</b><small id="btn-baeume-info">Aus OpenStreetMap laden oder selbst setzen — für PV-Verschattung und Schall</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg>
+          </button>
         </div>
 
         <div class="ui-gruppe">

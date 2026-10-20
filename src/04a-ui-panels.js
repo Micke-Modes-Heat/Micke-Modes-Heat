@@ -2104,7 +2104,33 @@ function _ebpSyncAll() {
   _ebpReadCb('el-assets-visible',   'cb-assets-visible');
   _ebpReadCb('el-stromnetz-visible','cb-stromnetz-visible');
   // Chart/Overlay/Viz haben keinen eigenen Quell-Checkbox — State separat halten
+
+  // Wärmeerzeuger und Umgebung: Zustand aus den Schaltern der Fachfenster bzw. dem Baum-Modul.
+  // Was es im Projekt (noch) nicht gibt, bleibt sichtbar, aber gedimmt und nicht schaltbar.
+  const quelle = id => document.getElementById(id)?.checked !== false;
+  const wpAn = quelle('lwwp-visible');
+  const zustand = {
+    'el-lwwp-visible':        { an: wpAn, da: !!window.lwWp, leer: 'Keine Luft-Wasser-WP platziert' },
+    'el-lwwp-schall-visible': { an: quelle('lwwp-schall-visible'), da: !!window.lwWp && wpAn,
+                                leer: window.lwWp ? 'Nur mit eingeblendeter Wärmepumpe' : 'Keine Luft-Wasser-WP platziert' },
+    'el-geo-visible':         { an: quelle('geo-visible'), da: !!window.geoThermie, leer: 'Kein Sondenfeld angelegt' },
+    'el-fg-visible':          { an: quelle('fg-visible'), da: !!window.fliessgewaesser, leer: 'Kein Fließgewässer angelegt' },
+    'el-baeume-visible':      { an: window.baumIstSichtbar?.() !== false, da: (window.baumListe?.()?.length || 0) > 0,
+                                leer: 'Keine Bäume im Projekt — Bestand › Umgebung › Bäume' },
+  };
+  for (const [id, z] of Object.entries(zustand)) {
+    const cb = document.getElementById(id);
+    if (!cb) continue;
+    cb.checked = z.an;
+    cb.disabled = !z.da;
+    const row = cb.closest('.ebp-row');
+    if (!row) continue;
+    if (row.dataset.titel === undefined) row.dataset.titel = row.title || '';   // ursprünglichen Tooltip merken
+    row.classList.toggle('ebp-row-leer', !z.da);
+    row.title = z.da ? row.dataset.titel : z.leer;
+  }
 }
+window._ebpSyncAll = _ebpSyncAll;
 
 function _ebpReadCb(panelId, _srcId) {
   // Panel-Checkbox lesen — wird über data-change direkt synchron gehalten
