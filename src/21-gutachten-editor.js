@@ -14,6 +14,7 @@ import {
   ggMountEinzelansicht, ggShowSection, ggSelectFigur, ggFigurEinstellungenCapture, ggFigurEinstellungenRestore,
   ggFigurWordDaten, ggSvgToPngBlob, ggTrafostationenIstListe, ggFigurSichtbar, ggFigurAusblendGrund, ggFrageKontext, ggPlausiPruefung,
   ggFigurInVertiefung, ggFigurSichtbarOhneFassung, GG_VERTIEFUNG_TITEL, ggRechenstand,
+  ggEntwurfAktiv, ggEntwurfAnwenden, ggSetEntwurf,
 } from './17-gutachten-grafik.js';
 import { GR_STATUS, grWarnungen } from './lib/gutachten-rechenstand.js';
 import { GF_FRAGEN, gfFragenZuKapitel, gfOptionen, gfStandard } from './lib/gutachten-fragen.js';
@@ -197,6 +198,20 @@ export function gutShowSection(visible) {
 }
 
 /** Umschalter und sichtbaren Bereich an _gut.modus anpassen; true = Dokumentansicht. */
+/** Haken „Wasserzeichen Entwurf“ — derselbe Zustand wie in der Einzelansicht (ggEntwurfAktiv). */
+function entwurfSchalter() {
+  const an = ggEntwurfAktiv();
+  return `<label title="Legt den Schriftzug ENTWURF quer über alle Abbildungen — in der Seitenansicht, beim Kopieren und im Word-/PowerPoint-Export. Tabellen und Textbausteine bleiben ohne."
+      style="display:flex;align-items:center;gap:5px;font-size:11px;color:${an ? '#ef5350' : 'var(--muted)'};cursor:pointer;padding:0 4px;white-space:nowrap;">
+      <input type="checkbox"${an ? ' checked' : ''} data-change="gutSetEntwurf(this.checked)">Wasserzeichen „Entwurf“</label>`;
+}
+
+export function gutSetEntwurf(an) {
+  ggSetEntwurf(an);
+  gutRender();
+  gutSay(an ? '✓ Wasserzeichen „Entwurf“ auf allen Abbildungen — gilt auch für Word und PowerPoint.' : 'Wasserzeichen „Entwurf“ aus.');
+}
+
 function zeigeModus() {
   const dokEl = document.getElementById('gut-dokument');
   const einzelEl = document.getElementById('gut-einzel');
@@ -217,7 +232,7 @@ function zeigeModus() {
     leiste.innerHTML = tab('dokument', 'Dokument') + tab('praes', 'Präsentation') + tab('einzel', 'Einzelgrafiken')
       + `<span id="gut-status" style="margin-left:12px;font-size:11px;color:${GUT_AKZENT};"></span>`
       + (!einzel && _gut.dok
-          ? `<span style="margin-left:auto;display:flex;gap:6px;align-items:center;">${plausiKnopf()}${knopf('⟳ Daten aktualisieren', 'gutAktualisieren()', { titel: 'Alle Abbildungen neu aus dem Projektstand zeichnen.' })}`
+          ? `<span style="margin-left:auto;display:flex;gap:6px;align-items:center;">${entwurfSchalter()}${plausiKnopf()}${knopf('⟳ Daten aktualisieren', 'gutAktualisieren()', { titel: 'Alle Abbildungen neu aus dem Projektstand zeichnen.' })}`
             + (praes
               ? `${knopf('⤓ PowerPoint (.pptx)', 'gutPptxExport()', { primaer: true, titel: 'Präsentation im Gutachtendesign mit den angehakten Folien.' })}</span>`
               : `${knopf('⤓ Word-Datei (.docx)', 'gutWordExport()', { primaer: true, titel: 'Komplettes Gutachten im LKEBw-Layout: Deckblatt, Verzeichnisse, Kapitel, Abbildungen und Tabellen.' })}</span>`)
@@ -362,6 +377,8 @@ function figurBlockInhalt(box, b, nummern, zuEinpassen, { inAnlage = false } = {
       });
     } else {
       Object.assign(el.style, { width: '100%', height: 'auto', display: 'block' });
+      // Zwischengespeichertes SVG: Wasserzeichen je nach Haken setzen ODER entfernen; Tabellen gehen als Word-Tabelle raus → ohne
+      if (teil.art === 'Abbildung') ggEntwurfAnwenden(el, ggEntwurfAktiv());
       if (el.tagName?.toLowerCase() === 'svg') zuEinpassen.push(el);
     }
     const halter = document.createElement('div');
@@ -386,6 +403,7 @@ function bildBlockInhalt(box, b, nr) {
     return;
   }
   Object.assign(svg.style, { width: '100%', height: 'auto', display: 'block' });
+  ggEntwurfAnwenden(svg, ggEntwurfAktiv());
   const titel = b.unterschrift.trim() || 'Lageplan der Liegenschaft';
   const halter = document.createElement('div');
   halter.appendChild(svg);
@@ -1278,7 +1296,7 @@ export async function gutCopyTeil(id, teilIdx) {
     if (b.typ === 'bild') {
       const svg = bildSvgElement(b);
       if (!svg) throw new Error('Grafik konnte nicht vorbereitet werden — noch einmal übernehmen.');
-      wohin = await ggCopyForWord(svg, 3);
+      wohin = await ggCopyForWord(ggEntwurfAnwenden(svg, ggEntwurfAktiv()), 3);
     } else {
       const el = seitenElement('block', id)?.querySelector(`[data-gut-teil="${teilIdx}"]`)?.firstElementChild || null;
       wohin = await ggCopyDokumentTeil(b.figurId, teilIdx, el);
@@ -1511,7 +1529,9 @@ export function gutSetDeckblattPerson(i, feld, wert) {
   if (p && (feld === 'name' || feld === 'telefon')) p[feld] = String(wert ?? '');
 }
 
-const pngDaten = async svg => new Uint8Array(await (await ggSvgToPngBlob(svg, 3)).arrayBuffer());
+// Kopie stempeln, nicht das SVG der Seitenansicht — gilt für Word und PowerPoint gleichermaßen
+const pngDaten = async svg => new Uint8Array(await (await ggSvgToPngBlob(
+  ggEntwurfAnwenden(svg.cloneNode(true), ggEntwurfAktiv()), 3)).arrayBuffer());
 
 /** Ein Figur-Block als OOXML (Text, Tabelle oder Bild samt Beschriftung) — für Kapitel und Vertiefungs-Anlage. */
 async function figurWordXml(ctx, b, nrListe, warnungen) {

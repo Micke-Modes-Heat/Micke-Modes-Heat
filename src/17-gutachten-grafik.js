@@ -2395,6 +2395,57 @@ export function ggSvgSource(svg) {
 }
 
 /**
+ * Wasserzeichen „ENTWURF“ quer über die Abbildung — als oberste Ebene, damit es auch über
+ * gefüllten Kästen sichtbar bleibt; halbtransparent, damit die Zeichnung lesbar bleibt.
+ * Ist Teil des SVG selbst, also in Zwischenablage, PNG und SVG gleich. Idempotent.
+ * Keine dominant-baseline/letter-spacing: das ignoriert der SVG-Renderer in Word.
+ */
+export function ggEntwurfStempel(svg, text = 'ENTWURF', T = GG_THEME) {
+  if (!svg || svg.querySelector('[data-entwurf]')) return svg;
+  const vb = svg.viewBox?.baseVal;
+  const W = vb?.width || +svg.getAttribute('width') || T.width;
+  const H = vb?.height || +svg.getAttribute('height') || 600;
+  const x0 = vb?.width ? vb.x : 0, y0 = vb?.width ? vb.y : 0;
+  const diag = Math.hypot(W, H);
+  const winkel = -Math.atan2(H, W) * 180 / Math.PI;
+  // Schriftzug ≈ 65 % der Diagonale; bei flachen Bändern durch die Höhe begrenzt
+  const fs = Math.max(28, Math.min(diag * 0.65 / (text.length * 0.66), H * 0.42));
+  const cx = x0 + W / 2, cy = y0 + H / 2;
+  const NS = 'http://www.w3.org/2000/svg';
+  const g = document.createElementNS(NS, 'g');
+  g.setAttribute('data-entwurf', '1');
+  g.setAttribute('pointer-events', 'none');
+  g.setAttribute('transform', `rotate(${gR(winkel)} ${gR(cx)} ${gR(cy)})`);
+  const t = document.createElementNS(NS, 'text');
+  t.setAttribute('x', gR(cx));
+  t.setAttribute('y', gR(cy + fs * 0.35));   // optische Mitte ohne dominant-baseline
+  t.setAttribute('text-anchor', 'middle');
+  t.setAttribute('font-family', T.font);
+  t.setAttribute('font-size', gR(fs));
+  t.setAttribute('font-weight', '700');
+  t.setAttribute('fill', '#C62828');
+  t.setAttribute('fill-opacity', '0.16');
+  t.setAttribute('stroke', '#C62828');
+  t.setAttribute('stroke-opacity', '0.28');
+  t.setAttribute('stroke-width', gR(Math.max(1, fs / 90)));
+  t.textContent = text;
+  g.appendChild(t);
+  svg.appendChild(g);
+  return svg;
+}
+
+/** Wasserzeichen setzen oder entfernen — für zwischengespeicherte SVGs (Gutachten-Editor), die beide Zustände erleben. */
+export function ggEntwurfAnwenden(svg, an) {
+  if (!svg || svg.tagName?.toLowerCase() !== 'svg') return svg;
+  if (an) return ggEntwurfStempel(svg);
+  svg.querySelectorAll('[data-entwurf]').forEach(g => g.remove());
+  return svg;
+}
+
+/** Gilt gemeinsam für Einzelansicht und Gutachten-Editor (Dokument, Präsentation, Word/PowerPoint). */
+export function ggEntwurfAktiv() { return _gg.entwurf; }
+
+/**
  * @param {{transparent?:boolean}} [opts] — `transparent: true` laesst den weissen Grund weg
  *   (fuer Wasserzeichen/Hintergrundbilder, die in Word HINTER den Text gelegt werden).
  */
@@ -14642,7 +14693,7 @@ function ggMetaDefaults(cfg, bearbeiterVar) {
 }
 
 const _gg = { figurId: GG_FIGUREN[0].id, scale: 3, svg: null, svgTabelle: null,
-              layout: 'reduziert', ziel: 'figur' };
+              layout: 'reduziert', ziel: 'figur', entwurf: false };
 
 const ggFigur = () => GG_FIGUREN.find(f => f.id === _gg.figurId) || GG_FIGUREN[0];
 
@@ -14765,6 +14816,9 @@ export function ggRenderPanel() {
       bar.innerHTML = btn(zielTabelle ? 'Als Tabelle kopieren' : 'Für Word kopieren', 'ggCopy()', true)
         + btn('PNG speichern', 'ggSavePng()') + btn('SVG speichern', 'ggSaveSvg()')
         + sel('ggSetScale(this.value)', [[2, '2× · ~300 dpi'], [3, '3× · ~450 dpi'], [4, '4× · ~600 dpi']], _gg.scale)
+        + `<label title="Legt den Schriftzug ENTWURF quer über die Abbildung — gilt für Kopieren, PNG und SVG"
+             style="display:flex;align-items:center;gap:5px;font-size:11px;color:${_gg.entwurf ? 'var(--crit)' : 'var(--muted)'};cursor:pointer;padding:0 4px;">
+             <input type="checkbox"${_gg.entwurf ? ' checked' : ''} data-change="ggSetEntwurf(this.checked)">Wasserzeichen „Entwurf“</label>`
         + (ggIstBlatt(figur)
             ? sel('ggSetLayout(this.value)', [['voll', 'Blatt: vollständig'],
                                               ['reduziert', 'Blatt: reduziert + Kennzahlentabelle']], _gg.layout)
@@ -14788,6 +14842,8 @@ export function ggRenderPanel() {
   if (paper) {
     _gg.svg = figur.render(figur.config);
     _gg.svgTabelle = ggZeigtTabelle(figur) ? ggRenderKennzahlen(figur.config) : null;
+    // Wasserzeichen schon in der Vorschau — Kopieren/PNG/SVG nehmen genau dieses SVG
+    if (_gg.entwurf) { ggEntwurfStempel(_gg.svg); if (_gg.svgTabelle) ggEntwurfStempel(_gg.svgTabelle); }
     const blatt = (svg, name, aktiv) => {
       svg.style.width = '100%';
       svg.style.maxWidth = GG_THEME.width + 'px';   // nie groesser als 1:1
@@ -14938,6 +14994,13 @@ export function ggSetLayout(v) {
   _gg.layout = v === 'reduziert' ? 'reduziert' : 'voll';
   if (_gg.layout === 'voll') _gg.ziel = 'figur';
   ggRenderPanel();
+}
+
+/** Wasserzeichen „ENTWURF“ für alle Abbildungen an/aus (gilt bis zum Neuladen, auch im Gutachten-Editor). */
+export function ggSetEntwurf(on) {
+  _gg.entwurf = !!on;
+  ggRenderPanel();
+  ggSay(_gg.entwurf ? '✓ Wasserzeichen „Entwurf“ aktiv — gilt für Kopieren, PNG und SVG.' : 'Wasserzeichen „Entwurf“ aus.');
 }
 
 /** Exportziel in Version 2: die Abbildung oder das Kennzahlenblatt. */
