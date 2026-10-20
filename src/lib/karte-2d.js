@@ -10,6 +10,16 @@
 // keine eigene Ebene; das Verschieben der Kartenebene selbst bleibt auf der GPU.
 // Während der Zoom-Animation setzt Leaflet kurz wieder 3D (Transition) — das ist
 // gewollt; nach dem Zoom wird neu positioniert und damit wieder 2D.
+//
+// Zweiter Schritt (20.10.2026, Planung › Strom ohne PV): Chrome ordnet beim Ziehen
+// in JEDEM Bild alle Ebenen neu („Layerize"), auch mit will-change — die Kosten
+// wachsen mit der Ebenenzahl. Übrig waren ~40 Kartenkacheln (je translate3d), die
+// SVG-Fläche der Vektorebene (will-change) und Marker, die nur wegen Überlappung
+// mit den Kacheln eigene Ebenen bekamen (62 Ebenen). Kacheln, Kachel-Container
+// und SVG-Fläche liegen jetzt ebenfalls 2D; dafür bekommt die Kartenebene selbst
+// (.leaflet-map-pane, die beim Ziehen verschoben wird) will-change: transform —
+// ihr Inhalt ist dann EINE GPU-Ebene, die nur verschoben statt neu gerastert wird.
+// Gemessen: 62 → 13 Ebenen, Layerize je Zieh-Serie 1,8 s → 0,5 s.
 
 const RE_3D = /translate3d\(\s*([^,()]+?)px\s*,\s*([^,()]+?)px\s*,\s*0(?:px)?\s*\)/;
 
@@ -31,8 +41,9 @@ export function flach2d(el) {
 }
 
 /**
- * Leaflet einmalig umstellen: alle Marker, dazu die Bild-/SVG-Overlays der
- * genannten Panes, liegen nach jedem Positionieren 2D. Muss vor dem Anlegen
+ * Leaflet einmalig umstellen: alle Marker, Kartenkacheln, Kachel-Container und
+ * SVG-Renderer, dazu die Bild-/SVG-Overlays der genannten Panes, liegen nach
+ * jedem Positionieren 2D; die Kartenebene wird eine GPU-Ebene. Muss vor dem Anlegen
  * der Karte laufen (spätere Marker sind dann ohnehin erfasst, frühere nicht).
  * @param {any} L Leaflet-Namensraum
  * @param {{overlayPanes?: string[]}} [opt] Panes, deren Overlays 2D liegen sollen
@@ -56,14 +67,46 @@ export function karte2dEinrichten(L, { overlayPanes = ['pvPane'] } = {}) {
     if (overlayPanes.includes(this.options.pane)) flach2d(this._image);
   };
 
-  // will-change aus Leaflets CSS (svg.leaflet-zoom-animated) würde die Ebene erzwingen.
-  // Pane-Klasse nach Leaflet-Regel: 'pvPane' → .leaflet-pv-pane
-  if (typeof document !== 'undefined' && overlayPanes.length) {
+  // Kartenkacheln: Lage wird nur beim Anlegen gesetzt
+  const addTile = L.GridLayer.prototype._addTile;
+  L.GridLayer.prototype._addTile = function (coords, container) {
+    addTile.call(this, coords, container);
+    flach2d(this._tiles[this._tileCoordsToKey(coords)]?.el);
+  };
+  // Kachel-Container je Zoomstufe (Verschiebung + Skalierung, auch in der Zoom-Animation)
+  const setZoomTransform = L.GridLayer.prototype._setZoomTransform;
+  L.GridLayer.prototype._setZoomTransform = function (level) {
+    setZoomTransform.apply(this, arguments);
+    flach2d(level?.el);
+  };
+
+  // SVG-Fläche der Vektorebenen (Gebäude, Leitungen …): Lage nach jedem Verschieben,
+  // Skalierung während des Zooms (leaflet-rotate ersetzt _updateTransform — wird mit umhüllt)
+  if (L.SVG) {
+    const svgUpdate = L.SVG.prototype._update;
+    L.SVG.prototype._update = function () {
+      svgUpdate.apply(this, arguments);
+      flach2d(this._container);
+    };
+    const updateTransform = L.SVG.prototype._updateTransform;
+    L.SVG.prototype._updateTransform = function () {
+      updateTransform.apply(this, arguments);
+      flach2d(this._container);
+    };
+  }
+
+  if (typeof document !== 'undefined') {
+    const regeln = [
+      // Die Kartenebene als eine GPU-Ebene (s. Kopf); ihr Inhalt liegt 2D darin.
+      '.leaflet-map-pane { will-change: transform; }',
+      // will-change aus Leaflets CSS (svg.leaflet-zoom-animated) würde je SVG eine Ebene erzwingen.
+      '.leaflet-map-pane svg.leaflet-zoom-animated { will-change: auto; }',
+      // Pane-Klasse nach Leaflet-Regel: 'pvPane' → .leaflet-pv-pane
+      ...overlayPanes.map(p => `.leaflet-${p.replace('Pane', '')}-pane > .leaflet-image-layer { will-change: auto; }`),
+    ];
     const st = document.createElement('style');
     st.dataset.karte2d = '';
-    st.textContent = overlayPanes
-      .map(p => `.leaflet-${p.replace('Pane', '')}-pane > .leaflet-image-layer { will-change: auto; }`)
-      .join('\n');
+    st.textContent = regeln.join('\n');
     document.head.appendChild(st);
   }
 }
