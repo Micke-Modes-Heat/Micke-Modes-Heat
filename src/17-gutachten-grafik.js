@@ -17,6 +17,8 @@ import { sdJahresuebersicht, sdJahresauswertung, sdTrend, sdZeitraumText, sdDaue
 import { ENGPASS_GRENZEN, ENGPASS_VORLAUF_J, engpassVersorgung } from './lib/engpass-core.js';
 import { EK_GRUPPEN, EK_ARTEN, EK_VORGABEN, EK_KEINE_ABHILFE, ekNormKennwerte, ekAuswertung, ekNetzPositionen } from './lib/elektro-kosten.js';
 import { pruefeMsKabel } from './lib/plausibilitaet.js';
+import { grRechenstand } from './lib/gutachten-rechenstand.js';
+import { stempelAbweichung } from './lib/varianten-regeln.js';
 import { KABEL_ALIASE, KABEL_TYPEN } from './config/netz-kosten.js';
 import { mrStatusAusStand } from './lib/massnahmen-register.js';
 import { EF_STATUS, EF_PV_GEWICHTE, EF_PV_KRITERIEN, efKernaussagen, efPvBewertung, efMassnahmen } from './lib/gutachten-elektro-fazit.js';
@@ -1804,6 +1806,30 @@ function ggDokLeer(text) {
   if (!t) return t;
   const satz = t.split(' — ')[0].trim().replace(/[.:,;]+$/, '');
   return satz ? satz + '.' : '';
+}
+
+/**
+ * „Stand der Berechnungen“ für Kapitel 5 (lib/gutachten-rechenstand.js): sammelt, mit welchem Stand Bedarfsprognose,
+ * Netzmodell, PV-Analyse und Resilienz-Rechnung gerechnet sind. Zeilen für den Editor (21), Warnungen für die Prüfliste.
+ */
+export function ggRechenstand() {
+  const w = window;
+  const { st, r } = ggLies(() => ggBedarfRechnung(), {}) || {};
+  const zubauKw = (r?.stufen || []).filter(s => s.key !== 'gebaeude').reduce((a, s) => a + (s.zubauKw || 0), 0);
+  const s = w._pvAnalyse || {};
+  const b = s.basis || {};
+  const ab = ggLies(() => stempelAbweichung(s.stempel, w.activeVariantId ?? null), null);
+  const nz = ggLies(() => w.elCalcStand?.() || null, null);
+  return grRechenstand({
+    bedarf: { lastgang: w.elQuartierFilename || '', dataYear: Array.isArray(w.elQuartierH) || w.elQuartierH?.length ? st?.dataYear : null,
+              zieljahr: r?.zieljahr ?? null, zubauKw },
+    netz: { modell: (w.stromEdges || []).length > 0, frisch: nz ? nz.frisch : null },
+    pv: { berechnet: !!s.ergebnisse?.length && !s.stale, stale: !!s.ergebnisse?.length && !!s.stale, stand: s.standText || '',
+          varianteAbweichend: ab ? ab.name || 'andere Variante' : null, lastgang: b.lastgangDatei || '',
+          lastfall: b.lastfall || null, zielJahr: b.zielausbau?.zielJahr ?? null, netzkurve: !!b.netzkurve,
+          bestandsnetz: !!ggPvVariante('bestandsnetz') },
+    resilienz: { berechnet: !!w._pvResReco },
+  });
 }
 
 /**

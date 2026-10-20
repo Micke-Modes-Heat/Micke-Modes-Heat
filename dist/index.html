@@ -16773,7 +16773,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-20';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'c04046d';
+  var c = '3ac392b';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -118258,6 +118258,431 @@ ${massTbl}
     return { positionen, offen, vorschlaege, abweichend };
   }
 
+  // ── lib/gutachten-rechenstand.js — „Stand der Berechnungen“ für das Gutachten Kapitel 5 ──
+  // DOM- und importfrei. Das Elektrokapitel setzt sich aus Rechnungen zusammen, die zu verschiedenen
+  // Zeitpunkten und mit verschiedenen Eingaben gelaufen sein können: Bedarfsprognose (live), Netzmodell
+  // (Engpass-Sweep), PV-Analyse (gespeicherter Lauf) und Resilienz-Rechnung. Passen sie nicht
+  // zusammen, widerspricht sich der Text (z. B. 5.4.2 „kein Netzmodell“ neben 5.4.1 mit 11 Trafos).
+  // Diese Datei vergleicht die Stände und sagt je Rechnung, ob sie zum Projekt passt.
+  //
+  // Status: 'ok' passt · 'hinweis' passt mit Einschränkung · 'veraltet' neu rechnen · 'fehlt' nicht gerechnet.
+
+  const GR_STATUS = Object.freeze({ ok: 'aktuell', hinweis: 'mit Einschränkung', veraltet: 'veraltet', fehlt: 'fehlt' });
+
+  const n0$1 = v => Math.round(v).toLocaleString('de-DE');
+  const dateiName = p => String(p || '').split(/[\\/]/).pop().trim();
+
+  /**
+   * d.bedarf   { lastgang, dataYear, zieljahr, zubauKw }   — Bedarfsprognose 5.3 (live); lastgang = aktueller Dateiname
+   *                                                          zubauKw = geplante Verbraucher ohne Gebäude (WP, Lade …)
+   * d.netz     { modell, frisch, berechnet }                — Netzmodell 5.4.1; frisch: Netz seit der Berechnung unverändert
+   *                                                          (null = in dieser Sitzung nicht gerechnet)
+   * d.pv       { berechnet, stale, stand, varianteAbweichend, lastgang, lastfall, zielJahr, netzkurve, bestandsnetz }
+   *            — gespeicherter Lauf der PV-Analyse 5.4.2; lastfall 'ziel' (Zielausbau) | 'basis' (Messung)
+   * d.resilienz { berechnet }                               — Resilienz-Rechnung 5.4.3 / Kapitel 8
+   * @returns {Array<{ id, titel, kapitel, status, stand, hinweise: string[], wo }>}
+   */
+  function grRechenstand(d = {}) {
+    const zeilen = [];
+    const b = d.bedarf || {};
+    const lastgangJetzt = dateiName(b.lastgang);
+
+    // Bedarfsprognose rechnet beim Zeichnen — sie ist immer aktuell, solange ein Lastgang da ist
+    zeilen.push(b.dataYear
+      ? { id: 'bedarf', titel: 'Bedarfsprognose', kapitel: '5.2–5.3', status: 'ok',
+          stand: `Referenzjahr ${b.dataYear}${b.zieljahr ? ` · Zieljahr ${b.zieljahr}` : ''}`,
+          hinweise: [], wo: 'Strom-Grundlagen › Messjahre' }
+      : { id: 'bedarf', titel: 'Bedarfsprognose', kapitel: '5.2–5.3', status: 'fehlt', stand: 'kein Lastgang',
+          hinweise: ['Ohne Referenzjahr bleiben 5.2 bis 5.4 leer.'], wo: 'Strom-Grundlagen › Messjahre' });
+
+    const nz = d.netz || {};
+    if (!nz.modell) {
+      zeilen.push({ id: 'netz', titel: 'Netzmodell', kapitel: '5.4.1', status: 'fehlt', stand: 'kein Netz erfasst',
+        hinweise: ['Ohne Trafos und Kabel bewertet 5.4.1 das interne Netz nur mit Platzhaltern.'], wo: 'Planung › Strom › Netz' });
+    } else if (nz.frisch === false) {
+      zeilen.push({ id: 'netz', titel: 'Netzmodell', kapitel: '5.4.1', status: 'veraltet', stand: 'Netz seit der Berechnung geändert',
+        hinweise: ['Das Netz wurde nach der letzten Berechnung geändert; Engpässe und Kosten können abweichen.'], wo: 'Planung › Strom › Berechnen' });
+    } else {
+      zeilen.push({ id: 'netz', titel: 'Netzmodell', kapitel: '5.4.1', status: nz.frisch ? 'ok' : 'hinweis',
+        stand: nz.frisch ? 'berechnet, unverändert' : 'beim Zeichnen gerechnet',
+        hinweise: nz.frisch ? [] : ['In dieser Sitzung nicht gerechnet; das Gutachten rechnet den Engpass-Verlauf selbst.'],
+        wo: 'Planung › Strom › Berechnen' });
+    }
+
+    const pv = d.pv || {};
+    if (!pv.berechnet && !pv.stale) {
+      zeilen.push({ id: 'pv', titel: 'PV-Analyse', kapitel: '5.4.2, 5.5, 5.6', status: 'fehlt', stand: 'nicht gerechnet',
+        hinweise: ['Ohne „Varianten berechnen“ fehlen PV-Auslegung, Kosten und Bewertung.'], wo: 'Auswertung › PV-Analyse' });
+    } else {
+      const h = [], veraltet = [];
+      if (pv.stale) veraltet.push('Eingaben der PV-Analyse wurden nach der Berechnung geändert.');
+      if (pv.varianteAbweichend) veraltet.push(`Gerechnet für die Variante „${pv.varianteAbweichend}“, nicht für die aktive.`);
+      const lgPv = dateiName(pv.lastgang);
+      if (lgPv && lastgangJetzt && lgPv !== lastgangJetzt) veraltet.push(`Gerechnet mit dem Lastgang „${lgPv}“, aktuell ist „${lastgangJetzt}“.`);
+      if (pv.lastfall === 'basis' && b.zubauKw > 0.5) {
+        h.push(`Gerechnet mit dem gemessenen Lastgang ohne die geplanten Verbraucher (+${n0$1(b.zubauKw)} kW laut 5.3); `
+          + 'Eigenverbrauch und Autarkie sind dadurch zu niedrig angesetzt.');
+      }
+      if (pv.lastfall === 'ziel' && pv.zielJahr && b.zieljahr && pv.zielJahr !== b.zieljahr) {
+        h.push(`Zielausbau ${pv.zielJahr} der PV-Analyse weicht vom Zieljahr ${b.zieljahr} der Bedarfsprognose ab.`);
+      }
+      if (!pv.netzkurve && nz.modell && pv.bestandsnetz) {
+        h.push('Rechenstand von vor dem Ausbaupfad: Netzkosten pauschal, die Ertüchtigung des internen Netzes fehlt in der Wirtschaftlichkeit.');
+      }
+      zeilen.push({ id: 'pv', titel: 'PV-Analyse', kapitel: '5.4.2, 5.5, 5.6',
+        status: veraltet.length ? 'veraltet' : h.length ? 'hinweis' : 'ok',
+        stand: [pv.stand ? `gerechnet ${pv.stand}` : 'gerechnet', pv.lastfall === 'basis' ? 'Lastgang Messung' : pv.lastfall === 'ziel' ? `Zielausbau${pv.zielJahr ? ' ' + pv.zielJahr : ''}` : '']
+          .filter(Boolean).join(' · '),
+        hinweise: [...veraltet, ...h], wo: 'Auswertung › PV-Analyse › Varianten berechnen' });
+    }
+
+    const rs = d.resilienz;
+    if (rs) {
+      zeilen.push(rs.berechnet
+        ? { id: 'resilienz', titel: 'Resilienz-Rechnung', kapitel: '5.4.3, 8', status: 'ok', stand: 'gerechnet', hinweise: [], wo: 'PV-Analyse › Resilienz' }
+        : { id: 'resilienz', titel: 'Resilienz-Rechnung', kapitel: '5.4.3, 8', status: 'fehlt', stand: 'nicht gerechnet',
+            hinweise: ['Notstromauslegung und -kosten bleiben offen.'], wo: 'PV-Analyse › Resilienz' });
+    }
+    return zeilen;
+  }
+
+  /** Zusammenfassung für die Prüfliste am Export: nur was nicht passt, eine Zeile je Rechnung. */
+  function grWarnungen(zeilen) {
+    return (zeilen || []).filter(z => z.status === 'veraltet' || z.status === 'hinweis')
+      .map(z => ({ stufe: z.status === 'veraltet' ? 'warn' : 'info',
+                   text: `Stand der Berechnungen – ${z.titel} (${z.kapitel}): ${z.hinweise.join(' ')}` }));
+  }
+
+  // ── lib/varianten-regeln.js — Was gilt in welcher Variante? ─────────────────
+  //
+  // Eine Regel für das ganze Projekt: Was da ist oder ohnehin kommt, gilt in
+  // allen Varianten (gemeinsamer Stamm). Was entschieden wird, gilt nur in der
+  // Variante, in der es entschieden wurde (Paket der Variante).
+  //
+  // Hier liegen die reinen Funktionen dazu — importfrei bis auf die Schicht-
+  // Konstanten, DOM-frei, direkt testbar. Den Zustand (welche Variante aktiv ist,
+  // was in welchem Paket liegt) hält weiterhin 01-globals-varianten.js.
+
+
+  /** Schlüssel einer Variante; der Hauptplan hat intern die id null. */
+  const HAUPTPLAN_KEY = 'base';
+  const HAUPTPLAN_NAME = 'Hauptplan';
+  function variantKey(id) { return id == null ? HAUPTPLAN_KEY : String(id); }
+
+  // ── Schicht neuer Objekte ableiten ───────────────────────────────────────────
+
+  /**
+   * Bedarfsseite (kommt ohnehin) gegen Entscheidungsseite (wird geplant).
+   * Gebäude und Verbraucher beschreiben, was die Liegenschaft braucht; Erzeuger,
+   * Netz und Speicher, wie man es deckt. Diese Trennung braucht auch die
+   * Bedarfsprognose im Gutachten.
+   */
+  function kategorieFuerAsset(assetKategorie) {
+    return assetKategorie === 'verbraucher' ? 'bedarf' : 'entscheidung';
+  }
+
+  /**
+   * Schicht für ein NEUES Objekt.
+   *   modus      'auto' oder eine feste Schicht (Nutzer hat überschrieben)
+   *   kategorie  'bedarf' | 'entscheidung'
+   *   jahr       Betrachtungsjahr (Jahres-Slider)
+   *   basisjahr  erstes Jahr des Sliders = „heute"
+   * Steht der Slider auf heute, wird Bestand erfasst. In der Zukunft kommt
+   * Bedarf ohnehin (Entwicklung), alles andere ist eine Planungsentscheidung.
+   */
+  function schichtFuerNeu({ modus = 'auto', kategorie = 'entscheidung', jahr, basisjahr } = {}) {
+    if (modus && modus !== 'auto') return normSchicht(modus);
+    const j = Number(jahr), b = Number(basisjahr);
+    if (!Number.isFinite(j) || !Number.isFinite(b) || j <= b) return SCHICHT.BESTAND;
+    return kategorie === 'bedarf' ? SCHICHT.ENTWICKLUNG : SCHICHT.ENTSCHEIDUNG;
+  }
+
+  /** Baujahr für ein neues Objekt: das Slider-Jahr, sobald es in der Zukunft liegt. */
+  function baujahrFuerNeu({ jahr, basisjahr } = {}) {
+    const j = Number(jahr), b = Number(basisjahr);
+    return (Number.isFinite(j) && Number.isFinite(b) && j > b) ? j : null;
+  }
+
+  /**
+   * Darf ein Objekt das Baujahr seines Gebäudes übernehmen? Bestand ja; ein geplantes Objekt
+   * (Schicht Entwicklung/Entscheidung) nur, wenn das Gebäude selbst erst ab heute entsteht (Neubau).
+   * Sonst bekäme eine geplante PV-Anlage auf einem Gebäude von 1970 das Baujahr 1970 — im
+   * Gutachten erschiene ihre Investition dann im Jahr 1970. Rückgabe: Baujahr oder null.
+   */
+  function baujahrVomGebaeude({ schicht, gebBaujahr, basisjahr } = {}) {
+    const g = parseInt(gebBaujahr), b = Number(basisjahr);
+    if (!Number.isFinite(g)) return null;
+    if (normSchicht(schicht) === SCHICHT.BESTAND) return g;
+    return Number.isFinite(b) && g >= b ? g : null;
+  }
+
+  /**
+   * Gespeichertes Baujahr, das ein geplantes Objekt früher fälschlich vom Gebäude geerbt hat
+   * (gleiches Jahr wie das Gebäude, vor dem Basisjahr) — beim Laden zu verwerfen.
+   * Am Rechnen ändert das nichts: Ohne Baujahr und mit einem vergangenen ist das Objekt ab sofort aktiv.
+   */
+  function istGeerbtesAltBaujahr({ schicht, baujahr, gebBaujahr, basisjahr } = {}) {
+    const j = parseInt(baujahr), g = parseInt(gebBaujahr), b = Number(basisjahr);
+    return normSchicht(schicht) !== SCHICHT.BESTAND && Number.isFinite(j) && j === g && Number.isFinite(b) && j < b;
+  }
+
+  /**
+   * Wirkungsbereich einer Schicht: 'alle' (gemeinsamer Stamm) oder 'variante'.
+   */
+  function wirkungAusSchicht(schicht) {
+    return normSchicht(schicht) === SCHICHT.ENTSCHEIDUNG ? 'variante' : 'alle';
+  }
+
+  // ── Maßnahmen mit Geltungsbereich ────────────────────────────────────────────
+  //
+  // Maßnahme.variante: null = gilt in allen Varianten; sonst der variantKey.
+  // Fehlt das Feld ganz, ist die Maßnahme neu und bekommt beim Abschluss der
+  // Planungstransaktion ihre Vorgabe (massnahmeStandardVariante).
+
+  /** Typen, die ohnehin anfallen und deshalb für alle Varianten gelten
+   *  (Ersatz am Ende der Lebensdauer, Instandhaltung). */
+  const OHNEHIN_TYPEN = new Set(['ersatz', 'erneuerung', 'instandhaltung', 'lebensdauer']);
+
+  function massnahmeStandardVariante({ objektSchicht, typ, aktivKey } = {}) {
+    // An Objekten, die selbst nur in einer Variante existieren, ist die
+    // Zuordnung schon durch das Objekt gegeben.
+    if (normSchicht(objektSchicht) === SCHICHT.ENTSCHEIDUNG) return null;
+    if (OHNEHIN_TYPEN.has(String(typ || '').toLowerCase())) return null;
+    return aktivKey ?? HAUPTPLAN_KEY;
+  }
+
+  /** Gilt die Maßnahme in der Variante `key`? */
+  function massnahmeGiltIn(m, key) {
+    return m?.variante == null || m.variante === key;
+  }
+
+  /**
+   * Nimmt aus den Objekten alle Maßnahmen der Variante `key` heraus und gibt sie
+   * als Ablage zurück: [{ ziel, id, m }]. `objekte` = [{ ziel, id, obj }].
+   * Die Objekte werden in-place verändert.
+   */
+  function massnahmenHerausnehmen(objekte, key) {
+    const ablage = [];
+    for (const { ziel, id, obj } of (objekte || [])) {
+      const liste = obj?.massnahmen;
+      if (!Array.isArray(liste) || !liste.length) continue;
+      const bleiben = [];
+      for (const m of liste) {
+        if (m && m.variante != null && m.variante === key) ablage.push({ ziel, id, m });
+        else bleiben.push(m);
+      }
+      if (bleiben.length !== liste.length) liste.splice(0, liste.length, ...bleiben);
+    }
+    return ablage;
+  }
+
+  /**
+   * Legt abgelegte Maßnahmen wieder an ihre Objekte. Gibt die Einträge zurück,
+   * deren Objekt nicht mehr existiert (z. B. gelöschtes Asset).
+   */
+  function massnahmenEinsetzen(objekte, ablage) {
+    const nachZiel = new Map((objekte || []).map(o => [`${o.ziel}|${o.id}`, o.obj]));
+    const verwaist = [];
+    for (const e of (ablage || [])) {
+      const obj = nachZiel.get(`${e.ziel}|${e.id}`);
+      if (!obj) { verwaist.push(e); continue; }
+      if (!Array.isArray(obj.massnahmen)) obj.massnahmen = [];
+      if (!obj.massnahmen.some(m => m?.id === e.m?.id)) obj.massnahmen.push(e.m);
+    }
+    return verwaist;
+  }
+
+  // ── Wärmenetz: Geometrie gemeinsam, Parameter je Variante ────────────────────
+
+  const GEOMETRIE_FELDER = ['trasse', 'trasseSegments', 'graph'];
+
+  function waermeGeometrie(netzState) {
+    if (!netzState) return null;
+    const out = {};
+    for (const k of GEOMETRIE_FELDER) if (k in netzState) out[k] = netzState[k];
+    return out;
+  }
+
+  function geometrieGleich(a, b) {
+    return JSON.stringify(waermeGeometrie(a) || {}) === JSON.stringify(waermeGeometrie(b) || {});
+  }
+
+  /** Setzt Parameter einer Variante mit der gemeinsamen Geometrie zusammen. */
+  function netzMitGeometrie(netzState, geometrie) {
+    if (!geometrie) return netzState;
+    return { ...(netzState || {}), ...geometrie };
+  }
+
+  // ── Dach-PV: Dachdaten gemeinsam, Belegung je Variante ───────────────────────
+
+  const PV_BELEGUNG_FELDER = [
+    'pvAktiv', 'pvDachanteil', 'pvModus', 'pvFlaechen', 'pvFlGcr',
+    'pvFlAusrichtung', 'pvFlBelegung', 'pvBaujahr',
+  ];
+
+  // Kartenlayer hängen direkt an den Flächen — sie gehören nicht zum Datenstand.
+  const _LAUFZEIT$1 = new Set(['layer', 'svgLayer', '_layer', 'marker']);
+  function _klon(v) {
+    if (v == null || typeof v !== 'object') return v;
+    if (Array.isArray(v)) return v.map(_klon);
+    const out = {};
+    for (const [k, x] of Object.entries(v)) {
+      if (_LAUFZEIT$1.has(k) || typeof x === 'function') continue;
+      out[k] = _klon(x);
+    }
+    return out;
+  }
+
+  /** { [gebId]: { pvAktiv, … } } aus der Gebäudeliste. */
+  function pvBelegungErfassen(gebaeude) {
+    const out = {};
+    for (const g of (gebaeude || [])) {
+      const e = {};
+      for (const k of PV_BELEGUNG_FELDER) e[k] = _klon(g[k]);
+      out[g.id] = e;
+    }
+    return out;
+  }
+
+  /** Unterscheiden sich zwei Belegungen eines Gebäudes? */
+  function pvBelegungGleich(a, b) {
+    return JSON.stringify(_klon(a || {})) === JSON.stringify(_klon(b || {}));
+  }
+
+  /**
+   * Spielt eine erfasste Belegung auf die Gebäude. Gebäude ohne Eintrag
+   * (seit der Erfassung neu angelegt) behalten ihren Stand. Gibt die Zahl der
+   * geänderten Gebäude zurück.
+   */
+  function pvBelegungAnwenden(gebaeude, belegung, vorher) {
+    if (!belegung) return [];
+    const geaendert = [];
+    for (const g of (gebaeude || [])) {
+      const e = belegung[g.id];
+      if (!e) continue;
+      const alt = {};
+      for (const k of PV_BELEGUNG_FELDER) alt[k] = g[k];
+      let anders = false;
+      for (const k of PV_BELEGUNG_FELDER) {
+        if (!(k in e)) continue;
+        if (JSON.stringify(_klon(g[k])) !== JSON.stringify(e[k])) { g[k] = _klon(e[k]); anders = true; }
+      }
+      if (anders) { geaendert.push(g); if (vorher) vorher.set(g.id, alt); }
+    }
+    return geaendert;
+  }
+
+  // ── Ergebnis-Stempel ─────────────────────────────────────────────────────────
+
+  /** Stempel für ein gerade berechnetes Ergebnis. */
+  function ergebnisStempel(aktivId, name, jetzt = new Date()) {
+    return { variantKey: variantKey(aktivId), name: name || HAUPTPLAN_NAME, zeit: jetzt.toISOString() };
+  }
+
+  /**
+   * Passt das Ergebnis zur aktiven Variante? Gibt null zurück, wenn ja (oder
+   * kein Stempel da ist), sonst { name, zeit } der Variante, für die gerechnet wurde.
+   */
+  function stempelAbweichung(stempel, aktivId) {
+    if (!stempel?.variantKey) return null;
+    return stempel.variantKey === variantKey(aktivId) ? null : { name: stempel.name, zeit: stempel.zeit };
+  }
+
+  function datumKurz(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.`;
+  }
+
+  // ── Zeitstrahl ───────────────────────────────────────────────────────────────
+
+  /**
+   * Sammelt alle datierten Ereignisse für den Zeitstrahl.
+   * eingabe: {
+   *   basisjahr,
+   *   gebaeude:  [{ id, name, baujahr, abrissjahr, schicht }],
+   *   assets:    [{ id, name, baujahr, abrissjahr, schicht, massnahmen }]   — Live-Stand (aktive Variante)
+   *   pakete:    [{ key, name, items: [{ id, name, baujahr, … }] }]       — Entscheidungen je Variante
+   *   massnahmenAblage: { [key]: [{ id, m }] }                             — Maßnahmen nicht aktiver Varianten
+   *   aktivKey, jahrVon(m)
+   * }
+   * Rückgabe: [{ spur, jahr, titel, art, ziel, id }]
+   *   spur  'stamm' oder ein variantKey
+   *   art   'bestand' | 'entwicklung' | 'entscheidung' | 'massnahme' | 'abriss'
+   */
+  function zeitstrahlEintraege({ basisjahr, gebaeude = [], assets = [], pakete = [], massnahmenAblage = {}, aktivKey = HAUPTPLAN_KEY, jahrVon } = {}) {
+    const out = [];
+    const zahl = v => { const n = parseInt(v); return Number.isFinite(n) ? n : null; };
+    const mj = m => (jahrVon ? jahrVon(m) : zahl(m?.jahr));
+    const b = zahl(basisjahr) ?? new Date().getFullYear();
+
+    const objekt = (o, ziel, spur) => {
+      const bj = zahl(o.baujahr), aj = zahl(o.abrissjahr);
+      const s = normSchicht(o.schicht);
+      if (bj && bj > b) out.push({ spur, jahr: bj, titel: o.name || o.id, art: s === SCHICHT.ENTSCHEIDUNG ? 'entscheidung' : 'entwicklung', ziel, id: o.id });
+      if (aj && aj > b) out.push({ spur: s === SCHICHT.ENTSCHEIDUNG ? spur : 'stamm', jahr: aj, titel: `Abriss ${o.name || o.id}`, art: 'abriss', ziel, id: o.id });
+    };
+
+    for (const g of gebaeude) objekt(g, 'gebaeude', 'stamm');
+
+    const massnahme = (m, o, ziel, spurFallback) => {
+      const j = mj(m);
+      if (!j) return;
+      const spur = m.variante == null ? spurFallback : m.variante;
+      out.push({ spur, jahr: j, titel: `${o?.name || ''}: ${m.titel || 'Maßnahme'}`.replace(/^: /, ''), art: 'massnahme', ziel, id: o?.id });
+    };
+
+    for (const a of assets) {
+      const entsch = normSchicht(a.schicht) === SCHICHT.ENTSCHEIDUNG;
+      if (!entsch) objekt(a, 'asset', 'stamm');
+      for (const m of (a.massnahmen || [])) massnahme(m, a, 'asset', entsch ? aktivKey : 'stamm');
+    }
+
+    for (const p of pakete) {
+      const quelle = p.key === aktivKey ? assets.filter(a => normSchicht(a.schicht) === SCHICHT.ENTSCHEIDUNG) : (p.items || []);
+      for (const a of quelle) {
+        objekt({ ...a, schicht: SCHICHT.ENTSCHEIDUNG }, 'asset', p.key);
+        if (p.key !== aktivKey) for (const m of (a.massnahmen || [])) massnahme(m, a, 'asset', p.key);
+      }
+    }
+
+    const namen = new Map(assets.map(a => [a.id, a]));
+    for (const [key, liste] of Object.entries(massnahmenAblage || {})) {
+      if (key === aktivKey) continue;
+      for (const e of (liste || [])) massnahme({ ...e.m, variante: key }, namen.get(e.id) || { id: e.id, name: e.id }, e.ziel || 'asset', key);
+    }
+
+    return out.sort((x, y) => x.jahr - y.jahr || String(x.titel).localeCompare(String(y.titel)));
+  }
+
+  var variantenRegeln = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    HAUPTPLAN_KEY: HAUPTPLAN_KEY,
+    HAUPTPLAN_NAME: HAUPTPLAN_NAME,
+    PV_BELEGUNG_FELDER: PV_BELEGUNG_FELDER,
+    baujahrFuerNeu: baujahrFuerNeu,
+    baujahrVomGebaeude: baujahrVomGebaeude,
+    datumKurz: datumKurz,
+    ergebnisStempel: ergebnisStempel,
+    geometrieGleich: geometrieGleich,
+    istGeerbtesAltBaujahr: istGeerbtesAltBaujahr,
+    kategorieFuerAsset: kategorieFuerAsset,
+    massnahmeGiltIn: massnahmeGiltIn,
+    massnahmeStandardVariante: massnahmeStandardVariante,
+    massnahmenEinsetzen: massnahmenEinsetzen,
+    massnahmenHerausnehmen: massnahmenHerausnehmen,
+    netzMitGeometrie: netzMitGeometrie,
+    pvBelegungAnwenden: pvBelegungAnwenden,
+    pvBelegungErfassen: pvBelegungErfassen,
+    pvBelegungGleich: pvBelegungGleich,
+    schichtFuerNeu: schichtFuerNeu,
+    stempelAbweichung: stempelAbweichung,
+    variantKey: variantKey,
+    waermeGeometrie: waermeGeometrie,
+    wirkungAusSchicht: wirkungAusSchicht,
+    zeitstrahlEintraege: zeitstrahlEintraege
+  });
+
   // ── lib/gutachten-elektro-fazit.js — Gutachten Kapitel 5 (Kernaussagen, 5.6, 5.7) und 9.2 ──
   // DOM- und importfrei. 17-gutachten-grafik.js sammelt die Ergebnisse der Kapitel 5.1–5.5 (Anschluss,
   // internes Netz, PV, Notstrom, Ladeinfrastruktur, Kosten) und übergibt sie hier als einfache Zahlen;
@@ -126144,6 +126569,30 @@ ${massTbl}
     if (!t) return t;
     const satz = t.split(' — ')[0].trim().replace(/[.:,;]+$/, '');
     return satz ? satz + '.' : '';
+  }
+
+  /**
+   * „Stand der Berechnungen“ für Kapitel 5 (lib/gutachten-rechenstand.js): sammelt, mit welchem Stand Bedarfsprognose,
+   * Netzmodell, PV-Analyse und Resilienz-Rechnung gerechnet sind. Zeilen für den Editor (21), Warnungen für die Prüfliste.
+   */
+  function ggRechenstand() {
+    const w = window;
+    const { st, r } = ggLies(() => ggBedarfRechnung(), {}) || {};
+    const zubauKw = (r?.stufen || []).filter(s => s.key !== 'gebaeude').reduce((a, s) => a + (s.zubauKw || 0), 0);
+    const s = w._pvAnalyse || {};
+    const b = s.basis || {};
+    const ab = ggLies(() => stempelAbweichung(s.stempel, w.activeVariantId ?? null), null);
+    const nz = ggLies(() => w.elCalcStand?.() || null, null);
+    return grRechenstand({
+      bedarf: { lastgang: w.elQuartierFilename || '', dataYear: Array.isArray(w.elQuartierH) || w.elQuartierH?.length ? st?.dataYear : null,
+                zieljahr: r?.zieljahr ?? null, zubauKw },
+      netz: { modell: (w.stromEdges || []).length > 0, frisch: nz ? nz.frisch : null },
+      pv: { berechnet: !!s.ergebnisse?.length && !s.stale, stale: !!s.ergebnisse?.length && !!s.stale, stand: s.standText || '',
+            varianteAbweichend: ab ? ab.name || 'andere Variante' : null, lastgang: b.lastgangDatei || '',
+            lastfall: b.lastfall || null, zielJahr: b.zielausbau?.zielJahr ?? null, netzkurve: !!b.netzkurve,
+            bestandsnetz: !!ggPvVariante('bestandsnetz') },
+      resilienz: { berechnet: !!w._pvResReco },
+    });
   }
 
   /**
@@ -139351,6 +139800,7 @@ ${massTbl}
     ggMountEinzelansicht: ggMountEinzelansicht,
     ggPlausiPruefung: ggPlausiPruefung,
     ggPvAuslegungSetzen: ggPvAuslegungSetzen,
+    ggRechenstand: ggRechenstand,
     ggRenderBalken: ggRenderBalken,
     ggRenderEinlinienschema: ggRenderEinlinienschema,
     ggRenderEinspeisePrinzip: ggRenderEinspeisePrinzip,
@@ -140393,6 +140843,7 @@ ${massTbl}
   /* ── Plausibilitätsprüfung (C3): nur eine kleine Zahl am Export, die Liste erst auf Klick ── */
   function plausiPunkte() {
     const p = [...ggPlausiPruefung()];
+    try { p.push(...grWarnungen(ggRechenstand())); } catch (e) { }
     if (gdGliederungVersion(_gut.dok) < 2) p.unshift({ stufe: 'warn', text: 'Dokument folgt der alten Gliederung – rechts „Auf neue Gliederung umstellen“.' });
     const offen = [...offeneProKapitel().values()].reduce((a, n) => a + n, 0);
     if (offen) p.push({ stufe: 'info', text: `${offen} offene Platzhalter im Text (gelb) – anklicken zum Ausfüllen.` });
@@ -140751,6 +141202,25 @@ ${massTbl}
   /* ══════════════════════════════════════════════════════════════════════════
    * Eigenschaften (rechts)
    * ═══════════════════════════════════════════════════════════════════════ */
+  /** „Stand der Berechnungen“: je Rechnung von Kapitel 5 Stand und Status, bei Abweichung der Grund und wo neu zu rechnen ist. */
+  function rechenstandKasten() {
+    let zeilen = [];
+    try { zeilen = ggRechenstand(); } catch (e) { }
+    if (!zeilen.length) return '';
+    const farbe = { ok: GUT_AKZENT, hinweis: 'var(--muted)', veraltet: GUT_WARN, fehlt: GUT_WARN };
+    const zeichen = { ok: '✓', hinweis: 'ℹ', veraltet: '⚠', fehlt: '○' };
+    return ueberschrift('Stand der Berechnungen')
+      + zeilen.map(z => `<div style="margin-bottom:7px;font-size:11px;line-height:1.45;">
+        <div style="display:flex;gap:6px;align-items:baseline;">
+          <span style="color:${farbe[z.status]};width:12px;flex-shrink:0;" title="${esc$i(GR_STATUS[z.status])}">${zeichen[z.status]}</span>
+          <span style="color:var(--text);font-weight:600;">${esc$i(z.titel)}</span>
+          <span style="margin-left:auto;color:var(--muted);font-size:10px;white-space:nowrap;">Kap. ${esc$i(z.kapitel)}</span></div>
+        <div style="padding-left:18px;color:var(--muted);">${esc$i(z.stand)}</div>
+        ${z.hinweise.map(h => `<div style="padding-left:18px;color:${z.status === 'veraltet' || z.status === 'fehlt' ? GUT_WARN : 'var(--muted)'};">${esc$i(h)}</div>`).join('')}
+        ${z.status !== 'ok' ? `<div style="padding-left:18px;color:var(--muted);opacity:.75;font-size:10px;">→ ${esc$i(z.wo)}</div>` : ''}
+      </div>`).join('');
+  }
+
   function dokumentPanel() {
     const dok = _gut.dok;
     let nAbb = 0, nTab = 0, nText = 0;
@@ -140774,6 +141244,7 @@ ${massTbl}
           ? `<div style="margin-top:10px;font-size:11px;color:${GUT_WARN};line-height:1.45;">⚠ ${offen} offene Platzhalter bzw. fehlende Kapiteltitel — in der Gliederung gelb gezählt.</div>`
           : `<div style="margin-top:10px;font-size:11px;color:${GUT_AKZENT};">✓ Keine offenen Platzhalter.</div>`)
       + hinweis('Kapitel oder Block links in der Gliederung oder direkt auf der Seite anklicken, um ihn zu bearbeiten.')
+      + rechenstandKasten()
       + (fehlend.length
           ? ueberschrift('Noch nicht im Dokument') + fehlend.map(f => `<div style="font-size:11px;color:var(--muted);margin-bottom:3px;line-height:1.4;">• ${esc$i(f.titel)}
             <span style="opacity:.65;">(${esc$i(f.kapitel || 'ohne Kapitel')})</span></div>`).join('')
@@ -148372,336 +148843,6 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
     updatePrintLegend: updatePrintLegend,
     updatePruningSummary: updatePruningSummary,
     get waermeCurrentTab () { return waermeCurrentTab; }
-  });
-
-  // ── lib/varianten-regeln.js — Was gilt in welcher Variante? ─────────────────
-  //
-  // Eine Regel für das ganze Projekt: Was da ist oder ohnehin kommt, gilt in
-  // allen Varianten (gemeinsamer Stamm). Was entschieden wird, gilt nur in der
-  // Variante, in der es entschieden wurde (Paket der Variante).
-  //
-  // Hier liegen die reinen Funktionen dazu — importfrei bis auf die Schicht-
-  // Konstanten, DOM-frei, direkt testbar. Den Zustand (welche Variante aktiv ist,
-  // was in welchem Paket liegt) hält weiterhin 01-globals-varianten.js.
-
-
-  /** Schlüssel einer Variante; der Hauptplan hat intern die id null. */
-  const HAUPTPLAN_KEY = 'base';
-  const HAUPTPLAN_NAME = 'Hauptplan';
-  function variantKey(id) { return id == null ? HAUPTPLAN_KEY : String(id); }
-
-  // ── Schicht neuer Objekte ableiten ───────────────────────────────────────────
-
-  /**
-   * Bedarfsseite (kommt ohnehin) gegen Entscheidungsseite (wird geplant).
-   * Gebäude und Verbraucher beschreiben, was die Liegenschaft braucht; Erzeuger,
-   * Netz und Speicher, wie man es deckt. Diese Trennung braucht auch die
-   * Bedarfsprognose im Gutachten.
-   */
-  function kategorieFuerAsset(assetKategorie) {
-    return assetKategorie === 'verbraucher' ? 'bedarf' : 'entscheidung';
-  }
-
-  /**
-   * Schicht für ein NEUES Objekt.
-   *   modus      'auto' oder eine feste Schicht (Nutzer hat überschrieben)
-   *   kategorie  'bedarf' | 'entscheidung'
-   *   jahr       Betrachtungsjahr (Jahres-Slider)
-   *   basisjahr  erstes Jahr des Sliders = „heute"
-   * Steht der Slider auf heute, wird Bestand erfasst. In der Zukunft kommt
-   * Bedarf ohnehin (Entwicklung), alles andere ist eine Planungsentscheidung.
-   */
-  function schichtFuerNeu({ modus = 'auto', kategorie = 'entscheidung', jahr, basisjahr } = {}) {
-    if (modus && modus !== 'auto') return normSchicht(modus);
-    const j = Number(jahr), b = Number(basisjahr);
-    if (!Number.isFinite(j) || !Number.isFinite(b) || j <= b) return SCHICHT.BESTAND;
-    return kategorie === 'bedarf' ? SCHICHT.ENTWICKLUNG : SCHICHT.ENTSCHEIDUNG;
-  }
-
-  /** Baujahr für ein neues Objekt: das Slider-Jahr, sobald es in der Zukunft liegt. */
-  function baujahrFuerNeu({ jahr, basisjahr } = {}) {
-    const j = Number(jahr), b = Number(basisjahr);
-    return (Number.isFinite(j) && Number.isFinite(b) && j > b) ? j : null;
-  }
-
-  /**
-   * Darf ein Objekt das Baujahr seines Gebäudes übernehmen? Bestand ja; ein geplantes Objekt
-   * (Schicht Entwicklung/Entscheidung) nur, wenn das Gebäude selbst erst ab heute entsteht (Neubau).
-   * Sonst bekäme eine geplante PV-Anlage auf einem Gebäude von 1970 das Baujahr 1970 — im
-   * Gutachten erschiene ihre Investition dann im Jahr 1970. Rückgabe: Baujahr oder null.
-   */
-  function baujahrVomGebaeude({ schicht, gebBaujahr, basisjahr } = {}) {
-    const g = parseInt(gebBaujahr), b = Number(basisjahr);
-    if (!Number.isFinite(g)) return null;
-    if (normSchicht(schicht) === SCHICHT.BESTAND) return g;
-    return Number.isFinite(b) && g >= b ? g : null;
-  }
-
-  /**
-   * Gespeichertes Baujahr, das ein geplantes Objekt früher fälschlich vom Gebäude geerbt hat
-   * (gleiches Jahr wie das Gebäude, vor dem Basisjahr) — beim Laden zu verwerfen.
-   * Am Rechnen ändert das nichts: Ohne Baujahr und mit einem vergangenen ist das Objekt ab sofort aktiv.
-   */
-  function istGeerbtesAltBaujahr({ schicht, baujahr, gebBaujahr, basisjahr } = {}) {
-    const j = parseInt(baujahr), g = parseInt(gebBaujahr), b = Number(basisjahr);
-    return normSchicht(schicht) !== SCHICHT.BESTAND && Number.isFinite(j) && j === g && Number.isFinite(b) && j < b;
-  }
-
-  /**
-   * Wirkungsbereich einer Schicht: 'alle' (gemeinsamer Stamm) oder 'variante'.
-   */
-  function wirkungAusSchicht(schicht) {
-    return normSchicht(schicht) === SCHICHT.ENTSCHEIDUNG ? 'variante' : 'alle';
-  }
-
-  // ── Maßnahmen mit Geltungsbereich ────────────────────────────────────────────
-  //
-  // Maßnahme.variante: null = gilt in allen Varianten; sonst der variantKey.
-  // Fehlt das Feld ganz, ist die Maßnahme neu und bekommt beim Abschluss der
-  // Planungstransaktion ihre Vorgabe (massnahmeStandardVariante).
-
-  /** Typen, die ohnehin anfallen und deshalb für alle Varianten gelten
-   *  (Ersatz am Ende der Lebensdauer, Instandhaltung). */
-  const OHNEHIN_TYPEN = new Set(['ersatz', 'erneuerung', 'instandhaltung', 'lebensdauer']);
-
-  function massnahmeStandardVariante({ objektSchicht, typ, aktivKey } = {}) {
-    // An Objekten, die selbst nur in einer Variante existieren, ist die
-    // Zuordnung schon durch das Objekt gegeben.
-    if (normSchicht(objektSchicht) === SCHICHT.ENTSCHEIDUNG) return null;
-    if (OHNEHIN_TYPEN.has(String(typ || '').toLowerCase())) return null;
-    return aktivKey ?? HAUPTPLAN_KEY;
-  }
-
-  /** Gilt die Maßnahme in der Variante `key`? */
-  function massnahmeGiltIn(m, key) {
-    return m?.variante == null || m.variante === key;
-  }
-
-  /**
-   * Nimmt aus den Objekten alle Maßnahmen der Variante `key` heraus und gibt sie
-   * als Ablage zurück: [{ ziel, id, m }]. `objekte` = [{ ziel, id, obj }].
-   * Die Objekte werden in-place verändert.
-   */
-  function massnahmenHerausnehmen(objekte, key) {
-    const ablage = [];
-    for (const { ziel, id, obj } of (objekte || [])) {
-      const liste = obj?.massnahmen;
-      if (!Array.isArray(liste) || !liste.length) continue;
-      const bleiben = [];
-      for (const m of liste) {
-        if (m && m.variante != null && m.variante === key) ablage.push({ ziel, id, m });
-        else bleiben.push(m);
-      }
-      if (bleiben.length !== liste.length) liste.splice(0, liste.length, ...bleiben);
-    }
-    return ablage;
-  }
-
-  /**
-   * Legt abgelegte Maßnahmen wieder an ihre Objekte. Gibt die Einträge zurück,
-   * deren Objekt nicht mehr existiert (z. B. gelöschtes Asset).
-   */
-  function massnahmenEinsetzen(objekte, ablage) {
-    const nachZiel = new Map((objekte || []).map(o => [`${o.ziel}|${o.id}`, o.obj]));
-    const verwaist = [];
-    for (const e of (ablage || [])) {
-      const obj = nachZiel.get(`${e.ziel}|${e.id}`);
-      if (!obj) { verwaist.push(e); continue; }
-      if (!Array.isArray(obj.massnahmen)) obj.massnahmen = [];
-      if (!obj.massnahmen.some(m => m?.id === e.m?.id)) obj.massnahmen.push(e.m);
-    }
-    return verwaist;
-  }
-
-  // ── Wärmenetz: Geometrie gemeinsam, Parameter je Variante ────────────────────
-
-  const GEOMETRIE_FELDER = ['trasse', 'trasseSegments', 'graph'];
-
-  function waermeGeometrie(netzState) {
-    if (!netzState) return null;
-    const out = {};
-    for (const k of GEOMETRIE_FELDER) if (k in netzState) out[k] = netzState[k];
-    return out;
-  }
-
-  function geometrieGleich(a, b) {
-    return JSON.stringify(waermeGeometrie(a) || {}) === JSON.stringify(waermeGeometrie(b) || {});
-  }
-
-  /** Setzt Parameter einer Variante mit der gemeinsamen Geometrie zusammen. */
-  function netzMitGeometrie(netzState, geometrie) {
-    if (!geometrie) return netzState;
-    return { ...(netzState || {}), ...geometrie };
-  }
-
-  // ── Dach-PV: Dachdaten gemeinsam, Belegung je Variante ───────────────────────
-
-  const PV_BELEGUNG_FELDER = [
-    'pvAktiv', 'pvDachanteil', 'pvModus', 'pvFlaechen', 'pvFlGcr',
-    'pvFlAusrichtung', 'pvFlBelegung', 'pvBaujahr',
-  ];
-
-  // Kartenlayer hängen direkt an den Flächen — sie gehören nicht zum Datenstand.
-  const _LAUFZEIT$1 = new Set(['layer', 'svgLayer', '_layer', 'marker']);
-  function _klon(v) {
-    if (v == null || typeof v !== 'object') return v;
-    if (Array.isArray(v)) return v.map(_klon);
-    const out = {};
-    for (const [k, x] of Object.entries(v)) {
-      if (_LAUFZEIT$1.has(k) || typeof x === 'function') continue;
-      out[k] = _klon(x);
-    }
-    return out;
-  }
-
-  /** { [gebId]: { pvAktiv, … } } aus der Gebäudeliste. */
-  function pvBelegungErfassen(gebaeude) {
-    const out = {};
-    for (const g of (gebaeude || [])) {
-      const e = {};
-      for (const k of PV_BELEGUNG_FELDER) e[k] = _klon(g[k]);
-      out[g.id] = e;
-    }
-    return out;
-  }
-
-  /** Unterscheiden sich zwei Belegungen eines Gebäudes? */
-  function pvBelegungGleich(a, b) {
-    return JSON.stringify(_klon(a || {})) === JSON.stringify(_klon(b || {}));
-  }
-
-  /**
-   * Spielt eine erfasste Belegung auf die Gebäude. Gebäude ohne Eintrag
-   * (seit der Erfassung neu angelegt) behalten ihren Stand. Gibt die Zahl der
-   * geänderten Gebäude zurück.
-   */
-  function pvBelegungAnwenden(gebaeude, belegung, vorher) {
-    if (!belegung) return [];
-    const geaendert = [];
-    for (const g of (gebaeude || [])) {
-      const e = belegung[g.id];
-      if (!e) continue;
-      const alt = {};
-      for (const k of PV_BELEGUNG_FELDER) alt[k] = g[k];
-      let anders = false;
-      for (const k of PV_BELEGUNG_FELDER) {
-        if (!(k in e)) continue;
-        if (JSON.stringify(_klon(g[k])) !== JSON.stringify(e[k])) { g[k] = _klon(e[k]); anders = true; }
-      }
-      if (anders) { geaendert.push(g); if (vorher) vorher.set(g.id, alt); }
-    }
-    return geaendert;
-  }
-
-  // ── Ergebnis-Stempel ─────────────────────────────────────────────────────────
-
-  /** Stempel für ein gerade berechnetes Ergebnis. */
-  function ergebnisStempel(aktivId, name, jetzt = new Date()) {
-    return { variantKey: variantKey(aktivId), name: name || HAUPTPLAN_NAME, zeit: jetzt.toISOString() };
-  }
-
-  /**
-   * Passt das Ergebnis zur aktiven Variante? Gibt null zurück, wenn ja (oder
-   * kein Stempel da ist), sonst { name, zeit } der Variante, für die gerechnet wurde.
-   */
-  function stempelAbweichung(stempel, aktivId) {
-    if (!stempel?.variantKey) return null;
-    return stempel.variantKey === variantKey(aktivId) ? null : { name: stempel.name, zeit: stempel.zeit };
-  }
-
-  function datumKurz(iso) {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.`;
-  }
-
-  // ── Zeitstrahl ───────────────────────────────────────────────────────────────
-
-  /**
-   * Sammelt alle datierten Ereignisse für den Zeitstrahl.
-   * eingabe: {
-   *   basisjahr,
-   *   gebaeude:  [{ id, name, baujahr, abrissjahr, schicht }],
-   *   assets:    [{ id, name, baujahr, abrissjahr, schicht, massnahmen }]   — Live-Stand (aktive Variante)
-   *   pakete:    [{ key, name, items: [{ id, name, baujahr, … }] }]       — Entscheidungen je Variante
-   *   massnahmenAblage: { [key]: [{ id, m }] }                             — Maßnahmen nicht aktiver Varianten
-   *   aktivKey, jahrVon(m)
-   * }
-   * Rückgabe: [{ spur, jahr, titel, art, ziel, id }]
-   *   spur  'stamm' oder ein variantKey
-   *   art   'bestand' | 'entwicklung' | 'entscheidung' | 'massnahme' | 'abriss'
-   */
-  function zeitstrahlEintraege({ basisjahr, gebaeude = [], assets = [], pakete = [], massnahmenAblage = {}, aktivKey = HAUPTPLAN_KEY, jahrVon } = {}) {
-    const out = [];
-    const zahl = v => { const n = parseInt(v); return Number.isFinite(n) ? n : null; };
-    const mj = m => (jahrVon ? jahrVon(m) : zahl(m?.jahr));
-    const b = zahl(basisjahr) ?? new Date().getFullYear();
-
-    const objekt = (o, ziel, spur) => {
-      const bj = zahl(o.baujahr), aj = zahl(o.abrissjahr);
-      const s = normSchicht(o.schicht);
-      if (bj && bj > b) out.push({ spur, jahr: bj, titel: o.name || o.id, art: s === SCHICHT.ENTSCHEIDUNG ? 'entscheidung' : 'entwicklung', ziel, id: o.id });
-      if (aj && aj > b) out.push({ spur: s === SCHICHT.ENTSCHEIDUNG ? spur : 'stamm', jahr: aj, titel: `Abriss ${o.name || o.id}`, art: 'abriss', ziel, id: o.id });
-    };
-
-    for (const g of gebaeude) objekt(g, 'gebaeude', 'stamm');
-
-    const massnahme = (m, o, ziel, spurFallback) => {
-      const j = mj(m);
-      if (!j) return;
-      const spur = m.variante == null ? spurFallback : m.variante;
-      out.push({ spur, jahr: j, titel: `${o?.name || ''}: ${m.titel || 'Maßnahme'}`.replace(/^: /, ''), art: 'massnahme', ziel, id: o?.id });
-    };
-
-    for (const a of assets) {
-      const entsch = normSchicht(a.schicht) === SCHICHT.ENTSCHEIDUNG;
-      if (!entsch) objekt(a, 'asset', 'stamm');
-      for (const m of (a.massnahmen || [])) massnahme(m, a, 'asset', entsch ? aktivKey : 'stamm');
-    }
-
-    for (const p of pakete) {
-      const quelle = p.key === aktivKey ? assets.filter(a => normSchicht(a.schicht) === SCHICHT.ENTSCHEIDUNG) : (p.items || []);
-      for (const a of quelle) {
-        objekt({ ...a, schicht: SCHICHT.ENTSCHEIDUNG }, 'asset', p.key);
-        if (p.key !== aktivKey) for (const m of (a.massnahmen || [])) massnahme(m, a, 'asset', p.key);
-      }
-    }
-
-    const namen = new Map(assets.map(a => [a.id, a]));
-    for (const [key, liste] of Object.entries(massnahmenAblage || {})) {
-      if (key === aktivKey) continue;
-      for (const e of (liste || [])) massnahme({ ...e.m, variante: key }, namen.get(e.id) || { id: e.id, name: e.id }, e.ziel || 'asset', key);
-    }
-
-    return out.sort((x, y) => x.jahr - y.jahr || String(x.titel).localeCompare(String(y.titel)));
-  }
-
-  var variantenRegeln = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    HAUPTPLAN_KEY: HAUPTPLAN_KEY,
-    HAUPTPLAN_NAME: HAUPTPLAN_NAME,
-    PV_BELEGUNG_FELDER: PV_BELEGUNG_FELDER,
-    baujahrFuerNeu: baujahrFuerNeu,
-    baujahrVomGebaeude: baujahrVomGebaeude,
-    datumKurz: datumKurz,
-    ergebnisStempel: ergebnisStempel,
-    geometrieGleich: geometrieGleich,
-    istGeerbtesAltBaujahr: istGeerbtesAltBaujahr,
-    kategorieFuerAsset: kategorieFuerAsset,
-    massnahmeGiltIn: massnahmeGiltIn,
-    massnahmeStandardVariante: massnahmeStandardVariante,
-    massnahmenEinsetzen: massnahmenEinsetzen,
-    massnahmenHerausnehmen: massnahmenHerausnehmen,
-    netzMitGeometrie: netzMitGeometrie,
-    pvBelegungAnwenden: pvBelegungAnwenden,
-    pvBelegungErfassen: pvBelegungErfassen,
-    pvBelegungGleich: pvBelegungGleich,
-    schichtFuerNeu: schichtFuerNeu,
-    stempelAbweichung: stempelAbweichung,
-    variantKey: variantKey,
-    waermeGeometrie: waermeGeometrie,
-    wirkungAusSchicht: wirkungAusSchicht,
-    zeitstrahlEintraege: zeitstrahlEintraege
   });
 
   // ── lib/pv-raster.js — Rechteck-gegen-Polygon-Tests für das PV-Modulraster ──
