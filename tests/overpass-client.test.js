@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { overpassAbfrage, serverTimeoutS, abfrageSchluessel, pauseNachAntwort, OVERPASS_SERVER, overpassPausen, seiteLokal } from '../src/lib/overpass-client.js';
 
 const antwort = (status, daten = { elements: [{ id: 1 }] }, kopf = {}) => ({
@@ -42,14 +42,23 @@ describe('Overpass-Zugriff', () => {
     expect(maxGleich).toBe(1);
   });
 
-  it('lokal geöffnete Datei: Server mit Herkunftspflicht wird übersprungen', async () => {
+  it('lokal geöffnete Datei: Hauptserver wird trotzdem gefragt; 406 → Ersatzserver, Hauptserver 10 min Pause', async () => {
     expect(seiteLokal({ protocol: 'file:', origin: 'null' })).toBe(true);
     expect(seiteLokal({ protocol: 'https:', origin: 'https://x.de' })).toBe(false);
+    expect(pauseNachAntwort(406)).toBe(600000);
+    // Pausen aus den vorigen Tests (Modulzustand) ablaufen lassen
+    const echt = Date.now.bind(Date);
+    const uhr = vi.spyOn(Date, 'now').mockImplementation(() => echt() + 3600e3);
     const aufrufe = [], meldungen = [];
     const abrufen = async url => { aufrufe.push(url); return antwort(200); };
-    await overpassAbfrage('[timeout:5];node(77);out;', { abrufen, lokal: true, status: (n, t) => meldungen.push(n + ' ' + t), warten: async () => {} });
-    expect(aufrufe).toEqual([OVERPASS_SERVER[1].url]);
-    expect(meldungen.some(m => m.startsWith('overpass-api.de ⏭'))).toBe(true);
+    await overpassAbfrage('[timeout:5];node(77);out;', { abrufen, lokal: true, warten: async () => {} });
+    expect(aufrufe).toEqual([OVERPASS_SERVER[0].url]);
+    const abrufen406 = async url => { aufrufe.push(url); return url === OVERPASS_SERVER[0].url ? antwort(406) : antwort(200); };
+    await overpassAbfrage('[timeout:5];node(78);out;', { abrufen: abrufen406, lokal: true, status: (n, t) => meldungen.push(n + ' ' + t), warten: async () => {} });
+    expect(aufrufe.slice(1)).toEqual([OVERPASS_SERVER[0].url, OVERPASS_SERVER[1].url]);
+    expect(meldungen.some(m => m.startsWith('overpass-api.de ⚠ HTTP 406 (abgelehnt — Datei lokal'))).toBe(true);
+    expect(overpassPausen()[0].restS).toBeGreaterThan(500);
+    uhr.mockRestore();
   });
 
   it('Laufzeitfehler des Servers zählt als Fehlschlag; alle gescheitert → null', async () => {

@@ -158,11 +158,11 @@ export function baumOverpassAbfrage(bbox) {
     + `);out tags geom;`;
 }
 
-// Wie OVERPASS_ENDPOINTS in 03b-netz.js — hier dupliziert, damit die 3D-Ansicht
-// (Blatt-Modul) und das Baum-Modul ohne App-Kern auskommen.
+// Wie OVERPASS_SERVER in lib/overpass-client.js — hier dupliziert, damit die 3D-Ansicht
+// (Blatt-Modul) und das Baum-Modul ohne App-Kern auskommen. overpass.kumi.systems ist derselbe
+// Rechner wie overpass.private.coffee und wird deshalb nicht zusätzlich gefragt.
 export const BAUM_OVERPASS = [
   'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
 ];
 
@@ -208,7 +208,7 @@ async function overpassEinmal(bbox, abrufen, timeoutMs) {
  */
 export async function baumOverpassLaden(bbox, opt = {}) {
   const {
-    abrufen = (...a) => fetch(...a), timeoutMs = 40000, versuche = 3, wartenMs = [0, 3000, 8000],
+    abrufen = (...a) => fetch(...a), timeoutMs = 60000, versuche = 3, wartenMs = [0, 3000, 8000],
     warten = ms => new Promise(r => setTimeout(r, ms)), fortschritt = null, kachelM = 1200,
   } = opt;
   const alsObj = ([s, w, n, e]) => ({ s, w, n, e });

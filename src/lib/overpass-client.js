@@ -8,15 +8,21 @@
 //   • nach 429/504 bzw. Zeitüberschreitung pausiert der betroffene Server (Retry-After, sonst 60 s bzw. 20 s),
 //   • Antworten werden im Browser zwischengespeichert (IndexedDB, 30 Tage) — dasselbe Gebiet wird nicht erneut
 //     angefragt (Neu laden mit { frisch: true } bzw. osmZwischenspeicherLeeren()).
-//   • overpass-api.de verlangt seit 2026 bei Anfragen aus dem Browser eine Herkunftsangabe (HTTP-Referer) und lehnt
-//     sonst mit 406 ab. Eine lokal geöffnete Datei (file://) sendet keine — dann wird dieser Server übersprungen.
+//   • overpass-api.de lehnte zeitweise Browser-Anfragen ohne Herkunftsangabe (lokal geöffnete Datei) mit 406 ab.
+//     Geprüft 20.10.2026: Antwort auch mit Origin „null“ — der Server wird deshalb immer gefragt; ein 406 pausiert
+//     ihn für 10 Minuten (statt ihn vorab auszuschließen und nur den Ersatzserver zu fragen).
+//   • overpass.kumi.systems ist derselbe Rechner wie overpass.private.coffee (gleiche Adresse) — nur einmal fragen.
+//   • Der Verbindungsaufbau kann lange dauern: eine Adresse von overpass-api.de war am 20.10.2026 nicht erreichbar,
+//     der Browser wartet dann ~20 s, bevor er die zweite nimmt — daher PUFFER_S über der Serverrechenzeit.
 //   • Nur Server in DE/AT: Der Kartenausschnitt verrät, welche Liegenschaft untersucht wird.
 
 export const OVERPASS_SERVER = Object.freeze([
-  { name: 'overpass-api.de', url: 'https://overpass-api.de/api/interpreter', brauchtHerkunft: true },
+  { name: 'overpass-api.de', url: 'https://overpass-api.de/api/interpreter' },
   { name: 'private.coffee', url: 'https://overpass.private.coffee/api/interpreter' },
-  { name: 'kumi.systems', url: 'https://overpass.kumi.systems/api/interpreter' },
 ]);
+
+/** Wartezeit (s), die der Browser über die Serverrechenzeit hinaus gewährt (Verbindungsaufbau, Warteschlange). */
+export const PUFFER_S = 30;
 
 const SPEICHER_TAGE = 30;
 const pauseBis = new Map();        // Server-URL → Zeitpunkt (ms), ab dem er wieder angefragt wird
@@ -37,9 +43,11 @@ export function abfrageSchluessel(abfrage) {
   return 'op1:' + h.toString(36) + ':' + s.length;
 }
 
-/** Pause eines Servers nach einer Antwort (ms) oder 0: Retry-After, sonst 60 s bei 429, 20 s bei 503/504/Zeitüberschreitung. */
+/** Pause eines Servers nach einer Antwort (ms) oder 0: Retry-After, sonst 60 s bei 429, 20 s bei 503/504/Zeitüberschreitung,
+ *  10 min bei 406 (grundsätzlich abgelehnt — ein zweiter Versuch gleich danach bringt nichts). */
 export function pauseNachAntwort(status, retryAfter) {
   const ra = Number(retryAfter);
+  if (status === 406) return 600000;
   if (status === 429) return Number.isFinite(ra) && ra > 0 ? Math.min(600, ra) * 1000 : 60000;
   if (status === 503 || status === 504 || status === 'timeout') return 20000;
   return 0;
@@ -107,15 +115,14 @@ export function overpassPausen() {
 export function overpassAbfrage(abfrage, opt = {}) {
   const { frisch = false, status = () => {}, abgebrochen = () => false, abrufen = (...a) => fetch(...a),
     runden = 2, maxWartenS = 45, warten = ms => new Promise(r => setTimeout(r, ms)), lokal = seiteLokal() } = opt;
-  const server = OVERPASS_SERVER.filter(s => !(lokal && s.brauchtHerkunft));
+  const server = OVERPASS_SERVER;
   const schluessel = abfrageSchluessel(abfrage);
   const lauf = async () => {
     if (!frisch) {
       const alt = await lesen(schluessel);
       if (alt) { status('Zwischenspeicher', '✓ ' + (alt.elements?.length ?? 0) + ' Elemente (gespeichert)'); return alt; }
     }
-    const clientMs = (serverTimeoutS(abfrage) + 15) * 1000;
-    for (const s of OVERPASS_SERVER) if (lokal && s.brauchtHerkunft) status(s.name, '⏭ nur bei Aufruf über eine Webadresse (Datei lokal geöffnet)');
+    const clientMs = (serverTimeoutS(abfrage) + PUFFER_S) * 1000;
     for (let runde = 0; runde < runden; runde++) {
       for (const s of server) {
         if (abgebrochen()) return null;
@@ -131,7 +138,8 @@ export function overpassAbfrage(abfrage, opt = {}) {
           if (!resp.ok) {
             const p = pauseNachAntwort(resp.status, resp.headers?.get?.('Retry-After'));
             if (p) pauseBis.set(s.url, Date.now() + p);
-            status(s.name, '⚠ HTTP ' + resp.status + (resp.status === 429 ? ' (zu viele Anfragen)' : ''));
+            status(s.name, '⚠ HTTP ' + resp.status + (resp.status === 429 ? ' (zu viele Anfragen)'
+              : resp.status === 406 ? ' (abgelehnt' + (lokal ? ' — Datei lokal geöffnet; Tool über eine Webadresse öffnen' : '') + ')' : ''));
             continue;
           }
           let daten;

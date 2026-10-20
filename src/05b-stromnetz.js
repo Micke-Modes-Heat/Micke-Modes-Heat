@@ -23,6 +23,7 @@ import { msSpannungen } from './lib/ms-spannung.js';
 import { trafoGruppen, trafoAufteilung, gruppenBetriebsart } from './lib/trafo-parallel.js';
 import { baueTrassenGraph, routeEntlangTrassen } from './lib/trassen-routing.js';
 import { mergeOsmElements, splitOsmBbox, subdivideOsmBbox } from './lib/osm-bbox-tiles.js';
+import { overpassAbfrage } from './lib/overpass-client.js';
 import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus, getAssetPropsForYear, getAssetsForBuilding } from './13a-assets-core.js';
 import { collapseAssetSpider, redrawAllAssets, refreshTrafoAuslastung } from './13b-assets-render.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
@@ -3076,7 +3077,8 @@ function _setOsmStreetProgress({visible = true,completed = 0,total = 1,ways = 0,
 
 export async function loadOsmStrassen() {
   const loadStartedAt = Date.now();
-  const totalLoadBudgetMs = 28000;
+  // Gesamtbudget für alle Teilbereiche — eine einzelne Overpass-Anfrage darf bis zu ~50 s dauern (Verbindungsaufbau)
+  const totalLoadBudgetMs = 180000;
   let bbox;
   let bboxValues;
   const pointLat = point => Number(Array.isArray(point) ? point[0] : point?.lat);
@@ -3113,49 +3115,22 @@ export async function loadOsmStrassen() {
   // Neben öffentlichen Straßen auch typische private Erschließungs- und
   // Betriebswege laden. Gerade auf großen Liegenschaften sind interne Wege in
   // OSM häufig nur als living_street, track oder path klassifiziert.
-  const query = `[out:json][timeout:12];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${bbox});out geom;`;
+  const query = `[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${bbox});out geom;`;
 
-  // Mehrere Overpass-Endpunkte parallel — der erste erfolgreiche gewinnt.
-  // Ein gemeinsames Zeitlimit verhindert, dass nicht erreichbare Server den
-  // gesamten Erstellungsdialog minutenlang blockieren.
+  // Über den gemeinsamen, schonenden Overpass-Zugriff (lib/overpass-client.js): Server nacheinander, eine Anfrage
+  // zur Zeit, Pause nach Rate-Limit, Zwischenspeicher. Früher liefen hier alle Server parallel mit hartem 18-s-Limit —
+  // bei langsamem Verbindungsaufbau (overpass-api.de ~20 s, Stand 20.10.2026) scheiterte damit jede Anfrage.
   async function _fetchOverpass(q) {
-    const enc = encodeURIComponent(q);
-    const body = 'data=' + enc;
-    const postHeaders = { 'Content-Type': 'application/x-www-form-urlencoded' };
-    // Nur Server in DE/AT — keine Proxys Dritter, keine Server außerhalb der EU
-    // (der Kartenausschnitt verrät, welche Liegenschaft untersucht wird).
-    const requests = [
-      {url:'https://overpass-api.de/api/interpreter', options:{method:'POST',headers:postHeaders,body}},
-      {url:'https://overpass.kumi.systems/api/interpreter', options:{method:'POST',headers:postHeaders,body}},
-      {url:'https://overpass.private.coffee/api/interpreter?data=' + enc, options:{}},
-    ];
-    const controllers = requests.map(() => new AbortController());
-    const remainingBudget = Math.max(1000,totalLoadBudgetMs - (Date.now() - loadStartedAt));
-    const requestTimeoutMs = Math.min(18000,remainingBudget);
-    const timeout = setTimeout(() => controllers.forEach(controller => controller.abort()), requestTimeoutMs);
-    try {
-      const attempts = requests.map(async (request, index) => {
-        const response = await fetch(request.url, {...request.options, signal:controllers[index].signal});
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-        if (!Array.isArray(data?.elements)) throw new Error('Ungültige OSM-Antwort');
-        if (data.remark || data.osm3s?.remark) {
-          throw new Error(`Unvollständige OSM-Antwort: ${data.remark || data.osm3s.remark}`);
-        }
-        const usableWays = data.elements.filter(element =>
-          element.type === 'way' && Array.isArray(element.geometry) && element.geometry.length >= 2);
-        if (!usableWays.length) throw new Error('OSM-Antwort enthält keine nutzbaren Straßen');
-        return data;
-      });
-      return await Promise.any(attempts);
-    } catch (error) {
-      throw new Error(error?.name === 'AggregateError'
-        ? `Kein OSM-Server innerhalb von ${Math.ceil(requestTimeoutMs / 1000)} Sekunden mit nutzbaren Straßen erreichbar`
-        : error.message);
-    } finally {
-      clearTimeout(timeout);
-      controllers.forEach(controller => controller.abort());
-    }
+    const data = await overpassAbfrage(q, {
+      runden:1,
+      status:(name,text) => {
+        const statusNode = document.getElementById('osm-street-progress-status');
+        if (statusNode) statusNode.textContent = `${name}: ${text}`;
+      },
+    });
+    if (!data) throw new Error('Kein OSM-Server erreichbar oder alle ausgelastet');
+    if (!Array.isArray(data.elements)) throw new Error('Ungültige OSM-Antwort');
+    return data;
   }
 
   try {
@@ -3193,7 +3168,7 @@ export async function loadOsmStrassen() {
             const tileIndex = cursor++;
             const task = tasks[tileIndex];
             const tileBbox = bboxString(...task.bbox);
-            const tileQuery = `[out:json][timeout:18];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${tileBbox});out geom;`;
+            const tileQuery = `[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${tileBbox});out geom;`;
             try {
               let tileData = _osmStreetTileCache.get(tileBbox);
               if (!tileData) {

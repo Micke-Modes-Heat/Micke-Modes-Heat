@@ -1,7 +1,7 @@
 // Vitest-Tests für lib/baeume-3d.js (Bäume aus OSM für die 3D-Ansicht).
 import { describe, it, expect } from 'vitest';
 import {
-  baumZahl, baumBlattart, baumRingeVerbinden, baeumeAusOverpass, baumDreiecke, baumOverpassAbfrage, BAUM_VORGABEN, baumOverpassLaden,
+  baumZahl, baumBlattart, baumRingeVerbinden, baeumeAusOverpass, baumDreiecke, baumOverpassAbfrage, BAUM_VORGABEN, baumOverpassLaden, BAUM_OVERPASS,
 } from '../src/lib/baeume-3d.js';
 
 // Ausschnitt ~ 300 m × 300 m bei 48,5° N
@@ -49,7 +49,8 @@ describe('baumOverpassLaden', () => {
 
   it('wiederholt nach Überlastung (504/429) und liefert dann die Daten', async () => {
     let runde = 0;
-    const abrufen = () => antwort(runde < 4 * 2 ? 504 : 200, { elements: [{ type: 'node', id: 1 }] });
+    // Zwei Durchgänge über alle Server scheitern, im dritten klappt der letzte Server
+    const abrufen = () => antwort(runde < BAUM_OVERPASS.length * 3 - 1 ? 504 : 200, { elements: [{ type: 'node', id: 1 }] });
     const zaehlen = (...a) => { const r = abrufen(...a); runde++; return r; };
     const meldungen = [];
     const d = await baumOverpassLaden(BBOX, { ...ohneWarten, abrufen: zaehlen, fortschritt: m => meldungen.push(m) });

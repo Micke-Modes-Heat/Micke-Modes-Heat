@@ -44,7 +44,7 @@ import { strangAnalyse, abstandZuLinie, linienLaenge, linieVereinfachen, besteAs
 import { strangGruppen, sackgassenEntfernen, quartierJeGebaeude, hauptstraenge } from './lib/netz-quartiere.js';
 import { zentraleJeGebaeude, kuppelVerbindungen } from './lib/netz-zentralen.js';
 import { EIS, eisAuslegungVorschlag, eisBewertung, eisGeometrie, eisInvest } from './lib/eisspeicher.js';
-import { overpassAbfrage, overpassPausen, OVERPASS_SERVER, seiteLokal } from './lib/overpass-client.js';
+import { overpassAbfrage, overpassPausen, OVERPASS_SERVER } from './lib/overpass-client.js';
 import { CP_WASSER, rohrHydraulik, rohrQuerschnittM2, wasserStoffwerte, netzPumpe, pumpenVolllaststunden, foerderDruckPa, DP_HAUSSTATION_PA, DN_MIN, DN_MIN_HAUSANSCHLUSS } from './lib/netz-hydraulik.js';
 
 /** Netztemperaturen im Jahr (°C): ab dem Jahr der geplanten Absenkung die abgesenkten Werte. */
@@ -2540,9 +2540,7 @@ export function _overpassFetchWithRetry(query, opt = {}) {
       const gesperrt = overpassPausen().filter(x => x.restS > 0).length;
       const text = gesperrt
         ? '⚠ OSM-Server ausgelastet oder Anfragelimit erreicht — bitte in ein paar Minuten erneut versuchen'
-        : seiteLokal()
-          ? '⚠ OSM-Server nicht erreichbar — das Tool ist als lokale Datei geöffnet; der Hauptserver (overpass-api.de) beantwortet nur Aufrufe über eine Webadresse. Tool über eine Webadresse öffnen oder später erneut versuchen'
-          : '⚠ OSM-Server nicht erreichbar — bitte Gebiet verkleinern oder später erneut versuchen';
+        : '⚠ OSM-Server nicht erreichbar oder überlastet — bitte Gebiet verkleinern oder später erneut versuchen';
       showHint(text);
       lsMeldung(text.replace(/^⚠ /, ''));
       setTimeout(hideHint, 8000);
