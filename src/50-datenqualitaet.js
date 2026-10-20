@@ -1,7 +1,8 @@
 // Datenqualität: Plausibilitätshinweise zu Kernparametern auf der Projektseite und am Feld,
 // dazu „Beispielprojekt öffnen“. Die Bereiche stehen in lib/plausibilitaet.js.
 // Hängt sich selbst in die Projektseite (src/49) ein — dort ist nichts umzubauen.
-import { PLAUSI_PARAMETER, pruefeGebaeude, pruefeParameter } from './lib/plausibilitaet.js';
+import { PLAUSI_PARAMETER, pruefeGebaeude, pruefeMsKabel, pruefeParameter } from './lib/plausibilitaet.js';
+import { KABEL_ALIASE, KABEL_TYPEN } from './config/netz-kosten.js';
 import { bhkw, fliessgewaesser, gasKessel, gebaeude, geoThermie, heizhackschnitzel, heizoelKessel, lwWp, pelletsKessel, stromkessel } from './01-globals-varianten.js';
 import MUSTERPROJEKT_TEXT from '../data/demo_projekt.json?raw';
 
@@ -30,7 +31,13 @@ export function dqHinweise() {
   const geb = Array.isArray(gebaeude) ? gebaeude : [];
   const param = pruefeParameter(werte, _aktiveErzeuger());
   // Ein Feld, das beim Laden korrigiert wurde und jetzt plausibel ist, nur einmal nennen
-  return [..._korrekturen, ...param, ...pruefeGebaeude(geb)];
+  return [..._korrekturen, ...param, ...pruefeGebaeude(geb), ...dqMsKabel()];
+}
+
+/** MS-Kabel mit NS-Kabeltyp aus dem Netzmodell (Gruppe laut Kabelkatalog, Schreibvarianten aufgelöst). */
+export function dqMsKabel() {
+  const gruppe = t => KABEL_TYPEN[KABEL_ALIASE[t] || t]?.gruppe;
+  return pruefeMsKabel(Array.isArray(window.stromEdges) ? window.stromEdges : [], gruppe);
 }
 
 // ── Am Feld ────────────────────────────────────────────────────────────
@@ -107,7 +114,7 @@ function _kartenRendern(hinweise) {
     const stufe = h.stufe === 'warnung' ? 'veraltet' : h.stufe === 'korrigiert' ? 'offen' : '';
     const knopf = h.gebId != null
       ? `<button type="button" class="btn-secondary ui-ck-btn" data-dq-geb="${h.gebId}">Gebäude</button>`
-      : h.stufe !== 'korrigiert' && h.id ? `<button type="button" class="btn-secondary ui-ck-btn" data-dq-feld="${_esc(h.id)}">Zum Feld</button>` : '<span></span>';
+      : h.stufe !== 'korrigiert' && h.id && !h.ohneFeld ? `<button type="button" class="btn-secondary ui-ck-btn" data-dq-feld="${_esc(h.id)}">Zum Feld</button>` : '<span></span>';
     return `<div class="ui-ck dq-ck" data-stufe="${stufe}" data-dq-i="${i}">
       <span class="ui-ck-ic">${_ic(h.stufe === 'fallback' ? 'info' : 'alert', 'ui-i ui-i-sm')}</span>
       <span class="ui-ck-t"><b>${_esc(h.label)} <em class="dq-stufe">${_STUFE_TEXT[h.stufe]}</em></b><small>${_esc(h.text)}${h.ort ? ` · ${_esc(h.ort)}` : ''}</small></span>${knopf}</div>`;

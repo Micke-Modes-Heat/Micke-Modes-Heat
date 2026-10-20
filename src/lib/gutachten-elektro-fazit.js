@@ -19,7 +19,8 @@ const eur = v => (Math.abs(v) >= 1e6 ? `${(v / 1e6).toLocaleString('de-DE', { ma
 /**
  * Kernaussagen zu Kapitel 5 — eine Zeile je Thema: { thema, kapitel, status, ergebnis }.
  * d.anschluss  { endKw, capKva, zieljahr, erstesJahr }      — resultierende vs. vereinbarte Anschlussleistung (5.3.4)
- * d.einspeisung { kw, zusageKw }                              — Zubau der Einspeiseleistung vs. Einspeisezusage
+ * d.einspeisung { kw, zusageKw, quelle, pvLabel }             — maßgebliche Einspeisung vs. Einspeisezusage;
+ *                                                               quelle 'pv' = Rückspeisung der PV-Auslegung, sonst Zubau
  * d.netz       { zubau, ungeloest, bestand, erstesJahr, bis } — Engpass-Sweep (5.4.1); null = kein Netzmodell
  * d.pv         { label, kwp, batKwh, autarkiePct, ueberKwp, bnKwp } — weiterverfolgte Auslegung (5.4.2); null = nicht gerechnet
  * d.notstrom   { berechnet, erforderlichKw, bestandKw, geplantKw } — 5.4.3 / Kapitel 8
@@ -47,11 +48,15 @@ export function efKernaussagen(d = {}) {
   }
   const e = d.einspeisung;
   if (e && e.kw > 0) {
+    // quelle 'pv': Rückspeisespitze der weiterverfolgten PV-Auslegung (größer als die geplanten Assets des Netzmodells)
+    const was = e.quelle === 'pv'
+      ? `Rückspeisung bis ${n0(e.kw)} kW${e.pvLabel ? ` (PV „${e.pvLabel}“)` : ''}`
+      : `Zubau ${n0(e.kw)} kW Einspeiseleistung`;
     z.push(!ok(e.zusageKw) || e.zusageKw <= 0
-      ? { thema: 'Einspeisung', kapitel: '5.3.4', status: 'offen', ergebnis: `Zubau ${n0(e.kw)} kW Einspeiseleistung; Einspeisezusage liegt nicht vor.` }
+      ? { thema: 'Einspeisung', kapitel: '5.3.4', status: 'offen', ergebnis: `${was}; Einspeisezusage liegt nicht vor.` }
       : e.kw > e.zusageKw
-        ? { thema: 'Einspeisung', kapitel: '5.4.1', status: 'handeln', ergebnis: `Zubau ${n0(e.kw)} kW über der Einspeisezusage von ${n0(e.zusageKw)} kW: Erhöhung beantragen.` }
-        : { thema: 'Einspeisung', kapitel: '5.3.4', status: 'ok', ergebnis: `Zubau ${n0(e.kw)} kW innerhalb der Einspeisezusage von ${n0(e.zusageKw)} kW.` });
+        ? { thema: 'Einspeisung', kapitel: '5.4.1', status: 'handeln', ergebnis: `${was} über der Einspeisezusage von ${n0(e.zusageKw)} kW: Erhöhung beantragen.` }
+        : { thema: 'Einspeisung', kapitel: '5.3.4', status: 'ok', ergebnis: `${was} innerhalb der Einspeisezusage von ${n0(e.zusageKw)} kW.` });
   }
   const nz = d.netz;
   if (!nz) {
@@ -155,7 +160,8 @@ export function efMassnahmen(d = {}) {
   const e = d.einspeisung;
   if (e && e.kw > 0 && ok(e.zusageKw) && e.kw > e.zusageKw) {
     out.push({ bereich: 'Netzanschluss', kapitel: '5.4.1', massnahme: `Erhöhung der Einspeisezusage auf mindestens ${n0(Math.ceil(e.kw))} kW beantragen`,
-      bis: heute, investEur: null, begruendung: `Einspeiseleistung des Zubaus über der Zusage von ${n0(e.zusageKw)} kW` });
+      bis: heute, investEur: null,
+      begruendung: `${e.quelle === 'pv' ? 'Rückspeisung der PV-Auslegung' : 'Einspeiseleistung des Zubaus'} über der Zusage von ${n0(e.zusageKw)} kW` });
   }
   if (d.netz?.bestand > 0) {
     out.push({ bereich: 'Internes Stromnetz', kapitel: '5.4.1', massnahme: `Bestandsdaten von ${d.netz.bestand} Betriebsmitteln bei der Begehung prüfen`,
@@ -185,10 +191,13 @@ export function efMassnahmen(d = {}) {
       investEur: p.investEur || null, begruendung: 'weiterverfolgte Auslegung, Wirtschaftlichkeit siehe Kapitel 5.5' });
   }
   if (d.pv?.ueberKwp > 0) {
+    // netzInKosten: Rechenstand mit Ausbautreppe — die Ertüchtigung steckt schon in der PV-Investition, nicht doppelt zählen
+    const inKosten = !!d.pv.netzInKosten;
     out.push({ bereich: 'Photovoltaik', kapitel: '5.4.2', massnahme: `Netzertüchtigung für ${n0(d.pv.ueberKwp)} kWp PV über der Aufnahme des Bestandsnetzes`,
-      bis: null, investEur: d.pv.netzInvestEur > 0 ? d.pv.netzInvestEur : null,
+      bis: null, investEur: !inKosten && d.pv.netzInvestEur > 0 ? d.pv.netzInvestEur : null,
       begruendung: 'Auslegung überschreitet die Aufnahme des bestehenden Netzes'
-        + (d.pv.netzInvestEur > 0 ? '; Kosten aus der Netzaufnahme-Analyse, nicht in der Summe von Kapitel 5.5' : '') });
+        + (inKosten ? '; Kosten in der Investition der PV-Anlage enthalten'
+          : d.pv.netzInvestEur > 0 ? '; Kosten aus der Netzaufnahme-Analyse, nicht in der Summe von Kapitel 5.5' : '') });
   }
   for (const p of (d.positionen || []).filter(x => x.gruppe === 'notstrom')) {
     out.push({ bereich: 'Notstromversorgung', kapitel: '5.4.3', massnahme: `${p.label} (${p.umfang})`, bis: ok(p.jahr) ? p.jahr : null,

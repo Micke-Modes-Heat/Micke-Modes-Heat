@@ -92,7 +92,7 @@ export function pruefeWert(p, roh) {
 
 /**
  * @typedef {{id: string, gruppe: string, label: string, stufe: 'warnung' | 'fallback' | 'korrigiert',
- *   text: string, ort?: string, panel?: string, gebId?: number}} PlausiHinweis
+ *   text: string, ort?: string, panel?: string, gebId?: number, ohneFeld?: boolean}} PlausiHinweis
  */
 
 /**
@@ -141,6 +141,34 @@ export function pruefeGebaeude(gebaeude) {
     }
   }
   return out;
+}
+
+/**
+ * Mittelspannungskabel mit Niederspannungstyp (z. B. NYY/NAYY statt NA2XS2Y). Rechnerisch fällt das kaum auf,
+ * weil MS-Kabel nach Querschnitt bewertet werden, im Gutachten (Übersichtsschaltbild, MS-Kabeltabelle) steht der
+ * Typ aber wörtlich — und ist für jeden Fachleser sofort falsch.
+ * @param {Array<{id?: any, name?: string, msLevel?: boolean, cableType?: string}>} kanten Kabel des Netzes
+ * @param {(typ: string) => string | null | undefined} gruppeVon Katalog-Gruppe eines Kabeltyps ('ns' | 'ms' | …)
+ * @returns {PlausiHinweis[]}
+ */
+export function pruefeMsKabel(kanten, gruppeVon) {
+  /** @type {Map<string, {n: number, namen: string[]}>} */
+  const jeTyp = new Map();
+  for (const k of kanten || []) {
+    const typ = String(k?.cableType || '').trim();
+    if (!k?.msLevel || !typ || gruppeVon(typ) !== 'ns') continue;
+    const e = jeTyp.get(typ) || { n: 0, namen: [] };
+    e.n++;
+    if (k.name && e.namen.length < 3) e.namen.push(String(k.name));
+    jeTyp.set(typ, e);
+  }
+  return [...jeTyp].map(([typ, e]) => ({
+    id: 'ms-kabel-' + typ, gruppe: 'Stromnetz', label: `Mittelspannungskabel als ${typ}`, stufe: 'warnung',
+    text: `${e.n} MS-${e.n === 1 ? 'Kabel ist' : 'Kabel sind'} mit dem Niederspannungstyp ${typ} erfasst`
+      + (e.namen.length ? ` (${e.namen.join(', ')}${e.n > e.namen.length ? ' …' : ''})` : '')
+      + ' — Kabeltyp prüfen, z. B. NA2XS2Y; das Gutachten nennt den Typ im Übersichtsschaltbild',
+    ort: 'Planung › Strom › Netz', ohneFeld: true,
+  }));
 }
 
 // Projektdatei-Schlüssel der Erzeuger mit Wirkungsgrad in % → Feld-ID

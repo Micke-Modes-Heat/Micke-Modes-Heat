@@ -122,13 +122,17 @@ export function ekAuswertung(positionen, kennwerte) {
  * mit dem Vorschlag der Analyse ein (quelle 'vorschlag'), damit das Gutachten nicht lückenhaft wird.
  *
  * engpaesse: [{ id, label, bestand, ms, v: { art, label, investEUR, jahr, ungeloest } | null }]
- * geplant:   [{ objId, objIds?, objLabel, art: 'trafo'|'verteilung'|'kabel', m: { id, titel, kosten, jahr (aufgelöst), status } }]
+ * geplant:   [{ objId, objIds?, objLabel, art: 'trafo'|'verteilung'|'kabel', m: { id, titel, typ, kosten, jahr (aufgelöst), status } }]
+ *            typ 'Bau'/'Abriss' (EK_KEINE_ABHILFE) deckt einen Engpass nicht ab.
  *            objIds: alle Betriebsmittel einer Maßnahme (Maßnahmenliste); sie deckt deren Engpässe ab und zählt einmal.
  * heute:     laufendes Jahr — umgesetzte Maßnahmen davor sind Bestand und keine Investition mehr.
  *
  * Rückgabe: { positionen (mit quelle und objId), offen: { bestand, ungeloest, ms, ohneKosten }, vorschlaege: [label],
  *            abweichend: [{ label, plan, vorschlag }] }
  */
+/** Maßnahmenarten, die ein Betriebsmittel errichten oder entfernen, aber keinen Engpass an ihm beheben. */
+export const EK_KEINE_ABHILFE = new Set(['Bau', 'Abriss']);
+
 export function ekNetzPositionen({ engpaesse = [], geplant = [], heute = new Date().getFullYear() } = {}) {
   const zaehlt = g => g?.m && g.m.status !== 'abgelehnt' && !(g.m.status === 'umgesetzt' && g.m.jahr != null && g.m.jahr < heute);
   const objIds = g => (Array.isArray(g.objIds) && g.objIds.length ? g.objIds : [g.objId]);
@@ -150,12 +154,18 @@ export function ekNetzPositionen({ engpaesse = [], geplant = [], heute = new Dat
     if (!(invest > 0)) offen.ohneKosten++;
     const ids = objIds(g);
     positionen.push({ gruppe: 'netz', art: g.art, label: `${g.objLabel}: ${g.m.titel || 'Maßnahme'}`, umfang: g.m.titel || '',
-                      investEur: invest, jahr: g.m.jahr ?? null, quelle: 'plan', objId: ids[0], objIds: ids, massnahmeId: g.m.id });
+                      investEur: invest, jahr: g.m.jahr ?? null, quelle: 'plan', objId: ids[0], objIds: ids, massnahmeId: g.m.id,
+                      typ: g.m.typ ?? null });
   };
 
+  // Neubau oder Rückbau des Betriebsmittels selbst behebt seinen Engpass nicht (z. B. neue Station, die für die
+  // geplante PV zu klein ist) — dann zählt die Maßnahme als Kosten, der Engpass bekommt trotzdem den Vorschlag
+  const behebt = g => !EK_KEINE_ABHILFE.has(g.m.typ);
   for (const e of engpaesse) {
-    const eigene = plan.get(e.id);
-    if (eigene?.length) {
+    const alle = plan.get(e.id) || [];
+    const eigene = alle.filter(behebt);
+    if (!eigene.length) alle.forEach(ausPlan);
+    if (eigene.length) {
       eigene.forEach(ausPlan);
       const v = e.v;
       if (v && !v.ungeloest) {

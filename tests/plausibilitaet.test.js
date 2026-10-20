@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PLAUSI_PARAMETER, migriereWirkungsgrade, plausiZahl, pruefeGebaeude, pruefeParameter, pruefeWert } from '../src/lib/plausibilitaet.js';
+import { PLAUSI_PARAMETER, migriereWirkungsgrade, plausiZahl, pruefeGebaeude, pruefeMsKabel, pruefeParameter, pruefeWert } from '../src/lib/plausibilitaet.js';
+import { KABEL_ALIASE, KABEL_TYPEN } from '../src/config/netz-kosten.js';
 import { prepareProjectForImport } from '../src/lib/project-schema.js';
 
 const hier = dirname(fileURLToPath(import.meta.url));
@@ -88,5 +89,21 @@ describe('Migration der Wirkungsgrade', () => {
     expect(alt.gasKessel.eta).toBe('0.92');            // Eingabe bleibt unverändert
     expect(korrekturen).toHaveLength(1);
     expect(warnings.some(w => w.includes('Bruchteil'))).toBe(true);
+  });
+});
+
+describe('Mittelspannungskabel mit Niederspannungstyp', () => {
+  const gruppe = t => KABEL_TYPEN[KABEL_ALIASE[t] || t]?.gruppe;
+  it('meldet MS-Kabel mit NS-Typ je Typ, nicht aber NS-Kabel oder MS-Typen', () => {
+    const h = pruefeMsKabel([
+      { id: 1, name: 'Ü → TS 5', msLevel: true, cableType: 'NYY' },
+      { id: 2, name: 'TS 5 → TS 2', msLevel: true, cableType: 'NYBY' },
+      { id: 3, msLevel: true, cableType: 'NA2XS2Y' },
+      { id: 4, msLevel: false, cableType: 'NYY' },
+      { id: 5, msLevel: true, cableType: '' },
+    ], gruppe);
+    expect(h.map(x => x.id)).toEqual(['ms-kabel-NYY', 'ms-kabel-NYBY']);
+    expect(h[0]).toMatchObject({ stufe: 'warnung', ohneFeld: true });
+    expect(h[0].text).toMatch(/^1 MS-Kabel ist mit dem Niederspannungstyp NYY erfasst \(Ü → TS 5\)/);
   });
 });

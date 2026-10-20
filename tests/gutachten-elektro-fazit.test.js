@@ -31,6 +31,17 @@ describe('efKernaussagen', () => {
     expect(efKernaussagen({ anschluss: { endKw: 1150, capKva: 1200 } })[0].status).toBe('pruefen');
   });
 
+  it('Einspeisung aus der Rückspeisung der PV-Auslegung nennt Quelle und Auslegung', () => {
+    const pv = { kw: 2745, zubauKw: 382, quelle: 'pv', pvLabel: 'Wirtschaftlich optimiert' };
+    const offen = efKernaussagen({ einspeisung: { ...pv, zusageKw: null } })[0];
+    expect(offen.ergebnis).toBe('Rückspeisung bis 2.745 kW (PV „Wirtschaftlich optimiert“); Einspeisezusage liegt nicht vor.');
+    const ueber = efKernaussagen({ einspeisung: { ...pv, zusageKw: 1000 } })[0];
+    expect(ueber.status).toBe('handeln');
+    const m = efMassnahmen({ heute: 2026, einspeisung: { ...pv, zusageKw: 1000 } });
+    expect(m[0].massnahme).toContain('2.745 kW');
+    expect(m[0].begruendung).toMatch(/^Rückspeisung der PV-Auslegung/);
+  });
+
   it('kein Netzmodell und keine PV-Berechnung werden als offen gemeldet', () => {
     const k = efKernaussagen({ netz: null, pv: null });
     expect(k.map(z => z.status)).toEqual(['offen', 'offen']);

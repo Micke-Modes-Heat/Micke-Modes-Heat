@@ -16773,7 +16773,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-20';
   if (d.indexOf('__') === 0) d = '';
-  var c = '8d7825e';
+  var c = 'c04046d';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -74168,7 +74168,7 @@ window._isSingleFileBuild = true;
 
   /**
    * @typedef {{id: string, gruppe: string, label: string, stufe: 'warnung' | 'fallback' | 'korrigiert',
-   *   text: string, ort?: string, panel?: string, gebId?: number}} PlausiHinweis
+   *   text: string, ort?: string, panel?: string, gebId?: number, ohneFeld?: boolean}} PlausiHinweis
    */
 
   /**
@@ -74217,6 +74217,34 @@ window._isSingleFileBuild = true;
       }
     }
     return out;
+  }
+
+  /**
+   * Mittelspannungskabel mit Niederspannungstyp (z. B. NYY/NAYY statt NA2XS2Y). Rechnerisch fällt das kaum auf,
+   * weil MS-Kabel nach Querschnitt bewertet werden, im Gutachten (Übersichtsschaltbild, MS-Kabeltabelle) steht der
+   * Typ aber wörtlich — und ist für jeden Fachleser sofort falsch.
+   * @param {Array<{id?: any, name?: string, msLevel?: boolean, cableType?: string}>} kanten Kabel des Netzes
+   * @param {(typ: string) => string | null | undefined} gruppeVon Katalog-Gruppe eines Kabeltyps ('ns' | 'ms' | …)
+   * @returns {PlausiHinweis[]}
+   */
+  function pruefeMsKabel(kanten, gruppeVon) {
+    /** @type {Map<string, {n: number, namen: string[]}>} */
+    const jeTyp = new Map();
+    for (const k of kanten || []) {
+      const typ = String(k?.cableType || '').trim();
+      if (!k?.msLevel || !typ || gruppeVon(typ) !== 'ns') continue;
+      const e = jeTyp.get(typ) || { n: 0, namen: [] };
+      e.n++;
+      if (k.name && e.namen.length < 3) e.namen.push(String(k.name));
+      jeTyp.set(typ, e);
+    }
+    return [...jeTyp].map(([typ, e]) => ({
+      id: 'ms-kabel-' + typ, gruppe: 'Stromnetz', label: `Mittelspannungskabel als ${typ}`, stufe: 'warnung',
+      text: `${e.n} MS-${e.n === 1 ? 'Kabel ist' : 'Kabel sind'} mit dem Niederspannungstyp ${typ} erfasst`
+        + (e.namen.length ? ` (${e.namen.join(', ')}${e.n > e.namen.length ? ' …' : ''})` : '')
+        + ' — Kabeltyp prüfen, z. B. NA2XS2Y; das Gutachten nennt den Typ im Übersichtsschaltbild',
+      ort: 'Planung › Strom › Netz', ohneFeld: true,
+    }));
   }
 
   // Projektdatei-Schlüssel der Erzeuger mit Wirkungsgrad in % → Feld-ID
@@ -118161,13 +118189,17 @@ ${massTbl}
    * mit dem Vorschlag der Analyse ein (quelle 'vorschlag'), damit das Gutachten nicht lückenhaft wird.
    *
    * engpaesse: [{ id, label, bestand, ms, v: { art, label, investEUR, jahr, ungeloest } | null }]
-   * geplant:   [{ objId, objIds?, objLabel, art: 'trafo'|'verteilung'|'kabel', m: { id, titel, kosten, jahr (aufgelöst), status } }]
+   * geplant:   [{ objId, objIds?, objLabel, art: 'trafo'|'verteilung'|'kabel', m: { id, titel, typ, kosten, jahr (aufgelöst), status } }]
+   *            typ 'Bau'/'Abriss' (EK_KEINE_ABHILFE) deckt einen Engpass nicht ab.
    *            objIds: alle Betriebsmittel einer Maßnahme (Maßnahmenliste); sie deckt deren Engpässe ab und zählt einmal.
    * heute:     laufendes Jahr — umgesetzte Maßnahmen davor sind Bestand und keine Investition mehr.
    *
    * Rückgabe: { positionen (mit quelle und objId), offen: { bestand, ungeloest, ms, ohneKosten }, vorschlaege: [label],
    *            abweichend: [{ label, plan, vorschlag }] }
    */
+  /** Maßnahmenarten, die ein Betriebsmittel errichten oder entfernen, aber keinen Engpass an ihm beheben. */
+  const EK_KEINE_ABHILFE = new Set(['Bau', 'Abriss']);
+
   function ekNetzPositionen({ engpaesse = [], geplant = [], heute = new Date().getFullYear() } = {}) {
     const zaehlt = g => g?.m && g.m.status !== 'abgelehnt' && !(g.m.status === 'umgesetzt' && g.m.jahr != null && g.m.jahr < heute);
     const objIds = g => (Array.isArray(g.objIds) && g.objIds.length ? g.objIds : [g.objId]);
@@ -118189,12 +118221,18 @@ ${massTbl}
       if (!(invest > 0)) offen.ohneKosten++;
       const ids = objIds(g);
       positionen.push({ gruppe: 'netz', art: g.art, label: `${g.objLabel}: ${g.m.titel || 'Maßnahme'}`, umfang: g.m.titel || '',
-                        investEur: invest, jahr: g.m.jahr ?? null, quelle: 'plan', objId: ids[0], objIds: ids, massnahmeId: g.m.id });
+                        investEur: invest, jahr: g.m.jahr ?? null, quelle: 'plan', objId: ids[0], objIds: ids, massnahmeId: g.m.id,
+                        typ: g.m.typ ?? null });
     };
 
+    // Neubau oder Rückbau des Betriebsmittels selbst behebt seinen Engpass nicht (z. B. neue Station, die für die
+    // geplante PV zu klein ist) — dann zählt die Maßnahme als Kosten, der Engpass bekommt trotzdem den Vorschlag
+    const behebt = g => !EK_KEINE_ABHILFE.has(g.m.typ);
     for (const e of engpaesse) {
-      const eigene = plan.get(e.id);
-      if (eigene?.length) {
+      const alle = plan.get(e.id) || [];
+      const eigene = alle.filter(behebt);
+      if (!eigene.length) alle.forEach(ausPlan);
+      if (eigene.length) {
         eigene.forEach(ausPlan);
         const v = e.v;
         if (v && !v.ungeloest) {
@@ -118241,7 +118279,8 @@ ${massTbl}
   /**
    * Kernaussagen zu Kapitel 5 — eine Zeile je Thema: { thema, kapitel, status, ergebnis }.
    * d.anschluss  { endKw, capKva, zieljahr, erstesJahr }      — resultierende vs. vereinbarte Anschlussleistung (5.3.4)
-   * d.einspeisung { kw, zusageKw }                              — Zubau der Einspeiseleistung vs. Einspeisezusage
+   * d.einspeisung { kw, zusageKw, quelle, pvLabel }             — maßgebliche Einspeisung vs. Einspeisezusage;
+   *                                                               quelle 'pv' = Rückspeisung der PV-Auslegung, sonst Zubau
    * d.netz       { zubau, ungeloest, bestand, erstesJahr, bis } — Engpass-Sweep (5.4.1); null = kein Netzmodell
    * d.pv         { label, kwp, batKwh, autarkiePct, ueberKwp, bnKwp } — weiterverfolgte Auslegung (5.4.2); null = nicht gerechnet
    * d.notstrom   { berechnet, erforderlichKw, bestandKw, geplantKw } — 5.4.3 / Kapitel 8
@@ -118269,11 +118308,15 @@ ${massTbl}
     }
     const e = d.einspeisung;
     if (e && e.kw > 0) {
+      // quelle 'pv': Rückspeisespitze der weiterverfolgten PV-Auslegung (größer als die geplanten Assets des Netzmodells)
+      const was = e.quelle === 'pv'
+        ? `Rückspeisung bis ${n0(e.kw)} kW${e.pvLabel ? ` (PV „${e.pvLabel}“)` : ''}`
+        : `Zubau ${n0(e.kw)} kW Einspeiseleistung`;
       z.push(!ok$a(e.zusageKw) || e.zusageKw <= 0
-        ? { thema: 'Einspeisung', kapitel: '5.3.4', status: 'offen', ergebnis: `Zubau ${n0(e.kw)} kW Einspeiseleistung; Einspeisezusage liegt nicht vor.` }
+        ? { thema: 'Einspeisung', kapitel: '5.3.4', status: 'offen', ergebnis: `${was}; Einspeisezusage liegt nicht vor.` }
         : e.kw > e.zusageKw
-          ? { thema: 'Einspeisung', kapitel: '5.4.1', status: 'handeln', ergebnis: `Zubau ${n0(e.kw)} kW über der Einspeisezusage von ${n0(e.zusageKw)} kW: Erhöhung beantragen.` }
-          : { thema: 'Einspeisung', kapitel: '5.3.4', status: 'ok', ergebnis: `Zubau ${n0(e.kw)} kW innerhalb der Einspeisezusage von ${n0(e.zusageKw)} kW.` });
+          ? { thema: 'Einspeisung', kapitel: '5.4.1', status: 'handeln', ergebnis: `${was} über der Einspeisezusage von ${n0(e.zusageKw)} kW: Erhöhung beantragen.` }
+          : { thema: 'Einspeisung', kapitel: '5.3.4', status: 'ok', ergebnis: `${was} innerhalb der Einspeisezusage von ${n0(e.zusageKw)} kW.` });
     }
     const nz = d.netz;
     if (!nz) {
@@ -118377,7 +118420,8 @@ ${massTbl}
     const e = d.einspeisung;
     if (e && e.kw > 0 && ok$a(e.zusageKw) && e.kw > e.zusageKw) {
       out.push({ bereich: 'Netzanschluss', kapitel: '5.4.1', massnahme: `Erhöhung der Einspeisezusage auf mindestens ${n0(Math.ceil(e.kw))} kW beantragen`,
-        bis: heute, investEur: null, begruendung: `Einspeiseleistung des Zubaus über der Zusage von ${n0(e.zusageKw)} kW` });
+        bis: heute, investEur: null,
+        begruendung: `${e.quelle === 'pv' ? 'Rückspeisung der PV-Auslegung' : 'Einspeiseleistung des Zubaus'} über der Zusage von ${n0(e.zusageKw)} kW` });
     }
     if (d.netz?.bestand > 0) {
       out.push({ bereich: 'Internes Stromnetz', kapitel: '5.4.1', massnahme: `Bestandsdaten von ${d.netz.bestand} Betriebsmitteln bei der Begehung prüfen`,
@@ -118407,10 +118451,13 @@ ${massTbl}
         investEur: p.investEur || null, begruendung: 'weiterverfolgte Auslegung, Wirtschaftlichkeit siehe Kapitel 5.5' });
     }
     if (d.pv?.ueberKwp > 0) {
+      // netzInKosten: Rechenstand mit Ausbautreppe — die Ertüchtigung steckt schon in der PV-Investition, nicht doppelt zählen
+      const inKosten = !!d.pv.netzInKosten;
       out.push({ bereich: 'Photovoltaik', kapitel: '5.4.2', massnahme: `Netzertüchtigung für ${n0(d.pv.ueberKwp)} kWp PV über der Aufnahme des Bestandsnetzes`,
-        bis: null, investEur: d.pv.netzInvestEur > 0 ? d.pv.netzInvestEur : null,
+        bis: null, investEur: !inKosten && d.pv.netzInvestEur > 0 ? d.pv.netzInvestEur : null,
         begruendung: 'Auslegung überschreitet die Aufnahme des bestehenden Netzes'
-          + (d.pv.netzInvestEur > 0 ? '; Kosten aus der Netzaufnahme-Analyse, nicht in der Summe von Kapitel 5.5' : '') });
+          + (inKosten ? '; Kosten in der Investition der PV-Anlage enthalten'
+            : d.pv.netzInvestEur > 0 ? '; Kosten aus der Netzaufnahme-Analyse, nicht in der Summe von Kapitel 5.5' : '') });
     }
     for (const p of (d.positionen || []).filter(x => x.gruppe === 'notstrom')) {
       out.push({ bereich: 'Notstromversorgung', kapitel: '5.4.3', massnahme: `${p.label} (${p.umfang})`, bis: ok$a(p.jahr) ? p.jahr : null,
@@ -126169,7 +126216,7 @@ ${massTbl}
         const a = ggPvAuswahl();
         if (a.ungueltig) add('warn', `PV: Die gewählte Auslegung für Kapitel 5.5 steht nicht mehr im Gutachten – es gilt die Vorgabe „${a.v?.label || 'Wirtschaftlich optimiert'}“ (Fragebogen 5.4.2).`);
         const nb = ggPvNetzbedarf(a.v);
-        if (nb && !a.v?.netzausbau?.massnahmen?.length) add('warn', `PV: Die weiterverfolgte Auslegung „${a.v.label}“ (${ggNum(a.v.pvKwp)} kWp) liegt ${ggNum(nb.ueberKwp)} kWp über der Aufnahme des Bestandsnetzes – die Netzertüchtigung fehlt in den Kosten 5.5 (dort als „nicht beziffert“ geführt). Ggf. eine netzverträgliche Auslegung wählen (Fragebogen 5.4.2).`);
+        if (nb && !nb.inKosten && !a.v?.netzausbau?.massnahmen?.length) add('warn', `PV: Die weiterverfolgte Auslegung „${a.v.label}“ (${ggNum(a.v.pvKwp)} kWp) liegt ${ggNum(nb.ueberKwp)} kWp über der Aufnahme des Bestandsnetzes – die Netzertüchtigung fehlt in den Kosten 5.5 (dort als „nicht beziffert“ geführt). Ggf. eine netzverträgliche Auslegung wählen (Fragebogen 5.4.2).`);
         if (ggVs() && g.abweichend.length) add('info', `PV: Die Verschattung ist nur für die Belegung im Projekt gerechnet; ${ggAufzaehlung(g.abweichend.map(x => `„${x}“`))} beruh${g.abweichend.length === 1 ? 't' : 'en'} auf anderen Dachbelegungen.`);
       }
     } catch (e) { }
@@ -126180,6 +126227,9 @@ ${massTbl}
       if (!(w.elNapMaxBezugKw > 0)) add('warn', 'Strom: Vereinbarte Anschlussleistung fehlt (⚡ Strom-Grundlagen › Netzanschluss) – 5.1.1, 5.3.4, 5.4.1, 5.4.4 und 5.5 bleiben mit Platzhaltern.');
       const geplanteErzeugung = ggLies(() => ggAnlagenIst(['PV', 'KWK', 'Wind', 'Batterie']).geplant.length, 0);
       if (!(w.elNapMaxEinspKw > 0) && (geplanteErzeugung > 0 || ggPvKanon().length)) add('info', 'Strom: Einspeisezusage fehlt (⚡ Strom-Grundlagen › Netzanschluss) – die Rückspeisung in 5.3.4, 5.4.1 und 5.4.2 lässt sich nicht bewerten.');
+      for (const h of ggLies(() => pruefeMsKabel(w.stromEdges || [], t => KABEL_TYPEN[KABEL_ALIASE[t] || t]?.gruppe), [])) {
+        add('warn', `Strom: ${h.text}.`);
+      }
       if (!w._pvResReco) add('info', 'Strom: Keine Resilienz-Rechnung (☀ PV-Analyse › Kapitel 6.1) – Kapitel 5.4.3 bleibt mit Platzhaltern, Notstromkosten fehlen in 5.5.');
       const res = typeof w.engpassLetztesErgebnis === 'function' ? w.engpassLetztesErgebnis() : null;
       if (res?.proJahr?.length) {
@@ -128844,6 +128894,7 @@ ${massTbl}
       const geplant = t.schicht === 'entwicklung' || t.schicht === 'entscheidung'
                    || (Number.isFinite(bj) && bj > heute);
       return {
+        id:          t.id,
         // Abrissjahr wie im Übersichtsschaltbild (lib/netz-uebersicht): vor heute = schon weg,
         // sonst entfällt der Trafo im Zielnetz (Spalte „Rückbau JJJJ“, zählt nicht zur Summe)
         abriss:      Number.isFinite(ab) ? ab : null,
@@ -131575,9 +131626,11 @@ ${massTbl}
       const cap = ggPositiv(window.elNapMaxBezugKw), zusage = ggPositiv(window.elNapMaxEinspKw);
       const fehlt = t => `<span style="color:#e0a126;">${gEsc(t)}</span>`;
       const lg = typeof window.napEndausbauKennzahlen === 'function' ? window.napEndausbauKennzahlen() : null;
+      const em = ggEinspeisungMassgeblich(r);
       html += zeile('Resultierende Anschlussleistung', `${ggNum(r.endKw)} kW`)
         + zeile('Vereinbarte Anschlussleistung', cap ? `${ggNum(cap)} kVA` : fehlt('fehlt — ⚡ Strom-Grundlagen › NAP-Grenzen „Max. Bezug“'))
         + zeile('Einspeiseleistung Zubau', `${ggNum(r.einspeisung.kw)} kW`)
+        + (em.quelle === 'pv' ? zeile('Maßgeblich: Rückspeisung PV', `${ggNum(em.kw)} kW · ${gEsc(em.v?.label || '')}`) : '')
         + zeile('Einspeisezusage', zusage ? `${ggNum(zusage)} kW` : fehlt('fehlt — ⚡ Strom-Grundlagen › NAP-Grenzen „Max. Einspeisung“'))
         + zeile('Endausbau-Lastgang', lg ? `${ggNum(lg.bezugMaxKw)} kW Höchstlast ${lg.zieljahr} (nur Vergleich)` : '—');
     }
@@ -131823,17 +131876,27 @@ ${massTbl}
     }
 
     const ein = r?.einspeisung;
+    const em = ggEinspeisungMassgeblich(r);
+    const zusageSatz = kw => (zusage
+      ? (kw <= zusage
+        ? `Bei einer Einspeisezusage von ${ggNum(zusage)} kW verbleibt eine Reserve von ${ggNum(zusage - kw)} kW.`
+        : `Die Einspeisezusage von ${ggNum(zusage)} kW wird um ${ggNum(kw - zusage)} kW überschritten.`)
+      : `Die Einspeisezusage beträgt ${ggTextFeld('', 'Einspeisezusage kW')} kW.`);
     if (ein?.kw > 0) {
       absaetze.push('Geplante Erzeugungsanlagen und Batteriespeicher mindern die resultierende Anschlussleistung nicht, da ihre '
         + 'Leistung zum Zeitpunkt der Höchstlast nicht gesichert zur Verfügung steht (z. B. Photovoltaik in den Abendstunden und '
         + `im Winter oder bei Ausfall eines BHKW). Ihre zusätzliche Einspeiseleistung beträgt ${ggBedarfFeld(ein.kw, 'Einspeiseleistung')} kW `
         + '(volle Nennleistung ohne Gleichzeitigkeitsfaktor, da Erzeugungsanlagen wie Photovoltaik zeitgleich einspeisen) und ist '
         + 'gesondert der Einspeisezusage des Netzbetreibers gegenüberzustellen. '
-        + (zusage
-          ? (ein.kw <= zusage
-            ? `Bei einer Einspeisezusage von ${ggNum(zusage)} kW verbleibt eine Reserve von ${ggNum(zusage - ein.kw)} kW.`
-            : `Die Einspeisezusage von ${ggNum(zusage)} kW wird um ${ggNum(ein.kw - zusage)} kW überschritten.`)
-          : `Die Einspeisezusage beträgt ${ggTextFeld('', 'Einspeisezusage kW')} kW.`));
+        + (em.quelle === 'pv' ? '' : zusageSatz(ein.kw)));
+    }
+    if (em.quelle === 'pv') {
+      absaetze.push(`Maßgeblich für die Einspeisezusage ist die weiterverfolgte PV-Auslegung ${ggPvName(em.v)} (Kapitel 5.4.2): `
+        + `Sie speist am Netzanschlusspunkt zeitgleich bis zu ${ggNum(em.kw)} kW in das Netz des Netzbetreibers zurück`
+        + (em.zubauKw > 0 ? ' und geht damit über die im Netzmodell erfassten geplanten Anlagen hinaus' : '')
+        + `. ${zusageSatz(em.kw)}`
+        + (em.kw > (r?.endKw || 0) ? ' Die Einspeisung ist damit am Netzanschlusspunkt die größere Leistung und bestimmt den '
+          + 'Netzanschlussantrag mit.' : ''));
     }
 
     if (r && cap) {
@@ -131944,9 +132007,10 @@ ${massTbl}
           { prozent: st.basisKw > 0 ? (d > 0 ? '+' : '') + ggNum(d / st.basisKw * 100) + ' %' : undefined,
             wert: ggKwDelta(d), label: zj ? `Veränderung bis ${zj}` : 'Veränderung' },
         ];
+        const em = ggEinspeisungMassgeblich(r);
         cfg.kpiRechts = [
-          r.einspeisung.kw > 0
-            ? { wert: ggNum(r.einspeisung.kw) + ' kW', label: 'Einspeiseleistung Zubau (getrennt)' }
+          em.kw > 0
+            ? { wert: ggNum(em.kw) + ' kW', label: em.quelle === 'pv' ? 'Rückspeisung PV-Auslegung (getrennt)' : 'Einspeiseleistung Zubau (getrennt)' }
             : { wert: ggNum(st.gzf, 2), label: 'Gleichzeitigkeitsfaktor' },
           reserve == null
             ? { wert: ggNum(r.endKw) + ' kW', label: 'Resultierende Anschlussleistung', highlight: true }
@@ -132101,16 +132165,20 @@ ${massTbl}
         + (reserve / cap < 0.1 ? ' Wegen der geringen Reserve ist bei weiteren Maßnahmen frühzeitig eine Erhöhung beim Netzbetreiber zu prüfen.' : ''));
     }
 
-    const ein = r?.einspeisung?.kw > 0 ? r.einspeisung.kw : null;
+    const em = ggEinspeisungMassgeblich(r);
+    const ein = em.kw > 0 ? em.kw : null;
+    const wer = em.quelle === 'pv'
+      ? `Für die PV-Auslegung ${ggPvName(em.v)} mit einer Rückspeisung von bis zu ${ggNum(ein)} kW`
+      : `Für die geplanten Erzeugungsanlagen mit einer zusätzlichen Einspeiseleistung von ${ggNum(ein)} kW`;
     if (ein) {
       absaetze.push(zusage
         ? (ein > zusage
-          ? `Für die geplanten Erzeugungsanlagen ist zusätzlich die Einspeisezusage von ${ggNum(zusage)} kW auf mindestens `
-            + `${ggNum(Math.ceil(ein))} kW zu erhöhen; auch dies ist beim Netzbetreiber zu beantragen.`
-          : `Die zusätzliche Einspeiseleistung der geplanten Erzeugungsanlagen von ${ggNum(ein)} kW liegt innerhalb der `
-            + `Einspeisezusage von ${ggNum(zusage)} kW.`)
-        : `Für die geplanten Erzeugungsanlagen mit einer zusätzlichen Einspeiseleistung von ${ggNum(ein)} kW ist die Einspeisezusage `
-          + `von ${ggTextFeld('', 'Einspeisezusage kW')} kW zu prüfen.`);
+          ? `${em.quelle === 'pv' ? `Für die PV-Auslegung ${ggPvName(em.v)}` : 'Für die geplanten Erzeugungsanlagen'} ist zusätzlich `
+            + `die Einspeisezusage von ${ggNum(zusage)} kW auf mindestens ${ggNum(Math.ceil(ein))} kW zu erhöhen; auch dies ist beim `
+            + 'Netzbetreiber zu beantragen.'
+          : `${em.quelle === 'pv' ? `Die Rückspeisung der PV-Auslegung ${ggPvName(em.v)}` : 'Die zusätzliche Einspeiseleistung der geplanten Erzeugungsanlagen'} `
+            + `von ${ggNum(ein)} kW liegt innerhalb der Einspeisezusage von ${ggNum(zusage)} kW.`)
+        : `${wer} ist die Einspeisezusage von ${ggTextFeld('', 'Einspeisezusage kW')} kW zu prüfen.`);
     }
     return ggTextBlatt(absaetze, T);
   }
@@ -132130,15 +132198,35 @@ ${massTbl}
     try { bestand = new Set((window.engpassBestandsmaengel?.(res) || []).map(b => b.item.id)); } catch (e) { }
     // Stationsinterne Kabel (Trafo → NSHV) sind auf die Trafonennleistung ausgelegt und nie ein eigener
     // Engpass — wie in engpassGeneriereMassnahmen (14h) übergangen, sonst stünden sie ohne Ertüchtigung in der Tabelle
+    // Datenverdacht: ein NS-Kabel unter Volllast mit kumuliertem Spannungsfall > GG_DU_VERDACHT_PCT ist physikalisch
+    // nicht plausibel (16 mm² bei 60 % Last und ΔU 54 % hieße ≈ 2 km Leitung) — Länge oder Topologie sind falsch erfasst.
+    // Solche Kabel gehören zu den zu prüfenden Bestandsdaten, nicht als Querschnitts-Ertüchtigung in die Engpassliste.
+    const verdacht = x => x.art === 'kabel' && !x.msLevel && x.maxAuslPct < 100 && x.maxDuPct > GG_DU_VERDACHT_PCT;
     return [...res.trafos, ...res.kabel]
       .filter(x => x.engpassJahr != null && !(x.art === 'kabel' && x.stationsintern))
       .map(item => ({
         item,
-        bestand: bestand.has(item.id),
+        bestand: bestand.has(item.id) || verdacht(item),
+        duVerdacht: !bestand.has(item.id) && verdacht(item),
         ms: item.art === 'kabel' && !!item.msLevel,
         v: typeof window.engpassVorschlag === 'function' ? window.engpassVorschlag(item, res) : null,
       }))
       .sort((a, b) => a.item.engpassJahr - b.item.engpassJahr || b.item.maxAuslPct - a.item.maxAuslPct);
+  }
+
+  const GG_DU_VERDACHT_PCT = 10;
+
+  /** Trafo-ID → Stationsname wie in der Trafo-Übersicht, damit „Trafo 1“ zweier Stationen unterscheidbar ist. */
+  function ggTrafoStationNamen() {
+    let trafos = [];
+    try { trafos = window.listAssets?.({ type: 'Trafo' }) || []; } catch (e) { }
+    return new Map(ggTrafoZeilen(trafos).zeilen.map(z => [z.id, z.station]));
+  }
+
+  /** Tabellenname eines Engpass-Betriebsmittels: Trafos mit Station davor. */
+  function ggEngpassName(item, stationen) {
+    const st = item.art === 'trafo' ? stationen.get(item.id) : null;
+    return st && !String(item.label).includes(st) ? `${st} · ${item.label}` : item.label;
   }
 
   /** Kabelabschnitte im Netzmodell ohne stationsinterne Verbindungen (zählt wie die Engpassliste). */
@@ -132199,12 +132287,19 @@ ${massTbl}
       absaetze.push(`Durch die geplanten Maßnahmen ${entwicklung.length === 1 ? 'wird' : 'werden'} bis zum Jahr ${res.bis} `
         + `${ggAufzaehlung(teile)} zum Engpass, der erste im Jahr ${entwicklung[0].item.engpassJahr}. Die vorgesehene Ertüchtigung `
         + `ist jeweils ${ENGPASS_VORLAUF_J} Jahre vor dem Engpassjahr umzusetzen, damit Planung und Beschaffung rechtzeitig `
-        + 'abgeschlossen sind. Ertüchtigt wird auf die höchste Belastung im gesamten Betrachtungszeitraum, damit nicht mehrfach '
+        + 'abgeschlossen sind'
+        + (entwicklung[0].item.engpassJahr - ENGPASS_VORLAUF_J < new Date().getFullYear()
+          ? '; wo dieser Vorlauf nicht mehr gegeben ist, sind die Maßnahmen umgehend einzuleiten' : '')
+        + '. Ertüchtigt wird auf die höchste Belastung im gesamten Betrachtungszeitraum, damit nicht mehrfach '
         + 'gebaut werden muss.');
     }
     if (bestand.length) {
-      absaetze.push(`${anzahl(bestand.length, 'Betriebsmittel ist', 'Betriebsmittel sind')} bereits im heutigen Zustand überlastet, `
-        + 'ohne dass ein Zubau die Ursache ist. Das deutet in der Regel auf unvollständig oder falsch erfasste Bestandsdaten '
+      const nDu = bestand.filter(e => e.duVerdacht).length, nHeute = bestand.length - nDu;
+      absaetze.push((nHeute ? `${anzahl(nHeute, 'Betriebsmittel ist', 'Betriebsmittel sind')} bereits im heutigen Zustand überlastet, `
+          + 'ohne dass ein Zubau die Ursache ist. ' : '')
+        + (nDu ? `${nHeute ? 'Bei weiteren' : 'Bei'} ${anzahl(nDu, 'Kabel ergibt', 'Kabeln ergibt')} sich unter Teillast ein Spannungsfall `
+          + `von über ${GG_DU_VERDACHT_PCT} %, der bei realen Leitungen nicht auftritt. ` : '')
+        + 'Das deutet in der Regel auf unvollständig oder falsch erfasste Bestandsdaten '
         + '(Kabelquerschnitte, Leitungslängen, Trafoleistungen) hin. Diese Betriebsmittel sind deshalb nicht Teil der Engpassbewertung, '
         + `sondern in der Tabelle „Zu prüfende Bestandsdaten im internen Netz“ ${ggImText('netz-intern-bestandsdaten') ? '' : `der ${GG_VERTIEFUNG_ANLAGE} `}`
         + 'gesondert aufgeführt; sie sind im Rahmen der Begehung '
@@ -132329,20 +132424,31 @@ ${massTbl}
         const nBestand = alle.length - liste.length;
         // Steht am Betriebsmittel eine Maßnahme, zeigt die Tabelle sie — dieselbe Quelle wie die Kosten in 5.5
         const netz = ggNetzKosten();
-        const geplant = id => netz.positionen.filter(p => p.quelle === 'plan' && (p.objIds || [p.objId]).includes(id));
+        // Neubau/Rückbau des Betriebsmittels selbst ist keine Abhilfe für seinen Engpass (lib/elektro-kosten.js)
+        const geplant = id => netz.positionen.filter(p => p.quelle === 'plan' && !EK_KEINE_ABHILFE.has(p.typ)
+          && (p.objIds || [p.objId]).includes(id));
+        const stationen = ggTrafoStationNamen();
+        // Geplanter Neubau des Betriebsmittels: der Engpass ist dann eine Auslegungsfrage des Neubaus, kein Umbau davor
+        const neubauJahr = id => {
+          const j = netz.positionen.filter(p => p.quelle === 'plan' && p.typ === 'Bau' && (p.objIds || [p.objId]).includes(id))
+            .map(p => p.jahr).filter(x => x != null);
+          return j.length ? Math.min(...j) : null;
+        };
         cfg.zeilen = ggZeilenBuendeln(liste.map(({ item, bestand, ms, v }) => {
           const spannung = String(item.ursache || '').includes('spannung');
           const plan = geplant(item.id);
           const planJahre = plan.map(p => p.jahr).filter(j => j != null);
+          const nb = !plan.length && !bestand && v && !v.ungeloest ? neubauJahr(item.id) : null;
           return {
             werte: [
-              item.label,
+              ggEngpassName(item, stationen),
               item.art === 'trafo' ? 'Trafo' : ms ? 'Kabel MS' : 'Kabel NS',
               `${ggNum(item.maxAuslPct)} %` + (spannung ? ` · ΔU ${ggNum(item.maxDuPct, 1)} %` : ''),
               bestand ? 'Bestand' : String(item.engpassJahr),
               plan.length ? plan.map(p => p.umfang).join(' + ')
-                : bestand ? 'Bestandsdaten prüfen' : ms ? 'MS-Planung' : v?.ungeloest ? 'Netzstruktur ändern' : (v?.label || '—'),
-              plan.length ? (planJahre.length ? Math.min(...planJahre) : '—') : bestand ? '—' : (v?.jahr ?? '—'),
+                : bestand ? 'Bestandsdaten prüfen' : ms ? 'MS-Planung' : v?.ungeloest ? 'Netzstruktur ändern'
+                : nb != null ? `im Neubau größer auslegen: ${v.label}` : (v?.label || '—'),
+              plan.length ? (planJahre.length ? Math.min(...planJahre) : '—') : bestand ? '—' : nb ?? (v?.jahr ?? '—'),
             ],
             akzent: plan.length ? GG_THEME.accents.gruen
               : bestand ? GG_THEME.energy.gas : v?.ungeloest ? GG_THEME.energy.waerme : GG_THEME.accents.gruen,
@@ -132390,13 +132496,16 @@ ${massTbl}
           return '⚠ Kein Stromnetz modelliert — im Elektro-Tab Trafos und Kabel anlegen.';
         }
         const liste = ggEngpassListe(res).filter(e => e.bestand);
-        cfg.zeilen = ggZeilenBuendeln(liste.map(({ item }) => {
+        const stationen = ggTrafoStationNamen();
+        const nVerdacht = liste.filter(e => e.duVerdacht).length;
+        cfg.zeilen = ggZeilenBuendeln(liste.map(({ item, duVerdacht }) => {
           const spannung = String(item.ursache || '').includes('spannung');
           return {
             werte: [
-              item.label,
+              ggEngpassName(item, stationen),
               item.art === 'trafo' ? 'Trafo' : 'Kabel NS',
-              `${ggNum(item.maxAuslPct)} %` + (spannung ? ` · ΔU ${ggNum(item.maxDuPct, 1)} %` : ''),
+              `${ggNum(item.maxAuslPct)} %` + (spannung ? ` · ΔU ${ggNum(item.maxDuPct, 1)} %` : '')
+                + (duVerdacht ? ` (ab ${item.engpassJahr})` : ''),
               item.art === 'trafo' ? 'Nennleistung, angeschlossene Last'
                 : spannung && item.maxAuslPct <= 100 ? 'Leitungslänge, Querschnitt' : 'Querschnitt, Anzahl paralleler Leiter',
             ],
@@ -132404,8 +132513,9 @@ ${massTbl}
           };
         }));
         cfg.fussnote = liste.length
-          ? `${liste.length} Betriebsmittel schon im Bestand ${res.von} rechnerisch überlastet, ohne auslösenden Zubau · `
-            + 'Werte sind kein Ausbaubedarf, sondern ein Hinweis auf zu prüfende Bestandsdaten (Begehung, Bestandspläne)'
+          ? `${liste.length - nVerdacht} Betriebsmittel schon im Bestand ${res.von} rechnerisch überlastet, ohne auslösenden Zubau`
+            + (nVerdacht ? ` · ${nVerdacht} Kabel mit unplausiblem Spannungsfall > ${GG_DU_VERDACHT_PCT} % bei Teillast (Jahr in Klammern)` : '')
+            + ' · Werte sind kein Ausbaubedarf, sondern ein Hinweis auf zu prüfende Bestandsdaten (Begehung, Bestandspläne)'
           : '';
         return liste.length ? `✓ ${liste.length} Bestandsmängel aus dem Netzmodell übernommen.` : '✓ Keine Bestandsmängel im Netzmodell.';
       },
@@ -132988,7 +133098,12 @@ ${massTbl}
     absaetze.push(`Untersucht wurde ein Ausbaupfad von der kleinsten Anlage bis zum vollen Potenzial. Belegt werden die `
       + `ertragsstärksten Flächen zuerst; stößt das Stromnetz an eine Grenze, folgt jeweils die Netzertüchtigung, die je `
       + `Euro die meiste zusätzliche PV-Leistung erschließt.`
-      + (b && !nkb ? ' Ein Netzmodell mit Transformatoren lag nicht vor; die Anschlusskosten sind deshalb pauschal nach der Anlagengröße angesetzt.'
+      // ohne Netzkurve: entweder gibt es kein Netzmodell, oder der Rechenstand stammt von vor dem Ausbaupfad —
+      // dann darf der Text nicht behaupten, es fehle ein Netzmodell (5.4.1 rechnet ja damit)
+      + (b && !nkb ? (ggPvVariante('bestandsnetz') || (window.stromEdges || []).length
+        ? ' In diesem Rechenstand der PV-Analyse sind die Anschlusskosten pauschal nach der Anlagengröße angesetzt; die Kosten '
+          + 'einer Ertüchtigung des internen Netzes sind darin nicht enthalten und werden gesondert ausgewiesen.'
+        : ' Ein Netzmodell mit Transformatoren lag nicht vor; die Anschlusskosten sind deshalb pauschal nach der Anlagengröße angesetzt.')
         : ` Das Netz${nkb?.jahr ? ` im Zustand des Jahres ${ggTextFeld(nkb.jahr, 'Rechenjahr Netz')}` : ''} nimmt `
           + `${ggPvFeld(nkb?.stufen?.[0]?.bisKwp, 'kWp ohne Ertüchtigung')} kWp ohne Ertüchtigung auf`
           + (nkStufen.length ? `; ${GG_ZAHLWORT[nkStufen.length] || nkStufen.length} weitere Ausbaustufe${nkStufen.length > 1 ? 'n' : ''} `
@@ -133058,8 +133173,9 @@ ${massTbl}
     if (zeige('wirt-opt')) {
       const w = ggPvVariante('wirt-opt');
       const ns = w?.wirt?.netzStufe;
-      absaetze.push(`${label('wirt-opt')}: PV- und Speichergröße wurden entlang des Ausbaupfads gemeinsam variiert, die Kosten `
-        + `der jeweils nötigen Netzertüchtigung eingeschlossen. Gewählt ist die Kombination `
+      absaetze.push(`${label('wirt-opt')}: PV- und Speichergröße wurden entlang des Ausbaupfads gemeinsam variiert, `
+        + (nkb ? 'die Kosten der jeweils nötigen Netzertüchtigung eingeschlossen' : 'mit pauschalen Anschlusskosten nach der Anlagengröße')
+        + `. Gewählt ist die Kombination `
         + `mit dem höchsten jährlichen Netto-Überschuss: ${kwp('wirt-opt', 'kWp wirtschaftlich')} kWp `
         + (w && !(w.batKwh > 0) ? 'ohne Speicher.' : `und ${ggPvFeld(w?.batKwh, 'kWh wirtschaftlich')} kWh.`)
         + (ns ? (ns.stufe === 0 ? ' Sie kommt ohne Ertüchtigung des Netzes aus.'
@@ -133324,9 +133440,10 @@ ${massTbl}
 
   /**
    * Netzbedarf einer PV-Auslegung im internen Netz: überschreitet sie die Aufnahme des Bestandsnetzes
-   * (Auslegung „Bestandsnetz“ der PV-Analyse), braucht der Rest eine Ertüchtigung — deren Kosten stecken
-   * NICHT in den PV-Jahreskosten (dort nur die netzseitige Infrastruktur der Anlage).
-   * @returns {null | {bnKwp, ueberKwp, mitKwp, investEUR, restKwp}}
+   * (Auslegung „Bestandsnetz“ der PV-Analyse), braucht der Rest eine Ertüchtigung. Rechenstände mit
+   * Ausbautreppe (Momentaufnahme `netzkurve`, seit 10/2026) rechnen deren Kosten in die PV-Wirtschaftlichkeit
+   * ein (inKosten); ältere nur die netzseitige Infrastruktur der Anlage — dann fehlen sie in 5.5.
+   * @returns {null | {bnKwp, ueberKwp, mitKwp, investEUR, restKwp, inKosten}}
    */
   function ggPvNetzbedarf(v) {
     const bn = ggPvVariante('bestandsnetz');
@@ -133339,6 +133456,7 @@ ${massTbl}
       mitKwp: na.mitErtuechtigungKwp > 0 ? na.mitErtuechtigungKwp : null,
       investEUR: na.investEUR > 0 ? na.investEUR : null,
       restKwp: na.restKwp > 0.5 ? na.restKwp : 0,
+      inKosten: !!ggPvBasis()?.netzkurve,
     };
   }
 
@@ -133354,8 +133472,24 @@ ${massTbl}
       : '';
     return `Die Auslegung überschreitet mit ${ggNum(v.pvKwp)} kWp die Aufnahme des bestehenden Netzes von ${ggNum(nb.bnKwp)} kWp `
       + `(Auslegung ${ggPvName(ggPvVariante('bestandsnetz'))}) um ${ggNum(nb.ueberKwp)} kWp; dafür sind Kabel bzw. Transformatoren `
-      + `zu ertüchtigen.${kosten} Diese Netzkosten sind in den Jahreskosten der PV-Analyse nicht enthalten und in Kapitel 5.5 `
-      + 'gesondert auszuweisen.';
+      + `zu ertüchtigen.${kosten} `
+      + (nb.inKosten
+        ? 'Die Kosten der nötigen Ausbaustufen sind in der Investition und den Jahreskosten der Auslegung enthalten.'
+        : 'Diese Netzkosten sind in den Jahreskosten der PV-Analyse nicht enthalten und in Kapitel 5.5 gesondert auszuweisen.');
+  }
+
+  /**
+   * Maßgebliche Einspeiseleistung am Netzanschlusspunkt für die Einspeisezusage: die Rückspeisespitze der
+   * weiterverfolgten PV-Auslegung (5.4.2), wenn sie über der Nennleistung der im Netzmodell geplanten
+   * Erzeugungsanlagen liegt — sonst diese. Ohne den Abgleich nannten 5.3.4 und die Kernaussagen nur die
+   * geplanten Assets (z. B. 382 kW), während die empfohlene Auslegung bis 2.745 kW zurückspeist.
+   * @returns {{kw, zubauKw, quelle:'pv'|'zubau', v}}
+   */
+  function ggEinspeisungMassgeblich(r) {
+    const zubauKw = r?.einspeisung?.kw > 0 ? r.einspeisung.kw : 0;
+    const v = ggLies(() => (ggPvBasis() ? ggPvAuswahl().v : null), null);
+    const rueckKw = v?.rueck?.maxKw > 0 ? v.rueck.maxKw : 0;
+    return rueckKw > zubauKw + 0.5 ? { kw: rueckKw, zubauKw, quelle: 'pv', v } : { kw: zubauKw, zubauKw, quelle: 'zubau', v };
   }
 
   /** 3.4.2 Teil 5 — Abgrenzung zu 3.5 und Modellgrenzen. */
@@ -137409,6 +137543,17 @@ ${massTbl}
 
   const ggVersorgungText = v => [v?.verteilung?.name, v?.trafo?.name].filter(Boolean).join(' / ') || 'unbekannte Einspeisung';
 
+  /**
+   * Ladepunkte über 22 kW sind nach Ladesäulenverordnung Schnellladepunkte — auch wenn sie im Ladepark als „Normalladepunkte“
+   * erfasst sind (z. B. 2 × 150 kW). Für Anzahl, Bezeichnung und Kosten umgezählt; die Auslegungsleistung kw bleibt die der
+   * Bedarfsprognose (bpLadeLeistung), damit 5.3.3 und 5.4.4 dieselbe Zahl nennen.
+   */
+  const GG_LADE_SCHNELL_AB_KW = 22;
+  function ggLadeKlassen(l) {
+    if (!(l.kwProPunkt > GG_LADE_SCHNELL_AB_KW) || !l.punkte || (l.schnell && l.kwSchnell !== l.kwProPunkt)) return l;
+    return { ...l, schnell: l.schnell + l.punkte, kwSchnell: l.kwProPunkt, punkte: 0, umgezaehlt: l.punkte };
+  }
+
   /** Ladeparks (Bestand zuerst, dann nach Ausbaujahr) mit Leistung, Netzanbindung und ausgelösten Engpässen. */
   function ggLadeparks() {
     const { bestand, geplant } = ggAnlagenIst(['Lade']);
@@ -137434,7 +137579,7 @@ ${massTbl}
     }
 
     const zeile = (e, istGeplant) => {
-      const l = bpLadeLeistung(e.p);
+      const l = ggLadeKlassen(bpLadeLeistung(e.p));
       return {
         e, l, geplant: istGeplant, jahr: e.bj,
         installiertKw: l.punkte * l.kwProPunkt + l.schnell * l.kwSchnell,
@@ -137489,6 +137634,7 @@ ${massTbl}
   /** „10 Normalladepunkten und 2 Schnellladepunkten“ (Dativ, nach „mit“) bzw. mit dativ=false „… Normalladepunkte …“. */
   const ggLadepunkteText = (punkte, schnell, dativ = true) => {
     const n = (anzahl, wort) => `${ggNum(anzahl)} ${wort}${anzahl === 1 ? '' : dativ ? 'en' : 'e'}`;
+    if (!punkte && schnell) return n(schnell, 'Schnellladepunkt');
     return n(punkte, 'Normalladepunkt') + (schnell ? ` und ${n(schnell, 'Schnellladepunkt')}` : '');
   };
 
@@ -137722,7 +137868,7 @@ ${massTbl}
           werte: [
             z.e.a.name || 'Ladepark',
             ggGebText(z.e.g) || '—',
-            `${z.l.punkte} LP${z.l.schnell ? ` + ${z.l.schnell} SL` : ''} · ${ggNum(z.l.kw)} kW`,
+            `${[z.l.punkte ? `${z.l.punkte} LP` : '', z.l.schnell ? `${z.l.schnell} SL` : ''].filter(Boolean).join(' + ') || '0 LP'} · ${ggNum(z.l.kw)} kW`,
             !res ? '—' : !z.angebunden ? 'nicht angebunden' : ggVersorgungText(z.versorgung),
             // Mehrere Engpässe nur gezählt — die Einzelheiten stehen im Text, sonst läuft die Zelle über
             !res ? '—' : !z.engpaesse.length
@@ -137817,7 +137963,7 @@ ${massTbl}
       // Mehr PV als das Bestandsnetz aufnimmt: die Ertüchtigung dafür steckt nicht in den PV-Jahreskosten.
       // Nicht summiert — sie kann sich mit den Engpass-Positionen des internen Netzes überschneiden.
       const nb = !pv.netzausbau?.massnahmen?.length ? ggPvNetzbedarf(pv) : null;
-      if (nb) {
+      if (nb && !nb.inKosten) {
         offen.push(`Netzertüchtigung für ${ggNum(nb.ueberKwp)} kWp PV über die Aufnahme des Bestandsnetzes hinaus`
           + (nb.investEUR ? ` (Netzaufnahme-Analyse: rund ${ggNum(nb.investEUR / 1000)} T€, soweit nicht im internen Netz enthalten)` : ''));
       }
@@ -137843,7 +137989,7 @@ ${massTbl}
     // Ladeinfrastruktur (3.4.4): geplante Ladeparks × Kennwert je Ladepunkt
     for (const z of ggLadeparks().alle.filter(x => x.geplant)) {
       pos.push({ gruppe: 'lade', art: 'lade', label: z.e.a.name || 'Ladepark',
-                 umfang: `${z.l.punkte} LP${z.l.schnell ? ` + ${z.l.schnell} SL` : ''}`,
+                 umfang: [z.l.punkte ? `${z.l.punkte} LP` : '', z.l.schnell ? `${z.l.schnell} SL` : ''].filter(Boolean).join(' + ') || '0 LP',
                  investEur: z.l.punkte * k.ladepunktEur + z.l.schnell * k.schnellladepunktEur, jahr: z.jahr });
     }
 
@@ -137877,7 +138023,7 @@ ${massTbl}
       const da = jeEintrag.get(e.id);
       if (da) { if (!da.objIds.includes(x.objId)) da.objIds.push(x.objId); continue; }
       const g = { objId: x.objId, objIds: [x.objId], objLabel: x.objLabel, art: x.art,
-        m: { id: e.id, titel: e.titel, kosten: Number(e.kosten?.investEur) || 0, jahr: jahr({ jahr: e.jahr, phaseId: e.phaseId }),
+        m: { id: e.id, titel: e.titel, typ: e.art, kosten: Number(e.kosten?.investEur) || 0, jahr: jahr({ jahr: e.jahr, phaseId: e.phaseId }),
              status: mrStatusAusStand(e.stand) } };
       jeEintrag.set(e.id, g);
       out.push(g);
@@ -138333,7 +138479,9 @@ ${massTbl}
     if (r) {
       d.anschluss = { endKw: r.endKw, capKva: cap, zieljahr: r.zieljahr,
                       erstesJahr: cap && r.endKw > cap ? ggLies(() => ggErsteUeberschreitung(st, r, cap), null) : null };
-      d.einspeisung = { kw: r.einspeisung?.kw || 0, zusageKw: ggPositiv(w.elNapMaxEinspKw) };
+      const em = ggEinspeisungMassgeblich(r);
+      d.einspeisung = { kw: em.kw, zubauKw: em.zubauKw, quelle: em.quelle, pvLabel: em.v?.label || null,
+                        zusageKw: ggPositiv(w.elNapMaxEinspKw) };
     }
     const res = (w.stromEdges || []).length ? ggEngpassErgebnis() : null;
     if (res) {
@@ -138348,7 +138496,8 @@ ${massTbl}
     if (pv) {
       const nb = ggPvNetzbedarf(pv);
       d.pv = { label: pv.label, kwp: pv.pvKwp, batKwh: pv.batKwh, autarkiePct: pv.wirt?.autarkie,
-               ueberKwp: nb?.ueberKwp || 0, bnKwp: nb?.bnKwp ?? ggPvVariante('bestandsnetz')?.pvKwp ?? null, netzInvestEur: nb?.investEUR || null };
+               ueberKwp: nb?.ueberKwp || 0, bnKwp: nb?.bnKwp ?? ggPvVariante('bestandsnetz')?.pvKwp ?? null,
+               netzInvestEur: nb?.investEUR || null, netzInKosten: !!nb?.inKosten };
     }
     const ns = ggNotstromStand();
     d.notstrom = { berechnet: !!ns.r, erforderlichKw: ns.erforderlichKw, bestandKw: ns.bestandKw || 0, geplantKw: ns.geplantKw || 0 };
@@ -265275,7 +265424,13 @@ out center tags;`;
     const geb = Array.isArray(gebaeude) ? gebaeude : [];
     const param = pruefeParameter(werte, _aktiveErzeuger());
     // Ein Feld, das beim Laden korrigiert wurde und jetzt plausibel ist, nur einmal nennen
-    return [..._korrekturen, ...param, ...pruefeGebaeude(geb)];
+    return [..._korrekturen, ...param, ...pruefeGebaeude(geb), ...dqMsKabel()];
+  }
+
+  /** MS-Kabel mit NS-Kabeltyp aus dem Netzmodell (Gruppe laut Kabelkatalog, Schreibvarianten aufgelöst). */
+  function dqMsKabel() {
+    const gruppe = t => KABEL_TYPEN[KABEL_ALIASE[t] || t]?.gruppe;
+    return pruefeMsKabel(Array.isArray(window.stromEdges) ? window.stromEdges : [], gruppe);
   }
 
   // ── Am Feld ────────────────────────────────────────────────────────────
@@ -265352,7 +265507,7 @@ out center tags;`;
       const stufe = h.stufe === 'warnung' ? 'veraltet' : h.stufe === 'korrigiert' ? 'offen' : '';
       const knopf = h.gebId != null
         ? `<button type="button" class="btn-secondary ui-ck-btn" data-dq-geb="${h.gebId}">Gebäude</button>`
-        : h.stufe !== 'korrigiert' && h.id ? `<button type="button" class="btn-secondary ui-ck-btn" data-dq-feld="${_esc$1(h.id)}">Zum Feld</button>` : '<span></span>';
+        : h.stufe !== 'korrigiert' && h.id && !h.ohneFeld ? `<button type="button" class="btn-secondary ui-ck-btn" data-dq-feld="${_esc$1(h.id)}">Zum Feld</button>` : '<span></span>';
       return `<div class="ui-ck dq-ck" data-stufe="${stufe}" data-dq-i="${i}">
       <span class="ui-ck-ic">${_ic(h.stufe === 'fallback' ? 'info' : 'alert', 'ui-i ui-i-sm')}</span>
       <span class="ui-ck-t"><b>${_esc$1(h.label)} <em class="dq-stufe">${_STUFE_TEXT[h.stufe]}</em></b><small>${_esc$1(h.text)}${h.ort ? ` · ${_esc$1(h.ort)}` : ''}</small></span>${knopf}</div>`;
@@ -265462,6 +265617,7 @@ out center tags;`;
     dqBeispielprojektOeffnen: dqBeispielprojektOeffnen,
     dqHinweise: dqHinweise,
     dqInit: dqInit,
+    dqMsKabel: dqMsKabel,
     dqMusterprojektText: dqMusterprojektText,
     dqNachImport: dqNachImport,
     dqZumFeld: dqZumFeld
