@@ -203,6 +203,13 @@
           </div>
 
           <div class="ebp-cat">
+            <div class="ebp-cat-label">Lagepläne</div>
+            <!-- Ein Schalter je Plan; gerendert von _renderEbenenPlaene (src/03b-netz.js) -->
+            <div id="ebp-lageplaene"></div>
+            <button class="ebp-aktion" type="button" data-click="ebpLageplanModul()" title="Pläne laden, über Referenzpunkte ausrichten, Deckkraft und Name ändern"><svg class="ui-i"><use href="#ui-i-map"/></svg>Laden, ausrichten, anpassen …</button>
+          </div>
+
+          <div class="ebp-cat">
             <div class="ebp-cat-label">Weitere Ansichten</div>
             <button class="ebp-aktion" type="button" data-click="d3dUmschalten()" title="Gebäude als 3D-Körper (Höhe = Geschosse × 3 m) in den Farben der Karte — neigen, drehen, als Bild speichern"><svg class="ui-i"><use href="#ui-i-cube"/></svg>3D-Ansicht öffnen / schließen</button>
             <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-chart-visible" data-change="_ebpChart(this.checked)">Zeitstrahl-Diagramm</label>

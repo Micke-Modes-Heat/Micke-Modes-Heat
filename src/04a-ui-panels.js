@@ -2104,6 +2104,7 @@ function _ebpSyncAll() {
   _ebpReadCb('el-assets-visible',   'cb-assets-visible');
   _ebpReadCb('el-stromnetz-visible','cb-stromnetz-visible');
   // Chart/Overlay/Viz haben keinen eigenen Quell-Checkbox — State separat halten
+  window._renderEbenenPlaene?.();   // Lagepläne (src/03b-netz.js)
 
   // Wärmeerzeuger und Umgebung: Zustand aus den Schaltern der Fachfenster bzw. dem Baum-Modul.
   // Was es im Projekt (noch) nicht gibt, bleibt sichtbar, aber gedimmt und nicht schaltbar.

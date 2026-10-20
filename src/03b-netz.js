@@ -1549,7 +1549,30 @@ function _removeOverlayPending(id) {
 }
 
 // Plan-Liste im Overlay-Panel rendern.
+// Lagepläne im Ebenen-Menü: nur Ein-/Ausblenden, alles Weitere im Lageplan-Modul.
+export function _renderEbenenPlaene() {
+  const box = document.getElementById('ebp-lageplaene');
+  if (!box) return;
+  const list = window.overlays || [];
+  if (!list.length) {
+    box.innerHTML = '<label class="ebp-row ebp-row-leer" title="Unter Bestand › Gebiet › Lageplan als Hintergrund">'
+      + '<input type="checkbox" class="ebp-cb" disabled>Kein Lageplan geladen</label>';
+    return;
+  }
+  const esc = s => String(s || 'Plan').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  box.innerHTML = list.map(ov => `<label class="ebp-row" title="${esc(ov.name)}">`
+    + `<input type="checkbox" class="ebp-cb" ${ov.visible ? 'checked' : ''} data-change="toggleOverlayVisible(${ov.id})">`
+    + `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(ov.name)}</span></label>`).join('');
+}
+
+// Link aus dem Ebenen-Menü: Menü schließen, Lageplan-Fenster öffnen.
+export function ebpLageplanModul() {
+  if (document.getElementById('ebenen-panel')?.style.display !== 'none' && typeof window.toggleEbenenPanel === 'function') window.toggleEbenenPanel();
+  if (!document.getElementById('overlay-panel')?.classList.contains('visible')) toggleOverlayPanel();
+}
+
 function _renderOverlays() {
+  _renderEbenenPlaene();
   const box = document.getElementById('overlay-list');
   if (!box) return;
   const list = window.overlays || [];

@@ -13250,6 +13250,13 @@ if (typeof L !== 'undefined') {
           </div>
 
           <div class="ebp-cat">
+            <div class="ebp-cat-label">Lagepläne</div>
+            <!-- Ein Schalter je Plan; gerendert von _renderEbenenPlaene (src/03b-netz.js) -->
+            <div id="ebp-lageplaene"></div>
+            <button class="ebp-aktion" type="button" data-click="ebpLageplanModul()" title="Pläne laden, über Referenzpunkte ausrichten, Deckkraft und Name ändern"><svg class="ui-i"><use href="#ui-i-map"/></svg>Laden, ausrichten, anpassen …</button>
+          </div>
+
+          <div class="ebp-cat">
             <div class="ebp-cat-label">Weitere Ansichten</div>
             <button class="ebp-aktion" type="button" data-click="d3dUmschalten()" title="Gebäude als 3D-Körper (Höhe = Geschosse × 3 m) in den Farben der Karte — neigen, drehen, als Bild speichern"><svg class="ui-i"><use href="#ui-i-cube"/></svg>3D-Ansicht öffnen / schließen</button>
             <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-chart-visible" data-change="_ebpChart(this.checked)">Zeitstrahl-Diagramm</label>
@@ -16875,7 +16882,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-20';
   if (d.indexOf('__') === 0) d = '';
-  var c = '20c998e';
+  var c = '1bab8ec';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -127404,6 +127411,57 @@ ${massTbl}
   }
 
   /**
+   * Wasserzeichen „ENTWURF“ quer über die Abbildung — als oberste Ebene, damit es auch über
+   * gefüllten Kästen sichtbar bleibt; halbtransparent, damit die Zeichnung lesbar bleibt.
+   * Ist Teil des SVG selbst, also in Zwischenablage, PNG und SVG gleich. Idempotent.
+   * Keine dominant-baseline/letter-spacing: das ignoriert der SVG-Renderer in Word.
+   */
+  function ggEntwurfStempel(svg, text = 'ENTWURF', T = GG_THEME) {
+    if (!svg || svg.querySelector('[data-entwurf]')) return svg;
+    const vb = svg.viewBox?.baseVal;
+    const W = vb?.width || +svg.getAttribute('width') || T.width;
+    const H = vb?.height || +svg.getAttribute('height') || 600;
+    const x0 = vb?.width ? vb.x : 0, y0 = vb?.width ? vb.y : 0;
+    const diag = Math.hypot(W, H);
+    const winkel = -Math.atan2(H, W) * 180 / Math.PI;
+    // Schriftzug ≈ 65 % der Diagonale; bei flachen Bändern durch die Höhe begrenzt
+    const fs = Math.max(28, Math.min(diag * 0.65 / (text.length * 0.66), H * 0.42));
+    const cx = x0 + W / 2, cy = y0 + H / 2;
+    const NS = 'http://www.w3.org/2000/svg';
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('data-entwurf', '1');
+    g.setAttribute('pointer-events', 'none');
+    g.setAttribute('transform', `rotate(${gR(winkel)} ${gR(cx)} ${gR(cy)})`);
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('x', gR(cx));
+    t.setAttribute('y', gR(cy + fs * 0.35));   // optische Mitte ohne dominant-baseline
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('font-family', T.font);
+    t.setAttribute('font-size', gR(fs));
+    t.setAttribute('font-weight', '700');
+    t.setAttribute('fill', '#C62828');
+    t.setAttribute('fill-opacity', '0.16');
+    t.setAttribute('stroke', '#C62828');
+    t.setAttribute('stroke-opacity', '0.28');
+    t.setAttribute('stroke-width', gR(Math.max(1, fs / 90)));
+    t.textContent = text;
+    g.appendChild(t);
+    svg.appendChild(g);
+    return svg;
+  }
+
+  /** Wasserzeichen setzen oder entfernen — für zwischengespeicherte SVGs (Gutachten-Editor), die beide Zustände erleben. */
+  function ggEntwurfAnwenden(svg, an) {
+    if (!svg || svg.tagName?.toLowerCase() !== 'svg') return svg;
+    if (an) return ggEntwurfStempel(svg);
+    svg.querySelectorAll('[data-entwurf]').forEach(g => g.remove());
+    return svg;
+  }
+
+  /** Gilt gemeinsam für Einzelansicht und Gutachten-Editor (Dokument, Präsentation, Word/PowerPoint). */
+  function ggEntwurfAktiv() { return _gg.entwurf; }
+
+  /**
    * @param {{transparent?:boolean}} [opts] — `transparent: true` laesst den weissen Grund weg
    *   (fuer Wasserzeichen/Hintergrundbilder, die in Word HINTER den Text gelegt werden).
    */
@@ -139612,7 +139670,7 @@ ${massTbl}
   }
 
   const _gg = { figurId: GG_FIGUREN[0].id, scale: 3, svg: null, svgTabelle: null,
-                layout: 'reduziert', ziel: 'figur' };
+                layout: 'reduziert', ziel: 'figur', entwurf: false };
 
   const ggFigur = () => GG_FIGUREN.find(f => f.id === _gg.figurId) || GG_FIGUREN[0];
 
@@ -139735,6 +139793,9 @@ ${massTbl}
         bar.innerHTML = btn(zielTabelle ? 'Als Tabelle kopieren' : 'Für Word kopieren', 'ggCopy()', true)
           + btn('PNG speichern', 'ggSavePng()') + btn('SVG speichern', 'ggSaveSvg()')
           + sel('ggSetScale(this.value)', [[2, '2× · ~300 dpi'], [3, '3× · ~450 dpi'], [4, '4× · ~600 dpi']], _gg.scale)
+          + `<label title="Legt den Schriftzug ENTWURF quer über die Abbildung — gilt für Kopieren, PNG und SVG"
+             style="display:flex;align-items:center;gap:5px;font-size:11px;color:${_gg.entwurf ? 'var(--crit)' : 'var(--muted)'};cursor:pointer;padding:0 4px;">
+             <input type="checkbox"${_gg.entwurf ? ' checked' : ''} data-change="ggSetEntwurf(this.checked)">Wasserzeichen „Entwurf“</label>`
           + (ggIstBlatt(figur)
               ? sel('ggSetLayout(this.value)', [['voll', 'Blatt: vollständig'],
                                                 ['reduziert', 'Blatt: reduziert + Kennzahlentabelle']], _gg.layout)
@@ -139758,6 +139819,8 @@ ${massTbl}
     if (paper) {
       _gg.svg = figur.render(figur.config);
       _gg.svgTabelle = ggZeigtTabelle(figur) ? ggRenderKennzahlen(figur.config) : null;
+      // Wasserzeichen schon in der Vorschau — Kopieren/PNG/SVG nehmen genau dieses SVG
+      if (_gg.entwurf) { ggEntwurfStempel(_gg.svg); if (_gg.svgTabelle) ggEntwurfStempel(_gg.svgTabelle); }
       const blatt = (svg, name, aktiv) => {
         svg.style.width = '100%';
         svg.style.maxWidth = GG_THEME.width + 'px';   // nie groesser als 1:1
@@ -139910,6 +139973,13 @@ ${massTbl}
     ggRenderPanel();
   }
 
+  /** Wasserzeichen „ENTWURF“ für alle Abbildungen an/aus (gilt bis zum Neuladen, auch im Gutachten-Editor). */
+  function ggSetEntwurf(on) {
+    _gg.entwurf = !!on;
+    ggRenderPanel();
+    ggSay(_gg.entwurf ? '✓ Wasserzeichen „Entwurf“ aktiv — gilt für Kopieren, PNG und SVG.' : 'Wasserzeichen „Entwurf“ aus.');
+  }
+
   /** Exportziel in Version 2: die Abbildung oder das Kennzahlenblatt. */
   function ggSetZiel(v) {
     _gg.ziel = v === 'tabelle' ? 'tabelle' : 'figur';
@@ -140026,6 +140096,9 @@ ${massTbl}
     ggCopyTableForWord: ggCopyTableForWord,
     ggCopyTextForWord: ggCopyTextForWord,
     ggElektroGrundkonzept: ggElektroGrundkonzept,
+    ggEntwurfAktiv: ggEntwurfAktiv,
+    ggEntwurfAnwenden: ggEntwurfAnwenden,
+    ggEntwurfStempel: ggEntwurfStempel,
     ggFigurAusblendGrund: ggFigurAusblendGrund,
     ggFigurEinstellungenCapture: ggFigurEinstellungenCapture,
     ggFigurEinstellungenRestore: ggFigurEinstellungenRestore,
@@ -140075,6 +140148,7 @@ ${massTbl}
     ggSavePng: ggSavePng,
     ggSaveSvg: ggSaveSvg,
     ggSelectFigur: ggSelectFigur,
+    ggSetEntwurf: ggSetEntwurf,
     ggSetKopf: ggSetKopf,
     ggSetLayout: ggSetLayout,
     ggSetMeta: ggSetMeta,
@@ -141057,6 +141131,20 @@ ${massTbl}
   }
 
   /** Umschalter und sichtbaren Bereich an _gut.modus anpassen; true = Dokumentansicht. */
+  /** Haken „Wasserzeichen Entwurf“ — derselbe Zustand wie in der Einzelansicht (ggEntwurfAktiv). */
+  function entwurfSchalter() {
+    const an = ggEntwurfAktiv();
+    return `<label title="Legt den Schriftzug ENTWURF quer über alle Abbildungen — in der Seitenansicht, beim Kopieren und im Word-/PowerPoint-Export. Tabellen und Textbausteine bleiben ohne."
+      style="display:flex;align-items:center;gap:5px;font-size:11px;color:${an ? '#ef5350' : 'var(--muted)'};cursor:pointer;padding:0 4px;white-space:nowrap;">
+      <input type="checkbox"${an ? ' checked' : ''} data-change="gutSetEntwurf(this.checked)">Wasserzeichen „Entwurf“</label>`;
+  }
+
+  function gutSetEntwurf(an) {
+    ggSetEntwurf(an);
+    gutRender();
+    gutSay(an ? '✓ Wasserzeichen „Entwurf“ auf allen Abbildungen — gilt auch für Word und PowerPoint.' : 'Wasserzeichen „Entwurf“ aus.');
+  }
+
   function zeigeModus() {
     const dokEl = document.getElementById('gut-dokument');
     const einzelEl = document.getElementById('gut-einzel');
@@ -141077,7 +141165,7 @@ ${massTbl}
       leiste.innerHTML = tab('dokument', 'Dokument') + tab('praes', 'Präsentation') + tab('einzel', 'Einzelgrafiken')
         + `<span id="gut-status" style="margin-left:12px;font-size:11px;color:${GUT_AKZENT};"></span>`
         + (!einzel && _gut.dok
-            ? `<span style="margin-left:auto;display:flex;gap:6px;align-items:center;">${plausiKnopf()}${knopf('⟳ Daten aktualisieren', 'gutAktualisieren()', { titel: 'Alle Abbildungen neu aus dem Projektstand zeichnen.' })}`
+            ? `<span style="margin-left:auto;display:flex;gap:6px;align-items:center;">${entwurfSchalter()}${plausiKnopf()}${knopf('⟳ Daten aktualisieren', 'gutAktualisieren()', { titel: 'Alle Abbildungen neu aus dem Projektstand zeichnen.' })}`
               + (praes
                 ? `${knopf('⤓ PowerPoint (.pptx)', 'gutPptxExport()', { primaer: true, titel: 'Präsentation im Gutachtendesign mit den angehakten Folien.' })}</span>`
                 : `${knopf('⤓ Word-Datei (.docx)', 'gutWordExport()', { primaer: true, titel: 'Komplettes Gutachten im LKEBw-Layout: Deckblatt, Verzeichnisse, Kapitel, Abbildungen und Tabellen.' })}</span>`)
@@ -141222,6 +141310,8 @@ ${massTbl}
         });
       } else {
         Object.assign(el.style, { width: '100%', height: 'auto', display: 'block' });
+        // Zwischengespeichertes SVG: Wasserzeichen je nach Haken setzen ODER entfernen; Tabellen gehen als Word-Tabelle raus → ohne
+        if (teil.art === 'Abbildung') ggEntwurfAnwenden(el, ggEntwurfAktiv());
         if (el.tagName?.toLowerCase() === 'svg') zuEinpassen.push(el);
       }
       const halter = document.createElement('div');
@@ -141246,6 +141336,7 @@ ${massTbl}
       return;
     }
     Object.assign(svg.style, { width: '100%', height: 'auto', display: 'block' });
+    ggEntwurfAnwenden(svg, ggEntwurfAktiv());
     const titel = b.unterschrift.trim() || 'Lageplan der Liegenschaft';
     const halter = document.createElement('div');
     halter.appendChild(svg);
@@ -142138,7 +142229,7 @@ ${massTbl}
       if (b.typ === 'bild') {
         const svg = bildSvgElement(b);
         if (!svg) throw new Error('Grafik konnte nicht vorbereitet werden — noch einmal übernehmen.');
-        wohin = await ggCopyForWord(svg, 3);
+        wohin = await ggCopyForWord(ggEntwurfAnwenden(svg, ggEntwurfAktiv()), 3);
       } else {
         const el = seitenElement('block', id)?.querySelector(`[data-gut-teil="${teilIdx}"]`)?.firstElementChild || null;
         wohin = await ggCopyDokumentTeil(b.figurId, teilIdx, el);
@@ -142371,7 +142462,9 @@ ${massTbl}
     if (p && (feld === 'name' || feld === 'telefon')) p[feld] = String(wert ?? '');
   }
 
-  const pngDaten = async svg => new Uint8Array(await (await ggSvgToPngBlob(svg, 3)).arrayBuffer());
+  // Kopie stempeln, nicht das SVG der Seitenansicht — gilt für Word und PowerPoint gleichermaßen
+  const pngDaten = async svg => new Uint8Array(await (await ggSvgToPngBlob(
+    ggEntwurfAnwenden(svg.cloneNode(true), ggEntwurfAktiv()), 3)).arrayBuffer());
 
   /** Ein Figur-Block als OOXML (Text, Tabelle oder Bild samt Beschriftung) — für Kapitel und Vertiefungs-Anlage. */
   async function figurWordXml(ctx, b, nrListe, warnungen) {
@@ -142809,6 +142902,7 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
     gutRestoreGutachten: gutRestoreGutachten,
     gutSetDeckblatt: gutSetDeckblatt,
     gutSetDeckblattPerson: gutSetDeckblattPerson,
+    gutSetEntwurf: gutSetEntwurf,
     gutSetFigurOpt: gutSetFigurOpt,
     gutSetFrage: gutSetFrage,
     gutSetFrageMehrfach: gutSetFrageMehrfach,
@@ -148789,6 +148883,7 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
   // Liest den aktuellen Zustand der bestehenden Gebiet-Tab-Checkboxen und synchronisiert den Panel
   function _ebpSyncAll() {
     // Chart/Overlay/Viz haben keinen eigenen Quell-Checkbox — State separat halten
+    window._renderEbenenPlaene?.();   // Lagepläne (src/03b-netz.js)
 
     // Wärmeerzeuger und Umgebung: Zustand aus den Schaltern der Fachfenster bzw. dem Baum-Modul.
     // Was es im Projekt (noch) nicht gibt, bleibt sichtbar, aber gedimmt und nicht schaltbar.
@@ -151139,12 +151234,17 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
     const modFill  = 'rgba(26,35,126,0.85)';
     const cellLine = 'rgba(140,160,220,0.55)';
     const shimmer  = 'rgba(150,170,225,0.65)';
-    let shapes = '';
+    // Alle Module in EINEN Pfad (Flächen) + einen Pfad (Glanzkanten): je Modul eigene
+    // <polygon>/<line> ergab Zehntausende SVG-Knoten, die Chrome beim Verschieben der
+    // Karte (neue Kacheln) jedes Mal neu aufzeichnete → Ruckeln. Optik bleibt gleich.
+    const f = v => v.toFixed(2);
+    const flaechen = [], kanten = [];
     for (const m of res.modules) {
-      const pts = m.pts.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
-      shapes += `<polygon points="${pts}" fill="${modFill}" stroke="${cellLine}" stroke-width="0.03"/>`;
-      shapes += `<line x1="${m.edge[0].x.toFixed(2)}" y1="${m.edge[0].y.toFixed(2)}" x2="${m.edge[1].x.toFixed(2)}" y2="${m.edge[1].y.toFixed(2)}" stroke="${shimmer}" stroke-width="0.12"/>`;
+      flaechen.push('M' + m.pts.map(p => `${f(p.x)},${f(p.y)}`).join('L') + 'Z');
+      kanten.push(`M${f(m.edge[0].x)},${f(m.edge[0].y)}L${f(m.edge[1].x)},${f(m.edge[1].y)}`);
     }
+    let shapes = `<path d="${flaechen.join('')}" fill="${modFill}" stroke="${cellLine}" stroke-width="0.03"/>`
+               + `<path d="${kanten.join('')}" fill="none" stroke="${shimmer}" stroke-width="0.12"/>`;
     // Firstlinie bei Satteldach-Split: gestrichelte Linie durch den Schwerpunkt, senkrecht zum Azimut
     if (res.ridgeLine) {
       const { cx, cy, azDeg } = res.ridgeLine;
@@ -163133,7 +163233,30 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
   }
 
   // Plan-Liste im Overlay-Panel rendern.
+  // Lagepläne im Ebenen-Menü: nur Ein-/Ausblenden, alles Weitere im Lageplan-Modul.
+  function _renderEbenenPlaene() {
+    const box = document.getElementById('ebp-lageplaene');
+    if (!box) return;
+    const list = window.overlays || [];
+    if (!list.length) {
+      box.innerHTML = '<label class="ebp-row ebp-row-leer" title="Unter Bestand › Gebiet › Lageplan als Hintergrund">'
+        + '<input type="checkbox" class="ebp-cb" disabled>Kein Lageplan geladen</label>';
+      return;
+    }
+    const esc = s => String(s || 'Plan').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    box.innerHTML = list.map(ov => `<label class="ebp-row" title="${esc(ov.name)}">`
+      + `<input type="checkbox" class="ebp-cb" ${ov.visible ? 'checked' : ''} data-change="toggleOverlayVisible(${ov.id})">`
+      + `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(ov.name)}</span></label>`).join('');
+  }
+
+  // Link aus dem Ebenen-Menü: Menü schließen, Lageplan-Fenster öffnen.
+  function ebpLageplanModul() {
+    if (document.getElementById('ebenen-panel')?.style.display !== 'none' && typeof window.toggleEbenenPanel === 'function') window.toggleEbenenPanel();
+    if (!document.getElementById('overlay-panel')?.classList.contains('visible')) toggleOverlayPanel();
+  }
+
   function _renderOverlays() {
+    _renderEbenenPlaene();
     const box = document.getElementById('overlay-list');
     if (!box) return;
     const list = window.overlays || [];
@@ -168848,6 +168971,7 @@ out body;>;out skel qt;`;
     _ovRefCancel: _ovRefCancel,
     _ovRefUndo: _ovRefUndo,
     _overpassFetchWithRetry: _overpassFetchWithRetry,
+    _renderEbenenPlaene: _renderEbenenPlaene,
     _setDefault30Pct: _setDefault30Pct,
     _wfsFetchBuildings: _wfsFetchBuildings,
     abklemmenGebaeude: abklemmenGebaeude,
@@ -168875,6 +168999,7 @@ out body;>;out skel qt;`;
     dachformenAusOsmErgaenzen: dachformenAusOsmErgaenzen,
     doppelVerlegungenAufloesen: doppelVerlegungenAufloesen,
     doppelVerlegungenZusammenlegen: doppelVerlegungenZusammenlegen,
+    ebpLageplanModul: ebpLageplanModul,
     eisFeldAutomatisch: eisFeldAutomatisch,
     eisFeldManuell: eisFeldManuell,
     eisNachFaustwertAuslegen: eisNachFaustwertAuslegen,
@@ -170095,11 +170220,83 @@ out body;>;out skel qt;`;
     kdWinkel: kdWinkel
   });
 
+  // ── lib/karte-2d.js — Kartenelemente ohne eigene GPU-Ebene positionieren ──
+  //
+  // Leaflet positioniert jeden Marker und jedes Bild-/SVG-Overlay mit
+  // translate3d(x, y, 0); Leaflets CSS gibt SVG-Overlays zusätzlich dauerhaft
+  // will-change: transform. Chrome macht aus jedem solchen Element eine eigene
+  // Compositing-Ebene. Bei Hunderten Gebäude-Markern und je einem PV-Overlay pro
+  // Dach muss der Browser beim Kartenziehen in jedem Bild alle Ebenen neu ordnen
+  // („Layerize") — gemessen 20.10.2026 mit 177 belegten Dächern: Ziehen ruckelte,
+  // mit 2D-Lage ¼ der Layerize-Zeit. Dieselbe Lage per translate(x, y) erzeugt
+  // keine eigene Ebene; das Verschieben der Kartenebene selbst bleibt auf der GPU.
+  // Während der Zoom-Animation setzt Leaflet kurz wieder 3D (Transition) — das ist
+  // gewollt; nach dem Zoom wird neu positioniert und damit wieder 2D.
+
+  const RE_3D = /translate3d\(\s*([^,()]+?)px\s*,\s*([^,()]+?)px\s*,\s*0(?:px)?\s*\)/;
+
+  /**
+   * translate3d(x, y, 0) durch translate(x, y) ersetzen; Rotation/Skalierung bleiben.
+   * @param {string} transform CSS-transform-Wert
+   * @returns {string}
+   */
+  function ohne3d(transform) {
+    if (!transform || transform.indexOf('translate3d') < 0) return transform;
+    return transform.replace(RE_3D, 'translate($1px, $2px)');
+  }
+
+  /** transform eines Elements auf 2D umstellen (null-sicher). */
+  function flach2d(el) {
+    if (!el || !el.style) return;
+    const t = el.style.transform;
+    if (t && t.indexOf('translate3d') >= 0) el.style.transform = ohne3d(t);
+  }
+
+  /**
+   * Leaflet einmalig umstellen: alle Marker, dazu die Bild-/SVG-Overlays der
+   * genannten Panes, liegen nach jedem Positionieren 2D. Muss vor dem Anlegen
+   * der Karte laufen (spätere Marker sind dann ohnehin erfasst, frühere nicht).
+   * @param {any} L Leaflet-Namensraum
+   * @param {{overlayPanes?: string[]}} [opt] Panes, deren Overlays 2D liegen sollen
+   */
+  function karte2dEinrichten(L, { overlayPanes = ['pvPane'] } = {}) {
+    if (!L || !L.Marker || L.__karte2d) return;
+    L.__karte2d = true;
+
+    // Marker-Icons und Schatten (auch mit leaflet-rotate: dessen _setPos wird umhüllt)
+    const setPos = L.Marker.prototype._setPos;
+    L.Marker.prototype._setPos = function (pos) {
+      setPos.call(this, pos);
+      flach2d(this._icon);
+      flach2d(this._shadow);
+    };
+
+    // Bild-/SVG-Overlays ausgewählter Panes (PV-Module je Dach, Freiflächen-Module)
+    const reset = L.ImageOverlay.prototype._reset;
+    L.ImageOverlay.prototype._reset = function () {
+      reset.call(this);
+      if (overlayPanes.includes(this.options.pane)) flach2d(this._image);
+    };
+
+    // will-change aus Leaflets CSS (svg.leaflet-zoom-animated) würde die Ebene erzwingen.
+    // Pane-Klasse nach Leaflet-Regel: 'pvPane' → .leaflet-pv-pane
+    if (typeof document !== 'undefined' && overlayPanes.length) {
+      const st = document.createElement('style');
+      st.dataset.karte2d = '';
+      st.textContent = overlayPanes
+        .map(p => `.leaflet-${p.replace('Pane', '')}-pane > .leaflet-image-layer { will-change: auto; }`)
+        .join('\n');
+      document.head.appendChild(st);
+    }
+  }
+
   // ── 02b-gebaeude.js — Karte-Init, Gebäude-CRUD, Energie, OSM, Rendering ──
 
 
   // Guard against HMR re-init: reuse cached instance if container is already initialized
   const map = window._appLeafletMap || (() => {
+    // Marker + PV-Overlays ohne eigene GPU-Ebene — sonst ruckelt das Ziehen (lib/karte-2d.js)
+    karte2dEinrichten(L);
     // kdMapOptionen() liefert ohne eingeschalteten Versuch {rotate:false, bearing:0}
     // — dann verhält sich leaflet-rotate wie gar nicht vorhanden (s. 20-kartendrehung.js).
     const m = L.map('map',{zoomControl:true, ...kdMapOptionen()}).setView([52.0816,8.0034],15);
