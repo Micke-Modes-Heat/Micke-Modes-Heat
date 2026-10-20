@@ -14,10 +14,12 @@
 
 import { ASSETS } from './13a-assets-core.js';
 import { globalYear, aktiverVariantenName } from './01-globals-varianten.js';
-import { ncReihe, ncZieljahr, ncUeberschreitung, ncWege, ncAntwort, ncBaustein, ncCsv, ncBedarfSvg, ncLeiterSvg } from './lib/netzanschluss-check.js';
+import { ncReihe, ncZieljahr, ncUeberschreitung, ncWege, ncAntwort, ncBaustein, ncCsv, ncBedarfSvg, ncLeiterSvg, ncCheckliste, ncMassnahme } from './lib/netzanschluss-check.js';
+import { mrStatusAusStand } from './lib/massnahmen-register.js';
+import { createId } from './lib/util.js';
 import { aeSvg, aeEinordnung, aeKva, AE_QUELLE } from './lib/anschlussebenen.js';
 import { bpAssetLeistung } from './lib/bedarfsprognose.js';
-import { uwRender, uwZielVorgabe, uwAuswahlBewertet, uwOsmStand, uwParameter, uwZielVonHand } from './43-umspannwerke.js';
+import { uwRender, uwZielVorgabe, uwAuswahlBewertet, uwOsmStand, uwParameter, uwZielVonHand, uwKartenmodusSchliessen } from './43-umspannwerke.js';
 
 const SECTION = 'netzanschluss';          // data-section in #analyse-view-tabs
 const WRAP_ID = 'analyse-na-wrap';
@@ -109,7 +111,7 @@ export function naShowSection(visible) {
   const wrap = $(WRAP_ID);
   if (!wrap) return;
   wrap.style.display = visible ? '' : 'none';
-  if (visible) naModulRender();
+  if (visible) { uwKartenmodusSchliessen(); naModulRender(); }   // Kartenmodus gehört zur Karte
 }
 
 const _offen = () => {
@@ -380,26 +382,49 @@ function _ebeneHtml(d) {
       Quelle: ${esc(AE_QUELLE)}.</div>`;
 }
 
-/** Tabelle der Wege A–D mit Umspannwerk-Abschnitt (Teil von „2 · Wege"). */
+/** Wege A–D als Karten: Status, Kennzahlen, nächster Schritt; der empfohlene Weg ist markiert. */
 function _optionenHtml(d) {
-  const pill = a => `<span style="display:inline-block;font-size:12px;line-height:1.3;padding:1px 8px;border-radius:10px;border:1px solid ${FARBE[a.stufe]};color:${FARBE[a.stufe]};">${esc(a.text)}</span>`;
-  const zeilen = d.wege.map(w => `<tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:5px 6px;vertical-align:top;"><b>${w.id}</b></td>
-      <td style="padding:5px 6px;vertical-align:top;">${esc(w.titel)}</td>
-      <td style="padding:5px 6px;vertical-align:top;text-align:right;white-space:nowrap;">${esc(w.traegt)}</td>
-      <td style="padding:5px 6px;vertical-align:top;">${esc(w.kosten)}</td>
-      <td style="padding:5px 6px;vertical-align:top;white-space:nowrap;">${esc(w.ebene)}</td>
-      <td style="padding:5px 6px;vertical-align:top;">${pill(w.ampel)}</td></tr>`).join('');
-  return `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Bedarf ${d.ziel.jahr}:
-      <b style="color:${FARBE.bezug};">Bezug ${kw(d.ziel.bezugKw)}</b> · <b style="color:${FARBE.einsp};">Einspeisung ${kw(d.ziel.einspKw)}</b>
-      ${uwZielVonHand() ? `<span style="color:${FARBE.warn};">— Direktanschluss rechnet mit einer Zielleistung von Hand</span>` : ''}</div>
-    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px;">
-      <thead><tr style="color:var(--muted);font-size:11px;text-align:left;border-bottom:1px solid var(--border);">
-        <th style="padding:4px 6px;">Weg</th><th style="padding:4px 6px;"></th><th style="padding:4px 6px;text-align:right;">trägt B / E</th>
-        <th style="padding:4px 6px;">Kosten</th><th style="padding:4px 6px;">Ebene</th><th style="padding:4px 6px;">Bewertung</th></tr></thead>
-      <tbody>${zeilen}</tbody></table></div>
-    <div style="font-size:11px;color:var(--muted);margin:4px 0 10px;">Kosten des Direktanschlusses als Spanne −20 % / +40 % (eigene Richtwerte, unter „Annahmen" änderbar).
+  const empf = d.antwort.empfehlung.weg;
+  const karte = w => {
+    const st = STUFE_TOKEN[w.ampel.stufe];
+    const farbe = st ? `var(--${st})` : 'var(--muted)';
+    const istEmpf = w.id === empf;
+    const zeile = (k, v) => `<dt style="color:var(--muted);">${k}</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums;">${esc(v)}</dd>`;
+    const n = w.naechster || {};
+    const naechster = n.aktion
+      ? `<button type="button" data-click="naWegAktion('${n.aktion}')" style="all:unset;cursor:pointer;color:var(--accent);font-weight:600;">→ ${esc(n.text)}</button>`
+      : `<span style="color:var(--muted);">${esc(n.text || '')}</span>`;
+    return `<div style="position:relative;display:flex;flex-direction:column;gap:6px;min-width:0;background:var(--surface,transparent);border-radius:6px;
+        border:${istEmpf ? '2px solid var(--brand,#00bcd4)' : '1px solid var(--border)'};padding:${istEmpf ? '9px 11px' : '10px 12px'};${w.ampel.stufe === 'na' ? 'opacity:.75;' : ''}">
+        ${istEmpf ? '<span style="position:absolute;top:-10px;right:10px;background:var(--brand,#00bcd4);color:var(--on-brand,#fff);font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;">Empfohlen</span>' : ''}
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="flex:none;width:24px;height:24px;border-radius:4px;border:1px solid var(--line-2,var(--border));background:var(--surface-2,transparent);display:grid;place-items:center;font-weight:700;font-size:13px;">${w.id}</span>
+          <b style="font-size:13.5px;line-height:1.25;">${esc(w.kurz)}</b></div>
+        <span style="align-self:flex-start;font-size:12px;font-weight:600;border-radius:999px;padding:1px 9px;color:${farbe};background:${st ? `var(--${st}-bg,transparent)` : 'var(--surface-2,transparent)'};">${esc(w.ampel.text)}</span>
+        <span style="font-size:12px;color:var(--muted);line-height:1.35;">${esc(w.titel)}</span>
+        <dl style="display:grid;grid-template-columns:auto 1fr;gap:1px 8px;margin:0;font-size:12px;">
+          ${zeile('trägt', w.traegt)}${zeile('Kosten', w.kosten)}${zeile('zahlt', w.zahlt)}${zeile('Ebene', w.ebene)}</dl>
+        <div style="margin-top:auto;padding-top:6px;border-top:1px solid var(--border);font-size:12.5px;">${naechster}</div>
+      </div>`;
+  };
+  return `${uwZielVonHand() ? `<div style="font-size:12px;color:${FARBE.warn};margin-bottom:6px;">⚠ Der Direktanschluss rechnet mit einer Zielleistung von Hand (unten im Umspannwerk-Abschnitt unter „Annahmen").</div>` : ''}
+    <style>.na-wege-rahmen{container-type:inline-size}.na-wege{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:10px}
+      @container (max-width:860px){.na-wege{grid-template-columns:repeat(2,minmax(0,1fr))}}@container (max-width:440px){.na-wege{grid-template-columns:1fr}}</style>
+    <div class="na-wege-rahmen"><div class="na-wege">${d.wege.map(karte).join('')}</div></div>
+    <div style="font-size:11px;color:var(--muted);margin:6px 0 10px;">Kosten des Direktanschlusses als Spanne −20 % / +40 % (eigene Richtwerte, unter „Annahmen" änderbar).
       Ob Netz und Umspannwerk die Leistung aufnehmen, klärt nur die Netzanschlussanfrage.</div>`;
+}
+
+/** Nächster Schritt aus einer Wege-Karte. */
+export function naWegAktion(aktion) {
+  if (aktion === 'grenzen') window.sgNaOeffnen?.();
+  else if (aktion === 'ergebnis') naModulSchritt('ergebnis');
+  else if (aktion === 'uw-zeigen') window.uwZeigen?.();
+  else if (aktion === 'uw-waehlen') $('na-modul-uw')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  else if (aktion === 'pva') {
+    if (typeof window.uiGeheZu === 'function' && document.body.classList.contains('ui-lkebw')) window.uiGeheZu('auswertung', 'pva');
+    else { window.setViewMode?.('analyse'); window.setAnalyseSection?.('pva'); }
+  }
 }
 
 /* ── 3 · Ergebnis ───────────────────────────────────────────────────────── */
@@ -408,18 +433,140 @@ function _bausteinText(d) {
   return ncBaustein({ stand: d.stand, ziel: d.ziel, grenzen: d.grenzen, reihe: d.reihe, uw, osmStand: uwOsmStand() });
 }
 
+const _napAsset = () => (ASSETS.items || []).find(a => a.type === 'NAP') || null;
+const _naMassnahme = nap => (nap?.massnahmen || []).find(m => m?.netzanschlussWeg) || null;
+const _euro = n => (n > 0 ? `${Math.round(n).toLocaleString('de-DE')} €` : '—');
+
+/** Steckbrief: Kennzahlen, Textbaustein, Maßnahme-Übernahme und Checkliste für die Anfrage. */
 function _ergebnisHtml(d) {
   const text = _bausteinText(d);
-  return `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Textbaustein (z. B. für das Gutachten im Anschluss an 5.1.1) — Grundlage: Variante ${esc(d.variante || '—')}, Zieljahr ${d.ziel.jahr}${d.uw ? `, Umspannwerk ${esc(d.uw.name || 'ohne Namen')}` : ', kein Umspannwerk gewählt'}.</div>
-    <div id="na-modul-baustein" style="font-size:12.5px;line-height:1.6;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:rgba(var(--ink),.02);user-select:text;">${esc(text)}</div>
+  const sKva = Math.max(d.ziel.bezugKw, d.ziel.einspKw) / (d.p.cosPhi || 1);
+  const empf = d.antwort.empfehlung;
+  const zahl = (label, wert, farbe = 'var(--text)') => `<div style="background:var(--surface-2,rgba(127,127,127,.08));border-radius:4px;padding:6px 9px;min-width:0;">
+      <div style="font-size:11.5px;color:var(--muted);">${label}</div><div style="font-size:16px;font-weight:700;color:${farbe};font-variant-numeric:tabular-nums;">${wert}</div></div>`;
+  const kopf = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px;">
+      ${zahl(`Bezug ${d.ziel.jahr}`, kw(d.ziel.bezugKw), FARBE.bezug)}${zahl(`Einspeisung ${d.ziel.jahr}`, kw(d.ziel.einspKw), FARBE.einsp)}
+      ${zahl('maßgeblich', aeKva(sKva))}${zahl('Empfehlung', esc(empf.weg ? `Weg ${empf.weg}` : '—'))}</div>`;
+  const baustein = `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Textbaustein (z. B. für das Gutachten im Anschluss an 5.1.1) — Variante ${esc(d.variante || '—')}, Zieljahr ${d.ziel.jahr}${d.uw ? `, Umspannwerk ${esc(d.uw.name || 'ohne Namen')}` : ''}.</div>
+    <div id="na-modul-baustein" style="font-size:12.5px;line-height:1.6;padding:10px 12px;border:1px solid var(--border);border-radius:6px;user-select:text;">${esc(text)}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center;">
       <button data-click="naBausteinKopieren()" style="${STIL_KNOPF}">Text kopieren</button>
       <button data-click="naLeistungstabelleCsv()" style="${STIL_KNOPF}" title="Bezug und Einspeisung je Jahr mit den vereinbarten Grenzen — Anlage zur Netzanschlussanfrage">⤓ Leistungstabelle (CSV)</button>
       <span id="na-modul-status" style="font-size:12px;color:var(--muted);"></span>
-    </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5;">
-      Für die Netzanschlussanfrage zusätzlich: Lageplan mit Übergabestation (🗺️ Liegenschaftsbilder), gemessener Lastgang (⚡ Strom-Grundlagen),
-      geplante Erzeugungsanlagen mit Inbetriebnahmejahr. Die Übernahme eines Weges als Maßnahme in die Variante ist noch nicht umgesetzt.</div>`;
+    </div>`;
+  return `${kopf}
+    <div class="na-erg-rahmen"><style>.na-erg-rahmen{container-type:inline-size}.na-erg{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:16px;align-items:start}
+      @container (max-width:760px){.na-erg{grid-template-columns:1fr}}</style>
+      <div class="na-erg">
+        <div style="display:flex;flex-direction:column;gap:14px;min-width:0;">${_massnahmeHtml(d)}<div>${baustein}</div></div>
+        ${_checklisteHtml(d)}
+      </div></div>`;
+}
+
+/* Maßnahme: ein Weg wird als Maßnahme am NAP-Asset der aktiven Variante angelegt (bzw. aktualisiert). */
+let _massnWeg = null;   // null = Empfehlung
+
+function _massnahmeHtml(d) {
+  const nap = _napAsset();
+  const vorhanden = _naMassnahme(nap);
+  const wegId = _massnWeg || vorhanden?.netzanschlussWeg || d.antwort.empfehlung.weg || 'B';
+  const weg = d.wege.find(w => w.id === wegId) || d.wege[1];
+  const v = ncMassnahme({ weg, reihe: d.reihe, grenzen: d.grenzen, ziel: d.ziel, p: d.p, heute: d.heute, uw: d.uw });
+  const optionen = d.wege.map(w => `<option value="${w.id}"${w.id === weg.id ? ' selected' : ''}>${w.id} · ${esc(w.kurz)}${w.id === d.antwort.empfehlung.weg ? ' (empfohlen)' : ''}</option>`).join('');
+  const nr = vorhanden ? window.massnahmeEintrag?.(vorhanden)?.nr : null;
+  const knopf = !nap
+    ? `<span style="font-size:12px;color:var(--c-orange);">Kein NAP-Asset im Projekt — im Elektro-Tab anlegen, dann lässt sich der Weg als Maßnahme übernehmen.</span>`
+    : `<button data-click="naMassnahmeUebernehmen()" style="${STIL_KNOPF}background:var(--brand,#00bcd4);border-color:var(--brand,#00bcd4);color:var(--on-brand,#fff);font-weight:600;">
+        ${vorhanden ? 'Maßnahme aktualisieren' : 'Als Maßnahme übernehmen'}</button>`;
+  return `<div style="border:1px solid var(--border);border-left:3px solid var(--brand,#00bcd4);border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:7px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;">
+        <b style="font-size:13.5px;">Maßnahme für die Variante ${esc(d.variante || '—')}</b>
+        <label style="font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;">Weg
+          <select class="inp-field" data-change="naMassnahmeWeg(this.value)" style="font-size:12px;">${optionen}</select></label></div>
+      <div style="font-size:12.5px;">${esc(v.titel)}</div>
+      <div style="font-size:12px;color:var(--muted);">Jahr <b style="color:var(--text);">${v.jahr}</b> · Kosten <b style="color:var(--text);">${_euro(v.kosten)}</b>${v.kosten ? ' (Schätzung, Mitte der Spanne)' : ' (Angebot des Netzbetreibers abwarten)'} · Stand „Empfohlen", am NAP-Asset</div>
+      ${vorhanden ? `<div style="font-size:12px;color:var(--muted);">Bereits angelegt${nr ? ` als <b style="color:var(--text);">M${String(nr).padStart(2, '0')}</b>` : ''}: ${esc(vorhanden.titel)} (${vorhanden.jahr ?? '—'}) — Übernehmen ersetzt sie.</div>` : ''}
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">${knopf}<span id="na-massn-status" style="font-size:12px;color:var(--muted);"></span></div>
+    </div>`;
+}
+
+export function naMassnahmeWeg(id) {
+  _massnWeg = ['A', 'B', 'C', 'D'].includes(id) ? id : null;
+  naModulRender();
+}
+
+export function naMassnahmeUebernehmen() {
+  const d = _letzte, nap = _napAsset();
+  if (!d || !nap) return;
+  const vorhanden = _naMassnahme(nap);
+  const wegId = _massnWeg || vorhanden?.netzanschlussWeg || d.antwort.empfehlung.weg || 'B';
+  const weg = d.wege.find(w => w.id === wegId);
+  if (!weg) return;
+  const v = ncMassnahme({ weg, reihe: d.reihe, grenzen: d.grenzen, ziel: d.ziel, p: d.p, heute: d.heute, uw: d.uw });
+  const mutate = () => {
+    nap.massnahmen = nap.massnahmen || [];
+    const m = _naMassnahme(nap);
+    const felder = { titel: v.titel, typ: v.typ, jahr: v.jahr, kosten: v.kosten, netzanschlussWeg: v.weg };
+    if (m) Object.assign(m, felder);
+    else nap.massnahmen.push({ id: createId('m'), ...felder, status: mrStatusAusStand('empfohlen'), newProps: {}, dependsOn: [], phaseId: null });
+  };
+  const label = vorhanden ? 'Netzanschluss-Maßnahme aktualisieren' : 'Netzanschluss-Maßnahme anlegen';
+  let ok = false;
+  if (typeof window.runPlanningTransaction === 'function') {
+    try { window.runPlanningTransaction(label, mutate); ok = true; } catch (e) { console.warn(label, e); }
+  }
+  if (!ok) { mutate(); try { window.massnahmenAbgleichen?.(); } catch (e) { console.warn('Maßnahmenliste:', e); } }
+  _massnWeg = null;
+  naModulRender();
+  const nr = window.massnahmeEintrag?.(_naMassnahme(nap))?.nr;
+  const st = $('na-massn-status');
+  if (st) st.textContent = `✓ ${vorhanden ? 'aktualisiert' : 'angelegt'}${nr ? ` als M${String(nr).padStart(2, '0')}` : ''} — zu finden unter Übergreifend › Maßnahmen und Fahrplan`;
+}
+
+/* Checkliste für die Netzanschlussanfrage */
+let _haken = { lageplan: false, zustaendigkeit: false };
+
+function _checklisteHtml(d) {
+  const liste = ncCheckliste({
+    reihe: d.reihe, stand: d.stand, grenzen: d.grenzen, erzeuger: d.erzeuger, netzbetreiber: window.naNetzbetreiberName,
+    empfWeg: d.antwort.empfehlung.weg, uwGewaehlt: !!d.uw, haken: _haken,
+  });
+  const offen = liste.filter(x => x.stufe === 'fehlt').length;
+  const zeile = x => {
+    const zeichen = x.stufe === 'ok' ? '<span style="color:var(--ok,#66bb6a);font-weight:700;">✓</span>'
+      : x.stufe === 'na' ? '<span style="color:var(--muted);">–</span>' : '<span style="color:var(--crit,#ef5350);font-weight:700;">✗</span>';
+    const links = x.manuell
+      ? `<input type="checkbox" ${_haken[x.id] ? 'checked' : ''} data-change="naHaken('${x.id}',this.checked)" title="von Hand abhaken" style="margin:2px 0 0;accent-color:var(--brand,#00bcd4);"/>`
+      : zeichen;
+    const aktion = x.aktion && x.stufe !== 'na'
+      ? ` <a href="#" data-click="event.preventDefault();naCheckAktion('${x.aktion}')" style="color:var(--accent);">${x.aktion === 'csv' ? 'speichern' : 'öffnen'}</a>` : '';
+    return `<li style="display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start;${x.stufe === 'na' ? 'opacity:.65;' : ''}">
+        ${links}<div><span style="font-size:13px;">${esc(x.text)}</span>
+        <span style="display:block;font-size:11.5px;color:var(--muted);">${esc(x.hinweis)}${aktion}</span></div></li>`;
+  };
+  return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;min-width:0;">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:8px;">
+        <b style="font-size:13.5px;">Für die Netzanschlussanfrage</b>
+        <span style="font-size:12px;color:${offen ? 'var(--warn,#ffb74d)' : 'var(--ok,#66bb6a)'};">${offen ? `${offen} offen` : 'vollständig'}</span></div>
+      <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;">${liste.map(zeile).join('')}</ul>
+    </div>`;
+}
+
+export function naHaken(id, an) {
+  if (!(id in _haken)) return;
+  _haken = { ..._haken, [id]: !!an };
+  naModulRender();
+}
+
+export function naCheckAktion(aktion) {
+  if (aktion === 'csv') naLeistungstabelleCsv();
+  else if (aktion === 'lastgang') window.sgMjOeffnen?.();
+  else if (aktion === 'grenzen') window.sgNaOeffnen?.();
+  else if (aktion === 'uw') naModulSchritt('wege');
+  else if (aktion === 'lageplan') {
+    if (typeof window.uiGeheZu === 'function' && document.body.classList.contains('ui-lkebw')) window.uiGeheZu('auswertung', 'liegenschaftsbilder');
+    else { window.setViewMode?.('analyse'); window.setAnalyseSection?.('liegenschaftsbilder'); }
+  }
 }
 
 export function naBausteinKopieren() {
@@ -447,10 +594,14 @@ export function naLeistungstabelleCsv() {
 
 /* ── Projektdatei ───────────────────────────────────────────────────────── */
 export function naModulCapture() {
-  return _zieljahrHand ? { zieljahr: _zieljahrHand } : null;
+  const haken = Object.values(_haken).some(Boolean);
+  if (!_zieljahrHand && !haken) return null;
+  return { ...(_zieljahrHand ? { zieljahr: _zieljahrHand } : {}), ...(haken ? { haken: { ..._haken } } : {}) };
 }
 export function naModulRestore(s) {
   const j = parseInt(s?.zieljahr, 10);
   _zieljahrHand = Number.isFinite(j) ? j : null;
+  _haken = { lageplan: !!s?.haken?.lageplan, zustaendigkeit: !!s?.haken?.zustaendigkeit };
+  _massnWeg = null;
   naModulRender();
 }

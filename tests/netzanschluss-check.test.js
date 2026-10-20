@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ncEinspeisungImJahr, ncZieljahr, ncReihe, ncUeberschreitung, ncWege, ncBaustein, ncCsv, ncBedarfSvg,
-  ncAntwort, ncLeiterSvg, ncMassgeblichKva, NC_NETZEBENEN,
+  ncAntwort, ncLeiterSvg, ncMassgeblichKva, NC_NETZEBENEN, ncCheckliste, ncMassnahme,
 } from '../src/lib/netzanschluss-check.js';
 import { aeEinordnung, aeSvg, aeKva } from '../src/lib/anschlussebenen.js';
 import { uwParameterMischen, uwBewerten, uwSatz } from '../src/lib/umspannwerk-core.js';
@@ -54,6 +54,12 @@ describe('netzanschluss-check: Wege und Text', () => {
     expect(w[0].ampel).toMatchObject({ stufe: 'warn', text: 'reicht bis 2029 (Einspeisung)' });
     expect(w[2].ampel.stufe).toBe('ok');
     expect(w[3].ampel.stufe).toBe('na');
+    // Karten: Einheiten je Richtung beschriftet, nächster Schritt je Weg
+    expect(w[0].traegt).toBe('Bezug 2,5 MVA · Einsp. 1,5 MW');
+    expect(w.map(x => x.naechster.aktion)).toEqual(['pva', 'ergebnis', 'uw-zeigen', null]);
+    const ohneUw = ncWege({ ziel, grenzen: {}, reihe, p: P, uw: null });
+    expect(ohneUw[0].naechster.aktion).toBe('grenzen');
+    expect(ohneUw[2].naechster.aktion).toBe('uw-waehlen');
   });
 
   it('A: schon im Messjahr überschritten', () => {
@@ -163,5 +169,44 @@ describe('umspannwerk-core: n-1 zwischen Kabelsystemen', () => {
     expect(mit.ziel.systeme).toBe(ohne.ziel.systeme + 1);
     expect(mit.stufen[0].kosten.anschlussEur).toBeGreaterThan(ohne.stufen[0].kosten.anschlussEur);
     expect(uwSatz(uw, mit)).toMatch(/Reserve \(n-1\)/);
+  });
+});
+
+describe('netzanschluss-check: Steckbrief', () => {
+  const reihe = ncReihe({ stand: STAND, assets: ASSETS, von: 2026, bis: 2032 });
+  const grenzen = { bezugKw: 2500, einspKw: 1500 };
+  const ziel = { jahr: 2030, bezugKw: 2200, einspKw: 3500 };
+
+  it('Checkliste: abgeleitete Punkte, UW nur bei Weg C/D, Haken von Hand', () => {
+    const c = ncCheckliste({ reihe, stand: STAND, grenzen, erzeuger: 2, netzbetreiber: '', empfWeg: 'B', uwGewaehlt: false });
+    const st = id => c.find(x => x.id === id).stufe;
+    expect(st('tabelle')).toBe('ok');
+    expect(st('lastgang')).toBe('ok');
+    expect(st('grenzen')).toBe('ok');
+    expect(st('netzbetreiber')).toBe('fehlt');
+    expect(st('uw')).toBe('na');
+    expect(st('lageplan')).toBe('fehlt');
+    const c2 = ncCheckliste({ reihe, stand: {}, grenzen: {}, erzeuger: 0, netzbetreiber: 'Netz AG', empfWeg: 'C', uwGewaehlt: false, haken: { lageplan: true } });
+    const st2 = id => c2.find(x => x.id === id).stufe;
+    expect(st2('lastgang')).toBe('fehlt');
+    expect(st2('erzeuger')).toBe('na');
+    expect(st2('uw')).toBe('fehlt');
+    expect(st2('lageplan')).toBe('ok');
+    expect(st2('netzbetreiber')).toBe('ok');
+  });
+
+  it('Maßnahme: Jahr der ersten Überschreitung, Kosten nur beim Direktanschluss', () => {
+    const uw = { name: 'UW Test', b: uwBewerten({ lat: 48.03, lng: 9.0, msKv: 20, trafos: [] }, { ref: { lat: 48, lng: 9 }, p: P, ziel: { bezugMw: 2.2, einspMw: 3.5 } }) };
+    const wege = ncWege({ ziel, grenzen, reihe, p: P, uw });
+    const b = ncMassnahme({ weg: wege[1], reihe, grenzen, ziel, p: P, heute: 2026, uw });
+    expect(b).toMatchObject({ typ: 'Ertuechtigung', jahr: 2030, kosten: 0, weg: 'B' });
+    expect(b.titel).toMatch(/3,7 MVA/);
+    const c = ncMassnahme({ weg: wege[2], reihe, grenzen, ziel, p: P, heute: 2026, uw });
+    expect(c.typ).toBe('Bau');
+    expect(c.kosten).toBeGreaterThan(0);
+    expect(c.titel).toMatch(/UW Test, 1 Kabelsystem, Trasse/);
+    // ohne Überschreitung bis zum Zieljahr: das Zieljahr
+    const früh = ncMassnahme({ weg: wege[1], reihe, grenzen, ziel: { jahr: 2028, bezugKw: 1800, einspKw: 500 }, p: P, heute: 2026, uw: null });
+    expect(früh.jahr).toBe(2028);
   });
 });

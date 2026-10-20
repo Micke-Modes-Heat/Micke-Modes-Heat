@@ -41,8 +41,11 @@ let _layer = null;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const zahl = v => { const n = parseFloat(String(v ?? '').trim().replace(/\s/g, '').replace(',', '.')); return Number.isFinite(n) ? n : null; };
-/** Neu zeichnen: im Modul das ganze Fenster (Wege-Übersicht hängt am Zustand hier), sonst nur den Abschnitt. */
-const _neu = () => (typeof window.naModulRender === 'function' ? window.naModulRender() : uwRender());
+/** Neu zeichnen: die Seite (Wege-Übersicht hängt am Zustand hier) bzw. den Abschnitt, dazu das Kartenmodus-Fenster. */
+const _neu = () => {
+  if (typeof window.naModulRender === 'function') window.naModulRender(); else uwRender();
+  _kartenRender();
+};
 const km = m => (m / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 
 /* ── Bezugspunkt: NAP-Asset, sonst Mitte des Plangebiets, sonst Kartenmitte ── */
@@ -169,12 +172,45 @@ function _pane() {
   return PANE;
 }
 
+// Eignung eines Kandidaten für die Zielleistung: grün = reicht mit ≤ 3 Kabelsystemen und unter der
+// (n-1)-Reserve des UW, orange = nur mit Ausbau bzw. vielen Systemen, sonst Kategoriefarbe (kein Bedarf).
+const EIGNUNG_FARBE = { ok: '#43a047', warn: '#fb8c00' };
+function _eignung(b) {
+  const zielMw = Math.max(_ziel.bezugMw || 0, _ziel.einspMw || 0);
+  if (!(zielMw > 0) || !b.ziel) return 'na';
+  return (b.n1Mw > 0 && zielMw > b.n1Mw) || b.ziel.systeme > 3 ? 'warn' : 'ok';
+}
+/** Punktgröße nach Leistung je Kabelsystem (größer = trägt mehr über ein eigenes Kabel). */
+const _radius = b => Math.max(6, Math.min(14, 4 + Math.sqrt(Math.max(0, b.jeSystem.bezugMw)) * 2.2));
+const RINGE_KM = [2, 5, 10, 20];
+
+let _marker = {};     // id → { m, r } für die Hover-Kopplung Liste ↔ Karte
+let _hover = null;
+
+function _hervorheben(id, an) {
+  const e = _marker[id];
+  if (!e) return;
+  const sel = id === _auswahlId;
+  e.m.setStyle({ weight: an || sel ? 3.5 : 1.5, color: an ? '#4fc3f7' : sel ? '#111' : '#fff' });
+  e.m.setRadius(an ? e.r + 3 : e.r + (sel ? 2 : 0));
+  if (an) e.m.bringToFront();
+  document.querySelectorAll(`[data-uw-zeile="${CSS.escape(id)}"]`).forEach(z => z.classList.toggle('uw-hover', !!an));
+}
+
 function _zeichnen() {
   if (_layer) { map.removeLayer(_layer); _layer = null; }
+  _marker = {};
   if (!_sichtbar || !_liste.length) return;
   const pane = _pane();
   const ref = _bezug();
   const g = L.layerGroup();
+  // Entfernungsringe um den Bezugspunkt (bis zum Suchradius)
+  for (const r of RINGE_KM.filter(k => k <= _p().radiusKm)) {
+    L.circle([ref.lat, ref.lng], { pane, radius: r * 1000, color: '#607d8b', weight: 1, dashArray: '3 5', fill: false, interactive: false }).addTo(g);
+    L.marker([ref.lat + r / 111.32, ref.lng], { pane, interactive: false,
+      icon: L.divIcon({ className: 'uw-ring-label', html: `<span style="font:600 11px/1 inherit;color:#455a64;background:rgba(255,255,255,.8);padding:1px 4px;border-radius:3px;white-space:nowrap;">${r} km</span>`, iconSize: null }),
+    }).addTo(g);
+  }
   const sel = _auswahl();
   if (sel) {
     const b = _bewerten(sel, ref);
@@ -182,21 +218,35 @@ function _zeichnen() {
       .bindTooltip(`Direktanschluss ${esc(sel.name || 'UW')}: Luftlinie ${km(b.luftlinieM)} km · Trasse ≈ ${b.laengeKm.toLocaleString('de-DE', { maximumFractionDigits: 1 })} km`, { sticky: true })
       .addTo(g);
   }
-  L.circleMarker([ref.lat, ref.lng], { pane, radius: 5, color: '#fff', weight: 2, fillColor: '#e53935', fillOpacity: 1 })
+  L.circleMarker([ref.lat, ref.lng], { pane, radius: 6, color: '#fff', weight: 2, fillColor: '#e53935', fillOpacity: 1 })
     .bindTooltip(`Bezugspunkt: ${esc(ref.quelle)}`).addTo(g);
-  for (const u of _liste) {
+  // Nicht-Kandidaten zuerst (klein, grau), Kandidaten darüber
+  const reihenfolge = [..._liste].sort((a, b) => (UW_KATEGORIEN[a.kategorie]?.kandidat ? 1 : 0) - (UW_KATEGORIEN[b.kategorie]?.kandidat ? 1 : 0));
+  for (const u of reihenfolge) {
     const kat = UW_KATEGORIEN[u.kategorie] || UW_KATEGORIEN.unbekannt;
     if (!kat.kandidat && !_alleZeigen) continue;
-    const istSel = u.id === _auswahlId;
-    const m = L.circleMarker([u.lat, u.lng], {
-      pane, radius: istSel ? 10 : kat.kandidat ? 7 : 4,
-      color: istSel ? '#4fc3f7' : '#222', weight: istSel ? 3 : 1, fillColor: kat.farbe, fillOpacity: 0.9,
-    });
     const kv = u.kvs?.length ? u.kvs.join('/') + ' kV' : 'Spannung unbekannt';
+    if (!kat.kandidat) {
+      L.circleMarker([u.lat, u.lng], { pane, radius: 4, color: '#222', weight: 1, fillColor: kat.farbe, fillOpacity: 0.8 })
+        .bindTooltip(`<b>${esc(u.name || 'ohne Namen')}</b><br>${esc(kat.label)} · ${esc(kv)}`).addTo(g);
+      continue;
+    }
+    const b = _bewerten(u, ref);
+    const eig = _eignung(b);
+    const istSel = u.id === _auswahlId;
+    const r = _radius(b);
+    const m = L.circleMarker([u.lat, u.lng], {
+      pane, radius: r + (istSel ? 2 : 0),
+      color: istSel ? '#111' : '#fff', weight: istSel ? 3.5 : 1.5, fillColor: EIGNUNG_FARBE[eig] || kat.farbe, fillOpacity: 0.92,
+    });
+    const tragend = b.ziel ? `<br>Bedarf: ${b.ziel.systeme} Kabelsystem${b.ziel.systeme > 1 ? 'e' : ''}, grob ${uwEurSpanne(b.ziel.kosten.anschlussEur)}` : '';
     m.bindTooltip(`<b>${esc(u.name || 'ohne Namen')}</b><br>${esc(kat.label)} · ${esc(kv)}${u.betreiber ? '<br>' + esc(u.betreiber) : ''}`
-      + `<br>Luftlinie ${km(uwDistanzM(ref, u))} km${kat.kandidat ? '<br><i>Klick: als Anschluss-UW wählen</i>' : ''}`);
-    if (kat.kandidat) m.on('click', ev => { L.DomEvent.stop(ev); uwWaehlen(u.id); });
+      + `<br>Trasse ≈ ${b.laengeKm.toLocaleString('de-DE', { maximumFractionDigits: 1 })} km · je System ${uwMw(b.jeSystem.bezugMw)} MW${tragend}<br><i>Klick: als Anschluss-UW wählen</i>`);
+    m.on('click', ev => { L.DomEvent.stop(ev); uwWaehlen(u.id); });
+    m.on('mouseover', () => { _hover = u.id; _hervorheben(u.id, true); });
+    m.on('mouseout', () => { _hover = null; _hervorheben(u.id, false); });
     m.addTo(g);
+    _marker[u.id] = { m, r };
   }
   _layer = g.addTo(map);
 }
@@ -207,18 +257,122 @@ export function uwKarteUmschalten(an) {
   _neu();
 }
 
+/** Gewähltes UW auf der Karte zeigen — im Kartenmodus, damit Liste und Detail daneben bleiben. */
 export function uwZeigen() {
   const sel = _auswahl();
-  if (!sel) return;
+  if (!sel) return uwKartenmodus();
   const ref = _bezug();
-  _sichtbar = true;
-  _zeichnen();
-  // Von der Seite Auswertung › Netzanschluss aus erst zur Karte wechseln (44), dann hinfliegen
-  const wechsel = window.naKarteBenutzen?.();
+  uwKartenmodus({ ohneZoom: true });
   setTimeout(() => {
     map.invalidateSize();
     map.flyToBounds(L.latLngBounds([[ref.lat, ref.lng], [sel.lat, sel.lng]]), { padding: [60, 60], maxZoom: 15 });
-  }, wechsel ? 250 : 0);
+  }, 300);
+}
+
+/* ── Kartenmodus: Fenster neben der Karte (dockt in der LKEBw-Oberfläche rechts an, src/52) ── */
+const KARTE_ID = 'uw-karten-panel';
+const _kartenOffen = () => $(KARTE_ID)?.style.display === 'block';
+
+function _kartenPanel() {
+  let p = $(KARTE_ID);
+  if (p) return p;
+  p = document.createElement('div');
+  p.id = KARTE_ID;
+  p.className = 'float-panel cyan-border';
+  p.style.cssText = 'top:64px;width:460px;max-width:calc(100vw - 40px);max-height:86vh;padding:0 14px 12px;overflow:auto;display:none;';
+  p.innerHTML = `<div class="panel-drag-handle" onmousedown="startDrag(event,'${KARTE_ID}')">
+      <span style="color:var(--c-teal);font-size:12px;font-weight:600;">Umspannwerk wählen</span>
+      <span class="drag-dots">⠿</span>
+      <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" data-click="uwKartenmodusSchliessen()">✕</span>
+    </div>
+    <style>#${KARTE_ID} .uw-z{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 7px;border-radius:4px;cursor:pointer;border:1px solid transparent;font-size:12.5px}
+      #${KARTE_ID} .uw-z:hover,#${KARTE_ID} .uw-z.uw-hover{background:var(--surface-2,rgba(127,127,127,.1));border-color:var(--border)}
+      #${KARTE_ID} .uw-z.uw-sel{border-color:var(--brand,#4fc3f7)}</style>
+    <div id="uw-karten-body"></div>`;
+  document.body.appendChild(p);
+  return p;
+}
+
+/** Kartenmodus öffnen: zur Karte wechseln, Umspannwerke zeigen, Fenster mit Liste und Detail daneben. */
+export function uwKartenmodus(opt = {}) {
+  window.naKarteBenutzen?.();
+  _kartenPanel().style.display = 'block';
+  _sichtbar = true;
+  _zeichnen();
+  _kartenRender();
+  if (!_liste.length) { uwLaden(); return; }
+  if (opt.ohneZoom) return;
+  const ref = _bezug();
+  const pkt = [[ref.lat, ref.lng], ..._kandidaten().sort((a, b) => uwDistanzM(ref, a) - uwDistanzM(ref, b)).slice(0, MAX_KANDIDATEN).map(u => [u.lat, u.lng])];
+  setTimeout(() => { map.invalidateSize(); map.flyToBounds(L.latLngBounds(pkt), { padding: [50, 50], maxZoom: 14 }); }, 300);
+}
+
+export function uwKartenmodusSchliessen() {
+  const p = $(KARTE_ID);
+  if (p) p.style.display = 'none';
+}
+
+/** Zurück zur Seite Auswertung › Netzanschluss (Schritt Wege). */
+export function uwZurSeite() {
+  uwKartenmodusSchliessen();
+  window.naModulOeffnen?.('wege');
+}
+
+function _kartenRender() {
+  if (!_kartenOffen()) return;
+  const body = $('uw-karten-body');
+  if (!body) return;
+  const ref = _bezug();
+  const k = _kandidaten().map(u => ({ u, b: _bewerten(u, ref) })).sort((a, b) => a.b.luftlinieM - b.b.luftlinieM);
+  const maxMw = Math.max(1, ...k.map(x => x.b.jeSystem.bezugMw));
+  const zielMw = Math.max(_ziel.bezugMw || 0, _ziel.einspMw || 0);
+  const zeilen = k.slice(0, 12).map(({ u, b }) => {
+    const eig = _eignung(b);
+    const kv = u.msKvHand ? `${u.msKvHand} kV*` : u.kvs?.length ? u.kvs.join('/') + ' kV' : 'kV ?';
+    return `<div class="uw-z${u.id === _auswahlId ? ' uw-sel' : ''}" data-uw-zeile="${esc(u.id)}" data-click="uwWaehlen('${esc(u.id)}')"
+        title="${esc(UW_KATEGORIEN[u.kategorie]?.label || '')}${u.betreiber ? ' · ' + esc(u.betreiber) : ''}">
+        <span style="width:10px;height:10px;border-radius:50%;background:${EIGNUNG_FARBE[eig] || UW_KATEGORIEN[u.kategorie]?.farbe};"></span>
+        <span style="min-width:0;"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${u.id === _auswahlId ? 700 : 400};">${esc(u.name || 'ohne Namen')}</span>
+          <span style="font-size:11.5px;color:var(--muted);">${esc(kv)} · Trasse ${b.laengeKm.toLocaleString('de-DE', { maximumFractionDigits: 1 })} km</span></span>
+        <span style="text-align:right;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;">${uwMw(b.jeSystem.bezugMw)} MW/System
+          <span style="display:block;height:5px;width:80px;background:var(--surface-2,rgba(127,127,127,.15));border-radius:3px;margin-top:3px;overflow:hidden;">
+            <i style="display:block;height:100%;width:${(b.jeSystem.bezugMw / maxMw * 100).toFixed(0)}%;background:${EIGNUNG_FARBE[eig] || '#90a4ae'};"></i></span></span>
+      </div>`;
+  }).join('');
+  const sel = _auswahl();
+  let detail = '';
+  if (sel) {
+    const b = _bewerten(sel, ref);
+    const n = b.ziel?.systeme || b.stufen[0].systeme;
+    const tragend = (n - (_redundant ? 1 : 0)) * b.jeSystem.bezugMw;
+    const sw = stil => `<span style="display:inline-block;width:26px;height:10px;border-radius:2px;flex:none;${stil}"></span>`;
+    detail = `<div style="border:1px solid var(--border);border-left:3px solid var(--brand,#4fc3f7);border-radius:4px;margin-top:4px;padding:8px 10px;display:flex;flex-direction:column;gap:5px;font-size:12.5px;">
+        <b>Gewählt: ${esc(sel.name || 'ohne Namen')}</b>
+        <div style="display:flex;gap:8px;align-items:center;">${sw('background:#43a047;')}<span>Eigenes Kabel: ${n} System${n > 1 ? 'e' : ''}${_redundant ? ' (1 Reserve)' : ''} tragen ≈ ${uwMw(tragend)} MW über ${b.laengeKm.toLocaleString('de-DE', { maximumFractionDigits: 1 })} km — <i>belastbar</i></span></div>
+        <div style="display:flex;gap:8px;align-items:center;">${sw('background:repeating-linear-gradient(135deg,#43a047 0 2px,transparent 2px 6px);border:1px solid #43a047;')}<span>Umspannwerk (n-1): ${b.n1.mva > 0 ? `≈ ${uwMw(b.n1.mva)} MVA für alle Kunden` : 'keine Reserve bekannt'} — <i>Annahme</i></span></div>
+        <div>Anschluss grob <b>${uwEurSpanne((b.ziel?.kosten || b.stufen[0].kosten).anschlussEur)}</b>${zielMw > 0 ? ` für ${uwMw(zielMw)} MW Bedarf` : ''}.</div>
+        <div style="color:var(--muted);font-size:11.5px;">Name, MS-Spannung, Trafos und Annahmen: auf der Seite Netzanschluss › 2 · Wege.</div>
+      </div>`;
+  }
+  const legende = `<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);">
+      <span><span style="color:#43a047;">●</span> trägt den Bedarf</span><span><span style="color:#fb8c00;">●</span> nur mit Ausbau / vielen Systemen</span>
+      <span>Punktgröße = Leistung je Kabelsystem</span><span><span style="color:#e53935;">●</span> Bezugspunkt</span></div>`;
+  body.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0;">
+      <button data-click="uwZurSeite()" style="${STIL_KNOPF}">← zurück zur Seite Netzanschluss</button>
+      <button data-click="uwLaden()" ${_laedt ? 'disabled' : ''} style="${STIL_KNOPF}">${_liste.some(u => u.osm) ? '⟳ neu laden' : 'Umspannwerke laden'}</button>
+      <button data-click="uwVonHandSetzen()" style="${STIL_KNOPF}${_setzen ? 'color:var(--c-orange);border-color:var(--c-orange);' : ''}">${_setzen ? '✕ Setzen abbrechen (Esc)' : '+ von Hand setzen'}</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Bedarf im Zieljahr: <b style="color:var(--text);">${zielMw > 0 ? `${uwMw(_ziel.bezugMw || 0)} MW Bezug · ${uwMw(_ziel.einspMw || 0)} MW Einspeisung` : '—'}</b>
+      ${_setzen ? '<br><b style="color:var(--c-orange);">Auf die Karte klicken, wo das Umspannwerk liegt …</b>' : _status ? `<br>${esc(_status)}` : ''}</div>
+    ${detail}
+    <div style="margin-top:10px;">${legende}</div>
+    <div style="display:flex;flex-direction:column;gap:2px;margin-top:6px;">${zeilen || '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Noch keine Umspannwerke — „Umspannwerke laden" oder von Hand setzen.</div>'}</div>`;
+  // Hover-Kopplung Liste → Karte
+  body.querySelectorAll('[data-uw-zeile]').forEach(z => {
+    z.addEventListener('mouseenter', () => _hervorheben(z.dataset.uwZeile, true));
+    z.addEventListener('mouseleave', () => _hervorheben(z.dataset.uwZeile, false));
+  });
+  if (_hover) _hervorheben(_hover, true);
 }
 
 /* ── UW von Hand setzen ─────────────────────────────────────────────────── */
@@ -243,12 +397,13 @@ function _setzenBeenden() {
   document.removeEventListener('keydown', _setzenTaste);
   map.getContainer().style.cursor = '';
   window.hideHint?.();
-  window.naZurueckZurSeite?.();   // kam der Auftrag von der Seite Netzanschluss, dorthin zurück
+  // Kam der Auftrag von der Seite Netzanschluss, dorthin zurück — im Kartenmodus auf der Karte bleiben
+  if (!_kartenOffen()) window.naZurueckZurSeite?.();
 }
 export function uwVonHandSetzen() {
   if (_setzen) { _setzenBeenden(); uwRender(); return; }
   _setzen = true;
-  if (window.naKarteBenutzen?.()) window.showHint?.('Auf die Karte klicken, wo das Umspannwerk liegt — Esc bricht ab.');
+  if (!_kartenOffen() && window.naKarteBenutzen?.()) window.showHint?.('Auf die Karte klicken, wo das Umspannwerk liegt — Esc bricht ab.');
   map.getContainer().style.cursor = 'crosshair';
   map.once('click', _setzenKlick);
   document.addEventListener('keydown', _setzenTaste);
@@ -409,11 +564,10 @@ function _detailHtml(ref) {
         Umspannwerk (n-1): ${n1} — gilt für <i>alle</i> Kunden des UW, die Bestandslast kennt nur der Netzbetreiber.</div>
       <div style="font-size:11px;color:var(--muted);margin-top:4px;">${heute}</div>
       <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--muted);">Zielleistung
-          ${_zielHand ? `(von Hand · <a href="#" data-click="event.preventDefault();uwZielAusBedarf()" style="color:var(--accent);">↺ aus Bedarf</a>):` : '(aus Schritt „Bedarf", Zieljahr):'}
-          <label>Bezug <input class="inp-field" type="text" value="${esc(_ziel.bezugMw ?? '')}" placeholder="MW" data-change="uwSetZiel('bezugMw',this.value)" style="${STIL_ZAHL}"/> MW</label>
-          <label>Einspeisung <input class="inp-field" type="text" value="${esc(_ziel.einspMw ?? '')}" placeholder="MW" data-change="uwSetZiel('einspMw',this.value)" style="${STIL_ZAHL}"/> MW</label>
-        </div>${zielHtml}
+        <div style="font-size:11px;color:var(--muted);">Zielleistung ${_zielHand
+          ? `<b style="color:var(--c-orange);">von Hand</b> (unter „Annahmen") · <a href="#" data-click="event.preventDefault();uwZielAusBedarf()" style="color:var(--accent);">↺ aus dem Zieljahr übernehmen</a>`
+          : 'aus dem Zieljahr (Schieber oben)'}:
+          <b style="color:var(--text);">${uwMw(_ziel.bezugMw || 0)} MW Bezug · ${uwMw(_ziel.einspMw || 0)} MW Einspeisung</b></div>${zielHtml}
       </div>
       <div style="margin-top:6px;font-size:11px;line-height:1.5;">${esc(uwSatz({ ...u, name: u.name || '' }, b))}</div>
     </div>`;
@@ -426,8 +580,15 @@ function _parameterHtml() {
       <span style="font-size:11px;color:${k in _param ? 'var(--text)' : 'var(--muted)'};">${esc(d.label)}</span>
       <span style="white-space:nowrap;"><input class="inp-field" type="text" value="${esc(p[k])}" data-change="uwSetParam('${k}',this.value)" style="${STIL_ZAHL}"/>
       <span style="font-size:11px;color:var(--muted);display:inline-block;width:30px;">${esc(d.einheit)}</span></span></label>`).join('');
-  return `<details style="margin-top:6px;"><summary style="font-size:11px;color:var(--muted);cursor:pointer;">Annahmen und Kostenansätze${geaendert ? ` (${geaendert} geändert)` : ''}</summary>
+  const ziel = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;color:${_zielHand ? 'var(--text)' : 'var(--muted)'};margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);"
+      title="Nur für Sonderfälle: Der Direktanschluss rechnet sonst mit dem Bedarf im Zieljahr.">
+      Zielleistung von Hand
+      <label>Bezug <input class="inp-field" type="text" value="${_zielHand ? esc(_ziel.bezugMw ?? '') : ''}" placeholder="${esc(_ziel.bezugMw ?? 'MW')}" data-change="uwSetZiel('bezugMw',this.value)" style="${STIL_ZAHL}"/> MW</label>
+      <label>Einspeisung <input class="inp-field" type="text" value="${_zielHand ? esc(_ziel.einspMw ?? '') : ''}" placeholder="${esc(_ziel.einspMw ?? 'MW')}" data-change="uwSetZiel('einspMw',this.value)" style="${STIL_ZAHL}"/> MW</label>
+      ${_zielHand ? `<a href="#" data-click="event.preventDefault();uwZielAusBedarf()" style="color:var(--accent);">↺ aus dem Zieljahr</a>` : ''}</div>`;
+  return `<details style="margin-top:6px;"${_zielHand ? ' open' : ''}><summary style="font-size:11px;color:var(--muted);cursor:pointer;">Annahmen und Kostenansätze${geaendert || _zielHand ? ` (${geaendert + (_zielHand ? 1 : 0)} geändert)` : ''}</summary>
       <div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;">${felder}</div>
+      ${ziel}
       ${geaendert ? `<button data-click="uwParamZuruecksetzen()" style="${STIL_KNOPF}margin-top:4px;">↺ auf Richtwerte zurücksetzen</button>` : ''}
     </details>`;
 }
@@ -452,16 +613,16 @@ function _panelHtml() {
   const status = _setzen ? 'Auf die Karte klicken, wo das Umspannwerk liegt …' : _status;
   return `<div class="sa-section-title" style="margin-top:4px;">Umspannwerk &amp; Direktanschluss <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px;">Größenordnung · ersetzt keine Netzanschlussanfrage</span></div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
+      <button data-click="${_auswahl() ? 'uwZeigen()' : 'uwKartenmodus()'}" title="Zur Karte wechseln: Umspannwerke mit Entfernungsringen, Liste und Bewertung daneben"
+        style="${STIL_KNOPF}background:var(--brand,#00bcd4);border-color:var(--brand,#00bcd4);color:var(--on-brand,#fff);font-weight:600;">🗺 Auf der Karte wählen</button>
       <button data-click="uwLaden()" ${_laedt ? 'disabled' : ''} style="${STIL_KNOPF}">${_liste.some(u => u.osm) ? '⟳ Neu laden' : 'Umspannwerke laden'} (${uwMw(_p().radiusKm)} km)</button>
       ${knopfSetzen}
-      ${_liste.length ? `<label style="font-size:11px;color:var(--muted);display:flex;gap:3px;align-items:center;"><input type="checkbox" ${_sichtbar ? 'checked' : ''} data-change="uwKarteUmschalten(this.checked)"/> Karte</label>` : ''}
-      ${_auswahl() ? `<button data-click="uwZeigen()" style="${STIL_KNOPF}">zeigen</button>` : ''}
+      ${_liste.length ? `<label style="font-size:11px;color:var(--muted);display:flex;gap:3px;align-items:center;"><input type="checkbox" ${_sichtbar ? 'checked' : ''} data-change="uwKarteUmschalten(this.checked)"/> auf der Karte einblenden</label>` : ''}
     </div>
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--muted);margin:2px 0 4px;">
       <label style="display:flex;gap:4px;align-items:center;" title="Jedes Kabelsystem trägt die volle Leistung allein; ein System ist Reserve. Für den Bezug einer Liegenschaft oft gewünscht, für reine PV-Einspeisung meist nicht.">
         <input type="checkbox" ${_redundant ? 'checked' : ''} data-change="uwSetRedundant(this.checked)"/> n-1: ein Kabelsystem als Reserve</label>
-      <label style="display:flex;gap:4px;align-items:center;" title="Kabelweg = Luftlinie × Faktor. VDE FNN rechnet ohne Trassenplanung mit 1,5.">
-        Umwegfaktor <input class="inp-field" type="text" value="${esc(_p().umwegFaktor)}" data-change="uwSetParam('umwegFaktor',this.value)" style="width:42px;box-sizing:border-box;text-align:right;font-size:12px;"/> <span>(FNN: 1,5)</span></label>
+      <span title="Unter „Annahmen und Kostenansätze" änderbar">Umwegfaktor ${esc(String(_p().umwegFaktor).replace('.', ','))} (FNN: 1,5)</span>
     </div>
     <div style="font-size:11px;color:var(--muted);line-height:1.4;">Bezugspunkt: ${esc(ref.quelle)}${_geladenAm ? ` · OSM-Stand ${esc(_geladenAm)}` : ''}${status ? `<br>${esc(status)}` : ''}</div>
     ${_kandidatenHtml(ref)}
@@ -475,6 +636,7 @@ function _panelHtml() {
 export function uwRender() {
   const wrap = $(WRAP_ID);
   if (wrap) wrap.innerHTML = _panelHtml();
+  _kartenRender();
 }
 
 /* ── Projektdatei ───────────────────────────────────────────────────────── */

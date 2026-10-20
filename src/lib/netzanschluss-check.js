@@ -57,6 +57,7 @@ export function ncUeberschreitung(reihe, feld, grenze) {
  *   p:       Parameter aus uwParameterMischen (Orientierungsgrenzen Strang/UW, cos φ)
  *   uw:      { name, b } — Bewertung des gewählten Umspannwerks (uwBewerten) oder null
  * → [{ id, titel, kurz, traegt, kosten, ebene, zahlt, ampel: { stufe: 'ok'|'warn'|'bad'|'na', text },
+ *      naechster: { text, aktion: 'grenzen'|'pva'|'ergebnis'|'uw-waehlen'|'uw-zeigen'|null },
  *      leiter: { fest, annahme, grenzbereich, kerbe } }]
  *   leiter: Bereiche in kVA für die Leistungsleiter — fest = belastbar (Vertrag, eigenes Kabel), selten = belastbar, aber selten wirtschaftlich,
  *   annahme = Orientierungswert bzw. Reserve im UW, grenzbereich = „nur auf Anfrage", kerbe = Einspeisezusage.
@@ -65,7 +66,6 @@ export function ncWege({ ziel, grenzen, reihe, p, uw }) {
   const zB = (ziel?.bezugKw || 0) / 1000, zE = (ziel?.einspKw || 0) / 1000;
   const cos = p.cosPhi || 1;
   const zielMva = Math.max(zB, zE) / cos;
-  const mw = kw => (kw > 0 ? `${uwMw(kw / 1000)} MW` : '—');
   const strangKva = p.grenzeStrangMva * 1000, uwKva = p.grenzeUwMva * 1000;
   const out = [];
 
@@ -85,7 +85,10 @@ export function ncWege({ ziel, grenzen, reihe, p, uw }) {
   }
   out.push({ id: 'A', titel: 'Bestand halten, Spitzen kappen (Speicher, Einspeisebegrenzung, Lastmanagement)', kurz: 'Bestand halten',
     // Bezug ist in kVA vereinbart, Einspeisung in kW zugesagt — Einheiten nicht vermischen
-    traegt: `${gB ? `${uwMw(gB / 1000)} MVA` : '—'} / ${gE ? mw(gE) : '—'}`, kosten: 'Speicher/Steuerung, siehe PV-Analyse', ebene: 'wie heute', zahlt: 'Kunde', ampel: a,
+    traegt: `Bezug ${gB ? aeKva(gB) : '—'} · Einsp. ${gE ? kwText(gE) : '—'}`, kosten: 'Speicher/Steuerung, siehe PV-Analyse', ebene: 'wie heute', zahlt: 'Kunde', ampel: a,
+    naechster: a.stufe === 'na' ? { text: 'Vereinbarte Leistung eintragen', aktion: 'grenzen' }
+      : a.stufe === 'ok' ? { text: 'Nichts zu tun bis zum Zieljahr', aktion: null }
+      : { text: 'Spitzenkappung in der PV-Analyse prüfen', aktion: 'pva' },
     leiter: { fest: gB ? [[0, gB]] : [], annahme: [], grenzbereich: [], kerbe: gE ? gE / cos : null } });
 
   // B — Erhöhung am bestehenden Strang (Orientierungswert, keine Zusage)
@@ -96,6 +99,7 @@ export function ncWege({ ziel, grenzen, reihe, p, uw }) {
       : zielMva <= p.grenzeStrangMva ? { stufe: 'ok', text: 'im üblichen Bereich – Anfrage' }
       : zielMva <= p.grenzeStrangMva * 2.5 ? { stufe: 'warn', text: 'Grenzbereich – Anfrage' }
       : { stufe: 'bad', text: 'über Orientierungswert' },
+    naechster: { text: 'Netzanschlussanfrage vorbereiten', aktion: 'ergebnis' },
     leiter: { fest: [], annahme: [[bVon, strangKva]], grenzbereich: [[strangKva, strangKva * 2.5]], kerbe: null } });
 
   // C — Direktanschluss Umspannwerk
@@ -109,16 +113,18 @@ export function ncWege({ ziel, grenzen, reihe, p, uw }) {
     const kabelKva = Math.min(traegtB, traegtE) * 1000 / cos, n1Kva = (b.n1?.mva || 0) * 1000;
     out.push({ id: 'C', titel: `Direktanschluss ${uw.name || 'Umspannwerk'}, ${n} System${n > 1 ? 'e' : ''}${b.redundant ? ' (n-1)' : ''}, Trasse ≈ ${uwMw(b.laengeKm)} km`,
       kurz: 'Direktanschluss UW',
-      traegt: `${uwMw(traegtB)} / ${uwMw(traegtE)} MW${b.redundant ? ' gesichert' : ''}`, kosten: uwEurSpanne(kosten), ebene: 'NE 4', zahlt: 'Kunde (Bezug), Anlagenbetreiber (EEG)',
+      traegt: `Bezug ${uwMw(traegtB)} MW · Einsp. ${uwMw(traegtE)} MW${b.redundant ? ' (gesichert)' : ''}`, kosten: uwEurSpanne(kosten), ebene: 'NE 4', zahlt: 'Kunde (Bezug), Anlagenbetreiber (EEG)',
       ampel: !(zielMva > 0) ? { stufe: 'na', text: 'kein Bedarf' }
         : ueberUw ? { stufe: 'warn', text: 'über (n-1) des UW – Ausbau nötig' }
         : n > 3 ? { stufe: 'warn', text: `${n} Systeme – HS prüfen` }
         : { stufe: 'ok', text: `deckt ${ziel?.jahr ?? 'Ziel'}` },
+      naechster: { text: 'Trasse auf der Karte zeigen', aktion: 'uw-zeigen' },
       leiter: { fest: kabelKva > 1000 ? [[1000, kabelKva]] : [], selten: [[0, Math.min(1000, kabelKva)]],
         annahme: n1Kva > kabelKva ? [[Math.max(1000, kabelKva), n1Kva]] : [], grenzbereich: [], kerbe: null } });
   } else {
     out.push({ id: 'C', titel: 'Direktanschluss an ein Umspannwerk', kurz: 'Direktanschluss UW', traegt: '—', kosten: '—', ebene: 'NE 4', zahlt: 'Kunde (Bezug), Anlagenbetreiber (EEG)',
       ampel: { stufe: 'na', text: 'Umspannwerk wählen (unten)' },
+      naechster: { text: 'Umspannwerke laden und eines wählen', aktion: 'uw-waehlen' },
       leiter: { fest: [], annahme: [[strangKva, uwKva]], grenzbereich: [], kerbe: null } });
   }
 
@@ -126,6 +132,8 @@ export function ncWege({ ziel, grenzen, reihe, p, uw }) {
   const ebene = uwEbene(zielMva, p);
   out.push({ id: 'D', titel: 'Eigenes Umspannwerk 110 kV / MS', kurz: 'Eigenes Umspannwerk', traegt: `über ≈ ${uwMw(p.grenzeUwMva)} MVA`, kosten: 'noch kein Ansatz (FNN-Beispiel: rund 5 × Direktanschluss)', ebene: 'NE 3', zahlt: 'Kunde',
     ampel: ebene?.id === 'hs' ? { stufe: 'warn', text: 'Größenordnung passt – prüfen' } : { stufe: 'na', text: 'überdimensioniert' },
+    naechster: ebene?.id === 'hs' ? { text: 'Mit Netzbetreiber über HS-Anschluss sprechen', aktion: 'ergebnis' }
+      : { text: `erst ab ≈ ${uwMw(p.grenzeUwMva)} MVA sinnvoll`, aktion: null },
     leiter: { fest: [], annahme: [[uwKva, 110000]], grenzbereich: [], kerbe: null } });
   return out;
 }
@@ -367,4 +375,52 @@ export function ncLeiterSvg({ ziel, p, wege, farben }) {
     punkt(ziel.einspKw, f.einsp, 'Einspeisung');
   }
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:100%;height:auto;" role="img" aria-label="Leistungsleiter: Bedarf, Netzebenen und Wege A bis D"><defs>${defs}</defs>${s}</svg>`;
+}
+
+/* ── Steckbrief: Checkliste und Maßnahme ────────────────────────────────── */
+
+/**
+ * Was für die Netzanschlussanfrage vorliegt. Abgeleitet, wo das Tool es weiß; von Hand abzuhaken,
+ * wo nicht (Lageplan beigelegt, Zuständigkeit geprüft).
+ *   reihe, stand, grenzen wie ncWege; erzeuger = Anzahl Erzeuger-Assets; netzbetreiber = Name (String);
+ *   empfWeg = 'A'…'D' | undefined; uwGewaehlt = bool; haken = { lageplan, zustaendigkeit }
+ * → [{ id, text, hinweis, stufe: 'ok'|'fehlt'|'na', aktion, manuell }]
+ */
+export function ncCheckliste({ reihe, stand, grenzen, erzeuger, netzbetreiber, empfWeg, uwGewaehlt, haken = {} }) {
+  const daten = (reihe || []).some(r => r.bezugKw > 0 || r.einspKw > 0);
+  const uwNoetig = empfWeg === 'C' || empfWeg === 'D';
+  return [
+    { id: 'tabelle', text: 'Leistungstabelle je Jahr', hinweis: 'Bezug und Einspeisung aus Bedarfsprognose und Erzeugern', stufe: daten ? 'ok' : 'fehlt', aktion: daten ? 'csv' : null },
+    { id: 'lastgang', text: 'Gemessener Lastgang', hinweis: stand?.basisKw > 0 ? `${stand.quelle || stand.dataYear}` : 'Strom-Grundlagen › Messjahre', stufe: stand?.basisKw > 0 ? 'ok' : 'fehlt', aktion: 'lastgang' },
+    { id: 'grenzen', text: 'Vereinbarte Anschlussleistung', hinweis: 'aus dem Netzanschlussvertrag', stufe: grenzen?.bezugKw > 0 && grenzen?.einspKw > 0 ? 'ok' : 'fehlt', aktion: 'grenzen' },
+    { id: 'netzbetreiber', text: 'Netzbetreiber und Spannungsebene', hinweis: netzbetreiber || 'Strom-Grundlagen › Netzanschluss', stufe: String(netzbetreiber || '').trim() ? 'ok' : 'fehlt', aktion: 'grenzen' },
+    { id: 'erzeuger', text: 'Erzeugungsanlagen mit Leistung und Inbetriebnahmejahr', hinweis: erzeuger > 0 ? `${erzeuger} Anlage${erzeuger > 1 ? 'n' : ''} im Projekt` : 'keine Erzeuger – entfällt', stufe: erzeuger > 0 ? 'ok' : 'na', aktion: null },
+    { id: 'uw', text: 'Umspannwerk für den Direktanschluss', hinweis: uwNoetig ? (uwGewaehlt ? 'gewählt' : 'unter „2 · Wege" wählen') : 'nur bei Weg C/D nötig', stufe: !uwNoetig ? 'na' : uwGewaehlt ? 'ok' : 'fehlt', aktion: uwNoetig ? 'uw' : null },
+    { id: 'lageplan', text: 'Lageplan mit Übergabestation beigelegt', hinweis: 'Auswertung › Liegenschaftsbilder', stufe: haken.lageplan ? 'ok' : 'fehlt', aktion: 'lageplan', manuell: true },
+    { id: 'zustaendigkeit', text: 'Zuständigen Netzbetreiber geprüft', hinweis: 'z. B. über VNB Digital — das nächste UW gehört nicht immer dem eigenen VNB', stufe: haken.zustaendigkeit ? 'ok' : 'fehlt', aktion: null, manuell: true },
+  ];
+}
+
+const NC_MASSNAHME_TYP = { A: 'Sonstiges', B: 'Ertuechtigung', C: 'Bau', D: 'Bau' };
+
+/**
+ * Vorschlag für die Maßnahme zu einem Weg: Titel, Art, Jahr (erste Überschreitung bis zum Zieljahr,
+ * frühestens das Messjahr; sonst das Zieljahr) und Kosten (nur beim Direktanschluss bezifferbar).
+ *   weg = Eintrag aus ncWege; reihe, grenzen, ziel, p wie dort; heute = Messjahr; uw = { name, b } | null
+ * → { titel, typ, jahr, kosten, weg }
+ */
+export function ncMassnahme({ weg, reihe, grenzen, ziel, p, heute, uw }) {
+  const bisZiel = (reihe || []).filter(z => z.jahr <= ziel.jahr);
+  const u = [ncUeberschreitung(bisZiel, 'bezugKw', grenzen?.bezugKw), ncUeberschreitung(bisZiel, 'einspKw', grenzen?.einspKw)].filter(j => j != null);
+  const jahr = u.length ? Math.max(heute, Math.min(...u)) : ziel.jahr;
+  const sKva = ncMassgeblichKva(ziel, p);
+  let titel, kosten = 0;
+  if (weg.id === 'A') titel = 'Netzanschluss: Leistungsspitzen kappen (Speicher, Einspeisebegrenzung, Lastmanagement)';
+  else if (weg.id === 'B') titel = `Netzanschluss: Anschlussleistung am MS-Strang erhöhen auf ≈ ${aeKva(sKva)}`;
+  else if (weg.id === 'C') {
+    const b = uw?.b, n = b?.ziel?.systeme || b?.stufen?.[0]?.systeme || 1;
+    titel = `Netzanschluss: Direktanschluss ${uw?.name || 'Umspannwerk'}, ${n} Kabelsystem${n > 1 ? 'e' : ''}${b ? `, Trasse ≈ ${uwMw(b.laengeKm)} km` : ''}`;
+    kosten = Math.round((b?.ziel?.kosten || b?.stufen?.[0]?.kosten)?.anschlussEur || 0);
+  } else titel = 'Netzanschluss: eigenes Umspannwerk 110 kV / MS';
+  return { titel, typ: NC_MASSNAHME_TYP[weg.id] || 'Sonstiges', jahr, kosten, weg: weg.id };
 }
