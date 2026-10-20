@@ -1619,12 +1619,17 @@ export function buildPvModuleOverlay(res) {
   const modFill  = 'rgba(26,35,126,0.85)';
   const cellLine = 'rgba(140,160,220,0.55)';
   const shimmer  = 'rgba(150,170,225,0.65)';
-  let shapes = '';
+  // Alle Module in EINEN Pfad (Flächen) + einen Pfad (Glanzkanten): je Modul eigene
+  // <polygon>/<line> ergab Zehntausende SVG-Knoten, die Chrome beim Verschieben der
+  // Karte (neue Kacheln) jedes Mal neu aufzeichnete → Ruckeln. Optik bleibt gleich.
+  const f = v => v.toFixed(2);
+  const flaechen = [], kanten = [];
   for (const m of res.modules) {
-    const pts = m.pts.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
-    shapes += `<polygon points="${pts}" fill="${modFill}" stroke="${cellLine}" stroke-width="0.03"/>`;
-    shapes += `<line x1="${m.edge[0].x.toFixed(2)}" y1="${m.edge[0].y.toFixed(2)}" x2="${m.edge[1].x.toFixed(2)}" y2="${m.edge[1].y.toFixed(2)}" stroke="${shimmer}" stroke-width="0.12"/>`;
+    flaechen.push('M' + m.pts.map(p => `${f(p.x)},${f(p.y)}`).join('L') + 'Z');
+    kanten.push(`M${f(m.edge[0].x)},${f(m.edge[0].y)}L${f(m.edge[1].x)},${f(m.edge[1].y)}`);
   }
+  let shapes = `<path d="${flaechen.join('')}" fill="${modFill}" stroke="${cellLine}" stroke-width="0.03"/>`
+             + `<path d="${kanten.join('')}" fill="none" stroke="${shimmer}" stroke-width="0.12"/>`;
   // Firstlinie bei Satteldach-Split: gestrichelte Linie durch den Schwerpunkt, senkrecht zum Azimut
   if (res.ridgeLine) {
     const { cx, cy, azDeg } = res.ridgeLine;

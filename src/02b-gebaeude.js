@@ -12,11 +12,14 @@ import { _batchImporting } from './01-globals-varianten.js';
 import { getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 import { istSchicht, SCHICHT } from './lib/schichten.js';
 import { kdMapOptionen } from './20-kartendrehung.js';
+import { karte2dEinrichten } from './lib/karte-2d.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { R_MAX } from './01-globals-varianten.js';
 
 // Guard against HMR re-init: reuse cached instance if container is already initialized
 export const map = window._appLeafletMap || (() => {
+  // Marker + PV-Overlays ohne eigene GPU-Ebene — sonst ruckelt das Ziehen (lib/karte-2d.js)
+  karte2dEinrichten(L);
   // kdMapOptionen() liefert ohne eingeschalteten Versuch {rotate:false, bearing:0}
   // — dann verhält sich leaflet-rotate wie gar nicht vorhanden (s. 20-kartendrehung.js).
   const m = L.map('map',{zoomControl:true, ...kdMapOptionen()}).setView([52.0816,8.0034],15);
