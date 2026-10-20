@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ncEinspeisungImJahr, ncZieljahr, ncReihe, ncUeberschreitung, ncWege, ncBaustein, ncCsv, ncBedarfSvg,
+  ncAntwort, ncLeiterSvg, ncMassgeblichKva, NC_NETZEBENEN,
 } from '../src/lib/netzanschluss-check.js';
 import { aeEinordnung, aeSvg, aeKva } from '../src/lib/anschlussebenen.js';
 import { uwParameterMischen, uwBewerten, uwSatz } from '../src/lib/umspannwerk-core.js';
@@ -80,6 +81,60 @@ describe('netzanschluss-check: Wege und Text', () => {
     expect(csv[0]).toMatch(/^Jahr;/);
     expect(csv[1]).toBe('2026;1800;700;2500;1500');
     expect(ncBedarfSvg({ reihe, grenzen, zieljahr: 2030 })).toMatch(/^<svg/);
+  });
+});
+
+describe('netzanschluss-check: Antwort und Leistungsleiter', () => {
+  const reihe = ncReihe({ stand: STAND, assets: ASSETS, von: 2026, bis: 2032 });
+  const grenzen = { bezugKw: 2500, einspKw: 1500 };
+  const zielVon = j => { const r = reihe.find(z => z.jahr === j); return { jahr: j, bezugKw: r.bezugKw, einspKw: r.einspKw }; };
+
+  it('vor der ersten Überschreitung: Bestand reicht, nichts zu tun', () => {
+    const ziel = zielVon(2028);
+    const wege = ncWege({ ziel, grenzen, reihe, p: P, uw: null });
+    expect(wege[0].ampel.stufe).toBe('ok');   // Einspeisung wird erst 2030 knapp — nach dem Zieljahr
+    const a = ncAntwort({ reihe, ziel, grenzen, wege, heute: 2026 });
+    expect(a.bezug).toMatchObject({ stufe: 'ok', satz: 'reicht bis 2028' });
+    expect(a.einsp.stufe).toBe('ok');
+    expect(a.empfehlung).toMatchObject({ satz: 'Nichts zu tun', weg: 'A' });
+  });
+
+  it('Überschreitung vor dem Zieljahr: reicht bis Vorjahr, Empfehlung = günstigster grüner Weg', () => {
+    const ziel = zielVon(2030);   // 2,2 MW Bezug, 3,5 MW Einspeisung → 3,7 MVA
+    const wege = ncWege({ ziel, grenzen, reihe, p: P, uw: null });
+    const a = ncAntwort({ reihe, ziel, grenzen, wege, heute: 2026 });
+    expect(a.bezug.stufe).toBe('ok');
+    expect(a.einsp).toMatchObject({ stufe: 'warn', satz: 'reicht bis 2029' });
+    expect(a.empfehlung).toMatchObject({ weg: 'B', stufe: 'warn' });   // B im Grenzbereich, C ohne UW offen
+  });
+
+  it('schon heute zu knapp und ohne Grenzen', () => {
+    const ziel = zielVon(2026);
+    const g = { bezugKw: 1000, einspKw: null };
+    const a = ncAntwort({ reihe, ziel, grenzen: g, wege: ncWege({ ziel, grenzen: g, reihe, p: P, uw: null }), heute: 2026 });
+    expect(a.bezug.stufe).toBe('bad');
+    expect(a.einsp.stufe).toBe('na');
+    const leer = ncAntwort({ reihe, ziel, grenzen: {}, wege: ncWege({ ziel, grenzen: {}, reihe, p: P, uw: null }), heute: 2026 });
+    expect(leer.empfehlung.satz).toMatch(/vereinbarte Leistung eintragen/);
+  });
+
+  it('Leiter: Bereiche je Weg, Netzebenen lückenlos, SVG mit Bedarfsmarke', () => {
+    const ziel = zielVon(2030);
+    const uw = { lat: 48.03, lng: 9.0, msKv: 20, trafos: [] };
+    const b = uwBewerten(uw, { ref: { lat: 48, lng: 9 }, p: P, ziel: { bezugMw: 2.2, einspMw: 3.5 } });
+    const wege = ncWege({ ziel, grenzen, reihe, p: P, uw: { name: 'UW Test', b } });
+    expect(wege[0].leiter.fest).toEqual([[0, 2500]]);
+    expect(wege[0].leiter.kerbe).toBeCloseTo(1500 / P.cosPhi, 6);
+    expect(wege[2].leiter.fest[0][1]).toBeGreaterThan(1000);                  // eigenes Kabel belastbar
+    expect(wege[2].leiter.annahme[0][1]).toBeCloseTo(b.n1.mva * 1000, 6);     // UW-Reserve nur Annahme
+    expect(wege[3].leiter.annahme[0][0]).toBe(P.grenzeUwMva * 1000);
+    for (let i = 1; i < NC_NETZEBENEN.length; i++) expect(NC_NETZEBENEN[i].von).toBeCloseTo(NC_NETZEBENEN[i - 1].bis, 6);
+    expect(ncMassgeblichKva(ziel, P)).toBeCloseTo(3500 / P.cosPhi, 6);
+    const svg = ncLeiterSvg({ ziel, p: P, wege, farben: {} });
+    expect(svg).toMatch(/^<svg/);
+    expect(svg).toMatch(/Bedarf 2030: 3,7 MVA/);
+    expect(svg).toMatch(/UW \(n-1\)/);
+    expect(svg).toMatch(/ncl-schraff-ok/);
   });
 });
 

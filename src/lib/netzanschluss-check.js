@@ -10,6 +10,7 @@
 
 import { bpJahresreihe, bpAssetLeistung, bpZieljahr, BP_LEISTUNGS_TYPEN } from './bedarfsprognose.js';
 import { uwMw, uwEurSpanne, uwEbene } from './umspannwerk-core.js';
+import { AE_BAENDER, aeKva } from './anschlussebenen.js';
 
 const jahrVon = v => parseInt(v, 10) || null;
 
@@ -55,17 +56,23 @@ export function ncUeberschreitung(reihe, feld, grenze) {
  *   reihe:   für „reicht bis"
  *   p:       Parameter aus uwParameterMischen (Orientierungsgrenzen Strang/UW, cos φ)
  *   uw:      { name, b } — Bewertung des gewählten Umspannwerks (uwBewerten) oder null
- * → [{ id, titel, traegt, kosten, ebene, zahlt, ampel: { stufe: 'ok'|'warn'|'bad'|'na', text } }]
+ * → [{ id, titel, kurz, traegt, kosten, ebene, zahlt, ampel: { stufe: 'ok'|'warn'|'bad'|'na', text },
+ *      leiter: { fest, annahme, grenzbereich, kerbe } }]
+ *   leiter: Bereiche in kVA für die Leistungsleiter — fest = belastbar (Vertrag, eigenes Kabel), selten = belastbar, aber selten wirtschaftlich,
+ *   annahme = Orientierungswert bzw. Reserve im UW, grenzbereich = „nur auf Anfrage", kerbe = Einspeisezusage.
  */
 export function ncWege({ ziel, grenzen, reihe, p, uw }) {
   const zB = (ziel?.bezugKw || 0) / 1000, zE = (ziel?.einspKw || 0) / 1000;
-  const zielMva = Math.max(zB, zE) / (p.cosPhi || 1);
+  const cos = p.cosPhi || 1;
+  const zielMva = Math.max(zB, zE) / cos;
   const mw = kw => (kw > 0 ? `${uwMw(kw / 1000)} MW` : '—');
+  const strangKva = p.grenzeStrangMva * 1000, uwKva = p.grenzeUwMva * 1000;
   const out = [];
 
-  // A — Bestand halten
+  // A — Bestand halten; was erst nach dem Zieljahr knapp wird, zählt hier nicht
   const gB = grenzen?.bezugKw > 0 ? grenzen.bezugKw : null, gE = grenzen?.einspKw > 0 ? grenzen.einspKw : null;
-  const uB = ncUeberschreitung(reihe, 'bezugKw', gB), uE = ncUeberschreitung(reihe, 'einspKw', gE);
+  const bisZiel = ziel?.jahr ? (reihe || []).filter(z => z.jahr <= ziel.jahr) : (reihe || []);
+  const uB = ncUeberschreitung(bisZiel, 'bezugKw', gB), uE = ncUeberschreitung(bisZiel, 'einspKw', gE);
   let a;
   if (!gB && !gE) a = { stufe: 'na', text: 'NAP-Grenzen fehlen' };
   else if (uB == null && uE == null) a = { stufe: 'ok', text: `reicht bis ${ziel?.jahr ?? '—'}` };
@@ -76,17 +83,20 @@ export function ncWege({ ziel, grenzen, reihe, p, uw }) {
       ? { stufe: 'bad', text: `schon heute überschritten${richtung}` }
       : { stufe: 'warn', text: `reicht bis ${erst - 1}${richtung}` };
   }
-  out.push({ id: 'A', titel: 'Bestand halten, Spitzen kappen (Speicher, Einspeisebegrenzung, Lastmanagement)',
+  out.push({ id: 'A', titel: 'Bestand halten, Spitzen kappen (Speicher, Einspeisebegrenzung, Lastmanagement)', kurz: 'Bestand halten',
     // Bezug ist in kVA vereinbart, Einspeisung in kW zugesagt — Einheiten nicht vermischen
-    traegt: `${gB ? `${uwMw(gB / 1000)} MVA` : '—'} / ${gE ? mw(gE) : '—'}`, kosten: 'Speicher/Steuerung, siehe PV-Analyse', ebene: 'wie heute', zahlt: 'Kunde', ampel: a });
+    traegt: `${gB ? `${uwMw(gB / 1000)} MVA` : '—'} / ${gE ? mw(gE) : '—'}`, kosten: 'Speicher/Steuerung, siehe PV-Analyse', ebene: 'wie heute', zahlt: 'Kunde', ampel: a,
+    leiter: { fest: gB ? [[0, gB]] : [], annahme: [], grenzbereich: [], kerbe: gE ? gE / cos : null } });
 
-  // B — Erhöhung am bestehenden Strang
-  out.push({ id: 'B', titel: 'Anschlussleistung am bestehenden MS-Strang erhöhen',
+  // B — Erhöhung am bestehenden Strang (Orientierungswert, keine Zusage)
+  const bVon = Math.min(gB || 200, strangKva);
+  out.push({ id: 'B', titel: 'Anschlussleistung am bestehenden MS-Strang erhöhen', kurz: 'MS-Strang erhöhen',
     traegt: `bis ≈ ${uwMw(p.grenzeStrangMva)} MVA (Orientierung)`, kosten: 'Angebot Netzbetreiber + BKZ', ebene: 'NE 5', zahlt: 'Kunde (Bezug) / VNB (Einspeisung)',
     ampel: !(zielMva > 0) ? { stufe: 'na', text: 'kein Bedarf' }
       : zielMva <= p.grenzeStrangMva ? { stufe: 'ok', text: 'im üblichen Bereich – Anfrage' }
       : zielMva <= p.grenzeStrangMva * 2.5 ? { stufe: 'warn', text: 'Grenzbereich – Anfrage' }
-      : { stufe: 'bad', text: 'über Orientierungswert' } });
+      : { stufe: 'bad', text: 'über Orientierungswert' },
+    leiter: { fest: [], annahme: [[bVon, strangKva]], grenzbereich: [[strangKva, strangKva * 2.5]], kerbe: null } });
 
   // C — Direktanschluss Umspannwerk
   if (uw?.b) {
@@ -94,22 +104,66 @@ export function ncWege({ ziel, grenzen, reihe, p, uw }) {
     const traegtB = (n - (b.redundant ? 1 : 0)) * b.jeSystem.bezugMw, traegtE = (n - (b.redundant ? 1 : 0)) * b.jeSystem.einspMw;
     const kosten = (b.ziel?.kosten || b.stufen[0].kosten).anschlussEur;
     const ueberUw = b.n1Mw > 0 && Math.max(zB, zE) > b.n1Mw;
+    // Belastbar ist das eigene Kabel (kleinere der beiden Richtungen), die (n-1)-Reserve des UW nur Obergrenze.
+    // Unter ≈ 1 MVA trägt das Kabel auch, lohnt aber selten — dort blass (nur Darstellung).
+    const kabelKva = Math.min(traegtB, traegtE) * 1000 / cos, n1Kva = (b.n1?.mva || 0) * 1000;
     out.push({ id: 'C', titel: `Direktanschluss ${uw.name || 'Umspannwerk'}, ${n} System${n > 1 ? 'e' : ''}${b.redundant ? ' (n-1)' : ''}, Trasse ≈ ${uwMw(b.laengeKm)} km`,
+      kurz: 'Direktanschluss UW',
       traegt: `${uwMw(traegtB)} / ${uwMw(traegtE)} MW${b.redundant ? ' gesichert' : ''}`, kosten: uwEurSpanne(kosten), ebene: 'NE 4', zahlt: 'Kunde (Bezug), Anlagenbetreiber (EEG)',
       ampel: !(zielMva > 0) ? { stufe: 'na', text: 'kein Bedarf' }
         : ueberUw ? { stufe: 'warn', text: 'über (n-1) des UW – Ausbau nötig' }
         : n > 3 ? { stufe: 'warn', text: `${n} Systeme – HS prüfen` }
-        : { stufe: 'ok', text: `deckt ${ziel?.jahr ?? 'Ziel'}` } });
+        : { stufe: 'ok', text: `deckt ${ziel?.jahr ?? 'Ziel'}` },
+      leiter: { fest: kabelKva > 1000 ? [[1000, kabelKva]] : [], selten: [[0, Math.min(1000, kabelKva)]],
+        annahme: n1Kva > kabelKva ? [[Math.max(1000, kabelKva), n1Kva]] : [], grenzbereich: [], kerbe: null } });
   } else {
-    out.push({ id: 'C', titel: 'Direktanschluss an ein Umspannwerk', traegt: '—', kosten: '—', ebene: 'NE 4', zahlt: 'Kunde (Bezug), Anlagenbetreiber (EEG)',
-      ampel: { stufe: 'na', text: 'Umspannwerk wählen (unten)' } });
+    out.push({ id: 'C', titel: 'Direktanschluss an ein Umspannwerk', kurz: 'Direktanschluss UW', traegt: '—', kosten: '—', ebene: 'NE 4', zahlt: 'Kunde (Bezug), Anlagenbetreiber (EEG)',
+      ampel: { stufe: 'na', text: 'Umspannwerk wählen (unten)' },
+      leiter: { fest: [], annahme: [[strangKva, uwKva]], grenzbereich: [], kerbe: null } });
   }
 
   // D — eigenes Umspannwerk
   const ebene = uwEbene(zielMva, p);
-  out.push({ id: 'D', titel: 'Eigenes Umspannwerk 110 kV / MS', traegt: `über ≈ ${uwMw(p.grenzeUwMva)} MVA`, kosten: 'noch kein Ansatz (FNN-Beispiel: rund 5 × Direktanschluss)', ebene: 'NE 3', zahlt: 'Kunde',
-    ampel: ebene?.id === 'hs' ? { stufe: 'warn', text: 'Größenordnung passt – prüfen' } : { stufe: 'na', text: 'überdimensioniert' } });
+  out.push({ id: 'D', titel: 'Eigenes Umspannwerk 110 kV / MS', kurz: 'Eigenes Umspannwerk', traegt: `über ≈ ${uwMw(p.grenzeUwMva)} MVA`, kosten: 'noch kein Ansatz (FNN-Beispiel: rund 5 × Direktanschluss)', ebene: 'NE 3', zahlt: 'Kunde',
+    ampel: ebene?.id === 'hs' ? { stufe: 'warn', text: 'Größenordnung passt – prüfen' } : { stufe: 'na', text: 'überdimensioniert' },
+    leiter: { fest: [], annahme: [[uwKva, 110000]], grenzbereich: [], kerbe: null } });
   return out;
+}
+
+/**
+ * Die Antwort in drei Sätzen: reicht Bezug / Einspeisung bis zum Zieljahr, welcher Weg liegt nahe.
+ *   reihe, ziel, grenzen wie ncWege; wege = Ergebnis von ncWege; heute = Messjahr
+ * → { bezug, einsp, empfehlung } je { stufe: 'ok'|'warn'|'bad'|'na', satz, unter, weg? }
+ */
+export function ncAntwort({ reihe, ziel, grenzen, wege, heute }) {
+  const bisZiel = (reihe || []).filter(z => z.jahr <= ziel.jahr);
+  const richtung = (feld, g, einheit) => {
+    const wertZiel = ziel[feld] || 0;
+    if (!(g > 0)) return { stufe: 'na', satz: 'keine Grenze eingetragen', unter: `im Zieljahr ${kwText(wertZiel)}` };
+    const u = ncUeberschreitung(bisZiel, feld, g);
+    if (u == null) return { stufe: 'ok', satz: `reicht bis ${ziel.jahr}`, unter: `${kwText(wertZiel)} von ${de(g)} ${einheit} im Zieljahr` };
+    const wertU = bisZiel.find(z => z.jahr === u)?.[feld] || 0;
+    if (u <= heute) return { stufe: 'bad', satz: 'schon heute zu knapp', unter: `${kwText(wertU)} gegen ${de(g)} ${einheit}` };
+    return { stufe: 'warn', satz: `reicht bis ${u - 1}`, unter: `ab ${u}: ${kwText(wertU)} gegen ${de(g)} ${einheit}${u < ziel.jahr ? `, im Zieljahr ${kwText(wertZiel)}` : ''}` };
+  };
+  const bezug = richtung('bezugKw', grenzen?.bezugKw, 'kVA');
+  const einsp = richtung('einspKw', grenzen?.einspKw, 'kW');
+  const wA = (wege || []).find(w => w.id === 'A');
+  let empfehlung;
+  if (!(ziel.bezugKw > 0 || ziel.einspKw > 0)) {
+    empfehlung = { stufe: 'na', satz: 'Kein Bedarf ermittelt', unter: 'Lastgang laden bzw. Verbraucher und Erzeuger anlegen.' };
+  } else if (bezug.stufe === 'na' && einsp.stufe === 'na') {
+    empfehlung = { stufe: 'na', satz: 'Erst die vereinbarte Leistung eintragen', unter: 'Ohne NAP-Grenzen lässt sich kein Weg bewerten.' };
+  } else if (wA?.ampel.stufe === 'ok') {
+    empfehlung = { stufe: 'ok', satz: 'Nichts zu tun', unter: 'Der bestehende Anschluss trägt den Bedarf.', weg: 'A' };
+  } else {
+    const rest = (wege || []).filter(w => w.id !== 'A');
+    const w = rest.find(x => x.ampel.stufe === 'ok') || rest.find(x => x.ampel.stufe === 'warn');
+    empfehlung = w
+      ? { stufe: w.ampel.stufe, satz: `Weg ${w.id}: ${w.kurz}`, unter: w.ampel.text, weg: w.id }
+      : { stufe: 'bad', satz: 'Kein Weg passt ohne Weiteres', unter: 'Netzanschlussanfrage stellen; Umspannwerk wählen.' };
+  }
+  return { bezug, einsp, empfehlung };
 }
 
 const de = (v, d = 0) => Number(v).toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -220,4 +274,97 @@ export function ncBedarfSvg({ reihe, grenzen, farben, zieljahr }) {
     s += `<text x="${(xs(zieljahr) + 4).toFixed(1)}" y="${y1 + 10}" style="fill:${f.muted};font-size:10px;">Zieljahr ${zieljahr}</text>`;
   }
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:100%;height:auto;" role="img" aria-label="Bezugs- und Einspeiseleistung über die Jahre">${s}</svg>`;
+}
+
+/* ── Leistungsleiter ────────────────────────────────────────────────────── */
+
+const escX = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** Netzebenen als Streifen: je NE der Kernbereich aus AE_BAENDER, Grenzen im geometrischen Mittel dazwischen. */
+export const NC_NETZEBENEN = (() => {
+  const namen = { 'NE 7': 'NS-Netz', 'NE 6': 'NS-Station', 'NE 5': 'MS-Netz', 'NE 4': 'UW-Sammelschiene', 'NE 3': 'Hochspannung' };
+  const ne = Object.keys(namen).map(id => {
+    const b = AE_BAENDER.filter(x => x.ne === id);
+    return { id, name: namen[id], kv: Math.min(...b.map(x => x.kv)), kb: Math.max(...b.map(x => x.kb)), baender: b };
+  });
+  return ne.map((n, i) => ({
+    ...n,
+    von: i === 0 ? 1 : Math.sqrt(ne[i - 1].kb * n.kv),
+    bis: i === ne.length - 1 ? 1e6 : Math.sqrt(n.kb * ne[i + 1].kv),
+  }));
+})();
+
+/** Maßgebliche Leistung (kVA) wie ncWege: größere Richtung, durch cos φ. */
+export const ncMassgeblichKva = (ziel, p) => Math.max(ziel?.bezugKw || 0, ziel?.einspKw || 0) / (p?.cosPhi || 1);
+
+/**
+ * Leistungsleiter: eine logarithmische Achse (kVA) mit Netzebenen-Streifen, dem Bedarf im Zieljahr
+ * und den Wegen A–D als Balken (fest = belastbar, schraffiert = Annahme/Orientierung).
+ *   ziel, p wie ncWege; wege = ncWege(...); farben: { text, muted, linie, flaeche, ok, okFlaeche, fest, band, bezug, einsp, warn, bad }
+ */
+export function ncLeiterSvg({ ziel, p, wege, farben }) {
+  const f = { text: '#ddd', muted: '#999', linie: '#444', flaeche: 'rgba(127,127,127,.08)', ok: '#66bb6a', okFlaeche: 'rgba(102,187,106,.14)',
+    fest: '#888', band: '#66bb6a', bezug: '#4fc3f7', einsp: '#ef9a9a', warn: '#ffb74d', bad: '#ef5350', ...farben };
+  const W = 900, L = 214, R = 884, LOG0 = 1, LOG1 = Math.log10(150000);
+  const x = v => L + (Math.log10(Math.min(150000, Math.max(10, v))) - LOG0) / (LOG1 - LOG0) * (R - L);
+  const ROW0 = 64, ROW = 40, AY = ROW0 + (wege?.length || 4) * ROW + 6, H = AY + 26;
+  const cos = p?.cosPhi || 1;
+  const tx = (xx, y, s, st = '', a = '') => `<text x="${(+xx).toFixed(1)}" y="${y}" ${a} style="font-family:inherit;${st}">${escX(s)}</text>`;
+  let s = '';
+  const defs = ['fest', 'ok'].map(k => `<pattern id="ncl-schraff-${k}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">`
+    + `<rect width="6" height="6" style="fill:${k === 'ok' ? f.okFlaeche : 'transparent'}"/><line x1="0" y1="0" x2="0" y2="6" style="stroke:${k === 'ok' ? f.ok : f.fest};stroke-width:2"/></pattern>`).join('');
+
+  // Netzebenen
+  s += tx(L - 10, 25, 'Netzebene (typisch)', `fill:${f.muted};font-size:11px;`, 'text-anchor="end"');
+  NC_NETZEBENEN.forEach((n, i) => {
+    const x1 = x(Math.max(10, n.von)), x2 = x(n.bis);
+    const tip = `${n.id} ${n.name} — häufig ${aeKva(n.kv)} bis ${aeKva(n.kb)}: ${n.baender.map(b => b.name).join(', ')} (VDE FNN, Orientierung)`;
+    s += `<rect x="${x1.toFixed(1)}" y="8" width="${(x2 - x1).toFixed(1)}" height="26" style="fill:${f.band};fill-opacity:${(0.1 + i * 0.09).toFixed(2)}"><title>${escX(tip)}</title></rect>`;
+    if (x2 - x1 > n.name.length * 6) s += tx((x1 + x2) / 2, 25, n.name, `fill:${f.text};font-size:11px;pointer-events:none;`, 'text-anchor="middle"');
+  });
+
+  // Gitter + Achse
+  for (const [v, t] of [[10, '10 kVA'], [100, '100 kVA'], [1000, '1 MVA'], [10000, '10 MVA'], [100000, '100 MVA']]) {
+    s += `<line x1="${x(v).toFixed(1)}" x2="${x(v).toFixed(1)}" y1="8" y2="${AY}" style="stroke:${f.linie};stroke-width:1"/>`;
+    s += tx(x(v), AY + 16, t, `fill:${f.muted};font-size:10.5px;`, `text-anchor="${v === 10 ? 'start' : 'middle'}"`);
+  }
+  s += `<line x1="${L}" x2="${R}" y1="${AY}" y2="${AY}" style="stroke:${f.muted};stroke-width:1"/>`;
+
+  // Wege
+  const farbeStufe = st => ({ ok: f.ok, warn: f.warn, bad: f.bad }[st] || f.muted);
+  (wege || []).forEach((w, i) => {
+    const y = ROW0 + i * ROW, passt = w.ampel?.stufe === 'ok', lt = w.leiter || {};
+    s += `<rect x="4" y="${y}" width="${R - 4 + 8}" height="${ROW - 6}" rx="3" style="fill:${passt ? f.okFlaeche : f.flaeche}"/>`;
+    s += tx(12, y + 15, `${w.id}  ${w.kurz || w.titel}`, `fill:${f.text};font-size:12.5px;font-weight:600;`);
+    s += tx(12, y + 29, w.ampel?.text || '', `fill:${farbeStufe(w.ampel?.stufe)};font-size:11px;`);
+    const balken = (a, b, stil, tip) => {
+      const x1 = x(Math.max(10, a)), x2 = x(b);
+      if (x2 - x1 < 1) return;
+      s += `<rect x="${x1.toFixed(1)}" y="${y + 8}" width="${(x2 - x1).toFixed(1)}" height="18" rx="2" style="${stil}"><title>${escX(tip)}</title></rect>`;
+    };
+    for (const [a, b] of lt.selten || []) balken(a, b, `fill:${passt ? f.ok : f.fest};opacity:.3;`, `${w.id}: technisch möglich bis ${aeKva(b)}, bei kleiner Leistung selten wirtschaftlich`);
+    for (const [a, b] of lt.fest || []) balken(a, b, `fill:${passt ? f.ok : f.fest};`, `${w.id}: belastbar bis ${aeKva(b)}`);
+    for (const [a, b] of lt.annahme || []) balken(a, b, `fill:url(#ncl-schraff-${passt ? 'ok' : 'fest'});stroke:${passt ? f.ok : f.fest};stroke-width:1;`, `${w.id}: Annahme/Orientierung bis ${aeKva(b)}`);
+    for (const [a, b] of lt.grenzbereich || []) balken(a, b, `fill:url(#ncl-schraff-fest);opacity:.45;`, `${w.id}: Grenzbereich bis ${aeKva(b)} – nur auf Anfrage`);
+    if (lt.kerbe > 0) {
+      const xk = x(lt.kerbe).toFixed(1);
+      s += `<line x1="${xk}" x2="${xk}" y1="${y + 4}" y2="${y + 30}" style="stroke:${f.einsp};stroke-width:2.5"><title>${escX(`Einspeisezusage ${aeKva(lt.kerbe)} (kW / cos φ)`)}</title></line>`;
+    }
+    const letzteAnnahme = (lt.annahme || []).slice(-1)[0];
+    if (w.id === 'C' && letzteAnnahme && (lt.fest || []).length) s += tx(x(letzteAnnahme[1]) + 5, y + 21, 'UW (n-1)', `fill:${f.muted};font-size:10.5px;`);
+  });
+
+  // Bedarf im Zieljahr
+  const sKva = ncMassgeblichKva(ziel, p);
+  if (sKva > 0) {
+    const xs = x(sKva);
+    s += `<line x1="${xs.toFixed(1)}" x2="${xs.toFixed(1)}" y1="40" y2="${AY}" style="stroke:${f.text};stroke-width:1.5;stroke-dasharray:4 3"/>`;
+    s += `<path d="M${(xs - 6).toFixed(1)} 38 L${(xs + 6).toFixed(1)} 38 L${xs.toFixed(1)} 46 Z" style="fill:${f.text}"/>`;
+    const rechts = xs > R - 200;
+    s += tx(xs + (rechts ? -9 : 9), 54, `Bedarf ${ziel.jahr}: ${aeKva(sKva)}`, `fill:${f.text};font-size:12px;font-weight:700;`, `text-anchor="${rechts ? 'end' : 'start'}"`);
+    const punkt = (kw, farbe, name) => kw > 0 && (s += `<circle cx="${x(kw / cos).toFixed(1)}" cy="${AY}" r="4.5" style="fill:${farbe}"><title>${escX(`${name} ${ziel.jahr}: ${kwText(kw)} (${aeKva(kw / cos)})`)}</title></circle>`);
+    punkt(ziel.bezugKw, f.bezug, 'Bezug');
+    punkt(ziel.einspKw, f.einsp, 'Einspeisung');
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:100%;height:auto;" role="img" aria-label="Leistungsleiter: Bedarf, Netzebenen und Wege A bis D"><defs>${defs}</defs>${s}</svg>`;
 }

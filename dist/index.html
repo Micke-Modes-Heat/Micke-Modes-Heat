@@ -16829,7 +16829,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-20';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'c04046d';
+  var c = '244a830';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -101989,7 +101989,7 @@ window._isSingleFileBuild = true;
     return min < 60 ? `vor ${min} min` : `vor ${Math.round(min / 60)} h`;
   }
 
-  const _chip = (label, value, state, title) =>
+  const _chip$1 = (label, value, state, title) =>
     `<div class="el-status-chip ${state}"${title ? ` title="${title}"` : ''}>
      <span class="el-chip-label">${label}</span><span class="el-chip-value">${value}</span>
    </div>`;
@@ -102074,10 +102074,10 @@ window._isSingleFileBuild = true;
       }
 
       const html =
-        _chip('Netz', netzVal, netzState,
+        _chip$1('Netz', netzVal, netzState,
           `${nStat} einspeisende Stationen (NAP, Trafo, NSHV, Schaltanlage), ${assets.length} Komponenten insgesamt und ${edges.length} Kabel im aktuellen Jahres- und Variantenstand.`) +
-        _chip('Rechnung', calcVal, calcState, calcTip) +
-        _chip('Zustand', zuVal, zuState, zuTip);
+        _chip$1('Rechnung', calcVal, calcState, calcTip) +
+        _chip$1('Zustand', zuVal, zuState, zuTip);
       if (strip.innerHTML !== html) strip.innerHTML = html;
     }
 
@@ -234711,7 +234711,7 @@ ${_fuerDruck(_inhalt$1(true))}
     return PVNA_ERSATZ_QS.map(q => `<option value="${q}" ${+wert === q ? 'selected' : ''}>${q ? `Annahme ${q} mm² NAYY` : 'keine Grenze (optimistisch)'}</option>`).join('');
   }
 
-  function _kachel$3(wert, einheit, label, farbe) {
+  function _kachel$4(wert, einheit, label, farbe) {
     return `<div style="flex:1 1 150px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:10px 12px;">
     <div style="font-size:19px;font-family:'DM Mono',monospace;color:${farbe || 'var(--text)'};">${wert}<span style="font-size:12.5px;color:var(--muted);margin-left:4px;">${einheit}</span></div>
     <div style="font-size:12px;color:var(--muted);margin-top:2px;">${label}</div></div>`;
@@ -234731,18 +234731,18 @@ ${_fuerDruck(_inhalt$1(true))}
 
     const os = _optionenSumme(_letztes.optionen);
     const kacheln = `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
-    ${_kachel$3(_fmt$8(pot), 'kWp', 'Flächenpotenzial')}
-    ${_kachel$3(_fmt$8(b.summeKwp), 'kWp', 'ohne Ertüchtigung' + pct(b.summeKwp), '#66bb6a')}
-    ${_kachel$3(_fmt$8(e.summeKwp), 'kWp', 'mit Ertüchtigung' + pct(e.summeKwp), '#4fc3f7')}
-    ${_kachel$3(_fmt$8(invest / 1000), 'T€', 'Invest Ertüchtigung', '#ffb74d')}
-    ${treppe.restKwp > 0.5 ? _kachel$3(_fmt$8(treppe.restKwp), 'kWp', 'nicht erschließbar', '#ef5350') : ''}
+    ${_kachel$4(_fmt$8(pot), 'kWp', 'Flächenpotenzial')}
+    ${_kachel$4(_fmt$8(b.summeKwp), 'kWp', 'ohne Ertüchtigung' + pct(b.summeKwp), '#66bb6a')}
+    ${_kachel$4(_fmt$8(e.summeKwp), 'kWp', 'mit Ertüchtigung' + pct(e.summeKwp), '#4fc3f7')}
+    ${_kachel$4(_fmt$8(invest / 1000), 'T€', 'Invest Ertüchtigung', '#ffb74d')}
+    ${treppe.restKwp > 0.5 ? _kachel$4(_fmt$8(treppe.restKwp), 'kWp', 'nicht erschließbar', '#ef5350') : ''}
   </div>
   <div style="font-size:12.5px;font-weight:600;margin:2px 0 6px;">Ohne Ertüchtigung: weniger ausbauen oder abregeln?</div>
   <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;">
-    ${_kachel$3(_fmt$8(os.aKwp), 'kWp', `A · weniger ausbauen → ${_fmt$8(os.aMwh)} MWh/a`, '#66bb6a')}
-    ${_kachel$3(_fmt$8(os.bKwp), 'kWp', `B · voll ausbauen + abregeln → ${_fmt$8(os.bMwh)} MWh/a nutzbar`, '#ffb300')}
-    ${_kachel$3(_fmt$8(os.bVerlustPct, 1), '%', `Abregelungsverlust bei B (${_fmt$8(os.bAbgMwh)} MWh/a)`, '#ff7043')}
-    ${_kachel$3('+' + _fmt$8(os.bMwh - os.aMwh), 'MWh/a', `Mehrertrag B gegenüber A für +${_fmt$8(os.bKwp - os.aKwp)} kWp`, '#4fc3f7')}
+    ${_kachel$4(_fmt$8(os.aKwp), 'kWp', `A · weniger ausbauen → ${_fmt$8(os.aMwh)} MWh/a`, '#66bb6a')}
+    ${_kachel$4(_fmt$8(os.bKwp), 'kWp', `B · voll ausbauen + abregeln → ${_fmt$8(os.bMwh)} MWh/a nutzbar`, '#ffb300')}
+    ${_kachel$4(_fmt$8(os.bVerlustPct, 1), '%', `Abregelungsverlust bei B (${_fmt$8(os.bAbgMwh)} MWh/a)`, '#ff7043')}
+    ${_kachel$4('+' + _fmt$8(os.bMwh - os.aMwh), 'MWh/a', `Mehrertrag B gegenüber A für +${_fmt$8(os.bKwp - os.aKwp)} kWp`, '#4fc3f7')}
   </div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
     Beide Wege halten die Netzgrenze ein: Bei B wird die Einspeisung am EZA-Regler bzw. Wechselrichter
@@ -236469,7 +236469,7 @@ ${_fuerDruck(_inhalt$1(true))}
     if (host) {
       document.getElementById(PANEL_ID$5)?.remove();
       _ffParken();
-      host.innerHTML = (window.pvBelegungWirkungHtml?.('pvm') || '') + _reiterHtml();
+      host.innerHTML = (window.pvBelegungWirkungHtml?.('pvm') || '') + _reiterHtml$1();
       const slot = document.getElementById('pvr-ff-slot');
       const ff = document.getElementById('el-pv-ff');
       if (slot && ff) { slot.appendChild(ff); ff.hidden = false; }
@@ -236553,7 +236553,7 @@ ${_fuerDruck(_inhalt$1(true))}
       [['PV-Analyse öffnen', "uiSchritt('auswertung'); setAnalyseSection('pva')", true], ['Prüfen', 'pvmStufe(5)']]);
   }
 
-  function _reiterHtml() {
+  function _reiterHtml$1() {
     const g     = _geb$4(window.pvModusGeb);
     const alle  = _mitPolygon();
     const mitPv = alle.filter(_hasBelegung);
@@ -243417,7 +243417,7 @@ ${_fuerDruck(_inhalt$1(true))}
 
   // ── Darstellung ─────────────────────────────────────────────────────────────
 
-  const _kachel$2 = (label, wert, farbe, titel = '') =>
+  const _kachel$3 = (label, wert, farbe, titel = '') =>
     `<div title="${escHtml(titel)}" style="flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);
         border-radius:5px;padding:5px 7px;">
      <div style="font-size:8.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(label)}</div>
@@ -243511,10 +243511,10 @@ ${_fuerDruck(_inhalt$1(true))}
     const h = k.herkunft;
     return `
     <div style="display:flex;gap:5px;margin-bottom:8px;">
-      ${_kachel$2('Funktionen', k.funktionen, GRUEN$3)}
-      ${_kachel$2('Offene Punkte', k.offeneAnzahl, k.offeneAnzahl ? '#ffa726' : GRUEN$3, 'Punkte für die Rückfrage an den Empfänger')}
-      ${_kachel$2('Szenarien offen', k.szenarienOffen || '—', k.szenarienOffen ? '#ffa726' : GRUEN$3, 'Szenarien ohne Angabe zur Relevanz')}
-      ${_kachel$2('Anteil vorgegeben', k.anteilVorgegebenPct == null ? '—' : k.anteilVorgegebenPct + ' %', '#42a5f5',
+      ${_kachel$3('Funktionen', k.funktionen, GRUEN$3)}
+      ${_kachel$3('Offene Punkte', k.offeneAnzahl, k.offeneAnzahl ? '#ffa726' : GRUEN$3, 'Punkte für die Rückfrage an den Empfänger')}
+      ${_kachel$3('Szenarien offen', k.szenarienOffen || '—', k.szenarienOffen ? '#ffa726' : GRUEN$3, 'Szenarien ohne Angabe zur Relevanz')}
+      ${_kachel$3('Anteil vorgegeben', k.anteilVorgegebenPct == null ? '—' : k.anteilVorgegebenPct + ' %', '#42a5f5',
     `${h.vorgegeben}× vorgegeben, ${h['Einschätzung Nutzer']}× Einschätzung Nutzer, ${h.unbekannt}× unbekannt, ${h.offen}× ohne Angabe`)}
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:10px;">
@@ -244238,7 +244238,7 @@ ${_fuerDruck(_inhalt$1(true))}
     }).join('');
   }
 
-  function _kachel$1(id, label) {
+  function _kachel$2(id, label) {
     return `<div style="flex:1 1 100px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 10px;">
     <div data-pvna-k="${id}" style="font-size:16px;font-family:'DM Mono',monospace;">—</div>
     <div style="font-size:12px;color:var(--muted);margin-top:2px;">${label}</div></div>`;
@@ -244661,9 +244661,9 @@ ${_fuerDruck(_inhalt$1(true))}
   <div data-pvna-aussage style="margin-bottom:8px;padding:9px 12px;background:var(--surface);border:1px solid var(--border);
     border-left:3px solid var(--accent);border-radius:7px;"></div>
   <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-    ${_kachel$1('summe', 'PV belegt')}${_kachel$1('ertrag', 'Erzeugung (ohne Abregelung)')}
-    ${_kachel$1('trafo', 'höchste Trafo-Auslastung')}${_kachel$1('kabel', 'höchste Kabel-Auslastung')}
-    ${_kachel$1('du', 'höchste Spannungsanhebung')}${_kachel$1('status', 'Netz')}${_kachel$1('invest', 'Netzertüchtigung')}
+    ${_kachel$2('summe', 'PV belegt')}${_kachel$2('ertrag', 'Erzeugung (ohne Abregelung)')}
+    ${_kachel$2('trafo', 'höchste Trafo-Auslastung')}${_kachel$2('kabel', 'höchste Kabel-Auslastung')}
+    ${_kachel$2('du', 'höchste Spannungsanhebung')}${_kachel$2('status', 'Netz')}${_kachel$2('invest', 'Netzertüchtigung')}
   </div>
   <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:6px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:7px;">
     <span style="font-size:12.5px;font-weight:600;">Ausbau gesamt</span>
@@ -263973,228 +263973,6 @@ out center tags;`;
     uwZielVorgabe: uwZielVorgabe
   });
 
-  // ── lib/netzanschluss-check.js — Netzanschluss-Modul: Bedarf, Wege, Textbaustein ──
-  // DOM-frei (Vitest). Oberfläche: 44-netzanschluss-modul.js (Elektro › 3 · Auswerten › Netzanschluss).
-  //
-  // Bezug je Jahr: exakt die Bedarfsprognose (lib/bedarfsprognose.js, bpJahresreihe) — dieselbe Rechnung
-  // wie NAP-Analyse und Gutachten 5.3. Erzeugung mindert den Bezug nicht.
-  // Einspeisung je Jahr: Summe der Nennleistung aller Erzeuger, die im Jahr stehen (Bestand + Zubau −
-  // Rückbau), ohne Gleichzeitigkeitsfaktor — wie Gutachten 5.3.4. Die Bedarfsprognose allein kennt nur
-  // den Zubau nach dem Messjahr; vorhandene PV gehört aber genauso an den Anschluss.
-  // Vergleich mit der vereinbarten Leistung wie im Gutachten: kW gegen kVA ohne Leistungsfaktor.
-
-
-  const jahrVon = v => parseInt(v, 10) || null;
-
-  /** Einspeiseleistung (kW) aller Erzeuger, die im Jahr in Betrieb sind. */
-  function ncEinspeisungImJahr(assets, jahr) {
-    let kw = 0;
-    for (const a of assets || []) {
-      if (!BP_LEISTUNGS_TYPEN.includes(a.type)) continue;
-      const bj = jahrVon(a.baujahr), aj = jahrVon(a.abrissjahr);
-      if ((bj && bj > jahr) || (aj && aj <= jahr)) continue;
-      kw += bpAssetLeistung(a).genKW;
-    }
-    return kw;
-  }
-
-  /** Zieljahr: Endausbau der Bedarfsprognose, mindestens das Messjahr. */
-  function ncZieljahr(stand, assets) {
-    const ausMassnahmen = bpZieljahr(stand?.massnahmen || []);
-    let ausErzeugern = null;
-    for (const a of assets || []) {
-      const bj = jahrVon(a.baujahr);
-      if (bj && bpAssetLeistung(a).genKW > 0 && (ausErzeugern == null || bj > ausErzeugern)) ausErzeugern = bj;
-    }
-    return Math.max(stand?.dataYear || 0, ausMassnahmen || 0, ausErzeugern || 0) || null;
-  }
-
-  /** Jahresreihe { jahr, bezugKw, einspKw } von `von` bis `bis`. */
-  function ncReihe({ stand, assets, von, bis }) {
-    const bezug = bpJahresreihe({ basisKw: stand?.basisKw || 0, gzf: stand?.gzf ?? 1, massnahmen: stand?.massnahmen || [], von, bis });
-    return bezug.map(z => ({ jahr: z.jahr, bezugKw: z.bezugKw, einspKw: ncEinspeisungImJahr(assets, z.jahr) }));
-  }
-
-  /** Erstes Jahr, in dem `feld` die Grenze überschreitet — null, wenn nie oder ohne Grenze. */
-  function ncUeberschreitung(reihe, feld, grenze) {
-    if (!(grenze > 0)) return null;
-    return reihe.find(z => z[feld] > grenze)?.jahr ?? null;
-  }
-
-  /**
-   * Wege A–D gegen den Bedarf im Zieljahr.
-   *   ziel:    { jahr, bezugKw, einspKw }
-   *   grenzen: { bezugKw, einspKw } — vereinbart am NAP (null = nicht eingetragen)
-   *   reihe:   für „reicht bis"
-   *   p:       Parameter aus uwParameterMischen (Orientierungsgrenzen Strang/UW, cos φ)
-   *   uw:      { name, b } — Bewertung des gewählten Umspannwerks (uwBewerten) oder null
-   * → [{ id, titel, traegt, kosten, ebene, zahlt, ampel: { stufe: 'ok'|'warn'|'bad'|'na', text } }]
-   */
-  function ncWege({ ziel, grenzen, reihe, p, uw }) {
-    const zB = (ziel?.bezugKw || 0) / 1000, zE = (ziel?.einspKw || 0) / 1000;
-    const zielMva = Math.max(zB, zE) / (p.cosPhi || 1);
-    const mw = kw => (kw > 0 ? `${uwMw(kw / 1000)} MW` : '—');
-    const out = [];
-
-    // A — Bestand halten
-    const gB = grenzen?.bezugKw > 0 ? grenzen.bezugKw : null, gE = grenzen?.einspKw > 0 ? grenzen.einspKw : null;
-    const uB = ncUeberschreitung(reihe, 'bezugKw', gB), uE = ncUeberschreitung(reihe, 'einspKw', gE);
-    let a;
-    if (!gB && !gE) a = { stufe: 'na', text: 'NAP-Grenzen fehlen' };
-    else if (uB == null && uE == null) a = { stufe: 'ok', text: `reicht bis ${ziel?.jahr ?? '—'}` };
-    else {
-      const erst = Math.min(uB ?? 9999, uE ?? 9999);
-      const richtung = uB != null && uE != null ? '' : uB != null ? ' (Bezug)' : ' (Einspeisung)';
-      a = erst <= (reihe[0]?.jahr ?? erst)
-        ? { stufe: 'bad', text: `schon heute überschritten${richtung}` }
-        : { stufe: 'warn', text: `reicht bis ${erst - 1}${richtung}` };
-    }
-    out.push({ id: 'A', titel: 'Bestand halten, Spitzen kappen (Speicher, Einspeisebegrenzung, Lastmanagement)',
-      // Bezug ist in kVA vereinbart, Einspeisung in kW zugesagt — Einheiten nicht vermischen
-      traegt: `${gB ? `${uwMw(gB / 1000)} MVA` : '—'} / ${gE ? mw(gE) : '—'}`, kosten: 'Speicher/Steuerung, siehe PV-Analyse', ebene: 'wie heute', zahlt: 'Kunde', ampel: a });
-
-    // B — Erhöhung am bestehenden Strang
-    out.push({ id: 'B', titel: 'Anschlussleistung am bestehenden MS-Strang erhöhen',
-      traegt: `bis ≈ ${uwMw(p.grenzeStrangMva)} MVA (Orientierung)`, kosten: 'Angebot Netzbetreiber + BKZ', ebene: 'NE 5', zahlt: 'Kunde (Bezug) / VNB (Einspeisung)',
-      ampel: !(zielMva > 0) ? { stufe: 'na', text: 'kein Bedarf' }
-        : zielMva <= p.grenzeStrangMva ? { stufe: 'ok', text: 'im üblichen Bereich – Anfrage' }
-        : zielMva <= p.grenzeStrangMva * 2.5 ? { stufe: 'warn', text: 'Grenzbereich – Anfrage' }
-        : { stufe: 'bad', text: 'über Orientierungswert' } });
-
-    // C — Direktanschluss Umspannwerk
-    if (uw?.b) {
-      const b = uw.b, n = b.ziel?.systeme || b.stufen[0].systeme;
-      const traegtB = (n - (b.redundant ? 1 : 0)) * b.jeSystem.bezugMw, traegtE = (n - (b.redundant ? 1 : 0)) * b.jeSystem.einspMw;
-      const kosten = (b.ziel?.kosten || b.stufen[0].kosten).anschlussEur;
-      const ueberUw = b.n1Mw > 0 && Math.max(zB, zE) > b.n1Mw;
-      out.push({ id: 'C', titel: `Direktanschluss ${uw.name || 'Umspannwerk'}, ${n} System${n > 1 ? 'e' : ''}${b.redundant ? ' (n-1)' : ''}, Trasse ≈ ${uwMw(b.laengeKm)} km`,
-        traegt: `${uwMw(traegtB)} / ${uwMw(traegtE)} MW${b.redundant ? ' gesichert' : ''}`, kosten: uwEurSpanne(kosten), ebene: 'NE 4', zahlt: 'Kunde (Bezug), Anlagenbetreiber (EEG)',
-        ampel: !(zielMva > 0) ? { stufe: 'na', text: 'kein Bedarf' }
-          : ueberUw ? { stufe: 'warn', text: 'über (n-1) des UW – Ausbau nötig' }
-          : n > 3 ? { stufe: 'warn', text: `${n} Systeme – HS prüfen` }
-          : { stufe: 'ok', text: `deckt ${ziel?.jahr ?? 'Ziel'}` } });
-    } else {
-      out.push({ id: 'C', titel: 'Direktanschluss an ein Umspannwerk', traegt: '—', kosten: '—', ebene: 'NE 4', zahlt: 'Kunde (Bezug), Anlagenbetreiber (EEG)',
-        ampel: { stufe: 'na', text: 'Umspannwerk wählen (unten)' } });
-    }
-
-    // D — eigenes Umspannwerk
-    const ebene = uwEbene(zielMva, p);
-    out.push({ id: 'D', titel: 'Eigenes Umspannwerk 110 kV / MS', traegt: `über ≈ ${uwMw(p.grenzeUwMva)} MVA`, kosten: 'noch kein Ansatz (FNN-Beispiel: rund 5 × Direktanschluss)', ebene: 'NE 3', zahlt: 'Kunde',
-      ampel: ebene?.id === 'hs' ? { stufe: 'warn', text: 'Größenordnung passt – prüfen' } : { stufe: 'na', text: 'überdimensioniert' } });
-    return out;
-  }
-
-  const de$2 = (v, d = 0) => Number(v).toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
-  const kwText = kw => (kw >= 1000 ? `${de$2(kw / 1000, 1)} MW` : `${de$2(kw)} kW`);
-
-  /**
-   * Textbaustein (Gutachten/Notiz). Nur, was belegt ist; Lücken werden benannt statt erfunden.
-   *   stand: napBedarfsStand(), reihe, ziel, grenzen, uw: { name, betreiber, kvs, b } | null, osmStand
-   */
-  function ncBaustein({ stand, ziel, grenzen, reihe, uw, osmStand }) {
-    const teile = [];
-    const gB = grenzen?.bezugKw > 0 ? grenzen.bezugKw : null, gE = grenzen?.einspKw > 0 ? grenzen.einspKw : null;
-    if (gB || gE) {
-      teile.push(`Der heutige Netzanschluss ist mit ${gB ? `${de$2(gB)} kVA Bezug` : 'nicht eingetragener Bezugsleistung'} und ${gE ? `${de$2(gE)} kW Einspeisung` : 'ohne eingetragene Einspeisezusage'} vereinbart.`);
-    } else {
-      teile.push('Die vereinbarte Anschlussleistung ist noch nicht erfasst.');
-    }
-    if (ziel?.jahr) {
-      const basis = stand?.basisKw > 0
-        ? `Ausgehend von der gemessenen Höchstlast von ${kwText(stand.basisKw)} im Jahr ${stand.dataYear} steigt die Bezugsleistung nach der Bedarfsprognose`
-        : 'Ohne gemessenen Lastgang, allein aus den geplanten Maßnahmen, ergibt sich nach der Bedarfsprognose';
-      teile.push(`${basis} bis ${ziel.jahr} auf etwa ${kwText(ziel.bezugKw)}; die Einspeiseleistung der Erzeugungsanlagen beträgt dann etwa ${kwText(ziel.einspKw)}.`);
-    }
-    const uB = ncUeberschreitung(reihe, 'bezugKw', gB), uE = ncUeberschreitung(reihe, 'einspKw', gE);
-    if (gB || gE) {
-      const satz = [];
-      const start = reihe[0]?.jahr;
-      const bis = (u, was) => (u == null ? `für ${was} über den Betrachtungszeitraum` : u <= start ? null : `für ${was} bis ${u - 1}`);
-      const schon = [];
-      if (gB) { const t = bis(uB, 'den Bezug'); if (t) satz.push(t); else schon.push('den Bezug'); }
-      if (gE) { const t = bis(uE, 'die Einspeisung'); if (t) satz.push(t); else schon.push('die Einspeisung'); }
-      if (satz.length) teile.push(`Der bestehende Anschluss reicht damit ${satz.join(' und ')}.`);
-      if (schon.length) teile.push(`Für ${schon.join(' und ').replace(/^den /, 'den ')} ist die vereinbarte Leistung bereits heute überschritten.`);
-    }
-    if (uw?.b) {
-      const b = uw.b;
-      // Spannung nur als Tatsache nennen, wenn sie aus OSM oder von Hand stammt — sonst als Annahme kennzeichnen
-      const kv = !b.uKv ? 'Mittelspannungs-Sammelschiene'
-        : b.uAusUw ? `${de$2(b.uKv)}-kV-Sammelschiene` : `Mittelspannungs-Sammelschiene (angenommen ${de$2(b.uKv)} kV)`;
-      const n = b.ziel?.systeme || b.stufen[0].systeme;
-      const kosten = (b.ziel?.kosten || b.stufen[0].kosten).anschlussEur;
-      const name = String(uw.name || '').trim();
-      const bezeichnung = !name ? 'Umspannwerk' : /^(umspannwerk|uw)\b/i.test(name) ? name : `Umspannwerk ${name}`;
-      teile.push(`Das nächstgelegene geeignete ${bezeichnung}${uw.betreiber ? ` (${uw.betreiber})` : ''} liegt rund ${de$2(b.luftlinieM / 1000, 1)} km Luftlinie entfernt${osmStand ? ` (Quelle: OpenStreetMap, Stand ${osmStand})` : ''}. `
-        + `Ein Direktanschluss an dessen ${kv} könnte je Kabelsystem überschlägig etwa ${uwMw(b.jeSystem.bezugMw)} MW übertragen (Trasse ca. ${de$2(b.laengeKm, 1)} km); `
-        + `für den Bedarf im Zieljahr ${n === 1 ? 'wäre ein Kabelsystem' : `wären ${n} Kabelsysteme`}${b.redundant ? ' mit gegenseitiger Reserve (n-1)' : ''} nötig, bei Anschlusskosten in der Größenordnung von ${uwEurSpanne(kosten)}.`);
-    }
-    teile.push((uw?.b
-      ? 'Ob Umspannwerk und vorgelagertes Netz diese Leistung aufnehmen bzw. bereitstellen können, ist nur über eine Netzanschlussanfrage beim Netzbetreiber zu klären.'
-      : 'Wo und in welcher Spannungsebene der Netzbetreiber die zusätzliche Leistung bereitstellen kann, ist über eine Netzanschlussanfrage zu klären.')
-      + ' Für den Bezug fällt zusätzlich ein Baukostenzuschuss nach Preisblatt an; bei Einspeisung nach EEG trägt der Anlagenbetreiber die Kosten bis zum Verknüpfungspunkt, der Netzbetreiber den Netzausbau.');
-    return teile.join(' ').replace(/\s+/g, ' ').replace(' )', ')').trim();
-  }
-
-  /** Leistungstabelle für die Netzanschlussanfrage (CSV, Semikolon, deutsches Dezimalkomma). */
-  function ncCsv(reihe, grenzen) {
-    const z = v => (Number.isFinite(v) ? String(Math.round(v)) : '');
-    const kopf = 'Jahr;Bezugsleistung (kW);Einspeiseleistung (kW);vereinbart Bezug (kVA);zugesagt Einspeisung (kW)';
-    return [kopf, ...reihe.map(r => [r.jahr, z(r.bezugKw), z(r.einspKw), z(grenzen?.bezugKw), z(grenzen?.einspKw)].join(';'))].join('\r\n');
-  }
-
-  /** Diagramm Bezug/Einspeisung über die Jahre mit den vereinbarten Grenzen. farben: { text, muted, linie, bezug, einsp } */
-  function ncBedarfSvg({ reihe, grenzen, farben, zieljahr }) {
-    if (!reihe?.length) return '';
-    const f = { muted: '#999', linie: '#444', bezug: '#4fc3f7', einsp: '#ef9a9a', ...farben };
-    const W = 900, H = 250, x0 = 56, x1 = 880, y0 = 214, y1 = 16;
-    const von = reihe[0].jahr, bis = reihe[reihe.length - 1].jahr;
-    const maxKw = Math.max(1, ...reihe.map(r => Math.max(r.bezugKw, r.einspKw)), grenzen?.bezugKw || 0, grenzen?.einspKw || 0) * 1.12;
-    const mwSkala = maxKw >= 2000;
-    const teiler = mwSkala ? 1000 : 1;
-    const schritt = (() => { const roh = maxKw / teiler / 5; const p = 10 ** Math.floor(Math.log10(roh)); return [1, 2, 2.5, 5, 10].map(m => m * p).find(s => s >= roh); })();
-    const top = Math.ceil(maxKw / teiler / schritt) * schritt;
-    const xs = j => x0 + (bis === von ? 0 : (j - von) / (bis - von)) * (x1 - x0);
-    const ys = kw => y0 - (kw / teiler) / top * (y0 - y1);
-    let s = '';
-    for (let v = 0; v <= top + 1e-9; v += schritt) {
-      s += `<line x1="${x0}" x2="${x1}" y1="${ys(v * teiler).toFixed(1)}" y2="${ys(v * teiler).toFixed(1)}" style="stroke:${f.linie};stroke-width:1"/>`;
-      s += `<text x="${x0 - 6}" y="${(ys(v * teiler) + 4).toFixed(1)}" text-anchor="end" style="fill:${f.muted};font-size:10px;font-family:monospace;">${de$2(v, schritt < 1 ? 1 : 0)}</text>`;
-    }
-    const jSchritt = Math.max(1, Math.ceil((bis - von) / 10));
-    for (let j = von; j <= bis; j += jSchritt) s += `<text x="${xs(j).toFixed(1)}" y="${y0 + 16}" text-anchor="middle" style="fill:${f.muted};font-size:10px;font-family:monospace;">${j}</text>`;
-    s += `<text x="8" y="12" style="fill:${f.muted};font-size:10px;">${mwSkala ? 'MW' : 'kW'}</text>`;
-    const grenze = (kw, farbe, text, unten) => {
-      if (!(kw > 0)) return;
-      const y = ys(kw).toFixed(1);
-      s += `<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" style="stroke:${farbe};stroke-width:1.5;stroke-dasharray:6 4"/>`;
-      s += `<text x="${x1}" y="${(+y + (unten ? 13 : -5)).toFixed(1)}" text-anchor="end" style="fill:${farbe};font-size:10px;">${text}</text>`;
-    };
-    grenze(grenzen?.bezugKw, f.bezug, `vereinbart Bezug ${de$2(grenzen?.bezugKw || 0)} kVA`, false);
-    grenze(grenzen?.einspKw, f.einsp, `Zusage Einspeisung ${de$2(grenzen?.einspKw || 0)} kW`, true);
-    const linie = (feld, farbe, stufig) => {
-      let d = '';
-      reihe.forEach((r, i) => { const x = xs(r.jahr).toFixed(1), y = ys(r[feld]).toFixed(1); d += !i ? `M${x} ${y}` : ` H${x} V${y}` ; });
-      s += `<path d="${d}" style="fill:none;stroke:${farbe};stroke-width:2.5"/>`;
-    };
-    linie('bezugKw', f.bezug);   // Jahreswerte: Änderungen wirken ab ihrem Jahr → Treppe
-    linie('einspKw', f.einsp);
-    const markiere = (feld, grenzeKw, farbe) => {
-      const j = ncUeberschreitung(reihe, feld, grenzeKw);
-      if (j == null) return;
-      const r = reihe.find(z => z.jahr === j);
-      s += `<rect x="${(xs(j) - 5).toFixed(1)}" y="${(ys(r[feld]) - 5).toFixed(1)}" width="10" height="10" style="fill:${farbe}"><title>${j}: erste Überschreitung</title></rect>`;
-    };
-    markiere('bezugKw', grenzen?.bezugKw, f.bezug);
-    markiere('einspKw', grenzen?.einspKw, f.einsp);
-    if (zieljahr && zieljahr >= von && zieljahr <= bis) {
-      s += `<line x1="${xs(zieljahr).toFixed(1)}" x2="${xs(zieljahr).toFixed(1)}" y1="${y1}" y2="${y0}" style="stroke:${f.muted};stroke-width:1;stroke-dasharray:2 3"/>`;
-      s += `<text x="${(xs(zieljahr) + 4).toFixed(1)}" y="${y1 + 10}" style="fill:${f.muted};font-size:10px;">Zieljahr ${zieljahr}</text>`;
-    }
-    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:100%;height:auto;" role="img" aria-label="Bezugs- und Einspeiseleistung über die Jahre">${s}</svg>`;
-  }
-
   // ── lib/anschlussebenen.js — Typische Anschlussebene nach Leistung ──
   // DOM- und importfrei (Vitest). Genutzt vom Netzanschluss-Modul (44), Schritt „Ebene".
   //
@@ -264240,8 +264018,8 @@ out center tags;`;
     };
   }
 
-  const de$1 = (v, d = 0) => Number(v).toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
-  const aeKva = v => v >= 1000 ? `${de$1(v / 1000, v >= 10000 ? 0 : 1)} MVA` : `${de$1(v)} kVA`;
+  const de$2 = (v, d = 0) => Number(v).toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
+  const aeKva = v => v >= 1000 ? `${de$2(v / 1000, v >= 10000 ? 0 : 1)} MVA` : `${de$2(v)} kVA`;
   const esc$1 = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   const AE_GEO = { L0: 260, R0: 900, LOGMAX: Math.log10(200000), ROW: 30, TOP: 34, W: 920 };
@@ -264308,17 +264086,384 @@ out center tags;`;
     return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:100%;height:auto;background:${f.flaeche};" role="img" aria-label="Typische Anschlussebene nach Leistung"><defs>${defs}</defs>${s}</svg>`;
   }
 
+  // ── lib/netzanschluss-check.js — Netzanschluss-Modul: Bedarf, Wege, Textbaustein ──
+  // DOM-frei (Vitest). Oberfläche: 44-netzanschluss-modul.js (Elektro › 3 · Auswerten › Netzanschluss).
+  //
+  // Bezug je Jahr: exakt die Bedarfsprognose (lib/bedarfsprognose.js, bpJahresreihe) — dieselbe Rechnung
+  // wie NAP-Analyse und Gutachten 5.3. Erzeugung mindert den Bezug nicht.
+  // Einspeisung je Jahr: Summe der Nennleistung aller Erzeuger, die im Jahr stehen (Bestand + Zubau −
+  // Rückbau), ohne Gleichzeitigkeitsfaktor — wie Gutachten 5.3.4. Die Bedarfsprognose allein kennt nur
+  // den Zubau nach dem Messjahr; vorhandene PV gehört aber genauso an den Anschluss.
+  // Vergleich mit der vereinbarten Leistung wie im Gutachten: kW gegen kVA ohne Leistungsfaktor.
+
+
+  const jahrVon = v => parseInt(v, 10) || null;
+
+  /** Einspeiseleistung (kW) aller Erzeuger, die im Jahr in Betrieb sind. */
+  function ncEinspeisungImJahr(assets, jahr) {
+    let kw = 0;
+    for (const a of assets || []) {
+      if (!BP_LEISTUNGS_TYPEN.includes(a.type)) continue;
+      const bj = jahrVon(a.baujahr), aj = jahrVon(a.abrissjahr);
+      if ((bj && bj > jahr) || (aj && aj <= jahr)) continue;
+      kw += bpAssetLeistung(a).genKW;
+    }
+    return kw;
+  }
+
+  /** Zieljahr: Endausbau der Bedarfsprognose, mindestens das Messjahr. */
+  function ncZieljahr(stand, assets) {
+    const ausMassnahmen = bpZieljahr(stand?.massnahmen || []);
+    let ausErzeugern = null;
+    for (const a of assets || []) {
+      const bj = jahrVon(a.baujahr);
+      if (bj && bpAssetLeistung(a).genKW > 0 && (ausErzeugern == null || bj > ausErzeugern)) ausErzeugern = bj;
+    }
+    return Math.max(stand?.dataYear || 0, ausMassnahmen || 0, ausErzeugern || 0) || null;
+  }
+
+  /** Jahresreihe { jahr, bezugKw, einspKw } von `von` bis `bis`. */
+  function ncReihe({ stand, assets, von, bis }) {
+    const bezug = bpJahresreihe({ basisKw: stand?.basisKw || 0, gzf: stand?.gzf ?? 1, massnahmen: stand?.massnahmen || [], von, bis });
+    return bezug.map(z => ({ jahr: z.jahr, bezugKw: z.bezugKw, einspKw: ncEinspeisungImJahr(assets, z.jahr) }));
+  }
+
+  /** Erstes Jahr, in dem `feld` die Grenze überschreitet — null, wenn nie oder ohne Grenze. */
+  function ncUeberschreitung(reihe, feld, grenze) {
+    if (!(grenze > 0)) return null;
+    return reihe.find(z => z[feld] > grenze)?.jahr ?? null;
+  }
+
+  /**
+   * Wege A–D gegen den Bedarf im Zieljahr.
+   *   ziel:    { jahr, bezugKw, einspKw }
+   *   grenzen: { bezugKw, einspKw } — vereinbart am NAP (null = nicht eingetragen)
+   *   reihe:   für „reicht bis"
+   *   p:       Parameter aus uwParameterMischen (Orientierungsgrenzen Strang/UW, cos φ)
+   *   uw:      { name, b } — Bewertung des gewählten Umspannwerks (uwBewerten) oder null
+   * → [{ id, titel, kurz, traegt, kosten, ebene, zahlt, ampel: { stufe: 'ok'|'warn'|'bad'|'na', text },
+   *      leiter: { fest, annahme, grenzbereich, kerbe } }]
+   *   leiter: Bereiche in kVA für die Leistungsleiter — fest = belastbar (Vertrag, eigenes Kabel), selten = belastbar, aber selten wirtschaftlich,
+   *   annahme = Orientierungswert bzw. Reserve im UW, grenzbereich = „nur auf Anfrage", kerbe = Einspeisezusage.
+   */
+  function ncWege({ ziel, grenzen, reihe, p, uw }) {
+    const zB = (ziel?.bezugKw || 0) / 1000, zE = (ziel?.einspKw || 0) / 1000;
+    const cos = p.cosPhi || 1;
+    const zielMva = Math.max(zB, zE) / cos;
+    const mw = kw => (kw > 0 ? `${uwMw(kw / 1000)} MW` : '—');
+    const strangKva = p.grenzeStrangMva * 1000, uwKva = p.grenzeUwMva * 1000;
+    const out = [];
+
+    // A — Bestand halten; was erst nach dem Zieljahr knapp wird, zählt hier nicht
+    const gB = grenzen?.bezugKw > 0 ? grenzen.bezugKw : null, gE = grenzen?.einspKw > 0 ? grenzen.einspKw : null;
+    const bisZiel = ziel?.jahr ? (reihe || []).filter(z => z.jahr <= ziel.jahr) : (reihe || []);
+    const uB = ncUeberschreitung(bisZiel, 'bezugKw', gB), uE = ncUeberschreitung(bisZiel, 'einspKw', gE);
+    let a;
+    if (!gB && !gE) a = { stufe: 'na', text: 'NAP-Grenzen fehlen' };
+    else if (uB == null && uE == null) a = { stufe: 'ok', text: `reicht bis ${ziel?.jahr ?? '—'}` };
+    else {
+      const erst = Math.min(uB ?? 9999, uE ?? 9999);
+      const richtung = uB != null && uE != null ? '' : uB != null ? ' (Bezug)' : ' (Einspeisung)';
+      a = erst <= (reihe[0]?.jahr ?? erst)
+        ? { stufe: 'bad', text: `schon heute überschritten${richtung}` }
+        : { stufe: 'warn', text: `reicht bis ${erst - 1}${richtung}` };
+    }
+    out.push({ id: 'A', titel: 'Bestand halten, Spitzen kappen (Speicher, Einspeisebegrenzung, Lastmanagement)', kurz: 'Bestand halten',
+      // Bezug ist in kVA vereinbart, Einspeisung in kW zugesagt — Einheiten nicht vermischen
+      traegt: `${gB ? `${uwMw(gB / 1000)} MVA` : '—'} / ${gE ? mw(gE) : '—'}`, kosten: 'Speicher/Steuerung, siehe PV-Analyse', ebene: 'wie heute', zahlt: 'Kunde', ampel: a,
+      leiter: { fest: gB ? [[0, gB]] : [], annahme: [], grenzbereich: [], kerbe: gE ? gE / cos : null } });
+
+    // B — Erhöhung am bestehenden Strang (Orientierungswert, keine Zusage)
+    const bVon = Math.min(gB || 200, strangKva);
+    out.push({ id: 'B', titel: 'Anschlussleistung am bestehenden MS-Strang erhöhen', kurz: 'MS-Strang erhöhen',
+      traegt: `bis ≈ ${uwMw(p.grenzeStrangMva)} MVA (Orientierung)`, kosten: 'Angebot Netzbetreiber + BKZ', ebene: 'NE 5', zahlt: 'Kunde (Bezug) / VNB (Einspeisung)',
+      ampel: !(zielMva > 0) ? { stufe: 'na', text: 'kein Bedarf' }
+        : zielMva <= p.grenzeStrangMva ? { stufe: 'ok', text: 'im üblichen Bereich – Anfrage' }
+        : zielMva <= p.grenzeStrangMva * 2.5 ? { stufe: 'warn', text: 'Grenzbereich – Anfrage' }
+        : { stufe: 'bad', text: 'über Orientierungswert' },
+      leiter: { fest: [], annahme: [[bVon, strangKva]], grenzbereich: [[strangKva, strangKva * 2.5]], kerbe: null } });
+
+    // C — Direktanschluss Umspannwerk
+    if (uw?.b) {
+      const b = uw.b, n = b.ziel?.systeme || b.stufen[0].systeme;
+      const traegtB = (n - (b.redundant ? 1 : 0)) * b.jeSystem.bezugMw, traegtE = (n - (b.redundant ? 1 : 0)) * b.jeSystem.einspMw;
+      const kosten = (b.ziel?.kosten || b.stufen[0].kosten).anschlussEur;
+      const ueberUw = b.n1Mw > 0 && Math.max(zB, zE) > b.n1Mw;
+      // Belastbar ist das eigene Kabel (kleinere der beiden Richtungen), die (n-1)-Reserve des UW nur Obergrenze.
+      // Unter ≈ 1 MVA trägt das Kabel auch, lohnt aber selten — dort blass (nur Darstellung).
+      const kabelKva = Math.min(traegtB, traegtE) * 1000 / cos, n1Kva = (b.n1?.mva || 0) * 1000;
+      out.push({ id: 'C', titel: `Direktanschluss ${uw.name || 'Umspannwerk'}, ${n} System${n > 1 ? 'e' : ''}${b.redundant ? ' (n-1)' : ''}, Trasse ≈ ${uwMw(b.laengeKm)} km`,
+        kurz: 'Direktanschluss UW',
+        traegt: `${uwMw(traegtB)} / ${uwMw(traegtE)} MW${b.redundant ? ' gesichert' : ''}`, kosten: uwEurSpanne(kosten), ebene: 'NE 4', zahlt: 'Kunde (Bezug), Anlagenbetreiber (EEG)',
+        ampel: !(zielMva > 0) ? { stufe: 'na', text: 'kein Bedarf' }
+          : ueberUw ? { stufe: 'warn', text: 'über (n-1) des UW – Ausbau nötig' }
+          : n > 3 ? { stufe: 'warn', text: `${n} Systeme – HS prüfen` }
+          : { stufe: 'ok', text: `deckt ${ziel?.jahr ?? 'Ziel'}` },
+        leiter: { fest: kabelKva > 1000 ? [[1000, kabelKva]] : [], selten: [[0, Math.min(1000, kabelKva)]],
+          annahme: n1Kva > kabelKva ? [[Math.max(1000, kabelKva), n1Kva]] : [], grenzbereich: [], kerbe: null } });
+    } else {
+      out.push({ id: 'C', titel: 'Direktanschluss an ein Umspannwerk', kurz: 'Direktanschluss UW', traegt: '—', kosten: '—', ebene: 'NE 4', zahlt: 'Kunde (Bezug), Anlagenbetreiber (EEG)',
+        ampel: { stufe: 'na', text: 'Umspannwerk wählen (unten)' },
+        leiter: { fest: [], annahme: [[strangKva, uwKva]], grenzbereich: [], kerbe: null } });
+    }
+
+    // D — eigenes Umspannwerk
+    const ebene = uwEbene(zielMva, p);
+    out.push({ id: 'D', titel: 'Eigenes Umspannwerk 110 kV / MS', kurz: 'Eigenes Umspannwerk', traegt: `über ≈ ${uwMw(p.grenzeUwMva)} MVA`, kosten: 'noch kein Ansatz (FNN-Beispiel: rund 5 × Direktanschluss)', ebene: 'NE 3', zahlt: 'Kunde',
+      ampel: ebene?.id === 'hs' ? { stufe: 'warn', text: 'Größenordnung passt – prüfen' } : { stufe: 'na', text: 'überdimensioniert' },
+      leiter: { fest: [], annahme: [[uwKva, 110000]], grenzbereich: [], kerbe: null } });
+    return out;
+  }
+
+  /**
+   * Die Antwort in drei Sätzen: reicht Bezug / Einspeisung bis zum Zieljahr, welcher Weg liegt nahe.
+   *   reihe, ziel, grenzen wie ncWege; wege = Ergebnis von ncWege; heute = Messjahr
+   * → { bezug, einsp, empfehlung } je { stufe: 'ok'|'warn'|'bad'|'na', satz, unter, weg? }
+   */
+  function ncAntwort({ reihe, ziel, grenzen, wege, heute }) {
+    const bisZiel = (reihe || []).filter(z => z.jahr <= ziel.jahr);
+    const richtung = (feld, g, einheit) => {
+      const wertZiel = ziel[feld] || 0;
+      if (!(g > 0)) return { stufe: 'na', satz: 'keine Grenze eingetragen', unter: `im Zieljahr ${kwText(wertZiel)}` };
+      const u = ncUeberschreitung(bisZiel, feld, g);
+      if (u == null) return { stufe: 'ok', satz: `reicht bis ${ziel.jahr}`, unter: `${kwText(wertZiel)} von ${de$1(g)} ${einheit} im Zieljahr` };
+      const wertU = bisZiel.find(z => z.jahr === u)?.[feld] || 0;
+      if (u <= heute) return { stufe: 'bad', satz: 'schon heute zu knapp', unter: `${kwText(wertU)} gegen ${de$1(g)} ${einheit}` };
+      return { stufe: 'warn', satz: `reicht bis ${u - 1}`, unter: `ab ${u}: ${kwText(wertU)} gegen ${de$1(g)} ${einheit}${u < ziel.jahr ? `, im Zieljahr ${kwText(wertZiel)}` : ''}` };
+    };
+    const bezug = richtung('bezugKw', grenzen?.bezugKw, 'kVA');
+    const einsp = richtung('einspKw', grenzen?.einspKw, 'kW');
+    const wA = (wege || []).find(w => w.id === 'A');
+    let empfehlung;
+    if (!(ziel.bezugKw > 0 || ziel.einspKw > 0)) {
+      empfehlung = { stufe: 'na', satz: 'Kein Bedarf ermittelt', unter: 'Lastgang laden bzw. Verbraucher und Erzeuger anlegen.' };
+    } else if (bezug.stufe === 'na' && einsp.stufe === 'na') {
+      empfehlung = { stufe: 'na', satz: 'Erst die vereinbarte Leistung eintragen', unter: 'Ohne NAP-Grenzen lässt sich kein Weg bewerten.' };
+    } else if (wA?.ampel.stufe === 'ok') {
+      empfehlung = { stufe: 'ok', satz: 'Nichts zu tun', unter: 'Der bestehende Anschluss trägt den Bedarf.', weg: 'A' };
+    } else {
+      const rest = (wege || []).filter(w => w.id !== 'A');
+      const w = rest.find(x => x.ampel.stufe === 'ok') || rest.find(x => x.ampel.stufe === 'warn');
+      empfehlung = w
+        ? { stufe: w.ampel.stufe, satz: `Weg ${w.id}: ${w.kurz}`, unter: w.ampel.text, weg: w.id }
+        : { stufe: 'bad', satz: 'Kein Weg passt ohne Weiteres', unter: 'Netzanschlussanfrage stellen; Umspannwerk wählen.' };
+    }
+    return { bezug, einsp, empfehlung };
+  }
+
+  const de$1 = (v, d = 0) => Number(v).toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
+  const kwText = kw => (kw >= 1000 ? `${de$1(kw / 1000, 1)} MW` : `${de$1(kw)} kW`);
+
+  /**
+   * Textbaustein (Gutachten/Notiz). Nur, was belegt ist; Lücken werden benannt statt erfunden.
+   *   stand: napBedarfsStand(), reihe, ziel, grenzen, uw: { name, betreiber, kvs, b } | null, osmStand
+   */
+  function ncBaustein({ stand, ziel, grenzen, reihe, uw, osmStand }) {
+    const teile = [];
+    const gB = grenzen?.bezugKw > 0 ? grenzen.bezugKw : null, gE = grenzen?.einspKw > 0 ? grenzen.einspKw : null;
+    if (gB || gE) {
+      teile.push(`Der heutige Netzanschluss ist mit ${gB ? `${de$1(gB)} kVA Bezug` : 'nicht eingetragener Bezugsleistung'} und ${gE ? `${de$1(gE)} kW Einspeisung` : 'ohne eingetragene Einspeisezusage'} vereinbart.`);
+    } else {
+      teile.push('Die vereinbarte Anschlussleistung ist noch nicht erfasst.');
+    }
+    if (ziel?.jahr) {
+      const basis = stand?.basisKw > 0
+        ? `Ausgehend von der gemessenen Höchstlast von ${kwText(stand.basisKw)} im Jahr ${stand.dataYear} steigt die Bezugsleistung nach der Bedarfsprognose`
+        : 'Ohne gemessenen Lastgang, allein aus den geplanten Maßnahmen, ergibt sich nach der Bedarfsprognose';
+      teile.push(`${basis} bis ${ziel.jahr} auf etwa ${kwText(ziel.bezugKw)}; die Einspeiseleistung der Erzeugungsanlagen beträgt dann etwa ${kwText(ziel.einspKw)}.`);
+    }
+    const uB = ncUeberschreitung(reihe, 'bezugKw', gB), uE = ncUeberschreitung(reihe, 'einspKw', gE);
+    if (gB || gE) {
+      const satz = [];
+      const start = reihe[0]?.jahr;
+      const bis = (u, was) => (u == null ? `für ${was} über den Betrachtungszeitraum` : u <= start ? null : `für ${was} bis ${u - 1}`);
+      const schon = [];
+      if (gB) { const t = bis(uB, 'den Bezug'); if (t) satz.push(t); else schon.push('den Bezug'); }
+      if (gE) { const t = bis(uE, 'die Einspeisung'); if (t) satz.push(t); else schon.push('die Einspeisung'); }
+      if (satz.length) teile.push(`Der bestehende Anschluss reicht damit ${satz.join(' und ')}.`);
+      if (schon.length) teile.push(`Für ${schon.join(' und ').replace(/^den /, 'den ')} ist die vereinbarte Leistung bereits heute überschritten.`);
+    }
+    if (uw?.b) {
+      const b = uw.b;
+      // Spannung nur als Tatsache nennen, wenn sie aus OSM oder von Hand stammt — sonst als Annahme kennzeichnen
+      const kv = !b.uKv ? 'Mittelspannungs-Sammelschiene'
+        : b.uAusUw ? `${de$1(b.uKv)}-kV-Sammelschiene` : `Mittelspannungs-Sammelschiene (angenommen ${de$1(b.uKv)} kV)`;
+      const n = b.ziel?.systeme || b.stufen[0].systeme;
+      const kosten = (b.ziel?.kosten || b.stufen[0].kosten).anschlussEur;
+      const name = String(uw.name || '').trim();
+      const bezeichnung = !name ? 'Umspannwerk' : /^(umspannwerk|uw)\b/i.test(name) ? name : `Umspannwerk ${name}`;
+      teile.push(`Das nächstgelegene geeignete ${bezeichnung}${uw.betreiber ? ` (${uw.betreiber})` : ''} liegt rund ${de$1(b.luftlinieM / 1000, 1)} km Luftlinie entfernt${osmStand ? ` (Quelle: OpenStreetMap, Stand ${osmStand})` : ''}. `
+        + `Ein Direktanschluss an dessen ${kv} könnte je Kabelsystem überschlägig etwa ${uwMw(b.jeSystem.bezugMw)} MW übertragen (Trasse ca. ${de$1(b.laengeKm, 1)} km); `
+        + `für den Bedarf im Zieljahr ${n === 1 ? 'wäre ein Kabelsystem' : `wären ${n} Kabelsysteme`}${b.redundant ? ' mit gegenseitiger Reserve (n-1)' : ''} nötig, bei Anschlusskosten in der Größenordnung von ${uwEurSpanne(kosten)}.`);
+    }
+    teile.push((uw?.b
+      ? 'Ob Umspannwerk und vorgelagertes Netz diese Leistung aufnehmen bzw. bereitstellen können, ist nur über eine Netzanschlussanfrage beim Netzbetreiber zu klären.'
+      : 'Wo und in welcher Spannungsebene der Netzbetreiber die zusätzliche Leistung bereitstellen kann, ist über eine Netzanschlussanfrage zu klären.')
+      + ' Für den Bezug fällt zusätzlich ein Baukostenzuschuss nach Preisblatt an; bei Einspeisung nach EEG trägt der Anlagenbetreiber die Kosten bis zum Verknüpfungspunkt, der Netzbetreiber den Netzausbau.');
+    return teile.join(' ').replace(/\s+/g, ' ').replace(' )', ')').trim();
+  }
+
+  /** Leistungstabelle für die Netzanschlussanfrage (CSV, Semikolon, deutsches Dezimalkomma). */
+  function ncCsv(reihe, grenzen) {
+    const z = v => (Number.isFinite(v) ? String(Math.round(v)) : '');
+    const kopf = 'Jahr;Bezugsleistung (kW);Einspeiseleistung (kW);vereinbart Bezug (kVA);zugesagt Einspeisung (kW)';
+    return [kopf, ...reihe.map(r => [r.jahr, z(r.bezugKw), z(r.einspKw), z(grenzen?.bezugKw), z(grenzen?.einspKw)].join(';'))].join('\r\n');
+  }
+
+  /** Diagramm Bezug/Einspeisung über die Jahre mit den vereinbarten Grenzen. farben: { text, muted, linie, bezug, einsp } */
+  function ncBedarfSvg({ reihe, grenzen, farben, zieljahr }) {
+    if (!reihe?.length) return '';
+    const f = { muted: '#999', linie: '#444', bezug: '#4fc3f7', einsp: '#ef9a9a', ...farben };
+    const W = 900, H = 250, x0 = 56, x1 = 880, y0 = 214, y1 = 16;
+    const von = reihe[0].jahr, bis = reihe[reihe.length - 1].jahr;
+    const maxKw = Math.max(1, ...reihe.map(r => Math.max(r.bezugKw, r.einspKw)), grenzen?.bezugKw || 0, grenzen?.einspKw || 0) * 1.12;
+    const mwSkala = maxKw >= 2000;
+    const teiler = mwSkala ? 1000 : 1;
+    const schritt = (() => { const roh = maxKw / teiler / 5; const p = 10 ** Math.floor(Math.log10(roh)); return [1, 2, 2.5, 5, 10].map(m => m * p).find(s => s >= roh); })();
+    const top = Math.ceil(maxKw / teiler / schritt) * schritt;
+    const xs = j => x0 + (bis === von ? 0 : (j - von) / (bis - von)) * (x1 - x0);
+    const ys = kw => y0 - (kw / teiler) / top * (y0 - y1);
+    let s = '';
+    for (let v = 0; v <= top + 1e-9; v += schritt) {
+      s += `<line x1="${x0}" x2="${x1}" y1="${ys(v * teiler).toFixed(1)}" y2="${ys(v * teiler).toFixed(1)}" style="stroke:${f.linie};stroke-width:1"/>`;
+      s += `<text x="${x0 - 6}" y="${(ys(v * teiler) + 4).toFixed(1)}" text-anchor="end" style="fill:${f.muted};font-size:10px;font-family:monospace;">${de$1(v, schritt < 1 ? 1 : 0)}</text>`;
+    }
+    const jSchritt = Math.max(1, Math.ceil((bis - von) / 10));
+    for (let j = von; j <= bis; j += jSchritt) s += `<text x="${xs(j).toFixed(1)}" y="${y0 + 16}" text-anchor="middle" style="fill:${f.muted};font-size:10px;font-family:monospace;">${j}</text>`;
+    s += `<text x="8" y="12" style="fill:${f.muted};font-size:10px;">${mwSkala ? 'MW' : 'kW'}</text>`;
+    const grenze = (kw, farbe, text, unten) => {
+      if (!(kw > 0)) return;
+      const y = ys(kw).toFixed(1);
+      s += `<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" style="stroke:${farbe};stroke-width:1.5;stroke-dasharray:6 4"/>`;
+      s += `<text x="${x1}" y="${(+y + (unten ? 13 : -5)).toFixed(1)}" text-anchor="end" style="fill:${farbe};font-size:10px;">${text}</text>`;
+    };
+    grenze(grenzen?.bezugKw, f.bezug, `vereinbart Bezug ${de$1(grenzen?.bezugKw || 0)} kVA`, false);
+    grenze(grenzen?.einspKw, f.einsp, `Zusage Einspeisung ${de$1(grenzen?.einspKw || 0)} kW`, true);
+    const linie = (feld, farbe, stufig) => {
+      let d = '';
+      reihe.forEach((r, i) => { const x = xs(r.jahr).toFixed(1), y = ys(r[feld]).toFixed(1); d += !i ? `M${x} ${y}` : ` H${x} V${y}` ; });
+      s += `<path d="${d}" style="fill:none;stroke:${farbe};stroke-width:2.5"/>`;
+    };
+    linie('bezugKw', f.bezug);   // Jahreswerte: Änderungen wirken ab ihrem Jahr → Treppe
+    linie('einspKw', f.einsp);
+    const markiere = (feld, grenzeKw, farbe) => {
+      const j = ncUeberschreitung(reihe, feld, grenzeKw);
+      if (j == null) return;
+      const r = reihe.find(z => z.jahr === j);
+      s += `<rect x="${(xs(j) - 5).toFixed(1)}" y="${(ys(r[feld]) - 5).toFixed(1)}" width="10" height="10" style="fill:${farbe}"><title>${j}: erste Überschreitung</title></rect>`;
+    };
+    markiere('bezugKw', grenzen?.bezugKw, f.bezug);
+    markiere('einspKw', grenzen?.einspKw, f.einsp);
+    if (zieljahr && zieljahr >= von && zieljahr <= bis) {
+      s += `<line x1="${xs(zieljahr).toFixed(1)}" x2="${xs(zieljahr).toFixed(1)}" y1="${y1}" y2="${y0}" style="stroke:${f.muted};stroke-width:1;stroke-dasharray:2 3"/>`;
+      s += `<text x="${(xs(zieljahr) + 4).toFixed(1)}" y="${y1 + 10}" style="fill:${f.muted};font-size:10px;">Zieljahr ${zieljahr}</text>`;
+    }
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:100%;height:auto;" role="img" aria-label="Bezugs- und Einspeiseleistung über die Jahre">${s}</svg>`;
+  }
+
+  /* ── Leistungsleiter ────────────────────────────────────────────────────── */
+
+  const escX = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  /** Netzebenen als Streifen: je NE der Kernbereich aus AE_BAENDER, Grenzen im geometrischen Mittel dazwischen. */
+  const NC_NETZEBENEN = (() => {
+    const namen = { 'NE 7': 'NS-Netz', 'NE 6': 'NS-Station', 'NE 5': 'MS-Netz', 'NE 4': 'UW-Sammelschiene', 'NE 3': 'Hochspannung' };
+    const ne = Object.keys(namen).map(id => {
+      const b = AE_BAENDER.filter(x => x.ne === id);
+      return { id, name: namen[id], kv: Math.min(...b.map(x => x.kv)), kb: Math.max(...b.map(x => x.kb)), baender: b };
+    });
+    return ne.map((n, i) => ({
+      ...n,
+      von: i === 0 ? 1 : Math.sqrt(ne[i - 1].kb * n.kv),
+      bis: i === ne.length - 1 ? 1e6 : Math.sqrt(n.kb * ne[i + 1].kv),
+    }));
+  })();
+
+  /** Maßgebliche Leistung (kVA) wie ncWege: größere Richtung, durch cos φ. */
+  const ncMassgeblichKva = (ziel, p) => Math.max(ziel?.bezugKw || 0, ziel?.einspKw || 0) / (p?.cosPhi || 1);
+
+  /**
+   * Leistungsleiter: eine logarithmische Achse (kVA) mit Netzebenen-Streifen, dem Bedarf im Zieljahr
+   * und den Wegen A–D als Balken (fest = belastbar, schraffiert = Annahme/Orientierung).
+   *   ziel, p wie ncWege; wege = ncWege(...); farben: { text, muted, linie, flaeche, ok, okFlaeche, fest, band, bezug, einsp, warn, bad }
+   */
+  function ncLeiterSvg({ ziel, p, wege, farben }) {
+    const f = { text: '#ddd', muted: '#999', linie: '#444', flaeche: 'rgba(127,127,127,.08)', ok: '#66bb6a', okFlaeche: 'rgba(102,187,106,.14)',
+      fest: '#888', band: '#66bb6a', bezug: '#4fc3f7', einsp: '#ef9a9a', warn: '#ffb74d', bad: '#ef5350', ...farben };
+    const W = 900, L = 214, R = 884, LOG0 = 1, LOG1 = Math.log10(150000);
+    const x = v => L + (Math.log10(Math.min(150000, Math.max(10, v))) - LOG0) / (LOG1 - LOG0) * (R - L);
+    const ROW0 = 64, ROW = 40, AY = ROW0 + (wege?.length || 4) * ROW + 6, H = AY + 26;
+    const cos = p?.cosPhi || 1;
+    const tx = (xx, y, s, st = '', a = '') => `<text x="${(+xx).toFixed(1)}" y="${y}" ${a} style="font-family:inherit;${st}">${escX(s)}</text>`;
+    let s = '';
+    const defs = ['fest', 'ok'].map(k => `<pattern id="ncl-schraff-${k}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">`
+      + `<rect width="6" height="6" style="fill:${k === 'ok' ? f.okFlaeche : 'transparent'}"/><line x1="0" y1="0" x2="0" y2="6" style="stroke:${k === 'ok' ? f.ok : f.fest};stroke-width:2"/></pattern>`).join('');
+
+    // Netzebenen
+    s += tx(L - 10, 25, 'Netzebene (typisch)', `fill:${f.muted};font-size:11px;`, 'text-anchor="end"');
+    NC_NETZEBENEN.forEach((n, i) => {
+      const x1 = x(Math.max(10, n.von)), x2 = x(n.bis);
+      const tip = `${n.id} ${n.name} — häufig ${aeKva(n.kv)} bis ${aeKva(n.kb)}: ${n.baender.map(b => b.name).join(', ')} (VDE FNN, Orientierung)`;
+      s += `<rect x="${x1.toFixed(1)}" y="8" width="${(x2 - x1).toFixed(1)}" height="26" style="fill:${f.band};fill-opacity:${(0.1 + i * 0.09).toFixed(2)}"><title>${escX(tip)}</title></rect>`;
+      if (x2 - x1 > n.name.length * 6) s += tx((x1 + x2) / 2, 25, n.name, `fill:${f.text};font-size:11px;pointer-events:none;`, 'text-anchor="middle"');
+    });
+
+    // Gitter + Achse
+    for (const [v, t] of [[10, '10 kVA'], [100, '100 kVA'], [1000, '1 MVA'], [10000, '10 MVA'], [100000, '100 MVA']]) {
+      s += `<line x1="${x(v).toFixed(1)}" x2="${x(v).toFixed(1)}" y1="8" y2="${AY}" style="stroke:${f.linie};stroke-width:1"/>`;
+      s += tx(x(v), AY + 16, t, `fill:${f.muted};font-size:10.5px;`, `text-anchor="${v === 10 ? 'start' : 'middle'}"`);
+    }
+    s += `<line x1="${L}" x2="${R}" y1="${AY}" y2="${AY}" style="stroke:${f.muted};stroke-width:1"/>`;
+
+    // Wege
+    const farbeStufe = st => ({ ok: f.ok, warn: f.warn, bad: f.bad }[st] || f.muted);
+    (wege || []).forEach((w, i) => {
+      const y = ROW0 + i * ROW, passt = w.ampel?.stufe === 'ok', lt = w.leiter || {};
+      s += `<rect x="4" y="${y}" width="${R - 4 + 8}" height="${ROW - 6}" rx="3" style="fill:${passt ? f.okFlaeche : f.flaeche}"/>`;
+      s += tx(12, y + 15, `${w.id}  ${w.kurz || w.titel}`, `fill:${f.text};font-size:12.5px;font-weight:600;`);
+      s += tx(12, y + 29, w.ampel?.text || '', `fill:${farbeStufe(w.ampel?.stufe)};font-size:11px;`);
+      const balken = (a, b, stil, tip) => {
+        const x1 = x(Math.max(10, a)), x2 = x(b);
+        if (x2 - x1 < 1) return;
+        s += `<rect x="${x1.toFixed(1)}" y="${y + 8}" width="${(x2 - x1).toFixed(1)}" height="18" rx="2" style="${stil}"><title>${escX(tip)}</title></rect>`;
+      };
+      for (const [a, b] of lt.selten || []) balken(a, b, `fill:${passt ? f.ok : f.fest};opacity:.3;`, `${w.id}: technisch möglich bis ${aeKva(b)}, bei kleiner Leistung selten wirtschaftlich`);
+      for (const [a, b] of lt.fest || []) balken(a, b, `fill:${passt ? f.ok : f.fest};`, `${w.id}: belastbar bis ${aeKva(b)}`);
+      for (const [a, b] of lt.annahme || []) balken(a, b, `fill:url(#ncl-schraff-${passt ? 'ok' : 'fest'});stroke:${passt ? f.ok : f.fest};stroke-width:1;`, `${w.id}: Annahme/Orientierung bis ${aeKva(b)}`);
+      for (const [a, b] of lt.grenzbereich || []) balken(a, b, `fill:url(#ncl-schraff-fest);opacity:.45;`, `${w.id}: Grenzbereich bis ${aeKva(b)} – nur auf Anfrage`);
+      if (lt.kerbe > 0) {
+        const xk = x(lt.kerbe).toFixed(1);
+        s += `<line x1="${xk}" x2="${xk}" y1="${y + 4}" y2="${y + 30}" style="stroke:${f.einsp};stroke-width:2.5"><title>${escX(`Einspeisezusage ${aeKva(lt.kerbe)} (kW / cos φ)`)}</title></line>`;
+      }
+      const letzteAnnahme = (lt.annahme || []).slice(-1)[0];
+      if (w.id === 'C' && letzteAnnahme && (lt.fest || []).length) s += tx(x(letzteAnnahme[1]) + 5, y + 21, 'UW (n-1)', `fill:${f.muted};font-size:10.5px;`);
+    });
+
+    // Bedarf im Zieljahr
+    const sKva = ncMassgeblichKva(ziel, p);
+    if (sKva > 0) {
+      const xs = x(sKva);
+      s += `<line x1="${xs.toFixed(1)}" x2="${xs.toFixed(1)}" y1="40" y2="${AY}" style="stroke:${f.text};stroke-width:1.5;stroke-dasharray:4 3"/>`;
+      s += `<path d="M${(xs - 6).toFixed(1)} 38 L${(xs + 6).toFixed(1)} 38 L${xs.toFixed(1)} 46 Z" style="fill:${f.text}"/>`;
+      const rechts = xs > R - 200;
+      s += tx(xs + (rechts ? -9 : 9), 54, `Bedarf ${ziel.jahr}: ${aeKva(sKva)}`, `fill:${f.text};font-size:12px;font-weight:700;`, `text-anchor="${rechts ? 'end' : 'start'}"`);
+      const punkt = (kw, farbe, name) => kw > 0 && (s += `<circle cx="${x(kw / cos).toFixed(1)}" cy="${AY}" r="4.5" style="fill:${farbe}"><title>${escX(`${name} ${ziel.jahr}: ${kwText(kw)} (${aeKva(kw / cos)})`)}</title></circle>`);
+      punkt(ziel.bezugKw, f.bezug, 'Bezug');
+      punkt(ziel.einspKw, f.einsp, 'Einspeisung');
+    }
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:100%;height:auto;" role="img" aria-label="Leistungsleiter: Bedarf, Netzebenen und Wege A bis D"><defs>${defs}</defs>${s}</svg>`;
+  }
+
   // ── 44-netzanschluss-modul.js — Netzanschluss-Modul (Auswertung › Strom › Netzanschluss) ──
   //
-  // Eigene Seite in der Analyseansicht mit vier Schritten:
+  // Eigene Seite in der Analyseansicht. Immer sichtbar (Kopf): Datenstand, Zieljahr-Schieber und die
+  // Antwort in drei Kacheln (Bezug reicht bis …, Einspeisung reicht bis …, Empfehlung). Darunter drei Schritte:
   //   1. Bedarf    — Bezug je Jahr aus der Bedarfsprognose (wie NAP-Analyse und Gutachten 5.3),
-  //                  Einspeisung aus den Erzeuger-Assets je Jahr, gegen die NAP-Grenzen; erstes Jahr
-  //                  der Überschreitung je Richtung.
-  //   2. Ebene     — typische Anschlussebene nach Leistung (lib/anschlussebenen.js) mit Markern
-  //                  „heute" und „Zieljahr".
-  //   3. Optionen  — Wege A–D mit Ampel (lib/netzanschluss-check.js), darunter Umspannwerke,
+  //                  Einspeisung aus den Erzeuger-Assets je Jahr, gegen die NAP-Grenzen.
+  //   2. Wege      — Leistungsleiter (Bedarf, Netzebene und Wege A–D auf einer Achse, lib/netzanschluss-check),
+  //                  Tabelle der Wege, FNN-Bänder im Detail (lib/anschlussebenen.js), darunter Umspannwerke,
   //                  Karte und Direktanschluss (43-umspannwerke.js, rendert in #na-modul-uw).
-  //   4. Ergebnis  — Textbaustein mit Quellen und Leistungstabelle (CSV) für die Netzanschlussanfrage.
+  //   3. Ergebnis  — Textbaustein mit Quellen und Leistungstabelle (CSV) für die Netzanschlussanfrage.
   //
   // Stammdaten (Netzbetreiber, Vertrag, NAP-Grenzen) bleiben unter ⚡ Strom-Grundlagen (22); das
   // Modul liest sie nur. Gerechnet wird für die aktive Variante.
@@ -264328,11 +264473,14 @@ out center tags;`;
   const WRAP_ID = 'analyse-na-wrap';
   const SCHRITTE = [
     { id: 'bedarf', label: '1 · Bedarf' },
-    { id: 'ebene', label: '2 · Ebene' },
-    { id: 'optionen', label: '3 · Optionen' },
-    { id: 'ergebnis', label: '4 · Ergebnis' },
+    { id: 'wege', label: '2 · Wege' },
+    { id: 'ergebnis', label: '3 · Ergebnis' },
   ];
-  const FARBE = { bezug: '#4fc3f7', einsp: '#ef9a9a', band: '#66bb6a', ok: '#66bb6a', warn: '#ffb74d', bad: '#ef5350', na: 'var(--muted)' };
+  // Frühere Schritt-Kennungen (Absprünge, Projektdateien) landen im neuen Schritt
+  const SCHRITT_ALIAS = { ebene: 'wege', optionen: 'wege' };
+  const schrittId = id => SCHRITT_ALIAS[id] || id;
+  // Bezug/Einspeisung in Mitteltönen — lesbar auf hellem und dunklem Grund
+  const FARBE = { bezug: '#3d8fd1', einsp: '#d9577f', band: 'var(--ok,#66bb6a)', ok: 'var(--ok,#66bb6a)', warn: 'var(--warn,#ffb74d)', bad: 'var(--crit,#ef5350)', na: 'var(--muted)' };
   const STIL_KNOPF = 'font-size:12px;padding:3px 9px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--accent);cursor:pointer;';
 
   let _schritt = 'bedarf';
@@ -264348,7 +264496,11 @@ out center tags;`;
   function _themaFarben() {
     const cs = getComputedStyle(document.documentElement);
     const v = (n, f) => cs.getPropertyValue(n).trim() || f;
-    return { text: v('--text', '#e0e0e0'), muted: v('--muted', '#9e9e9e'), linie: v('--border', '#3a3a3a'), raute: v('--surface', '#1e1e1e') };
+    return {
+      text: v('--text', '#e0e0e0'), muted: v('--muted', '#9e9e9e'), linie: v('--border', '#3a3a3a'), raute: v('--surface', '#1e1e1e'),
+      ok: v('--ok', '#66bb6a'), okFlaeche: v('--ok-bg', 'rgba(102,187,106,.14)'), warn: v('--warn', '#ffb74d'), bad: v('--crit', '#ef5350'),
+      fest: v('--line-2', '#777'), flaeche: v('--surface-2', 'rgba(127,127,127,.08)'), band: v('--ok', '#66bb6a'),
+    };
   }
 
   /* ── Rechnung ───────────────────────────────────────────────────────────── */
@@ -264368,7 +264520,9 @@ out center tags;`;
     const uw = uwAuswahlBewertet();
     const p = uwParameter();
     const wege = ncWege({ ziel, grenzen, reihe, p, uw });
-    return { stand, assets, heute, zjAuto, zieljahr, reihe, z0, ziel, grenzen, uw, p, wege, variante: aktiverVariantenName?.() || '' };
+    const antwort = ncAntwort({ reihe, ziel, grenzen, wege, heute });
+    const erzeuger = assets.filter(a => bpAssetLeistung(a).genKW > 0).length;
+    return { stand, assets, heute, zjAuto, zieljahr, reihe, z0, ziel, grenzen, uw, p, wege, antwort, erzeuger, variante: aktiverVariantenName?.() || '' };
   }
 
   /* ── Seite in Auswertung › Strom ────────────────────────────────────────── */
@@ -264427,7 +264581,7 @@ out center tags;`;
 
   /** Öffnen, optional direkt in einem Schritt (Absprung aus den Strom-Grundlagen). */
   function naModulOeffnen(schritt) {
-    if (SCHRITTE.some(s => s.id === schritt)) _schritt = schritt;
+    if (SCHRITTE.some(s => s.id === schrittId(schritt))) _schritt = schrittId(schritt);
     _seiteZeigen();
     naModulRender();
   }
@@ -264449,19 +264603,33 @@ out center tags;`;
   }
 
   function naModulSchritt(id) {
+    id = schrittId(id);
     if (!SCHRITTE.some(s => s.id === id)) return;
     _schritt = id;
     naModulRender();
   }
 
+  /** Zieljahr setzen (leer = Endausbau). Das Endausbau-Jahr selbst gilt nicht als Handwert. */
   function naModulZieljahr(wert) {
     const j = parseInt(wert, 10);
-    _zieljahrHand = Number.isFinite(j) && j > 1990 && j < 2100 ? j : null;
+    _zieljahrHand = Number.isFinite(j) && j > 1990 && j < 2100 && j !== _letzte$1?.zjAuto ? j : null;
     naModulRender();
   }
 
-  /** Neu zeichnen — nur, wenn das Fenster offen ist (43 ruft das nach jeder Änderung). */
-  function naModulRender() {
+  /** Schieber: während des Ziehens alles außer dem Schieber selbst neu zeichnen, sonst verliert er den Griff. */
+  function naModulZieljahrSchieben(wert) {
+    const j = parseInt(wert, 10);
+    if (!Number.isFinite(j)) return;
+    _zieljahrHand = j !== _letzte$1?.zjAuto ? j : null;
+    naModulRender({ regler: false });
+    const anz = $('na-zj-anzeige');
+    if (anz && _letzte$1) anz.innerHTML = _zieljahrAnzeige(_letzte$1);
+  }
+
+  const TEILE = ['na-kopf', 'na-regler', 'na-antwort', 'na-reiter', 'na-inhalt'];
+
+  /** Neu zeichnen — nur, wenn die Seite sichtbar ist (43 und 22 rufen das nach jeder Änderung). */
+  function naModulRender(opt = {}) {
     if (!_offen$1()) return;
     const body = $('na-modul-body');
     if (!body) return;
@@ -264472,30 +264640,103 @@ out center tags;`;
       return;
     }
     _letzte$1 = d;
-    const inhalt = { bedarf: _bedarfHtml, ebene: _ebeneHtml, optionen: _optionenHtml, ergebnis: _ergebnisHtml }[_schritt](d);
-    body.innerHTML = _kopfHtml(d) + inhalt;
-    if (_schritt === 'optionen') uwRender();
+    if (TEILE.some(id => !$(id))) body.innerHTML = TEILE.map(id => `<div id="${id}"></div>`).join('');
+    $('na-kopf').innerHTML = _kopfHtml(d);
+    if (opt.regler !== false) $('na-regler').innerHTML = _reglerHtml(d);
+    $('na-antwort').innerHTML = _antwortHtml(d);
+    $('na-reiter').innerHTML = _reiterHtml();
+    $('na-inhalt').innerHTML = { bedarf: _bedarfHtml, wege: _wegeHtml, ergebnis: _ergebnisHtml }[_schritt](d);
+    if (_schritt === 'wege') uwRender();
   }
 
-  /* ── Kopf: Grundlage, Zieljahr, Schritte ────────────────────────────────── */
+  /* ── Kopf: Grundlage und Datenstand ─────────────────────────────────────── */
+  const STUFE_TOKEN = { ok: 'ok', warn: 'warn', bad: 'crit' };
+
+  function _chip(stufe, text, klick, titel) {
+    const t = STUFE_TOKEN[stufe];
+    const farbe = t ? `var(--${t})` : 'var(--muted)';
+    const stil = `display:inline-flex;align-items:center;gap:6px;font-size:12.5px;line-height:1.4;padding:2px 10px;border-radius:999px;font-family:inherit;
+    border:1px solid ${stufe === 'bad' ? farbe : 'var(--border)'};background:${stufe === 'bad' ? 'var(--crit-bg,rgba(239,83,80,.12))' : 'transparent'};
+    color:${stufe === 'bad' ? farbe : 'var(--text)'};${klick ? 'cursor:pointer;' : ''}`;
+    const punkt = `<span style="width:7px;height:7px;border-radius:50%;background:${farbe};flex:none;"></span>`;
+    return klick
+      ? `<button type="button" data-click="${klick}" title="${esc(titel || '')}" style="${stil}">${punkt}${text}</button>`
+      : `<span title="${esc(titel || '')}" style="${stil}">${punkt}${text}</span>`;
+  }
+
   function _kopfHtml(d) {
-    const g = d.grenzen;
-    const grenzText = g.bezugKw || g.einspKw
-      ? `<span style="color:${FARBE.bezug};">${g.bezugKw ? `${de(g.bezugKw)} kVA` : '—'}</span> / <span style="color:${FARBE.einsp};">${g.einspKw ? `${de(g.einspKw)} kW` : '—'}</span>`
-      : `<span style="color:${FARBE.warn};">nicht eingetragen</span>`;
-    const reiter = SCHRITTE.map(s => `<button data-click="naModulSchritt('${s.id}')" style="font-size:12.5px;padding:4px 12px;border-radius:4px;cursor:pointer;
-      border:1px solid ${s.id === _schritt ? '#00bcd4' : 'var(--border)'};background:${s.id === _schritt ? 'rgba(0,188,212,.18)' : 'transparent'};
-      color:${s.id === _schritt ? 'var(--text)' : 'var(--muted)'};font-weight:${s.id === _schritt ? 600 : 400};">${s.label}</button>`).join('');
-    return `<div style="display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted);margin:6px 0 8px;line-height:1.6;">
+    const { stand, grenzen: g } = d;
+    const chips = [];
+    chips.push(stand?.basisKw > 0
+      ? _chip('ok', `Lastgang ${esc(stand.quelle || stand.dataYear)} · ${kw(stand.basisKw)} Spitze`, 'sgMjOeffnen()', 'Gemessener Lastgang (⚡ Strom-Grundlagen)')
+      : _chip('bad', 'Lastgang fehlt – Bezug nur aus Maßnahmen', 'sgMjOeffnen()', 'Messjahr unter ⚡ Strom-Grundlagen laden'));
+    const grenzText = `${g.bezugKw ? `${de(g.bezugKw)} kVA` : '—'} / ${g.einspKw ? `${de(g.einspKw)} kW` : '—'}`;
+    chips.push(g.bezugKw && g.einspKw ? _chip('ok', `Vereinbart ${grenzText}`, 'sgNaOeffnen()', 'NAP-Grenzen bearbeiten')
+      : g.bezugKw || g.einspKw ? _chip('warn', `Vereinbart ${grenzText}`, 'sgNaOeffnen()', 'Eine Richtung fehlt — NAP-Grenzen ergänzen')
+      : _chip('bad', 'Vereinbarte Leistung fehlt', 'sgNaOeffnen()', 'NAP-Grenzen eintragen — ohne sie lässt sich keine Überschreitung bestimmen'));
+    chips.push(d.erzeuger
+      ? _chip('ok', `${d.erzeuger} Erzeuger · ${kw(d.z0.einspKw)} heute`, '', 'Erzeuger-Assets mit Nennleistung (PV, KWK, Wind, Batterie)')
+      : _chip('na', 'keine Erzeuger', '', 'Keine Erzeuger-Assets — Einspeisung 0'));
+    chips.push(d.uw ? _chip('ok', `${esc(d.uw.name || 'Umspannwerk')} gewählt`, "naModulSchritt('wege')", 'Umspannwerk für den Direktanschluss (Weg C)')
+      : _chip('na', 'kein Umspannwerk gewählt', "naModulSchritt('wege')", 'Unter „2 · Wege" Umspannwerke laden und eines wählen'));
+    return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;font-size:12px;color:var(--muted);margin:8px 0 6px;">
       <span>Variante <b style="color:var(--text);">${esc(d.variante || '—')}</b></span>
       <span>Messjahr <b style="color:var(--text);">${d.heute}</b></span>
-      <span>Zieljahr <input class="inp-field" type="number" min="${d.heute}" max="${d.heute + 30}" value="${d.zieljahr}" data-change="naModulZieljahr(this.value)"
-        style="width:62px;font-size:12px;padding:1px 4px;" title="Leer = Endausbau der Bedarfsprognose (${d.zjAuto})"/>
-        ${_zieljahrHand ? `<a href="#" data-click="event.preventDefault();naModulZieljahr('')" style="color:var(--accent);">↺ ${d.zjAuto}</a>` : '<span>(Endausbau)</span>'}</span>
-      <span>vereinbart ${grenzText} <a href="#" data-click="event.preventDefault();sgNaOeffnen()" style="color:var(--accent);">bearbeiten</a></span>
+      <button data-click="naModulRender()" title="Neu rechnen (z. B. nach Änderung der NAP-Grenzen oder Assets)" style="${STIL_KNOPF}margin-left:auto;">⟳ neu rechnen</button>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">${reiter}
-      <button data-click="naModulRender()" title="Neu rechnen (z. B. nach Änderung der NAP-Grenzen oder Assets)" style="${STIL_KNOPF}margin-left:auto;">⟳</button></div>`;
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">${chips.join('')}</div>`;
+  }
+
+  /* ── Zieljahr-Schieber ──────────────────────────────────────────────────── */
+  function _zieljahrAnzeige(d) {
+    return `<b style="color:var(--text);font-size:15px;">${d.zieljahr}</b> `
+      + (_zieljahrHand ? `<a href="#" data-click="event.preventDefault();naModulZieljahr('')" style="color:var(--accent);" title="Zurück auf den Endausbau der Bedarfsprognose">↺ Endausbau ${d.zjAuto}</a>` : '<span>(Endausbau)</span>');
+  }
+
+  function _reglerHtml(d) {
+    const max = Math.min(d.heute + 30, Math.max(d.zjAuto + 5, d.heute + 10));
+    const pct = max > d.heute ? (d.zjAuto - d.heute) / (max - d.heute) * 100 : 0;
+    return `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;font-size:12.5px;color:var(--muted);margin-bottom:10px;">
+      <label for="na-zieljahr">Zieljahr</label>
+      <div style="position:relative;padding-bottom:12px;">
+        <input id="na-zieljahr" type="range" min="${d.heute}" max="${max}" step="1" value="${d.zieljahr}" data-input="naModulZieljahrSchieben(this.value)"
+          style="width:100%;accent-color:var(--brand,#00bcd4);margin:0;" title="Bis wann soll der Anschluss reichen?"/>
+        <span style="position:absolute;left:0;bottom:-2px;font-size:11px;">${d.heute}</span>
+        <span style="position:absolute;left:${pct.toFixed(1)}%;transform:translateX(-50%);bottom:-2px;font-size:11px;white-space:nowrap;${pct > 85 ? 'display:none;' : ''}">▲ Endausbau</span>
+        <span style="position:absolute;right:0;bottom:-2px;font-size:11px;">${max}</span>
+      </div>
+      <span id="na-zj-anzeige" style="white-space:nowrap;min-width:150px;">${_zieljahrAnzeige(d)}</span>
+    </div>`;
+  }
+
+  /* ── Antwort: drei Kacheln ──────────────────────────────────────────────── */
+  function _kachel$1(art, a, { empfehlung = false, klick = '' } = {}) {
+    const t = STUFE_TOKEN[a.stufe];
+    const hg = empfehlung && a.weg ? 'var(--brand-weak,rgba(0,188,212,.12))' : t ? `var(--${t}-bg,rgba(127,127,127,.1))` : 'transparent';
+    const rand = empfehlung && a.weg ? 'var(--brand,#00bcd4)' : t ? `var(--${t})` : 'var(--border)';
+    const farbe = empfehlung && a.weg ? 'var(--brand,#00bcd4)' : t ? `var(--${t})` : 'var(--muted)';
+    return `<div ${klick ? `data-click="${klick}" role="button" tabindex="0"` : ''} style="background:${hg};border:1px solid ${rand};border-radius:6px;padding:9px 12px;
+      display:flex;flex-direction:column;gap:2px;min-width:0;${klick ? 'cursor:pointer;' : ''}">
+      <span style="font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:${farbe};">${art}</span>
+      <span style="font-size:17px;font-weight:700;line-height:1.25;color:var(--text);">${esc(a.satz)}</span>
+      <span style="font-size:12px;color:var(--muted);">${esc(a.unter)}</span></div>`;
+  }
+
+  function _antwortHtml(d) {
+    const a = d.antwort, zj = d.ziel.jahr;
+    const empf = a.empfehlung.weg && a.empfehlung.weg !== 'A' && _schritt !== 'wege' ? "naModulSchritt('wege')" : '';
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:14px;">
+      ${_kachel$1(`<span style="color:${FARBE.bezug};">●</span> Bezug`, a.bezug)}
+      ${_kachel$1(`<span style="color:${FARBE.einsp};">●</span> Einspeisung`, a.einsp)}
+      ${_kachel$1(`Empfehlung bis ${zj}`, a.empfehlung, { empfehlung: true, klick: empf })}
+    </div>`;
+  }
+
+  function _reiterHtml() {
+    return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:8px;">
+    ${SCHRITTE.map(s => `<button data-click="naModulSchritt('${s.id}')" style="font-size:12.5px;padding:4px 12px;border-radius:4px;cursor:pointer;
+      border:1px solid ${s.id === _schritt ? 'var(--brand,#00bcd4)' : 'var(--border)'};background:${s.id === _schritt ? 'var(--brand-weak,rgba(0,188,212,.18))' : 'transparent'};
+      color:${s.id === _schritt ? 'var(--text)' : 'var(--muted)'};font-weight:${s.id === _schritt ? 600 : 400};">${s.label}</button>`).join('')}</div>`;
   }
 
   /* ── 1 · Bedarf ─────────────────────────────────────────────────────────── */
@@ -264513,9 +264754,7 @@ out center tags;`;
       <td style="padding:4px 6px;text-align:right;">${kw(ziel[feld])}</td>
       <td style="padding:4px 6px;text-align:right;">${g ? `${de(g)} ${einheit}` : '—'}</td>
       <td style="padding:4px 6px;">${ueber(u, g)}</td></tr>`;
-    const hinweise = [];
-    if (!(stand?.basisKw > 0)) hinweise.push(`⚠ Kein gemessener Lastgang: Der Bezug enthält nur die geplanten Maßnahmen. Messjahr unter ⚡ Strom-Grundlagen laden.`);
-    if (!grenzen.bezugKw && !grenzen.einspKw) hinweise.push(`⚠ NAP-Grenzen fehlen — ohne vereinbarte Leistung lässt sich keine Überschreitung bestimmen. <a href="#" data-click="event.preventDefault();sgNaOeffnen()" style="color:var(--accent);">eintragen</a>`);
+    // Fehlende Daten (Lastgang, NAP-Grenzen) stehen als rote Chips im Kopf
     const abgewaehlt = (stand?.massnahmen || []).filter(m => !m.checked).length;
     const leer = !reihe.some(r => r.bezugKw > 0 || r.einspKw > 0);
     const diagramm = leer
@@ -264529,7 +264768,6 @@ out center tags;`;
         <th style="padding:4px 6px;text-align:right;">vereinbart</th><th style="padding:4px 6px;">Überschreitung</th></tr></thead>
       <tbody>${zeile('Bezug', FARBE.bezug, 'bezugKw', grenzen.bezugKw, 'kVA', uB)}${zeile('Einspeisung', FARBE.einsp, 'einspKw', grenzen.einspKw, 'kW', uE)}</tbody>
     </table>
-    ${hinweise.map(h => `<div style="font-size:12px;color:${FARBE.warn};margin-top:6px;">${h}</div>`).join('')}
     <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;">
       Bezug: Bedarfsprognose wie Gutachten 5.3 — gemessene Höchstlast ${stand?.basisKw > 0 ? `${kw(stand.basisKw)} (${esc(stand.quelle || stand.dataYear)})` : '—'} plus Neubau/Rückbau,
       Gleichzeitigkeitsfaktor ${de(stand?.gzf ?? 1, 2)}${abgewaehlt ? `, ${abgewaehlt} Maßnahme(n) abgewählt` : ''}.
@@ -264538,7 +264776,34 @@ out center tags;`;
       Vergleich wie im Gutachten: kW gegen vereinbarte kVA.</div>`;
   }
 
-  /* ── 2 · Ebene ──────────────────────────────────────────────────────────── */
+  /* ── 2 · Wege ───────────────────────────────────────────────────────────── */
+  function _leiterHtml(d) {
+    const sw = stil => `<span style="display:inline-block;width:24px;height:10px;border-radius:2px;vertical-align:middle;margin-right:4px;${stil}"></span>`;
+    const svg = ncLeiterSvg({ ziel: d.ziel, p: d.p, wege: d.wege, farben: { ..._themaFarben(), bezug: FARBE.bezug, einsp: FARBE.einsp } });
+    return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px;">
+      <b style="font-size:13.5px;">Welcher Weg trägt den Bedarf ${d.ziel.jahr}?</b>
+      <span style="display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);">
+        <span>${sw('background:var(--ok,#66bb6a);')}belastbar (Vertrag, eigenes Kabel)</span>
+        <span>${sw('background:repeating-linear-gradient(135deg,var(--ok,#66bb6a) 0 2px,transparent 2px 6px);border:1px solid var(--ok,#66bb6a);')}Annahme / Orientierung</span>
+        <span><span style="color:${FARBE.bezug};">●</span> Bezug <span style="color:${FARBE.einsp};">●</span> Einspeisung <span style="color:${FARBE.einsp};">|</span> Einspeisezusage</span>
+      </span></div>
+    <div style="overflow-x:auto;"><div style="min-width:620px;">${svg}</div></div>
+    <div style="font-size:11px;color:var(--muted);margin:2px 0 12px;line-height:1.5;">
+      Grün hinterlegt = Weg trägt den Bedarf im Zieljahr. Maßgeblich ist die größere der beiden Leistungen, umgerechnet mit cos φ ${de(d.p.cosPhi, 2)} in kVA.
+      Der Streifen oben fasst die FNN-Bänder je Netzebene zusammen (Mauszeiger darauf zeigt die Einzelbänder).</div>`;
+  }
+
+  function _wegeHtml(d) {
+    return _leiterHtml(d) + _optionenHtml(d) + _ebeneDetailHtml(d)
+      + '<div id="na-modul-uw" style="border-top:1px solid var(--border);padding-top:6px;"></div>';
+  }
+
+  /** FNN-Bänder im Detail — früher eigener Schritt „Ebene", jetzt aufklappbar unter den Wegen. */
+  function _ebeneDetailHtml(d) {
+    return `<details style="margin:0 0 10px;"><summary style="font-size:12px;color:var(--muted);cursor:pointer;">Anschlussebenen im Detail (FNN-Bänder und Beispiel-TAB)</summary>
+    <div style="margin-top:6px;">${_ebeneHtml(d)}</div></details>`;
+  }
+
   function _ebeneHtml(d) {
     const { z0, ziel } = d;
     const marker = [
@@ -264565,7 +264830,7 @@ out center tags;`;
       Quelle: ${esc(AE_QUELLE)}.</div>`;
   }
 
-  /* ── 3 · Optionen ───────────────────────────────────────────────────────── */
+  /** Tabelle der Wege A–D mit Umspannwerk-Abschnitt (Teil von „2 · Wege"). */
   function _optionenHtml(d) {
     const pill = a => `<span style="display:inline-block;font-size:12px;line-height:1.3;padding:1px 8px;border-radius:10px;border:1px solid ${FARBE[a.stufe]};color:${FARBE[a.stufe]};">${esc(a.text)}</span>`;
     const zeilen = d.wege.map(w => `<tr style="border-bottom:1px solid var(--border);">
@@ -264584,11 +264849,10 @@ out center tags;`;
         <th style="padding:4px 6px;">Kosten</th><th style="padding:4px 6px;">Ebene</th><th style="padding:4px 6px;">Bewertung</th></tr></thead>
       <tbody>${zeilen}</tbody></table></div>
     <div style="font-size:11px;color:var(--muted);margin:4px 0 10px;">Kosten des Direktanschlusses als Spanne −20 % / +40 % (eigene Richtwerte, unter „Annahmen" änderbar).
-      Ob Netz und Umspannwerk die Leistung aufnehmen, klärt nur die Netzanschlussanfrage.</div>
-    <div id="na-modul-uw" style="border-top:1px solid var(--border);padding-top:6px;"></div>`;
+      Ob Netz und Umspannwerk die Leistung aufnehmen, klärt nur die Netzanschlussanfrage.</div>`;
   }
 
-  /* ── 4 · Ergebnis ───────────────────────────────────────────────────────── */
+  /* ── 3 · Ergebnis ───────────────────────────────────────────────────────── */
   function _bausteinText(d) {
     const uw = d.uw ? { ...d.uw } : null;
     return ncBaustein({ stand: d.stand, ziel: d.ziel, grenzen: d.grenzen, reihe: d.reihe, uw, osmStand: uwOsmStand() });
@@ -264654,6 +264918,7 @@ out center tags;`;
     naModulSchritt: naModulSchritt,
     naModulToggle: naModulToggle,
     naModulZieljahr: naModulZieljahr,
+    naModulZieljahrSchieben: naModulZieljahrSchieben,
     naShowSection: naShowSection,
     naZurueckZurSeite: naZurueckZurSeite
   });
