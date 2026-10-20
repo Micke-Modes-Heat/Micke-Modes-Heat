@@ -25,6 +25,18 @@ describe('ekNetzPositionen', () => {
     expect(r.abweichend).toEqual([{ label: 'T1', plan: { investEur: 52000, jahr: 2028 }, vorschlag: { label: vorschlagTrafo.label, investEur: 38000, jahr: 2029 } }]);
   });
 
+  it('Neubau des Betriebsmittels deckt seinen Engpass nicht ab: Kosten des Neubaus plus Vorschlag', () => {
+    const r = ekNetzPositionen({
+      engpaesse: [{ id: 't1', label: 'T1', v: vorschlagTrafo }],
+      geplant: [{ objId: 't1', objLabel: 'T1', art: 'trafo', m: { id: 'm1', titel: 'Neubau/Bau', typ: 'Bau', kosten: 90000, jahr: 2029, status: 'geplant' } }],
+      heute: 2026,
+    });
+    expect(r.positionen.map(p => p.quelle)).toEqual(['plan', 'vorschlag']);
+    expect(r.positionen[0]).toMatchObject({ typ: 'Bau', investEur: 90000 });
+    expect(r.vorschlaege).toEqual(['T1']);
+    expect(r.abweichend).toEqual([]);
+  });
+
   it('meldet keine Abweichung, wenn die übernommene Maßnahme dem Vorschlag entspricht', () => {
     const r = ekNetzPositionen({
       engpaesse: [{ id: 'k1', label: 'K1', v: vorschlagKabel }],

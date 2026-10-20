@@ -13,8 +13,9 @@ import {
   ggFigurenKatalog, ggFigurTeilArten, ggRenderFigurFuerDokument, ggCopyDokumentTeil, ggCopyForWord, ggFitLabels,
   ggMountEinzelansicht, ggShowSection, ggSelectFigur, ggFigurEinstellungenCapture, ggFigurEinstellungenRestore,
   ggFigurWordDaten, ggSvgToPngBlob, ggTrafostationenIstListe, ggFigurSichtbar, ggFigurAusblendGrund, ggFrageKontext, ggPlausiPruefung,
-  ggFigurInVertiefung, ggFigurSichtbarOhneFassung, GG_VERTIEFUNG_TITEL,
+  ggFigurInVertiefung, ggFigurSichtbarOhneFassung, GG_VERTIEFUNG_TITEL, ggRechenstand,
 } from './17-gutachten-grafik.js';
+import { GR_STATUS, grWarnungen } from './lib/gutachten-rechenstand.js';
 import { GF_FRAGEN, gfFragenZuKapitel, gfOptionen, gfStandard } from './lib/gutachten-fragen.js';
 import {
   GUTACHTEN_DOK_VERSION, GUTACHTEN_MAX_EBENE, GUTACHTEN_STANDARD_GLIEDERUNG, gdNormalisieren, gdKapitelNummern, gdStandardDokument, gdMitStandardAbgleichen, gdLeeresDokument,
@@ -229,6 +230,7 @@ function zeigeModus() {
 /* ── Plausibilitätsprüfung (C3): nur eine kleine Zahl am Export, die Liste erst auf Klick ── */
 function plausiPunkte() {
   const p = [...ggPlausiPruefung()];
+  try { p.push(...grWarnungen(ggRechenstand())); } catch (e) { void e; }
   if (gdGliederungVersion(_gut.dok) < 2) p.unshift({ stufe: 'warn', text: 'Dokument folgt der alten Gliederung – rechts „Auf neue Gliederung umstellen“.' });
   const offen = [...offeneProKapitel().values()].reduce((a, n) => a + n, 0);
   if (offen) p.push({ stufe: 'info', text: `${offen} offene Platzhalter im Text (gelb) – anklicken zum Ausfüllen.` });
@@ -587,6 +589,25 @@ export function gutWaehle(art, id, scrollen = false) {
 /* ══════════════════════════════════════════════════════════════════════════
  * Eigenschaften (rechts)
  * ═══════════════════════════════════════════════════════════════════════ */
+/** „Stand der Berechnungen“: je Rechnung von Kapitel 5 Stand und Status, bei Abweichung der Grund und wo neu zu rechnen ist. */
+function rechenstandKasten() {
+  let zeilen = [];
+  try { zeilen = ggRechenstand(); } catch (e) { void e; }
+  if (!zeilen.length) return '';
+  const farbe = { ok: GUT_AKZENT, hinweis: 'var(--muted)', veraltet: GUT_WARN, fehlt: GUT_WARN };
+  const zeichen = { ok: '✓', hinweis: 'ℹ', veraltet: '⚠', fehlt: '○' };
+  return ueberschrift('Stand der Berechnungen')
+    + zeilen.map(z => `<div style="margin-bottom:7px;font-size:11px;line-height:1.45;">
+        <div style="display:flex;gap:6px;align-items:baseline;">
+          <span style="color:${farbe[z.status]};width:12px;flex-shrink:0;" title="${esc(GR_STATUS[z.status])}">${zeichen[z.status]}</span>
+          <span style="color:var(--text);font-weight:600;">${esc(z.titel)}</span>
+          <span style="margin-left:auto;color:var(--muted);font-size:10px;white-space:nowrap;">Kap. ${esc(z.kapitel)}</span></div>
+        <div style="padding-left:18px;color:var(--muted);">${esc(z.stand)}</div>
+        ${z.hinweise.map(h => `<div style="padding-left:18px;color:${z.status === 'veraltet' || z.status === 'fehlt' ? GUT_WARN : 'var(--muted)'};">${esc(h)}</div>`).join('')}
+        ${z.status !== 'ok' ? `<div style="padding-left:18px;color:var(--muted);opacity:.75;font-size:10px;">→ ${esc(z.wo)}</div>` : ''}
+      </div>`).join('');
+}
+
 function dokumentPanel() {
   const dok = _gut.dok;
   let nAbb = 0, nTab = 0, nText = 0;
@@ -610,6 +631,7 @@ function dokumentPanel() {
         ? `<div style="margin-top:10px;font-size:11px;color:${GUT_WARN};line-height:1.45;">⚠ ${offen} offene Platzhalter bzw. fehlende Kapiteltitel — in der Gliederung gelb gezählt.</div>`
         : `<div style="margin-top:10px;font-size:11px;color:${GUT_AKZENT};">✓ Keine offenen Platzhalter.</div>`)
     + hinweis('Kapitel oder Block links in der Gliederung oder direkt auf der Seite anklicken, um ihn zu bearbeiten.')
+    + rechenstandKasten()
     + (fehlend.length
         ? ueberschrift('Noch nicht im Dokument') + fehlend.map(f => `<div style="font-size:11px;color:var(--muted);margin-bottom:3px;line-height:1.4;">• ${esc(f.titel)}
             <span style="opacity:.65;">(${esc(f.kapitel || 'ohne Kapitel')})</span></div>`).join('')
