@@ -1,0 +1,339 @@
+<title>Energieplanung Entwurf</title>
+<style>
+/* Layout: Kopfzeile, schmale Navigationsschiene, Arbeitspanel links, Karte als Hauptfläche, Statusleiste unten */
+:root{
+  --bg:#F3F5F2; --surface:#FFFFFF; --surface-2:#F8F9F7; --line:#E2E4DF; --line-strong:#C9CDC6;
+  --text:#1B1F1C; --muted:#5A5F5A; --faint:#8B918A;
+  --brand:#266426; --brand-2:#3F9C3F; --tint:#EEF5EC; --on-brand:#FFFFFF;
+  --ok:#2E7D32; --warn:#B7791F; --crit:#C0392B; --info:#2F6F9F;
+  --ok-bg:#E6F2E6; --warn-bg:#FBF1DC; --crit-bg:#F9E4E1;
+  --map-ground:#E9EDE6; --map-block:#D5DAD0; --map-road:#FFFFFF; --map-water:#CFE0E8;
+  --font:Tahoma,Verdana,"Segoe UI",sans-serif; --mono:Consolas,"Cascadia Mono",ui-monospace,monospace;
+  --r:4px; --r-lg:8px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141815; --surface:#1B201C; --surface-2:#202621; --line:#2C332D; --line-strong:#3A433B;
+  --text:#E6EAE5; --muted:#A3AAA2; --faint:#7C847B;
+  --brand:#5DB35D; --brand-2:#7CC87C; --tint:#1F2D20; --on-brand:#0E1A0F;
+  --ok:#6CC070; --warn:#E0B04F; --crit:#E8786A; --info:#6AA8D6;
+  --ok-bg:#1E2E20; --warn-bg:#33291A; --crit-bg:#3A2321;
+  --map-ground:#1F2520; --map-block:#2B332C; --map-road:#323A33; --map-water:#1F3038;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141815; --surface:#1B201C; --surface-2:#202621; --line:#2C332D; --line-strong:#3A433B;
+  --text:#E6EAE5; --muted:#A3AAA2; --faint:#7C847B;
+  --brand:#5DB35D; --brand-2:#7CC87C; --tint:#1F2D20; --on-brand:#0E1A0F;
+  --ok:#6CC070; --warn:#E0B04F; --crit:#E8786A; --info:#6AA8D6;
+  --ok-bg:#1E2E20; --warn-bg:#33291A; --crit-bg:#3A2321;
+  --map-ground:#1F2520; --map-block:#2B332C; --map-road:#323A33; --map-water:#1F3038;
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 var(--font)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--brand-2);outline-offset:1px}
+.num{font-variant-numeric:tabular-nums}
+
+.app{display:grid;grid-template-rows:auto 1fr auto;height:100%;min-height:640px}
+
+/* Kopfzeile */
+.top{display:flex;align-items:center;gap:20px;padding:0 16px;height:48px;background:var(--surface);border-bottom:1px solid var(--line)}
+.mark{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.02em}
+.mark b{display:grid;place-items:center;width:28px;height:28px;background:var(--brand);color:var(--on-brand);border-radius:var(--r);font-size:11px;letter-spacing:0}
+.mark span small{display:block;font-weight:400;color:var(--muted);font-size:11px;letter-spacing:0;line-height:1.1}
+.proj{display:flex;align-items:center;gap:8px;padding-left:20px;border-left:1px solid var(--line);min-width:0}
+.proj .name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.proj .meta{color:var(--muted);white-space:nowrap}
+.sp{flex:1}
+.variant{display:flex;align-items:center;gap:8px;color:var(--muted)}
+.variant select{background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r);padding:5px 8px;min-width:190px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--line-strong);border-radius:var(--r);background:var(--surface);cursor:pointer}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:var(--on-brand);font-weight:700}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.ghost:hover{background:var(--surface-2);color:var(--text)}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* Hauptbereich */
+.main{display:grid;grid-template-columns:64px 340px 1fr;min-height:0}
+.rail{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:8px 0}
+.rail button{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0;color:var(--muted);font-size:11px;position:relative}
+.rail button:hover{color:var(--text);background:var(--surface-2)}
+.rail button[aria-current="true"]{color:var(--brand);font-weight:700;background:var(--tint)}
+.rail button[aria-current="true"]::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;background:var(--brand);border-radius:0 2px 2px 0}
+.rail .svg-i{width:20px;height:20px}
+.rail .gap{flex:1}
+
+.panel{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.panel-head{padding:14px 16px 0}
+.panel-head h1{margin:0;font-size:16px;font-weight:700}
+.panel-head p{margin:2px 0 0;color:var(--muted)}
+.subtabs{display:flex;gap:2px;padding:0 16px;margin-top:12px;border-bottom:1px solid var(--line)}
+.subtabs button{all:unset;cursor:pointer;padding:8px 10px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.subtabs button:hover{color:var(--text)}
+.subtabs button[aria-selected="true"]{color:var(--brand);font-weight:700;border-bottom-color:var(--brand)}
+.panel-body{overflow:auto;padding:16px;display:flex;flex-direction:column;gap:20px;min-height:0}
+.sec h2{margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.sec h2 a{font-weight:400;letter-spacing:0;text-transform:none;color:var(--brand);cursor:pointer}
+
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r)}
+.kpi{background:var(--surface);padding:10px 12px}
+.kpi small{display:block;color:var(--muted);font-size:11px}
+.kpi strong{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.kpi strong i{font-style:normal;font-size:12px;font-weight:400;color:var(--muted);margin-left:3px}
+
+.field{display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.field:last-child{border-bottom:0}
+.field label{color:var(--text)}
+.field label small{display:block;color:var(--faint);font-size:11px}
+.field .in{display:flex;align-items:center;border:1px solid var(--line-strong);border-radius:var(--r);background:var(--surface);overflow:hidden}
+.field .in:focus-within{border-color:var(--brand-2);box-shadow:0 0 0 2px var(--tint)}
+.field input{all:unset;box-sizing:border-box;flex:1;min-width:0;padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums}
+.field .in span{padding:0 8px;color:var(--muted);background:var(--surface-2);align-self:stretch;display:grid;place-items:center;border-left:1px solid var(--line);font-size:11px}
+
+.list{border:1px solid var(--line);border-radius:var(--r)}
+.row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.row:last-child{border-bottom:0}
+.row:hover{background:var(--surface-2)}
+.row.sel{background:var(--tint)}
+.row b{font-weight:700}
+.row .sub{color:var(--muted);font-size:12px}
+.row .bar{grid-column:1/-1;height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:4px}
+.row .bar i{display:block;height:100%}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;align-self:start}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}
+.pill.warn{background:var(--warn-bg);color:var(--warn)}
+.pill.crit{background:var(--crit-bg);color:var(--crit)}
+.fill-ok{background:var(--ok)}.fill-warn{background:var(--warn)}.fill-crit{background:var(--crit)}
+
+.panel-foot{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:var(--surface-2)}
+.panel-foot .btn{flex:1;justify-content:center}
+
+/* Karte */
+.stage{position:relative;min-width:0;min-height:0;background:var(--map-ground);overflow:hidden}
+.stage>svg.map{position:absolute;inset:0;width:100%;height:100%}
+.tools{position:absolute;top:12px;left:12px;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:0 1px 3px rgba(0,0,0,.08);overflow:hidden}
+.tools button{all:unset;cursor:pointer;display:grid;place-items:center;width:36px;height:36px;color:var(--muted)}
+.tools button+button{border-top:1px solid var(--line)}
+.tools button:hover{background:var(--surface-2);color:var(--text)}
+.tools button[aria-pressed="true"]{background:var(--brand);color:var(--on-brand)}
+.seg{position:absolute;top:12px;left:60px;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.seg button{all:unset;cursor:pointer;padding:8px 12px;color:var(--muted)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button:hover{color:var(--text)}
+.seg button[aria-pressed="true"]{background:var(--tint);color:var(--brand);font-weight:700}
+.legend{position:absolute;left:12px;bottom:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:10px 12px;min-width:200px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.legend h3{margin:0 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.legend .ramp{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--ok),var(--warn) 65%,var(--crit))}
+.legend .ticks{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:3px;font-variant-numeric:tabular-nums}
+.card{position:absolute;top:12px;right:12px;width:290px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.card header{display:flex;justify-content:space-between;align-items:flex-start;padding:12px 14px;border-bottom:1px solid var(--line)}
+.card header h3{margin:0;font-size:14px}
+.card header small{color:var(--muted)}
+.card dl{margin:0;padding:6px 14px 12px;display:grid;grid-template-columns:1fr auto;gap:0}
+.card dt,.card dd{margin:0;padding:6px 0;border-bottom:1px solid var(--line)}
+.card dt{color:var(--muted)}
+.card dd{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.card dl>:nth-last-child(-n+2){border-bottom:0}
+.spark{padding:0 14px 14px}
+.spark small{color:var(--muted);display:block;margin-bottom:4px}
+
+/* Statusleiste */
+.status{display:flex;gap:18px;align-items:center;padding:0 16px;height:28px;background:var(--surface);border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+.status .ok{color:var(--ok);font-weight:700}
+.status span.num{color:var(--text)}
+
+@media (max-width:1100px){.main{grid-template-columns:64px 300px 1fr}.card{display:none}}
+@media (prefers-reduced-motion:no-preference){.btn,.row,.rail button{transition:background .12s,color .12s}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-gebiet" viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+    <symbol id="i-netz" viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.2"/><circle cx="19" cy="6" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M7 6h10M6.2 7.8l4.6 8.4M17.8 7.8l-4.6 8.4"/></symbol>
+    <symbol id="i-erzeuger" viewBox="0 0 24 24"><path d="M12 3c3 3.5 5 5.8 5 9a5 5 0 0 1-10 0c0-1.7.8-3 2-4.2.2 1.4.9 2.2 1.800 2.600C10.500 8 11 5.500 12 3z"/></symbol>
+    <symbol id="i-elektro" viewBox="0 0 24 24"><path d="M13 3 5 13.500h6L10 21l8-10.500h-6z"/></symbol>
+    <symbol id="i-ergebnis" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+    <symbol id="i-gutachten" viewBox="0 0 24 24"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4M10 12h6M10 16h6"/></symbol>
+    <symbol id="i-einst" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.600 5.600l2.100 2.100M16.300 16.300l2.100 2.100M5.600 18.400l2.100-2.100M16.300 7.700l2.100-2.100"/></symbol>
+    <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.500L10.500 19z"/></symbol>
+    <symbol id="i-ruler" viewBox="0 0 24 24"><path d="M3 17 17 3l4 4L7 21z"/><path d="M8 12l2 2M11 9l2 2M14 6l2 2"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.500v15l12-7.500z"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.500A8 8 0 0 1 9.500 4 8 8 0 1 0 20 14.500z"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <header class="top">
+    <div class="mark"><b>LK</b><span>Energieplanung<small>Landeskompetenzzentrum Energie</small></span></div>
+    <div class="proj"><span class="name">Liegenschaft Nord, Standort 3</span><span class="meta num">· Stand 16.10.2026</span></div>
+    <div class="sp"></div>
+    <div class="variant"><label for="var">Variante</label>
+      <select id="var"><option>V3 Netzanschluss erhöhen, PV 2,4 MWp</option><option>V1 Bestand</option><option>V2 Bestandsnetz mit PV</option></select></div>
+    <button class="btn ghost" id="theme" aria-label="Darstellung wechseln"><svg class="i"><use href="#i-moon"/></svg></button>
+    <button class="btn"><svg class="i"><use href="#i-down"/></svg>Projekt speichern</button>
+    <button class="btn primary"><svg class="i"><use href="#i-play"/></svg>Berechnen</button>
+  </header>
+
+  <div class="main">
+    <nav class="rail" aria-label="Hauptnavigation">
+      <button><svg class="i svg-i"><use href="#i-gebiet"/></svg>Gebiet</button>
+      <button><svg class="i svg-i"><use href="#i-netz"/></svg>Netz</button>
+      <button><svg class="i svg-i"><use href="#i-erzeuger"/></svg>Erzeuger</button>
+      <button aria-current="true"><svg class="i svg-i"><use href="#i-elektro"/></svg>Elektro</button>
+      <button><svg class="i svg-i"><use href="#i-ergebnis"/></svg>Ergebnis</button>
+      <button><svg class="i svg-i"><use href="#i-gutachten"/></svg>Gutachten</button>
+      <span class="gap"></span>
+      <button><svg class="i svg-i"><use href="#i-einst"/></svg>Einstellungen</button>
+    </nav>
+
+    <section class="panel" aria-label="Elektro">
+      <div class="panel-head"><h1>Elektro</h1><p>Stromnetz, Last und Anschlüsse im Plangebiet</p></div>
+      <div class="subtabs" role="tablist">
+        <button role="tab" aria-selected="true">Übersicht</button>
+        <button role="tab" aria-selected="false">Last</button>
+        <button role="tab" aria-selected="false">Netz</button>
+        <button role="tab" aria-selected="false">Engpässe</button>
+      </div>
+      <div class="panel-body">
+        <div class="sec">
+          <h2>Kennwerte Zieljahr 2040</h2>
+          <div class="kpis">
+            <div class="kpi"><small>Spitzenlast</small><strong>3,84<i>MW</i></strong></div>
+            <div class="kpi"><small>Jahresbezug</small><strong>11,2<i>GWh</i></strong></div>
+            <div class="kpi"><small>PV-Leistung</small><strong>2,40<i>MWp</i></strong></div>
+            <div class="kpi"><small>Engpässe</small><strong>3<i>von 14 Stationen</i></strong></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>Trafostationen <a>Alle anzeigen</a></h2>
+          <div class="list">
+            <div class="row sel"><b>TS 02 Werkstatt</b><span class="pill crit">112 %</span><span class="sub num">630 kVA · Bj. 1988</span><span class="sub num">705 kVA Last</span><div class="bar"><i class="fill-crit" style="width:100%"></i></div></div>
+            <div class="row"><b>TS 05 Kaserne West</b><span class="pill warn">86 %</span><span class="sub num">1000 kVA · Bj. 2004</span><span class="sub num">860 kVA Last</span><div class="bar"><i class="fill-warn" style="width:86%"></i></div></div>
+            <div class="row"><b>TS 01 Haupteinspeisung</b><span class="pill ok">54 %</span><span class="sub num">2 × 1250 kVA · Bj. 2016</span><span class="sub num">1350 kVA Last</span><div class="bar"><i class="fill-ok" style="width:54%"></i></div></div>
+            <div class="row"><b>TS 07 Lager</b><span class="pill ok">31 %</span><span class="sub num">400 kVA · Bj. 2011</span><span class="sub num">124 kVA Last</span><div class="bar"><i class="fill-ok" style="width:31%"></i></div></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>Annahmen</h2>
+          <div class="field"><label for="a1">Gleichzeitigkeitsfaktor<small>Gebäude → Station</small></label><div class="in"><input id="a1" value="0,70"><span>–</span></div></div>
+          <div class="field"><label for="a2">Anschlussleistung Netz</label><div class="in"><input id="a2" value="4.200"><span>kVA</span></div></div>
+          <div class="field"><label for="a3">Reserve Netzbetreiber</label><div class="in"><input id="a3" value="15"><span>%</span></div></div>
+          <div class="field"><label for="a4">Zieljahr</label><div class="in"><input id="a4" value="2040"><span>Jahr</span></div></div>
+        </div>
+      </div>
+      <div class="panel-foot">
+        <button class="btn"><svg class="i"><use href="#i-plus"/></svg>Station anlegen</button>
+        <button class="btn">Engpässe prüfen</button>
+      </div>
+    </section>
+
+    <section class="stage" aria-label="Karte">
+      <svg class="map" viewBox="0 0 900 640" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Lageplan mit Stromnetz und Trafostationen">
+        <rect width="900" height="640" fill="var(--map-ground)"/>
+        <path d="M0 520 C150 480 260 560 420 540 S700 590 900 540 V640 H0z" fill="var(--map-water)"/>
+        <g stroke="var(--map-road)" stroke-width="14" fill="none" stroke-linecap="round">
+          <path d="M0 250H900"/><path d="M320 0V640"/><path d="M620 0V470"/><path d="M0 410H620"/>
+        </g>
+        <g fill="var(--map-block)" stroke="var(--line-strong)" stroke-width="1">
+          <rect x="60" y="80" width="110" height="64"/><rect x="190" y="90" width="90" height="120"/>
+          <rect x="360" y="70" width="140" height="70"/><rect x="520" y="90" width="70" height="110"/>
+          <rect x="660" y="80" width="150" height="90"/><rect x="60" y="290" width="120" height="80"/>
+          <rect x="210" y="300" width="80" height="80"/><rect x="360" y="290" width="100" height="90"/>
+          <rect x="490" y="300" width="100" height="70"/><rect x="660" y="300" width="160" height="110"/>
+          <rect x="70" y="440" width="100" height="50"/><rect x="360" y="440" width="140" height="50"/>
+        </g>
+        <!-- Kabel, nach Auslastung gefärbt -->
+        <g fill="none" stroke-width="3.500" stroke-linecap="round">
+          <path d="M440 210 H320 V270 H125" stroke="var(--crit)"/>
+          <path d="M440 210 H620 V330" stroke="var(--warn)"/>
+          <path d="M440 210 V105" stroke="var(--ok)"/>
+          <path d="M620 330 H740" stroke="var(--ok)"/>
+          <path d="M320 270 V415 H415" stroke="var(--ok)"/>
+          <path d="M440 210 H235" stroke="var(--ok)"/>
+        </g>
+        <!-- Stationen -->
+        <g stroke-width="2" stroke="var(--surface)">
+          <rect x="430" y="200" width="20" height="20" rx="3" fill="var(--ok)"/>
+          <rect x="115" y="260" width="20" height="20" rx="3" fill="var(--crit)"/>
+          <rect x="610" y="320" width="20" height="20" rx="3" fill="var(--warn)"/>
+          <rect x="730" y="320" width="20" height="20" rx="3" fill="var(--ok)"/>
+          <rect x="405" y="405" width="20" height="20" rx="3" fill="var(--ok)"/>
+        </g>
+        <!-- Auswahl -->
+        <circle cx="125" cy="270" r="20" fill="none" stroke="var(--brand)" stroke-width="2" stroke-dasharray="4 3"/>
+        <g font-family="Tahoma,Verdana,sans-serif" font-size="11" fill="var(--text)" stroke="var(--map-ground)" stroke-width="3" paint-order="stroke">
+          <text x="148" y="262" font-weight="700">TS 02 Werkstatt</text>
+          <text x="458" y="196" font-weight="700">TS 01 Haupteinspeisung</text>
+          <text x="636" y="316" font-weight="700">TS 05 Kaserne West</text>
+          <text x="722" y="354">TS 06</text>
+          <text x="432" y="436">TS 07 Lager</text>
+        </g>
+      </svg>
+
+      <div class="tools" role="toolbar" aria-label="Werkzeuge">
+        <button aria-pressed="true" aria-label="Auswählen"><svg class="i"><use href="#i-pointer"/></svg></button>
+        <button aria-pressed="false" aria-label="Messen"><svg class="i"><use href="#i-ruler"/></svg></button>
+        <button aria-pressed="false" aria-label="Ebenen"><svg class="i"><use href="#i-layers"/></svg></button>
+      </div>
+      <div class="seg" role="group" aria-label="Kartenfärbung">
+        <button aria-pressed="true">Auslastung</button>
+        <button aria-pressed="false">Engpassjahr</button>
+        <button aria-pressed="false">Spannung</button>
+      </div>
+
+      <div class="legend"><h3>Auslastung</h3><div class="ramp"></div><div class="ticks"><span>0 %</span><span>65 %</span><span>100 %</span></div></div>
+
+      <aside class="card" aria-label="Station TS 02">
+        <header><div><h3>TS 02 Werkstatt</h3><small>Trafostation · Gebäude 12</small></div><button class="btn ghost" aria-label="Schließen" style="padding:2px"><svg class="i"><use href="#i-x"/></svg></button></header>
+        <dl>
+          <dt>Nennleistung</dt><dd>630 kVA</dd>
+          <dt>Spitzenlast 2040</dt><dd>705 kVA</dd>
+          <dt>Auslastung</dt><dd><span class="pill crit">112 %</span></dd>
+          <dt>Engpass ab</dt><dd>2034</dd>
+          <dt>Empfehlung</dt><dd>Tausch auf 1000 kVA</dd>
+        </dl>
+        <div class="spark"><small>Auslastung 2026–2040</small>
+          <svg viewBox="0 0 262 70" width="100%" role="img" aria-label="Auslastung steigt von 62 auf 112 Prozent">
+            <line x1="0" y1="14" x2="262" y2="14" stroke="var(--crit)" stroke-width="1" stroke-dasharray="3 3"/>
+            <text x="262" y="10" text-anchor="end" font-size="9" fill="var(--crit)" font-family="Tahoma,sans-serif">100 %</text>
+            <path d="M0 52 L20 51 L40 49 L60 47 L80 44 L100 41 L120 38 L140 34 L160 30 L180 26 L200 21 L220 17 L240 13 L262 8 V70 H0z" fill="var(--crit-bg)"/>
+            <path d="M0 52 L20 51 L40 49 L60 47 L80 44 L100 41 L120 38 L140 34 L160 30 L180 26 L200 21 L220 17 L240 13 L262 8" fill="none" stroke="var(--crit)" stroke-width="2"/>
+            <circle cx="262" cy="8" r="3.500" fill="var(--crit)"/>
+          </svg>
+        </div>
+      </aside>
+    </section>
+  </div>
+
+  <footer class="status">
+    <span class="ok">Berechnung aktuell</span>
+    <span>Variante <span class="num">V3</span></span>
+    <span>14 Stationen · <span class="num">9,8 km</span> Kabel</span>
+    <span class="sp"></span>
+    <span>Koordinaten <span class="num">48,5421 N, 9,0612 E</span></span>
+    <span>Maßstab <span class="num">1:2.500</span></span>
+  </footer>
+</div>
+
+<script>
+document.getElementById('theme').addEventListener('click',function(){
+  var r=document.documentElement,dark=r.getAttribute('data-theme')==='dark'||(!r.getAttribute('data-theme')&&matchMedia('(prefers-color-scheme:dark)').matches);
+  r.setAttribute('data-theme',dark?'light':'dark');
+});
+document.querySelectorAll('.subtabs button').forEach(function(b){b.addEventListener('click',function(){
+  document.querySelectorAll('.subtabs button').forEach(function(x){x.setAttribute('aria-selected',x===b)});});});
+document.querySelectorAll('.seg button').forEach(function(b){b.addEventListener('click',function(){
+  document.querySelectorAll('.seg button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});});});
+document.querySelectorAll('.list .row').forEach(function(r){r.addEventListener('click',function(){
+  document.querySelectorAll('.list .row').forEach(function(x){x.classList.toggle('sel',x===r)});});});
+</script>

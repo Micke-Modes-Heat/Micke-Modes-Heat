@@ -1,0 +1,293 @@
+<title>Energieplanung Entwurf B</title>
+<style>
+/* Layout: grüne Kopfzeile mit Reitern, Objektbaum links, Karte mittig, Inspektor rechts, Diagramm-Dock unten */
+:root{
+  --bg:#EEF1EC; --surface:#FFFFFF; --surface-2:#F6F8F5; --line:#DFE3DC; --line-strong:#C4CAC1;
+  --text:#1B1F1C; --muted:#586058; --faint:#8A9189;
+  --brand:#266426; --brand-2:#3F9C3F; --brand-deep:#1B4A1B; --tint:#EAF3E8; --on-brand:#FFFFFF; --on-deep:#DCEBDA;
+  --ok:#2E7D32; --warn:#B7791F; --crit:#C0392B;
+  --ok-bg:#E3F0E3; --warn-bg:#FBF0D8; --crit-bg:#F8E2DF;
+  --map-ground:#E7ECE3; --map-block:#D3D9CE; --map-road:#FFFFFF; --map-water:#CDDFE6;
+  --font:Tahoma,Verdana,"Segoe UI",sans-serif;
+  --r:3px; --r-lg:6px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121613; --surface:#1A1F1B; --surface-2:#1F2520; --line:#2B322C; --line-strong:#3A433B;
+  --text:#E6EAE5; --muted:#A3AAA2; --faint:#7C847B;
+  --brand:#5DB35D; --brand-2:#7CC87C; --brand-deep:#0F2A10; --tint:#1F2D20; --on-brand:#0E1A0F; --on-deep:#BFD8BC;
+  --ok:#6CC070; --warn:#E0B04F; --crit:#E8786A;
+  --ok-bg:#1E2E20; --warn-bg:#33291A; --crit-bg:#3A2321;
+  --map-ground:#1E241F; --map-block:#2A322B; --map-road:#323A33; --map-water:#1E2F37;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121613; --surface:#1A1F1B; --surface-2:#1F2520; --line:#2B322C; --line-strong:#3A433B;
+  --text:#E6EAE5; --muted:#A3AAA2; --faint:#7C847B;
+  --brand:#5DB35D; --brand-2:#7CC87C; --brand-deep:#0F2A10; --tint:#1F2D20; --on-brand:#0E1A0F; --on-deep:#BFD8BC;
+  --ok:#6CC070; --warn:#E0B04F; --crit:#E8786A;
+  --ok-bg:#1E2E20; --warn-bg:#33291A; --crit-bg:#3A2321;
+  --map-ground:#1E241F; --map-block:#2A322B; --map-road:#323A33; --map-water:#1E2F37;
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 var(--font)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--brand-2);outline-offset:1px}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.app{display:grid;grid-template-rows:auto auto 1fr;height:100%;min-height:680px}
+
+/* Kopfzeile in Markengrün */
+.top{display:flex;align-items:stretch;gap:24px;padding:0 16px;height:52px;background:var(--brand-deep);color:var(--on-deep)}
+.mark{display:flex;align-items:center;gap:10px;font-weight:700;color:#fff;white-space:nowrap}
+.mark b{display:grid;place-items:center;width:28px;height:28px;background:#fff;color:var(--brand-deep);border-radius:var(--r);font-size:11px}
+.tabs{display:flex;align-items:stretch;gap:2px}
+.tabs button{all:unset;box-sizing:border-box;cursor:pointer;padding:0 14px;display:flex;align-items:center;position:relative;color:var(--on-deep)}
+.tabs button:hover{background:rgba(255,255,255,.08);color:#fff}
+.tabs button[aria-current="true"]{color:#fff;font-weight:700;background:rgba(255,255,255,.1)}
+.tabs button[aria-current="true"]::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:#8FD08F}
+.sp{flex:1}
+.right{display:flex;align-items:center;gap:8px}
+.tbtn{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--r);color:#fff;border:1px solid rgba(255,255,255,.3)}
+.tbtn:hover{background:rgba(255,255,255,.1)}
+.tbtn.solid{background:#fff;color:var(--brand-deep);font-weight:700;border-color:#fff}
+.tbtn.solid:hover{background:#E8F2E7}
+.tbtn.icon{padding:6px 8px;border-color:transparent}
+
+/* Werkzeugleiste */
+.bar{display:flex;align-items:center;gap:14px;padding:0 16px;height:40px;background:var(--surface);border-bottom:1px solid var(--line)}
+.crumbs{display:flex;gap:6px;color:var(--muted);align-items:center;min-width:0;white-space:nowrap}
+.crumbs b{color:var(--text)}
+.crumbs i{font-style:normal;color:var(--faint)}
+.group{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.group select{background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r);padding:4px 8px}
+.chipset{display:flex;gap:6px}
+.chip{all:unset;box-sizing:border-box;cursor:pointer;padding:3px 10px;border-radius:14px;border:1px solid var(--line-strong);color:var(--muted)}
+.chip:hover{color:var(--text);background:var(--surface-2)}
+.chip[aria-pressed="true"]{background:var(--tint);color:var(--brand);border-color:var(--brand);font-weight:700}
+.vsep{width:1px;height:20px;background:var(--line)}
+
+/* Arbeitsbereich */
+.work{display:grid;grid-template-columns:260px 1fr 300px;grid-template-rows:1fr 220px;min-height:0}
+.tree{grid-row:1/3;background:var(--surface);border-right:1px solid var(--line);overflow:auto;display:flex;flex-direction:column}
+.search{padding:10px 12px;border-bottom:1px solid var(--line)}
+.search input{width:100%;border:1px solid var(--line-strong);border-radius:var(--r);padding:6px 10px;background:var(--surface-2)}
+.search input::placeholder{color:var(--faint)}
+.tree h2{margin:0;padding:12px 12px 6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.node{display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-left:3px solid transparent}
+.node:hover{background:var(--surface-2)}
+.node.sel{background:var(--tint);border-left-color:var(--brand);font-weight:700}
+.node.l2{padding-left:30px}
+.node .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node .v{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:400;font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.crit{background:var(--crit)}
+.count{margin-left:auto;font-size:11px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:0 7px;font-weight:400}
+
+.stage{position:relative;overflow:hidden;background:var(--map-ground);min-width:0;min-height:0}
+.stage>svg.map{position:absolute;inset:0;width:100%;height:100%}
+.maptools{position:absolute;top:10px;left:10px;display:flex;gap:6px}
+.maptools button{all:unset;cursor:pointer;display:grid;place-items:center;width:32px;height:32px;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r);color:var(--muted)}
+.maptools button:hover{color:var(--text)}
+.maptools button[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.mapleg{position:absolute;right:10px;bottom:10px;display:flex;gap:12px;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r);padding:6px 10px;color:var(--muted);font-size:12px}
+.mapleg span{display:flex;align-items:center;gap:6px}
+.mapleg i{width:14px;height:4px;border-radius:2px;display:block}
+
+/* Inspektor */
+.insp{background:var(--surface);border-left:1px solid var(--line);overflow:auto;display:flex;flex-direction:column;min-width:0}
+.insp-head{padding:14px 16px;border-bottom:1px solid var(--line)}
+.insp-head small{color:var(--muted);letter-spacing:.06em;text-transform:uppercase;font-size:10px;font-weight:700}
+.insp-head h1{margin:2px 0 8px;font-size:16px}
+.status-line{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);background:var(--crit-bg);color:var(--crit);font-weight:700}
+.status-line span{font-weight:400;color:var(--text)}
+.group-b{padding:12px 16px;border-bottom:1px solid var(--line)}
+.group-b h3{margin:0 0 8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:5px 10px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.kv{margin:0}
+.f{display:grid;gap:4px;margin-bottom:10px}
+.f:last-child{margin-bottom:0}
+.f label{color:var(--muted);font-size:12px}
+.f .in{display:flex;border:1px solid var(--line-strong);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.f .in:focus-within{border-color:var(--brand-2);box-shadow:0 0 0 2px var(--tint)}
+.f input,.f select{all:unset;box-sizing:border-box;flex:1;min-width:0;padding:6px 9px;font-variant-numeric:tabular-nums}
+.f .in span{padding:0 9px;display:grid;place-items:center;background:var(--surface-2);border-left:1px solid var(--line);color:var(--muted);font-size:12px}
+.rec{background:var(--tint);border:1px solid var(--brand);border-radius:var(--r);padding:10px 12px}
+.rec b{color:var(--brand)}
+.rec p{margin:4px 0 8px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--line-strong);border-radius:var(--r);background:var(--surface);cursor:pointer}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:var(--on-brand);font-weight:700}
+
+/* Dock */
+.dock{grid-column:2/4;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-rows:auto 1fr;min-width:0;min-height:0}
+.dock-h{display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--line)}
+.dock-h .tt{display:flex}
+.dock-h .tt button{all:unset;cursor:pointer;padding:9px 12px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.dock-h .tt button:hover{color:var(--text)}
+.dock-h .tt button[aria-selected="true"]{color:var(--brand);font-weight:700;border-bottom-color:var(--brand)}
+.dock-h .lg{margin-left:auto;display:flex;gap:14px;color:var(--muted);font-size:12px}
+.dock-h .lg span{display:flex;align-items:center;gap:6px}
+.dock-h .lg i{display:block;width:10px;height:10px;border-radius:2px}
+.dock-b{padding:8px 16px 4px;min-height:0}
+.dock-b svg{width:100%;height:100%;display:block}
+@media (max-width:1150px){.work{grid-template-columns:220px 1fr 260px}}
+@media (prefers-reduced-motion:no-preference){.tabs button,.node,.chip{transition:background .12s,color .12s}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L10.5 19z"/></symbol>
+    <symbol id="i-ruler" viewBox="0 0 24 24"><path d="M3 17 17 3l4 4L7 21z"/><path d="M8 12l2 2M11 9l2 2M14 6l2 2"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4 2.500 20h19z"/><path d="M12 10v4.500M12 17.500v.01"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <header class="top">
+    <div class="mark"><b>LK</b>Energieplanung</div>
+    <nav class="tabs" aria-label="Hauptnavigation">
+      <button>Gebiet</button><button>Netz</button><button>Erzeuger</button>
+      <button aria-current="true">Elektro</button><button>Ergebnis</button><button>Gutachten</button>
+    </nav>
+    <span class="sp"></span>
+    <div class="right">
+      <button class="tbtn icon" id="theme" aria-label="Darstellung wechseln"><svg class="i"><use href="#i-moon"/></svg></button>
+      <button class="tbtn"><svg class="i"><use href="#i-down"/></svg>Speichern</button>
+      <button class="tbtn solid"><svg class="i"><use href="#i-play"/></svg>Berechnen</button>
+    </div>
+  </header>
+
+  <div class="bar">
+    <div class="crumbs"><span>Liegenschaft Nord, Standort 3</span><i>/</i><span>Elektro</span><i>/</i><b>TS 02 Werkstatt</b></div>
+    <span class="sp"></span>
+    <div class="group"><label for="var">Variante</label>
+      <select id="var"><option>V3 Netzanschluss erhöhen, PV 2,4 MWp</option><option>V1 Bestand</option><option>V2 Bestandsnetz mit PV</option></select></div>
+    <span class="vsep"></span>
+    <div class="group">Zieljahr
+      <div class="chipset" id="jahr">
+        <button class="chip" aria-pressed="false">2030</button><button class="chip" aria-pressed="false">2035</button><button class="chip" aria-pressed="true">2040</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="work">
+    <aside class="tree" aria-label="Objekte">
+      <div class="search"><input type="search" placeholder="Station oder Gebäude suchen" aria-label="Suchen"></div>
+      <h2>Trafostationen <span class="count">14</span></h2>
+      <div class="node sel"><i class="dot crit"></i><span class="t">TS 02 Werkstatt</span><span class="v">112 %</span></div>
+      <div class="node l2"><span class="t">Gebäude 12 Werkstatt</span><span class="v">310 kVA</span></div>
+      <div class="node l2"><span class="t">Gebäude 14 Garage</span><span class="v">180 kVA</span></div>
+      <div class="node l2"><span class="t">Gebäude 15 Lager</span><span class="v">215 kVA</span></div>
+      <div class="node"><i class="dot warn"></i><span class="t">TS 05 Kaserne West</span><span class="v">86 %</span></div>
+      <div class="node"><i class="dot warn"></i><span class="t">TS 09 Unterkunft</span><span class="v">79 %</span></div>
+      <div class="node"><i class="dot ok"></i><span class="t">TS 01 Haupteinspeisung</span><span class="v">54 %</span></div>
+      <div class="node"><i class="dot ok"></i><span class="t">TS 07 Lager</span><span class="v">31 %</span></div>
+      <div class="node"><i class="dot ok"></i><span class="t">TS 06 Verwaltung</span><span class="v">28 %</span></div>
+      <h2>Erzeugung <span class="count">6</span></h2>
+      <div class="node"><span class="t">PV Gebäude 03</span><span class="v">480 kWp</span></div>
+      <div class="node"><span class="t">PV Gebäude 08</span><span class="v">320 kWp</span></div>
+      <div class="node"><span class="t">Batteriespeicher TS 01</span><span class="v">1,2 MWh</span></div>
+      <h2>Ladepunkte <span class="count">3</span></h2>
+      <div class="node"><span class="t">Ladepark Nord</span><span class="v">22 × 11 kW</span></div>
+    </aside>
+
+    <section class="stage" aria-label="Karte">
+      <svg class="map" viewBox="0 0 800 420" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Lageplan mit Stromnetz">
+        <rect width="800" height="420" fill="var(--map-ground)"/>
+        <path d="M0 350 C130 320 240 380 380 360 S640 400 800 360 V420 H0z" fill="var(--map-water)"/>
+        <g stroke="var(--map-road)" stroke-width="13" fill="none" stroke-linecap="round">
+          <path d="M0 170H800"/><path d="M290 0V420"/><path d="M560 0V330"/><path d="M0 280H560"/>
+        </g>
+        <g fill="var(--map-block)" stroke="var(--line-strong)">
+          <rect x="50" y="50" width="100" height="56"/><rect x="170" y="56" width="80" height="90"/>
+          <rect x="320" y="46" width="130" height="64"/><rect x="470" y="58" width="60" height="86"/>
+          <rect x="600" y="52" width="150" height="76"/><rect x="50" y="200" width="110" height="62"/>
+          <rect x="185" y="200" width="70" height="62"/><rect x="320" y="198" width="90" height="68"/>
+          <rect x="430" y="204" width="100" height="56"/><rect x="600" y="204" width="150" height="90"/>
+        </g>
+        <g fill="none" stroke-width="3.2" stroke-linecap="round">
+          <path d="M385 144 H290 V185 H110" stroke="var(--crit)"/>
+          <path d="M385 144 H560 V232" stroke="var(--warn)"/>
+          <path d="M385 144 V80" stroke="var(--ok)"/>
+          <path d="M560 232 H675" stroke="var(--ok)"/>
+          <path d="M385 144 H215" stroke="var(--ok)"/>
+        </g>
+        <g stroke="var(--surface)" stroke-width="2">
+          <rect x="375" y="134" width="20" height="20" rx="3" fill="var(--ok)"/>
+          <rect x="100" y="175" width="20" height="20" rx="3" fill="var(--crit)"/>
+          <rect x="550" y="222" width="20" height="20" rx="3" fill="var(--warn)"/>
+          <rect x="665" y="222" width="20" height="20" rx="3" fill="var(--ok)"/>
+        </g>
+        <circle cx="110" cy="185" r="19" fill="none" stroke="var(--brand)" stroke-width="2" stroke-dasharray="4 3"/>
+        <g font-family="Tahoma,Verdana,sans-serif" font-size="11" fill="var(--text)" stroke="var(--map-ground)" stroke-width="3" paint-order="stroke">
+          <text x="132" y="178" font-weight="700">TS 02</text><text x="404" y="130" font-weight="700">TS 01</text>
+          <text x="576" y="218" font-weight="700">TS 05</text><text x="660" y="256">TS 06</text>
+        </g>
+      </svg>
+      <div class="maptools" role="toolbar" aria-label="Werkzeuge">
+        <button aria-pressed="true" aria-label="Auswählen"><svg class="i"><use href="#i-pointer"/></svg></button>
+        <button aria-pressed="false" aria-label="Messen"><svg class="i"><use href="#i-ruler"/></svg></button>
+        <button aria-pressed="false" aria-label="Ebenen"><svg class="i"><use href="#i-layers"/></svg></button>
+      </div>
+      <div class="mapleg"><span><i style="background:var(--ok)"></i>unter 65 %</span><span><i style="background:var(--warn)"></i>65 bis 100 %</span><span><i style="background:var(--crit)"></i>über 100 %</span></div>
+    </section>
+
+    <aside class="insp" aria-label="Eigenschaften">
+      <div class="insp-head"><small>Trafostation</small><h1>TS 02 Werkstatt</h1>
+        <div class="status-line"><svg class="i"><use href="#i-warn"/></svg>Überlast ab 2034 <span>112 % in 2040</span></div></div>
+      <div class="group-b"><h3>Kennwerte</h3>
+        <dl class="kv"><dt>Nennleistung</dt><dd>630 kVA</dd><dt>Spitzenlast 2040</dt><dd>705 kVA</dd><dt>Baujahr</dt><dd>1988</dd><dt>Angeschlossen</dt><dd>3 Gebäude</dd></dl></div>
+      <div class="group-b"><h3>Planung</h3>
+        <div class="f"><label for="m">Maßnahme</label><div class="in"><select id="m"><option>Transformator tauschen</option><option>Zweiten Trafo ergänzen</option><option>Last verlagern</option></select></div></div>
+        <div class="f"><label for="n">Neue Nennleistung</label><div class="in"><input id="n" value="1000"><span>kVA</span></div></div>
+        <div class="f"><label for="j">Umsetzung</label><div class="in"><input id="j" value="2032"><span>Jahr</span></div></div></div>
+      <div class="group-b"><div class="rec"><b>Empfehlung</b><p>Tausch auf 1000 kVA vor 2034 löst die Überlast bis 2040 mit 71 % Auslastung.</p><button class="btn primary">Übernehmen</button></div></div>
+    </aside>
+
+    <section class="dock" aria-label="Diagramme">
+      <div class="dock-h">
+        <div class="tt" role="tablist"><button role="tab" aria-selected="true">Monatsspitzen</button><button role="tab" aria-selected="false">Lastgang</button><button role="tab" aria-selected="false">Dauerlinie</button></div>
+        <div class="lg"><span><i style="background:var(--brand-2)"></i>Spitzenlast</span><span><i style="background:var(--crit)"></i>über Nennleistung</span><span><i style="background:var(--text);height:2px"></i>Nennleistung 630 kVA</span></div>
+      </div>
+      <div class="dock-b"><svg id="chart" viewBox="0 0 900 160" preserveAspectRatio="none" role="img" aria-label="Monatliche Spitzenlast 2040 im Vergleich zur Nennleistung von 630 kVA"></svg></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function(){
+  var data=[640,660,610,560,520,500,490,500,540,610,680,705],mon=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  var W=900,H=160,L=44,R=8,T=10,B=22,max=800,cap=630,bw=(W-L-R)/12;
+  function y(v){return T+(H-T-B)*(1-v/max)}
+  var s='';
+  [0,200,400,600,800].forEach(function(t){
+    s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(t)+'" y2="'+y(t)+'" stroke="var(--line)"/>';
+    s+='<text x="'+(L-6)+'" y="'+(y(t)+3)+'" text-anchor="end" font-size="10" fill="var(--muted)" font-family="Tahoma,sans-serif">'+t+'</text>';
+  });
+  data.forEach(function(v,i){
+    var x=L+i*bw+bw*0.2,w=bw*0.6,c=v>cap?'var(--crit)':'var(--brand-2)';
+    s+='<rect x="'+x+'" y="'+y(v)+'" width="'+w+'" height="'+(y(0)-y(v))+'" fill="'+c+'" rx="1.5"/>';
+    s+='<text x="'+(x+w/2)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="Tahoma,sans-serif">'+mon[i]+'</text>';
+    if(v>cap)s+='<text x="'+(x+w/2)+'" y="'+(y(v)-3)+'" text-anchor="middle" font-size="9" font-weight="700" fill="var(--crit)" font-family="Tahoma,sans-serif">'+v+'</text>';
+  });
+  s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(cap)+'" y2="'+y(cap)+'" stroke="var(--text)" stroke-width="1.5" stroke-dasharray="5 3"/>';
+  document.getElementById('chart').innerHTML=s;
+
+  document.getElementById('theme').addEventListener('click',function(){
+    var r=document.documentElement,d=r.getAttribute('data-theme')==='dark'||(!r.getAttribute('data-theme')&&matchMedia('(prefers-color-scheme:dark)').matches);
+    r.setAttribute('data-theme',d?'light':'dark');
+  });
+  function one(sel,attr,on){document.querySelectorAll(sel).forEach(function(b){b.addEventListener('click',function(){
+    document.querySelectorAll(sel).forEach(function(x){x.setAttribute(attr,x===b?on:(on==='true'?'false':'false'))});});});}
+  one('#jahr .chip','aria-pressed','true');
+  one('.dock-h [role=tab]','aria-selected','true');
+  document.querySelectorAll('.tabs button').forEach(function(b){b.addEventListener('click',function(){
+    document.querySelectorAll('.tabs button').forEach(function(x){if(x===b)x.setAttribute('aria-current','true');else x.removeAttribute('aria-current')});});});
+  document.querySelectorAll('.tree .node').forEach(function(n){n.addEventListener('click',function(){
+    document.querySelectorAll('.tree .node').forEach(function(x){x.classList.toggle('sel',x===n)});});});
+})();
+</script>
