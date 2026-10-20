@@ -1,6 +1,6 @@
-// ── 44-netzanschluss-modul.js — Netzanschluss-Modul (Elektro › 3 · Auswerten › Netzanschluss) ──
+// ── 44-netzanschluss-modul.js — Netzanschluss-Modul (Auswertung › Strom › Netzanschluss) ──
 //
-// Eigenes Fenster mit vier Schritten:
+// Eigene Seite in der Analyseansicht mit vier Schritten:
 //   1. Bedarf    — Bezug je Jahr aus der Bedarfsprognose (wie NAP-Analyse und Gutachten 5.3),
 //                  Einspeisung aus den Erzeuger-Assets je Jahr, gegen die NAP-Grenzen; erstes Jahr
 //                  der Überschreitung je Richtung.
@@ -19,7 +19,8 @@ import { ncReihe, ncZieljahr, ncUeberschreitung, ncWege, ncBaustein, ncCsv, ncBe
 import { aeSvg, aeEinordnung, aeKva, AE_QUELLE } from './lib/anschlussebenen.js';
 import { uwRender, uwZielVorgabe, uwAuswahlBewertet, uwOsmStand, uwParameter, uwZielVonHand } from './43-umspannwerke.js';
 
-const PANEL_ID = 'na-modul-panel';
+const SECTION = 'netzanschluss';          // data-section in #analyse-view-tabs
+const WRAP_ID = 'analyse-na-wrap';
 const SCHRITTE = [
   { id: 'bedarf', label: '1 · Bedarf' },
   { id: 'ebene', label: '2 · Ebene' },
@@ -65,39 +66,81 @@ function _rechnen() {
   return { stand, assets, heute, zjAuto, zieljahr, reihe, z0, ziel, grenzen, uw, p, wege, variante: aktiverVariantenName?.() || '' };
 }
 
-/* ── Fenster ────────────────────────────────────────────────────────────── */
-function _ensurePanel() {
-  let panel = $(PANEL_ID);
-  if (panel) return panel;
-  panel = document.createElement('div');
-  panel.id = PANEL_ID;
-  panel.className = 'float-panel cyan-border';
-  // horizontal zentriert wie die übrigen float-panels (left:50% + translateX(-50%) aus dem Stylesheet)
-  panel.style.cssText = 'top:64px;width:760px;max-width:calc(100vw - 40px);max-height:86vh;padding:0 16px 14px;overflow:auto;display:none;';
-  panel.innerHTML = `
-    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID}')">
-      <span style="color:var(--c-teal);font-size:12px;font-weight:600;">Netzanschluss</span>
-      <span class="drag-dots">⠿</span>
-      <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;" data-click="naModulToggle()">✕</span>
-    </div>
-    <div id="na-modul-body"></div>`;
-  document.body.appendChild(panel);
-  return panel;
+/* ── Seite in Auswertung › Strom ────────────────────────────────────────── */
+// Früher ein schwebendes Fenster über der Karte; jetzt ein Abschnitt der Analyseansicht
+// (eingehängt wie NAP-Lastgang/Knotenpunkt-Analyse, 04a ruft Build/Show über window).
+
+/** Reiter + Seitenbereich einmalig einhängen (idempotent). */
+export function naBuildAnalyseSection() {
+  const tabBar = $('analyse-view-tabs');
+  let btn = tabBar?.querySelector(`[data-section="${SECTION}"]`);
+  if (tabBar && !btn) {
+    btn = document.createElement('button');
+    btn.className = 'analyse-section-tab';
+    btn.dataset.section = SECTION;
+    btn.textContent = 'Netzanschluss';
+    btn.title = 'Netzanschluss: reicht die vereinbarte Leistung? Bedarf je Jahr, Anschlussebene, Wege zum Umspannwerk und Textbaustein für die Netzanschlussanfrage.';
+    btn.addEventListener('click', () => window.setAnalyseSection?.(SECTION));
+    tabBar.appendChild(btn);
+  }
+  // Direkt hinter „NAP-Lastgang“ einordnen (der Reiter entsteht evtl. erst später)
+  const nap = tabBar?.querySelector('[data-section="nap"]');
+  if (btn && nap && nap.nextElementSibling !== btn) nap.after(btn);
+  if (!$(WRAP_ID)) {
+    const wrap = document.createElement('div');
+    wrap.id = WRAP_ID;
+    wrap.style.display = 'none';
+    wrap.innerHTML = '<div id="na-modul-body" class="na-seite"></div>';
+    $('center-analyse-view')?.appendChild(wrap);
+  }
 }
 
-const _offen = () => $(PANEL_ID)?.style.display === 'block';
+export function naShowSection(visible) {
+  naBuildAnalyseSection();
+  const wrap = $(WRAP_ID);
+  if (!wrap) return;
+  wrap.style.display = visible ? '' : 'none';
+  if (visible) naModulRender();
+}
 
+const _offen = () => {
+  const wrap = $(WRAP_ID), view = $('center-analyse-view');
+  return !!wrap && wrap.style.display !== 'none' && !!view && view.style.display !== 'none';
+};
+
+/** Zur Seite springen (Prozessleiste Auswertung, Navigation Strom › Netzanschluss). */
+function _seiteZeigen() {
+  naBuildAnalyseSection();
+  if (typeof window.uiGeheZu === 'function' && document.body.classList.contains('ui-lkebw')) window.uiGeheZu('auswertung', SECTION);
+  else { window.setViewMode?.('analyse'); window.setAnalyseSection?.(SECTION); }
+}
+
+/** Früher: Fenster ein/aus. Jetzt: Seite öffnen (Knopf in Planung › Strom, Befehlssuche). */
 export function naModulToggle() {
-  const panel = _ensurePanel();
-  panel.style.display = _offen() ? 'none' : 'block';
-  if (_offen()) naModulRender();
+  _seiteZeigen();
 }
 
 /** Öffnen, optional direkt in einem Schritt (Absprung aus den Strom-Grundlagen). */
 export function naModulOeffnen(schritt) {
-  _ensurePanel().style.display = 'block';
   if (SCHRITTE.some(s => s.id === schritt)) _schritt = schritt;
+  _seiteZeigen();
   naModulRender();
+}
+
+// Kartenaktionen aus Schritt 3 (Umspannwerk zeigen, von Hand setzen) brauchen die Karte:
+// 43 ruft vorher naKarteBenutzen() und nach dem Setzen naZurueckZurSeite().
+let _kamVonSeite = false;
+export function naKarteBenutzen() {
+  if (!_offen()) return false;
+  _kamVonSeite = true;
+  if (typeof window.uiSchritt === 'function' && document.body.classList.contains('ui-lkebw')) window.uiSchritt('planung', { sparte: 'strom' });
+  else window.setViewMode?.('karte');
+  return true;
+}
+export function naZurueckZurSeite() {
+  if (!_kamVonSeite) return;
+  _kamVonSeite = false;
+  _seiteZeigen();
 }
 
 export function naModulSchritt(id) {

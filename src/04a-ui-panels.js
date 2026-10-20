@@ -1954,6 +1954,7 @@ export function refreshAnalyseView() {
 
   // Tab-Buttons + Wrapper einmalig injizieren (idempotent)
   napBuildAnalyseSection();
+  window.naBuildAnalyseSection?.();   // 44-netzanschluss-modul.js (über window, kein Importzyklus)
   knaBuildAnalyseSection();
   pvaBuildAnalyseSection();
   resBuildAnalyseSection();
@@ -1970,6 +1971,8 @@ export function refreshAnalyseView() {
   content.style.display = 'none';
   const napWrap = document.getElementById('analyse-nap-wrap');
   if (napWrap) napWrap.style.display = 'none';
+  const naWrap = document.getElementById('analyse-na-wrap');
+  if (naWrap) naWrap.style.display = 'none';
   const knaWrap = document.getElementById('analyse-kna-wrap');
   if (knaWrap) knaWrap.style.display = 'none';
   const pvaWrap = document.getElementById('analyse-pva-wrap');
@@ -2007,6 +2010,8 @@ export function refreshAnalyseView() {
     if (emWrap) { emWrap.style.display = 'block'; _renderEmissionenTab(); }
   } else if (analyseCurrentSection === 'nap') {
     napShowSection(true);
+  } else if (analyseCurrentSection === 'netzanschluss') {
+    window.naShowSection?.(true);
   } else if (analyseCurrentSection === 'kna') {
     knaShowSection(true);
   } else if (analyseCurrentSection === 'pva') {

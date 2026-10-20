@@ -415,13 +415,15 @@ header.ui-seitentitel:empty{display:none}
 /* ── 8. Fenster andocken und feste Panels unter die Prozessleiste ───── */
 :root{--kopf-h:102px;--fuss-h:34px}
 /* Fenster öffnen rechts als Spalte zwischen Prozessleiste und Ergebnisleiste.
-   Wer ein Fenster an der Kopfzeile wegzieht, löst es (Klasse .dragging) und verschiebt es frei. */
-body.ui-lkebw .float-panel.visible:not(.inline-mode):not(.dock-mode):not(.dragging){
+   Wer ein Fenster an der Kopfzeile wegzieht, löst es (Klasse .dragging) und verschiebt es frei.
+   Bei sichtbarer Karte übernimmt die Andock-Spalte (Abschnitt 15, .im-dock); diese Regel bleibt
+   für Fenster über Seiten (Auswertung, Projekt) und schmale Bildschirme. */
+body.ui-lkebw .float-panel.visible:not(.inline-mode):not(.dock-mode):not(.dragging):not(.im-dock){
   position:fixed!important;top:var(--kopf-h)!important;right:0!important;bottom:var(--fuss-h)!important;left:auto!important;
   transform:none!important;max-height:none!important;width:460px!important;max-width:min(820px,calc(100vw - var(--lp-w) - 40px))!important;
   border-radius:0!important;border:0!important;border-left:1px solid var(--border)!important;
   box-shadow:-6px 0 18px rgba(20,30,25,.08)!important;overflow-y:auto!important;resize:none!important}
-body.ui-lkebw .float-panel.visible.minimized:not(.inline-mode):not(.dock-mode):not(.dragging){bottom:auto!important}
+body.ui-lkebw .float-panel.visible.minimized:not(.inline-mode):not(.dock-mode):not(.dragging):not(.im-dock){bottom:auto!important}
 body.ui-lkebw .float-panel.visible:not(.dragging):not(.inline-mode) .panel-drag-handle{border-radius:0;cursor:grab}
 body.ui-lkebw .float-panel.dragging{border-radius:var(--r-2)!important}
 /* Schaltbilder (Einlinienschema, Wärmeschema) als rechte Spalte unter der Prozessleiste */
@@ -658,3 +660,57 @@ input.dq-auffaellig,.dq-auffaellig{outline:2px solid var(--crit)!important;outli
 .av-kpi-sprung:hover{color:var(--brand-hover)}
 .analyse-kpi-bar-mini i.neutral{background:var(--kpi-c,var(--accent))}
 .analyse-kpi-bar-mini i.warn{background:var(--crit)}
+
+/* ── 15. Rechte Spalte mit Reitern: Fenster andocken (src/52-fenster-dock.js) ── */
+/* #ui-rechts umschließt die Liste (#sidebar). Ohne angedockte Fenster sieht alles aus wie vorher. */
+.ui-rechts{display:flex;flex-direction:column;flex-shrink:0;min-height:0;z-index:2;background:var(--surface)}
+.ui-rechts>#sidebar{flex:1 1 auto;min-height:0}
+.ui-rechts:not(.hat-reiter)>.ui-dock-leiste,.ui-rechts:not(.hat-reiter)>.ui-dock-inhalt,.ui-rechts:not(.hat-reiter)>.ui-dock-griff{display:none}
+.ui-rechts.hat-reiter{position:relative;border-left:1px solid var(--border);max-width:calc(100vw - 360px)}
+.ui-rechts.hat-reiter>#sidebar{border-left:0}
+.ui-rechts.hat-reiter[data-aktiv="fenster"]>#sidebar{display:none}
+.ui-rechts[data-aktiv="liste"]>.ui-dock-inhalt{display:none}
+.ui-dock-inhalt{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;background:var(--surface)}
+body.ui-dock-hat-reiter #sidebar-toggle{display:none!important}
+
+/* Reiterleiste */
+.ui-dock-leiste{display:flex;align-items:stretch;flex-shrink:0;border-bottom:1px solid var(--border);background:var(--surface2)}
+.ui-dock-reiter{display:flex;flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin}
+.ui-dock-r{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:6px;max-width:210px;padding:9px 10px 7px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap}
+.ui-dock-r>span{overflow:hidden;text-overflow:ellipsis}
+.ui-dock-r:hover{color:var(--text);background:var(--hover)}
+.ui-dock-r.aktiv{color:var(--text);background:var(--surface);border-bottom-color:var(--brand)}
+.ui-dock-r:focus-visible,.ui-dock-klapp:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.ui-dock-r i{font-style:normal;font-size:14px;line-height:1;padding:1px 4px;border-radius:var(--r);color:var(--faint)}
+.ui-dock-r i:hover{background:var(--surface2);color:var(--text)}
+.ui-dock-klapp{all:unset;cursor:pointer;flex-shrink:0;width:30px;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--muted);border-left:1px solid var(--border)}
+.ui-dock-klapp:hover{color:var(--text);background:var(--hover)}
+
+/* Breite ziehen */
+.ui-dock-griff{position:absolute;left:-3px;top:0;bottom:0;width:7px;cursor:col-resize;z-index:5}
+.ui-dock-griff:hover,.ui-rechts.zieht>.ui-dock-griff{background:linear-gradient(90deg,transparent 2px,var(--brand) 2px,var(--brand) 4px,transparent 4px)}
+.ui-rechts[data-aktiv="liste"]>.ui-dock-griff,.ui-rechts.eingeklappt>.ui-dock-griff{display:none}
+.ui-rechts.zieht{user-select:none}
+.ui-rechts.zieht .ui-dock-inhalt{pointer-events:none}
+
+/* Eingeklappt: schmaler Streifen mit senkrechten Reitern */
+.ui-rechts.eingeklappt{width:34px!important}
+.ui-rechts.eingeklappt>#sidebar,.ui-rechts.eingeklappt>.ui-dock-inhalt{display:none}
+.ui-rechts.eingeklappt>.ui-dock-leiste{flex:1;flex-direction:column;border-bottom:0}
+.ui-rechts.eingeklappt .ui-dock-reiter{flex-direction:column;overflow-x:hidden;overflow-y:auto}
+.ui-rechts.eingeklappt .ui-dock-r{writing-mode:vertical-rl;max-width:none;max-height:190px;padding:10px 7px;border-bottom:0;border-left:2px solid transparent}
+.ui-rechts.eingeklappt .ui-dock-r.aktiv{border-left-color:var(--brand);background:none}
+.ui-rechts.eingeklappt .ui-dock-r i{display:none}
+.ui-rechts.eingeklappt .ui-dock-klapp{order:-1;width:auto;height:32px;border-left:0;border-bottom:1px solid var(--border)}
+
+/* Fenster in der Spalte: fließt im Inhalt statt zu schweben */
+.float-panel.im-dock{position:static!important;transform:none!important;inset:auto!important;width:auto!important;min-width:0!important;max-width:none!important;
+  min-height:0!important;max-height:none!important;overflow:visible!important;resize:none!important;margin:0!important;
+  border:0!important;border-radius:0!important;box-shadow:none!important;z-index:auto!important}
+.float-panel.im-dock:not(.dock-aktiv){display:none!important}
+.float-panel.im-dock.dock-aktiv{display:block!important}
+.float-panel.im-dock>.panel-drag-handle{position:sticky;top:0;z-index:3;border-radius:0;cursor:grab}
+.float-panel.im-dock .panel-minimize-btn{display:none!important}
+
+/* Auswertung › Strom › Netzanschluss (src/44, früher ein Fenster) */
+.na-seite{max-width:1180px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);padding:6px 22px 20px;font-size:13px}

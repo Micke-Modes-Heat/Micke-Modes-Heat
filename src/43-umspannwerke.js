@@ -213,7 +213,12 @@ export function uwZeigen() {
   const ref = _bezug();
   _sichtbar = true;
   _zeichnen();
-  map.flyToBounds(L.latLngBounds([[ref.lat, ref.lng], [sel.lat, sel.lng]]), { padding: [60, 60], maxZoom: 15 });
+  // Von der Seite Auswertung › Netzanschluss aus erst zur Karte wechseln (44), dann hinfliegen
+  const wechsel = window.naKarteBenutzen?.();
+  setTimeout(() => {
+    map.invalidateSize();
+    map.flyToBounds(L.latLngBounds([[ref.lat, ref.lng], [sel.lat, sel.lng]]), { padding: [60, 60], maxZoom: 15 });
+  }, wechsel ? 250 : 0);
 }
 
 /* ── UW von Hand setzen ─────────────────────────────────────────────────── */
@@ -237,10 +242,13 @@ function _setzenBeenden() {
   map.off('click', _setzenKlick);
   document.removeEventListener('keydown', _setzenTaste);
   map.getContainer().style.cursor = '';
+  window.hideHint?.();
+  window.naZurueckZurSeite?.();   // kam der Auftrag von der Seite Netzanschluss, dorthin zurück
 }
 export function uwVonHandSetzen() {
   if (_setzen) { _setzenBeenden(); uwRender(); return; }
   _setzen = true;
+  if (window.naKarteBenutzen?.()) window.showHint?.('Auf die Karte klicken, wo das Umspannwerk liegt — Esc bricht ab.');
   map.getContainer().style.cursor = 'crosshair';
   map.once('click', _setzenKlick);
   document.addEventListener('keydown', _setzenTaste);

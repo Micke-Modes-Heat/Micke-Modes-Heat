@@ -45,6 +45,7 @@ const _ABSCHNITTE = {
   waerme:              { schritt: 'auswertung', gruppe: 'Wärme',        titel: 'Lastgang und Dauerlinie' },
   strom:               { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Strombilanz' },
   nap:                 { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Netzanschluss-Lastgang' },
+  netzanschluss:       { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Netzanschluss' },
   kna:                 { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Knotenpunkt-Analyse' },
   pva:                 { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Photovoltaik' },
   wirtschaft:          { schritt: 'auswertung', gruppe: 'Übergreifend', titel: 'Wirtschaftlichkeit' },
