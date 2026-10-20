@@ -13,6 +13,10 @@
 //     an der Kopfzeile herauszieht (.dragging), bekommt sie zurück.
 //   - Breite je Fenster einstellbar (Griff am linken Rand), gemerkt in localStorage micke.ui.dock.
 //   - Ein Fenster mit data-kein-dock bleibt schwebend.
+//   - Werkzeugflächen (WERKZEUGE) sind keine .float-panel, docken aber genauso an. Sie werden
+//     von ihren Modulen per id gefunden (neu zeichnen, entfernen) — der Ort im DOM ist egal.
+//   - Öffnet sich der Asset-Inspektor (steckt in der Liste, Reiter Elektro), springt die Spalte
+//     auf „Liste“, sonst bliebe er hinter einem Fenster-Reiter verborgen.
 
 const SPEICHER = 'micke.ui.dock';
 const BREITE_STANDARD = 460;
@@ -22,6 +26,18 @@ const MIN_BILDSCHIRM = 1000;    // darunter keine Spalte (Tablet: Fenster wie bi
 // Dialoge gehören zu keiner Stelle der Karte (Einstellungen, Import, Export): sie erscheinen
 // mittig als Dialogfenster (lkebw.css §15) statt als Reiter neben der Karte.
 const DIALOGE = ['privacy-panel', 'diagnostics-panel', 'geb-import-panel', 'status-panel', 'feldapp-panel', 'resilienz-abfrage-panel'];
+// Werkzeugflächen mit eigener fester Lage (app.css/lkebw.css §8). offen: Standard = im DOM;
+// die Schaltbilder schalten über .visible und verlassen die Spalte im Vollbild.
+const _schemaOffen = p => p.classList.contains('visible') && !p.classList.contains('sld-fullscreen');
+const WERKZEUGE = {
+  'blackout-modus-panel': { titel: 'Blackout-Modus', zu: () => window.blackoutModusStop?.() },
+  'pv-modus-panel':       { titel: 'PV-Modus', zu: () => window.pvModusStop?.() },
+  'baum-panel':           { titel: 'Bäume', zu: () => window.baumPanelToggle?.() },
+  'grundriss-panel':      { titel: 'Grundrisse prüfen', zu: () => window.grundrissPanelToggle?.() },
+  'sld-panel':            { titel: 'Einlinienschema', zu: () => window.sldToggle?.(), offen: _schemaOffen, breite: 600, neu: () => window.sldRefresh?.() },
+  'ws-panel':             { titel: 'Wärmeschema', zu: () => window.wsToggle?.(), offen: _schemaOffen, breite: 600, neu: () => window.wsRender?.() },
+};
+const INSPEKTOR_ID = 'sb-asset-inspector-slot';
 const ZENTRALANSICHTEN = ['center-analyse-view', 'center-gebaeude-view', 'center-optimierung-view', 'center-vergleich-view', 'center-live-view'];
 
 let _rechts = null, _leiste = null, _inhalt = null, _griff = null;
@@ -30,6 +46,7 @@ let _aktiv = 'liste';           // 'liste' oder id eines Fensters
 let _eingeklappt = false;
 let _breiten = {};
 let _geplant = 0;
+let _inspektorWarOffen = false;
 
 const _esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -62,8 +79,11 @@ function _dockZustand() {
   return 'karte';
 }
 
-/** Sichtbar ist ein Fenster über .visible oder (manche Module) über style.display. */
+/** Sichtbar ist ein Fenster über .visible oder (manche Module) über style.display;
+ *  eine Werkzeugfläche, solange sie im DOM steht (oder nach ihrer eigenen Regel). */
 function _offen(p) {
+  const wz = WERKZEUGE[p.id];
+  if (wz) return wz.offen ? wz.offen(p) : p.isConnected && !p.hidden;
   const d = p.style.display;
   return d ? d !== 'none' : p.classList.contains('visible');
 }
@@ -78,9 +98,11 @@ function _andocken(p) {
   if (p.parentElement !== _inhalt) {
     p._dockHeim = { parent: p.parentElement, next: p.nextElementSibling };
     // Startbreite: was das Modul für sein Fenster vorsieht (z. B. 660 px Engpässe), höchstens 720 px
-    const w = /^\d+px$/.test(p.style.width) ? parseInt(p.style.width, 10) : 0;
+    const w = WERKZEUGE[p.id]?.breite || (/^\d+px$/.test(p.style.width) ? parseInt(p.style.width, 10) : 0);
     if (w > BREITE_STANDARD) p._dockStandard = Math.min(720, w);
     _inhalt.appendChild(p);
+    // Schaltbilder zeichnen sich für ihre neue Breite neu
+    if (WERKZEUGE[p.id]?.neu) setTimeout(() => { try { WERKZEUGE[p.id].neu(); } catch { /* Modul noch nicht bereit */ } }, 60);
   }
   p.classList.add('im-dock');
   if (p.classList.contains('minimized')) p.classList.remove('minimized');
@@ -105,7 +127,7 @@ function _abgleich() {
   if (!_rechts) return;
   const zustand = _dockZustand();
   // 1. Angedockte prüfen
-  for (const p of [..._inhalt.querySelectorAll(':scope > .float-panel')]) {
+  for (const p of [..._inhalt.children]) {
     if (zustand === 'aus' || !_andockbar(p)) {
       // Wer an der Kopfzeile herausgezogen wurde, darf beim nächsten Öffnen wieder andocken
       _zurueck(p);
@@ -121,11 +143,18 @@ function _abgleich() {
   });
   // 2. Neu geöffnete einhängen
   if (zustand === 'karte') {
-    document.querySelectorAll('.float-panel').forEach(p => {
+    const kandidaten = [...document.querySelectorAll('.float-panel')]
+      .concat(Object.keys(WERKZEUGE).map(id => document.getElementById(id)).filter(Boolean));
+    kandidaten.forEach(p => {
       if (!p.id || p.parentElement === _inhalt || p.closest('#ui-rechts')) return;
       if (_andockbar(p)) _andocken(p);
     });
   }
+  // Asset-Inspektor geht auf (Klick auf eine Anlage) → Liste nach vorn, er steckt dort
+  const insp = document.getElementById(INSPEKTOR_ID);
+  const inspOffen = !!insp && insp.style.display !== 'none' && insp.style.display !== '';
+  if (inspOffen && !_inspektorWarOffen && _aktiv !== 'liste') { _aktiv = 'liste'; _eingeklappt = false; }
+  _inspektorWarOffen = inspOffen;
   // Frei verschobene Kartenfenster gehören zur Karte: auf Seiten ausblenden, bei der Karte wieder zeigen.
   // (contains vor add/remove: beides schreibt das class-Attribut sonst immer neu → Abgleich ohne Ende)
   document.querySelectorAll('.float-panel.dragging').forEach(p => {
@@ -150,6 +179,7 @@ function _planen() {
 
 /* ── Darstellung ────────────────────────────────────────────────────────── */
 function _titel(p) {
+  if (WERKZEUGE[p.id]) return WERKZEUGE[p.id].titel;
   const h = p.querySelector('.panel-drag-handle');
   const el = h?.querySelector('b, strong, span:not(.drag-dots)') || h;
   let t = (el?.textContent || p.id).replace(/[✕×✖▾▸⠿]/g, ' ').trim();
@@ -175,7 +205,7 @@ function _darstellen() {
   _rechts.classList.toggle('hat-reiter', hat);
   _rechts.classList.toggle('eingeklappt', hat && _eingeklappt);
   _rechts.dataset.aktiv = hat ? (_aktiv === 'liste' ? 'liste' : 'fenster') : 'liste';
-  _inhalt.querySelectorAll(':scope > .float-panel').forEach(p => p.classList.toggle('dock-aktiv', p.id === _aktiv));
+  [..._inhalt.children].forEach(p => p.classList.toggle('dock-aktiv', p.id === _aktiv));
   _rechts.style.width = hat && !_eingeklappt && _aktiv !== 'liste' ? _breite(_aktiv) + 'px' : '';
   _karteAnpassen();
   if (!hat) { _leiste.innerHTML = ''; return; }
@@ -196,6 +226,7 @@ function _schliessen(id) {
   const p = document.getElementById(id);
   if (!p) return;
   // Das eigene Schließen-Element des Fensters benutzen, damit Modulzustand (Knöpfe, Layer) stimmt
+  if (WERKZEUGE[id]) { WERKZEUGE[id].zu(); _planen(); return; }
   const h = p.querySelector('.panel-drag-handle');
   const zu = h && [...h.querySelectorAll('button, span, a, i')].find(el => /^[✕×✖]$/.test(el.textContent.trim()));
   if (zu) zu.click();
@@ -295,13 +326,17 @@ export function dockInit() {
   // Fenster öffnen/schließen sich über class/style — nur relevante Änderungen zählen
   // (die Karte ändert beim Verschieben laufend Stile ihrer Kacheln).
   const relevant = t => t === document.body || t === document.documentElement
-    || t.classList?.contains('float-panel') || t.id === 'sidebar' || ZENTRALANSICHTEN.includes(t.id) || t.id === 'center-projekt-view';
+    || t.classList?.contains('float-panel') || t.id in WERKZEUGE || t.id === INSPEKTOR_ID
+    || t.id === 'sidebar' || ZENTRALANSICHTEN.includes(t.id) || t.id === 'center-projekt-view';
   new MutationObserver(recs => { if (recs.some(r => relevant(r.target))) _planen(); })
     .observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
   new MutationObserver(_planen).observe(document.documentElement, { attributes: true, attributeFilter: ['data-dual-screen'] });
   // Fenster, die ein Modul erst beim ersten Öffnen anlegt
-  new MutationObserver(recs => { if (recs.some(r => [...r.addedNodes].some(n => n.classList?.contains('float-panel')))) _planen(); })
+  new MutationObserver(recs => { if (recs.some(r => [...r.addedNodes].some(n => n.classList?.contains('float-panel') || n.id in WERKZEUGE))) _planen(); })
     .observe(document.body, { childList: true });
+  // Werkzeugflächen entfernen sich beim Schließen selbst aus dem DOM (auch aus der Spalte)
+  new MutationObserver(recs => { if (recs.some(r => r.removedNodes.length)) _planen(); })
+    .observe(_inhalt, { childList: true });
   window.addEventListener('resize', _planen);
 
   // Karte an ihre neue Breite anpassen, auch wenn jemand anderes die Spalte verändert

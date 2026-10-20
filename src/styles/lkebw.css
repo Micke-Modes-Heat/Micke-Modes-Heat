@@ -711,6 +711,14 @@ body.ui-dock-hat-reiter #sidebar-toggle{display:none!important}
 .float-panel.im-dock.dock-aktiv{display:block!important}
 .float-panel.im-dock>.panel-drag-handle{position:sticky;top:0;z-index:3;border-radius:0;cursor:grab}
 .float-panel.im-dock .panel-minimize-btn{display:none!important}
+/* Werkzeugflächen (Blackout, PV-Modus, Bäume, Grundrisse, Schaltbilder) in der Spalte: volle Höhe,
+   eigener Rahmen/Schatten/Lage weg (#ui-dock-inhalt schlägt die id-Regeln aus app.css und §8) */
+#ui-dock-inhalt>.im-dock:not(.float-panel){position:static!important;inset:auto!important;transform:none!important;
+  width:auto!important;min-width:0!important;max-width:none!important;max-height:none!important;margin:0!important;
+  border:0!important;border-radius:0!important;box-shadow:none!important;z-index:auto!important}
+#ui-dock-inhalt>.im-dock:not(.float-panel):not(.dock-aktiv){display:none!important}
+#ui-dock-inhalt>.im-dock:not(.float-panel).dock-aktiv{display:flex!important;flex-direction:column;height:100%;min-height:0}
+#ui-dock-inhalt>.im-dock .sld-resize-handle{display:none!important}
 /* Frei verschobene Kartenfenster ruhen, solange eine Seite (Auswertung, Gutachten …) offen ist */
 .float-panel.ui-seite-verdeckt{display:none!important}
 
