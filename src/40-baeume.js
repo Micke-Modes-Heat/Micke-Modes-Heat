@@ -30,6 +30,7 @@ import { calcStromPanel } from './09b-pv-calc.js';
 import { d3dGebaeudeModell } from './32-3d-ansicht.js';
 import { baumOverpassLaden, baeumeAusOverpass, baumKrone, BAUM_FARBEN } from './lib/baeume-3d.js';
 import { vsHindernisse, vsFaktoren, vsStichprobe } from './lib/verschattung.js';
+import { BAUM_VORLAGEN, BAUM_STREUUNG, vorlageBaum, vorlageFlaeche, vorlageHoehe, vorlageText } from './lib/baum-vorlagen.js';
 
 const PANEL_ID = 'baum-panel';
 const INTERAKTION = 'baeume';
@@ -67,7 +68,10 @@ let _offenGeb = null;         // aufgeklappte Zeile in der Liste
 let _rechnet = null;
 let _layer = null;
 let _renderer = null;
-const _neu = { art: 'laub', hoehe: 12, krone: 8 };
+// Neue Bäume: Vorlage je Modus (Einzeln / Fläche), 'eigen' = feste Maße wie früher
+const _neu = { art: 'laub', hoehe: 12, krone: 8, vorlageEinzeln: 'laub', vorlageFlaeche: 'mischwald', streuung: 'natuerlich', hoeheMittel: null };
+const _vorlageId = () => (_modus === 'flaeche' ? _neu.vorlageFlaeche : _neu.vorlageEinzeln);
+const _vorlage = () => BAUM_VORLAGEN[_vorlageId()] || null;
 const _autoVersucht = new Set();
 /** Setzen: einzeln per Klick oder eine Fläche zeichnen und mit Bäumen füllen */
 let _modus = 'einzeln';
@@ -247,6 +251,8 @@ function _bearbeitenAus() {
 
 export function baumModus(m) {
   _modus = m === 'flaeche' ? 'flaeche' : 'einzeln';
+  _neu.hoeheMittel = null;
+  if (_modus === 'flaeche' && _vorlage()) _flaeche.abstand = _vorlage().abstand;
   _flaecheVerwerfen(true);
   map.closePopup();
   _modusAnwenden();
@@ -320,18 +326,15 @@ export function baumFlaecheFuellen() {
     showHint('Fläche zu groß für diesen Abstand — Abstand erhöhen oder die Fläche verkleinern.', 6000);
     return 0;
   }
-  const neu = [];
-  let r = 0;
-  for (let y = y0; y <= y1; y += zeile, r++) {
-    for (let x = x0 + (r % 2 ? abstand / 2 : 0); x <= x1; x += abstand) {
-      const px = x + (Math.random() - 0.5) * abstand * 0.3, py = y + (Math.random() - 0.5) * abstand * 0.3;
-      if (!_imRing(px, py, ring) || sperren.some(s => _imRing(px, py, s))) continue;
-      neu.push(_normal({
-        lat: lat0 + py / M_PRO_GRAD, lng: lng0 + px / kx, hoehe: _neu.hoehe, krone: _neu.krone, art: _neu.art,
-        quelle: 'manuell', hoeheQuelle: 'manuell', drehung: Math.random() * Math.PI * 2, ton: 1,
-      }));
-    }
-  }
+  const v = _vorlage();
+  const punkte = v
+    ? vorlageFlaeche(v, ring, { abstand, streuung: _neu.streuung, hoeheMittel: _neu.hoeheMittel, sperren, zufall: Math.random })
+    : _rasterFest(ring, sperren, abstand, x0, x1, y0, y1);
+  const neu = punkte.map(p => _normal({
+    lat: lat0 + p.y / M_PRO_GRAD, lng: lng0 + p.x / kx, hoehe: p.hoehe, krone: p.krone, art: p.art,
+    // Höhen aus einer Vorlage sind Schätzwerte (gestrichelt, „vorsichtig rechnen" greift)
+    quelle: 'manuell', hoeheQuelle: v ? 'vorgabe' : 'manuell', drehung: p.drehung, ton: p.ton,
+  }));
   if (!neu.length) { showHint('In dieser Fläche passt bei diesem Abstand kein Baum.', 5000); return 0; }
   if (_baeume.length + neu.length > MAX_BAEUME) {
     showHint(`Zu viele Bäume (${_fmt(_baeume.length + neu.length)}, höchstens ${_fmt(MAX_BAEUME)}) — Abstand erhöhen.`, 6000);
@@ -340,13 +343,31 @@ export function baumFlaecheFuellen() {
   _baeume.push(...neu);
   _flaecheVerwerfen(true);
   _geaendert();
-  showHint(`🌳 ${_fmt(neu.length)} Bäume in der Fläche gesetzt (Abstand ${_fmt(abstand, 1)} m)`
-    + (sperren.length ? ', Gebäudegrundrisse ausgespart' : '') + '.', 6000);
+  const zahl = a => neu.filter(b => b.art === a).length;
+  const hs = neu.map(b => b.hoehe);
+  showHint(`🌳 ${_fmt(neu.length)} Bäume gesetzt${v ? ` (${v.name})` : ''}: `
+    + Object.entries({ laub: 'Laub', nadel: 'Nadel', obst: 'Obst' }).filter(([a]) => zahl(a)).map(([a, l]) => `${_fmt(zahl(a))} ${l}`).join(' · ')
+    + ` · ${_fmt(Math.min(...hs))}–${_fmt(Math.max(...hs))} m · Abstand ${_fmt(abstand, 1)} m`
+    + (sperren.length ? ', Gebäudegrundrisse ausgespart' : '') + '.', 7000);
   return neu.length;
 }
 
+/** Raster mit festen Maßen (Vorlage „Eigene Maße"). */
+function _rasterFest(ring, sperren, abstand, x0, x1, y0, y1) {
+  const out = [];
+  const zeile = abstand * 0.866;
+  for (let y = y0, r = 0; y <= y1; y += zeile, r++) {
+    for (let x = x0 + (r % 2 ? abstand / 2 : 0); x <= x1; x += abstand) {
+      const px = x + (Math.random() - 0.5) * abstand * 0.3, py = y + (Math.random() - 0.5) * abstand * 0.3;
+      if (!_imRing(px, py, ring) || sperren.some(s => _imRing(px, py, s))) continue;
+      out.push({ x: px, y: py, hoehe: _neu.hoehe, krone: _neu.krone, art: _neu.art, drehung: Math.random() * Math.PI * 2, ton: 1 });
+    }
+  }
+  return out;
+}
+
 export function baumFlaecheOption(feld, wert) {
-  if (feld === 'abstand') _flaeche.abstand = _klemmen(parseFloat(wert) || 6, 1, 50);
+  if (feld === 'abstand') { _flaeche.abstand = _klemmen(parseFloat(wert) || 6, 1, 50); baumPanelRender(); }
   if (feld === 'ausGebaeude') _flaeche.ausGebaeude = !!wert;
 }
 
@@ -360,10 +381,13 @@ function _kartenKlick(e) {
     baumPanelRender();
     return;
   }
-  const krone = _neu.krone;
+  const v = _vorlage();
+  const m = v
+    ? vorlageBaum(v, Math.random, { streuung: _neu.streuung, hoeheMittel: _neu.hoeheMittel })
+    : { hoehe: _neu.hoehe, krone: _neu.krone, art: _neu.art, drehung: Math.random() * Math.PI * 2, ton: 1 };
   const b = _normal({
-    lat: e.latlng.lat, lng: e.latlng.lng, hoehe: _neu.hoehe, krone, art: _neu.art,
-    quelle: 'manuell', hoeheQuelle: 'manuell', drehung: Math.random() * Math.PI * 2, ton: 1,
+    lat: e.latlng.lat, lng: e.latlng.lng, ...m,
+    quelle: 'manuell', hoeheQuelle: v ? 'vorgabe' : 'manuell',
   });
   _baeume.push(b);
   _geaendert();
@@ -433,6 +457,15 @@ export function baumAlleLoeschen(nurOsm) {
 }
 
 export function baumVorgabe(feld, wert) {
+  if (feld === 'vorlage' && (wert === 'eigen' || BAUM_VORLAGEN[wert])) {
+    _neu[_modus === 'flaeche' ? 'vorlageFlaeche' : 'vorlageEinzeln'] = wert;
+    _neu.hoeheMittel = null;                                  // Höhe der neuen Vorlage
+    if (BAUM_VORLAGEN[wert]) _flaeche.abstand = BAUM_VORLAGEN[wert].abstand;
+    baumPanelRender();
+    return;
+  }
+  if (feld === 'streuung' && BAUM_STREUUNG[wert]) { _neu.streuung = wert; baumPanelRender(); return; }
+  if (feld === 'hoeheMittel') { const v = parseFloat(wert); _neu.hoeheMittel = v > 0 ? _klemmen(v, 2, 45) : null; baumPanelRender(); return; }
   if (feld === 'art' && ARTEN[wert]) _neu.art = wert;
   if (feld === 'hoehe') _neu.hoehe = _klemmen(parseFloat(wert) || 12, 1, 60);
   if (feld === 'krone') _neu.krone = _klemmen(parseFloat(wert) || 8, 0.5, 30);
@@ -1369,6 +1402,23 @@ function _zeileHtml(g, e, s) {
     </div>`;
 }
 
+/** Auswahl der Vorlage; im Flächenmodus stehen die Bestände oben, beim Einzelsetzen die Einzelbäume. */
+function _vorlageWahlHtml() {
+  const id = _vorlageId();
+  const opt = g => Object.entries(BAUM_VORLAGEN).filter(([, v]) => v.gruppe === g)
+    .map(([k, v]) => `<option value="${k}"${id === k ? ' selected' : ''} title="${escHtml(v.text)}">${escHtml(v.name)}</option>`).join('');
+  const einzel = `<optgroup label="Einzelbäume">${opt('einzel')}</optgroup>`;
+  const bestand = `<optgroup label="Wald und Bestände">${opt('bestand')}</optgroup>`;
+  return `
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);">
+          <span title="Vorlage für Art, Höhe und Krone — die Werte streuen je Baum wie in einem echten Bestand">Vorlage</span>
+          <select class="inp-field" style="flex:1;padding:2px;" data-change="baumVorgabe('vorlage',this.value)">
+            ${_modus === 'flaeche' ? bestand + einzel : einzel + bestand}
+            <optgroup label="Ohne Streuung"><option value="eigen"${id === 'eigen' ? ' selected' : ''}>Eigene Maße (alle gleich)</option></optgroup>
+          </select>
+        </div>`;
+}
+
 function _html() {
   const anzahl = _baeume.length;
   const osm = _baeume.filter(b => b.quelle === 'osm').length;
@@ -1384,6 +1434,7 @@ function _html() {
     .sort((a, b) => (a.e?.faktor ?? 2) - (b.e?.faktor ?? 2))
     .map(({ g, e, s }) => _zeileHtml(g, e, s)).join('');
 
+  const vorl = _vorlage();
   const feld = (f, wert, min, max, step) => `<input class="inp-field" type="number" min="${min}" max="${max}" step="${step}" value="${wert}"
       style="width:100%;padding:2px 4px;" data-change="baumVorgabe('${f}',this.value)"/>`;
 
@@ -1419,7 +1470,7 @@ function _html() {
     <div class="pvm-body">
       <div style="font-size:12px;line-height:1.5;">
         <b>${_fmt(anzahl)}</b> Bäume im Projekt${anzahl ? ` · ${_fmt(osm)} aus OSM · ${_fmt(anzahl - osm)} eigene` : ''}
-        ${vorgabe ? `<div style="color:${GELB};font-size:11px;" title="Ohne Höhenangabe gilt eine Vorgabe (Einzelbaum 12 m, Wald 20 m, Obstbaum 6 m). Auf der Karte gestrichelt.">⚠ ${_fmt(vorgabe)} mit geschätzter Höhe (gestrichelt)</div>` : ''}
+        ${vorgabe ? `<div style="color:${GELB};font-size:11px;" title="Ohne Höhenangabe gilt eine Vorgabe (OSM: Einzelbaum 12 m, Wald 20 m, Obstbaum 6 m) bzw. die Höhe kommt aus einer Vorlage. Auf der Karte gestrichelt; „vorsichtig rechnen“ schlägt hier 20 % auf.">⚠ ${_fmt(vorgabe)} mit geschätzter Höhe (gestrichelt)</div>` : ''}
       </div>
       <div style="display:flex;gap:4px;margin-top:6px;">
         <button class="btn-xs" style="flex:1;border-color:${GRUEN};color:${GRUEN};" data-click="baumOsmUebernehmen()" ${_laedt ? 'disabled' : ''}
@@ -1436,12 +1487,24 @@ function _html() {
       </div>
       <div style="margin-top:5px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">${_modus === 'flaeche' ? 'Bäume in der Fläche' : 'Neuer Baum'}</div>
-        <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:4px;font-size:11px;color:var(--muted);">
+        ${_vorlageWahlHtml()}
+        ${vorl ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px;font-size:11px;color:var(--muted);">
+          <span title="Mittlere Höhe des Bestands — alle Höhen der Vorlage werden im selben Verhältnis angepasst (z. B. jüngerer Wald)">mittl. Höhe m</span>
+          <span title="Wie stark Höhe und Krone von Baum zu Baum schwanken">Streuung</span>
+          <input class="inp-field" type="number" min="2" max="45" step="0.5" value="${Math.round((_neu.hoeheMittel || vorlageHoehe(vorl)) * 10) / 10}"
+            style="width:100%;padding:2px 4px;" data-change="baumVorgabe('hoeheMittel',this.value)"/>
+          <select class="inp-field" style="padding:2px;" data-change="baumVorgabe('streuung',this.value)">${Object.entries(BAUM_STREUUNG).map(([k, x]) =>
+            `<option value="${k}"${_neu.streuung === k ? ' selected' : ''}>${x.name}</option>`).join('')}</select>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4;">${escHtml(vorlageText(vorl, { hoeheMittel: _neu.hoeheMittel, streuung: _neu.streuung, abstand: _modus === 'flaeche' ? _flaeche.abstand : undefined }))}</div>`
+        : `
+        <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:4px;margin-top:4px;font-size:11px;color:var(--muted);">
           <span>Art</span><span>Höhe m</span><span>Krone m</span>
           <select class="inp-field" style="padding:2px;" data-change="baumVorgabe('art',this.value)">${Object.entries(ARTEN).map(([k, l]) =>
             `<option value="${k}"${_neu.art === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
           ${feld('hoehe', _neu.hoehe, 1, 60, 0.5)}${feld('krone', _neu.krone, 0.5, 30, 0.5)}
-        </div>
+        </div>`}
         ${_modus === 'flaeche' ? `
         <div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11px;color:var(--muted);">
           <span title="Mittlerer Abstand zwischen den Baumstämmen (versetzte Reihen)">Abstand m</span>

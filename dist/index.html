@@ -12877,6 +12877,10 @@ body.ui-lkebw .float-panel.dragging{border-radius:var(--r-2)!important}
 .ebenen-panel .ebp-cb:checked{background:var(--brand)}
 .ebenen-panel .ebp-cb:checked::before{left:14px}
 .ebenen-panel .ebp-cb:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+/* Ebene ohne Inhalt im Projekt (z. B. keine Wärmepumpe platziert): gedimmt, nicht schaltbar */
+.ebenen-panel .ebp-row-leer{color:var(--faint);cursor:default}
+.ebenen-panel .ebp-row-leer:hover{color:var(--faint)}
+.ebenen-panel .ebp-row-leer .ebp-cb{opacity:.45;cursor:default}
 /* Weitere Ansichten */
 .ebp-aktion{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;width:100%;padding:5px 0;font-size:13px;color:var(--text)}
 .ebp-aktion svg{color:var(--muted)}
@@ -13099,6 +13103,7 @@ if (typeof L !== 'undefined') {
     <symbol id="ui-i-arrow" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></symbol>
     <symbol id="ui-i-pen" viewBox="0 0 16 16"><path d="M2.5 13.5l2-6 6-5 3 3-5 6zM2.5 13.5l4-4"/></symbol>
     <symbol id="ui-i-play" viewBox="0 0 16 16"><path d="M4.5 2.5l9 5.5-9 5.5z"/></symbol>
+    <symbol id="ui-i-tree" viewBox="0 0 16 16"><path d="M8 14.5V9.5M8 1.5a4 4 0 0 0-3.8 5.2A3 3 0 0 0 5.5 12.5h5a3 3 0 0 0 1.3-5.8A4 4 0 0 0 8 1.5zM6 10.5l2 1.5 2-2"/></symbol>
     <symbol id="ui-i-map" viewBox="0 0 16 16"><path d="M1.5 3.5l4-1.5 5 2 4-1.5v10l-4 1.5-5-2-4 1.5zM5.5 2v10M10.5 4v10"/></symbol>
     <symbol id="ui-i-screen" viewBox="0 0 16 16"><path d="M1.5 2.5h13v8.5h-13zM5.5 14h5M8 11v3"/></symbol>
     <symbol id="ui-i-lock" viewBox="0 0 16 16"><path d="M3.5 7.5h9v6.5h-9zM5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5"/></symbol>
@@ -13282,6 +13287,20 @@ if (typeof L !== 'undefined') {
             <div class="ebp-cat-label"><i class="ebp-sw" style="--sw:var(--c-amber)"></i>Photovoltaik</div>
             <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-pv-visible" checked data-change="setPvVisible(this.checked)">PV-Anlagen</label>
           </div>
+
+          <!-- Zustand und „nicht angelegt“ setzt _ebpSyncAll (src/04a-ui-panels.js) beim Öffnen -->
+          <div class="ebp-cat">
+            <div class="ebp-cat-label"><i class="ebp-sw" style="--sw:var(--c-teal)"></i>Wärmeerzeuger</div>
+            <label class="ebp-row" data-ebp-da="lwwp"><input type="checkbox" class="ebp-cb" id="el-lwwp-visible" checked data-change="setLwWpVisible(this.checked);_ebpSync('lwwp-visible',this.checked);_ebpSyncAll()">Luft-Wasser-WP</label>
+            <label class="ebp-row ebp-row-unter" data-ebp-da="lwwp" title="Isophonen 35–55 dB(A) um die Außengeräte"><input type="checkbox" class="ebp-cb" id="el-lwwp-schall-visible" checked data-change="setSchallVisible(this.checked);_ebpSync('lwwp-schall-visible',this.checked)">Schallringe</label>
+            <label class="ebp-row" data-ebp-da="geo"><input type="checkbox" class="ebp-cb" id="el-geo-visible" checked data-change="setGeoVisible(this.checked);_ebpSync('geo-visible',this.checked)">Erdwärme-Sondenfeld</label>
+            <label class="ebp-row" data-ebp-da="fg"><input type="checkbox" class="ebp-cb" id="el-fg-visible" checked data-change="setFliessgewaesserVisible(this.checked);_ebpSync('fg-visible',this.checked)">Fließgewässer</label>
+          </div>
+
+          <div class="ebp-cat">
+            <div class="ebp-cat-label"><i class="ebp-sw" style="--sw:var(--c-green)"></i>Umgebung</div>
+            <label class="ebp-row" data-ebp-da="baeume"><input type="checkbox" class="ebp-cb" id="el-baeume-visible" checked data-change="baumSichtbar(this.checked)">Bäume</label>
+          </div>
         </div>
       </div>
     </div>
@@ -13418,6 +13437,13 @@ if (typeof L !== 'undefined') {
             <button class="btn-secondary" id="btn-osm-dach" data-click="dachformenAusOsmErgaenzen({nachfragen:true})" title="Dachform, Neigung und Richtung aus OpenStreetMap für alle Gebäude ohne eigene Dachangabe übernehmen.">Dachformen aus OSM</button>
             <button class="btn-secondary" id="btn-dach-grundriss" data-click="dachGrundrissBerechnen()" title="Für Gebäude ohne LoD2 (auch geplante Neubauten): Dachflächen aus dem rechtwinkligen Grundriss berechnen.">Dach aus Grundriss</button>
           </div>
+        </div>
+
+        <div class="ui-gruppe">
+          <div class="ui-gruppe-titel">Umgebung</div>
+          <button class="ui-aufgabe" id="btn-baeume" data-click="baumPanelToggle('baeume')" title="Einzelbäume, Baumreihen, Wald und Streuobst — gebraucht für die Verschattung der PV-Dächer und die Schallausbreitung der Luft-Wärmepumpe.">
+            <svg class="ui-i"><use href="#ui-i-tree"/></svg><span><b>Bäume</b><small id="btn-baeume-info">Aus OpenStreetMap laden oder selbst setzen — für PV-Verschattung und Schall</small></span><svg class="ui-i ui-i-sm"><use href="#ui-i-chev"/></svg>
+          </button>
         </div>
 
         <div class="ui-gruppe">
@@ -16849,7 +16875,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-20';
   if (d.indexOf('__') === 0) d = '';
-  var c = '167c150';
+  var c = '6611a6f';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -78275,6 +78301,177 @@ window._isSingleFileBuild = true;
     return {elements:[...elements.values()]};
   }
 
+  // ── lib/overpass-client.js — schonender Zugriff auf die öffentlichen Overpass-Server (OpenStreetMap) ──
+  // Die öffentlichen Server vergeben je IP-Adresse nur wenige Rechenplätze und sperren bei zu vielen Anfragen
+  // (HTTP 429). Deshalb:
+  //   • eine Anfrage zur Zeit (Warteschlange) statt mehrerer parallel,
+  //   • die Server nacheinander statt alle gleichzeitig (jede gleichzeitige Anfrage belegt dort einen Platz),
+  //   • der Browser wartet länger als der Server rechnen darf ([timeout:N] + Puffer) — ein vorzeitiger Abbruch
+  //     würde den Platz auf dem Server trotzdem bis zum Ende belegen,
+  //   • nach 429/504 bzw. Zeitüberschreitung pausiert der betroffene Server (Retry-After, sonst 60 s bzw. 20 s),
+  //   • Antworten werden im Browser zwischengespeichert (IndexedDB, 30 Tage) — dasselbe Gebiet wird nicht erneut
+  //     angefragt (Neu laden mit { frisch: true } bzw. osmZwischenspeicherLeeren()).
+  //   • overpass-api.de lehnte zeitweise Browser-Anfragen ohne Herkunftsangabe (lokal geöffnete Datei) mit 406 ab.
+  //     Geprüft 20.10.2026: Antwort auch mit Origin „null“ — der Server wird deshalb immer gefragt; ein 406 pausiert
+  //     ihn für 10 Minuten (statt ihn vorab auszuschließen und nur den Ersatzserver zu fragen).
+  //   • overpass.kumi.systems ist derselbe Rechner wie overpass.private.coffee (gleiche Adresse) — nur einmal fragen.
+  //   • Der Verbindungsaufbau kann lange dauern: eine Adresse von overpass-api.de war am 20.10.2026 nicht erreichbar,
+  //     der Browser wartet dann ~20 s, bevor er die zweite nimmt — daher PUFFER_S über der Serverrechenzeit.
+  //   • Nur Server in DE/AT: Der Kartenausschnitt verrät, welche Liegenschaft untersucht wird.
+
+  const OVERPASS_SERVER = Object.freeze([
+    { name: 'overpass-api.de', url: 'https://overpass-api.de/api/interpreter' },
+    { name: 'private.coffee', url: 'https://overpass.private.coffee/api/interpreter' },
+  ]);
+
+  /** Wartezeit (s), die der Browser über die Serverrechenzeit hinaus gewährt (Verbindungsaufbau, Warteschlange). */
+  const PUFFER_S = 30;
+
+  const SPEICHER_TAGE = 30;
+  const pauseBis = new Map();        // Server-URL → Zeitpunkt (ms), ab dem er wieder angefragt wird
+  let warteschlange = Promise.resolve();
+  const speicher = new Map();        // Zwischenspeicher dieser Sitzung (Schlüssel → Antwort)
+
+  /** Rechenzeit, die die Abfrage dem Server erlaubt ([timeout:N], sonst 180 s Server-Vorgabe → hier 25 s angenommen). */
+  function serverTimeoutS(abfrage) {
+    const m = /\[timeout:(\d+)\]/.exec(String(abfrage || ''));
+    return m ? Number(m[1]) : 25;
+  }
+
+  /** Kurzer, stabiler Schlüssel einer Abfrage (FNV-1a über den Text). */
+  function abfrageSchluessel(abfrage) {
+    let h = 0x811c9dc5;
+    const s = String(abfrage || '').replace(/\s+/g, ' ').trim();
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return 'op1:' + h.toString(36) + ':' + s.length;
+  }
+
+  /** Pause eines Servers nach einer Antwort (ms) oder 0: Retry-After, sonst 60 s bei 429, 20 s bei 503/504/Zeitüberschreitung,
+   *  10 min bei 406 (grundsätzlich abgelehnt — ein zweiter Versuch gleich danach bringt nichts). */
+  function pauseNachAntwort(status, retryAfter) {
+    const ra = Number(retryAfter);
+    if (status === 406) return 600000;
+    if (status === 429) return Number.isFinite(ra) && ra > 0 ? Math.min(600, ra) * 1000 : 60000;
+    if (status === 503 || status === 504 || status === 'timeout') return 20000;
+    return 0;
+  }
+
+  // ── IndexedDB (fehlertolerant: ohne IndexedDB bleibt nur der Sitzungsspeicher) ──
+  function db() {
+    return new Promise(resolve => {
+      try {
+        if (typeof indexedDB === 'undefined') { resolve(null); return; }
+        const req = indexedDB.open('mmh-osm', 1);
+        req.onupgradeneeded = () => { try { req.result.createObjectStore('antworten'); } catch (e) { void e; } };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+        req.onblocked = () => resolve(null);
+      } catch (e) { resolve(null); }
+    });
+  }
+  async function lesen$1(schluessel) {
+    if (speicher.has(schluessel)) return speicher.get(schluessel);
+    const d = await db();
+    if (!d) return null;
+    return new Promise(resolve => {
+      try {
+        const r = d.transaction('antworten').objectStore('antworten').get(schluessel);
+        r.onsuccess = () => {
+          const e = r.result;
+          if (e && Date.now() - e.zeit < SPEICHER_TAGE * 864e5) { speicher.set(schluessel, e.daten); resolve(e.daten); } else resolve(null);
+        };
+        r.onerror = () => resolve(null);
+      } catch (e) { resolve(null); }
+    });
+  }
+  async function schreiben(schluessel, daten) {
+    speicher.set(schluessel, daten);
+    const d = await db();
+    if (!d) return;
+    try { d.transaction('antworten', 'readwrite').objectStore('antworten').put({ zeit: Date.now(), daten }, schluessel); } catch (e) { }
+  }
+
+  /** true, wenn die Seite als lokale Datei geöffnet ist (keine Herkunftsangabe, Origin „null“). */
+  function seiteLokal(ort = typeof location !== 'undefined' ? location : null) {
+    return !!ort && (ort.protocol === 'file:' || ort.origin === 'null');
+  }
+
+  /** Gesperrte Server mit Restpause (s) — für Hinweise in der Oberfläche. */
+  function overpassPausen() {
+    const jetzt = Date.now();
+    return OVERPASS_SERVER.map(s => ({ name: s.name, restS: Math.max(0, Math.ceil(((pauseBis.get(s.url) || 0) - jetzt) / 1000)) }));
+  }
+
+  /**
+   * Overpass-Abfrage. Ergebnis: Antwort-JSON oder null (alle Server gescheitert / abgebrochen).
+   * opt: { frisch (Zwischenspeicher übergehen), status(serverName, text) (Fortschritt), abgebrochen() → true bricht ab,
+   *        abrufen (fetch-Ersatz für Tests), runden (Durchgänge über alle Server, Vorgabe 2), maxWartenS (Vorgabe 45) }
+   */
+  function overpassAbfrage(abfrage, opt = {}) {
+    const { frisch = false, status = () => {}, abgebrochen = () => false, abrufen = (...a) => fetch(...a),
+      runden = 2, maxWartenS = 45, warten = ms => new Promise(r => setTimeout(r, ms)), lokal = seiteLokal() } = opt;
+    const server = OVERPASS_SERVER;
+    const schluessel = abfrageSchluessel(abfrage);
+    const lauf = async () => {
+      if (!frisch) {
+        const alt = await lesen$1(schluessel);
+        if (alt) { status('Zwischenspeicher', '✓ ' + (alt.elements?.length ?? 0) + ' Elemente (gespeichert)'); return alt; }
+      }
+      const clientMs = (serverTimeoutS(abfrage) + PUFFER_S) * 1000;
+      for (let runde = 0; runde < runden; runde++) {
+        for (const s of server) {
+          if (abgebrochen()) return null;
+          const rest = (pauseBis.get(s.url) || 0) - Date.now();
+          if (rest > 0) { status(s.name, '⏸ Pause ' + Math.ceil(rest / 1000) + ' s'); continue; }
+          status(s.name, '🔄');
+          const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+          const timer = setTimeout(() => ctrl?.abort(), clientMs);
+          try {
+            // Formular-Kodierung wie vom Overpass-Server erwartet (CORS-einfache Anfrage, keine Vorabprüfung)
+            const resp = await abrufen(s.url, { method: 'POST', body: 'data=' + encodeURIComponent(abfrage), signal: ctrl?.signal,
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } });
+            if (!resp.ok) {
+              const p = pauseNachAntwort(resp.status, resp.headers?.get?.('Retry-After'));
+              if (p) pauseBis.set(s.url, Date.now() + p);
+              status(s.name, '⚠ HTTP ' + resp.status + (resp.status === 429 ? ' (zu viele Anfragen)'
+                : resp.status === 406 ? ' (abgelehnt' + (lokal ? ' — Datei lokal geöffnet; Tool über eine Webadresse öffnen' : '') + ')' : ''));
+              continue;
+            }
+            let daten;
+            try { daten = await resp.json(); } catch (e) { void e; status(s.name, '⚠ keine gültige Antwort'); continue; }
+            if (/runtime error|timed out/i.test(daten?.remark || '')) {
+              pauseBis.set(s.url, Date.now() + pauseNachAntwort('timeout'));
+              status(s.name, '⚠ Server überlastet');
+              continue;
+            }
+            status(s.name, '✓ ' + (daten?.elements?.length ?? 0) + ' Elemente');
+            await schreiben(schluessel, daten);
+            return daten;
+          } catch (e) {
+            const zeit = e?.name === 'AbortError';
+            if (zeit) pauseBis.set(s.url, Date.now() + pauseNachAntwort('timeout'));
+            // „Failed to fetch“: vom Browser blockiert (CORS, Netzwerk, Proxy) — Hinweis auf lokal geöffnete Datei
+            status(s.name, '✗ ' + (zeit ? 'Zeitüberschreitung' : 'vom Browser blockiert' + (lokal ? ' (Datei lokal geöffnet)' : '') + (e?.message ? ': ' + e.message : '')));
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+        // Alle Server pausiert oder gescheitert: auf den ersten freien warten (begrenzt), dann zweiter Durchgang
+        if (runde < runden - 1) {
+          const naechste = Math.min(...server.map(s => (pauseBis.get(s.url) || 0) - Date.now()));
+          const ms = Math.min(maxWartenS * 1000, Math.max(3000, naechste));
+          status('Warten', '⏳ neuer Versuch in ' + Math.ceil(ms / 1000) + ' s');
+          await warten(ms);
+        }
+      }
+      return null;
+    };
+    // Warteschlange: eine Anfrage zur Zeit
+    const ergebnis = warteschlange.then(lauf, lauf);
+    warteschlange = ergebnis.catch(() => null);
+    return ergebnis;
+  }
+
   // ── lib/schichten.js — Planungsschichten (Bestand / Entwicklung / Entscheidung) ──
   //
   // Trennt die drei fachlich verschiedenen Gründe, aus denen ein Objekt im Modell
@@ -84252,7 +84449,8 @@ window._isSingleFileBuild = true;
 
   async function loadOsmStrassen() {
     const loadStartedAt = Date.now();
-    const totalLoadBudgetMs = 28000;
+    // Gesamtbudget für alle Teilbereiche — eine einzelne Overpass-Anfrage darf bis zu ~50 s dauern (Verbindungsaufbau)
+    const totalLoadBudgetMs = 180000;
     let bbox;
     let bboxValues;
     const pointLat = point => Number(Array.isArray(point) ? point[0] : point?.lat);
@@ -84289,49 +84487,22 @@ window._isSingleFileBuild = true;
     // Neben öffentlichen Straßen auch typische private Erschließungs- und
     // Betriebswege laden. Gerade auf großen Liegenschaften sind interne Wege in
     // OSM häufig nur als living_street, track oder path klassifiziert.
-    const query = `[out:json][timeout:12];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${bbox});out geom;`;
+    const query = `[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${bbox});out geom;`;
 
-    // Mehrere Overpass-Endpunkte parallel — der erste erfolgreiche gewinnt.
-    // Ein gemeinsames Zeitlimit verhindert, dass nicht erreichbare Server den
-    // gesamten Erstellungsdialog minutenlang blockieren.
+    // Über den gemeinsamen, schonenden Overpass-Zugriff (lib/overpass-client.js): Server nacheinander, eine Anfrage
+    // zur Zeit, Pause nach Rate-Limit, Zwischenspeicher. Früher liefen hier alle Server parallel mit hartem 18-s-Limit —
+    // bei langsamem Verbindungsaufbau (overpass-api.de ~20 s, Stand 20.10.2026) scheiterte damit jede Anfrage.
     async function _fetchOverpass(q) {
-      const enc = encodeURIComponent(q);
-      const body = 'data=' + enc;
-      const postHeaders = { 'Content-Type': 'application/x-www-form-urlencoded' };
-      // Nur Server in DE/AT — keine Proxys Dritter, keine Server außerhalb der EU
-      // (der Kartenausschnitt verrät, welche Liegenschaft untersucht wird).
-      const requests = [
-        {url:'https://overpass-api.de/api/interpreter', options:{method:'POST',headers:postHeaders,body}},
-        {url:'https://overpass.kumi.systems/api/interpreter', options:{method:'POST',headers:postHeaders,body}},
-        {url:'https://overpass.private.coffee/api/interpreter?data=' + enc, options:{}},
-      ];
-      const controllers = requests.map(() => new AbortController());
-      const remainingBudget = Math.max(1000,totalLoadBudgetMs - (Date.now() - loadStartedAt));
-      const requestTimeoutMs = Math.min(18000,remainingBudget);
-      const timeout = setTimeout(() => controllers.forEach(controller => controller.abort()), requestTimeoutMs);
-      try {
-        const attempts = requests.map(async (request, index) => {
-          const response = await fetch(request.url, {...request.options, signal:controllers[index].signal});
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const data = await response.json();
-          if (!Array.isArray(data?.elements)) throw new Error('Ungültige OSM-Antwort');
-          if (data.remark || data.osm3s?.remark) {
-            throw new Error(`Unvollständige OSM-Antwort: ${data.remark || data.osm3s.remark}`);
-          }
-          const usableWays = data.elements.filter(element =>
-            element.type === 'way' && Array.isArray(element.geometry) && element.geometry.length >= 2);
-          if (!usableWays.length) throw new Error('OSM-Antwort enthält keine nutzbaren Straßen');
-          return data;
-        });
-        return await Promise.any(attempts);
-      } catch (error) {
-        throw new Error(error?.name === 'AggregateError'
-          ? `Kein OSM-Server innerhalb von ${Math.ceil(requestTimeoutMs / 1000)} Sekunden mit nutzbaren Straßen erreichbar`
-          : error.message);
-      } finally {
-        clearTimeout(timeout);
-        controllers.forEach(controller => controller.abort());
-      }
+      const data = await overpassAbfrage(q, {
+        runden:1,
+        status:(name,text) => {
+          const statusNode = document.getElementById('osm-street-progress-status');
+          if (statusNode) statusNode.textContent = `${name}: ${text}`;
+        },
+      });
+      if (!data) throw new Error('Kein OSM-Server erreichbar oder alle ausgelastet');
+      if (!Array.isArray(data.elements)) throw new Error('Ungültige OSM-Antwort');
+      return data;
     }
 
     try {
@@ -84369,7 +84540,7 @@ window._isSingleFileBuild = true;
               const tileIndex = cursor++;
               const task = tasks[tileIndex];
               const tileBbox = bboxString(...task.bbox);
-              const tileQuery = `[out:json][timeout:18];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${tileBbox});out geom;`;
+              const tileQuery = `[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${tileBbox});out geom;`;
               try {
                 let tileData = _osmStreetTileCache.get(tileBbox);
                 if (!tileData) {
@@ -145836,169 +146007,6 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
     ausbauUndoLast: ausbauUndoLast
   });
 
-  // ── lib/overpass-client.js — schonender Zugriff auf die öffentlichen Overpass-Server (OpenStreetMap) ──
-  // Die öffentlichen Server vergeben je IP-Adresse nur wenige Rechenplätze und sperren bei zu vielen Anfragen
-  // (HTTP 429). Deshalb:
-  //   • eine Anfrage zur Zeit (Warteschlange) statt mehrerer parallel,
-  //   • die Server nacheinander statt alle gleichzeitig (jede gleichzeitige Anfrage belegt dort einen Platz),
-  //   • der Browser wartet länger als der Server rechnen darf ([timeout:N] + Puffer) — ein vorzeitiger Abbruch
-  //     würde den Platz auf dem Server trotzdem bis zum Ende belegen,
-  //   • nach 429/504 bzw. Zeitüberschreitung pausiert der betroffene Server (Retry-After, sonst 60 s bzw. 20 s),
-  //   • Antworten werden im Browser zwischengespeichert (IndexedDB, 30 Tage) — dasselbe Gebiet wird nicht erneut
-  //     angefragt (Neu laden mit { frisch: true } bzw. osmZwischenspeicherLeeren()).
-  //   • overpass-api.de verlangt seit 2026 bei Anfragen aus dem Browser eine Herkunftsangabe (HTTP-Referer) und lehnt
-  //     sonst mit 406 ab. Eine lokal geöffnete Datei (file://) sendet keine — dann wird dieser Server übersprungen.
-  //   • Nur Server in DE/AT: Der Kartenausschnitt verrät, welche Liegenschaft untersucht wird.
-
-  const OVERPASS_SERVER = Object.freeze([
-    { name: 'overpass-api.de', url: 'https://overpass-api.de/api/interpreter', brauchtHerkunft: true },
-    { name: 'private.coffee', url: 'https://overpass.private.coffee/api/interpreter' },
-    { name: 'kumi.systems', url: 'https://overpass.kumi.systems/api/interpreter' },
-  ]);
-
-  const SPEICHER_TAGE = 30;
-  const pauseBis = new Map();        // Server-URL → Zeitpunkt (ms), ab dem er wieder angefragt wird
-  let warteschlange = Promise.resolve();
-  const speicher = new Map();        // Zwischenspeicher dieser Sitzung (Schlüssel → Antwort)
-
-  /** Rechenzeit, die die Abfrage dem Server erlaubt ([timeout:N], sonst 180 s Server-Vorgabe → hier 25 s angenommen). */
-  function serverTimeoutS(abfrage) {
-    const m = /\[timeout:(\d+)\]/.exec(String(abfrage || ''));
-    return m ? Number(m[1]) : 25;
-  }
-
-  /** Kurzer, stabiler Schlüssel einer Abfrage (FNV-1a über den Text). */
-  function abfrageSchluessel(abfrage) {
-    let h = 0x811c9dc5;
-    const s = String(abfrage || '').replace(/\s+/g, ' ').trim();
-    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
-    return 'op1:' + h.toString(36) + ':' + s.length;
-  }
-
-  /** Pause eines Servers nach einer Antwort (ms) oder 0: Retry-After, sonst 60 s bei 429, 20 s bei 503/504/Zeitüberschreitung. */
-  function pauseNachAntwort(status, retryAfter) {
-    const ra = Number(retryAfter);
-    if (status === 429) return Number.isFinite(ra) && ra > 0 ? Math.min(600, ra) * 1000 : 60000;
-    if (status === 503 || status === 504 || status === 'timeout') return 20000;
-    return 0;
-  }
-
-  // ── IndexedDB (fehlertolerant: ohne IndexedDB bleibt nur der Sitzungsspeicher) ──
-  function db() {
-    return new Promise(resolve => {
-      try {
-        if (typeof indexedDB === 'undefined') { resolve(null); return; }
-        const req = indexedDB.open('mmh-osm', 1);
-        req.onupgradeneeded = () => { try { req.result.createObjectStore('antworten'); } catch (e) { void e; } };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => resolve(null);
-        req.onblocked = () => resolve(null);
-      } catch (e) { resolve(null); }
-    });
-  }
-  async function lesen$1(schluessel) {
-    if (speicher.has(schluessel)) return speicher.get(schluessel);
-    const d = await db();
-    if (!d) return null;
-    return new Promise(resolve => {
-      try {
-        const r = d.transaction('antworten').objectStore('antworten').get(schluessel);
-        r.onsuccess = () => {
-          const e = r.result;
-          if (e && Date.now() - e.zeit < SPEICHER_TAGE * 864e5) { speicher.set(schluessel, e.daten); resolve(e.daten); } else resolve(null);
-        };
-        r.onerror = () => resolve(null);
-      } catch (e) { resolve(null); }
-    });
-  }
-  async function schreiben(schluessel, daten) {
-    speicher.set(schluessel, daten);
-    const d = await db();
-    if (!d) return;
-    try { d.transaction('antworten', 'readwrite').objectStore('antworten').put({ zeit: Date.now(), daten }, schluessel); } catch (e) { }
-  }
-
-  /** true, wenn die Seite als lokale Datei geöffnet ist (keine Herkunftsangabe, Origin „null“). */
-  function seiteLokal(ort = typeof location !== 'undefined' ? location : null) {
-    return !!ort && (ort.protocol === 'file:' || ort.origin === 'null');
-  }
-
-  /** Gesperrte Server mit Restpause (s) — für Hinweise in der Oberfläche. */
-  function overpassPausen() {
-    const jetzt = Date.now();
-    return OVERPASS_SERVER.map(s => ({ name: s.name, restS: Math.max(0, Math.ceil(((pauseBis.get(s.url) || 0) - jetzt) / 1000)) }));
-  }
-
-  /**
-   * Overpass-Abfrage. Ergebnis: Antwort-JSON oder null (alle Server gescheitert / abgebrochen).
-   * opt: { frisch (Zwischenspeicher übergehen), status(serverName, text) (Fortschritt), abgebrochen() → true bricht ab,
-   *        abrufen (fetch-Ersatz für Tests), runden (Durchgänge über alle Server, Vorgabe 2), maxWartenS (Vorgabe 45) }
-   */
-  function overpassAbfrage(abfrage, opt = {}) {
-    const { frisch = false, status = () => {}, abgebrochen = () => false, abrufen = (...a) => fetch(...a),
-      runden = 2, maxWartenS = 45, warten = ms => new Promise(r => setTimeout(r, ms)), lokal = seiteLokal() } = opt;
-    const server = OVERPASS_SERVER.filter(s => !(lokal && s.brauchtHerkunft));
-    const schluessel = abfrageSchluessel(abfrage);
-    const lauf = async () => {
-      if (!frisch) {
-        const alt = await lesen$1(schluessel);
-        if (alt) { status('Zwischenspeicher', '✓ ' + (alt.elements?.length ?? 0) + ' Elemente (gespeichert)'); return alt; }
-      }
-      const clientMs = (serverTimeoutS(abfrage) + 15) * 1000;
-      for (const s of OVERPASS_SERVER) if (lokal && s.brauchtHerkunft) status(s.name, '⏭ nur bei Aufruf über eine Webadresse (Datei lokal geöffnet)');
-      for (let runde = 0; runde < runden; runde++) {
-        for (const s of server) {
-          if (abgebrochen()) return null;
-          const rest = (pauseBis.get(s.url) || 0) - Date.now();
-          if (rest > 0) { status(s.name, '⏸ Pause ' + Math.ceil(rest / 1000) + ' s'); continue; }
-          status(s.name, '🔄');
-          const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-          const timer = setTimeout(() => ctrl?.abort(), clientMs);
-          try {
-            // Formular-Kodierung wie vom Overpass-Server erwartet (CORS-einfache Anfrage, keine Vorabprüfung)
-            const resp = await abrufen(s.url, { method: 'POST', body: 'data=' + encodeURIComponent(abfrage), signal: ctrl?.signal,
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } });
-            if (!resp.ok) {
-              const p = pauseNachAntwort(resp.status, resp.headers?.get?.('Retry-After'));
-              if (p) pauseBis.set(s.url, Date.now() + p);
-              status(s.name, '⚠ HTTP ' + resp.status + (resp.status === 429 ? ' (zu viele Anfragen)' : ''));
-              continue;
-            }
-            let daten;
-            try { daten = await resp.json(); } catch (e) { void e; status(s.name, '⚠ keine gültige Antwort'); continue; }
-            if (/runtime error|timed out/i.test(daten?.remark || '')) {
-              pauseBis.set(s.url, Date.now() + pauseNachAntwort('timeout'));
-              status(s.name, '⚠ Server überlastet');
-              continue;
-            }
-            status(s.name, '✓ ' + (daten?.elements?.length ?? 0) + ' Elemente');
-            await schreiben(schluessel, daten);
-            return daten;
-          } catch (e) {
-            const zeit = e?.name === 'AbortError';
-            if (zeit) pauseBis.set(s.url, Date.now() + pauseNachAntwort('timeout'));
-            // „Failed to fetch“: vom Browser blockiert (CORS, Netzwerk, Proxy) — Hinweis auf lokal geöffnete Datei
-            status(s.name, '✗ ' + (zeit ? 'Zeitüberschreitung' : 'vom Browser blockiert' + (lokal ? ' (Datei lokal geöffnet)' : '') + (e?.message ? ': ' + e.message : '')));
-          } finally {
-            clearTimeout(timer);
-          }
-        }
-        // Alle Server pausiert oder gescheitert: auf den ersten freien warten (begrenzt), dann zweiter Durchgang
-        if (runde < runden - 1) {
-          const naechste = Math.min(...server.map(s => (pauseBis.get(s.url) || 0) - Date.now()));
-          const ms = Math.min(maxWartenS * 1000, Math.max(3000, naechste));
-          status('Warten', '⏳ neuer Versuch in ' + Math.ceil(ms / 1000) + ' s');
-          await warten(ms);
-        }
-      }
-      return null;
-    };
-    // Warteschlange: eine Anfrage zur Zeit
-    const ergebnis = warteschlange.then(lauf, lauf);
-    warteschlange = ergebnis.catch(() => null);
-    return ergebnis;
-  }
-
   // ── lib/tabellen-raster.js — Tabellenkalkulations-Logik für bearbeitbare Tabellen (Gebäudeübersicht) ──
   // DOM-frei: Bereiche markieren, Werte herunterziehen (Ausfüllkästchen), Strg+D, Kopieren/Einfügen im
   // Format von Excel (Tabulator/Zeilenumbruch) und deutsche Zahlen lesen. Die Oberfläche
@@ -148144,7 +148152,7 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
     const fn = _ebpOpen ? 'addEventListener' : 'removeEventListener';
     document[fn]('pointerdown', _ebpDaneben, true);
     document[fn]('keydown', _ebpEsc, true);
-    if (_ebpOpen) { _ebpInKarte(panel); }
+    if (_ebpOpen) { _ebpSyncAll(); _ebpInKarte(panel); }
   }
 
   // Ist die Karte schmal (Arbeitsbereich und Seitenleiste offen), rückt das Menü
@@ -148157,6 +148165,37 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
     const ueber = r.right - (karte.right - 8);
     if (ueber > 0) panel.style.setProperty('left', -Math.min(ueber, r.left - karte.left - 8) + 'px', 'important');
   }
+
+  // Liest den aktuellen Zustand der bestehenden Gebiet-Tab-Checkboxen und synchronisiert den Panel
+  function _ebpSyncAll() {
+    // Chart/Overlay/Viz haben keinen eigenen Quell-Checkbox — State separat halten
+
+    // Wärmeerzeuger und Umgebung: Zustand aus den Schaltern der Fachfenster bzw. dem Baum-Modul.
+    // Was es im Projekt (noch) nicht gibt, bleibt sichtbar, aber gedimmt und nicht schaltbar.
+    const quelle = id => document.getElementById(id)?.checked !== false;
+    const wpAn = quelle('lwwp-visible');
+    const zustand = {
+      'el-lwwp-visible':        { an: wpAn, da: !!window.lwWp, leer: 'Keine Luft-Wasser-WP platziert' },
+      'el-lwwp-schall-visible': { an: quelle('lwwp-schall-visible'), da: !!window.lwWp && wpAn,
+                                  leer: window.lwWp ? 'Nur mit eingeblendeter Wärmepumpe' : 'Keine Luft-Wasser-WP platziert' },
+      'el-geo-visible':         { an: quelle('geo-visible'), da: !!window.geoThermie, leer: 'Kein Sondenfeld angelegt' },
+      'el-fg-visible':          { an: quelle('fg-visible'), da: !!window.fliessgewaesser, leer: 'Kein Fließgewässer angelegt' },
+      'el-baeume-visible':      { an: window.baumIstSichtbar?.() !== false, da: (window.baumListe?.()?.length || 0) > 0,
+                                  leer: 'Keine Bäume im Projekt — Bestand › Umgebung › Bäume' },
+    };
+    for (const [id, z] of Object.entries(zustand)) {
+      const cb = document.getElementById(id);
+      if (!cb) continue;
+      cb.checked = z.an;
+      cb.disabled = !z.da;
+      const row = cb.closest('.ebp-row');
+      if (!row) continue;
+      if (row.dataset.titel === undefined) row.dataset.titel = row.title || '';   // ursprünglichen Tooltip merken
+      row.classList.toggle('ebp-row-leer', !z.da);
+      row.title = z.da ? row.dataset.titel : z.leer;
+    }
+  }
+  window._ebpSyncAll = _ebpSyncAll;
 
   // Synchronisiert einen bestehenden Gebiet-Tab-Checkbox (id = dessen id-Attribut)
   window._ebpSync = function(srcId, checked) {
@@ -148807,7 +148846,7 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
     return { t, u, p: { x: a.x + t * r.x, y: a.y + t * r.y } };
   }
 
-  function imRing$1(p, ring) {
+  function imRing$2(p, ring) {
     let in_ = false;
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
       const a = ring[i], b = ring[j];
@@ -148827,7 +148866,7 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
 
   // Kleinster Abstand zweier Ringe (0 bei Berührung, Überlappung oder Enthaltensein)
   function ringAbstand(A, B) {
-    if (imRing$1(A[0], B) || imRing$1(B[0], A)) return 0;
+    if (imRing$2(A[0], B) || imRing$2(B[0], A)) return 0;
     let best = Infinity;
     for (let i = 0; i < A.length; i++) {
       const a1 = A[i], a2 = A[(i + 1) % A.length];
@@ -148913,7 +148952,7 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
         const e1 = anderer[kante], e2 = anderer[(kante + 1) % anderer.length];
         return (q.x - p.x) * (e2.x - e1.x) + (q.y - p.y) * (e2.y - e1.y) > 0; // gleiche Richtung → einmal behalten
       }
-      return !imRing$1(m, anderer);
+      return !imRing$2(m, anderer);
     };
     segA.forEach(s => { if (pruefe(s, B)) behalten.push(s); });
     segB.forEach(s => { if (pruefe(s, A)) behalten.push(s); });
@@ -155961,7 +156000,7 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
     return h >>> 0;
   }
 
-  const klemmen = (v, a, b) => Math.max(a, Math.min(b, v));
+  const klemmen$1 = (v, a, b) => Math.max(a, Math.min(b, v));
 
   /**
    * Laub, Nadel oder gemischt aus den Tags (Baum- oder Flächentags).
@@ -156053,11 +156092,11 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
       + `);out tags geom;`;
   }
 
-  // Wie OVERPASS_ENDPOINTS in 03b-netz.js — hier dupliziert, damit die 3D-Ansicht
-  // (Blatt-Modul) und das Baum-Modul ohne App-Kern auskommen.
+  // Wie OVERPASS_SERVER in lib/overpass-client.js — hier dupliziert, damit die 3D-Ansicht
+  // (Blatt-Modul) und das Baum-Modul ohne App-Kern auskommen. overpass.kumi.systems ist derselbe
+  // Rechner wie overpass.private.coffee und wird deshalb nicht zusätzlich gefragt.
   const BAUM_OVERPASS = [
     'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter',
     'https://overpass.private.coffee/api/interpreter',
   ];
 
@@ -156103,7 +156142,7 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
    */
   async function baumOverpassLaden(bbox, opt = {}) {
     const {
-      abrufen = (...a) => fetch(...a), timeoutMs = 40000, versuche = 3, wartenMs = [0, 3000, 8000],
+      abrufen = (...a) => fetch(...a), timeoutMs = 60000, versuche = 3, wartenMs = [0, 3000, 8000],
       warten = ms => new Promise(r => setTimeout(r, ms)), fortschritt = null, kachelM = 1200,
     } = opt;
     const alsObj = ([s, w, n, e]) => ({ s, w, n, e });
@@ -156142,14 +156181,14 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
     const hTag = baumZahl(tags?.height ?? tags?.est_height);
     // Ohne Angabe: Vorgabe ± 15–20 %, damit Reihen und Wälder nicht wie gestanzt aussehen
     const streu = quelle === 'wald' ? 0.4 : 0.3;
-    const hoehe = klemmen(Number.isFinite(hTag) && hTag > 0 ? hTag : v.hoehe * (1 - streu / 2 + streu * zufall()), 2, 45);
+    const hoehe = klemmen$1(Number.isFinite(hTag) && hTag > 0 ? hTag : v.hoehe * (1 - streu / 2 + streu * zufall()), 2, 45);
     const kTag = baumZahl(tags?.diameter_crown);
     const kVorgabe = v.krone ? v.krone * (0.85 + 0.3 * zufall())
       : art === 'nadel' ? hoehe * 0.35 : hoehe * 0.6;
-    const krone = klemmen(Number.isFinite(kTag) && kTag > 0 ? kTag : kVorgabe,
+    const krone = klemmen$1(Number.isFinite(kTag) && kTag > 0 ? kTag : kVorgabe,
       1, art === 'nadel' ? 12 : 25);
     const uTag = baumZahl(tags?.circumference);
-    const stamm = klemmen(Number.isFinite(uTag) && uTag > 0 ? uTag / (2 * Math.PI) : krone * 0.04, 0.08, 1.2);
+    const stamm = klemmen$1(Number.isFinite(uTag) && uTag > 0 ? uTag / (2 * Math.PI) : krone * 0.04, 0.08, 1.2);
     return { hoehe, krone, stamm, art, drehung: zufall() * Math.PI * 2, ton: 0.9 + 0.2 * zufall(),
       hoeheQuelle: Number.isFinite(hTag) && hTag > 0 ? 'osm' : 'vorgabe' };
   }
@@ -163795,9 +163834,7 @@ Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; de
         const gesperrt = overpassPausen().filter(x => x.restS > 0).length;
         const text = gesperrt
           ? '⚠ OSM-Server ausgelastet oder Anfragelimit erreicht — bitte in ein paar Minuten erneut versuchen'
-          : seiteLokal()
-            ? '⚠ OSM-Server nicht erreichbar — das Tool ist als lokale Datei geöffnet; der Hauptserver (overpass-api.de) beantwortet nur Aufrufe über eine Webadresse. Tool über eine Webadresse öffnen oder später erneut versuchen'
-            : '⚠ OSM-Server nicht erreichbar — bitte Gebiet verkleinern oder später erneut versuchen';
+          : '⚠ OSM-Server nicht erreichbar oder überlastet — bitte Gebiet verkleinern oder später erneut versuchen';
         showHint(text);
         lsMeldung(text.replace(/^⚠ /, ''));
         setTimeout(hideHint, 8000);
@@ -236611,7 +236648,7 @@ ${_fuerDruck(_inhalt$1(true))}
         <button class="btn-secondary" data-click="lod2Laden()" title="Amtliches 3D-Gebäudemodell laden (NRW, NI, BW direkt, sonst Datei)">LoD2 laden</button>
         <button class="btn-secondary" data-click="dachGrundrissBerechnen()" title="Dachflächen aus dem Grundriss berechnen (auch für geplante Neubauten)">Dach aus Grundriss</button>
       </div>
-      ${window.baumBlockHtml?.() || ''}
+      ${window.verschattungBlockHtml?.() || ''}
       <div class="pvr-unter">Schnellabschätzung ohne Dächer</div>
       <p class="el-hinweis">Pauschale PV-Anlage (kWp × spezifischer Ertrag oder PVGIS-Lastgang) für frühe Abschätzungen, bevor Dächer belegt sind.</p>
       ${pauschal > 0 && mitPv.length ? `<p class="pvr-warn">Die pauschale Anlage (${fmt(pauschal)} kWp) zählt zusätzlich zu den belegten Dächern. Sobald Dächer belegt sind, auf 0 setzen.</p>` : ''}
@@ -237074,7 +237111,7 @@ ${_fuerDruck(_inhalt$1(true))}
            </div>`}
       ${window.pvabBlockHtml?.() || ''}
       ${window.pvbsBlockHtml?.() || ''}
-      ${window.baumBlockHtml?.() || ''}
+      ${window.verschattungBlockHtml?.() || ''}
       ${window.pvAnschlussHinweisHtml?.() || ''}
       <div style="margin-top:8px;">${_aktivBlock(g)}</div>
       ${_vorgabeBlock()}
@@ -261087,7 +261124,7 @@ ${ssSteckbriefHtml(blatt)}
 
   const SEKTOREN = 72;
 
-  function imRing(x, y, ring) {
+  function imRing$1(x, y, ring) {
     let innen = false;
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
       const [xi, yi] = ring[i], [xj, yj] = ring[j];
@@ -261116,7 +261153,7 @@ ${ssSteckbriefHtml(blatt)}
       for (let k = von; k <= bis; k++) sek[((k % SEKTOREN) + SEKTOREN) % SEKTOREN].push(e);
     };
     for (const g of hind.gebaeude) {
-      if (p[2] < g.hoehe && Math.hypot(g.cx - p[0], g.cy - p[1]) <= g.r && imRing(p[0], p[1], g.ring)) { ueberlappt.push(g); continue; }
+      if (p[2] < g.hoehe && Math.hypot(g.cx - p[0], g.cy - p[1]) <= g.r && imRing$1(p[0], p[1], g.ring)) { ueberlappt.push(g); continue; }
       eintragen(g.cx, g.cy, g.r, g.hoehe, g, 'g');
     }
     for (const b of hind.baeume) eintragen(b.x, b.y, b.krone.r, b.oben, b, 'b');
@@ -261283,6 +261320,284 @@ ${ssSteckbriefHtml(blatt)}
     return out;
   }
 
+  // lib/baum-vorlagen.js — Vorlagen für von Hand gesetzte Bäume und Baumbestände
+  //
+  // Statt jeden Baum gleich hoch zu setzen, zieht jede Vorlage Art, Höhe und Krone
+  // aus einer Mischung typischer mitteleuropäischer Bestände:
+  //   · Artenmischung in Gruppen (Gruppenmischung wie im Wald, nicht Baum-für-Baum)
+  //   · Höhen streuen zum Teil räumlich (gleichaltrige Partien) und zum Teil je Baum
+  //   · Waldrand: Bäume etwas niedriger, Kronen breiter (mehr Licht)
+  //   · Unterwuchs (jüngere, niedrigere Bäume) und Lücken
+  // Kronen im geschlossenen Bestand wachsen nicht frei: Durchmesser höchstens ~1,4 × Pflanzabstand.
+  // Reine Funktionen ohne DOM/Leaflet — Koordinaten in Metern (x Ost, y Nord).
+
+  /**
+   * @typedef {{art:'laub'|'nadel'|'obst', anteil:number, hoehe:number, sd:number, kroneRel?:number, krone?:number}} BaumSchicht
+   * @typedef {{name:string, gruppe:'einzel'|'bestand', text:string, abstand:number, schichten:BaumSchicht[],
+   *   unterstand?:number, gleichaltrig?:number, gruppen?:number, luecken?:number}} BaumVorlage
+   */
+
+  /** @type {Record<string, BaumVorlage>} Höhen in m (Mittel ± Standardabweichung), kroneRel = Krone / Höhe. */
+  const BAUM_VORLAGEN = {
+    laub: {
+      name: 'Laubbaum', gruppe: 'einzel', text: 'Ahorn, Linde, Eiche — frei stehend',
+      abstand: 10, gleichaltrig: 0.2,
+      schichten: [{ art: 'laub', anteil: 1, hoehe: 14, sd: 3.5, kroneRel: 0.6 }],
+    },
+    strasse: {
+      name: 'Straßenbaum / Allee', gruppe: 'einzel', text: 'gleich alt gepflanzt, wenig Streuung',
+      abstand: 10, gleichaltrig: 0.8,
+      schichten: [{ art: 'laub', anteil: 1, hoehe: 15, sd: 2, kroneRel: 0.55 }],
+    },
+    nadel: {
+      name: 'Nadelbaum', gruppe: 'einzel', text: 'Fichte, Kiefer, Tanne — frei stehend',
+      abstand: 7, gleichaltrig: 0.2,
+      schichten: [{ art: 'nadel', anteil: 1, hoehe: 18, sd: 4, kroneRel: 0.32 }],
+    },
+    obst: {
+      name: 'Obstbaum', gruppe: 'einzel', text: 'Hochstamm',
+      abstand: 10, gleichaltrig: 0.2,
+      schichten: [{ art: 'obst', anteil: 1, hoehe: 6.5, sd: 1.2, krone: 6.5 }],
+    },
+    mischwald: {
+      name: 'Mischwald', gruppe: 'bestand', text: 'Buche, Eiche, Fichte, Kiefer in Gruppen',
+      abstand: 6, unterstand: 0.15, gleichaltrig: 0.5, gruppen: 25, luecken: 0.05,
+      schichten: [
+        { art: 'laub', anteil: 0.6, hoehe: 24, sd: 5, kroneRel: 0.45 },
+        { art: 'nadel', anteil: 0.4, hoehe: 26, sd: 5, kroneRel: 0.3 },
+      ],
+    },
+    laubwald: {
+      name: 'Laubwald', gruppe: 'bestand', text: 'Buchen-Eichen-Wald',
+      abstand: 6.5, unterstand: 0.2, gleichaltrig: 0.6, gruppen: 30, luecken: 0.04,
+      schichten: [{ art: 'laub', anteil: 1, hoehe: 26, sd: 4.5, kroneRel: 0.45 }],
+    },
+    fichtenforst: {
+      name: 'Fichtenforst', gruppe: 'bestand', text: 'dicht, gleichaltrig, kaum Unterwuchs',
+      abstand: 4.5, unterstand: 0.05, gleichaltrig: 0.85, gruppen: 40, luecken: 0.04,
+      schichten: [{ art: 'nadel', anteil: 1, hoehe: 27, sd: 3, kroneRel: 0.25 }],
+    },
+    kiefernwald: {
+      name: 'Kiefernwald', gruppe: 'bestand', text: 'lichter, etwas Birke und Eiche',
+      abstand: 5.5, unterstand: 0.1, gleichaltrig: 0.7, gruppen: 30, luecken: 0.06,
+      schichten: [
+        { art: 'nadel', anteil: 0.9, hoehe: 21, sd: 3, kroneRel: 0.3 },
+        { art: 'laub', anteil: 0.1, hoehe: 16, sd: 4, kroneRel: 0.45 },
+      ],
+    },
+    jungwald: {
+      name: 'Jungwald / Aufforstung', gruppe: 'bestand', text: 'junge Mischkultur, eng gepflanzt',
+      abstand: 3, unterstand: 0, gleichaltrig: 0.7, gruppen: 15, luecken: 0.06,
+      schichten: [
+        { art: 'laub', anteil: 0.6, hoehe: 8, sd: 2.5, kroneRel: 0.5 },
+        { art: 'nadel', anteil: 0.4, hoehe: 8, sd: 2.5, kroneRel: 0.35 },
+      ],
+    },
+    feldgehoelz: {
+      name: 'Feldgehölz / Waldrand', gruppe: 'bestand', text: 'ungleich alt, viel Unterwuchs',
+      abstand: 4.5, unterstand: 0.35, gleichaltrig: 0.3, gruppen: 12, luecken: 0.1,
+      schichten: [
+        { art: 'laub', anteil: 0.85, hoehe: 11, sd: 4, kroneRel: 0.65 },
+        { art: 'nadel', anteil: 0.15, hoehe: 12, sd: 4, kroneRel: 0.35 },
+      ],
+    },
+    park: {
+      name: 'Parkbäume', gruppe: 'bestand', text: 'weit gestellt, alte und junge Bäume',
+      abstand: 14, unterstand: 0, gleichaltrig: 0.1, gruppen: 30, luecken: 0.15,
+      schichten: [
+        { art: 'laub', anteil: 0.8, hoehe: 18, sd: 6, kroneRel: 0.6 },
+        { art: 'nadel', anteil: 0.2, hoehe: 20, sd: 6, kroneRel: 0.35 },
+      ],
+    },
+    streuobst: {
+      name: 'Streuobstwiese', gruppe: 'bestand', text: 'Hochstämme im weiten Raster',
+      abstand: 10, unterstand: 0, gleichaltrig: 0.2, gruppen: 30, luecken: 0.08,
+      schichten: [{ art: 'obst', anteil: 1, hoehe: 6.5, sd: 1.3, krone: 6.5 }],
+    },
+  };
+
+  /** Streuung als Faktor auf die Standardabweichungen. */
+  const BAUM_STREUUNG = {
+    gleich: { name: 'gleichmäßig', faktor: 0.25 },
+    natuerlich: { name: 'natürlich', faktor: 1 },
+    stark: { name: 'stark', faktor: 1.6 },
+  };
+
+  const klemmen = (v, a, b) => Math.max(a, Math.min(b, v));
+  const KRONE_MAX = { laub: 25, obst: 12, nadel: 12 };
+
+  /** Mittlere Höhe der Vorlage (nach Anteilen) — Bezug für „mittlere Höhe" im Panel. */
+  function vorlageHoehe(v) {
+    const s = v.schichten.reduce((a, k) => a + k.anteil, 0) || 1;
+    return v.schichten.reduce((a, k) => a + k.hoehe * k.anteil, 0) / s;
+  }
+
+  /** Kurzbeschreibung: „60 % Laub · 40 % Nadel · 14–34 m · Abstand 6 m · 15 % Unterwuchs". */
+  function vorlageText(v, opt = {}) {
+    const f = (opt.hoeheMittel > 0 ? opt.hoeheMittel / vorlageHoehe(v) : 1);
+    const s = BAUM_STREUUNG[opt.streuung]?.faktor ?? 1;
+    const ARTEN = { laub: 'Laub', nadel: 'Nadel', obst: 'Obst' };
+    const teile = v.schichten.length > 1 ? [v.schichten.map(k => `${Math.round(k.anteil * 100)} % ${ARTEN[k.art]}`).join(' · ')] : [];
+    const lo = Math.min(...v.schichten.map(k => (k.hoehe - 1.5 * k.sd * s) * f));
+    const hi = Math.max(...v.schichten.map(k => (k.hoehe + 1.5 * k.sd * s) * f));
+    teile.push(`${Math.max(1, Math.round(lo))}–${Math.round(hi)} m`);
+    if (v.gruppe === 'bestand') teile.push(`Abstand ${String(opt.abstand ?? v.abstand).replace('.', ',')} m`);
+    if (v.unterstand) teile.push(`${Math.round(v.unterstand * 100)} % Unterwuchs`);
+    return teile.join(' · ');
+  }
+
+  /* ── Zufall und Rauschfelder ─────────────────────────────────────────────── */
+
+  /** Standardnormalverteilt (Box-Muller), auf ±2,2 begrenzt — keine Ausreißer-Riesen. */
+  function normal(zufall) {
+    const u = Math.max(1e-9, zufall()), w = zufall();
+    return klemmen(Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * w), -2.2, 2.2);
+  }
+
+  function hash3(seed, i, j) {
+    let h = (seed ^ Math.imul(i, 374761393) ^ Math.imul(j, 668265263)) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+
+  /**
+   * Glattes Rauschfeld (Wertrauschen, zwei Oktaven) mit Werten etwa in [−1, 1].
+   * Zellgröße in m bestimmt, wie groß die gleichartigen Partien sind.
+   */
+  function rauschFeld(seed, zelle) {
+    const okt = (x, y, z, s) => {
+      const gx = x / z, gy = y / z, i = Math.floor(gx), j = Math.floor(gy);
+      const fx = gx - i, fy = gy - j, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+      const v = (a, b) => hash3(s, a, b) * 2 - 1;
+      const o = v(i, j) + (v(i + 1, j) - v(i, j)) * sx;
+      const u = v(i, j + 1) + (v(i + 1, j + 1) - v(i, j + 1)) * sx;
+      return o + (u - o) * sy;
+    };
+    return (x, y) => klemmen((0.7 * okt(x, y, zelle, seed) + 0.3 * okt(x, y, zelle / 2, seed + 7919)) * 1.6, -1, 1);
+  }
+
+  /* ── Ein Baum ────────────────────────────────────────────────────────────── */
+
+  /**
+   * Art, Höhe, Krone, Farbton und Drehung eines Baums aus der Vorlage.
+   * @param {BaumVorlage} v
+   * @param {() => number} zufall  Werte in [0, 1)
+   * @param {{streuung?:string, hoeheMittel?:number, artFeld?:number[], hoeheFeld?:number,
+   *   rand?:number, kroneMax?:number, unterstand?:boolean}} [opt]
+   *   artFeld: je Schicht ein Feldwert [−1, 1] (Gruppenmischung) · hoeheFeld: räumlicher Höhenanteil [−1, 1]
+   *   rand: 0 (innen) … 1 (direkt am Rand) · kroneMax: Obergrenze aus dem Pflanzabstand
+   */
+  function vorlageBaum(v, zufall, opt = {}) {
+    const s = BAUM_STREUUNG[opt.streuung]?.faktor ?? 1;
+    const f = opt.hoeheMittel > 0 ? opt.hoeheMittel / vorlageHoehe(v) : 1;
+
+    // Art: Anteil, in Gruppen verschoben (Feld), dann gezogen
+    const gew = v.schichten.map((k, i) => k.anteil * Math.exp(1.4 * (opt.artFeld?.[i] ?? 0)));
+    let r = zufall() * gew.reduce((a, b) => a + b, 0), k = v.schichten[v.schichten.length - 1];
+    for (let i = 0; i < gew.length; i++) { r -= gew[i]; if (r <= 0) { k = v.schichten[i]; break; } }
+
+    // Höhe: räumlicher Anteil (gleichaltrige Partien) + Einzelbaum
+    const c = v.gleichaltrig ?? 0.3;
+    const z = opt.hoeheFeld != null
+      ? Math.sqrt(c) * opt.hoeheFeld * 1.6 + Math.sqrt(1 - c) * normal(zufall)
+      : normal(zufall);
+    let hoehe = (k.hoehe + k.sd * s * klemmen(z, -2.2, 2.2)) * f;
+    const rand = klemmen(opt.rand ?? 0, 0, 1);
+    if (opt.unterstand) hoehe *= 0.3 + 0.3 * zufall();      // Unterwuchs: 30–60 % der Bestandshöhe
+    else hoehe *= 1 - 0.12 * rand;                           // Waldrand etwas niedriger
+    hoehe = klemmen(hoehe, 1.5, 45);
+
+    // Krone: frei aus der Höhe, im Bestand durch den Abstand begrenzt, am Rand breiter
+    let krone = k.krone ? k.krone * f * (1 + 0.12 * s * normal(zufall))
+      : hoehe * (k.kroneRel ?? 0.5) * (1 + 0.12 * s * normal(zufall));
+    if (opt.kroneMax > 0) krone = Math.min(krone, opt.kroneMax * (opt.unterstand ? 0.7 : 1));
+    krone *= 1 + 0.25 * rand * (opt.unterstand ? 0 : 1);
+    krone = klemmen(krone, 1, KRONE_MAX[k.art] || 25);
+
+    return {
+      art: k.art, hoehe: Math.round(hoehe * 10) / 10, krone: Math.round(krone * 10) / 10,
+      drehung: zufall() * Math.PI * 2, ton: Math.round((0.86 + 0.28 * zufall()) * 1000) / 1000,
+    };
+  }
+
+  /* ── Fläche füllen ───────────────────────────────────────────────────────── */
+
+  function imRing(x, y, ring) {
+    let in_ = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) in_ = !in_;
+    }
+    return in_;
+  }
+
+  function randAbstand(x, y, ring) {
+    let d = Infinity;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [ax, ay] = ring[j], [bx, by] = ring[i];
+      const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
+      const t = l ? klemmen(((x - ax) * dx + (y - ay) * dy) / l, 0, 1) : 0;
+      d = Math.min(d, Math.hypot(x - ax - t * dx, y - ay - t * dy));
+    }
+    return d;
+  }
+
+  /**
+   * Fläche mit einem Bestand nach Vorlage füllen.
+   * @param {BaumVorlage} v
+   * @param {number[][]} ring  Umriss in Metern
+   * @param {{abstand?:number, streuung?:string, hoeheMittel?:number, sperren?:number[][][], zufall:() => number,
+   *   seed?:number}} opt
+   * @returns {{x:number,y:number,art:string,hoehe:number,krone:number,drehung:number,ton:number,unterstand:boolean}[]}
+   */
+  function vorlageFlaeche(v, ring, opt) {
+    const zufall = opt.zufall;
+    const abstand = klemmen(+opt.abstand || v.abstand, 1, 50);
+    const s = BAUM_STREUUNG[opt.streuung]?.faktor ?? 1;
+    const seed = (opt.seed ?? Math.floor(zufall() * 2 ** 31)) >>> 0;
+    const gruppe = v.gruppen || 25;
+    const artFelder = v.schichten.map((_, i) => rauschFeld(seed + 101 * (i + 1), gruppe));
+    const hFeld = rauschFeld(seed + 31337, gruppe * 1.2);
+    const sperren = opt.sperren || [];
+    const frei = (x, y) => imRing(x, y, ring) && !sperren.some(r => imRing(x, y, r));
+    const randBreite = abstand * 1.5;
+    const baum = (x, y, unterstand) => {
+      const d = randAbstand(x, y, ring);
+      return {
+        x, y, unterstand,
+        ...vorlageBaum(v, zufall, {
+          streuung: opt.streuung, hoeheMittel: opt.hoeheMittel,
+          artFeld: artFelder.map(F => F(x, y)), hoeheFeld: hFeld(x, y),
+          rand: v.gruppe === 'bestand' ? klemmen(1 - d / randBreite, 0, 1) : 0,
+          kroneMax: v.gruppe === 'bestand' ? abstand * 1.4 : 0, unterstand,
+        }),
+      };
+    };
+
+    const xs = ring.map(p => p[0]), ys = ring.map(p => p[1]);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const zeile = abstand * 0.866;
+    const wackeln = abstand * klemmen(0.3 + 0.12 * s, 0.25, 0.5);    // Pflanzraster verwischen
+    const out = [];
+    for (let y = y0, r = 0; y <= y1; y += zeile, r++) {
+      for (let x = x0 + (r % 2 ? abstand / 2 : 0); x <= x1; x += abstand) {
+        const px = x + (zufall() - 0.5) * wackeln * 2, py = y + (zufall() - 0.5) * wackeln * 2;
+        if (!frei(px, py)) continue;
+        if (zufall() < (v.luecken || 0) * Math.min(1.5, s)) continue;    // Lücken
+        out.push(baum(px, py, false));
+      }
+    }
+    // Unterwuchs: zusätzliche jüngere Bäume an zufälligen Stellen
+    const nU = Math.round(out.length * (v.unterstand || 0));
+    for (let n = 0, versuch = 0; n < nU && versuch < nU * 6; versuch++) {
+      const px = x0 + zufall() * (x1 - x0), py = y0 + zufall() * (y1 - y0);
+      if (!frei(px, py)) continue;
+      out.push(baum(px, py, true));
+      n++;
+    }
+    return out;
+  }
+
   // ── 40-baeume.js — Bäume im Projekt und Verschattung der PV-Dächer ──────────
   //
   // Bäume gehören zum Projekt (gespeichert unter project.baeume), damit ein
@@ -261325,6 +261640,7 @@ ${ssSteckbriefHtml(blatt)}
   let _sichtbar$1 = true;         // Bäume auf der Arbeitskarte
   let _bearbeiten = false;
   let _offen$3 = false;
+  let _teil = 'baeume';         // Panelinhalt: 'baeume' (Bestand) | 'verschattung' (Photovoltaik)
   let _laedt$1 = false;
   let _ladeInfo = '';
   /** Empfehlungsschwellen: Verlust durch Verschattung in % */
@@ -261339,7 +261655,10 @@ ${ssSteckbriefHtml(blatt)}
   let _rechnet = null;
   let _layer$2 = null;
   let _renderer = null;
-  const _neu$1 = { art: 'laub', hoehe: 12, krone: 8 };
+  // Neue Bäume: Vorlage je Modus (Einzeln / Fläche), 'eigen' = feste Maße wie früher
+  const _neu$1 = { art: 'laub', hoehe: 12, krone: 8, vorlageEinzeln: 'laub', vorlageFlaeche: 'mischwald', streuung: 'natuerlich', hoeheMittel: null };
+  const _vorlageId = () => (_modus === 'flaeche' ? _neu$1.vorlageFlaeche : _neu$1.vorlageEinzeln);
+  const _vorlage = () => BAUM_VORLAGEN[_vorlageId()] || null;
   const _autoVersucht = new Set();
   /** Setzen: einzeln per Klick oder eine Fläche zeichnen und mit Bäumen füllen */
   let _modus = 'einzeln';
@@ -261418,6 +261737,7 @@ ${ssSteckbriefHtml(blatt)}
     _zeichnen$1();
     window.d3dBaeumeNeu?.();
     baumPanelRender();
+    baumBestandInfo();
     window.lwWpBaeumeGeaendert?.();
   }
 
@@ -261427,6 +261747,7 @@ ${ssSteckbriefHtml(blatt)}
     _zeichnen$1();
     window.d3dBaeumeNeu?.();
     baumPanelRender();
+    baumBestandInfo();
     window.pvModusRender?.();
     window.lwWpBaeumeGeaendert?.();   // Schallrechnung der Luft-WP (Bewuchsdämpfung) neu
   }
@@ -261472,7 +261793,11 @@ ${ssSteckbriefHtml(blatt)}
     _sichtbar$1 = !!an;
     _zeichnen$1();
     baumPanelRender();
+    const cb = document.getElementById('el-baeume-visible');   // Ebenen-Menü
+    if (cb) cb.checked = _sichtbar$1;
   }
+
+  function baumIstSichtbar() { return _sichtbar$1; }
 
   /* ── Bearbeiten ──────────────────────────────────────────────────────────── */
 
@@ -261513,6 +261838,8 @@ ${ssSteckbriefHtml(blatt)}
 
   function baumModus(m) {
     _modus = m === 'flaeche' ? 'flaeche' : 'einzeln';
+    _neu$1.hoeheMittel = null;
+    if (_modus === 'flaeche' && _vorlage()) _flaeche.abstand = _vorlage().abstand;
     _flaecheVerwerfen(true);
     map.closePopup();
     _modusAnwenden();
@@ -261586,18 +261913,15 @@ ${ssSteckbriefHtml(blatt)}
       showHint('Fläche zu groß für diesen Abstand — Abstand erhöhen oder die Fläche verkleinern.', 6000);
       return 0;
     }
-    const neu = [];
-    let r = 0;
-    for (let y = y0; y <= y1; y += zeile, r++) {
-      for (let x = x0 + (r % 2 ? abstand / 2 : 0); x <= x1; x += abstand) {
-        const px = x + (Math.random() - 0.5) * abstand * 0.3, py = y + (Math.random() - 0.5) * abstand * 0.3;
-        if (!_imRing(px, py, ring) || sperren.some(s => _imRing(px, py, s))) continue;
-        neu.push(_normal({
-          lat: lat0 + py / M_PRO_GRAD$1, lng: lng0 + px / kx, hoehe: _neu$1.hoehe, krone: _neu$1.krone, art: _neu$1.art,
-          quelle: 'manuell', hoeheQuelle: 'manuell', drehung: Math.random() * Math.PI * 2, ton: 1,
-        }));
-      }
-    }
+    const v = _vorlage();
+    const punkte = v
+      ? vorlageFlaeche(v, ring, { abstand, streuung: _neu$1.streuung, hoeheMittel: _neu$1.hoeheMittel, sperren, zufall: Math.random })
+      : _rasterFest(ring, sperren, abstand, x0, x1, y0, y1);
+    const neu = punkte.map(p => _normal({
+      lat: lat0 + p.y / M_PRO_GRAD$1, lng: lng0 + p.x / kx, hoehe: p.hoehe, krone: p.krone, art: p.art,
+      // Höhen aus einer Vorlage sind Schätzwerte (gestrichelt, „vorsichtig rechnen" greift)
+      quelle: 'manuell', hoeheQuelle: v ? 'vorgabe' : 'manuell', drehung: p.drehung, ton: p.ton,
+    }));
     if (!neu.length) { showHint('In dieser Fläche passt bei diesem Abstand kein Baum.', 5000); return 0; }
     if (_baeume.length + neu.length > MAX_BAEUME) {
       showHint(`Zu viele Bäume (${_fmt$1(_baeume.length + neu.length)}, höchstens ${_fmt$1(MAX_BAEUME)}) — Abstand erhöhen.`, 6000);
@@ -261606,13 +261930,31 @@ ${ssSteckbriefHtml(blatt)}
     _baeume.push(...neu);
     _flaecheVerwerfen(true);
     _geaendert();
-    showHint(`🌳 ${_fmt$1(neu.length)} Bäume in der Fläche gesetzt (Abstand ${_fmt$1(abstand, 1)} m)`
-      + (sperren.length ? ', Gebäudegrundrisse ausgespart' : '') + '.', 6000);
+    const zahl = a => neu.filter(b => b.art === a).length;
+    const hs = neu.map(b => b.hoehe);
+    showHint(`🌳 ${_fmt$1(neu.length)} Bäume gesetzt${v ? ` (${v.name})` : ''}: `
+      + Object.entries({ laub: 'Laub', nadel: 'Nadel', obst: 'Obst' }).filter(([a]) => zahl(a)).map(([a, l]) => `${_fmt$1(zahl(a))} ${l}`).join(' · ')
+      + ` · ${_fmt$1(Math.min(...hs))}–${_fmt$1(Math.max(...hs))} m · Abstand ${_fmt$1(abstand, 1)} m`
+      + (sperren.length ? ', Gebäudegrundrisse ausgespart' : '') + '.', 7000);
     return neu.length;
   }
 
+  /** Raster mit festen Maßen (Vorlage „Eigene Maße"). */
+  function _rasterFest(ring, sperren, abstand, x0, x1, y0, y1) {
+    const out = [];
+    const zeile = abstand * 0.866;
+    for (let y = y0, r = 0; y <= y1; y += zeile, r++) {
+      for (let x = x0 + (r % 2 ? abstand / 2 : 0); x <= x1; x += abstand) {
+        const px = x + (Math.random() - 0.5) * abstand * 0.3, py = y + (Math.random() - 0.5) * abstand * 0.3;
+        if (!_imRing(px, py, ring) || sperren.some(s => _imRing(px, py, s))) continue;
+        out.push({ x: px, y: py, hoehe: _neu$1.hoehe, krone: _neu$1.krone, art: _neu$1.art, drehung: Math.random() * Math.PI * 2, ton: 1 });
+      }
+    }
+    return out;
+  }
+
   function baumFlaecheOption(feld, wert) {
-    if (feld === 'abstand') _flaeche.abstand = _klemmen(parseFloat(wert) || 6, 1, 50);
+    if (feld === 'abstand') { _flaeche.abstand = _klemmen(parseFloat(wert) || 6, 1, 50); baumPanelRender(); }
     if (feld === 'ausGebaeude') _flaeche.ausGebaeude = !!wert;
   }
 
@@ -261626,10 +261968,13 @@ ${ssSteckbriefHtml(blatt)}
       baumPanelRender();
       return;
     }
-    const krone = _neu$1.krone;
+    const v = _vorlage();
+    const m = v
+      ? vorlageBaum(v, Math.random, { streuung: _neu$1.streuung, hoeheMittel: _neu$1.hoeheMittel })
+      : { hoehe: _neu$1.hoehe, krone: _neu$1.krone, art: _neu$1.art, drehung: Math.random() * Math.PI * 2, ton: 1 };
     const b = _normal({
-      lat: e.latlng.lat, lng: e.latlng.lng, hoehe: _neu$1.hoehe, krone, art: _neu$1.art,
-      quelle: 'manuell', hoeheQuelle: 'manuell', drehung: Math.random() * Math.PI * 2, ton: 1,
+      lat: e.latlng.lat, lng: e.latlng.lng, ...m,
+      quelle: 'manuell', hoeheQuelle: v ? 'vorgabe' : 'manuell',
     });
     _baeume.push(b);
     _geaendert();
@@ -261699,6 +262044,15 @@ ${ssSteckbriefHtml(blatt)}
   }
 
   function baumVorgabe(feld, wert) {
+    if (feld === 'vorlage' && (wert === 'eigen' || BAUM_VORLAGEN[wert])) {
+      _neu$1[_modus === 'flaeche' ? 'vorlageFlaeche' : 'vorlageEinzeln'] = wert;
+      _neu$1.hoeheMittel = null;                                  // Höhe der neuen Vorlage
+      if (BAUM_VORLAGEN[wert]) _flaeche.abstand = BAUM_VORLAGEN[wert].abstand;
+      baumPanelRender();
+      return;
+    }
+    if (feld === 'streuung' && BAUM_STREUUNG[wert]) { _neu$1.streuung = wert; baumPanelRender(); return; }
+    if (feld === 'hoeheMittel') { const v = parseFloat(wert); _neu$1.hoeheMittel = v > 0 ? _klemmen(v, 2, 45) : null; baumPanelRender(); return; }
     if (feld === 'art' && ARTEN[wert]) _neu$1.art = wert;
     if (feld === 'hoehe') _neu$1.hoehe = _klemmen(parseFloat(wert) || 12, 1, 60);
     if (feld === 'krone') _neu$1.krone = _klemmen(parseFloat(wert) || 8, 0.5, 30);
@@ -262147,16 +262501,41 @@ ${ssSteckbriefHtml(blatt)}
     </div>`;
   }
 
-  /** Einstieg im PV-Modus-Panel. */
-  function baumBlockHtml() {
+  /** Einstieg unter Planung › Strom › Photovoltaik: nur die Verschattung (die Bäume selbst pflegt der Bestand). */
+  function verschattungBlockHtml() {
     const mitPv = _mitPv();
     const aktuell = mitPv.filter(g => _status$1(g) === 'aktuell').length;
     return `<button class="btn-xs" style="width:100%;margin-top:6px;border-color:${GRUEN};color:${GRUEN};${_an ? `background:${GRUEN}1a;` : ''}"
-      data-click="baumPanelToggle()" title="Bäume im Projekt und ihre Verschattung der PV-Dächer">
-      Bäume & Verschattung · ${_fmt$1(_baeume.length)} Bäume${mitPv.length ? ` · ${aktuell}/${mitPv.length} gerechnet` : ''}${_an ? ' · im Ertrag' : ''}</button>`;
+      data-click="baumPanelToggle('verschattung')" title="Verschattung der PV-Dächer durch Bäume und Nachbargebäude rechnen und im Ertrag berücksichtigen. Die Bäume selbst werden unter Bestand › Umgebung geladen und gesetzt.">
+      Verschattung · ${_fmt$1(_baeume.length)} Bäume${mitPv.length ? ` · ${aktuell}/${mitPv.length} gerechnet` : ''}${_an ? ' · im Ertrag' : ''}</button>`;
   }
 
-  function baumPanelToggle() {
+  /** Kurzstand am Knopf „Bäume“ unter Bestand › Umgebung. */
+  function baumBestandInfo() {
+    const el = document.getElementById('btn-baeume-info');
+    if (!el) return;
+    const n = _baeume.length;
+    const osm = _baeume.filter(b => b.quelle === 'osm').length;
+    el.textContent = n
+      ? `${_fmt$1(n)} im Projekt · ${_fmt$1(osm)} aus OSM · ${_fmt$1(n - osm)} eigene`
+      : 'Aus OpenStreetMap laden oder selbst setzen — für PV-Verschattung und Schall';
+  }
+
+  /** Titel des Fensters (auch für den Reiter der Andock-Spalte). */
+  function baumPanelTitel() { return _teil === 'verschattung' ? 'Verschattung' : 'Bäume'; }
+
+  /**
+   * Fenster öffnen/schließen. `teil` wählt den Inhalt: 'baeume' (Bestand › Umgebung) oder
+   * 'verschattung' (Photovoltaik). Ist das Fenster schon mit dem anderen Teil offen, wird nur umgeschaltet.
+   */
+  function baumPanelToggle(teil) {
+    if (teil && _offen$3 && teil !== _teil) {
+      if (teil === 'verschattung' && _bearbeiten) cancelInteraction(INTERAKTION);
+      _teil = teil;
+      baumPanelRender();
+      return;
+    }
+    if (teil) _teil = teil;
     _offen$3 = !_offen$3;
     if (!_offen$3) {
       if (_bearbeiten) cancelInteraction(INTERAKTION);
@@ -262172,9 +262551,11 @@ ${ssSteckbriefHtml(blatt)}
       el = document.createElement('div');
       el.id = PANEL_ID$1;
       el.setAttribute('role', 'region');
-      el.setAttribute('aria-label', 'Bäume und Verschattung');
       document.body.appendChild(el);
     }
+    el.setAttribute('aria-label', _teil === 'verschattung' ? 'Verschattung der PV-Dächer' : 'Bäume im Projekt');
+    // Klassenwechsel weckt die Andock-Spalte (52), damit der Reiter den neuen Titel zeigt
+    el.classList.toggle('baum-teil-verschattung', _teil === 'verschattung');
     el.innerHTML = _html$1();
   }
 
@@ -262608,6 +262989,23 @@ ${ssSteckbriefHtml(blatt)}
     </div>`;
   }
 
+  /** Auswahl der Vorlage; im Flächenmodus stehen die Bestände oben, beim Einzelsetzen die Einzelbäume. */
+  function _vorlageWahlHtml() {
+    const id = _vorlageId();
+    const opt = g => Object.entries(BAUM_VORLAGEN).filter(([, v]) => v.gruppe === g)
+      .map(([k, v]) => `<option value="${k}"${id === k ? ' selected' : ''} title="${escHtml(v.text)}">${escHtml(v.name)}</option>`).join('');
+    const einzel = `<optgroup label="Einzelbäume">${opt('einzel')}</optgroup>`;
+    const bestand = `<optgroup label="Wald und Bestände">${opt('bestand')}</optgroup>`;
+    return `
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);">
+          <span title="Vorlage für Art, Höhe und Krone — die Werte streuen je Baum wie in einem echten Bestand">Vorlage</span>
+          <select class="inp-field" style="flex:1;padding:2px;" data-change="baumVorgabe('vorlage',this.value)">
+            ${_modus === 'flaeche' ? bestand + einzel : einzel + bestand}
+            <optgroup label="Ohne Streuung"><option value="eigen"${id === 'eigen' ? ' selected' : ''}>Eigene Maße (alle gleich)</option></optgroup>
+          </select>
+        </div>`;
+  }
+
   function _html$1() {
     const anzahl = _baeume.length;
     const osm = _baeume.filter(b => b.quelle === 'osm').length;
@@ -262623,18 +263021,43 @@ ${ssSteckbriefHtml(blatt)}
       .sort((a, b) => (a.e?.faktor ?? 2) - (b.e?.faktor ?? 2))
       .map(({ g, e, s }) => _zeileHtml(g, e, s)).join('');
 
+    const vorl = _vorlage();
     const feld = (f, wert, min, max, step) => `<input class="inp-field" type="number" min="${min}" max="${max}" step="${step}" value="${wert}"
       style="width:100%;padding:2px 4px;" data-change="baumVorgabe('${f}',this.value)"/>`;
 
-    return `
+    const kopf = `
     <div class="pvm-head">
-      <span class="pvm-head-title">Bäume & Verschattung</span>
+      <span class="pvm-head-title">${_teil === 'verschattung' ? 'Verschattung der PV-Dächer' : 'Bäume im Projekt'}</span>
       <button class="btn-xs" data-click="baumPanelToggle()" title="Schließen">✕</button>
-    </div>
+    </div>`;
+
+    // Photovoltaik: nur der Stand der Bäume, gepflegt werden sie unter Bestand › Umgebung
+    const baumKurz = `
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;line-height:1.5;">
+        <span style="flex:1;"><b>${_fmt$1(anzahl)}</b> Bäume im Projekt${vorgabe ? ` · <span style="color:${GELB};" title="Höhe nur geschätzt">${_fmt$1(vorgabe)} geschätzt</span>` : ''}</span>
+        <button class="btn-xs" data-click="baumPanelToggle('baeume')" title="Bäume laden, setzen und bearbeiten (Bestand › Umgebung)">Bäume bearbeiten</button>
+      </div>
+      ${anzahl ? '' : `<div style="font-size:11px;color:var(--muted);margin-top:3px;">Ohne Bäume rechnet die Verschattung nur mit den Nachbargebäuden.</div>`}`;
+
+    // Bestand: wofür die Bäume gebraucht werden
+    const verwendung = `
+      <div style="margin-top:9px;border-top:1px solid var(--border);padding-top:7px;font-size:11px;color:var(--muted);line-height:1.45;">
+        Verwendet für die <b>Verschattung der PV-Dächer</b>${mitPv.length ? ` (${st.aktuell}/${mitPv.length} Dächer gerechnet${_an ? ', im Ertrag' : ''})` : ''}
+        und die <b>Schallausbreitung der Luft-Wärmepumpe</b> (Bewuchsdämpfung).
+        <button class="btn-xs" style="width:100%;margin-top:5px;border-color:${GRUEN};color:${GRUEN};" data-click="baumPanelToggle('verschattung')">Verschattung öffnen</button>
+      </div>`;
+
+    if (_teil === 'verschattung') return `${kopf}
+    <div class="pvm-body">
+      ${baumKurz}
+      ${_verschattungHtml({ mitPv, st, offen, auswertung, zeilen })}
+    </div>`;
+
+    return `${kopf}
     <div class="pvm-body">
       <div style="font-size:12px;line-height:1.5;">
         <b>${_fmt$1(anzahl)}</b> Bäume im Projekt${anzahl ? ` · ${_fmt$1(osm)} aus OSM · ${_fmt$1(anzahl - osm)} eigene` : ''}
-        ${vorgabe ? `<div style="color:${GELB};font-size:11px;" title="Ohne Höhenangabe gilt eine Vorgabe (Einzelbaum 12 m, Wald 20 m, Obstbaum 6 m). Auf der Karte gestrichelt.">⚠ ${_fmt$1(vorgabe)} mit geschätzter Höhe (gestrichelt)</div>` : ''}
+        ${vorgabe ? `<div style="color:${GELB};font-size:11px;" title="Ohne Höhenangabe gilt eine Vorgabe (OSM: Einzelbaum 12 m, Wald 20 m, Obstbaum 6 m) bzw. die Höhe kommt aus einer Vorlage. Auf der Karte gestrichelt; „vorsichtig rechnen“ schlägt hier 20 % auf.">⚠ ${_fmt$1(vorgabe)} mit geschätzter Höhe (gestrichelt)</div>` : ''}
       </div>
       <div style="display:flex;gap:4px;margin-top:6px;">
         <button class="btn-xs" style="flex:1;border-color:${GRUEN};color:${GRUEN};" data-click="baumOsmUebernehmen()" ${_laedt$1 ? 'disabled' : ''}
@@ -262651,12 +263074,24 @@ ${ssSteckbriefHtml(blatt)}
       </div>
       <div style="margin-top:5px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">${_modus === 'flaeche' ? 'Bäume in der Fläche' : 'Neuer Baum'}</div>
-        <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:4px;font-size:11px;color:var(--muted);">
+        ${_vorlageWahlHtml()}
+        ${vorl ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px;font-size:11px;color:var(--muted);">
+          <span title="Mittlere Höhe des Bestands — alle Höhen der Vorlage werden im selben Verhältnis angepasst (z. B. jüngerer Wald)">mittl. Höhe m</span>
+          <span title="Wie stark Höhe und Krone von Baum zu Baum schwanken">Streuung</span>
+          <input class="inp-field" type="number" min="2" max="45" step="0.5" value="${Math.round((_neu$1.hoeheMittel || vorlageHoehe(vorl)) * 10) / 10}"
+            style="width:100%;padding:2px 4px;" data-change="baumVorgabe('hoeheMittel',this.value)"/>
+          <select class="inp-field" style="padding:2px;" data-change="baumVorgabe('streuung',this.value)">${Object.entries(BAUM_STREUUNG).map(([k, x]) =>
+            `<option value="${k}"${_neu$1.streuung === k ? ' selected' : ''}>${x.name}</option>`).join('')}</select>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4;">${escHtml(vorlageText(vorl, { hoeheMittel: _neu$1.hoeheMittel, streuung: _neu$1.streuung, abstand: _modus === 'flaeche' ? _flaeche.abstand : undefined }))}</div>`
+        : `
+        <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:4px;margin-top:4px;font-size:11px;color:var(--muted);">
           <span>Art</span><span>Höhe m</span><span>Krone m</span>
           <select class="inp-field" style="padding:2px;" data-change="baumVorgabe('art',this.value)">${Object.entries(ARTEN).map(([k, l]) =>
             `<option value="${k}"${_neu$1.art === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
           ${feld('hoehe', _neu$1.hoehe, 1, 60, 0.5)}${feld('krone', _neu$1.krone, 0.5, 30, 0.5)}
-        </div>
+        </div>`}
         ${_modus === 'flaeche' ? `
         <div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11px;color:var(--muted);">
           <span title="Mittlerer Abstand zwischen den Baumstämmen (versetzte Reihen)">Abstand m</span>
@@ -262678,9 +263113,14 @@ ${ssSteckbriefHtml(blatt)}
         ${anzahl ? `<button class="btn-xs" data-click="baumAlleLoeschen(true)" title="Unveränderte OSM-Bäume entfernen">OSM</button>
         <button class="btn-xs red" data-click="baumAlleLoeschen(false)" title="Alle Bäume entfernen">alle</button>` : ''}
       </div>
+      ${verwendung}
+    </div>`;
+  }
 
+  /** Verschattungsteil des Fensters (Photovoltaik): Schalter, Rechnen, Empfehlung, Liste je Dach. */
+  function _verschattungHtml({ mitPv, st, offen, auswertung, zeilen }) {
+    return `
       <div style="margin-top:9px;border-top:1px solid var(--border);padding-top:7px;">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Verschattung der PV-Dächer</div>
         <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"
           title="Der Faktor je Dach mindert die wirksame Leistung (kWp × Ertragsfaktor) — und damit PV-Asset, Stromnetz, PV-Analyse und Gutachten">
           <input type="checkbox" ${_an ? 'checked' : ''} style="accent-color:${GRUEN};" data-change="verschattungUmschalten(this.checked)"/>
@@ -262705,8 +263145,7 @@ ${ssSteckbriefHtml(blatt)}
           Kronen lassen Licht durch — Laubbäume belaubt ≈ 20 %, kahl ≈ 60 %, Nadelbäume ≈ 15 %.
           Nachbargebäude zählen bis Traufe + halbe Dachhöhe (ohne LoD2 höchstens 8 m Dach). Nach Änderungen an Nachbargebäuden „Alle neu berechnen".
         </div>
-      </div>
-    </div>`;
+      </div>`;
   }
 
   // Für data-click im Panel (main.js spiegelt die Exporte ebenfalls auf window)
@@ -262718,18 +263157,20 @@ ${ssSteckbriefHtml(blatt)}
     baumAendern: baumAendern,
     baumAlleLoeschen: baumAlleLoeschen,
     baumBearbeitenToggle: baumBearbeitenToggle,
-    baumBlockHtml: baumBlockHtml,
+    baumBestandInfo: baumBestandInfo,
     baumCapture: baumCapture,
     baumFlaecheAbbrechen: baumFlaecheAbbrechen,
     baumFlaecheFuellen: baumFlaecheFuellen,
     baumFlaecheOption: baumFlaecheOption,
     baumFluegelUmstellen: baumFluegelUmstellen,
     baumGeschaetzteZeigen: baumGeschaetzteZeigen,
+    baumIstSichtbar: baumIstSichtbar,
     baumListe: baumListe,
     baumLoeschen: baumLoeschen,
     baumModus: baumModus,
     baumOsmUebernehmen: baumOsmUebernehmen,
     baumPanelRender: baumPanelRender,
+    baumPanelTitel: baumPanelTitel,
     baumPanelToggle: baumPanelToggle,
     baumRestore: baumRestore,
     baumSchwelle: baumSchwelle,
@@ -262746,6 +263187,7 @@ ${ssSteckbriefHtml(blatt)}
     pvVerschattungModulFaktoren: pvVerschattungModulFaktoren,
     verschattetEntfernen: verschattetEntfernen,
     verschattungBerechnen: verschattungBerechnen,
+    verschattungBlockHtml: verschattungBlockHtml,
     verschattungGutachten: verschattungGutachten,
     verschattungKontext: verschattungKontext,
     verschattungNachBelegen: verschattungNachBelegen,
@@ -266667,7 +267109,7 @@ out center tags;`;
   const WERKZEUGE = {
     'blackout-modus-panel': { titel: 'Blackout-Modus', zu: () => window.blackoutModusStop?.() },
     'pv-modus-panel':       { titel: 'PV-Modus', zu: () => window.pvModusStop?.() },
-    'baum-panel':           { titel: 'Bäume', zu: () => window.baumPanelToggle?.() },
+    'baum-panel':           { get titel() { return window.baumPanelTitel?.() || 'Bäume'; }, zu: () => window.baumPanelToggle?.() },
     'grundriss-panel':      { titel: 'Grundrisse prüfen', zu: () => window.grundrissPanelToggle?.() },
     'sld-panel':            { titel: 'Einlinienschema', zu: () => window.sldToggle?.(), offen: _schemaOffen, breite: 600, neu: () => window.sldRefresh?.() },
     'ws-panel':             { titel: 'Wärmeschema', zu: () => window.wsToggle?.(), offen: _schemaOffen, breite: 600, neu: () => window.wsRender?.() },
