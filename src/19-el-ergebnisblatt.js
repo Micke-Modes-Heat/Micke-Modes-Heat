@@ -599,8 +599,13 @@ function _ensurePanel() {
 
 const _body = () => document.getElementById('eb-body');
 
-/** Blatt öffnen/schließen (Kachel im Elektro-Panel). */
+/** Blatt öffnen/schließen (Kachel im Elektro-Panel). In der Oberfläche LKEBw ist das Blatt eine
+ *  Seite unter Auswertung › Strom (53-fenster-seiten.js) — dorthin springen statt Fenster öffnen. */
 export function ergebnisblattToggle() {
+  if (document.body.classList.contains('ui-lkebw') && typeof window.fsSeiteOeffnen === 'function') {
+    window.fsSeiteOeffnen('ergebnisblatt');
+    return;
+  }
   const panel = _ensurePanel();
   const sichtbar = panel.style.display === 'block';
   panel.style.display = sichtbar ? 'none' : 'block';

@@ -19,6 +19,9 @@ const BREITE_STANDARD = 460;
 const BREITE_MIN = 320;
 const KARTE_MIN = 360;          // so viel Karte bleibt mindestens sichtbar
 const MIN_BILDSCHIRM = 1000;    // darunter keine Spalte (Tablet: Fenster wie bisher)
+// Dialoge gehören zu keiner Stelle der Karte (Einstellungen, Import, Export): sie erscheinen
+// mittig als Dialogfenster (lkebw.css §15) statt als Reiter neben der Karte.
+const DIALOGE = ['privacy-panel', 'diagnostics-panel', 'geb-import-panel', 'status-panel', 'feldapp-panel', 'resilienz-abfrage-panel'];
 const ZENTRALANSICHTEN = ['center-analyse-view', 'center-gebaeude-view', 'center-optimierung-view', 'center-vergleich-view', 'center-live-view'];
 
 let _rechts = null, _leiste = null, _inhalt = null, _griff = null;
@@ -42,15 +45,21 @@ function _merken() {
 }
 
 /* ── Wann wird angedockt? ───────────────────────────────────────────────── */
-function _dockAn() {
-  if (!_rechts || !document.body.classList.contains('ui-lkebw')) return false;
-  if (document.documentElement.dataset.dualScreen === 'on') return false;
-  if (window.innerWidth < MIN_BILDSCHIRM) return false;
-  // Nur bei sichtbarer Karte: Seiten (Auswertung, Projekt …) liegen über der ganzen Hauptfläche
-  if (ZENTRALANSICHTEN.some(id => { const v = document.getElementById(id); return v && v.style.display && v.style.display !== 'none'; })) return false;
+/**
+ * 'karte' — Karte sichtbar: offene Fenster docken an.
+ * 'seite' — eine Seite (Auswertung, Gutachten, Projekt …) liegt über Karte und Spalte: Angedockte
+ *           bleiben verdeckt in der Spalte und sind beim Zurück zur Karte wieder da; neu geöffnete
+ *           docken erst dann an. (Früher wurden sie hier freigegeben und schwebten über der Seite.)
+ * 'aus'   — keine Spalte (alte Oberfläche, Zweitbildschirm, schmaler Bildschirm): alles freigeben.
+ */
+function _dockZustand() {
+  if (!_rechts || !document.body.classList.contains('ui-lkebw')) return 'aus';
+  if (document.documentElement.dataset.dualScreen === 'on') return 'aus';
+  if (window.innerWidth < MIN_BILDSCHIRM) return 'aus';
+  if (ZENTRALANSICHTEN.some(id => { const v = document.getElementById(id); return v && v.style.display && v.style.display !== 'none'; })) return 'seite';
   const projekt = document.getElementById('center-projekt-view');
-  if (projekt && !projekt.hidden) return false;
-  return true;
+  if (projekt && !projekt.hidden) return 'seite';
+  return 'karte';
 }
 
 /** Sichtbar ist ein Fenster über .visible oder (manche Module) über style.display. */
@@ -68,10 +77,13 @@ function _andockbar(p) {
 function _andocken(p) {
   if (p.parentElement !== _inhalt) {
     p._dockHeim = { parent: p.parentElement, next: p.nextElementSibling };
+    // Startbreite: was das Modul für sein Fenster vorsieht (z. B. 660 px Engpässe), höchstens 720 px
+    const w = /^\d+px$/.test(p.style.width) ? parseInt(p.style.width, 10) : 0;
+    if (w > BREITE_STANDARD) p._dockStandard = Math.min(720, w);
     _inhalt.appendChild(p);
   }
   p.classList.add('im-dock');
-  p.classList.remove('minimized');
+  if (p.classList.contains('minimized')) p.classList.remove('minimized');
   if (!_reiter.includes(p.id)) { _reiter.push(p.id); _aktiv = p.id; _eingeklappt = false; }
 }
 
@@ -91,10 +103,10 @@ function _zurueck(p, { umziehen = true } = {}) {
 function _abgleich() {
   _geplant = 0;
   if (!_rechts) return;
-  const an = _dockAn();
+  const zustand = _dockZustand();
   // 1. Angedockte prüfen
   for (const p of [..._inhalt.querySelectorAll(':scope > .float-panel')]) {
-    if (!an || !_andockbar(p)) {
+    if (zustand === 'aus' || !_andockbar(p)) {
       // Wer an der Kopfzeile herausgezogen wurde, darf beim nächsten Öffnen wieder andocken
       _zurueck(p);
     }
@@ -102,17 +114,28 @@ function _abgleich() {
   // Fenster, die woanders hin verschoben wurden (Einbetten, Zweitbildschirm), nur aus der Liste nehmen
   _reiter.filter(id => { const p = document.getElementById(id); return !p || p.parentElement !== _inhalt; })
     .forEach(id => { const p = document.getElementById(id); if (p) _zurueck(p, { umziehen: false }); else _reiter = _reiter.filter(x => x !== id); });
+  // Dialoge kennzeichnen (manche Module legen ihr Fenster erst beim ersten Öffnen an)
+  DIALOGE.forEach(id => {
+    const p = document.getElementById(id);
+    if (p && !p.hasAttribute('data-kein-dock')) { p.setAttribute('data-kein-dock', ''); p.classList.add('ui-dialog-fenster'); }
+  });
   // 2. Neu geöffnete einhängen
-  if (an) {
+  if (zustand === 'karte') {
     document.querySelectorAll('.float-panel').forEach(p => {
       if (!p.id || p.parentElement === _inhalt || p.closest('#ui-rechts')) return;
       if (_andockbar(p)) _andocken(p);
     });
   }
+  // Frei verschobene Kartenfenster gehören zur Karte: auf Seiten ausblenden, bei der Karte wieder zeigen.
+  // (contains vor add/remove: beides schreibt das class-Attribut sonst immer neu → Abgleich ohne Ende)
+  document.querySelectorAll('.float-panel.dragging').forEach(p => {
+    const weg = zustand === 'seite' && !p.hasAttribute('data-kein-dock');
+    if (weg !== p.classList.contains('ui-seite-verdeckt')) p.classList.toggle('ui-seite-verdeckt', weg);
+  });
   // Einmal herausgezogene, inzwischen geschlossene Fenster docken beim nächsten Öffnen wieder an
   document.querySelectorAll('.float-panel.dragging[data-aus-dock]').forEach(p => {
     if (_offen(p)) return;
-    p.classList.remove('dragging');
+    p.classList.remove('dragging', 'ui-seite-verdeckt');
     p.removeAttribute('data-aus-dock');
     p.style.left = p.style.top = p.style.transform = '';
   });
@@ -141,7 +164,7 @@ function _maxBreite() {
 }
 
 function _breite(id) {
-  const b = Number(_breiten[id]) || BREITE_STANDARD;
+  const b = Number(_breiten[id]) || document.getElementById(id)?._dockStandard || BREITE_STANDARD;
   return Math.round(Math.min(_maxBreite(), Math.max(BREITE_MIN, b)));
 }
 
@@ -223,6 +246,7 @@ function _kopfMausdruck(e) {
   if (!h || e.button !== 0) return;
   e.stopPropagation();   // inline onmousedown="startDrag(…)" nicht im Dock auslösen
   if (e.target.closest('button, a, input, select, [data-click]')) return;
+  e.preventDefault();    // sonst markiert das Ziehen nebenbei Text
   const p = h.parentElement;
   const x0 = e.clientX, y0 = e.clientY;
   const bewegen = ev => {

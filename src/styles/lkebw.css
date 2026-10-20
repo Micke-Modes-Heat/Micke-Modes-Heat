@@ -418,12 +418,12 @@ header.ui-seitentitel:empty{display:none}
    Wer ein Fenster an der Kopfzeile wegzieht, löst es (Klasse .dragging) und verschiebt es frei.
    Bei sichtbarer Karte übernimmt die Andock-Spalte (Abschnitt 15, .im-dock); diese Regel bleibt
    für Fenster über Seiten (Auswertung, Projekt) und schmale Bildschirme. */
-body.ui-lkebw .float-panel.visible:not(.inline-mode):not(.dock-mode):not(.dragging):not(.im-dock){
+body.ui-lkebw .float-panel.visible:not(.inline-mode):not(.dock-mode):not(.dragging):not(.im-dock):not(.ui-dialog-fenster){
   position:fixed!important;top:var(--kopf-h)!important;right:0!important;bottom:var(--fuss-h)!important;left:auto!important;
   transform:none!important;max-height:none!important;width:460px!important;max-width:min(820px,calc(100vw - var(--lp-w) - 40px))!important;
   border-radius:0!important;border:0!important;border-left:1px solid var(--border)!important;
   box-shadow:-6px 0 18px rgba(20,30,25,.08)!important;overflow-y:auto!important;resize:none!important}
-body.ui-lkebw .float-panel.visible.minimized:not(.inline-mode):not(.dock-mode):not(.dragging):not(.im-dock){bottom:auto!important}
+body.ui-lkebw .float-panel.visible.minimized:not(.inline-mode):not(.dock-mode):not(.dragging):not(.im-dock):not(.ui-dialog-fenster){bottom:auto!important}
 body.ui-lkebw .float-panel.visible:not(.dragging):not(.inline-mode) .panel-drag-handle{border-radius:0;cursor:grab}
 body.ui-lkebw .float-panel.dragging{border-radius:var(--r-2)!important}
 /* Schaltbilder (Einlinienschema, Wärmeschema) als rechte Spalte unter der Prozessleiste */
@@ -711,6 +711,18 @@ body.ui-dock-hat-reiter #sidebar-toggle{display:none!important}
 .float-panel.im-dock.dock-aktiv{display:block!important}
 .float-panel.im-dock>.panel-drag-handle{position:sticky;top:0;z-index:3;border-radius:0;cursor:grab}
 .float-panel.im-dock .panel-minimize-btn{display:none!important}
+/* Frei verschobene Kartenfenster ruhen, solange eine Seite (Auswertung, Gutachten …) offen ist */
+.float-panel.ui-seite-verdeckt{display:none!important}
+
+/* Dialoge (Datenschutz, Diagnose, Import, Feldapp …): mittig unter der Prozessleiste, nicht in der Spalte */
+body.ui-lkebw .float-panel.ui-dialog-fenster:not(.dragging):not(.inline-mode){position:fixed!important;top:calc(var(--kopf-h) + 24px)!important;
+  left:50%!important;right:auto!important;bottom:auto!important;transform:translateX(-50%)!important;max-width:calc(100vw - 48px)!important;
+  max-height:calc(100vh - var(--kopf-h) - var(--fuss-h) - 48px)!important;overflow-y:auto!important;resize:none!important;
+  border-radius:var(--r-2)!important;box-shadow:var(--shadow-2),0 0 0 100vmax rgba(15,20,18,.18)!important}
+
+/* Berichts-Fenster als Seite (src/53-fenster-seiten.js) */
+.fs-seite>.float-panel.inline-mode{background:var(--surface)!important;border:1px solid var(--border)!important;border-radius:var(--r-2)!important;overflow:hidden!important}
+#el-ergebnisblatt.inline-mode{height:calc(100vh - var(--kopf-h) - var(--fuss-h) - 120px)!important;min-height:420px}
 
 /* Auswertung › Strom › Netzanschluss (src/44, früher ein Fenster) */
 .na-seite{max-width:1180px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);padding:6px 22px 20px;font-size:13px}

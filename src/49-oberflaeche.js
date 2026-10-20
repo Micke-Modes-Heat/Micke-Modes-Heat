@@ -46,6 +46,7 @@ const _ABSCHNITTE = {
   strom:               { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Strombilanz' },
   nap:                 { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Netzanschluss-Lastgang' },
   netzanschluss:       { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Netzanschluss' },
+  ergebnisblatt:       { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Ergebnisblatt Elektro' },   // 53-fenster-seiten.js
   kna:                 { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Knotenpunkt-Analyse' },
   pva:                 { schritt: 'auswertung', gruppe: 'Strom',        titel: 'Photovoltaik' },
   wirtschaft:          { schritt: 'auswertung', gruppe: 'Übergreifend', titel: 'Wirtschaftlichkeit' },
@@ -63,8 +64,6 @@ const _EXTRA = {
     // Maßnahmenbericht und Investitionsplan nur unter Gutachten. Planung › Strom › Prüfen verweist nur.
     { key: 'v:optimierung', gruppe: 'Wärme', titel: 'Optimierung der Erzeugung', los: () => _ansicht('optimierung') },
     { key: 'f:sankey', gruppe: 'Wärme', titel: 'Energieflüsse (Sankey)', los: () => window.showSankey?.(), fenster: true },
-    { key: 'f:ergebnisblatt', gruppe: 'Strom', titel: 'Ergebnisblatt Elektro', los: () => window.ergebnisblattToggle?.(), fenster: true,
-      tip: 'Vollständige Rechenergebnisse: Kennzahlen, Grenzwertnachweis, Kabel- und Knotentabellen, Mengengerüst, Kosten und alle Annahmen — druckbar und als CSV' },
     { key: 'v:vergleich', gruppe: 'Übergreifend', titel: 'Variantenvergleich', los: () => _ansicht('vergleich'), tip: 'Varianten vergleichen: Kennzahlen und Planungsentscheidungen aller Varianten nebeneinander' },
     { key: 'v:gebaeude', gruppe: 'Übergreifend', titel: 'Gebäudeauswertung', los: () => _ansicht('gebaeude') },
   ],

@@ -1955,6 +1955,7 @@ export function refreshAnalyseView() {
   // Tab-Buttons + Wrapper einmalig injizieren (idempotent)
   napBuildAnalyseSection();
   window.naBuildAnalyseSection?.();   // 44-netzanschluss-modul.js (über window, kein Importzyklus)
+  window.fsBuildSections?.();         // 53-fenster-seiten.js: Berichts-Fenster als Seiten
   knaBuildAnalyseSection();
   pvaBuildAnalyseSection();
   resBuildAnalyseSection();
@@ -1973,6 +1974,7 @@ export function refreshAnalyseView() {
   if (napWrap) napWrap.style.display = 'none';
   const naWrap = document.getElementById('analyse-na-wrap');
   if (naWrap) naWrap.style.display = 'none';
+  window.fsHideAll?.();
   const knaWrap = document.getElementById('analyse-kna-wrap');
   if (knaWrap) knaWrap.style.display = 'none';
   const pvaWrap = document.getElementById('analyse-pva-wrap');
@@ -2024,6 +2026,8 @@ export function refreshAnalyseView() {
     lbShowSection(true);
   } else if (analyseCurrentSection === 'ausbauplaner') {
     if (typeof ausbauShow === 'function') ausbauShow(true);
+  } else {
+    window.fsShowSection?.(analyseCurrentSection);
   }
 }
 
