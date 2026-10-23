@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EMS und EZA-Regler</title>
+<meta name="description" content="Wie EZA-Regler und Energiemanagement in einer Liegenschaft umgesetzt werden: technische Grundlagen, Umsetzung in der Gebäudeautomation oder mit eigenem EZA-Regler, Vor- und Nachteile und technische Herausforderungen.">
+<meta name="on-eyebrow" content="INTERN · GEBÄUDEAUTOMATION · DISKUSSIONSGRUNDLAGE">
+<meta name="on-zweck" content="Umsetzung von EMS und EZA-Regelung in Liegenschaften; Vorarbeit für Gutachten-Kapitel 6 Gebäudeautomation">
+<meta name="on-grundlage" content="VDE-AR-N 4110 [1], FGW TR 3/4/8 [2], Skizzenbibliothek (docs/skizzen)">
+<meta name="on-stand" content="23.10.2026">
+<style>
+:root { color-scheme: light; --papier:#FAFAF8; --weiss:#FFFFFF; --text:#1B1F1C; --muted:#5A5F5A; --linie:#E2E4DF; --regel:#C9CCC5; --tint:#EEF3EC; --band:#F2F3F0; --gd:#266426; --g:#3F9C3F; --eza:#C8641E; --eza-tint:#FBF1EA; --ga:#2A64B4; --rot:#B3261E; --rot-tint:#FBECEB; --f:Tahoma, Verdana, "Segoe UI", sans-serif; --m:"IBM Plex Mono", Consolas, monospace; }
+* { box-sizing: border-box; }
+html { background: var(--papier); scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--papier); color: var(--text); font-family: var(--f); font-size: 15px; line-height: 1.6; }
+.balken { height: 6px; background: var(--gd); }
+.seite { max-width: 860px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 40px; display: flex; flex-direction: column; gap: 44px; }
+h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
+p { margin: 0; }
+a { color: var(--gd); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--g); outline-offset: 2px; }
+.kopf { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px 32px; align-items: start; border-bottom: 1px solid var(--linie); padding-bottom: 22px; }
+.kopf img { width: 176px; height: auto; }
+.kopf .voll { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 14px; }
+@media (max-width: 620px) { .kopf { grid-template-columns: 1fr; } .kopf img { width: 128px; order: -1; } }
+.eyebrow { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--g); font-weight: 700; }
+h1 { font-size: clamp(26px, 4.4vw, 34px); margin-top: 6px; }
+.lead { font-size: 16px; color: var(--muted); }
+.inhalt { display: flex; flex-direction: row; flex-wrap: wrap; gap: 4px 18px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.inhalt a { text-decoration: none; } .inhalt a:hover { text-decoration: underline; }
+.inhalt b { color: var(--g); }
+section { display: flex; flex-direction: column; gap: 16px; scroll-margin-top: 16px; }
+.kap { display: flex; flex-direction: column; gap: 10px; }
+.kap h2 { font-size: 22px; display: flex; gap: 14px; align-items: baseline; }
+.kap h2 b { color: var(--g); }
+.regel { position: relative; height: 5px; width: 72%; }
+.regel::before { content: ""; position: absolute; left: 0; right: 0; top: 2px; height: 1px; background: var(--regel); }
+.regel::after { content: ""; position: absolute; left: 0; top: 0; width: 64px; height: 5px; background: var(--gd); }
+h3 { font-size: 15px; color: var(--gd); }
+figure { margin: 0; background: var(--weiss); border: 1px solid var(--linie); padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* Skizzen sind 1000 Einheiten breit: etwas breiter als der Text, damit die Schrift lesbar bleibt */
+figure.skizze { width: min(1100px, calc(100vw - 32px)); margin-inline: calc((100% - min(1100px, calc(100vw - 32px))) / 2); }
+figure.skizze button { all: unset; cursor: zoom-in; display: block; }
+figure.skizze img { display: block; width: 100%; height: auto; }
+figcaption, .tabcap { font-size: 13px; color: var(--muted); }
+figcaption b, .tabcap b { color: var(--text); }
+.tabelle { overflow-x: auto; border: 1px solid var(--linie); background: var(--weiss); }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--linie); }
+th { background: var(--tint); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--gd); }
+th.eza { background: var(--eza-tint); color: var(--eza); }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 700; }
+td.num { font-family: var(--m); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 400; }
+.art { display: inline-block; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; padding: 0 6px; border: 1px solid var(--regel); color: var(--muted); white-space: nowrap; }
+.art.norm { border-color: var(--eza); color: var(--eza); }
+.spalten { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
+.kasten { background: var(--weiss); border: 1px solid var(--linie); border-top: 4px solid var(--gd); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.kasten.eza { border-top-color: var(--eza); } .kasten.eza h3 { color: var(--eza); }
+.kasten.ga { border-top-color: var(--ga); } .kasten.ga h3 { color: var(--ga); }
+.kasten.dafuer { border-top-color: var(--g); }
+.kasten.dagegen { border-top-color: var(--rot); } .kasten.dagegen h3 { color: var(--rot); }
+ul, ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+li::marker { color: var(--g); }
+ul.plus, ul.minus { list-style: none; padding-left: 18px; }
+ul.plus li, ul.minus li { position: relative; }
+ul.plus li::before, ul.minus li::before { position: absolute; left: -18px; font-weight: 700; }
+ul.plus li::before { content: "+"; color: var(--g); }
+ul.minus li::before { content: "–"; color: var(--rot); }
+ol.schritte li::marker { font-weight: 700; }
+ol.schritte b { color: var(--gd); }
+.merke { background: var(--tint); border-left: 5px solid var(--gd); padding: 10px 14px; }
+.merke.eza { background: var(--eza-tint); border-left-color: var(--eza); }
+.herausforderungen { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.herausforderungen .kasten h3 { display: flex; gap: 10px; align-items: baseline; color: var(--text); }
+.herausforderungen .kasten h3 b { color: var(--eza); font-family: var(--m); }
+.trifft { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.trifft em { font-style: normal; font-weight: 700; color: var(--text); }
+.loesung { font-size: 14px; border-top: 1px dashed var(--regel); padding-top: 8px; }
+.loesung b { color: var(--gd); }
+.quellen { margin: 0; padding-left: 28px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.quellen li::marker { color: var(--gd); font-family: var(--m); }
+.fuss { border-top: 1px solid var(--linie); padding-top: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--muted); }
+dialog.lupe { width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: rgba(27,31,28,.88); overflow: auto; }
+dialog.lupe img { display: block; width: 1500px; max-width: none; height: auto; margin: 24px auto; background: var(--weiss); cursor: zoom-out; }
+dialog.lupe button { position: fixed; top: 12px; right: 16px; font: inherit; font-size: 14px; padding: 6px 12px; border: 0; background: var(--weiss); color: var(--text); cursor: pointer; }
+.hinweis-lupe { font-size: 12px; color: var(--muted); }
+@media print {
+  body { font-size: 11pt; }
+  .seite { max-width: none; gap: 24px; }
+  figure.skizze { width: auto; margin-inline: 0; break-inside: avoid; }
+  figure, .kasten, .tabelle { break-inside: avoid; }
+  .hinweis-lupe, dialog { display: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="balken"></div>
+<main class="seite">
+
+<header class="kopf">
+  <div>
+    <div class="eyebrow">Energieversorgung · Gebäudeautomation · Diskussionsgrundlage</div>
+    <h1>EZA-Regler und EMS: Gebäudeautomation oder eigener Regler?</h1>
+  </div>
+  <img src="{{LOGO}}" alt="LKEBw" width="176" height="52">
+  <div class="voll">
+    <p class="lead">Sobald eine Liegenschaft mit Mittelspannungsanschluss eine größere Photovoltaikanlage, einen Batteriespeicher oder ein BHKW betreibt, braucht sie zwei Regelfunktionen: einen EZA-Regler, der die Vorgaben des Netzbetreibers am Netzanschlusspunkt umsetzt, und ein Energiemanagement (EMS), das Eigenverbrauch, Lastspitzen und Wärme optimiert. Oft liegt die Frage nahe, ob beides die vorhandene Gebäudeautomation übernehmen kann, meist verbunden mit dem Wunsch, dass niemand von außen auf die eigenen Anlagen einwirken kann. Dieses Papier erklärt die technischen Grundlagen, stellt die beiden Umsetzungswege gegenüber, prüft, wie weit sich Einfluss von außen vermeiden lässt, und nennt die technischen Herausforderungen.</p>
+    <p class="merke"><b>Kurz gesagt:</b> Das EMS gehört in die Gebäudeautomation. Die Netzregelung gehört in einen eigenen, zertifizierten EZA-Regler, denn sie braucht ein Komponentenzertifikat und muss schneller, verfügbarer und besser abgeschottet laufen, als eine Gebäudeleittechnik es üblicherweise leistet. Das EMS meldet dem EZA-Regler nur Wünsche; der Regler gibt an jede Anlage den jeweils engeren Wert weiter. Ganz ohne Einfluss von außen geht es nicht, solange die Anlage in das öffentliche Netz einspeist: Der Netzbetreiber muss die Einspeisung begrenzen können. Der eigene EZA-Regler hält diesen Zugriff aber am kleinsten, alle anderen Zugänge lassen sich vermeiden.</p>
+    <nav aria-label="Inhalt"><ol class="inhalt">
+      <li><a href="#aufgaben"><b>1</b> Zwei Aufgaben</a></li>
+      <li><a href="#eza"><b>2</b> Grundlagen EZA-Regler</a></li>
+      <li><a href="#ems"><b>3</b> Grundlagen EMS</a></li>
+      <li><a href="#ga"><b>4</b> Variante Gebäudeautomation</a></li>
+      <li><a href="#eigen"><b>5</b> Variante eigener EZA-Regler</a></li>
+      <li><a href="#vergleich"><b>6</b> Vergleich</a></li>
+      <li><a href="#aussen"><b>7</b> Einfluss von außen</a></li>
+      <li><a href="#herausforderungen"><b>8</b> Herausforderungen</a></li>
+      <li><a href="#vorgehen"><b>9</b> Vorgehen</a></li>
+      <li><a href="#quellen"><b>10</b> Quellen</a></li>
+    </ol></nav>
+    <p class="hinweis-lupe">Alle Abbildungen lassen sich per Klick vergrößern.</p>
+  </div>
+</header>
+
+<section id="aufgaben">
+  <div class="kap"><h2><b>1</b> Zwei Aufgaben, zwei Auftraggeber</h2><div class="regel"></div></div>
+  <p>EZA-Regler und EMS werden oft in einem Atemzug genannt, weil beide Sollwerte an dieselben Anlagen geben: an PV-Wechselrichter, Batterie-Umrichter und BHKW. Sie verfolgen aber verschiedene Ziele und unterliegen verschiedenen Regeln.</p>
+  <p>Der <b>EZA-Regler</b> (Erzeugungsanlagen-Regler, auch Parkregler genannt) setzt am Netzanschlusspunkt (NAP) durch, was der Netzbetreiber vorgibt: die Begrenzung der Wirkleistung, die Blindleistung und die vereinbarten Anschlussgrenzen für Bezug und Einspeisung. Er ist Pflicht, sobald die Technischen Anschlussbedingungen ihn verlangen, und er ist Teil des Nachweises der elektrischen Eigenschaften nach VDE-AR-N 4110: Anlagenzertifikat oder vereinfachter Nachweis [1, 14].</p>
+  <p>Das <b>EMS</b> (Energiemanagementsystem) entscheidet, wann geladen, geheizt und gespeichert wird: Eigenverbrauch erhöhen, Lastspitzen kappen, Wärme aus PV-Überschuss erzeugen. Es ist eine Betreiberfunktion ohne Netzzertifikat. In Nichtwohngebäuden mit großer Heiz- oder Klimaleistung verlangt das Gebäudeenergiegesetz ohnehin ein System für Gebäudeautomatisierung mit Energiemonitoring [8]; das EMS ist dort eine naheliegende Erweiterung.</p>
+  <p class="tabcap"><b>Tabelle 1:</b> EZA-Regler und EMS im Vergleich</p>
+  <div class="tabelle"><table>
+    <thead><tr><th>Merkmal</th><th class="eza">EZA-Regler</th><th>EMS</th></tr></thead>
+    <tbody>
+      <tr><td>Zweck</td><td>Netzsicherheit: Vorgaben des Netzbetreibers und Anschlussgrenzen einhalten</td><td>Wirtschaftlichkeit und Komfort: Eigenverbrauch, Spitzenkappung, Wärme</td></tr>
+      <tr><td>Auftraggeber</td><td>Netzbetreiber, Direktvermarkter</td><td>Betreiber der Liegenschaft</td></tr>
+      <tr><td>Grundlage</td><td>VDE-AR-N 4110 [1], TAB und Abfragebogen des Netzbetreibers, §§ 9, 10b EEG [3, 4]</td><td>Betreiberwunsch, ggf. GEG § 71a [8], Förderbedingungen</td></tr>
+      <tr><td>Nachweis</td><td>Komponentenzertifikat; Teil des Anlagenzertifikats bzw. des vereinfachten Nachweises [2, 14]</td><td>keiner vorgeschrieben</td></tr>
+      <tr><td>Zeitskala</td><td>Zyklus 0,1 bis 0,2 s, Einschwingen in Sekunden bis Minuten</td><td>Regelzyklus 1 bis 10 s, Fahrplan je Viertelstunde</td></tr>
+      <tr><td>Folge eines Fehlers</td><td>Verstoß gegen Netzanschlussvertrag, im Ernstfall Abschaltung durch den Netzbetreiber</td><td>höhere Stromkosten, Komforteinbußen</td></tr>
+      <tr><td>Schreibt</td><td>Grenzen: P-Grenze, Q-Sollwert, Batterie-Sollwert (geklemmt)</td><td>Wünsche: Batterie-Sollwert, PV-Wunsch, Ladebudget, Wärmepumpen-Freigabe</td></tr>
+    </tbody>
+  </table></div>
+  <p>Abbildung 1 zeigt, wie beide in einer Liegenschaft angeordnet sind. Der EZA-Regler sitzt in der Übergabestation am Netzanschlusspunkt und spricht über Modbus direkt mit den Erzeugern. Das EMS ist eine Funktion der Gebäudeleittechnik (GLT) und erreicht die Verbraucher über das GA-Netz. Zwischen beiden liegt genau eine Schnittstelle.</p>
+  <figure class="skizze">{{FIG:Prinzip-EMS-Anbindung}}
+    <figcaption><b>Abbildung 1:</b> Aufbau und Anbindung von EZA-Regler und EMS in einer Liegenschaft. Orange: netzrelevante Vorgaben, blau: Daten der Gebäudeautomation. Prinzipskizze, Protokolle beispielhaft.</figcaption>
+  </figure>
+</section>
+
+<section id="eza">
+  <div class="kap"><h2><b>2</b> Technische Grundlagen: der EZA-Regler</h2><div class="regel"></div></div>
+  <h3>Was der Regler tut</h3>
+  <p>Der EZA-Regler misst Wirkleistung, Blindleistung, Spannung und Frequenz am Netzanschlusspunkt und verteilt Sollwerte so auf die einzelnen Erzeugungseinheiten (EZE), dass am NAP das Geforderte ankommt. Er kennt dabei mehrere Sollwertquellen, die gleichzeitig wirken können (Abbildung 2):</p>
+  <ul>
+    <li><b>Netzbetreiber:</b> Wirkleistungsbegrenzung in Prozent der installierten Leistung, Blindleistungsverfahren und -sollwert. Übertragen per Fernwirktechnik nach IEC 60870-5-104 [6] über ein Fernwirkgerät des Netzbetreibers.</li>
+    <li><b>Anschlussgrenzen:</b> die im Netzanschlussvertrag vereinbarte Einspeise- und Bezugsleistung (P<sub>AV,E</sub>, P<sub>AV,B</sub>), fest parametriert.</li>
+    <li><b>Direktvermarkter:</b> Wirkleistungssollwert aus der Vermarktung, über eine eigene Steuerbox nach § 10b EEG [4].</li>
+    <li><b>EMS:</b> Wunsch-Sollwerte für Batterie und PV.</li>
+  </ul>
+  <p>Für die Wirkleistung gilt: <b>der kleinste Wert gewinnt</b>, P = min(Netzbetreiber, Anschlussgrenze, Direktvermarkter, EMS). Die Blindleistung gibt allein der Netzbetreiber vor; das EMS hat darauf keinen Zugriff. Fällt eine Quelle aus, greift ein Rückfallwert, den der Netzbetreiber im Abfragebogen festlegt. Der Netz- und Anlagenschutz (NA-Schutz) am Übergabe-Leistungsschalter steht außerhalb dieser Kette und trennt unabhängig von allen Reglern.</p>
+  <figure class="skizze">{{FIG:Prinzip-EZA-Regelung}}
+    <figcaption><b>Abbildung 2:</b> EZA-Regler am Netzanschlusspunkt: Sollwertquellen, Vorrangauswahl, P- und Q-Regler, Überwachung, Rückfallverhalten und typischer Umfang der Signalliste zum Netzbetreiber. Werte und Protokolle beispielhaft; maßgeblich sind TAB, Signalliste und Anlagenzertifikat.</figcaption>
+  </figure>
+  <h3>Wie der Regelkreis aufgebaut ist</h3>
+  <p>Im Inneren ist der EZA-Regler ein klassischer Regelkreis (Abbildung 3, Teil A). Für die Wirkleistung folgt auf die Vorrangauswahl eine Rampe, die die Änderungsgeschwindigkeit begrenzt, dann ein PI-Regler, der die Abweichung zwischen Soll- und Istwert am NAP ausregelt. Für die Blindleistung bildet ein Führungsglied (PT1) die vom Netzbetreiber gewünschte Dynamik nach. Die Aufteilung auf die Einheiten berücksichtigt deren verfügbare Leistung: Fällt ein Wechselrichter aus, regeln die übrigen nach.</p>
+  <p>Entscheidend ist die <b>Zeitkette</b> (Teil B): Messen, Rechnen, an alle Einheiten senden, Einheit stellt ein, neuer Messwert. Die Kette braucht in der Summe etwa 0,5 bis 2 Sekunden Totzeit. Zwei Faustregeln der Regelungstechnik bestimmen, was damit möglich ist: Die Abtastzeit soll höchstens ein Zehntel der Zeitkonstante betragen, und ein Regelkreis mit der Totzeit T<sub>t</sub> wird kaum schneller als etwa 3·T<sub>t</sub>. Ein Blindleistungssprung mit 3τ = 6 s verlangt damit einen Abtastschritt von rund 0,2 s.</p>
+  <p>Schnelle Funktionen bleiben in den Einheiten selbst: Wirkleistungsreduktion bei Überfrequenz, Verhalten bei Netzfehlern (FRT) und dynamische Netzstützung sind Teil des Einheitenzertifikats und dürfen vom EZA-Regler nicht übersteuert werden.</p>
+  <figure class="skizze">{{FIG:Prinzip-EZA-Regelkreis}}
+    <figcaption><b>Abbildung 3:</b> Regelstruktur am Netzanschlusspunkt (A), Zeitkette eines Regelzyklus (B) und Anforderungen an Blind- und Wirkleistungsregelung (C). Struktur nach dem generischen Parkreglermodell REPC_A [11]; Werte nach VDE-AR-N 4110 in der Darstellung von [9] und [10].</figcaption>
+  </figure>
+  <p class="tabcap"><b>Tabelle 2:</b> Anforderungen und Richtwerte für den EZA-Regler (Orientierung)</p>
+  <div class="tabelle"><table>
+    <thead><tr><th>Größe</th><th>Wert</th><th>Art</th><th>Bemerkung</th></tr></thead>
+    <tbody>
+      <tr><td>Anlagenzertifikat</td><td class="num">&gt; 500 kW inst.<br>oder &gt; 270 kW Einsp.</td><td><span class="art norm">Verordnung</span></td><td>seit Mai 2024 (NELEV); darunter vereinfachter Nachweis über Einheiten- und Komponentenzertifikate [14]. Ein EZA-Regler braucht in beiden Fällen ein Komponentenzertifikat</td></tr>
+      <tr><td>Blindleistung, Einschwingen</td><td class="num">3τ = 6 … 60 s</td><td><span class="art norm">Norm</span></td><td>vom Netzbetreiber vorgegeben, stationär ±2 % P<sub>AV</sub> [9]</td></tr>
+      <tr><td>Wirkleistung, Rampe</td><td class="num">0,33 … 0,66 %/s</td><td><span class="art norm">Norm</span></td><td>bezogen auf P<sub>b,inst</sub>; 100 % → 0 % in 2,5 bis 5 min, stationär ±5 % [9]</td></tr>
+      <tr><td>Vorgaben Direktvermarkter</td><td class="num">≤ 15 min</td><td><span class="art norm">Norm</span></td><td>dürfen langsamer umgesetzt werden als die des Netzbetreibers [9]</td></tr>
+      <tr><td>Logbuch der Abregelungen</td><td class="num">≥ 18 Monate</td><td><span class="art norm">Norm</span></td><td>auf Anforderung an den Netzbetreiber [9]</td></tr>
+      <tr><td>Messung am NAP</td><td class="num">≈ 200 ms</td><td><span class="art">Richtwert</span></td><td>Mittelung über 10/12 Netzperioden</td></tr>
+      <tr><td>Regelzyklus</td><td class="num">100 … 200 ms</td><td><span class="art">Richtwert</span></td><td>Auslegungswert, keine Normvorgabe</td></tr>
+      <tr><td>Totzeit der Kette</td><td class="num">0,5 … 2 s</td><td><span class="art">Richtwert</span></td><td>abhängig von Anzahl und Typ der Einheiten</td></tr>
+      <tr><td>Fernwirken</td><td class="num">IEC 60870-5-104</td><td><span class="art">Beispiel</span></td><td>Messwerte spontan ab 1 % Änderung, Befehle gelten bis zum nächsten Telegramm (Beispiel eines Netzbetreibers [10])</td></tr>
+    </tbody>
+  </table></div>
+  <p>Hinzu kommen bei Anlagen ab 100 kW die Datenpflichten aus Redispatch 2.0 [5]: Stammdaten, Planungsdaten und auf Anforderung Echtzeitdaten. Auch diese Werte stellt in der Regel der EZA-Regler oder das Fernwirkgerät bereit.</p>
+</section>
+
+<section id="ems">
+  <div class="kap"><h2><b>3</b> Technische Grundlagen: das EMS</h2><div class="regel"></div></div>
+  <p>Das EMS verfolgt mehrere Ziele, die sich widersprechen können. Es braucht deshalb eine feste Rangfolge: Schutz vor Versorgung, Versorgung vor Netzgrenzen, Netzgrenzen vor Komfort, Komfort vor Wirtschaftlichkeit. Netzgrenzen setzt dabei nicht das EMS durch, sondern der EZA-Regler; das EMS plant nur so, dass er möglichst selten eingreifen muss.</p>
+  <h3>Zwei Zeitebenen</h3>
+  <p>Ein EMS arbeitet auf zwei Ebenen (Abbildung 4). Der <b>Fahrplan</b> plant alle 15 Minuten voraus: Er holt Prognosen für Wetter, PV, Last und Wärmebedarf, berechnet eine Spitzenreserve für die Batterie und legt Zielwerte für Ladezustand, Speichertemperatur und Ladebudget fest. Der <b>Regelzyklus</b> läuft alle 1 bis 10 Sekunden: Er liest die Messwerte, prüft die Kommunikation, bildet die Bilanz am NAP und entscheidet, ob der Normalbetrieb ausreicht oder eine Kaskade nötig ist.</p>
+  <h3>Kaskaden</h3>
+  <p>Die Kaskaden sind Stufenlisten, die der Reihe nach abgearbeitet werden, bis die Abweichung ausgeglichen ist. Bei <b>PV-Überschuss</b>: Wärmepumpe lädt Wärmespeicher, Laden verschieben, Batterie laden, Power-to-Heat, Elektrolyseur, einspeisen, zuletzt PV abregeln. Bei <b>Spitzenlast</b>: Heizstab und Komfortladen aus, Laden drosseln, Batterie entladen, Wärmepumpe sperren (SG-Ready), KWK hochfahren, Lastabwurf nicht kritischer Verbraucher, Alarm. Beide Listen laufen durch dasselbe Unterprogramm.</p>
+  <figure class="skizze">{{FIG:Prinzip-EMS-Programmablauf}}
+    <figcaption><b>Abbildung 4:</b> Programmablauf des EMS nach DIN 66001 [13]: schneller Regelzyklus, Fahrplan je Viertelstunde und Unterprogramm Kaskade mit den Stufenlisten für Überschuss und Spitze. G = vereinbarte Bezugsleistung am NAP.</figcaption>
+  </figure>
+  <div class="spalten">
+    <div class="kasten ga">
+      <h3>In Stufen einführen</h3>
+      <ul>
+        <li><b>Stufe 1 Messen:</b> Energiemonitoring, Lastgang am NAP, Kennwerte. Das liefert die meisten GLT ohnehin.</li>
+        <li><b>Stufe 2 regelbasiert:</b> Kaskaden mit festen Schwellen und Hysterese, z. B. Spitzenkappung ein bei G − 3 %, aus bei G − 8 %.</li>
+        <li><b>Stufe 3 prognosebasiert:</b> Fahrplan aus Wetter-, Last- und ggf. Preisprognose, dynamische Spitzenreserve der Batterie.</li>
+      </ul>
+    </div>
+    <div class="kasten">
+      <h3>Gut zu wissen</h3>
+      <ul>
+        <li>Spitzen werden auf den gleitenden 15-Minuten-Mittelwert gekappt, denn danach rechnet der Netzbetreiber ab. Der EZA-Regler dagegen regelt auf Momentanwerte.</li>
+        <li>Eine Spitzenkappung durch das EMS darf die Bemessung des Netzanschlusses nur senken, wenn die Grenze auch ohne EMS hält, etwa durch eine Bezugsgrenze im EZA-Regler oder ein Überwachungsrelais.</li>
+        <li>Ohne EMS laufen alle Anlagen in ihrer Grundeinstellung weiter. Das EMS ist eine Verbesserung, keine Voraussetzung für den Betrieb.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="ga">
+  <div class="kap"><h2><b>4</b> Variante Gebäudeautomation: EMS und Netzregelung in der GLT</h2><div class="regel"></div></div>
+  <p>In dieser Variante übernimmt die Gebäudeleittechnik alles: Sie ist EMS, Fernwirk-Unterstation für den Netzbetreiber, Schnittstelle zum Direktvermarkter und EZA-Regler zugleich. Die Regelung läuft als Software auf dem GLT-Server oder einer DDC-Station; die Erzeuger werden über ein Gateway von BACnet auf Modbus angesprochen. Abbildung 5 zeigt diese Variante in der Mitte (B).</p>
+  <figure class="skizze">{{FIG:Prinzip-EMS-Bestandsleittechnik}}
+    <figcaption><b>Abbildung 5:</b> Drei Wege, EMS und EZA-Regelung umzusetzen: A getrennte Netzregelung mit eigenem EZA-Regler (Abschnitt 5), B alles in der Bestandsleittechnik (dieser Abschnitt), C Netzleittechnik mit zertifiziertem Reglerbaustein. Die Nummern in B verweisen auf die Gegenargumente. Unten: sechs Prüffragen an die Bestandsleittechnik.</figcaption>
+  </figure>
+  <p class="merke eza">Wer die Netzregelung in die GLT legt, baut damit einen EZA-Regler. Die GLT-Software wird Teil der zertifizierten Regelkette und braucht ein eigenes Komponentenzertifikat. Für Software, die ein GA-Errichter projektiert, gibt es das in aller Regel nicht. Es muss dann wie bei einem Eigenbau erbracht werden, für jeden Softwarestand.</p>
+  <p>Was dazu gehört, zeigt Abbildung 6: sechs Arbeitspakete von der Messung über die Regelkerne für Wirk- und Blindleistung bis zur Überwachung, dazu ein Nachweisweg mit Messungen im Prüflabor nach FGW TR 3, einem validierten Simulationsmodell nach TR 4 und der Bewertung durch eine Zertifizierungsstelle nach TR 8 [2]. Beim gekauften Regler liegen diese Schritte beim Hersteller.</p>
+  <figure class="skizze">{{FIG:Prinzip-EZA-Eigenbau}}
+    <figcaption><b>Abbildung 6:</b> Was zu bauen und nachzuweisen ist, wenn der EZA-Regler nicht als zertifiziertes Gerät gekauft wird. Gilt sinngemäß, wenn die Regelung als Software in der Gebäudeleittechnik entsteht. Nach [1, 2, 9, 10].</figcaption>
+  </figure>
+  <div class="spalten">
+    <div class="kasten dafuer">
+      <h3>Vorteile</h3>
+      <ul class="plus">
+        <li>Ein System, eine Oberfläche, ein Ansprechpartner; das Betriebspersonal kennt die GLT.</li>
+        <li>Mess- und Zählerdaten liegen bereits in der GLT; keine zweite Messung, keine Schnittstelle zwischen EMS und EZA-Regler.</li>
+        <li>EMS und Netzregelung aus einem Guss: Das EMS kennt jederzeit die tatsächlich wirksame Grenze.</li>
+        <li>Auf den ersten Blick kein zusätzliches Gerät und geringere Investition.</li>
+      </ul>
+    </div>
+    <div class="kasten dagegen">
+      <h3>Nachteile</h3>
+      <ul class="minus">
+        <li>Kein Komponentenzertifikat: Der Nachweis (Anlagenzertifikat oder vereinfachter Nachweis) scheitert oder wird durch einen Einzelnachweis deutlich teurer.</li>
+        <li>Zykluszeiten von 1 bis 10 s, Abfragezyklen über BACnet und Server-Neustarts reichen für die geforderte Dynamik selten.</li>
+        <li>Fernzugang für Netzbetreiber und Direktvermarkter führt ins GA-Netz und vergrößert die Angriffsfläche.</li>
+        <li>Jedes GLT-Update und jeder neue Datenpunkt berührt die Netzregelung und muss mit dem Zertifizierer abgestimmt werden.</li>
+        <li>Die GLT wird meist früher erneuert als die Erzeugungsanlage; mit ihr ginge der Nachweis verloren.</li>
+        <li>Die Verantwortung für die Netzregelung liegt beim GA-Errichter, dem die Erfahrung mit der VDE-AR-N 4110 oft fehlt; Erweiterung meist nur beim Bestandshersteller.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="spalten">
+    <div class="kasten">
+      <h3>Wann die Variante trotzdem passt</h3>
+      <ul>
+        <li><b>Kleine Anlagen</b> bis 500 kW installierter Leistung und 270 kW Einspeiseleistung brauchen seit Mai 2024 kein Anlagenzertifikat mehr [14]. Verlangt der Netzbetreiber keine Regelung am Netzanschlusspunkt, setzen oft die Einheiten selbst die Vorgaben um, und die GLT übernimmt nur das EMS. Wird ein EZA-Regler gefordert, braucht er auch hier ein Komponentenzertifikat. Maßgeblich bleiben TAB und Abfragebogen.</li>
+        <li><b>Zertifizierter Baustein auf der GA-Plattform</b> (Weg C in Abbildung 5): Einige Steuerungshersteller bieten Parkregler-Bibliotheken mit Komponentenzertifikat an, jeweils nur für ihre eigene Steuerungsplattform und einen bestimmten Softwarestand [12]. Baut die GA auf genau dieser Plattform auf, kann die Netzregelung dort laufen, sofern der Baustein unverändert bleibt und auf einer eigenen Steuerung läuft. Einen herstellerunabhängigen Baustein für beliebige GLT gibt es nach unserer Recherche nicht.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="eigen">
+  <div class="kap"><h2><b>5</b> Variante eigener EZA-Regler: Netzregelung getrennt, EMS in der GLT</h2><div class="regel"></div></div>
+  <p>In dieser Variante (Weg A in Abbildung 5) ist der EZA-Regler ein eigenes, zertifiziertes Gerät in der Übergabestation, meist als Teil der Lieferung der PV-Anlage oder des Speichers. Fernwirkgerät des Netzbetreibers und Steuerbox des Direktvermarkters sind direkt an ihn angeschlossen. Die GLT übernimmt das EMS und steuert die Verbraucher: Wärmepumpen, Ladeinfrastruktur, Heizstäbe, Lastabwurf. An PV und Batterie schreibt sie nicht direkt, sondern meldet dem EZA-Regler ihren Wunsch.</p>
+  <p>Die einzige Verbindung zwischen beiden ist eine Modbus-TCP-Schnittstelle in einem eigenen Netzsegment. Abbildung 7 zeigt sie an einer Beispiel-Liegenschaft mit 1.200 kWp PV, 600 kW Batterie und 800 kW Einspeisegrenze: Das EMS liest Messwerte am NAP, verfügbare Leistungen und die gerade wirksame Grenze samt ihrer Quelle; es schreibt einen Heartbeat, eine Freigabe, einen PV-Wunsch und einen Batterie-Sollwert. Blindleistung, Kennlinien und Schutz sind für das EMS gesperrt. Bleibt der Heartbeat länger als 10 Sekunden unverändert, verwirft der Regler die Wünsche und fährt die Batterie auf 0 kW.</p>
+  <figure class="skizze">{{FIG:Prinzip-EMS-Beispiel}}
+    <figcaption><b>Abbildung 7:</b> Schnittstelle zwischen EMS und EZA-Regler an einer Beispiel-Liegenschaft: Signalleiter, drei Situationen mit Leistungsbilanz am NAP und die Zuordnung, wer welche Größe schreibt. Registeradressen beispielhaft; maßgeblich sind Signalliste, TAB und Anlagenzertifikat.</figcaption>
+  </figure>
+  <p>Die drei Situationen in Abbildung 7 zeigen die Arbeitsteilung: Bei PV-Überschuss lenkt das EMS 640 kW in Wärmespeicher, Dienstwagen und Batterie, sodass der EZA-Regler kaum abregeln muss. Bei einem Netzengpass senkt der Netzbetreiber die Einspeisung; der EZA-Regler setzt das sofort durch, und das EMS erkennt an der gemeldeten Quelle, dass es neu planen muss. Bei Spitzenlast hält das EMS die Bezugsspitze mit Batterie und gedrosseltem Laden unter dem Zielwert.</p>
+  <div class="spalten">
+    <div class="kasten dafuer">
+      <h3>Vorteile</h3>
+      <ul class="plus">
+        <li>Die zertifizierte Regelkette bleibt unberührt; das Anlagenzertifikat stützt sich auf das Komponentenzertifikat des Herstellers.</li>
+        <li>Updates, Erweiterungen und auch der Austausch der GLT haben keine Folgen für den Netzanschluss.</li>
+        <li>Klare Verantwortung: Netzregelung beim Lieferanten der Erzeugungsanlage, Energiemanagement beim Betreiber.</li>
+        <li>Fernzugänge von Netzbetreiber und Direktvermarkter enden am Regler, nicht im GA-Netz.</li>
+        <li>Das EMS kann klein beginnen und in Stufen wachsen; die Netzregelung funktioniert auch ohne es.</li>
+        <li>Die Bestands-GLT bleibt für EMS, Bedienung und Monitoring nutzbar.</li>
+      </ul>
+    </div>
+    <div class="kasten dagegen">
+      <h3>Nachteile</h3>
+      <ul class="minus">
+        <li>Ein zusätzliches Gerät und eine zusätzliche Schnittstelle; zwei Systeme mit zwei Wartungsverträgen.</li>
+        <li>Die Schnittstelle EMS ↔ EZA-Regler muss beschrieben, abgestimmt und gemeinsam getestet werden, sonst entstehen Lücken zwischen den Gewerken.</li>
+        <li>Nicht jeder Parkregler nimmt externe Wunsch-Sollwerte für Batterie und PV an. Das muss bei der Ausschreibung gefordert werden.</li>
+        <li>Bindung an den Reglerhersteller: Der Nachweis gilt nur für die geprüften Wechselrichtertypen.</li>
+        <li>Störungen müssen über zwei Oberflächen verfolgt werden, sofern der Reglerstatus nicht in die GLT gespiegelt wird.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="vergleich">
+  <div class="kap"><h2><b>6</b> Die Varianten im Vergleich</h2><div class="regel"></div></div>
+  <p class="tabcap"><b>Tabelle 3:</b> Netzregelung in der Gebäudeautomation oder mit eigenem EZA-Regler; das EMS liegt in beiden Fällen in der GLT</p>
+  <div class="tabelle"><table>
+    <thead><tr><th>Kriterium</th><th>In der Gebäudeautomation</th><th class="eza">Eigener EZA-Regler</th></tr></thead>
+    <tbody>
+      <tr><td>Zertifizierung</td><td>eigener Nachweis für die GLT-Software nötig, je Softwarestand</td><td>Komponentenzertifikat des Herstellers</td></tr>
+      <tr><td>Zeitverhalten</td><td>Zyklus 1 bis 10 s, Abfragezyklen, Neustarts; geforderte Dynamik kaum erreichbar</td><td>Zyklus 0,1 bis 0,2 s auf Industriesteuerung</td></tr>
+      <tr><td>Verfügbarkeit</td><td>GLT-Server müsste rund um die Uhr, mit USV und Redundanz laufen</td><td>Kompaktgerät mit USV in der Übergabestation</td></tr>
+      <tr><td>Einfluss von außen</td><td>Netzbetreiber und Direktvermarkter greifen bis in die GLT</td><td>Außenzugang endet am EZA-Regler; die GLT hat keinen Steuerweg von außen</td></tr>
+      <tr><td>IT-Sicherheit</td><td>Fernzugang von außen bis ins GA-Netz</td><td>Fernzugang endet am Regler; zur GLT eine definierte Schnittstelle</td></tr>
+      <tr><td>Änderungen</td><td>jede Änderung an der GLT berührt den Netzanschluss</td><td>GLT frei änderbar</td></tr>
+      <tr><td>Lebenszyklus</td><td>an die GLT gebunden, die meist früher erneuert wird</td><td>an die Erzeugungsanlage gebunden</td></tr>
+      <tr><td>Verantwortung</td><td>GA-Errichter verantwortet die Netzregelung</td><td>Lieferant der Erzeugungsanlage; Betreiber verantwortet nur das EMS</td></tr>
+      <tr><td>Schnittstelle EMS ↔ EZA</td><td>entfällt, intern</td><td>Modbus TCP, muss beschrieben und getestet werden</td></tr>
+      <tr><td>Investition</td><td>kein Zusatzgerät, aber hoher Aufwand für Nachweis und Pflege</td><td>Zusatzgerät, oft ohnehin im Lieferumfang der PV-Anlage</td></tr>
+      <tr><td>Bedienung</td><td>eine Oberfläche</td><td>zwei Systeme; Reglerstatus in der GLT spiegeln</td></tr>
+      <tr><td>Vergabe</td><td>Erweiterung meist nur beim Bestandshersteller</td><td>Regler mit der Erzeugungsanlage, EMS mit der GA ausschreibbar</td></tr>
+      <tr><td>Eignung</td><td>kleine Anlagen ohne Regelung am NAP, oder mit zertifiziertem Baustein auf passender Plattform</td><td>Regelfall, sobald Vorgaben am NAP umzusetzen sind; immer bei Anlagenzertifikat</td></tr>
+    </tbody>
+  </table></div>
+  <p class="merke"><b>Empfehlung:</b> Sobald Vorgaben des Netzbetreibers am Netzanschlusspunkt umzusetzen sind, die Netzregelung in einen eigenen, zertifizierten EZA-Regler legen und das EMS als Funktion der Gebäudeleittechnik umsetzen. Die Gebäudeautomation ist der richtige Ort für das Energiemanagement, nicht für die Netzregelung.</p>
+</section>
+
+<section id="aussen">
+  <div class="kap"><h2><b>7</b> Kein Einfluss von außen: was möglich ist</h2><div class="regel"></div></div>
+  <p>Hinter der Frage, ob die Gebäudeautomation alles übernehmen kann, steht oft ein anderer Wunsch: Niemand außerhalb der Liegenschaft soll auf die eigenen Anlagen einwirken können. Ganz ausschließen lässt sich das nicht, solange die Anlage in das öffentliche Netz einspeist. Begrenzen lässt es sich aber weitgehend: auf das gesetzlich Nötige, auf wenige festgelegte Größen und auf ein einziges Gerät. Abbildung 2 zeigt, über welche Wege Vorgaben von außen den EZA-Regler erreichen.</p>
+  <p class="tabcap"><b>Tabelle 4:</b> Wer von außen auf die Anlagen einwirken kann</p>
+  <div class="tabelle"><table>
+    <thead><tr><th>Wer</th><th>Anlass, Grundlage</th><th>Vermeidbar?</th><th>Was er tun kann</th><th>Wie begrenzen</th></tr></thead>
+    <tbody>
+      <tr><td>Netzbetreiber</td><td>Netzsicherheit: § 9 EEG (ab 100 kW), VDE-AR-N 4110 und TAB, Redispatch 2.0 [3, 1, 5]</td><td><b>nein</b>, solange eingespeist wird</td><td>Wirkleistung begrenzen, Blindleistung vorgeben, Messwerte lesen; nur, was in der Signalliste steht. Keine Verbraucher schalten, kein Einblick in die GA</td><td>Zugang endet an Fernwirkgerät und EZA-Regler in eigener Netzzone; jede Vorgabe steht im Logbuch</td></tr>
+      <tr><td>Direktvermarkter</td><td>Marktprämie, § 10b EEG [4]</td><td><b>ja</b></td><td>Wirkleistungssollwert aus der Vermarktung</td><td>entfällt bei Eigenverbrauch oder ohne Direktvermarktung</td></tr>
+      <tr><td>Hersteller (Portale, Clouds)</td><td>Service, Komfort, Firmware-Updates</td><td><b>ja</b>, vollständig</td><td>Sollwerte ändern, Firmware aufspielen, abschalten; ab Werk oft aktiv und leicht zu übersehen</td><td>keine Internetverbindung der Geräte, Portale abschalten, Funkmodule (WLAN, Mobilfunk) prüfen und deaktivieren</td></tr>
+      <tr><td>Fernwartung (GA-Errichter, Service)</td><td>Störungsbehebung, Pflege</td><td><b>ja</b></td><td>je nach Zugang alles, was die Anlage kann</td><td>nur auf Anforderung freischalten, zeitlich begrenzt, protokolliert</td></tr>
+      <tr><td>Prognosedienste</td><td>Wetter, Last, Preise für den Fahrplan des EMS</td><td><b>ja</b></td><td>nichts steuern; sie liefern nur Daten in die Liegenschaft</td><td>nur eingehende Daten über die Firewall; das EMS läuft auch ohne sie</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Was sich beim Netzbetreiber einhegen lässt</h3>
+  <ul>
+    <li><b>Abrufart im Redispatch 2.0:</b> Im Duldungsfall, dem Standard, greift der Netzbetreiber selbst auf die Anlage zu. Im Aufforderungsfall fordert er den Betreiber auf, und dieser setzt die Änderung selbst um, sofort und rund um die Uhr [5]. Das verringert den direkten Zugriff, verlangt aber eine dauernd besetzte Stelle. Die technische Fernsteuerbarkeit nach § 9 EEG bleibt trotzdem Pflicht.</li>
+    <li><b>Nulleinspeisung:</b> Speist die Anlage gar nicht in das öffentliche Netz ein (zertifizierte Einspeisebegrenzung auf 0 kW), entfallen viele Vorgaben. Welche genau und ob Redispatch dann noch greift, legen TAB und Netzbetreiber fest. Der Preis: Überschüsse, die EMS und Speicher nicht aufnehmen, werden abgeregelt.</li>
+    <li><b>Kleine Anlagen:</b> Bis 500 kW installierter Leistung und 270 kW Einspeiseleistung ist seit Mai 2024 kein Anlagenzertifikat mehr nötig; es genügt ein vereinfachter Nachweis [14]. Die Vorgaben des Netzbetreibers gelten trotzdem.</li>
+  </ul>
+  <p class="merke"><b>Folgerung für die Varianten:</b> Der Wunsch nach möglichst wenig Einfluss von außen spricht für den eigenen EZA-Regler, nicht dagegen. Der unvermeidbare Zugang des Netzbetreibers endet dann an einem kleinen Gerät in der Übergabestation, das ohne Internetverbindung auskommt und nur kann, was die Signalliste erlaubt. Die Gebäudeautomation mit dem EMS bleibt ohne Steuerweg von außen. Liegt die Netzregelung dagegen in der GLT, müssen Netzbetreiber und Direktvermarkter bis in die GLT hinein; der Einfluss von außen wird größer, nicht kleiner.</p>
+  <h3>Zielbild: so wenig Zugriff von außen wie möglich</h3>
+  <ol class="schritte">
+    <li><b>Netzbetreiber als einziger ständiger Außenzugang,</b> begrenzt auf die Signalliste, an einem Gerät in eigener Netzzone; jede Abregelung im Logbuch nachvollziehbar.</li>
+    <li><b>Kein Direktvermarkter,</b> wo Eigenverbrauch möglich ist.</li>
+    <li><b>Keine Internetverbindung</b> für Erzeugungsanlagen und Verbraucher; Herstellerportale abgeschaltet, Funkmodule geprüft und deaktiviert.</li>
+    <li><b>Fernwartung nur auf Anforderung,</b> zeitlich begrenzt und protokolliert.</li>
+    <li><b>EMS in der eigenen GLT;</b> Prognosedaten kommen nur herein, Steuerbefehle verlassen die Liegenschaft nicht.</li>
+    <li><b>In der Ausschreibung festschreiben:</b> Hersteller erklären, welche Verbindungen ihre Geräte aufbauen und wie sie sich abschalten lassen.</li>
+  </ol>
+</section>
+
+<section id="herausforderungen">
+  <div class="kap"><h2><b>8</b> Technische Herausforderungen</h2><div class="regel"></div></div>
+  <p>Die folgenden Punkte treten bei beiden Varianten auf, unterschiedlich stark. Sie entscheiden in der Praxis mehr über das Gelingen als die Wahl der Variante.</p>
+  <div class="herausforderungen">
+    <div class="kasten eza">
+      <h3><b>01</b> Ein Schreiber je Größe</h3>
+      <p class="trifft">Trifft: <em>beide</em></p>
+      <p>Wechselrichter und Batterie-Umrichter nehmen Sollwerte oft von mehreren Stellen an: vom Parkregler, vom Herstellerportal, vom eingebauten Speicher-EMS. Schreiben zwei Stellen dieselbe Größe, regeln sie gegeneinander.</p>
+      <p class="loesung"><b>Lösung:</b> Für jede Größe genau einen Schreiber festlegen (Abbildung 7, unten), Eigenoptimierungen der Hersteller abschalten.</p>
+    </div>
+    <div class="kasten eza">
+      <h3><b>02</b> Zertifizierung und Softwarestand</h3>
+      <p class="trifft">Trifft: <em>vor allem Gebäudeautomation</em></p>
+      <p>Das Komponentenzertifikat hängt an Hard- und Softwarestand. Jede Änderung am Regelkern muss mit dem Zertifizierer abgestimmt werden, über die ganze Lebensdauer der Anlage.</p>
+      <p class="loesung"><b>Lösung:</b> Netzregelung als abgeschlossenen Baustein behandeln, der nur mit Freigabe geändert wird; Softwarestände dokumentieren.</p>
+    </div>
+    <div class="kasten eza">
+      <h3><b>03</b> Zeitverhalten und Totzeit</h3>
+      <p class="trifft">Trifft: <em>vor allem Gebäudeautomation</em></p>
+      <p>Die geforderte Blindleistungsdynamik (3τ ab 6 s) verlangt Abtastschritte um 0,2 s. GLT-Zyklen von 1 bis 10 s und Abfragen über BACnet erreichen das nicht; jede Kommunikationsstrecke verlängert die Totzeit.</p>
+      <p class="loesung"><b>Lösung:</b> Regelkreis auf Echtzeitsteuerung nahe am NAP; das EMS bleibt auf seiner langsameren Ebene.</p>
+    </div>
+    <div class="kasten eza">
+      <h3><b>04</b> Schnittstelle EMS ↔ EZA-Regler</h3>
+      <p class="trifft">Trifft: <em>vor allem eigener Regler</em></p>
+      <p>Register, Einheiten, Vorzeichen (Bezug positiv?), Heartbeat, Freigabe und die Rückmeldung, welche Quelle gerade begrenzt, müssen eindeutig beschrieben sein. Nicht jeder Parkregler bietet Eingänge für EMS-Wünsche.</p>
+      <p class="loesung"><b>Lösung:</b> Schnittstellenbeschreibung als Teil beider Ausschreibungen; gemeinsame Inbetriebnahme mit Ausfalltests.</p>
+    </div>
+    <div class="kasten eza">
+      <h3><b>05</b> Messung und Bilanzpunkt</h3>
+      <p class="trifft">Trifft: <em>beide</em></p>
+      <p>Der EZA-Regler regelt auf Momentanwerte seines Messumformers am NAP, abgerechnet wird über den RLM-Zähler im 15-Minuten-Mittel. Misst das EMS an anderer Stelle, weichen die Bilanzen voneinander ab.</p>
+      <p class="loesung"><b>Lösung:</b> Das EMS übernimmt die NAP-Messwerte des EZA-Reglers; Spitzenkappung auf den gleitenden 15-Minuten-Mittelwert.</p>
+    </div>
+    <div class="kasten eza">
+      <h3><b>06</b> Vielfalt und Bestand der Einheiten</h3>
+      <p class="trifft">Trifft: <em>beide</em></p>
+      <p>Wechselrichter verschiedener Hersteller sprechen unterschiedliche Modbus-Profile, BHKW oft nur 4–20 mA. Der Nachweis des Reglers gilt nur für die geprüften Typen; Bestandsanlagen haben teils gar keine Schnittstelle.</p>
+      <p class="loesung"><b>Lösung:</b> Kompatibilitätsliste des Reglerherstellers vor der Vergabe prüfen; SunSpec-fähige Geräte fordern.</p>
+    </div>
+    <div class="kasten eza">
+      <h3><b>07</b> Blindleistung und andere Regler</h3>
+      <p class="trifft">Trifft: <em>beide</em></p>
+      <p>Kompensationsanlagen, Stufensteller von Transformatoren und Q(U)-Kennlinien in den Einheiten können mit dem Q-Regler am NAP gegeneinander arbeiten und Dauerschwingungen erzeugen.</p>
+      <p class="loesung"><b>Lösung:</b> Alle Blindleistungsquellen in einer Übersicht erfassen und die Regelung mit dem Netzbetreiber abstimmen.</p>
+    </div>
+    <div class="kasten eza">
+      <h3><b>08</b> IT-Sicherheit</h3>
+      <p class="trifft">Trifft: <em>vor allem Gebäudeautomation</em></p>
+      <p>Netzbetreiber und Direktvermarkter brauchen Fernzugang. BACnet und Modbus kennen keine Authentifizierung, GA-Netze sind oft flach aufgebaut.</p>
+      <p class="loesung"><b>Lösung:</b> Netzrelevante Funktion als eigene Zone nach IEC 62443 [7]; Kopplung zur GLT nur über eine Firewall mit fester Quelladresse und freigegebenem Registerbereich; übrige Außenzugänge nach Kapitel 7 vermeiden.</p>
+    </div>
+    <div class="kasten eza">
+      <h3><b>09</b> Rückfallverhalten</h3>
+      <p class="trifft">Trifft: <em>beide</em></p>
+      <p>Für jede Schnittstelle muss feststehen, was bei Ausfall geschieht: Netzbetreiber-Verbindung, Direktvermarkter, EMS, Messung, Regler selbst. Die Rückfallwerte legt der Netzbetreiber im Abfragebogen fest. Liegt die Einspeisegrenze unter der installierten Leistung, sichert zusätzlich ein Überwachungsrelais am NAP in Hardware ab.</p>
+      <p class="loesung"><b>Lösung:</b> Rückfalltabelle (Abbildung 2) vor der Inbetriebnahme festlegen und jeden Fall einzeln testen.</p>
+    </div>
+    <div class="kasten eza">
+      <h3><b>10</b> Betrieb und Verantwortung</h3>
+      <p class="trifft">Trifft: <em>beide, Gebäudeautomation stärker</em></p>
+      <p>Der Netzbetreiber erwartet eine rund um die Uhr erreichbare Stelle, ein Logbuch über mindestens 18 Monate und Zeitstempel über NTP. Die Gewerkegrenze zwischen Elektro/PV und Gebäudeautomation verläuft mitten durch die Regelkette.</p>
+      <p class="loesung"><b>Lösung:</b> Zuständigkeiten, Änderungsverfahren und Erreichbarkeit vertraglich festlegen, bevor die Anlage in Betrieb geht.</p>
+    </div>
+    <div class="kasten eza">
+      <h3><b>11</b> Netzanschluss und Spitzenkappung</h3>
+      <p class="trifft">Trifft: <em>beide</em></p>
+      <p>Wird der Netzanschluss knapper bemessen, weil das EMS Spitzen kappt, hängt der Anschlussvertrag an einer Software ohne Nachweis.</p>
+      <p class="loesung"><b>Lösung:</b> Bemessung nur senken, wenn die Grenze auch ohne EMS hält: Bezugsgrenze im EZA-Regler oder Begrenzung in Hardware.</p>
+    </div>
+    <div class="kasten eza">
+      <h3><b>12</b> Normen im Wandel</h3>
+      <p class="trifft">Trifft: <em>beide</em></p>
+      <p>Die VDE-AR-N 4110 wird überarbeitet, Fernsteuerung und Redispatch-Pflichten wurden mehrfach geändert. Eine eigene Software muss diese Änderungen selbst nachziehen.</p>
+      <p class="loesung"><b>Lösung:</b> Maßgeblich ist die beim Netzanschlussbegehren gültige Fassung; beim gekauften Regler trägt der Hersteller die Anpassung.</p>
+    </div>
+  </div>
+</section>
+
+<section id="vorgehen">
+  <div class="kap"><h2><b>9</b> So gehen Sie vor</h2><div class="regel"></div></div>
+  <ol class="schritte">
+    <li><b>Anschluss und Leistung klären.</b> Anschlussebene, installierte Erzeugungsleistung, vereinbarte Bezugs- und Einspeisegrenze. Über 500 kW installierter Leistung oder 270 kW Einspeiseleistung ist ein Anlagenzertifikat nötig, darunter ein vereinfachter Nachweis.</li>
+    <li><b>TAB und Abfragebogen des Netzbetreibers lesen.</b> Sie legen Signalliste, Blindleistungsverfahren, Rückfallwerte und Fernwirkanbindung fest.</li>
+    <li><b>Außenzugänge festlegen.</b> Vermarktung oder Eigenverbrauch, Abrufart im Redispatch 2.0, Umgang mit Herstellerportalen und Fernwartung (Kapitel 7).</li>
+    <li><b>Bestandsleittechnik prüfen.</b> Mit den sechs Prüffragen aus Abbildung 5: Zertifikat, Fernwirken, Zeitverhalten, IT-Sicherheit, Lebenszyklus, Betrieb und Vergabe.</li>
+    <li><b>EZA-Regler mit der Erzeugungsanlage ausschreiben.</b> Mit Komponentenzertifikat, Kompatibilität zu den vorgesehenen Einheiten und einem dokumentierten Eingang für EMS-Wünsche (Batterie, PV, Freigabe, Heartbeat).</li>
+    <li><b>EMS als Funktion der Gebäudeautomation ausschreiben.</b> Funktionsbeschreibung mit Rangfolge, Kaskaden und Stufenplan (Messen, regelbasiert, prognosebasiert).</li>
+    <li><b>Schnittstelle festlegen.</b> Registerliste, Vorzeichen, Watchdog, Rückfallverhalten und „Wer schreibt welche Größe" als gemeinsames Dokument beider Gewerke.</li>
+    <li><b>Gemeinsam in Betrieb nehmen.</b> Fernwirktest mit dem Netzbetreiber, Ausfalltest jeder Schnittstelle, Konformitätserklärung; danach Änderungen nur nach festgelegtem Verfahren.</li>
+  </ol>
+</section>
+
+<section id="quellen">
+  <div class="kap"><h2><b>10</b> Quellen und weiterführende Informationen</h2><div class="regel"></div></div>
+  <ol class="quellen">
+    <li>VDE-AR-N 4110:2018-11 Technische Regeln für den Anschluss von Kundenanlagen an das Mittelspannungsnetz und deren Betrieb (TAR Mittelspannung), VDE Verlag. Überarbeitung in Arbeit.</li>
+    <li>FGW e. V.: Technische Richtlinien TR 3 (Bestimmung der elektrischen Eigenschaften), TR 4 (Modellierung und Validierung von Simulationsmodellen), TR 8 (Zertifizierung der elektrischen Eigenschaften), jeweils aktuelle Revision.</li>
+    <li><a href="https://www.gesetze-im-internet.de/eeg_2014/__9.html" target="_blank" rel="noopener">§ 9 EEG: Technische Vorgaben</a></li>
+    <li><a href="https://www.gesetze-im-internet.de/eeg_2014/__10b.html" target="_blank" rel="noopener">§ 10b EEG: Vorgaben zur Direktvermarktung</a></li>
+    <li>BDEW: Branchenlösung Redispatch 2.0 (Daten- und Prozessvorgaben für Anlagen ab 100 kW).</li>
+    <li>DIN EN 60870-5-104: Fernwirkeinrichtungen und -systeme, Zugriff für IEC 60870-5-101 auf Netze mit genormten Transportprofilen.</li>
+    <li>DIN EN IEC 62443: IT-Sicherheit für industrielle Automatisierungssysteme (Zonen- und Kommunikationsmodell).</li>
+    <li><a href="https://www.gesetze-im-internet.de/geg/__71a.html" target="_blank" rel="noopener">§ 71a GEG: Gebäudeautomation</a></li>
+    <li>meteocontrol; M.O.E.: Darstellung der Anforderungen der VDE-AR-N 4110:2018 an Parkregelung und Fernwirken (Vortragsunterlagen 2018).</li>
+    <li>Thüringer Energienetze: Netzrichtlinie TAR Mittelspannung, Stand 03/2024 (Beispielwerte für Fernwirken und Messung).</li>
+    <li>WECC: Generic plant controller model REPC_A; Pourbeik u. a.: Generic dynamic models for modeling wind power plants and other renewable technologies in large-scale power system studies, IEEE Transactions on Energy Conversion, 2017.</li>
+    <li>Herstellerangaben zu Parkregler-Bibliotheken mit Komponentenzertifikat (u. a. WAGO, Phoenix Contact, Weidmüller, Bachmann), Stand der Recherche Oktober 2026. Zertifikat jeweils nur für die eigene Steuerungsplattform und den angegebenen Softwarestand.</li>
+    <li>DIN 66001: Sinnbilder und ihre Anwendung (Programmablaufpläne).</li>
+    <li><a href="https://www.vde.com/de/fnn/aktuelles/vereinfachter-anschluss-und-nachweis-von-erzeugungsanlagen-in-mittel--und-hochspannung-in-kraft" target="_blank" rel="noopener">VDE FNN: Beschleunigte Inbetriebsetzung von Erzeugungsanlagen bis 500 kW</a> (Elektrotechnische-Eigenschaften-Nachweis-Verordnung NELEV, geändert Mai 2024).</li>
+  </ol>
+</section>
+
+<footer class="fuss">
+  <span>Stand: Oktober 2026. Diskussionsgrundlage; die Abbildungen sind Prinzipskizzen ohne Auslegung. Maßgeblich sind die beim Netzanschlussbegehren gültige Fassung der VDE-AR-N 4110, die Technischen Anschlussbedingungen, die Signalliste und der Abfragebogen des zuständigen Netzbetreibers sowie das Anlagenzertifikat.</span>
+</footer>
+</main>
+
+<dialog class="lupe" id="lupe" aria-label="Abbildung vergrößert">
+  <button type="button" id="lupe-zu">Schließen (Esc)</button>
+  <img alt="">
+</dialog>
+<script>
+(function () {
+  var dlg = document.getElementById('lupe');
+  if (!dlg || typeof dlg.showModal !== 'function') return;
+  var bild = dlg.querySelector('img');
+  document.querySelectorAll('figure.skizze button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var img = b.querySelector('img');
+      bild.src = img.src; bild.alt = img.alt;
+      dlg.showModal(); dlg.scrollTop = 0;
+    });
+  });
+  bild.addEventListener('click', function () { dlg.close(); });
+  document.getElementById('lupe-zu').addEventListener('click', function () { dlg.close(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EZA-Regler im Detail</title>
+<meta name="description" content="Wie ein EZA-Regler technisch arbeitet: Messung, Wirk- und Blindleistungsregelung, Zeitverhalten, Kommunikation mit Netzbetreiber und Anlagen, Rückfall, Nachweis, Ausschreibung und typische Fehler.">
+<meta name="on-eyebrow" content="WIKI · ENERGIEVERSORGUNG · EZA-REGLER">
+<meta name="on-zweck" content="Fachartikel für Wiki und Webseite: Funktionsweise des EZA-Reglers im Detail">
+<meta name="on-grundlage" content="VDE-AR-N 4110 [1], NELEV [2], FGW TR 3/4/8 [3], IEC 60870-5-104 [6], SunSpec [7]">
+<meta name="on-stand" content="23.10.2026">
+<style>
+:root { color-scheme: light; --papier:#FAFAF8; --weiss:#FFFFFF; --text:#1B1F1C; --muted:#5A5F5A; --linie:#E2E4DF; --regel:#C9CCC5; --tint:#EEF3EC; --band:#F2F3F0; --gd:#266426; --g:#3F9C3F; --eza:#C8641E; --eza-tint:#FBF1EA; --ga:#2A64B4; --rot:#B3261E; --rot-tint:#FBECEB; --f:Tahoma, Verdana, "Segoe UI", sans-serif; --m:"IBM Plex Mono", Consolas, monospace; }
+* { box-sizing: border-box; }
+html { background: var(--papier); scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--papier); color: var(--text); font-family: var(--f); font-size: 15px; line-height: 1.6; }
+.balken { height: 6px; background: var(--gd); }
+.seite { max-width: 860px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 40px; display: flex; flex-direction: column; gap: 44px; }
+h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
+p { margin: 0; }
+a { color: var(--gd); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--g); outline-offset: 2px; }
+.kopf { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px 32px; align-items: start; border-bottom: 1px solid var(--linie); padding-bottom: 22px; }
+.kopf img { width: 176px; height: auto; }
+.kopf .voll { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 14px; }
+@media (max-width: 620px) { .kopf { grid-template-columns: 1fr; } .kopf img { width: 128px; order: -1; } }
+.eyebrow { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--g); font-weight: 700; }
+h1 { font-size: clamp(26px, 4.4vw, 34px); margin-top: 6px; }
+.lead { font-size: 16px; color: var(--muted); }
+.inhalt { display: flex; flex-direction: row; flex-wrap: wrap; gap: 4px 18px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.inhalt a { text-decoration: none; } .inhalt a:hover { text-decoration: underline; }
+.inhalt b { color: var(--g); }
+section { display: flex; flex-direction: column; gap: 16px; scroll-margin-top: 16px; }
+.kap { display: flex; flex-direction: column; gap: 10px; }
+.kap h2 { font-size: 22px; display: flex; gap: 14px; align-items: baseline; }
+.kap h2 b { color: var(--g); }
+.regel { position: relative; height: 5px; width: 72%; }
+.regel::before { content: ""; position: absolute; left: 0; right: 0; top: 2px; height: 1px; background: var(--regel); }
+.regel::after { content: ""; position: absolute; left: 0; top: 0; width: 64px; height: 5px; background: var(--gd); }
+h3 { font-size: 15px; color: var(--gd); }
+figure { margin: 0; background: var(--weiss); border: 1px solid var(--linie); padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* Skizzen sind 1000 Einheiten breit: etwas breiter als der Text, damit die Schrift lesbar bleibt */
+figure.skizze { width: min(1100px, calc(100vw - 32px)); margin-inline: calc((100% - min(1100px, calc(100vw - 32px))) / 2); }
+figure.skizze button { all: unset; cursor: zoom-in; display: block; }
+figure.skizze img { display: block; width: 100%; height: auto; }
+figcaption, .tabcap { font-size: 13px; color: var(--muted); }
+figcaption b, .tabcap b { color: var(--text); }
+.tabelle { overflow-x: auto; border: 1px solid var(--linie); background: var(--weiss); }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--linie); }
+th { background: var(--tint); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--gd); }
+th.eza { background: var(--eza-tint); color: var(--eza); }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 700; }
+td.num { font-family: var(--m); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 400; }
+.art { display: inline-block; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; padding: 0 6px; border: 1px solid var(--regel); color: var(--muted); white-space: nowrap; }
+.art.norm { border-color: var(--eza); color: var(--eza); }
+.spalten { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
+.kasten { background: var(--weiss); border: 1px solid var(--linie); border-top: 4px solid var(--gd); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.kasten.eza { border-top-color: var(--eza); } .kasten.eza h3 { color: var(--eza); }
+.kasten.ga { border-top-color: var(--ga); } .kasten.ga h3 { color: var(--ga); }
+.kasten.dafuer { border-top-color: var(--g); }
+.kasten.dagegen { border-top-color: var(--rot); } .kasten.dagegen h3 { color: var(--rot); }
+ul, ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+li::marker { color: var(--g); }
+ul.plus, ul.minus { list-style: none; padding-left: 18px; }
+ul.plus li, ul.minus li { position: relative; }
+ul.plus li::before, ul.minus li::before { position: absolute; left: -18px; font-weight: 700; }
+ul.plus li::before { content: "+"; color: var(--g); }
+ul.minus li::before { content: "–"; color: var(--rot); }
+ol.schritte li::marker { font-weight: 700; }
+ol.schritte b { color: var(--gd); }
+.merke { background: var(--tint); border-left: 5px solid var(--gd); padding: 10px 14px; }
+.merke.eza { background: var(--eza-tint); border-left-color: var(--eza); }
+.herausforderungen { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.herausforderungen .kasten h3 { display: flex; gap: 10px; align-items: baseline; color: var(--text); }
+.herausforderungen .kasten h3 b { color: var(--eza); font-family: var(--m); }
+.trifft { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.trifft em { font-style: normal; font-weight: 700; color: var(--text); }
+.loesung { font-size: 14px; border-top: 1px dashed var(--regel); padding-top: 8px; }
+.loesung b { color: var(--gd); }
+.quellen { margin: 0; padding-left: 28px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.quellen li::marker { color: var(--gd); font-family: var(--m); }
+.fuss { border-top: 1px solid var(--linie); padding-top: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--muted); }
+dialog.lupe { width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: rgba(27,31,28,.88); overflow: auto; }
+dialog.lupe img { display: block; width: 1500px; max-width: none; height: auto; margin: 24px auto; background: var(--weiss); cursor: zoom-out; }
+dialog.lupe button { position: fixed; top: 12px; right: 16px; font: inherit; font-size: 14px; padding: 6px 12px; border: 0; background: var(--weiss); color: var(--text); cursor: pointer; }
+.hinweis-lupe { font-size: 12px; color: var(--muted); }
+@media print {
+  body { font-size: 11pt; }
+  .seite { max-width: none; gap: 24px; }
+  figure.skizze { width: auto; margin-inline: 0; break-inside: avoid; }
+  figure, .kasten, .tabelle { break-inside: avoid; }
+  .hinweis-lupe, dialog { display: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="balken"></div>
+<main class="seite">
+
+<header class="kopf">
+  <div>
+    <div class="eyebrow">Energieversorgung · Netzanschluss · Fachartikel</div>
+    <h1>Der EZA-Regler im Detail</h1>
+  </div>
+  <img src="{{LOGO}}" alt="LKEBw" width="176" height="52">
+  <div class="voll">
+    <p class="lead">Der EZA-Regler ist das Bindeglied zwischen dem Netzbetreiber und den Erzeugungsanlagen einer Liegenschaft. Er sorgt dafür, dass am Netzanschlusspunkt genau die Wirk- und Blindleistung ankommt, die Netzbetreiber, Anschlussvertrag und Vermarktung zulassen. Dieser Artikel erklärt, wie er technisch aufgebaut ist, wie er rechnet, wie er kommuniziert, wie er sich bei Störungen verhält und worauf es bei Nachweis, Ausschreibung und Inbetriebnahme ankommt.</p>
+    <p class="merke"><b>Kurz gesagt:</b> Der EZA-Regler ist ein eigenes Gerät in der Übergabestation. Er misst am Netzanschlusspunkt, nimmt Vorgaben von Netzbetreiber, Direktvermarkter, Anschlussvertrag und Energiemanagement entgegen, wählt für die Wirkleistung den kleinsten Wert und regelt Wirk- und Blindleistung am Netzanschlusspunkt mit je einem PI-Regler aus, indem er Sollwerte an Wechselrichter, Batterie und BHKW verteilt. Zeitverhalten, Rückfall und Kommunikation legen VDE-AR-N 4110 und die TAB fest; seine Eignung weist ein Komponentenzertifikat nach.</p>
+    <nav aria-label="Inhalt"><ol class="inhalt">
+      <li><a href="#aufgabe"><b>1</b> Aufgabe</a></li>
+      <li><a href="#aufbau"><b>2</b> Aufbau</a></li>
+      <li><a href="#wirk"><b>3</b> Wirkleistung</a></li>
+      <li><a href="#blind"><b>4</b> Blindleistung</a></li>
+      <li><a href="#zeit"><b>5</b> Zeitverhalten</a></li>
+      <li><a href="#kommunikation"><b>6</b> Kommunikation</a></li>
+      <li><a href="#rueckfall"><b>7</b> Überwachung und Rückfall</a></li>
+      <li><a href="#nachweis"><b>8</b> Nachweis und Inbetriebnahme</a></li>
+      <li><a href="#ausschreibung"><b>9</b> Ausschreibung</a></li>
+      <li><a href="#fehler"><b>10</b> Typische Fehler</a></li>
+      <li><a href="#quellen"><b>11</b> Quellen</a></li>
+    </ol></nav>
+    <p class="hinweis-lupe">Alle Abbildungen lassen sich per Klick vergrößern.</p>
+  </div>
+</header>
+
+<section id="aufgabe">
+  <div class="kap"><h2><b>1</b> Aufgabe und Einordnung</h2><div class="regel"></div></div>
+  <p>Eine Erzeugungsanlage (EZA) ist die Gesamtheit aller Erzeugungseinheiten (EZE) und Speicher hinter einem Netzanschlusspunkt (NAP): zum Beispiel mehrere PV-Wechselrichter, ein Batterie-Umrichter und ein BHKW. Den Netzbetreiber interessiert nur, was am NAP ankommt. Jede Einheit für sich kennt diesen Wert aber nicht, denn dazwischen liegen der Verbrauch der Liegenschaft, Transformatoren und Kabel. Deshalb misst ein übergeordneter Regler am NAP und verteilt die Sollwerte auf die Einheiten: der EZA-Regler, oft auch Parkregler genannt [1].</p>
+  <p>Gebraucht wird er, wenn der Netzbetreiber Vorgaben am NAP verlangt, also Wirkleistungsbegrenzung und Blindleistung nach seinem Verfahren, und immer dann, wenn die vereinbarte Einspeiseleistung P<sub>AV,E</sub> kleiner ist als die installierte Leistung. Ohne Regelung am NAP ließe sich diese Grenze nicht sicher halten. Ein Anlagenzertifikat ist seit Mai 2024 erst über 500 kW installierter Leistung oder über 270 kW Einspeiseleistung nötig, darunter genügt ein vereinfachter Nachweis [2]. Die Anforderungen an den Regler gelten in beiden Fällen.</p>
+  <p class="tabcap"><b>Tabelle 1:</b> Begriffe</p>
+  <div class="tabelle"><table>
+    <thead><tr><th>Begriff</th><th>Bedeutung</th></tr></thead>
+    <tbody>
+      <tr><td>NAP</td><td>Netzanschlusspunkt; Eigentums- und Bilanzgrenze zum Netz, meist auf der Mittelspannungsseite der Übergabestation</td></tr>
+      <tr><td>P<sub>b,inst</sub></td><td>installierte Wirkleistung der Anlage, Summe der Bemessungsleistungen aller Einheiten; Bezugsgröße für Rampen und Blindleistungsbereich</td></tr>
+      <tr><td>P<sub>AV,E</sub>, P<sub>AV,B</sub></td><td>vereinbarte Anschlusswirkleistung für Einspeisung und Bezug laut Netzanschlussvertrag</td></tr>
+      <tr><td>Einheitenzertifikat</td><td>Nachweis, dass ein Wechselrichter- oder BHKW-Typ die Anforderungen an eine Einheit erfüllt</td></tr>
+      <tr><td>Komponentenzertifikat</td><td>Nachweis, dass ein Regler-Typ in einem bestimmten Softwarestand die Anforderungen an den EZA-Regler erfüllt</td></tr>
+      <tr><td>Anlagenzertifikat</td><td>Nachweis für die gesamte Anlage am NAP, gestützt auf Einheiten- und Komponentenzertifikate, Simulationsmodell und Netzberechnung</td></tr>
+      <tr><td>Signalliste</td><td>Liste der Datenpunkte, die der Netzbetreiber per Fernwirktechnik austauscht</td></tr>
+    </tbody>
+  </table></div>
+  <p>Abbildung 1 zeigt den Regler in seiner Umgebung. Wie er mit einem Energiemanagement in der Gebäudeleittechnik zusammenarbeitet, beschreibt der Artikel <a href="EZA-Regler-und-EMS_Web.html">EZA-Regler und Energiemanagement in der GLT</a>; ob die Gebäudeautomation den Regler ersetzen kann, das Papier <a href="EMS-und-EZA-Regler_Web.html">EZA-Regler und EMS: Gebäudeautomation oder eigener Regler?</a></p>
+  <figure class="skizze">{{FIG:Prinzip-EZA-Regelung}}
+    <figcaption><b>Abbildung 1:</b> EZA-Regler am Netzanschlusspunkt: Sollwertquellen, Vorrangauswahl, P- und Q-Regler, Überwachung, Rückfallverhalten und typischer Umfang der Signalliste. Werte und Protokolle beispielhaft; maßgeblich sind TAB, Signalliste und Nachweis.</figcaption>
+  </figure>
+</section>
+
+<section id="aufbau">
+  <div class="kap"><h2><b>2</b> Aufbau: Hardware und Signalwege</h2><div class="regel"></div></div>
+  <p>Ein EZA-Regler ist kein Programm auf einem beliebigen Rechner, sondern eine kleine, in sich geschlossene Steuerungseinheit mit eigener Messung. Sie sitzt in der Übergabestation oder im Niederspannungsraum daneben und besteht aus den Teilen in Tabelle 2.</p>
+  <p class="tabcap"><b>Tabelle 2:</b> Bestandteile eines EZA-Reglers und seiner Umgebung</p>
+  <div class="tabelle"><table>
+    <thead><tr><th>Teil</th><th>Aufgabe</th><th>Hinweise</th></tr></thead>
+    <tbody>
+      <tr><td>Strom- und Spannungswandler</td><td>bilden Strom und Spannung am NAP auf Messgrößen ab</td><td>eigener Messkern für die Regelung, getrennt von der Abrechnung; Genauigkeitsklasse nach TAB, zum Beispiel 0,5 bis 1 MVA und 0,2 darüber [10]</td></tr>
+      <tr><td>Messumformer</td><td>berechnet P, Q, U, I und f dreiphasig</td><td>Mittelung über 10 Netzperioden (200 ms bei 50 Hz); liefert die Istwerte für Regler und Fernwirkgerät</td></tr>
+      <tr><td>Regler-Steuerung</td><td>Vorrangauswahl, Regelkerne, Aufteilung, Überwachung, Logbuch</td><td>Industriesteuerung (SPS oder Industrie-PC) mit unterbrechungsfreier Stromversorgung</td></tr>
+      <tr><td>Fernwirkgerät und Router des Netzbetreibers</td><td>Unterstation nach IEC 60870-5-104 [6], Verbindung zur Leitstelle</td><td>meist Eigentum des Netzbetreibers; Datenpunkte laut Signalliste</td></tr>
+      <tr><td>Steuerbox des Direktvermarkters</td><td>Sollwert aus der Vermarktung, Rückmeldung der Ist-Einspeisung</td><td>nur bei Direktvermarktung (§ 10b EEG [5]); getrennt von der Schnittstelle des Netzbetreibers</td></tr>
+      <tr><td>Schnittstellen zu den Einheiten</td><td>Sollwerte an Wechselrichter, Batterie-Umrichter, BHKW</td><td>meist Modbus TCP, bei Wechselrichtern oft nach SunSpec [7]; BHKW auch über Modbus oder 4–20 mA</td></tr>
+      <tr><td>Zeitsynchronisation</td><td>Zeitstempel für Ereignisse und Logbuch</td><td>über NTP oder GPS, Auflösung in Millisekunden</td></tr>
+      <tr><td>Überwachungsrelais P&gt;</td><td>trennt, wenn die Einspeisegrenze trotz Regelung überschritten wird</td><td>Hardware, unabhängig vom Regler; verlangt, wenn P<sub>AV,E</sub> unter der installierten Leistung liegt und der Netzbetreiber es fordert</td></tr>
+      <tr><td>NA-Schutz</td><td>trennt bei Netzfehlern am Übergabe-Leistungsschalter</td><td>eigenes Schutzgerät, nicht Teil des Reglers; wirkt unabhängig von allen Regelungen</td></tr>
+    </tbody>
+  </table></div>
+  <p class="merke"><b>Vorzeichen festlegen:</b> In diesem Artikel zählt Einspeisung am NAP positiv (Erzeugerzählpfeilsystem). Abrechnung und viele Gebäudeleittechniken zählen umgekehrt, Bezug positiv. Q &gt; 0 heißt übererregt: Die Anlage gibt Blindleistung ab und hebt die Spannung. Welche Konvention an welcher Schnittstelle gilt, muss in jeder Registerliste stehen; vertauschte Vorzeichen sind einer der häufigsten Fehler.</p>
+</section>
+
+<section id="wirk">
+  <div class="kap"><h2><b>3</b> Wirkleistungsregelung</h2><div class="regel"></div></div>
+  <h3>Schritt 1: Vorgaben vereinheitlichen und den kleinsten Wert wählen</h3>
+  <p>Für die Wirkleistung kommen bis zu vier Vorgaben gleichzeitig an: die Begrenzung des Netzbetreibers in Prozent, die fest parametrierte Einspeisegrenze P<sub>AV,E</sub>, der Sollwert des Direktvermarkters und der Wunsch des Energiemanagements. Der Regler rechnet alle in Kilowatt am NAP um und nimmt den kleinsten: P* = min(Netzbetreiber, P<sub>AV,E</sub>, Direktvermarkter, EMS). Keine Quelle kann so die Grenze einer anderen aufweiten. Worauf sich die Prozentvorgabe des Netzbetreibers bezieht, auf P<sub>AV,E</sub> oder auf P<sub>b,inst</sub>, legen TAB und Signalliste fest; eine falsche Bezugsgröße verschiebt jede Begrenzung.</p>
+  <h3>Schritt 2: Rampe</h3>
+  <p>Der gewählte Sollwert springt nicht, sondern läuft über eine Rampe. Gefordert sind für Vorgaben des Netzbetreibers 0,33 bis 0,66 % von P<sub>b,inst</sub> je Sekunde [9]. Bei einer Anlage mit 1.200 kW sind das 4 bis 8 kW/s; eine Begrenzung von 800 auf 400 kW dauert damit 50 bis 100 Sekunden, von 100 % auf 0 % 2,5 bis 5 Minuten. Vorgaben des Direktvermarkters dürfen bis zu 15 Minuten brauchen.</p>
+  <h3>Schritt 3: PI-Regler mit Anti-Windup</h3>
+  <p>Der PI-Regler vergleicht den Sollwert mit der gemessenen Leistung am NAP und bildet aus der Regelabweichung e = P* − P<sub>NAP</sub> die Summe der Sollwerte für die Einheiten. Der Proportionalanteil reagiert sofort, der Integralanteil beseitigt die bleibende Abweichung; stationär muss die Leistung am NAP auf ±5 % genau stehen [9]. Weil der Regler am NAP misst, gleicht er Verbrauch, Transformator- und Kabelverluste automatisch aus.</p>
+  <p>Wichtig ist eine <b>Anti-Windup-Begrenzung</b>: Können die Einheiten den Sollwert gar nicht liefern, etwa weil eine Wolke die PV-Leistung drückt, darf der Integralanteil nicht weiter wachsen. Sonst schießt die Leistung über die Grenze, sobald die Sonne zurückkommt. Die Stellgröße wird deshalb auf 0 bis zur verfügbaren Leistung begrenzt und der Integrator in der Begrenzung angehalten.</p>
+  <h3>Schritt 4: Aufteilung auf die Einheiten</h3>
+  <p>Die Summe verteilt der Regler nach der verfügbaren Leistung der Einheiten, die er aus deren Rückmeldungen kennt. Fällt eine Einheit aus, meldet sie keine verfügbare Leistung mehr, und die übrigen übernehmen ihren Anteil.</p>
+  <p class="tabcap"><b>Tabelle 3:</b> Beispiel: Aufteilung eines PV-Sollwerts von 680 kW auf drei Wechselrichtergruppen</p>
+  <div class="tabelle"><table>
+    <thead><tr><th>Gruppe</th><th>verfügbar</th><th>Sollwert</th><th>nach Ausfall von Gruppe C</th></tr></thead>
+    <tbody>
+      <tr><td>A · Dach Nord</td><td class="num">400 kW</td><td class="num">252 kW</td><td class="num">340 kW</td></tr>
+      <tr><td>B · Dach Süd</td><td class="num">400 kW</td><td class="num">252 kW</td><td class="num">340 kW</td></tr>
+      <tr><td>C · Carport</td><td class="num">280 kW</td><td class="num">176 kW</td><td class="num">0 kW (gestört)</td></tr>
+      <tr><td>Summe</td><td class="num">1.080 kW</td><td class="num">680 kW</td><td class="num">680 kW</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Speicher und Bezugsgrenze</h3>
+  <p>Ein Batteriespeicher bekommt einen Sollwert mit Vorzeichen. Entladen zählt am NAP zur Einspeisung und fällt damit unter P<sub>AV,E</sub>, Laden aus dem Netz zählt zum Bezug und fällt unter P<sub>AV,B</sub>. Der Regler klemmt den Wunsch des Energiemanagements deshalb an beiden Grenzen und an den Grenzen des Batteriemanagements. Ein BHKW wird meist wärmegeführt freigegeben; der Regler reduziert es nur, wenn eine Vorgabe des Netzbetreibers das verlangt.</p>
+  <h3>Eigenverbrauch nutzt die Grenze aus</h3>
+  <p>Weil der Regler am NAP regelt, darf die PV-Anlage mehr erzeugen als die Einspeisegrenze, solange die Liegenschaft den Rest selbst verbraucht. Abbildung 2 zeigt das an einem Beispieltag: Die PV-Anlage liefert bis zu 1.080 kW, die Liegenschaft verbraucht rund 280 kW, am NAP kommen knapp unter 800 kW an, ohne dass abgeregelt werden muss. Senkt der Netzbetreiber zwischen 12 und 14 Uhr auf 50 %, führt der Regler die PV-Anlage auf 400 kW plus Verbrauch zurück, hier rund 680 kW.</p>
+  <figure class="skizze">{{SVG:figuren/EZA-Detail-Tagesgang.svg|Einspeisebegrenzung am Netzanschlusspunkt im Tagesverlauf}}
+    <figcaption><b>Abbildung 2:</b> Wirkleistung am Beispieltag: 1.200 kWp PV, Einspeisegrenze 800 kW, Vorgabe des Netzbetreibers 50 % zwischen 12 und 14 Uhr. Die Übergänge laufen über die Rampe und dauern hier rund eine Minute. Eigene Darstellung, Werte gerechnet, nicht gemessen.</figcaption>
+  </figure>
+</section>
+
+<section id="blind">
+  <div class="kap"><h2><b>4</b> Blindleistungsregelung</h2><div class="regel"></div></div>
+  <p>Mit Blindleistung hilft die Anlage, die Spannung im Netz zu halten. Speist eine große PV-Anlage mittags ein, steigt die Spannung am NAP; nimmt sie dabei Blindleistung auf (untererregt), wirkt sie dem entgegen. Wie die Anlage sich verhalten soll, gibt allein der Netzbetreiber vor; das Energiemanagement hat darauf keinen Zugriff.</p>
+  <h3>Vier Verfahren</h3>
+  <ul>
+    <li><b>Q(U)-Kennlinie:</b> Die Blindleistung folgt der Spannung am NAP. Innerhalb eines Totbands bleibt Q bei null, darunter wird übererregt, darüber untererregt gefahren (Abbildung 3 A).</li>
+    <li><b>Q(P)-Kennlinie:</b> Die Blindleistung folgt der eigenen Wirkleistung, mit bis zu 10 Stützstellen (Abbildung 3 B).</li>
+    <li><b>Q fest mit Spannungsbegrenzung:</b> fester Blindleistungswert, der bei Verlassen eines Spannungsbands zurückgenommen wird.</li>
+    <li><b>cos φ fest:</b> festes Verhältnis von Blind- zu Wirkleistung.</li>
+  </ul>
+  <p>Verfahren und Sollwerte kann der Netzbetreiber per Fernwirkbefehl umschalten. Der Regler muss alle vier beherrschen, auch wenn zunächst nur eines verlangt wird.</p>
+  <figure class="skizze">{{SVG:figuren/EZA-Detail-Kennlinien.svg|Blindleistungs-Kennlinien und geforderter Blindleistungsbereich}}
+    <figcaption><b>Abbildung 3:</b> Q(U)-Kennlinie mit Totband (A), Q(P)-Kennlinie als Beispiel (B) und Blindleistungsbereich mit Scheinleistungsgrenze der Wechselrichter (C). Eigene Prinzipdarstellung nach [1, 9]; Stützstellen und Bereich legt der Netzbetreiber fest.</figcaption>
+  </figure>
+  <h3>Blindleistungsbereich und Reserve der Wechselrichter</h3>
+  <p>Gefordert ist in der Regel ein Bereich bis cos φ = 0,95 über- und untererregt, also Q = ±0,33 · P<sub>b,inst</sub>; im Teillastbereich gelten geringere Anforderungen nach Vorgabe des Netzbetreibers. Für eine Anlage mit 1.200 kW sind das ±396 kvar. Weil Wirk- und Blindleistung sich die Scheinleistung des Wechselrichters teilen, gilt S = √(P² + Q²): Bei voller Wirkleistung und voller Blindleistung braucht die Anlage 1.264 kVA, also gut 5 % mehr Scheinleistung als Wirkleistung (Abbildung 3 C). Fehlt diese Reserve, muss die Wirkleistung zugunsten der Blindleistung sinken. Das ist zulässig, kostet aber Ertrag.</p>
+  <h3>Führungsverhalten</h3>
+  <p>Eine neue Blindleistungsvorgabe soll gedämpft wie ein Verzögerungsglied erster Ordnung (PT1) einschwingen. Die Einschwingzeit 3τ gibt der Netzbetreiber zwischen 6 und 60 Sekunden vor [9]. Bei 3τ = 30 s ist τ = 10 s: Nach 10 s sind 63 %, nach 20 s 86 %, nach 30 s 95 % des Sprungs erreicht. Stationär muss Q auf ±2 % P<sub>AV</sub> genau stehen. Im Regler bildet ein Führungsglied diese Dynamik nach, ein PI-Regler regelt die Abweichung am NAP aus.</p>
+  <h3>Was die Blindleistung am NAP noch beeinflusst</h3>
+  <ul>
+    <li>Transformatoren nehmen Blindleistung auf, Mittelspannungskabel geben welche ab. Der Regler misst am NAP und gleicht beides mit aus; die Einheiten selbst sehen davon nichts.</li>
+    <li>Ohne Wirkleistung, etwa nachts, können viele Wechselrichter keine Blindleistung liefern. Manche Geräte können es; ob das verlangt ist, regelt die TAB.</li>
+    <li>Kompensationsanlagen, Stufensteller und eigene Q(U)-Funktionen der Einheiten können gegen den Regler arbeiten. Sie müssen abgeschaltet oder abgestimmt werden, sonst entstehen Dauerschwingungen.</li>
+  </ul>
+</section>
+
+<section id="zeit">
+  <div class="kap"><h2><b>5</b> Zeitverhalten der Regelkette</h2><div class="regel"></div></div>
+  <p>Damit der Regler die geforderten Zeiten schafft, muss die ganze Kette deutlich schneller sein: Messen mit Mittelung über etwa 200 ms, Rechnen in 100 bis 200 ms, Senden an alle Einheiten in 0,1 bis 1 s je nach Anzahl, dazu die Reaktionszeit der Einheit laut Einheitenzertifikat. Zusammen ergibt das eine Totzeit von 0,5 bis 2 Sekunden. Das sind Auslegungsrichtwerte, keine Normwerte.</p>
+  <p>Zwei Faustregeln der Regelungstechnik bestimmen, was damit möglich ist: Die Abtastzeit soll höchstens ein Zehntel der Zeitkonstante betragen, und ein Regelkreis mit der Totzeit T<sub>t</sub> wird kaum schneller als etwa 3·T<sub>t</sub>. Für 3τ = 6 s, also τ = 2 s, braucht der Regler einen Abtastschritt von rund 0,2 s. Steuerungen mit Zyklen im Sekundenbereich, wie sie in der Gebäudeautomation üblich sind, erreichen das nicht.</p>
+  <figure class="skizze">{{FIG:Prinzip-EZA-Regelkreis}}
+    <figcaption><b>Abbildung 4:</b> Regelstruktur am Netzanschlusspunkt (A), Zeitkette eines Regelzyklus (B) und Anforderungen an Blind- und Wirkleistungsregelung (C). Struktur nach dem generischen Parkreglermodell REPC_A [8]; Werte nach VDE-AR-N 4110 in der Darstellung von [9] und [10].</figcaption>
+  </figure>
+  <p class="tabcap"><b>Tabelle 4:</b> Anforderungen und Richtwerte im Überblick</p>
+  <div class="tabelle"><table>
+    <thead><tr><th>Größe</th><th>Wert</th><th>Art</th></tr></thead>
+    <tbody>
+      <tr><td>Wirkleistung, Rampe bei Vorgaben des Netzbetreibers</td><td class="num">0,33 … 0,66 % P_b,inst/s</td><td><span class="art norm">Norm</span></td></tr>
+      <tr><td>Wirkleistung, Genauigkeit stationär</td><td class="num">±5 %</td><td><span class="art norm">Norm</span></td></tr>
+      <tr><td>Vorgaben des Direktvermarkters</td><td class="num">≤ 15 min</td><td><span class="art norm">Norm</span></td></tr>
+      <tr><td>Blindleistung, Einschwingzeit</td><td class="num">3τ = 6 … 60 s</td><td><span class="art norm">Norm</span></td></tr>
+      <tr><td>Blindleistung, Genauigkeit stationär</td><td class="num">±2 % P_AV</td><td><span class="art norm">Norm</span></td></tr>
+      <tr><td>Logbuch der Abregelungen</td><td class="num">≥ 18 Monate</td><td><span class="art norm">Norm</span></td></tr>
+      <tr><td>Messung, Mittelung</td><td class="num">≈ 200 ms</td><td><span class="art">Richtwert</span></td></tr>
+      <tr><td>Regelzyklus</td><td class="num">100 … 200 ms</td><td><span class="art">Richtwert</span></td></tr>
+      <tr><td>Totzeit der Kette</td><td class="num">0,5 … 2 s</td><td><span class="art">Richtwert</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="kommunikation">
+  <div class="kap"><h2><b>6</b> Kommunikation</h2><div class="regel"></div></div>
+  <h3>Zum Netzbetreiber: IEC 60870-5-104</h3>
+  <p>Mit der Leitstelle des Netzbetreibers spricht die Anlage fast immer über IEC 60870-5-104 [6], das Fernwirkprotokoll über TCP/IP (Port 2404), meist durch einen VPN-Router des Netzbetreibers. Die Anlage ist Unterstation, die Leitstelle Zentrale; häufig gibt es zwei Gegenstellen für eine redundante Leitstelle. Welche Datenpunkte mit welcher Adresse und welchem Typ ausgetauscht werden, legt die Signalliste fest. Tabelle 5 zeigt die üblichen Typkennungen.</p>
+  <p class="tabcap"><b>Tabelle 5:</b> Typische Datenpunkte und Typkennungen nach IEC 60870-5-104 (Beispiele; verbindlich ist die Signalliste)</p>
+  <div class="tabelle"><table>
+    <thead><tr><th>Richtung</th><th>Inhalt</th><th>Typkennung</th></tr></thead>
+    <tbody>
+      <tr><td>Anlage → Leitstelle</td><td>Messwerte P, Q, U, I am NAP, Rückmeldung der wirksamen Begrenzung</td><td class="num">13 M_ME_NC_1, 36 M_ME_TF_1</td></tr>
+      <tr><td>Anlage → Leitstelle</td><td>Meldungen: Regler bereit/gestört, NA-Schutz ausgelöst, Verbindung in Ordnung</td><td class="num">30 M_SP_TB_1</td></tr>
+      <tr><td>Anlage → Leitstelle</td><td>Stellung Übergabe-Leistungsschalter</td><td class="num">31 M_DP_TB_1</td></tr>
+      <tr><td>Leitstelle → Anlage</td><td>Wirkleistungsbegrenzung in Prozent, Blindleistungssollwert</td><td class="num">50 C_SE_NC_1</td></tr>
+      <tr><td>Leitstelle → Anlage</td><td>Verfahrenswahl Q, Kennlinienwahl</td><td class="num">45 C_SC_NA_1, 46 C_DC_NA_1</td></tr>
+      <tr><td>Leitstelle → Anlage</td><td>Generalabfrage, Uhrzeitsynchronisation</td><td class="num">100 C_IC_NA_1, 103 C_CS_NA_1</td></tr>
+    </tbody>
+  </table></div>
+  <p>Jeder Befehl wird quittiert (Aktivierungsbestätigung), und der Regler meldet den tatsächlich übernommenen Wert zurück. Messwerte werden spontan übertragen, sobald sie sich um eine Schwelle ändern, zum Beispiel 1 % [10]. Befehle gelten bis zum nächsten Telegramm; der Regler setzt sie nicht von selbst zurück. Bei gestörter Messung kennzeichnen Qualitätsbits die Werte als ungültig, statt Ersatzwerte zu senden.</p>
+  <h3>Zum Direktvermarkter</h3>
+  <p>Der Direktvermarkter sendet über seine Steuerbox einen Wirkleistungssollwert und liest die Ist-Einspeisung. Diese Schnittstelle wird getrennt von der des Netzbetreibers ausgeführt, damit ein Fehler auf der einen die andere nicht beeinträchtigt. Fällt sie aus, entfällt die Vorgabe des Direktvermarkters; die des Netzbetreibers gilt weiter.</p>
+  <h3>Zu den Einheiten: Modbus TCP und SunSpec</h3>
+  <p>Wechselrichter werden meist über Modbus TCP angesprochen, viele nach den Informationsmodellen der SunSpec Alliance [7]. Damit lassen sich Geräte verschiedener Hersteller über dieselben Register steuern; Herstellereigene Registerkarten sind trotzdem verbreitet.</p>
+  <p class="tabcap"><b>Tabelle 6:</b> Häufig genutzte SunSpec-Modelle (Auswahl)</p>
+  <div class="tabelle"><table>
+    <thead><tr><th>Modell</th><th>Inhalt</th><th>Verwendung im Regler</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td>Common: Hersteller, Typ, Seriennummer</td><td>Erkennung, Abgleich mit der Kompatibilitätsliste</td></tr>
+      <tr><td class="num">103</td><td>Wechselrichter dreiphasig: Messwerte, Zustand</td><td>Ist-Leistung, Störungen</td></tr>
+      <tr><td class="num">120, 121</td><td>Typenschild und Grundeinstellungen, unter anderem Maximalleistung</td><td>verfügbare Leistung, Bezugsgrößen</td></tr>
+      <tr><td class="num">123</td><td>Sofortsteuerung: Leistungsbegrenzung in %, cos φ, Blindleistung, jeweils mit Freigabe und Rückfallzeit</td><td>Sollwerte des Reglers</td></tr>
+      <tr><td class="num">701–705</td><td>neuere DER-Modelle: Messung, Kapazität, Steuerung, Kennlinien</td><td>bei Geräten, die sie unterstützen, an Stelle von 103/123</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li><b>Kommunikationswächter der Einheit:</b> Jeder Wechselrichter braucht eine Rückfallzeit, nach der er ohne neue Sollwerte auf einen sicheren Wert geht. Sie muss länger sein als der Abfragezyklus des Reglers und kürzer als die Frist, die der Netzbetreiber für den Rückfall nennt.</li>
+    <li><b>Speicher schonen:</b> Bei manchen Geräten landen Sollwerte in einem nichtflüchtigen Speicher, der nur eine begrenzte Zahl von Schreibvorgängen verträgt. Der Regler muss dann die dafür vorgesehenen flüchtigen Register nutzen oder nur bei Änderung schreiben.</li>
+    <li><b>Ein Schreiber je Größe:</b> Herstellerportale, eingebaute Speicher-Energiemanagements und Cloud-Dienste dürfen keine Sollwerte schreiben, solange der Regler aktiv ist.</li>
+  </ul>
+  <h3>Zum Energiemanagement</h3>
+  <p>Das Energiemanagement in der Gebäudeleittechnik meldet dem Regler Wünsche über eine eigene Modbus-TCP-Schnittstelle: Freigabe, Heartbeat, PV-Wunsch und Batterie-Sollwert. Der Regler meldet Messwerte am NAP, die verfügbare Leistung und die gerade wirksame Grenze samt Quelle zurück. Blindleistung, Kennlinien und Schutz sind für das Energiemanagement gesperrt. Einzelheiten beschreibt der Artikel <a href="EZA-Regler-und-EMS_Web.html">EZA-Regler und Energiemanagement in der GLT</a>.</p>
+</section>
+
+<section id="rueckfall">
+  <div class="kap"><h2><b>7</b> Überwachung, Rückfall und Logbuch</h2><div class="regel"></div></div>
+  <p>Jede Schnittstelle hat einen eigenen Wächter. Fällt eine aus, geht der Regler auf einen festgelegten Rückfallwert; den legt für die Netzbetreiber-Schnittstelle der Netzbetreiber im Abfragebogen fest. Der Grundsatz: Ein Ausfall darf nie dazu führen, dass eine Grenze aufgeweitet wird.</p>
+  <p class="tabcap"><b>Tabelle 7:</b> Wächter und Rückfallverhalten (Beispiel; verbindlich sind TAB, Abfragebogen und Nachweis)</p>
+  <div class="tabelle"><table>
+    <thead><tr><th>Ausfall</th><th>Erkennung</th><th>Reaktion</th></tr></thead>
+    <tbody>
+      <tr><td>Verbindung zum Netzbetreiber</td><td>Verbindungsüberwachung des Protokolls, Frist laut TAB</td><td>letzten Sollwert halten, nach der Frist Rückfallwert laut TAB; Meldung an Leitstelle und Betreiber</td></tr>
+      <tr><td>Verbindung zum Direktvermarkter</td><td>Zeitüberschreitung der Steuerbox</td><td>Vorgabe entfällt (100 %); Netzbetreiber und Anschlussgrenzen gelten weiter</td></tr>
+      <tr><td>Energiemanagement</td><td>Heartbeat bleibt unverändert, zum Beispiel länger als 10 s</td><td>Wunsch entfällt; Batterie auf 0 kW oder Grundstrategie, PV frei bis zur Anschlussgrenze</td></tr>
+      <tr><td>Messung am NAP</td><td>Plausibilität, Qualitätsbits, Abweichung zwischen den Phasen</td><td>sicherer Zustand: Einspeisung auf parametrierten Ersatzwert (bis 0 kW), Alarm</td></tr>
+      <tr><td>Verbindung zu einer Einheit</td><td>Zeitüberschreitung beim Abfragen</td><td>Einheit geht nach ihrer Rückfallzeit auf ihren Rückfallwert; übrige Einheiten regeln nach</td></tr>
+      <tr><td>Regler selbst</td><td>interne Überwachung, Hardware-Watchdog</td><td>alle Einheiten gehen nach ihrer Rückfallzeit auf ihren Rückfallwert; Überwachungsrelais sichert die Einspeisegrenze</td></tr>
+    </tbody>
+  </table></div>
+  <p>Das <b>Logbuch</b> hält jede Abregelung mit Zeitstempel, Quelle und Höhe fest, mindestens 18 Monate lang, und gibt sie auf Anforderung an den Netzbetreiber heraus. Daneben speichert der Regler Ereignisse und Störungen mit Zeitstempel. Für den Service braucht er einen gesicherten Fernzugang, der nur bei Bedarf freigeschaltet wird.</p>
+</section>
+
+<section id="nachweis">
+  <div class="kap"><h2><b>8</b> Nachweis und Inbetriebnahme</h2><div class="regel"></div></div>
+  <p>Der Nachweis baut sich in Stufen auf. Jede Einheit hat ein Einheitenzertifikat. Der EZA-Regler hat ein Komponentenzertifikat: ein Produktzertifikat einer akkreditierten Stelle, das Regelverhalten, Verhalten bei Kommunikationsstörungen und die Reglerbeschreibung für einen bestimmten Softwarestand bestätigt. Grundlage sind Messungen nach FGW TR 3, ein validiertes Simulationsmodell nach TR 4 und die Bewertung nach TR 8 [3]. Darauf stützt sich der Nachweis für die ganze Anlage: das Anlagenzertifikat über 500 kW installierter Leistung oder 270 kW Einspeiseleistung, darunter der vereinfachte Nachweis [2].</p>
+  <p>Wer einen zertifizierten Regler kauft, bekommt die ersten Stufen vom Hersteller. Wer ihn selbst baut oder die Regelung in eine andere Steuerung verlagert, muss sie für jeden Softwarestand selbst erbringen. Abbildung 5 zeigt, was dazu gehört.</p>
+  <figure class="skizze">{{FIG:Prinzip-EZA-Eigenbau}}
+    <figcaption><b>Abbildung 5:</b> Arbeitspakete und Nachweisweg eines EZA-Reglers. Beim gekauften Regler liegen die Schritte 1 bis 4 beim Hersteller. Nach [1, 2, 3, 9, 10].</figcaption>
+  </figure>
+  <h3>Inbetriebnahme</h3>
+  <ol class="schritte">
+    <li><b>Parametrierung prüfen:</b> P<sub>AV,E</sub>, P<sub>AV,B</sub>, P<sub>b,inst</sub>, Bezugsgröße der Prozentvorgabe, Q-Verfahren, Kennlinien, Rampen, Rückfallwerte und Fristen gegen Abfragebogen und Netzanschlussvertrag.</li>
+    <li><b>Messung prüfen:</b> Wandlerübersetzung, Phasenlage und Vorzeichen; Messwerte des Reglers gegen den Abrechnungszähler vergleichen.</li>
+    <li><b>Fernwirktest:</b> jeden Datenpunkt der Signalliste mit der Leitstelle des Netzbetreibers durchprüfen, Befehle mit Quittung und Rückmeldung.</li>
+    <li><b>Sprungantworten am NAP:</b> Wirkleistungsbegrenzung, zum Beispiel 100 → 60 → 30 %, und Blindleistungssprünge fahren, Rampe, Einschwingzeit und Genauigkeit aufzeichnen.</li>
+    <li><b>Ausfalltests:</b> jede Schnittstelle trennen und das Rückfallverhalten nach Tabelle 7 nachweisen; Überwachungsrelais auslösen lassen.</li>
+    <li><b>Dokumentation:</b> Protokolle, Parameterliste und Softwarestand übergeben; bei Anlagenzertifikat die Konformitätserklärung der Zertifizierungsstelle.</li>
+  </ol>
+</section>
+
+<section id="ausschreibung">
+  <div class="kap"><h2><b>9</b> Was in die Ausschreibung gehört</h2><div class="regel"></div></div>
+  <ol class="schritte">
+    <li><b>Komponentenzertifikat</b> für den angebotenen Regler einschließlich Softwarestand, dazu die Kompatibilitätsliste mit den vorgesehenen Wechselrichtern, Batterie-Umrichtern und dem BHKW.</li>
+    <li><b>Regelfunktionen:</b> alle vier Q-Verfahren, Umschaltung per Fernwirkbefehl, Wirkleistungs- und Bezugsgrenze, Speicher mit Lade- und Entladesollwert.</li>
+    <li><b>Fernwirken:</b> Unterstation nach IEC 60870-5-104 gemäß Signalliste des Netzbetreibers, zwei Gegenstellen; getrennte Schnittstelle zum Direktvermarkter.</li>
+    <li><b>Eingang für das Energiemanagement:</b> dokumentierte Register für Freigabe, Heartbeat, PV-Wunsch und Batterie-Sollwert, Rückmeldung der wirksamen Grenze mit Quelle.</li>
+    <li><b>Messung und Hardware:</b> Wandler und Messumformer nach TAB, Industriesteuerung mit USV, Überwachungsrelais, falls gefordert.</li>
+    <li><b>Wechselrichter:</b> Scheinleistungsreserve für den geforderten Blindleistungsbereich, Kommunikationswächter mit einstellbarer Rückfallzeit.</li>
+    <li><b>Logbuch und Zeit:</b> mindestens 18 Monate, Zeitsynchronisation über NTP oder GPS, Export für den Netzbetreiber.</li>
+    <li><b>Zugänge:</b> keine Hersteller-Cloud, Fernzugang nur auf Anforderung und protokolliert; Hersteller erklären, welche Verbindungen ihre Geräte aufbauen.</li>
+    <li><b>Dokumentation und Nachweis:</b> Reglerbeschreibung, Parameterliste, Rückfalltabelle; Simulationsmodell, wenn ein Anlagenzertifikat nötig ist.</li>
+    <li><b>Inbetriebnahme und Pflege:</b> Tests nach Abschnitt 8, Unterstützung der Konformitätserklärung, Softwarepflege über die Laufzeit mit Änderungen nur in Abstimmung mit dem Zertifizierer.</li>
+  </ol>
+</section>
+
+<section id="fehler">
+  <div class="kap"><h2><b>10</b> Typische Fehler</h2><div class="regel"></div></div>
+  <p class="tabcap"><b>Tabelle 8:</b> Häufige Fehler, ihre Folgen und Abhilfe</p>
+  <div class="tabelle"><table>
+    <thead><tr><th>Fehler</th><th>Folge</th><th>Abhilfe</th></tr></thead>
+    <tbody>
+      <tr><td>Messung auf der falschen Seite des Transformators</td><td>Blind- und Verlustleistung des Transformators fehlen in der Regelung; Q am NAP stimmt nicht</td><td>Regelmessung am NAP auf der Mittelspannungsseite</td></tr>
+      <tr><td>Vorzeichen vertauscht</td><td>Regler regelt in die falsche Richtung, Batterie lädt statt zu entladen</td><td>Konvention je Schnittstelle in der Registerliste festhalten, bei der Inbetriebnahme prüfen</td></tr>
+      <tr><td>falsche Bezugsgröße für Prozentvorgaben</td><td>jede Begrenzung des Netzbetreibers liegt zu hoch oder zu niedrig</td><td>Bezug auf P<sub>AV,E</sub> oder P<sub>b,inst</sub> laut Signalliste parametrieren</td></tr>
+      <tr><td>Anti-Windup fehlt</td><td>Überschwingen über die Grenze, wenn die PV-Leistung zurückkehrt</td><td>Integrator in der Begrenzung anhalten; bei der Inbetriebnahme mit verfügbarer Leistung unter dem Sollwert prüfen</td></tr>
+      <tr><td>zweiter Schreiber auf den Wechselrichtern</td><td>Sollwerte springen, Regelung schwingt oder hält die Grenze nicht</td><td>Herstellerportal und Speicher-Energiemanagement abschalten, Schreibrechte festlegen</td></tr>
+      <tr><td>Rückfallzeit der Wechselrichter unpassend</td><td>zu kurz: Leistung flattert; zu lang: Anlage läuft bei Reglerausfall ungeregelt</td><td>Rückfallzeit zwischen Abfragezyklus und Frist des Netzbetreibers wählen</td></tr>
+      <tr><td>keine Scheinleistungsreserve</td><td>Wirkleistung sinkt bei jeder Blindleistungsvorgabe</td><td>Wechselrichter mit rund 5 % Reserve auslegen</td></tr>
+      <tr><td>Blindleistungsquellen nicht abgestimmt</td><td>Dauerschwingungen zwischen Regler, Kompensation und Einheiten</td><td>eigene Q-Funktionen der Einheiten abschalten, Kompensation einbinden</td></tr>
+      <tr><td>Batterie nicht in den Grenzen</td><td>Entladen überschreitet die Einspeisegrenze, Laden die Bezugsgrenze</td><td>Batterie-Sollwert an P<sub>AV,E</sub> und P<sub>AV,B</sub> klemmen</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="quellen">
+  <div class="kap"><h2><b>11</b> Quellen und weiterführende Informationen</h2><div class="regel"></div></div>
+  <ol class="quellen">
+    <li>VDE-AR-N 4110:2018-11 Technische Regeln für den Anschluss von Kundenanlagen an das Mittelspannungsnetz und deren Betrieb (TAR Mittelspannung), VDE Verlag. Überarbeitung in Arbeit.</li>
+    <li><a href="https://www.vde.com/de/fnn/aktuelles/vereinfachter-anschluss-und-nachweis-von-erzeugungsanlagen-in-mittel--und-hochspannung-in-kraft" target="_blank" rel="noopener">VDE FNN: Beschleunigte Inbetriebsetzung von Erzeugungsanlagen bis 500 kW</a> (Elektrotechnische-Eigenschaften-Nachweis-Verordnung NELEV, geändert Mai 2024).</li>
+    <li>FGW e. V.: Technische Richtlinien TR 3 (Bestimmung der elektrischen Eigenschaften), TR 4 (Modellierung und Validierung von Simulationsmodellen), TR 8 (Zertifizierung der elektrischen Eigenschaften), jeweils aktuelle Revision.</li>
+    <li><a href="https://www.gesetze-im-internet.de/eeg_2014/__9.html" target="_blank" rel="noopener">§ 9 EEG: Technische Vorgaben</a></li>
+    <li><a href="https://www.gesetze-im-internet.de/eeg_2014/__10b.html" target="_blank" rel="noopener">§ 10b EEG: Vorgaben zur Direktvermarktung</a></li>
+    <li>DIN EN 60870-5-104: Fernwirkeinrichtungen und -systeme, Zugriff für IEC 60870-5-101 auf Netze mit genormten Transportprofilen.</li>
+    <li>SunSpec Alliance: SunSpec Modbus Information Models, unter anderem Modelle 1, 103, 120–123 und 701–705.</li>
+    <li>WECC: Generic plant controller model REPC_A; Pourbeik u. a.: Generic dynamic models for modeling wind power plants and other renewable technologies in large-scale power system studies, IEEE Transactions on Energy Conversion, 2017.</li>
+    <li>meteocontrol; M.O.E.: Darstellung der Anforderungen der VDE-AR-N 4110:2018 an Parkregelung und Fernwirken (Vortragsunterlagen 2018).</li>
+    <li>Thüringer Energienetze: Netzrichtlinie TAR Mittelspannung, Stand 03/2024 (Beispielwerte für Fernwirken und Messung).</li>
+  </ol>
+</section>
+
+<footer class="fuss">
+  <span>Stand: Oktober 2026. Diese Seite dient der allgemeinen Orientierung; Abbildungen sind Prinzipdarstellungen ohne Auslegung, Zahlenbeispiele gerechnet. Maßgeblich sind die beim Netzanschlussbegehren gültige Fassung der VDE-AR-N 4110, die Technischen Anschlussbedingungen, die Signalliste und der Abfragebogen des zuständigen Netzbetreibers sowie der Nachweis der Anlage.</span>
+</footer>
+</main>
+
+<dialog class="lupe" id="lupe" aria-label="Abbildung vergrößert">
+  <button type="button" id="lupe-zu">Schließen (Esc)</button>
+  <img alt="">
+</dialog>
+<script>
+(function () {
+  var dlg = document.getElementById('lupe');
+  if (!dlg || typeof dlg.showModal !== 'function') return;
+  var bild = dlg.querySelector('img');
+  document.querySelectorAll('figure.skizze button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var img = b.querySelector('img');
+      bild.src = img.src; bild.alt = img.alt;
+      dlg.showModal(); dlg.scrollTop = 0;
+    });
+  });
+  bild.addEventListener('click', function () { dlg.close(); });
+  document.getElementById('lupe-zu').addEventListener('click', function () { dlg.close(); });
+})();
+</script>
+</body>
+</html>

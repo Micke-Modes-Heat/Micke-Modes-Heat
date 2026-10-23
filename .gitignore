@@ -22,5 +22,8 @@ geothermiefehler/
 # Ausgabe der Skizzenbibliothek fürs Netzlaufwerk (npm run skizzen, Quelle: docs/skizzen)
 skizzen-ausgabe/
 
+# Gebaute Fachartikel und Papiere (npm run artikel, Quelle: docs/artikel)
+artikel-ausgabe/
+
 # Ausgelieferte Design-Canvas-Datei (aus design/*.dc.html neu erzeugbar, ~2,6 MB)
 design/pv-analyse-redesign.html
