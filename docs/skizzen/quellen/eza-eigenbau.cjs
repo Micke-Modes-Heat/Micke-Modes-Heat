@@ -164,17 +164,19 @@ function svgRegelkreis() {
 
   // Erzeugungseinheiten rechts
   b += T(815, 165, 'Erzeugungseinheiten', { size: 11, bold: true, fill: C.t });
-  b += T(800, 190, 'Modbus TCP / SunSpec', { size: 10, fill: C.o });
+  b += T(800, 190, 'Modbus TCP / SunSpec', { size: 10, fill: C.o }) + T(800, 366, 'BHKW: Modbus oder 4–20 mA', { size: 10, fill: C.o });
   b += R(815, 200, 145, 60, { fill: C.gr }) + T(887.5, 224, 'PV-Wechselrichter', { size: 11, bold: true, anchor: 'middle', fill: C.t }) + T(887.5, 241, 'P-Grenze, Q-Sollwert', { size: 10, anchor: 'middle' });
   b += R(815, 288, 145, 60, { fill: C.gr }) + T(887.5, 312, 'Batterie-Umrichter', { size: 11, bold: true, anchor: 'middle', fill: C.t }) + T(887.5, 329, 'P ±, Q-Sollwert', { size: 10, anchor: 'middle' });
-  b += arrow('M780 230 H813', C.o, 1.8) + arrow('M780 318 H813', C.o, 1.8);
-  b += R(815, 370, 145, 110, { fill: C.gr, stroke: C.l, dash: '4 3' });
-  b += T(827, 388, 'Bleibt in der EZE', { size: 11, bold: true, fill: C.t });
-  b += TL(827, 405, ['P(f) bei Über- und', 'Unterfrequenz', 'FRT, dyn. Stützung', 'innere Stromregelung', '→ vom EZA-Regler', 'nicht übersteuern'], { size: 10, lh: 12.6 });
+  b += R(815, 376, 145, 68, { fill: C.gr }) + T(887.5, 398, 'BHKW', { size: 11, bold: true, anchor: 'middle', fill: C.t }) +
+    T(887.5, 415, 'P-Grenze (wärmegeführt)', { size: 10, anchor: 'middle' }) + T(887.5, 430, 'Q über Erregung (AVR)', { size: 10, anchor: 'middle' });
+  b += arrow('M780 230 H813', C.o, 1.8) + arrow('M780 318 H813', C.o, 1.8) + arrow('M780 410 H813', C.o, 1.8);
+  b += R(815, 462, 145, 122, { fill: C.gr, stroke: C.l, dash: '4 3' });
+  b += T(827, 480, 'Bleibt in der EZE', { size: 11, bold: true, fill: C.t });
+  b += TL(827, 497, ['P(f) bei Über- und', 'Unterfrequenz', 'FRT, dyn. Stützung', 'Stromregelung (WR),', 'Spannungsregler (AVR)', '→ vom EZA-Regler', 'nicht übersteuern'], { size: 10, lh: 12.6 });
 
   // Elektrischer Teil unten
   b += R(34, 638, 110, 44, { stroke: '#0000FF', dash: '4 3' }) + T(89, 656, 'Netz', { size: 11.5, bold: true, anchor: 'middle', fill: C.t }) + T(89, 670, 'MS 20 kV', { size: 10, anchor: 'middle' });
-  b += P('M144 660 H686', { sw: 1.6 }) + P('M720 660 H970 V231', { sw: 1.6 }) + P('M960 230 H970 M960 318 H970', { sw: 1.6 });
+  b += P('M144 660 H686', { sw: 1.6 }) + P('M720 660 H970 V231', { sw: 1.6 }) + P('M960 230 H970 M960 318 H970 M960 410 H970', { sw: 1.6 });
   b += `<circle cx="696" cy="660" r="10" fill="#fff" stroke="${C.t}" stroke-width="1.4"/><circle cx="710" cy="660" r="10" fill="none" stroke="${C.t}" stroke-width="1.4"/>`;
   b += T(703, 688, 'Trafo', { size: 10, anchor: 'middle' });
   b += P('M190 628 V696', { stroke: C.l, sw: 1.2, dash: '5 4' }) + T(196, 694, 'NAP', { size: 10.5, bold: true, fill: C.t });
@@ -279,7 +281,7 @@ function svgEigenbau() {
       'Befehle gelten bis zum nächsten Telegramm; Rückmeldung und Quittung je Sollwert',
       'Messwerte spontan ab 1 % Änderung, höchstens 1 Telegramm/s (Beispiel TEN)',
       'Schnittstelle zum DV getrennt von der des NB ausführen',
-      'Modbus TCP / SunSpec zu Wechselrichtern verschiedener Hersteller und Firmwarestände',
+      'Modbus TCP / SunSpec zu Wechselrichtern verschiedener Hersteller; BHKW-Steuerung oft Modbus oder 4–20 mA',
     ]],
     ['Überwachung & Rückfall', 'Verhalten bei Störung', [
       'Watchdog je Schnittstelle: NB, DV, Messung, Verbindung zu den EZE',
