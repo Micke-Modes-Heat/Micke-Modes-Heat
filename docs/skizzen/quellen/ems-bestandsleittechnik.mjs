@@ -66,7 +66,7 @@ function svgVarianten() {
     {
       pro: ['Zertifizierte Regelkette bleibt unberührt', 'GLT-Updates ohne Folgen für den Netzanschluss', 'Klare Haftung: Netzregelung beim EZA-Lieferanten', 'Bestands-GLT bleibt nutzbar (EMS, Bedienung)'],
       con: [[null, 'Zusätzliches Gerät und eine Schnittstelle EZA ↔ GLT'], [null, 'Zwei Systeme, zwei Wartungsverträge'], [null, 'Schnittstelle muss abgestimmt und gemeinsam getestet werden']],
-      fazit: ['Empfehlung', 'Regelfall ab 135 kW (Anlagenzertifikat)'], col: C.g,
+      fazit: ['Empfehlung', 'Regelfall über 500 kW bzw. 270 kW Einspeisung'], col: C.g,
     },
     {
       pro: ['Ein System, eine Oberfläche, bekanntes Personal', 'Mess- und Zählerdaten liegen schon in der GLT', 'Auf den ersten Blick geringere Investition'],

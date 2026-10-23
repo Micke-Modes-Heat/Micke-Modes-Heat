@@ -317,7 +317,7 @@ function svgEigenbau() {
     ['Messung', 'FGW TR 3, Sprung-', 'antworten im Prüflabor'],
     ['Simulationsmodell', 'FGW TR 4, RMS,', 'gegen Messung validiert'],
     ['Komponentenzert.', 'FGW TR 8,', 'Zertifizierungsstelle'],
-    ['Anlagenzertifikat', 'ab 135 kW; vereinfacht', 'bis 950 kW'],
+    ['Anlagenzertifikat', 'über 500 kW installiert', 'bzw. 270 kW Einspeisung'],
     ['Inbetriebnahme', 'Fernwirktest mit NB,', 'Konformitätserklärung'],
   ];
   path6.forEach(([h, a, c], i) => {
