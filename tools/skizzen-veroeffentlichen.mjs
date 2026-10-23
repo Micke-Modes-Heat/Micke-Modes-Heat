@@ -3,14 +3,20 @@
 //   npm run skizzen
 //
 // Ablauf: Erzeuger laufen neu (quelle in katalog.json), jede Skizze bekommt eine Fußzeile mit Stand und
-// Version (Entwürfe zusätzlich ein Wasserzeichen), PNG in 3-facher Auflösung über Edge, Übersicht als
-// 00_Übersicht.html. Ersetzte Stände wandern nach _Archiv/. _Änderungsprotokoll.txt sagt, was diesmal von
+// Version (Entwürfe zusätzlich ein Wasserzeichen), PNG in 3-facher Auflösung über Edge oder Chrome, Übersicht
+// als 00_Übersicht.html. Ersetzte Stände wandern nach _Archiv/. _Änderungsprotokoll.txt sagt, was diesmal von
 // Hand auf das Laufwerk zu kopieren oder dort zu löschen ist. Stand = Datum der letzten inhaltlichen Änderung.
 //
+// Zwei Phasen: Erst entstehen alle neuen SVGs und PNGs in einem Zwischenordner. Nur wenn jedes PNG geschrieben
+// wurde, wird archiviert und eingesetzt. Scheitert ein PNG, bleibt die Ausgabe unverändert.
+//
 // Zielordner: skizzen-ausgabe/ im Repo (nicht versioniert) oder Umgebungsvariable SKIZZEN_AUSGABE.
+// Browser: Edge, sonst Chrome. SKIZZEN_EDGE = Pfad, der zuerst versucht wird; SKIZZEN_BROWSER = nur diese
+// Pfade (durch ; getrennt), ohne Rückfall.
 /* global process, console */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -21,6 +27,7 @@ const BIB = path.join(ROOT, 'docs/skizzen');
 const AUS = path.resolve(process.env.SKIZZEN_AUSGABE || path.join(ROOT, 'skizzen-ausgabe'));
 const ARCHIV = '_Archiv';
 const STAND_DATEI = path.join(AUS, '.stand.json');
+const ZWISCHEN = path.join(AUS, '.in-arbeit');
 const PROTOKOLL = '_Änderungsprotokoll.txt';
 const UEBERSICHT = '00_Übersicht.html';
 const WUENSCHE = 'Änderungswünsche.csv';
@@ -45,11 +52,15 @@ function gitVersion() {
   } catch { return 'ohne Git'; }
 }
 
-function findeEdge() {
-  const kandidaten = [process.env.SKIZZEN_EDGE,
+function findeBrowser() {
+  const nur = (process.env.SKIZZEN_BROWSER || '').split(';').map((p) => p.trim()).filter(Boolean);
+  const kandidaten = nur.length ? nur : [process.env.SKIZZEN_EDGE,
     'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-    'C:/Program Files/Microsoft/Edge/Application/msedge.exe'].filter(Boolean);
-  return kandidaten.find((k) => fs.existsSync(k)) || null;
+    'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+    'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Google/Chrome/Application/chrome.exe')].filter(Boolean);
+  return [...new Set(kandidaten.map((k) => path.resolve(k)))].filter((k) => fs.existsSync(k));
 }
 
 function masse(svg) {
@@ -75,10 +86,35 @@ function stempeln(svg, { stand, version, entwurf }) {
   return { svg: out, W, H: H2 };
 }
 
-function renderePng(edge, svgDatei, pngDatei, W, H) {
-  execFileSync(edge, ['--headless', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=3',
-    `--screenshot=${pngDatei}`, `--window-size=${W},${H}`, pathToFileURL(svgDatei).href], { stdio: 'ignore' });
-  if (!fs.existsSync(pngDatei)) throw new Error('Edge hat kein PNG geschrieben');
+// Ein Versuch mit eigenem Wegwerf-Profil, damit ein offenes Browserfenster des Nutzers nicht stört.
+// Edge schreibt z. B. kein PNG, solange ein Update nur halb installiert ist.
+function versuchePng(browser, svgDatei, pngDatei, W, H) {
+  const profil = fs.mkdtempSync(path.join(os.tmpdir(), 'skizzen-browser-'));
+  try {
+    execFileSync(browser, ['--headless', '--disable-gpu', '--hide-scrollbars', '--no-first-run', `--user-data-dir=${profil}`,
+      '--force-device-scale-factor=3', `--screenshot=${pngDatei}`, `--window-size=${W},${H}`, pathToFileURL(svgDatei).href],
+    { stdio: 'ignore', timeout: 120000 });
+  } catch { /* Fehlercode oder Zeitüberschreitung: zählt nur, ob das PNG da ist */ }
+  try { fs.rmSync(profil, { recursive: true, force: true }); } catch { /* Browser hält das Profil evtl. noch kurz */ }
+  return fs.existsSync(pngDatei);
+}
+
+// Browser der Reihe nach, je zwei Versuche; der zuletzt erfolgreiche kommt beim nächsten PNG zuerst dran
+function renderePng(browser, svgDatei, pngDatei, W, H) {
+  for (const b of [...browser]) {
+    for (let v = 0; v < 2; v++) {
+      if (versuchePng(b, svgDatei, pngDatei, W, H)) {
+        if (b !== browser[0]) {
+          log.hinweise.push(`${path.basename(browser[0])} lieferte kein PNG, ab ${path.basename(pngDatei)} ${path.basename(b)} verwendet.`);
+          browser.splice(browser.indexOf(b), 1);
+          browser.unshift(b);
+        }
+        return;
+      }
+    }
+  }
+  throw new Error(`Kein Browser hat ${path.basename(pngDatei)} geschrieben (versucht: ${browser.map((b) => path.basename(b)).join(', ')}). ` +
+    'Die Ausgabe ist unverändert. Tipp: offene Edge-Fenster schließen oder SKIZZEN_EDGE auf chrome.exe setzen.');
 }
 
 function verschiebe(von, nach) {
@@ -92,13 +128,43 @@ function verschiebe(von, nach) {
 fs.mkdirSync(AUS, { recursive: true });
 const zustand = fs.existsSync(STAND_DATEI) ? leseJson(STAND_DATEI) : { skizzen: {} };
 const version = gitVersion();
-const edge = findeEdge();
+const browser = findeBrowser();
 const log = { kopieren: [], loeschen: [], archiviert: [], hinweise: [] };
-if (!edge) log.hinweise.push('Edge nicht gefunden — keine PNGs erzeugt (Pfad über SKIZZEN_EDGE setzen).');
+if (!browser.length) log.hinweise.push('Weder Edge noch Chrome gefunden — keine PNGs erzeugt (Pfad über SKIZZEN_EDGE setzen).');
 
-const eintraege = [];
+// Phase 1: alles Neue im Zwischenordner erzeugen; die Ausgabe wird dabei nicht angefasst
+fs.rmSync(ZWISCHEN, { recursive: true, force: true });
+const plan = [];
 const gelaufen = new Set();
-for (const s of katalog.skizzen) {
+try {
+  for (const s of katalog.skizzen) plan.push(planeSkizze(s));
+} catch (e) {
+  fs.rmSync(ZWISCHEN, { recursive: true, force: true });
+  throw e;
+}
+
+// Phase 2: alte Stände archivieren bzw. entfernen, neue Dateien einsetzen
+const eintraege = [];
+for (const p of plan) {
+  const { s, alt, ordner, geaendert, hash, stand, ver, svgNeu, pngNeu, svgZiel, pngZiel } = p;
+  if (alt && (geaendert || alt.ordner !== ordner)) {
+    for (const ext of ['svg', 'png']) {
+      const altDatei = path.join(AUS, alt.ordner, `${s.datei}.${ext}`);
+      if (geaendert) {
+        if (verschiebe(altDatei, path.join(AUS, ARCHIV, `${s.datei}_${alt.stand}.${ext}`))) log.archiviert.push(`${ARCHIV}/${s.datei}_${alt.stand}.${ext}`);
+      } else if (fs.existsSync(altDatei)) fs.rmSync(altDatei);
+    }
+    if (alt.ordner !== ordner) log.loeschen.push(`${alt.ordner.split(path.sep).join('/')}/${s.datei}.svg und .png`);
+  }
+  if (svgNeu) { verschiebe(svgNeu, svgZiel); log.kopieren.push(rel(svgZiel)); }
+  if (pngNeu) { verschiebe(pngNeu, pngZiel); log.kopieren.push(rel(pngZiel)); }
+  zustand.skizzen[s.datei] = { hash, stand, version: ver, ordner };
+  eintraege.push({ ...s, stand, version: ver, svg: rel(svgZiel), png: fs.existsSync(pngZiel) ? rel(pngZiel) : null });
+}
+fs.rmSync(ZWISCHEN, { recursive: true, force: true });
+
+// Eine Skizze vorbereiten: Erzeuger laufen lassen, stempeln, SVG und PNG in den Zwischenordner schreiben
+function planeSkizze(s) {
   if (!THEMEN[s.thema]) throw new Error(`${s.datei}: unbekanntes Thema „${s.thema}“`);
   if (!STATUS[s.status]) throw new Error(`${s.datei}: unbekannter Status „${s.status}“`);
   const quellSvg = path.join(BIB, s.thema, `${s.datei}.svg`);
@@ -119,28 +185,23 @@ for (const s of katalog.skizzen) {
   // unveränderter Inhalt, der beim letzten Lauf noch nicht committet war („+“), bekommt jetzt die Commit-Version
   const ver = geaendert || (alt.version.endsWith('+') && !version.endsWith('+')) ? version : alt.version;
 
-  if (alt && (geaendert || alt.ordner !== ordner)) {
-    for (const ext of ['svg', 'png']) {
-      const altDatei = path.join(AUS, alt.ordner, `${s.datei}.${ext}`);
-      if (geaendert) {
-        if (verschiebe(altDatei, path.join(AUS, ARCHIV, `${s.datei}_${alt.stand}.${ext}`))) log.archiviert.push(`${ARCHIV}/${s.datei}_${alt.stand}.${ext}`);
-      } else if (fs.existsSync(altDatei)) fs.rmSync(altDatei);
-    }
-    if (alt.ordner !== ordner) log.loeschen.push(`${alt.ordner.split(path.sep).join('/')}/${s.datei}.svg und .png`);
-  }
-
   const svgZiel = path.join(AUS, ordner, `${s.datei}.svg`);
   const pngZiel = path.join(AUS, ordner, `${s.datei}.png`);
-  fs.mkdirSync(path.dirname(svgZiel), { recursive: true });
   const neuGeschrieben = geaendert || alt.ordner !== ordner || alt.version !== ver || !fs.existsSync(svgZiel);
-  const { svg, W, H } = stempeln(roh, { stand, version: ver, entwurf: s.status === 'entwurf' });
-  if (neuGeschrieben) { fs.writeFileSync(svgZiel, svg); log.kopieren.push(rel(svgZiel)); }
-  if (edge && (neuGeschrieben || !fs.existsSync(pngZiel))) {
-    renderePng(edge, svgZiel, pngZiel, W, H);
-    log.kopieren.push(rel(pngZiel));
+  const pngNoetig = browser.length > 0 && (neuGeschrieben || !fs.existsSync(pngZiel));
+  let svgNeu = null, pngNeu = null;
+  if (neuGeschrieben || pngNoetig) {
+    const { svg, W, H } = stempeln(roh, { stand, version: ver, entwurf: s.status === 'entwurf' });
+    const svgDatei = path.join(ZWISCHEN, ordner, `${s.datei}.svg`);
+    fs.mkdirSync(path.dirname(svgDatei), { recursive: true });
+    fs.writeFileSync(svgDatei, svg);
+    if (neuGeschrieben) svgNeu = svgDatei;
+    if (pngNoetig) {
+      pngNeu = path.join(ZWISCHEN, ordner, `${s.datei}.png`);
+      renderePng(browser, svgDatei, pngNeu, W, H);
+    }
   }
-  zustand.skizzen[s.datei] = { hash, stand, version: ver, ordner };
-  eintraege.push({ ...s, stand, version: ver, svg: rel(svgZiel), png: fs.existsSync(pngZiel) ? rel(pngZiel) : null });
+  return { s, alt, ordner, geaendert, hash, stand, ver, svgNeu, pngNeu, svgZiel, pngZiel };
 }
 
 // Skizzen, die aus dem Katalog verschwunden sind

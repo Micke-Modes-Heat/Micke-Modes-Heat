@@ -42,7 +42,10 @@ Umgebungsvariable `SKIZZEN_AUSGABE`). Was zu kopieren oder auf dem Laufwerk zu l
 `_Änderungsprotokoll.txt`. Der Inhalt von `skizzen-ausgabe/` lässt sich auch komplett kopieren; nur
 `.stand.json` braucht das Laufwerk nicht.
 
-- Jede Skizze erscheint als SVG (für Word) und PNG (dreifache Auflösung, über Edge erzeugt).
+- Jede Skizze erscheint als SVG (für Word) und PNG (dreifache Auflösung, über Edge erzeugt; liefert Edge kein
+  Bild, springt Chrome ein, der Hinweis steht im Protokoll).
+- Erst wenn alle PNGs geschrieben sind, wird archiviert und ersetzt. Bricht der Lauf ab, bleibt die Ausgabe
+  unverändert; dann offene Edge-Fenster schließen oder `SKIZZEN_EDGE` auf `chrome.exe` setzen.
 - Fußzeile mit Stand und Version; „Version abc1234+“ heißt: enthält noch nicht committete Änderungen.
 - Hat sich eine Skizze geändert, wandert der alte Stand nach `_Archiv/`.
 - `Änderungswünsche.csv` wird nur beim ersten Lauf beigelegt und danach nie wieder, damit die Einträge
