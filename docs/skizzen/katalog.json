@@ -1,0 +1,79 @@
+{
+  "hinweis": "Verzeichnis der Skizzenbibliothek. Status: entwurf | abgestimmt | im-tool. quelle = Erzeugerskript unter quellen/ oder null (nur SVG, von Hand pflegen). Danach: npm run skizzen",
+  "ansprechpartner": "",
+  "skizzen": [
+    {
+      "datei": "Prinzip-EMS-Anbindung",
+      "thema": "ga",
+      "titel": "Aufbau und Anbindung des EMS in der Liegenschaft",
+      "kapitel": "6 Gebäudeautomation",
+      "status": "entwurf",
+      "quelle": null,
+      "beschreibung": "GLT mit EMS-Funktion, GA-Netz und EZA-Regler am NAP; wer regelt was. Erzeugerskript nicht mehr vorhanden."
+    },
+    {
+      "datei": "Prinzip-EMS-Programmablauf",
+      "thema": "ga",
+      "titel": "Programmablauf des EMS: Regelzyklus, Fahrplan, Kaskade",
+      "kapitel": "6 Gebäudeautomation",
+      "status": "entwurf",
+      "quelle": null,
+      "beschreibung": "Ablaufplan nach DIN 66001: Regelzyklus 1–10 s, Fahrplan 15 min, Unterprogramm Kaskade. Erzeugerskript nicht mehr vorhanden."
+    },
+    {
+      "datei": "Prinzip-EMS-Beispiel",
+      "thema": "ga",
+      "titel": "EMS und EZA-Regler im Beispiel: Signale und Leistungsbilanz",
+      "kapitel": "6 Gebäudeautomation",
+      "status": "entwurf",
+      "quelle": "quellen/ems-beispiel.cjs",
+      "beschreibung": "Schnittstelle EMS ↔ EZA-Regler an einer Beispiel-Liegenschaft: Modbus-Signalleiter, wer schreibt was, drei Situationen mit Leistungsbilanz."
+    },
+    {
+      "datei": "Prinzip-EZA-Regelkreis",
+      "thema": "strom",
+      "titel": "EZA-Regler: Regelkreis, Zeitkette und Anforderungen",
+      "kapitel": "Entscheidungshilfe EZA-Eigenbau",
+      "status": "entwurf",
+      "quelle": "quellen/eza-eigenbau.cjs",
+      "beschreibung": "Regelstruktur mit Führungsglied, Rampe und PI-Regler, Zeitkette vom Sollwert bis zur Anlage, Q-Sprung und P-Rampe mit Anforderungen nach VDE-AR-N 4110."
+    },
+    {
+      "datei": "Prinzip-EZA-Eigenbau",
+      "thema": "strom",
+      "titel": "Eigener EZA-Regler: was zu bauen und nachzuweisen ist",
+      "kapitel": "Entscheidungshilfe EZA-Eigenbau",
+      "status": "entwurf",
+      "quelle": "quellen/eza-eigenbau.cjs",
+      "beschreibung": "Sechs Arbeitspakete für einen selbst gebauten EZA-Regler und der Nachweisweg über Komponentenzertifikat und Anlagenzertifikat."
+    },
+    {
+      "datei": "Prinzip-EZA-Regelung",
+      "thema": "strom",
+      "titel": "EZA-Regler am Netzanschlusspunkt: Vorgaben, Vorrang, Rückfall",
+      "kapitel": "6 Gebäudeautomation / 3.4.2",
+      "status": "entwurf",
+      "quelle": "quellen/eza-regelung.mjs",
+      "beschreibung": "Sollwertquellen Netzbetreiber, Anschlussgrenzen, Direktvermarkter, EMS mit Vorrangauswahl; P-/Q-Regler, Überwachung, Rückfallverhalten, Signalliste IEC 104."
+    },
+    {
+      "datei": "Prinzip-EMS-Bestandsleittechnik",
+      "thema": "ga",
+      "titel": "EMS und EZA-Regelung über die Bestandsleittechnik?",
+      "kapitel": "Entscheidungshilfe",
+      "status": "entwurf",
+      "quelle": "quellen/ems-bestandsleittechnik.mjs",
+      "beschreibung": "Varianten A getrennt, B alles in der GLT, C Netzleittechnik mit zertifiziertem Reglerbaustein; Dafür/Dagegen und sechs Prüffragen."
+    },
+    {
+      "datei": "Prinzip-Speichereinbindung",
+      "thema": "strom",
+      "titel": "Einbindung des Batteriespeichers: zentral, dezentral, hybrid",
+      "kapitel": "3.4.2",
+      "status": "im-tool",
+      "quelle": null,
+      "toolFigur": "pv-speicher-standort-prinzip",
+      "beschreibung": "Speicher zentral am NAP, dezentral an Stationen oder hybrid. Maßgeblich ist die Tool-Figur; diese Datei ist ein Export."
+    }
+  ]
+}
