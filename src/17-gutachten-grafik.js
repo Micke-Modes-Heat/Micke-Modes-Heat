@@ -1411,12 +1411,12 @@ function ggRenderNetzanschlussText(cfg, T = GG_THEME) {
       + (ggMesskonzeptWerte().ns ? '' : `, ${ggTextFeld(NA_MESSORTE.find(o => o.wert === window.naMessort)?.text, 'Messort')}`)
       + (ggImText('netzanschluss-messkonzept') ? '. Das Übergabe- und Messkonzept zeigt die folgende Abbildung.'
         : `. Das Übergabe- und Messkonzept zeigt die ${GG_VERTIEFUNG_ANLAGE}.`),
-    `Der Netzbetreiber erteilt grundsätzlich keine Auskunft über die physikalisch maximal mögliche Anschlussleistung `
-      + `der Liegenschaft. Eine Bewertung der verfügbaren Netzkapazitäten erfolgt ausschließlich auf Basis eines `
-      + `konkreten Netzanschlussantrags. Hierzu ist das vom Netzbetreiber bereitgestellte Antragsformular zur Anmeldung `
+    `Über die physikalisch maximal mögliche Anschlussleistung der Liegenschaft gibt der Netzbetreiber in der Regel `
+      + `keine Auskunft. Die verfügbaren Netzkapazitäten werden üblicherweise erst anhand eines konkreten `
+      + `Netzanschlussantrags bewertet. Dafür wird das vom Netzbetreiber bereitgestellte Antragsformular zur Anmeldung `
       + `des Netzanschlusses (z.\u00a0B. „Formular E1 – Anmeldung zum Netzanschluss Strom“) mit Angabe der zukünftig `
-      + `benötigten Anschlussleistung einzureichen. Erst im Anschluss prüft der Netzbetreiber die technische `
-      + `Verfügbarkeit, den erforderlichen Netzausbaubedarf sowie die zeitlichen und wirtschaftlichen Rahmenbedingungen.`,
+      + `benötigten Anschlussleistung eingereicht. Danach prüft der Netzbetreiber die technische `
+      + `Verfügbarkeit, einen möglichen Netzausbaubedarf sowie die zeitlichen und wirtschaftlichen Rahmenbedingungen.`,
   ], T);
 }
 
@@ -2315,7 +2315,7 @@ function ggRenderStromdatenText(cfg, T = GG_THEME) {
         : `, da ${ggTextFeld('', 'Begründung, z. B. jüngstes vollständiges Betriebsjahr')}.`)
     : `Für die Bedarfsprognose (Kapitel 5.3) wird das Jahr ${ggTextFeld('', 'Referenzjahr')} als Referenzjahr zugrunde gelegt.`);
 
-  absaetze.push('Damit bildet die Auswertung eine wesentliche Grundlage für die dimensionierungssichere Planung der zukünftigen '
+  absaetze.push('Die Auswertung bildet damit eine wesentliche Grundlage für die weitere Planung der zukünftigen '
     + 'elektrischen Versorgung, insbesondere im Hinblick auf die Integration neuer Verbraucher (z. B. Wärmepumpen, '
     + 'Ladeinfrastruktur oder zusätzliche Gebäude).');
   return ggTextBlatt(absaetze, T);
@@ -5417,7 +5417,7 @@ function ggNetzStrukturAbsaetze() {
       + `und als zwei Strahlen betrieben` + (alleMitTs ? '; die Trennstellen sind in der folgenden Abbildung markiert.'
         : ` (Lage der Trennstelle: ${ggTextFeld('', 'Station bzw. Kabelabschnitt')}).`));
   }
-  s.push(`Insgesamt ${k.stationen === 1 ? 'ist' : 'sind'} ${eine(k.stationen, 'Trafostation', 'Trafostationen')} mit ${eine(k.trafos, 'Transformator', 'Transformatoren', 'einem')} `
+  s.push(`Nach den erfassten Netzdaten ${k.stationen === 1 ? 'ist' : 'sind'} insgesamt ${eine(k.stationen, 'Trafostation', 'Trafostationen')} mit ${eine(k.trafos, 'Transformator', 'Transformatoren', 'einem')} `
     + `und einer installierten Leistung von ${ggNum(k.kva)} kVA vorhanden.`);
   const ohne = r.ohneNap.reduce((n, a) => n + a.folge.length, 0);
   if (ohne && nW) {
@@ -6413,11 +6413,11 @@ function ggNetzStrukturZielAbsaetze() {
   const s = [];
   if (!zeilen.length) {
     s.push('Die Struktur des Mittelspannungsnetzes bleibt gegenüber dem Bestand (Kapitel 5.1.2) unverändert; '
-      + 'im Netzmodell sind keine Neubauten, Ertüchtigungen oder Rückbauten erfasst.');
+      + 'in den Planungsdaten sind keine Neubauten, Ertüchtigungen oder Rückbauten erfasst.');
     return [s.join(' ')];
   }
   s.push(`Gegenüber dem Bestand (Kapitel 5.1.2) ${zeilen.length === 1 ? 'ist eine Maßnahme' : `sind ${ggNum(zeilen.length)} Maßnahmen`} `
-    + `an der Netzstruktur vorgesehen${k.zieljahr ? ` (Zielzustand ${k.zieljahr})` : ''}.`);
+    + `an der Netzstruktur geplant${k.zieljahr ? ` (Zielzustand ${k.zieljahr})` : ''}.`);
   if (zeilen.length <= 8) {
     s.push(zeilen.map(z => `(${z.nr}) ${z.text}${z.wirkung ? ` – ${z.wirkung}` : ''}${z.jahr ? ` (${z.jahr})` : ''}.`).join(' '));
   } else {
@@ -6657,14 +6657,14 @@ function ggRenderErzeugungText(cfg, T = GG_THEME) {
 
   if (!bestand.length) {
     return ggTextBlatt([
-      `In der Liegenschaft ${name} sind derzeit keine Anlagen zur Stromerzeugung und keine Batteriespeicher vorhanden. `
+      `In der Liegenschaft ${name} sind nach den vorliegenden Daten derzeit keine Anlagen zur Stromerzeugung und keine Batteriespeicher vorhanden. `
         + `Der Strombedarf wird vollständig aus dem Netz der allgemeinen Versorgung gedeckt.`,
       `Die Notstromversorgung wird in Kapitel 5.1.4 beschrieben. Möglichkeiten zur Eigenerzeugung und Speicherung `
         + `werden in der Variantenbildung (Kapitel 5.4) betrachtet.`,
     ], T);
   }
 
-  const absaetze = [`In der Liegenschaft ${name} sind derzeit folgende Anlagen zur Stromerzeugung und -speicherung `
+  const absaetze = [`In der Liegenschaft ${name} sind nach den vorliegenden Daten derzeit folgende Anlagen zur Stromerzeugung und -speicherung `
     + `in das Liegenschaftsnetz eingebunden:`];
 
   if (pv.length) {
@@ -6736,7 +6736,7 @@ function ggRenderNotstromText(cfg, T = GG_THEME) {
 
   if (!bestand.length) {
     return ggTextBlatt([
-      `In der Liegenschaft ${name} ist derzeit keine stationäre Netzersatzanlage (NEA) vorhanden. Bei einem Ausfall `
+      `In der Liegenschaft ${name} ist nach den vorliegenden Daten derzeit keine stationäre Netzersatzanlage (NEA) vorhanden. Bei einem Ausfall `
         + `des Netzes der allgemeinen Versorgung steht damit keine Ersatzstromversorgung zur Verfügung.`,
       `Einspeisepunkte für mobile Netzersatzanlagen sind `
         + `${ggTextFeld('', 'Einspeisepunkte, z. B. an der NSHV Gebäude xx, oder „nicht“')} vorhanden. ${usv}`,
@@ -7208,16 +7208,16 @@ function ggRenderBedarfGebaeudeText(cfg, T = GG_THEME) {
 
   absaetze.push(`Ausgangspunkt der Bedarfsprognose ist der ${st && !st.gemessen && basis ? 'synthetisch ermittelte' : 'gemessene'} `
     + `Leistungsbedarf der Liegenschaft. Die Höchstlast im Jahr ${ggTextFeld(st?.dataYear, 'Messjahr')} beträgt `
-    + `${ggBedarfFeld(basis, 'Höchstlast Bestand')} kW (vgl. Kapitel 5.2). Sie enthält den heutigen Gebäudebestand `
-    + `mit allen tatsächlich auftretenden Gleichzeitigkeiten.`);
+    + `${ggBedarfFeld(basis, 'Höchstlast Bestand')} kW (vgl. Kapitel 5.2). Sie bildet den heutigen Gebäudebestand `
+    + `einschließlich der tatsächlich auftretenden Gleichzeitigkeiten ab.`);
 
   if (!zeilen.length) {
     absaetze.push(`Nach ${planung} sind keine Neu- oder Rückbauten mit Einfluss auf den Strombedarf vorgesehen. `
       + `Der Leistungsbedarf der Gebäude entspricht damit dem Bestand von ${ggBedarfFeld(basis, 'Höchstlast Bestand')} kW.`);
   } else {
     absaetze.push(`Darauf aufbauend wird die bauliche Entwicklung bis zum Jahr ${ggTextFeld(zj, 'Zieljahr')} berücksichtigt. `
-      + `Grundlage ist ${planung}. Neubauten erhöhen und Rückbauten verringern den Leistungsbedarf jeweils um die `
-      + `Anschlussleistung der betroffenen Gebäude, bewertet mit einem Gleichzeitigkeitsfaktor von `
+      + `Grundlage ist ${planung}. Vereinfachend erhöhen Neubauten und verringern Rückbauten den Leistungsbedarf jeweils um die `
+      + `Anschlussleistung der betroffenen Gebäude, bewertet mit einem pauschalen Gleichzeitigkeitsfaktor von `
       + `${ggBedarfFeld(st?.gzf, 'Gleichzeitigkeitsfaktor', 2)}.`);
 
     const rueckE = s.eintraege.filter(e => e.m.isAbbruch), neuE = s.eintraege.filter(e => !e.m.isAbbruch);
@@ -7234,7 +7234,7 @@ function ggRenderBedarfGebaeudeText(cfg, T = GG_THEME) {
       : 'Neubauten sind nicht vorgesehen.');
 
     const d = s.endKw - s.startKw;
-    absaetze.push(`Für das Jahr ${ggTextFeld(zj, 'Zieljahr')} ergibt sich ein Leistungsbedarf der Gebäude von `
+    absaetze.push(`Für das Jahr ${ggTextFeld(zj, 'Zieljahr')} ergibt sich rechnerisch ein Leistungsbedarf der Gebäude von rund `
       + `${ggBedarfFeld(s.endKw, 'Gebäudebedarf')} kW. `
       + (Math.abs(d) < 0.5
         ? 'Gegenüber dem Bestand bleibt er damit praktisch unverändert. '
@@ -7281,8 +7281,9 @@ function ggRenderBedarfWaermeText(cfg, T = GG_THEME) {
     absaetze.push(saetze.join(' '));
 
     const d = s.endKw - s.startKw;
-    absaetze.push('Die Wärmeerzeuger gehen ohne Gleichzeitigkeitsfaktor ein, da sie bei Normaußentemperatur gemeinsam mit '
-      + `voller Leistung laufen. Der Leistungsbedarf ${d >= 0 ? 'steigt' : 'sinkt'} dadurch ${ggBedarfDelta(s)}, von `
+    absaetze.push('Die Wärmeerzeuger werden vereinfachend ohne Gleichzeitigkeitsfaktor angesetzt, da sie bei Normaußentemperatur '
+      + 'voraussichtlich gemeinsam mit voller Leistung laufen; der Ansatz liegt damit eher auf der sicheren Seite. '
+      + `Der Leistungsbedarf ${d >= 0 ? 'steigt' : 'sinkt'} dadurch rechnerisch ${ggBedarfDelta(s)}, von `
       + `${ggBedarfFeld(s.startKw, 'Übertrag aus 5.3.1')} kW auf ${ggBedarfFeld(s.endKw, 'Leistung inkl. Wärmekonzept')} kW. `
       + ggBedarfVerweis('waerme', 'Anlagen'));
   }
@@ -7337,7 +7338,7 @@ function ggRenderBedarfLadeText(cfg, T = GG_THEME) {
 
     const d = s.endKw - s.startKw;
     absaetze.push('Ein weiterer Gleichzeitigkeitsfaktor wird auf die Ladeinfrastruktur nicht angesetzt, da die Gleichzeitigkeit '
-      + `der Ladevorgänge bereits im Faktor des Ladeparks enthalten ist. Der Leistungsbedarf ${d >= 0 ? 'steigt' : 'sinkt'} damit `
+      + `der Ladevorgänge bereits im Faktor des Ladeparks enthalten ist. Der Leistungsbedarf ${d >= 0 ? 'steigt' : 'sinkt'} damit rechnerisch `
       + `${ggBedarfDelta(s)}, von ${ggBedarfFeld(s.startKw, 'Übertrag aus 5.3.2')} kW auf `
       + `${ggBedarfFeld(s.endKw, 'Leistung inkl. Ladeinfrastruktur')} kW. Ein gesteuertes Laden kann die gleichzeitig `
       + 'abgerufene Leistung weiter begrenzen; es wird bei der Variantenbildung betrachtet. '
@@ -7617,9 +7618,10 @@ function ggRenderBedarfResultierendText(cfg, T = GG_THEME) {
       + `Die bauliche Entwicklung ist mit dem Gleichzeitigkeitsfaktor von ${ggBedarfFeld(st?.gzf, 'Gleichzeitigkeitsfaktor', 2)} bewertet, `
       + 'die Ladeinfrastruktur mit dem Gleichzeitigkeitsfaktor der Ladeparks; Wärmeerzeuger und sonstige Verbraucher gehen mit '
       + 'voller Leistung ein. '
-      + `Daraus ergibt sich eine resultierende Anschlussleistung von ${ggBedarfFeld(r.endKw, 'Resultierende Anschlussleistung')} kW`
+      + `Daraus ergibt sich rechnerisch eine resultierende Anschlussleistung von rund ${ggBedarfFeld(r.endKw, 'Resultierende Anschlussleistung')} kW`
       + (basis ? ` (${d >= 0 ? '+' : '−'}${ggNum(Math.abs(d) / basis * 100)} % gegenüber dem Bestand)` : '')
-      + '. Die folgende Abbildung zeigt ihre Zusammensetzung'
+      + '. Der Wert beruht auf pauschalen Ansätzen für Anschlussleistungen und Gleichzeitigkeit und ist als Größenordnung '
+      + 'für die Abstimmung mit dem Netzbetreiber zu verstehen. Die folgende Abbildung zeigt ihre Zusammensetzung'
       + (ggFigurSichtbar('bedarf-massnahmen-tabelle') ? ', die anschließende Tabelle die einzelnen Maßnahmen.' : '.'));
   }
 
@@ -7633,18 +7635,18 @@ function ggRenderBedarfResultierendText(cfg, T = GG_THEME) {
   if (ein?.kw > 0) {
     absaetze.push('Geplante Erzeugungsanlagen und Batteriespeicher mindern die resultierende Anschlussleistung nicht, da ihre '
       + 'Leistung zum Zeitpunkt der Höchstlast nicht gesichert zur Verfügung steht (z. B. Photovoltaik in den Abendstunden und '
-      + `im Winter oder bei Ausfall eines BHKW). Ihre zusätzliche Einspeiseleistung beträgt ${ggBedarfFeld(ein.kw, 'Einspeiseleistung')} kW `
-      + '(volle Nennleistung ohne Gleichzeitigkeitsfaktor, da Erzeugungsanlagen wie Photovoltaik zeitgleich einspeisen) und ist '
-      + 'gesondert der Einspeisezusage des Netzbetreibers gegenüberzustellen. '
+      + `im Winter oder bei Ausfall eines BHKW). Ihre zusätzliche Einspeiseleistung liegt bei rund ${ggBedarfFeld(ein.kw, 'Einspeiseleistung')} kW `
+      + '(volle Nennleistung ohne Gleichzeitigkeitsfaktor, da Erzeugungsanlagen wie Photovoltaik zeitgleich einspeisen) und wird '
+      + 'gesondert der Einspeisezusage des Netzbetreibers gegenübergestellt. '
       + (em.quelle === 'pv' ? '' : zusageSatz(ein.kw)));
   }
   if (em.quelle === 'pv') {
-    absaetze.push(`Maßgeblich für die Einspeisezusage ist die weiterverfolgte PV-Auslegung ${ggPvName(em.v)} (Kapitel 5.4.2): `
-      + `Sie speist am Netzanschlusspunkt zeitgleich bis zu ${ggNum(em.kw)} kW in das Netz des Netzbetreibers zurück`
-      + (em.zubauKw > 0 ? ' und geht damit über die im Netzmodell erfassten geplanten Anlagen hinaus' : '')
+    absaetze.push(`Für die Einspeisezusage ist voraussichtlich die vorgeschlagene PV-Auslegung ${ggPvName(em.v)} (Kapitel 5.4.2) maßgeblich: `
+      + `Sie würde am Netzanschlusspunkt rechnerisch zeitgleich bis zu ${ggNum(em.kw)} kW in das Netz des Netzbetreibers zurückspeisen`
+      + (em.zubauKw > 0 ? ' und geht damit über die in der Netzberechnung erfassten geplanten Anlagen hinaus' : '')
       + `. ${zusageSatz(em.kw)}`
-      + (em.kw > (r?.endKw || 0) ? ' Die Einspeisung ist damit am Netzanschlusspunkt die größere Leistung und bestimmt den '
-        + 'Netzanschlussantrag mit.' : ''));
+      + (em.kw > (r?.endKw || 0) ? ' Die Einspeisung wäre damit am Netzanschlusspunkt die größere Leistung und sollte im '
+        + 'Netzanschlussantrag mit betrachtet werden.' : ''));
   }
 
   if (r && cap) {
@@ -7656,12 +7658,12 @@ function ggRenderBedarfResultierendText(cfg, T = GG_THEME) {
           + `(${ggNum(reserve / cap * 100)} %). `
           // Unter 10 % Reserve ist „nicht erforderlich“ zu optimistisch — jede weitere Maßnahme reicht dann für eine Überschreitung
           + (reserve / cap < 0.1
-            ? 'Die Anschlussleistung ist damit weitgehend ausgeschöpft; bei weiteren Maßnahmen ist eine Erhöhung frühzeitig '
-              + 'beim Netzbetreiber zu prüfen.'
-            : 'Eine Erhöhung der Anschlussleistung ist nach heutigem Planungsstand nicht erforderlich.')
-        : `wird sie ${erstes == null ? '' : erstes <= st.dataYear ? 'bereits im Bestand ' : `ab dem Jahr ${erstes} `}überschritten, `
-          + `im Jahr ${zj ?? st.dataYear} um ${ggNum(-reserve)} kW. Eine Erhöhung der Anschlussleistung ist beim Netzbetreiber `
-          + 'zu beantragen; die Varianten dazu werden in Kapitel 5.4.1 betrachtet.'));
+            ? 'Die Anschlussleistung ist damit weitgehend ausgeschöpft; bei weiteren Maßnahmen sollte eine Erhöhung frühzeitig '
+              + 'mit dem Netzbetreiber abgestimmt werden.'
+            : 'Eine Erhöhung der Anschlussleistung ist nach heutigem Planungsstand voraussichtlich nicht erforderlich.')
+        : `wird sie rechnerisch ${erstes == null ? '' : erstes <= st.dataYear ? 'bereits im Bestand ' : `ab dem Jahr ${erstes} `}überschritten, `
+          + `im Jahr ${zj ?? st.dataYear} um rund ${ggNum(-reserve)} kW. Eine Erhöhung der Anschlussleistung wird damit voraussichtlich `
+          + 'erforderlich und sollte beim Netzbetreiber angefragt werden; die Möglichkeiten dazu werden in Kapitel 5.4.1 betrachtet.'));
   } else {
     absaetze.push(`Die vereinbarte Anschlussleistung beträgt ${ggTextFeld('', 'Vereinbarte Anschlussleistung kVA')} kVA; gegenüber `
       + `der resultierenden Anschlussleistung ergibt sich ${ggTextFeld('', 'Reserve bzw. Überschreitung kW')} kW.`);
@@ -7678,8 +7680,8 @@ function ggRenderBedarfResultierendText(cfg, T = GG_THEME) {
         : diff > 0
           ? ` und liegt ${ggNum(diff)} kW unter der statisch ermittelten Anschlussleistung, weil die Lastspitzen der einzelnen `
             + 'Verbraucher nicht zeitgleich auftreten und die Erzeugung zeitgleich gegengerechnet ist.'
-          : ` und liegt ${ggNum(-diff)} kW über der statisch ermittelten Anschlussleistung; die Lastprofile der Maßnahmen sind zu prüfen.`)
-      + ' Maßgeblich für die Dimensionierung bleibt der statisch ermittelte Wert.');
+          : ` und liegt ${ggNum(-diff)} kW über der statisch ermittelten Anschlussleistung; die Lastprofile der Maßnahmen sollten geprüft werden.`)
+      + ' Für die weitere Betrachtung wird der statisch ermittelte Wert verwendet.');
   }
 
   if (!(r && cap && r.endKw > cap)) {
@@ -7865,20 +7867,20 @@ function ggRenderNetzanschlussVarianteText(cfg, T = GG_THEME) {
     // Variante B nur, wenn die Ladeinfrastruktur überhaupt zur Überschreitung beiträgt
     const rv = ggLadeReserve();
     const mitLade = rv && rv.ladeKw > 0.5;
-    absaetze.push(`Die resultierende Anschlussleistung von ${ggNum(r.endKw)} kW übersteigt die vereinbarte Anschlussleistung von `
-      + `${ggNum(cap)} kVA ${wann}um ${ggNum(r.endKw - cap)} kW (vgl. Kapitel 5.3.4). `
+    absaetze.push(`Die resultierende Anschlussleistung von rund ${ggNum(r.endKw)} kW übersteigt rechnerisch die vereinbarte Anschlussleistung von `
+      + `${ggNum(cap)} kVA ${wann}um rund ${ggNum(r.endKw - cap)} kW (vgl. Kapitel 5.3.4). `
       + (mitLade
         ? 'Zur Deckung werden zwei Varianten betrachtet: A) die Erhöhung der Anschlussleistung beim Netzbetreiber '
           + `${nb} und B) die Begrenzung der Ladeleistung durch ein Lademanagement.`
         : `Als Variante wird deshalb die Erhöhung der Anschlussleistung beim Netzbetreiber ${nb} betrachtet.`));
     absaetze.push(`${mitLade ? 'Variante A – Erhöhung der Anschlussleistung: ' : ''}`
-      + `Bei einem Leistungsfaktor von näherungsweise 1 ist eine Anschlussleistung von mindestens `
-      + `${ggNum(Math.ceil(r.endKw))} kVA zu beantragen; unter Berücksichtigung einer Reserve für die weitere Entwicklung der `
-      + `Liegenschaft wird eine Anschlussleistung von ${ggTextFeld('', 'beantragte Anschlussleistung inkl. Reserve kVA')} kVA empfohlen. `
+      + `Bei einem Leistungsfaktor von näherungsweise 1 wäre eine Anschlussleistung von mindestens rund `
+      + `${ggNum(Math.ceil(r.endKw))} kVA erforderlich; unter Berücksichtigung einer Reserve für die weitere Entwicklung der `
+      + `Liegenschaft wird empfohlen, eine Anschlussleistung von ${ggTextFeld('', 'beantragte Anschlussleistung inkl. Reserve kVA')} kVA anzufragen. `
       + (kuenftig
-        ? `Die erhöhte Leistung muss spätestens im Jahr ${erstes} zur Verfügung stehen; bei einer Bearbeitungs- und Umsetzungszeit `
-          + `des Netzbetreibers von ${ggTextFeld('', 'Vorlaufzeit Netzbetreiber, z. B. zwei bis drei Jahre')} ist der Antrag entsprechend frühzeitig zu stellen.`
-        : 'Der Antrag ist umgehend zu stellen.'));
+        ? `Die erhöhte Leistung sollte spätestens im Jahr ${erstes} zur Verfügung stehen; bei einer Bearbeitungs- und Umsetzungszeit `
+          + `des Netzbetreibers von ${ggTextFeld('', 'Vorlaufzeit Netzbetreiber, z. B. zwei bis drei Jahre')} empfiehlt es sich, den Antrag entsprechend frühzeitig zu stellen.`
+        : 'Der Antrag sollte zeitnah gestellt werden.'));
     const ebene = String(window.naSpannungsebene || '').trim();
     absaetze.push(/nieder/i.test(ebene)
       ? 'Die Liegenschaft ist heute in der Niederspannung angeschlossen. Ob die erhöhte Leistung dort noch bereitgestellt werden '
@@ -7893,7 +7895,7 @@ function ggRenderNetzanschlussVarianteText(cfg, T = GG_THEME) {
         + (rv.verfuegbar >= 0
           ? `Innerhalb der vereinbarten Anschlussleistung stehen für das Laden ${ggNum(rv.verfuegbar)} kW zur Verfügung, das sind `
             + `${pct(rv.verfuegbar)} % der Auslegungsleistung. Begrenzt ein dynamisches Lademanagement die gesamte Ladeleistung auf `
-            + 'diesen Wert, ist eine Erhöhung der Anschlussleistung nicht erforderlich.'
+            + 'diesen Wert, wäre eine Erhöhung der Anschlussleistung voraussichtlich nicht erforderlich.'
             + (rv.verfuegbar / rv.ladeKw < 0.5 ? ' Bei dieser deutlichen Begrenzung ist ein uneingeschränkter Ladebetrieb jedoch nicht gewährleistet.' : '')
           : `Bereits ohne Ladeinfrastruktur übersteigt der Leistungsbedarf von ${ggNum(rv.ohneLade)} kW die vereinbarte `
             + 'Anschlussleistung. Ein Lademanagement kann die Erhöhung deshalb nicht vermeiden, verringert aber die zu beantragende '
@@ -7910,8 +7912,8 @@ function ggRenderNetzanschlussVarianteText(cfg, T = GG_THEME) {
     const reserve = cap - r.endKw;
     absaetze.push(`Die resultierende Anschlussleistung von ${ggNum(r.endKw)} kW bleibt innerhalb der vereinbarten Anschlussleistung `
       + `von ${ggNum(cap)} kVA (Reserve ${ggNum(reserve)} kW bzw. ${ggNum(reserve / cap * 100)} %, vgl. Kapitel 5.3.4). Eine Erhöhung `
-      + 'der Anschlussleistung ist als Variante nicht erforderlich.'
-      + (reserve / cap < 0.1 ? ' Wegen der geringen Reserve ist bei weiteren Maßnahmen frühzeitig eine Erhöhung beim Netzbetreiber zu prüfen.' : ''));
+      + 'der Anschlussleistung ist nach heutigem Stand voraussichtlich nicht erforderlich.'
+      + (reserve / cap < 0.1 ? ' Wegen der geringen Reserve sollte bei weiteren Maßnahmen frühzeitig eine Erhöhung mit dem Netzbetreiber abgestimmt werden.' : ''));
   }
 
   const em = ggEinspeisungMassgeblich(r);
@@ -7922,9 +7924,9 @@ function ggRenderNetzanschlussVarianteText(cfg, T = GG_THEME) {
   if (ein) {
     absaetze.push(zusage
       ? (ein > zusage
-        ? `${em.quelle === 'pv' ? `Für die PV-Auslegung ${ggPvName(em.v)}` : 'Für die geplanten Erzeugungsanlagen'} ist zusätzlich `
-          + `die Einspeisezusage von ${ggNum(zusage)} kW auf mindestens ${ggNum(Math.ceil(ein))} kW zu erhöhen; auch dies ist beim `
-          + 'Netzbetreiber zu beantragen.'
+        ? `${em.quelle === 'pv' ? `Für die PV-Auslegung ${ggPvName(em.v)}` : 'Für die geplanten Erzeugungsanlagen'} wäre zusätzlich `
+          + `die Einspeisezusage von ${ggNum(zusage)} kW auf mindestens rund ${ggNum(Math.ceil(ein))} kW zu erhöhen; dies sollte im `
+          + 'selben Zug mit dem Netzbetreiber abgestimmt werden.'
         : `${em.quelle === 'pv' ? `Die Rückspeisung der PV-Auslegung ${ggPvName(em.v)}` : 'Die zusätzliche Einspeiseleistung der geplanten Erzeugungsanlagen'} `
           + `von ${ggNum(ein)} kW liegt innerhalb der Einspeisezusage von ${ggNum(zusage)} kW.`)
       : `${wer} ist die Einspeisezusage von ${ggTextFeld('', 'Einspeisezusage kW')} kW zu prüfen.`);
@@ -8002,7 +8004,7 @@ function ggRenderNetzInternText(cfg, T = GG_THEME) {
   const res = ggEngpassErgebnis();
   if (!res) {
     return ggTextBlatt([
-      'Für das interne Stromnetz liegt kein Netzmodell vor. Die Bewertung der Trafostationen, Niederspannungsverteilungen und '
+      'Für das interne Stromnetz liegt keine Netzberechnung vor. Die Bewertung der Trafostationen, Niederspannungsverteilungen und '
         + `Kabel stützt sich daher auf ${ggTextFeld('', 'Grundlage, z. B. Ergebnis der Begehung und Bestandsunterlagen')}.`,
       `${ggTextFeld('', 'Ergebnis: erforderliche Ertüchtigungen oder ausreichende Reserven im internen Netz')}.`,
     ], T);
@@ -8019,53 +8021,54 @@ function ggRenderNetzInternText(cfg, T = GG_THEME) {
   const absaetze = [];
 
   // „Bestand und Planung“: das Netzmodell enthält alle Trafos des Betrachtungszeitraums — mehr als die Bestandstabelle in 5.1.2
-  absaetze.push(`Zur Bewertung des internen Stromnetzes wurde das Netzmodell der Liegenschaft mit insgesamt `
+  absaetze.push(`Zur Bewertung des internen Stromnetzes wurde ein vereinfachtes Netzmodell der Liegenschaft mit insgesamt `
     + `${anzahl(nT, 'Transformator', 'Transformatoren')} und ${anzahl(nK, 'Kabelabschnitt', 'Kabelabschnitten')} (Bestand und Planung) für jedes Jahr, in `
-    + `dem sich Lasten oder Netz ändern, bis zum Jahr ${res.bis} durchgerechnet. Geplante Verbraucher und Erzeugungsanlagen `
-    + `gehen ab ihrem Baujahr ein. Als Engpass gilt eine Auslastung über ${g.trafoPct} % der Trafonennleistung bzw. über `
-    + `${g.auslastungPct} % der Strombelastbarkeit eines Kabels oder ein kumulierter Spannungsfall über ${ggNum(g.deltaUKumPct)} %.`);
+    + `dem sich Lasten oder Netz ändern, bis zum Jahr ${res.bis} überschlägig durchgerechnet. Geplante Verbraucher und Erzeugungsanlagen `
+    + `gehen ab ihrem Baujahr ein. Als Engpass wird eine Auslastung über ${g.trafoPct} % der Trafonennleistung bzw. über `
+    + `${g.auslastungPct} % der Strombelastbarkeit eines Kabels oder ein kumulierter Spannungsfall über ${ggNum(g.deltaUKumPct)} % gewertet. `
+    + 'Die Berechnung stützt sich auf die erfassten Bestandsdaten und pauschale Lastansätze; sie zeigt, wo sich Engpässe '
+    + 'abzeichnen, ersetzt aber keine Netzberechnung im Rahmen der Fachplanung.');
 
   if (!liste.length) {
-    absaetze.push('Im Betrachtungszeitraum wird keines der Betriebsmittel zum Engpass. Das interne Netz kann die zusätzlichen '
-      + `Lasten ohne Ertüchtigung aufnehmen. ${ggTrafoSummeSatz()}`);
+    absaetze.push('Im Betrachtungszeitraum wird rechnerisch keines der Betriebsmittel zum Engpass. Das interne Netz kann die zusätzlichen '
+      + `Lasten voraussichtlich ohne Ertüchtigung aufnehmen. ${ggTrafoSummeSatz()}`);
     return ggTextBlatt(absaetze, T);
   }
 
   if (entwicklung.length) {
     const t = entwicklung.filter(e => e.item.art === 'trafo').length, k = entwicklung.length - t;
     const teile = [t ? `${t} von ${nT} Transformatoren` : '', k ? `${k} von ${nK} Kabelabschnitten` : ''].filter(Boolean);
-    absaetze.push(`Durch die geplanten Maßnahmen ${entwicklung.length === 1 ? 'wird' : 'werden'} bis zum Jahr ${res.bis} `
-      + `${ggAufzaehlung(teile)} zum Engpass, der erste im Jahr ${entwicklung[0].item.engpassJahr}. Die vorgesehene Ertüchtigung `
-      + `ist jeweils ${ENGPASS_VORLAUF_J} Jahre vor dem Engpassjahr umzusetzen, damit Planung und Beschaffung rechtzeitig `
-      + 'abgeschlossen sind'
+    absaetze.push(`Durch die geplanten Maßnahmen ${entwicklung.length === 1 ? 'wird' : 'werden'} bis zum Jahr ${res.bis} rechnerisch `
+      + `${ggAufzaehlung(teile)} zum Engpass, der erste im Jahr ${entwicklung[0].item.engpassJahr}. Für Planung und Beschaffung `
+      + `sollte ein Vorlauf von etwa ${ENGPASS_VORLAUF_J} Jahren vor dem jeweiligen Engpassjahr eingeplant werden`
       + (entwicklung[0].item.engpassJahr - ENGPASS_VORLAUF_J < new Date().getFullYear()
-        ? '; wo dieser Vorlauf nicht mehr gegeben ist, sind die Maßnahmen umgehend einzuleiten' : '')
-      + '. Ertüchtigt wird auf die höchste Belastung im gesamten Betrachtungszeitraum, damit nicht mehrfach '
+        ? '; wo dieser Vorlauf nicht mehr gegeben ist, empfiehlt es sich, die Maßnahmen zeitnah anzustoßen' : '')
+      + '. Sinnvoll ist eine Auslegung auf die höchste Belastung im gesamten Betrachtungszeitraum, damit nicht mehrfach '
       + 'gebaut werden muss.');
   }
   if (bestand.length) {
     const nDu = bestand.filter(e => e.duVerdacht).length, nHeute = bestand.length - nDu;
-    absaetze.push((nHeute ? `${anzahl(nHeute, 'Betriebsmittel ist', 'Betriebsmittel sind')} bereits im heutigen Zustand überlastet, `
+    absaetze.push((nHeute ? `${anzahl(nHeute, 'Betriebsmittel erscheint', 'Betriebsmittel erscheinen')} rechnerisch bereits im heutigen Zustand überlastet, `
         + 'ohne dass ein Zubau die Ursache ist. ' : '')
       + (nDu ? `${nHeute ? 'Bei weiteren' : 'Bei'} ${anzahl(nDu, 'Kabel ergibt', 'Kabeln ergibt')} sich unter Teillast ein Spannungsfall `
         + `von über ${GG_DU_VERDACHT_PCT} %, der bei realen Leitungen nicht auftritt. ` : '')
       + 'Das deutet in der Regel auf unvollständig oder falsch erfasste Bestandsdaten '
       + '(Kabelquerschnitte, Leitungslängen, Trafoleistungen) hin. Diese Betriebsmittel sind deshalb nicht Teil der Engpassbewertung, '
       + `sondern in der Tabelle „Zu prüfende Bestandsdaten im internen Netz“ ${ggImText('netz-intern-bestandsdaten') ? '' : `der ${GG_VERTIEFUNG_ANLAGE} `}`
-      + 'gesondert aufgeführt; sie sind im Rahmen der Begehung '
-      + 'zu überprüfen, bevor eine Ertüchtigung festgelegt wird.');
+      + 'gesondert aufgeführt; sie sollten im Rahmen der Begehung '
+      + 'überprüft werden, bevor über eine Ertüchtigung entschieden wird.');
   }
   if (ungeloest.length) {
-    absaetze.push(`${anzahl(ungeloest.length, 'Engpass lässt', 'Engpässe lassen')} sich mit Standardertüchtigungen nicht beheben. `
-      + 'Hier ist eine Änderung der Netzstruktur erforderlich, z. B. eine zusätzliche Trafostation oder Unterverteilung näher an '
+    absaetze.push(`${anzahl(ungeloest.length, 'Engpass lässt', 'Engpässe lassen')} sich mit Standardertüchtigungen voraussichtlich nicht beheben. `
+      + 'Hier kommt eine Änderung der Netzstruktur in Betracht, z. B. eine zusätzliche Trafostation oder Unterverteilung näher an '
       + 'der Last, die Aufteilung von Strängen oder die Anbindung an das Mittelspannungsnetz.');
   }
   if (ms.length) {
-    absaetze.push(`${anzahl(ms.length, 'Engpass betrifft', 'Engpässe betreffen')} das Mittelspannungsnetz; diese sind im Rahmen `
-      + 'der Mittelspannungsplanung bzw. mit dem Netzbetreiber gesondert zu betrachten.');
+    absaetze.push(`${anzahl(ms.length, 'Engpass betrifft', 'Engpässe betreffen')} das Mittelspannungsnetz; diese sollten im Rahmen `
+      + 'der Mittelspannungsplanung bzw. mit dem Netzbetreiber gesondert betrachtet werden.');
   }
   absaetze.push(`${ggTrafoSummeSatz()} ${ggImText('anschlussleistung-entwicklung') ? 'Die anschließende' : 'Die folgende'} Tabelle zeigt `
-    + 'die einzelnen Engpässe mit der vorgesehenen Ertüchtigung. Die Kosten der Ertüchtigungen werden in Kapitel 5.5 ausgewiesen.');
+    + 'die einzelnen Engpässe mit einer möglichen Ertüchtigung. Die geschätzten Kosten der Ertüchtigungen werden in Kapitel 5.5 ausgewiesen.');
   return ggTextBlatt(absaetze, T);
 }
 
@@ -8074,8 +8077,8 @@ function ggTrafoSummeSatz() {
   return (ggImText('anschlussleistung-entwicklung') ? 'Die folgende Abbildung zeigt' : `Die ${GG_VERTIEFUNG_ANLAGE} zeigt`)
     + ' die Summe der Höchstlasten aller Transformatoren über den Betrachtungszeitraum. Da die Höchstlasten der einzelnen '
     + 'Stationen nicht gleichzeitig auftreten und das Netzmodell alle bis zum Ende des Betrachtungszeitraums geplanten Verbraucher '
-    + 'enthält, liegt dieser Wert über der resultierenden Anschlussleistung aus Kapitel 5.3.4; er dient der Bewertung der '
-    + 'Transformatoren, maßgeblich für den Netzanschluss bleibt Kapitel 5.3.4.';
+    + 'enthält, liegt dieser Wert über der resultierenden Anschlussleistung aus Kapitel 5.3.4; er dient der Einschätzung der '
+    + 'Transformatoren, für den Netzanschluss gilt weiterhin der Wert aus Kapitel 5.3.4.';
 }
 
 /** Einzelansicht des Textbausteins zum internen Netz: Stand des Netzmodells und Einordnung der Engpässe. */
@@ -8826,7 +8829,7 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
   }[b?.profil?.id];
   absaetze.push((b?.potenzialOverride
       ? `Für die Untersuchung wurde ein PV-Potenzial von insgesamt ${ggPvFeld(b.potenzialKwp, 'Gesamtpotenzial')} kWp vorgegeben.`
-      : `Nach den erfassten Dach- und Freiflächen lassen sich auf der Liegenschaft PV-Anlagen mit insgesamt `
+      : `Nach den erfassten Dach- und Freiflächen ließen sich auf der Liegenschaft rechnerisch PV-Anlagen mit insgesamt rund `
         + `${ggPvFeld(b?.potenzialKwp, 'Gesamtpotenzial')} kWp errichten.`
         + (teile.length > 1 ? ` Davon entfallen ${ggAufzaehlung(teile)}.` : '')
         + (q.stand ? ` Das Dachpotenzial beruht auf einer rechnerischen Belegung der geeigneten Dachflächen`
@@ -8834,7 +8837,7 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
     + ` Bei einem mittleren spezifischen Ertrag von ${ggPvFeld(b?.spezKwhKwp, 'spez. Ertrag')} kWh/kWp·a ergibt das eine `
     + `mögliche Stromerzeugung von rund ${ggPvFeld(b ? b.potenzialKwp * b.spezKwhKwp / 1000 : null, 'Ertrag Max-PV')} MWh/a. `
     + `Die Erzeugung wurde auf Basis ${profil || ggTextFeld('', 'Erzeugungsprofil')} für jeden Zeitschritt des Jahres `
-    + `berechnet und dem Lastgang gegenübergestellt. Die statische Eignung der Dachflächen ist im Zuge der weiteren `
+    + `berechnet und dem Lastgang gegenübergestellt. Die statische Eignung der Dachflächen wurde nicht geprüft; sie ist im Zuge der weiteren `
     + `Planung nachzuweisen.`);
   if (!b || (!b.potenzialOverride && (q.stand || q.gebKwp > 0 || q.assetKwp > 0))) {
     const regeln = ggPvRegelnAbsatz(ggPvRegeln());
@@ -8852,7 +8855,7 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
     // ohne Netzkurve: entweder gibt es kein Netzmodell, oder der Rechenstand stammt von vor dem Ausbaupfad —
     // dann darf der Text nicht behaupten, es fehle ein Netzmodell (5.4.1 rechnet ja damit)
     + (b && !nkb ? (ggPvVariante('bestandsnetz') || (window.stromEdges || []).length
-      ? ' In diesem Rechenstand der PV-Analyse sind die Anschlusskosten pauschal nach der Anlagengröße angesetzt; die Kosten '
+      ? ' In dieser Berechnung sind die Anschlusskosten pauschal nach der Anlagengröße angesetzt; die Kosten '
         + 'einer Ertüchtigung des internen Netzes sind darin nicht enthalten und werden gesondert ausgewiesen.'
       : ' Ein Netzmodell mit Transformatoren lag nicht vor; die Anschlusskosten sind deshalb pauschal nach der Anlagengröße angesetzt.')
       : ` Das Netz${nkb?.jahr ? ` im Zustand des Jahres ${ggTextFeld(nkb.jahr, 'Rechenjahr Netz')}` : ''} nimmt `
@@ -8860,8 +8863,8 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
         + (nkStufen.length ? `; ${GG_ZAHLWORT[nkStufen.length] || nkStufen.length} weitere Ausbaustufe${nkStufen.length > 1 ? 'n' : ''} `
           + `(${gEsc(nkStufen.map(st => st.label).join('; '))}) ${nkStufen.length > 1 ? 'erschließen' : 'erschließt'} das übrige Potenzial.` : '.')
         + ' Die Kosten dieser Stufen gehen in die Wirtschaftlichkeit jeder Auslegung ein.'));
-  absaetze.push(`Auftraggeber, Nutzer und Betreiber verfolgen unterschiedliche Ziele. Deshalb wurden auf diesem Pfad `
-    + `${GG_ZAHLWORT[anzahl] || anzahl} Auslegungen gebildet, von denen jede genau eine Frage beantwortet:`);
+  absaetze.push(`Da Auftraggeber, Nutzer und Betreiber unterschiedliche Ziele verfolgen können, wurden auf diesem Pfad `
+    + `${GG_ZAHLWORT[anzahl] || anzahl} beispielhafte Auslegungen gebildet, die jeweils einen anderen Schwerpunkt setzen:`);
 
   const zeige = id => !b || !!ggPvVariante(id);
   // bis 10/2026 eigene Auslegungen, jetzt Marken auf dem Ausbaupfad — nur noch in älteren Rechenständen
@@ -8876,7 +8879,7 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
       + `nach ${ggTextFeld(pf.norm, 'Rechtsgrundlage PV-Pflicht')}`
       + (n ? ` für ${n === 1 ? 'das Gebäude, das' : `die ${GG_ZAHLWORT[n] || n} Gebäude, die`} die Pflicht `
         + `${n === 1 ? 'auslöst' : 'auslösen'} (Neubau oder grundlegende Dachsanierung)` : '')
-      + `. Sie ist kein Optimum, sondern die Untergrenze: Eine Auslegung darunter ist nicht genehmigungsfähig.`);
+      + `. Sie ist kein Optimum, sondern die Untergrenze: Eine kleinere Auslegung würde die gesetzliche Pflicht nicht erfüllen.`);
   }
 
   if (zeigeAlt('minimal')) {
@@ -8887,8 +8890,8 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
     const bn = ggPvVariante('bestandsnetz');
     const na = bn?.netzaufnahme || H.bestandsnetz || null;
     const mehr = na ? na.mitErtuechtigungKwp - na.ohneErtuechtigungKwp : 0;
-    absaetze.push(`${label('bestandsnetz')}: ${kwp('bestandsnetz', 'kWp Bestandsnetz')} kWp ohne Speicher. So viel nimmt `
-      + `das bestehende Stromnetz der Liegenschaft auf, ohne dass Kabel oder Transformatoren ertüchtigt werden müssen. `
+    absaetze.push(`${label('bestandsnetz')}: ${kwp('bestandsnetz', 'kWp Bestandsnetz')} kWp ohne Speicher. So viel kann `
+      + `das bestehende Stromnetz der Liegenschaft nach der überschlägigen Netzberechnung aufnehmen, ohne dass Kabel oder Transformatoren ertüchtigt werden müssen. `
       + `Grundlage sind die Belastbarkeit der erfassten Kabel und Transformatoren bei voller Einspeisung sowie eine `
       + `zulässige Spannungsanhebung von ${ggPvFeld(na?.eingaben?.duGrenzePct, 'ΔU-Grenze', 1)} %; belegt werden die `
       + `ertragsstärksten Dachflächen zuerst. Vorausgesetzt sind lediglich Regelungstechnik (EZA-Regler) und `
@@ -9022,7 +9025,7 @@ function ggRenderPvEnergiebilanzText(cfg, T = GG_THEME) {
   const saetze = [];
   if (autMax && autMax.wirt.autarkie < 99.5) {
     saetze.push(`Selbst mit großem Speicher ist keine vollständige Eigenversorgung möglich, weil Erzeugung und Verbrauch `
-      + `jahreszeitlich auseinanderfallen. Die technische Obergrenze liegt bei ${ggPvFeld(autMax.wirt.autarkie)} %.`);
+      + `jahreszeitlich auseinanderfallen. Die rechnerische Obergrenze liegt bei rund ${ggPvFeld(autMax.wirt.autarkie)} %.`);
   }
   if (b.napEinspKw > 0) {
     const top = kanon.reduce((a, v) => ((v.sim.curtailMwh || 0) > (a ? a.sim.curtailMwh || 0 : 0) ? v : a), null);
@@ -9035,7 +9038,7 @@ function ggRenderPvEnergiebilanzText(cfg, T = GG_THEME) {
     if (na) {
       saetze.push(na.isZero
         ? `Damit die maximale Ausbauvariante ohne Abregelung betrieben werden könnte, wäre ein Speicher mit rund `
-          + `${ggPvFeld(na.batKwh / 1000, 'MWh Null-Abregelung', 1)} MWh nötig. Das ist wirtschaftlich nicht darstellbar.`
+          + `${ggPvFeld(na.batKwh / 1000, 'MWh Null-Abregelung', 1)} MWh nötig. Das erscheint wirtschaftlich nicht darstellbar.`
         : `Selbst ein Speicher mit ${ggPvFeld(na.batKwh / 1000, 'MWh Speicher')} MWh würde die Abregelung der maximalen `
           + `Ausbauvariante nur auf rund ${ggPvFeld(na.curtailMwh, 'Rest-Abregelung')} MWh/a senken; ein Betrieb ohne `
           + `Abregelung ist damit nicht erreichbar.`);
@@ -9096,8 +9099,8 @@ function ggRenderPvSpeicherText(cfg, T = GG_THEME) {
       + `wurde der Speicher zusätzlich anhand der Börsenstrompreise des Jahres ${ggTextFeld(jahr, 'Jahr Börsenpreise')} `
       + `gesteuert; bei negativen Preisen wird dabei nicht eingespeist.`);
   }
-  absaetze.push(`Als Aufstellort ist ${ggTextFeld('', 'Aufstellort Batteriespeicher')} vorgesehen. Die Brandschutzanforderungen `
-    + `sind in der Planung abzustimmen. Wie gut die Speicher Netzausfälle überbrücken, wird in Kapitel 8.2 bewertet. `
+  absaetze.push(`Als Aufstellort kommt ${ggTextFeld('', 'Aufstellort Batteriespeicher')} in Betracht. Die Brandschutzanforderungen `
+    + `sind in der weiteren Planung abzustimmen. Wie gut die Speicher Netzausfälle überbrücken, wird in Kapitel 8.2 bewertet. `
     + `Die Notstromversorgung beschreibt Kapitel 5.4.3.`);
   if (!b || mit.length) {
     absaetze.push((ggImText('pv-speicher-tabelle') ? 'Die folgende Tabelle zeigt' : `Die ${GG_VERTIEFUNG_ANLAGE} zeigt`)
@@ -9151,7 +9154,7 @@ function ggRenderPvNetzText(cfg, T = GG_THEME) {
   const ergebnis = [];
   if (gruen.length) {
     ergebnis.push(`${einzahl(gruen) ? 'Die Variante' : 'Die Varianten'} ${namen(gruen)} `
-      + `${einzahl(gruen) ? 'lässt' : 'lassen'} sich ohne weitere Maßnahmen am bestehenden Netzanschluss betreiben.`);
+      + `${einzahl(gruen) ? 'lässt' : 'lassen'} sich nach dieser Abschätzung voraussichtlich ohne weitere Maßnahmen am bestehenden Netzanschluss betreiben.`);
   }
   if (gelb.length) {
     const gruende = [
@@ -9159,7 +9162,7 @@ function ggRenderPvNetzText(cfg, T = GG_THEME) {
       gelb.some(v => v.rueck.deltaU != null && v.rueck.deltaU > budget * 2 / 3) && 'mehr als zwei Drittel der zulässigen Spannungsanhebung',
     ].filter(Boolean);
     ergebnis.push(`Bei ${einzahl(gelb) ? 'der Variante' : 'den Varianten'} ${namen(gelb)} erreicht die Rückspeisung `
-      + `${gruende.join(' bzw. ')}. ${einzahl(gelb) ? 'Sie ist' : 'Sie sind'} im Netzanschlussverfahren gesondert zu prüfen.`);
+      + `${gruende.join(' bzw. ')}. ${einzahl(gelb) ? 'Sie sollte' : 'Sie sollten'} im Netzanschlussverfahren gesondert geprüft werden.`);
   }
   if (rot.length) {
     const kap = rot.some(v => v.rueck.capRatio > 1);
@@ -9171,8 +9174,8 @@ function ggRenderPvNetzText(cfg, T = GG_THEME) {
     ].filter(Boolean);
     ergebnis.push(`Bei ${einzahl(rot) ? 'der Variante' : 'den Varianten'} ${namen(rot)} überschreitet die Rückspeisung `
       + `${ggAufzaehlung([kap && 'die Anschlusskapazität', du && 'die zulässige Spannungsanhebung'].filter(Boolean))}. `
-      + `${einzahl(rot) ? 'Für diese Auslegung ist' : 'Für diese Auslegungen ist'} `
-      + `${massnahmen.slice(0, -1).join(', ')} oder ${massnahmen[massnahmen.length - 1]} erforderlich; dies ist mit dem `
+      + `${einzahl(rot) ? 'Für diese Auslegung wäre' : 'Für diese Auslegungen wäre'} voraussichtlich `
+      + `${massnahmen.slice(0, -1).join(', ')} oder ${massnahmen[massnahmen.length - 1]} erforderlich; dies wäre mit dem `
       + `Netzbetreiber abzustimmen (vgl. Kapitel 5.4.1).`);
   }
   ergebnis.push('Diese Abschätzung ersetzt keine Netzverträglichkeitsprüfung durch den Netzbetreiber.');
@@ -9182,7 +9185,7 @@ function ggRenderPvNetzText(cfg, T = GG_THEME) {
     const bn = b ? ggPvVariante('bestandsnetz') : null;
     absaetze.push('Innerhalb der Liegenschaft begrenzen zusätzlich die Kabel und Transformatoren des eigenen Netzes, '
       + 'wie viel PV an welcher Stelle angeschlossen werden kann'
-      + (bn?.pvKwp > 0 ? `; ohne Ertüchtigung nimmt das bestehende Netz ${ggNum(bn.pvKwp)} kWp auf. ` : '. ')
+      + (bn?.pvKwp > 0 ? `; ohne Ertüchtigung kann das bestehende Netz rechnerisch rund ${ggNum(bn.pvKwp)} kWp aufnehmen. ` : '. ')
       + (ggImText('pv-einlinienschema')
         ? 'Das Einlinienschema im Anschluss an die Rückspeise-Abbildung zeigt '
         : `Das Einlinienschema in der ${GG_VERTIEFUNG_ANLAGE} zeigt `)
@@ -9219,17 +9222,17 @@ function ggPvNetzbedarfSatz(v) {
   const nb = ggPvNetzbedarf(v);
   if (!nb) return '';
   const kosten = nb.investEUR
-    ? ` Die Netzaufnahme-Analyse beziffert die Ertüchtigung des internen Netzes mit rund ${ggNum(nb.investEUR / 1000)} T€`
+    ? ` Die Ertüchtigung des internen Netzes wird überschlägig auf rund ${ggEuroText(nb.investEUR)} geschätzt`
       + (nb.mitKwp ? `; damit wären ${ggNum(nb.mitKwp)} kWp anschließbar` : '')
       + (nb.restKwp ? `, ${ggNum(nb.restKwp)} kWp erfordern darüber hinaus ein Erzeugungsnetz bzw. eine Anbindung an das Mittelspannungsnetz` : '')
       + '.'
     : '';
   return `Die Auslegung überschreitet mit ${ggNum(v.pvKwp)} kWp die Aufnahme des bestehenden Netzes von ${ggNum(nb.bnKwp)} kWp `
-    + `(Auslegung ${ggPvName(ggPvVariante('bestandsnetz'))}) um ${ggNum(nb.ueberKwp)} kWp; dafür sind Kabel bzw. Transformatoren `
+    + `(Auslegung ${ggPvName(ggPvVariante('bestandsnetz'))}) um rund ${ggNum(nb.ueberKwp)} kWp; dafür wären voraussichtlich Kabel bzw. Transformatoren `
     + `zu ertüchtigen.${kosten} `
     + (nb.inKosten
       ? 'Die Kosten der nötigen Ausbaustufen sind in der Investition und den Jahreskosten der Auslegung enthalten.'
-      : 'Diese Netzkosten sind in den Jahreskosten der PV-Analyse nicht enthalten und in Kapitel 5.5 gesondert auszuweisen.');
+      : 'Diese Netzkosten sind in den Jahreskosten der PV-Berechnung nicht enthalten und werden in Kapitel 5.5 gesondert genannt.');
 }
 
 /**
@@ -9252,9 +9255,10 @@ function ggRenderPvAbgrenzungText(cfg, T = GG_THEME) {
   const gew = ggPvAuswahl().v;
   const netz = ggPvNetzbedarfSatz(gew);
   return ggTextBlatt([
-    (gew ? `Für die weitere Planung wird die Auslegung ${ggPvName(gew)} zugrunde gelegt (${ggNum(gew.pvKwp)} kWp`
-      + `${gew.batKwh > 0 ? `, Speicher ${ggNum(gew.batKwh)} kWh` : ', ohne Speicher'}); ihre Kosten und die wirtschaftliche `
+    (gew ? `Als Orientierung für die weitere Planung wird die Auslegung ${ggPvName(gew)} vorgeschlagen (rund ${ggNum(gew.pvKwp)} kWp`
+      + `${gew.batKwh > 0 ? `, Speicher rund ${ggNum(gew.batKwh)} kWh` : ', ohne Speicher'}); ihre Kosten und die wirtschaftliche `
       + 'Bewertung folgen in Kapitel 5.5. ' + (netz ? netz + ' ' : '') : 'Die wirtschaftliche Bewertung folgt in Kapitel 5.5. ')
+    + 'Die Anlagengröße ist als Größenordnung zu verstehen; die genaue Dimensionierung erfolgt in der Fachplanung. '
     + `Die Berechnung beruht auf einem einzigen Wetterjahr und `
       + `berücksichtigt keine Alterung von Modulen und Speichern. Die Leistungsbegrenzung der Wechselrichter ist nicht `
       + `abgebildet, die Rückspeiseleistungen sind deshalb eher zu hoch als zu niedrig angesetzt. Alle `
@@ -10362,7 +10366,7 @@ function ggPvFiguren() {
                       + 'Amortisation statisch: Investition ÷ jährlicher Rückfluss (Erlöse − laufende Betriebskosten). '
                       + 'Kapitalwert: Barwert des Jahresüberschusses über ' + ggNum(nutz) + ' Jahre bei '
                       + ggNum((p?.zins || 0.035) * 100, 1) + ' % Zins. Stromgestehungskosten: Jahreskosten ÷ genutzter '
-                      + 'Energie (Eigenverbrauch + Einspeisung). Hervorgehoben: weiterverfolgte Auslegung, deren Kosten in die Kostenübersicht eingehen.';
+                      + 'Energie (Eigenverbrauch + Einspeisung). Hervorgehoben: vorgeschlagene Auslegung, deren Kosten in die Kostenübersicht eingehen.';
         return `✓ ${kanon.length} PV-Varianten aus der PV-Analyse übernommen.`;
       },
     },
@@ -10855,14 +10859,14 @@ const GG_RES_STUFE = { A: 'der Notstromklasse A', AB: 'der Notstromklassen A und
 function ggRenderResWerkzeugText(cfg, T = GG_THEME) {
   void cfg;
   return ggTextBlatt([
-    'Die Resilienz der Liegenschaft wird mit dem Bewertungswerkzeug „Blackout-Modus“ des Planungstools betrachtet. '
+    'Die Resilienz der Liegenschaft wird überschlägig mit einem vereinfachten Bewertungswerkzeug betrachtet. '
       + 'Untersucht wird der Ausfall der äußeren Versorgung – Stromnetz, Gasversorgung und Fernwärme – über eine festgelegte Dauer.',
     'Die Gebäude werden nach ihrer Bedeutung in drei Notstromklassen eingeteilt: Klasse A (kritisch, vollständige Versorgung, '
       + 'bei Bedarf mit eigenem Aggregat), Klasse B (eingeschränkter Betrieb mit reduzierter Last) und Klasse C (keine Versorgung, '
       + 'jedoch ein Einspeisepunkt für ein mobiles Aggregat). Die Last der Gebäude ergibt sich aus den erfassten Verbrauchern und deren Lastgängen.',
     'Für die Gebäude der Klassen A und B wird anhand des Bestandsnetzes ermittelt, ob Netzersatzanlagen wirtschaftlicher an den '
       + 'Gebäuden oder an Kabelverteilern, Niederspannungshauptverteilungen und Transformatorstationen angeordnet werden. Eine Anlage '
-      + 'an einem Netzknoten versorgt alle nachgelagerten Abgänge; Abgänge ohne Versorgungsauftrag sind im Ereignisfall abzuschalten '
+      + 'an einem Netzknoten versorgt alle nachgelagerten Abgänge; Abgänge ohne Versorgungsauftrag wären im Ereignisfall abzuschalten '
       + 'und werden ausgewiesen. Vorhandene Netzersatzanlagen werden angerechnet. Bemessen wird auf die gleichzeitige Spitzenlast '
       + 'zuzüglich 20 % Reserve.',
     'Ergänzend wird die Versorgung eines Anteils der gesamten Liegenschaft über eine zentrale Netzersatzanlage am Netzanschlusspunkt '
@@ -10872,9 +10876,10 @@ function ggRenderResWerkzeugText(cfg, T = GG_THEME) {
     'Für die Wärmeversorgung wird pauschal geprüft, welcher Anteil der Netzlast bei einem Ausfall gedeckt werden kann, wenn die '
       + 'Heizzentrale eine Netzersatzanlage für Pumpen, Brenner und Regelung erhält und Gaskessel als Zweistoffbrenner mit Heizöl '
       + 'aus dem Lager betrieben werden.',
-    'Aus Schutzzielen – was soll wie lange versorgt werden – werden die erforderlichen Maßnahmen und ihre Investitionskosten als '
-      + 'Richtwerte abgeleitet. Die Ergebnisse sind Planungsabschätzungen; Kurzschluss-, Schutz- und Erdungsberechnungen sind in '
-      + 'der weiteren Planung nachzuweisen.',
+    'Aus Schutzzielen – was soll wie lange versorgt werden – werden die voraussichtlich erforderlichen Maßnahmen und ihre '
+      + 'Investitionskosten als Richtwerte abgeleitet. Die Ergebnisse sind Planungsabschätzungen auf Basis der verfügbaren Bestands- '
+      + 'und Lastdaten; sie zeigen Größenordnungen und mögliche Ausbaustufen auf. Leistungen, Standorte und Kosten sowie Kurzschluss-, '
+      + 'Schutz- und Erdungsberechnungen sind in der weiteren Planung zu bestätigen bzw. nachzuweisen.',
   ], T);
 }
 
@@ -10898,11 +10903,11 @@ function ggRenderResZieleText(cfg, T = GG_THEME) {
   for (const b of liste) absaetze.push(`Schutzziel „${gEsc(b.ziel.name)}“: ${ggResZielText(b)}`);
   if (liste.length > 1) {
     const sort = [...liste].sort((a, b) => a.kosten - b.kosten);
-    absaetze.push(`Die Investitionen reichen von ${ggResEur(sort[0].kosten)} („${gEsc(sort[0].ziel.name)}“) bis `
-      + `${ggResEur(sort[sort.length - 1].kosten)} („${gEsc(sort[sort.length - 1].ziel.name)}“). Die Maßnahmen bauen `
+    absaetze.push(`Die Investitionen reichen von ${ggEuroText(sort[0].kosten)} („${gEsc(sort[0].ziel.name)}“) bis `
+      + `${ggEuroText(sort[sort.length - 1].kosten)} („${gEsc(sort[sort.length - 1].ziel.name)}“). Die Maßnahmen bauen `
       + 'aufeinander auf und lassen sich stufenweise umsetzen. '
       + (erg.empfehlung
-        ? `Empfohlen wird das Schutzziel „${gEsc(erg.empfehlung.ziel.name)}“ (vgl. Kapitel 8.2.8).`
+        ? `Vorgeschlagen wird das Schutzziel „${gEsc(erg.empfehlung.ziel.name)}“ (vgl. Kapitel 8.2.8); die Festlegung erfolgt mit dem Nutzer.`
         : `Welches Schutzziel umgesetzt wird, ist mit dem Nutzer festzulegen: ${ggTextFeld('', 'Empfohlenes Schutzziel')}.`));
   }
   return ggTextBlatt(absaetze, T);
@@ -10914,18 +10919,18 @@ function ggResZielText(b) {
   const teile = [];
   if (s?.art === 'gebaeude') {
     teile.push(`Für ${s.gebaeude === 1 ? 'das Gebäude' : `die ${ggNum(s.gebaeude)} Gebäude`} ${GG_RES_STUFE[z.strom]} `
-      + `${s.anzahl === 1 ? 'ist eine Netzersatzanlage' : `sind ${ggNum(s.anzahl)} Netzersatzanlagen`} mit zusammen ${ggNum(s.kw)} kW erforderlich`
+      + `${s.anzahl === 1 ? 'wäre überschlägig eine Netzersatzanlage' : `wären überschlägig ${ggNum(s.anzahl)} Netzersatzanlagen`} mit zusammen rund ${ggNum(s.kw)} kW erforderlich`
       + (s.zusatzKw < s.kw ? `, davon ${ggNum(s.zusatzKw)} kW neu` : '')
-      + (s.abgaenge ? `; im Ereignisfall ${s.abgaenge === 1 ? 'ist ein Abgang' : `sind ${ggNum(s.abgaenge)} Abgänge`} abzuschalten` : '')
+      + (s.abgaenge ? `; im Ereignisfall ${s.abgaenge === 1 ? 'wäre ein Abgang' : `wären ${ggNum(s.abgaenge)} Abgänge`} abzuschalten` : '')
       + `. Der Kraftstoffbedarf über ${ggResDauer(z.dauerH)} liegt bei rund ${ggNum(s.liter)} l.`);
   } else if (s?.art === 'insel') {
-    teile.push(`Die Versorgung von ${ggNum(z.anteilPct)} % der Liegenschaft erfordert ${ggNum(s.anzahl)} × ${ggNum(s.kvaJe)} kVA `
+    teile.push(`Die Versorgung von ${ggNum(z.anteilPct)} % der Liegenschaft erfordert überschlägig ${ggNum(s.anzahl)} × ${ggNum(s.kvaJe)} kVA `
       + `am Netzanschlusspunkt mit einem Maschinentransformator von ${ggNum(s.mtKva)} kVA`
       + (s.stationenAus ? `; ${ggNum(s.stationenAus)} Transformatorstation${s.stationenAus === 1 ? ' wird' : 'en werden'} im Inselbetrieb abgeschaltet` : '')
       + (s.nsAbwurf ? `${s.stationenAus ? ', in den versorgten Stationen' : '; in den versorgten Stationen'} `
         + `${s.nsAbwurf === 1 ? 'wird ein Niederspannungsabgang' : `werden ${ggNum(s.nsAbwurf)} Niederspannungsabgänge`} abgeworfen` : '')
-      + `. Das Kraftstofflager ist mit rund ${ggNum(s.liter)} l zu bemessen`
-      + (s.pruefen ? `; ${ggNum(s.pruefen)} Punkte der Infrastruktur sind zu prüfen oder zu erneuern.` : '.'));
+      + `. Das Kraftstofflager wäre mit rund ${ggNum(s.liter)} l zu bemessen`
+      + (s.pruefen ? `; ${ggNum(s.pruefen)} Punkte der Infrastruktur wären zu prüfen oder zu erneuern.` : '.'));
   }
   if (w) {
     const massnahmen = [
@@ -10933,14 +10938,14 @@ function ggResZielText(b) {
       w.zweistoffKw && `Zweistoffbrenner mit ${ggNum(w.zweistoffKw)} kW`,
       w.tankL && `ein Heizöllager von ${ggNum(w.tankL)} l`,
     ].filter(Boolean);
-    teile.push(`Die Wärmeversorgung ist mit Notstrom für die Heizzentrale zu ${ggNum(w.deckungPct)} % gedeckt`
+    teile.push(`Die Wärmeversorgung wäre mit Notstrom für die Heizzentrale rechnerisch zu rund ${ggNum(w.deckungPct)} % gedeckt`
       + (massnahmen.length
-        ? `; dafür ${massnahmen.length === 1 && !w.zweistoffKw ? 'ist' : 'sind'} ${ggAufzaehlung(massnahmen)} vorzusehen.`
+        ? `; dafür ${massnahmen.length === 1 && !w.zweistoffKw ? 'wäre' : 'wären'} ${ggAufzaehlung(massnahmen)} vorzusehen.`
         : '.'));
   }
-  const bewertung = { erfuellt: 'Das Ziel ist mit diesen Maßnahmen erfüllbar.',
-    teilweise: 'Das Ziel ist nur teilweise erfüllbar', offen: 'Für eine Bewertung fehlen Angaben' }[b.status];
-  return `${teile.join(' ')} Die Investition beträgt überschlägig ${ggResEur(b.kosten)}. `
+  const bewertung = { erfuellt: 'Das Ziel ist mit diesen Maßnahmen voraussichtlich erfüllbar.',
+    teilweise: 'Das Ziel ist voraussichtlich nur teilweise erfüllbar', offen: 'Für eine Bewertung fehlen Angaben' }[b.status];
+  return `${teile.join(' ')} Die Investition beträgt überschlägig ${ggEuroText(b.kosten)}. `
     + bewertung + (b.status !== 'erfuellt' && b.gruende.length ? ` (${gEsc(b.gruende.join('; '))}).` : b.status !== 'erfuellt' ? '.' : '');
 }
 
@@ -10963,8 +10968,8 @@ function ggRenderResIstText(cfg, T = GG_THEME) {
   absaetze.push(bestand.anzahl
     ? `In der Liegenschaft ${bestand.anzahl === 1 ? `ist eine Netzersatzanlage mit ${ggNum(bestand.kw)} kW`
       : `sind ${ggNum(bestand.anzahl)} Netzersatzanlagen mit zusammen ${ggNum(bestand.kw)} kW`} vorhanden (vgl. Kapitel 5.1.4).`
-    : 'In der Liegenschaft ist derzeit keine Netzersatzanlage vorhanden (vgl. Kapitel 5.1.4). Bei einem Ausfall des öffentlichen '
-      + 'Stromnetzes ist die Liegenschaft damit ohne elektrische Versorgung.');
+    : 'In der Liegenschaft ist nach den vorliegenden Daten derzeit keine Netzersatzanlage vorhanden (vgl. Kapitel 5.1.4). Bei einem '
+      + 'Ausfall des öffentlichen Stromnetzes wäre die Liegenschaft damit ohne elektrische Versorgung.');
   if (bi.summe.anzahl) {
     const kl = [
       bi.klassen.A.anzahl && `${ggNum(bi.klassen.A.anzahl)} der Klasse A (kritisch: ${ggResNamen(st.namen.A)})`,
@@ -10972,7 +10977,7 @@ function ggRenderResIstText(cfg, T = GG_THEME) {
       bi.klassen.C.anzahl && `${ggNum(bi.klassen.C.anzahl)} der Klasse C (Einspeisepunkt: ${ggResNamen(st.namen.C)})`,
     ].filter(Boolean);
     absaetze.push(`Nach ihrer Bedeutung für den Betrieb wurden die Gebäude den Notstromklassen zugeordnet: ${ggAufzaehlung(kl)}. `
-      + `Die im Ereignisfall zu versorgende Last beträgt ${ggNum(bi.summe.notstromKw)} kW (Summe der Anschlussleistungen).`
+      + `Die im Ereignisfall zu versorgende Last liegt bei rund ${ggNum(bi.summe.notstromKw)} kW (Summe der Anschlussleistungen).`
       + (bi.summe.ohneLast ? ` Für ${ggNum(bi.summe.ohneLast)} eingestufte Gebäude liegen noch keine Verbrauchsdaten vor.` : ''));
     if (bd && bd.gesamt) {
       absaetze.push(bd.gebaeude >= bd.gesamt
@@ -10991,8 +10996,8 @@ function ggRenderResIstText(cfg, T = GG_THEME) {
     absaetze.push(`Die Wärmeversorgung erfolgt über die Heizzentrale im Gebäude „${gEsc(hz.name)}“. `
       + (hz.nea
         ? `Die Heizzentrale verfügt über eine eigene Netzersatzanlage mit ${ggNum(hz.neaKw)} kW.`
-        : 'Eine Netzersatzanlage für die Heizzentrale ist nicht vorhanden: Bei einem Stromausfall fallen Umwälzpumpen, Brenner '
-          + 'und Regelung aus, die Wärmeversorgung der angeschlossenen Gebäude ist unterbrochen'
+        : 'Eine Netzersatzanlage für die Heizzentrale ist nicht vorhanden: Bei einem Stromausfall würden Umwälzpumpen, Brenner '
+          + 'und Regelung ausfallen, die Wärmeversorgung der angeschlossenen Gebäude wäre unterbrochen'
           + (w?.puffer ? ', auch der Pufferspeicher lässt sich ohne Pumpen nicht nutzen.' : '.'))
       + (w?.tankL ? ` Es ist ein Heizöllager von ${ggNum(w.tankL)} l vorhanden.` : ''));
   } else {
@@ -11041,7 +11046,7 @@ function ggRenderResKurzText(cfg, T = GG_THEME) {
   }
   punkte.push('Notfallplan mit Zuständigkeiten, Schaltreihenfolge und Kommunikationswegen für einen länger andauernden Ausfall');
   return ggTextBlatt([
-    'Kurzfristig lassen sich folgende Maßnahmen mit geringem Aufwand umsetzen:',
+    'Kurzfristig kommen folgende Maßnahmen mit vergleichsweise geringem Aufwand in Betracht:',
     ...punkte.map(t => `– ${t}.`),
   ], T);
 }
@@ -11065,7 +11070,7 @@ function ggRenderResLangText(cfg, T = GG_THEME) {
     const orte = v.aggregate.filter(a => a.zusatzKw > 0)
       .map(a => `${ggResOrt(a)} (${a.bestandKw > 0 ? `+${ggNum(a.zusatzKw)} kW zum Bestand` : `${ggNum(a.zusatzKw)} kW`})`);
     if (orte.length) {
-      absaetze.push(`Die Netzersatzanlagen werden an folgenden Standorten neu errichtet oder erweitert: ${ggAufzaehlung(orte)}. `
+      absaetze.push(`Dafür wären Netzersatzanlagen an folgenden Standorten neu zu errichten oder zu erweitern: ${ggAufzaehlung(orte)}. `
         + 'Anlaufströme großer Verbraucher und die Abschaltbedingungen bei dem geringeren Kurzschlussstrom der Aggregate '
         + 'sind in der Ausführungsplanung nachzuweisen.');
     }
@@ -11074,13 +11079,13 @@ function ggRenderResLangText(cfg, T = GG_THEME) {
   if (ins) {
     const titel = st => ins.checkliste.filter(c => c.status === st).map(c => c.titel);
     const neu = titel('neu'), ern = titel('erneuern'), pr = titel('pruefen');
-    if (neu.length) absaetze.push(`Neu zu errichten sind: ${ggAufzaehlung(neu.map(gEsc))}.`);
-    if (ern.length) absaetze.push(`Zu erneuern sind: ${ggAufzaehlung(ern.map(gEsc))}.`);
+    if (neu.length) absaetze.push(`Voraussichtlich neu zu errichten wären: ${ggAufzaehlung(neu.map(gEsc))}.`);
+    if (ern.length) absaetze.push(`Voraussichtlich zu erneuern wären: ${ggAufzaehlung(ern.map(gEsc))}.`);
     if (pr.length) absaetze.push(`In der weiteren Planung zu prüfen sind: ${ggAufzaehlung(pr.map(gEsc))}.`);
   }
-  absaetze.push('Die Umsetzung kann stufenweise erfolgen: Zuerst werden die kurzfristigen Maßnahmen (Kapitel 8.2.7) umgesetzt, '
-    + 'anschließend die Netzersatzanlagen der kritischen Gebäude und die Notstromversorgung der Heizzentrale, zuletzt '
-    + 'die weiteren Ausbaustufen.');
+  absaetze.push('Die Umsetzung kann stufenweise erfolgen. Sinnvoll erscheint, zuerst die kurzfristigen Maßnahmen (Kapitel 8.2.7) '
+    + 'umzusetzen, anschließend die Netzersatzanlagen der kritischen Gebäude und die Notstromversorgung der Heizzentrale und '
+    + 'zuletzt die weiteren Ausbaustufen. Umfang und Reihenfolge sind in der weiteren Planung mit dem Nutzer abzustimmen.');
   return ggTextBlatt(absaetze, T);
 }
 
@@ -11119,12 +11124,12 @@ function ggResSzWaermeSatz(sz, b, wofuer) {
     return `${wofuer} benötigt die Heizzentrale${sz.heizzentrale ? ` im Gebäude „${gEsc(sz.heizzentrale)}“` : ''} eine Notstromversorgung `
       + `für Pumpen, Brenner und Regelung von rund ${ggNum(b.waerme.neaKw)} kW`
       + (b.waerme.zweistoffKw ? ` sowie Zweistoffbrenner mit zusammen ${ggNum(b.waerme.zweistoffKw)} kW` : '')
-      + `. Damit ist der Wärmebedarf im Ausfallzeitraum zu ${ggNum(b.waerme.deckungPct)} % gedeckt`
+      + `. Damit wäre der Wärmebedarf im Ausfallzeitraum rechnerisch zu rund ${ggNum(b.waerme.deckungPct)} % gedeckt`
       + ` (Szenario der Wärmeversorgung: ${gEsc(sz.waerme?.szenario || '')}).`;
   }
   if (sz.waerme?.ohneNea) {
-    return 'Ohne Notstromversorgung der Heizzentrale fallen Umwälzpumpen, Brenner und Regelung aus; die Wärmeversorgung '
-      + `ist dann unterbrochen. ${ggTextFeld('', 'Notstrom der Heizzentrale im Blackout-Modus › Wärme einschalten')}.`;
+    return 'Ohne Notstromversorgung der Heizzentrale würden Umwälzpumpen, Brenner und Regelung ausfallen; die Wärmeversorgung '
+      + `wäre dann unterbrochen. ${ggTextFeld('', 'Notstrom der Heizzentrale im Blackout-Modus › Wärme einschalten')}.`;
   }
   return `Wärmeversorgung im Ereignisfall: ${ggTextFeld('', 'Wärme-Lastgang fehlt')}.`;
 }
@@ -11152,29 +11157,29 @@ function ggRenderResSz1Text(cfg, T = GG_THEME) {
   if (agg.length) {
     const orte = agg.map(a => `${ggResOrt(a)} (${ggNum(a.empfKw)} kW`
       + (a.bestandKw > 0 ? (a.zusatzKw > 0 ? `, davon ${ggNum(a.bestandKw)} kW vorhanden` : ', vorhanden') : '') + ')');
-    absaetze.push('Die Netzersatzanlagen werden am Bestandsnetz so angeordnet, dass die Investition am geringsten ist '
-      + `(Aufstellungsvariante „${gEsc(sz.s1.strategie)}“). Erforderlich ${agg.length === 1 ? 'ist eine Anlage' : `sind ${ggNum(agg.length)} Anlagen`} `
-      + `mit zusammen ${ggNum(v.summe.kw)} kW, bemessen auf die gleichzeitige Spitzenlast von ${ggNum(sz.s1.aKw)} kW zuzüglich 20 % Reserve. `
+    absaetze.push('Die Netzersatzanlagen sind rechnerisch so am Bestandsnetz angeordnet, dass die Investition möglichst gering ist '
+      + `(Aufstellungsvariante „${gEsc(sz.s1.strategie)}“). Erforderlich ${agg.length === 1 ? 'wäre überschlägig eine Anlage' : `wären überschlägig ${ggNum(agg.length)} Anlagen`} `
+      + `mit zusammen rund ${ggNum(v.summe.kw)} kW, bemessen auf die gleichzeitige Spitzenlast von ${ggNum(sz.s1.aKw)} kW zuzüglich 20 % Reserve. `
       + `Standorte: ${ggAufzaehlung(orte)}.`
       + (v.summe.abgaenge ? ` Da eine Anlage an einem Netzknoten alle nachgelagerten Abgänge speist, ${v.summe.abgaenge === 1
-        ? 'ist ein Abgang' : `sind ${ggNum(v.summe.abgaenge)} Abgänge`} ohne kritische Gebäude im Ereignisfall abzuschalten und zu kennzeichnen.` : '')
+        ? 'wäre ein Abgang' : `wären ${ggNum(v.summe.abgaenge)} Abgänge`} ohne kritische Gebäude im Ereignisfall abzuschalten und zu kennzeichnen.` : '')
       + (v.nichtAmNetz?.length ? (v.nichtAmNetz.length === 1
-        ? ' Ein Gebäude ist im Netzmodell keiner Station zugeordnet und wird mit einem eigenen Aggregat gerechnet.'
-        : ` ${ggNum(v.nichtAmNetz.length)} Gebäude sind im Netzmodell keiner Station zugeordnet und werden mit einem eigenen Aggregat gerechnet.`) : '')
+        ? ' Ein Gebäude ist in den Netzdaten keiner Station zugeordnet und wird mit einem eigenen Aggregat gerechnet.'
+        : ` ${ggNum(v.nichtAmNetz.length)} Gebäude sind in den Netzdaten keiner Station zugeordnet und werden mit einem eigenen Aggregat gerechnet.`) : '')
       + ' Die folgende Abbildung zeigt die Versorgung je Transformatorstation, die Tabelle die Anlagen im Einzelnen.');
   }
   if (b.strom?.liter) {
-    absaetze.push(`Für ${dauer} sind bei mittlerer Auslastung der Aggregate rund ${ggNum(b.strom.liter)} l Dieselkraftstoff `
+    absaetze.push(`Für ${dauer} wären bei mittlerer Auslastung der Aggregate rund ${ggNum(b.strom.liter)} l Dieselkraftstoff `
       + 'vorzuhalten – in den Tanks der Aggregate oder über eine vertraglich gesicherte Nachbelieferung.');
   }
   absaetze.push(ggResSzWaermeSatz(sz, b, 'Damit die kritischen Gebäude auch beheizt bleiben,'));
   if (sz.s1.mitB) {
     absaetze.push(`Die ${kl.B.anzahl === 1 ? 'Gebäude' : `${ggNum(kl.B.anzahl)} Gebäude`} der Klasse B (eingeschränkter Betrieb: `
       + `${ggResNamen(sz.namen.B)}) ${kl.B.anzahl === 1 ? 'ist' : 'sind'} in diesem Szenario nicht versorgt. Ihre Einbindung mit reduzierter Last `
-      + `erhöht die erforderliche Notstromleistung von ${ggNum(v.summe.kw)} kW auf ${ggNum(sz.s1.mitB.kw)} kW.`);
+      + `würde die erforderliche Notstromleistung von rund ${ggNum(v.summe.kw)} kW auf rund ${ggNum(sz.s1.mitB.kw)} kW erhöhen.`);
   }
-  absaetze.push(`Die Investition für dieses Szenario beträgt überschlägig ${ggResEur(b.kosten)} (Aggregate, Einspeisungen, `
-    + `Kraftstofflager${b.waerme ? ' und Notstrom der Heizzentrale' : ''}). Das Szenario ist mit vergleichsweise geringem Aufwand, `
+  absaetze.push(`Die Investition für dieses Szenario beträgt überschlägig ${ggEuroText(b.kosten)} (Aggregate, Einspeisungen, `
+    + `Kraftstofflager${b.waerme ? ' und Notstrom der Heizzentrale' : ''}). Das Szenario wäre mit vergleichsweise geringem Aufwand, `
     + 'ohne Eingriffe in das Mittelspannungsnetz und schrittweise je Standort umsetzbar. Dem steht gegenüber, dass sich der Betrieb '
     + 'auf die kritischen Funktionen beschränkt und mehrere dezentrale Aggregate Wartung, Probeläufe und Kraftstofflogistik an '
     + 'jedem Standort erfordern.'
@@ -11206,13 +11211,13 @@ function ggRenderResStationText(cfg, T = GG_THEME) {
   const absaetze = [einleitung];
   if (agg.length) {
     absaetze.push(`Versorgt werden ${ggNum(b.strom?.gebaeude || 0)} Gebäude der Klassen A und B. Erforderlich `
-      + `${agg.length === 1 ? 'ist eine Anlage' : `sind ${ggNum(agg.length)} Anlagen`} mit zusammen ${ggNum(v.summe.kw)} kW, bemessen je `
+      + `${agg.length === 1 ? 'wäre überschlägig eine Anlage' : `wären überschlägig ${ggNum(agg.length)} Anlagen`} mit zusammen rund ${ggNum(v.summe.kw)} kW, bemessen je `
       + `Station auf die gleichzeitige Spitzenlast ihrer Gebäude A und B (zusammen ${ggNum(sz.s2.kw)} kW) zuzüglich 20 % Reserve`
       + (orte.length ? `: ${ggAufzaehlung(orte)}` : '') + '.'
       + (extra.length ? ` ${extra.length === 1 ? 'Ein Gebäude ist' : `${ggNum(extra.length)} Gebäude sind`} keiner Station zugeordnet `
         + `oder ${extra.length === 1 ? 'hat' : 'haben'} eine eigene Anlage und ${extra.length === 1 ? 'wird' : 'werden'} am Gebäude versorgt `
         + `(${ggResNamen(extra.map(a => a.name), 4)}).` : '')
-      + (v.summe.abgaenge ? ` In den versorgten Stationen ${v.summe.abgaenge === 1 ? 'ist ein Abgang' : `sind ${ggNum(v.summe.abgaenge)} Abgänge`} `
+      + (v.summe.abgaenge ? ` In den versorgten Stationen ${v.summe.abgaenge === 1 ? 'wäre ein Abgang' : `wären ${ggNum(v.summe.abgaenge)} Abgänge`} `
         + 'ohne Gebäude der Klassen A und B im Ereignisfall abzuschalten und zu kennzeichnen.' : '')
       + (ohneNea > 0 ? ` ${ohneNea === 1 ? 'Eine Station ohne Gebäude der Klassen A und B bleibt' : `${ggNum(ohneNea)} Stationen ohne Gebäude der Klassen A und B bleiben`} `
         + 'ohne Versorgung; über ihre Einspeisepunkte (Kapitel 8.2.6) lassen sie sich bei Bedarf mit mobilen Aggregaten übernehmen.' : ''));
@@ -11224,20 +11229,20 @@ function ggRenderResStationText(cfg, T = GG_THEME) {
     + 'geringeren Kurzschlussstrom liefert als der Transformator, sind die Abschaltbedingungen in den versorgten Abgängen für '
     + 'diesen Betrieb nachzuweisen. Das Prinzip zeigt die folgende Abbildung, die Versorgung je Station das anschließende Schema.');
   if (b.strom?.liter) {
-    absaetze.push(`Für ${dauer} sind bei mittlerer Auslastung der Aggregate rund ${ggNum(b.strom.liter)} l Dieselkraftstoff `
+    absaetze.push(`Für ${dauer} wären bei mittlerer Auslastung der Aggregate rund ${ggNum(b.strom.liter)} l Dieselkraftstoff `
       + 'vorzuhalten bzw. nachzuliefern.');
   }
   absaetze.push(ggResSzWaermeSatz(sz, b, 'Damit die versorgten Gebäude auch beheizt bleiben,'));
   if (agg.length) {
     absaetze.push('Die Netzersatzanlagen können fest installiert oder im Ereignisfall als mobile Aggregate über die Einspeisepunkte '
-      + `angeschlossen werden. Fest installiert beträgt die Investition überschlägig ${ggResEur(b.kosten)} (Aggregate, Einspeisungen, `
+      + `angeschlossen werden. Fest installiert beträgt die Investition überschlägig ${ggEuroText(b.kosten)} (Aggregate, Einspeisungen, `
       + `Kraftstofflager und Kennzeichnung der Abgänge${b.waerme ? ' sowie Notstrom der Heizzentrale' : ''}). Mit mobilen Aggregaten `
       + `beschränkt sie sich auf ${m.anzahl === 1 ? 'einen Einspeisepunkt' : `${ggNum(m.anzahl)} Einspeisepunkte`} und die Kennzeichnung `
-      + `der Abgänge${b.waerme ? ' sowie den Notstrom der Heizzentrale' : ''}, zusammen rund ${ggResEur(m.gesamt)}; hinzu kommen die `
+      + `der Abgänge${b.waerme ? ' sowie den Notstrom der Heizzentrale' : ''}, zusammen rund ${ggEuroText(m.gesamt)}; hinzu kommen die `
       + 'laufenden Kosten eines Rahmenvertrags für die Bereitstellung der Aggregate und die Nachlieferung des Kraftstoffs. '
       + 'Bei einem großflächigen, länger andauernden Ausfall ist die Verfügbarkeit angemieteter Aggregate jedoch nicht gesichert, '
-      + 'und bis zur Versorgung vergehen je nach Anfahrt mehrere Stunden. Für Stationen mit Gebäuden der Klasse A ist deshalb '
-      + 'eine fest installierte Anlage vorzuziehen; Stationen, die nur Gebäude der Klasse B versorgen, können mobil übernommen '
+      + 'und bis zur Versorgung vergehen je nach Anfahrt mehrere Stunden. Für Stationen mit Gebäuden der Klasse A erscheint deshalb '
+      + 'eine fest installierte Anlage vorteilhaft; Stationen, die nur Gebäude der Klasse B versorgen, können mobil übernommen '
       + 'werden. Die Tabelle „Netzersatzanlagen Szenario 2“ stellt beide Ausführungen je Station gegenüber.');
   }
   absaetze.push('Vorteil dieses Szenarios ist, dass es ohne Eingriffe in Mittelspannungsnetz und Schutztechnik sowie ohne '
@@ -11268,14 +11273,14 @@ function ggResInselEeSatz() {
     + 'Frequenz vor und ist für die volle Last der Insel bemessen, sodass der Inselbetrieb auch ohne Erzeuger und Speicher '
     + `möglich ist. ${battKwh > 0 ? 'Der Batteriespeicher und ' : ''}${ggAufzaehlung(folgend)} werden erst zugeschaltet, wenn die `
     + 'Insel stabil läuft, und folgen der Netzersatzanlage netzfolgend. '
-    + (erfasst.length ? `Im Netzmodell ${erfasst.length === 1 && battKwh > 0 ? 'ist' : 'sind'} ${ggAufzaehlung(erfasst)} erfasst. `
-      : 'Im Netzmodell sind bislang keine Erzeugungsanlagen oder Speicher erfasst. ')
+    + (erfasst.length ? `In den Netzdaten ${erfasst.length === 1 && battKwh > 0 ? 'ist' : 'sind'} ${ggAufzaehlung(erfasst)} erfasst. `
+      : 'In den Netzdaten sind bislang keine Erzeugungsanlagen oder Speicher erfasst. ')
     + 'Bei Überschuss wird die Photovoltaik über die Frequenz abgeregelt (P(f)-Kennlinie), bei Mangel werden zuerst flexible '
     + 'Lasten wie Heizstäbe, Wärmepumpen und Ladepunkte und danach Abgänge abgeworfen. ';
   t += battKwh > 0
     ? 'Der Batteriespeicher nimmt Überschüsse auf und fängt Lastsprünge ab. '
     : 'Ein Batteriespeicher würde zusätzlich Überschüsse aufnehmen und Lastsprünge abfangen. ';
-  t += 'Die Einspeisung ist so zu begrenzen, dass die Aggregate ihre Mindestlast (ca. 30–40 %) halten und keine Rückleistung '
+  t += 'Die Einspeisung wäre so zu begrenzen, dass die Aggregate ihre Mindestlast (ca. 30–40 %) halten und keine Rückleistung '
     + 'aufnehmen. ';
   if (kwkKw > 0) {
     t += 'Das BHKW ist nur mit Synchrongenerator und inselfähiger Regelung einsetzbar; es wird auf die Netzersatzanlage '
@@ -11284,9 +11289,9 @@ function ggResInselEeSatz() {
   }
   t += 'Die Einbindung spart Kraftstoff und verlängert die Autonomie, ersetzt aber keine gesicherte Leistung, da die '
     + 'Photovoltaik nachts und im Winter kaum beiträgt; die Bemessung der Netzersatzanlage bleibt deshalb unverändert. '
-    + 'Die Schutzeinstellungen der Wechselrichter (NA-Schutz, Inselnetzerkennung) sind für den Inselbetrieb anzupassen und '
+    + 'Die Schutzeinstellungen der Wechselrichter (NA-Schutz, Inselnetzerkennung) wären für den Inselbetrieb anzupassen und '
     + 'mit dem Netzbetreiber abzustimmen.';
-  return [t, 'Die Inbetriebnahme der Insel folgt einer festen Reihenfolge: Nach Erkennen des Netzausfalls wird der '
+  return [t, 'Die Inbetriebnahme der Insel folgt üblicherweise einer festen Reihenfolge: Nach Erkennen des Netzausfalls wird der '
     + 'Netzanschlusspunkt geöffnet, die Netzersatzanlage gestartet und die Transformatorstationen in Stufen zugeschaltet. '
     + 'Erst wenn die Insel stabil läuft, werden der Speicher zugeschaltet und die Erzeuger durch das Energiemanagement '
     + 'freigegeben. Für die Rückkehr ans Netz wird nach stabiler Netzwiederkehr und Freigabe durch den Netzbetreiber die '
@@ -11310,11 +11315,11 @@ function ggRenderResLiegenschaftText(cfg, T = GG_THEME) {
     + 'Netzanschlusspunkt im Inselbetrieb weiterbetrieben.';
   if (!r || !(r.spitzeKw > 0)) {
     return ggTextBlatt([einleitung,
-      `Für die Bemessung fehlen ein Lastgang der Liegenschaft oder die Transformatorstationen im Netzmodell: ${ggTextFeld('', 'Spitzenlast der Liegenschaft')}.`], T);
+      `Für die Bemessung fehlen ein Lastgang der Liegenschaft oder die Transformatorstationen in den Netzdaten: ${ggTextFeld('', 'Spitzenlast der Liegenschaft')}.`], T);
   }
   const lab = r.lastabwurf, zs = r.zuschaltung;
   const absaetze = [
-    einleitung + ` Die Spitzenlast der Liegenschaft beträgt ${ggNum(r.spitzeKw)} kW (ermittelt ${gEsc(ggResQuelle(sz.lastQuelle))}`
+    einleitung + ` Die Spitzenlast der Liegenschaft liegt bei rund ${ggNum(r.spitzeKw)} kW (ermittelt ${gEsc(ggResQuelle(sz.lastQuelle))}`
       + (ggViertelSpitzeUeber(r.spitzeKw)
         ? ` als Stundenmittel; die viertelstündliche Höchstlast in Kapitel 5.2 beträgt ${ggNum(ggViertelSpitzeUeber(r.spitzeKw))} kW`
         : '')
@@ -11326,12 +11331,12 @@ function ggRenderResLiegenschaftText(cfg, T = GG_THEME) {
       + (r.abReichtNicht ? ` Die gleichzeitige Last der Gebäude der Klassen A und B liegt darüber; bemessen wird deshalb auf `
         + `${ggNum(r.bemessungKw)} kW.` : ''),
     (r.aggregate.anzahl === 1
-      ? `Erforderlich ist ein Aggregat mit ${ggNum(r.aggregate.kvaJe)} kVA, das über einen `
-      : `Erforderlich sind ${ggNum(r.aggregate.anzahl)} Aggregate mit je ${ggNum(r.aggregate.kvaJe)} kVA`
+      ? `Erforderlich wäre überschlägig ein Aggregat mit ${ggNum(r.aggregate.kvaJe)} kVA, das über einen `
+      : `Erforderlich wären überschlägig ${ggNum(r.aggregate.anzahl)} Aggregate mit je ${ggNum(r.aggregate.kvaJe)} kVA`
         + `${sz.s3.redundanz ? ' (einschließlich einer Reserveeinheit, N+1)' : ''}, die über einen `)
       + `Maschinentransformator von ${ggNum(r.maschinentrafoKva)} kVA in die Mittelspannungsanlage am Netzanschlusspunkt `
       + `${r.aggregate.anzahl === 1 ? 'einspeist' : 'einspeisen'}. `
-      + `Das Kraftstofflager ist für das energiereichste ${ggNum(sz.dauerH)}-Stunden-Fenster mit rund ${ggNum(r.liter)} l Diesel zu bemessen.`,
+      + `Das Kraftstofflager wäre für das energiereichste ${ggNum(sz.dauerH)}-Stunden-Fenster mit rund ${ggNum(r.liter)} l Diesel zu bemessen.`,
     `Im Inselbetrieb werden ${lab.versorgt.length === 1 ? 'eine Transformatorstation' : `${ggNum(lab.versorgt.length)} Transformatorstationen`} `
       + `in ${zs.stufen.length === 1 ? 'einer Zuschaltstufe' : `${ggNum(zs.stufen.length)} Zuschaltstufen`} nacheinander zugeschaltet, `
       + 'damit Einschaltströme und Lastsprünge die Aggregate nicht überlasten'
@@ -11344,17 +11349,17 @@ function ggRenderResLiegenschaftText(cfg, T = GG_THEME) {
   const titel = st => [...new Set(r.checkliste.filter(c => c.status === st).map(c => gEsc(c.titel)))];
   const neu = titel('neu'), ern = titel('erneuern'), pr = titel('pruefen');
   absaetze.push('Im Inselbetrieb fehlen die Sternpunkterdung und die Kurzschlussleistung des vorgelagerten Netzes. Erforderlich '
-    + 'sind deshalb eine Netztrennung am Netzanschlusspunkt mit Synchronisierung für die Rückschaltung, eine eigene '
+    + 'wären deshalb eine Netztrennung am Netzanschlusspunkt mit Synchronisierung für die Rückschaltung, eine eigene '
     + `Sternpunktbehandlung (kapazitiver Erdschlussstrom der Mittelspannungskabel rund ${ggNum(r.ms.icA, 1)} A), ein Einspeisefeld `
-    + 'sowie eine an den geringeren Kurzschlussstrom angepasste Schutztechnik. Der Betrieb ist mit dem Netzbetreiber '
+    + 'sowie eine an den geringeren Kurzschlussstrom angepasste Schutztechnik. Der Betrieb wäre mit dem Netzbetreiber '
     + 'abzustimmen (VDE-AR-N 4110).'
-    + (neu.length ? ` Neu zu errichten: ${ggAufzaehlung(neu)}.` : '')
-    + (ern.length ? ` Zu erneuern: ${ggAufzaehlung(ern)}.` : '')
+    + (neu.length ? ` Voraussichtlich neu zu errichten: ${ggAufzaehlung(neu)}.` : '')
+    + (ern.length ? ` Voraussichtlich zu erneuern: ${ggAufzaehlung(ern)}.` : '')
     + (pr.length ? ` In der weiteren Planung zu prüfen: ${ggAufzaehlung(pr)}.` : '')
     + ' Die Maßnahmen und Richtkosten im Einzelnen zeigt die Tabelle „Technische Maßnahmen Inselbetrieb“.');
   absaetze.push(ggResSzWaermeSatz(sz, b, 'Für die Wärmeversorgung der Liegenschaft'));
   absaetze.push(...ggResInselEeSatz());
-  absaetze.push(`Die Investition beträgt überschlägig ${ggResEur(b.kosten)}. Vorteil dieses Szenarios ist, dass `
+  absaetze.push(`Die Investition beträgt überschlägig ${ggEuroText(b.kosten)}. Vorteil dieses Szenarios ist, dass `
     + `${r.anteilPct >= 100 ? 'die gesamte Liegenschaft' : 'ein großer Teil der Liegenschaft'} betriebsfähig bleibt und Erzeugung, `
     + 'Kraftstofflager und Überwachung an einem Standort gebündelt sind. Nachteilig sind die deutlich höhere Investition, die '
     + 'Eingriffe in Mittelspannungsnetz und Schutztechnik, die Abstimmung mit dem Netzbetreiber sowie die Abhängigkeit von einem '
@@ -11373,12 +11378,12 @@ function ggRenderResVergleichText(cfg, T = GG_THEME) {
   const kw1 = sz.s1.aKw, kw2 = sz.s2.kw, kw3 = b3.insel?.bemessungKw || 0;
   const absaetze = ['Die drei Szenarien steigern den Versorgungsumfang schrittweise vom einzelnen Gebäude über die '
     + 'Transformatorstation bis zur gesamten Liegenschaft. Die folgende Abbildung stellt ihn der Spitzenlast der Liegenschaft '
-    + 'gegenüber, die anschließende Tabelle die erforderlichen Maßnahmen und Richtkosten.'];
+    + 'gegenüber, die anschließende Tabelle die voraussichtlich erforderlichen Maßnahmen und Richtkosten.'];
   if (kw1 > 0 && kw2 > 0 && kw3 > 0) {
     absaetze.push(`Szenario 1 sichert die kritischen Gebäude mit ${ggNum(kw1)} kW (${ggResPct(kw1, spitze)} der Liegenschaftsspitze) `
-      + `für rund ${ggResEur(b1.kosten)} ab, Szenario 2 die Gebäude der Klassen A und B mit ${ggNum(kw2)} kW (${ggResPct(kw2, spitze)}) `
-      + `für rund ${ggResEur(b2.kosten)} mit fest installierten bzw. ${ggResEur(sz.s2.mobil.gesamt)} mit mobilen Aggregaten und `
-      + `Szenario 3 die Liegenschaft mit ${ggNum(kw3)} kW (${ggResPct(kw3, spitze)}) für rund ${ggResEur(b3.kosten)}. Bezogen auf die `
+      + `für rund ${ggEuroText(b1.kosten)} ab, Szenario 2 die Gebäude der Klassen A und B mit ${ggNum(kw2)} kW (${ggResPct(kw2, spitze)}) `
+      + `für rund ${ggEuroText(b2.kosten)} mit fest installierten bzw. ${ggEuroText(sz.s2.mobil.gesamt)} mit mobilen Aggregaten und `
+      + `Szenario 3 die Liegenschaft mit ${ggNum(kw3)} kW (${ggResPct(kw3, spitze)}) für rund ${ggEuroText(b3.kosten)}. Bezogen auf die `
       + `abgesicherte Leistung sind das ${ggNum(b1.kosten / kw1)} €/kW, ${ggNum(b2.kosten / kw2)} €/kW (Szenario 2 fest installiert) `
       + `bzw. ${ggNum(b3.kosten / kw3)} €/kW.`);
   } else {
@@ -11390,7 +11395,7 @@ function ggRenderResVergleichText(cfg, T = GG_THEME) {
     + 'Versorgungsebene sinnvoll. Naheliegend ist deshalb ein stufenweises Vorgehen: zunächst die Einspeisepunkte und die '
     + 'Versorgung der kritischen Gebäude, danach die Versorgung je Transformatorstation und – abhängig vom Auftrag der '
     + 'Liegenschaft im Krisenfall – der Ausbau zur Inselversorgung. Welche Stufe umgesetzt wird, ist mit dem Nutzer '
-    + 'abzustimmen (vgl. Kapitel 8.2.8).');
+    + 'abzustimmen (vgl. Kapitel 8.2.8). Die genannten Leistungen und Kosten sind Richtwerte zur Einordnung der Szenarien.');
   return ggTextBlatt(absaetze, T);
 }
 
@@ -11400,7 +11405,7 @@ function ggRenderResEinspeisungText(cfg, T = GG_THEME) {
   const sz = ggResSz();
   const st = sz?.stationen || [];
   const absaetze = ['Unabhängig vom gewählten Szenario werden Maßnahmen empfohlen, die die Handlungsfähigkeit bei einem länger '
-    + 'andauernden Ausfall mit geringem Aufwand deutlich verbessern. Wichtigster Baustein sind Einspeisemöglichkeiten für '
+    + 'andauernden Ausfall mit vergleichsweise geringem Aufwand deutlich verbessern können. Wichtigster Baustein sind Einspeisemöglichkeiten für '
     + 'mobile Netzersatzanlagen an den Transformatorstationen. Sie sind zugleich die Grundlage der mobilen Ausführung von '
     + 'Szenario 2 (Kapitel 8.2.3).'];
   absaetze.push(`An ${st.length === 1 ? 'der Transformatorstation' : st.length ? `den ${ggNum(st.length)} Transformatorstationen`
@@ -11415,13 +11420,13 @@ function ggRenderResEinspeisungText(cfg, T = GG_THEME) {
     const ohneLast = st.filter(s => s.einspeisung.basis === 'trafo').length;
     const summe = st.reduce((s, x) => s + x.einspeisung.kosten, 0);
     absaetze.push('So kann jede Station im Ereignisfall von einem angemieteten oder vorgehaltenen Aggregat übernommen werden – '
-      + 'auch als Rückfallebene bei Ausfall einer fest installierten Anlage und während Wartungs- und Umbauarbeiten. Bemessen '
-      + 'wird die Einspeisung auf die Spitzenlast der Station zuzüglich 20 % Reserve, höchstens auf die Trafoleistung'
+      + 'auch als Rückfallebene bei Ausfall einer fest installierten Anlage und während Wartungs- und Umbauarbeiten. Überschlägig '
+      + 'bemessen ist die Einspeisung auf die Spitzenlast der Station zuzüglich 20 % Reserve, höchstens auf die Trafoleistung'
       + (ohneLast ? `; für ${ohneLast === 1 ? 'eine Station' : `${ggNum(ohneLast)} Stationen`} ohne Lastgang ist die Trafoleistung angesetzt` : '')
       + '. '
       + (vorrang.length === 1 ? `Vorrang hat die Station mit Gebäuden der Klassen A und B (${ggResNamen(vorrang)}). `
         : vorrang.length ? `Vorrang haben die Stationen mit Gebäuden der Klassen A und B (${ggResNamen(vorrang, 8)}). ` : '')
-      + `Die Investition für alle Stationen beträgt überschlägig ${ggResEur(summe)}; Bemessung und Anschlussart je Station `
+      + `Die Investition für alle Stationen beträgt überschlägig ${ggEuroText(summe)}; Bemessung und Anschlussart je Station `
       + 'zeigt die Tabelle „Einspeisepunkte an den Transformatorstationen“.');
   }
   return ggTextBlatt(absaetze, T);
@@ -13008,11 +13013,11 @@ function ggRenderNotstromAuslegungText(cfg, T = GG_THEME) {
   const absaetze = [];
 
   if (!r && ggResAuslegungSatz()) {
-    absaetze.push('Die Auslegung der Notstromversorgung erfolgt mit dem Bewertungswerkzeug Resilienz auf Grundlage der '
-      + 'Gebäudelastgänge und des Bestandsnetzes (vgl. Kapitel 8.1); bemessen wird auf die gleichzeitige Spitzenlast '
+    absaetze.push('Die Notstromversorgung wird überschlägig mit dem Bewertungswerkzeug Resilienz auf Grundlage der '
+      + 'Gebäudelastgänge und des Bestandsnetzes bemessen (vgl. Kapitel 8.1); angesetzt wird die gleichzeitige Spitzenlast '
       + 'zuzüglich 20 % Reserve.');
   } else if (!r) {
-    absaetze.push('Die Auslegung der Notstromversorgung erfolgt auf Grundlage einer Inselbetrieb-Simulation der Liegenschaft. '
+    absaetze.push('Die Notstromversorgung wird überschlägig anhand einer Inselbetrieb-Simulation der Liegenschaft bemessen. '
       + `${ggTextFeld('', 'Ergebnis der Auslegung: Leistung, Überbrückungsdauer, Kraftstoff')}.`);
   } else {
     const modus = GG_RES_MODE_LBL[r.mode] || r.mode;
@@ -13028,15 +13033,15 @@ function ggRenderNotstromAuslegungText(cfg, T = GG_THEME) {
       + `. Betrachtet wird die Betriebsweise „${modus}“${komponenten.length ? ` mit ${ggAufzaehlung(komponenten)}` : ''}.`);
 
     if (erf) {
-      absaetze.push(`Daraus ergibt sich eine erforderliche Leistung des Notstromaggregats von ${ggNum(erf)} kW einschließlich einer `
+      absaetze.push(`Daraus ergibt sich überschlägig eine erforderliche Leistung des Notstromaggregats von rund ${ggNum(erf)} kW einschließlich einer `
         + 'Reserve von 20 %. '
         + (r.mode !== 'gen'
           ? (r.bridgeH >= r.durH
             ? 'PV und Speicher könnten den Ausfall auch allein überbrücken; das Aggregat sichert die Versorgung zusätzlich ab. '
             : `Ohne Aggregat überbrücken PV und Speicher ${ggNum(r.bridgeH)} Stunden. `)
           : '')
-        + `Für den gesamten Ausfall werden rund ${ggNum(Math.ceil(r.liters))} l ${gEsc(r.kraftstoff)} benötigt; der Kraftstofftank ist `
-        + `mit mindestens ${ggNum(r.tankL)} l zu bemessen. Für die Kraftstofflagerung sind die einschlägigen Anforderungen zu beachten`
+        + `Für den gesamten Ausfall werden rund ${ggNum(Math.ceil(r.liters))} l ${gEsc(r.kraftstoff)} benötigt; der Kraftstofftank sollte `
+        + `mit mindestens rund ${ggNum(r.tankL)} l bemessen werden. Für die Kraftstofflagerung sind die einschlägigen Anforderungen zu beachten`
         + (r.fuelId === 'diesel' ? ', insbesondere die Verordnung über Anlagen zum Umgang mit wassergefährdenden Stoffen (AwSV)' : '')
         + '.'
         + (r.eUnmet > 0.5 ? ` Trotz Aggregat bleibt eine Versorgungslücke von ${ggNum(r.eUnmet / 1000, 2)} MWh.` : ''));
@@ -13051,7 +13056,7 @@ function ggRenderNotstromAuslegungText(cfg, T = GG_THEME) {
 
   if (!s.bestand.length) {
     absaetze.push('Im Bestand ist keine Netzersatzanlage vorhanden (vgl. Kapitel 5.1.4)'
-      + (erf ? '; die Notstromversorgung ist neu zu errichten.' : '.'));
+      + (erf ? '; eine Notstromversorgung wäre neu zu errichten.' : '.'));
   } else if (erf) {
     if (s.bestandKw == null) {
       absaetze.push(`Die vorhandenen Netzersatzanlagen sind mit ihrer Leistung von ${ggTextFeld('', 'Leistung Bestand kW')} kW `
@@ -13060,8 +13065,8 @@ function ggRenderNotstromAuslegungText(cfg, T = GG_THEME) {
       absaetze.push(`Die vorhandenen Netzersatzanlagen decken mit zusammen ${ggNum(s.bestandKw)} kW die erforderliche Leistung `
         + '(vgl. Kapitel 5.1.4)'
         + (s.bestandH != null && s.bestandH < r.durH
-          ? `; ihr Kraftstoffvorrat reicht jedoch nur für ${ggNum(s.bestandH)} Stunden und ist auf ${r.durH} Stunden zu erweitern `
-            + 'oder durch eine gesicherte Nachbetankung zu ergänzen.'
+          ? `; ihr Kraftstoffvorrat reicht jedoch nur für rund ${ggNum(s.bestandH)} Stunden und sollte auf ${r.durH} Stunden erweitert `
+            + 'oder durch eine gesicherte Nachbetankung ergänzt werden.'
           : '.'));
     } else {
       absaetze.push(`Die vorhandenen Netzersatzanlagen reichen mit zusammen ${ggNum(s.bestandKw)} kW nicht aus (vgl. Kapitel 5.1.4); `
@@ -13098,16 +13103,16 @@ function ggResAuslegungSatz() {
   const b = ggResStand()?.empfehlung;
   if (!b?.strom) return null;
   if (b.strom.art === 'insel') {
-    return `Nach der Bewertung am Bestandsnetz (Schutzziel „${gEsc(b.ziel.name)}“, vgl. Kapitel 8.2) wird die Notstromversorgung `
-      + `zentral am Netzanschlusspunkt mit ${ggNum(b.strom.anzahl)} × ${ggNum(b.strom.kvaJe)} kVA und einem Maschinentransformator `
-      + `von ${ggNum(b.strom.mtKva)} kVA vorgesehen.`;
+    return `Nach der Bewertung am Bestandsnetz (Schutzziel „${gEsc(b.ziel.name)}“, vgl. Kapitel 8.2) bietet sich eine zentrale `
+      + `Notstromversorgung am Netzanschlusspunkt mit ${ggNum(b.strom.anzahl)} × ${ggNum(b.strom.kvaJe)} kVA und einem Maschinentransformator `
+      + `von ${ggNum(b.strom.mtKva)} kVA an.`;
   }
   const orte = (b.variante?.aggregate || []).filter(a => a.empfKw > 0)
     .map(a => `${ggResOrt(a)} (${ggNum(a.empfKw)} kW`
       + `${a.bestandKw > 0 ? (a.zusatzKw > 0 ? `, davon ${ggNum(a.bestandKw)} kW vorhanden` : ', vorhanden') : ''})`);
   if (!orte.length) return null;
-  return `Nach der Bewertung am Bestandsnetz (Schutzziel „${gEsc(b.ziel.name)}“, vgl. Kapitel 8.2) werden die Netzersatzanlagen `
-    + `dezentral an folgenden Standorten angeordnet: ${ggAufzaehlung(orte)}.`;
+  return `Nach der Bewertung am Bestandsnetz (Schutzziel „${gEsc(b.ziel.name)}“, vgl. Kapitel 8.2) bietet sich eine dezentrale `
+    + `Anordnung der Netzersatzanlagen an folgenden Standorten an: ${ggAufzaehlung(orte)}.`;
 }
 
 function ggRenderNotstromLastabwurfText(cfg, T = GG_THEME) {
@@ -13413,7 +13418,7 @@ function ggRenderLadeVariantenText(cfg, T = GG_THEME) {
   if (!alle.length) {
     return ggTextBlatt([
       'Ladeinfrastruktur ist weder im Bestand vorhanden noch geplant (vgl. Kapitel 5.3.3); eine Variantenbildung entfällt. '
-        + `Für eine spätere Nachrüstung ist ${ggTextFeld('', 'Vorhaltung, z. B. Leerrohre und Reserveabgänge an der NSHV')} vorzusehen.`,
+        + `Für eine spätere Nachrüstung empfiehlt es sich, ${ggTextFeld('', 'Vorhaltung, z. B. Leerrohre und Reserveabgänge an der NSHV')} vorzusehen.`,
     ], T);
   }
   const absaetze = ['Aufbauend auf dem Zusatzbedarf aus Kapitel 5.3.3 werden für die Ladeinfrastruktur die zeitliche Staffelung '
@@ -13450,7 +13455,7 @@ function ggRenderLadeVariantenText(cfg, T = GG_THEME) {
   } else {
     absaetze.push('Ungesteuertes Laden: Die Ladepunkte laden unabhängig von der übrigen Last mit der ausgelegten Leistung. Die '
       + `Ladeinfrastruktur erhöht den Leistungsbedarf der Liegenschaft damit um ${ggBedarfFeld(rv?.ladeKw, 'Zusatzbedarf Ladeinfrastruktur kW')} kW `
-      + '(vgl. Kapitel 5.3.3); diese Leistung muss am Netzanschluss und im internen Netz jederzeit zur Verfügung stehen.');
+      + '(vgl. Kapitel 5.3.3); diese Leistung müsste am Netzanschluss und im internen Netz jederzeit zur Verfügung stehen.');
   }
 
   // Lademanagement
@@ -13467,13 +13472,13 @@ function ggRenderLadeVariantenText(cfg, T = GG_THEME) {
       + 'vermeiden, begrenzt aber den zusätzlichen Bedarf der Ladeparks (Variante B in Kapitel 5.4.1).';
   } else if (rv.verfuegbar >= rv.ladeKw) {
     p += `Innerhalb der vereinbarten Anschlussleistung von ${ggNum(rv.cap)} kVA stehen für das Laden ${ggNum(rv.verfuegbar)} kW `
-      + 'zur Verfügung und damit mehr als die Auslegungsleistung. Ein Lademanagement ist aus Sicht des Netzanschlusses nicht '
-      + 'erforderlich, sichert aber die Reserve für weitere Verbraucher.';
+      + 'zur Verfügung und damit mehr als die Auslegungsleistung. Ein Lademanagement ist aus Sicht des Netzanschlusses voraussichtlich nicht '
+      + 'erforderlich, kann aber die Reserve für weitere Verbraucher sichern.';
   } else {
     const anteil = rv.verfuegbar / rv.ladeKw;
     p += `Innerhalb der vereinbarten Anschlussleistung von ${ggNum(rv.cap)} kVA stehen für das Laden noch ${ggNum(rv.verfuegbar)} kW `
       + `zur Verfügung, das sind ${ggNum(anteil * 100)} % der Auslegungsleistung. Wird die Ladeleistung per Lademanagement auf `
-      + 'diesen Wert begrenzt, bleibt die Liegenschaft innerhalb der vereinbarten Anschlussleistung und kommt ohne Erhöhung '
+      + 'diesen Wert begrenzt, bliebe die Liegenschaft innerhalb der vereinbarten Anschlussleistung und käme voraussichtlich ohne Erhöhung '
       + 'aus (Variante B in Kapitel 5.4.1).'
       + (anteil < 0.5 ? ' Bei dieser deutlichen Begrenzung ist ein uneingeschränkter Ladebetrieb jedoch nicht mehr gewährleistet.' : '');
   }
@@ -13502,37 +13507,37 @@ function ggRenderLadeNetzText(cfg, T = GG_THEME) {
     const wer = angebunden.length === alle.length
       ? (alle.length === 1 ? 'ist der Ladepark' : 'sind alle Ladeparks')
       : angebunden.length === 1 ? `ist einer von ${alle.length} Ladeparks` : `sind ${angebunden.length} von ${alle.length} Ladeparks`;
-    absaetze.push(`Im Netzmodell ${wer} `
+    absaetze.push(`In der Netzberechnung ${wer} `
       + `an das interne Netz angebunden: ${ggBedarfListe(angebunden.map(z => `${gEsc(z.e.a.name)} über ${gEsc(ggVersorgungText(z.versorgung))}`))}.`);
   }
   if (offen.length) {
-    absaetze.push(`${ggBedarfListe(offen.map(z => gEsc(z.e.a.name)))} ${offen.length === 1 ? 'ist' : 'sind'} im Netzmodell noch nicht `
+    absaetze.push(`${ggBedarfListe(offen.map(z => gEsc(z.e.a.name)))} ${offen.length === 1 ? 'ist' : 'sind'} in der Netzberechnung noch nicht `
       + `angebunden. Vorgesehen ist die Anbindung ${ggTextFeld('', 'z. B. über einen Abgang der NSHV Gebäude xx')}.`);
   }
   const mitEngpass = alle.filter(z => z.engpaesse.length);
   if (mitEngpass.length) {
     const engpaesse = [...new Map(mitEngpass.flatMap(z => z.engpaesse).map(i => [i.id, i])).values()]
       .sort((a, b) => a.engpassJahr - b.engpassJahr);
-    absaetze.push(`Mit dem Zubau von ${ggBedarfListe(mitEngpass.map(z => gEsc(z.e.a.name)))} entstehen im internen Netz Engpässe: `
-      + `${ggBedarfListe(engpaesse.map(i => `${gEsc(i.label)} (${i.engpassJahr})`))}. Die erforderlichen Ertüchtigungen sind in `
-      + 'Kapitel 5.4.1 aufgeführt und vor der Inbetriebnahme der Ladepunkte umzusetzen.');
+    absaetze.push(`Mit dem Zubau von ${ggBedarfListe(mitEngpass.map(z => gEsc(z.e.a.name)))} entstehen im internen Netz rechnerisch Engpässe: `
+      + `${ggBedarfListe(engpaesse.map(i => `${gEsc(i.label)} (${i.engpassJahr})`))}. Die möglichen Ertüchtigungen sind in `
+      + 'Kapitel 5.4.1 aufgeführt und sollten vor der Inbetriebnahme der Ladepunkte umgesetzt werden.');
   } else if (angebunden.length) {
     // „Kein Engpass ausgelöst“ heißt nicht „Zuleitung in Ordnung“: steht die Zuleitung eines Ladeparks schon im Bestand
     // über der Grenze (Bestandsmangel), darf der Text nicht behaupten, die Kabel könnten die Leistung aufnehmen
     const zuleitung = ggLadeZuleitungsMaengel(alle, res);
     const imBestand = zuleitung.filter(x => x.bestand), spaeter = zuleitung.filter(x => !x.bestand);
     const namen = l => ggBedarfListe(l.map(x => gEsc(x.park)));
-    absaetze.push('Keiner der Ladeparks löst im internen Netz einen neuen Engpass aus.'
+    absaetze.push('Nach der Netzberechnung löst keiner der Ladeparks im internen Netz einen neuen Engpass aus.'
       + (imBestand.length
         ? ` Die Zuleitung${imBestand.length === 1 ? '' : 'en'} von ${namen(imBestand)} ${imBestand.length === 1 ? 'ist' : 'sind'} jedoch `
-          + 'bereits im Bestand rechnerisch überlastet; die Bestandsdaten sind zu prüfen (Tabelle „Zu prüfende Bestandsdaten im '
+          + 'bereits im Bestand rechnerisch überlastet; die Bestandsdaten sollten geprüft werden (Tabelle „Zu prüfende Bestandsdaten im '
           + `internen Netz“ ${ggImText('netz-intern-bestandsdaten') ? 'in Kapitel 5.4.1' : `in der ${GG_VERTIEFUNG_ANLAGE}`}).`
         : '')
       + (spaeter.length
         ? ` Die Zuleitung${spaeter.length === 1 ? '' : 'en'} von ${namen(spaeter)} ${spaeter.length === 1 ? 'wird' : 'werden'} durch `
           + 'andere geplante Maßnahmen zum Engpass; die Ertüchtigung steht in Kapitel 5.4.1.'
         : '')
-      + (zuleitung.length ? '' : ' Trafostationen und Kabel können die Ladeleistung aufnehmen.'));
+      + (zuleitung.length ? '' : ' Trafostationen und Kabel können die Ladeleistung voraussichtlich aufnehmen.'));
   }
   absaetze.push('Die folgende Tabelle fasst die Netzanbindung je Ladepark zusammen.');
   return ggTextBlatt(absaetze, T);
@@ -13691,6 +13696,10 @@ const ggKostenKennwerte = () => ekNormKennwerte(ggKostenFigur()?.config.kennwert
 const ggKostenVonHand = () => !!_ggManuell.get('kosten-gruppen')?.has('kennwerte');
 /** Betrag gerundet: ab 10.000 € auf Tausend, sonst auf Hundert. */
 const ggEuro = v => `${ggNum(Math.round(v / (v >= 10000 ? 1000 : 100)) * (v >= 10000 ? 1000 : 100))} €`;
+/** Euro im Fließtext als Größenordnung wie im Wärmeteil: „5,3 Mio. €“, „190 Tsd. €“; Tabellen bleiben bei ggEuro. */
+const ggEuroText = v => (Math.abs(v) >= 1e6 ? `${ggNum(v / 1e6, 1)} Mio. €`
+  : Math.abs(v) >= 1e5 ? `${ggNum(Math.round(v / 1e4) * 10)} Tsd. €`
+    : Math.abs(v) >= 1e4 ? `${ggNum(Math.round(v / 1e3))} Tsd. €` : ggEuro(v));
 const ggJahresSpanne = jahre => (!jahre.length ? 'offen' : jahre[0] === jahre[jahre.length - 1] ? String(jahre[0]) : `${jahre[0]}–${jahre[jahre.length - 1]}`);
 
 /** Kostenpositionen der Kapitel 5.4.1–5.4.4 samt Auswertung; `offen` nennt, was nicht beziffert werden kann. */
@@ -13737,7 +13746,7 @@ function ggKostenPositionen() {
     const nb = !pv.netzausbau?.massnahmen?.length ? ggPvNetzbedarf(pv) : null;
     if (nb && !nb.inKosten) {
       offen.push(`Netzertüchtigung für ${ggNum(nb.ueberKwp)} kWp PV über die Aufnahme des Bestandsnetzes hinaus`
-        + (nb.investEUR ? ` (Netzaufnahme-Analyse: rund ${ggNum(nb.investEUR / 1000)} T€, soweit nicht im internen Netz enthalten)` : ''));
+        + (nb.investEUR ? ` (überschlägig rund ${ggNum(nb.investEUR / 1000)} Tsd. €, soweit nicht im internen Netz enthalten)` : ''));
     }
   } else {
     offen.push('PV und Batteriespeicher (PV-Varianten nicht berechnet)');
@@ -13823,15 +13832,15 @@ function ggRenderKostenText(cfg, T = GG_THEME) {
 
   absaetze.push('Für die Maßnahmen der Kapitel 5.4.1 bis 5.4.4 werden die Investitionskosten und die jährlichen Kosten in '
     + 'Anlehnung an VDI 2067 ermittelt. Die Jahreskosten setzen sich aus dem Kapitaldienst (Annuität bei einem Kalkulationszins '
-    + `von ${ggNum(k.zinsPct, 1)} % über die Nutzungsdauer) und der Instandhaltung zusammen. Grundlage sind die Kostenansätze des `
-    + 'Netzmodells, die Wirtschaftlichkeitsberechnung der PV-Analyse und die Resilienz-Rechnung. Angesetzt werden für den '
+    + `von ${ggNum(k.zinsPct, 1)} % über die Nutzungsdauer) und der Instandhaltung zusammen. Grundlage sind pauschale Kostenkennwerte `
+    + 'für die Netzmaßnahmen, die Wirtschaftlichkeitsberechnung der Photovoltaik und die Resilienzbewertung. Angesetzt werden für den '
     + `Netzanschluss ein Baukostenzuschuss von ${ggNum(k.bkzEurKw)} €/kW zusätzlicher Anschlussleistung`
     + (k.anschlussPauschalEur > 0 ? ` zuzüglich ${ggEuro(k.anschlussPauschalEur)} Anschlusskosten` : '')
     + ` sowie für die Ladeinfrastruktur ${ggEuro(k.ladepunktEur)} je Normal- und ${ggEuro(k.schnellladepunktEur)} je `
     + 'Schnellladepunkt'
     + (ggKostenVonHand() ? '.' : ' (Vorschlagswerte, durch Angebote des Netzbetreibers bzw. der Hersteller zu ersetzen).')
-    + ' Es handelt sich um Kostenschätzungen, die in der weiteren Planung durch Angebote und die Kostenberechnung nach DIN 276 '
-    + 'zu präzisieren sind.');
+    + ' Es handelt sich um überschlägige Kostenschätzungen auf Kennwertbasis, die eine Größenordnung angeben; sie sind in der weiteren '
+    + 'Planung durch Angebote und die Kostenberechnung nach DIN 276 zu präzisieren.');
 
   const mit = a.gruppen.filter(g => g.investEur > 0);
   if (!mit.length) {
@@ -13839,9 +13848,9 @@ function ggRenderKostenText(cfg, T = GG_THEME) {
   } else {
     const groesste = mit.reduce((x, g) => (g.investEur > x.investEur ? g : x), mit[0]);
     // Fehlen Positionen, ist die Summe eine Untergrenze — das muss im Satz selbst stehen, nicht erst am Absatzende
-    absaetze.push(`Die bezifferten Investitionen belaufen sich auf ${offen.length ? 'mindestens' : 'insgesamt'} rund ${ggEuro(a.summeInvestEur)} `
-      + `mit jährlichen Kosten von rund ${ggEuro(a.summeJahreskostenEur)}/a`
-      + (offen.length ? ' (ohne die unten genannten, nicht bezifferten Positionen)' : '') + `. Im Einzelnen entfallen ${ggAufzaehlung(mit.map(g => `${ggEuro(g.investEur)} auf ${g.label === 'Netzanschluss' ? 'den Netzanschluss' : g.label === 'Internes Stromnetz' ? 'das interne Stromnetz' : g.label === 'Notstromversorgung' ? 'die Notstromversorgung' : g.label === 'Ladeinfrastruktur' ? 'die Ladeinfrastruktur' : 'PV und Batteriespeicher'}`))}. `
+    absaetze.push(`Die bisher bezifferten Investitionen liegen in einer Größenordnung von ${offen.length ? 'mindestens ' : ''}rund ${ggEuroText(a.summeInvestEur)}, `
+      + `die jährlichen Kosten bei rund ${ggEuroText(a.summeJahreskostenEur)}/a`
+      + (offen.length ? ' (ohne die unten genannten, nicht bezifferten Positionen)' : '') + `. Im Einzelnen entfallen rund ${ggAufzaehlung(mit.map(g => `${ggEuroText(g.investEur)} auf ${g.label === 'Netzanschluss' ? 'den Netzanschluss' : g.label === 'Internes Stromnetz' ? 'das interne Stromnetz' : g.label === 'Notstromversorgung' ? 'die Notstromversorgung' : g.label === 'Ladeinfrastruktur' ? 'die Ladeinfrastruktur' : 'PV und Batteriespeicher'}`))}. `
       + (mit.length > 1
         ? `Den größten Anteil hat ${groesste.label === 'PV und Batteriespeicher' ? 'die Gruppe PV und Batteriespeicher' : `die Gruppe „${groesste.label}“`} `
           + `mit ${ggNum(groesste.investEur / a.summeInvestEur * 100)} %. `
@@ -13854,7 +13863,7 @@ function ggRenderKostenText(cfg, T = GG_THEME) {
     absaetze.push(`Für PV und Batteriespeicher geht ${art} „${gEsc(pv.label)}“ aus Kapitel 5.4.2 ein`
       + ` (${ggNum(pv.pvKwp)} kWp${pv.batKwh > 0 ? `, Speicher ${ggNum(pv.batKwh)} kWh` : ', ohne Speicher'}`
       + `${pv.id === 'wirt-opt' ? '; höchster jährlicher Netto-Überschuss' : ''}); `
-      + 'ihre Jahreskosten stammen aus der PV-Analyse und enthalten die netzseitige Infrastruktur der Anlage'
+      + 'ihre Jahreskosten stammen aus der PV-Wirtschaftlichkeitsberechnung und enthalten die netzseitige Infrastruktur der Anlage'
       + (pv.netzausbau?.massnahmen?.length ? ' einschließlich der für diese Belegung nötigen Netzertüchtigung' : '') + '. Da PV und Speicher '
       + 'zusätzlich Erlöse erzielen, ist ihre Wirtschaftlichkeit mit Kapitalwert und Stromgestehungskosten gesondert in der Tabelle '
       + '„Wirtschaftlichkeit je PV-Variante“ dargestellt.');
@@ -13867,8 +13876,8 @@ function ggRenderKostenText(cfg, T = GG_THEME) {
       return s > x.s ? { jahr: z.jahr, s } : x;
     }, { jahr: null, s: 0 });
     absaetze.push(`Die Investitionen verteilen sich auf die Jahre ${ggJahresSpanne(jahre).replace('–', ' bis ')}; die höchste `
-      + `Jahressumme fällt mit rund ${ggEuro(spitze.s)} im Jahr ${spitze.jahr} an`
-      + (a.ohneJahrEur > 0 ? `. Weitere ${ggEuro(a.ohneJahrEur)} sind noch keinem Umsetzungsjahr zugeordnet.` : '.'));
+      + `Jahressumme fällt mit rund ${ggEuroText(spitze.s)} im Jahr ${spitze.jahr} an`
+      + (a.ohneJahrEur > 0 ? `. Weitere rund ${ggEuroText(a.ohneJahrEur)} sind noch keinem Umsetzungsjahr zugeordnet.` : '.'));
   }
 
   if (offen.length) {
@@ -14322,12 +14331,16 @@ function ggRenderElektroKernText(cfg, T = GG_THEME) {
   void cfg;
   const k = efKernaussagen(ggElektroStand());
   const handeln = k.filter(z => z.status === 'handeln'), offen = k.filter(z => z.status === 'offen');
-  const absaetze = ['Dieses Kapitel bewertet die elektrische Versorgung der Liegenschaft: Netzanschluss, internes Stromnetz, '
+  const absaetze = ['Dieses Kapitel betrachtet die elektrische Versorgung der Liegenschaft: Netzanschluss, internes Stromnetz, '
     + 'Erzeugung und Speicherung, Notstromversorgung und Ladeinfrastruktur. Die folgende Tabelle fasst die Ergebnisse zusammen; '
-    + 'die Einzelheiten stehen in den genannten Abschnitten.'];
+    + 'die Einzelheiten stehen in den genannten Abschnitten.',
+    'Die Betrachtung versteht sich als Grundkonzept. Sie beruht auf den verfügbaren Bestands- und Messdaten, die nicht in allen '
+    + 'Punkten vollständig vorliegen, sowie auf pauschalen Ansätzen für Gleichzeitigkeiten, Lastprofile und Kosten. Die '
+    + 'genannten Leistungen, Anlagengrößen und Kosten zeigen daher Größenordnungen und Handlungsfelder auf; sie ersetzen keine '
+    + 'Auslegung im Sinne der Fachplanung und sind in der weiteren Planung zu bestätigen.'];
   if (handeln.length) {
-    absaetze.push(`Handlungsbedarf besteht ${ggAufzaehlung(handeln.map(z => GG_EF_THEMA_DATIV[z.thema] || z.thema))}; `
-      + 'die Maßnahmen sind in Kapitel 5.7 zusammengestellt.');
+    absaetze.push(`Handlungsbedarf zeichnet sich vor allem ${ggAufzaehlung(handeln.map(z => GG_EF_THEMA_DATIV[z.thema] || z.thema))} ab; `
+      + 'mögliche Maßnahmen sind in Kapitel 5.7 zusammengestellt.');
   }
   if (offen.length) {
     absaetze.push(`Noch nicht abschließend bewertbar ${offen.length === 1 ? 'ist' : 'sind'} ${ggAufzaehlung(offen.map(z => z.thema))}; `
@@ -14340,7 +14353,7 @@ function ggRenderElektroBewertungText(cfg, T = GG_THEME) {
   void cfg;
   const absaetze = ['Netzanschluss, Photovoltaik, Batteriespeicher, Notstromversorgung und Ladeinfrastruktur sind in der '
     + 'Elektrotechnik Bausteine und keine Alternativen: Ihr Umfang ergibt sich aus der Bedarfsprognose (Kapitel 5.3) und den '
-    + 'Anforderungen an Netz und Versorgungssicherheit (Kapitel 5.4). Eine echte Wahl besteht bei der Auslegung der PV-Anlage.'];
+    + 'Anforderungen an Netz und Versorgungssicherheit (Kapitel 5.4). Ein Gestaltungsspielraum besteht vor allem bei der Größe der PV-Anlage.'];
   const m = ggPvBewertung();
   if (!m) {
     absaetze.push('Eine Bewertung der PV-Auslegungen setzt mindestens zwei berechnete Auslegungen voraus.');
@@ -14350,13 +14363,19 @@ function ggRenderElektroBewertungText(cfg, T = GG_THEME) {
   absaetze.push(`Die Auslegungen werden nach ${EF_PV_KRITERIEN.wirtschaft} (${g.wirtschaft} %, Kapitalwert), `
     + `${EF_PV_KRITERIEN.netz} (${g.netz} %, Anschluss ohne Ertüchtigung des Bestandsnetzes), ${EF_PV_KRITERIEN.autarkie} `
     + `(${g.autarkie} %) und ${EF_PV_KRITERIEN.invest} (${g.invest} %) bewertet. Je Kriterium erhält der beste Wert 100 Punkte, `
-    + 'die übrigen im Verhältnis dazu.');
+    + 'die übrigen im Verhältnis dazu. Die Gewichtung ist ein Vorschlag und kann mit dem Auftraggeber angepasst werden; '
+    + 'die Punktwerte dienen der Orientierung.');
   const erste = m.zeilen[0], gew = ggPvAuswahl().v;
   const weiter = gew && m.zeilen.find(z => z.a.id === gew.id);
+  // Knapper Abstand: bei der Genauigkeit der Eingangsdaten keine belastbare Rangfolge
+  const zweite = m.zeilen[1];
+  const knapp = zweite && Number.isFinite(zweite.gesamt) && erste.gesamt - zweite.gesamt < 5;
   absaetze.push(`Die höchste Gesamtnote erreicht die Auslegung „${gEsc(erste.a.label)}“ mit ${ggNum(erste.gesamt)} Punkten. `
+    + (knapp ? `Der Abstand zur Auslegung „${gEsc(zweite.a.label)}“ (${ggNum(zweite.gesamt)} Punkte) ist gering; im Rahmen der `
+      + 'Genauigkeit der Eingangsdaten sind beide Auslegungen als etwa gleichwertig anzusehen. ' : '')
     + (!weiter ? ''
-      : weiter === erste ? 'Sie wird in der weiteren Planung zugrunde gelegt (vgl. Kapitel 5.4.2 und 5.5).'
-        : `Weiterverfolgt wird die Auslegung „${gEsc(weiter.a.label)}“ (Rang ${weiter.rang}, ${ggNum(weiter.gesamt)} Punkte); `
+      : weiter === erste ? `Als Grundlage für die weitere Planung wird die Auslegung „${gEsc(erste.a.label)}“ vorgeschlagen (vgl. Kapitel 5.4.2 und 5.5).`
+        : `Vorgeschlagen wird die Auslegung „${gEsc(weiter.a.label)}“ (Rang ${weiter.rang}, ${ggNum(weiter.gesamt)} Punkte); `
           + `Begründung: ${ggTextFeld('', 'Begründung der Abweichung von der Bewertung')}.`));
   return ggTextBlatt(absaetze, T);
 }
@@ -14378,20 +14397,21 @@ function ggRenderElektroEmpfehlungText(cfg, T = GG_THEME) {
   const k = new Map(efKernaussagen(d).map(z => [z.thema, z]));
   const s = [];
   const st = t => k.get(t)?.status;
-  if (st('Netzanschluss') === 'handeln') s.push(`den Antrag auf Erhöhung der Anschlussleistung auf mindestens ${ggNum(Math.ceil(d.anschluss.endKw))} kVA frühzeitig beim Netzbetreiber zu stellen`);
+  if (st('Netzanschluss') === 'handeln') s.push(`eine Erhöhung der Anschlussleistung auf mindestens rund ${ggNum(Math.ceil(d.anschluss.endKw))} kVA frühzeitig mit dem Netzbetreiber abzustimmen`);
   else if (st('Netzanschluss') === 'offen') s.push('die vereinbarte Anschlussleistung und die Einspeisezusage beim Netzbetreiber zu erfragen und den Netzanschluss danach zu bewerten');
-  if (st('Einspeisung') === 'handeln') s.push('die Einspeisezusage für die geplanten Erzeugungsanlagen zu erhöhen');
-  if (d.netz?.zubau) s.push(`die Ertüchtigungen des internen Netzes jeweils ${ENGPASS_VORLAUF_J} Jahre vor dem Engpassjahr umzusetzen`);
+  if (st('Einspeisung') === 'handeln') s.push('eine Erhöhung der Einspeisezusage für die geplanten Erzeugungsanlagen anzufragen');
+  if (d.netz?.zubau) s.push(`die absehbaren Ertüchtigungen des internen Netzes mit einem Vorlauf von etwa ${ENGPASS_VORLAUF_J} Jahren vor dem rechnerischen Engpassjahr einzuplanen`);
   if (d.netz?.bestand) s.push('die rechnerisch auffälligen Bestandsdaten bei der Begehung zu prüfen');
-  if (d.pv) s.push(`die PV-Anlage in der Auslegung „${gEsc(d.pv.label)}“ (${ggNum(d.pv.kwp)} kWp${d.pv.batKwh > 0 ? `, Speicher ${ggNum(d.pv.batKwh)} kWh` : ''}) umzusetzen`
-    + (d.pv.ueberKwp > 0 ? ' und die dafür nötige Netzertüchtigung einzuplanen' : ''));
+  if (d.pv) s.push(`die PV-Anlage in einer Größenordnung von rund ${ggNum(d.pv.kwp)} kWp${d.pv.batKwh > 0 ? ` mit einem Speicher von rund ${ggNum(d.pv.batKwh)} kWh` : ''} (Auslegung „${gEsc(d.pv.label)}“) weiterzuverfolgen`
+    + (d.pv.ueberKwp > 0 ? ' und die dafür voraussichtlich nötige Netzertüchtigung zu berücksichtigen' : ''));
   if (st('Notstromversorgung') === 'offen') s.push('ein Notstromkonzept mit den notstromberechtigten Verbrauchern zu erstellen (vgl. Kapitel 8)');
-  else if (st('Notstromversorgung') === 'handeln') s.push(`die Notstromversorgung auf ${ggNum(d.notstrom.erforderlichKw)} kW zu ergänzen`);
+  else if (st('Notstromversorgung') === 'handeln') s.push(`die Notstromversorgung auf rund ${ggNum(d.notstrom.erforderlichKw)} kW zu ergänzen`);
   if (d.lade?.zuleitung) s.push('die Zuleitungen der Ladeparks zu prüfen');
   const absaetze = [s.length
-    ? `Für die elektrische Versorgung der Liegenschaft wird empfohlen, ${ggAufzaehlung(s)}.`
-    : 'Aus der Untersuchung ergibt sich derzeit kein Handlungsbedarf für die elektrische Versorgung.'];
-  absaetze.push('Die folgende Tabelle listet die Maßnahmen mit Umsetzungsjahr und Investition; die Kosten entsprechen Kapitel 5.5. '
+    ? `Für die weitere Planung der elektrischen Versorgung wird empfohlen, ${ggAufzaehlung(s)}.`
+    : 'Nach dem derzeitigen Kenntnisstand ergibt sich kein unmittelbarer Handlungsbedarf für die elektrische Versorgung.'];
+  absaetze.push('Die folgende Tabelle listet die vorgeschlagenen Maßnahmen mit einem Orientierungsjahr und den geschätzten Kosten; '
+    + 'die Kosten entsprechen Kapitel 5.5. Reihenfolge und Zeitpunkte sind in der weiteren Planung mit dem Auftraggeber abzustimmen. '
     + 'Die Angaben, die für die weitere Planung noch zu beschaffen sind, stehen in der anschließenden Tabelle.');
   return ggTextBlatt(absaetze, T);
 }
@@ -14401,15 +14421,16 @@ function ggRenderFazitElektroText(cfg, T = GG_THEME) {
   const d = ggElektroStand();
   const k = efKernaussagen(d);
   // Ein Absatz je Thema — der Word-Export kennt in Textbausteinen keine Aufzählungen
-  const absaetze = ['Zusammengefasst ergibt sich für die Elektrotechnik:', ...k.map(z => `${z.thema}: ${z.ergebnis}`)];
+  const absaetze = ['Zusammengefasst ergibt sich für die Elektrotechnik nach derzeitigem Kenntnisstand:', ...k.map(z => `${z.thema}: ${z.ergebnis}`)];
   const m = efMassnahmen(d);
   const pvNetz = d.pv?.ueberKwp > 0 && d.pv.netzInvestEur > 0 ? d.pv.netzInvestEur : 0;
   absaetze.push(m.length
-    ? `Daraus folgt der Maßnahmenfahrplan in der folgenden Tabelle mit ${m.length} ${m.length === 1 ? 'Maßnahme' : 'Maßnahmen'}`
-      + (d.kosten?.investEur > 0 ? `; die in Kapitel 5.5 bezifferten Investitionen betragen ${d.kosten.offen > 0 ? 'mindestens ' : ''}rund ${ggEuro(d.kosten.investEur)}` : '')
-      + (pvNetz ? `, hinzu kommt die Netzertüchtigung für die PV-Anlage mit geschätzt rund ${ggEuro(pvNetz)}` : '')
-      + '. Einzelheiten und Begründungen stehen in Kapitel 5.7.'
-    : 'Maßnahmen sind nicht erforderlich.');
+    ? `Daraus leitet sich der Maßnahmenfahrplan in der folgenden Tabelle mit ${m.length} ${m.length === 1 ? 'Maßnahme' : 'Maßnahmen'} ab`
+      + (d.kosten?.investEur > 0 ? `; die in Kapitel 5.5 bezifferten Investitionen liegen in einer Größenordnung von ${d.kosten.offen > 0 ? 'mindestens ' : ''}rund ${ggEuroText(d.kosten.investEur)}` : '')
+      + (pvNetz ? `, hinzu kommt die Netzertüchtigung für die PV-Anlage mit geschätzt rund ${ggEuroText(pvNetz)}` : '')
+      + '. Einzelheiten und Begründungen stehen in Kapitel 5.7. Die Werte beruhen auf überschlägigen Berechnungen und sind in '
+      + 'der weiteren Planung zu bestätigen.'
+    : 'Maßnahmen sind nach derzeitigem Stand nicht erforderlich.');
   return ggTextBlatt(absaetze, T);
 }
 
@@ -14472,7 +14493,7 @@ GG_FIGUREN.push(
       const g = m.gewichte;
       cfg.fussnote = `Punkte: bester Wert 100 · Gewichte ${EF_PV_KRITERIEN.wirtschaft} ${g.wirtschaft} %, ${EF_PV_KRITERIEN.netz} ${g.netz} %, `
                    + `${EF_PV_KRITERIEN.autarkie} ${g.autarkie} %, ${EF_PV_KRITERIEN.invest} ${g.invest} % · Netz: 100 = ohne Ertüchtigung `
-                   + 'des Bestandsnetzes anschließbar · hervorgehoben: weiterverfolgte Auslegung';
+                   + 'des Bestandsnetzes anschließbar · hervorgehoben: vorgeschlagene Auslegung';
       return `✓ ${m.zeilen.length} Auslegungen bewertet · Rang 1: ${m.zeilen[0].a.label}.`;
     },
   },

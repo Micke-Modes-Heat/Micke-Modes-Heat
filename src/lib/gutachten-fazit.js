@@ -344,14 +344,14 @@ export function faTextHeizoeltank(o = {}) {
   const st = o.stunden || FA_OEL.stunden;
   const r = faHeizoeltank(o.maxKw, o.mittelKw, st);
   return [
-    absatz(`Die Heizölbevorratung wird so ausgelegt, dass bei maximaler Heizlast von ${L(o.maxKw)} ein durchgängiger Betrieb über ${nf(st / 24)} Tage bzw. ${nf(st)} Stunden gewährleistet ist. `,
+    absatz(`Die Heizölbevorratung wird überschlägig so bemessen, dass bei maximaler Heizlast von ${L(o.maxKw)} ein durchgängiger Betrieb über ${nf(st / 24)} Tage bzw. ${nf(st)} Stunden möglich wäre. `,
       `Daraus ergibt sich ein Energiebedarf von rund ${nf(r.kwh / 1000, 1)} MWh; bei einem Heizwert von ${nf(FA_OEL.heizwertKwhL)} kWh je Liter entspricht dies einem nutzbaren Speichervolumen von rund ${nf(r.m3, 1)} m³ – anschaulich ein Würfel mit etwa ${nf(r.kante, 2)} m Kantenlänge.`),
     absatz(ok(r.reichweiteH) ? `Bezogen auf die durchschnittliche Heizlast von ${L(o.mittelKw)} reicht dieser Vorrat für rund ${nf(r.reichweiteH)} Betriebsstunden bzw. ${nf(r.reichweiteH / 24, 1)} Tage. ` : '',
       `Für ${FA_OEL.kurzStunden} Stunden bei maximaler Heizlast werden rund ${nf(r.m3Kurz, 1)} m³ benötigt; der stündliche Bedarf liegt dann bei etwa ${nf(r.literProH)} Litern.`),
-    absatz('Da der Tank wegen der Alterung des Brennstoffs nicht dauerhaft vollständig befüllt sein soll, ist eine Aufteilung in mehrere einzeln nutzbare Kammern vorzusehen. Kesselwirkungsgrad, Sicherheitsreserven und nicht nutzbare Restmengen sind noch nicht berücksichtigt; das tatsächliche Tankvolumen ist entsprechend größer auszulegen.'),
+    absatz('Da der Tank wegen der Alterung des Brennstoffs nicht dauerhaft vollständig befüllt sein soll, bietet sich eine Aufteilung in mehrere einzeln nutzbare Kammern an. Kesselwirkungsgrad, Sicherheitsreserven und nicht nutzbare Restmengen sind noch nicht berücksichtigt; das tatsächliche Tankvolumen dürfte entsprechend größer ausfallen und ist in der weiteren Planung festzulegen.'),
   ];
 }
 
 export function faTextResilienzUebergang() {
-  return [absatz('Da die wirksamen Resilienzmaßnahmen investiver Natur sind, bleibt das derzeitige Niveau bis zu ihrer Umsetzung unverändert. Für den Übergangszeitraum wird empfohlen, die Versorgungssicherheit organisatorisch zu stärken: durch eine dokumentierte Notfallorganisation, gesicherte Verfügbarkeit von Personal für die manuelle Umschaltung auf den Netzersatzbetrieb, eine verlässliche Kraftstoffversorgung sowie die Bevorratung kritischer Ersatzteile für alterungsbedingt ausfallgefährdete Komponenten.')];
+  return [absatz('Da die wirksamen Resilienzmaßnahmen überwiegend investiver Natur sind, bleibt das derzeitige Niveau bis zu ihrer Umsetzung weitgehend unverändert. Für den Übergangszeitraum wird empfohlen, die Versorgungssicherheit organisatorisch zu stärken: durch eine dokumentierte Notfallorganisation, gesicherte Verfügbarkeit von Personal für die manuelle Umschaltung auf den Netzersatzbetrieb, eine verlässliche Kraftstoffversorgung sowie die Bevorratung kritischer Ersatzteile für alterungsbedingt ausfallgefährdete Komponenten.')];
 }
