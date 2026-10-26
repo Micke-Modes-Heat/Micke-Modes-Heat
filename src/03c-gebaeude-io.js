@@ -3453,6 +3453,8 @@ export function _buildProjectData() {
     gutachten: typeof window.gutCaptureGutachten === 'function' ? window.gutCaptureGutachten() : null,
     // NAP-Analyse (13o): Gleichzeitigkeitsfaktor — über window, weil 13o aus diesem Modul importiert
     napAnalyse: typeof window.napCaptureState === 'function' ? window.napCaptureState() : null,
+    // Elektro-Checkliste (54-checkliste-fenster.js): Status und Notizen je Aufgabe
+    elektroCheckliste: typeof window.ecCaptureState === 'function' ? window.ecCaptureState() : null,
     waermeGrundlagen:captureWaermeGrundlagen(),
     gebaeude: window.gebaeude.map(g => ({
       id: g.id, name: g.name, gebaeudenummer: g.gebaeudenummer || '', waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
@@ -4088,6 +4090,7 @@ function _applyProjectData(project) {
       if (typeof window.sgNaRender === 'function') window.sgNaRender();
       if (typeof window.gutRestoreGutachten === 'function') window.gutRestoreGutachten(project.gutachten || null);
       if (typeof window.napRestoreState === 'function') window.napRestoreState(project.napAnalyse || null);
+      if (typeof window.ecRestoreState === 'function') window.ecRestoreState(project.elektroCheckliste || null);
       // Immer vor dem Gebäudetausch zurücksetzen/wiederherstellen. Alte Projekte
       // besitzen dieses Feld noch nicht und starten deshalb bewusst ohne die
       // Monatswerte oder Lastgänge der zuvor geöffneten Liegenschaft.

@@ -1386,6 +1386,26 @@ export function gutStand() {
   if (!kap) return null;
   return { kapitel: kap.length, leer: kap.filter(k => !(k.bloecke || []).length).length };
 }
+/**
+ * Inhalt je Kapitel für das Checklisten-Fenster (src/54): Nummer, Titel, Ebene und was drinsteht —
+ * eigene Texte (mit Inhalt), Abbildungen/Bausteine aus dem Katalog, Bilder. Dazu die Zahl der
+ * Stations-Anlagen. null = kein Dokument. Ohne Kopien, damit es oft gerufen werden darf.
+ */
+export function gutKapitelStand() {
+  const kap = _gut.dok?.kapitel;
+  if (!kap) return null;
+  const nr = gdKapitelNummern(kap);
+  return {
+    kapitel: kap.map((k, i) => {
+      const b = k.bloecke || [];
+      return { nr: nr[i], titel: k.titel, ebene: k.ebene,
+        texte: b.filter(x => x.typ === 'text' && String(x.text || '').trim()).length,
+        figuren: b.filter(x => x.typ === 'figur').length,
+        bilder: b.filter(x => x.typ === 'bild' && x.svg).length };
+    }),
+    stationsAnlagen: (_gut.dok.anlagen || []).filter(a => a.typ === 'stationssteckbrief').length,
+  };
+}
 /** Verweistabelle Standardnummer → Nummer im Dokument (C5); zwischengespeichert, solange sich die Gliederung nicht ändert. */
 let _verweisCache = { schluessel: '', map: new Map() };
 export function gutVerweisNummern() {

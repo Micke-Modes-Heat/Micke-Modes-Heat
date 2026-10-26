@@ -136,6 +136,7 @@ import * as datenqualitaet from './50-datenqualitaet.js';
 import * as kennzahlen from './51-kennzahlen.js';
 import * as fensterDock from './52-fenster-dock.js';
 import * as fensterSeiten from './53-fenster-seiten.js';
+import * as checklisteFenster from './54-checkliste-fenster.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -153,7 +154,7 @@ const modules = [
   napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap, engpassSweep, engpassPanel,
-  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, pvBelegungsStaende, pvAnschluss, lod2Import, quartierHerausloesen, netzQuartiere, speicherAnalyse, gebaeudeAnalyse, quartierSonde, variantenGrafik, heizzentralen, waermeSchema, datenanalyse, baeume, grundrissPruefung, ladeStatus, umspannwerke, netzanschlussModul, variantenRegeln, oberflaeche, datenqualitaet, kennzahlen, fensterDock, fensterSeiten,
+  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, pvBelegungsStaende, pvAnschluss, lod2Import, quartierHerausloesen, netzQuartiere, speicherAnalyse, gebaeudeAnalyse, quartierSonde, variantenGrafik, heizzentralen, waermeSchema, datenanalyse, baeume, grundrissPruefung, ladeStatus, umspannwerke, netzanschlussModul, variantenRegeln, oberflaeche, datenqualitaet, kennzahlen, fensterDock, fensterSeiten, checklisteFenster,
 ];
 window.pdfjsLib = pdfjsLib;
 lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});

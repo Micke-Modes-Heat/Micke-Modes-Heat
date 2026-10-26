@@ -121,6 +121,12 @@ export function uiSchritt(id, opt = {}) {
   setTimeout(() => window.map?.invalidateSize?.(), 120);
 }
 
+/** Aktuelle Stelle in der Oberfläche (für das Checklisten-Begleitfenster, src/54). */
+export function uiOrt() {
+  return { schritt: _ui.schritt, sparte: _ui.sparte, waermeTab: _ui.waermeTab, bestandAnsicht: _ui.bestandAnsicht,
+    abschnitt: _ui.abschnitt[_ui.schritt] || '' };
+}
+
 /** Sprung an einen Eintrag der Seitennavigation, z. B. uiGeheZu('auswertung', 'kna') — für Verweise. */
 export function uiGeheZu(schritt, key) {
   uiSchritt(schritt);
@@ -406,8 +412,20 @@ export function uiProjektseiteRendern() {
   if (!v) return;
   const name = (window.getProjektName?.() || '').trim();
   const geb = gebaeude;
-  const liste = uiCheckliste();
-  const alle = liste.flatMap(gr => gr.punkte.map(pk => ({ ...pk, gruppe: gr.titel })));
+  // Strom kommt aus der Elektro-Checkliste (54): Fortschritt je Phase statt der Einzelprüfungen —
+  // die stehen dort als „Im Tool: …“ je Aufgabe. Ohne 54 bleibt die alte Strom-Gruppe.
+  let ec = null;
+  try { ec = window.ecProjektStand?.() || null; } catch (e) { /* Liste nicht geladen */ }
+  const liste = uiCheckliste().map(gr => gr.id !== 'strom' || !ec ? gr : {
+    ...gr, ec: true,
+    punkte: ec.phasen.map(ph => ({
+      id: 'ec-phase:' + ph.id, titel: ph.titel,
+      stufe: ph.fertig === ph.gesamt ? 'ok' : ph.toolOffen || ph.begonnen ? 'offen' : 'leer',
+      text: `${ph.fertig} von ${ph.gesamt} erledigt${ph.toolOffen ? ` · im Tool ${ph.toolOffen} offen` : ''}${ph.kap && ph.kap !== '—' ? ` · Gutachten ${ph.kap}` : ''}`,
+    })),
+    naechster: ec.naechste ? { id: 'ec:' + ec.naechste.id, titel: ec.naechste.t, text: ec.naechste.wo || ec.naechste.ok, stufe: 'offen' } : null,
+  });
+  const alle = liste.flatMap(gr => (gr.ec ? (gr.naechster ? [gr.naechster] : []) : gr.punkte).map(pk => ({ ...pk, gruppe: gr.titel })));
   const naechster = alle.find(pk => !pk.optional && pk.stufe !== 'ok' && pk.stufe !== 'leer');
   const zeile = pk => `<div class="ui-ck" data-stufe="${pk.stufe}">
       <span class="ui-ck-ic">${_ic(pk.stufe === 'ok' ? 'check' : pk.stufe === 'offen' || pk.stufe === 'veraltet' ? 'alert' : 'circle', 'ui-i ui-i-sm')}</span>
@@ -421,6 +439,11 @@ export function uiProjektseiteRendern() {
       <button type="button" class="btn-confirm" data-ui-ck="${naechster.id}">Erledigen</button></div>`
       : `<div class="ui-next">${_ic('check')}<div><b>Alle Punkte erledigt</b><small>Gutachten prüfen und das Projekt speichern.</small></div></div>`}
     ${liste.map(gr => {
+      if (gr.ec) {
+        return `<div class="ui-ck-grp"><span>${_esc(gr.titel)} · Elektro-Checkliste</span><small>${ec.fertig} von ${ec.gesamt} Aufgaben erledigt</small>
+          <span class="ui-ck-grp-akt"><button type="button" class="btn-secondary ui-ck-btn" data-ui-ck="ec-fenster">Checkliste öffnen</button>
+          <button type="button" class="btn-secondary ui-ck-btn" data-ui-ck="ec-rf">Rückfragen (${ec.klaeren})</button></span></div>${gr.punkte.map(zeile).join('')}`;
+      }
       const pflicht = gr.punkte.filter(pk => !pk.optional);
       const fertig = pflicht.filter(pk => pk.stufe === 'ok').length;
       return `<div class="ui-ck-grp"><span>${_esc(gr.titel)}</span><small>${fertig} von ${pflicht.length} erledigt</small></div>${gr.punkte.map(zeile).join('')}`;
@@ -617,7 +640,16 @@ function _ereignisse() {
     let x;
     if ((x = t.closest('button[data-ui-schritt]'))) { uiSchritt(x.dataset.uiSchritt); return; }
     if ((x = t.closest('button[data-ui-sprung]'))) { uiSchritt(x.dataset.uiSprung); return; }
-    if ((x = t.closest('button[data-ui-ck]'))) { _CK_LOS[x.dataset.uiCk]?.(); return; }
+    if ((x = t.closest('button[data-ui-ck]'))) {
+      // Elektro-Checkliste (54): Aufgabe im Tool öffnen, Phase in der Liste zeigen, Liste/Rückfragen öffnen
+      const k = x.dataset.uiCk || '';
+      if (k.startsWith('ec:')) window.ecImToolOeffnen?.(k.slice(3));
+      else if (k.startsWith('ec-phase:')) window.ecPhaseZeigen?.(k.slice(9));
+      else if (k === 'ec-fenster') window.ecFensterOeffnen?.();
+      else if (k === 'ec-rf') window.ecRueckfragenZeigen?.();
+      else _CK_LOS[k]?.();
+      return;
+    }
     if ((x = t.closest('button[data-ui-fokus]'))) { const f = document.getElementById(x.dataset.uiFokus); f?.focus(); f?.scrollIntoView({ block: 'center' }); return; }
     if ((x = t.closest('button[data-ui-sparte]'))) { uiSchritt('planung', { sparte: x.dataset.uiSparte }); return; }
     if ((x = t.closest('button[data-ui-waerme]'))) { uiWaermeTab(x.dataset.uiWaerme); return; }
