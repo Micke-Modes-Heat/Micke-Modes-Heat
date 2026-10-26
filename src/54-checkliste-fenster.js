@@ -23,13 +23,15 @@ const FENSTER_NAME = 'mmh-elektro-checkliste';
 const LAGE_KEY = 'micke.ec.lage';
 const FOLGEN_KEY = 'micke.ec.folgen';
 const TAKT_MS = 700;
+const TOOL_TAKT_MIN_MS = 5000;   // Stand aus dem Tool höchstens so oft neu lesen
 
 /** @type {{ v: number, punkte: Record<string, { s: string, n: string, t?: number }> }} */
 let _stand = ecNormalisieren(null);
 /** @type {Window|null} */
 let _win = null;
 let _takt = 0;
-let _taktZaehler = 0;
+let _toolDauer = 0;       // Rechendauer des letzten Tool-Stands (ms), bestimmt den Abstand
+let _stumm = false;       // Liste war nicht zu sehen — beim Wiederauftauchen frisch lesen
 let _ortSchluessel = '';
 let _marken = /** @type {string[]} */ ([]);
 let _folgen = (() => { try { return localStorage.getItem(FOLGEN_KEY) !== '0'; } catch (e) { return true; } })();
@@ -100,6 +102,7 @@ let _toolCache = { t: 0, /** @type {Record<string, ToolHinweis>} */ werte: {} };
 /** @returns {Record<string, ToolHinweis>} */
 function _toolStand(frisch = false) {
   if (!frisch && Date.now() - _toolCache.t < 2000) return _toolCache.werte;
+  const start = performance.now();
   const w = /** @type {any} */ (window);
   /** @type {Record<string, ToolHinweis>} */
   const h = {};
@@ -219,6 +222,7 @@ function _toolStand(frisch = false) {
   });
 
   _toolCache = { t: Date.now(), werte: h };
+  _toolDauer = performance.now() - start;
   return h;
 }
 
@@ -364,8 +368,13 @@ function _tick() {
   if (!_win || _win.closed) { _beenden(); return; }
   // Eingebettet (Reiter im Auswertungsfenster, src/55): screenX/outerWidth gehören dem umgebenden Fenster
   if (_win.top === _win) try { localStorage.setItem(LAGE_KEY, JSON.stringify({ x: _win.screenX, y: _win.screenY, b: _win.outerWidth, h: _win.outerHeight })); } catch (e) { /* ohne Speicher */ }
-  // Stand aus dem Tool alle ~5 s neu lesen; geänderte Hinweise sofort zeigen
-  if (++_taktZaehler % 7 === 0) {
+  // Nicht zu sehen (Fenster minimiert/verdeckt, Reiter im Auswertungsfenster nicht gewählt,
+  // Tool im Hintergrund): nichts lesen, nichts rechnen. Beim Wiederauftauchen alles frisch.
+  if (!_fensterSichtbar()) { _stumm = true; return; }
+  if (_stumm) { _stumm = false; _ortSchluessel = ''; _toolCache.t = 0; }
+  // Stand aus dem Tool neu lesen — Abstand nach Rechendauer (kleines Projekt ~5 s, großes seltener);
+  // geänderte Hinweise sofort zeigen
+  if (Date.now() - _toolCache.t >= Math.max(TOOL_TAKT_MIN_MS, _toolDauer * 40)) {
     const alt = JSON.stringify(_toolCache.werte);
     if (JSON.stringify(_toolStand(true)) !== alt) _zeichnen(false);
   }
@@ -377,6 +386,21 @@ function _tick() {
   _marken = marken;
   _ortTextAktuell = _ortText(o);
   if (_folgen) _zeichnen(false, true);
+}
+
+/** Ist die Liste gerade zu sehen? Eigenes Fenster oder iframe-Reiter (src/55), und das Tool selbst. */
+function _fensterSichtbar() {
+  try {
+    if (document.visibilityState === 'hidden') return false;
+    const w = /** @type {Window} */ (_win);
+    if (w.document.visibilityState === 'hidden') return false;
+    const rahmen = /** @type {HTMLElement|null} */ (w.frameElement);
+    if (rahmen) {
+      if (rahmen.ownerDocument.visibilityState === 'hidden') return false;
+      if (!rahmen.getClientRects().length) return false;   // Reiter „Checkliste“ nicht gewählt
+    }
+  } catch (e) { /* im Zweifel weiterarbeiten */ }
+  return true;
 }
 
 function _beenden() {
