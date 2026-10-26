@@ -820,7 +820,7 @@ function _renderSidebar() {
     for (const a of filtered) {
       const cfg=ASSET_CFG[a.type]||{};
       const sel=a.id===_K.selectedId;
-      html+=`<div onclick="knaSelectNode('${a.id}')" title="${a.name}"
+      html+=`<div onclick="knaSelectNode('${a.id}')" data-karte="asset:${a.id}" title="${a.name}"
         style="display:flex;align-items:center;gap:7px;padding:6px 10px;cursor:pointer;font-size:12.5px;
         border-left:2px solid ${sel?cfg.color||'#4fc3f7':'transparent'};
         background:${sel?'rgba(79,195,247,.08)':'transparent'};"

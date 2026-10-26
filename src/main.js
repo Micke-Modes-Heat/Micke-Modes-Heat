@@ -90,7 +90,6 @@ import * as clusterMap from './14g-cluster-map.js';
 import * as engpassSweep from './14h-engpass-sweep.js';
 import * as engpassPanel from './14i-engpass-panel.js';
 import * as planDigitalisierer from './15-plan-digitalisierer.js';
-import * as dualScreen from './16-dual-screen.js';
 import * as gutachtenGrafik from './17-gutachten-grafik.js';
 import * as liegenschaftsbilder from './18-liegenschaftsbilder.js';
 import * as elErgebnisblatt from './19-el-ergebnisblatt.js';
@@ -138,6 +137,7 @@ import * as fensterDock from './52-fenster-dock.js';
 import * as fensterSeiten from './53-fenster-seiten.js';
 import * as checklisteFenster from './54-checkliste-fenster.js';
 import * as auswertungFenster from './55-auswertung-fenster.js';
+import * as kartenBezug from './57-karten-bezug.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -155,7 +155,7 @@ const modules = [
   napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap, engpassSweep, engpassPanel,
-  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, pvBelegungsStaende, pvAnschluss, lod2Import, quartierHerausloesen, netzQuartiere, speicherAnalyse, gebaeudeAnalyse, quartierSonde, variantenGrafik, heizzentralen, waermeSchema, datenanalyse, baeume, grundrissPruefung, ladeStatus, umspannwerke, netzanschlussModul, variantenRegeln, oberflaeche, datenqualitaet, kennzahlen, fensterDock, fensterSeiten, checklisteFenster, auswertungFenster,
+  planDigitalisierer, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, pvBelegungsStaende, pvAnschluss, lod2Import, quartierHerausloesen, netzQuartiere, speicherAnalyse, gebaeudeAnalyse, quartierSonde, variantenGrafik, heizzentralen, waermeSchema, datenanalyse, baeume, grundrissPruefung, ladeStatus, umspannwerke, netzanschlussModul, variantenRegeln, oberflaeche, datenqualitaet, kennzahlen, fensterDock, fensterSeiten, checklisteFenster, auswertungFenster, kartenBezug,
 ];
 window.pdfjsLib = pdfjsLib;
 lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});
@@ -221,7 +221,6 @@ if (document.readyState === 'loading') {
     clusterMap.clusterInit();
     initAccessibilityBaseline();
     uiPanels.initResponsiveLayout();
-    dualScreen.dsInit();
     oberflaeche.uiInit();
     fensterDock.dockInit();
     datenqualitaet.dqInit();
@@ -232,7 +231,6 @@ if (document.readyState === 'loading') {
   clusterMap.clusterInit();
   initAccessibilityBaseline();
   uiPanels.initResponsiveLayout();
-  dualScreen.dsInit();
   oberflaeche.uiInit();
   fensterDock.dockInit();
   datenqualitaet.dqInit();

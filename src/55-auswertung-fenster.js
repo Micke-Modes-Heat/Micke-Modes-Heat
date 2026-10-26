@@ -116,7 +116,7 @@ function _geruest(/** @type {Window} */ w) {
         <button class="ui-fbtn ui-fbtn-txt" type="button" data-af="zurueck" title="Fenster schließen — Auswertung und Gutachten wieder im Hauptfenster"><svg class="ui-i"><use href="#ui-i-x"/></svg>Zurück ins Hauptfenster</button>
       </div>
     </header>
-    <div class="af-hinweis" id="af-hinweis"></div>
+    <div class="af-hinweis" id="af-hinweis"></div><div class="hint hidden" id="hint">–</div>
     <div id="af-haupt"><div id="af-spalte"><div class="af-reiter" role="tablist">
       <button type="button" role="tab" data-af-reiter="auswertung">Auswertung</button>
       <button type="button" role="tab" data-af-reiter="gutachten">Gutachten</button>
@@ -147,8 +147,6 @@ function _spiegeln() {
   const html = _doc.documentElement;
   for (const a of [...html.attributes]) if (!document.documentElement.hasAttribute(a.name)) html.removeAttribute(a.name);
   for (const a of [...document.documentElement.attributes]) html.setAttribute(a.name, a.value);
-  // Zweibildschirm-Modus (16) betrifft nur das Hauptfenster
-  delete html.dataset.dualScreen;
   const b = _doc.body;
   b.className = document.body.className.split(/\s+/).filter(c => c && !c.startsWith('ui-schritt-')).concat('af-body').join(' ');
   for (const k of Object.keys(b.dataset)) delete b.dataset[k];
@@ -234,13 +232,151 @@ function _tick() {
   _kopfAnzeigen();
 }
 
+// ── Dialoge, Rückfragen und Hinweise im Fenster, in dem gerade gearbeitet wird ──
+// Aktiv ist das Fenster mit dem Fokus, im Zweifel das, in dem zuletzt geklickt oder getippt wurde.
+// - alert/confirm/prompt: eigene Properties am window des Hauptfensters (bare Aufrufe treffen sie
+//   mit), die bei aktivem Auswertungsfenster dessen Dialog öffnen. Beim Schließen wieder entfernt.
+// - Overlays (Modaldialoge, Vollbild-Ansichten …), die Module an document.body hängen, landen über
+//   eine eigene appendChild/append am body gleich im aktiven Fenster; einmal angelegte, später
+//   wieder eingeblendete folgen beim Einblenden. epConfirm/epPrompt (05b) fragen afDialogBody,
+//   showHint (03c) nimmt die Hinweisleiste aus afHinweisElement.
+// - Inline-Handler (onclick, ondrop …) im Fenster laufen im Hauptfenster (dort liegen die Funktionen);
+//   removeChild am body entfernt auch ein Overlay, das inzwischen im Fenster steht.
+
+let _zuletzt = 'haupt';
+/** @type {Record<string, any>} */
+const _nativ = {};
+/** @type {Set<HTMLElement>} */
+const _dialoge = new Set();
+/** @type {MutationObserver|null} */
+let _dialogSicht = null;
+const _N = Node.prototype;
+// Nie umziehen: Hinweisleiste, Befehlssuche (Strg K nur im Hauptfenster), Leitfaden über der Karte
+const _NIE = /^(hint|ui-pal|hilfe-)/;
+
+/** Wird gerade im Auswertungsfenster gearbeitet? */
+export function afImFenster() {
+  if (!_doc || !_win || _win.closed) return false;
+  try {
+    if (_doc.hasFocus()) return true;
+    if (document.hasFocus()) return false;
+  } catch (e) { /* Fenster im Abbau */ }
+  return _zuletzt === 'fenster';
+}
+
+/** body des Auswertungsfensters, wenn dort gearbeitet wird — sonst null (dann document.body nehmen). */
+export function afDialogBody() { return afImFenster() ? /** @type {Document} */ (_doc).body : null; }
+
+/** Hinweisleiste des Auswertungsfensters (für showHint, 03c) oder null. */
+export function afHinweisElement() { return _doc?.getElementById('hint') || null; }
+
+const _merkHaupt = () => { _zuletzt = 'haupt'; };
+const _merkFenster = () => { _zuletzt = 'fenster'; };
+
+/** Sieht das Element wie ein Dialog/Overlay aus? Auch vor dem Einhängen (dann nur Name und Inline-Stil). */
+function _istDialog(/** @type {any} */ el) {
+  if (!el || el.nodeType !== 1 || /^(SCRIPT|STYLE|LINK|INPUT|A|IFRAME)$/.test(el.tagName)) return false;
+  if (_NIE.test(el.id || '') || el.classList.contains('float-panel')) return false;
+  const name = `${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`;
+  if (/overlay|modal|dialog|-bg\b|lightbox/i.test(name)) return true;
+  const st = el.isConnected ? (el.ownerDocument.defaultView || window).getComputedStyle(el) : el.style;
+  const null0 = (/** @type {string} */ v) => v === '0px' || v === '0';
+  return st.position === 'fixed' && null0(st.top) && null0(st.left) && null0(st.right) && null0(st.bottom);
+}
+
+function _sichtbar(/** @type {HTMLElement} */ el) {
+  if (el.hidden) return false;
+  const v = el.ownerDocument.defaultView;
+  return !!v && v.getComputedStyle(el).display !== 'none';
+}
+
+function _dialogVerfolgen(/** @type {HTMLElement} */ el) {
+  if (_dialoge.has(el)) return;
+  _dialoge.add(el);
+  _dialogSicht?.observe(el, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+}
+
+/** Ein verfolgtes Overlay, das gerade zu sehen ist, ins aktive Fenster holen. */
+function _dialogHinbringen(/** @type {HTMLElement} */ el) {
+  if (!_doc || !el.isConnected || !_sichtbar(el)) return;
+  const ziel = afImFenster() ? _doc.body : document.body;
+  if (el.parentNode !== ziel) _N.appendChild.call(ziel, el);
+}
+
+// Ereignisse, deren Inline-Handler im Tool vorkommen (z. B. Ziehen im Ausbauplaner)
+const _INLINE = ['click', 'dblclick', 'change', 'input', 'keydown', 'mouseover', 'mouseout', 'dragstart', 'dragover', 'dragleave', 'drop', 'dragend'];
+
+/**
+ * Inline-Handler im Fenster an eine Funktion des Hauptfensters binden — beim ersten Auftreten des
+ * Ereignisses, in der Capture-Phase (also bevor der Handler selbst läuft). Im Fenster selbst fehlen
+ * die Funktionen des Tools; this und event bleiben, wie sie sind.
+ */
+function _inlineBruecke(/** @type {Event} */ ev) {
+  const attr = 'on' + ev.type, merk = '_afBruecke_' + ev.type;
+  for (let el = /** @type {any} */ (ev.target); el && el.nodeType === 1; el = el.parentElement) {
+    if (el[merk] || !el.hasAttribute(attr)) continue;
+    el[merk] = true;
+    try {
+      const f = new Function('event', el.getAttribute(attr));
+      el[attr] = function (/** @type {Event} */ e) { return f.call(this, e); };
+    } catch (e) { /* ungültiger Handler — bleibt, wie er ist */ }
+  }
+}
+
+function _dialogeAn() {
+  const w = /** @type {any} */ (window);
+  for (const k of ['alert', 'confirm', 'prompt']) {
+    _nativ[k] = w[k];
+    w[k] = (/** @type {any[]} */ ...a) => (afImFenster() ? /** @type {any} */ (_win)[k](...a) : _nativ[k].apply(window, a));
+  }
+  const b = /** @type {any} */ (document.body);
+  b.appendChild = function (/** @type {any} */ n) {
+    if (_istDialog(n)) {
+      _dialogVerfolgen(n);
+      if (afImFenster() && _doc) return _N.appendChild.call(_doc.body, n);
+    }
+    return _N.appendChild.call(this, n);
+  };
+  b.append = function (/** @type {any[]} */ ...nodes) {
+    for (const n of nodes) b.appendChild(typeof n === 'string' ? document.createTextNode(n) : n);
+  };
+  b.removeChild = function (/** @type {any} */ n) {
+    if (n?.parentNode && n.parentNode !== this) { n.remove(); return n; }
+    return _N.removeChild.call(this, n);
+  };
+  _dialogSicht = new MutationObserver(recs => { for (const r of recs) _dialogHinbringen(/** @type {HTMLElement} */ (r.target)); });
+  // Schon angelegte Overlays, die später wieder eingeblendet werden (z. B. Vollbild der PV-Analyse)
+  for (const el of [...document.body.children]) if (_istDialog(el)) _dialogVerfolgen(/** @type {HTMLElement} */ (el));
+  window.addEventListener('pointerdown', _merkHaupt, true);
+  window.addEventListener('keydown', _merkHaupt, true);
+  _win?.addEventListener('pointerdown', _merkFenster, true);
+  _win?.addEventListener('keydown', _merkFenster, true);
+  for (const t of _INLINE) _doc?.addEventListener(t, _inlineBruecke, true);
+  // Auswertung ↔ Karte (57) auch im Fenster
+  if (_doc) w.kbAnbinden?.(_doc);
+}
+
+function _dialogeAus() {
+  const w = /** @type {any} */ (window);
+  for (const k of Object.keys(_nativ)) { w[k] = _nativ[k]; delete _nativ[k]; }
+  const b = /** @type {any} */ (document.body);
+  delete b.appendChild; delete b.append; delete b.removeChild;
+  _dialogSicht?.disconnect();
+  _dialogSicht = null;
+  // Was noch im Fenster steht, zurück — die Module halten es teils fest und blenden es später wieder ein
+  for (const el of _dialoge) if (el.isConnected && el.ownerDocument !== document) _N.appendChild.call(document.body, el);
+  _dialoge.clear();
+  window.removeEventListener('pointerdown', _merkHaupt, true);
+  window.removeEventListener('keydown', _merkHaupt, true);
+  _zuletzt = 'haupt';
+}
+
 // ── Öffnen / Schließen ─────────────────────────────────────────────────
 // Erst öffnen (synchron, sonst blockt der Browser das Pop-up), dann beim allerersten Mal auf den
 // anderen Bildschirm schieben (Window Management API, nur gehostet; fragt einmal nach Erlaubnis).
 export function afOeffnen() {
   if (_win && !_win.closed && _doc) { _win.focus(); return; }
   if (!_D.getElementById.call(document, 'ui-seitennav')) { /** @type {any} */ (window).showHint?.('Das Auswertungsfenster gibt es nur in der neuen Oberfläche.', 5000); return; }
-  if (document.documentElement.dataset.dualScreen === 'on') /** @type {any} */ (window).toggleDualScreen?.(false);
 
   let l = null;
   try { l = JSON.parse(localStorage.getItem(LAGE_KEY) || 'null'); } catch (e) { /* ohne Speicher */ }
@@ -256,6 +392,7 @@ export function afOeffnen() {
   inlineHandlerAnbinden(_doc);
   uiKlickAnbinden(_doc);
   _doc.addEventListener('click', _fensterKlick);
+  _dialogeAn();
 
   for (const { id, ziel } of KNOTEN) {
     const el = _D.getElementById.call(document, id);
@@ -318,6 +455,7 @@ function _zurueck() {
     else h.parent.appendChild(el);
   }
   _heim.clear();
+  _dialogeAus();
   _umleitungAus();
   _win = null;
   _doc = null;

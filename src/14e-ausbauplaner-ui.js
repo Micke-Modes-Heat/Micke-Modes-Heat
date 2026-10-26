@@ -83,6 +83,7 @@ function _buildPlan() {
       items.push({
         id:        m.id,
         assetId:   a.id,
+        karte:     'asset:' + a.id,   // Bezug zur Karte (57-karten-bezug)
         assetName: a.name,
         typ:       m.typ,
         titel:     a.name,
@@ -107,6 +108,7 @@ function _buildPlan() {
       items.push({
         id:        m.id,
         assetId:   g.id,
+        karte:     'geb:' + g.id,
         assetName: g.name,
         typ:       m.typ,
         titel:     g.name || ('Gebäude ' + g.id),
@@ -139,7 +141,7 @@ function _pakete(items) {
     jeEintrag.set(e.id, g);
     out.push(g);
   }
-  for (const g of jeEintrag.values()) if (g._ms.length > 1) g.titel = `${g.titel} (${g._ms.length} Objekte)`;
+  for (const g of jeEintrag.values()) if (g._ms.length > 1) { g.titel = `${g.titel} (${g._ms.length} Objekte)`; g.karte = null; }
   if (umleiten.size) for (const it of out) it.dependsOn = [...new Set((it.dependsOn || []).map(d => umleiten.get(d) || d))].filter(d => d !== it.id);
   return out;
 }
@@ -340,7 +342,7 @@ function _cellHtml(items, phaseId) {
     const kostenTxt = it.kosten ? ` (${(it.kosten/1000).toFixed(0)} k€)` : '';
     const praefix = (it.nr != null ? `M${String(it.nr).padStart(2, '0')} ` : '') + (_gruppierung === 'cluster' && gwIcon ? gwIcon + ' ' : '');
     return `<div class="ausb-bar" id="ausb-bar-${_cssId(it.id)}"
-      data-item-id="${esc(it.id)}" draggable="true" ondragstart="ausbauDragStart(event,'${esc(it.id)}')"
+      data-item-id="${esc(it.id)}"${it.karte ? ` data-karte="${esc(it.karte)}"` : ''} draggable="true" ondragstart="ausbauDragStart(event,'${esc(it.id)}')"
       title="${esc(it.titel)} — ${esc(gwLabel)}${kostenTxt}${jahrTxt}${err?' ⚠ Reihenfolge verletzt!':''}"
       style="background:${col}22;border:${err?'2px solid #ef4444':'1px solid '+col+'44'};${err?'box-shadow:0 0 0 2px #ef4444;':''}border-radius:4px;padding:3px 6px;font-size:11px;cursor:grab;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">
       ${err?'⚠ ':''}${praefix}${esc(it.titel)}${jahrTxt}</div>`;

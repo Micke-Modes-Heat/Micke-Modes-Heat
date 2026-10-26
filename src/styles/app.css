@@ -1953,29 +1953,6 @@ button.netz-create-option:hover{border-color:var(--c-green);background:rgba(76,1
 .pd-anschluss-name{flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .pd-anschluss-typ{color:var(--muted);font-size:10.5px;white-space:nowrap;}
 
-/* ── Zwei-Bildschirm-Modus (16-dual-screen.js) ──────────────────────────── */
-#dual-splitter{flex:0 0 8px;background:var(--border);cursor:col-resize;position:relative;z-index:3200;transition:background .12s;}
-#dual-splitter::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:46px;border-radius:2px;background:var(--muted);opacity:.6;}
-#dual-splitter:hover{background:var(--accent);}
-#dual-dock{flex:0 0 auto;min-width:0;background:var(--bg);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;z-index:3100;}
-.dd-head{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;}
-.dd-title{flex:1;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
-.dd-btn{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:5px;font-size:12px;line-height:1;padding:3px 7px;cursor:pointer;font-family:inherit;}
-.dd-btn:hover{border-color:var(--accent);color:var(--accent);}
-.dd-hint{display:none;padding:8px 10px;font-size:12px;line-height:1.5;color:var(--c-orange);background:rgba(255,152,0,.09);border-bottom:1px solid var(--border);}
-.dd-hint.visible{display:block;}
-.dd-body{flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding:10px;display:flex;flex-direction:column;gap:10px;}
-.dd-body:empty::after{content:'Geöffnete Panels erscheinen hier.';display:block;padding:20px 10px;text-align:center;font-size:12.5px;color:var(--muted);}
-.dd-body::-webkit-scrollbar{width:5px;}
-.dd-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
-.float-panel.dock-mode{position:static!important;transform:none!important;top:auto!important;left:auto!important;right:auto!important;bottom:auto!important;width:100%!important;min-width:0!important;max-width:100%!important;max-height:none!important;resize:none!important;box-shadow:none!important;margin:0!important;flex-shrink:0;}
-.float-panel.dock-mode .panel-drag-handle{cursor:default;}
-.float-panel.dock-mode .drag-dots{opacity:.25;}
-.dd-dockbtn{margin-right:6px;font-size:12px;line-height:1;color:var(--muted);cursor:pointer;user-select:none;}
-.dd-dockbtn:hover{color:var(--accent);}
-
-html[data-dual-screen='on'] #map{min-width:0;}
-
 /* ── Topbar bei knapper Fensterbreite ───────────────────────────────────
    Fast alle Kopfzeilen-Elemente stehen auf flex-shrink:0. Ohne die
    folgenden Stufen werden „⋯ Mehr“ und die Adresssuche bei weniger als

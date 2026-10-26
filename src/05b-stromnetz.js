@@ -45,8 +45,9 @@ export function epConfirm(title, message, opts) {
         '<button class="ep-modal-btn ' + (opts.danger ? 'danger' : 'primary') + '" id="ep-m-ok">' + (opts.okText || 'OK') + '</button>' +
       '</div>';
     overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-    const close = function(val) { document.body.removeChild(overlay); resolve(val); };
+    // im Fenster, in dem gerade gearbeitet wird (Auswertungsfenster, src/55)
+    (window.afDialogBody?.() || document.body).appendChild(overlay);
+    const close = function(val) { overlay.remove(); resolve(val); };
     const cancelBtn = modal.querySelector('#ep-m-cancel');
     if (cancelBtn) cancelBtn.onclick = function() { close(false); };
     modal.querySelector('#ep-m-ok').onclick = function() { close(true); };
@@ -71,9 +72,9 @@ export function epPrompt(title, message, defaultVal, opts) {
         '<button class="ep-modal-btn primary" id="ep-m-ok">' + (opts.okText || 'OK') + '</button>' +
       '</div>';
     overlay.appendChild(modal);
-    document.body.appendChild(overlay);
+    (window.afDialogBody?.() || document.body).appendChild(overlay);
     const input = modal.querySelector('#ep-m-input');
-    const close = function(val) { document.body.removeChild(overlay); resolve(val); };
+    const close = function(val) { overlay.remove(); resolve(val); };
     modal.querySelector('#ep-m-cancel').onclick = function() { close(null); };
     modal.querySelector('#ep-m-ok').onclick = function() { close(input.value); };
     input.addEventListener('keydown', function(ev) { if (ev.key === 'Enter') close(input.value); if (ev.key === 'Escape') close(null); });

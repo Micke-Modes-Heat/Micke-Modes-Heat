@@ -6,7 +6,7 @@
 // schmaler (ResizeObserver → map.invalidateSize). Nichts liegt mehr über der Karte.
 //
 // Regeln:
-//   - Gilt nur in der Oberfläche LKEBw, auf breiten Bildschirmen, ohne Zweitbildschirm-Dock (16)
+//   - Gilt nur in der Oberfläche LKEBw, auf breiten Bildschirmen
 //     und nur, solange die Karte zu sehen ist. Sonst verhalten sich Fenster wie bisher.
 //   - Fenster bleiben, wo sie im DOM herkommen, nur für die Dauer des Andockens wandern sie in
 //     #ui-dock-inhalt (Heimat in p._dockHeim). Wer sie versteckt, einbettet (inline-mode) oder
@@ -67,11 +67,10 @@ function _merken() {
  * 'seite' — eine Seite (Auswertung, Gutachten, Projekt …) liegt über Karte und Spalte: Angedockte
  *           bleiben verdeckt in der Spalte und sind beim Zurück zur Karte wieder da; neu geöffnete
  *           docken erst dann an. (Früher wurden sie hier freigegeben und schwebten über der Seite.)
- * 'aus'   — keine Spalte (alte Oberfläche, Zweitbildschirm, schmaler Bildschirm): alles freigeben.
+ * 'aus'   — keine Spalte (alte Oberfläche, schmaler Bildschirm): alles freigeben.
  */
 function _dockZustand() {
   if (!_rechts || !document.body.classList.contains('ui-lkebw')) return 'aus';
-  if (document.documentElement.dataset.dualScreen === 'on') return 'aus';
   if (window.innerWidth < MIN_BILDSCHIRM) return 'aus';
   if (ZENTRALANSICHTEN.some(id => { const v = document.getElementById(id); return v && v.style.display && v.style.display !== 'none'; })) return 'seite';
   const projekt = document.getElementById('center-projekt-view');
@@ -90,7 +89,7 @@ function _offen(p) {
 
 function _andockbar(p) {
   return _offen(p) && !p.hasAttribute('data-kein-dock')
-    && !p.classList.contains('inline-mode') && !p.classList.contains('dock-mode') && !p.classList.contains('dragging');
+    && !p.classList.contains('inline-mode') && !p.classList.contains('dragging');
 }
 
 /* ── Andocken / Zurückgeben ─────────────────────────────────────────────── */
@@ -330,7 +329,6 @@ export function dockInit() {
     || t.id === 'sidebar' || ZENTRALANSICHTEN.includes(t.id) || t.id === 'center-projekt-view';
   new MutationObserver(recs => { if (recs.some(r => relevant(r.target))) _planen(); })
     .observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
-  new MutationObserver(_planen).observe(document.documentElement, { attributes: true, attributeFilter: ['data-dual-screen'] });
   // Fenster, die ein Modul erst beim ersten Öffnen anlegt
   new MutationObserver(recs => { if (recs.some(r => [...r.addedNodes].some(n => n.classList?.contains('float-panel') || n.id in WERKZEUGE))) _planen(); })
     .observe(document.body, { childList: true });

@@ -400,6 +400,13 @@ body.gut-daneben[data-ui-layout="nav"] :is(#center-analyse-view,#center-optimier
 @keyframes gutDanebenBlink{0%,100%{box-shadow:inset 0 0 0 0 transparent}30%{box-shadow:inset 0 0 0 3px var(--brand)}}
 #gut-daneben.gut-daneben-blink{animation:gutDanebenBlink .9s ease-out}
 
+/* Auswertung ↔ Karte (57-karten-bezug.js): Zeilen mit Kartenbezug, Aufleuchten auf der Karte, gewählte Zeilen */
+[data-karte]{cursor:pointer}
+[data-karte]:hover{box-shadow:inset 3px 0 0 #ff6d00}
+[data-karte].kb-auswahl{box-shadow:inset 3px 0 0 var(--brand);background-color:var(--brand-weak)!important}
+@keyframes kbPuls{0%{stroke-width:12px;stroke-opacity:.25}60%{stroke-width:4px;stroke-opacity:1}100%{stroke-width:4px;stroke-opacity:1}}
+path.kb-puls{animation:kbPuls .9s ease-out 1;stroke-dasharray:none}
+
 /* ── 6. Papier: Seitenvorschauen bleiben in beiden Darstellungen hell ── */
 #gut-seite,#gg-paper,#lp-paper,.ui-papier{--text:#191D1A;--muted:#58615A;--faint:#89918A;--border:#DADFD9;--line-2:#C3C9C2;--surface:#FFFFFF;--surface2:#F6F7F5;--bg:#EEF0ED;--hover:#EEF3EC;--ink:25,29,26;--c-red:#B3261E;--c-orange:#B4531A;--c-amber:#8A6100;--c-green:#2E7D32;--c-teal:#00796B;--c-blue:#1E5E98;--c-violet:#7B3F9E;color-scheme:light}
 
@@ -442,12 +449,12 @@ body.gut-daneben[data-ui-layout="nav"] :is(#center-analyse-view,#center-optimier
    Wer ein Fenster an der Kopfzeile wegzieht, löst es (Klasse .dragging) und verschiebt es frei.
    Bei sichtbarer Karte übernimmt die Andock-Spalte (Abschnitt 15, .im-dock); diese Regel bleibt
    für Fenster über Seiten (Auswertung, Projekt) und schmale Bildschirme. */
-body.ui-lkebw .float-panel.visible:not(.inline-mode):not(.dock-mode):not(.dragging):not(.im-dock):not(.ui-dialog-fenster){
+body.ui-lkebw .float-panel.visible:not(.inline-mode):not(.dragging):not(.im-dock):not(.ui-dialog-fenster){
   position:fixed!important;top:var(--kopf-h)!important;right:0!important;bottom:var(--fuss-h)!important;left:auto!important;
   transform:none!important;max-height:none!important;width:460px!important;max-width:min(820px,calc(100vw - var(--lp-w) - 40px))!important;
   border-radius:0!important;border:0!important;border-left:1px solid var(--border)!important;
   box-shadow:-6px 0 18px rgba(20,30,25,.08)!important;overflow-y:auto!important;resize:none!important}
-body.ui-lkebw .float-panel.visible.minimized:not(.inline-mode):not(.dock-mode):not(.dragging):not(.im-dock):not(.ui-dialog-fenster){bottom:auto!important}
+body.ui-lkebw .float-panel.visible.minimized:not(.inline-mode):not(.dragging):not(.im-dock):not(.ui-dialog-fenster){bottom:auto!important}
 body.ui-lkebw .float-panel.visible:not(.dragging):not(.inline-mode) .panel-drag-handle{border-radius:0;cursor:grab}
 body.ui-lkebw .float-panel.dragging{border-radius:var(--r-2)!important}
 /* Schaltbilder (Einlinienschema, Wärmeschema) als rechte Spalte unter der Prozessleiste */

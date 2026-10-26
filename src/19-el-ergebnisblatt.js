@@ -785,7 +785,7 @@ function _kapErgebnis(druck) {
     ? `<div class="eb-hinweis eb-warn">Netz oder Parameter wurden seit der Rechnung geändert — vor dem Weitergeben neu rechnen.</div>` : '';
 
   const karten = m.nachweise.map(n => `
-    <div class="eb-nw${n.ziel && !druck ? ' eb-klick' : ''}"${n.ziel ? ` data-click="ebSpringeZu('${_arg(n.ziel[0])}','${n.ziel[1]}')" title="Auf der Karte zeigen"` : ''}>
+    <div class="eb-nw${n.ziel && !druck ? ' eb-klick' : ''}"${n.ziel ? ` data-click="ebSpringeZu('${_arg(n.ziel[0])}','${n.ziel[1]}')" data-karte="${n.ziel[1]}:${_arg(n.ziel[0])}" title="Auf der Karte zeigen"` : ''}>
       <div class="eb-nw-k"><span>${n.label}</span><b class="eb-${AMPEL[n.stufe]}">${_num(n.wert, n.d)}<small> ${n.einheit}</small></b></div>
       ${_balken(n.wert, n.grenze, n.stufe)}
       <div class="eb-nw-f"><span>${n.grenzText}${n.wo ? ' · ' + _esc(n.wo) : ''}</span>
@@ -804,7 +804,7 @@ function _kapErgebnis(druck) {
   const massn = !m.massnahmen.length
     ? `<div class="eb-hinweis eb-ok">✓ Keine Grenzwertverletzung und keine Stelle ohne Reserve.</div>`
     : `<div class="eb-massn">${liste.map(x => `
-        <div class="eb-mz">
+        <div class="eb-mz"${druck ? '' : ` data-karte="${x.art}:${_arg(x.id)}"`}>
           <span class="eb-punkt is-${AMPEL[x.stufe]}"></span>
           <div class="eb-mz-text">
             <b>${_esc(x.titel)}</b> <span class="eb-mut">${x.gruende.map(_esc).join(' · ')}</span>
@@ -1013,7 +1013,7 @@ function _strecke(k, druck, einzeln, ms) {
     k.ausgelegt ? '' : '<span class="eb-tag" title="Gebäudeanschluss: wird von dieser Rechnung nicht ausgelegt">Gebäude</span>',
   ].join('');
   const zeile = `
-    <tr id="eb-str-${_esc(k.id)}" class="eb-str${einzeln ? ' eb-str-flach' : ''}${druck ? '' : ' eb-klick'}${offen ? ' is-offen' : ''}${k.stufe === 2 ? ' is-bad' : ''}"${druck ? '' : ` data-click="ebRechnung('${_arg(k.id)}')"`}>
+    <tr id="eb-str-${_esc(k.id)}" class="eb-str${einzeln ? ' eb-str-flach' : ''}${druck ? '' : ' eb-klick'}${offen ? ' is-offen' : ''}${k.stufe === 2 ? ' is-bad' : ''}"${druck ? '' : ` data-click="ebRechnung('${_arg(k.id)}')" data-karte="kabel:${_arg(k.id)}"`}>
       <td>${_esc(k.von)} → ${_esc(k.nach)} ${tags}</td>
       <td>${_esc(_kabelText(k))}</td>
       <td class="eb-num">${_num(k.laengeM, 0)} m</td>
@@ -1098,7 +1098,7 @@ function _kapKnoten(druck) {
   const hatIk = m.knoten.some(n => n.ikMinKa != null);
 
   const body = rows.map(n => `
-    <tr class="${druck ? '' : 'eb-klick'}"${druck ? '' : ` data-click="ebSpringeZu('${_arg(n.id)}','asset')"`}>
+    <tr class="${druck ? '' : 'eb-klick'}"${druck ? '' : ` data-click="ebSpringeZu('${_arg(n.id)}','asset')" data-karte="asset:${_arg(n.id)}"`}>
       <td>${_esc(n.name)}</td>
       <td class="eb-mut">${_esc(n.typ)}</td>
       <td class="eb-mut">${_esc(n.ort)}</td>

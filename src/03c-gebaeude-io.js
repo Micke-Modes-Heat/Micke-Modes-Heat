@@ -4852,13 +4852,17 @@ export function sendToLiegenschaftsrechner() {
 })();
 
 let _hintTimer = null;
+// Hinweisleisten: die des Hauptfensters und ggf. die des Auswertungsfensters (src/55)
+const _hintLeisten = () => [document.getElementById('hint'), window.afHinweisElement?.()].filter(Boolean);
 export function showHint(msg, duration){
-  const h=document.getElementById('hint');
+  // im Fenster, in dem gerade gearbeitet wird; die andere Leiste ausblenden
+  const h=(window.afImFenster?.() && window.afHinweisElement?.()) || document.getElementById('hint');
   clearTimeout(_hintTimer);
+  _hintLeisten().forEach(x => { if (x !== h) x.classList.add('hidden'); });
   h.textContent=msg;h.classList.remove('hidden');
   if (duration > 0) _hintTimer=setTimeout(hideHint,duration);
 }
-export function hideHint(){clearTimeout(_hintTimer);document.getElementById('hint').classList.add('hidden');}
+export function hideHint(){clearTimeout(_hintTimer);_hintLeisten().forEach(x => x.classList.add('hidden'));}
 
 export const sty=document.createElement('style');
 sty.textContent=`.geb-tooltip{background:var(--surface);border:1px solid var(--c-blue);color:var(--c-blue);font-family:'DM Sans',sans-serif;font-size:12px;padding:5px 8px;border-radius:7px;box-shadow:0 6px 24px rgba(0,0,0,.6);font-weight:normal;line-height:1.5;}.geb-tooltip .leaflet-tooltip-tip{display:none;}.geb-form-aktiv,.geb-form-aktiv .leaflet-interactive{cursor:crosshair!important;}`;
