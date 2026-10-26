@@ -2,43 +2,47 @@
 // Ersetzt inline onclick/oninput/onchange — Handler-Code steht in data-Attributen.
 import { _renderOptKostenUebersicht } from './07b-analysis-economics.js';
 
-(function() {
-  // Allowed prefixes: function call, event., this., document., !function, or multi-statement starting with one of these
-  const _SAFE = /^\s*(!?\s*)?([\w$][\w$]*\s*\(|event\.|this\.|document\.|window\.)/;
-  function exec(el, code) {
-    if (!_SAFE.test(code)) {
-      console.warn('[Security] Blocked data-handler with unexpected pattern:', code);
-      return;
-    }
-    try { new Function('event', code).call(el, event); }
-    catch(e) { console.error('Handler-Fehler:', code, e); }
+// Allowed prefixes: function call, event., this., document., !function, or multi-statement starting with one of these
+const _SAFE = /^\s*(!?\s*)?([\w$][\w$]*\s*\(|event\.|this\.|document\.|window\.)/;
+function exec(el, code, event) {
+  if (!_SAFE.test(code)) {
+    console.warn('[Security] Blocked data-handler with unexpected pattern:', code);
+    return;
   }
+  try { new Function('event', code).call(el, event); }
+  catch(e) { console.error('Handler-Fehler:', code, e); }
+}
 
-  document.addEventListener('click', function(event) {
+/** Hängt die data-*-Delegation an ein Dokument — das Haupt-Dokument und das Auswertungsfenster (src/55). */
+export function inlineHandlerAnbinden(doc) {
+  if (doc._inlineHandlerAn) return;
+  doc._inlineHandlerAn = true;
+  doc.addEventListener('click', function(event) {
     const el = event.target.closest('[data-click]');
     if (el) {
       if (!el.classList.contains('asset-palette-btn') && window._pendingAssetType) {
         window.cancelPendingAsset?.();
       }
-      exec(el, el.dataset.click);
+      exec(el, el.dataset.click, event);
     }
   });
 
-  document.addEventListener('input', function(event) {
+  doc.addEventListener('input', function(event) {
     const el = event.target.closest('[data-input]');
-    if (el) exec(el, el.dataset.input);
+    if (el) exec(el, el.dataset.input, event);
   });
 
-  document.addEventListener('change', function(event) {
+  doc.addEventListener('change', function(event) {
     const el = event.target.closest('[data-change]');
-    if (el) exec(el, el.dataset.change);
+    if (el) exec(el, el.dataset.change, event);
   });
 
-  document.addEventListener('keydown', function(event) {
+  doc.addEventListener('keydown', function(event) {
     const el = event.target.closest('[data-keydown]');
-    if (el) exec(el, el.dataset.keydown);
+    if (el) exec(el, el.dataset.keydown, event);
   });
-})();
+}
+inlineHandlerAnbinden(document);
 
 // ── Spezielle addEventListener-Registrierungen ──────────────────────────
 document.getElementById('opt-erklaerung-details').addEventListener('toggle', function() {

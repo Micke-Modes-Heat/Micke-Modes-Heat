@@ -77,9 +77,19 @@ const _EXTRA = {
   ],
 };
 
+// Auswertungsfenster (src/55): Auswertung und Gutachten laufen dort, die Karte bleibt hier.
+// _zfSchritt = Schritt, den das Fenster zeigt (null = Fenster zu); die Seitennavigation folgt ihm.
+let _zfSchritt = null;
+let _letzteKarte = 'planung';
+const _navSchritt = () => _zfSchritt || _ui.schritt;
+const _startAbschnitt = sch => {
+  const ab = _ui.abschnitt[sch];
+  return ab && !(_zfSchritt && ab.startsWith('v:')) ? ab : (sch === 'gutachten' ? 'ggrafik' : 'uebersicht');
+};
+
 function _ansicht(mode) {
   window.setViewMode?.(mode);
-  _ui.abschnitt[_ui.schritt] = 'v:' + mode;
+  _ui.abschnitt[_navSchritt()] = 'v:' + mode;
   _merken();
   _navRendern();
 }
@@ -87,6 +97,14 @@ function _ansicht(mode) {
 // ── Schritt wechseln ───────────────────────────────────────────────────
 export function uiSchritt(id, opt = {}) {
   const s = UI_SCHRITTE.find(x => x.id === id) || UI_SCHRITTE[0];
+  if (_zfSchritt && s.layout === 'nav') {
+    _zfSchritt = s.id;
+    _abschnittOeffnen(_startAbschnitt(s.id), true);
+    _navRendern();
+    window.afFokus?.();
+    return;
+  }
+  if (s.layout === 'karte') _letzteKarte = s.id;
   _ui.schritt = s.id;
   if (opt.sparte) _ui.sparte = opt.sparte;
   // Der PV-Modus ist der Reiter Planung › Strom › Photovoltaik — woanders hin = Modus aus
@@ -112,8 +130,7 @@ export function uiSchritt(id, opt = {}) {
     }
     else window.setLeftTab?.(_ui.waermeTab === 'erzeuger' ? 'erzeuger' : 'netz');
   } else {
-    const ab = _ui.abschnitt[s.id] || (s.id === 'gutachten' ? 'ggrafik' : 'uebersicht');
-    _abschnittOeffnen(ab, true);
+    _abschnittOeffnen(_startAbschnitt(s.id), true);
   }
   _lpKopfRendern();
   _schritteRendern();
@@ -133,21 +150,47 @@ export function uiGeheZu(schritt, key) {
   if (key) _abschnittOeffnen(key);
 }
 
+/**
+ * Auswertungsfenster (src/55) an/aus. An: das Hauptfenster geht zurück zur Karte, das Fenster
+ * zeigt den Schritt, der gerade offen war (sonst Auswertung). Aus: Navigation wieder hier.
+ */
+export function uiAuswertungsfenster(an) {
+  if (an) {
+    const sch = UI_SCHRITTE.find(x => x.id === _ui.schritt)?.layout === 'nav' ? _ui.schritt : 'auswertung';
+    if (sch === _ui.schritt) uiSchritt(_letzteKarte);
+    _zfSchritt = sch;
+    _abschnittOeffnen(_startAbschnitt(sch), true);
+  } else {
+    _zfSchritt = null;
+  }
+  _navRendern();
+}
+
+/** Schritt, den das Auswertungsfenster zeigt ('auswertung' | 'gutachten'), oder null. */
+export function uiAuswertungsfensterSchritt() { return _zfSchritt; }
+
+/** Liste im Auswertungsfenster wechseln (Reiter Auswertung | Gutachten) — ohne die Ansicht anzufassen. */
+export function uiAuswertungsfensterNav(sch) {
+  if (!_zfSchritt || !['auswertung', 'gutachten'].includes(sch)) return;
+  _zfSchritt = sch;
+  _navRendern();
+}
+
 function _abschnittOeffnen(key, still) {
   if (key.startsWith('v:')) { _ansicht(key.slice(2)); return; }
   const eintrag = [..._EXTRA.auswertung, ..._EXTRA.gutachten].find(e => e.key === key);
   if (eintrag) {
     if (eintrag.fenster || eintrag.aktion) {
       if (!still) eintrag.los();
-      if (still) { window.setViewMode?.('analyse'); window.setAnalyseSection?.(_ui.schritt === 'gutachten' ? 'ggrafik' : 'uebersicht'); }
+      if (still) { if (!_zfSchritt) window.setViewMode?.('analyse'); window.setAnalyseSection?.(_navSchritt() === 'gutachten' ? 'ggrafik' : 'uebersicht'); }
       return;
     }
     eintrag.los(); return;
   }
-  window.setViewMode?.('analyse');
+  if (!_zfSchritt) window.setViewMode?.('analyse');
   window.setAnalyseSection?.(key);
-  _ui.abschnitt[_ui.schritt] = key;
-  document.body.dataset.uiAktAbschnitt = key;
+  _ui.abschnitt[_navSchritt()] = key;
+  document.body.dataset.uiAktAbschnitt = window.analyseAbschnitt?.() || key;
   _merken();
   _navRendern();
 }
@@ -390,19 +433,26 @@ function _navEintraege(schritt) {
 function _navRendern() {
   const nav = document.getElementById('ui-seitennav');
   if (!nav) return;
-  if (!['auswertung', 'gutachten'].includes(_ui.schritt)) { nav.innerHTML = ''; return; }
-  const aktiv = _ui.abschnitt[_ui.schritt];
-  let gruppe = null, h = `<div class="ui-nav-titel">${_ui.schritt === 'gutachten' ? 'Gutachten' : 'Auswertung'}</div>`;
-  for (const e of _navEintraege(_ui.schritt)) {
+  const sch = _navSchritt();
+  if (!['auswertung', 'gutachten'].includes(sch)) { nav.innerHTML = ''; return; }
+  // Markiert wird, was zu sehen ist. Mit Auswertungsfenster oder angeheftetem Gutachten sind Liste und
+  // Ansicht entkoppelt: links der aktuelle Analyse-Abschnitt, rechts ggf. das Gutachten (21).
+  const daneben = !!window.gutDanebenAktiv?.();
+  const entkoppelt = !!_zfSchritt || daneben;
+  const links = entkoppelt ? (window.analyseAbschnitt?.() || _ui.abschnitt[sch]) : _ui.abschnitt[sch];
+  const zeigt = new Set([links, daneben ? 'ggrafik' : ''].filter(Boolean));
+  let gruppe = null, h = `<div class="ui-nav-titel">${sch === 'gutachten' ? 'Gutachten' : 'Auswertung'}</div>`;
+  for (const e of _navEintraege(sch)) {
     if (e.gruppe !== gruppe) { gruppe = e.gruppe; if (gruppe) h += `<div class="ui-nav-grp">${_esc(gruppe)}</div>`; }
     const zusatz = e.fenster ? _ic('chev', 'ui-i ui-i-sm ui-nav-fenster') : e.aktion ? _ic('export', 'ui-i ui-i-sm ui-nav-fenster') : '';
-    h += `<button type="button" class="ui-nav-it" data-ui-abschnitt="${e.key}" aria-current="${e.key === aktiv}" title="${_esc(e.tip || (e.fenster ? 'Öffnet ein Fenster' : e.aktion ? 'Erzeugt eine Datei' : ''))}"><span>${_esc(e.titel)}</span>${zusatz}</button>`;
+    h += `<button type="button" class="ui-nav-it" data-ui-abschnitt="${e.key}" aria-current="${zeigt.has(e.key)}" title="${_esc(e.tip || (e.fenster ? 'Öffnet ein Fenster' : e.aktion ? 'Erzeugt eine Datei' : ''))}"><span>${_esc(e.titel)}</span>${zusatz}</button>`;
   }
   nav.innerHTML = h;
   const titel = document.getElementById('ui-seitentitel');
   if (titel) {
-    const e = _navEintraege(_ui.schritt).find(x => x.key === aktiv);
-    titel.innerHTML = `<span class="ui-eyebrow">${_ui.schritt === 'gutachten' ? 'Gutachten' : 'Auswertung'}${e?.gruppe ? ' · ' + _esc(e.gruppe) : ''}</span><h1>${_esc(e?.titel || '')}</h1>`;
+    const titelSch = entkoppelt ? (_ABSCHNITTE[links]?.schritt || sch) : sch;
+    const e = _navEintraege(titelSch).find(x => x.key === links);
+    titel.innerHTML = `<span class="ui-eyebrow">${titelSch === 'gutachten' ? 'Gutachten' : 'Auswertung'}${e?.gruppe ? ' · ' + _esc(e.gruppe) : ''}</span><h1>${_esc(e?.titel || '')}</h1>`;
   }
 }
 
@@ -634,36 +684,45 @@ function _aufbau() {
   return true;
 }
 
+function _klick(e) {
+  const t = e.target;
+  let x;
+  if ((x = t.closest('button[data-ui-schritt]'))) { uiSchritt(x.dataset.uiSchritt); return; }
+  if ((x = t.closest('button[data-ui-sprung]'))) { uiSchritt(x.dataset.uiSprung); return; }
+  if ((x = t.closest('button[data-ui-ck]'))) {
+    // Elektro-Checkliste (54): Aufgabe im Tool öffnen, Phase in der Liste zeigen, Liste/Rückfragen öffnen
+    const k = x.dataset.uiCk || '';
+    if (k.startsWith('ec:')) window.ecImToolOeffnen?.(k.slice(3));
+    else if (k.startsWith('ec-phase:')) window.ecPhaseZeigen?.(k.slice(9));
+    else if (k === 'ec-fenster') window.ecFensterOeffnen?.();
+    else if (k === 'ec-rf') window.ecRueckfragenZeigen?.();
+    else _CK_LOS[k]?.();
+    return;
+  }
+  if ((x = t.closest('button[data-ui-fokus]'))) { const f = document.getElementById(x.dataset.uiFokus); f?.focus(); f?.scrollIntoView({ block: 'center' }); return; }
+  if ((x = t.closest('button[data-ui-sparte]'))) { uiSchritt('planung', { sparte: x.dataset.uiSparte }); return; }
+  if ((x = t.closest('button[data-ui-waerme]'))) { uiWaermeTab(x.dataset.uiWaerme); return; }
+  if ((x = t.closest('button[data-ui-strom]'))) { window.elTab?.(x.dataset.uiStrom); return; }
+  if ((x = t.closest('button[data-ui-bestand]'))) { uiGebaeudetabelle(x.dataset.uiBestand === 'tabelle'); return; }
+  if ((x = t.closest('button[data-ui-abschnitt]'))) { _abschnittOeffnen(x.dataset.uiAbschnitt); return; }
+  if ((x = t.closest('button[data-ui-pal]'))) { _palAusfuehren(+x.dataset.uiPal); return; }
+  if (t.id === 'ui-pal') { uiBefehlssucheSchliessen(); return; }
+  // Menüs schließen bei Klick daneben
+  if (!t.closest('.ui-proj-wrap')) document.querySelectorAll('.ui-menu[id]:not(#mehr-menu)').forEach(m => { m.hidden = true; });
+  // Menüeintrag gewählt → Menü zu
+  if (t.closest('#ui-proj-menu button')) document.getElementById('ui-proj-menu').hidden = true;
+  if (t.closest('#mehr-menu button')) document.getElementById('mehr-menu').style.display = 'none';
+}
+
+/** Klicks der Oberfläche (Navigation, Sprünge) auch in einem zweiten Dokument — dem Auswertungsfenster (src/55). */
+export function uiKlickAnbinden(doc) {
+  if (doc._uiKlickAn) return;
+  doc._uiKlickAn = true;
+  doc.addEventListener('click', _klick);
+}
+
 function _ereignisse() {
-  document.addEventListener('click', e => {
-    const t = e.target;
-    let x;
-    if ((x = t.closest('button[data-ui-schritt]'))) { uiSchritt(x.dataset.uiSchritt); return; }
-    if ((x = t.closest('button[data-ui-sprung]'))) { uiSchritt(x.dataset.uiSprung); return; }
-    if ((x = t.closest('button[data-ui-ck]'))) {
-      // Elektro-Checkliste (54): Aufgabe im Tool öffnen, Phase in der Liste zeigen, Liste/Rückfragen öffnen
-      const k = x.dataset.uiCk || '';
-      if (k.startsWith('ec:')) window.ecImToolOeffnen?.(k.slice(3));
-      else if (k.startsWith('ec-phase:')) window.ecPhaseZeigen?.(k.slice(9));
-      else if (k === 'ec-fenster') window.ecFensterOeffnen?.();
-      else if (k === 'ec-rf') window.ecRueckfragenZeigen?.();
-      else _CK_LOS[k]?.();
-      return;
-    }
-    if ((x = t.closest('button[data-ui-fokus]'))) { const f = document.getElementById(x.dataset.uiFokus); f?.focus(); f?.scrollIntoView({ block: 'center' }); return; }
-    if ((x = t.closest('button[data-ui-sparte]'))) { uiSchritt('planung', { sparte: x.dataset.uiSparte }); return; }
-    if ((x = t.closest('button[data-ui-waerme]'))) { uiWaermeTab(x.dataset.uiWaerme); return; }
-    if ((x = t.closest('button[data-ui-strom]'))) { window.elTab?.(x.dataset.uiStrom); return; }
-    if ((x = t.closest('button[data-ui-bestand]'))) { uiGebaeudetabelle(x.dataset.uiBestand === 'tabelle'); return; }
-    if ((x = t.closest('button[data-ui-abschnitt]'))) { _abschnittOeffnen(x.dataset.uiAbschnitt); return; }
-    if ((x = t.closest('button[data-ui-pal]'))) { _palAusfuehren(+x.dataset.uiPal); return; }
-    if (t.id === 'ui-pal') { uiBefehlssucheSchliessen(); return; }
-    // Menüs schließen bei Klick daneben
-    if (!t.closest('.ui-proj-wrap')) document.querySelectorAll('.ui-menu[id]:not(#mehr-menu)').forEach(m => { m.hidden = true; });
-    // Menüeintrag gewählt → Menü zu
-    if (t.closest('#ui-proj-menu button')) document.getElementById('ui-proj-menu').hidden = true;
-    if (t.closest('#mehr-menu button')) document.getElementById('mehr-menu').style.display = 'none';
-  });
+  uiKlickAnbinden(document);
   document.getElementById('ui-pal-input')?.addEventListener('input', () => { _palSel = 0; _palRendern(); });
   document.addEventListener('keydown', e => {
     const strg = e.ctrlKey || e.metaKey;
@@ -686,9 +745,10 @@ function _ereignisse() {
     const huelle = function (section) {
       const r = orig.apply(this, arguments);
       const def = _ABSCHNITTE[section];
-      if (def && def.schritt !== _ui.schritt && document.body.dataset.uiLayout === 'nav') { _ui.schritt = def.schritt; _schritteRendern(); }
+      if (def && _zfSchritt) _zfSchritt = def.schritt;
+      else if (def && def.schritt !== _ui.schritt && document.body.dataset.uiLayout === 'nav') { _ui.schritt = def.schritt; _schritteRendern(); }
       if (def) { _ui.abschnitt[def.schritt] = section; _merken(); }
-      document.body.dataset.uiAktAbschnitt = section;
+      document.body.dataset.uiAktAbschnitt = window.analyseAbschnitt?.() || section;
       _navRendern();
       return r;
     };

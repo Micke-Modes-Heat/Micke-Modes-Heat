@@ -379,6 +379,27 @@ header.ui-seitentitel{all:unset;display:block;margin:0 0 18px}
 header.ui-seitentitel h1{margin:2px 0 0;font-size:24px;font-weight:700;line-height:1.2}
 header.ui-seitentitel:empty{display:none}
 
+/* Gutachten neben der Auswertung (21-gutachten-editor.js, gutDanebenSetzen) — Breite --gut-breite am <html> */
+#gut-daneben{display:none}
+body.gut-daneben[data-ui-layout="nav"] #gut-daneben{display:flex;position:absolute;top:0;right:0;bottom:0;width:var(--gut-breite,980px);z-index:600;background:var(--bg)}
+body.gut-daneben[data-ui-layout="nav"] :is(#center-analyse-view,#center-optimierung-view,#center-vergleich-view,#center-gebaeude-view){right:var(--gut-breite,980px)}
+.gut-daneben-griff{flex:0 0 8px;cursor:col-resize;background:var(--border);position:relative;touch-action:none}
+.gut-daneben-griff::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:46px;border-radius:2px;background:var(--muted);opacity:.6}
+.gut-daneben-griff:hover{background:var(--brand)}
+#gut-daneben #analyse-ggrafik-wrap{flex:1;min-width:0;display:flex!important;flex-direction:column;padding:12px 12px 12px 10px;box-sizing:border-box}
+#gut-daneben #analyse-ggrafik-wrap>div{flex:1;height:auto!important;min-height:0!important}
+#gut-daneben #gut-gliederung{display:none}
+#gut-daneben.gliederung-auf #gut-gliederung{display:block}
+#gut-daneben #gut-eigenschaften{width:260px!important}
+#gut-daneben #gut-seite-scroll{padding:14px!important}
+/* „↗ Quelle“ am Block im Gutachten-Blatt (21, quelleKnopf) — erst beim Überfahren, das Blatt bleibt ruhig */
+.gut-quelle{position:absolute;top:2px;right:2px;z-index:2;opacity:0;transition:opacity .12s;font:600 10.5px/1 var(--font-ui,inherit);padding:4px 8px;border-radius:10px;border:1px solid #0d5f70;background:#e1eef1;color:#0d5f70;cursor:pointer;white-space:nowrap}
+[data-gut-el]:hover>.gut-quelle,.gut-quelle:focus-visible{opacity:1}
+.gut-quelle:hover{background:#0d5f70;color:#fff}
+/* „Gutachten“ gewählt, während es angeheftet ist: kurz aufleuchten statt umbauen (21, gutDanebenHervorheben) */
+@keyframes gutDanebenBlink{0%,100%{box-shadow:inset 0 0 0 0 transparent}30%{box-shadow:inset 0 0 0 3px var(--brand)}}
+#gut-daneben.gut-daneben-blink{animation:gutDanebenBlink .9s ease-out}
+
 /* ── 6. Papier: Seitenvorschauen bleiben in beiden Darstellungen hell ── */
 #gut-seite,#gg-paper,#lp-paper,.ui-papier{--text:#191D1A;--muted:#58615A;--faint:#89918A;--border:#DADFD9;--line-2:#C3C9C2;--surface:#FFFFFF;--surface2:#F6F7F5;--bg:#EEF0ED;--hover:#EEF3EC;--ink:25,29,26;--c-red:#B3261E;--c-orange:#B4531A;--c-amber:#8A6100;--c-green:#2E7D32;--c-teal:#00796B;--c-blue:#1E5E98;--c-violet:#7B3F9E;color-scheme:light}
 

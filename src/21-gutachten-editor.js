@@ -34,6 +34,7 @@ import {
 } from './lib/gutachten-docx.js';
 import { gpxErzeugePaket, gpxStichpunkte } from './lib/gutachten-pptx.js';
 import { GV_LOGO_PNG, GV_WAPPEN_PNG, GV_NETZGRAFIK_PNG } from './config/gutachten-vorlage-assets.js';
+import { gqQuelle } from './lib/gutachten-quellen.js';
 
 const _gut = {
   dok: null,            // Gutachten-Dokument oder null, solange keins angelegt ist
@@ -63,10 +64,10 @@ const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').re
 /* ══════════════════════════════════════════════════════════════════════════
  * Bedienelemente (dunkles Seitenpanel, gleicher Stil wie die Einzelansicht)
  * ═══════════════════════════════════════════════════════════════════════ */
-function knopf(label, click, { primaer = false, gefahr = false, titel = '', klein = false } = {}) {
+function knopf(label, click, { primaer = false, gefahr = false, titel = '', klein = false, klasse = '' } = {}) {
   const rand = primaer ? 'rgba(38,166,154,.6)' : gefahr ? 'rgba(239,83,80,.4)' : 'rgba(255,255,255,.12)';
   const farbe = primaer ? GUT_AKZENT : gefahr ? '#ef5350' : 'var(--muted)';
-  return `<button data-click="${click}"${titel ? ` title="${esc(titel)}"` : ''} style="font-family:inherit;font-size:${klein ? 10 : 11}px;
+  return `<button data-click="${click}"${klasse ? ` class="${klasse}"` : ''}${titel ? ` title="${esc(titel)}"` : ''} style="font-family:inherit;font-size:${klein ? 10 : 11}px;
     padding:${klein ? '3px 8px' : '5px 10px'};border-radius:5px;cursor:pointer;text-align:left;border:1px solid ${rand};
     background:${primaer ? 'rgba(38,166,154,.18)' : 'rgba(255,255,255,.04)'};color:${farbe};">${label}</button>`;
 }
@@ -197,6 +198,128 @@ export function gutShowSection(visible) {
   gutRender();
 }
 
+/* ── Neben der Auswertung anheften ──────────────────────────────────────────
+ * Das Gutachten (#analyse-ggrafik-wrap) zieht in die Spalte #gut-daneben rechts neben der
+ * Analyseansicht; links blättert man frei durch die Auswertung (04a lässt den Wrap dann stehen).
+ * Im Hauptfenster legt lkebw.css die Spalte fest (body.gut-daneben), im Auswertungsfenster (55)
+ * reiht sie sich ins Flex-Layout ein. Breite über den Griff, als --gut-breite am <html>.
+ * Wird der Abschnitt Gutachten selbst gewählt, löst 04a die Anheftung (Gutachten wieder groß). */
+const DANEBEN_KEY = 'micke.gut.daneben.breite';
+const DANEBEN_STANDARD = 980, DANEBEN_MIN = 560, DANEBEN_LINKS_MIN = 420;
+let _daneben = false;
+
+export function gutDanebenAktiv() { return _daneben; }
+
+function danebenSpalte() {
+  const da = document.getElementById('gut-daneben');
+  if (da) return da;
+  const av = document.getElementById('center-analyse-view');
+  if (!av) return null;
+  const gd = av.ownerDocument.createElement('aside');
+  gd.id = 'gut-daneben';
+  gd.setAttribute('aria-label', 'Gutachten neben der Auswertung');
+  const griff = av.ownerDocument.createElement('div');
+  griff.className = 'gut-daneben-griff';
+  griff.title = 'Trennlinie ziehen';
+  griff.addEventListener('pointerdown', danebenZiehen);
+  gd.appendChild(griff);
+  av.after(gd);
+  return gd;
+}
+
+function danebenBreite(px, merken) {
+  const av = document.getElementById('center-analyse-view'), gd = document.getElementById('gut-daneben');
+  // links bleibt mindestens DANEBEN_LINKS_MIN für die Auswertung
+  const a = av?.getBoundingClientRect(), g = gd?.getBoundingClientRect();
+  if (a && g && a.width && g.width) px = Math.min(px, g.right - a.left - DANEBEN_LINKS_MIN);
+  px = Math.round(Math.max(DANEBEN_MIN, px));
+  document.documentElement.style.setProperty('--gut-breite', px + 'px');
+  if (merken) { try { localStorage.setItem(DANEBEN_KEY, String(px)); } catch (e) { /* ohne Speicher */ } }
+}
+
+function danebenZiehen(e) {
+  const griff = e.currentTarget;
+  e.preventDefault();
+  try { griff.setPointerCapture(e.pointerId); } catch (err) { /* ohne Capture */ }
+  const rechts = griff.parentElement.getBoundingClientRect().right;
+  const zug = ev => danebenBreite(rechts - ev.clientX, false);
+  const los = ev => {
+    griff.removeEventListener('pointermove', zug);
+    griff.removeEventListener('pointerup', los);
+    griff.removeEventListener('pointercancel', los);
+    danebenBreite(rechts - ev.clientX, true);
+  };
+  griff.addEventListener('pointermove', zug);
+  griff.addEventListener('pointerup', los);
+  griff.addEventListener('pointercancel', los);
+}
+
+/** Gutachten neben die Auswertung heften (an) oder wieder groß zeigen. opt.still: nur lösen, nicht hinspringen. */
+export function gutDanebenSetzen(an, opt = {}) {
+  an = !!an;
+  const wrap = document.getElementById('analyse-ggrafik-wrap');
+  if (!wrap || an === _daneben) return;
+  if (an) {
+    const gd = danebenSpalte();
+    if (!gd) return;
+    _daneben = true;
+    gd.appendChild(wrap);
+    wrap.style.display = '';
+    document.body.classList.add('gut-daneben');
+    // links bleibt die offene Seite; war es das Gutachten selbst, die zuletzt offene Auswertungsseite
+    const links = window.analyseAbschnitt?.();
+    if (!links || links === 'ggrafik') window.uiSchritt?.('auswertung');
+    let b = DANEBEN_STANDARD;
+    try { b = Number(localStorage.getItem(DANEBEN_KEY)) || DANEBEN_STANDARD; } catch (e) { /* ohne Speicher */ }
+    danebenBreite(b, false);
+    gutRender();
+  } else {
+    _daneben = false;
+    document.getElementById('center-analyse-view')?.appendChild(wrap);
+    document.getElementById('gut-daneben')?.classList.remove('gliederung-auf');
+    document.body.classList.remove('gut-daneben');
+    // still: die linke Seite füllt nun die Breite, das Gutachten tritt zurück — sonst Gutachten groß
+    if (opt.still) window.refreshAnalyseView?.();
+    else window.uiGeheZu?.('gutachten', 'ggrafik');
+  }
+}
+
+/** „Gutachten“ gewählt, während es angeheftet ist: kein Umbau, nur kurz rechts aufleuchten lassen. */
+export function gutDanebenHervorheben() {
+  const gd = document.getElementById('gut-daneben');
+  if (!gd) return;
+  gd.classList.remove('gut-daneben-blink');
+  void gd.offsetWidth;   // Animation neu starten
+  gd.classList.add('gut-daneben-blink');
+}
+
+/** Kleiner Knopf oben rechts am Block (beim Überfahren): Herkunft der Abbildung in der Auswertung. */
+function quelleKnopf(box, figurId) {
+  const q = gqQuelle(figurId);
+  if (!q) return;
+  const k = document.createElement('button');
+  k.type = 'button';
+  k.className = 'gut-quelle';
+  k.textContent = '↗ ' + q.titel;
+  k.title = 'Quelle: die Auswertungsseite mit den Zahlen dahinter links daneben öffnen';
+  k.dataset.click = `event.stopPropagation();gutQuelleZeigen('${figurId}')`;
+  box.style.position = 'relative';
+  box.appendChild(k);
+}
+
+/** Von der Abbildung zur Quelle: Gutachten anheften (falls nötig) und links die Auswertungsseite öffnen. */
+export function gutQuelleZeigen(figurId) {
+  const q = gqQuelle(figurId);
+  if (!q) return;
+  if (!_daneben) gutDanebenSetzen(true);
+  window.uiGeheZu?.('auswertung', q.key);
+}
+
+/** Angeheftet ist die Gliederung eingeklappt (Platz); dieser Knopf blendet sie ein und aus. */
+export function gutDanebenGliederung() {
+  document.getElementById('gut-daneben')?.classList.toggle('gliederung-auf');
+}
+
 /** Umschalter und sichtbaren Bereich an _gut.modus anpassen; true = Dokumentansicht. */
 /** Haken „Wasserzeichen Entwurf“ — derselbe Zustand wie in der Einzelansicht (ggEntwurfAktiv). */
 function entwurfSchalter() {
@@ -230,6 +353,11 @@ function zeigeModus() {
         color:${aktiv ? GUT_AKZENT : 'var(--muted)'};">${label}</button>`;
     };
     leiste.innerHTML = tab('dokument', 'Dokument') + tab('praes', 'Präsentation') + tab('einzel', 'Einzelgrafiken')
+      + '<span style="width:6px"></span>'
+      + (_daneben
+        ? knopf('☰ Gliederung', 'gutDanebenGliederung()', { titel: 'Gliederung ein- oder ausblenden' })
+          + knopf('⤢ Gutachten groß', 'gutDanebenSetzen(false)', { klasse: 'gut-pin', titel: 'Anheftung lösen: Gutachten wieder über die ganze Breite' })
+        : knopf('◧ Neben Auswertung', 'gutDanebenSetzen(true)', { klasse: 'gut-pin', titel: 'Gutachten rechts anheften und links durch die Auswertung blättern — Zahlen nachschauen, während man schreibt' }))
       + `<span id="gut-status" style="margin-left:12px;font-size:11px;color:${GUT_AKZENT};"></span>`
       + (!einzel && _gut.dok
           ? `<span style="margin-left:auto;display:flex;gap:6px;align-items:center;">${entwurfSchalter()}${plausiKnopf()}${knopf('⟳ Daten aktualisieren', 'gutAktualisieren()', { titel: 'Alle Abbildungen neu aus dem Projektstand zeichnen.' })}`
@@ -442,7 +570,10 @@ function renderSeite() {
       box.style.cssText = 'margin:8px 0;padding:4px 6px;border-radius:3px;cursor:pointer;';
       if (b.typ === 'text') box.innerHTML = textBlockHtml(b.text);
       else if (b.typ === 'bild') bildBlockInhalt(box, b, (beschriftungen.get(b.id) || [])[0]);
-      else figurBlockInhalt(box, b, beschriftungen.get(b.id) || [], zuEinpassen);
+      else {
+        figurBlockInhalt(box, b, beschriftungen.get(b.id) || [], zuEinpassen);
+        quelleKnopf(box, b.figurId);
+      }
       papier.appendChild(box);
     }
   });
@@ -881,6 +1012,8 @@ function blockPanel(b, kapIdx) {
     + `<div style="display:flex;flex-direction:column;gap:4px;">`
     + knopf(f.istText ? '✎ Platzhalter ausfüllen' : '✎ In Einzelansicht bearbeiten', `gutInEinzelansicht('${f.id}')`,
             { titel: f.istText ? 'Platzhalter und ihre Datenquelle ansehen' : 'Kopfzeile, Haken und Datenübernahme wie bisher' })
+    + (gqQuelle(f.id) ? knopf(`↗ Quelle: ${gqQuelle(f.id).titel}`, `gutQuelleZeigen('${f.id}')`,
+            { titel: 'Die Auswertungsseite mit den Zahlen dahinter links daneben öffnen' }) : '')
     + knopf(f.istTabelle ? 'Als Word-Tabelle kopieren' : '⧉ Für Word kopieren', `gutCopyTeil('${id}',0)`, { primaer: true })
     + ((erg?.teile?.length || 0) > 1 ? knopf('Kennzahlen als Word-Tabelle kopieren', `gutCopyTeil('${id}',1)`) : '')
     + `</div>`

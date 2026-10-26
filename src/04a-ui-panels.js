@@ -1491,6 +1491,8 @@ document.querySelectorAll('.float-panel').forEach(panel => {
 export let currentViewMode = 'karte';
 
 export function setViewMode(mode) {
+  // Auswertungsfenster offen (src/55): die Analyse läuft dort, das Hauptfenster bleibt bei der Karte
+  if (mode === 'analyse' && window.afAktiv?.()) { refreshAnalyseView(); window.afFokus?.(); return; }
   currentViewMode = mode;
   _setHourlyModeActive(mode === 'live');
   // Stop live play when leaving live view
@@ -1509,7 +1511,8 @@ export function setViewMode(mode) {
   if (vergleichView)   vergleichView.style.display   = mode === 'vergleich'   ? 'block' : 'none';
   if (liveView)        liveView.style.display        = mode === 'live'        ? 'flex'  : 'none';
   // Inline-Panels zurücksetzen bevor Modus wechselt
-  if (typeof _restoreInlinePanels === 'function') _restoreInlinePanels();
+  // (nicht bei offenem Auswertungsfenster — die eingebetteten Panels gehören dann dorthin)
+  if (typeof _restoreInlinePanels === 'function' && !window.afAktiv?.()) _restoreInlinePanels();
   // Hide floating panels when switching to analyse/vergleich/live
   if (mode !== 'karte') hidePanels();
   // Invalidate map when switching back
@@ -1879,7 +1882,13 @@ export function updateLpNetzSummary() {
 export let analyseCurrentSection = 'uebersicht';
 export let waermeCurrentTab = 'lastgang';
 
+/** Aktueller Analyse-Abschnitt (über window lesbar — die let-Bindung selbst wäre dort veraltet). */
+export function analyseAbschnitt() { return analyseCurrentSection; }
+
 export function setAnalyseSection(section) {
+  // Gutachten angeheftet (21): es steht schon rechts — links bleibt, was dort ist; nur hinweisen.
+  // Aufteilung ändern nur über den Umschalter (Kopfzeile des Auswertungsfensters bzw. Knopf im Gutachten).
+  if (section === 'ggrafik' && window.gutDanebenAktiv?.()) { window.gutDanebenHervorheben?.(); return; }
   analyseCurrentSection = section;
   document.querySelectorAll('#analyse-view-tabs .analyse-section-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.section === section));
@@ -1984,7 +1993,8 @@ export function refreshAnalyseView() {
   const ausbWrap = document.getElementById('ausbauplaner-wrap');
   if (ausbWrap) ausbWrap.style.display = 'none';
   const ggWrap = document.getElementById('analyse-ggrafik-wrap');
-  if (ggWrap) ggWrap.style.display = 'none';
+  // Gutachten neben der Auswertung angeheftet (21): bleibt rechts stehen
+  if (ggWrap && !window.gutDanebenAktiv?.()) ggWrap.style.display = 'none';
   const lbWrap = document.getElementById('analyse-liegenschaftsbilder-wrap');
   if (lbWrap) lbWrap.style.display = 'none';
 
