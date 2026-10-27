@@ -5049,7 +5049,16 @@ export function showHint(msg, duration){
   clearTimeout(_hintTimer);
   _hintLeisten().forEach(x => { if (x !== h) x.classList.add('hidden'); });
   h.textContent=msg;h.classList.remove('hidden');
+  _hintUeberLeiste(h);
   if (duration > 0) _hintTimer=setTimeout(hideHint,duration);
+}
+/** Läuft ein Kartenwerkzeug, liegt dessen Statusleiste (lib/interaction-state) unten
+ *  an derselben Stelle — den Hinweis dann darüber setzen, sonst bleibt er unsichtbar. */
+function _hintUeberLeiste(h){
+  const leiste = document.getElementById('map-interaction-status');
+  const bezug = h.offsetParent;
+  if (!leiste || h.ownerDocument !== document || !bezug) { h.style.bottom = ''; return; }
+  h.style.bottom = Math.max(18, bezug.getBoundingClientRect().bottom - leiste.getBoundingClientRect().top + 8) + 'px';
 }
 export function hideHint(){clearTimeout(_hintTimer);_hintLeisten().forEach(x => x.classList.add('hidden'));}
 

@@ -40,7 +40,11 @@ const GELB = '#ffd54f';
 const ROT = '#e53935';
 const M_PRO_GRAD = 111320;
 const RAND_M = 150;              // OSM-Übernahme: Umkreis um die Gebäude
-const MAX_BAEUME = 6000;
+// Höchstzahl im Projekt. Geprüft 27.10. mit 25.000 Bäumen: Karte (eine Sammel-Ebene,
+// BaumSchicht) und Verschattung (≤ 0,1 s je Dachfläche) unkritisch; die 3D-Ansicht
+// baut die Baumszene einmalig auf (~0,16 s je 1.000 Bäume), die Projektdatei
+// wächst um ~0,19 MB je 1.000 Bäume.
+const MAX_BAEUME = 20000;
 const PROBEN_JE_FLAECHE = 12;    // Module je Dachfläche, die gerechnet werden
 const ERGEBNISSE_JE_GEB = 4;     // gemerkte Belegungsstände je Gebäude
 const ARTEN = { laub: 'Laubbaum', nadel: 'Nadelbaum', obst: 'Obstbaum' };
@@ -179,26 +183,136 @@ function _pane() {
   return p;
 }
 
+const _ART_NR = Object.keys(ARTEN);   // laub, nadel, obst → Zeichengruppe
+const _KRONE_RAND = '#e8f5e9';         // heller Rand: hebt sich auf Satellitenbild (Grün auf Grün) und Karte ab
+const _ATLAS_RMAX = 48;                // px — größere Kronen (naher Zoom, wenige sichtbar) als Pfad
+let _atlas = null;
+
+/** Eine Krone (Füllung + Rand, gestrichelt = Höhe nur Vorgabe) — für Atlas und große Kronen gleich. */
+function _kroneMalen(ctx, x, y, r, g) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = BAUM_FARBEN[_ART_NR[g >> 1]] || BAUM_FARBEN.laub;
+  ctx.fill();
+  ctx.setLineDash(g & 1 ? [3, 3] : []);
+  ctx.globalAlpha = 0.9;
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = _KRONE_RAND;
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+/**
+ * Vorgerenderte Kronen je Zeichengruppe (Zeile) und ganzzahligem Radius (Spalte),
+ * in der Pixeldichte des Renderers. drawImage aus einem Atlas ist auf der GPU
+ * ~2–5× schneller als Kreise zu füllen und zu umranden (gemessen 27.10., 25.000 Kronen).
+ */
+function _baumAtlas(dpr) {
+  if (_atlas?.dpr === dpr) return _atlas;
+  const zeile = 2 * _ATLAS_RMAX + 4;
+  let breite = 0;
+  for (let r = 1; r <= _ATLAS_RMAX; r++) breite += 2 * r + 4;
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(breite * dpr);
+  cv.height = Math.ceil(zeile * _ART_NR.length * 2 * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const sx = new Float32Array(_ATLAS_RMAX + 1);
+  for (let g = 0; g < _ART_NR.length * 2; g++) {
+    let ox = 0;
+    for (let r = 1; r <= _ATLAS_RMAX; r++) {
+      const d = 2 * r + 4;
+      sx[r] = ox;
+      _kroneMalen(ctx, ox + d / 2, g * zeile + d / 2, r, g);
+      ox += d;
+    }
+  }
+  return (_atlas = { cv, dpr, sx, zeile });
+}
+
+/**
+ * Alle Bäume als EIN Pfadobjekt im Canvas-Renderer statt eines L.circle je Baum
+ * (Einzelkreise: ~45 ms je 1.000 Bäume bei jedem Zoomschritt). Die Kronen kommen
+ * als Stempel aus dem Atlas; Zoom-Animation, Kartendrehung und Bildexport
+ * übernimmt weiter der Renderer.
+ * Erst beim ersten Zeichnen angelegt (L ist beim Modulladen nicht überall da).
+ */
+let _BaumSchicht = null;
+const _baumSchichtKlasse = () => _BaumSchicht || (_BaumSchicht = L.Path.extend({
+  initialize(baeume, options) {
+    L.setOptions(this, options);
+    this._baeume = baeume;
+    this._px = null;          // je Baum x, y, Radius in Layer-Pixeln
+    this._gruppe = null;      // je Baum Art·2 + gestrichelt
+    this.trefferId = null;    // Baum unter dem Mauszeiger (für den Klick)
+  },
+  _project() {
+    const map = this._map, n = this._baeume.length;
+    const mProPx = 40075016.686 / (256 * 2 ** map.getZoom());   // am Äquator, × cos(Breite)
+    const px = this._px = new Float64Array(n * 3);
+    const gr = this._gruppe = new Uint8Array(n);
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const b = this._baeume[i];
+      const p = map.latLngToLayerPoint([b.lat, b.lng]);
+      const r = b.krone / 2 / (mProPx * Math.cos(b.lat * Math.PI / 180));
+      px[i * 3] = p.x; px[i * 3 + 1] = p.y; px[i * 3 + 2] = r;
+      gr[i] = Math.max(0, _ART_NR.indexOf(b.art)) * 2 + (b.hoeheQuelle === 'vorgabe' ? 1 : 0);
+      if (p.x - r < x0) x0 = p.x - r;
+      if (p.y - r < y0) y0 = p.y - r;
+      if (p.x + r > x1) x1 = p.x + r;
+      if (p.y + r > y1) y1 = p.y + r;
+    }
+    const w = this._clickTolerance();
+    this._pxBounds = n ? L.bounds([x0 - w, y0 - w], [x1 + w, y1 + w]) : L.bounds([0, 0], [0, 0]);
+  },
+  _update() { if (this._map) this._updatePath(); },
+  _empty() { return !this._px?.length; },
+  _updatePath() {
+    const rd = this._renderer;
+    if (!rd._drawing || this._empty()) return;
+    const ctx = rd._ctx, { min, max } = rd._bounds, px = this._px, gr = this._gruppe;
+    const atlas = _baumAtlas(L.Browser.retina ? 2 : 1);   // wie L.Canvas
+    const q = atlas.dpr;
+    ctx.lineCap = ctx.lineJoin = 'round';
+    for (let i = 0; i < gr.length; i++) {
+      const x = px[i * 3], y = px[i * 3 + 1], r = Math.max(Math.round(px[i * 3 + 2]), 1);
+      if (x + r < min.x || x - r > max.x || y + r < min.y || y - r > max.y) continue;
+      if (r > _ATLAS_RMAX) { _kroneMalen(ctx, x, y, r, gr[i]); continue; }
+      const d = 2 * r + 4;
+      ctx.globalAlpha = 1;
+      ctx.drawImage(atlas.cv, atlas.sx[r] * q, gr[i] * atlas.zeile * q, d * q, d * q,
+        Math.round(x - d / 2), Math.round(y - d / 2), d, d);
+    }
+    ctx.globalAlpha = 1;
+  },
+  // Trefferprüfung des Canvas-Renderers (Klick/Hover): nächster Baum, dessen Krone den Punkt enthält
+  _containsPoint(p) {
+    const px = this._px, tol = this._clickTolerance();
+    let best = -1, bestD = Infinity;
+    for (let i = 0; px && i < px.length / 3; i++) {
+      const d = Math.hypot(p.x - px[i * 3], p.y - px[i * 3 + 1]);
+      if (d <= Math.max(px[i * 3 + 2], 3) + tol && d < bestD) { best = i; bestD = d; }
+    }
+    this.trefferId = best >= 0 ? this._baeume[best].id : null;
+    return best >= 0;
+  },
+}));
+
 function _zeichnen() {
   if (!map) return;
   if (_layer) { map.removeLayer(_layer); _layer = null; }
   if (!_sichtbar || !_baeume.length) return;
   _pane();
   if (!_renderer) _renderer = L.canvas({ pane: PANE, padding: 0.3 });
-  _layer = L.layerGroup();
-  for (const b of _baeume) {
-    const farbe = BAUM_FARBEN[b.art] || BAUM_FARBEN.laub;
-    const c = L.circle([b.lat, b.lng], {
-      radius: b.krone / 2, renderer: _renderer, pane: PANE,
-      // Heller Rand: hebt sich auf Satellitenbild (Grün auf Grün) und Karte ab
-      color: '#e8f5e9', weight: 1.5, opacity: 0.9,
-      // Gestrichelt = Höhe ist nur eine Vorgabe
-      dashArray: b.hoeheQuelle === 'vorgabe' ? '3 3' : null,
-      fillColor: farbe, fillOpacity: 0.5, interactive: _bearbeiten, bubblingMouseEvents: false,
-    });
-    if (_bearbeiten) c.on('click', e => { L.DomEvent.stop(e); _baumPopup(b.id); });
-    _layer.addLayer(c);
-  }
+  const BaumSchicht = _baumSchichtKlasse();
+  _layer = new BaumSchicht(_baeume, {
+    renderer: _renderer, pane: PANE,
+    color: _KRONE_RAND, weight: 1.5, opacity: 0.9,   // Rand nur für die Klicktoleranz, gemalt wird im Atlas
+    interactive: _bearbeiten, bubblingMouseEvents: false,
+  });
+  if (_bearbeiten) _layer.on('click', e => { L.DomEvent.stop(e); if (_layer?.trefferId != null) _baumPopup(_layer.trefferId); });
   _layer.addTo(map);
 }
 
@@ -226,7 +340,8 @@ export function baumBearbeitenToggle() {
   _sichtbar = true;
   map.on('click', _kartenKlick);
   map.on('dblclick', _kartenDoppelklick);
-  document.addEventListener('keydown', _flaechenTaste);
+  // Window-Capture: Enter/⌫ kommen an, bevor ein anderer Handler (3D-Ansicht, Fenster) sie schluckt
+  window.addEventListener('keydown', _flaechenTaste, true);
   _modusAnwenden();
   _zeichnen();
   _pane();
@@ -239,7 +354,7 @@ function _bearbeitenAus() {
   _flaecheVerwerfen(true);
   map.off('click', _kartenKlick);
   map.off('dblclick', _kartenDoppelklick);
-  document.removeEventListener('keydown', _flaechenTaste);
+  window.removeEventListener('keydown', _flaechenTaste, true);
   _modusAnwenden();
   map.closePopup();
   _zeichnen();
@@ -290,9 +405,16 @@ function _kartenDoppelklick(e) {
   baumFlaecheFuellen();
 }
 
+/** Tippt der Nutzer gerade in ein Feld? Häkchen, Knöpfe und Auswahllisten zählen nicht. */
+function _tippt(el) {
+  if (!el) return false;
+  if (el.isContentEditable || el.tagName === 'TEXTAREA') return true;
+  return el.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|reset|range|color|file)$/.test(el.type);
+}
+
 function _flaechenTaste(ev) {
   if (!_bearbeiten || _modus !== 'flaeche' || !_flaeche.punkte.length) return;
-  if (/^(INPUT|SELECT|TEXTAREA)$/.test(ev.target?.tagName || '')) return;
+  if (_tippt(ev.target) || window.d3dIstOffen?.()) return;
   if (ev.key === 'Enter') { ev.preventDefault(); baumFlaecheFuellen(); }
   else if (ev.key === 'Backspace') { ev.preventDefault(); _flaeche.punkte.pop(); _flaecheZeichnen(); baumPanelRender(); }
 }
@@ -337,7 +459,11 @@ export function baumFlaecheFuellen() {
   }));
   if (!neu.length) { showHint('In dieser Fläche passt bei diesem Abstand kein Baum.', 5000); return 0; }
   if (_baeume.length + neu.length > MAX_BAEUME) {
-    showHint(`Zu viele Bäume (${_fmt(_baeume.length + neu.length)}, höchstens ${_fmt(MAX_BAEUME)}) — Abstand erhöhen.`, 6000);
+    // Die Umrisspunkte bleiben stehen: Abstand ändern und erneut füllen, oder „Verwerfen"
+    const frei = Math.max(0, MAX_BAEUME - _baeume.length);
+    showHint(frei < 1
+      ? `Das Projekt hat schon ${_fmt(_baeume.length)} Bäume — mehr als ${_fmt(MAX_BAEUME)} gehen nicht. Erst Bäume löschen; der Umriss bleibt stehen.`
+      : `In die Fläche passen ${_fmt(neu.length)} Bäume, frei sind noch ${_fmt(frei)} von ${_fmt(MAX_BAEUME)} — Abstand erhöhen und erneut Enter, oder „Verwerfen".`, 9000);
     return 0;
   }
   _baeume.push(...neu);
@@ -376,6 +502,10 @@ export function baumFlaecheAbbrechen() { _flaecheVerwerfen(false); }
 function _kartenKlick(e) {
   if (!_bearbeiten || !e?.latlng) return;
   if (_modus === 'flaeche') {
+    // Fokus aus Feldern lösen (z. B. noch aus der 3D-Ansicht oder dem Abstand),
+    // sonst landet das bestätigende Enter dort statt beim Füllen
+    const fokus = document.activeElement;
+    if (fokus && fokus !== document.body && !map.getContainer().contains(fokus)) fokus.blur?.();
     _flaeche.punkte.push(e.latlng);
     _flaecheZeichnen();
     baumPanelRender();
