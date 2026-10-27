@@ -164,6 +164,8 @@ export function netzMitGeometrie(netzState, geometrie) {
 export const PV_BELEGUNG_FELDER = [
   'pvAktiv', 'pvDachanteil', 'pvModus', 'pvFlaechen', 'pvFlGcr',
   'pvFlAusrichtung', 'pvFlBelegung', 'pvBaujahr',
+  // gehört zu den Sperrflächen der Belegung (lib/pv-abschlaege); Kennzeichen sind Dachdaten
+  'pvHindernisseErfasst',
 ];
 
 // Kartenlayer hängen direkt an den Flächen — sie gehören nicht zum Datenstand.

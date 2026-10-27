@@ -109,8 +109,6 @@ const _sig = () => JSON.stringify([window.pvModusVorgabe || null, _ab.umfang, _a
   _ab.bereich ? _ab.bereich.toBBoxString() : null, _ab.schatten, _ab.fluegel]);
 const _vorrangLabel = (w, stich) => w === 'neubau' ? `Neubauten (nach ${stich})` : (VORRANG.find(v => v[0] === w)?.[1] || w);
 
-const _nordSektor = () => window.pvModusVorgabe?.nordSektor ?? 45;
-
 function _nutzungsLabel(id) {
   if (!id) return 'ohne Typ';
   return window.getNutzungstypById?.(id)?.label || String(id);

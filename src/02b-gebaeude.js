@@ -459,7 +459,9 @@ export function addGebaeude(opts={}){
            // Default ist der Flaechen-Modus: gezeichnete Belegungsflaechen sind der
            // Regelfall, die Dachanteil-Pauschale nur noch der Schnellschaetzer.
            // Ohne gezeichnete Belegung rechnet calcGebKwp() ohnehin pauschal weiter.
-           pvModus: 'flaechen', pvFlaechen: [], pvFlGcr: null, pvFlAusrichtung: 'sued', pvFlBelegung: null,
+           pvModus: 'flaechen', pvFlaechen: [], pvFlGcr: null, pvFlBelegung: null,
+           // Flachdach-Aufständerung nach der Vorgabe des PV-Modus (neue Projekte: Ost-West)
+           pvFlAusrichtung: window.pvModusVorgabe?.ausrichtung || 'ostwest',
            pvBaujahr: null,
            strom: opts.strom || '', stromProfil: opts.stromProfil || 'auto', spezStrom: opts.spezStrom || '',
            dachform:      opts.dachform      || 'sattel',

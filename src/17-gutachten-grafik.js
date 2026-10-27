@@ -8718,21 +8718,69 @@ function ggPvRegelnKurz(gl) {
   if (!gl) return '';
   return `Module ${ggPvMass(gl.modulBreite)} × ${ggPvMass(gl.modulLaenge)} m mit ${ggNum(gl.modulWp)} Wp, `
     + `${gl.modulLage === 'quer' ? 'quer' : 'hochkant'}, Randabstand ${ggPvMass(gl.randabstand)} m`
+    + (gl.randFlach != null && +gl.randFlach !== +gl.randabstand ? ` (Flachdach ${ggPvMass(gl.randFlach)} m)` : '')
     + (gl.mindestModule > 0 ? `, mindestens ${ggNum(gl.mindestModule)} Module je Dachfläche` : '');
 }
 /** 5.4.2: nach welchen Regeln die Dachflächen rechnerisch belegt sind (Absatz) — '' ohne Regeln. */
 function ggPvRegelnAbsatz(r) {
   const gl = r?.global, v = r?.vorgaben || {};
   if (!gl) return '';
-  const gcr = v.gcr != null ? v.gcr : v.ausrichtung === 'ostwest' ? 85 : 40;
+  const gcr = v.gcr != null ? v.gcr : (window.pvGcrStandard?.(v.ausrichtung) ?? (v.ausrichtung === 'ostwest' ? 85 : 40));
   return `Für die rechnerische Belegung wurden Module mit ${ggPvMass(gl.modulBreite)} × ${ggPvMass(gl.modulLaenge)} m und `
     + `${ggNum(gl.modulWp)} Wp angesetzt, auf Schrägdächern ${gl.modulLage === 'quer' ? 'quer' : 'hochkant'} verlegt, mit `
-    + `${ggPvMass(gl.randabstand)} m Abstand zum Rand der Belegungsfläche`
+    + (gl.randFlach != null && +gl.randFlach !== +gl.randabstand
+      ? `${ggPvMass(gl.randabstand)} m Abstand zum Rand der Belegungsfläche, auf Flachdächern ${ggPvMass(gl.randFlach)} m`
+      : `${ggPvMass(gl.randabstand)} m Abstand zum Rand der Belegungsfläche`)
     + (gl.mindestModule > 0 ? `; Dachflächen bzw. Satteldachseiten, auf denen weniger als ${ggNum(gl.mindestModule)} Module Platz finden, bleiben frei` : '')
     + '.'
-    + (v.nordSperr ? ` Bei Satteldächern bleibt in der Regel die nach Norden weisende Dachseite (±${ggNum(v.nordSektor ?? 45)}° um Nord) frei.` : '')
-    + ` Flachdächer sind, soweit nicht im Einzelfall anders festgelegt, mit ${v.ausrichtung === 'ostwest' ? 'Ost-West' : 'Süd'}-Aufständerung `
-    + `und einer Flächenausnutzung von ${ggNum(gcr)} % angesetzt. Gebäude, deren Rückbau geplant ist, werden nicht belegt.`;
+    + (!v.nordSperr ? ''
+      : v.ertragMin != null
+        ? ` Geneigte Dachflächen, die nach Ausrichtung und Neigung weniger als ${ggNum(v.ertragMin)} % des bestmöglichen Ertrags erwarten lassen, bleiben frei; das betrifft in der Regel die nach Norden weisenden Seiten steilerer Satteldächer.`
+        : ` Bei Satteldächern bleibt in der Regel die nach Norden weisende Dachseite (±${ggNum(v.nordSektor ?? 45)}° um Nord) frei.`)
+    + ` Flachdächer sind, soweit nicht im Einzelfall anders festgelegt, mit ${v.ausrichtung === 'ostwest' ? 'Ost-West-Aufständerung (10°, Doppelreihen parallel zur Gebäudeachse)' : `Süd-Aufständerung (${ggNum(window.pvFlachNeigungSued?.() ?? 15)}°)`} `
+    + `und einer Flächenausnutzung von ${ggNum(gcr)} % angesetzt.`
+    + ggPvGaengeSatz(gl)
+    + ' Gebäude, deren Rückbau geplant ist, werden nicht belegt.';
+}
+
+/**
+ * 5.4.2: vom technischen zum realisierbaren Dachpotenzial (25 pvmPotenzialStufen,
+ * lib/pv-abschlaege) — '' ohne belegte Dächer oder wenn nichts abgezogen wird.
+ */
+function ggPvPotenzialStufenAbsatz() {
+  const s = ggLies(() => window.pvmPotenzialStufen?.(), null);
+  if (!s?.daecher || !(s.technisch > 0)) return '';
+  const r = s.regeln;
+  const kw = x => ggPvFeld(x, 'kWp');
+  const hindernis = s.technisch - s.ohneHindernis > 0.5;
+  const MIT = { denkmal: 'Denkmalschutz', statik: 'kritischer Statik', dachSanierung: 'sanierungsbedürftigem Dach' };
+  const kz = Object.keys(MIT).filter(k => s.jeKennzeichen?.[k] && (r.kennzeichen?.[k] ?? 0) > 0);
+  const nurWirtschaftlich = Math.abs(s.wirtschaftlich - s.realisierbar) >= 0.5;
+  if (!hindernis && !kz.length && !nurWirtschaftlich) return '';
+  const teile = [];
+  if (hindernis) teile.push(`pauschal ${ggNum(r.hindernisFlach)} % auf Flach- und ${ggNum(r.hindernisSchraeg)} % auf Schrägdächern für Dachaufbauten, `
+    + `Lichtkuppeln, Gauben und Schornsteine, soweit diese nicht einzeln als Sperrflächen erfasst sind`);
+  if (kz.length) teile.push(ggAufzaehlung(kz.map(k => `${ggNum(r.kennzeichen[k])} % für ${ggNum(s.jeKennzeichen[k].n)} Gebäude mit ${MIT[k]}`)));
+  return `Die rechnerische Belegung ergibt ein technisches Dachpotenzial von rund ${kw(s.technisch)} kWp. `
+    + (teile.length ? `Davon abgezogen wurden ${ggAufzaehlung(teile)}; ` : '')
+    + `realisierbar erscheinen damit voraussichtlich rund ${kw(s.realisierbar)} kWp`
+    + (nurWirtschaftlich
+      ? `, davon rund ${kw(s.wirtschaftlich)} kWp in Anlagen ab ${ggNum(r.minAnlageKwp)} kWp je Gebäude, die wirtschaftlich sinnvoll sein dürften.`
+      : '.')
+    + ' Die PV-Analyse rechnet mit dem realisierbaren Potenzial.';
+}
+
+/** Wartungsgänge und Feldgrenzen auf Flachdächern als Satz — '' wenn aus (ältere Stände). */
+function ggPvGaengeSatz(gl) {
+  const b = +gl.gangBreite || 0;
+  if (!(b > 0)) return '';
+  const gang = +gl.gangAlle > 0, feld = +gl.feldMax > 0;
+  if (!gang && !feld) return '';
+  return ' Auf Flachdächern sind'
+    + (gang ? ` etwa alle ${ggPvMass(gl.gangAlle)} m Wartungsgänge von ${ggPvMass(b)} m Breite` : '')
+    + (gang && feld ? ' und' : '')
+    + (feld ? ` ${gang ? '' : `${ggPvMass(b)} m breite `}Gassen zwischen Modulfeldern von höchstens ${ggPvMass(gl.feldMax)} m Länge` : '')
+    + ' freigehalten.';
 }
 
 /** Netz-Engstellen, an denen der volle Ausbau der Auswahl einer Dachbelegung scheitert (36 → Stand.netz.engstellen). */
@@ -8842,6 +8890,8 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
   if (!b || (!b.potenzialOverride && (q.stand || q.gebKwp > 0 || q.assetKwp > 0))) {
     const regeln = ggPvRegelnAbsatz(ggPvRegeln());
     if (regeln) absaetze.push(regeln);
+    const stufen = ggPvPotenzialStufenAbsatz();
+    if (stufen) absaetze.push(stufen);
   }
 
   const belegungen = kanon.filter(v => /^belegung-/.test(v.id));

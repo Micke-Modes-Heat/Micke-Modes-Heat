@@ -30,11 +30,14 @@ import {
   _hasBelegung, calcGebKwp, calcGebKwpKorr, getGebPvModules, pvNettoFlaeche,
   getDachDefaultNeigung, detectRoofAzimutFromPolygon, setPvVisible, escHtml, flyTo,
   attachGebPvLayer, redrawGebPvModules, _clipPolyHalfPlane, FLACH_BIS_GRAD, pvFlaecheDachZuordnen,
-  pvFirstPunkt, pvNordHaelfteVorne,
+  pvFirstPunkt, pvNordHaelfteVorne, pvEffektiveBelegungText, PV_BELEGUNGSGRAD_TITEL,
+  pvAbschlagBlockHtml, calcGebKwpTechnisch, pvAbschlagGeb, pvGcrStandard,
   _syncPvAssetIfInSync, getPvKorrFaktor, _polyCentroidLL, _karteAufgeklappt, pvModulMassKorrigieren,
 } from './03c-gebaeude-io.js';
 import { getAssetsForBuilding, deleteAsset, ASSETS } from './13a-assets-core.js';
 import { pvnaAbrissGeplant } from './28-pv-netzaufnahme.js';
+import { pvErtragsfaktor, pvUnterSchwelle, pvNordSektorBei } from './lib/pv-ertrag.js';
+import { pvAbschlagRegeln, pvPotenzialStufen, PV_KENNZEICHEN } from './lib/pv-abschlaege.js';
 
 const PANEL_ID    = 'pv-modus-panel';
 const WL_ID       = 'pvm-werkzeugleiste';   // Werkzeugleiste auf der Karte (nur im Reiter)
@@ -85,22 +88,35 @@ function _vorgabe() {
   if (!window.pvModusVorgabe) {
     window.pvModusVorgabe = {
       dachform: 'sattel', belegung: 90, neigung: null,
-      // Nordseiten belegt man nicht: bei ±45° um Nord (Nordost über Nord bis
-      // Nordwest) liegt der Ertragsfaktor unter 70 %. Beim Satteldach wird die
-      // betroffene Hälfte automatisch als Sperrfläche ausgespart.
-      nordSperr: true, nordSektor: 45,
+      // Nordseiten belegt man nicht: Dachflächen, deren Ertragsfaktor (Ausrichtung
+      // UND Neigung, lib/pv-ertrag) unter ertragMin % liegt, bleiben frei — bei 35°
+      // etwa ±70° um Nord, flache Norddächer (15°) dagegen nicht. Beim Satteldach
+      // wird die betroffene Hälfte automatisch als Sperrfläche ausgespart.
+      nordSperr: true, ertragMin: 75,
       // Flachdach: Aufständerung und Flächenausnutzung (GCR, Anteil Modulfläche an der
-      // Fläche); gcr null = Standard der Aufständerung (Süd 40 %, Ost-West 85 %)
-      ausrichtung: 'sued', gcr: null,
+      // Fläche); gcr null = Standard der Aufständerung (Süd nach flachNeigung: 15° → 55 %, Ost-West 85 %).
+      // Ost-West als Standard: mehr Module je m², flachere Einspeisespitze.
+      ausrichtung: 'ostwest', gcr: null, flachNeigung: 15,
       // Gelten für ALLE Dächer sofort (03c pvRegelnGlobal): Randabstand zur Kante der
-      // Belegungsfläche (m), Modullage auf Schrägdächern, Mindestmodule je Dachfläche/-seite
-      randabstand: 0.3, modulLage: 'hoch', mindestModule: 0,
+      // Belegungsfläche (m) auf Schräg- bzw. Flachdächern, Modullage auf Schrägdächern,
+      // Mindestmodule je Dachfläche/-seite (8 ≈ 3,6 kWp: kleinere Reste wie Walmdach-
+      // Dreiecke lohnen keinen eigenen Strang), Wartungsgänge und Feldgrenzen auf Flachdächern.
+      // Abschläge (lib/pv-abschlaege): fehlende Werte = Standard (Hindernis 20/10 %, …)
+      randabstand: 0.4, randFlach: 1.0, modulLage: 'hoch', mindestModule: 8,
+      gangAlle: 12, gangBreite: 1.0, feldMax: 40,
     };
   }
   const v = window.pvModusVorgabe;
   if (!v.ausrichtung) v.ausrichtung = 'sued';           // ältere Projekte ohne Flachdachvorgabe
   if (v.gcr === undefined) v.gcr = null;
   if (v.randabstand == null) v.randabstand = 0.3;      // ältere Projekte ohne Belegungsregeln
+  if (v.randFlach == null) v.randFlach = 1.0;          // bis 10/2026 ein Rand für alle Dächer
+  if (v.ertragMin == null) v.ertragMin = 75;           // bis 10/2026 fester Sektor ±nordSektor° um Nord
+  if (v.gangAlle == null) v.gangAlle = 12;             // bis 10/2026 ohne Wartungsgänge/Feldgrenzen
+  if (v.gangBreite == null) v.gangBreite = 1.0;
+  if (v.feldMax == null) v.feldMax = 40;
+  if (v.flachNeigung == null) v.flachNeigung = 30;     // bis 10/2026: Süd-Aufständerung 30° (GCR 40 %, Faktor 1,0)
+  delete v.nordSektor;
   if (!v.modulLage) v.modulLage = 'hoch';
   if (v.mindestModule == null) v.mindestModule = 0;
   return v;
@@ -117,7 +133,9 @@ function _regelnText() {
   const v = _vorgabe(), m = _modulMasse();
   const teile = [`Modul ${_zahl(m.breite)}×${_zahl(m.laenge)} m · ${m.wp} Wp`];
   if (v.modulLage === 'quer') teile.push('quer');
-  teile.push(`Rand ${_zahl(v.randabstand)} m`);
+  teile.push(`Rand ${_zahl(v.randabstand)} m, flach ${_zahl(v.randFlach)} m`);
+  if (v.gangAlle > 0 && v.gangBreite > 0) teile.push(`Gang ${_zahl(v.gangBreite)} m alle ${_zahl(v.gangAlle)} m`);
+  if (v.feldMax > 0 && v.gangBreite > 0) teile.push(`Felder ≤ ${_zahl(v.feldMax)} m`);
   if (v.mindestModule > 0) teile.push(`mind. ${v.mindestModule} Module je Fläche`);
   return teile.join(' · ');
 }
@@ -125,7 +143,7 @@ function _regelnText() {
 const _zahl = x => String(Math.round(x * 100) / 100).replace('.', ',');
 
 /** Flächenausnutzung eines Flachdachs nach den Vorgaben (%). */
-const _vorgabeGcr = v => (v.gcr != null ? v.gcr : (v.ausrichtung === 'ostwest' ? 85 : 40));
+const _vorgabeGcr = v => (v.gcr != null ? v.gcr : pvGcrStandard(v.ausrichtung));
 
 /** Flachdachvorgaben auf ein Gebäude bzw. eine Rechenkopie — eine von Hand gesetzte Ausnutzung bleibt. */
 function _flachVorgabe(g, v) {
@@ -139,7 +157,7 @@ export function pvmVorgabeText() {
   const v = _vorgabe();
   return `${DACHFORMEN[v.dachform] || v.dachform}${v.neigung != null ? ` ${v.neigung}°` : ''} · Belegungsgrad ${v.belegung} %`
     + ` · Flachdach ${v.ausrichtung === 'ostwest' ? 'Ost-West' : 'Süd'}, Ausnutzung ${_vorgabeGcr(v)} %${v.gcr == null ? ' (Standard)' : ''}`
-    + (v.nordSperr ? ` · Nordseiten ±${v.nordSektor}° frei` : ' · beide Dachseiten')
+    + (v.nordSperr ? ` · Dachseiten unter ${v.ertragMin} % Ertrag frei` : ' · beide Dachseiten')
     + ` · ${_regelnText()}`;
 }
 
@@ -152,14 +170,20 @@ export function pvmRegelnSnapshot() {
   const v = _vorgabe(), m = _modulMasse();
   return {
     global: { modulBreite: m.breite, modulLaenge: m.laenge, modulWp: m.wp,
-      modulLage: v.modulLage, randabstand: v.randabstand, mindestModule: v.mindestModule },
+      modulLage: v.modulLage, randabstand: v.randabstand, randFlach: v.randFlach, mindestModule: v.mindestModule,
+      gangAlle: v.gangAlle, gangBreite: v.gangBreite, feldMax: v.feldMax,
+      hindernisFlach: pvAbschlagRegeln(v).hindernisFlach, hindernisSchraeg: pvAbschlagRegeln(v).hindernisSchraeg,
+      flachNeigung: v.flachNeigung },
     vorgaben: { dachform: v.dachform, neigung: v.neigung, belegung: v.belegung, nordSperr: v.nordSperr,
-      nordSektor: v.nordSektor, ausrichtung: v.ausrichtung, gcr: v.gcr },
+      ertragMin: v.ertragMin, ausrichtung: v.ausrichtung, gcr: v.gcr },
   };
 }
 
 const _REGEL_NAMEN = { modulBreite: 'Modulbreite', modulLaenge: 'Modullänge', modulWp: 'Modulleistung',
-  modulLage: 'Modullage', randabstand: 'Randabstand', mindestModule: 'Mindestmodule' };
+  modulLage: 'Modullage', randabstand: 'Randabstand Schrägdach', randFlach: 'Randabstand Flachdach',
+  mindestModule: 'Mindestmodule', gangAlle: 'Wartungsgang alle', gangBreite: 'Gangbreite', feldMax: 'Feldlänge max.',
+  hindernisFlach: 'Hindernisabschlag flach (%)', hindernisSchraeg: 'Hindernisabschlag schräg (%)',
+  flachNeigung: 'Süd-Aufständerung' };
 
 /**
  * Unterschiede der globalen Regeln eines Snapshots zu den aktuellen.
@@ -170,7 +194,8 @@ export function pvmRegelnAbweichung(snap) {
   if (!alt) return [];
   const neu = pvmRegelnSnapshot().global;
   const fmt = (k, x) => k === 'modulLage' ? (x === 'quer' ? 'quer' : 'hochkant')
-    : k === 'modulWp' ? `${x} Wp` : k === 'mindestModule' ? String(x) : `${_zahl(+x)} m`;
+    : k === 'modulWp' ? `${x} Wp` : k === 'mindestModule' ? String(x)
+    : k.startsWith('hindernis') ? `${_zahl(+x)} %` : k === 'flachNeigung' ? `${_zahl(+x)}°` : `${_zahl(+x)} m`;
   return Object.keys(_REGEL_NAMEN).filter(k => alt[k] != null && String(alt[k]) !== String(neu[k]))
     .map(k => `${_REGEL_NAMEN[k]}: ${fmt(k, alt[k])} (jetzt ${fmt(k, neu[k])})`);
 }
@@ -183,6 +208,18 @@ export function pvmRegelnSetzen(snap) {
     const v = _vorgabe();
     if (alt.modulLage) v.modulLage = alt.modulLage === 'quer' ? 'quer' : 'hoch';
     if (alt.randabstand != null) v.randabstand = +alt.randabstand;
+    // Stände von vor 10/2026 kannten nur einen Rand für alle Dächer
+    if (alt.randFlach != null || alt.randabstand != null) v.randFlach = +(alt.randFlach ?? alt.randabstand);
+    // … und keine Wartungsgänge/Feldgrenzen
+    if (alt.randabstand != null) {
+      v.gangAlle = +(alt.gangAlle ?? 0);
+      v.feldMax = +(alt.feldMax ?? 0);
+      if (alt.gangBreite != null) v.gangBreite = +alt.gangBreite;
+      // … und keine pauschalen Hindernisabschläge
+      v.hindernisFlach = +(alt.hindernisFlach ?? 0);
+      v.hindernisSchraeg = +(alt.hindernisSchraeg ?? 0);
+      v.flachNeigung = +(alt.flachNeigung ?? 30);
+    }
     if (alt.mindestModule != null) v.mindestModule = +alt.mindestModule;
     const feld = (id, art, x) => { const el = document.getElementById(id); if (el && x != null) el.value = pvModulMassKorrigieren(art, x); };
     feld('pv-modul-breite', 'breite', alt.modulBreite);
@@ -815,19 +852,29 @@ export function pvModusNachFlaeche(g) {
 // ══════════════════════════════════════════════════════════════════════════
 
 /**
- * Welche Satteldachhälfte zeigt nach Norden?
+ * Welche Satteldachhälfte liegt unter der Ertragsschwelle (Vorgabe ertragMin,
+ * Ausrichtung UND Neigung)? Ausgespart wird höchstens die schlechtere, also die
+ * nördlichere Hälfte (wie 03c pvNordHaelfteVorne) — bei Ost-West-First sind
+ * beide gleich gut und bleiben belegt.
  * @returns {boolean|null} true = Vorderseite (Azimut A) · false = Rückseite
- *   (A+180) · null = keine der beiden liegt im Nordsektor
+ *   (A+180) · null = keine Hälfte unter der Schwelle
  */
 function _nordSeite(g) {
   if (!g || g.dachform !== 'sattel') return null;   // nur hier gibt es zwei Seiten
   if (g.dachFlaechen?.length) return null;           // LoD2: Nordflächen werden gar nicht erst belegt
-  const sektor = _vorgabe().nordSektor ?? 45;
-  const abstandNord = a => { const x = ((a % 360) + 360) % 360; return Math.min(x, 360 - x); };
   const A = g.dachAzimut ?? 180;
-  if (abstandNord(A) <= sektor) return true;
-  if (abstandNord(A + 180) <= sektor) return false;
-  return null;
+  const nei = g.dachNeigung ?? getDachDefaultNeigung('sattel');
+  const fV = pvErtragsfaktor(A, nei), fR = pvErtragsfaktor(A + 180, nei);
+  if (Math.abs(fV - fR) < 1e-9) return null;
+  const vorne = fV < fR;
+  return pvUnterSchwelle(vorne ? A : A + 180, nei, _vorgabe().ertragMin) ? vorne : null;
+}
+
+/** „bei 35° etwa ±70° um Nord" — Lesehilfe zur Ertragsschwelle. */
+function _schwelleText(nei) {
+  const s = pvNordSektorBei(nei, _vorgabe().ertragMin);
+  return s == null ? `bei ${nei}° keine Dachseite darunter`
+    : s >= 180 ? `bei ${nei}° jede Dachseite darunter` : `bei ${nei}° etwa ±${Math.round(s / 5) * 5}° um Nord`;
 }
 
 function _autoNordFlaechen(g) {
@@ -896,7 +943,7 @@ export function pvmNordAussparen(gId) {
   } else {
     delete g._pvNordFrei;
     if (_nordSeite(g) === null) {
-      alert(`Keine Dachhälfte von „${_name(g)}" liegt im Nordsektor (±${_vorgabe().nordSektor}° um Nord).\n\nDer Sektor lässt sich unter „Vorgaben für neue Dächer" ändern.`);
+      alert(`Keine Dachhälfte von „${_name(g)}" liegt unter der Ertragsschwelle (${_vorgabe().ertragMin} %, ${_schwelleText(g.dachNeigung ?? getDachDefaultNeigung('sattel'))}).\n\nDie Schwelle lässt sich unter „Vorgaben für neue Dächer" ändern.`);
       return;
     }
     const ids = _nordAnwenden(g);
@@ -1074,16 +1121,14 @@ export function pvmDachflaechenNeuBelegen(g) {
 
 /**
  * Belegbare LoD2-Dachflächen eines Gebäudes: nicht senkrecht, groß genug für
- * ein paar Module und — wenn „Nordseiten aussparen" an ist — nicht nach Norden
- * geneigt (flache Flächen werden aufgeständert und zählen immer).
+ * ein paar Module und — wenn „Nordseiten aussparen" an ist — nicht unter der
+ * Ertragsschwelle (flache Flächen werden aufgeständert und zählen immer).
  */
 function _dachflaechenZumBelegen(g) {
   const v = _vorgabe();
-  const sektor = v.nordSektor ?? 45;
-  const abstandNord = a => { const x = ((a % 360) + 360) % 360; return Math.min(x, 360 - x); };
   return (g.dachFlaechen || []).filter(f => Array.isArray(f.punkte) && f.punkte.length >= 3
     && f.neigung <= 75 && (f.grundM2 ?? 0) >= 4
-    && !(v.nordSperr && f.neigung >= FLACH_BIS_GRAD && abstandNord(f.azimut) <= sektor));
+    && !(v.nordSperr && f.neigung >= FLACH_BIS_GRAD && pvUnterSchwelle(f.azimut, f.neigung, v.ertragMin)));
 }
 
 /**
@@ -1437,7 +1482,7 @@ function _reiterHtml() {
   // 2 · Regeln
   const v = _vorgabe();
   const s2 = _stufeHtml(2, 'Regeln',
-    `${_regelnText()}${v.nordSperr ? ` · Nord ±${v.nordSektor}° aus` : ''}`, 'ok', _vorgabeInhalt());
+    `${_regelnText()}${v.nordSperr ? ` · unter ${v.ertragMin} % Ertrag aus` : ''}`, 'ok', _vorgabeInhalt());
 
   // 3 · Belegen
   const s3 = _stufeHtml(3, 'Belegen',
@@ -1450,6 +1495,7 @@ function _reiterHtml() {
       ${ziele ? `<button class="btn-secondary" style="width:100%;" data-click="pvmGrundrissAuswahl()"
           title="Für jedes ausgewählte Dach ohne Fläche den Grundriss als Belegungsfläche übernehmen">Grundriss für ${ziele} ausgewählte Dächer</button>` : ''}
       <div class="pvr-dach">${_aktivBlock(g)}</div>
+      ${_potenzialHtml()}
       ${_listenBlock()}
       <div class="pvr-unter">Freiflächen</div>
       <div id="pvr-ff-slot"></div>`);
@@ -1540,10 +1586,14 @@ function _regler({ label, titel, min, max, step, wert, farbe, einheit, handler }
 // Schrägdach über Belegungsgrad/Neigung/Azimut, Flachdach über GCR/Aufständerung.
 function _dachRegler(g) {
   const schraeg = !!(g.dachform && g.dachform !== 'flach');
+  const eff = _hasBelegung(g) ? pvEffektiveBelegungText(g) : '';
+  const effZeile = (eff ? `<div style="font-size:11px;color:var(--muted);margin:-2px 0 3px;">${eff}</div>` : '')
+    + (_hasBelegung(g) ? `<div style="margin:-2px 0 4px;">${pvAbschlagBlockHtml(g)}</div>` : '');
   if (schraeg) {
     const nei = g.dachNeigung != null ? g.dachNeigung : getDachDefaultNeigung(g.dachform);
-    return _regler({ label:'Belegungsgrad (%)', titel:'Anteil der Dachfläche, der mit Modulen belegt wird', min:40, max:100, step:5,
+    return _regler({ label:'Belegungsgrad (%)', titel: PV_BELEGUNGSGRAD_TITEL, min:40, max:100, step:5,
                      wert: g.pvFlBelegung != null ? g.pvFlBelegung : 90, farbe:GELB, einheit:'%', handler:`pvmFl(${g.id},'belegung',this.value)` })
+      + effZeile
       + _regler({ label:'Neigung (°)', titel:'Neigung der Dachfläche', min:5, max:75, step:5,
                   wert: nei, farbe:'#80deea', einheit:'°', handler:`pvmDach(${g.id},'dachNeigung',this.value)` })
       + _regler({ label:'Azimut (°)', titel:'0=Nord · 90=Ost · 180=Süd · 270=West', min:0, max:355, step:5,
@@ -1555,9 +1605,10 @@ function _dachRegler(g) {
           ${g.pvRidgeOverride ? `<button class="btn-xs" data-click="pvmFirstReset(${g.id})" title="First zurück auf automatische Mitte">↺</button>` : ''}
         </div>` : '');
   }
-  const gcr = g.pvFlGcr != null ? g.pvFlGcr : (g.pvFlAusrichtung === 'ostwest' ? 85 : 40);
+  const gcr = g.pvFlGcr != null ? g.pvFlGcr : pvGcrStandard(g.pvFlAusrichtung);
   return _regler({ label:'GCR (% Belegung)', titel:'Anteil Modulfläche an der gezeichneten Fläche', min:5, max:95, step:5,
                    wert: gcr, farbe:GELB, einheit:'%', handler:`pvmFl(${g.id},'gcr',this.value)` })
+    + effZeile
     + `<div class="inp-group">
         <div class="inp-label">Aufständerung</div>
         <select class="inp-field" data-change="pvmFl(${g.id},'ausrichtung',this.value)">
@@ -1618,7 +1669,7 @@ function _aktivBlock(g) {
       data-click="pvmNordAussparen(${g.id})"
       title="${nordDa
         ? 'Die automatische Sperrfläche auf der Nordseite wieder entfernen'
-        : `Die nach Norden zeigende Dachhälfte als Sperrfläche aussparen (Sektor ±${_vorgabe().nordSektor}° um Nord)`}">
+        : `Die nach Norden zeigende Dachhälfte als Sperrfläche aussparen, wenn ihr Ertrag unter ${_vorgabe().ertragMin} % liegt (${_schwelleText(g.dachNeigung ?? getDachDefaultNeigung('sattel'))})`}">
       ${nordDa ? '↺ Nordseite wieder freigeben' : 'Nordseite aussparen'}</button>` : ''}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:6px;">
       <div class="inp-group">
@@ -1661,7 +1712,7 @@ function _vorgabeBlock() {
     return `<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:8px;cursor:pointer;"
         data-click="pvmVorgabeToggle()" title="Regeln für alle Dächer und Vorgaben, die jedes neu belegte Dach erbt">
       <span style="text-transform:uppercase;letter-spacing:.06em;flex:1;">Belegungsregeln</span>
-      <span style="text-align:right;">${DACHFORMEN[v.dachform] || v.dachform} · ${v.belegung} %${v.neigung != null ? ' · ' + v.neigung + '°' : ''}${v.nordSperr ? ` · Nord ±${v.nordSektor}° aus` : ''} · Flach ${v.ausrichtung === 'ostwest' ? 'OW' : 'S'} ${_vorgabeGcr(v)} % · Rand ${_zahl(v.randabstand)} m${v.modulLage === 'quer' ? ' · quer' : ''}${v.mindestModule > 0 ? ` · ≥ ${v.mindestModule} Mod.` : ''}</span>
+      <span style="text-align:right;">${DACHFORMEN[v.dachform] || v.dachform} · ${v.belegung} %${v.neigung != null ? ' · ' + v.neigung + '°' : ''}${v.nordSperr ? ` · < ${v.ertragMin} % Ertrag aus` : ''} · Flach ${v.ausrichtung === 'ostwest' ? 'OW' : 'S'} ${_vorgabeGcr(v)} % · Rand ${_zahl(v.randabstand)}/${_zahl(v.randFlach)} m${v.modulLage === 'quer' ? ' · quer' : ''}${v.mindestModule > 0 ? ` · ≥ ${v.mindestModule} Mod.` : ''}</span>
       <span>▸</span>
     </div>`;
   }
@@ -1676,6 +1727,38 @@ function _vorgabeBlock() {
 }
 
 /** Inhalt der Belegungsregeln — im Fenster aufgeklappt, im Reiter als Stufe 2. */
+/**
+ * Potenzialstufen über alle belegten Dächer (lib/pv-abschlaege): technisch →
+ * nach Hindernissen → realisierbar → wirtschaftlich. Auch für das Gutachten (17).
+ */
+export function pvmPotenzialStufen() {
+  const geb = _mitPolygon().filter(_hasBelegung);
+  const r = pvAbschlagRegeln(window.pvModusVorgabe || {});
+  const s = pvPotenzialStufen(geb.map(g => {
+    const ab = pvAbschlagGeb(g);
+    return { kwpTech: calcGebKwpTechnisch(g), faktor: ab.faktor, hindernis: ab.hindernis, kennzeichen: ab.kennzeichenListe };
+  }), r);
+  const erfasst = geb.filter(g => g.pvHindernisseErfasst).length;
+  return { ...s, regeln: r, hindernisseErfasst: erfasst };
+}
+
+function _potenzialHtml() {
+  const s = pvmPotenzialStufen();
+  if (!s.daecher) return '';
+  const fmt = x => Math.round(x).toLocaleString('de-DE');
+  const kz = PV_KENNZEICHEN.filter(k => s.jeKennzeichen[k.key])
+    .map(k => `${k.kurz} ${s.jeKennzeichen[k.key].n}`).join(' · ');
+  return `
+      <div class="pvr-unter">Potenzial</div>
+      <dl class="pvr-kv" title="Technisch = platzierte Module. Realisierbar = nach pauschalem Hindernisabschlag und Kennzeichen der Gebäude — damit rechnen Assets, Netz und Gutachten. Wirtschaftlich = davon nur Anlagen ab der Mindestgröße.">
+        <dt>technisch</dt><dd>${fmt(s.technisch)} kWp</dd>
+        <dt>nach Hindernissen</dt><dd>${fmt(s.ohneHindernis)} kWp</dd>
+        <dt>realisierbar${kz ? ` (${kz})` : ''}</dt><dd>${fmt(s.realisierbar)} kWp</dd>
+        <dt>wirtschaftlich (≥ ${_zahl(s.regeln.minAnlageKwp)} kWp)</dt><dd>${fmt(s.wirtschaftlich)} kWp</dd>
+      </dl>
+      <p class="el-hinweis">${s.daecher} Dächer${s.hindernisseErfasst ? `, davon ${s.hindernisseErfasst} mit erfassten Hindernissen` : ''}${s.ausgeschlossen ? ` · ${s.ausgeschlossen} ${s.ausgeschlossen === 1 ? 'fällt' : 'fallen'} durch Kennzeichen heraus` : ''}${s.zuKlein ? ` · ${s.zuKlein} ${s.zuKlein === 1 ? 'liegt' : 'liegen'} unter der Mindestgröße` : ''}.</p>`;
+}
+
 function _vorgabeInhalt() {
   const ue = _uebertrag();
   const ausgewaehlt = _mitPolygon().filter(g => g.selected && _hasBelegung(g)).length;
@@ -1716,7 +1799,7 @@ export function pvmUebertrag(feld, wert) {
 
 /** Eingabefelder der Regeln, die sofort für alle Dächer gelten. */
 export function pvmRegelnGlobalHtml() {
-  const v = _vorgabe(), m = _modulMasse();
+  const v = _vorgabe(), m = _modulMasse(), ab = pvAbschlagRegeln(v);
   const zahlFeld = (feld, wert, min, max, step, titel) => `<input class="inp-field" type="number" min="${min}" max="${max}" step="${step}"
       value="${wert}" style="padding:2px 4px;" title="${titel}" data-change="pvmRegel('${feld}',this.value)"/>`;
   return `
@@ -1728,16 +1811,43 @@ export function pvmRegelnGlobalHtml() {
         <div class="inp-group"><div class="inp-label">Wp</div>
           ${zahlFeld('modulWp', m.wp, 100, 800, 5, 'Modulleistung')}</div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:4px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px;">
+        <div class="inp-group"><div class="inp-label" title="Abstand der Module zu Traufe, First und Ortgang (Windsog-Randzone, Montagerand), gemessen im Grundriss. Üblich 0,4–0,5 m.">Rand Schrägdach (m)</div>
+          ${zahlFeld('randabstand', v.randabstand, 0, 2, 0.05, 'Randabstand auf Schrägdächern')}</div>
+        <div class="inp-group"><div class="inp-label" title="Abstand der aufgeständerten Module zur Dachkante bzw. Attika (Windsog-Randzone, Absturzsicherung). Üblich 1,0 m, ohne feste Absturzsicherung eher 1,5–2 m.">Rand Flachdach (m)</div>
+          ${zahlFeld('randFlach', v.randFlach, 0, 3, 0.1, 'Randabstand auf Flachdächern und flachen Dachflächen')}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px;">
         <div class="inp-group"><div class="inp-label" title="Modullage auf Schrägdächern. Flachdächer: Module quer auf der Aufständerung.">Lage</div>
           <select class="inp-field" style="padding:2px 4px;" data-change="pvmRegel('modulLage',this.value)">
             <option value="hoch"${v.modulLage !== 'quer' ? ' selected' : ''}>hoch</option>
             <option value="quer"${v.modulLage === 'quer' ? ' selected' : ''}>quer</option>
           </select></div>
-        <div class="inp-group"><div class="inp-label" title="Abstand der Module zur Kante der Belegungsfläche (Wind-/Brandschutzzonen, Montagerand). Standard 0,3 m.">Rand (m)</div>
-          ${zahlFeld('randabstand', v.randabstand, 0, 2, 0.05, 'Randabstand zur Kante der Belegungsfläche')}</div>
         <div class="inp-group"><div class="inp-label" title="Dachflächen bzw. Satteldachseiten mit weniger Modulen bleiben leer (lohnt nicht). 0 = aus.">Min. Mod.</div>
           ${zahlFeld('mindestModule', v.mindestModule, 0, 100, 1, 'Mindestzahl Module je Dachfläche bzw. Satteldachseite')}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:4px;">
+        <div class="inp-group"><div class="inp-label" title="Flachdach: nach so vielen Metern Modulreihen folgt ein Wartungsgang quer zu den Reihen (bei Ost-West zwischen zwei Doppelreihen). Üblich 10–15 m. 0 = keine Gänge.">Gang alle (m)</div>
+          ${zahlFeld('gangAlle', v.gangAlle, 0, 100, 1, 'Abstand der Wartungsgänge auf Flachdächern')}</div>
+        <div class="inp-group"><div class="inp-label" title="Breite der Wartungsgänge und der Gassen zwischen den Feldern. Üblich 0,6–1,0 m, als Feuerwehrgasse 1 m.">Gangbreite (m)</div>
+          ${zahlFeld('gangBreite', v.gangBreite, 0, 3, 0.1, 'Breite von Wartungsgang und Feldgasse')}</div>
+        <div class="inp-group"><div class="inp-label" title="Flachdach: Modulfelder entlang der Reihen höchstens so lang, dazwischen eine Gasse in Gangbreite (Brandschutz-Empfehlung ca. 40 m). 0 = keine Feldgrenzen.">Feld max. (m)</div>
+          ${zahlFeld('feldMax', v.feldMax, 0, 200, 5, 'Größte Feldlänge auf Flachdächern')}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:4px;">
+        <div class="inp-group"><div class="inp-label" title="Neigung der Süd-Aufständerung auf Flachdächern: bestimmt Ertragsfaktor (15° ≈ 96 %, 30° = 100 %) und Standard-Ausnutzung (15° → 55 %, 30° → 40 %). Heute üblich 10–15°. Ost-West rechnet mit 10°.">Süd-Aufst. (°)</div>
+          ${zahlFeld('flachNeigung', v.flachNeigung, 5, 45, 5, 'Neigung der Süd-Aufständerung')}</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px;">Abschläge vom technischen Potenzial (%)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:2px;">
+        <div class="inp-group"><div class="inp-label" title="Pauschal für Lichtkuppeln, RWA, Lüfter, Technikaufbauten auf Flachdächern — entfällt an Gebäuden mit Haken „Hindernisse erfasst“. Üblich 15–25 %.">Hindernis flach</div>
+          ${zahlFeld('hindernisFlach', ab.hindernisFlach, 0, 100, 5, 'Pauschaler Hindernisabschlag auf Flachdächern')}</div>
+        <div class="inp-group"><div class="inp-label" title="Pauschal für Gauben, Dachfenster, Schornsteine (mit Weg für den Schornsteinfeger) auf Schrägdächern. Üblich 10–15 %.">Hindernis schräg</div>
+          ${zahlFeld('hindernisSchraeg', ab.hindernisSchraeg, 0, 100, 5, 'Pauschaler Hindernisabschlag auf Schrägdächern')}</div>
+        <div class="inp-group"><div class="inp-label" title="Wirtschaftliches Potenzial: nur Anlagen ab dieser Größe (realisierbar je Gebäude).">Mindestanlage (kWp)</div>
+          ${zahlFeld('minAnlageKwp', ab.minAnlageKwp, 0, 1000, 1, 'Kleinste Anlage im wirtschaftlichen Potenzial')}</div>
+        ${PV_KENNZEICHEN.map(k => `<div class="inp-group"><div class="inp-label" title="Abschlag für Gebäude mit dem Kennzeichen „${k.label}“: ${k.titel} 100 % = Dach fällt heraus.">${k.kurz}</div>
+          ${zahlFeld('kz:' + k.key, ab.kennzeichen[k.key], 0, 100, 5, `Abschlag bei ${k.label}`)}</div>`).join('')}
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35;">Ändert sofort die Module aller belegten Dächer; das kWp der PV-Assets wird nachgezogen.</div>`;
 }
@@ -1748,7 +1858,23 @@ export function pvmRegel(feld, wert) {
   const zahl = parseFloat(String(wert).replace(',', '.'));
   _regelAufAlle(() => {
     if (feld === 'modulLage') v.modulLage = wert === 'quer' ? 'quer' : 'hoch';
-    else if (feld === 'randabstand') v.randabstand = Number.isFinite(zahl) ? Math.max(0, Math.min(2, zahl)) : 0.3;
+    else if (feld === 'randabstand') v.randabstand = Number.isFinite(zahl) ? Math.max(0, Math.min(2, zahl)) : 0.4;
+    else if (feld === 'randFlach')   v.randFlach   = Number.isFinite(zahl) ? Math.max(0, Math.min(3, zahl)) : 1.0;
+    else if (feld === 'gangAlle')    v.gangAlle    = Number.isFinite(zahl) ? Math.max(0, Math.min(100, zahl)) : 12;
+    else if (feld === 'gangBreite')  v.gangBreite  = Number.isFinite(zahl) ? Math.max(0, Math.min(3, zahl)) : 1.0;
+    else if (feld === 'feldMax')     v.feldMax     = Number.isFinite(zahl) ? Math.max(0, Math.min(200, zahl)) : 40;
+    else if (feld === 'flachNeigung') {
+      // Süd-Dächer mit der bisherigen Standard-Ausnutzung ziehen auf die neue nach
+      const altStd = pvGcrStandard('sued');
+      v.flachNeigung = Number.isFinite(zahl) ? Math.max(5, Math.min(45, zahl)) : 15;
+      const neuStd = pvGcrStandard('sued');
+      for (const g of window.gebaeude || []) {
+        if (g.pvFlAusrichtung !== 'ostwest' && !g._pvFlGcrManual && g.pvFlGcr === altStd) g.pvFlGcr = neuStd;
+      }
+    }
+    else if (feld === 'hindernisFlach' || feld === 'hindernisSchraeg') v[feld] = Number.isFinite(zahl) ? Math.max(0, Math.min(100, zahl)) : null;
+    else if (feld === 'minAnlageKwp') v.minAnlageKwp = Number.isFinite(zahl) ? Math.max(0, zahl) : null;
+    else if (feld.startsWith('kz:')) v.kennzeichen = { ...(v.kennzeichen || {}), [feld.slice(3)]: Number.isFinite(zahl) ? Math.max(0, Math.min(100, zahl)) : null };
     else if (feld === 'mindestModule') v.mindestModule = Number.isFinite(zahl) ? Math.max(0, Math.min(100, Math.round(zahl))) : 0;
     else {
       const id = { modulBreite: 'pv-modul-breite', modulLaenge: 'pv-modul-laenge', modulWp: 'pv-modul-wp' }[feld];
@@ -1783,19 +1909,20 @@ export function pvmVorgabeFelderHtml() {
             placeholder="${getDachDefaultNeigung(v.dachform)}" data-change="pvmVorgabe('neigung',this.value)"/>
         </div>
       </div>
-      ${_regler({ label:'Belegungsgrad (%)', titel:'Vorgabe für neu belegte Dächer', min:40, max:100, step:5,
+      ${_regler({ label:'Belegungsgrad (%)', titel:'Vorgabe für neu belegte Dächer. ' + PV_BELEGUNGSGRAD_TITEL, min:40, max:100, step:5,
                   wert: v.belegung, farbe:GELB, einheit:'%', handler:`pvmVorgabe('belegung',this.value)` })}
       <div style="display:flex;align-items:center;gap:5px;margin-top:4px;">
         <label style="display:flex;align-items:center;gap:4px;flex:1;font-size:12px;cursor:pointer;"
-          title="Beim Satteldach die nach Norden zeigende Hälfte automatisch als Sperrfläche aussparen">
+          title="Dachseiten mit zu geringem Ertrag frei lassen: beim Satteldach wird die nördliche Hälfte als Sperrfläche ausgespart, LoD2-Dachflächen werden gar nicht erst belegt">
           <input type="checkbox" ${v.nordSperr ? 'checked' : ''} style="accent-color:${ROT};cursor:pointer;"
-            data-change="pvmVorgabe('nordSperr',this.checked)"/>Nordseiten aussparen
+            data-change="pvmVorgabe('nordSperr',this.checked)"/>Nordseiten aussparen unter
         </label>
-        <span style="font-size:11px;color:var(--muted);" title="Halber Öffnungswinkel um Nord: 45° reicht von Nordost über Nord bis Nordwest">±</span>
-        <input class="inp-field" type="number" min="5" max="90" step="5" value="${v.nordSektor}"
-          style="width:52px;padding:2px 4px;" data-change="pvmVorgabe('nordSektor',this.value)"/>
-        <span style="font-size:11px;color:var(--muted);">°</span>
+        <input class="inp-field" type="number" min="40" max="95" step="5" value="${v.ertragMin}"
+          title="Ertragsschwelle: Anteil am bestmöglichen Ertrag (Süd, ~30°). Ausrichtung UND Neigung zählen — ein flaches Norddach erreicht mehr als ein steiles."
+          style="width:52px;padding:2px 4px;" data-change="pvmVorgabe('ertragMin',this.value)"/>
+        <span style="font-size:11px;color:var(--muted);">% Ertrag</span>
       </div>
+      ${v.nordSperr ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.35;">${_schwelleText(15)} · ${_schwelleText(35)} · ${_schwelleText(45)}</div>` : ''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;">
         <div class="inp-group">
           <div class="inp-label" title="Aufständerung auf Flachdächern (und flachen LoD2-Dachflächen)">Flachdach</div>
@@ -1805,7 +1932,7 @@ export function pvmVorgabeFelderHtml() {
           </select>
         </div>
         <div class="inp-group">
-          <div class="inp-label" title="Anteil der Modulfläche an der Flachdachfläche (GCR). Leer = Standard der Aufständerung: Süd 40 % (Reihenabstand gegen Eigenverschattung), Ost-West 85 %.">Ausnutzung (%)</div>
+          <div class="inp-label" title="Anteil der Modulfläche an der Flachdachfläche (GCR). Leer = Standard der Aufständerung: Süd nach Neigung (15° → 55 %, Reihenabstand gegen Eigenverschattung), Ost-West 85 %.">Ausnutzung (%)</div>
           <input class="inp-field" type="number" min="5" max="95" step="5" value="${v.gcr ?? ''}" placeholder="${flachAuto}"
             data-change="pvmVorgabe('gcr',this.value)"/>
         </div>
@@ -1920,7 +2047,8 @@ export function pvmDach(gId, feld, wert) {
   // wenn sie zwischendurch nur deshalb verschwunden war, weil keine Seite im
   // Nordsektor lag; nur ein bewusstes „freigeben" schaltet sie für das Dach ab.
   const nachziehen = hatteNord || (_vorgabe().nordSperr && !g?._pvNordFrei);
-  if (g && nachziehen && _hasBelegung(g) && (feld === 'dachAzimut' || feld === 'dachform')) {
+  // Die Ertragsschwelle hängt auch an der Neigung (ein flaches Norddach bleibt belegt)
+  if (g && nachziehen && _hasBelegung(g) && (feld === 'dachAzimut' || feld === 'dachform' || feld === 'dachNeigung')) {
     _nordAnwenden(g);
     _uebernehmen(g);
     window._rerenderCard?.(gId);
@@ -1988,7 +2116,7 @@ export function pvmVorgabe(feld, wert) {
   else if (feld === 'belegung')   v.belegung = Math.min(100, parseFloat(wert) || 90);
   else if (feld === 'neigung')    v.neigung  = wert === '' ? null : parseFloat(wert);
   else if (feld === 'nordSperr')  v.nordSperr = !!wert;
-  else if (feld === 'nordSektor') v.nordSektor = Math.max(5, Math.min(90, parseFloat(wert) || 45));
+  else if (feld === 'ertragMin')  v.ertragMin = Math.max(40, Math.min(95, parseFloat(wert) || 75));
   else if (feld === 'ausrichtung') v.ausrichtung = wert === 'ostwest' ? 'ostwest' : 'sued';
   else if (feld === 'gcr')        v.gcr = wert === '' || wert == null ? null : Math.max(5, Math.min(95, parseFloat(wert) || 40));
   pvModusRender();
@@ -2026,7 +2154,8 @@ export function pvmVorgabeAufAlle() {
       + `• Dachform „${DACHFORMEN[v.dachform]}"${v.neigung != null ? `, Neigung ${v.neigung}°` : ''}: ${nDach} Dächer`
       + (ziele.length - nDach ? ` (${ziele.length - nDach} behalten ihr Dach${echteDaten ? `, davon ${echteDaten} mit LoD2-/OSM-/berechneten Dachdaten` : ''})` : '') + '\n'
       + `• Belegungsgrad ${v.belegung} %, Flachdach ${v.ausrichtung === 'ostwest' ? 'Ost-West' : 'Süd'} mit ${_vorgabeGcr(v)} % Ausnutzung: ${nFl} Dächer`
-      + (ziele.length - nFl ? ` (${ziele.length - nFl} mit eigenen Werten bleiben)` : '') + '\n\n'
+      + (ziele.length - nFl ? ` (${ziele.length - nFl} mit eigenen Werten bleiben)` : '') + '\n'
+      + (v.nordSperr ? `• Satteldächer: Nordseite nach der Ertragsschwelle (${v.ertragMin} %) neu abgeleitet\n` : '') + '\n'
       + 'Azimut und gezeichnete Flächen bleiben unverändert. Strg+Z nimmt den Schritt zurück.')) return;
 
   const schritt = [];
@@ -2049,8 +2178,9 @@ export function pvmVorgabeAufAlle() {
         g.pvFlManuell = false;
         _flachVorgabe(g, v);
       }
-      // Neue Dachform → automatisch ausgesparte Nordseite neu ableiten (wie bei einer Eingabe im Modus)
-      if (g.dachform !== formVorher) pvmNordNachziehen(g);
+      // Nordseite nach der aktuellen Ertragsschwelle neu ableiten (auch ohne neue
+      // Dachform — so kommt eine geänderte Schwelle auf schon belegte Dächer)
+      if (g.dachform !== formVorher || g.dachform === 'sattel') pvmNordNachziehen(g);
       redrawGebPvModules(g);
       _uebernehmen(g);
       window._rerenderCard?.(g.id);
