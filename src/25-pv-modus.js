@@ -31,13 +31,15 @@ import {
   getDachDefaultNeigung, detectRoofAzimutFromPolygon, setPvVisible, escHtml, flyTo,
   attachGebPvLayer, redrawGebPvModules, _clipPolyHalfPlane, FLACH_BIS_GRAD, pvFlaecheDachZuordnen,
   pvFirstPunkt, pvNordHaelfteVorne, pvEffektiveBelegungText, PV_BELEGUNGSGRAD_TITEL,
-  pvAbschlagBlockHtml, calcGebKwpTechnisch, pvAbschlagGeb, pvGcrStandard,
+  pvAbschlagBlockHtml, calcGebKwpTechnisch, pvAbschlagGeb, pvGcrStandard, PV_BELEGUNG_STANDARD,
   _syncPvAssetIfInSync, getPvKorrFaktor, _polyCentroidLL, _karteAufgeklappt, pvModulMassKorrigieren,
 } from './03c-gebaeude-io.js';
 import { getAssetsForBuilding, deleteAsset, ASSETS } from './13a-assets-core.js';
 import { pvnaAbrissGeplant } from './28-pv-netzaufnahme.js';
 import { pvErtragsfaktor, pvUnterSchwelle, pvNordSektorBei } from './lib/pv-ertrag.js';
 import { pvAbschlagRegeln, pvPotenzialStufen, PV_KENNZEICHEN } from './lib/pv-abschlaege.js';
+import { aufbautenSammler } from './lib/dach-aufbauten.js';
+import { utmNachWgs84 } from './lib/lod2-citygml.js';
 
 const PANEL_ID    = 'pv-modus-panel';
 const WL_ID       = 'pvm-werkzeugleiste';   // Werkzeugleiste auf der Karte (nur im Reiter)
@@ -87,7 +89,7 @@ const _mitPolygon = () => (window.gebaeude || [])
 function _vorgabe() {
   if (!window.pvModusVorgabe) {
     window.pvModusVorgabe = {
-      dachform: 'sattel', belegung: 90, neigung: null,
+      dachform: 'sattel', belegung: PV_BELEGUNG_STANDARD, neigung: null,
       // Nordseiten belegt man nicht: Dachflächen, deren Ertragsfaktor (Ausrichtung
       // UND Neigung, lib/pv-ertrag) unter ertragMin % liegt, bleiben frei — bei 35°
       // etwa ±70° um Nord, flache Norddächer (15°) dagegen nicht. Beim Satteldach
@@ -1592,7 +1594,7 @@ function _dachRegler(g) {
   if (schraeg) {
     const nei = g.dachNeigung != null ? g.dachNeigung : getDachDefaultNeigung(g.dachform);
     return _regler({ label:'Belegungsgrad (%)', titel: PV_BELEGUNGSGRAD_TITEL, min:40, max:100, step:5,
-                     wert: g.pvFlBelegung != null ? g.pvFlBelegung : 90, farbe:GELB, einheit:'%', handler:`pvmFl(${g.id},'belegung',this.value)` })
+                     wert: g.pvFlBelegung != null ? g.pvFlBelegung : PV_BELEGUNG_STANDARD, farbe:GELB, einheit:'%', handler:`pvmFl(${g.id},'belegung',this.value)` })
       + effZeile
       + _regler({ label:'Neigung (°)', titel:'Neigung der Dachfläche', min:5, max:75, step:5,
                   wert: nei, farbe:'#80deea', einheit:'°', handler:`pvmDach(${g.id},'dachNeigung',this.value)` })
@@ -1727,19 +1729,71 @@ function _vorgabeBlock() {
 }
 
 /** Inhalt der Belegungsregeln — im Fenster aufgeklappt, im Reiter als Stufe 2. */
+/* ── Dachaufbauten aus dem Höhenmodell (56 → lib/dach-aufbauten) ──────────────
+   g.dachAufbauten = [{ polygon:[{lat,lng}], hoeheM, obenM, flaecheM2 }] sind
+   Dachdaten (für alle Varianten gleich): die Platzierung spart sie wie Sperr-
+   flächen aus (03c), die Verschattung (40) rechnet sie als Hindernisse.
+   g.dachAufbautenInfo vermerkt, dass das Dach im nDOM geprüft wurde — dann gilt
+   der kleinere pauschale Hindernisabschlag (nur noch flache Aufbauten). */
+
+/** Sammler für 56: nur Flachdächer, dieselben Teilstücke wie hmSammler. */
+export function dachAufbautenSammler(ziele, zone) {
+  const flach = new Set((window.gebaeude || []).filter(g => g.dachform === 'flach').map(g => g.id));
+  const s = aufbautenSammler((ziele?.gebaeude || []).filter(z => flach.has(z.id)));
+  return { aufnehmen: s.aufnehmen, ergebnis: () => ({ ...s.ergebnis(), zone }) };
+}
+
+/** Ergebnis des Sammlers in die Gebäude übernehmen. @returns {{gebaeude:number, aufbauten:number, text:string}} */
+export function dachAufbautenUebernehmen(erg) {
+  if (!erg) return { gebaeude: 0, aufbauten: 0, text: '' };
+  if (!erg.gebaeude?.size) {
+    return { gebaeude: 0, aufbauten: 0, text: erg.grob ? 'Dachaufbauten: Raster zu grob (> 1 m), nicht erkannt' : '' };
+  }
+  const stand = new Date().toISOString().slice(0, 10);
+  let gebaeude = 0, aufbauten = 0;
+  for (const [id, r] of erg.gebaeude) {
+    const g = _geb(id);
+    if (!g) continue;
+    const vorher = calcGebKwpKorr(g) || 0;
+    g.dachAufbauten = r.aufbauten.map(a => ({
+      polygon: a.ring.map(([E, N]) => { const ll = utmNachWgs84(E, N, erg.zone); return { lat: ll.lat, lng: ll.lng }; }),
+      hoeheM: a.hoeheM, obenM: a.obenM, flaecheM2: a.flaecheM2,
+    }));
+    g.dachAufbautenInfo = { stand, aufl: erg.aufl, dachM: r.dachM };
+    g._pvModCache = null; g._pvModSig = null;
+    if (_hasBelegung(g)) {
+      _syncPvAssetIfInSync(g, vorher);
+      redrawGebPvModules(g);
+    }
+    gebaeude++;
+    aufbauten += g.dachAufbauten.length;
+  }
+  if (gebaeude) { window.pvuNachlauf?.(); window.calcStromPanel?.(); window.d3dNachViz?.(); pvModusRender(); }
+  return { gebaeude, aufbauten,
+    text: !gebaeude ? '' : !aufbauten ? `${gebaeude} ${gebaeude === 1 ? 'Flachdach' : 'Flachdächer'} ohne Aufbauten über 1 m`
+      : `${aufbauten} ${aufbauten === 1 ? 'Dachaufbau' : 'Dachaufbauten'} auf ${gebaeude} ${gebaeude === 1 ? 'Flachdach' : 'Flachdächern'} erkannt (PV spart sie aus)` };
+}
+
 /**
  * Potenzialstufen über alle belegten Dächer (lib/pv-abschlaege): technisch →
  * nach Hindernissen → realisierbar → wirtschaftlich. Auch für das Gutachten (17).
  */
 export function pvmPotenzialStufen() {
   const geb = _mitPolygon().filter(_hasBelegung);
-  const r = pvAbschlagRegeln(window.pvModusVorgabe || {});
+  const v = _vorgabe();
+  // Ertragsschwelle der Nordregel gilt auch für das wirtschaftliche Potenzial (ganze Anlage,
+  // Ertragsfaktor inkl. Verschattung) — trifft z. B. Pultdächer nach Norden
+  const r = { ...pvAbschlagRegeln(v), ertragMin: v.nordSperr ? v.ertragMin : 0 };
   const s = pvPotenzialStufen(geb.map(g => {
     const ab = pvAbschlagGeb(g);
-    return { kwpTech: calcGebKwpTechnisch(g), faktor: ab.faktor, hindernis: ab.hindernis, kennzeichen: ab.kennzeichenListe };
+    const real = calcGebKwp(g);
+    return { kwpTech: calcGebKwpTechnisch(g), faktor: ab.faktor, hindernis: ab.hindernis, kennzeichen: ab.kennzeichenListe,
+      ertrag: real > 0 ? (calcGebKwpKorr(g) || 0) / real : null };
   }), r);
   const erfasst = geb.filter(g => g.pvHindernisseErfasst).length;
-  return { ...s, regeln: r, hindernisseErfasst: erfasst };
+  const ndom = geb.filter(g => g.dachAufbautenInfo && g.dachform === 'flach');
+  return { ...s, regeln: r, hindernisseErfasst: erfasst,
+    ndomDaecher: ndom.length, aufbauten: ndom.reduce((n, g) => n + (g.dachAufbauten?.length || 0), 0) };
 }
 
 function _potenzialHtml() {
@@ -1754,9 +1808,9 @@ function _potenzialHtml() {
         <dt>technisch</dt><dd>${fmt(s.technisch)} kWp</dd>
         <dt>nach Hindernissen</dt><dd>${fmt(s.ohneHindernis)} kWp</dd>
         <dt>realisierbar${kz ? ` (${kz})` : ''}</dt><dd>${fmt(s.realisierbar)} kWp</dd>
-        <dt>wirtschaftlich (≥ ${_zahl(s.regeln.minAnlageKwp)} kWp)</dt><dd>${fmt(s.wirtschaftlich)} kWp</dd>
+        <dt>wirtschaftlich (≥ ${_zahl(s.regeln.minAnlageKwp)} kWp${s.regeln.ertragMin ? `, ≥ ${s.regeln.ertragMin} % Ertrag` : ''})</dt><dd>${fmt(s.wirtschaftlich)} kWp</dd>
       </dl>
-      <p class="el-hinweis">${s.daecher} Dächer${s.hindernisseErfasst ? `, davon ${s.hindernisseErfasst} mit erfassten Hindernissen` : ''}${s.ausgeschlossen ? ` · ${s.ausgeschlossen} ${s.ausgeschlossen === 1 ? 'fällt' : 'fallen'} durch Kennzeichen heraus` : ''}${s.zuKlein ? ` · ${s.zuKlein} ${s.zuKlein === 1 ? 'liegt' : 'liegen'} unter der Mindestgröße` : ''}.</p>`;
+      <p class="el-hinweis">${s.daecher} Dächer${s.hindernisseErfasst ? `, davon ${s.hindernisseErfasst} mit erfassten Hindernissen` : ''}${s.ndomDaecher ? ` · ${s.aufbauten} Aufbauten aus dem Höhenmodell auf ${s.ndomDaecher} Flachdächern` : ''}${s.ausgeschlossen ? ` · ${s.ausgeschlossen} ${s.ausgeschlossen === 1 ? 'fällt' : 'fallen'} durch Kennzeichen heraus` : ''}${s.zuKlein ? ` · ${s.zuKlein} ${s.zuKlein === 1 ? 'liegt' : 'liegen'} unter der Mindestgröße` : ''}${s.zuSchwach ? ` · ${s.zuSchwach} mit zu geringem Ertrag` : ''}.</p>`;
 }
 
 function _vorgabeInhalt() {
@@ -1842,6 +1896,8 @@ export function pvmRegelnGlobalHtml() {
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:2px;">
         <div class="inp-group"><div class="inp-label" title="Pauschal für Lichtkuppeln, RWA, Lüfter, Technikaufbauten auf Flachdächern — entfällt an Gebäuden mit Haken „Hindernisse erfasst“. Üblich 15–25 %.">Hindernis flach</div>
           ${zahlFeld('hindernisFlach', ab.hindernisFlach, 0, 100, 5, 'Pauschaler Hindernisabschlag auf Flachdächern')}</div>
+        <div class="inp-group"><div class="inp-label" title="Flachdächer, deren Aufbauten über 1 m aus dem Höhenmodell erkannt und ausgespart sind — übrig bleiben flache Aufbauten (Lichtkuppeln, RWA, Lüfter). Üblich 5–10 %.">Flach mit nDOM</div>
+          ${zahlFeld('hindernisFlachNdom', ab.hindernisFlachNdom, 0, 100, 5, 'Hindernisabschlag auf im Höhenmodell geprüften Flachdächern')}</div>
         <div class="inp-group"><div class="inp-label" title="Pauschal für Gauben, Dachfenster, Schornsteine (mit Weg für den Schornsteinfeger) auf Schrägdächern. Üblich 10–15 %.">Hindernis schräg</div>
           ${zahlFeld('hindernisSchraeg', ab.hindernisSchraeg, 0, 100, 5, 'Pauschaler Hindernisabschlag auf Schrägdächern')}</div>
         <div class="inp-group"><div class="inp-label" title="Wirtschaftliches Potenzial: nur Anlagen ab dieser Größe (realisierbar je Gebäude).">Mindestanlage (kWp)</div>
@@ -1872,7 +1928,7 @@ export function pvmRegel(feld, wert) {
         if (g.pvFlAusrichtung !== 'ostwest' && !g._pvFlGcrManual && g.pvFlGcr === altStd) g.pvFlGcr = neuStd;
       }
     }
-    else if (feld === 'hindernisFlach' || feld === 'hindernisSchraeg') v[feld] = Number.isFinite(zahl) ? Math.max(0, Math.min(100, zahl)) : null;
+    else if (feld === 'hindernisFlach' || feld === 'hindernisSchraeg' || feld === 'hindernisFlachNdom') v[feld] = Number.isFinite(zahl) ? Math.max(0, Math.min(100, zahl)) : null;
     else if (feld === 'minAnlageKwp') v.minAnlageKwp = Number.isFinite(zahl) ? Math.max(0, zahl) : null;
     else if (feld.startsWith('kz:')) v.kennzeichen = { ...(v.kennzeichen || {}), [feld.slice(3)]: Number.isFinite(zahl) ? Math.max(0, Math.min(100, zahl)) : null };
     else if (feld === 'mindestModule') v.mindestModule = Number.isFinite(zahl) ? Math.max(0, Math.min(100, Math.round(zahl))) : 0;
@@ -2113,7 +2169,7 @@ export function pvmVorgabeToggle() {
 export function pvmVorgabe(feld, wert) {
   const v = _vorgabe();
   if (feld === 'dachform')        v.dachform = wert;
-  else if (feld === 'belegung')   v.belegung = Math.min(100, parseFloat(wert) || 90);
+  else if (feld === 'belegung')   v.belegung = Math.min(100, parseFloat(wert) || PV_BELEGUNG_STANDARD);
   else if (feld === 'neigung')    v.neigung  = wert === '' ? null : parseFloat(wert);
   else if (feld === 'nordSperr')  v.nordSperr = !!wert;
   else if (feld === 'ertragMin')  v.ertragMin = Math.max(40, Math.min(95, parseFloat(wert) || 75));

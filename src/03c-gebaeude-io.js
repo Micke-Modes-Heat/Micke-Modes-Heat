@@ -309,7 +309,14 @@ export function pvEffektiveBelegung(g) {
 }
 
 /** Erklärung des Belegungsgrads (Schrägdach) — Tooltip im Gebäude-PV-Panel und im PV-Modus. */
-export const PV_BELEGUNGSGRAD_TITEL = 'Dichte der Modulreihen in Falllinie: 90 % = je Reihe rund 10 % Fuge bzw. '
+/**
+ * Standard-Belegungsgrad auf Schrägdächern: 100 % — montierte Reihen liegen bis auf die
+ * Klemmfuge direkt übereinander. Bis 10/2026 90 % als unscharfer Puffer; den übernimmt
+ * jetzt der ausgewiesene Hindernisabschlag (lib/pv-abschlaege).
+ */
+export const PV_BELEGUNG_STANDARD = 100;
+
+export const PV_BELEGUNGSGRAD_TITEL = 'Dichte der Modulreihen in Falllinie: 100 % = Reihen bis auf die Klemmfuge direkt übereinander (Standard), 90 % = je Reihe rund 10 % Fuge bzw. '
   + 'Montagespiel zur nächsten Reihe. Ränder, Sperrflächen und das Raster ganzer Module kommen noch dazu — '
   + 'wie viel der Dachfläche tatsächlich belegt ist, steht unter „effektiv belegt“ (typisch 60–75 %).';
 
@@ -344,7 +351,7 @@ export function pvAbschlagGeb(g) {
     const n = res.gruppen.reduce((s, gr) => s + gr.count, 0);
     flachAnteil = n > 0 ? res.gruppen.reduce((s, gr) => s + (gr.flach ? gr.count : 0), 0) / n : 0;
   } else flachAnteil = g.dachform && g.dachform !== 'flach' ? 0 : 1;
-  return { ...pvAbschlag({ flachAnteil, hindernisseErfasst: !!g.pvHindernisseErfasst, kennzeichen }, r), kennzeichenListe: kennzeichen };
+  return { ...pvAbschlag({ flachAnteil, hindernisseErfasst: !!g.pvHindernisseErfasst, ndomGeprueft: !!g.dachAufbautenInfo, kennzeichen }, r), kennzeichenListe: kennzeichen };
 }
 
 /** Technisches Potenzial: platzierte Module × Modul-Wp (bzw. Dachanteil-Pauschale). */
@@ -1174,7 +1181,7 @@ function buildDachSection(g, opts = {}) {
   const isSattel  = g.dachform === 'sattel';
   const splitTxt  = (isSattel && _modRes && _modRes.frontCount != null)
     ? ` · 2-seitig ${_modRes.frontCount}/${_modRes.backCount}` : '';
-  const flBeleg = g.pvFlBelegung != null ? g.pvFlBelegung : 90;
+  const flBeleg = g.pvFlBelegung != null ? g.pvFlBelegung : PV_BELEGUNG_STANDARD;
   const usedNei = g.dachNeigung != null ? g.dachNeigung : defNei;
 
   // Steuerelemente je Dachform: Flachdach = GCR + Aufständerung · Schrägdach = Belegungsgrad
@@ -1219,7 +1226,7 @@ function buildDachSection(g, opts = {}) {
       </div>
       ${g.pvRidgeOverride ? '<div style="font-size:11px;color:var(--c-amber);">First manuell gesetzt.</div>' : ''}` : ''}
     </div>` : `
-    <div style="font-size:11px;color:var(--muted);margin-top:6px;">Belegbare Dachflächen zeichnen (Satellit), Sperrflächen für Kamine/Gauben/Verschattung abziehen. ${(() => { const rg = pvRegelnGlobal(), z = x => String(x).replace('.', ','); return `Rand (${z(rg.randFlach)} m) bleibt frei${rg.gangAlle > 0 && rg.gangBreite > 0 ? `, Wartungsgang ${z(rg.gangBreite)} m alle ${z(rg.gangAlle)} m` : ''}${rg.feldMax > 0 && rg.gangBreite > 0 ? `, Felder höchstens ${z(rg.feldMax)} m lang` : ''}`; })()}; Ost-West-Aufständerung als Doppelreihen parallel zum Gebäude, ~90 % Ertragsfaktor.</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px;">Belegbare Dachflächen zeichnen (Satellit), Sperrflächen für Kamine/Gauben/Verschattung abziehen. ${(() => { const rg = pvRegelnGlobal(), z = x => String(x).replace('.', ','); return `Rand (${z(rg.randFlach)} m) bleibt frei${rg.gangAlle > 0 && rg.gangBreite > 0 ? `, Wartungsgang ${z(rg.gangBreite)} m alle ${z(rg.gangAlle)} m` : ''}${rg.feldMax > 0 && rg.gangBreite > 0 ? `, Felder höchstens ${z(rg.feldMax)} m lang` : ''}`; })()}; Ost-West-Aufständerung als Doppelreihen parallel zum Gebäude, ~88 % Ertragsfaktor.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;">
       <div class="inp-group">
         <div class="inp-label" title="Ground Coverage Ratio: Anteil Modulfläche an gezeichneter Fläche">GCR (% Belegung)</div>
@@ -1578,7 +1585,7 @@ export function placePvModules(belPolys, sperrPolys, opts = {}) {
     // kein Reihenabstand, nur Belegungsgrad (Rahmen/Ränder).
     const tilt  = (opts.tiltDeg  != null ? opts.tiltDeg  : 35) * Math.PI / 180;
     const az    = (opts.azimutDeg != null ? opts.azimutDeg : 180) * Math.PI / 180;
-    const beleg = Math.max(opts.coverage || 0.9, 0.1);
+    const beleg = Math.max(opts.coverage || 1, 0.1);
     theta  = az;                          // rot: First → x-Achse, Falllinie → y-Achse
     // Hochformat (Standard): Modulbreite entlang des Firsts; quer: Modullänge
     const [entlang, fall] = opts.quer ? [ml, mb] : [mb, ml];
@@ -1702,7 +1709,10 @@ export function buildPvModuleOverlay(res) {
     flaechen.push('M' + m.pts.map(p => `${f(p.x)},${f(p.y)}`).join('L') + 'Z');
     kanten.push(`M${f(m.edge[0].x)},${f(m.edge[0].y)}L${f(m.edge[1].x)},${f(m.edge[1].y)}`);
   }
-  let shapes = `<path d="${flaechen.join('')}" fill="${modFill}" stroke="${cellLine}" stroke-width="0.03"/>`
+  // Dachaufbauten (Höhenmodell) grau hinter den Modulen
+  const hind = (res.hindernisse || []).map(h => 'M' + h.map(p => `${f(p.x)},${f(p.y)}`).join('L') + 'Z').join('');
+  let shapes = (hind ? `<path d="${hind}" fill="rgba(120,120,120,0.55)" stroke="rgba(60,60,60,0.8)" stroke-width="0.08"/>` : '')
+             + `<path d="${flaechen.join('')}" fill="${modFill}" stroke="${cellLine}" stroke-width="0.03"/>`
              + `<path d="${kanten.join('')}" fill="none" stroke="${shimmer}" stroke-width="0.12"/>`;
   // Firstlinie bei Satteldach-Split: gestrichelte Linie durch den Schwerpunkt, senkrecht zum Azimut
   if (res.ridgeLine) {
@@ -1823,7 +1833,7 @@ function _computeJeFlaeche(g, belFl, orient, sperr, mb, ml) {
     maxLat: Math.max(...allPts.map(p => p.lat)), minLat: Math.min(...allPts.map(p => p.lat)),
     maxLng: Math.max(...allPts.map(p => p.lng)), minLng: Math.min(...allPts.map(p => p.lng)),
   };
-  const beleg = (g.pvFlBelegung != null ? g.pvFlBelegung : 90) / 100;
+  const beleg = (g.pvFlBelegung != null ? g.pvFlBelegung : PV_BELEGUNG_STANDARD) / 100;
   const gcr = (g.pvFlGcr != null ? g.pvFlGcr : pvGcrStandard(g.pvFlAusrichtung)) / 100;
   const gebSchraeg = !!(g.dachform && g.dachform !== 'flach');
   const rg = pvRegelnGlobal();
@@ -1870,7 +1880,7 @@ export function gebPvKwpJeAusrichtung(g) {
   const out = { sued: 0, ostwest: 0 };
   // realisierbar wie calcGebKwp — Hindernisabschlag je nach flacher/geneigter Gruppe
   const r = pvAbschlagRegeln(window.pvModusVorgabe || {});
-  const ab = flach => pvAbschlag({ flachAnteil: flach ? 1 : 0, hindernisseErfasst: !!g.pvHindernisseErfasst, kennzeichen: pvKennzeichenAktiv(g) }, r).faktor;
+  const ab = flach => pvAbschlag({ flachAnteil: flach ? 1 : 0, hindernisseErfasst: !!g.pvHindernisseErfasst, ndomGeprueft: !!g.dachAufbautenInfo, kennzeichen: pvKennzeichenAktiv(g) }, r).faktor;
   for (const gr of res.gruppen) {
     const kwp = gr.count * wp / 1000 * ab(gr.flach);
     let ow;
@@ -1887,7 +1897,10 @@ export function gebPvKwpJeAusrichtung(g) {
 function _computeGebPvModules(g) {
   const belFl = (g.pvFlaechen || []).filter(f => f.typ === 'belegung' && f.polygon && f.polygon.length >= 3);
   const bel   = belFl.map(f => f.polygon);
-  const sperr = (g.pvFlaechen || []).filter(f => f.typ === 'sperr'    && f.polygon && f.polygon.length >= 3).map(f => f.polygon);
+  // Aufbauten aus dem Höhenmodell (25 dachAufbautenUebernehmen) zählen wie Sperrflächen
+  const aufbauten = (g.dachAufbauten || []).filter(a => a.polygon?.length >= 3).map(a => a.polygon);
+  const sperr = (g.pvFlaechen || []).filter(f => f.typ === 'sperr'    && f.polygon && f.polygon.length >= 3).map(f => f.polygon)
+    .concat(aufbauten);
   const mb = pvModulMassKorrigieren('breite', document.getElementById('pv-modul-breite')?.value);
   const ml = pvModulMassKorrigieren('laenge', document.getElementById('pv-modul-laenge')?.value);
   const isPitched = !!(g.dachform && g.dachform !== 'flach');
@@ -1900,7 +1913,7 @@ function _computeGebPvModules(g) {
     // ── First-Split: Belegung am First (durch den Schwerpunkt, senkrecht zum Azimut) teilen ──
     const A    = g.dachAzimut  != null ? g.dachAzimut  : 180;
     const tilt = g.dachNeigung != null ? g.dachNeigung : getDachDefaultNeigung('sattel');
-    const beleg = (g.pvFlBelegung != null ? g.pvFlBelegung : 90) / 100;
+    const beleg = (g.pvFlBelegung != null ? g.pvFlBelegung : PV_BELEGUNG_STANDARD) / 100;
     // Gemeinsamer Frame über die ganze Belegung (beide Hälften im selben Koordinatensystem)
     const allPts = bel.flat();
     const maxLat = Math.max(...allPts.map(p => p.lat)), minLat = Math.min(...allPts.map(p => p.lat));
@@ -1923,7 +1936,7 @@ function _computeGebPvModules(g) {
     // Firstlage (Eckenmittel) geschnitten und würde sonst Streifen sperren/freilassen.
     const autoNord = (g.pvFlaechen || []).filter(f => f.typ === 'sperr' && f.auto === 'nord' && f.polygon && f.polygon.length >= 3);
     const sperrSonst = autoNord.length
-      ? (g.pvFlaechen || []).filter(f => f.typ === 'sperr' && f.auto !== 'nord' && f.polygon && f.polygon.length >= 3).map(f => f.polygon)
+      ? (g.pvFlaechen || []).filter(f => f.typ === 'sperr' && f.auto !== 'nord' && f.polygon && f.polygon.length >= 3).map(f => f.polygon).concat(aufbauten)
       : sperr;
     let nordVorne = null;
     if (autoNord.length) {
@@ -1965,7 +1978,7 @@ function _computeGebPvModules(g) {
     ? { pitched: true,
         tiltDeg:   g.dachNeigung != null ? g.dachNeigung : getDachDefaultNeigung(g.dachform),
         azimutDeg: g.dachAzimut  != null ? g.dachAzimut  : 180,
-        coverage: (g.pvFlBelegung != null ? g.pvFlBelegung : 90) / 100,
+        coverage: (g.pvFlBelegung != null ? g.pvFlBelegung : PV_BELEGUNG_STANDARD) / 100,
         moduleW: mb, moduleL: ml, edgeInset: rg.rand, quer: rg.quer }
     : { ..._flachOpts(g, rg, (g.pvFlGcr != null ? g.pvFlGcr : pvGcrStandard(g.pvFlAusrichtung)) / 100),
         moduleW: mb, moduleL: ml };
@@ -1993,7 +2006,8 @@ export function _gebPvSig(g) {
     ? `F${rg.randFlach}/${rg.gangAlle}x${rg.gangBreite}/${rg.feldMax}${owNeu ? '/OW2' : ''}` : '';
   return [fls, g.pvFlGcr, g.pvFlAusrichtung, g.pvFlBelegung,
           g.dachform, g.dachNeigung, g.dachAzimut, ridge, b, l, dfl,
-          ...(regeln ? [regeln] : []), ...(flachTeil ? [flachTeil] : [])].join('|');
+          ...(regeln ? [regeln] : []), ...(flachTeil ? [flachTeil] : []),
+          ...(g.dachAufbauten?.length ? [`auf${g.dachAufbauten.length}:${g.dachAufbautenInfo?.stand || ''}:${Math.round(g.dachAufbauten.reduce((s, a) => s + (a.flaecheM2 || 0), 0))}`] : [])].join('|');
 }
 
 /** Liegt ein Teil der Belegung flach bzw. aufgeständert (Flachdach oder flache LoD2-Fläche)? */
@@ -2022,6 +2036,13 @@ export function getGebPvModules(g) {
   const sig = _gebPvSig(g);
   if (g._pvModCache && g._pvModSig === sig) return g._pvModCache;
   const res = _computeGebPvModules(g);
+  // Aufbauten im Meterrahmen des Overlays (grau gezeichnet, buildPvModuleOverlay)
+  if (res.bbox && g.dachAufbauten?.length) {
+    const { minLng, maxLat, minLat } = res.bbox;
+    const cosL = Math.cos((minLat + maxLat) / 2 * Math.PI / 180);
+    res.hindernisse = g.dachAufbauten.filter(a => a.polygon?.length >= 3)
+      .map(a => a.polygon.map(p => ({ x: (p.lng - minLng) * 111320 * cosL, y: (maxLat - p.lat) * 111320 })));
+  }
   g._pvModCache = res; g._pvModSig = sig;
   return res;
 }
@@ -2069,7 +2090,7 @@ window.setGebPvModus = function(gId, modus) {
     if (!g.pvFlaechen) g.pvFlaechen = [];
     if (!g.pvFlAusrichtung) g.pvFlAusrichtung = window.pvModusVorgabe?.ausrichtung || 'ostwest';
     if (g.pvFlGcr == null) g.pvFlGcr = pvGcrStandard(g.pvFlAusrichtung);
-    if (g.pvFlBelegung == null) g.pvFlBelegung = 90;
+    if (g.pvFlBelegung == null) g.pvFlBelegung = PV_BELEGUNG_STANDARD;
   }
   g.pvAktiv = modus === 'flaechen' ? _hasBelegung(g) : g.pvAktiv;
   _rerenderCard(gId);
@@ -2233,7 +2254,7 @@ window.updateGebPvFl = function(gId, field, val) {
   // Von Hand gesetzt → „Vorgaben auf Dächer übertragen" (25) lässt das Dach in Ruhe
   if (field === 'gcr' || field === 'belegung' || field === 'ausrichtung') g.pvFlManuell = true;
   if (field === 'gcr') { g.pvFlGcr = parseFloat(val) || 35; g._pvFlGcrManual = true; }
-  else if (field === 'belegung') { g.pvFlBelegung = Math.min(100, parseFloat(val) || 90); }
+  else if (field === 'belegung') { g.pvFlBelegung = Math.min(100, parseFloat(val) || PV_BELEGUNG_STANDARD); }
   else if (field === 'ausrichtung') {
     g.pvFlAusrichtung = val;
     if (!g._pvFlGcrManual) g.pvFlGcr = pvGcrStandard(val);
@@ -2286,6 +2307,7 @@ export function pvAbschlagBlockHtml(g) {
     <div style="display:flex;justify-content:space-between;gap:6px;" title="Technisch = platzierte Module × Wp. Realisierbar = nach pauschalem Hindernisabschlag und den Kennzeichen (Regeln im PV-Modus). Assets, Netz und Gutachten rechnen mit dem realisierbaren Wert.">
       <span>technisch ${z(tech)} kWp${teile.length ? ' · ' + teile.join(' · ') : ''}</span>
       <span style="font-weight:600;">→ ${z(tech * ab.faktor)} kWp</span></div>
+    ${g.dachAufbautenInfo ? `<div style="color:var(--muted);margin-top:2px;" title="Aufbauten über 1 m aus dem Oberflächenmodell (Höhenmodell), samt 0,5 m Freiraum als Sperrfläche; für flache Aufbauten gilt der kleinere Abschlag „Flach mit nDOM“.">🏗 Höhenmodell: ${(g.dachAufbauten || []).length} Aufbauten ausgespart (Stand ${g.dachAufbautenInfo.stand || '–'})</div>` : ''}
     <div style="display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:3px;color:var(--muted);">
       ${flaechen ? box('hindernisse', g.pvHindernisseErfasst, 'Hindernisse erfasst', 'Lichtkuppeln, Aufbauten, Gauben, Schornsteine usw. sind als Sperrflächen gezeichnet — dann entfällt der pauschale Hindernisabschlag.') : ''}
       ${PV_KENNZEICHEN.map(k => box(k.key, kz[k.key], k.kurz, k.titel)).join('')}
@@ -3631,6 +3653,8 @@ export function _buildProjectData() {
       // Kennzeichen (Denkmal/Statik/Dach) und „Hindernisse erfasst" — lib/pv-abschlaege
       ...(g.pvKennzeichen && Object.values(g.pvKennzeichen).some(Boolean) ? { pvKennzeichen: g.pvKennzeichen } : {}),
       ...(g.pvHindernisseErfasst ? { pvHindernisseErfasst: true } : {}),
+      // Dachaufbauten aus dem Höhenmodell (25 dachAufbautenUebernehmen)
+      ...(g.dachAufbautenInfo ? { dachAufbauten: g.dachAufbauten || [], dachAufbautenInfo: g.dachAufbautenInfo } : {}),
       // Verschattung je Belegungsstand (40-baeume.js)
       ...(g.pvVerschattung ? { pvVerschattung: g.pvVerschattung } : {}),
       notstrom: g.notstrom || null,
@@ -4043,6 +4067,7 @@ function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
     'dachNeigung','dachAutoAzimut','dachQuelle','pvRidgeOverride','pvModus','pvFlGcr',
     'pvFlAusrichtung','pvFlBelegung','pvFlManuell','pvBaujahr','notstrom','stationSteckbrief',
     'dachFlaechen','dachLod2','pvVerschattung','pvKennzeichen','pvHindernisseErfasst',
+    'dachAufbauten','dachAufbautenInfo',
   ];
   fields.forEach(field => {
     if (source[field] !== undefined) target[field] = structuredClone(source[field]);
@@ -4343,6 +4368,10 @@ function _applyProjectData(project) {
             if (g.pvFlManuell) newG.pvFlManuell = true;
             if (g.pvKennzeichen && typeof g.pvKennzeichen === 'object') newG.pvKennzeichen = { ...g.pvKennzeichen };
             if (g.pvHindernisseErfasst) newG.pvHindernisseErfasst = true;
+            if (g.dachAufbautenInfo && typeof g.dachAufbautenInfo === 'object') {
+              newG.dachAufbautenInfo = g.dachAufbautenInfo;
+              newG.dachAufbauten = Array.isArray(g.dachAufbauten) ? g.dachAufbauten : [];
+            }
             // Verschattung je Belegungsstand (40-baeume.js)
             if (g.pvVerschattung && typeof g.pvVerschattung === 'object') newG.pvVerschattung = g.pvVerschattung;
             // Notstromklasse (26-blackout-modus.js)

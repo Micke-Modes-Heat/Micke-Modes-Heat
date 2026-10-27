@@ -8756,18 +8756,28 @@ function ggPvPotenzialStufenAbsatz() {
   const MIT = { denkmal: 'Denkmalschutz', statik: 'kritischer Statik', dachSanierung: 'sanierungsbedürftigem Dach' };
   const kz = Object.keys(MIT).filter(k => s.jeKennzeichen?.[k] && (r.kennzeichen?.[k] ?? 0) > 0);
   const nurWirtschaftlich = Math.abs(s.wirtschaftlich - s.realisierbar) >= 0.5;
-  if (!hindernis && !kz.length && !nurWirtschaftlich) return '';
+  const sanierung = s.jeKennzeichen?.dachSanierung?.n || 0;
+  if (!hindernis && !kz.length && !nurWirtschaftlich && !sanierung && !s.ndomDaecher) return '';
   const teile = [];
   if (hindernis) teile.push(`pauschal ${ggNum(r.hindernisFlach)} % auf Flach- und ${ggNum(r.hindernisSchraeg)} % auf Schrägdächern für Dachaufbauten, `
-    + `Lichtkuppeln, Gauben und Schornsteine, soweit diese nicht einzeln als Sperrflächen erfasst sind`);
+    + `Lichtkuppeln, Gauben und Schornsteine, soweit diese nicht einzeln als Sperrflächen erfasst sind`
+    + (s.ndomDaecher ? ` (auf Flachdächern mit ausgewerteten Aufbauten nur ${ggNum(r.hindernisFlachNdom)} %)` : ''));
   if (kz.length) teile.push(ggAufzaehlung(kz.map(k => `${ggNum(r.kennzeichen[k])} % für ${ggNum(s.jeKennzeichen[k].n)} Gebäude mit ${MIT[k]}`)));
-  return `Die rechnerische Belegung ergibt ein technisches Dachpotenzial von rund ${kw(s.technisch)} kWp. `
+  const ndom = s.ndomDaecher
+    ? `Auf ${ggNum(s.ndomDaecher)} ${s.ndomDaecher === 1 ? 'Flachdach' : 'Flachdächern'} wurden ${ggNum(s.aufbauten)} Dachaufbauten mit mehr als 1 m Höhe `
+      + 'aus dem amtlichen Oberflächenmodell erkannt; sie sind samt einem Freiraum von 0,5 m von der Belegung ausgenommen und gehen in die Verschattung ein. '
+    : '';
+  return ndom + `Die rechnerische Belegung ergibt ein technisches Dachpotenzial von rund ${kw(s.technisch)} kWp. `
     + (teile.length ? `Davon abgezogen wurden ${ggAufzaehlung(teile)}; ` : '')
     + `realisierbar erscheinen damit voraussichtlich rund ${kw(s.realisierbar)} kWp`
     + (nurWirtschaftlich
-      ? `, davon rund ${kw(s.wirtschaftlich)} kWp in Anlagen ab ${ggNum(r.minAnlageKwp)} kWp je Gebäude, die wirtschaftlich sinnvoll sein dürften.`
+      ? `, davon rund ${kw(s.wirtschaftlich)} kWp in Anlagen ab ${ggNum(r.minAnlageKwp)} kWp je Gebäude`
+        + (r.ertragMin ? ` mit mindestens ${ggNum(r.ertragMin)} % des bestmöglichen Ertrags` : '')
+        + ', die wirtschaftlich sinnvoll sein dürften.'
       : '.')
-    + ' Die PV-Analyse rechnet mit dem realisierbaren Potenzial.';
+    + ' Die PV-Analyse rechnet mit dem realisierbaren Potenzial.'
+    + (sanierung ? ` Bei ${ggNum(sanierung)} ${sanierung === 1 ? 'Gebäude ist' : 'Gebäuden ist'} das Dach sanierungsbedürftig; `
+      + 'die PV-Anlage sollte dort zusammen mit der Dachsanierung geplant werden.' : '');
 }
 
 /** Wartungsgänge und Feldgrenzen auf Flachdächern als Satz — '' wenn aus (ältere Stände). */

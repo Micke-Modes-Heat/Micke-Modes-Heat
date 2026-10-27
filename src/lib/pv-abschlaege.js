@@ -25,7 +25,9 @@ export const PV_KENNZEICHEN = [
 ];
 
 /** Standardwerte der Abschlagsregeln (Prozent bzw. kWp). */
-export const PV_ABSCHLAG_STANDARD = { hindernisFlach: 20, hindernisSchraeg: 10, minAnlageKwp: 5 };
+// hindernisFlachNdom: Flachdächer, deren Aufbauten über 1 m aus dem Höhenmodell als
+// Sperrflächen kommen (lib/dach-aufbauten) — bleiben nur Lichtkuppeln, RWA, Lüfter
+export const PV_ABSCHLAG_STANDARD = { hindernisFlach: 20, hindernisFlachNdom: 10, hindernisSchraeg: 10, minAnlageKwp: 5 };
 
 const _pct = (x, std) => {
   const n = parseFloat(x);
@@ -34,7 +36,7 @@ const _pct = (x, std) => {
 
 /**
  * Regeln aus der Vorgabe des PV-Modus (pvModusVorgabe) lesen, fehlende mit Standard.
- * @returns {{hindernisFlach:number, hindernisSchraeg:number, minAnlageKwp:number, kennzeichen:Record<string,number>}}
+ * @returns {{hindernisFlach:number, hindernisFlachNdom:number, hindernisSchraeg:number, minAnlageKwp:number, kennzeichen:Record<string,number>}}
  */
 export function pvAbschlagRegeln(v = {}) {
   const kz = {};
@@ -42,6 +44,7 @@ export function pvAbschlagRegeln(v = {}) {
   const min = parseFloat(v.minAnlageKwp);
   return {
     hindernisFlach: _pct(v.hindernisFlach, PV_ABSCHLAG_STANDARD.hindernisFlach),
+    hindernisFlachNdom: _pct(v.hindernisFlachNdom, PV_ABSCHLAG_STANDARD.hindernisFlachNdom),
     hindernisSchraeg: _pct(v.hindernisSchraeg, PV_ABSCHLAG_STANDARD.hindernisSchraeg),
     minAnlageKwp: Number.isFinite(min) ? Math.max(0, min) : PV_ABSCHLAG_STANDARD.minAnlageKwp,
     kennzeichen: kz,
@@ -56,8 +59,9 @@ export function pvKennzeichenAktiv(g) {
 
 /**
  * Abschlagsfaktor eines Gebäudes.
- * @param {{flachAnteil:number, hindernisseErfasst?:boolean, kennzeichen?:string[], mitHindernis?:boolean}} p
+ * @param {{flachAnteil:number, hindernisseErfasst?:boolean, ndomGeprueft?:boolean, kennzeichen?:string[], mitHindernis?:boolean}} p
  *   flachAnteil: Anteil der Module auf flachen/aufgeständerten Flächen (0…1);
+ *   ndomGeprueft: Aufbauten aus dem Höhenmodell erfasst → kleinerer Flachdach-Abschlag;
  *   mitHindernis: false = pauschale Anlage ohne Belegung (Dachanteil enthält Hindernisse schon)
  * @param {ReturnType<typeof pvAbschlagRegeln>} r
  * @returns {{faktor:number, hindernis:number, kennzeichen:number}} Abschläge als Anteil 0…1
@@ -65,7 +69,7 @@ export function pvKennzeichenAktiv(g) {
 export function pvAbschlag(p, r) {
   const fa = Math.max(0, Math.min(1, p.flachAnteil || 0));
   const hindernis = p.mitHindernis === false || p.hindernisseErfasst ? 0
-    : (fa * r.hindernisFlach + (1 - fa) * r.hindernisSchraeg) / 100;
+    : (fa * (p.ndomGeprueft ? r.hindernisFlachNdom : r.hindernisFlach) + (1 - fa) * r.hindernisSchraeg) / 100;
   let rest = 1;
   for (const k of p.kennzeichen || []) rest *= 1 - (r.kennzeichen[k] ?? 0) / 100;
   const kennzeichen = 1 - rest;
@@ -73,17 +77,21 @@ export function pvAbschlag(p, r) {
 }
 
 /**
- * Potenzialstufen über Gebäude.
- * @param {{kwpTech:number, faktor:number, hindernis:number, kennzeichen:string[]}[]} items
- * @param {{minAnlageKwp:number}} r
+ * Potenzialstufen über Gebäude. Wirtschaftlich zählen Anlagen ab der Mindestgröße
+ * und — mit r.ertragMin (%) — ab einem mittleren Ertragsfaktor (z. B. ein Pultdach
+ * nach Norden, das die Platzierung nicht aussparen kann).
+ * @param {{kwpTech:number, faktor:number, hindernis:number, kennzeichen:string[], ertrag?:number|null}[]} items
+ *   ertrag: mittlerer Ertragsfaktor der Anlage (0…1), null = unbekannt
+ * @param {{minAnlageKwp:number, ertragMin?:number}} r
  * @returns {{technisch:number, ohneHindernis:number, realisierbar:number, wirtschaftlich:number,
- *   daecher:number, ausgeschlossen:number, zuKlein:number, jeKennzeichen:Record<string,{n:number, kwp:number}>}}
+ *   daecher:number, ausgeschlossen:number, zuKlein:number, zuSchwach:number, jeKennzeichen:Record<string,{n:number, kwp:number}>}}
  *   ohneHindernis = technisch abzüglich Hindernisse (vor Kennzeichen);
  *   jeKennzeichen: betroffene Dächer und deren technisches kWp
  */
 export function pvPotenzialStufen(items, r) {
   const out = { technisch: 0, ohneHindernis: 0, realisierbar: 0, wirtschaftlich: 0,
-    daecher: 0, ausgeschlossen: 0, zuKlein: 0, jeKennzeichen: {} };
+    daecher: 0, ausgeschlossen: 0, zuKlein: 0, zuSchwach: 0, jeKennzeichen: {} };
+  const ertragMin = (r.ertragMin || 0) / 100;
   for (const it of items) {
     const t = Math.max(0, it.kwpTech || 0);
     if (!(t > 0)) continue;
@@ -93,8 +101,9 @@ export function pvPotenzialStufen(items, r) {
     const real = t * (it.faktor ?? 1);
     out.realisierbar += real;
     if (!(real > 1e-9)) out.ausgeschlossen++;
-    else if (real + 1e-9 >= r.minAnlageKwp) out.wirtschaftlich += real;
-    else out.zuKlein++;
+    else if (real + 1e-9 < r.minAnlageKwp) out.zuKlein++;
+    else if (ertragMin > 0 && it.ertrag != null && it.ertrag + 1e-9 < ertragMin) out.zuSchwach++;
+    else out.wirtschaftlich += real;
     for (const k of it.kennzeichen || []) {
       const z = out.jeKennzeichen[k] || (out.jeKennzeichen[k] = { n: 0, kwp: 0 });
       z.n++; z.kwp += t;

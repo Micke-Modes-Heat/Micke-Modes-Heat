@@ -637,6 +637,13 @@ function _kontext() {
     if (st === 'geplant' || st === 'abgerissen' || window.isExcluded?.(g.id)) continue;
     const m = d3dGebaeudeModell(g);
     if (m) hindernisGeb.push({ id: g.id, ring: m.ring.map(([lng, lat]) => xy(lng, lat)), hoehe: m.hoehe });
+    // Dachaufbauten aus dem Höhenmodell (25, g.dachAufbauten): eigene id — sie
+    // verschatten auch das eigene Dach, das sonst herausgefiltert wird
+    (g.dachAufbauten || []).forEach((a, k) => {
+      if (a.polygon?.length >= 3 && a.obenM > 0) {
+        hindernisGeb.push({ id: `auf:${g.id}:${k}`, ring: a.polygon.map(p => xy(p.lng, p.lat)), hoehe: a.obenM });
+      }
+    });
   }
   // Nur geschätzte Höhen (Vorgabe) bekommen den Aufschlag; f = 1 → unverändert
   const hindernisse = f => vsHindernisse({
@@ -1016,6 +1023,10 @@ function _auswertung() {
 
 function _verursacherName(key) {
   const id = key.slice(1);
+  if (key.startsWith('gauf:')) {
+    const g = (window.gebaeude || []).find(x => String(x.id) === key.split(':')[1]);
+    return '🏗 Dachaufbau' + (g ? ' auf ' + escHtml(g.name || 'Gebäude ' + g.id) : '');
+  }
   if (key[0] === 'g') {
     const g = (window.gebaeude || []).find(x => String(x.id) === id);
     return g ? '🏢 ' + escHtml(g.name || 'Gebäude ' + g.id) : 'Gebäude (gelöscht)';

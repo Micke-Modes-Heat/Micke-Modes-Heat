@@ -6,7 +6,7 @@ const R = pvAbschlagRegeln();
 
 describe('pvAbschlagRegeln', () => {
   it('Standardwerte', () => {
-    expect(R).toMatchObject({ hindernisFlach: 20, hindernisSchraeg: 10, minAnlageKwp: 5 });
+    expect(R).toMatchObject({ hindernisFlach: 20, hindernisFlachNdom: 10, hindernisSchraeg: 10, minAnlageKwp: 5 });
     expect(R.kennzeichen).toEqual({ denkmal: 100, statik: 100, dachSanierung: 0 });
   });
   it('übernimmt Vorgaben und klemmt auf 0…100 %', () => {
@@ -23,6 +23,10 @@ describe('pvAbschlag', () => {
     expect(pvAbschlag({ flachAnteil: 1 }, R).faktor).toBeCloseTo(0.8, 9);
     expect(pvAbschlag({ flachAnteil: 0 }, R).faktor).toBeCloseTo(0.9, 9);
     expect(pvAbschlag({ flachAnteil: 0.5 }, R).hindernis).toBeCloseTo(0.15, 9);
+  });
+  it('im Höhenmodell geprüfte Flachdächer: kleinerer Abschlag', () => {
+    expect(pvAbschlag({ flachAnteil: 1, ndomGeprueft: true }, R).faktor).toBeCloseTo(0.9, 9);
+    expect(pvAbschlag({ flachAnteil: 0, ndomGeprueft: true }, R).faktor).toBeCloseTo(0.9, 9);
   });
   it('erfasste Hindernisse und pauschale Anlagen ohne Hindernisabschlag', () => {
     expect(pvAbschlag({ flachAnteil: 1, hindernisseErfasst: true }, R).faktor).toBe(1);
@@ -50,6 +54,19 @@ describe('pvPotenzialStufen', () => {
     expect(s.wirtschaftlich).toBeCloseTo(80, 9);
     expect(s).toMatchObject({ daecher: 3, ausgeschlossen: 1, zuKlein: 1 });
     expect(s.jeKennzeichen.denkmal).toEqual({ n: 1, kwp: 50 });
+  });
+});
+
+describe('pvPotenzialStufen mit Ertragsschwelle', () => {
+  it('schwache Anlagen zählen nicht wirtschaftlich', () => {
+    const s = pvPotenzialStufen([
+      { kwpTech: 20, faktor: 1, hindernis: 0, kennzeichen: [], ertrag: 0.62 },   // Pultdach nach Norden
+      { kwpTech: 30, faktor: 1, hindernis: 0, kennzeichen: [], ertrag: 0.95 },
+      { kwpTech: 10, faktor: 1, hindernis: 0, kennzeichen: [], ertrag: null },   // unbekannt → zählt
+    ], { ...R, ertragMin: 75 });
+    expect(s.realisierbar).toBeCloseTo(60, 9);
+    expect(s.wirtschaftlich).toBeCloseTo(40, 9);
+    expect(s.zuSchwach).toBe(1);
   });
 });
 
