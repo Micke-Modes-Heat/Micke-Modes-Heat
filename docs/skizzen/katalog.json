@@ -3,6 +3,26 @@
   "ansprechpartner": "",
   "skizzen": [
     {
+      "datei": "Prinzip-Energiesystem-Ist",
+      "thema": "uebergreifend",
+      "titel": "Energiesystem der Liegenschaft im Überblick: Ist-Zustand",
+      "kapitel": "1.2 Liegenschaftsinformationen",
+      "status": "im-tool",
+      "quelle": "quellen/energiesystem.mjs",
+      "toolFigur": "energiesystem-ist",
+      "beschreibung": "Bezug von außen (Stromnetz, Brennstoffe, Fernwärme), Strom- und Wärmeschiene der Liegenschaft, Erzeuger und Speicher, Kopplung (BHKW, Wärmepumpe), Gebäude. Beispiel ohne Werte; im Gutachten erzeugt das Tool die Abbildung aus den Projektdaten."
+    },
+    {
+      "datei": "Prinzip-Energiesystem-Zielbild",
+      "thema": "uebergreifend",
+      "titel": "Energiesystem der Liegenschaft im Überblick: Zielbild",
+      "kapitel": "9.1 Wärmeversorgung",
+      "status": "im-tool",
+      "quelle": "quellen/energiesystem.mjs",
+      "toolFigur": "energiesystem-ziel",
+      "beschreibung": "Wie der Ist-Zustand, mit geplanten Anlagen (grün gestrichelt) und den Wärmeerzeugern der Variante. Beispiel ohne Werte; im Gutachten erzeugt das Tool die Abbildung aus den Projektdaten."
+    },
+    {
       "datei": "Prinzip-EMS-Anbindung",
       "thema": "ga",
       "titel": "Aufbau und Anbindung des EMS in der Liegenschaft",

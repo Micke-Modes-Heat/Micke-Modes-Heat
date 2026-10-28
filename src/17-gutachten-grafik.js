@@ -24,6 +24,7 @@ import { mrStatusAusStand } from './lib/massnahmen-register.js';
 import { EF_STATUS, EF_PV_GEWICHTE, EF_PV_KRITERIEN, efKernaussagen, efPvBewertung, efMassnahmen } from './lib/gutachten-elektro-fazit.js';
 import { resilienzZielMatrix, zielKraftstoffL } from './lib/resilienz-core.js';
 import { nuNetzUebersicht } from './lib/netz-uebersicht.js';
+import { esModell } from './lib/energiesystem.js';
 import {
   wtIstZustand, wtDimensionierungWea, wtWvn, wtHausstation, wtVariantenvergleich, wtWirtschaftlichkeit, wtEmpfehlung, wtFazit, wtDeckungsleistung,
 } from './lib/gutachten-waerme-texte.js';
@@ -5192,6 +5193,358 @@ GG_FIGUREN.push({
       ? `⚠ Noch nicht erfasst (⚡ Strom-Grundlagen › Netzanschluss): ${fehlt.join(', ')}.`
       : '✓ Netzanschluss-Stammdaten vollständig übernommen.';
   },
+});
+
+/* ── 1.2 / 9.1 Energiesystem der Liegenschaft im Überblick ──────────────────────
+ * Prinzipskizze aus dem Projekt: links der Bezug von außen (Stromnetz, Brennstoffe, Fernwärme), in der
+ * Liegenschaft eine Strom- und eine Wärmeschiene, oben Stromerzeuger und -speicher, zwischen den Schienen die
+ * Kopplung (BHKW, Wärmepumpen, Elektrokessel), unten Wärmeerzeuger und -speicher, rechts die Gebäude.
+ * Modell aus lib/energiesystem.js; Ist = Bestand + Bestandsanlage Wärme, Zielbild = Planung + Einsatzplanung. */
+
+/** Zusätzliche Symbole der Skizze, 24×24 wie GG_ICONS. */
+const GG_ES_ICONS = {
+  mast: (c, w) => `<g fill="none" stroke="${c}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M12 2.8L7.2 21.2M12 2.8l4.8 18.4M4.5 7h15M6.4 11.5h11.2M8.4 7l6.6 4.5M15.6 7L9 11.5M5 21.2h14"/></g>`,
+  batterie: (c, w) => `<g fill="none" stroke="${c}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round">
+      <rect x="3" y="7" width="16" height="10"/><path d="M19 10.2h2.2v3.6H19M6.2 12h3.2M7.8 10.4v3.2M12.8 12h3.2"/></g>`,
+  tank: (c, w) => `<g fill="none" stroke="${c}" stroke-width="${w}" stroke-linejoin="round">
+      <path d="M6 5.5v13c0 1.1 2.7 2 6 2s6-.9 6-2v-13"/><ellipse cx="12" cy="5.5" rx="6" ry="2"/></g>`,
+  motor: (c, w) => `<g fill="none" stroke="${c}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round">
+      <rect x="3" y="8" width="14" height="10"/><circle cx="10" cy="13" r="2.8"/><path d="M17 11h3.5v4H17M6 8V5h4"/></g>`,
+  blitz: (c, w) => `<path d="M13.2 2.6L5.8 13.4h5.4l-1.2 8 8.2-11.4h-5.6z" fill="none" stroke="${c}" stroke-width="${w}" stroke-linejoin="round"/>`,
+  gebaeude: (c, w) => `<g fill="none" stroke="${c}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M4 20.5V9.5l8-5.5 8 5.5v11M3 20.5h18M10 20.5V16h4v4.5M7.5 11.5h2.2M14.3 11.5h2.2M7.5 15h1.6M15 15h1.5"/></g>`,
+  lade: (c, w) => `<g fill="none" stroke="${c}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M9 3v4.5M15 3v4.5M6.5 7.5h11V11a5.5 5.5 0 0 1-11 0zM12 16.5V21"/></g>`,
+};
+
+/** Textbreite in Tahoma, grob nach Buchstabenklassen — die Zeichenzahl allein unterschätzt „Wärmepumpe“ und überschätzt „Ladeinfrastruktur“. */
+function ggEsBreite(t, size, fett) {
+  let w = 0;
+  for (const c of String(t)) {
+    w += /[iljtfr.,:;|!' ·]/.test(c) ? 0.3 : /[mwMW]/.test(c) ? 0.86 : /[A-ZÄÖÜ]/.test(c) ? 0.68 : /[0-9]/.test(c) ? 0.58 : 0.56;
+  }
+  return w * size * (fett ? 1.08 : 1);
+}
+
+/** Projektdaten für esModell — alles über window, 17 bleibt Blatt im Importgraph. */
+function ggEnergiesystemDaten(stand) {
+  const ziel = stand === 'ziel';
+  const { bestand, geplant } = ggAnlagenIst(['PV', 'Wind', 'Batterie', 'H2', 'Nsa', 'Lade', 'KWK']);
+  const strom = [...bestand.map(e => ({ typ: e.a.type, props: e.p, geplant: false })),
+                 ...geplant.map(e => ({ typ: e.a.type, props: e.p, geplant: true }))];
+  const mk = ggMesskonzeptWerte();
+  const tr = ggAnlagenIst(['Trafo']);
+  const stationen = new Set([...tr.bestand, ...(ziel ? tr.geplant : [])].map(e => e.a.buildingId || e.a.id)).size;
+
+  const waermeZiel = [];
+  if (ziel) {
+    const sk = ggLies(() => window.spitzenkessel?.(), null);
+    for (const [k, d] of Object.entries(window._dispatchEnergy || {})) {
+      const mwh = Number(d?.waermeMwh) || 0;
+      if (k === '_thermSpeicher') waermeZiel.push({ key: 'speicher', waermeMwh: mwh });
+      else if (k === '_autoGk') waermeZiel.push({ key: sk?.key || 'gaskessel', waermeMwh: mwh, spitze: true });
+      else waermeZiel.push({ key: k, waermeMwh: mwh });
+    }
+  }
+
+  // Strom: Ist = gemessener Lastgang; Zielbild = Strombedarf der Variante einschließlich Wärmepumpen/Elektrokessel
+  let stromMwh = null, stromMaxKw = null;
+  if (ziel) {
+    stromMwh = Number(window._stromBilanz?.gesamtMwh) > 0 ? Number(window._stromBilanz.gesamtMwh) : null;
+  } else {
+    const h15 = window.elQuartierH15, h = window.elQuartierH;
+    const reihe = h15?.length ? h15 : h?.length ? h : null;
+    if (reihe) {
+      let s = 0, mx = 0;
+      for (let i = 0; i < reihe.length; i++) { const v = +reihe[i] || 0; s += v; if (v > mx) mx = v; }
+      stromMwh = s / (reihe === h15 ? 4 : 1) / 1000;
+      stromMaxKw = mx || null;
+    }
+  }
+  const ss = window.systemState;
+  return {
+    stand: ziel ? 'ziel' : 'ist',
+    strom,
+    waermeIst: ziel ? null : ggLies(() => window.getBestandsanlage?.(), null),
+    waermeZiel,
+    netz: {
+      nb: mk.nb, ns: mk.ns, anschlussKw: mk.anschlussKva, einspKw: mk.einspKw, trafostationen: stationen,
+      spannung: mk.ns ? 'Niederspannung' : mk.uKv ? `Mittelspannung ${ggNum(mk.uKv, mk.uKv % 1 ? 1 : 0)} kV` : 'Mittelspannung',
+    },
+    heizzentrale: ggLies(() => window.getBestandsanlage?.()?.heizzentrale, ''),
+    verbrauch: {
+      stromMwh, stromMaxKw,
+      waermeMwh: Number(ss?.gesamtMwhMitNV || ss?.nutzwaermeMwh) || null,
+      heizlastKw: Number(ss?.pMaxKw) || null,
+    },
+  };
+}
+
+export function ggRenderEnergiesystem(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const m = cfg.modell || esModell({});
+  const gruen = T.accents.gruenDunkel, hell = T.accents.gruen;
+  const F = { strom: T.energy.strom, waerme: T.energy.waerme, gas: T.energy.gas, heizoel: T.energy.heizoel,
+              biomasse: T.energy.biomasse, fernwaerme: T.energy.waerme };
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  const x0 = S.padX, x1 = W - S.padX;
+  const top = S.headBand + S.headHSchmal + 24;
+  const qW = 160, qR = x0 + qW;                  // linke Spalte: Bezug von außen
+  const gx = 206, trunkX = 222, xb0 = 238, xs0 = 254;   // Liegenschaftsgrenze, Brennstoffsteigleitung, Schienenanfang, Kästen
+  const xv = 800, vW = x1 - 12 - xv;             // rechte Spalte: Verbraucher
+  const BH = 54, gap = 14;
+  const BB = 8;                                  // halbe Höhe der Schienenbänder
+  const hatWaerme = !!m.hatWaerme;
+  const hatK = m.kopplung.length > 0;
+
+  // ── Geometrie ──
+  const yA = top + 30;
+  const yS = m.strom.length || m.lade ? yA + BH + 40 : top + 64;
+  const yK = yS + 36;
+  const yWb = hatK ? yK + BH + 36 : yS + 96;
+  const yW = yWb + 36;
+  const brennstoffe = m.quellen.filter(q => q.key === 'gas' || q.key === 'heizoel' || q.key === 'biomasse');
+  const yF0 = m.waerme.length ? yW + BH + 34 : yWb + 60;
+  const yF = {};
+  brennstoffe.forEach((q, i) => { yF[q.key] = yF0 + i * 56; });
+  const unten = brennstoffe.length ? yF0 + (brennstoffe.length - 1) * 56 + 23
+    : hatWaerme ? (m.waerme.length ? yW + BH : yWb + 52) : yS + 52;
+  const grenzeBot = unten + 18;
+  const legY = grenzeBot + 30;
+  const height = legY + (cfg.fussnote ? 26 : 0) + S.footSpace + 8;
+
+  let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.titel }, T, { S, W, headH: S.headHSchmal, reduziert: true, height });
+
+  // ── Zeichenhelfer ──
+  const linie = (xa, ya, xb, yb, farbe, o = {}) => `<line x1="${gR(xa)}" y1="${gR(ya)}" x2="${gR(xb)}" y2="${gR(yb)}"
+      stroke="${farbe}" stroke-width="${o.breite || 2}"${o.strich ? ` stroke-dasharray="${o.strich}"` : ''}/>`;
+  const spitze = (x, y, richtung, farbe) => {
+    const d = { unten: `M${gR(x - 4.5)} ${gR(y - 8)}L${gR(x + 4.5)} ${gR(y - 8)}L${gR(x)} ${gR(y)}Z`,
+                oben: `M${gR(x - 4.5)} ${gR(y + 8)}L${gR(x + 4.5)} ${gR(y + 8)}L${gR(x)} ${gR(y)}Z`,
+                rechts: `M${gR(x - 8)} ${gR(y - 4.5)}L${gR(x - 8)} ${gR(y + 4.5)}L${gR(x)} ${gR(y)}Z`,
+                links: `M${gR(x + 8)} ${gR(y - 4.5)}L${gR(x + 8)} ${gR(y + 4.5)}L${gR(x)} ${gR(y)}Z` }[richtung];
+    return `<path d="${d}" fill="${farbe}"/>`;
+  };
+  const punkt = (x, y, farbe) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="3.2" fill="${farbe}"/>`;
+  const symbol = (name, x, y, size, farbe) => {
+    const f = GG_ES_ICONS[name] || GG_ICONS[name];
+    const k = size / 24;
+    return f ? `<g transform="translate(${gR(x)},${gR(y)}) scale(${gR(k)})">${f(farbe, gR(1.6 / k))}</g>` : '';
+  };
+  /** Kasten mit Energiefarbe links (zwei Farben = Kopplung), Symbol im Quadrat und bis zu drei Zeilen. */
+  const kasten = (e, x, y, bw, bh, farben) => {
+    const geplant = !!e.geplant;
+    let s = `<rect x="${gR(x) + 0.5}" y="${gR(y) + 0.5}" width="${gR(bw)}" height="${gR(bh)}" fill="${geplant ? T.tint : T.neutral.cardBg}"
+        stroke="${geplant ? hell : T.rule}" stroke-width="1.4"${geplant ? ' stroke-dasharray="5 3"' : ''}/>`;
+    const fh = (bh - 1) / farben.length;
+    farben.forEach((f, i) => { s += `<rect x="${gR(x) + 1}" y="${gR(y + 1 + i * fh)}" width="4" height="${gR(fh)}" fill="${f}"/>`; });
+    const ib = 28, ix = x + 12, iy = y + (bh - ib) / 2;
+    s += `<rect x="${gR(ix) + 0.5}" y="${gR(iy) + 0.5}" width="${ib - 1}" height="${ib - 1}" fill="none" stroke="${geplant ? hell : T.line}" stroke-width="1"/>`;
+    s += symbol(e.icon, ix + 5, iy + 5, 18, gruen);
+    const tx = ix + ib + 9, frei = x + bw - 6 - tx;
+    const zuLang = (t, o) => ggEsBreite(t, o.size, o.weight >= 700) > frei;
+    const kuerzen = (t, o) => { if (!zuLang(t, o)) return String(t); let k = String(t); while (k.length > 1 && zuLang(k + '…', o)) k = k.slice(0, -1); return k + '…'; };
+    // zu lange Titel am Bindestrich umbrechen („Flusswasser-“ / „Wärmepumpe“), sonst kürzen
+    const fett = { size: 11, weight: 700 };
+    const titel = [String(e.titel || '')];
+    const bs = titel[0].indexOf('-');
+    if (zuLang(titel[0], fett) && bs > 0 && bs < titel[0].length - 1) titel.splice(0, 1, titel[0].slice(0, bs + 1), titel[0].slice(bs + 1));
+    // zu lange Angaben („70 kW el. · 120 kW th.“) am „ · “ auf zwei Zeilen
+    const angaben = (e.zeilen || []).filter(z => z && z[0])
+      .flatMap(([t, o]) => (zuLang(t, o) && String(t).includes(' · ') ? String(t).split(' · ').map(u => [u, o]) : [[t, o]]));
+    const zeilen = [...titel.map(t => [t, fett]), ...angaben].filter(z => z && z[0]).slice(0, 5);
+    const y0 = y + bh / 2 - (zeilen.length - 1) * 7 + 4;
+    zeilen.forEach(([t, o], i) => { s += txt(tx, y0 + i * 14, t.endsWith('-') ? t : kuerzen(t, o), o); });
+    return s;
+  };
+  const elZeilen = e => [[e.zusatz, { size: 10.5, fill: T.text.muted }],
+                         [e.zeile, { size: 10.5, fill: T.text.muted }],
+                         [e.zeilePlan, { size: 10.5, weight: 600, fill: hell }],
+                         [e.geplant ? 'geplant' : '', { size: 10, weight: 600, fill: hell }]];
+  const reihe = (n, bis, max = 160) => Math.min(max, (bis - xs0 - (n - 1) * gap) / Math.max(n, 1));
+
+  // ── Rahmen: Bezug von außen | Liegenschaft ──
+  out += txt(x0, top + 14, 'BEZUG VON AUSSEN', { mono: true, size: 10, weight: 600, tracking: 1, fill: T.text.muted });
+  out += `<rect x="${gx}.5" y="${top}.5" width="${x1 - gx}" height="${gR(grenzeBot - top)}" fill="none" stroke="${gruen}"
+      stroke-width="1.4" stroke-dasharray="9 4"/>`;
+  out += txt(gx + 12, top + 18, 'LIEGENSCHAFT', { mono: true, size: 10, weight: 600, tracking: 1, fill: gruen });
+
+  // ── Schienen: Band mit Pfeilspitze zu den Gebäuden, die Beschriftung steht im Band ──
+  const schiene = (y, farbe, titel, detail) => {
+    let s = `<path d="M${xb0} ${y - BB}H${xv - 12}L${xv - 1} ${y}L${xv - 12} ${y + BB}H${xb0}Z" fill="${farbe}"/>`;
+    s += txt(xb0 + 12, y + 3.5, titel, { mono: true, size: 9.5, weight: 700, tracking: 1, fill: '#FFFFFF' });
+    const platz = Math.floor((xv - 30 - (xb0 + 12 + ggEstW(titel, 9.5, true) + 16)) / (10 * 0.55));
+    if (detail) s += txt(xb0 + 12 + ggEstW(titel, 9.5, true) + 16, y + 3.5, ggResKuerzen(detail, platz), { size: 10, fill: '#FFFFFF' });
+    return s;
+  };
+  out += schiene(yS, F.strom, 'STROMNETZ', m.stromSchiene);
+  if (hatWaerme) out += schiene(yWb, F.waerme, 'WÄRMENETZ', m.waermeSchiene);
+
+  // ── Strom von außen: Netz → NAP (Abrechnungszähler) → Schiene ──
+  const qStrom = m.quellen.find(q => q.key === 'strom');
+  const grau = o => [o, { size: 10.5, fill: T.text.muted }];
+  const stromZ = [grau(qStrom?.zeile), grau(m.netzSpannung.replace(/^Mittelspannung/, 'MS-Netz').replace(/^Niederspannung/, 'NS-Netz')),
+                  grau(m.nap.anschluss ? `Bezug ${m.nap.anschluss}` : ''),
+                  grau(m.nap.einspeisung ? `Einspeisung ${m.nap.einspeisung}` : '')].filter(z => z[0]);
+  const sh = 22 + (stromZ.length + 1) * 14;
+  out += linie(qR, yS, xb0 - 6, yS, F.strom, { breite: 2.4 });
+  out += spitze(xb0, yS, 'rechts', F.strom);
+  if (m.nap.zweirichtung) out += spitze(qR + 1, yS, 'links', F.strom);
+  out += kasten({ titel: 'Stromnetz', icon: 'mast', zeilen: stromZ }, x0, yS - sh / 2, qW, sh, [F.strom]);
+  out += `<rect x="${gx - 10.5}" y="${yS - 8.5}" width="22" height="18" fill="${T.neutral.cardBg}" stroke="${T.text.strong}" stroke-width="1.3"/>`
+    + txt(gx + 0.5, yS + 3.5, 'kWh', { anchor: 'middle', size: 7.5, weight: 700 });
+  out += txt(gx, yS - 15, 'NAP', { anchor: 'middle', mono: true, size: 9.5, weight: 600, fill: T.text.muted });
+
+  // ── Fernwärme von außen: Netz → Übergabestation → Wärmeschiene ──
+  const bhkwGas = m.kopplung.find(e => e.traeger === 'gas');
+  if (hatWaerme && m.fernwaerme) {
+    const q = m.quellen.find(x => x.key === 'fernwaerme');
+    out += kasten({ titel: q.titel, icon: 'waste', zeilen: [grau(q.zeile)] }, x0, yWb - 25, qW, 50, [F.waerme]);
+    // Bogen über die Brennstoffsteigleitung zum BHKW
+    out += bhkwGas && yF.gas
+      ? `<path d="M${qR} ${yWb}H${trunkX - 6}a6 6 0 0 1 12 0H${xb0 - 6}" fill="none" stroke="${F.waerme}" stroke-width="2.4"/>`
+      : linie(qR, yWb, xb0 - 6, yWb, F.waerme, { breite: 2.4 });
+    out += spitze(xb0, yWb, 'rechts', F.waerme);
+    out += `<rect x="${gx - 10.5}" y="${yWb - 8.5}" width="22" height="18" fill="${T.neutral.cardBg}" stroke="${T.text.strong}" stroke-width="1.3"/>
+      <path d="M${gx - 11} ${gR(yWb + 9)}L${gx + 11} ${gR(yWb - 9)}" stroke="${T.text.strong}" stroke-width="1.2"/>`;
+    out += txt(gx, yWb - 15, 'Übergabe', { anchor: 'middle', mono: true, size: 9.5, weight: 600, fill: T.text.muted });
+  }
+
+  // ── Stromerzeuger und -speicher über der Stromschiene ──
+  const bwA = reihe(m.strom.length, xv - 30);
+  m.strom.forEach((e, i) => {
+    const x = xs0 + i * (bwA + gap), cx = x + bwA / 2;
+    out += linie(cx, yA + BH, cx, yS - BB, F.strom, e.notstrom ? { strich: '5 3' } : {});
+    out += spitze(cx, yS - BB, 'unten', F.strom);
+    if (e.speicher) out += spitze(cx, yA + BH + 1, 'oben', F.strom);
+    out += kasten({ ...e, zeilen: elZeilen(e) }, x, yA, bwA, BH, [F.strom]);
+  });
+
+  // ── Kopplung zwischen den Schienen ──
+  const bwK = reihe(m.kopplung.length, xv - 40, 150);
+  m.kopplung.forEach((e, i) => {
+    const x = xs0 + i * (bwK + gap), cx = x + bwK / 2;
+    out += linie(cx, yS + BB, cx, yK, F.strom);
+    out += e.richtung === 'kwk' ? spitze(cx, yS + BB, 'oben', F.strom) : spitze(cx, yK, 'unten', F.strom);
+    if (hatWaerme) out += linie(cx, yK + BH, cx, yWb - BB, F.waerme) + spitze(cx, yWb - BB, 'unten', F.waerme);
+    out += kasten({ ...e, zeilen: elZeilen(e) }, x, yK, bwK, BH, [F.strom, F.waerme]);
+  });
+
+  // ── Wärmeerzeuger und -speicher unter der Wärmeschiene ──
+  const bwW = reihe(m.waerme.length, xv - 30);
+  const mitteW = {};
+  m.waerme.forEach((e, i) => {
+    const x = xs0 + i * (bwW + gap), cx = x + bwW / 2;
+    mitteW[e.id] = cx;
+    out += linie(cx, yWb + BB, cx, yW, F.waerme) + spitze(cx, yWb + BB, 'oben', F.waerme);
+    if (e.speicher) out += spitze(cx, yW - 1, 'unten', F.waerme);
+    out += kasten({ ...e, zeilen: elZeilen(e) }, x, yW, bwW, BH, [F.waerme]);
+  });
+
+  // ── Brennstoffe: Leitung von links, Stiche in die Kessel, Steigleitung zum BHKW ──
+  for (const q of brennstoffe) {
+    const y = yF[q.key], f = F[q.key];
+    const ziele = m.waerme.filter(e => e.traeger === q.key).map(e => mitteW[e.id]);
+    const zumBhkw = q.key === 'gas' && bhkwGas;
+    const bis = Math.max(...ziele, zumBhkw ? trunkX : qR);
+    out += linie(qR, y, bis, y, f, { breite: 2.4 });
+    ziele.forEach((cx, i) => {
+      out += linie(cx, y, cx, yW + BH + 1, f, { breite: 2 }) + spitze(cx, yW + BH + 1, 'oben', f);
+      if (i < ziele.length - 1) out += punkt(cx, y, f);
+    });
+    if (zumBhkw) {
+      const ky = yK + BH / 2;
+      out += `<path d="M${trunkX} ${y}V${gR(ky)}H${xs0 - 1}" fill="none" stroke="${f}" stroke-width="2"/>`;
+      out += spitze(xs0 + 1, ky, 'rechts', f);
+      if (ziele.length) out += punkt(trunkX, y, f);
+    }
+    out += kasten({ titel: q.titel, icon: q.icon, zeilen: [[q.zeile, { size: 10.5, fill: T.text.muted }]] }, x0, y - 23, qW, 46, [f]);
+  }
+
+  // ── Ladeinfrastruktur am Ende der Stromschiene ──
+  if (m.lade) {
+    const lx = xv - 24, ly = yA + BH / 2;
+    out += `<path d="M${lx} ${yS - BB}V${gR(ly)}H${xv - 2}" fill="none" stroke="${F.strom}" stroke-width="2"/>`
+      + spitze(xv, ly, 'rechts', F.strom);
+    out += kasten({ ...m.lade, icon: 'lade', zeilen: elZeilen(m.lade) }, xv, yA, vW, BH, [F.strom]);
+  }
+
+  // ── Gebäude der Liegenschaft ──
+  const v = m.verbraucher;
+  const gTop = yS - 30, gBot = hatWaerme ? yWb + 52 : yS + 52;
+  out += `<rect x="${xv}.5" y="${gR(gTop)}.5" width="${vW}" height="${gR(gBot - gTop)}" fill="${T.neutral.cardBg}" stroke="${T.rule}" stroke-width="1.4"/>`;
+  out += `<rect x="${xv + 1}" y="${gR(gTop + 1)}" width="4" height="${gR(gBot - gTop - 1)}" fill="${gruen}"/>`;
+  out += symbol('gebaeude', xv + 14, gTop + 6, 18, gruen);
+  out += txt(xv + 38, gTop + 20, v.gebaeude ? `${ggNum(v.gebaeude)} Gebäude` : 'Gebäude', { size: 11.5, weight: 700 });
+  const block = (y, titel, wert, max, farbe) => txt(xv + 14, y, titel, { size: 10.5, weight: 700, fill: farbe })
+    + txt(xv + 14, y + 14, wert || '—', { size: 10.5, fill: T.text.strong })
+    + (max ? txt(xv + 14, y + 28, max, { size: 10.5, fill: T.text.muted }) : '');
+  out += block(yS + 16, m.stand === 'ziel' ? 'Strombedarf' : 'Stromverbrauch', v.strom, v.stromMax, F.strom);
+  if (hatWaerme) out += block(yWb + 16, 'Wärmebedarf', v.waerme, v.heizlast, F.waerme);
+
+  // ── Legende ──
+  const leg = [['strom', 'Strom'], ['waerme', 'Wärme'], ...brennstoffe.map(q => [q.key, q.titel])]
+    .filter(([k]) => k !== 'waerme' || hatWaerme);
+  let lx = x0;
+  out += `<line x1="${x0}" y1="${gR(legY - 16)}.5" x2="${x1}" y2="${gR(legY - 16)}.5" stroke="${T.line}" stroke-width="1"/>`;
+  leg.forEach(([k, label]) => {
+    out += linie(lx, legY - 4, lx + 24, legY - 4, F[k], { breite: 3 });
+    out += txt(lx + 30, legY, label, { size: 11 });
+    lx += 30 + ggEstW(label, 11) + 22;
+  });
+  out += linie(lx, legY - 4, lx + 18, legY - 4, T.text.muted) + spitze(lx + 24, legY - 4, 'rechts', T.text.muted);
+  out += txt(lx + 30, legY, 'Energieflussrichtung', { size: 11 });
+  lx += 30 + ggEstW('Energieflussrichtung', 11) + 22;
+  const alle = [...m.strom, ...m.kopplung, ...m.waerme, ...(m.lade ? [m.lade] : [])];
+  if (alle.some(e => e.geplant || e.zeilePlan)) {
+    out += `<rect x="${gR(lx + 0.5)}" y="${gR(legY - 10.5)}" width="24" height="13" fill="${T.tint}" stroke="${hell}" stroke-width="1.3" stroke-dasharray="4 2"/>`;
+    out += txt(lx + 30, legY, 'geplant', { size: 11 });
+  }
+  if (cfg.fussnote) out += txt(x0, legY + 24, cfg.fussnote, { size: S.fsTab - 2, fill: T.text.faint });
+  return ggFinishSvg(out, W, height);
+}
+
+function ggEnergiesystemAusProjekt(cfg, stand) {
+  const m = esModell(ggEnergiesystemDaten(stand));
+  cfg.modell = m;
+  cfg.fussnote = stand === 'ziel'
+    ? 'Schematische Darstellung des Zielbilds ohne Lagebezug; Anteile an der Wärme aus der Einsatzplanung der Variante, '
+      + 'Strombedarf einschließlich Wärmeerzeugung.'
+    : 'Schematische Darstellung ohne Lagebezug; Leistungen laut Bestandsaufnahme, Verbräuche aus den Mess- und Bedarfsdaten.';
+  const n = m.strom.length + m.kopplung.length + m.waerme.length + (m.fernwaerme ? 1 : 0);
+  return m.fehlt.length
+    ? `⚠ Noch nicht vorhanden: ${m.fehlt.join(', ')}.`
+    : `✓ ${ggNum(n)} Anlagen und Bezugswege aus dem Projekt übernommen.`;
+}
+
+GG_FIGUREN.push({
+  id: 'energiesystem-ist',
+  autoSync: true,
+  reihe: 500,   // nach dem Text zu den Liegenschaftsinformationen
+  kapitel: '1.2 Liegenschaftsinformationen',
+  titel: 'Energiesystem der Liegenschaft (Ist-Zustand)',
+  datei: 'energiesystem-ist',
+  hinweis: 'Prinzipskizze aus dem Projekt: Netzanschluss (⚡ Strom-Grundlagen), Erzeuger und Speicher im Bestand (Elektro-Assets), '
+         + 'Bestandsanlage Wärme (Wärme-Grundlagen), Stromverbrauch aus dem Lastgang und Wärmebedarf aus dem Wärmelastgang. '
+         + 'Brennstoffe und Fernwärme erscheinen, sobald ein Erzeuger sie braucht.',
+  render: cfg => ggRenderEnergiesystem(cfg),
+  config: { eyebrow: 'Energiesystem · Ist-Zustand', titel: 'Energiesystem der Liegenschaft im Überblick', modell: null, fussnote: '' },
+  ausProjekt: cfg => ggEnergiesystemAusProjekt(cfg, 'ist'),
+});
+
+GG_FIGUREN.push({
+  id: 'energiesystem-ziel',
+  autoSync: true,
+  reihe: 5,     // vor den Fazit-Texten
+  kapitel: '9.1 Wärmeversorgung',
+  titel: 'Energiesystem der Liegenschaft (Zielbild)',
+  datei: 'energiesystem-zielbild',
+  hinweis: 'Wie der Ist-Zustand, aber mit der Planung: Erzeuger, Speicher und Ladeinfrastruktur einschließlich geplanter Anlagen '
+         + '(grün gestrichelt bzw. „+ … geplant“), Wärmeerzeuger der aktuellen Variante mit ihrem Anteil an der Wärme aus der Einsatzplanung.',
+  render: cfg => ggRenderEnergiesystem(cfg),
+  config: { eyebrow: 'Energiesystem · Zielbild', titel: 'Energiesystem der Liegenschaft im Überblick', modell: null, fussnote: '' },
+  ausProjekt: cfg => ggEnergiesystemAusProjekt(cfg, 'ziel'),
 });
 
 /* ── 3.1.2 Übersichtsschaltbild des Liegenschaftsnetzes ─────────────────────────

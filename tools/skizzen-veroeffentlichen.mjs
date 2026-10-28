@@ -32,7 +32,7 @@ const PROTOKOLL = '_Änderungsprotokoll.txt';
 const UEBERSICHT = '00_Übersicht.html';
 const WUENSCHE = 'Änderungswünsche.csv';
 
-const THEMEN = { strom: 'Strom', waerme: 'Wärme', ga: 'GA' };
+const THEMEN = { uebergreifend: 'Übergreifend', strom: 'Strom', waerme: 'Wärme', ga: 'GA' };
 const STATUS = { entwurf: 'Entwurf', abgestimmt: 'Abgestimmt', 'im-tool': 'Im Tool' };
 
 // BOM tolerieren: Windows-Editoren und PowerShell schreiben UTF-8 gern mit BOM

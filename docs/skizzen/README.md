@@ -12,7 +12,7 @@ Hier liegt die **Quelle**. Die Kollegen lesen die **Ausgabe** auf dem Netzlaufwe
 docs/skizzen/
   katalog.json        Verzeichnis aller Skizzen (Titel, Thema, Kapitel, Status, Quelle)
   quellen/            Erzeugerskripte; _basis.mjs enthält Rahmen, Farben, Logo
-  strom/ waerme/ ga/  die SVGs, eine Datei je Skizze
+  uebergreifend/ strom/ waerme/ ga/   die SVGs, eine Datei je Skizze
 ```
 
 ## Regeln
@@ -57,6 +57,8 @@ Umgebungsvariable `SKIZZEN_AUSGABE`). Was zu kopieren oder auf dem Laufwerk zu l
 <!-- katalog:start -->
 | Skizze | Thema | Kapitel | Status | Quelle | Stand |
 |---|---|---|---|---|---|
+| [Energiesystem der Liegenschaft im Überblick: Ist-Zustand](uebergreifend/Prinzip-Energiesystem-Ist.svg) | Übergreifend | 1.2 Liegenschaftsinformationen | Im Tool | `quellen/energiesystem.mjs` | 28.10.2026 |
+| [Energiesystem der Liegenschaft im Überblick: Zielbild](uebergreifend/Prinzip-Energiesystem-Zielbild.svg) | Übergreifend | 9.1 Wärmeversorgung | Im Tool | `quellen/energiesystem.mjs` | 28.10.2026 |
 | [Aufbau und Anbindung des EMS in der Liegenschaft](ga/Prinzip-EMS-Anbindung.svg) | GA | 6 Gebäudeautomation | Entwurf | nur SVG | 23.10.2026 |
 | [Programmablauf des EMS: Regelzyklus, Fahrplan, Kaskade](ga/Prinzip-EMS-Programmablauf.svg) | GA | 6 Gebäudeautomation | Entwurf | nur SVG | 23.10.2026 |
 | [EMS und EZA-Regler im Beispiel: Signale und Leistungsbilanz](ga/Prinzip-EMS-Beispiel.svg) | GA | 6 Gebäudeautomation | Entwurf | `quellen/ems-beispiel.cjs` | 23.10.2026 |
