@@ -96,6 +96,12 @@ function _html() { return `
       </div>`)}
   </section>
 
+  <!-- ═══ Reiter · Verbrauch ════════════════════════════════════════════════ -->
+  <!-- Lastschätzung aller Gebäude (58-verbrauch-reiter.js rendert in #el-verbrauch-host) -->
+  <section id="el-sec-verbrauch" class="el-pane" data-el-tab="verbrauch" hidden>
+    <div id="el-verbrauch-host"></div>
+  </section>
+
   <!-- ═══ Reiter 2 · Photovoltaik ══════════════════════════════════════════ -->
   <!-- Der Reiter ist der PV-Modus (25-pv-modus.js): Öffnen startet ihn, die fünf
        Stufen rendert pvModusRender() in #el-pv-host. Die Freiflächen-Gruppe steht
@@ -128,8 +134,7 @@ function _html() { return `
       <p class="el-hinweis">Wärmepumpen, BHKW, PV und Batterie aus der Wärmeplanung wirken automatisch in der Strombilanz. Sie werden dort bearbeitet.</p>
       <div id="el-gekoppelt-status" class="el-chips"></div>
       ${_aufgabe('In der Wärmeplanung bearbeiten', 'Erzeuger und Speicher der Heizzentrale', "uiSchritt('planung',{sparte:'waerme'}); uiWaermeTab('erzeuger')", { icon: 'arrow' })}
-      ${_aufgabe('Verbrauch und PV automatisch ermitteln', 'Strombedarf der Gebäude und PV-Potenzial vorschlagen', 'showAutofillWizard()', { icon: 'calc',
-        title: 'Verbrauchs- und PV-Werte automatisch ermitteln' })}`)}
+      ${_aufgabe('Stromverbrauch der Gebäude schätzen', 'Im Reiter Verbrauch: Schätzung je Gebäude und Übernahme in die Verbraucher', "elTab('verbrauch')", { icon: 'arrow' })}`)}
 
     ${_gruppe('Prüfen', `
       ${_aufgabe('Windanalyse', 'Ertrag, Abstände, Eignungsfläche und Szenarien der Windkraftanlagen', 'windaTogglePanel()', { id: 'btn-windanalyse-toggle', icon: 'chart' })}`)}
@@ -316,6 +321,7 @@ export function renderGekoppelteStatus() {
 // nur die Bereiche umgeschaltet. Zustand bleibt im Browser gespeichert.
 export const EL_TABS = [
   { id: 'netz',      titel: 'Netz' },
+  { id: 'verbrauch', titel: 'Verbrauch' },
   { id: 'pv',        titel: 'Photovoltaik' },
   { id: 'erzeugung', titel: 'Erzeugung' },
   { id: 'berechnen', titel: 'Berechnen' },
@@ -343,6 +349,8 @@ export function elTab(id) {
   const lp = document.getElementById('lp-elektro');
   if (lp) lp.dataset.elTabAkt = id;
   // Der Reiter Photovoltaik ist der PV-Modus: öffnen startet ihn, verlassen beendet ihn.
+  // Reiter Verbrauch: Tabelle + Kartenfärbung nach Stand (58-verbrauch-reiter.js)
+  window.verbrauchKarte?.(id === 'verbrauch');
   if (id === 'pv') { if (window.pvModusAktiv) window.pvModusRender?.(); else window.pvModusStart?.(); }
   else if (window.pvModusAktiv) window.pvModusStop?.();
   window.uiLpKopfAktualisieren?.();

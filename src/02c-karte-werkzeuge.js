@@ -547,6 +547,8 @@ export function updateViz(){
   // Einfärbung oben würde das überschreiben — deshalb hier wieder drüberlegen.
   if (window.pvModusAktiv && typeof window.pvModusMarkiereKarte === 'function') window.pvModusMarkiereKarte();
   // Ebenso im Blackout-Modus: Notstromklassen (26-blackout-modus.js)
+  // Ebenso der Reiter Strom › Verbrauch: Gebäude nach Stand der Lastschätzung (58-verbrauch-reiter.js)
+  if (window.verbrauchKarteAn && typeof window.verbrauchMarkiereKarte === 'function') window.verbrauchMarkiereKarte();
   if (window.blackoutModusAktiv && typeof window.blackoutModusMarkiereKarte === 'function') window.blackoutModusMarkiereKarte();
   // Ebenso die Netzaufnahme der PV-Analyse: Dächer grün/gelb/rot (28-pv-netzaufnahme.js)
   if (window.pvnaKarteAktiv && typeof window.pvnaMarkiereKarte === 'function') window.pvnaMarkiereKarte();

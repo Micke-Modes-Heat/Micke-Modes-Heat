@@ -11,6 +11,7 @@ import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { _batchImporting } from './01-globals-varianten.js';
 import { getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 import { istSchicht, SCHICHT } from './lib/schichten.js';
+import { verbraucherSkalierung } from './lib/stromlast-schaetzung.js';
 import { kdMapOptionen } from './20-kartendrehung.js';
 import { karte2dEinrichten } from './lib/karte-2d.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
@@ -931,6 +932,30 @@ export function getGebStromMwh(g) {
 export function getGebStromProfil(g) {
   if (g.stromProfil && g.stromProfil !== 'auto') return g.stromProfil;
   return STROM_PROFIL_MAP[g.nutzung || ''] || 'H0';
+}
+
+/**
+ * Skalierung eines Verbraucher-Assets im Stundenlastgang (13o NAP, 13r Knotenpunkt).
+ * energieKwh = Jahresverbrauch seines Gebäudes (getGebStromMwh); hängen mehrere
+ * Verbraucher am Gebäude, teilen sie ihn nach leistungKW (sonst zu gleichen Teilen).
+ * Regel: lib/stromlast-schaetzung.js verbraucherSkalierung.
+ * @returns {{modus:'energie'|'spitze'|null, energieKwh:number, leistungKw:number}}
+ */
+export function getVerbraucherSkalierung(asset) {
+  const p = asset?.props || {};
+  const leistungKw = parseFloat(p.leistungKW) || 0;
+  let energieKwh = 0;
+  const g = asset?.buildingId != null ? (window.gebaeude || []).find(x => x.id === asset.buildingId) : null;
+  if (g && asset.type === 'Verbraucher') {
+    const kwh = getGebStromMwh(g) * 1000;
+    if (kwh > 0) {
+      const alle = getAssetsForBuilding(g.id).filter(a => a.type === 'Verbraucher');
+      const summeKw = alle.reduce((s, a) => s + (parseFloat(a.props?.leistungKW) || 0), 0);
+      const anteil = alle.length <= 1 ? 1 : summeKw > 0 ? leistungKw / summeKw : 1 / alle.length;
+      energieKwh = kwh * anteil;
+    }
+  }
+  return { modus: verbraucherSkalierung({ quelle: p.leistungQuelle, energieKwh, leistungKw }), energieKwh, leistungKw };
 }
 
 // Vollbenutzungsstunden aus Register → für Spitzenlast-Berechnung im Wizard

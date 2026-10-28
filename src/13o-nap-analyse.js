@@ -9,7 +9,7 @@
 import { cvTok } from './lib/canvas-farben.js';
 import { ASSETS, getAssetStatus } from './13a-assets-core.js';
 import { globalYear } from './01-globals-varianten.js';
-import { getSlpProfile } from './02b-gebaeude.js';
+import { getSlpProfile, getVerbraucherSkalierung } from './02b-gebaeude.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
 import { getElSlpProfiles } from './13k-elslp-registry.js';
 import { windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
@@ -160,6 +160,18 @@ function _napBuildProfileDescriptor(asset, gzfGlobal) {
   if (slpTyp) {
     const slp = getSlpProfile(slpTyp);
     if (slp?.length >= 8760) {
+    // Gebäudeverbraucher: Profil (Summe 1) × Jahresenergie des Gebäudes, damit der
+    // Lastgang die Schätzung des Reiters Strom › Verbrauch trägt. Kein GZF — das
+    // Standardlastprofil ist schon durchmischt. Von Hand gesetzte bzw. kalibrierte
+    // Leistungen bleiben unten auf der Spitze (lib/stromlast-schaetzung).
+    if (asset.type === 'Verbraucher' && slp?.length >= 8760) {
+      const sk = getVerbraucherSkalierung(asset);
+      if (sk.modus === 'energie') {
+        let summe = 0;
+        for (let i = 0; i < slp.length; i++) summe += slp[i];
+        if (summe > 0) return { mode: 'slp', slp, scale: sk.energieKwh / summe, skalierung: 'energie' };
+      }
+    }
       const kw = parseFloat(p.leistungKW) ||
         ((parseFloat(p.anzahlPunkte) || 1) * (parseFloat(p.leistungProPunktKW) || 0)) || 0;
       if (kw > 0) {
@@ -167,7 +179,7 @@ function _napBuildProfileDescriptor(asset, gzfGlobal) {
         // P_h = slp[hoy] / slp_peak * kw  →  P_max = kw (nie mehr als Anschlussleistung)
         let slpPeak = 0;
         for (let i = 0; i < slp.length; i++) if (slp[i] > slpPeak) slpPeak = slp[i];
-        if (slpPeak > 0) return { mode: 'slp', slp, scale: (kw / slpPeak) * gzf };
+        if (slpPeak > 0) return { mode: 'slp', slp, scale: (kw / slpPeak) * gzf, skalierung: 'spitze' };
       }
     }
   }
@@ -2051,6 +2063,7 @@ export function napApplyKalibrierung() {
       e.asset.props.leistungKW = e.calibKW;
       count++;
     }
+      e.asset.props.leistungQuelle = 'kalibriert';   // Reiter Verbrauch: geschützt
   }
   document.getElementById('nap-kal-overlay')?.remove();
   window._napLastKal = null;
@@ -2088,6 +2101,7 @@ export function napApplyKalibrierungMitProfil() {
     e.asset.props.leistungKW = e.calibKW;
     kwCount++;
 
+    e.asset.props.leistungQuelle = 'kalibriert';   // Reiter Verbrauch: geschützt
     // Normiertes NAP-Stundenprofil auf dieses Asset skalieren:
     // werte[h] = napHourlyKW[h] × (calibKW / napPeak)
     // → profilAt() liest die Werte direkt als kW (custom-mode)

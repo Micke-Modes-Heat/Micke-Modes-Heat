@@ -1565,6 +1565,8 @@ function wireEvents(panel, asset) {
         const v = el.value === '' ? null : parseFloat(el.value);
         asset.props[key] = v;
       }
+      // Von Hand gesetzte Leistung: Reiter Strom › Verbrauch überschreibt sie nicht ungefragt
+      if (asset.type === 'Verbraucher' && key === 'leistungKW') asset.props.leistungQuelle = 'hand';
       // PV-Profil bei Props-Änderung neu zeichnen
       if (asset.type === 'PV' && ['leistungKWp','ausrichtung','pvSpez'].includes(key)) {
         asset._pvProfile = null; // Cache invalidieren

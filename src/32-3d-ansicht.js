@@ -1526,7 +1526,7 @@ function d3dPanelHtml() {
   </select>
   <div id="d3d-legende" style="margin-top:5px;"></div>
   <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 3px;">Dächer &amp; PV</div>
-  <select data-d3d="daecher" title="Dachform, Neigung und Azimut kommen aus den PV-Angaben des Gebäudes (Dach &amp; PV)" style="width:100%;padding:4px 5px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:12.5px;">
+  <select data-d3d="daecher" title="Dachform, Neigung und Azimut kommen aus den Dachangaben des Gebäudes (Gebäudekarte › Dach)" style="width:100%;padding:4px 5px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:12.5px;">
     <option value="angaben" ${_d3d.daecher === 'angaben' ? 'selected' : ''}>Dächer mit Angaben formen</option>
     <option value="alle" ${_d3d.daecher === 'alle' ? 'selected' : ''}>Alle Dächer (Vorgabe Satteldach 35°)</option>
     <option value="aus" ${_d3d.daecher === 'aus' ? 'selected' : ''}>Alle flach</option>

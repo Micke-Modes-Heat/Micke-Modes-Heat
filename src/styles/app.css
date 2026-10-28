@@ -1691,14 +1691,11 @@ button.netz-create-option:hover{border-color:var(--c-green);background:rgba(76,1
   border-radius:4px;display:inline-block;
 }
 
-/* ── Gebäudekarte: Dach & PV als Sub-Sektion in Elektro-Assets ─────────── */
-.geb-elektro-dach-sub{
-  margin-top:5px;
-  padding-top:5px;
-  border-top:1px solid var(--border);
-}
-.geb-elektro-dach-sub .geb-dach-section{
-  margin-top:0;
+/* Gebäudekarte › Dach: Verweis auf den Reiter Photovoltaik */
+.geb-pv-verweis{
+  display:flex;align-items:center;gap:6px;
+  margin-top:7px;padding-top:6px;border-top:1px solid var(--border);
+  font-size:12px;
 }
 /* ── Vormerken-Button (Feldbegehung) ─────────────────────────────────────── */
 .vormerken-btn {
@@ -1709,6 +1706,8 @@ button.netz-create-option:hover{border-color:var(--c-green);background:rgba(76,1
   font-size: 12.5px !important;
   padding: 0 2px;
   flex-shrink: 0;
+.geb-pv-verweis-icon{ color:var(--c-amber); }
+.geb-pv-verweis-text{ flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
   line-height: 1;
   color: var(--muted);
   transition: color 0.15s;
@@ -2226,6 +2225,41 @@ body.gm-fokus #view-tabs{display:none;}
 .pvm-wl button:focus-visible{outline:2px solid var(--focus);outline-offset:-2px;}
 .pvm-wl button[aria-pressed="true"]{background:rgba(255,213,79,.18);color:var(--c-amber);font-weight:600;box-shadow:inset 0 0 0 1px var(--c-amber);}
 .pvm-wl button[data-sperr][aria-pressed="true"]{background:var(--crit-bg);color:var(--crit);box-shadow:inset 0 0 0 1px var(--crit);}
+/* ── Reiter Strom › Verbrauch (58-verbrauch-reiter.js), Aufbau wie .pvr ─────── */
+.vbr-methoden{display:flex;flex-direction:column;gap:4px;}
+.vbr-methode{display:grid;grid-template-columns:16px minmax(0,1fr);gap:7px;align-items:start;cursor:pointer;padding:4px 2px;border-radius:var(--r,3px);}
+.vbr-methode:hover{background:var(--hover);}
+.vbr-methode input{margin:2px 0 0;accent-color:var(--c-blue);}
+.vbr-methode b{display:block;font-weight:600;font-size:12.5px;}
+.vbr-methode small{display:block;font-size:11.5px;color:var(--muted);line-height:1.35;}
+.vbr-filterleiste{display:flex;gap:4px;flex-wrap:wrap;}
+.vbr-filter{all:unset;box-sizing:border-box;cursor:pointer;padding:3px 8px;border-radius:999px;border:1px solid var(--border);font-size:12px;color:var(--muted);}
+.vbr-filter span{font-variant-numeric:tabular-nums;opacity:.8;}
+.vbr-filter.an{border-color:var(--c-blue);color:var(--c-blue);background:rgba(79,195,247,.08);}
+.vbr-filter:focus-visible{outline:2px solid var(--focus);outline-offset:1px;}
+.vbr-tabelle-wrap{max-height:46vh;overflow:auto;border:1px solid var(--border);border-radius:var(--r,3px);}
+.vbr-tabelle{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;}
+.vbr-tabelle th{position:sticky;top:0;background:var(--surface2);font-weight:600;font-size:11px;color:var(--muted);text-align:left;padding:4px 5px;border-bottom:1px solid var(--border);white-space:nowrap;}
+.vbr-tabelle td{padding:3px 4px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.vbr-tabelle .r{text-align:right;}
+.vbr-tabelle tr.aktiv td{background:rgba(79,195,247,.10);}
+.vbr-name{width:100%;max-width:0;}  /* Namensspalte nimmt den Rest und kürzt */
+.vbr-asset{display:inline-flex;align-items:center;gap:2px;justify-content:flex-end;}
+.vbr-kw.ok{border-color:var(--ok);}
+.vbr-kw.offen{border-color:var(--warn);}
+.vbr-kw.geschuetzt{border-color:var(--c-blue);}
+.vbr-name a{display:block;cursor:pointer;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.vbr-name a:hover{color:var(--c-blue);text-decoration:underline;}
+.vbr-name small{display:block;color:var(--muted);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.vbr-kw{width:48px;padding:2px 4px;text-align:right;}
+.vbr-z{font-size:9.5px;font-weight:700;color:var(--c-blue);border:1px solid currentColor;border-radius:3px;padding:0 2px;}
+.vbr-muted{color:var(--faint);}
+.vbr-chip{display:inline-block;font-size:10.5px;padding:1px 5px;border-radius:999px;white-space:nowrap;border:1px solid var(--border);color:var(--muted);}
+.vbr-chip.ok{background:var(--ok-bg);border-color:var(--ok);color:var(--ok);}
+.vbr-chip.offen{background:var(--warn-bg);border-color:var(--warn);color:var(--warn);}
+.vbr-chip.geschuetzt{border-color:var(--c-blue);color:var(--c-blue);}
+.vbr-tabelle td .btn-xs{padding:0 5px;margin-left:2px;}
+
 .pvm-wl button[data-blass]{opacity:.55;}
 .pvm-wl button[data-blass][aria-pressed="true"]{background:transparent;box-shadow:inset 0 0 0 1px var(--line-2,var(--border));color:var(--text);font-weight:400;}
 .pvm-wl-tr{width:1px;align-self:stretch;margin:3px 3px;background:var(--border);}

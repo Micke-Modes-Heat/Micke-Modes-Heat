@@ -13,6 +13,7 @@ import { ASSETS, ASSET_CFG, TYPE_RANK, getAsset, getAssetStatus } from './13a-as
 import { makePvProfile8760, _PV_SPEZ_DEFAULT } from './09a-pv-profile.js';
 import { globalYear } from './01-globals-varianten.js';
 import { buildSlpProfile8760 } from './13i-slp-editor.js';
+import { getVerbraucherSkalierung } from './02b-gebaeude.js';
 import { windProfileForAsset } from './13q-wind-ertrag.js';
 import { bpLadeLeistung } from './lib/bedarfsprognose.js';
 
@@ -89,24 +90,20 @@ function _kwkProfile(asset) {
 }
 
 function _verbraucherProfile(asset) {
-  if (asset.buildingId && window._elQuartierFromGeb && window.gebaeude) {
-    const geb=window.gebaeude.find(g=>g.id===asset.buildingId);
-    const gebMwh=geb&&typeof window.getGebStromMwh==='function'?window.getGebStromMwh(geb):0;
-    const totalKwh=Array.from(window._elQuartierFromGeb).reduce((s,v)=>s+v,0);
-    if (gebMwh>0&&totalKwh>0) {
-      const frac=(gebMwh*1000)/totalKwh;
-      const prof=new Float32Array(8760);
-      for (let t=0;t<8760;t++) prof[t]=window._elQuartierFromGeb[t]*frac;
-      return prof;
-    }
-  }
-  // SLP-Profil verwenden: norm[h] × kW × 8760 → gleiche Jahresenergie wie Flachprofil
+  // Bis 10/2026 bekam jeder Gebäudeverbraucher hier die Form des Quartierslastgangs
+  // (_elQuartierFromGeb) × Energieanteil — ohne eigenes Profil, ohne Hand-/Kalibrierwert.
+  // SLP-Profil (Summe 1) wie in der NAP-Analyse skalieren: mit der Jahresenergie des
+  // Gebäudes oder — bei von Hand gesetzter/kalibrierter Leistung — Spitze = leistungKW.
+  // Bis 10/2026: norm × kW × 8760, d. h. MITTELWERT = leistungKW (Energie viel zu hoch).
   const kw  = parseFloat(asset.props?.leistungKW) || 0;
-  const slp = asset.props?.slpTyp;
-  if (slp && kw > 0) {
+  const slp = window.getAssetSlp?.(asset) ?? asset.props?.slpTyp;
+  const sk  = getVerbraucherSkalierung(asset);
+  if (slp && sk.modus) {
     const norm = buildSlpProfile8760(slp);
+    let spitze = 0;
+    for (let t = 0; t < 8760; t++) if (norm[t] > spitze) spitze = norm[t];
+    const scale = sk.modus === 'energie' ? sk.energieKwh : (spitze > 0 ? kw / spitze : 0);
     const prof = new Float32Array(8760);
-    const scale = kw * 8760;
     for (let t = 0; t < 8760; t++) prof[t] = norm[t] * scale;
     return prof;
   }

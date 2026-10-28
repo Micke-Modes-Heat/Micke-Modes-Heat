@@ -88,7 +88,7 @@ export const GUIDE_STEPS = [
   {
     id: 'verbrauch', titel: 'Gebäude & Verbrauch', kurz: 'Verbrauch',
     ziel: 'Welche Last hängt am Netz, und stimmt jeder Grundriss?',
-    text: 'Prüfe die importierten Gebäude am Grundriss, benenne sie und setze den Nutzungstyp. Das Auto-Befüllen liefert danach einen Schätzwert je Gebäude; der Abgleich gegen den gemessenen Lastgang folgt in Schritt 4.',
+    text: 'Prüfe die importierten Gebäude am Grundriss, benenne sie und setze den Nutzungstyp. Der Reiter Strom › Verbrauch liefert danach einen Schätzwert je Gebäude; der Abgleich gegen den gemessenen Lastgang folgt in Schritt 4.',
     tab: 'gebiet', view: 'karte',
     gruppen: [
       { label: 'Gebäude prüfen', aktionen: [
@@ -96,7 +96,7 @@ export const GUIDE_STEPS = [
         { label: 'Gebäudeliste importieren (CSV)', click: 'openGebListImport()' },
       ] },
       { label: 'Verbrauch', aktionen: [
-        { label: '✦ Auto-Befüllen (Verbrauch & PV)', click: 'showAutofillWizard()' },
+        { label: 'Verbrauch schätzen', click: 'verbrauchOeffnenFuer()' },
         { label: 'Strom-Grundlagen: Messjahre', click: 'toggleStromPanel()' },
       ] },
     ],
@@ -209,7 +209,7 @@ export const GUIDE_STEPS = [
   {
     id: 'varianten', titel: 'Entwicklung & Varianten', kurz: 'Varianten',
     ziel: 'Was kommt ohnehin, und was wird in dieser Variante entschieden?',
-    text: 'Neue Anlagen landen jetzt in der Entscheidungsschicht der aktiven Variante. Für PV gibt es zwei Wege: am Gebäude über „Dach & PV" (Dachform, Belegungs- und Sperrflächen — daraus kommt die kWp) oder als eigenes PV-Asset auf der Karte, das du selbst befüllst oder per Auto-Befüllen zuweist.',
+    text: 'Neue Anlagen landen jetzt in der Entscheidungsschicht der aktiven Variante. Für PV gibt es zwei Wege: im Reiter Planung › Strom › Photovoltaik (Dächer belegen — daraus kommt die kWp) oder als eigenes PV-Asset auf der Karte, das du selbst befüllst.',
     tab: 'elektro', view: 'karte', schicht: SCHICHT.ENTSCHEIDUNG,
     zeigen: ['el-sec-anlagen'],
     gruppen: [
@@ -217,10 +217,9 @@ export const GUIDE_STEPS = [
         { label: '+ Variante anlegen', click: 'addVariante()' },
       ] },
       { label: 'PV am Gebäude',
-        hinweis: 'Der übliche Weg: Gebäude in der Liste anklicken → Elektro-Assets → Dach & PV. Dachform, Belegungs- und Sperrflächen ergeben die kWp.',
+        hinweis: 'Der übliche Weg: Reiter Photovoltaik öffnen, Dach auf der Karte anklicken und Belegungs- und Sperrflächen zeichnen — daraus kommt die kWp. Dachform und Neigung stehen am Gebäude unter „Dach“.',
         aktionen: [
-          { label: 'Gebäudeliste öffnen', click: 'guideSeitenleisteOeffnen()', pri: true },
-          { label: '✦ Auto-Befüllen (Verbrauch & PV)', click: 'showAutofillWizard()' },
+          { label: 'Reiter Photovoltaik öffnen', click: 'pvModusStart()', pri: true },
         ] },
       { label: 'Einzelne Anlagen setzen', aktionen: [
         { label: 'PV-Asset auf die Karte', click: "setPendingType('PV')" },
@@ -364,13 +363,13 @@ function _panelOeffnen() {
 }
 
 /**
- * Rechte Seitenleiste öffnen: „Dach & PV" steht je Gebäude unter
- * Elektro-Assets in der Gebäudeliste, nicht in einem eigenen Panel.
+ * Rechte Seitenleiste öffnen: Dachform und Neigung stehen je Gebäude unter
+ * „Dach“ in der Gebäudeliste; belegt wird im Reiter Photovoltaik.
  */
 export function guideSeitenleisteOeffnen() {
   const sb = document.getElementById('sidebar');
   if (sb?.classList.contains('collapsed')) window.toggleSidebar?.();
-  window.showHint?.('Gebäude in der Liste anklicken → Elektro-Assets → Dach & PV');
+  window.showHint?.('Gebäude in der Liste anklicken → Dach');
 }
 
 export function guideStart() {

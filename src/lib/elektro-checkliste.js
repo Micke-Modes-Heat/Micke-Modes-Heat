@@ -56,7 +56,7 @@ export const EC_PHASEN = [
   { id: 'verbrauch', titel: 'Stromverbrauch und Messdaten', kap: '5.2', punkte: [
     P('v-messjahre', 'Messjahre laden (Bezug, ggf. BHKW-Erzeugung)', 'Planung › Strom › Strom-Grundlagen', 'Alle Jahre ohne Lücken eingelesen', { kap: '5.2', orte: ['p:strom-panel'] }),
     P('v-referenz', 'Referenzjahr von Hand wählen', 'Planung › Strom › Strom-Grundlagen', 'Referenzjahr gesetzt', { kap: '5.2', orte: ['p:strom-panel'] }),
-    P('v-autofill', 'Stromverbrauch der Gebäude ermitteln', 'Planung › Strom › Erzeugung › Verbrauch und PV automatisch ermitteln', 'Jedes Gebäude hat einen Verbrauchswert', { kap: '5.2', orte: ['p:autofill-wizard-modal', 'el:erzeugung'] }),
+    P('v-autofill', 'Stromverbrauch der Gebäude ermitteln', 'Planung › Strom › Verbrauch', 'Jedes Gebäude hat einen Verbrauchswert', { kap: '5.2', orte: ['el:verbrauch'] }),
     P('v-profile', 'Lastprofile der Gebäude prüfen (BW0–BW3, Sonderprofile)', 'Gebäude-Inspektor / Lastprofil-Editor', 'Profil passt zur Nutzung jedes Gebäudes', { orte: ['p:slp-editor-overlay', 'p:geb-profile-dialog', 'x:Verbraucher'] }),
     P('v-abgleich', 'Summe der Gebäude mit dem gemessenen Jahr abgleichen', 'Auswertung › Strom › Strombilanz', 'Abweichung erklärt oder unter ca. 10 %', { kap: '5.2', orte: ['a:strom', 'p:strom-panel'] }),
     P('v-jahresvergleich', 'Jahresvergleich der Messjahre auf Ausreißer prüfen', 'Planung › Strom › Strom-Grundlagen', 'Ausreißerjahr begründet oder verworfen', { kap: '5.2', opt: true, orte: ['p:strom-panel'] }),

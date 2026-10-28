@@ -262,7 +262,7 @@ const _AKTIONEN = {
   'g-grundriss': _fenster('grundriss-panel', 'grundrissPanelToggle', () => _w().uiSchritt?.('bestand')),
   'g-excel': () => _w().uiSchritt?.('projekt'), 'g-qualitaet': () => _w().uiSchritt?.('projekt'),
   'v-messjahre': _grundlagen, 'v-referenz': _grundlagen, 'v-jahresvergleich': _grundlagen,
-  'v-autofill': () => _w().showAutofillWizard?.(), 'v-profile': _bestandTabelle,
+  'v-autofill': _strom('verbrauch'), 'v-profile': _bestandTabelle,
   'v-abgleich': _seite('auswertung', 'strom'),
   'n-trassen': _strom('netz'), 'n-digital': _fenster('plandigi-panel', 'pdTogglePanel', _strom('netz')),
   'n-nap': _asset('NAP'), 'n-stationen': _strom('netz'), 'n-betriebsart': _asset('Trafo'),

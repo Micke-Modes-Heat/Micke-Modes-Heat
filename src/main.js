@@ -67,7 +67,6 @@ import * as sld from './13f-sld.js';
 import * as msRing from './13g-ms-ring.js';
 import * as netzanalyse from './13h-netzanalyse.js';
 import * as slpEditor from './13i-slp-editor.js';
-import * as autofillWizard from './13j-autofill-wizard.js';
 import * as elslpRegistry from './13k-elslp-registry.js';
 import * as autonetz from './13l-autonetz.js';
 import * as kompaktstation from './13m-kompaktstation.js';
@@ -138,6 +137,7 @@ import * as fensterSeiten from './53-fenster-seiten.js';
 import * as checklisteFenster from './54-checkliste-fenster.js';
 import * as auswertungFenster from './55-auswertung-fenster.js';
 import * as kartenBezug from './57-karten-bezug.js';
+import * as verbrauchReiter from './58-verbrauch-reiter.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -151,11 +151,11 @@ const modules = [
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker, optimizerSession,
   hilfeLeitfaden,
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
-  slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel, schichtBar, bestandPanel, variantenVergleichPanel, lastgangSchnappschuss, schwellenPanel,
+  slpEditor, elslpRegistry, autonetz, kompaktstation, elektroPanel, schichtBar, bestandPanel, variantenVergleichPanel, lastgangSchnappschuss, schwellenPanel,
   napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap, engpassSweep, engpassPanel,
-  planDigitalisierer, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, pvBelegungsStaende, pvAnschluss, lod2Import, quartierHerausloesen, netzQuartiere, speicherAnalyse, gebaeudeAnalyse, quartierSonde, variantenGrafik, heizzentralen, waermeSchema, datenanalyse, baeume, grundrissPruefung, ladeStatus, umspannwerke, netzanschlussModul, variantenRegeln, oberflaeche, datenqualitaet, kennzahlen, fensterDock, fensterSeiten, checklisteFenster, auswertungFenster, kartenBezug,
+  planDigitalisierer, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie, autarkieZiel, dreiDAnsicht, bestandsanlage, witterung, variantenUi, stationsSteckbrief, excel, pvAutoBelegung, pvBelegungsStaende, pvAnschluss, lod2Import, quartierHerausloesen, netzQuartiere, speicherAnalyse, gebaeudeAnalyse, quartierSonde, variantenGrafik, heizzentralen, waermeSchema, datenanalyse, baeume, grundrissPruefung, ladeStatus, umspannwerke, netzanschlussModul, variantenRegeln, oberflaeche, datenqualitaet, kennzahlen, fensterDock, fensterSeiten, checklisteFenster, auswertungFenster, kartenBezug, verbrauchReiter,
 ];
 window.pdfjsLib = pdfjsLib;
 lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});

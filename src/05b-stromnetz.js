@@ -6,7 +6,7 @@
 
 // ── Styled Modal-Dialoge ────────────────────────────────────────
 import { areaLatLngs, bhkw, freiflaechen, gebaeude, geoThermie, lwWp, massnahmeJahr, setStromEdges, setStromNodes, setTrasseCurrentSegStart, setTrassePoints, setTrasseSegments, trassePoints, trasseSegments } from './01-globals-varianten.js';
-import { getGebStromMwh, map } from './02b-gebaeude.js';
+import { getGebStromMwh, getGebVbh, map } from './02b-gebaeude.js';
 import { polygonAreaM2, polygonCenter, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { setNetzVisible } from './03b-netz.js';
 import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-io.js';
@@ -1491,7 +1491,8 @@ export function _recalcStromNetzInner() {
             nm.loadKw = (qH[szHour] || 0) * anteil;
           }
         } else {
-          nm.loadKw = stromMwh > 0 ? (stromMwh * 1000 / 1800) : 0;
+          // Energie ÷ Vollbenutzungsstunden des Nutzungstyps — wie der Reiter Strom › Verbrauch
+          nm.loadKw = stromMwh > 0 ? (stromMwh * 1000 / (getGebVbh(g) || 1800)) : 0;
         }
         n.peakLoadKw = nm.loadKw;
         n.isProducer = false;
@@ -2126,7 +2127,7 @@ export function _schnellberechnungStromInner() {
     if (!center) return;
     const stromMwh = typeof getGebStromMwh === 'function' ? getGebStromMwh(g) : (parseFloat(g.strom) || 0);
     if (!stromMwh || stromMwh <= 0) return;
-    const peakKw = stromMwh * 1000 / 1800; // VBH ~1800h für Strom
+    const peakKw = stromMwh * 1000 / (getGebVbh(g) || 1800); // Vbh des Nutzungstyps (Reiter Strom › Verbrauch)
     consumers.push({ id: g.id, lat: center.lat, lng: center.lng, peakKw: peakKw, stromMwh: stromMwh, assigned: false });
   });
 

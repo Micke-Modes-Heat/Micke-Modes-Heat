@@ -15,7 +15,7 @@ import { isErzeugerAktiv, meritOrderKeys, setMeritOrderKeys } from './06c-dispat
 import { calcStromPanel } from './09b-pv-calc.js';
 import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, createAsset, deleteAsset, clearAssets } from './13a-assets-core.js';
 import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
-import { ELSLP_CUSTOM, ELSLP_WPM2, getElSlpProfiles, getElSlpGruppen, getElSlpById, getElSlpWpm2, showElSlpModal } from './13k-elslp-registry.js';
+import { ELSLP_CUSTOM, ELSLP_WPM2, getElSlpProfiles, getElSlpGruppen, getElSlpById, showElSlpModal } from './13k-elslp-registry.js';
 import { activeVariantId, basisJahr, edgeKey, freiflaechen, lwWp, lwWpVisible, networkLocked, netzEdges, renderVariantenBar, stromNetzVisible, stromNodes, updateVariantBanner } from './01-globals-varianten.js';
 import { _invalidateStats, addGebaeude, attachPolygonLayer, calcAutoEnergy, gebaeudeKartenebenenEntfernen, removeGebaeude,toggleNetworkLock, ensureSatellite, setGlobalYear, updateField } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, clearTrasse, polygonAreaM2, polygonCenter, redrawFliessgewaesser, redrawLwWp, redrawTrasse, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
@@ -440,18 +440,6 @@ export function detectRoofAzimutFromPolygon(polygon) {
 // ── Elektro-Assets eines Gebäudes (einklappbare Sektion) ────────────────────
 if (!window._gebElektroCollapsed) window._gebElektroCollapsed = {};
 
-// ── Inline-Hilfsfunktion: SLP-Dropdown-Options für Verbraucher ──────────────
-function _buildVerbrSlpOptions(currentSlp) {
-  const profs   = getElSlpProfiles();
-  const gruppen = getElSlpGruppen();
-  return gruppen.map(grp => {
-    const opts = profs.filter(p => p.gruppe === grp).map(p =>
-      `<option value="${p.id}"${p.id === currentSlp ? ' selected' : ''}>${p.id} — ${p.label}</option>`
-    ).join('');
-    return `<optgroup label="${grp}">${opts}</optgroup>`;
-  }).join('');
-}
-
 function buildGebElektroSection(g) {
   const assets = getAssetsForBuilding(g.id);
   const count  = assets.length;
@@ -500,12 +488,7 @@ function buildGebElektroSection(g) {
       </div>
       <div class="geb-elektro-rows" id="geb-elektro-rows-${g.id}"${isOpen ? '' : ' style="display:none;"'}>
         ${rows}
-        <div class="geb-elektro-dach-sub">
-          ${buildDachSection(g, { showPvBtn: true })}
-        </div>
-        <div class="geb-elektro-dach-sub">
-          ${buildGebVerbraucherSection(g)}
-        </div>
+        ${/* Lastschätzung: Reiter Planung › Strom › Verbrauch (58-verbrauch-reiter.js) */ window.verbrauchVerweisHtml?.(g) || ''}
       </div>
     </div>`;
 }
@@ -528,125 +511,10 @@ window.openAssetFromGeb = function(assetId) {
   }
 };
 
-// Programmatischer Asset-Props-Update (für externe Aufrufer)
-window.updateVerbrAssetProp = function(assetId, field, value, gId) {
-  const asset = (window.ASSETS?.items || []).find(a => a.id === assetId);
-  if (!asset) return;
-  if (!asset.props) asset.props = {};
-  if (field === 'leistungKW') {
-    const v = parseFloat(value);
-    asset.props.leistungKW = isNaN(v) ? null : v;
-  } else {
-    asset.props[field] = value;
-  }
-  if (gId != null) _rerenderCard(gId);
-};
-
-// ── Leistungsschätzung-Sektion (eigener Reiter, default eingeklappt) ────────
-if (!window._gebVerbrOpen) window._gebVerbrOpen = {};
-
-function buildGebVerbraucherSection(g) {
-  const assets  = getAssetsForBuilding(g.id);
-  const verbr   = assets.find(a => a.type === 'Verbraucher');
-  const isOpen  = window._gebVerbrOpen[g.id] !== false; // default: ausgeklappt
-
-  const slpTyp  = verbr?.props?.slpTyp || 'G0';
-  const existKw = verbr?.props?.leistungKW;
-  const fl      = parseFloat(g.flaeche) || 0;
-  const wpm2    = getElSlpWpm2(slpTyp);
-  const autoKw  = fl > 0 ? Math.round(fl * wpm2 / 1000 * 10) / 10 : null;
-  const dispKw  = existKw != null ? existKw : (autoKw ?? '');
-  const badge   = existKw != null
-    ? existKw + ' kW'
-    : autoKw != null ? '~' + autoKw + ' kW' : '—';
-
-  return `
-    <div class="geb-dach-section" style="border-top-color:var(--c-blue);">
-      <div class="geb-dach-hdr" data-click="toggleGebVerbr(${g.id})">
-        <span class="geb-dach-hdr-icon" style="color:var(--c-blue);">⚡</span>
-        <span class="geb-dach-hdr-label">Leistungsschätzung</span>
-        <span class="geb-dach-kwp-badge" id="geb-verbr-badge-${g.id}" style="color:var(--c-blue);">${badge}</span>
-        <span class="geb-dach-chevron${isOpen ? '' : ' rotated'}">▾</span>
-      </div>
-      <div class="geb-dach-rows" id="geb-verbr-rows-${g.id}"${isOpen ? '' : ' style="display:none;"'}>
-        <div style="display:grid;grid-template-columns:1fr 84px;gap:5px;margin-top:4px;">
-          <div class="inp-group">
-            <div class="inp-label">BDEW-Lastprofil</div>
-            <select class="inp-field" id="geb-verbr-slp-${g.id}"
-              data-change="updateGebVerbrSlp(${g.id},this.value)">
-              ${_buildVerbrSlpOptions(slpTyp)}
-            </select>
-          </div>
-          <div class="inp-group">
-            <div class="inp-label">Leistung (kW)</div>
-            <input class="inp-field" type="number" step="0.1"
-              id="geb-verbr-kw-${g.id}"
-              value="${escVal(dispKw)}" placeholder="—"/>
-          </div>
-        </div>
-        ${fl > 0
-          ? `<div id="geb-verbr-formel-${g.id}" style="font-size:11px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;">
-               ↳ ${Math.round(fl)} m² × <a data-click="openElSlpManager(${g.id})" title="W/m²-Annahmen verwalten / Profile hinzufügen" style="color:var(--c-blue);cursor:pointer;text-decoration:underline dotted;">${wpm2} W/m²</a> ÷ 1000 = ${autoKw} kW (${slpTyp})
-             </div>`
-          : `<div id="geb-verbr-formel-${g.id}" style="font-size:11px;color:rgba(249,168,37,.7);margin-top:2px;">↳ Keine Fläche — manuelle Eingabe (<a data-click="openElSlpManager(${g.id})" style="color:var(--c-blue);cursor:pointer;text-decoration:underline dotted;">W/m² verwalten</a>)</div>`}
-        ${verbr
-          ? `<button class="btn-xs" data-click="overwriteVerbrAsset(${g.id})"
-               style="width:100%;margin-top:6px;display:flex;justify-content:center;gap:4px;border-color:var(--c-blue);color:var(--c-blue);">
-               SLP + kW → Verbraucher-Asset überschreiben
-             </button>`
-          : `<div style="font-size:11px;color:rgba(249,168,37,.7);margin-top:5px;">⚠ Kein Verbraucher-Asset vorhanden</div>`}
-      </div>
-    </div>`;
-}
-
-window.toggleGebVerbr = function(gId) {
-  if (!window._gebVerbrOpen) window._gebVerbrOpen = {};
-  const wasOpen = window._gebVerbrOpen[gId] !== false; // default open
-  window._gebVerbrOpen[gId] = !wasOpen;
-  const rows    = document.getElementById(`geb-verbr-rows-${gId}`);
-  const chevron = rows?.previousElementSibling?.querySelector('.geb-dach-chevron');
-  if (!rows) return;
-  rows.style.display = wasOpen ? 'none' : '';
-  chevron?.classList.toggle('rotated', wasOpen); // rotated = closed
-};
-
-// Wenn SLP im Leistungsschätzung-Reiter ändert: kW-Schätzung, Formel & Badge live aktualisieren
-window.updateGebVerbrSlp = function(gId, slpId) {
-  const g   = window.gebaeude?.find(x => x.id === gId);
-  if (!g) return;
-  const fl     = parseFloat(g.flaeche) || 0;
-  const wpm2   = getElSlpWpm2(slpId);
-  const autoKw = fl > 0 ? Math.round(fl * wpm2 / 1000 * 10) / 10 : null;
-  const kwInp  = document.getElementById(`geb-verbr-kw-${gId}`);
-  if (kwInp && autoKw != null) kwInp.value = autoKw;
-  // Formel-Zeile live nachziehen
-  const formel = document.getElementById(`geb-verbr-formel-${gId}`);
-  if (formel && fl > 0) {
-    formel.innerHTML = `↳ ${Math.round(fl)} m² × <a data-click="openElSlpManager(${gId})" title="W/m²-Annahmen verwalten / Profile hinzufügen" style="color:var(--c-blue);cursor:pointer;text-decoration:underline dotted;">${wpm2} W/m²</a> ÷ 1000 = ${autoKw} kW (${slpId})`;
-  }
-  // Badge live nachziehen (zeigt die aktuelle Schätzung)
-  const badge = document.getElementById(`geb-verbr-badge-${gId}`);
-  if (badge && autoKw != null) badge.textContent = '~' + autoKw + ' kW';
-};
-
 // W/m²-Annahmen verwalten — öffnet das SLP-Registry-Modal; nach Schließen Karte neu rendern,
 // damit geänderte W/m²-Werte in Schätzung, Formel & Badge durchschlagen.
 window.openElSlpManager = function(gId) {
-  showElSlpModal(() => { if (gId != null) _rerenderCard(gId); });
-};
-
-// Werte aus Leistungsschätzung in Verbraucher-Asset schreiben
-window.overwriteVerbrAsset = function(gId) {
-  const verbr = getAssetsForBuilding(gId).find(a => a.type === 'Verbraucher');
-  if (!verbr) { alert('Kein Verbraucher-Asset für dieses Gebäude gefunden.'); return; }
-  const slpSel = document.getElementById(`geb-verbr-slp-${gId}`);
-  const kwInp  = document.getElementById(`geb-verbr-kw-${gId}`);
-  const slp    = slpSel?.value || 'G0';
-  const kw     = parseFloat(kwInp?.value);
-  if (!verbr.props) verbr.props = {};
-  verbr.props.slpTyp    = slp;
-  verbr.props.leistungKW = isNaN(kw) ? null : kw;
-  _rerenderCard(gId);
+  showElSlpModal(() => { if (gId != null) _rerenderCard(gId); window.verbrauchRender?.(); });
 };
 
 // Berechnetes kWp (Dach & PV) in PV-Asset schreiben (inkl. Ausrichtung + Spez)
@@ -1060,231 +928,59 @@ function _wireNutzungstypenModal(modal) {
   modal.querySelector('#nt-cancel-btn')?.addEventListener('click', () => refresh());
 }
 
-// ── Dach & PV Sektion im Gebäude-Panel (eingeklappt) ────────────────────────
-if (!window._gebDachCollapsed) window._gebDachCollapsed = {};
+// ── Dach-Sektion im Gebäude-Panel (eingeklappt) ──────────────────────────────
+// Nur die Dacheigenschaften des Gebäudes. Belegung, kWp und Bautermin der PV
+// werden im Reiter Planung › Strom › Photovoltaik bearbeitet (25-pv-modus.js);
+// hier steht nur eine Verweiszeile dorthin.
+if (!window._gebDachOffen) window._gebDachOffen = {};
 
 const DACHFORM_LABELS = { flach: 'Flachdach', sattel: 'Satteldach', walm: 'Walmdach', pult: 'Pultdach' };
 const AZIMUT_HINT = '0°=Nord · 90°=Ost · 180°=Süd · 270°=West';
 
-function buildDachSection(g, opts = {}) {
-  const isOpen    = !window._gebDachCollapsed[g.id];
+function _gebPvVerweisHtml(g) {
+  const kwp = calcGebKwpKorr(g);
+  const fmt1 = x => x.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+  let text;
+  if (g.pvModus === 'flaechen' && _hasBelegung(g)) {
+    text = `${fmt1(kwp)} kWp · ${getGebPvModules(g).count.toLocaleString('de-DE')} Module`;
+  } else if (g.pvModus === 'pauschal') {
+    text = `pauschal ${fmt1(kwp)} kWp (Dachanteil ${g.pvDachanteil || 30} %)`;
+  } else {
+    text = 'noch nicht belegt';
+  }
+  return `
+    <div class="geb-pv-verweis">
+      <span class="geb-pv-verweis-icon">☀</span>
+      <span class="geb-pv-verweis-text">PV: ${text}</span>
+      <button class="btn-xs" data-click="pvModusStartFuer(${g.id})"
+        title="Belegung, kWp und Bautermin der PV im Reiter Planung › Strom › Photovoltaik bearbeiten">Photovoltaik →</button>
+    </div>`;
+}
+
+function buildDachSection(g) {
+  const isOpen    = window._gebDachOffen[g.id] === true;
   const dachform  = g.dachform  || 'sattel';
   const azimut    = g.dachAzimut  ?? '';
   const neigung   = g.dachNeigung ?? '';
   const defNei    = getDachDefaultNeigung(dachform);
-  const kwpBase   = calcGebKwp(g);
-  const kwpKorr   = calcGebKwpKorr(g);
-  // Anzeige-Faktor konsistent zur korrigierten kWp (deckt auch den Satteldach-
-  // Zweiseiten-Mittelwert ab), Fallback auf den reinen Azimut/Neigungs-Faktor.
-  const korrFak   = kwpBase > 0 ? kwpKorr / kwpBase : getPvKorrFaktor(g);
   const hasPoly   = !!(g.polygon && g.polygon.length >= 3);
+  const isSattel  = dachform === 'sattel';
 
-  // Korrekturfaktor-Farbe
-  const fakCol = korrFak >= 0.9 ? '#4caf50' : korrFak >= 0.75 ? '#f9a825' : '#e53935';
+  const kurz = [DACHFORM_LABELS[dachform] || dachform,
+    g.dachAzimut != null ? `${g.dachAzimut}°` : '',
+    dachform !== 'flach' ? `${g.dachNeigung ?? defNei}° Neigung` : ''].filter(Boolean).join(' · ');
 
-  const azimutField = `
-    <div class="inp-group">
-      <div class="inp-label" title="${AZIMUT_HINT}">Ausrichtung (°) <span style="opacity:.5;cursor:help;">ℹ</span></div>
-      <div style="display:flex;gap:4px;">
-        <input class="inp-field" type="number" min="0" max="359"
-          value="${escVal(azimut)}" placeholder="${g.dachAutoAzimut ? 'auto' : '180'}"
-          data-input="updateGebDach(${g.id},'dachAzimut',this.value)"
-          style="flex:1;"/>
-        ${hasPoly
-          ? `<button class="btn-xs" title="Aus Polygon-Längsachse ermitteln"
-               data-click="ermittleAzimut(${g.id})">🔄</button>`
-          : ''}
-      </div>
-      ${g.dachAutoAzimut
-        ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">↳ auto (Polygon)</div>`
-        : g.dachQuelle === 'osm' && g.dachAzimut != null
-          ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">↳ aus OSM (roof:direction)</div>`
-          : ''}
-    </div>`;
-
-  const pvAsset = opts.showPvBtn
-    ? getAssetsForBuilding(g.id).find(a => a.type === 'PV')
-    : null;
-  const pvOverwriteBtn = (pvAsset && kwpKorr > 0) ? `
-    <button class="btn-xs" style="width:100%;margin-top:5px;display:flex;justify-content:center;gap:4px;border-color:var(--c-amber);color:var(--c-amber);"
-      data-click="overwritePvAsset(${g.id})">
-      ☀ ${kwpKorr.toFixed(1)} kWp → PV-Asset überschreiben
-    </button>` : '';
-
-  const modus = g.pvModus || 'flaechen';
-
-  // ── Bautermin der Dachanlage (= Baujahr des PV-Assets) ───────────────────
-  // Bestimmt, ab welchem Jahr die Anlage im Jahres-Slider/Fahrplan aktiv ist.
-  // Ohne Eintrag erbt das Asset das Gebäude-Baujahr.
-  const pvAssetBj = getAssetsForBuilding(g.id).find(a => a.type === 'PV');
-  const pvBjRow = `
-    <div class="inp-group" style="margin-top:6px;">
-      <div class="inp-label" title="Jahr der Inbetriebnahme der Dachanlage — steuert ab wann sie im Jahres-Slider und im Fahrplan zählt. Leer = wie Gebäude.">Bautermin PV (Jahr)</div>
-      <input class="inp-field" type="number" min="1800" max="2100" step="1"
-        value="${escVal(g.pvBaujahr)}" placeholder="${g.baujahr || 'wie Gebäude'}"
-        data-change="updateGebPvBaujahr(${g.id},this.value)"/>
-      ${pvAssetBj
-        ? ''
-        : '<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">↳ wird beim automatischen Anlegen des PV-Assets übernommen</div>'}
-    </div>`;
-
-  // ── Modus-Umschalter: Pauschal (Dachanteil) vs. Flächen zeichnen ──────────
-  const modeToggle = `
-    <div style="display:flex;gap:4px;margin-top:6px;">
-      <button class="btn-xs" style="flex:1;${modus==='pauschal'?'border-color:var(--accent);color:var(--accent);background:rgba(79,195,247,0.08);':''}"
-        data-click="setGebPvModus(${g.id},'pauschal')">Pauschal</button>
-      <button class="btn-xs" style="flex:1;${modus==='flaechen'?'border-color:var(--c-amber);color:var(--c-amber);background:rgba(255,213,79,0.08);':''}"
-        data-click="setGebPvModus(${g.id},'flaechen')">✎ Flächen zeichnen</button>
-    </div>`;
-
-  // ── PAUSCHAL: Neigung + Dachanteil% + Basis/Faktor/Korr ───────────────────
-  const pauschalUI = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:4px;">
-      <div class="inp-group">
-        <div class="inp-label">Neigung (°)</div>
-        <input class="inp-field" type="number" min="0" max="75"
-          value="${escVal(neigung)}" placeholder="${defNei}"
-          data-input="updateGebDach(${g.id},'dachNeigung',this.value)"/>
-      </div>
-      <div class="inp-group">
-        <div class="inp-label">Dachanteil PV (%)</div>
-        <input class="inp-field" type="number" min="5" max="100" step="5"
-          value="${g.pvDachanteil || 30}"
-          data-input="updateGebPv(${g.id},'pvDachanteil',this.value)"/>
-      </div>
-    </div>
-    ${g.flaeche ? `
-    <div class="geb-dach-kwp-row">
-      <span>Basis</span><span>${kwpBase.toFixed(1)} kWp</span>
-      <span>Faktor</span>
-      <span style="color:${fakCol};font-weight:600;">${(korrFak * 100).toFixed(0)} %</span>
-      <span style="font-weight:600;">= Korr.</span>
-      <span style="color:${fakCol};font-weight:600;">${kwpKorr.toFixed(1)} kWp</span>
-    </div>
-    ${pvOverwriteBtn}` : ''}`;
-
-  // ── FLÄCHEN: Belegungs-/Sperrflächen zeichnen (Phase 1+2) ─────────────────
-  const flGcr = g.pvFlGcr != null ? g.pvFlGcr : pvGcrStandard(g.pvFlAusrichtung);
-  const flList = (g.pvFlaechen || []).map(fl => {
-    const isB = fl.typ !== 'sperr';
-    return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0;">
-      <span style="color:${isB ? '#ffd54f' : '#e53935'};">${isB ? '☀' : '⛔'}</span>
-      <span style="flex:1;">${isB ? 'Belegung' : 'Sperrfläche'}</span>
-      <span style="font-family:'DM Mono',monospace;color:var(--muted);">${(fl.flaeche || 0).toFixed(0)} m²</span>
-      <button class="btn-xs red" data-click="removeGebPvFlaeche(${g.id},${fl.id})" title="Entfernen">✕</button>
-    </div>`;
-  }).join('');
-  const netto = pvNettoFlaeche(g);
-  const _modRes  = (g.pvModus === 'flaechen' && _hasBelegung(g)) ? getGebPvModules(g) : null;
-  const modCount = _modRes ? _modRes.count : 0;
-  const isPitched = !!(g.dachform && g.dachform !== 'flach');
-  const isSattel  = g.dachform === 'sattel';
-  const splitTxt  = (isSattel && _modRes && _modRes.frontCount != null)
-    ? ` · 2-seitig ${_modRes.frontCount}/${_modRes.backCount}` : '';
-  const flBeleg = g.pvFlBelegung != null ? g.pvFlBelegung : PV_BELEGUNG_STANDARD;
-  const usedNei = g.dachNeigung != null ? g.dachNeigung : defNei;
-
-  // Steuerelemente je Dachform: Flachdach = GCR + Aufständerung · Schrägdach = Belegungsgrad
-  const usedAz = g.dachAzimut ?? 180;
-  const flaechenControls = isPitched ? `
-    <div style="font-size:11px;color:var(--muted);margin-top:6px;">${isSattel ? 'Ganze Dachfläche zeichnen — wird automatisch am First in zwei Seiten (Azimut + Gegenseite) geteilt. ' : 'Dachfläche je Dachseite zeichnen. '}Module liegen parallel zum Dach; Grundriss wird mit 1/cos(Neigung) auf die echte Dachfläche projiziert. Rand (${String(pvRegelnGlobal().rand).replace('.', ',')} m) bleibt frei.</div>
-    <div style="display:flex;flex-direction:column;gap:4px;margin-top:5px;">
-      <div class="inp-group">
-        <div class="inp-label" title="${PV_BELEGUNGSGRAD_TITEL}">Belegungsgrad (%)</div>
-        <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
-          <input type="range" min="40" max="100" step="5" value="${flBeleg}"
-            style="flex:1;cursor:pointer;accent-color:#ffd54f;height:4px;"
-            oninput="this.nextElementSibling.textContent=this.value+'%'"
-            data-change="updateGebPvFl(${g.id},'belegung',this.value)"/>
-          <span style="min-width:30px;text-align:right;font-size:12.5px;color:var(--c-amber);font-weight:600;">${flBeleg}%</span>
-        </div>
-      </div>
-      <div class="inp-group">
-        <div class="inp-label" title="Neigung der Dachfläche in Grad">Neigung (°)</div>
-        <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
-          <input type="range" min="5" max="75" step="5" value="${usedNei}"
-            style="flex:1;cursor:pointer;accent-color:#80deea;height:4px;"
-            oninput="this.nextElementSibling.textContent=this.value+'°'"
-            data-change="updateGebDach(${g.id},'dachNeigung',this.value)"/>
-          <span style="min-width:28px;text-align:right;font-size:12.5px;color:var(--c-teal);font-weight:600;">${usedNei}°</span>
-        </div>
-      </div>
-      <div class="inp-group">
-        <div class="inp-label" title="Ausrichtung der Südseite in Grad (0=Nord, 180=Süd, 90=Ost)">Azimut (°)</div>
-        <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
-          <input type="range" min="0" max="355" step="5" value="${usedAz}"
-            style="flex:1;cursor:pointer;accent-color:#ef9a9a;height:4px;"
-            oninput="this.nextElementSibling.textContent=this.value+'°'"
-            data-change="updateGebDach(${g.id},'dachAzimut',this.value)"/>
-          <span style="min-width:28px;text-align:right;font-size:12.5px;color:var(--c-red);font-weight:600;">${usedAz}°</span>
-        </div>
-      </div>
-      ${isSattel ? `
-      <div style="display:flex;align-items:center;gap:4px;">
-        <button class="btn-xs" style="flex:1;" data-click="startGebFirstDraw(${g.id})" title="Firstlinie auf dem Satellitenbild nachzeichnen (2 Klicks) — nötig bei schiefen/asymmetrischen Grundrissen">First neu zeichnen</button>
-        ${g.pvRidgeOverride ? `<button class="btn-xs" data-click="resetGebFirst(${g.id})" title="First zurück auf automatische Mitte">↺</button>` : ''}
-      </div>
-      ${g.pvRidgeOverride ? '<div style="font-size:11px;color:var(--c-amber);">First manuell gesetzt.</div>' : ''}` : ''}
-    </div>` : `
-    <div style="font-size:11px;color:var(--muted);margin-top:6px;">Belegbare Dachflächen zeichnen (Satellit), Sperrflächen für Kamine/Gauben/Verschattung abziehen. ${(() => { const rg = pvRegelnGlobal(), z = x => String(x).replace('.', ','); return `Rand (${z(rg.randFlach)} m) bleibt frei${rg.gangAlle > 0 && rg.gangBreite > 0 ? `, Wartungsgang ${z(rg.gangBreite)} m alle ${z(rg.gangAlle)} m` : ''}${rg.feldMax > 0 && rg.gangBreite > 0 ? `, Felder höchstens ${z(rg.feldMax)} m lang` : ''}`; })()}; Ost-West-Aufständerung als Doppelreihen parallel zum Gebäude, ~88 % Ertragsfaktor.</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;">
-      <div class="inp-group">
-        <div class="inp-label" title="Ground Coverage Ratio: Anteil Modulfläche an gezeichneter Fläche">GCR (% Belegung)</div>
-        <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
-          <input type="range" min="5" max="95" step="5" value="${flGcr}"
-            style="flex:1;cursor:pointer;accent-color:#ffd54f;height:4px;"
-            oninput="this.nextElementSibling.textContent=this.value+'%'"
-            data-change="updateGebPvFl(${g.id},'gcr',this.value)"/>
-          <span style="min-width:30px;text-align:right;font-size:12.5px;color:var(--c-amber);font-weight:600;">${flGcr}%</span>
-        </div>
-      </div>
-      <div class="inp-group">
-        <div class="inp-label">Aufständerung</div>
-        <select class="inp-field" data-change="updateGebPvFl(${g.id},'ausrichtung',this.value)">
-          <option value="sued" ${g.pvFlAusrichtung!=='ostwest'?'selected':''}>Süd</option>
-          <option value="ostwest" ${g.pvFlAusrichtung==='ostwest'?'selected':''}>Ost-West</option>
-        </select>
-      </div>
-    </div>`;
-
-  // Ergebnis-Zeile: Schrägdach zeigt Ertragsfaktor (Azimut/Neigung), Flachdach nicht (=1)
-  const effTxt = _modRes ? pvEffektiveBelegungText(g) : '';
-  const effZeile = (effTxt ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;" title="Modulfläche je Netto-Dachfläche (Belegung − Sperrflächen, auf die Dachneigung projiziert)">${effTxt}</div>` : '')
-    + (_modRes ? pvAbschlagBlockHtml(g) : '');
-  const flResult = netto > 0 ? (isPitched ? `
-    <div class="geb-dach-kwp-row">
-      <span>${modCount} Mod.${splitTxt}</span><span>${kwpBase.toFixed(1)} kWp</span>
-      <span>Faktor</span><span style="color:${fakCol};font-weight:600;">${(korrFak * 100).toFixed(0)} %</span>
-      <span style="font-weight:600;">= Korr.</span><span style="color:${fakCol};font-weight:600;">${kwpKorr.toFixed(1)} kWp</span>
-    </div>
-    ${effZeile}
-    ${pvOverwriteBtn}` : `
-    <div class="geb-dach-kwp-row">
-      <span>${modCount} Module</span><span>${netto.toFixed(0)} m²</span>
-      <span>GCR</span><span style="font-weight:600;">${flGcr} %</span>
-      <span style="font-weight:600;">= PV</span><span style="color:var(--c-amber);font-weight:600;">${kwpKorr.toFixed(1)} kWp</span>
-    </div>
-    ${effZeile}
-    ${pvOverwriteBtn}`) : '';
-
-  const flaechenUI = `
-    ${flaechenControls}
-    <div style="display:flex;gap:4px;margin-top:5px;">
-      <button class="btn-xs" style="flex:1;border-color:var(--c-amber);color:var(--c-amber);" data-click="startGebPvDraw(${g.id},'belegung')">☀ + Belegungsfläche</button>
-      <button class="btn-xs red" style="flex:1;" data-click="startGebPvDraw(${g.id},'sperr')">⛔ + Sperrfläche</button>
-    </div>
-    <button class="btn-xs" style="width:100%;margin-top:4px;border-color:var(--c-amber);color:var(--c-amber);"
-      data-click="pvModusStartFuer(${g.id})"
-      title="PV-Modus auf der Karte: Dach anklicken = erste Ecke, der Modus bleibt an — auch für die übrigen Gebäude">Im PV-Modus zeichnen</button>
-    ${flList ? `<div style="margin-top:6px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">${flList}</div>` : '<div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;">Noch keine Fläche gezeichnet.</div>'}
-    ${flResult}`;
+  const lod2Zeile = g.dachFlaechen?.length ? `
+    <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4;">
+      ${g.dachLod2?.quelle === 'grundriss' ? 'Aus Grundriss' : 'LoD2'}: ${g.dachFlaechen.length} Dachflächen${g.dachLod2 ? ` · Traufe ${g.dachLod2.traufeM.toFixed(1)} m · First ${g.dachLod2.firstM.toFixed(1)} m` : ''}
+    </div>` : '';
 
   return `
     <div class="geb-dach-section">
       <div class="geb-dach-hdr" data-click="toggleGebDach(${g.id})">
-        <span class="geb-dach-hdr-icon">☀</span>
-        <span class="geb-dach-hdr-label">Dach &amp; PV</span>
-        <span class="geb-dach-kwp-badge">${kwpKorr > 0 ? kwpKorr.toFixed(1) + ' kWp' : '—'}</span>
+        <span class="geb-dach-hdr-icon">⌂</span>
+        <span class="geb-dach-hdr-label">Dach</span>
+        <span class="geb-dach-kwp-badge" style="color:var(--muted);font-weight:400;">${kurz}</span>
         <span class="geb-dach-chevron${isOpen ? '' : ' rotated'}">▾</span>
       </div>
       <div class="geb-dach-rows" id="geb-dach-rows-${g.id}"${isOpen ? '' : ' style="display:none;"'}>
@@ -1297,26 +993,51 @@ function buildDachSection(g, opts = {}) {
             </select>
             ${g.dachQuelle === 'osm' ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;" title="Aus den OSM-Tags roof:shape / roof:angle übernommen">↳ aus OSM${g.dachNeigung != null ? ` · ${g.dachNeigung}°` : ''}</div>` : ''}
           </div>
-          ${azimutField}
+          <div class="inp-group">
+            <div class="inp-label" title="${AZIMUT_HINT}">Ausrichtung (°) <span style="opacity:.5;cursor:help;">ℹ</span></div>
+            <div style="display:flex;gap:4px;">
+              <input class="inp-field" type="number" min="0" max="359"
+                value="${escVal(azimut)}" placeholder="${g.dachAutoAzimut ? 'auto' : '180'}"
+                data-change="updateGebDach(${g.id},'dachAzimut',this.value)"
+                style="flex:1;"/>
+              ${hasPoly
+                ? `<button class="btn-xs" title="Aus Polygon-Längsachse ermitteln"
+                     data-click="ermittleAzimut(${g.id})">🔄</button>`
+                : ''}
+            </div>
+            ${g.dachAutoAzimut
+              ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">↳ auto (Polygon)</div>`
+              : g.dachQuelle === 'osm' && g.dachAzimut != null
+                ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">↳ aus OSM (roof:direction)</div>`
+                : ''}
+          </div>
+          ${dachform !== 'flach' ? `
+          <div class="inp-group">
+            <div class="inp-label">Neigung (°)</div>
+            <input class="inp-field" type="number" min="0" max="75"
+              value="${escVal(neigung)}" placeholder="${defNei}"
+              data-change="updateGebDach(${g.id},'dachNeigung',this.value)"/>
+          </div>` : ''}
         </div>
-        ${modeToggle}
-        ${modus === 'flaechen' ? flaechenUI : pauschalUI}
-        ${pvBjRow}
-        ${/* §-Zeile der landesrechtlichen PV-Pflicht (09e). Über window, weil ein
-              Import auf 09e diesen Altkern-Zyklus vergrößern würde. Leer, wenn für
-              dieses Gebäude keine Pflicht greift. */ ''}
-        ${window.pvPflichtBadgeHtml?.(g.id) || ''}
+        ${isSattel ? `
+        <div style="display:flex;align-items:center;gap:4px;margin-top:5px;">
+          <button class="btn-xs" style="flex:1;" data-click="startGebFirstDraw(${g.id})" title="Firstlinie auf dem Satellitenbild nachzeichnen (2 Klicks) — nötig bei schiefen/asymmetrischen Grundrissen">First neu zeichnen</button>
+          ${g.pvRidgeOverride ? `<button class="btn-xs" data-click="resetGebFirst(${g.id})" title="First zurück auf automatische Mitte">↺</button>` : ''}
+        </div>
+        ${g.pvRidgeOverride ? '<div style="font-size:11px;color:var(--c-amber);">First manuell gesetzt.</div>' : ''}` : ''}
+        ${lod2Zeile}
+        ${_gebPvVerweisHtml(g)}
       </div>
     </div>`;
 }
 
 window.toggleGebDach = function(gId) {
-  window._gebDachCollapsed[gId] = !window._gebDachCollapsed[gId];
+  window._gebDachOffen[gId] = !window._gebDachOffen[gId];
   const rows    = document.getElementById(`geb-dach-rows-${gId}`);
   const chevron = rows?.previousElementSibling?.querySelector('.geb-dach-chevron');
   if (!rows) return;
-  rows.style.display = window._gebDachCollapsed[gId] ? 'none' : '';
-  chevron?.classList.toggle('rotated', !!window._gebDachCollapsed[gId]);
+  rows.style.display = window._gebDachOffen[gId] ? '' : 'none';
+  chevron?.classList.toggle('rotated', !window._gebDachOffen[gId]);
 };
 
 window.updateGebDach = function(gId, field, value) {
@@ -2578,6 +2299,7 @@ export function _renderExpandedPanel(g, stats) {
           data-input="updateField(${g.id},'flaeche',this.value)"/>
       </div>
     </div>
+    ${buildDachSection(g)}
     ${buildGebElektroSection(g)}
     ${netzwertHtml}
     ${g.netzVerlustKW != null ? `<div style="margin-top:6px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);font-size:12px;font-family:'DM Mono',monospace;display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;">
@@ -3802,6 +3524,7 @@ export function _buildProjectData() {
     customNutzungstypen: NUTZUNGSTYPEN_CUSTOM.map(t => ({ ...t })),
     customElSlpProfiles: ELSLP_CUSTOM.map(p => ({ ...p })),
     elSlpWpm2Overrides:  { ...ELSLP_WPM2 },
+    stromLastMethode:    window.stromLastMethode || null,   // Reiter Strom › Verbrauch (58)
     // ERA5-Standort-Winddaten (window-Bridge aus 13q-wind-ertrag.js) — einmal geladen,
     // sollen sie Reload/Offline-Nutzung überleben (~60 KB, Stundenwerte gerundet)
     windStandortDaten: (typeof window.windSiteSerialize === 'function' ? window.windSiteSerialize() : null),
@@ -4922,6 +4645,7 @@ function _applyProjectData(project) {
         Object.keys(ELSLP_WPM2).forEach(k => delete ELSLP_WPM2[k]);
         Object.assign(ELSLP_WPM2, project.elSlpWpm2Overrides);
       }
+      window.stromLastMethode = project.stromLastMethode || null;
 
       // ERA5-Standort-Winddaten wiederherstellen — bzw. leeren, wenn das geladene
       // Projekt keine enthält (sonst blieben Daten der vorigen Liegenschaft aktiv)

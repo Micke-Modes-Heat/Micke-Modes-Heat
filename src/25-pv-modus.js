@@ -377,7 +377,7 @@ function _reiterHost() {
 }
 
 /**
- * Einstieg aus der „Dach & PV"-Sektion eines Gebäudes: Modus starten und
+ * Einstieg aus der Dach-Sektion der Gebäudekarte (Verweis „Photovoltaik →“): Modus starten und
  * dieses Dach ins Panel holen. Von dort geht es ohne Rückweg in die Liste
  * mit den übrigen Dächern weiter.
  */
@@ -1655,6 +1655,7 @@ function _aktivBlock(g) {
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;">${escHtml(_name(g))}</span>
       <span style="font-family:'DM Mono',monospace;color:${GELB};font-size:12.5px;">${kwp.toFixed(1)} kWp</span>
     </div>
+    ${_pauschalHtml(g)}
     ${g.dachFlaechen?.length ? `
     <div style="font-size:11px;color:var(--muted);margin-bottom:4px;line-height:1.4;"
       title="${g.dachLod2?.quelle === 'grundriss' ? 'Aus dem Grundriss berechnet (Flügel mit Sattel-/Walmdach, Kehlen an den Anschlüssen) — folgt Dachform und Neigung des Gebäudes' : 'Amtliches 3D-Gebäudemodell: jede Dachfläche mit eigener Neigung und Ausrichtung'}">
@@ -1704,8 +1705,51 @@ function _aktivBlock(g) {
       <span style="font-weight:600;">= PV</span><span style="color:${GELB};font-weight:600;">${kwp.toFixed(1)} kWp</span>
     </div>` : ''}
     ${/* Verschattung durch Bäume und Nachbargebäude (40-baeume.js) */ window.baumVerschattungZeileHtml?.(g) || ''}
+    ${_bauterminHtml(g)}
     ${/* Landesrechtliche PV-Pflicht dieses Dachs (09e, über window — siehe dort). */ ''}
     ${window.pvPflichtBadgeHtml?.(g.id) || ''}`;
+}
+
+// Bautermin der Dachanlage (= Baujahr des PV-Assets), früher in der Gebäudekarte
+function _bauterminHtml(g) {
+  const hatAsset = getAssetsForBuilding(g.id).some(a => a.type === 'PV');
+  return `
+    <div class="inp-group" style="margin-top:6px;">
+      <div class="inp-label" title="Jahr der Inbetriebnahme der Dachanlage — steuert ab wann sie im Jahres-Slider und im Fahrplan zählt. Leer = wie Gebäude.">Bautermin PV (Jahr)</div>
+      <input class="inp-field" type="number" min="1800" max="2100" step="1"
+        value="${g.pvBaujahr ?? ''}" placeholder="${g.baujahr || 'wie Gebäude'}"
+        data-change="pvmBaujahr(${g.id},this.value)"/>
+      ${hatAsset ? '' : '<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">↳ wird beim Anlegen des PV-Assets übernommen</div>'}
+    </div>`;
+}
+
+export function pvmBaujahr(gId, wert) {
+  window.updateGebPvBaujahr?.(gId, wert);
+  pvModusRender();
+}
+
+// Altfall „pauschal" (Dachanteil): nur noch hier sichtbar, Umstieg auf Flächen
+function _pauschalHtml(g) {
+  if (g.pvModus !== 'pauschal') return '';
+  return `
+    <div class="pvr-warn" style="margin-bottom:6px;">
+      Dieses Dach wird noch pauschal gerechnet (Dachanteil
+      <input class="inp-field" type="number" min="5" max="100" step="5" style="width:52px;display:inline-block;padding:1px 4px;"
+        value="${g.pvDachanteil || 30}" data-change="pvmDachanteil(${g.id},this.value)"/> %).
+      <button class="btn-xs" style="margin-top:4px;width:100%;" data-click="pvmAufFlaechen(${g.id})"
+        title="Auf Belegungsflächen umstellen — danach Grundriss oder Dachflächen übernehmen">Auf Flächen umstellen</button>
+    </div>`;
+}
+
+export function pvmDachanteil(gId, wert) {
+  window.updateGebPv?.(gId, 'pvDachanteil', wert);
+  pvModusRender();
+}
+
+export function pvmAufFlaechen(gId) {
+  window.setGebPvModus?.(gId, 'flaechen');
+  pvModusRender();
+  pvModusMarkiereKarte();
 }
 
 function _vorgabeBlock() {

@@ -109,6 +109,8 @@ export function uiSchritt(id, opt = {}) {
   if (opt.sparte) _ui.sparte = opt.sparte;
   // Der PV-Modus ist der Reiter Planung › Strom › Photovoltaik — woanders hin = Modus aus
   if (window.pvModusAktiv && !(s.id === 'planung' && _ui.sparte === 'strom')) window.pvModusStop?.();
+  // Ebenso die Kartenfärbung des Reiters Verbrauch
+  if (window.verbrauchKarteAn && !(s.id === 'planung' && _ui.sparte === 'strom')) window.verbrauchKarte?.(false);
   _merken();
   const body = document.body;
   UI_SCHRITTE.forEach(x => body.classList.toggle('ui-schritt-' + x.id, x.id === s.id));
@@ -303,7 +305,7 @@ const _CK_LOS = {
   waermenetz: () => { uiSchritt('planung', { sparte: 'waerme' }); uiWaermeTab('netz'); },
   erzeuger: () => { uiSchritt('planung', { sparte: 'waerme' }); uiWaermeTab('erzeuger'); },
   waermeErg: () => { uiSchritt('auswertung'); _abschnittOeffnen('waerme'); },
-  stromlast: () => window.showAutofillWizard?.(),
+  stromlast: _strom('verbrauch'),
   referenz: () => window.toggleStromPanel?.(),
   stromnetz: _strom('netz'),
   bestandpruefung: _strom('pruefen', () => window.bestandPanelToggle?.()),
@@ -363,7 +365,7 @@ export function uiCheckliste() {
   const anschlussFehlt = [!nNap && 'NAP', !bezug && 'max. Bezug', !einsp && 'Einspeiselimit'].filter(Boolean);
   const stromListe = [
     p('stromlast', !nGeb ? 'leer' : nLast === nGeb ? 'ok' : 'offen', 'Stromverbrauch der Gebäude',
-      !nGeb ? 'Erst Gebäude laden' : nLast === nGeb ? `Alle ${nGeb} Gebäude mit Verbrauchswert` : `${nGeb - nLast} von ${nGeb} Gebäuden ohne Verbrauchswert — automatisch ermitteln`),
+      !nGeb ? 'Erst Gebäude laden' : nLast === nGeb ? `Alle ${nGeb} Gebäude mit Verbrauchswert` : `${nGeb - nLast} von ${nGeb} Gebäuden ohne Verbrauchswert — im Reiter Verbrauch schätzen`),
     p('referenz', ref ? 'ok' : 'offen', 'Gemessener Lastgang (Referenzjahr)', ref ? 'Referenzjahr gewählt' : 'Messjahr in den Strom-Grundlagen laden'),
     p('stromnetz', nNetzS ? 'ok' : 'offen', 'Bestandsnetz erfasst',
       nNetzS ? `${nStat} ${nStat === 1 ? 'Station' : 'Stationen'}, ${stromEdges.length} Kabel` : 'Bestandsplan digitalisieren oder Netz automatisch erzeugen'),
