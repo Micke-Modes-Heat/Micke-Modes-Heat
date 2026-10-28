@@ -17,7 +17,7 @@ import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, createAsset, d
 import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
 import { ELSLP_CUSTOM, ELSLP_WPM2, getElSlpProfiles, getElSlpGruppen, getElSlpById, getElSlpWpm2, showElSlpModal } from './13k-elslp-registry.js';
 import { activeVariantId, basisJahr, edgeKey, freiflaechen, lwWp, lwWpVisible, networkLocked, netzEdges, renderVariantenBar, stromNetzVisible, stromNodes, updateVariantBanner } from './01-globals-varianten.js';
-import { _invalidateStats, addGebaeude, attachPolygonLayer, calcAutoEnergy, removeGebaeude, toggleNetworkLock, ensureSatellite, setGlobalYear, updateField } from './02b-gebaeude.js';
+import { _invalidateStats, addGebaeude, attachPolygonLayer, calcAutoEnergy, gebaeudeKartenebenenEntfernen, removeGebaeude,toggleNetworkLock, ensureSatellite, setGlobalYear, updateField } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, clearTrasse, polygonAreaM2, polygonCenter, redrawFliessgewaesser, redrawLwWp, redrawTrasse, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
 import { attachFFLayer, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons, redrawFernwaerme, redrawGasKessel, redrawHeizoelKessel, redrawHhs, redrawPellets, renderFFPanel, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
 import { addNetzEdge, applyWaermeNetzGraph, autoGenerateNetz, calcGeoThermie, captureWaermeNetzGraph, clearNetz, recalcNetz, redrawGeo, syncVLTemps } from './03b-netz.js';
@@ -4278,11 +4278,8 @@ function _applyProjectData(project) {
       // besitzen dieses Feld noch nicht und starten deshalb bewusst ohne die
       // Monatswerte oder Lastgänge der zuvor geöffneten Liegenschaft.
       restoreWaermeGrundlagen(project.waermeGrundlagen || null);
-      window.gebaeude.forEach(g => {
-        if(g.polygonLayer) map.removeLayer(g.polygonLayer);
-        if(g.circleMarker) map.removeLayer(g.circleMarker);
-        if(g.labelMarker) map.removeLayer(g.labelMarker);
-      });
+      // inkl. PV-Flächen/Module — sonst bleiben die des vorher geöffneten Projekts stehen
+      window.gebaeude.forEach(gebaeudeKartenebenenEntfernen);
       setGebaeude([]);
       clearNetz();
       clearTrasse();
@@ -4973,11 +4970,7 @@ function _applyProjectData(project) {
 
 export function loadGebaeudeFromParent(gebaeudeArray) {
   if (!Array.isArray(gebaeudeArray)) return;
-  window.gebaeude.forEach(g => {
-    if (g.polygonLayer) map.removeLayer(g.polygonLayer);
-    if (g.circleMarker) map.removeLayer(g.circleMarker);
-    if (g.labelMarker) map.removeLayer(g.labelMarker);
-  });
+  window.gebaeude.forEach(gebaeudeKartenebenenEntfernen);
   setGebaeude([]);
   clearNetz();
   clearTrasse();

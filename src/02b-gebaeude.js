@@ -531,6 +531,18 @@ export function attachPolygonLayer(g){
   if (!_batchImporting) updateViz();
 }
 
+// Alle Kartenebenen eines Gebäudes abräumen — auch PV-Flächen und Module.
+// Wer Gebäude aus window.gebaeude wirft, ohne das hier aufzurufen, lässt
+// sie verwaist auf der Karte stehen (Klick darauf zeigt das alte Gebäude).
+export function gebaeudeKartenebenenEntfernen(g){
+  if(g.polygonLayer) map.removeLayer(g.polygonLayer);
+  if(g.circleMarker) map.removeLayer(g.circleMarker);
+  if(g.labelMarker) map.removeLayer(g.labelMarker);
+  if(g.hzLabelMarker) map.removeLayer(g.hzLabelMarker);
+  if(g.pvFlaechen) g.pvFlaechen.forEach(f=>{ if(f.layer) map.removeLayer(f.layer); if(f.svgLayer) map.removeLayer(f.svgLayer); });
+  if(g._pvModuleLayer){ map.removeLayer(g._pvModuleLayer); g._pvModuleLayer=null; }
+}
+
 export async function removeGebaeude(id){
   const g=window.gebaeude.find(x=>x.id===id);
   if(!g) return false;
@@ -550,12 +562,7 @@ export async function removeGebaeude(id){
     clearNetz();
     if(centralSelect) centralSelect.value='';
   }
-  if(g.polygonLayer) map.removeLayer(g.polygonLayer);
-  if(g.circleMarker) map.removeLayer(g.circleMarker);
-  if(g.labelMarker) map.removeLayer(g.labelMarker);
-  if(g.hzLabelMarker) map.removeLayer(g.hzLabelMarker);
-  if(g.pvFlaechen) g.pvFlaechen.forEach(f=>{ if(f.layer) map.removeLayer(f.layer); if(f.svgLayer) map.removeLayer(f.svgLayer); });
-  if(g._pvModuleLayer){ map.removeLayer(g._pvModuleLayer); g._pvModuleLayer=null; }
+  gebaeudeKartenebenenEntfernen(g);
   // Elektro-Assets des Gebäudes (z.B. Standardgebäude-Ausstattung: Trafo, NSHV, ...)
   // mitsamt ihrem gemeinsamen Gruppen-Marker entfernen — sonst bleibt der kleine
   // Chip-Marker verwaist auf der Karte stehen.
@@ -594,12 +601,7 @@ export async function removeGebaeude(id){
 export function clearOsmBuildings(){
   hidePanels();
   const osmGeb = window.gebaeude.filter(g=>g.fromOsm);
-  osmGeb.forEach(g => {
-    if(g.polygonLayer) map.removeLayer(g.polygonLayer);
-    if(g.circleMarker) map.removeLayer(g.circleMarker);
-    if(g.labelMarker) map.removeLayer(g.labelMarker);
-    if(g.hzLabelMarker) map.removeLayer(g.hzLabelMarker);
-  });
+  osmGeb.forEach(gebaeudeKartenebenenEntfernen);
   const osmIds = new Set(osmGeb.map(g=>g.id));
   osmIds.forEach(id => getAssetsForBuilding(id).forEach(a => deleteAsset(a.id, true)));
   setNetzEdges(window.netzEdges.filter(e => {
